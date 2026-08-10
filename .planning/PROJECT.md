@@ -1,0 +1,96 @@
+# SkillForge
+
+## What This Is
+
+SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 agent 工程能力。技术栈为 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端）。核心创新是"**Skill 驱动**"：企业通过编写或更新 Skill 文件（`SKILL.md`）让同一个 agent 内核适配不同业务需求，无需改代码。内置"企业合规/制度审查"Skill 作为样板间，开源发布，用于建个人技术品牌。
+
+## Core Value
+
+**同一个 agent 内核，通过可插拔的 Skill 文件被任意企业快速定制，无需改代码** —— 这是从"应用"到"平台"的护城河，也是"通过更新 Skill 让项目更理解企业使用需求"这一设计哲学的直接落地。
+
+## Requirements
+
+### Validated
+
+<!-- Shipped and confirmed valuable. -->
+
+(None yet — ship to validate)
+
+### Active
+
+<!-- Current scope. Building toward these. -->
+
+- [ ] **Skill 系统**：`SKILL.md` 6 字段规范（`description` / `agent` / `reads` / `writes` / `steps` / `guardrails`）、Skill 热加载与管理、意图路由（基于 description 语义匹配）
+- [ ] **Agent 内核（Eino + Eino ADK）**：多 agent 编排、工具调用、流式响应（参照 denova 的 Eino + ADK 落地）
+- [ ] **真源分离知识层**：权威 / 历史 / 个人分层；Skill 通过 `reads` 字段声明知识边界（denova 真源分离机制的结构化升级）
+- [ ] **Agentic RAG**：自主决策（检索/拒答/追问/多跳）、引用溯源到具体段落、来源可信度标注
+- [ ] **护栏 & Eval**：拒答机制（不确定不瞎编）、引用溯源可视化、RAGAS 等可衡量评估管线
+- [ ] **内置样板 Skill：企业合规/制度审查**：仅读权威制度文档、结构化判断（合规/不合规/需补充）+ 引用条款、强护栏（绝不臆测）
+- [ ] **Skill 向导**（对标 denova 的 `skills-creator`）：企业用自然语言描述需求，agent 自动生成一个合规的 `SKILL.md`
+- [ ] **可交互 Web 前端**：问答界面、Skill 管理/浏览、引用溯源可视化、推理链展示
+- [ ] **开源可发布**：Apache-2.0 license、README + 文档、Demo 站点、本地启动 + Docker 一键跑
+
+### Out of Scope
+
+<!-- Explicit boundaries. Includes reasoning to prevent re-adding. -->
+
+- **多租户 SaaS**（计费/订阅/用户管理）—— v1 聚焦 agent 能力本身，不做商业化平台层
+- **桌面级桌面应用**（如 denova 的本地二进制 + Web 混合）—— v1 聚焦 Web 应用形态
+- **完整私有化部署运维**（K8s / Helm / 企业 SSO）—— v1 给本地启动 + Docker，运维套件后续
+- **实时多人协作编辑 Skill** —— v1 假设单人 / 小团队维护 Skill，协作后续
+- **自定义 LLM 训练 / 微调** —— 只做 agent 编排与工程，不做模型训练
+- **移动端原生 App** —— Web + PWA 足够，不做原生
+
+## Context
+
+[Background information that informs implementation:]
+
+- **参照项目 denova（alfredxw/denova）**：Skills / SubAgents 机制、真源分离（历史事实 / 当前状态 / 稳定设定 / 未来意图分层）、有界工具结果 + 可检索回合历史、本地 Git 版本管理 + Agent 可撤销修改，是 SkillForge 的核心参照系。用户已 fork denova 源码，可直接对照学 Eino 怎么落地 Skill 与真源分离。
+
+- **2026 趋势背景**：
+  - 全球 agent 竞争从"模型能力"转向"**控制与编排**"（Blue Prism）；多 Agent 协作成主流架构（麦肯锡）；Gartner 预测 40% 企业应用内嵌专用 agent（2026）
+  - **企业 RAG 知识库**是国内 AI 落地最热场景，演进方向是 **Agentic RAG**（从"人找知识"到"知识主动服务人"），核心难点：检索精度、权限治理、**幻觉压制**、多 agent 编排
+  - **面试官 2026 看重的项目类型**：#1 RAG 问答、#2 Tool-calling Agent、#3 多 Agent 系统；最热技能 = AI agent 架构 + RAG 工程 + LLM 评估 + 防幻觉 guardrails
+  - **反例警示**：**Height.app**（最激进的 AI-native PM 工具）已于 **2025.9 关闭**，证明纯"AI 套壳工具"赛道已死，要做"平台"而非"功能"
+
+- **用户动机**：展示大模型 agent 开发能力，建个人开源品牌。
+
+## Constraints
+
+- **Tech stack**：Go + Eino + Eino ADK + Hertz（后端，用户明确选择，对标 denova 路线）；React 19 + Vite + TypeScript + Vercel AI SDK + shadcn/Tailwind（前端）
+- **License**：Apache-2.0（仿 denova，开源友好）
+- **Deployment**：v1 本地启动 + Docker Compose；聚焦 Web 应用形态，非桌面级
+- **Open source goal**：打磨文档 + 易上手 + 可衡量效果（用于个人品牌，而非纯面试展示）
+- **Referential constraint**：denova 源码可作为实现参照（用户已 fork），但**不复制 denova 的内容生成方向**（小说 / RPG），仅借鉴 agent 工程架构（Skills / 真源分离 / Eino ADK）
+
+## Key Decisions
+
+<!-- Decisions that constrain future work. Add throughout project lifecycle. -->
+
+| Decision | Rationale | Outcome |
+|----------|-----------|---------|
+| 选 **Go + Eino**（而非 Python / 全 TS） | 用户对 Go 熟悉；denova fork 提供成熟参照；想突出 agent 工程深度而非 Web 迭代速度 | — Pending |
+| 选 **Skill 驱动**而非固定功能 agent | 让项目从"应用"升级为"平台"；企业通过更新 Skill 适配需求，无需改代码；这是 denova 的核心机制迁移 | — Pending |
+| 内置 demo Skill = **企业合规/制度审查** | 痛点尖锐（合规不容许臆测）、真源分离天然契合（制度是权威真源）、拒答机制能出彩 | — Pending |
+| 受众 = **开源建个人品牌** | 打磨重点：文档 + 易上手 + 可衡量结果（区别于纯面试项目） | — Pending |
+| Skill 规范 **6 字段（显式 reads / writes）** | 把 denova 隐含在 body 步骤里的"读什么/写什么"结构化显式化 → 更规范、更安全、更易被 Skill 向导自动生成 | — Pending |
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
+---
+*Last updated: 2026-08-10 after initialization*
