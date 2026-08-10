@@ -125,35 +125,84 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
+Which phases cover which requirements.
 
-| Requirement Group | Phase | Status |
-|-------------------|-------|--------|
-| SYSK-01..02 | Phase 2 | Pending |
-| SYSK-03..05 | Phase 2 | Pending |
-| SYSK-06 (Skill Wizard) | Phase 5 | Pending |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SYSK-01 | Phase 2 | Pending |
+| SYSK-02 | Phase 2 | Pending |
+| SYSK-03 | Phase 4 | Pending |
+| SYSK-04 | Phase 5 | Pending |
+| SYSK-05 | Phase 5 | Pending |
+| SYSK-06 | Phase 5 | Pending |
 | SYSK-07 | Phase 2 | Pending |
-| AGNT-01..05 | Phase 3 | Pending |
-| AGNT-06 (state inspector) | Phase 5 | Pending |
-| KNOW-01..05 | Phase 4 | Pending |
-| KNOW-06 (graph) | Phase 5 | Pending |
-| ARAG-01..02 | Phase 4 | Pending |
-| ARAG-03 (Self-RAG) | Phase 4 | Pending |
-| ARAG-04..05 | Phase 4 | Pending |
-| GEVL-01..03 | Phase 4 | Pending |
-| GEVL-04..05 | Phase 5 | Pending |
-| GEVL-06..07 | Phase 6 | Pending |
-| FEUI-01..06 | Phase 4 | Pending |
-| DIST-01..04 | Phase 7 | Pending |
-| DIST-05..10 | Phase 7 | Pending |
-| CMPL-01..05 | Phase 2 | Pending |
-| CMPL-06..08 | Phase 5 | Pending |
+| AGNT-01 | Phase 3 | Pending |
+| AGNT-02 | Phase 3 | Pending |
+| AGNT-03 | Phase 2 | Pending |
+| AGNT-04 | Phase 3 | Pending |
+| AGNT-05 | Phase 3 | Pending |
+| AGNT-06 | Phase 5 | Pending |
+| KNOW-01 | Phase 3 | Pending |
+| KNOW-02 | Phase 3 | Pending |
+| KNOW-03 | Phase 3 | Pending |
+| KNOW-04 | Phase 3 | Pending |
+| KNOW-05 | Phase 4 | Pending |
+| KNOW-06 | Phase 5 | Pending |
+| ARAG-01 | Phase 3 | Pending |
+| ARAG-02 | Phase 3 | Pending |
+| ARAG-03 | Phase 3 | Pending |
+| ARAG-04 | Phase 2 | Pending |
+| ARAG-05 | Phase 2 | Pending |
+| GEVL-01 | Phase 2 | Pending |
+| GEVL-02 | Phase 2 | Pending |
+| GEVL-03 | Phase 3 | Pending |
+| GEVL-04 | Phase 3 | Pending |
+| GEVL-05 | Phase 3 | Pending |
+| GEVL-06 | Phase 6 | Pending |
+| GEVL-07 | Phase 6 | Pending |
+| FEUI-01 | Phase 4 | Pending |
+| FEUI-02 | Phase 4 | Pending |
+| FEUI-03 | Phase 4 | Pending |
+| FEUI-04 | Phase 4 | Pending |
+| FEUI-05 | Phase 4 | Pending |
+| FEUI-06 | Phase 4 | Pending |
+| DIST-01 | Phase 7 | Pending |
+| DIST-02 | Phase 7 | Pending |
+| DIST-03 | Phase 7 | Pending |
+| DIST-04 | Phase 7 | Pending |
+| DIST-05 | Phase 7 | Pending |
+| DIST-06 | Phase 7 | Pending |
+| DIST-07 | Phase 7 | Pending |
+| DIST-08 | Phase 7 | Pending |
+| DIST-09 | Phase 7 | Pending |
+| DIST-10 | Phase 7 | Pending |
+| CMPL-01 | Phase 2 | Pending |
+| CMPL-02 | Phase 2 | Pending |
+| CMPL-03 | Phase 2 | Pending |
+| CMPL-04 | Phase 2 | Pending |
+| CMPL-05 | Phase 2 | Pending |
+| CMPL-06 | Phase 5 | Pending |
+| CMPL-07 | Phase 5 | Pending |
+| CMPL-08 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 55 total
 - Mapped to phases: 55
 - Unmapped: 0 ✓
 
+**Phase distribution:**
+
+| Phase | Count | Requirements |
+|-------|-------|--------------|
+| Phase 1 (Spike) | 0 | (none — integration validation only) |
+| Phase 2 (Compliance Vertical Slice) | 13 | SYSK-01, SYSK-02, SYSK-07, AGNT-03, CMPL-01..05, ARAG-04, ARAG-05, GEVL-01, GEVL-02 |
+| Phase 3 (Agentic Retrieval & Trust Evaluation) | 14 | AGNT-01, AGNT-02, AGNT-04, AGNT-05, ARAG-01..03, KNOW-01..04, GEVL-03, GEVL-04, GEVL-05 |
+| Phase 4 (Streaming Trust UI) | 8 | SYSK-03, KNOW-05, FEUI-01..06 |
+| Phase 5 (Skill Platform & Full Knowledge Boundaries) | 8 | SYSK-04, SYSK-05, SYSK-06, AGNT-06, KNOW-06, CMPL-06, CMPL-07, CMPL-08 |
+| Phase 6 (Eval Dashboard & Production Hardening) | 2 | GEVL-06, GEVL-07 |
+| Phase 7 (Open-Source Release) | 10 | DIST-01..10 |
+| **Total** | **55** | |
+
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-08-10 after initial definition (Scope: all Table Stakes + 8 Differentiators → "全功能" v1)*
+*Last updated: 2026-08-10 after roadmap creation (7 phases, mvp mode)*
