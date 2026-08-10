@@ -10,12 +10,13 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Skill System (SYSK)
 
 - [ ] **SYSK-01**: User can create a Skill from a declarative `SKILL.md` file in a Skill directory
-- [ ] **SYSK-02**: System parses and validates `SKILL.md` against the 6-field schema (`description` / `agent` / `reads` / `writes` / `steps` / `guardrails`)
+- [ ] **SYSK-02**: System parses and validates `SKILL.md` against the **7-field** schema (`description` / `agent` / `reads` / `writes` / `steps` / `guardrails` / **`temperature`**) — see `.planning/SKILL_SCHEMA.md`
 - [ ] **SYSK-03**: User can browse and select installed Skills via the UI
 - [ ] **SYSK-04**: System hot-reloads Skills on file change (fsnotify)
 - [ ] **SYSK-05**: System routes user queries to the right Skill via intent matching on `description`
 - [ ] **SYSK-06**: User can describe a Skill need in natural language and the **Skill Wizard** auto-generates a compliant `SKILL.md`
 - [ ] **SYSK-07**: System enforces `reads` field as a hard filter at retrieval time (retriever cannot query outside declared tiers)
+- [ ] **SYSK-08**: System enforces `temperature` field as **required** (no default) and passes it to LLM calls via Eino `GenerateOption(temperature)` — supports per-Skill determinism level (compliance Skills use 0.0, creative Skills use 0.7+)
 
 ### Agent Core (AGNT)
 
@@ -149,6 +150,7 @@ Which phases cover which requirements.
 | SYSK-05 | Phase 5 | Pending |
 | SYSK-06 | Phase 5 | Pending |
 | SYSK-07 | Phase 2 | Pending |
+| SYSK-08 | Phase 2 | Pending |
 | AGNT-01 | Phase 3 | Pending |
 | AGNT-02 | Phase 3 | Pending |
 | AGNT-03 | Phase 2 | Pending |
@@ -207,8 +209,8 @@ Which phases cover which requirements.
 | DATA-08 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 63 total (was 55; +8 DATA added 2026-08-10 via /gsd:explore)
-- Mapped to phases: 63
+- v1 requirements: 64 total (was 55; +8 DATA +1 SYSK-08 added via /gsd:explore 2026-08-10)
+- Mapped to phases: 64
 - Unmapped: 0 ✓
 
 **Phase distribution:**
