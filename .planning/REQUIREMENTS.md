@@ -86,6 +86,19 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CMPL-07**: Redline suggestion — propose clause-level rewrites when policy gap detected
 - [ ] **CMPL-08**: Policy version tracking (chunk metadata `effective_from` / `effective_to`; superseded versions filtered out)
 
+### Financial Data Layer (DATA)
+
+> Added 2026-08-10 via /gsd:explore (finance compliance data architecture). Map to Phase 5+ (architecture integration TBD).
+
+- [ ] **DATA-01**: System provides a data import pipeline for data personnel to ingest CSV / SQL dump / API data with tier + schema metadata
+- [ ] **DATA-02**: System enforces mandatory desensitization at import time (L1 PII hashing + L2 bucketing) — raw L1/L2/L3 data does NOT persist in SkillForge for aggregation-tier Skills
+- [ ] **DATA-03**: System exposes aggregation API (predefined KPI functions) — agent invokes KPI functions, never SELECTs raw data
+- [ ] **DATA-04**: System supports external authorized channel for individual-identification Skills — raw data stays in user's enterprise data warehouse, agent calls via read-only DB user / proxy with TTL token
+- [ ] **DATA-05**: External authorized channel enforces field-level second-layer desensitization (e.g., display only last-4 of account number) plus pre-authorization by data personnel
+- [ ] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp
+- [ ] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized`
+- [ ] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -184,10 +197,18 @@ Which phases cover which requirements.
 | CMPL-06 | Phase 5 | Pending |
 | CMPL-07 | Phase 5 | Pending |
 | CMPL-08 | Phase 5 | Pending |
+| DATA-01 | Phase 5 | Pending |
+| DATA-02 | Phase 5 | Pending |
+| DATA-03 | Phase 5 | Pending |
+| DATA-04 | Phase 5 | Pending |
+| DATA-05 | Phase 5 | Pending |
+| DATA-06 | Phase 5 | Pending |
+| DATA-07 | Phase 5 | Pending |
+| DATA-08 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 55 total
-- Mapped to phases: 55
+- v1 requirements: 63 total (was 55; +8 DATA added 2026-08-10 via /gsd:explore)
+- Mapped to phases: 63
 - Unmapped: 0 ✓
 
 **Phase distribution:**
