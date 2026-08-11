@@ -186,6 +186,14 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 func parseFrontmatter(raw []byte) ([]byte, error) {
 	const open = "---\n"
 	const close = "\n---"
+	// Normalize line endings (CRLF → LF) so the structural markers match
+	// on Windows-committed files. yaml.Unmarshal handles either line
+	// style natively, but the HasPrefix/Index checks below compare against
+	// LF-terminated markers, so CRLF input would otherwise fail with
+	// "no YAML frontmatter" (regression caught by the post-merge gate in
+	// the 02-02 worktree merge — the canonical compliance SKILL.md was
+	// committed with CRLF on Windows).
+	raw = bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
 	if len(raw) < len(open) || !bytes.Equal(raw[:len(open)], []byte(open)) {
 		return nil, errors.New("no YAML frontmatter: file must start with `---` on line 1")
 	}
