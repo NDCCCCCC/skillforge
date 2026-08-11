@@ -20,10 +20,11 @@
 //
 // Index is the canonical Pattern 7 (02-RESEARCH.md §lines 576-607)
 // implementation: scan knowledge/{authority,historical,personal,draft}/*.md,
-// strip YAML frontmatter, embed the body via BGE-M3 (production — NOT
-// the deterministic spike-only fallback per Pitfall 8), and insert into
-// Milvus with the dir-name's CN-char tier value (resolved through
-// internal/skill.TierEnum so the loader cannot drift from the retriever).
+// strip YAML frontmatter, embed the body via the Embedder interface
+// (production — NOT the deterministic spike-only fallback per Pitfall 8),
+// and insert into Milvus with the dir-name's CN-char tier value (resolved
+// through internal/skill.TierEnum so the loader cannot drift from the
+// retriever).
 //
 // One-doc-one-chunk is the Phase 2 minimal model — each .md file becomes
 // exactly one Document row. The corpus is hand-authored, each clause is
@@ -42,7 +43,9 @@ import (
 	"sort"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/skill"
 )
 
@@ -64,10 +67,9 @@ const maxDocBytes = 4000
 var knownTierDirs = []string{"authority", "historical", "personal", "draft"}
 
 // Index scans knowledgeDir/{authority,historical,personal,draft}/*.md,
-// embeds the body of each .md file via BGE-M3 (retriever.EmbedQuery —
-// the production HTTP client, NOT EmbedQueryDeterministic which is
-// spike-only fallback per Pitfall 8), and seeds the resulting Documents
-// into Milvus with the tier metadata derived from the dir name.
+// embeds the body of each .md file via the Embedder interface, and
+// seeds the resulting Documents into Milvus with the tier metadata
+// derived from the dir name.
 //
 // Behavior:
 //   - Tier directories that do not exist on disk are skipped silently.
@@ -88,20 +90,21 @@ var knownTierDirs = []string{"authority", "historical", "personal", "draft"}
 // Returns:
 //   - nil on success (collection seeded with N>=0 documents).
 //   - wrapped error on Milvus or embed failure. Embed failure is a HARD
-//     error in production — we never fall back to EmbedQueryDeterministic
-//     (Pitfall 8 / T-2-25): the deterministic fallback exists for cmd/spiked
-//     regression only and would silently mask a BGE-M3 outage with
-//     semantically meaningless vectors.
+//     error in production — we never fall back to a deterministic offline
+//     vector (Pitfall 8 / T-2-25): the deterministic fallback exists for
+//     cmd/spiked regression only and would silently mask a BGE-M3 outage
+//     with semantically meaningless vectors.
 //
 // knowledgeDir is expected to be the project-relative "knowledge/" path
-// but any directory with the standard 4-tier layout works. bgeURL points
-// at the internal BGE-M3 service (e.g. http://bge-m3.internal/v1/embeddings).
-func Index(ctx context.Context, knowledgeDir string, mc client.Client, cfg retriever.MilvusConfig, bgeURL string) error {
+// but any directory with the standard 4-tier layout works. emb is the
+// embedder.Embedder used to vectorize each document; mc is the Milvus
+// client used to seed the resulting documents.
+func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc client.Client, cfg milvus.Config) error {
 	if knowledgeDir == "" {
 		return errors.New("knowledge.Index: knowledgeDir is empty")
 	}
-	if bgeURL == "" {
-		return errors.New("knowledge.Index: bgeURL is empty (Pitfall 8 — production refuses on BGE-M3 outage)")
+	if emb == nil {
+		return errors.New("knowledge.Index: embedder is nil")
 	}
 	// mc==nil is rejected only when the test hook is not active; in test
 	// mode the hook intercepts before any Milvus SDK call, so a nil
@@ -171,11 +174,10 @@ func Index(ctx context.Context, knowledgeDir string, mc client.Client, cfg retri
 				continue
 			}
 
-			// PRODUCTION embed: retriever.EmbedQuery calls the BGE-M3 HTTP
-			// endpoint. We never call EmbedQueryDeterministic here — that
-			// fallback exists solely for cmd/spiked regression paths and
-			// would silently hide a BGE-M3 outage (Pitfall 8).
-			vec, err := retriever.EmbedQuery(ctx, bgeURL, string(body))
+			// PRODUCTION embed via the Embedder interface. We never call
+			// a deterministic fallback here — that would silently hide a
+			// BGE-M3 outage (Pitfall 8).
+			vec, err := emb.Embed(ctx, string(body))
 			if err != nil {
 				return fmt.Errorf("knowledge.Index: embed %s: %w", path, err)
 			}
@@ -220,20 +222,20 @@ func Index(ctx context.Context, knowledgeDir string, mc client.Client, cfg retri
 // intercept the Milvus write without standing up a real Milvus server.
 //
 // Production behavior (indexSeedHook == nil): delegate to
-// retriever.SeedDocuments verbatim.
+// milvus.SeedDocuments verbatim.
 //
 // Test behavior (indexSeedHook != nil): invoke the hook with the docs;
 // the hook returns the error that production would have surfaced. This
 // keeps the production code path identical to the test path (no mock
 // branch inside Index) while letting unit tests assert on the docs
 // that would have been inserted.
-var indexSeedHook func(ctx context.Context, mc client.Client, cfg retriever.MilvusConfig, docs []retriever.Document) error
+var indexSeedHook func(ctx context.Context, mc client.Client, cfg milvus.Config, docs []retriever.Document) error
 
-func seedDocs(ctx context.Context, mc client.Client, cfg retriever.MilvusConfig, docs []retriever.Document) error {
+func seedDocs(ctx context.Context, mc client.Client, cfg milvus.Config, docs []retriever.Document) error {
 	if indexSeedHook != nil {
 		return indexSeedHook(ctx, mc, cfg, docs)
 	}
-	return retriever.SeedDocuments(ctx, mc, cfg, docs)
+	return milvus.SeedDocuments(ctx, mc, cfg, docs)
 }
 
 // stripFrontmatter extracts the markdown body after the YAML frontmatter

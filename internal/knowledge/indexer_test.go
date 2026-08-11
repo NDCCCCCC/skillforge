@@ -18,63 +18,47 @@ package knowledge
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Test dim matches retriever.DefaultEmbedDim (1024 for BGE-M3). The
-// indexer does not assert on vector contents, only on dim via
-// retriever.SeedDocuments' own check; the fake server just emits a
-// 1024-element zero vector to satisfy that.
+// Test dim matches milvus.DefaultEmbedDim (1024 for BGE-M3). The indexer
+// does not assert on vector contents, only on dim via milvus.SeedDocuments'
+// own check; the fake embedder just emits a 1024-element zero vector.
 const testEmbedDim = 1024
 
-// newFakeBGE spins a stdlib httptest.Server that mimics the OpenAI
-// /v1/embeddings response shape. Every input returns a 1024-dim zero
-// vector (semantically meaningless, but enough to exercise the indexer
-// pipeline). The URL is returned so callers can pass it to retriever.EmbedQuery.
-func newFakeBGE(t *testing.T) (*httptest.Server, string) {
-	t.Helper()
-	vec := make([]float32, testEmbedDim)
-	body := buildFakeEmbeddingResponse(vec)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(body)
-	}))
-	return srv, srv.URL
+// fakeEmbedder is a minimal embedder.Embedder that returns a 1024-dim
+// zero vector for every input. Used by the indexer tests as the
+// production-shaped Embedder.
+type fakeEmbedder struct {
+	dim   int
+	calls []string
+	mu    sync.Mutex
 }
 
-// buildFakeEmbeddingResponse renders a fake BGE-M3 OpenAI-shape response
-// for a 1024-dim vector. The vector elements are all 0.0 — fine for the
-// indexer tests which never evaluate semantic similarity.
-func buildFakeEmbeddingResponse(vec []float32) []byte {
-	var b strings.Builder
-	b.WriteString(`{"data":[{"embedding":[`)
-	for i, v := range vec {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		if v == 0 {
-			b.WriteString("0")
-		} else {
-			b.WriteString("0.0001") // non-zero sentinel, not meaningful
-		}
-	}
-	b.WriteString(`]}]}`)
-	return []byte(b.String())
+func newFakeEmbedder() *fakeEmbedder {
+	return &fakeEmbedder{dim: testEmbedDim}
 }
+
+func (e *fakeEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.calls = append(e.calls, text)
+	v := make([]float32, e.dim)
+	return v, nil
+}
+
+func (e *fakeEmbedder) Dimensions() int { return e.dim }
 
 // makeKnowledgeDir creates a temp dir shaped like the project knowledge/
 // root with the four known tier subdirectories. Returns the dir path;
@@ -112,7 +96,7 @@ func withSeedHook(t *testing.T) *indexSeedCapture {
 	t.Helper()
 	cap := &indexSeedCapture{}
 	prev := indexSeedHook
-	indexSeedHook = func(_ context.Context, _ client.Client, _ retriever.MilvusConfig, docs []retriever.Document) error {
+	indexSeedHook = func(_ context.Context, _ client.Client, _ milvus.Config, docs []retriever.Document) error {
 		// Copy so later assertions don't see downstream mutation.
 		cap.docs = make([]retriever.Document, len(docs))
 		copy(cap.docs, docs)
@@ -123,11 +107,11 @@ func withSeedHook(t *testing.T) *indexSeedCapture {
 }
 
 // driveIndex invokes Index with a nil Milvus client (the seedDocs hook
-// intercepts before the SDK is touched). knowledgeDir + bgeURL come
-// from the caller.
-func driveIndex(t *testing.T, knowledgeDir, bgeURL string) error {
+// intercepts before the SDK is touched). knowledgeDir + emb come from
+// the caller.
+func driveIndex(t *testing.T, knowledgeDir string, emb embedder.Embedder) error {
 	t.Helper()
-	return Index(context.Background(), knowledgeDir, nil, retriever.MilvusConfig{CollectionName: "test_collection"}, bgeURL)
+	return Index(context.Background(), knowledgeDir, emb, nil, milvus.Config{CollectionName: "test_collection"})
 }
 
 // TestIndexer_EmptyTierDirsOK asserts the SC-4 mechanism: an empty
@@ -138,11 +122,8 @@ func TestIndexer_EmptyTierDirsOK(t *testing.T) {
 	dir := makeKnowledgeDir(t)
 	writeDoc(t, dir, "authority", "policy.md", "出差住宿费超过 500 元时须上级审批。")
 
-	srv, bgeURL := newFakeBGE(t)
-	defer srv.Close()
-
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, bgeURL))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
 
 	require.Len(t, cap.docs, 1, "expected exactly 1 doc (1 authority file)")
 	assert.Equal(t, "权威", cap.docs[0].Tier)
@@ -160,11 +141,8 @@ func TestIndexer_TierMetadataCorrect(t *testing.T) {
 	writeDoc(t, dir, "authority", "bravo.md", "B 类城市差旅住宿费 600 元。")
 	writeDoc(t, dir, "historical", "legacy.md", "旧版制度（仅供参考）：差旅实报实销。")
 
-	srv, bgeURL := newFakeBGE(t)
-	defer srv.Close()
-
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, bgeURL))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
 
 	require.Len(t, cap.docs, 3, "expected 3 docs (2 authority + 1 historical)")
 	assert.Equal(t, "权威", cap.docs[0].Tier, "doc 1 should be tier=权威")
@@ -183,35 +161,34 @@ func TestIndexer_StripFrontmatter(t *testing.T) {
 	body := "---\nkey: val\nnote: hello\n---\nactual content here"
 	writeDoc(t, dir, "authority", "frontmatter.md", body)
 
-	srv, bgeURL := newFakeBGE(t)
-	defer srv.Close()
-
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, bgeURL))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
 
 	require.Len(t, cap.docs, 1)
 	assert.Equal(t, "actual content here", cap.docs[0].Content,
 		"YAML frontmatter must be stripped before embedding")
 }
 
-// TestIndexer_ProductionUsesEmbedQueryNotDeterministic is the static-
-// analysis guarantee that production code never calls the spike-only
-// EmbedQueryDeterministic fallback (Pitfall 8). If a future contributor
-// adds that call by accident, this test breaks the build.
+// TestIndexer_ProductionUsesEmbedderInterface is the static-analysis
+// guarantee that production code uses the embedder.Embedder interface
+// (and never falls back to a deterministic offline vector). If a future
+// contributor switches to a deterministic fallback, this test breaks the
+// build.
 //
-// We grep for the function-call form "EmbedQueryDeterministic(" (with the
-// open paren) rather than the bare identifier — this allows the comments
-// in indexer.go to NAME the function (so future readers know what to
-// avoid) without tripping the guard.
-func TestIndexer_ProductionUsesEmbedQueryNotDeterministic(t *testing.T) {
+// We grep for the function-call form "EmbedQueryDeterministic(" (with
+// the open paren) rather than the bare identifier — this allows the
+// comments in indexer.go to NAME the function (so future readers know
+// what to avoid) without tripping the guard. The test also asserts that
+// the indexer calls Embed(...) (the interface method) directly.
+func TestIndexer_ProductionUsesEmbedderInterface(t *testing.T) {
 	data, err := os.ReadFile("indexer.go")
 	require.NoError(t, err)
 	src := string(data)
 	assert.NotContains(t, src, "EmbedQueryDeterministic(",
-		"internal/knowledge/indexer.go must not CALL retriever.EmbedQueryDeterministic — "+
+		"internal/knowledge/indexer.go must not CALL a deterministic fallback — "+
 			"that fallback is spike-only (Pitfall 8 / T-2-25); production refuses on BGE-M3 outage")
-	assert.Contains(t, src, "EmbedQuery(",
-		"internal/knowledge/indexer.go must CALL retriever.EmbedQuery for production embedding")
+	assert.Contains(t, src, "emb.Embed(",
+		"internal/knowledge/indexer.go must CALL emb.Embed (the Embedder interface) for production embedding")
 }
 
 // TestIndexer_RejectsOversizeDocs asserts the defensive cap. A body
@@ -223,11 +200,8 @@ func TestIndexer_RejectsOversizeDocs(t *testing.T) {
 	writeDoc(t, dir, "authority", "small.md", small)
 	writeDoc(t, dir, "authority", "huge.md", big)
 
-	srv, bgeURL := newFakeBGE(t)
-	defer srv.Close()
-
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, bgeURL))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
 
 	require.Len(t, cap.docs, 1, "expected only the small doc to be seeded; oversize doc must be skipped")
 	assert.Equal(t, "small.md", filepath.Base(cap.docs[0].Source))
@@ -240,24 +214,21 @@ func TestIndexer_RejectsOversizeDocs(t *testing.T) {
 func TestIndexer_EmptyKnowledgeTreeOK(t *testing.T) {
 	dir := makeKnowledgeDir(t) // dirs exist but no .md files
 
-	srv, bgeURL := newFakeBGE(t)
-	defer srv.Close()
-
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, bgeURL))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
 	assert.Empty(t, cap.docs, "empty knowledge tree should produce 0 docs (no error)")
 }
 
 // TestIndexer_RejectsEmptyInputs guards the two hard-error entry
-// conditions: empty knowledgeDir → error; empty bgeURL → error
+// conditions: empty knowledgeDir → error; nil embedder → error
 // (Pitfall 8: we MUST fail closed, never silently fall back).
 func TestIndexer_RejectsEmptyInputs(t *testing.T) {
 	ctx := context.Background()
-	err := Index(ctx, "", nil, retriever.MilvusConfig{}, "http://bge")
+	err := Index(ctx, "", newFakeEmbedder(), nil, milvus.Config{})
 	assert.Error(t, err, "empty knowledgeDir must error")
 
-	err = Index(ctx, "knowledge", nil, retriever.MilvusConfig{}, "")
-	assert.Error(t, err, "empty bgeURL must error (Pitfall 8)")
+	err = Index(ctx, "knowledge", nil, nil, milvus.Config{})
+	assert.Error(t, err, "nil embedder must error (Pitfall 8)")
 }
 
 // TestStripFrontmatter covers the helper directly with a few shapes.
