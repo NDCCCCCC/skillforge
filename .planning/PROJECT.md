@@ -16,6 +16,8 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 - ✅ **Phase 1: Integration Spike & Trust Contract** (2026-08-11) — 验证了 Eino v0.7.7 + Hertz SSE + Vercel AI SDK + Milvus tier-filter 的 wire 契约。5 个成功标准中，SC-1（SSE envelope）/ SC-4（citation 渲染）/ SC-5（version-pinned contract test <10s）全自动化绿；SC-2（Milvus tier-filter）+ SC-3（ChatModelAgent + 取消 <200ms）代码路径完成，live verify 延后给用户（内网 Milvus + GLM key 需手动跑）。spike 产物：`cmd/spiked/` 多子命令二进制（wire/milvus/sse/e2e）+ `internal/spike/`（uimsg/hertz_sse/milvus_client/verdict）+ `web/` React stub + `integration/contract/` drift-detection 套件。**关键约束确认**：内网 API 策略（Milvus + BGE-M3 走内网，GLM 走公网），Phase 7 才补 docker-compose 部署路径；`@ai-sdk/react` 实际是 v4.x（STACK.md 的 "AI SDK v5" 是产品代号 UIMessageChunk，非 npm 版本）。
 
+- ✅ **Phase 2: Compliance Vertical Slice** (2026-08-11) — **"Skill 即平台"论点证明**。一个 Skill（合规）/ 一个权威层 / 一个端点（`POST /api/chat`），对任何查询给出**带引用裁决 OR 结构化拒答，绝不臆造**。6/6 SC 对真实 MongoDB + Ollama-BGE-M3 + GLM-5.2 全绿（人工 checkpoint approved）。**D2-01 护城河实测有效**：SC-3 裁决 confidence 0.95 未被降到 0.89，证明 Go grounding checker 成功验证了 citation span 逐字出现在 chunk 原文（P-COMPL-1 头号风险落地）。产物：`internal/{verdict,wire,retriever/{milvus,mongo},embedder/bge,skill,knowledge,server}` + `cmd/server` Hertz 服务 + `skills/compliance/SKILL.md` + `knowledge/authority/` 7 篇语料 + `scripts/live-verify.sh`。**多后端能力兑现**：`retriever.Retriever` + `embedder.Embedder` 接口抽象（11 commits），MongoDB 后端实战落地（5 commits，因用户 Milvus 环境损坏而启用）。活体验证发现并修复 5 个真实 bug（bge model 字段 / bge 超时 / unanswered→refusal 映射 / mongo seed 去重 / grounding key 不匹配导致护城河静默失效）。**Phase 3 待办**：embedding 区分度低（Ollama bge-m3 所有 doc 0.29-0.40）、LLM temp=0 非确定性——均靠 Phase 3 Ragas eval 驱动校准。
+
 ### Active
 
 <!-- Current scope. Building toward these. -->
