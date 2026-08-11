@@ -8,7 +8,7 @@ require (
 	github.com/cloudwego/hertz v0.10.6
 	github.com/milvus-io/milvus-sdk-go/v2 v2.4.2
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/text v0.13.0
+	golang.org/x/text v0.22.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -58,6 +58,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
+	go.mongodb.org/mongo-driver/v2 v2.8.0 // indirect
 	golang.org/x/arch v0.11.0 // indirect
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
 	golang.org/x/net v0.17.0 // indirect
