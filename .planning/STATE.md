@@ -3,28 +3,28 @@ gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
 current_phase: 03
-current_plan: 2
+current_plan: 3
 status: executing
-last_updated: "2026-08-11T16:56:46Z"
+last_updated: "2026-08-12T00:00:00Z"
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 16
-  completed_plans: 14
-  percent: 44
+  completed_plans: 15
+  percent: 47
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-11
+**Last updated:** 2026-08-12
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 03
-**Current Plan:** 2 (just completed: 03-01)
+**Current Plan:** 3 (just completed: 03-02)
 **Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** Continue Phase 3 — run `/gsd:execute-phase` for Plan 03-02 (Wave 1 parallel sibling: internal/store Store interface + SQLite audit row). 03-01 unblocked 03-03 (data-decision) and 03-04 (TierEnumByValue for KNOW-02 indexer).
+**Next action:** Continue Phase 3 Wave 2 — run `/gsd:execute-phase` for Plan 03-03 (agent emits data-decision via Eino callbacks) and Plan 03-04 (KNOW-02 indexer calls TierEnumByValue). 03-02 unblocked Plan 03-05 (server Store wiring) and Plan 03-06 (eval sidecar AuditRow reads).
 
 ---
 
@@ -48,11 +48,11 @@ progress:
 ## Current Position
 
 Phase: 03 (agentic-retrieval-trust-evaluation) — EXECUTING
-Plan: 2 of 6 (just completed 03-01 — data-decision wire discriminator + TierEnum reverse-lookup helpers, 4 TDD commits, 7m)
+Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session backend, 3 TDD commits, 18m)
 **Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN (deferred; Phase 3 in progress)
 **Plan:** not started
-**Status:** Executing Phase 03 (Plan 03-01 COMPLETE; Wave 1 sibling 03-02 next)
-**Just completed:** Plan 03-01 — `data-decision` SSE chunk discriminator (Go `wire.ValidTypes` 16→17 + TS `SkillForgeChunk` variant in D-04/D15 lockstep) + `skill.TierEnumByValue`/`TierEnumValues` helpers (additions only). 2/2 tasks, 4 commits (`082e9b9` RED, `0b43156` GREEN, `1231cb1` RED, `a35fbda` GREEN). ARAG-01 / SC-1 / KNOW-01 substrates unlocked; Plan 03-03 (agent emits data-decision via callbacks) and Plan 03-04 (KNOW-02 indexer calls TierEnumByValue) unblocked.
+**Status:** Executing Phase 03 (Plans 03-01 + 03-02 COMPLETE; Wave 2 siblings 03-03 / 03-04 next)
+**Just completed:** Plan 03-02 — `internal/store.Store` interface + `SQLiteStore` default impl (modernc.org/sqlite@v1.56.0, pure-Go no cgo). D11 mirror of retriever.Retriever + mongo (compile-time `var _ store.Store = (*SQLiteStore)(nil)`). audit table INSERT+SELECT only (T-3-AUDIT); `QueryAudit` 100% `?`-parameterized (T-3-SQLI regression: `'; DROP TABLE audit; --` survives in UserID/SkillID/RefusalReason); `GetSession WHERE session_id=?` = SC-9 isolation; `AppendTurn` idempotent via `UNIQUE+ON CONFLICT DO NOTHING`. 3/3 tasks, 3 commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 + AGNT-05/SC-9 unlocked at the store layer; Plan 03-05 (server wiring) + Plan 03-06 (eval sidecar AuditRow reads) unblocked.
 
 **Phase 4 shipped (trust visualization front-end):**
 
@@ -94,6 +94,7 @@ Plan: 2 of 6 (just completed 03-01 — data-decision wire discriminator + TierEn
 | D15 | Wire-type compile-time drift alarm (Phase 4) | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` fails the build if the SDK upstream renames any chunk discriminator — the compiler IS the drift alarm (cheaper than runtime contract tests alone). |
 | D16 | `data-decision` SSE chunk discriminator (Phase 3 / Plan 03-01) | Registers the ARAG-01 / SC-1 observability substrate — a per-hop wire-level slot for agent autonomous decisions (retrieve/answer/refuse/forced_stop). Mirrored Go + TS in one commit per the D15 two-PR rule; emitted by Plan 03-03's Eino callbacks (`newDecisionCallback`), parsed by the Phase 4 React UI's `SkillForgeChunk` union. |
 | D17 | TierEnum reverse-lookup helpers (Phase 3 / Plan 03-01) | `skill.TierEnumByValue` + `skill.TierEnumValues` expose the 4-tier enum for backend-agnostic validation. KNOW-02 enforcement at `internal/knowledge.Index` (Plan 03-04) calls `TierEnumByValue(doc.Tier)` — fail-closed default-deny on any tier outside {权威, 历史, 个人, 草稿}. |
+| D18 | Store interface-first + SQLite default (Phase 3 / Plan 03-02) | `internal/store.Store` + `internal/store/sqlite.SQLiteStore` mirror the D11 retriever pattern (interface in parent pkg, impl in subpkg, compile-time `var _ store.Store = (*SQLiteStore)(nil)`). modernc.org/sqlite@v1.56.0 = pure-Go (no cgo) zero-ops default; PG-ready drop-in without caller changes. audit table is INSERT+SELECT only (T-3-AUDIT); `QueryAudit` is 100% `?`-parameterized (T-3-SQLI); `GetSession WHERE session_id=?` is the SC-9 isolation boundary; `AppendTurn` idempotent via `UNIQUE(session_id,role,ts)+ON CONFLICT DO NOTHING`. Plan 03-05 (server wiring) + Plan 03-06 (eval sidecar AuditRow reads) unblocked. |
 
 ---
 
@@ -144,18 +145,19 @@ Plan: 2 of 6 (just completed 03-01 — data-decision wire discriminator + TierEn
 | 02 | 04-MONGO | 13m | 5 commits — MongoDB retriever backend (RETRIEVER_BACKEND=mongo). See 02-04-MONGO-SUMMARY.md |
 | 04 (quick) | 260811-uaf | ~20m | CenterPanel tab-indicator ↔ centerView.kind sync — closed UAT #8 (83/83 green). See quick/260811-uaf-*-SUMMARY.md |
 | 03 | 01 | 7m | 2 TDD tasks / 4 commits / 5 files (2 created + 3 modified) — `data-decision` SSE chunk discriminator (Go `wire.ValidTypes` 16→17 + exported `DecisionPayload` + TS `SkillForgeChunk` variant) + `skill.TierEnumByValue`/`TierEnumValues` reverse-lookup helpers (additions only). ARAG-01/SC-1/KNOW-01 substrates unlocked. See 03-01-SUMMARY.md |
+| 03 | 02 | 18m | 3 TDD tasks / 3 commits / 8 files (6 created + 2 modified) — `internal/store.Store` interface + `SQLiteStore` default impl (modernc.org/sqlite@v1.56.0 pure-Go, no cgo). D11 mirror of retriever + mongo. audit INSERT+SELECT only (T-3-AUDIT); `QueryAudit` 100% `?`-parameterized (T-3-SQLI regression: DROP TABLE survives in 3 filter fields); SC-9 isolation at `WHERE session_id=?`; `AppendTurn` idempotent via UNIQUE+ON CONFLICT. GEVL-03/SC-7 + AGNT-05/SC-9 unlocked at store layer. See 03-02-SUMMARY.md |
 
 - Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering, now in progress
 - Requirements covered: 24 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08; Phase 3 03-01: +ARAG-01 substrate, +KNOW-01 substrate)
 - Frontend tests: 83/83 green (12 files); UAT 12/12
-- Plans run: 12 (4 Phase 1 + 4 Phase 2 incl. MONGO + 3 Phase 4 + 1 Phase 3)
-- Last plan: 03-01 (Wave 1) — commits 082e9b9 + 0b43156 + 1231cb1 + a35fbda
+- Plans run: 13 (4 Phase 1 + 4 Phase 2 incl. MONGO + 3 Phase 4 + 2 Phase 3)
+- Last plan: 03-02 (Wave 1) — commits 76787c2 + 3e24bda + 0810a7b
 
 ---
 
 ## Session Continuity
 
-**Resume point:** Plan 03-01 (data-decision wire discriminator + TierEnum reverse-lookup helpers) is COMPLETE — 2/2 tasks, 4 TDD commits, ARAG-01/SC-1/KNOW-01 substrates unlocked. Next: continue Phase 3 Wave 1 by running Plan 03-02 (internal/store Store interface + SQLite audit row, GEVL-03/AGNT-05). Wave 2 plans 03-03 (agent) + 03-04 (KNOW-02 indexer) are now unblocked by 03-01's outputs (`wire.DecisionPayload`, `skill.TierEnumByValue`). Pre-existing Phase 4 TS errors (unrelated to 03-01) logged in `.planning/phases/03-agentic-retrieval-trust-evaluation/deferred-items.md` for a future 04-04 wire-contract realignment plan.
+**Resume point:** Plan 03-02 (internal/store Store interface + SQLite audit/session backend) is COMPLETE — 3/3 tasks, 3 TDD commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 (audit SQL-queryable, T-3-SQLI regression-locked) and AGNT-05/SC-9 (session_id SQL partitioning under -race) unlocked at the store layer. Next: run Wave 2 plans — Plan 03-03 (agent emits data-decision via Eino callbacks, consumes 03-01's `wire.DecisionPayload`) and Plan 03-04 (KNOW-02 indexer calls 03-01's `skill.TierEnumByValue`). Plan 03-05 (server wires `Store.PutAudit` + `GetSession` + `AppendTurn`) and Plan 03-06 (eval sidecar reads `AuditRow` for JSONL) also unblocked. Pre-existing Phase 4 TS errors (unrelated to 03-01) still logged in `.planning/phases/03-agentic-retrieval-trust-evaluation/deferred-items.md` for a future 04-04 wire-contract realignment plan.
 
 **Hot files this session:**
 
@@ -167,4 +169,4 @@ Plan: 2 of 6 (just completed 03-01 — data-decision wire discriminator + TierEn
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11. Plan 03-02 complete 2026-08-12.*

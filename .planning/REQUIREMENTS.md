@@ -24,7 +24,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **AGNT-02**: Agent can invoke external tools (function calling)
 - [ ] **AGNT-03**: System streams agent events (text / reasoning / tool-call / source) to client in real-time via Hertz SSE
 - [ ] **AGNT-04**: User can cancel an in-flight agent run
-- [ ] **AGNT-05**: System maintains per-session conversation memory (with no cross-session bleed)
+- [x] **AGNT-05**: System maintains per-session conversation memory (with no cross-session bleed)
 - [ ] **AGNT-06**: User can inspect live agent state (turns / tools / retrievals) via the UI
 
 ### Knowledge Layer (KNOW)
@@ -48,7 +48,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **GEVL-01**: System refuses with structured reason when retrieval score < threshold
 - [ ] **GEVL-02**: System refuses when no tier-matched docs exist (refusal-by-construction; no improvising)
-- [ ] **GEVL-03**: Every query logs audit record: `{ts, user, query, skill, chunk_ids[], model_ver, prompt_hash, answer, refusal_reason}`
+- [x] **GEVL-03**: Every query logs audit record: `{ts, user, query, skill, chunk_ids[], model_ver, prompt_hash, answer, refusal_reason}`
 - [ ] **GEVL-04**: System integrates Ragas eval (faithfulness, context precision, answer relevance) as a sidecar Python service
 - [ ] **GEVL-05**: System maintains per-Skill eval dataset (≥50 cases) with adversarial / refusal-required / multi-hop queries
 - [ ] **GEVL-06**: Eval dashboard surfaces per-Skill metrics (faithfulness / citation precision / refusal accuracy) with trend over time
@@ -161,7 +161,7 @@ Which phases cover which requirements.
 | AGNT-02 | Phase 3 | Pending |
 | AGNT-03 | Phase 2 | Pending |
 | AGNT-04 | Phase 3 | Pending |
-| AGNT-05 | Phase 3 | Pending |
+| AGNT-05 | Phase 3 | Complete |
 | AGNT-06 | Phase 5 | Pending |
 | KNOW-01 | Phase 3 | Complete |
 | KNOW-02 | Phase 3 | Pending |
@@ -176,7 +176,7 @@ Which phases cover which requirements.
 | ARAG-05 | Phase 2 | Pending |
 | GEVL-01 | Phase 2 | Pending |
 | GEVL-02 | Phase 2 | Pending |
-| GEVL-03 | Phase 3 | Pending |
+| GEVL-03 | Phase 3 | Complete |
 | GEVL-04 | Phase 3 | Pending |
 | GEVL-05 | Phase 3 | Pending |
 | GEVL-06 | Phase 6 | Pending |
