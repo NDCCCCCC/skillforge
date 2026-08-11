@@ -17,7 +17,7 @@
 // Command server is the long-running Hertz HTTP surface for SkillForge
 // Phase 2 (Pattern 1 in 02-RESEARCH.md §lines 263-292). It exposes
 // POST /api/chat and wires the graduated internal/{verdict, wire,
-// retriever, skill, knowledge} packages into a single binary.
+// retriever, embedder, skill, knowledge} packages into a single binary.
 //
 // Startup sequence (fail fast on any error — the operator must see the
 // problem at startup, never at request time):
@@ -25,7 +25,7 @@
 //  1. Load skills via skill.NewLoader("skills/").Scan(). An invalid
 //     Skill is fatal — the operator should see the SYSK-02 violation
 //     in the startup log, not as a confusing 500 later.
-//  2. Dial Milvus via retriever.NewMilvusClient (bounded retries).
+//  2. Dial Milvus via milvus.New (bounded retries).
 //     BGE-M3 outage is NOT fatal at startup (Pitfall 8 — production
 //     refuses on BGE-M3 outage at request time, not startup time, so
 //     the server can boot into a known-broken state and operators can
@@ -63,10 +63,10 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
 
+	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/knowledge"
-	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/server"
 	"github.com/skillforge/skillforge/internal/skill"
 )
@@ -114,25 +114,23 @@ func main() {
 	log.Printf("[OK] loaded %d Skill(s)", len(manifests))
 
 	// 3. Milvus client.
-	mc, err := retriever.NewMilvusClient(ctx, retriever.MilvusConfig{
+	mcfg := milvus.Config{
 		Addr:           milvusAddr,
 		CollectionName: defaultCollection,
-	})
+	}
+	mc, err := milvus.New(ctx, mcfg)
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: milvus dial %s: %v", milvusAddr, err)
 	}
-	mcfg := retriever.MilvusConfig{
-		Addr:           milvusAddr,
-		CollectionName: defaultCollection,
-		BGEURL:         bgeURL,
-	}
-
-	if err := retriever.EnsureCollection(ctx, mc, mcfg); err != nil {
+	if err := mc.Ensure(ctx); err != nil {
 		log.Fatalf("[FAIL] cmd/server: ensure collection: %v", err)
 	}
 
-	// 4. Index knowledge/ corpus (one-doc-one-chunk, Pattern 7).
-	if err := knowledge.Index(ctx, "knowledge/", mc, mcfg, bgeURL); err != nil {
+	// 4. BGE-M3 HTTP embedder (production; refuses on outage).
+	emb := bge.New(bge.Config{URL: bgeURL})
+
+	// 5. Index knowledge/ corpus (one-doc-one-chunk, Pattern 7).
+	if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), mcfg); err != nil {
 		// Non-fatal — Index errors are most often BGE-M3 outages, and
 		// the retrieval path will refuse with no_authorized_source when
 		// the collection is empty. We log and continue; an operator can
@@ -142,7 +140,7 @@ func main() {
 		log.Printf("[OK] knowledge corpus indexed into %s", defaultCollection)
 	}
 
-	// 5. GLM-5.2 ChatModel (Coding Plan endpoint per Pitfall 6).
+	// 6. GLM-5.2 ChatModel (Coding Plan endpoint per Pitfall 6).
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: glmBase,
 		APIKey:  glmKey,
@@ -152,7 +150,7 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: GLM chat model init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
 	}
 
-	// 6. ChatModelAgent + Runner.
+	// 7. ChatModelAgent + Runner.
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "skillforge-compliance",
 		Description: "SkillForge compliance-review ChatModelAgent",
@@ -164,50 +162,24 @@ func main() {
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent})
 
-	// 7. Build *server.Deps. Embedder + Searcher wrap the production
-	// retriever clients; Runner wraps the Eino Runner.
+	// 8. Build *server.Deps. Embedder + Retriever are concrete impls
+	// behind the interfaces; Runner wraps the Eino Runner.
 	deps := &server.Deps{
 		Loader:    loader,
-		Milvus:    mc,
-		MilvusCfg: mcfg,
-		BGEURL:    bgeURL,
-		Embedder:  prodEmbedder{url: bgeURL},
-		Searcher:  prodSearcher{mc: mc, cfg: mcfg},
+		Embedder:  emb,
+		Retriever: mc,
 		Runner:    &prodRunner{runner: runner, cm: cm},
 	}
 
-	// 8. Hertz server (Pattern 1).
+	// 9. Hertz server (Pattern 1).
 	h := server.New(serverAddr, deps)
 	log.Printf("[OK] cmd/server: SkillForge listening on %s", serverAddr)
 	log.Printf("     POST /api/chat       — verdict pipeline (verdict or structured refusal)")
-	log.Printf("     GET  /api/skills     — list loaded Skills (added in 02-04)")
-	log.Printf("     POST /api/skills     — dry-run Skill validator (added in 02-04)")
+	log.Printf("     GET  /api/skills     — list loaded Skills")
+	log.Printf("     POST /api/skills     — dry-run Skill validator")
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()
-}
-
-// prodEmbedder wraps retriever.EmbedQuery for the Embedder seam. NO
-// fallback to EmbedQueryDeterministic — production refuses on BGE-M3
-// outage (Pitfall 8 / T-2-25).
-type prodEmbedder struct {
-	url string
-}
-
-func (e prodEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
-	return retriever.EmbedQuery(ctx, e.url, text)
-}
-
-// prodSearcher wraps retriever.SearchWithTierFilter for the Searcher
-// seam. The pipeline passes a filter expression it built from
-// retriever.BuildMilvusFilter; we forward verbatim to the SDK.
-type prodSearcher struct {
-	mc  client.Client
-	cfg retriever.MilvusConfig
-}
-
-func (s prodSearcher) SearchWithFilter(ctx context.Context, queryVec []float32, filter string, topK int) ([]retriever.TierSearchResult, error) {
-	return retriever.SearchWithTierFilter(ctx, s.mc, s.cfg, queryVec, filter, topK)
 }
 
 // prodRunner wraps adk.Runner for the Runner seam. Each Query call
