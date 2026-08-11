@@ -16,22 +16,16 @@
 
 // Package main — scaffold stubs for spike subcommands that are not yet
 // implemented. Each stub returns nil (not an error) so the router
-// can validate end-to-end dispatch during Wave 0. Plan 02/03/04
+// can validate end-to-end dispatch during Wave 0. Plan 03/04
 // replace these stubs with real implementations.
+//
+// Note: runMilvus (Plan 02) is now implemented in milvus.go.
 package main
 
 import (
 	"context"
 	"fmt"
 )
-
-// runMilvus is a placeholder for the Milvus tier-filter spike (Plan 02).
-// Real implementation seeds 4 tiers + asserts query with `tier in [...]`
-// returns zero cross-tier leaks.
-func runMilvus(ctx context.Context, args []string) error {
-	fmt.Println("[STUB] milvus: not yet implemented (Plan 02)")
-	return nil
-}
 
 // runSSE is a placeholder for the Hertz SSE → Vercel AI SDK v5 spike (Plan 03).
 // Real implementation emits text/event-stream and asserts UIMessageChunk
