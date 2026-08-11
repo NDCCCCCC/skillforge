@@ -932,27 +932,29 @@ if __name__ == "__main__":
 
 **If this table is empty:** It's NOT — the above 8 assumptions all need planner verification (per slopcheck-unavailable fallback rule).
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All 4 resolved during planning (Phase 3 plan-checker verified each recommendation is encoded in the plans). Markers below.
 
 1. **Should critique use a separate model from the main agent?**
    - What we know: D3-07 locks GLM as the only reachable judge. Critique is also an LLM call.
    - What's unclear: Should critique use the same GLM-5.2 (cost-saving, single dependency) or a smaller GLM variant (lower cost, but adds dependency)?
-   - Recommendation: Use the same GLM-5.2 for Phase 3. Add a `critique_model` config slot mirroring `judge_model` so Phase 6 can swap. Document this in the agent config godoc.
+   - **RESOLVED:** Use the same GLM-5.2 for Phase 3. Add a `critique_model` config slot mirroring `judge_model` so Phase 6 can swap. Document this in the agent config godoc.
 
 2. **Should the trust floor dedup chunks across hops, or count duplicates?**
    - What we know: D3-01's invariant is "no tier-matched evidence → forced refusal". The accumulator currently counts unique chunk IDs.
    - What's unclear: If hop 1 returns chunk X and hop 2 (refined query) returns chunk X again, is that "1 piece of evidence" or "2 retrievals"?
-   - Recommendation: Dedup by chunk ID — the invariant is about UNIQUE evidence, not retrieval count. The trust floor counts `len(uniqueChunkIDs)`. The `data-decision` SSE chunk separately reports per-hop retrieval counts for observability.
+   - **RESOLVED:** Dedup by chunk ID — the invariant is about UNIQUE evidence, not retrieval count. The trust floor counts `len(uniqueChunkIDs)`. The `data-decision` SSE chunk separately reports per-hop retrieval counts for observability.
 
 3. **Should the audit row be written synchronously or asynchronously?**
    - What we know: GEVL-03 requires the row to exist for SQL querying; SSE response latency matters.
    - What's unclear: Is a synchronous write before response-end acceptable latency? SQLite WAL is sub-ms for single-row inserts.
-   - Recommendation: Synchronous, BEFORE the function returns. SQLite WAL mode keeps this under 5ms even under SC-9 concurrency. The SC-7 test verifies the row is queryable immediately after the response.
+   - **RESOLVED:** Synchronous, BEFORE the function returns. SQLite WAL mode keeps this under 5ms even under SC-9 concurrency. The SC-7 test verifies the row is queryable immediately after the response.
 
 4. **Should `data-decision` use a new discriminator or extend `data-policy`?**
    - What we know: `data-policy` currently carries the Verdict. `data-decision` would be a sibling discriminator.
    - What's unclear: Does Phase 4's React UI need a separate decision chip, or fold decisions into the existing policy display?
-   - Recommendation: New `data-decision` discriminator. UI rendering is Phase 5 polish, but the wire contract must be distinct so the UI CAN branch later. Add to `wire.ValidTypes` and the Phase 4 TS chunk type in the same PR.
+   - **RESOLVED:** New `data-decision` discriminator. UI rendering is Phase 5 polish, but the wire contract must be distinct so the UI CAN branch later. Add to `wire.ValidTypes` and the Phase 4 TS chunk type in the same PR.
 
 ## Environment Availability
 
