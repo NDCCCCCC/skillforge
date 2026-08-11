@@ -14,7 +14,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- ✅ **Phase 1: Integration Spike & Trust Contract** (2026-08-11) — 验证了 Eino v0.7.7 + Hertz SSE + Vercel AI SDK + Milvus tier-filter 的 wire 契约。5 个成功标准中，SC-1（SSE envelope）/ SC-4（citation 渲染）/ SC-5（version-pinned contract test <10s）全自动化绿；SC-2（Milvus tier-filter）+ SC-3（ChatModelAgent + 取消 <200ms）代码路径完成，live verify 延后给用户（内网 Milvus + GLM key 需手动跑）。spike 产物：`cmd/spiked/` 多子命令二进制（wire/milvus/sse/e2e）+ `internal/spike/`（uimsg/hertz_sse/milvus_client/verdict）+ `web/` React stub + `integration/contract/` drift-detection 套件。**关键约束确认**：内网 API 策略（Milvus + BGE-M3 走内网，GLM 走公网），Phase 7 才补 docker-compose 部署路径；`@ai-sdk/react` 实际是 v4.x（STACK.md 的 "AI SDK v5" 是产品代号 UIMessageChunk，非 npm 版本）。
 
 ### Active
 
@@ -93,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-10 after initialization*
+*Last updated: 2026-08-11 after Phase 1 (Integration Spike) completion*
