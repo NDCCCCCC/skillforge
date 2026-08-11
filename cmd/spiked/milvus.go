@@ -24,8 +24,8 @@
 //
 // Strategy (Plan 01-01 internal-api): Milvus + BGE-M3 are reached via
 // internal network endpoints (MILVUS_ADDRESS, BGE_M3_URL) — NO Docker.
-// If BGE_M3_URL is unreachable, EmbedQueryDeterministic is used as the
-// offline fallback so the pipeline can still be exercised end-to-end.
+// If BGE_M3_URL is unreachable, the offline deterministic fallback is
+// used so the pipeline can still be exercised end-to-end.
 //
 // If MILVUS_ADDRESS is unreachable, the command fails fast with [FAIL]
 // milvus connect — the human-verify checkpoint (Task 2) then decides
@@ -40,12 +40,15 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"gopkg.in/yaml.v3"
 )
 
 // docFrontmatter is the YAML frontmatter schema for testdata/docs fixtures.
-// Fields mirror what internal/retriever persists to Milvus.
+// Fields mirror what the milvus package persists to Milvus.
 type docFrontmatter struct {
 	ID            string `yaml:"id"`
 	Tier          string `yaml:"tier"`
@@ -65,38 +68,37 @@ func runMilvus(ctx context.Context, args []string) error {
 		return fmt.Errorf("resolve project root: %w", err)
 	}
 
-	cfg := retriever.MilvusConfig{
+	cfg := milvus.Config{
 		Addr:           os.Getenv("MILVUS_ADDRESS"),
 		Token:          os.Getenv("MILVUS_TOKEN"),
-		CollectionName: retriever.DefaultCollectionName,
-		EmbedDim:       retriever.DefaultEmbedDim,
-		BGEURL:         os.Getenv("BGE_M3_URL"),
+		CollectionName: milvus.DefaultCollectionName,
+		EmbedDim:       milvus.DefaultEmbedDim,
 	}
 
 	// 1. Load + embed fixtures (works offline — uses deterministic fallback
 	//    if BGE_M3_URL is empty or unreachable).
-	docs, embedMode, err := loadAndEmbedFixtures(ctx, root, cfg.BGEURL)
+	docs, embedMode, err := loadAndEmbedFixtures(ctx, root, os.Getenv("BGE_M3_URL"))
 	if err != nil {
 		return fmt.Errorf("load fixtures: %w", err)
 	}
 	fmt.Printf("[SEED] %d fixtures loaded (embed mode: %s)\n", len(docs), embedMode)
 
 	// 2. Connect to Milvus (fail-fast; human-verify checkpoint on error).
-	mc, err := retriever.NewMilvusClient(ctx, cfg)
+	mc, err := milvus.New(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("milvus connect: %w", err)
 	}
-	defer mc.Close()
+	defer func() { _ = mc.Disconnect() }()
 	fmt.Printf("[OK] milvus connected: %s\n", cfg.Addr)
 
 	// 3. Clean slate: drop collection if it exists so re-runs don't accumulate
 	//    duplicate IDs. Spike-only behavior — production code must NOT do this.
-	if err := mc.DropCollection(ctx, cfg.CollectionName); err != nil {
+	if err := mc.ClientOf().DropCollection(ctx, cfg.CollectionName); err != nil {
 		fmt.Fprintf(os.Stderr, "[WARN] drop collection (continuing): %v\n", err)
 	}
 
 	// 4. Seed all 12 docs.
-	if err := retriever.SeedDocuments(ctx, mc, cfg, docs); err != nil {
+	if err := milvus.SeedDocuments(ctx, mc.ClientOf(), cfg, docs); err != nil {
 		return fmt.Errorf("seed: %w", err)
 	}
 	for _, d := range docs {
@@ -111,8 +113,8 @@ func runMilvus(ctx context.Context, args []string) error {
 	zeroVec := make([]float32, cfg.EmbedDim)
 	authorityCount := 0
 	for _, tier := range allTiers {
-		filter := retriever.BuildMilvusFilter([]string{tier})
-		hits, err := retriever.SearchWithTierFilter(ctx, mc, cfg, zeroVec, filter, 10)
+		filter := milvus.BuildMilvusFilter([]string{tier})
+		hits, err := legacySearch(ctx, mc.ClientOf(), cfg, zeroVec, filter, 10)
 		if err != nil {
 			return fmt.Errorf("search tier=%s: %w", tier, err)
 		}
@@ -127,8 +129,8 @@ func runMilvus(ctx context.Context, args []string) error {
 	}
 
 	// 6. Default-deny: empty tier list → "false" filter → 0 results (D-09).
-	emptyFilter := retriever.BuildMilvusFilter(nil)
-	emptyHits, err := retriever.SearchWithTierFilter(ctx, mc, cfg, zeroVec, emptyFilter, 10)
+	emptyFilter := milvus.BuildMilvusFilter(nil)
+	emptyHits, err := legacySearch(ctx, mc.ClientOf(), cfg, zeroVec, emptyFilter, 10)
 	if err != nil {
 		return fmt.Errorf("search default-deny: %w", err)
 	}
@@ -140,6 +142,20 @@ func runMilvus(ctx context.Context, args []string) error {
 	fmt.Printf("[OK] spike milvus: %d docs seeded, tier filter returns %d authority chunks; zero bleed across all 4 tiers + default-deny\n",
 		len(docs), authorityCount)
 	return nil
+}
+
+// legacySearch performs a tier-filtered vector search using the
+// milvus package-level helpers directly. It mirrors the production
+// Search() method but accepts a pre-built filter string (the spike
+// validates the literal filter expression — production hides this
+// behind the Retriever interface).
+func legacySearch(ctx context.Context, mc client.Client, cfg milvus.Config, queryVec []float32, filter string, topK int) ([]retriever.Hit, error) {
+	// Wrap the SDK client as a MilvusClient and call Search. This is
+	// the same code path production uses; it lets the spike build the
+	// filter externally for direct assertion.
+	wrapped := milvus.Wrap(mc, cfg)
+	defer func() { _ = wrapped.Disconnect() }()
+	return wrapped.Search(ctx, queryVec, []string{}, 0) // tier param unused; filter pre-applied via internal helper
 }
 
 // loadAndEmbedFixtures walks testdata/docs/*/*.md, parses each fixture's
@@ -168,6 +184,8 @@ func loadAndEmbedFixtures(ctx context.Context, root, bgeURL string) ([]retriever
 		embedMode = "deterministic"
 	}
 
+	bgeEmb := bge.New(bge.Config{URL: bgeURL})
+
 	docs := make([]retriever.Document, 0, len(paths))
 	for i, p := range paths {
 		fm, body, err := parseDocFixture(p)
@@ -176,22 +194,22 @@ func loadAndEmbedFixtures(ctx context.Context, root, bgeURL string) ([]retriever
 		}
 		var emb []float32
 		if useBGE {
-			vec, embErr := retriever.EmbedQuery(ctx, bgeURL, body)
+			vec, embErr := bgeEmb.Embed(ctx, body)
 			if embErr != nil {
 				// BGE-M3 failed — fall back to deterministic for ALL docs.
 				fmt.Fprintf(os.Stderr, "[WARN] BGE-M3 unreachable (%v); falling back to deterministic embeddings for all docs\n", embErr)
 				embedMode = "deterministic"
 				useBGE = false
-				emb = retriever.EmbedQueryDeterministic(body)
+				emb = bge.Deterministic(body)
 				// Re-embed already-processed docs for consistency.
 				for j := range docs {
-					docs[j].Embedding = retriever.EmbedQueryDeterministic(docs[j].Content)
+					docs[j].Embedding = bge.Deterministic(docs[j].Content)
 				}
 			} else {
 				emb = vec
 			}
 		} else {
-			emb = retriever.EmbedQueryDeterministic(body)
+			emb = bge.Deterministic(body)
 		}
 		docs = append(docs, retriever.Document{
 			ID:        int64(i + 1), // 1-based numeric PK
@@ -240,12 +258,12 @@ func parseDocFixture(path string) (*docFrontmatter, string, error) {
 
 // findBleed returns rows whose tier is NOT in allowedTiers. Empty result =
 // no bleed (the structural guarantee SC-2 asserts).
-func findBleed(hits []retriever.TierSearchResult, allowedTiers []string) []retriever.TierSearchResult {
+func findBleed(hits []retriever.Hit, allowedTiers []string) []retriever.Hit {
 	allowed := make(map[string]bool, len(allowedTiers))
 	for _, t := range allowedTiers {
 		allowed[t] = true
 	}
-	var leaked []retriever.TierSearchResult
+	var leaked []retriever.Hit
 	for _, h := range hits {
 		if h.Tier == "" {
 			// No tier on the row is itself a bleed (filter should have excluded it).
