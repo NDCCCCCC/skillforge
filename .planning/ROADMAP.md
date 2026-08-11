@@ -60,7 +60,7 @@
 **Pitfalls addressed:** P-COMPL-1 (top risk: compliance hallucination with fake citations — every claim chunk-verified via D2-01 grounding), P-SKILL-1..6 (Skill spec design — 7-field validator), P-RAG-2 (tier bleed defense — PRE-similarity Milvus filter)
 **Plans**: 4 plans
 **Plan list**:
-- [ ] 02-01-PLAN.md — Wave 1: graduate spike → internal/{verdict,wire,retriever} + D2-06 Citation upgrade + D2-01 grounding moat + contract test (CMPL-02/03, ARAG-04)
+- [x] 02-01-PLAN.md — Wave 1: graduate spike → internal/{verdict,wire,retriever} + D2-06 Citation upgrade + D2-01 grounding moat + contract test (CMPL-02/03, ARAG-04) — completed 2026-08-11
 - [ ] 02-02-PLAN.md — Wave 1 (parallel): 7-field skill package + ResolveTiers + canonical skills/compliance/SKILL.md + knowledge/authority corpus (SYSK-01/02/08, CMPL-01/04)
 - [ ] 02-03-PLAN.md — Wave 2: knowledge indexer + verdict pipeline + POST /api/chat + cmd/server + SC-2/3/4/5/6 tests (AGNT-03, ARAG-05, GEVL-01/02, CMPL-05, SYSK-07)
 - [ ] 02-04-PLAN.md — Wave 3: GET/POST /api/skills endpoints (SC-1 HTTP layer) + live end-to-end verification of all 6 SCs against Milvus + GLM-5.2 (SYSK-01/02, CMPL-01 closure)
@@ -183,8 +183,8 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Integration Spike & Trust Contract | 0/4 | Not started | - |
-| 2. Compliance Vertical Slice | 0/4 | Planning complete | - |
+| 1. Integration Spike & Trust Contract | 4/4 | Complete | 2026-08-11 |
+| 2. Compliance Vertical Slice | 1/4 | Executing | 02-01: 2026-08-11 |
 | 3. Agentic Retrieval & Trust Evaluation | 0/? | Not started | - |
 | 4. Streaming Trust UI | 0/? | Not started | - |
 | 5. Skill Platform & Full Knowledge Boundaries | 0/? | Not started | - |
@@ -192,4 +192,4 @@
 | 7. Open-Source Release | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-11 after Phase 2 planning (4 plans across 3 waves; SYSK-08 added to Phase 2 coverage per REQUIREMENTS traceability + CONTEXT D2-10; SC-1 wording corrected from 6-field → 7-field)*
+*Last updated: 2026-08-11 after Phase 2 Plan 1 completion (graduate spike + D2-01 grounding moat)*

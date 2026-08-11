@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
 status: executing
-last_updated: "2026-08-11T06:09:09.155Z"
+last_updated: "2026-08-11T15:35:00.000Z"
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
-  percent: 14
+  completed_plans: 5
+  percent: 18
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-11
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
@@ -36,12 +36,19 @@ progress:
 
 ## Current Position
 
-Phase: 01 (integration-spike-trust-contract) — EXECUTING
-Plan: 1 of 4
+Phase: 02 (compliance-vertical-slice) — EXECUTING
+Plan: 1 of 4 completed
 **Phase:** 2
-**Plan:** Not started
-**Status:** Ready to execute
-**Next action:** `/gsd:plan-phase 1` (or create spike plan directly)
+**Plan:** 1 (graduate spike + grounding moat) — COMPLETE 2026-08-11
+**Status:** Ready to execute Plan 2 (skill package + corpus)
+**Next action:** `/gsd:execute-phase 02` (continue to 02-02 / 02-03 / 02-04)
+
+**02-01 deliverables:**
+- internal/spike/ retired (graduated to internal/{verdict, wire, retriever})
+- D2-06 Verdict.Citations upgraded to []Citation{{ChunkID, Span, Tier}}
+- D2-01 GroundingChecker (Normalize + substring + D2-02 downgrade)
+- 5 adversarial grounding tests + D2-05 normalize tests
+- integration/contract test pinned to []Citation schema
 
 ---
 
@@ -92,11 +99,10 @@ Plan: 1 of 4
 
 ## Performance Metrics
 
-(initialized after first plan execution)
-
-- Phases completed: 0 / 7
-- Requirements covered: 0 / 55 (none executed yet)
-- Plans run: 0
+- Phases completed: 1 / 7 (Phase 1 spike done; Phase 2 Plan 1 done)
+- Requirements covered: 3 / 55 (CMPL-02, CMPL-03, ARAG-04 from 02-01)
+- Plans run: 5 (4 from Phase 1 spike + 1 from Phase 2 = 02-01)
+- Last plan: 02-01 (graduate spike + grounding moat) — committed at d5514b9 + 4af4057 + 31428f7 on branch worktree-agent-aa38814ab10b81b38
 
 ---
 
