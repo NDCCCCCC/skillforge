@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<title>SkillForge — Sketch 001: Three-Panel Layout</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+  /* Layout */
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text); height: 100vh; overflow: hidden; font-size: var(--text-base); -webkit-font-smoothing: antialiased; }
+  .app { display: grid; grid-template-rows: var(--topbar-height) 1fr var(--statusbar-height); height: 100vh; }
+
+  /* Topbar */
+  .topbar { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); background: var(--color-surface); border-bottom: 1px solid var(--color-border); height: var(--topbar-height); }
+  .topbar .logo { font-weight: 600; font-size: var(--text-md); display: flex; align-items: center; gap: var(--space-2); }
+  .topbar .logo-mark { color: var(--color-primary); font-size: var(--text-lg); }
+  .topbar .breadcrumb { color: var(--color-text-muted); font-size: var(--text-sm); display: flex; align-items: center; gap: var(--space-2); }
+  .topbar .breadcrumb .sep { color: var(--color-text-dim); }
+  .topbar .variant-tabs { display: flex; gap: var(--space-1); margin-left: var(--space-4); }
+  .topbar .variant-tab { padding: 4px var(--space-3); background: transparent; color: var(--color-text-muted); border: 1px solid transparent; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-xs); transition: var(--transition-fast); }
+  .topbar .variant-tab:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .topbar .variant-tab.active { background: var(--color-primary-dim); color: var(--color-text); border-color: var(--color-primary); }
+  .topbar .toolbar { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
+  .topbar .btn { background: var(--color-surface-2); color: var(--color-text-muted); border: 1px solid var(--color-border); padding: 4px var(--space-3); border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-xs); display: flex; align-items: center; gap: 4px; transition: var(--transition-fast); }
+  .topbar .btn:hover { background: var(--color-surface-3); color: var(--color-text); }
+  .topbar .btn-primary { background: var(--color-primary); color: var(--color-primary-fg); border-color: var(--color-primary); }
+  .topbar .btn-primary:hover { background: var(--color-primary-hover); }
+
+  /* Main grid */
+  .main { display: grid; grid-template-columns: var(--sidebar-left-width) 1fr var(--sidebar-right-width); overflow: hidden; transition: grid-template-columns var(--transition-base); }
+  .main.variant-b { grid-template-columns: var(--sidebar-left-width) 1fr var(--sidebar-right-width-compressed); }
+  .main.variant-c { grid-template-columns: var(--sidebar-left-width-wide) 1fr var(--sidebar-right-width-wide); }
+  .main.collapsed-left { grid-template-columns: 0 1fr var(--sidebar-right-width); }
+  .main.collapsed-left.variant-b { grid-template-columns: 0 1fr var(--sidebar-right-width-compressed); }
+  .main.collapsed-left.variant-c { grid-template-columns: 0 1fr var(--sidebar-right-width-wide); }
+  .main.collapsed-right { grid-template-columns: var(--sidebar-left-width) 1fr 0; }
+  .main.collapsed-right.variant-b { grid-template-columns: var(--sidebar-left-width) 1fr 0; }
+  .main.collapsed-right.variant-c { grid-template-columns: var(--sidebar-left-width-wide) 1fr 0; }
+  .main.collapsed-both { grid-template-columns: 0 1fr 0; }
+
+  /* Panels */
+  .panel { background: var(--color-surface); overflow-y: auto; overflow-x: hidden; transition: all var(--transition-base); }
+  .panel-left { border-right: 1px solid var(--color-border); padding: var(--space-3); }
+  .panel-center { background: var(--color-bg); padding: var(--space-6); overflow-y: auto; }
+  .panel-right { border-left: 1px solid var(--color-border); display: flex; flex-direction: column; }
+  .panel-hidden { display: none !important; }
+
+  /* Left panel — section blocks */
+  .section { margin-bottom: var(--space-5); }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2); padding: 0 var(--space-2); }
+  .section-title { font-size: var(--text-xs); text-transform: uppercase; color: var(--color-text-dim); letter-spacing: 0.05em; font-weight: 600; }
+  .new-btn { width: 100%; padding: var(--space-2); background: var(--color-primary); color: var(--color-primary-fg); border: none; border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-sm); font-weight: 500; margin-bottom: var(--space-3); transition: var(--transition-fast); }
+  .new-btn:hover { background: var(--color-primary-hover); }
+  .session-item, .file-item { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-sm); color: var(--color-text); transition: var(--transition-fast); margin-bottom: 1px; }
+  .session-item:hover, .file-item:hover { background: var(--color-surface-2); }
+  .session-item.active { background: var(--color-primary-dim); color: var(--color-text); font-weight: 500; }
+  .session-icon { color: var(--color-text-dim); font-size: var(--text-xs); width: 12px; }
+  .session-item.active .session-icon { color: var(--color-primary); }
+  .session-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-tree { font-size: var(--text-sm); }
+  .file-item { padding: 4px var(--space-2); font-family: var(--font-mono); }
+  .file-item.dir { color: var(--color-text); font-weight: 500; }
+  .file-item .icon { color: var(--color-text-muted); width: 16px; }
+  .file-item:hover .icon { color: var(--color-text); }
+
+  /* Center panel — document preview */
+  .preview-header { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
+  .preview-tabs { display: flex; gap: var(--space-1); }
+  .preview-tab { padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); cursor: pointer; color: var(--color-text-muted); font-size: var(--text-sm); display: flex; align-items: center; gap: var(--space-2); transition: var(--transition-fast); }
+  .preview-tab:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .preview-tab.active { background: var(--color-surface-2); color: var(--color-text); }
+  .preview-meta { margin-left: auto; color: var(--color-text-muted); font-size: var(--text-xs); display: flex; align-items: center; gap: var(--space-3); }
+  .preview-content { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); max-width: 900px; margin: 0 auto; }
+  .preview-content pre { background: var(--color-bg); padding: var(--space-4); border-radius: var(--radius-md); overflow-x: auto; font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.6; color: var(--color-text); margin: 0; border: 1px solid var(--color-border-muted); }
+  .preview-content .code-comment { color: var(--color-text-dim); }
+  .preview-content .code-key { color: var(--color-info); }
+  .preview-content .code-string { color: var(--color-success); }
+  .preview-content .code-value { color: var(--color-accent); }
+  .verdict-card { background: var(--color-surface); border-left: 3px solid var(--color-primary); padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); margin-top: var(--space-5); }
+  .verdict-card.compliant { border-left-color: var(--color-status-compliant); }
+  .verdict-card.needs-info { border-left-color: var(--color-status-needs-info); }
+  .verdict-card.unanswered { border-left-color: var(--color-status-unanswered); }
+  .verdict-status { font-size: var(--text-lg); font-weight: 600; display: flex; align-items: center; gap: var(--space-2); }
+  .verdict-status.compliant { color: var(--color-status-compliant); }
+  .verdict-status.needs-info { color: var(--color-status-needs-info); }
+  .verdict-status.unanswered { color: var(--color-status-unanswered); }
+  .verdict-meta { color: var(--color-text-muted); font-size: var(--text-sm); margin-top: var(--space-2); display: flex; gap: var(--space-4); }
+  .verdict-meta .label { color: var(--color-text-dim); }
+  .citation-list { margin-top: var(--space-3); padding-left: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .citation-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--color-citation-bg); border: 1px solid var(--color-citation-border); color: var(--color-text); padding: 4px var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); font-family: var(--font-mono); }
+  .citation-chip .tier { color: var(--color-info); font-weight: 600; }
+
+  /* Right panel — chat */
+  .chat-header { padding: var(--space-3); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-2); background: var(--color-surface); }
+  .chat-header .skill-selector { background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-border); padding: var(--space-1) var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; flex: 1; max-width: 240px; font-family: var(--font-sans); }
+  .chat-header .icon-btn { background: transparent; color: var(--color-text-muted); border: none; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-base); transition: var(--transition-fast); }
+  .chat-header .icon-btn:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .chat-messages { padding: var(--space-4); overflow-y: auto; flex: 1; display: flex; flex-direction: column; }
+  .message { margin-bottom: var(--space-4); max-width: 92%; display: flex; flex-direction: column; }
+  .message-user { align-self: flex-end; align-items: flex-end; }
+  .message-assistant { align-self: flex-start; }
+  .message-bubble { padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); line-height: 1.5; }
+  .message-user .message-bubble { background: var(--color-user-bubble); border-bottom-right-radius: var(--radius-sm); }
+  .message-assistant .message-bubble { background: var(--color-assistant-bubble); border: 1px solid var(--color-border); border-bottom-left-radius: var(--radius-sm); }
+  .message-content { font-size: var(--text-sm); }
+  .message-content strong { color: var(--color-text); font-weight: 600; }
+  .message-meta { font-size: var(--text-xs); color: var(--color-text-dim); margin-top: var(--space-1); display: flex; gap: var(--space-3); align-items: center; }
+  .message-meta .streaming-dot { display: inline-block; width: 6px; height: 6px; background: var(--color-success); border-radius: 50%; animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .reasoning { background: var(--color-reasoning); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); margin-bottom: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted); border-left: 2px solid var(--color-primary); }
+  .reasoning-label { font-weight: 600; color: var(--color-primary); margin-bottom: var(--space-1); display: flex; align-items: center; gap: var(--space-2); }
+  .tool-call { background: var(--color-tool-bg); border: 1px solid var(--color-tool-border); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); margin-top: var(--space-2); font-size: var(--text-xs); font-family: var(--font-mono); }
+  .tool-call-header { color: var(--color-info); font-weight: 600; display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-1); }
+  .tool-call-detail { color: var(--color-text-muted); }
+  .citation-block { margin-top: var(--space-2); display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .chat-input { padding: var(--space-3); border-top: 1px solid var(--color-border); background: var(--color-surface); display: flex; gap: var(--space-2); align-items: flex-end; }
+  .chat-input textarea { flex: 1; background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); resize: none; font-family: inherit; font-size: var(--text-sm); line-height: 1.4; }
+  .chat-input textarea:focus { outline: none; border-color: var(--color-primary); }
+  .chat-input .send-btn { background: var(--color-primary); color: var(--color-primary-fg); border: none; padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-sm); font-weight: 500; height: 38px; transition: var(--transition-fast); }
+  .chat-input .send-btn:hover { background: var(--color-primary-hover); }
+
+  /* Status bar */
+  .statusbar { background: var(--color-surface); border-top: 1px solid var(--color-border); padding: 0 var(--space-4); display: flex; align-items: center; gap: var(--space-5); font-size: var(--text-xs); color: var(--color-text-muted); height: var(--statusbar-height); }
+  .statusbar .item { display: flex; align-items: center; gap: var(--space-1); }
+  .statusbar .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-success); }
+  .statusbar .right { margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+<!-- Topbar -->
+<header class="topbar">
+<span class="logo"><span class="logo-mark">⚡</span>SkillForge</span>
+<span class="breadcrumb"><span class="sep">/</span><span>workspace</span><span class="sep">/</span><span>compliance-demo</span></span>
+<div class="variant-tabs">
+<button class="variant-tab active" data-variant="a">A · Default</button>
+<button class="variant-tab" data-variant="b">B · Compressed chat</button>
+<button class="variant-tab" data-variant="c">C · Wide middle</button>
+</div>
+<div class="toolbar">
+<button class="btn" onclick="togglePanel('left')" title="Toggle left panel">⇤ Left</button>
+<button class="btn" onclick="togglePanel('right')" title="Toggle right panel">⇥ Right</button>
+<button class="btn" title="Settings">⚙</button>
+</div>
+</header>
+<!-- Main 3-panel -->
+<main class="main variant-a" id="main">
+<!-- LEFT panel: sessions + files -->
+<aside class="panel panel-left" id="panel-left">
+<button class="new-btn">+ 新建会话</button>
+<div class="section">
+<div class="section-header"><span class="section-title">会话 (5)</span><span style="color: var(--color-text-dim); cursor: pointer;">⌕</span></div>
+<div class="session-item active"><span class="session-icon">●</span><span class="session-title">Q3 出差住宿超标判定</span></div>
+<div class="session-item"><span class="session-icon">○</span><span class="session-title">竞业限制期咨询</span></div>
+<div class="session-item"><span class="session-icon">○</span><span class="session-title">50万合同审批权限</span></div>
+<div class="session-item"><span class="session-icon">○</span><span class="session-title">年假累计规则</span></div>
+<div class="session-item"><span class="session-icon">○</span><span class="session-title">客户信息拒答测试</span></div>
+</div>
+<div class="section">
+<div class="section-header"><span class="section-title">文件 (skills/)</span></div>
+<div class="file-tree">
+<div class="file-item dir"><span class="icon">▾</span>skills</div>
+<div class="file-item"><span class="icon">·</span>compliance-review.md</div>
+<div class="file-item"><span class="icon">·</span>k-anon-export.md</div>
+<div class="file-item"><span class="icon">·</span>tier-policy.md</div>
+<div class="file-item dir"><span class="icon">▾</span>prompts</div>
+<div class="file-item"><span class="icon">·</span>system-default.md</div>
+<div class="file-item"><span class="icon">·</span>citation-template.md</div>
+<div class="file-item dir"><span class="icon">▾</span>docs</div>
+<div class="file-item"><span class="icon">·</span>报销制度-v3.md</div>
+<div class="file-item"><span class="icon">·</span>审批权限-2024.md</div>
+</div>
+</div>
+<div class="section">
+<div class="section-header"><span class="section-title">Skills (3)</span></div>
+<div class="file-item" style="color: var(--color-success);"><span class="icon">●</span>compliance-review (active)</div>
+<div class="file-item"><span class="icon">○</span>code-explainer</div>
+<div class="file-item"><span class="icon">○</span>kpi-dashboard</div>
+</div>
+</aside>
+<!-- CENTER panel: document preview -->
+<section class="panel panel-center">
+<div class="preview-header">
+<div class="preview-tabs">
+<div class="preview-tab">✎ 编辑</div>
+<div class="preview-tab active">◉ 预览</div>
+<div class="preview-tab">⇄ 对比</div>
+</div>
+<div class="preview-meta">
+<span>skills/compliance-review.md</span>
+<span>·</span>
+<span>v1.0 · 7 fields</span>
+<span>·</span>
+<span>temp=0 · reasoning=off</span>
+</div>
+</div>
+<div class="preview-content">
+<pre><code><span class="code-key">---</span>
+<span class="code-key">name:</span> compliance-review
+<span class="code-key">description:</span> 企业合规/制度审查。当用户问"这个报销合规吗"等合规问题时触发。
+<span class="code-key">agent:</span> ChatModelAgent
+<span class="code-key">reads:</span>
+  - authority/policies/**
+  - authority/regulations/**
+<span class="code-key">writes:</span> []
+<span class="code-key">temperature:</span> 0
+<span class="code-key">reasoning:</span> false
+<span class="code-key">---</span>
+
+<span class="code-comment"># Compliance Review Skill</span>
+guard<-\n<span class="code-key">rails:</span>
+  <span class="code-key">prohibitions:</span>
+    - <span class="code-string">"Never cite clauses not retrieved"</span>
+    - <span class="code-string">"Never paraphrase critical clauses"</span>
+    - <span class="code-string">"Never modify authority content"</span>
+  <span class="code-key">required_refusal_phrases:</span> [<span class="code-string">"out-of-scope"</span>, <span class="code-string">"no_authorized_source"</span>]
+  <span class="code-key">tier_limits:</span>
+    <span class="code-value">authority</span>: [<span class="code-string">"read-only"</span>]</code></pre>
+<div class="verdict-card compliant">
+<div class="verdict-status compliant">✓ 合规判定</div>
+<div class="verdict-meta">
+<span><span class="label">query:</span> 出差住宿超标 200 元能批吗？</span>
+<span><span class="label">confidence:</span> 0.94</span>
+<span><span class="label">review_required:</span> false</span>
+</div>
+<ul class="citation-list">
+<li><span class="citation-chip"><span class="tier">[权威]</span>§3.2 住宿费标准</span></li>
+<li><span class="citation-chip"><span class="tier">[权威]</span>§5.1 审批权限</span></li>
+</ul>
+</div>
+</div>
+</section>
+<!-- RIGHT panel: chat -->
+<aside class="panel panel-right" id="panel-right">
+<div class="chat-header">
+<select class="skill-selector">
+<option>📋 compliance-review</option>
+<option>🔍 code-explainer</option>
+<option>📊 kpi-dashboard</option>
+</select>
+<button class="icon-btn" title="Skill 管理">⚙</button>
+<button class="icon-btn" title="新建会话">+</button>
+</div>
+<div class="chat-messages">
+<div class="message message-user">
+<div class="message-content">Q3 出差住宿费超标 200 元，能批吗？请引用制度条款。</div>
+<div class="message-meta">
+<span>14:23</span>
+<span>temperature=0</span>
+<span>reasoning=disabled</span>
+</div>
+</div>
+<div class="message message-assistant">
+<div class="reasoning">
+<div class="reasoning-label">🤔 Self-RAG reasoning</div>
+检索 authority/policies/报销制度-v3.md §3.2：住宿费上浮 20% 以内需部门负责人审批。与用户 200/1000=20% 匹配。Self-verify ✓
+</div>
+<div class="message-bubble">
+<div class="message-content">
+<strong>结论：可以审批。</strong> 出差住宿费超标 20% 以内（您的情况 200/1000=20%）需部门负责人审批。可走报销流程。
+<div class="citation-block">
+<span class="citation-chip"><span class="tier">[权威]</span>§3.2 住宿费标准</span>
+<span class="citation-chip"><span class="tier">[权威]</span>§5.1 审批权限</span>
+</div>
+</div>
+</div>
+<div class="tool-call">
+<div class="tool-call-header">⚡ tool_call: read_policy</div>
+<div class="tool-call-detail">reads: ["authority/policies/**"] · 4 chunks retrieved · 0.3s</div>
+</div>
+<div class="message-meta">
+<span class="streaming-dot"></span>
+<span>14:23 · streaming · 1.2s · 312 tokens</span>
+</div>
+</div>
+</div>
+<form class="chat-input" onsubmit="event.preventDefault();">
+<textarea rows="2" placeholder="输入问题，Enter 发送 (Shift+Enter 换行)">竞业限制期多长？</textarea>
+<button type="submit" class="send-btn">发送 ↑</button>
+</form>
+</aside>
+</main>
+<!-- Status bar -->
+<footer class="statusbar">
+<span class="item"><span class="dot"></span>Skill: compliance-review</span>
+<span class="item">temperature: 0</span>
+<span class="item">reasoning: off</span>
+<span class="item">model: glm-5.2</span>
+<span class="item">tokens: 312</span>
+<span class="item">audit: enabled</span>
+<span class="right">v1.0 · skill schema 7 fields</span>
+</footer>
+</div>
+<script>
+  // Variant tab switching
+  document.querySelectorAll('.variant-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const variant = tab.dataset.variant;
+      const main = document.getElementById('main');
+      main.className = 'main variant-' + variant;
+    });
+  });
+
+  // Panel collapse / expand
+  function togglePanel(side) {
+    const main = document.getElementById('main');
+    const panel = document.getElementById('panel-' + side);
+    if (panel.classList.contains('panel-hidden')) {
+      panel.classList.remove('panel-hidden');
+      main.classList.remove('collapsed-' + side);
+      if (main.classList.contains('collapsed-left') && main.classList.contains('collapsed-right')) {
+        main.classList.remove('collapsed-both');
+      }
+    } else {
+      panel.classList.add('panel-hidden');
+      const leftHidden = side === 'left' || (side !== 'left' && document.getElementById('panel-left').classList.contains('panel-hidden'));
+      const rightHidden = side === 'right' || (side !== 'right' && document.getElementById('panel-right').classList.contains('panel-hidden'));
+      main.classList.add('collapsed-' + side);
+      if (leftHidden && rightHidden) main.classList.add('collapsed-both');
+    }
+  }
+
+  // Active session toggle
+  document.querySelectorAll('.session-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+    });
+  });
+
+  // Preview tabs
+  document.querySelectorAll('.preview-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+
+  // File tree click
+  document.querySelectorAll('.file-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.file-item').forEach(i => i.style.background = '');
+      item.style.background = 'var(--color-surface-3)';
+    });
+  });
+</script>
+</body>
+</html>
