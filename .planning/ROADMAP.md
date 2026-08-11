@@ -87,7 +87,15 @@
   8. User can cancel an in-flight agent run mid-stream and the SSE connection closes cleanly (AGNT-04)
   9. Two concurrent sessions from the same user never see each other's conversation memory (AGNT-05)
 **Pitfalls addressed:** P-RAG-1..4 (hybrid retrieval, tier bleed), P-AGENTIC-1,3,4 (autonomous decision, multi-hop, self-verify), P-EVAL-1..4 (Ragas pipeline, judge calibration), P-COMPL-1,3,6 (cited answer rigor, audit log)
-**Plans**: TBD
+**Plans**: 6 plans
+**Plan list**:
+- [ ] 03-01-PLAN.md — Wave 1: data-decision wire discriminator (Go + TS in lockstep per D-04/D15) + TierEnumByValue/TierEnumValues reverse-lookup helpers (ARAG-01 substrate, KNOW-01)
+- [ ] 03-02-PLAN.md — Wave 1 (parallel): internal/store.Store interface + SQLite default impl + audit row + session memory + SQLi/isolation tests (GEVL-03, AGNT-05)
+- [ ] 03-03-PLAN.md — Wave 2: internal/agent — ReAct loop + retrieve tool + trust floor + layered critique + decision callbacks (AGNT-01/02, ARAG-01/02/03, KNOW-04)
+- [ ] 03-04-PLAN.md — Wave 2 (parallel): KNOW-02 tier-mandatory enforcement at internal/knowledge.Index (backend-agnostic)
+- [ ] 03-05-PLAN.md — Wave 3: server integration — chatHandler session_id + Agent.Run + audit/session writes + data-decision SSE + SC-8 cancel + SC-9 isolation (AGNT-04/05, ARAG-01, KNOW-03)
+- [ ] 03-06-PLAN.md — Wave 4: Ragas Python sidecar + 50-case golden set + calibration data retiring retrievalScoreThreshold=0.3 (GEVL-04/05)
+**Wave structure**: W1={03-01, 03-02 parallel} → W2={03-03, 03-04 parallel} → W3={03-05} → W4={03-06}
 **UI hint**: no
 
 ### Phase 4: Streaming Trust UI
@@ -188,7 +196,7 @@
 |-------|----------------|--------|-----------|
 | 1. Integration Spike & Trust Contract | 4/4 | Complete | 2026-08-11 |
 | 2. Compliance Vertical Slice | 2/4 | Executing | 02-01: 2026-08-11, 02-02: 2026-08-11 |
-| 3. Agentic Retrieval & Trust Evaluation | 0/? | Not started | - |
+| 3. Agentic Retrieval & Trust Evaluation | 0/6 | Planning complete | - |
 | 4. Streaming Trust UI | 3/3 | Complete | 2026-08-11 |
 | 5. Skill Platform & Full Knowledge Boundaries | 0/? | Not started | - |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
