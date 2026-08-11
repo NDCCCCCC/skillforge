@@ -64,6 +64,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
@@ -109,6 +110,7 @@ func main() {
 	// the backend switch (only the configured backend's URI is required).
 	bgeURL := envRequired("BGE_M3_URL")
 	bgeModel := envOr("BGE_M3_MODEL", "bge-m3")
+	bgeTimeoutSec := envOr("BGE_M3_TIMEOUT", "60")
 	glmKey := envRequired("GLM_API_KEY")
 	glmBase := envOr("GLM_BASE_URL", defaultGLMBaseURL)
 	serverAddr := envOr("SERVER_ADDR", defaultServerAddr)
@@ -124,7 +126,13 @@ func main() {
 	// 3. BGE-M3 HTTP embedder (production; refuses on outage).
 	// BGE_M3_MODEL defaults to "bge-m3" (required by Ollama's
 	// OpenAI-compatible /v1/embeddings; harmless on vLLM/TEI).
-	emb := bge.New(bge.Config{URL: bgeURL, Model: bgeModel})
+	// BGE_M3_TIMEOUT defaults to 60s (Ollama cold-loads the 1.2GB model on
+	// first call; internal Volcano/TEI returns <1s so the ceiling is harmless).
+	bgeTimeout, err := time.ParseDuration(bgeTimeoutSec + "s")
+	if err != nil || bgeTimeout <= 0 {
+		bgeTimeout = 60 * time.Second
+	}
+	emb := bge.New(bge.Config{URL: bgeURL, Model: bgeModel, Timeout: bgeTimeout})
 
 	// 4. Construct the configured retriever backend + seed the knowledge
 	// corpus. The default is "milvus" (unchanged historical behavior);

@@ -44,16 +44,17 @@ import (
 )
 
 const (
-	embedTimeout = 10 * time.Second
-	embedRetries = 2
-	dimensions   = 1024 // BGE-M3 dense output dimension
+	defaultEmbedTimeout = 60 * time.Second // generous: Ollama cold-loads the 1.2GB bge-m3 model on first call (internal Volcano/TEI returns <1s, so this is a harmless ceiling)
+	embedRetries        = 2
+	dimensions          = 1024 // BGE-M3 dense output dimension
 )
 
 // Config configures the BGE-M3 HTTP embedder.
 type Config struct {
-	URL       string // BGE-M3 REST endpoint (e.g. http://bge-m3.internal/v1/embeddings)
-	AuthToken string // optional bearer token; empty = no auth
-	Model     string // model name for OpenAI-compatible /v1/embeddings (Ollama needs "bge-m3"; vLLM/TEI accept it). Empty OMITS the field (back-compat with endpoints that reject unknown fields).
+	URL       string        // BGE-M3 REST endpoint (e.g. http://bge-m3.internal/v1/embeddings)
+	AuthToken string        // optional bearer token; empty = no auth
+	Model     string        // model name for OpenAI-compatible /v1/embeddings (Ollama needs "bge-m3"; vLLM/TEI accept it). Empty OMITS the field (back-compat with endpoints that reject unknown fields).
+	Timeout   time.Duration // per-request timeout; zero → defaultEmbedTimeout (60s). Ollama cold-start tolerant.
 }
 
 // BGE implements embedder.Embedder against a BGE-M3 HTTP service. Safe
@@ -87,6 +88,10 @@ func (b *BGE) Embed(ctx context.Context, text string) ([]float32, error) {
 	if b.cfg.URL == "" {
 		return nil, errors.New("bge.Embed: URL is empty (set BGE_M3_URL)")
 	}
+	timeout := b.cfg.Timeout
+	if timeout <= 0 {
+		timeout = defaultEmbedTimeout
+	}
 
 	var lastErr error
 	for attempt := 0; attempt < embedRetries+1; attempt++ {
@@ -97,7 +102,7 @@ func (b *BGE) Embed(ctx context.Context, text string) ([]float32, error) {
 			case <-time.After(1 * time.Second):
 			}
 		}
-		vec, err := embedOnce(ctx, b.cfg.URL, b.cfg.AuthToken, b.cfg.Model, text)
+		vec, err := embedOnce(ctx, b.cfg.URL, b.cfg.AuthToken, b.cfg.Model, timeout, text)
 		if err == nil {
 			return vec, nil
 		}
@@ -110,7 +115,7 @@ func (b *BGE) Embed(ctx context.Context, text string) ([]float32, error) {
 func (b *BGE) Dimensions() int { return dimensions }
 
 // embedOnce performs a single BGE-M3 POST and parses the response.
-func embedOnce(ctx context.Context, url, token, model, text string) ([]float32, error) {
+func embedOnce(ctx context.Context, url, token, model string, timeout time.Duration, text string) ([]float32, error) {
 	type embedReq struct {
 		Model string `json:"model,omitempty"`
 		Input string `json:"input"`
@@ -120,7 +125,7 @@ func embedOnce(ctx context.Context, url, token, model, text string) ([]float32, 
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, embedTimeout)
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(body))
