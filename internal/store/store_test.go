@@ -260,6 +260,8 @@ func TestAppendTurnIdempotent(t *testing.T) {
 
 // TestHealthAndClose: Health is nil on a fresh store; Close makes every
 // subsequent method return a meaningful error (sql.ErrConnDone-equivalent).
+// The plan's done-criteria say "every method returns a meaningful error"
+// — we lock that for ALL five Store methods, not just Health + PutAudit.
 func TestHealthAndClose(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -276,7 +278,21 @@ func TestHealthAndClose(t *testing.T) {
 	_, err = s.PutAudit(ctx, sampleAuditRow("sess-z"))
 	assert.Error(t, err, "PutAudit after Close must return an error")
 	assert.True(t, errors.Is(err, sql.ErrConnDone) || err != nil,
-		"post-Close error should be meaningful (got %v)", err)
+		"post-Close PutAudit error should be meaningful (got %v)", err)
+
+	// QueryAudit after Close — same isClosed() guard path.
+	_, err = s.QueryAudit(ctx, store.AuditFilter{})
+	assert.Error(t, err, "QueryAudit after Close must return an error")
+
+	// GetSession after Close.
+	_, err = s.GetSession(ctx, "sess-z")
+	assert.Error(t, err, "GetSession after Close must return an error")
+
+	// AppendTurn after Close.
+	err = s.AppendTurn(ctx, "sess-z",
+		store.SessionMessage{Role: "user", Content: "x", Ts: time.Now()},
+		store.SessionMessage{Role: "assistant", Content: "y", Ts: time.Now()})
+	assert.Error(t, err, "AppendTurn after Close must return an error")
 }
 
 // TestPromptHashFormat: prompt_hash is just a string column — the SHA-256
