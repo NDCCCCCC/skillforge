@@ -5,12 +5,12 @@ milestone_name: milestone
 current_phase: 04
 current_plan: 1
 status: executing
-last_updated: "2026-08-11T09:31:06.999Z"
+last_updated: "2026-08-11T13:20:32.772Z"
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 10
-  completed_plans: 10
+  completed_plans: 11
   percent: 43
 ---
 
@@ -24,6 +24,7 @@ progress:
 **Current Plan:** 1
 **Total Plans in Phase:** 3
 **Plan Status:** Plan 1 COMPLETE 2026-08-11 — ready for Wave 2 (04-02)
+**Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** `/gsd:execute-phase 04` (continue to 04-02)
 
 ---
@@ -93,6 +94,7 @@ Plan: 1 of 3
 | D8 | Citation = chunk ID + span | Free-text citations are the #1 hallucination vector (P-COMPL-1) |
 | D9 | Refusal-by-construction on missing tier-match | Default-deny; never improvise (GEVL-02, KNOW-04) |
 | D10 | Self-RAG / CRAG self-verification | Re-read & verify claims before final answer (ARAG-03) |
+| D11 | MongoDB 4.4+ as alternate retriever backend (`RETRIEVER_BACKEND=mongo`) | Internal Milvus is broken (image configured for external etcd). Tier filter via `{tier:{$in}}` query BEFORE in-Go cosine; D-09 holds structurally on both backends. Proves the `retriever.Retriever` abstraction is real. |
 
 ---
 
@@ -132,11 +134,12 @@ Plan: 1 of 3
 | 02 | 3 | — | verdict pipeline + cmd/server |
 | 02 | 2 | — | skill package + corpus |
 | 02 | 1 | — | grounding + verdict schema |
+| 02 | 04-MONGO | 13m | 5 commits — MongoDB retriever backend (RETRIEVER_BACKEND=mongo). See 02-04-MONGO-SUMMARY.md |
 
 - Phases completed: 1 / 7 (Phase 1 spike done; Phase 2 Plans 1-3 done)
 - Requirements covered: 14 / 55 + FEUI-01/02/06, T-1-08 (CMPL-02/03/04/05, ARAG-04/05, AGNT-03, GEVL-01/02, SYSK-01/02/07/08, CMPL-01)
 - Plans run: 8 (4 from Phase 1 spike + 3 from Phase 2 + 1 from Phase 4 Wave 1)
-- Last plan: 04-01 (Wave 1 foundation) — committed at 946c043 + 5339858 + 4cd853c
+- Last plan: 02-04-MONGO (extension) — committed at 3585f30 + 4743a4b + 0546db2 + 2169266
 
 ---
 
