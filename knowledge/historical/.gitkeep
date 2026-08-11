@@ -1,0 +1,8 @@
+# 历史 tier 占位 — knowledge/historical/
+
+Phase 2 plan 02-02: the historical tier is intentionally empty.
+Documents added here would carry tier=历史 metadata when indexed by
+plan 02-03's Indexer.
+
+The directory is kept in git (via this .gitkeep) so a fresh clone
+preserves the four-tier directory structure that D-07 + D2-12 mandate.

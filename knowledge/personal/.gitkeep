@@ -1,0 +1,13 @@
+# 个人 tier 占位 — knowledge/personal/
+
+Phase 2 plan 02-02: the personal tier is intentionally empty.
+
+The contact-info query (spike 002/003 query 5) targets this tier
+("张总的电话是多少"), but the compliance Skill reads=[authority/**]
+only — so the retriever never queries 个人. Even an out-of-scope
+direct query against personal/ returns 0 results here, which the
+pipeline (plan 02-03) correctly maps to no_authorized_source
+refusal (SC-2 / SC-4).
+
+The directory is kept in git (via this .gitkeep) so the four-tier
+structure that D-07 + D2-12 mandate survives clones.

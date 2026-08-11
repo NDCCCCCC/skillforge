@@ -1,0 +1,11 @@
+# 草稿 tier 占位 — knowledge/draft/
+
+Phase 2 plan 02-02: the draft tier is intentionally empty.
+
+Drafts would carry tier=草稿 metadata (with [DRAFT] prefix in body)
+when added by plan 02-03's Indexer. The compliance Skill cannot read
+this tier (reads=[authority/**] only), so drafts are invisible to the
+production verdict path.
+
+The directory is kept in git (via this .gitkeep) so the four-tier
+structure that D-07 + D2-12 mandate survives clones.
