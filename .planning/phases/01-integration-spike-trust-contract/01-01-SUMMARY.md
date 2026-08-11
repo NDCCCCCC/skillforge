@@ -105,7 +105,7 @@ completed: 2026-08-11
 Each task was committed atomically:
 
 1. **Task 1 scaffold (part 1):** `0920584` — `feat(01-01): Wave 0 scaffold — go.mod pinned, 4 SKILL.md fixtures, CLI router`
-2. **Task 1 scaffold (part 2):** `d4f0844` — `feat(01-01): CLI router + scaffold stubs + Windows-safe .gitignore`
+2. **Task 1 scaffold (part 2):** `d4f084d` — `feat(01-01): CLI router + scaffold stubs + Windows-safe .gitignore`
 3. **Task 1 strategy update (per user checkpoint):** `176e417` — `feat(01-01): internal API strategy — Milvus/BGE-M3 内网, GLM 公网`
 4. **Task 2 wire impl + test:** `ae7dcae` — `feat(01-01): spike wire — Eino ChatModel → mock OpenAI round-trip (SC-1 layer a)`
 
@@ -175,7 +175,7 @@ Each task was committed atomically:
 - **Fix:** Anchored patterns to root: `/spiked`, `/spiked.exe`, `/cmd/spiked/spiked`, `/cmd/spiked/spiked.exe`. Now only the actual binary outputs are ignored.
 - **Files modified:** `.gitignore`
 - **Verification:** `git check-ignore -v cmd/spiked/main.go` returns empty (not ignored); `git check-ignore -v /cmd/spiked/spiked.exe` confirms binary IS ignored.
-- **Committed in:** `d4f0844` (part of CLI router commit)
+- **Committed in:** `d4f084d` (part of CLI router commit)
 
 **2. [Rule 3 - Blocking] eino-ext version incompatibility**
 - **Found during:** Task 1 (scaffold dependency pinning)
