@@ -197,6 +197,24 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 	v = verdict.GroundingChecker(v, chunksByID)
 
+	// Step 9b: an LLM "unanswered" verdict means the model could not
+	// ground any claim in the retrieved context — the semantic equivalent
+	// of a refusal. Map it to the structured refusal shape (SC-2 / SC-4 /
+	// ARAG-05), NEVER emit an improvised answer. This catches out-of-corpus
+	// and off-scope queries whose retrieval cleared the 0.3 threshold
+	// (BGE-M3 cosine is positively biased for nearly any text pair) but
+	// whose chunks carry no usable policy signal. This is preferred over
+	// tuning the magic cosine number — the LLM is a better judge of
+	// grounding than a threshold, and aligns with the semantic-determinism
+	// philosophy (rely on structured output + grounding, not magic scores).
+	if v.Status == "unanswered" {
+		return emitRefusal(c, verdict.Refusal{
+			Reason:                    verdict.RefusalReasonNoAuthorizedSource,
+			CanRephrase:               true,
+			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers),
+		})
+	}
+
 	// Step 10: SSE emit (CMPL-02 + SC-6 + AGNT-03).
 	return emitVerdictStream(c, v, chunks)
 }
