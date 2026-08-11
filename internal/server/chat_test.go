@@ -1,0 +1,608 @@
+// Copyright 2026 SkillForge Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package server
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/cloudwego/hertz/pkg/app/server"
+
+	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/verdict"
+	"github.com/skillforge/skillforge/internal/wire"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// The 7 acceptance tests for the verdict pipeline + chat handler:
+//
+//  1. TestChatHandlerSSE — SC-6 / AGNT-03 happy path
+//  2. TestNoChunksRefusal — SC-2 / GEVL-02 (refusal-by-construction)
+//  3. TestPersonalTierRefusal — SC-4 / SYSK-07 (no tier bleed)
+//  4. TestLowScoreRefusal — GEVL-01 (max score < threshold)
+//  5. TestTemperaturePassthrough — SYSK-08 runtime enforcement
+//  6. TestGroundingCheckerInvoked — D2-01 moat (D2-02 downgrade)
+//  7. TestRefusalShape — ARAG-05 (all 3 refusal reasons emit full shape)
+
+// newTestHertz spins a Hertz server on a dynamic port with the chat
+// route registered against deps. Returns the bound TCP address so the
+// caller can issue real HTTP requests against it.
+//
+// Pattern reused from cmd/spiked/sse_test.go (the proven dynamic-port
+// pattern; Pitfall 7 / hertz v0.10.6 verified).
+func newTestHertz(t *testing.T, deps *Deps) (string, func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "bind dynamic listener")
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	h := server.Default(server.WithListener(ln))
+	h.POST("/api/chat", deps.chatHandler)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.Run() }()
+
+	cleanup := func() {
+		_ = h.Close()
+		<-errCh
+	}
+
+	addr := "127.0.0.1:" + portStr(port)
+	if err := waitForListener(addr, 3*time.Second); err != nil {
+		cleanup()
+		t.Fatalf("server warmup: %v", err)
+	}
+	return addr, cleanup
+}
+
+// waitForListener polls the TCP addr until it accepts a connection or
+// the deadline expires. Pattern reused from cmd/spiked/sse.go.
+func waitForListener(addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return fmt.Errorf("listener %s not accepting after %v", addr, timeout)
+}
+
+// portStr converts an int port to its decimal string representation
+// without importing strconv at the package-test layer.
+func portStr(p int) string {
+	if p == 0 {
+		return "0"
+	}
+	digits := "0123456789"
+	out := ""
+	for p > 0 {
+		out = string(digits[p%10]) + out
+		p /= 10
+	}
+	return out
+}
+
+// newTestDeps builds a Deps with stub embedder / searcher / runner.
+// Tests overwrite the fields they care about (searcher.chunks,
+// runner.cannedJSON, etc.) after construction.
+func newTestDeps() *Deps {
+	return &Deps{
+		Embedder: newStubEmbedder(),
+		Searcher: &stubSearcher{},
+		Runner:   newStubRunner(""),
+	}
+}
+
+// newTestManifest writes a minimal SKILL.md into a temp directory and
+// runs skill.Loader.Scan() to produce a fully-resolved Manifest
+// (resolved tiers populated by the Loader — the only canonical way).
+//
+// This is the test-side substitute for cmd/server's startup hook. We
+// cannot construct a *skill.Manifest with resolved tiers set directly
+// (resolvedTiers is unexported), so the only path is via the Loader.
+func newTestManifest(t *testing.T, reads []string, temp float32) *skill.Manifest {
+	t.Helper()
+	root := t.TempDir()
+	// SKILL.md must live in an immediate subdirectory (the directory
+	// name IS the Skill name per the Loader contract).
+	skillDir := filepath.Join(root, "test")
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+
+	yaml := fmt.Sprintf(`---
+description: test skill (drives the verdict pipeline in unit tests)
+agent: ChatModelAgent
+reads:
+  - %s
+writes: []
+steps: |
+  1. Step 1
+  2. Step 2
+guardrails:
+  prohibitions:
+    - "Never cite clauses not retrieved from authority tier"
+    - "Never paraphrase critical clauses (quote verbatim span)"
+    - "Never reveal personal/contact information of any individual"
+  required_refusal_phrases:
+    - "no_authorized_source"
+  tier_limits:
+    authority: ["read-only"]
+temperature: %v
+---
+# Test Skill
+`, reads[0], temp)
+
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(yaml), 0o644))
+
+	manifests, err := skill.NewLoader(root).Scan()
+	require.NoError(t, err)
+	require.NotEmpty(t, manifests, "test Loader must produce ≥1 manifest")
+	require.Len(t, manifests, 1)
+	return manifests[0]
+}
+
+// postChat issues a real POST /api/chat via stdlib http and returns the
+// response body (full SSE stream) + the Content-Type header.
+func postChat(t *testing.T, addr, query, skill string) (string, string) {
+	t.Helper()
+	body, _ := json.Marshal(chatRequest{Query: query, Skill: skill})
+	resp, err := http.Post("http://"+addr+"/api/chat", "application/json", bytes.NewReader(body))
+	require.NoError(t, err, "POST /api/chat")
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "read body")
+	return string(b), resp.Header.Get("Content-Type")
+}
+
+// TestChatHandlerSSE — SC-6 / AGNT-03 happy path. With a mock retriever
+// returning 2 TierSearchResult chunks (tier=权威) + a mock runner
+// returning a valid Verdict JSON with 2 citations, the POST /api/chat
+// SSE stream must contain:
+//
+//	(a) ≥2 source-document UIMessageChunks with SourceID matching the
+//	    citation chunk IDs AND a tier hint somewhere in the stream
+//	    (tier rides in the data-policy Verdict payload's Citations[].Tier
+//	    per Pattern 2).
+//	(b) 1 data-policy UIMessageChunk whose Data unmarshals to a
+//	    Verdict with Citations matching the mock.
+//	(c) 1 finish-step UIMessageChunk.
+//
+// Plus: no snake_case types in the stream.
+func TestChatHandlerSSE(t *testing.T) {
+	deps := newTestDeps()
+	chunk1 := "出差住宿费超标 200 元以内由部门负责人审批"
+	chunk2 := "采购合同 50 万元以下由部门负责人审批"
+	chunks := []retriever.TierSearchResult{
+		{ID: 1, Tier: "权威", Content: chunk1, Source: "authority/travel_expense.md", Score: 0.92},
+		{ID: 2, Tier: "权威", Content: chunk2, Source: "authority/contract_approval.md", Score: 0.88},
+	}
+	deps.Searcher = &stubSearcher{chunks: chunks}
+	// Two chunks returned but the verdict only cites chunk 1 (the
+	// relevant one for the query). The pipeline emits source-document
+	// for every citation in the Verdict, not every chunk in the
+	// retrieval set — so chunk 2 does NOT appear as a source-document
+	// frame. The assertion below reflects this.
+	deps.Runner = newStubRunner(cannedVerdictJSON("合规", 0.95,
+		[]string{"1"}, chunk1, "权威"))
+
+	// Loader with the real compliance SKILL.md so findSkill returns the manifest.
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, ct := postChat(t, addr, "出差住宿费超标 200 元合规吗", "compliance")
+	assert.Contains(t, ct, "text/event-stream",
+		"Content-Type must be text/event-stream (auto-set by sse.NewWriter)")
+
+	frames := parseFrames(t, body)
+	require.GreaterOrEqual(t, len(frames), 3, "expected ≥3 frames (1 source-document + 1 data-policy + 1 finish-step)")
+
+	// (a) source-document with SourceID matching citation chunk IDs.
+	var sourceDocIDs []string
+	for _, f := range frames {
+		if f.Type == "source-document" {
+			sourceDocIDs = append(sourceDocIDs, f.SourceID)
+		}
+	}
+	assert.Contains(t, sourceDocIDs, "1",
+		"source-document for chunk_id=1 (the cited chunk) must be on the wire")
+
+	// (b) data-policy with a Verdict carrying the citation + tier="权威".
+	var dataPolicy *verdict.Verdict
+	for _, f := range frames {
+		if f.Type == "data-policy" {
+			var v verdict.Verdict
+			require.NoError(t, json.Unmarshal(f.Data, &v),
+				"data-policy Data field must unmarshal to verdict.Verdict (D2-06 schema)")
+			dataPolicy = &v
+		}
+	}
+	require.NotNil(t, dataPolicy, "expected at least one data-policy frame")
+	assert.Equal(t, "合规", dataPolicy.Status)
+	assert.Equal(t, 0.95, dataPolicy.Confidence)
+	require.Len(t, dataPolicy.Citations, 1)
+	assert.Equal(t, "权威", dataPolicy.Citations[0].Tier,
+		"tier must ride in the data-policy Verdict payload (Pattern 2 line 311)")
+
+	// (c) finish-step.
+	var hasFinish bool
+	for _, f := range frames {
+		if f.Type == "finish-step" {
+			hasFinish = true
+		}
+	}
+	assert.True(t, hasFinish, "finish-step must terminate the stream (AGNT-03)")
+
+	// (d) no snake_case types (T-1-11 mitigation).
+	for _, f := range frames {
+		assert.NotContains(t, f.Type, "_",
+			"frame type %q must be kebab-case (T-1-11), not snake_case", f.Type)
+	}
+}
+
+// TestNoChunksRefusal — SC-2 / GEVL-02 refusal-by-construction. With a
+// mock retriever returning an empty chunk slice, the pipeline must:
+//
+//   - Emit a data-policy chunk whose Data unmarshals to a Refusal with
+//     Reason="no_authorized_source", CanRephrase=true,
+//     SuggestedAlternativeQuery non-empty.
+//   - Emit a finish-step terminator.
+//   - NOT call the runner (refusal-by-construction D-09).
+func TestNoChunksRefusal(t *testing.T) {
+	deps := newTestDeps()
+	deps.Searcher = &stubSearcher{chunks: nil}
+
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "查询员工联系方式", "compliance")
+	frames := parseFrames(t, body)
+
+	refusal := findRefusal(t, frames)
+	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, refusal.Reason,
+		"SC-2: 0 chunks must produce no_authorized_source refusal")
+	assert.True(t, refusal.CanRephrase,
+		"SC-2: refusal must be rephrasable (the user could include tier keyword)")
+	assert.NotEmpty(t, refusal.SuggestedAlternativeQuery,
+		"SC-2: rule-based suggestion (D2-14) must be non-empty")
+
+	assert.Equal(t, 0, deps.Runner.CallCount(),
+		"SC-2 / D-09: refusal path MUST NOT invoke the LLM (refusal-by-construction)")
+}
+
+// TestPersonalTierRefusal — SC-4 / SYSK-07 tier bleed guard. Querying
+// for personal contact info against the compliance Skill (whose reads
+// resolve to ["权威"]) must produce a refusal with the retriever's
+// filter containing ONLY 权威 — no 个人 bleed.
+func TestPersonalTierRefusal(t *testing.T) {
+	deps := newTestDeps()
+	stubSrch := &stubSearcher{chunks: nil}
+	deps.Searcher = stubSrch
+
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "查询员工联系方式", "compliance")
+	frames := parseFrames(t, body)
+
+	filter := stubSrch.LastFilter()
+	require.NotEmpty(t, filter, "searcher should have been called once")
+	assert.Contains(t, filter, "权威",
+		"filter must include the 权威 tier (compliance skill's only read tier)")
+	assert.NotContains(t, filter, "个人",
+		"filter MUST NOT include 个人 — SC-4 / SYSK-07 tier bleed guard")
+
+	refusal := findRefusal(t, frames)
+	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, refusal.Reason)
+	assert.Equal(t, 0, deps.Runner.CallCount(),
+		"SC-4 / D-09: no tier bleed + 0 chunks → refusal, NO LLM call")
+}
+
+// TestLowScoreRefusal — GEVL-01. Mock retriever returns 2 chunks with
+// maxScore below the retrievalScoreThreshold placeholder (0.3).
+func TestLowScoreRefusal(t *testing.T) {
+	deps := newTestDeps()
+	chunks := []retriever.TierSearchResult{
+		{ID: 1, Tier: "权威", Content: "weakly related text", Source: "authority/random.md", Score: 0.15},
+		{ID: 2, Tier: "权威", Content: "more noise", Source: "authority/other.md", Score: 0.20},
+	}
+	deps.Searcher = &stubSearcher{chunks: chunks}
+
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "weak query", "compliance")
+	frames := parseFrames(t, body)
+
+	refusal := findRefusal(t, frames)
+	assert.Equal(t, verdict.RefusalReasonLowRetrievalScore, refusal.Reason,
+		"GEVL-01: maxScore < threshold → low_retrieval_score refusal (D2-15 placeholder)")
+	assert.True(t, refusal.CanRephrase)
+	assert.Equal(t, 0, deps.Runner.CallCount(),
+		"GEVL-01 / D-09: low-score refusal path MUST NOT invoke the LLM")
+}
+
+// TestTemperaturePassthrough — SYSK-08 runtime enforcement. The
+// pipeline must invoke adk.WithChatModelOptions carrying
+// model.WithTemperature(skill.Temperature) (compliance Skill declares
+// temperature: 0.0). Verified by:
+//
+//  1. The pipeline reaches the LLM call step (Runner.CallCount == 1).
+//  2. The captured opts slice is non-empty (proving the
+//     WithChatModelOptions wrapper reached the runner).
+//
+// The exact model.WithTemperature value is pinned by the static
+// criterion in pipeline.go (the literal call `model.WithTemperature(temp)`
+// where temp=*manifest.Temperature) — verified by the plan's grep check.
+//
+// We additionally inspect the runner's recorded query string to confirm
+// the prompt was constructed with the query the client sent (a sanity
+// check that the temperature wrapper did not eat the user message).
+func TestTemperaturePassthrough(t *testing.T) {
+	deps := newTestDeps()
+	chunks := []retriever.TierSearchResult{
+		{ID: 1, Tier: "权威", Content: "出差住宿费超标 200 元以内由部门负责人审批", Source: "authority/travel_expense.md", Score: 0.95},
+	}
+	stubSrch := &stubSearcher{chunks: chunks}
+	deps.Searcher = stubSrch
+	stubRun := newStubRunner(cannedVerdictJSON("合规", 0.95,
+		[]string{"1"}, "出差住宿费超标 200 元以内由部门负责人审批", "权威"))
+	deps.Runner = stubRun
+
+	// Loader points at the real on-disk skills/ directory which holds
+	// skills/compliance/SKILL.md (temperature: 0.0 declared there).
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "query", "compliance")
+	require.NotEmpty(t, body, "HTTP round-trip should yield SSE frames")
+	assert.Equal(t, 1, stubRun.CallCount(),
+		"pipeline must have invoked the runner once (proving it reached step 8 — the LLM call)")
+
+	// The captured opts slice must be non-empty (proving the
+	// WithChatModelOptions wrapper reached the runner).
+	opts := stubRun.LastOpts()
+	require.NotEmpty(t, opts, "runner must have received ≥1 AgentRunOption (SYSK-08 wrapper)")
+
+	// Sanity: the user query made it through the prompt builder.
+	queries := stubRun.CapturedQueries()
+	require.NotEmpty(t, queries)
+	assert.Contains(t, queries[0], "query",
+		"the user query must appear in the constructed prompt")
+}
+
+// TestGroundingCheckerInvoked — D2-01 moat. The pipeline invokes
+// verdict.GroundingChecker between LLM parse and SSE emit. We verify
+// the moat by feeding an obviously-ungrounded Verdict directly through
+// the checker and asserting the D2-02 downgrade applies.
+//
+// This is a unit test of the moat itself (not an end-to-end via the
+// pipeline) — the canonical pipeline integration is covered by the
+// acceptance criterion in chat_test.go: the pipeline MUST call
+// GroundingChecker (see pipeline.go step 9). The downgrade behavior
+// is verified here as a property of the package.
+func TestGroundingCheckerInvoked(t *testing.T) {
+	v := verdict.Verdict{
+		Status:         "合规",
+		Confidence:     0.95,
+		Citations:      []verdict.Citation{{ChunkID: "1", Span: "fabricated span", Tier: "权威"}},
+		ReviewRequired: false,
+	}
+	chunksByID := map[string]string{"1": "real chunk text does not contain fabricated"}
+
+	downgraded := verdict.GroundingChecker(v, chunksByID)
+	assert.Equal(t, verdict.DowngradeStatus, downgraded.Status,
+		"D2-02: ungrounded claim → Status=需补充")
+	assert.LessOrEqual(t, downgraded.Confidence, verdict.ConfidenceFloor,
+		"D2-02: ungrounded claim → Confidence ≤ 0.89")
+	assert.True(t, downgraded.ReviewRequired,
+		"D2-02: ungrounded claim → ReviewRequired=true")
+}
+
+// TestPipelineInvokesGroundingChecker — companion to
+// TestGroundingCheckerInvoked. Runs the full pipeline with a chunk that
+// contains the citation span verbatim. The pipeline must reach the
+// grounding-check step (post-LLM, pre-emit) and produce a non-downgraded
+// Verdict (the span IS in the chunk text, so the checker leaves it
+// alone). Verified via HTTP round-trip + SSE frame inspection.
+func TestPipelineInvokesGroundingChecker(t *testing.T) {
+	deps := newTestDeps()
+	chunkText := "出差住宿费超标 200 元以内由部门负责人审批"
+	chunks := []retriever.TierSearchResult{
+		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/travel_expense.md", Score: 0.95},
+	}
+	deps.Searcher = &stubSearcher{chunks: chunks}
+	stubRun := newStubRunner(cannedVerdictJSON("合规", 0.95,
+		[]string{"1"}, chunkText, "权威"))
+	deps.Runner = stubRun
+
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "query", "compliance")
+	require.NotEmpty(t, body)
+	assert.Equal(t, 1, stubRun.CallCount())
+
+	// The data-policy Verdict must NOT be downgraded — the span IS in
+	// the chunk text (verbatim substring), so GroundingChecker leaves
+	// it alone. We assert this via the Verdict payload: Status stays
+	// "合规" (not "需补充"), Confidence stays 0.95 (not capped at 0.89).
+	frames := parseFrames(t, body)
+	var v *verdict.Verdict
+	for _, f := range frames {
+		if f.Type == "data-policy" {
+			var pv verdict.Verdict
+			require.NoError(t, json.Unmarshal(f.Data, &pv))
+			v = &pv
+		}
+	}
+	require.NotNil(t, v, "data-policy Verdict must be on the wire")
+	assert.Equal(t, "合规", v.Status,
+		"grounded span → no D2-02 downgrade (Status must stay 合规)")
+	assert.Equal(t, 0.95, v.Confidence,
+		"grounded span → no D2-02 confidence cap (must stay 0.95)")
+}
+
+// TestRefusalShape — ARAG-05. All 3 refusal reasons emit Refusal
+// structs with all 3 fields {reason, can_user_rephrase,
+// suggested_alternative_query}.
+func TestRefusalShape(t *testing.T) {
+	t.Run("no_authorized_source", func(t *testing.T) {
+		deps := newTestDeps()
+		deps.Searcher = &stubSearcher{chunks: nil}
+		loader := skill.NewLoader(skillsDirPath())
+		_, err := loader.Scan()
+		require.NoError(t, err)
+		deps.Loader = loader
+		addr, cleanup := newTestHertz(t, deps)
+		defer cleanup()
+		body, _ := postChat(t, addr, "out of scope", "compliance")
+		r := findRefusal(t, parseFrames(t, body))
+		assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, r.Reason)
+		assert.True(t, r.CanRephrase)
+		assert.NotEmpty(t, r.SuggestedAlternativeQuery)
+	})
+
+	t.Run("low_retrieval_score", func(t *testing.T) {
+		deps := newTestDeps()
+		deps.Searcher = &stubSearcher{chunks: []retriever.TierSearchResult{
+			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.10},
+		}}
+		loader := skill.NewLoader(skillsDirPath())
+		_, err := loader.Scan()
+		require.NoError(t, err)
+		deps.Loader = loader
+		addr, cleanup := newTestHertz(t, deps)
+		defer cleanup()
+		body, _ := postChat(t, addr, "weak query", "compliance")
+		r := findRefusal(t, parseFrames(t, body))
+		assert.Equal(t, verdict.RefusalReasonLowRetrievalScore, r.Reason)
+		assert.True(t, r.CanRephrase)
+	})
+
+	t.Run("out_of_scope", func(t *testing.T) {
+		// Out-of-scope path: unknown skill name → handler emits the
+		// refusal BEFORE VerdictPipeline runs (the searcher / runner
+		// must not be invoked at all).
+		deps := newTestDeps()
+		stubSrch := &stubSearcher{chunks: nil}
+		deps.Searcher = stubSrch
+		stubRun := newStubRunner("")
+		deps.Runner = stubRun
+		deps.Loader = nil
+		addr, cleanup := newTestHertz(t, deps)
+		defer cleanup()
+		body, _ := postChat(t, addr, "anything", "unknown_skill")
+		r := findRefusal(t, parseFrames(t, body))
+		assert.Equal(t, verdict.RefusalReasonOutOfScope, r.Reason)
+		assert.False(t, r.CanRephrase,
+			"out_of_scope refusals cannot be rephrased (the skill is unknown)")
+		assert.Equal(t, 0, stubSrch.CallCount(),
+			"unknown skill MUST NOT reach the retriever")
+		assert.Equal(t, 0, stubRun.CallCount(),
+			"unknown skill MUST NOT reach the LLM")
+	})
+}
+
+// findRefusal locates the data-policy Refusal in a frame slice.
+func findRefusal(t *testing.T, frames []wire.UIMessageChunk) verdict.Refusal {
+	t.Helper()
+	for _, f := range frames {
+		if f.Type == "data-policy" {
+			var r verdict.Refusal
+			if err := json.Unmarshal(f.Data, &r); err == nil && r.Reason != "" {
+				return r
+			}
+		}
+	}
+	t.Fatalf("no data-policy Refusal frame found in %d frames", len(frames))
+	return verdict.Refusal{}
+}
+
+// parseFrames decodes SSE `data: {...}` lines into UIMessageChunk
+// values. Mirrors cmd/spiked/sse.go:parseSSEFrames; we re-implement it
+// locally to avoid an import cycle (spiked is package main).
+func parseFrames(t *testing.T, body string) []wire.UIMessageChunk {
+	t.Helper()
+	var out []wire.UIMessageChunk
+	for _, raw := range strings.Split(body, "\n") {
+		line := strings.TrimSpace(raw)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		if payload == "" {
+			continue
+		}
+		var ch wire.UIMessageChunk
+		require.NoError(t, json.Unmarshal([]byte(payload), &ch),
+			"unmarshal data line: %s", payload)
+		out = append(out, ch)
+	}
+	return out
+}
+
+// skillsDirPath resolves the on-disk skills/ directory. The tests use
+// the real skills/compliance/SKILL.md (already validated by
+// internal/skill/loader_test.go) so findSkill returns a valid Manifest.
+// Run from the repo root (the test is in internal/server/, so we walk
+// up three levels to reach the repo root).
+func skillsDirPath() string {
+	return "../../skills"
+}
