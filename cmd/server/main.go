@@ -25,15 +25,17 @@
 //  1. Load skills via skill.NewLoader("skills/").Scan(). An invalid
 //     Skill is fatal — the operator should see the SYSK-02 violation
 //     in the startup log, not as a confusing 500 later.
-//  2. Dial Milvus via milvus.New (bounded retries).
-//     BGE-M3 outage is NOT fatal at startup (Pitfall 8 — production
+//  2. Construct the configured retriever backend (RETRIEVER_BACKEND):
+//       "milvus" (default) — milvus.New (bounded retries) + Ensure + Index.
+//       "mongo"            — mongo.New (Connect+Ping) + Ensure +
+//                            SeedFromKnowledgeDir. Used when the internal
+//                            Milvus is unavailable; MongoDB 4.4+ has no
+//                            native vector search, so cosine is computed
+//                            in Go against the tier-filtered rows.
+//  3. BGE-M3 outage is NOT fatal at startup (Pitfall 8 — production
 //     refuses on BGE-M3 outage at request time, not startup time, so
 //     the server can boot into a known-broken state and operators can
 //     see the failure mode in the first chat request).
-//  3. EnsureCollection + Index the knowledge/ corpus into Milvus
-//     (one-doc-one-chunk Pattern 7). Idempotent: re-running inserts
-//     duplicates (Milvus INT64 PK is not auto-deduped), but the
-//     startup hook is safe for a fresh deployment.
 //  4. Build the GLM-5.2 ChatModel via openai.NewChatModel pointed at
 //     the Coding Plan endpoint (Pitfall 6 — NOT /api/paas/v4, the
 //     standard endpoint rejects Coding Plan keys with a confusing
@@ -43,13 +45,15 @@
 //
 // Environment variables (the deployment surface):
 //
-//   - MILVUS_ADDRESS  (required) — gRPC host:port of internal Milvus
-//   - BGE_M3_URL      (required) — internal BGE-M3 HTTP endpoint
-//   - GLM_API_KEY     (required) — Zhipu Coding Plan subscription key
-//   - GLM_BASE_URL    (optional) — default https://open.bigmodel.cn/api/coding/paas/v4
-//   - SERVER_ADDR     (optional) — default ":8888" (Pitfall 7)
+//   - RETRIEVER_BACKEND (optional) — "milvus" (default) | "mongo"
+//   - MILVUS_ADDRESS    (milvus only, required) — gRPC host:port
+//   - MONGO_URI         (mongo only, required)  — e.g. mongodb://10.62.10.34:27017
+//   - BGE_M3_URL        (required) — internal BGE-M3 HTTP endpoint
+//   - GLM_API_KEY       (required) — Zhipu Coding Plan subscription key
+//   - GLM_BASE_URL      (optional) — default https://open.bigmodel.cn/api/coding/paas/v4
+//   - SERVER_ADDR       (optional) — default ":8888" (Pitfall 7)
 //
-// All five are read at startup; missing required vars are fatal with
+// All are read at startup; missing required vars are fatal with
 // an actionable error message. The Skill author / operator should be
 // able to fix the issue from the log alone.
 package main
@@ -58,6 +62,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
@@ -66,7 +71,9 @@ import (
 
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
+	"github.com/skillforge/skillforge/internal/retriever/mongo"
 	"github.com/skillforge/skillforge/internal/server"
 	"github.com/skillforge/skillforge/internal/skill"
 )
@@ -98,8 +105,8 @@ func envOr(name, def string) string {
 func main() {
 	ctx := context.Background()
 
-	// 1. Env var parsing.
-	milvusAddr := envRequired("MILVUS_ADDRESS")
+	// 1. Env var parsing. MILVUS_ADDRESS / MONGO_URI are validated inside
+	// the backend switch (only the configured backend's URI is required).
 	bgeURL := envRequired("BGE_M3_URL")
 	glmKey := envRequired("GLM_API_KEY")
 	glmBase := envOr("GLM_BASE_URL", defaultGLMBaseURL)
@@ -113,34 +120,20 @@ func main() {
 	}
 	log.Printf("[OK] loaded %d Skill(s)", len(manifests))
 
-	// 3. Milvus client.
-	mcfg := milvus.Config{
-		Addr:           milvusAddr,
-		CollectionName: defaultCollection,
-	}
-	mc, err := milvus.New(ctx, mcfg)
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: milvus dial %s: %v", milvusAddr, err)
-	}
-	if err := mc.Ensure(ctx); err != nil {
-		log.Fatalf("[FAIL] cmd/server: ensure collection: %v", err)
-	}
-
-	// 4. BGE-M3 HTTP embedder (production; refuses on outage).
+	// 3. BGE-M3 HTTP embedder (production; refuses on outage).
 	emb := bge.New(bge.Config{URL: bgeURL})
 
-	// 5. Index knowledge/ corpus (one-doc-one-chunk, Pattern 7).
-	if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), mcfg); err != nil {
-		// Non-fatal — Index errors are most often BGE-M3 outages, and
-		// the retrieval path will refuse with no_authorized_source when
-		// the collection is empty. We log and continue; an operator can
-		// manually re-index once the embed service is back.
-		log.Printf("[WARN] cmd/server: knowledge index failed (retrieval will return no_authorized_source until re-indexed): %v", err)
-	} else {
-		log.Printf("[OK] knowledge corpus indexed into %s", defaultCollection)
+	// 4. Construct the configured retriever backend + seed the knowledge
+	// corpus. The default is "milvus" (unchanged historical behavior);
+	// "mongo" switches to the MongoDB-backed retriever (used when the
+	// internal Milvus is unavailable — see 02-04-MONGO-SUMMARY.md).
+	backend := strings.ToLower(os.Getenv("RETRIEVER_BACKEND"))
+	if backend == "" {
+		backend = "milvus"
 	}
+	r, backendLabel := buildRetriever(ctx, backend, emb)
 
-	// 6. GLM-5.2 ChatModel (Coding Plan endpoint per Pitfall 6).
+	// 5. GLM-5.2 ChatModel (Coding Plan endpoint per Pitfall 6).
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: glmBase,
 		APIKey:  glmKey,
@@ -150,7 +143,7 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: GLM chat model init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
 	}
 
-	// 7. ChatModelAgent + Runner.
+	// 6. ChatModelAgent + Runner.
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "skillforge-compliance",
 		Description: "SkillForge compliance-review ChatModelAgent",
@@ -162,24 +155,83 @@ func main() {
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent})
 
-	// 8. Build *server.Deps. Embedder + Retriever are concrete impls
+	// 7. Build *server.Deps. Embedder + Retriever are concrete impls
 	// behind the interfaces; Runner wraps the Eino Runner.
 	deps := &server.Deps{
 		Loader:    loader,
 		Embedder:  emb,
-		Retriever: mc,
+		Retriever: r,
 		Runner:    &prodRunner{runner: runner, cm: cm},
 	}
 
-	// 9. Hertz server (Pattern 1).
+	// 8. Hertz server (Pattern 1).
 	h := server.New(serverAddr, deps)
-	log.Printf("[OK] cmd/server: SkillForge listening on %s", serverAddr)
+	log.Printf("[OK] cmd/server: SkillForge listening on %s (backend=%s)", serverAddr, backendLabel)
 	log.Printf("     POST /api/chat       — verdict pipeline (verdict or structured refusal)")
 	log.Printf("     GET  /api/skills     — list loaded Skills")
 	log.Printf("     POST /api/skills     — dry-run Skill validator")
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()
+}
+
+// buildRetriever constructs the retriever.Retriever specified by backend
+// ("milvus" or "mongo") and seeds the knowledge corpus into it. Both
+// paths log.Fatalf on a misconfigured URI / unreachable server — the
+// operator must see the failure at startup, not at request time.
+//
+// Returns the constructed Retriever plus a short label for the startup
+// log line (e.g. "milvus(10.x.x.x:19530)" / "mongo(10.x.x.x:27017)").
+func buildRetriever(ctx context.Context, backend string, emb *bge.BGE) (retriever.Retriever, string) {
+	switch backend {
+	case "mongo":
+		mURI := envRequired("MONGO_URI")
+		mc, err := mongo.New(ctx, mongo.Config{
+			URI:        mURI,
+			Database:   "skillforge",
+			Collection: "knowledge",
+		})
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: mongo dial %s: %v", mURI, err)
+		}
+		if err := mc.Ensure(ctx); err != nil {
+			log.Fatalf("[FAIL] cmd/server: mongo ensure collection: %v", err)
+		}
+		// Mongo path: the milvus-coupled knowledge.Index cannot run here
+		// (it requires a milvus client.Client). Use the mongo backend's
+		// own SeedFromKnowledgeDir, which mirrors the indexer's scan +
+		// strip + embed + Insert flow. See mongo/seed.go godoc for the
+		// Rule 3 deviation rationale.
+		if err := mc.SeedFromKnowledgeDir(ctx, "knowledge/", emb); err != nil {
+			log.Printf("[WARN] cmd/server: mongo knowledge seed failed (retrieval will return no_authorized_source until re-seeded): %v", err)
+		} else {
+			log.Printf("[OK] knowledge corpus seeded into mongo %s.%s", mc.DatabaseName(), mc.CollectionName())
+		}
+		return mc, "mongo(" + mURI + ")"
+	default:
+		if backend != "milvus" {
+			log.Printf("[WARN] cmd/server: unknown RETRIEVER_BACKEND=%q, falling back to milvus", backend)
+		}
+		milvusAddr := envRequired("MILVUS_ADDRESS")
+		mcfg := milvus.Config{
+			Addr:           milvusAddr,
+			CollectionName: defaultCollection,
+		}
+		mc, err := milvus.New(ctx, mcfg)
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: milvus dial %s: %v", milvusAddr, err)
+		}
+		if err := mc.Ensure(ctx); err != nil {
+			log.Fatalf("[FAIL] cmd/server: milvus ensure collection: %v", err)
+		}
+		// Milvus path: unchanged — uses the milvus-coupled indexer.
+		if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), mcfg); err != nil {
+			log.Printf("[WARN] cmd/server: knowledge index failed (retrieval will return no_authorized_source until re-indexed): %v", err)
+		} else {
+			log.Printf("[OK] knowledge corpus indexed into %s", defaultCollection)
+		}
+		return mc, "milvus(" + milvusAddr + ")"
+	}
 }
 
 // prodRunner wraps adk.Runner for the Runner seam. Each Query call
