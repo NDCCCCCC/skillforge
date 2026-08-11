@@ -33,13 +33,8 @@ func runMilvus(ctx context.Context, args []string) error {
 	return nil
 }
 
-// runSSE is a placeholder for the Hertz SSE → Vercel AI SDK v5 spike (Plan 03).
-// Real implementation emits text/event-stream and asserts UIMessageChunk
-// alignment end-to-end.
-func runSSE(ctx context.Context, args []string) error {
-	fmt.Println("[STUB] sse: not yet implemented (Plan 03)")
-	return nil
-}
+// NOTE: runSSE was promoted to a real implementation in cmd/spiked/sse.go
+// by Plan 01-03. It is no longer a stub.
 
 // runE2E is a placeholder for the full E2E pipeline trace spike (Plan 04).
 // Real implementation runs 5 compliance queries through skill parse →
