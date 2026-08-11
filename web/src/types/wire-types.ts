@@ -36,6 +36,30 @@ import type { UIMessageChunk } from 'ai';
 import type { Refusal, SubprogressStep, Verdict } from './verdict';
 
 // ----------------------------------------------------------------------------
+// DecisionPayload — mirror of internal/wire/chunk.go DecisionPayload
+// ----------------------------------------------------------------------------
+
+// Plan 03-01 Task 1 — TS mirror of the Go wire.DecisionPayload struct.
+// Carried inside a `data-decision` chunk's `.data` field. The agent
+// package (Plan 03-03) populates this via Eino callbacks so the React
+// UI can render the autonomous per-hop decisions (D3-03 / SC-1
+// observability substrate).
+//
+// Field semantics match the Go struct 1:1 — JSON tags are camelCase
+// (matches the Go struct's `json:"toolCallId,omitempty"` etc.).
+export interface DecisionPayload {
+  /** 1-indexed hop number (1 or 2 for max_hops=2). */
+  step: number;
+  decision: 'retrieve' | 'answer' | 'refuse' | 'forced_stop';
+  /** Links the decision to a specific tool invocation (may be empty). */
+  toolCallId?: string;
+  /** The (possibly refined) query for a retrieve decision. */
+  query?: string;
+  /** Model-reported confidence for an answer decision. */
+  confidence?: number;
+}
+
+// ----------------------------------------------------------------------------
 // SkillForgeChunk — the union emitted on the wire
 // ----------------------------------------------------------------------------
 
@@ -63,6 +87,10 @@ export type SkillForgeChunk =
   // Custom data parts (Pitfall 2 — payload on .data)
   | { type: 'data-policy'; id?: string; data: Verdict | Refusal }
   | { type: 'data-subprogress'; id?: string; data: SubprogressStep }
+  // Plan 03-01 — agent per-hop decisions (ARAG-01 / SC-1 observability).
+  // Strict refinement of AI SDK v5 DataUIMessageChunk — assignability
+  // holds so the D15 drift alarm stays green.
+  | { type: 'data-decision'; id?: string; data: DecisionPayload }
   // Step boundaries
   | { type: 'start-step' }
   | { type: 'finish-step' }

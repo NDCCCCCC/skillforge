@@ -52,6 +52,12 @@ import "encoding/json"
 // Marshal output preserves struct field order; see TestUIMessageChunkShape
 // (cmd/spiked/sse_test.go, retained for the regression binary) for the
 // exact JSON asserted per category.
+//
+// Plan 03-01 added the data-decision discriminator (D3-03 / SC-1
+// observability) — it carries an agent's per-hop DecisionPayload via
+// the Data field below. The TS mirror lives at
+// web/src/types/wire-types.ts and is gated by the D15 compile-time
+// drift alarm AssertAssignable<SkillForgeChunk, UIMessageChunk>.
 type UIMessageChunk struct {
 	Type           string          `json:"type"`                     // REQUIRED, kebab-case enum
 	ID             string          `json:"id,omitempty"`             // text/reasoning/tool/source lifecycle id
@@ -65,10 +71,32 @@ type UIMessageChunk struct {
 	URL            string          `json:"url,omitempty"`            // source-url href
 	Title          string          `json:"title,omitempty"`          // source-url / source-document label
 	ErrorText      string          `json:"errorText,omitempty"`      // error chunk payload (no API key ever)
-	Data           json.RawMessage `json:"data,omitempty"`           // data-* custom payload (e.g. data-policy Verdict)
+	Data           json.RawMessage `json:"data,omitempty"`           // data-* custom payload (e.g. data-policy Verdict, data-decision DecisionPayload)
 }
 
-// ValidTypes enumerates the 16 kebab-case chunk types recognized by the
+// DecisionPayload is the JSON shape carried by data-decision SSE chunks.
+// Plan 03-03's agent package populates it via Eino callbacks
+// (newDecisionCallback — see 03-RESEARCH.md §Code Examples lines 670-676)
+// so the React UI can render the agent's per-hop autonomous decisions
+// (retrieve / answer / refuse / forced_stop) — this is the ARAG-01 /
+// SC-1 observability substrate.
+//
+// Field semantics:
+//   - Step:         1-indexed hop number (1 or 2 for max_hops=2).
+//   - Decision:     one of "retrieve" | "answer" | "refuse" | "forced_stop".
+//   - ToolCallID:   links the decision to a specific tool invocation
+//                   (empty when Eino does not expose the id at OnStart).
+//   - Query:        the (possibly refined) query for a retrieve decision.
+//   - Confidence:   model-reported confidence for an answer decision.
+type DecisionPayload struct {
+	Step       int     `json:"step"`                // 1-indexed hop number (1 or 2 for max_hops=2)
+	Decision   string  `json:"decision"`            // "retrieve" | "answer" | "refuse" | "forced_stop"
+	ToolCallID string  `json:"toolCallId,omitempty"`
+	Query      string  `json:"query,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// ValidTypes enumerates the 17 kebab-case chunk types recognized by the
 // AI SDK v5 UIMessageChunk parser (see ai-sdk.dev streaming-data docs
 // + process-ui-message-stream.ts). EmitChunk rejects any Type not in
 // this set BEFORE writing to the wire — this is the T-1-11 mitigation
@@ -81,8 +109,15 @@ type UIMessageChunk struct {
 // (distinct from `source-url` which carries the citation URL). This
 // aligns the whitelist with TestUIMessageChunkShape's iteration set.
 //
-// Count: 16 types — text(3) + reasoning(3) + tool-input(3) +
-// tool-output(1) + source(2) + data-policy(1) + finish(2) + error(1).
+// Plan 03-01 added `data-decision` (D3-03 / SC-1 observability) — it
+// carries the agent's autonomous per-hop decisions (retrieve / answer /
+// refuse / forced_stop) emitted from Eino callbacks in Plan 03-03. The
+// TS mirror at web/src/types/wire-types.ts MUST stay in lockstep per
+// the D15 two-PR drift invariant.
+//
+// Count: 17 types — text(3) + reasoning(3) + tool-input(3) +
+// tool-output(1) + source(2) + data-policy(1) + data-decision(1) +
+// finish(2) + error(1).
 var ValidTypes = map[string]bool{
 	"text-start":            true,
 	"text-delta":            true,
@@ -97,6 +132,7 @@ var ValidTypes = map[string]bool{
 	"source-url":            true,
 	"source-document":       true,
 	"data-policy":           true,
+	"data-decision":         true,
 	"finish-step":           true,
 	"finish-message":        true,
 	"error":                 true,
