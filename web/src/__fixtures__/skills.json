@@ -3,12 +3,44 @@
     "id": "compliance-review",
     "name": "企业合规/制度审查",
     "description": "审查合同/制度/条款是否符合企业合规要求。",
-    "reads": ["权威"]
+    "agent": "ChatModelAgent",
+    "reads": ["权威"],
+    "writes": [],
+    "temperature": 0.0,
+    "steps": [
+      "1. 检索权威 tier 制度条款",
+      "2. 对照问题生成 verdict",
+      "3. 自校验每条引用 (Self-RAG)",
+      "4. 输出结构化 verdict 或结构化 refusal"
+    ],
+    "guardrails": {
+      "prohibitions": [
+        "Never cite clauses not retrieved",
+        "Never paraphrase critical clauses (quote verbatim)",
+        "Never modify authority tier content"
+      ],
+      "required_refusal_phrases": ["out-of-scope", "no_authorized_source"]
+    }
   },
   {
     "id": "general-qa",
     "name": "通用问答",
     "description": "通用问答 Skill，覆盖全部 4 个知识层。",
-    "reads": ["权威", "历史", "个人", "草稿"]
+    "agent": "ChatModelAgent",
+    "reads": ["权威", "历史", "个人", "草稿"],
+    "writes": [],
+    "temperature": 0.3,
+    "steps": [
+      "1. 检索所有 tier 的相关文档",
+      "2. 综合多 tier 答案",
+      "3. 输出"
+    ],
+    "guardrails": {
+      "prohibitions": [
+        "Never invent sources",
+        "Never bypass tier filter"
+      ],
+      "required_refusal_phrases": ["no_authorized_source"]
+    }
   }
 ]

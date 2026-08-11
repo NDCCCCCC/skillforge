@@ -47,7 +47,7 @@ describe('CenterPanel', () => {
     expect(screen.getByTestId('verdict-card')).toHaveAttribute('data-verdict-status', '合规');
   });
 
-  it('renders ChunkSourceView when centerView.kind === "chunk-source"', () => {
+  it('renders ChunkSourceView with real chunk verbatim when centerView.kind === "chunk-source"', () => {
     useAppStore.setState({
       centerView: {
         kind: 'chunk-source',
@@ -59,17 +59,27 @@ describe('CenterPanel', () => {
     });
     render(<CenterPanel currentVerdict={null} />);
     expect(screen.getByTestId('chunk-verbatim')).toBeInTheDocument();
-    expect(screen.getByTestId('chunk-verbatim')).toHaveTextContent('c-001');
+    // Wave 3: ChunkSourceView pulls the verbatim text from the
+    // chunks.json fixture via the chunk-lookup helper.
+    expect(screen.getByTestId('chunk-verbatim')).toHaveTextContent('员工出差住宿费超过标准额度');
     expect(screen.getByTestId('tier-badge')).toHaveAttribute('data-tier', '权威');
     expect(screen.getByText('版本: v3.2')).toBeInTheDocument();
     expect(screen.getByText('生效日期: 2026-01-15')).toBeInTheDocument();
   });
 
-  it('renders SkillMdPreview when centerView.kind === "skill-md"', () => {
+  it('renders SkillMdPreview with 7-field SKILL.md content when centerView.kind === "skill-md"', () => {
     useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'compliance-review' } });
     render(<CenterPanel currentVerdict={null} />);
     expect(screen.getByTestId('skill-md-preview')).toBeInTheDocument();
-    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('compliance-review');
+    // Wave 3: SkillMdPreview renders all 7 fields from skills.json.
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('企业合规/制度审查');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('agent:');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('reads:');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('writes:');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('temperature:');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('steps:');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('prohibitions:');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('required_refusal_phrases:');
   });
 
   it('renders three tab buttons with the correct Chinese labels', () => {

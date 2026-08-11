@@ -10,11 +10,11 @@
 // effectiveDate })` is invoked via `useAppStore.getState()` directly
 // — no prop drilling required since Zustand is a singleton.
 //
-// Wave 2 ships the chips with `version` and `effectiveDate` set to
-// `null` (placeholder); Wave 3 wires the metadata lookup helper so
-// the chips carry the real version + effective date from the chunk
-// fixture.
+// Wave 3 calls `extractChunkMetadata(chunkId)` from `lib/chunk-lookup`
+// so the chip carries the real version + effective date (rather than
+// the `null` placeholders Wave 2 shipped).
 import { useCallback } from 'react';
+import { extractChunkMetadata } from '../../lib/chunk-lookup';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import type { Citation } from '../../types/verdict';
@@ -26,12 +26,13 @@ export interface CitationClusterProps {
 
 export default function CitationCluster({ citations }: CitationClusterProps) {
   const handleClick = useCallback((chunkId: string, tier: Citation['tier']) => {
+    const meta = extractChunkMetadata(chunkId);
     useAppStore.getState().setCenterView({
       kind: 'chunk-source',
       chunkId,
       tier,
-      version: null,
-      effectiveDate: null,
+      version: meta.version,
+      effectiveDate: meta.effectiveDate,
     });
   }, []);
 
