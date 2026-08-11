@@ -1,0 +1,9 @@
+[OK] Parsed SKILL.md: name="spike-001-test" temperature=0
+[OK] ChatModel initialized, pointing at mock :18080
+
+========== [MOCK OPENAI] REQUEST BODY ==========
+{"model":"test-model","messages":[{"role":"user","content":"test query"}],"temperature":0}
+========== [END BODY] ==========
+[OK] Generate() invoked with model.WithTemperature(extracted from SKILL.md)
+
+[Done] Inspect [MOCK OPENAI] REQUEST BODY above. If body contains `"temperature":0`, H1 is VALIDATED.
