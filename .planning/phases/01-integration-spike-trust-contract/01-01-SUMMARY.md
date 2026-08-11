@@ -266,6 +266,37 @@ curl -sSf --max-time 5 -X POST $BGE_M3_URL -H "Authorization: Bearer $BGE_M3_AUT
 - No automated Milvus integration test in Plan 01 (out of scope; covered by Plan 02)
 
 ---
+
+## Self-Check: PASSED
+
+**Files verified (all FOUND):**
+- `.planning/phases/01-integration-spike-trust-contract/01-01-SUMMARY.md`
+- `go.mod` (pinned 6 deps)
+- `cmd/spiked/main.go` (subcommand router)
+- `cmd/spiked/scaffold_stubs.go` (runMilvus/runSSE/runE2E stubs)
+- `cmd/spiked/wire.go` (real wire impl: parseSKILL + startMockServer + runWire)
+- `cmd/spiked/wire_test.go` (TestSpikeWireMock + TestMockServerReceivesWireExtras)
+- `testdata/skills/{authority,historical,personal,draft}/SKILL.md` (4 fixtures)
+- `.env.example` (internal API placeholders)
+- `.gitignore` (anchored patterns, .env excluded)
+- `.planning/phases/01-integration-spike-trust-contract/docker-compose.yml.template` (Phase 7 artifact)
+
+**Commits verified (all FOUND):**
+- `0920584` — Wave 0 scaffold
+- `d4f084d` — CLI router + scaffold stubs + Windows-safe .gitignore
+- `176e417` — Internal API strategy
+- `ae7dcae` — spike wire impl + test
+- `9b330b1` — SUMMARY.md
+- `fc7465e` — Commit hash typo fix (d4f0844 → d4f084d)
+
+**Test verification:**
+- `go test ./cmd/spiked -v -count=1 -timeout 30s` → 2/2 PASS in 0.17s
+- `./cmd/spiked/spiked.exe wire` → exit 0 with `[OK] spike wire: temperature=0 passthrough verified`
+- `./cmd/spiked/spiked.exe bogus` → exit 2 (unknown subcommand)
+- `./cmd/spiked/spiked.exe` (no args) → exit 2 (usage)
+- `cd cmd/spiked && ./spiked.exe wire` → exit 0 (per acceptance criteria)
+
+---
 *Phase: 01-integration-spike-trust-contract*
 *Plan: 01*
 *Completed: 2026-08-11*
