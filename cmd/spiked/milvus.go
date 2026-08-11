@@ -100,7 +100,7 @@ func runMilvus(ctx context.Context, args []string) error {
 		return fmt.Errorf("seed: %w", err)
 	}
 	for _, d := range docs {
-		fmt.Printf("[SEED] %s tier=%s\n", d.DocID, d.Tier)
+		fmt.Printf("[SEED] %d tier=%s source=%s\n", d.ID, d.Tier, d.Source)
 	}
 
 	// 5. Run 4 single-tier queries + 1 default-deny (empty) query.
@@ -194,7 +194,6 @@ func loadAndEmbedFixtures(ctx context.Context, root, bgeURL string) ([]retriever
 			emb = retriever.EmbedQueryDeterministic(body)
 		}
 		docs = append(docs, retriever.Document{
-			DocID:     fm.ID,
 			ID:        int64(i + 1), // 1-based numeric PK
 			Tier:      fm.Tier,
 			Content:   body,

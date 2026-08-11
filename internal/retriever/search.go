@@ -24,19 +24,10 @@ import (
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
-// Document represents one seeded markdown fixture row. DocID is the
-// human-readable fixture identifier (e.g. "auth_001"); it is NOT persisted
-// to Milvus — only the numeric ID is — but is kept on the struct for
-// trace logging during seed/search. Source holds the fixture relative path
-// and IS persisted so search results can be traced back to a fixture file.
-type Document struct {
-	DocID     string   // fixture frontmatter id (logging only, not persisted)
-	ID        int64    // numeric Milvus primary key (1..N)
-	Tier      string   // one of 权威/历史/个人/草稿
-	Content   string   // markdown body (post-frontmatter)
-	Source    string   // fixture relative path, e.g. "testdata/docs/authority/auth_001.md"
-	Embedding []float32
-}
+// Document is the generic insertable Document type. Defined in retriever.go
+// (the interface package); the legacy in-package type alias removed in
+// Plan 02-04 (the refactor introduces a single canonical Document type
+// for the Retriever interface).
 
 // TierSearchResult is a simplified search hit. The raw Milvus SearchResult
 // is deliberately not leaked past this package so callers (cmd/spiked,

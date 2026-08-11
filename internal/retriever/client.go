@@ -230,7 +230,7 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg MilvusConfig, docs
 	vecs := make([][]float32, len(docs))
 	for i, d := range docs {
 		if len(d.Embedding) != cfg.EmbedDim {
-			return fmt.Errorf("doc %s (id=%d) embedding dim=%d, want=%d", d.DocID, d.ID, len(d.Embedding), cfg.EmbedDim)
+			return fmt.Errorf("doc (id=%d) embedding dim=%d, want=%d", d.ID, len(d.Embedding), cfg.EmbedDim)
 		}
 		ids[i] = d.ID
 		tiers[i] = d.Tier
