@@ -1,0 +1,37 @@
+[OK] SKILL.md: temperature=0
+
+[OK] ChatModel initialized (glm-5.2 via Coding Plan endpoint)
+[OK] reasoning DISABLED via thinking:{type:disabled} extra field
+Running 5 queries × 10 iterations with temperature=0.00 (no reasoning)...
+
+[Q1] 出差住宿费超标 200 元，能批吗？请引用具体制度条款。
+  [iter 1] hash=a64d9f34ac9e6407 len=1749
+  [iter 2] hash=f94c178897081cbc len=1943
+  [iter 3] hash=535d328cd55bf1a6 len=2173
+  [iter 4] hash=6656a0fea5ec5653 len=2207
+  [iter 5] hash=090fbfceb54baabd len=2326
+  [iter 6] hash=3abe2cf32f4acafd len=1802
+  [iter 7] hash=a2fbd495ee06412e len=2395
+  [iter 8] hash=43a3d23cbfbe3fb0 len=2201
+  [iter 9] hash=0cea5335a82a12bb len=2249
+  [iter 10] hash=ce842618b417c8ff len=2068
+[Q2] 员工离职后竞业限制期是多久？请给出明确时长。
+  [iter 1] hash=e4c447b55aab6c19 len=1765
+  [iter 2] hash=2f16fad2e0beff71 len=2069
+  [iter 3] hash=6ec2c3c13d195311 len=1370
+  [iter 4] hash=8426f8608f419edf len=1928
+  [iter 5] hash=9c0714d62bd01671 len=1832
+  [iter 6] hash=c5f979c4746435d8 len=2062
+  [iter 7] hash=24d7d136c48aa714 len=1939
+  [iter 8] hash=86ce72f9c7b4259d len=1984
+  [iter 9] hash=20d31c2f9304f4e7 len=1800
+  [iter 10] hash=0bf375699f2e1748 len=1686
+[Q3] 采购合同金额 50 万元人民币需要哪个管理层级审批？
+  [iter 1] hash=b2a4626479402c23 len=2405
+  [iter 2] hash=3732541a3b16f0a1 len=2376
+  [iter 3] hash=4311b48085232370 len=1796
+  [iter 4] hash=446313eaae1aaa74 len=2087
+  [iter 5] hash=c1597c7a99bacd68 len=1958
+  [iter 6] hash=0a8571b69224edb3 len=1572
+  [iter 7] hash=98546dafd2171081 len=1620
+  [iter 8] hash=1c4df1314a75032b len=2341
