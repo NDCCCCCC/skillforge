@@ -5,8 +5,9 @@
 //
 // Pins the 5 acceptance assertions for the draggable three-panel
 // layout:
-//   1. data-testid="app-main" with 3 children: panel-left, panel-center,
-//      panel-right
+//   1. data-testid="app-main" mounts panel-left, resize-handle-left,
+//      panel-center, resize-handle-right, panel-right (3 panels + 2
+//      handles = 5 grid tracks)
 //   2. Clicking collapse-left sets left column to 0px
 //   3. Clicking collapse-right sets right column to 0px
 //   4. Default gridTemplateColumns starts with `260px` (leftWidth default)
@@ -59,9 +60,10 @@ describe('ThreePanel', () => {
     fireEvent.click(screen.getByTestId('collapse-right'));
     expect(useAppStore.getState().sidebarRight).toBe(false);
     const main = screen.getByTestId('app-main');
-    // When right is collapsed, the right column is `0px` (3rd track).
+    // 5-track grid: [left, handle, center, handle, right]. When right
+    // is collapsed, the right column (cols[4]) is `0px`.
     const cols = main.style.gridTemplateColumns.split(' ');
-    expect(cols[2]).toBe('0px');
+    expect(cols[4]).toBe('0px');
   });
 
   it('default gridTemplateColumns starts with 260px', () => {

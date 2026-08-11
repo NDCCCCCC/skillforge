@@ -9,6 +9,7 @@
 //
 // Empty-state hero per Copywriting Contract: `等待合规审查结果` +
 // `右侧提出合规问题，agent 推理与引用会显示在这里。`
+import { FileSearch } from 'lucide-react';
 import { Tabs } from '../ui/tabs';
 import { useAppStore } from '../../store/app-store';
 import type { Tier, Verdict } from '../../types/verdict';
@@ -40,8 +41,11 @@ export default function CenterPanel({ currentVerdict }: CenterPanelProps) {
   function renderBody() {
     if (centerView.kind === 'empty' && !currentVerdict) {
       return (
-        <div className="center-panel-tab-content">
-          <div className="mt-12 text-2xl font-semibold text-text-muted">
+        <div className="center-panel-tab-content flex flex-col items-center justify-center text-center min-h-[60vh]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-dim mb-4">
+            <FileSearch className="h-6 w-6 text-primary" />
+          </div>
+          <div className="text-2xl font-semibold text-text">
             等待合规审查结果
           </div>
           <p className="mt-2 text-base text-text-muted">

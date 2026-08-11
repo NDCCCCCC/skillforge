@@ -12,6 +12,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAppStore } from '../../store/app-store';
 import { cn } from '../../lib/cn';
+import {
+  Hexagon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from 'lucide-react';
 
 const LS_KEY_LEFT = 'sf-left-width';
 const LS_KEY_RIGHT = 'sf-right-width';
@@ -86,11 +93,13 @@ export default function ThreePanel({ left, center, right }: ThreePanelProps) {
         const clamped = clampWidth(newWidth);
         // Update inline grid template directly for the smoothest
         // drag response (Zustand re-render is delayed by React's
-        // batch scheduling).
+        // batch scheduling). The grid is 5 tracks
+        // [left, handle, center, handle, right]; the right panel lives
+        // at cols[4] (not cols[2], which is the center track).
         const cols = getComputedStyle(mainEl!).gridTemplateColumns.split(' ');
         const leftCol = side === 'left' ? `${clamped}px` : cols[0];
-        const rightCol = side === 'right' ? `${clamped}px` : cols[2];
-        mainEl!.style.gridTemplateColumns = `${leftCol} 1fr ${rightCol}`;
+        const rightCol = side === 'right' ? `${clamped}px` : cols[4];
+        mainEl!.style.gridTemplateColumns = `${leftCol} 4px 1fr 4px ${rightCol}`;
         setDragStyle({ left: clamped, right: clamped });
       }
 
@@ -121,10 +130,12 @@ export default function ThreePanel({ left, center, right }: ThreePanelProps) {
     };
   }, [dragStyle, setPanelWidth]);
 
-  // Compute the grid template: hide collapsed side via 0px column.
+  // Compute the grid template. 5 tracks: [left, handle, center, handle,
+  // right]. The 4px handle tracks match `.resize-handle` width so the
+  // handles occupy their own column; collapsed sides collapse to 0px.
   const leftCol = !sidebarLeft ? '0px' : `${leftWidth}px`;
   const rightCol = !sidebarRight ? '0px' : `${rightWidth}px`;
-  const gridTemplateColumns = `${leftCol} 1fr ${rightCol}`;
+  const gridTemplateColumns = `${leftCol} 4px 1fr 4px ${rightCol}`;
 
   return (
     <div className="app-shell" data-testid="app-shell">
@@ -134,25 +145,38 @@ export default function ThreePanel({ left, center, right }: ThreePanelProps) {
         style={{ height: 'var(--topbar-height)' }}
         data-testid="app-topbar"
       >
-        <div className="text-2xl font-semibold text-text">SkillForge</div>
         <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-dim">
+            <Hexagon className="h-4 w-4 text-primary" />
+          </div>
+          <div className="text-lg font-semibold text-text">SkillForge</div>
+        </div>
+        <div className="flex items-center gap-1">
           <button
             type="button"
             data-testid="collapse-left"
             onClick={() => toggleSidebar('left')}
-            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text hover:bg-surface-2"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
             aria-label={sidebarLeft ? 'Collapse left panel' : 'Expand left panel'}
           >
-            {sidebarLeft ? '◀' : '▶'}
+            {sidebarLeft ? (
+              <PanelLeftClose className="h-4 w-4" />
+            ) : (
+              <PanelLeftOpen className="h-4 w-4" />
+            )}
           </button>
           <button
             type="button"
             data-testid="collapse-right"
             onClick={() => toggleSidebar('right')}
-            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text hover:bg-surface-2"
+            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
             aria-label={sidebarRight ? 'Collapse right panel' : 'Expand right panel'}
           >
-            {sidebarRight ? '▶' : '◀'}
+            {sidebarRight ? (
+              <PanelRightClose className="h-4 w-4" />
+            ) : (
+              <PanelRightOpen className="h-4 w-4" />
+            )}
           </button>
         </div>
       </div>

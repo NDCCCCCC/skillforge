@@ -6,8 +6,15 @@
 // textarea + send button + Enter-to-send + Shift+Enter newline + drag-
 // drop file affordance + 10MB file size validation. The current Skill
 // is shown as a hint above the textarea (display only).
+//
+// denova-aligned composer (visual only): the textarea is a multi-line
+// (≥3 rows) box whose height the user can drag-resize (resize-y), and
+// the send button sits INSIDE the box at the bottom-right as a circular
+// paper-plane affordance — matching the reference app's in-box send
+// pattern. The textarea carries right padding so text never runs under
+// the button.
 import { useState, type KeyboardEvent } from 'react';
-import { Button } from '../ui/button';
+import { Send } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import skillsData from '../../__fixtures__/skills.json';
@@ -87,12 +94,12 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         isDragging && 'chat-input-dragging',
       )}
     >
-      <div data-testid="chat-input-current-skill" className="text-xs text-text-muted mb-1 block">
+      <div data-testid="chat-input-current-skill" className="text-xs text-text-muted mb-2 block">
         {currentSkill ? `当前 Skill：${currentSkill.name}` : '未选择 Skill'}
       </div>
 
       {files.length > 0 && (
-        <div data-testid="chat-input-files" className="mt-2 flex flex-wrap gap-2">
+        <div data-testid="chat-input-files" className="mb-2 flex flex-wrap gap-2">
           {files.map((file) => (
             <span
               key={file.id}
@@ -115,23 +122,26 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-2">
+      <div className="relative">
         <textarea
           data-testid="chat-input-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入合规问题，或 @ 触发 file/skill，或拖放文件..."
-          className="flex-1 min-h-[40px] max-h-32 resize-none rounded-md border border-border bg-bg px-3 py-2 text-base text-text"
-          rows={1}
+          className="w-full min-h-[96px] max-h-64 resize-y rounded-md border border-border bg-bg px-3 py-2 pr-12 text-base text-text leading-relaxed focus:outline-none focus:border-primary"
+          rows={3}
         />
-        <Button
+        <button
+          type="button"
           data-testid="chat-input-send"
           onClick={handleSend}
           disabled={!text.trim()}
+          aria-label="发送"
+          className="absolute right-2 bottom-2 inline-flex items-center justify-center h-8 w-8 rounded-full bg-primary text-white disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
         >
-          发送
-        </Button>
+          <Send className="h-4 w-4" />
+        </button>
       </div>
     </div>
   );

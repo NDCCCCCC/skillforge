@@ -160,7 +160,11 @@ body,
 
 .app-main {
   display: grid;
-  grid-template-columns: 260px 1fr 420px;
+  /* 5 tracks: [left | handle | center | handle | right]. The two 4px
+     handle tracks mirror `.resize-handle` width so the handles own a
+     grid column instead of stealing a panel column via auto-placement
+     (which pushed center→col3 and right→row2). */
+  grid-template-columns: 260px 4px 1fr 4px 420px;
   transition: grid-template-columns var(--transition-base) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
