@@ -1,88 +1,60 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Phase 1 spike stub — proves the Hertz SSE → Vercel AI SDK v5 wire
-// contract renders `source-url` chunks as clickable <a> elements (SC-4).
-// Phase 4 will replace this with the full three-panel streaming UI per
-// sketch-findings-ai-agent (layout-three-panel + chat-input-attach-skill).
+// Plan 04-01 Task 3 — App composition root (P4 Wave 1).
 //
-// The stub uses the real AI SDK v7 (`ai`) + `@ai-sdk/react@v4` hooks so
-// the wire contract validated here is the same one Phase 4 will build on.
-// `DefaultChatTransport` reads `data: <json>` SSE frames and reassembles
-// them into typed UIMessage parts (text / reasoning / source-url / etc.),
-// matching what `internal/spike.EmitChunk` emits on the Go side.
+// Replaces the spike stub's `spikeTransport` with `createTransport(env)`.
+// In dev/test the transport is MockChatTransport replaying a fixture set
+// (D-03). In prod the same factory returns DefaultChatTransport against
+// `/api/chat` (D-04 swap point — Phase 2 backend).
+//
+// Wave 1 ships a minimal App that wires useChat + MessageBubble so we
+// can verify the parts renderer end-to-end. Wave 2 adds the three-panel
+// layout; Wave 3 adds citation-click → center panel chunk view.
 
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
-import type { ReactNode } from 'react';
+import type { UIMessage } from 'ai';
+import { MessageBubble } from './components/chat/MessageBubble';
+import { useAppStore } from './store/app-store';
+import { createTransport } from './transport';
 
 interface AppProps {
-  /**
-   * Optional seeded messages for tests. When provided, the stub renders
-   * these directly and skips the live useChat hook (no transport call,
-   * no network). In production (no prop) the stub wires useChat against
-   * the Hertz SSE endpoint via DefaultChatTransport.
-   */
+  /** Optional seeded messages for tests (skips the live useChat hook). */
   initialMessages?: UIMessage[];
-}
-
-// One DefaultChatTransport instance is shared across LiveChat mounts.
-// In dev, Vite proxies /api → http://localhost:8888 (Hertz); in prod,
-// SkillForge serves the frontend and API from a single origin.
-const spikeTransport = new DefaultChatTransport({
-  api: '/api/spike/chat',
-});
-
-function renderPart(p: UIMessage['parts'][number], i: number): ReactNode {
-  switch (p.type) {
-    case 'text':
-      return <p key={i}>{p.text}</p>;
-    case 'reasoning':
-      return (
-        <details key={i}>
-          <summary>reasoning</summary>
-          {p.text}
-        </details>
-      );
-    case 'source-url':
-      // PHASE 4 SAFETY (T-1-08 threat): the spike sets href directly from
-      // the chunk URL with NO sanitization. Phase 4 MUST add an allowlist
-      // + rel="noopener noreferrer" before production. The spike test
-      // never executes user URLs — it only checks the <a> renders.
-      return (
-        <a key={i} href={p.url}>
-          [{p.title ?? p.url}]
-        </a>
-      );
-    case 'source-document':
-      return <span key={i}>[doc: {p.title ?? p.sourceId}]</span>;
-    default:
-      // AI SDK v5+ spec: unknown part types are silently dropped so a
-      // newer-server / older-client combo doesn't crash the UI. The
-      // `drops unknown part types silently` test pins this behavior.
-      return null;
-  }
-}
-
-function renderMessage(m: UIMessage): ReactNode {
-  return <div key={m.id}>{m.parts.map((p, i) => renderPart(p, i))}</div>;
-}
-
-function LiveChat() {
-  // useChat is a hook — must be called unconditionally inside LiveChat.
-  // LiveChat is only mounted when no initialMessages are provided, so
-  // tests that seed messages never trigger a transport call.
-  const { messages } = useChat({ transport: spikeTransport });
-  return <div className="spike-stub">{messages.map(renderMessage)}</div>;
-}
-
-function SeededView({ messages }: { messages: UIMessage[] }) {
-  return <div className="spike-stub">{messages.map(renderMessage)}</div>;
 }
 
 export default function App({ initialMessages }: AppProps) {
   if (initialMessages) {
-    return <SeededView messages={initialMessages} />;
+    return (
+      <div data-testid="seeded-view">
+        {initialMessages.map((m) => (
+          <MessageBubble key={m.id} message={m} role={m.role === 'user' ? 'user' : 'assistant'} />
+        ))}
+      </div>
+    );
   }
-  return <LiveChat />;
+
+  return <LiveApp />;
+}
+
+function LiveApp() {
+  const centerView = useAppStore((s) => s.centerView);
+  const env = import.meta.env.PROD ? 'prod' : 'dev';
+  const { messages } = useChat({ transport: createTransport(env) });
+
+  return (
+    <div className="app-shell" data-testid="live-app">
+      <div className="app-main">
+        <div data-testid="panel-left" className="bg-surface border-r border-border" />
+        <div data-testid="panel-center" className="bg-bg border-r border-border p-3 text-xs font-mono">
+          {JSON.stringify(centerView, null, 2)}
+        </div>
+        <div data-testid="panel-right" className="bg-bg p-3">
+          {messages.map((m) => (
+            <MessageBubble key={m.id} message={m} role={m.role === 'user' ? 'user' : 'assistant'} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }

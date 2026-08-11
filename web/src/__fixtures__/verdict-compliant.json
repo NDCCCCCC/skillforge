@@ -1,0 +1,25 @@
+[
+  { "type": "start", "messageId": "m-compliant-001" },
+  { "type": "step-start" },
+
+  { "type": "reasoning-start", "id": "r-1" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "用户询问差旅报销额度，需要检索权威 tier 的差旅制度文档。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "检索到《差旅管理办法》第 12 条：经济舱机票每日 800 元上限。" },
+  { "type": "reasoning-end", "id": "r-1" },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "依据《差旅管理办法》第 12 条，您的差旅报销额度如下：" },
+  { "type": "text-delta", "id": "t-1", "delta": "经济舱机票每日 800 元，住宿每日 600 元。该流程符合现行制度。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "source-url", "sourceId": "c-001", "url": "http://skillforge.local/chunks/authority/travel-policy.md#L12", "title": "差旅管理办法 §12" },
+
+  { "type": "data-policy", "id": "p-001", "data": {
+    "status": "合规",
+    "confidence": 0.93,
+    "citations": [{ "chunk_id": "c-001", "span": "经济舱机票每日 800 元", "tier": "权威" }],
+    "review_required": false
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]

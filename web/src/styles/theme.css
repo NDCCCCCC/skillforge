@@ -1,0 +1,165 @@
+/* Copyright 2026 SkillForge Authors
+   SPDX-License-Identifier: Apache-2.0 */
+
+/* Tailwind v4 theme directives — design tokens for the SkillForge
+   streaming trust UI. Mirrors `.planning/phases/04-streaming-trust-ui/
+   04-UI-SPEC.md` §Color / §Spacing / §Typography / §Layout Contract.
+
+   Tailwind v4 uses CSS-first config — all tokens live in @theme and
+   auto-generate utility classes (bg-primary, text-base, etc.). No
+   tailwind.config.js needed.
+
+   Pinned at this exact set per 04-UI-SPEC §Forbidden list:
+   - Typography: 4 sizes (12/14/18/24) x 2 weights (400/600)
+   - Spacing: 7-step scale (4/8/12/16/20/24/32/48), all multiples of 4
+   - Status tokens: 4 verdict + 1 out-of-scope; visually distinct
+*/
+
+@import "tailwindcss";
+
+@theme {
+  /* ===== Colors (60/30/10 split — denova dark) ===== */
+  --color-bg: #0f1419;               /* Dominant 60% — app background */
+  --color-surface: #1a1f26;          /* Secondary 30% — panels + cards */
+  --color-surface-2: #232932;       /* Hover state, tool-call bg */
+  --color-surface-3: #2a313b;       /* Pressed state, reasoning bg */
+  --color-border: #2d3540;           /* Default borders */
+  --color-border-muted: #1f252e;    /* Resize handle, pre inner border */
+
+  /* Accent (10%) — reserved for CTA / focus / streaming dot / etc. */
+  --color-primary: #4a9eff;
+  --color-primary-hover: #6db0ff;
+  --color-primary-dim: #1e3a5f;
+  --color-primary-fg: #ffffff;
+
+  /* Destructive — reserved, unused in P4 */
+  --color-danger: #ef4444;
+
+  /* Text scale */
+  --color-text: #e8eaed;
+  --color-text-muted: #8b95a3;
+  --color-text-dim: #5a6473;
+
+  /* Status semantic group (separate from accent) */
+  --color-status-compliant: #22c55e;        /* green — 合规 */
+  --color-status-needs-info: #f59e0b;       /* yellow — 需补充 / review badge */
+  --color-status-non-compliant: #ef4444;    /* red — 不合规 */
+  --color-status-unanswered: #8b95a3;       /* gray — unanswered / I-don't-know */
+  --color-status-out-of-scope: #5b7a99;     /* blue-gray — out-of-scope (NEW in P4) */
+
+  /* Chat bubble backgrounds */
+  --color-user-bubble: #1e3a5f;
+  --color-assistant-bubble: #1a1f26;
+
+  /* Reasoning preview + sub-progress + citation bg */
+  --color-reasoning: #2a313b;
+  --color-citation-bg: #1e3a5f;
+
+  /* ===== Spacing scale (multiples of 4) ===== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;    /* EXCEPTION — verdict card padding-x */
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* ===== Typography (4 sizes x 2 weights) ===== */
+  --text-xs: 12px;       /* 0.75rem — tier badges, statusbar, meta */
+  --text-base: 14px;     /* 0.875rem — body */
+  --text-lg: 18px;       /* 1.125rem — headings */
+  --text-2xl: 24px;      /* 1.5rem — display (down from sketch 1.75rem) */
+
+  /* Font families */
+  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* ===== Layout dimensions ===== */
+  --topbar-height: 44px;
+  --statusbar-height: 26px;
+
+  /* ===== Transitions ===== */
+  --transition-fast: 120ms;
+  --transition-base: 200ms;
+
+  /* ===== Radii ===== */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+}
+
+/* Body-level baseline — dark background + default text color + font */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Citation chip baseline (used by SourceUrlPart + SourceDocumentPart) */
+.citation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--color-citation-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.citation-chip:hover {
+  background-color: var(--color-primary-dim);
+}
+
+.citation-chip .tier {
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+}
+
+/* Blocked citation (T-1-08 hard reject) */
+.citation-blocked {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--color-surface-3);
+  border: 1px dashed var(--color-status-non-compliant);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--color-status-non-compliant);
+  font-family: var(--font-mono);
+}
+
+/* Step divider between tool-call steps */
+.step-divider {
+  border: 0;
+  border-top: 1px dashed var(--color-border-muted);
+  margin: var(--space-2) 0;
+}
+
+/* Three-panel grid */
+.app-shell {
+  display: grid;
+  grid-template-rows: var(--topbar-height) 1fr var(--statusbar-height);
+  height: 100vh;
+}
+
+.app-main {
+  display: grid;
+  grid-template-columns: 260px 1fr 420px;
+  transition: grid-template-columns var(--transition-base) cubic-bezier(0.4, 0, 0.2, 1);
+}

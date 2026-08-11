@@ -1,0 +1,27 @@
+[
+  { "type": "start", "messageId": "m-citationtiered-001" },
+  { "type": "step-start" },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "本审查引用了来自 4 个 tier 的文档：" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "source-url", "sourceId": "c-001", "url": "http://skillforge.local/chunks/authority/contract-approval.md", "title": "合同审批管理办法" },
+  { "type": "source-url", "sourceId": "c-002", "url": "http://skillforge.local/chunks/historical/old-policy-2023.md", "title": "2023 年历史制度" },
+  { "type": "source-url", "sourceId": "c-003", "url": "http://skillforge.local/chunks/personal/dept-note.md", "title": "部门备注" },
+  { "type": "source-url", "sourceId": "c-004", "url": "http://skillforge.local/chunks/draft/draft-policy.md", "title": "草稿政策" },
+
+  { "type": "data-policy", "id": "p-001", "data": {
+    "status": "需补充",
+    "confidence": 0.72,
+    "citations": [
+      { "chunk_id": "c-001", "span": "权威 tier 条款", "tier": "权威" },
+      { "chunk_id": "c-002", "span": "历史 tier 条款", "tier": "历史" },
+      { "chunk_id": "c-003", "span": "个人 tier 备注", "tier": "个人" },
+      { "chunk_id": "c-004", "span": "草稿 tier 条款", "tier": "草稿" }
+    ],
+    "review_required": true
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]

@@ -1,0 +1,20 @@
+[
+  { "type": "start", "messageId": "m-citationmismatch-001" },
+  { "type": "step-start" },
+
+  { "type": "reasoning-start", "id": "r-1" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "检索返回 3 条候选，但重排序分数均低于阈值。" },
+  { "type": "reasoning-end", "id": "r-1" },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "检索分数不足，无法支撑一个 grounded 回答。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "data-policy", "id": "p-007", "data": {
+    "reason": "low_retrieval_score",
+    "can_user_rephrase": true,
+    "suggested_alternative_query": "请使用更具体的条款编号，例如《合同审批管理办法》第 5 条"
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]

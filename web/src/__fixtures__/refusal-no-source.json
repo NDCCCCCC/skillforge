@@ -1,0 +1,20 @@
+[
+  { "type": "start", "messageId": "m-nosource-001" },
+  { "type": "step-start" },
+
+  { "type": "reasoning-start", "id": "r-1" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "查询匹配度低于阈值，未找到 权威 tier 文档支撑。" },
+  { "type": "reasoning-end", "id": "r-1" },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "当前知识库内未找到支撑依据。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "data-policy", "id": "p-006", "data": {
+    "reason": "no_authorized_source",
+    "can_user_rephrase": true,
+    "suggested_alternative_query": "请尝试添加权威制度文件编号，例如《差旅管理办法》第 12 条"
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]

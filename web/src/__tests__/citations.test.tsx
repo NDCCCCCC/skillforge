@@ -1,6 +1,9 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Copyright 2026 SkillForge Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Plan 01-03 Task 2 — SC-4 citation rendering tests.
 //
 // These tests pin the three rendering behaviors the spike stub MUST
@@ -13,10 +16,10 @@
 //     behind a disclosure widget (matches sketch-findings-ai-agent
 //     layout decision: reasoning is collapsible, not always-visible).
 //
-// The stub renders seeded messages directly (App initialMessages prop)
-// — no real transport call, no jsdom network. Phase 4 will add a full
-// E2E test against a live Hertz endpoint; Phase 1 only validates the
-// rendering contract.
+// Phase 4 update (T-1-08): source-url chunks now pass through the
+// sanitization gate; non-allowlisted hosts (e.g. policy.example) render
+// as blocked-citation spans, NOT <a>. Tests updated to use an
+// allowlisted host (skillforge.local) per 04-UI-SPEC.md §FEUI-03.
 
 import { cleanup, render, screen } from '@testing-library/react';
 import type { UIMessage } from 'ai';
@@ -26,7 +29,7 @@ import App from '../App';
 afterEach(cleanup);
 
 describe('SpikeStub citations (SC-4)', () => {
-  it('renders source-url as clickable <a>', () => {
+  it('renders source-url as clickable <a> when URL is allowlisted (T-1-08)', () => {
     const messages: UIMessage[] = [
       {
         id: 'm1',
@@ -36,7 +39,7 @@ describe('SpikeStub citations (SC-4)', () => {
           {
             type: 'source-url',
             sourceId: 'src-1',
-            url: 'https://policy.example/auth-001',
+            url: 'http://skillforge.local/chunks/authority/auth-001',
             title: 'Authority Policy 1',
           },
         ],
@@ -45,11 +48,11 @@ describe('SpikeStub citations (SC-4)', () => {
 
     render(<App initialMessages={messages} />);
 
-    // getByRole('link', name) matches the <a> by its accessible name,
-    // which is the rendered text content "[Authority Policy 1]".
     const link = screen.getByRole('link', { name: /Authority Policy 1/i });
     expect(link.tagName).toBe('A');
-    expect(link).toHaveAttribute('href', 'https://policy.example/auth-001');
+    expect(link).toHaveAttribute('href', 'http://skillforge.local/chunks/authority/auth-001');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link).toHaveAttribute('target', '_blank');
   });
 
   it('drops unknown part types silently', () => {
@@ -86,5 +89,26 @@ describe('SpikeStub citations (SC-4)', () => {
 
     const details = screen.getByText('deep thought');
     expect(details.closest('details')).not.toBeNull();
+  });
+
+  it('blocks source-url with non-allowlisted host (T-1-08 hard gate)', () => {
+    const messages: UIMessage[] = [
+      {
+        id: 'm1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'source-url',
+            sourceId: 'src-1',
+            url: 'https://malicious.example/phish',
+            title: 'malicious',
+          },
+        ],
+      },
+    ];
+
+    render(<App initialMessages={messages} />);
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getByTestId('citation-blocked')).toBeInTheDocument();
   });
 });
