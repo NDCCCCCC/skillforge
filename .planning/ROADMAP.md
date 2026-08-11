@@ -49,16 +49,22 @@
 **Goal:** Prove the "Skill-as-platform" thesis by delivering one Skill (compliance), one authoritative tier, one endpoint, that yields either a verifiable cited answer or a structured refusal — never an improvised answer.
 **Mode:** mvp
 **Depends on:** Phase 1
-**Requirements:** SYSK-01, SYSK-02, SYSK-07, CMPL-01, CMPL-02, CMPL-03, CMPL-04, CMPL-05, AGNT-03, ARAG-04, ARAG-05, GEVL-01, GEVL-02
+**Requirements:** SYSK-01, SYSK-02, SYSK-07, SYSK-08, CMPL-01, CMPL-02, CMPL-03, CMPL-04, CMPL-05, AGNT-03, ARAG-04, ARAG-05, GEVL-01, GEVL-02
 **Success Criteria** (what must be TRUE):
-  1. Dropping a `SKILL.md` file into `skills/compliance/` registers it; `POST /api/skills` validates it against the 6-field schema and lists it (SYSK-01, SYSK-02)
+  1. Dropping a `SKILL.md` file into `skills/compliance/` registers it; `POST /api/skills` validates it against the 7-field schema (incl. `temperature` per D2-10 — ROADMAP originally said "6-field", corrected to 7-field) and lists it (SYSK-01, SYSK-02, SYSK-08)
   2. Asking a question with no 权威-tier chunk retrieved returns a structured refusal `{reason: "no_authorized_source", can_user_rephrase: true, suggested_alternative_query: "..."}` — never an answer (ARAG-05, GEVL-02)
   3. Asking a question WITH retrieved 权威 chunks returns a structured verdict `{status: 合规 | 不合规 | 需补充, confidence, citations:[{chunk_id, span, tier:"权威"}], review_required}` with every claim tied to a chunk ID + span, and the chunk supports the claim verbatim (CMPL-02, ARAG-04)
   4. Asking outside the Skill's declared `reads` (e.g., personal tier) produces zero tier-matched chunks and triggers refusal — no tier bleed, ever (SYSK-07, CMPL-04)
   5. A `review_required: true` verdict (confidence < 0.9 or novel claim) carries a verifiable event payload; the UI badge surfaces in Phase 4 (CMPL-03, CMPL-05)
   6. Every response carries an SSE `source` event with `tier="权威"` and chunk IDs streamed to the wire (AGNT-03, ARAG-04)
-**Pitfalls addressed:** P-COMPL-1 (top risk: compliance hallucination with fake citations — every claim chunk-verified), P-SKILL-1..6 (Skill spec design), P-RAG-2 (tier bleed defense)
-**Plans**: TBD
+**Pitfalls addressed:** P-COMPL-1 (top risk: compliance hallucination with fake citations — every claim chunk-verified via D2-01 grounding), P-SKILL-1..6 (Skill spec design — 7-field validator), P-RAG-2 (tier bleed defense — PRE-similarity Milvus filter)
+**Plans**: 4 plans
+**Plan list**:
+- [ ] 02-01-PLAN.md — Wave 1: graduate spike → internal/{verdict,wire,retriever} + D2-06 Citation upgrade + D2-01 grounding moat + contract test (CMPL-02/03, ARAG-04)
+- [ ] 02-02-PLAN.md — Wave 1 (parallel): 7-field skill package + ResolveTiers + canonical skills/compliance/SKILL.md + knowledge/authority corpus (SYSK-01/02/08, CMPL-01/04)
+- [ ] 02-03-PLAN.md — Wave 2: knowledge indexer + verdict pipeline + POST /api/chat + cmd/server + SC-2/3/4/5/6 tests (AGNT-03, ARAG-05, GEVL-01/02, CMPL-05, SYSK-07)
+- [ ] 02-04-PLAN.md — Wave 3: GET/POST /api/skills endpoints (SC-1 HTTP layer) + live end-to-end verification of all 6 SCs against Milvus + GLM-5.2 (SYSK-01/02, CMPL-01 closure)
+**Wave structure**: W1={02-01, 02-02 parallel} → W2={02-03} → W3={02-04}
 **UI hint**: no
 
 ### Phase 3: Agentic Retrieval & Trust Evaluation
@@ -160,7 +166,7 @@
 | Phase | Requirements | Count |
 |-------|--------------|-------|
 | 1 - Integration Spike & Trust Contract | (spike — none) | 0 |
-| 2 - Compliance Vertical Slice | SYSK-01, SYSK-02, SYSK-07; CMPL-01..05; AGNT-03; ARAG-04, ARAG-05; GEVL-01, GEVL-02 | 13 |
+| 2 - Compliance Vertical Slice | SYSK-01, SYSK-02, SYSK-07, SYSK-08; CMPL-01..05; AGNT-03; ARAG-04, ARAG-05; GEVL-01, GEVL-02 | 14 |
 | 3 - Agentic Retrieval & Trust Evaluation | AGNT-01, AGNT-02, AGNT-04, AGNT-05; ARAG-01, ARAG-02, ARAG-03; KNOW-01..04; GEVL-03, GEVL-04, GEVL-05 | 14 |
 | 4 - Streaming Trust UI | FEUI-01..06; SYSK-03; KNOW-05 | 8 |
 | 5 - Skill Platform & Full Knowledge Boundaries | SYSK-04, SYSK-05, SYSK-06; AGNT-06; KNOW-06; CMPL-06, CMPL-07, CMPL-08 | 8 |
@@ -178,7 +184,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Integration Spike & Trust Contract | 0/4 | Not started | - |
-| 2. Compliance Vertical Slice | 0/? | Not started | - |
+| 2. Compliance Vertical Slice | 0/4 | Planning complete | - |
 | 3. Agentic Retrieval & Trust Evaluation | 0/? | Not started | - |
 | 4. Streaming Trust UI | 0/? | Not started | - |
 | 5. Skill Platform & Full Knowledge Boundaries | 0/? | Not started | - |
@@ -186,4 +192,4 @@
 | 7. Open-Source Release | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-10 after roadmap creation (Mode: mvp, 7 phases, 55/55 coverage)*
+*Last updated: 2026-08-11 after Phase 2 planning (4 plans across 3 waves; SYSK-08 added to Phase 2 coverage per REQUIREMENTS traceability + CONTEXT D2-10; SC-1 wording corrected from 6-field → 7-field)*
