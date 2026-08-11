@@ -1,9 +1,9 @@
 {
-  "name": "skillforge-spike-web",
+  "name": "skillforge-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Phase 1 spike stub — proves Hertz SSE UIMessageChunk envelopes render source-url chunks as clickable <a> (SC-4).",
+  "description": "SkillForge Streaming Trust UI (Phase 4) — Vite + React 19 + Tailwind v4 + AI SDK v7.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,10 +11,16 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "ai": "^7.0.0",
+    "ai": "^7.0.59",
     "@ai-sdk/react": "^4.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.14",
+    "lucide-react": "^1.31.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.4",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0"
   },
   "devDependencies": {
     "vite": "^5.4.0",
@@ -26,6 +32,9 @@
     "typescript": "^5.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "tailwindcss": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.3",
+    "class-variance-authority": "^0.7.1"
   }
 }

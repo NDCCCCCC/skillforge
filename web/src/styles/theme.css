@@ -163,3 +163,27 @@ body,
   grid-template-columns: 260px 1fr 420px;
   transition: grid-template-columns var(--transition-base) cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Reasoning preview — height-capped with fade-out mask so long GLM-5.2
+   reasoning chains don't push the answer off-screen (D-08 anti-bury
+   invariant). Background, left-border, padding, radius per FEUI-02. */
+.reasoning-preview {
+  max-height: 160px;
+  overflow-y: auto;
+  background-color: var(--color-reasoning);
+  border-left: 2px solid var(--color-primary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  /* Fade-out mask at the bottom edge (12px) so truncation reads
+     visually as a scroll affordance, not a hard cut. */
+  mask-image: linear-gradient(to bottom, black calc(100% - 12px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 12px), transparent 100%);
+}
+
+/* Center panel tab content area — ensures tab bodies have a stable
+   minimum height so empty states (chunk-source / SKILL.md tabs) don't
+   collapse when only a heading is rendered. */
+.center-panel-tab-content {
+  min-height: 100%;
+  padding: var(--space-6);
+}
