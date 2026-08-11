@@ -29,7 +29,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Knowledge Layer (KNOW)
 
-- [ ] **KNOW-01**: System supports 4-tier knowledge: 权威 / 历史 / 个人 / 草稿 (each chunk tagged with `tier`)
+- [x] **KNOW-01**: System supports 4-tier knowledge: 权威 / 历史 / 个人 / 草稿 (each chunk tagged with `tier`)
 - [ ] **KNOW-02**: System indexes documents into Milvus with mandatory `tier` metadata (insert fails if tier missing)
 - [ ] **KNOW-03**: Retrieval filters by `tier` BEFORE similarity search (per Skill's `reads` declaration)
 - [ ] **KNOW-04**: System defaults to refusing when no tier-matched docs found (refusal-by-construction)
@@ -38,7 +38,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Agentic RAG (ARAG)
 
-- [ ] **ARAG-01**: Agent autonomously decides to retrieve, ask clarifying, refuse, or answer
+- [x] **ARAG-01**: Agent autonomously decides to retrieve, ask clarifying, refuse, or answer
 - [ ] **ARAG-02**: System supports multi-hop retrieval (agent retrieves additional chunks based on partial answer)
 - [ ] **ARAG-03**: System supports Self-RAG / CRAG self-verification — agent re-reads retrieved docs and verifies each claim before final answer
 - [ ] **ARAG-04**: Every cited claim is a chunk ID + span (not free text); unverifiable claims are stripped or refused
@@ -163,13 +163,13 @@ Which phases cover which requirements.
 | AGNT-04 | Phase 3 | Pending |
 | AGNT-05 | Phase 3 | Pending |
 | AGNT-06 | Phase 5 | Pending |
-| KNOW-01 | Phase 3 | Pending |
+| KNOW-01 | Phase 3 | Complete |
 | KNOW-02 | Phase 3 | Pending |
 | KNOW-03 | Phase 3 | Pending |
 | KNOW-04 | Phase 3 | Pending |
 | KNOW-05 | Phase 4 | Pending |
 | KNOW-06 | Phase 5 | Pending |
-| ARAG-01 | Phase 3 | Pending |
+| ARAG-01 | Phase 3 | Complete |
 | ARAG-02 | Phase 3 | Pending |
 | ARAG-03 | Phase 3 | Pending |
 | ARAG-04 | Phase 2 | Pending |

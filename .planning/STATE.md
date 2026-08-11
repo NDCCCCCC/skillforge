@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
 current_phase: 03
-current_plan: 1
+current_plan: 2
 status: executing
-last_updated: "2026-08-11T16:44:06.047Z"
+last_updated: "2026-08-11T16:56:46Z"
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 16
-  completed_plans: 13
-  percent: 43
+  completed_plans: 14
+  percent: 44
 ---
 
 # State — SkillForge
@@ -21,10 +21,10 @@ progress:
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 03
-**Current Plan:** 1
+**Current Plan:** 2 (just completed: 03-01)
 **Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** Phase 3 (Agentic Retrieval & Trust Eval) was deferred under MVP vertical-slice reordering — decide whether to (a) plan Phase 5 next per dependency chain, or (b) circle back to Phase 3 first. Run `/gsd:discuss-phase 5` or `/gsd:discuss-phase 3`.
+**Next action:** Continue Phase 3 — run `/gsd:execute-phase` for Plan 03-02 (Wave 1 parallel sibling: internal/store Store interface + SQLite audit row). 03-01 unblocked 03-03 (data-decision) and 03-04 (TierEnumByValue for KNOW-02 indexer).
 
 ---
 
@@ -48,11 +48,11 @@ progress:
 ## Current Position
 
 Phase: 03 (agentic-retrieval-trust-evaluation) — EXECUTING
-Plan: 1 of 6
-**Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
+Plan: 2 of 6 (just completed 03-01 — data-decision wire discriminator + TierEnum reverse-lookup helpers, 4 TDD commits, 7m)
+**Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN (deferred; Phase 3 in progress)
 **Plan:** not started
-**Status:** Executing Phase 03
-**Just completed:** Phase 4 (streaming-trust-ui) — 3/3 plans, UAT 12/12, SECURITY verified (0 open threats)
+**Status:** Executing Phase 03 (Plan 03-01 COMPLETE; Wave 1 sibling 03-02 next)
+**Just completed:** Plan 03-01 — `data-decision` SSE chunk discriminator (Go `wire.ValidTypes` 16→17 + TS `SkillForgeChunk` variant in D-04/D15 lockstep) + `skill.TierEnumByValue`/`TierEnumValues` helpers (additions only). 2/2 tasks, 4 commits (`082e9b9` RED, `0b43156` GREEN, `1231cb1` RED, `a35fbda` GREEN). ARAG-01 / SC-1 / KNOW-01 substrates unlocked; Plan 03-03 (agent emits data-decision via callbacks) and Plan 03-04 (KNOW-02 indexer calls TierEnumByValue) unblocked.
 
 **Phase 4 shipped (trust visualization front-end):**
 
@@ -92,6 +92,8 @@ Plan: 1 of 6
 | D13 | T-1-08 source-URL allowlist sanitization gate (Phase 4) | `source-url` href is the primary XSS vector; protocol+hostname allowlist at the SourceUrlPart boundary, rejected URLs render a blocked state, `<a>` always carries `rel=noopener noreferrer`. 7-assertion regression gate. |
 | D14 | State boundary: Zustand store bans `messages` (Pitfall 7, Phase 4) | `useChat` owns the message stream; `app-store.ts` file-level comment forbids a `messages` field, eliminating the dual-source-of-truth class of bugs. |
 | D15 | Wire-type compile-time drift alarm (Phase 4) | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` fails the build if the SDK upstream renames any chunk discriminator — the compiler IS the drift alarm (cheaper than runtime contract tests alone). |
+| D16 | `data-decision` SSE chunk discriminator (Phase 3 / Plan 03-01) | Registers the ARAG-01 / SC-1 observability substrate — a per-hop wire-level slot for agent autonomous decisions (retrieve/answer/refuse/forced_stop). Mirrored Go + TS in one commit per the D15 two-PR rule; emitted by Plan 03-03's Eino callbacks (`newDecisionCallback`), parsed by the Phase 4 React UI's `SkillForgeChunk` union. |
+| D17 | TierEnum reverse-lookup helpers (Phase 3 / Plan 03-01) | `skill.TierEnumByValue` + `skill.TierEnumValues` expose the 4-tier enum for backend-agnostic validation. KNOW-02 enforcement at `internal/knowledge.Index` (Plan 03-04) calls `TierEnumByValue(doc.Tier)` — fail-closed default-deny on any tier outside {权威, 历史, 个人, 草稿}. |
 
 ---
 
@@ -141,18 +143,19 @@ Plan: 1 of 6
 | 02 | 1 | — | grounding + verdict schema |
 | 02 | 04-MONGO | 13m | 5 commits — MongoDB retriever backend (RETRIEVER_BACKEND=mongo). See 02-04-MONGO-SUMMARY.md |
 | 04 (quick) | 260811-uaf | ~20m | CenterPanel tab-indicator ↔ centerView.kind sync — closed UAT #8 (83/83 green). See quick/260811-uaf-*-SUMMARY.md |
+| 03 | 01 | 7m | 2 TDD tasks / 4 commits / 5 files (2 created + 3 modified) — `data-decision` SSE chunk discriminator (Go `wire.ValidTypes` 16→17 + exported `DecisionPayload` + TS `SkillForgeChunk` variant) + `skill.TierEnumByValue`/`TierEnumValues` reverse-lookup helpers (additions only). ARAG-01/SC-1/KNOW-01 substrates unlocked. See 03-01-SUMMARY.md |
 
-- Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering
-- Requirements covered: 22 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08)
+- Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering, now in progress
+- Requirements covered: 24 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08; Phase 3 03-01: +ARAG-01 substrate, +KNOW-01 substrate)
 - Frontend tests: 83/83 green (12 files); UAT 12/12
-- Plans run: 11 (4 Phase 1 + 4 Phase 2 incl. MONGO + 3 Phase 4)
-- Last plan: 04-03 (Wave 3) — commits d65a3b8 + 081b743 + 73d26a7
+- Plans run: 12 (4 Phase 1 + 4 Phase 2 incl. MONGO + 3 Phase 4 + 1 Phase 3)
+- Last plan: 03-01 (Wave 1) — commits 082e9b9 + 0b43156 + 1231cb1 + a35fbda
 
 ---
 
 ## Session Continuity
 
-**Resume point:** Phase 4 (streaming-trust-ui) is COMPLETE — UAT 12/12, SECURITY verified (0 open threats), transitioned to Phase 5. Next: decide Phase 3 (deferred Agentic Retrieval & Trust Eval) vs Phase 5 (Skill Platform) sequencing, then `/clear` → `/gsd:discuss-phase 5` (or `3`). Bidirectional tab nav + UI-SPEC §169 chunk empty-state + LeftSidebar real sessions + ChatInput `@`-search deferred to Phase 5 (see 04-03 Known Stubs + 260811-uaf-SUMMARY).
+**Resume point:** Plan 03-01 (data-decision wire discriminator + TierEnum reverse-lookup helpers) is COMPLETE — 2/2 tasks, 4 TDD commits, ARAG-01/SC-1/KNOW-01 substrates unlocked. Next: continue Phase 3 Wave 1 by running Plan 03-02 (internal/store Store interface + SQLite audit row, GEVL-03/AGNT-05). Wave 2 plans 03-03 (agent) + 03-04 (KNOW-02 indexer) are now unblocked by 03-01's outputs (`wire.DecisionPayload`, `skill.TierEnumByValue`). Pre-existing Phase 4 TS errors (unrelated to 03-01) logged in `.planning/phases/03-agentic-retrieval-trust-evaluation/deferred-items.md` for a future 04-04 wire-contract realignment plan.
 
 **Hot files this session:**
 
@@ -164,4 +167,4 @@ Plan: 1 of 6
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 5 on 2026-08-11.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11.*
