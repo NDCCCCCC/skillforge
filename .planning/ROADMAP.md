@@ -10,7 +10,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Integration Spike & Trust Contract** — 1-2 day spike: validate Eino v0.7.7 + Hertz SSE + Vercel AI SDK v5 + Milvus tier-filter wire framing before committing to the data model
+- [x] **Phase 1: Integration Spike & Trust Contract** — 1-2 day spike: validate Eino v0.7.7 + Hertz SSE + Vercel AI SDK v5 + Milvus tier-filter wire framing before committing to the data model (completed 2026-08-11)
 - [ ] **Phase 2: Compliance Vertical Slice** — one Skill / one authoritative tier / one endpoint / verifiable cited answer or structured refusal (proves the "Skill-as-platform" thesis)
 - [ ] **Phase 3: Agentic Retrieval & Trust Evaluation** — hybrid retrieval + BGE-M3 rerank + Self-RAG self-verification + 50–100-case golden set + Ragas quality gates
 - [ ] **Phase 4: Streaming Trust UI** — React chat with visible reasoning chain + clickable citations + structured verdicts + explainable refusals
@@ -40,7 +40,7 @@
 - [x] 01-01-PLAN.md — Wave 0 scaffold + spike wire subcommand (SC-1 layer a) + Docker/API-key checkpoints
 - [x] 01-02-PLAN.md — 12 fixtures + spike milvus subcommand + docker-compose (SC-2)
 - [x] 01-03-PLAN.md — UIMessageChunk types + spike sse subcommand + React stub + vitest (SC-1 layers b+c, SC-4)
-- [ ] 01-04-PLAN.md — spike e2e subcommand + integration contract test (SC-3, SC-5)
+- [x] 01-04-PLAN.md — spike e2e subcommand + integration contract test (SC-3, SC-5)
 **Wave structure**: W1={01-01} → W2={01-02, 01-03 parallel} → W3={01-04}
 **UI hint**: no
 
