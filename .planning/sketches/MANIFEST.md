@@ -21,3 +21,4 @@ Vibe: 专业 / denova dark / 开发者友好 / 长文本阅读 / streaming + too
 | # | Name | Design Question | Winner | Tags |
 |---|------|----------------|--------|------|
 | 001 | three-panel-layout | 三列布局视觉：宽度比例 + 折叠 UX + 中间预览模式 + 拖拽 resize | ★ A (260/flex/420) | layout, three-panel, denova-style |
+| 002 | chat-input-attach-skill | Chat 输入框怎么支持 file attachment + skill trigger | TBD | chat-input, file-attachment, skill-trigger |
