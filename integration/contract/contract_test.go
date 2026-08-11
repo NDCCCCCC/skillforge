@@ -32,11 +32,11 @@
 //
 // T-1-16 single-source-of-truth: this file imports `verdict.Verdict` /
 // `verdict.ValidStatuses` / `verdict.Validate` from internal/verdict, and
-// `wire.UIMessageChunk` from internal/wire, and `retriever.BuildMilvusFilter`
-// from internal/retriever. It does NOT redeclare a local ContractVerdict
-// type. A field rename in internal/verdict/verdict.go breaks this file at
-// compile time — drift between cmd/spiked (which also imports verdict.Verdict)
-// and this file is structurally impossible.
+// `wire.UIMessageChunk` from internal/wire, and `milvus.BuildMilvusFilter`
+// from internal/retriever/milvus. It does NOT redeclare a local
+// ContractVerdict type. A field rename in internal/verdict/verdict.go
+// breaks this file at compile time — drift between cmd/spiked (which
+// also imports verdict.Verdict) and this file is structurally impossible.
 //
 // D2-06 evolution: Verdict.Citations graduated from []string to
 // []verdict.Citation{{ChunkID, Span, Tier}} so the contract test
@@ -59,7 +59,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
 	"github.com/stretchr/testify/assert"
@@ -121,7 +121,7 @@ func TestContractVersionPin(t *testing.T) {
 //  2. wire.UIMessageChunk marshals with kebab-case Type discriminator
 //     (Pitfall 6 — AI SDK v5 parser silently drops snake_case frames).
 //
-//  3. retriever.BuildMilvusFilter with an O'Brien-style apostrophe tier
+//  3. milvus.BuildMilvusFilter with an O'Brien-style apostrophe tier
 //     produces a parseable filter (Pitfall 7 — CN-char + apostrophe escape).
 //
 // Together these cover the wire-format envelope that crosses the
@@ -156,7 +156,7 @@ func TestContractWireFormat(t *testing.T) {
 	// produces a JSON-safe escaped string for hostile characters. The
 	// filter string must be parseable by Milvus (heuristic: contains
 	// `in [` and ends with `]`).
-	filter := retriever.BuildMilvusFilter([]string{`O'Brien`})
+	filter := milvus.BuildMilvusFilter([]string{`O'Brien`})
 	assert.True(t, strings.Contains(filter, "in ["),
 		"filter with apostrophe should still be parseable (contains 'in ['); got: %s", filter)
 	assert.True(t, strings.HasSuffix(filter, "]"),
@@ -178,22 +178,22 @@ func TestContractWireFormat(t *testing.T) {
 // validated the live bleed assertion separately (gated on
 // MILVUS_INTEGRATION=1 + human-verify checkpoint).
 func TestContractMilvusFilter(t *testing.T) {
-	assert.Equal(t, "false", retriever.BuildMilvusFilter([]string{}),
+	assert.Equal(t, "false", milvus.BuildMilvusFilter([]string{}),
 		"empty tier list must produce literal 'false' (default-deny per D-09)")
-	assert.Equal(t, "false", retriever.BuildMilvusFilter(nil),
+	assert.Equal(t, "false", milvus.BuildMilvusFilter(nil),
 		"nil tier list must produce literal 'false' (default-deny per D-09)")
 
-	assert.Equal(t, `tier in ["权威"]`, retriever.BuildMilvusFilter([]string{"权威"}),
+	assert.Equal(t, `tier in ["权威"]`, milvus.BuildMilvusFilter([]string{"权威"}),
 		"single CN tier must be JSON-escaped + wrapped in tier in [...]")
 
-	assert.Equal(t, `tier in ["权威","历史"]`, retriever.BuildMilvusFilter([]string{"权威", "历史"}),
+	assert.Equal(t, `tier in ["权威","历史"]`, milvus.BuildMilvusFilter([]string{"权威", "历史"}),
 		"multi CN tier must be comma-separated JSON-escaped values")
 
 	// Sub-test: CN-char escape edge cases (Pitfall 7).
 	t.Run("CN_char_escape", func(t *testing.T) {
 		hostile := []string{`O'Brien`, `a"b`, `a\b`, `正常`}
 		for _, h := range hostile {
-			f := retriever.BuildMilvusFilter([]string{h})
+			f := milvus.BuildMilvusFilter([]string{h})
 			assert.True(t, strings.Contains(f, "in ["),
 				"hostile tier %q should still produce parseable filter; got: %s", h, f)
 			assert.True(t, strings.HasSuffix(f, "]"),
