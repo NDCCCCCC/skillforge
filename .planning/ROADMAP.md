@@ -64,8 +64,8 @@
 **Plan list**:
 - [x] 02-01-PLAN.md — Wave 1: graduate spike → internal/{verdict,wire,retriever} + D2-06 Citation upgrade + D2-01 grounding moat + contract test (CMPL-02/03, ARAG-04) — completed 2026-08-11
 - [x] 02-02-PLAN.md — Wave 1 (parallel): 7-field skill package + ResolveTiers + canonical skills/compliance/SKILL.md + knowledge/authority corpus (SYSK-01/02/08, CMPL-01/04) — completed 2026-08-11
-- [ ] 02-03-PLAN.md — Wave 2: knowledge indexer + verdict pipeline + POST /api/chat + cmd/server + SC-2/3/4/5/6 tests (AGNT-03, ARAG-05, GEVL-01/02, CMPL-05, SYSK-07)
-- [ ] 02-04-PLAN.md — Wave 3: GET/POST /api/skills endpoints (SC-1 HTTP layer) + live end-to-end verification of all 6 SCs against Milvus + GLM-5.2 (SYSK-01/02, CMPL-01 closure)
+- [x] 02-03-PLAN.md — Wave 2: knowledge indexer + verdict pipeline + POST /api/chat + cmd/server + SC-2/3/4/5/6 tests (AGNT-03, ARAG-05, GEVL-01/02, CMPL-05, SYSK-07)
+- [x] 02-04-PLAN.md — Wave 3: GET/POST /api/skills endpoints (SC-1 HTTP layer) + live end-to-end verification of all 6 SCs against Milvus + GLM-5.2 (SYSK-01/02, CMPL-01 closure)
 - [x] 02-04-MONGO-SUMMARY.md — Extension: MongoDB retriever backend (RETRIEVER_BACKEND=mongo). Adds internal/retriever/mongo implementing retriever.Retriever via {tier:{$in}} PRE-filter + in-Go cosine. Triggered by internal Milvus being broken; also proves the multi-backend abstraction. — completed 2026-08-11
 **Wave structure**: W1={02-01, 02-02 parallel} → W2={02-03} → W3={02-04}
 **UI hint**: no
