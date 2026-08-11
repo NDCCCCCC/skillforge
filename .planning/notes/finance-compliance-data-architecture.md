@@ -76,3 +76,42 @@ slug: finance-compliance-data-architecture
 - **合规 vs 业务灵活性**：选合规优先（方案 1 极严），业务灵活性让步
 - **架构简洁 vs 业务深度**：选简洁（A 平台层），业务深度通过多 Skill 表达
 - **NL2SQL 风险**：agent 不能写 SQL（防绕过脱敏），只能调预定义 KPI（research/questions.md Q1）
+
+## NL2SQL 安全设计（深挖阶段，2026-08-11）
+
+### 核心策略：D 混合方案
+- **聚合通道**：agent **只能**调预定义 KPI 函数 / 视图接口（不写 SQL）
+- **个体识别通道**：agent 能写 SQL，但走预编译视图 + row-level security
+  - DB user 受限（只读 + 受限 schema）
+  - 视图本身做字段级脱敏（hash PII, mask sensitive fields）
+  - agent 永远看不到真实原始表
+
+### 预授权机制：每次即时批
+- 业务部门发起个体识别 query → 通知数据人员 → 立即阻塞等待
+- 数据人员审：query + 业务理由 + agent 即将调用的 SQL 预览
+- **强制 SQL 预览**：agent 在批前必须生成 SQL 预览（NL2SQL）+ 数据人员审计
+- 批 → agent 拿 TTL token 调外部 query interface
+- 拒 → agent 给业务部门"被拒绝 + 理由"
+
+### 审批 timeout：持续挂起（永不放过）
+- 数据人员不批 = 永远挂着待批
+- 没有自动拒 / 没有 auto-timeout
+- 永不放过任何一条 query
+- 这是金融监管最严姿态的体现
+- 副作用：数据人员工作流压力大 → Phase 6 评估排队 + 优先级 + 批量相似 query 审批
+
+### 三层防御深度
+
+| 层级 | 防御 | 实现 |
+|---|---|---|
+| **架构层** | agent 看不到原始表，只能查预编译视图 | DB user + schema 隔离 + view masking |
+| **查询层** | agent 必须给出 SQL 预览 → 数据人员审计后才执行 | NL2SQL 必给 + 审批流强制 |
+| **运行时层** | 每个 SQL 都有 TTL token + 字段级脱敏视图 + 审计日志 | Token + view + audit |
+
+### 强制工程要求（对应 DATA-09..14）
+- **DATA-09**：聚合通道的 KPI 函数由数据人员预先定义（agent 不能定义新 KPI）
+- **DATA-10**：个体通道的预编译视图由数据人员预先设计（agent 不能 SELECT 真实表）
+- **DATA-11**：agent 必须生成 SQL 预览（NL2SQL 输出）才能进入审批流
+- **DATA-12**：审批拒绝时必须给出结构化理由（监管审计要求）
+- **DATA-13**：持续挂起 timeout（无自动拒 / 无 auto-timeout）
+- **DATA-14**：每次审批产生 audit row（query_id + 业务理由 + SQL 预览 + 批/拒结果 + 数据人员 ID + TTL token）

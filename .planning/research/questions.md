@@ -15,3 +15,14 @@ Q4. **Two-tier audit design**: internal audit log (SkillForge) + external query 
 
 Q5. **Re-identification risk**: even with k-anonymity, joining multiple aggregates can re-identify individuals.
    How to detect / prevent? (DPIA-style analysis)
+
+## 2026-08-11 — NL2SQL Security Deep Dive
+
+Q6. **NL2SQL accuracy**: agent generates SQL preview before approval — how to ensure it's accurate?
+   Options: self-verify with second LLM / dry-run with EXPLAIN / static analysis.
+
+Q7. **Approval SLA optimization**: 持续挂起 puts pressure on data officers under load.
+   Phase 6 to evaluate: queue priority + escalation rules + bulk-approval for similar queries.
+
+Q8. **TTL token design**: agent calls external query interface with TTL token.
+   Token lifetime / revocation / rotation / scope — what are best practices for financial compliance?

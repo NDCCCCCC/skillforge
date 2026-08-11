@@ -99,6 +99,12 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp
 - [ ] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized`
 - [ ] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer
+- [ ] **DATA-09**: Aggregation channel: agent can ONLY invoke predefined KPI functions / views — no SQL, no new KPI definition (NL2SQL safety layer 1)
+- [ ] **DATA-10**: Individual channel: agent queries go through predefined views (not raw tables) — DB user restricted (read-only, limited schema, field-level view masking) (NL2SQL safety layer 2)
+- [ ] **DATA-11**: Agent must generate SQL preview (NL2SQL output) BEFORE entering approval flow for individual-identification Skills (NL2SQL safety layer 3 — data officer audits the actual query intent)
+- [ ] **DATA-12**: Rejection must include structured reason `{reason_code, human_explanation}` (compliance audit requirement)
+- [ ] **DATA-13**: Approval timeout = 持续挂起 (no auto-reject, no auto-timeout) — each query must be explicitly approved or rejected by data officer
+- [ ] **DATA-14**: Every approval creates audit row: `{query_id, user_id, business_reason, sql_preview, approve_or_reject_result, data_officer_id, ttl_token_id, timestamp, chunk_ids_returned}`
 
 ## v2 Requirements
 
@@ -207,10 +213,16 @@ Which phases cover which requirements.
 | DATA-06 | Phase 5 | Pending |
 | DATA-07 | Phase 5 | Pending |
 | DATA-08 | Phase 5 | Pending |
+| DATA-09 | Phase 5 | Pending |
+| DATA-10 | Phase 5 | Pending |
+| DATA-11 | Phase 5 | Pending |
+| DATA-12 | Phase 5 | Pending |
+| DATA-13 | Phase 5 | Pending |
+| DATA-14 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 64 total (was 55; +8 DATA +1 SYSK-08 added via /gsd:explore 2026-08-10)
-- Mapped to phases: 64
+- v1 requirements: 70 total (was 55; +8 DATA +1 SYSK-08 +6 DATA-09..14 added via /gsd:explore 2026-08-10/11)
+- Mapped to phases: 70
 - Unmapped: 0 ✓
 
 **Phase distribution:**
