@@ -1,116 +1,113 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Copyright 2026 SkillForge Authors
-// SPDX-License-Identifier: Apache-2.0
-
-// Plan 01-03 Task 2 + Plan 04-02 Task 2 — SC-4 citation rendering tests.
+// Plan 04-03 Task 3 — REPLACE Wave 1 spike-stub citations test with
+// the real chunk-lookup flow test.
 //
-// These tests pin the three rendering behaviors the spike stub MUST
-// guarantee before Phase 4 builds on top of it:
-//  1. source-url chunks render as clickable <a> elements with the
-//     chunk's URL as href (the core SC-4 contract).
-//  2. Unknown part types are silently dropped (AI SDK v5+ spec) so a
-//     newer-server / older-client combo doesn't crash the UI.
-//  3. Reasoning chunks render the progressive-disclosure preview
-//     (D-08 / FEUI-02) — Wave 2 replaced the <details> placeholder
-//     with the real ReasoningPart; assertion updated to look for the
-//     preview wrapper.
-//
-// Phase 4 update (T-1-08): source-url chunks now pass through the
-// sanitization gate; non-allowlisted hosts (e.g. policy.example) render
-// as blocked-citation spans, NOT <a>. Tests updated to use an
-// allowlisted host (skillforge.local) per 04-UI-SPEC.md §FEUI-03.
+// Pinned assertions:
+//   1. CitationCluster renders a chip with data-testid="citation-chip",
+//      data-chunk-id, data-tier matching the citation.
+//   2. Clicking the chip dispatches setCenterView({ kind: 'chunk-source',
+//      chunkId, tier, version, effectiveDate }) with the real metadata
+//      pulled by extractChunkMetadata (c-001 → v3.2 / 2026-01-15).
+//   3. The TierBadge inside the chip renders data-tier="权威" + [权威] text.
+//   4. T-1-08 regression guard: SourceUrlPart with a javascript: URL
+//      renders a blocked-citation span (NOT a clickable <a>).
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import '@testing-library/jest-dom/vitest';
 import type { UIMessage } from 'ai';
-import { afterEach, describe, expect, it } from 'vitest';
-import App from '../App';
+import CitationCluster from '../components/center/CitationCluster';
+import { SourceUrlPart } from '../components/chat/parts/SourceUrlPart';
+import { useAppStore } from '../store/app-store';
 
 afterEach(cleanup);
 
-describe('SpikeStub citations (SC-4)', () => {
-  it('renders source-url as clickable <a> when URL is allowlisted (T-1-08)', () => {
-    const messages: UIMessage[] = [
-      {
-        id: 'm1',
-        role: 'assistant',
-        parts: [
-          { type: 'text', text: 'Authority policy citation: ' },
-          {
-            type: 'source-url',
-            sourceId: 'src-1',
-            url: 'http://skillforge.local/chunks/authority/auth-001',
-            title: 'Authority Policy 1',
-          },
-        ],
-      },
-    ];
+beforeEach(() => {
+  useAppStore.setState({ centerView: { kind: 'empty' } });
+});
 
-    render(<App initialMessages={messages} />);
-
-    const link = screen.getByRole('link', { name: /Authority Policy 1/i });
-    expect(link.tagName).toBe('A');
-    expect(link).toHaveAttribute('href', 'http://skillforge.local/chunks/authority/auth-001');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(link).toHaveAttribute('target', '_blank');
+describe('CitationCluster + chunk-lookup flow', () => {
+  it('renders a citation chip with data-chunk-id and data-tier', () => {
+    render(
+      <CitationCluster
+        citations={[
+          { chunk_id: 'c-001', span: '权威 tier 条款', tier: '权威' },
+        ]}
+      />,
+    );
+    const chip = screen.getByTestId('citation-chip');
+    expect(chip).toBeInTheDocument();
+    expect(chip).toHaveAttribute('data-chunk-id', 'c-001');
+    expect(chip).toHaveAttribute('data-tier', '权威');
   });
 
-  it('drops unknown part types silently', () => {
-    // Cast through unknown so TS lets us include a hypothetical future
-    // type the SDK doesn't know about yet — this is exactly the scenario
-    // the AI SDK v5+ "silently drop" behavior protects against.
-    const messages = [
-      {
-        id: 'm1',
-        role: 'assistant',
-        parts: [
-          { type: 'text', text: 'hi' },
-          { type: 'unknown-future-type', payload: 'irrelevant' },
-        ],
-      },
-    ] as unknown as UIMessage[];
-
-    render(<App initialMessages={messages} />);
-
-    expect(screen.getByText('hi')).toBeInTheDocument();
-    expect(screen.queryByText('irrelevant')).toBeNull();
+  it('clicking the chip dispatches setCenterView with real chunk metadata', () => {
+    render(
+      <CitationCluster
+        citations={[
+          { chunk_id: 'c-001', span: '权威 tier 条款', tier: '权威' },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('citation-chip'));
+    const centerView = useAppStore.getState().centerView;
+    expect(centerView.kind).toBe('chunk-source');
+    if (centerView.kind === 'chunk-source') {
+      expect(centerView.chunkId).toBe('c-001');
+      expect(centerView.tier).toBe('权威');
+      // Real metadata pulled by extractChunkMetadata:
+      expect(centerView.version).toBe('v3.2');
+      expect(centerView.effectiveDate).toBe('2026-01-15');
+    }
   });
 
-  it('renders reasoning as the progressive-disclosure preview (D-08)', () => {
-    const messages: UIMessage[] = [
-      {
-        id: 'm1',
-        role: 'assistant',
-        parts: [{ type: 'reasoning', text: 'deep thought', state: 'complete' }],
-      },
-    ];
-
-    render(<App initialMessages={messages} />);
-
-    const preview = screen.getByTestId('reasoning-preview');
-    expect(preview).toBeInTheDocument();
-    expect(preview).toHaveTextContent('deep thought');
-    expect(preview).toHaveAttribute('data-expanded', 'false');
+  it('renders TierBadge inside the chip with [权威] text', () => {
+    render(
+      <CitationCluster
+        citations={[
+          { chunk_id: 'c-001', span: '条款', tier: '权威' },
+        ]}
+      />,
+    );
+    const badge = screen.getByTestId('tier-badge');
+    expect(badge).toHaveAttribute('data-tier', '权威');
+    expect(badge).toHaveTextContent('[权威]');
   });
 
-  it('blocks source-url with non-allowlisted host (T-1-08 hard gate)', () => {
-    const messages: UIMessage[] = [
-      {
-        id: 'm1',
-        role: 'assistant',
-        parts: [
-          {
-            type: 'source-url',
-            sourceId: 'src-1',
-            url: 'https://malicious.example/phish',
-            title: 'malicious',
-          },
-        ],
-      },
-    ];
+  it('SourceUrlPart blocks javascript: URL via T-1-08 sanitization gate', () => {
+    // Regression guard — the citation click flow uses CitationCluster
+    // (which dispatches to ChunkSourceView), but T-1-08 also covers
+    // the source-url renderer for external link citations.
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'source-url',
+          sourceId: 's1',
+          url: 'javascript:alert(1)',
+          title: 'malicious',
+        } as unknown as UIMessage['parts'][number],
+      ],
+    };
 
-    render(<App initialMessages={messages} />);
+    render(
+      <div>
+        {message.parts.map((p, i) => {
+          if (p.type === 'source-url') {
+            return (
+              <SourceUrlPart
+                key={i}
+                part={p as unknown as Parameters<typeof SourceUrlPart>[0]['part']}
+              />
+            );
+          }
+          return null;
+        })}
+      </div>,
+    );
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.getByTestId('citation-blocked')).toBeInTheDocument();
   });
