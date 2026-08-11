@@ -1,0 +1,8 @@
+.env
+*.exe
+spiked
+cmd/spiked/spiked
+spike-*trace.json
+.DS_Store
+node_modules/
+web/dist/
