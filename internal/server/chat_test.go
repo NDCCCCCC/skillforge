@@ -110,14 +110,14 @@ func portStr(p int) string {
 	return out
 }
 
-// newTestDeps builds a Deps with stub embedder / searcher / runner.
+// newTestDeps builds a Deps with stub embedder / retriever / runner.
 // Tests overwrite the fields they care about (searcher.chunks,
 // runner.cannedJSON, etc.) after construction.
 func newTestDeps() *Deps {
 	return &Deps{
-		Embedder: newStubEmbedder(),
-		Searcher: &stubSearcher{},
-		Runner:   newStubRunner(""),
+		Embedder:  newStubEmbedder(),
+		Retriever: &stubRetriever{},
+		Runner:    newStubRunner(""),
 	}
 }
 
@@ -182,7 +182,7 @@ func postChat(t *testing.T, addr, query, skill string) (string, string) {
 }
 
 // TestChatHandlerSSE — SC-6 / AGNT-03 happy path. With a mock retriever
-// returning 2 TierSearchResult chunks (tier=权威) + a mock runner
+// returning 2 retriever.Hit chunks (tier=权威) + a mock runner
 // returning a valid Verdict JSON with 2 citations, the POST /api/chat
 // SSE stream must contain:
 //
@@ -199,11 +199,11 @@ func TestChatHandlerSSE(t *testing.T) {
 	deps := newTestDeps()
 	chunk1 := "出差住宿费超标 200 元以内由部门负责人审批"
 	chunk2 := "采购合同 50 万元以下由部门负责人审批"
-	chunks := []retriever.TierSearchResult{
+	chunks := []retriever.Hit{
 		{ID: 1, Tier: "权威", Content: chunk1, Source: "authority/travel_expense.md", Score: 0.92},
 		{ID: 2, Tier: "权威", Content: chunk2, Source: "authority/contract_approval.md", Score: 0.88},
 	}
-	deps.Searcher = &stubSearcher{chunks: chunks}
+	deps.Retriever = &stubRetriever{chunks: chunks}
 	// Two chunks returned but the verdict only cites chunk 1 (the
 	// relevant one for the query). The pipeline emits source-document
 	// for every citation in the Verdict, not every chunk in the
@@ -281,7 +281,7 @@ func TestChatHandlerSSE(t *testing.T) {
 //   - NOT call the runner (refusal-by-construction D-09).
 func TestNoChunksRefusal(t *testing.T) {
 	deps := newTestDeps()
-	deps.Searcher = &stubSearcher{chunks: nil}
+	deps.Retriever = &stubRetriever{chunks: nil}
 
 	loader := skill.NewLoader(skillsDirPath())
 	_, err := loader.Scan()
@@ -312,8 +312,8 @@ func TestNoChunksRefusal(t *testing.T) {
 // filter containing ONLY 权威 — no 个人 bleed.
 func TestPersonalTierRefusal(t *testing.T) {
 	deps := newTestDeps()
-	stubSrch := &stubSearcher{chunks: nil}
-	deps.Searcher = stubSrch
+	stubSrch := &stubRetriever{chunks: nil}
+	deps.Retriever = stubSrch
 
 	loader := skill.NewLoader(skillsDirPath())
 	_, err := loader.Scan()
@@ -326,12 +326,12 @@ func TestPersonalTierRefusal(t *testing.T) {
 	body, _ := postChat(t, addr, "查询员工联系方式", "compliance")
 	frames := parseFrames(t, body)
 
-	filter := stubSrch.LastFilter()
-	require.NotEmpty(t, filter, "searcher should have been called once")
-	assert.Contains(t, filter, "权威",
-		"filter must include the 权威 tier (compliance skill's only read tier)")
-	assert.NotContains(t, filter, "个人",
-		"filter MUST NOT include 个人 — SC-4 / SYSK-07 tier bleed guard")
+	tiers := stubSrch.LastTiers()
+	require.NotEmpty(t, tiers, "retriever should have been called once")
+	assert.Contains(t, tiers, "权威",
+		"tier list must include 权威 (compliance skill's only read tier)")
+	assert.NotContains(t, tiers, "个人",
+		"tier list MUST NOT include 个人 — SC-4 / SYSK-07 tier bleed guard")
 
 	refusal := findRefusal(t, frames)
 	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, refusal.Reason)
@@ -343,11 +343,11 @@ func TestPersonalTierRefusal(t *testing.T) {
 // maxScore below the retrievalScoreThreshold placeholder (0.3).
 func TestLowScoreRefusal(t *testing.T) {
 	deps := newTestDeps()
-	chunks := []retriever.TierSearchResult{
+	chunks := []retriever.Hit{
 		{ID: 1, Tier: "权威", Content: "weakly related text", Source: "authority/random.md", Score: 0.15},
 		{ID: 2, Tier: "权威", Content: "more noise", Source: "authority/other.md", Score: 0.20},
 	}
-	deps.Searcher = &stubSearcher{chunks: chunks}
+	deps.Retriever = &stubRetriever{chunks: chunks}
 
 	loader := skill.NewLoader(skillsDirPath())
 	_, err := loader.Scan()
@@ -386,11 +386,11 @@ func TestLowScoreRefusal(t *testing.T) {
 // check that the temperature wrapper did not eat the user message).
 func TestTemperaturePassthrough(t *testing.T) {
 	deps := newTestDeps()
-	chunks := []retriever.TierSearchResult{
+	chunks := []retriever.Hit{
 		{ID: 1, Tier: "权威", Content: "出差住宿费超标 200 元以内由部门负责人审批", Source: "authority/travel_expense.md", Score: 0.95},
 	}
-	stubSrch := &stubSearcher{chunks: chunks}
-	deps.Searcher = stubSrch
+	stubSrch := &stubRetriever{chunks: chunks}
+	deps.Retriever = stubSrch
 	stubRun := newStubRunner(cannedVerdictJSON("合规", 0.95,
 		[]string{"1"}, "出差住宿费超标 200 元以内由部门负责人审批", "权威"))
 	deps.Runner = stubRun
@@ -459,10 +459,10 @@ func TestGroundingCheckerInvoked(t *testing.T) {
 func TestPipelineInvokesGroundingChecker(t *testing.T) {
 	deps := newTestDeps()
 	chunkText := "出差住宿费超标 200 元以内由部门负责人审批"
-	chunks := []retriever.TierSearchResult{
+	chunks := []retriever.Hit{
 		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/travel_expense.md", Score: 0.95},
 	}
-	deps.Searcher = &stubSearcher{chunks: chunks}
+	deps.Retriever = &stubRetriever{chunks: chunks}
 	stubRun := newStubRunner(cannedVerdictJSON("合规", 0.95,
 		[]string{"1"}, chunkText, "权威"))
 	deps.Runner = stubRun
@@ -505,7 +505,7 @@ func TestPipelineInvokesGroundingChecker(t *testing.T) {
 func TestRefusalShape(t *testing.T) {
 	t.Run("no_authorized_source", func(t *testing.T) {
 		deps := newTestDeps()
-		deps.Searcher = &stubSearcher{chunks: nil}
+		deps.Retriever = &stubRetriever{chunks: nil}
 		loader := skill.NewLoader(skillsDirPath())
 		_, err := loader.Scan()
 		require.NoError(t, err)
@@ -521,7 +521,7 @@ func TestRefusalShape(t *testing.T) {
 
 	t.Run("low_retrieval_score", func(t *testing.T) {
 		deps := newTestDeps()
-		deps.Searcher = &stubSearcher{chunks: []retriever.TierSearchResult{
+		deps.Retriever = &stubRetriever{chunks: []retriever.Hit{
 			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.10},
 		}}
 		loader := skill.NewLoader(skillsDirPath())
@@ -541,8 +541,8 @@ func TestRefusalShape(t *testing.T) {
 		// refusal BEFORE VerdictPipeline runs (the searcher / runner
 		// must not be invoked at all).
 		deps := newTestDeps()
-		stubSrch := &stubSearcher{chunks: nil}
-		deps.Searcher = stubSrch
+		stubSrch := &stubRetriever{chunks: nil}
+		deps.Retriever = stubSrch
 		stubRun := newStubRunner("")
 		deps.Runner = stubRun
 		deps.Loader = nil

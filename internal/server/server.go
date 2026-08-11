@@ -16,7 +16,7 @@
 
 // Package server is the SkillForge Phase 2 Hertz HTTP surface: one
 // long-running binary (cmd/server) that exposes POST /api/chat against
-// the graduated internal/{verdict,wire,retriever,skill,knowledge}
+// the graduated internal/{verdict,wire,retriever,embedder,skill,knowledge}
 // packages.
 //
 // This file holds the Deps dependency-injection container + the New()
@@ -29,42 +29,35 @@
 // Deps with mock implementations of every interface to exercise the
 // refusal + grounding + tier-filter behavior without standing up
 // Milvus, BGE-M3, or GLM.
-//
-// Plan 02-04 will add the GET/POST /api/skills routes to this same
-// Deps + New(). For now the Server exposes only POST /api/chat.
 package server
 
 import (
 	"context"
 
 	"github.com/cloudwego/eino/adk"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/cloudwego/hertz/pkg/app/server"
 
+	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 )
 
-// Embedder is the production BGE-M3 interface the pipeline consumes.
-// The implementation lives in cmd/server/main.go (a thin wrapper around
-// retriever.EmbedQuery). Tests substitute a stub that returns a
-// constant vector regardless of input text.
-type Embedder interface {
-	EmbedQuery(ctx context.Context, text string) ([]float32, error)
-}
+// Embedder aliases the embedder.Embedder interface (the production
+// BGE-M3 interface the pipeline consumes). The implementation lives in
+// cmd/server/main.go (a thin wrapper around the BGE-M3 HTTP client
+// via internal/embedder/bge). Tests substitute a stub that returns
+// a constant vector regardless of input text.
+type Embedder = embedder.Embedder
 
-// Searcher is the retriever seam the pipeline consumes. The
-// implementation in cmd/server/main.go wraps retriever.SearchWithTierFilter
-// with a PRE-built filter expression derived from the Skill's
-// resolved tiers. Tests substitute a stub that returns canned
-// TierSearchResult slices — without ever touching Milvus.
+// Retriever aliases the retriever.Retriever interface. The
+// implementation in cmd/server/main.go wraps a *milvus.MilvusClient.
+// Tests substitute a stub that returns canned Hit slices — without
+// ever touching Milvus.
 //
-// SearchWithFilter takes the EXACT filter string the pipeline built
-// (not the tier values), so tests can assert on the precise filter
-// expression — the trust boundary is auditable end-to-end.
-type Searcher interface {
-	SearchWithFilter(ctx context.Context, queryVec []float32, filter string, topK int) ([]retriever.TierSearchResult, error)
-}
+// Search takes the resolved tier VALUES (not a pre-built filter string)
+// so the implementation owns the filter-building (a Milvus-specific
+// concern, kept inside the milvus subpackage).
+type Retriever = retriever.Retriever
 
 // Runner is the LLM-call seam. The production implementation wraps
 // adk.NewRunner(ChatModelAgent) and emits a temperature=skill.Temperature
@@ -92,11 +85,8 @@ type Runner interface {
 // Loader is always non-nil — the startup hook Scan()s skills/compliance/.
 type Deps struct {
 	Loader    *skill.Loader
-	Milvus    client.Client
-	MilvusCfg retriever.MilvusConfig
-	BGEURL    string
 	Embedder  Embedder
-	Searcher  Searcher
+	Retriever Retriever
 	Runner    Runner
 }
 
@@ -108,9 +98,8 @@ type Deps struct {
 // The chat handler closure captures deps so tests can construct a
 // Server with mock deps without touching real Milvus/BGE-M3/GLM.
 //
-// Plan 02-04 will extend this constructor with GET /api/skills +
-// POST /api/skills (the dry-run validator). For now the route table
-// is single-row.
+// Routes: POST /api/chat (verdict pipeline), GET /api/skills (list
+// loaded Skills), POST /api/skills (dry-run Skill validator).
 func New(addr string, deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(addr))
 	h.POST("/api/chat", deps.chatHandler)

@@ -24,6 +24,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 
+	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/verdict"
 )
@@ -34,9 +35,7 @@ import (
 // only need a fixed vector so the search step has something to score
 // against.
 type stubEmbedder struct {
-	vec []float32
-	// calls records each (ctx, text) pair the pipeline invoked. Tests
-	// assert on call count + last text.
+	vec   []float32
 	calls []string
 	mu    sync.Mutex
 }
@@ -47,12 +46,19 @@ func newStubEmbedder() *stubEmbedder {
 	return &stubEmbedder{vec: v}
 }
 
-func (e *stubEmbedder) EmbedQuery(_ context.Context, text string) ([]float32, error) {
+// Compile-time check that stubEmbedder implements embedder.Embedder.
+var _ embedder.Embedder = (*stubEmbedder)(nil)
+
+func (e *stubEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.calls = append(e.calls, text)
 	return e.vec, nil
 }
+
+// Dimensions returns the embedder output dimensionality (matches
+// embedder.Embedder interface).
+func (e *stubEmbedder) Dimensions() int { return 1024 }
 
 // CallCount returns the number of embed invocations (for assertion
 // symmetry with the runner counter).
@@ -72,23 +78,31 @@ func (e *stubEmbedder) LastQuery() string {
 	return e.calls[len(e.calls)-1]
 }
 
-// stubSearcher is the test double for the Searcher seam. Returns
-// whatever chunks were pre-loaded; tests assert the filter expression
-// the pipeline built.
-type stubSearcher struct {
-	chunks  []retriever.TierSearchResult
-	err     error
+// stubRetriever is the test double for the Retriever seam. Returns
+// whatever chunks were pre-loaded; tests assert the tier list the
+// pipeline passed.
+type stubRetriever struct {
+	chunks []retriever.Hit
+	err    error
 	lastTop int
-	// capturedFilters records every filter expression the pipeline
-	// passed. TestPersonalTierRefusal asserts on the latest filter.
-	capturedFilters []string
-	mu              sync.Mutex
+	// capturedTiers records every tier slice the pipeline passed.
+	// TestPersonalTierRefusal asserts on the latest tier list.
+	capturedTiers [][]string
+	mu            sync.Mutex
 }
 
-func (s *stubSearcher) SearchWithFilter(_ context.Context, _ []float32, filter string, topK int) ([]retriever.TierSearchResult, error) {
+// Compile-time check that stubRetriever implements retriever.Retriever.
+var _ retriever.Retriever = (*stubRetriever)(nil)
+
+func (s *stubRetriever) Health(_ context.Context) error { return nil }
+
+func (s *stubRetriever) Search(_ context.Context, _ []float32, tiers []string, topK int) ([]retriever.Hit, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.capturedFilters = append(s.capturedFilters, filter)
+	// Copy the tier slice so later assertions don't see downstream mutation.
+	tCopy := make([]string, len(tiers))
+	copy(tCopy, tiers)
+	s.capturedTiers = append(s.capturedTiers, tCopy)
 	s.lastTop = topK
 	if s.err != nil {
 		return nil, s.err
@@ -96,24 +110,29 @@ func (s *stubSearcher) SearchWithFilter(_ context.Context, _ []float32, filter s
 	return s.chunks, nil
 }
 
-// LastFilter returns the most recent filter expression (or "" if none).
-// The trust boundary assertion in TestPersonalTierRefusal reads this.
-func (s *stubSearcher) LastFilter() string {
+func (s *stubRetriever) Ensure(_ context.Context) error { return nil }
+func (s *stubRetriever) Insert(_ context.Context, _ []retriever.Document) error {
+	return nil
+}
+func (s *stubRetriever) Disconnect() error { return nil }
+
+// LastTiers returns the most recent tier list (or nil if none).
+func (s *stubRetriever) LastTiers() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.capturedFilters) == 0 {
-		return ""
+	if len(s.capturedTiers) == 0 {
+		return nil
 	}
-	return s.capturedFilters[len(s.capturedFilters)-1]
+	return s.capturedTiers[len(s.capturedTiers)-1]
 }
 
 // CallCount returns the number of search invocations (for refusal-path
 // assertions: the refusal tests expect CallCount==1 even though the
 // runner is NEVER called).
-func (s *stubSearcher) CallCount() int {
+func (s *stubRetriever) CallCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.capturedFilters)
+	return len(s.capturedTiers)
 }
 
 // stubRunner is the test double for the Runner seam. Each call records

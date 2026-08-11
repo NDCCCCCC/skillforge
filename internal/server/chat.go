@@ -140,7 +140,7 @@ func (s *Deps) findSkill(name string) *skill.Manifest {
 // discriminated union has no "tier" field on the source-document
 // variant; stuffing it in Data would not parse through the v5
 // client parser. The Verdict payload is the canonical place.
-func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retriever.TierSearchResult) error {
+func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retriever.Hit) error {
 	// 1. source-document per citation (SC-6).
 	for _, cit := range v.Citations {
 		if err := wire.EmitChunk(c, wire.UIMessageChunk{
@@ -193,7 +193,7 @@ func emitRefusal(c *app.RequestContext, r verdict.Refusal) error {
 // chunk matches, the chunk ID itself is returned as the title (still
 // useful for the citation badge, even if the source filename is
 // unknown to the handler).
-func sourcePathFor(chunks []retriever.TierSearchResult, chunkID string) string {
+func sourcePathFor(chunks []retriever.Hit, chunkID string) string {
 	for _, ch := range chunks {
 		if fmt.Sprintf("%d", ch.ID) == chunkID {
 			return ch.Source
