@@ -41,6 +41,47 @@ var TierEnum = map[string]string{
 	"draft":      "草稿",
 }
 
+// TierEnumByValue performs the reverse lookup of TierEnum: given a
+// CN-char tier value (e.g. "权威"), it returns the ASCII dir key
+// ("authority") and ok=true. Empty string and any value outside the 4
+// canonical CN-char tiers return ("", false).
+//
+// Used by internal/knowledge.Index (KNOW-02) to validate that a
+// Document's Tier field is one of the 4 canonical CN-char values; the
+// indexer rejects docs where TierEnumByValue(doc.Tier) returns ok=false.
+// This is the backend-agnostic tier-mandatory enforcement path per
+// CONTEXT.md discretion clause (the Milvus/Mongo schema validators
+// are belt-and-suspenders on top of this — see 03-RESEARCH.md §Pitfall 6).
+func TierEnumByValue(value string) (dir string, ok bool) {
+	if value == "" {
+		return "", false
+	}
+	for k, v := range TierEnum {
+		if v == value {
+			return k, true
+		}
+	}
+	return "", false
+}
+
+// TierEnumValues returns a freshly-allocated slice of the 4 canonical
+// CN-char tier values ("权威", "草稿", "历史", "个人"), ordered by the
+// ASCII dir key (authority, draft, historical, personal) so the output
+// is deterministic across calls and reusable in error messages.
+//
+// The returned slice is freshly allocated on every call; callers may
+// mutate it without affecting the package-level TierEnum map. Used by
+// internal/knowledge.Index (KNOW-02) to enumerate valid tiers in its
+// rejection error message so Skill authors see the canonical set.
+func TierEnumValues() []string {
+	dirs := knownTierDirs() // sorted ASCII dir keys
+	out := make([]string, 0, len(dirs))
+	for _, k := range dirs {
+		out = append(out, TierEnum[k])
+	}
+	return out
+}
+
 // knownTierDirs returns the sorted list of valid ASCII top-level dir names.
 // Used in error messages from ResolveTiers so Skill authors immediately
 // see what they should have written instead of guessing.
