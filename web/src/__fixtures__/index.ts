@@ -21,6 +21,24 @@ import refusalCitationMismatchFixture from './refusal-citation-mismatch.json';
 import multiPartFixture from './multi-part.json';
 import subProgressFixture from './sub-progress.json';
 import citationTieredFixture from './citation-tiered.json';
+import skillsFixture from './skills.json';
+import chunksFixture from './chunks.json';
+
+export interface SkillFixture {
+  id: string;
+  name: string;
+  description: string;
+  reads: string[];
+}
+
+export interface ChunkFixtureEntry {
+  tier: '权威' | '历史' | '个人' | '草稿';
+  version: string;
+  effective_date: string;
+  text: string;
+}
+
+export type ChunksFixtureMap = Record<string, ChunkFixtureEntry>;
 
 export type MockFixtureName =
   | 'verdict-compliant'
@@ -49,3 +67,9 @@ export const FIXTURE_REGISTRY: Record<MockFixtureName, SkillForgeChunk[]> = {
 
 /** Default fixture for dev mode — covers D-05 diversity. */
 export const DEFAULT_FIXTURE: MockFixtureName = 'multi-part';
+
+/** Skill list fixture for Wave 3's skill picker (FEUI-04). */
+export const SKILLS_FIXTURE: SkillFixture[] = skillsFixture as SkillFixture[];
+
+/** Chunk verbatim map for Wave 3's ChunkSourceView. */
+export const CHUNKS_FIXTURE: ChunksFixtureMap = chunksFixture as ChunksFixtureMap;

@@ -1,54 +1,50 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// DataPolicyPart — Wave 1 placeholder for the VerdictCard/RefusalCard
-// target. The full UI ships in Wave 2 (VerdictCard with status-colored
-// header + confidence bar + review-required badge per D-06; RefusalCard
-// with out-of-scope vs I-don't-know visual distinction per D-07).
+// DataPolicyPart — Wave 2 dispatch into VerdictCard vs RefusalCard.
 //
 // Per Pitfall 2, the payload lives on `part.data` (NOT `.policy`).
-// This component reads `part.data` and JSON-serializes for the placeholder.
-// The discriminated union `Verdict | Refusal` distinguishes the two
-// shapes by checking for `status` (Verdict) vs `reason` (Refusal).
-
+// The discriminated union `Verdict | Refusal` is resolved by the
+// `isVerdict(data)` / `isRefusal(data)` type guards (exported from
+// types/verdict.ts).
+//
+// When verdict: render <VerdictCard />. The CitationCluster inside
+// VerdictCard dispatches `setCenterView({ kind: 'chunk-source', ... })`
+// directly via the store singleton — no callback prop drilling.
+//
+// When refusal: render <RefusalCard />.
 import type { UIMessage } from 'ai';
+import RefusalCard from '../../center/RefusalCard';
+import VerdictCard from '../../center/VerdictCard';
 import { isRefusal, isVerdict } from '../../../types/verdict';
 
-type DataPolicyPart = Extract<UIMessage['parts'][number], { type: 'data-policy' }>;
+// AI SDK v7's UIMessage generic UIDataTypes defaults do not include
+// the custom data-* payloads we author in fixtures. Cast through
+// `unknown` to the structural shape the renderer actually reads.
+// (Pitfall 2: payload lives on .data, NOT .policy.)
+type DataPolicyPartType = {
+  type: 'data-policy';
+  id?: string;
+  data: unknown;
+};
 
-export function DataPolicyPart({ part }: { part: DataPolicyPart }) {
-  const data = part.data;
-  // Wave 2 expands this to <VerdictCard verdict={verdict} /> or
-  // <RefusalCard refusal={refusal} /> with full D-06/D-07 visual
-  // semantics. For Wave 1 we emit a placeholder that still proves
-  // the data shape arrives intact on part.data.
+export default function DataPolicyPart({
+  part,
+}: {
+  part: DataPolicyPartType | (UIMessage['parts'][number] & Record<string, unknown>);
+}) {
+  const data = (part as DataPolicyPartType).data;
   if (isVerdict(data)) {
-    return (
-      <div
-        className="my-2 rounded-md border border-border bg-surface-2 p-3 text-xs font-mono"
-        data-testid="data-policy-placeholder"
-        data-policy-status={data.status}
-        data-policy-review-required={String(data.review_required)}
-      >
-        <div className="text-text-muted">[Wave 2 placeholder — VerdictCard]</div>
-        <pre className="mt-1 text-text">{JSON.stringify(data, null, 2)}</pre>
-      </div>
-    );
+    return <VerdictCard verdict={data} />;
   }
   if (isRefusal(data)) {
-    return (
-      <div
-        className="my-2 rounded-md border border-border bg-surface-2 p-3 text-xs font-mono"
-        data-testid="data-policy-placeholder"
-        data-refusal-reason={data.reason}
-      >
-        <div className="text-text-muted">[Wave 2 placeholder — RefusalCard]</div>
-        <pre className="mt-1 text-text">{JSON.stringify(data, null, 2)}</pre>
-      </div>
-    );
+    return <RefusalCard refusal={data} />;
   }
   return (
-    <div className="my-2 rounded-md border border-danger bg-surface-2 p-3 text-xs" data-testid="data-policy-unknown">
+    <div
+      className="my-2 rounded-md border border-danger bg-surface-2 p-3 text-xs"
+      data-testid="data-policy-unknown"
+    >
       Unknown data-policy payload shape
     </div>
   );

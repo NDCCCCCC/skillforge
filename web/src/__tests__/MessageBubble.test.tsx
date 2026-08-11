@@ -1,7 +1,7 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 04-01 Task 3 + Plan 04-02 Task 2 — MessageBubble tests.
+// Plan 04-01 Task 3 + Plan 04-02 Task 2 + Task 3 — MessageBubble tests.
 //
 // Pins the seven acceptance assertions from the plan:
 //  1. All 7 part types render without crash (text, reasoning, source-url,
@@ -15,7 +15,8 @@
 //  4. SourceUrlPart with allowlisted URL renders <a rel="noopener
 //     noreferrer" target="_blank">.
 //  5. DataPolicyPart reads part.data (not part.policy) — the .data key
-//     wins (Pitfall 2).
+//     wins (Pitfall 2). [Wave 2: dispatches to VerdictCard via
+//     isVerdict(), not the JSON-serializing placeholder.]
 //  6. Tool parts tool-${name} and dynamic-tool both render (Pitfall 3).
 //  7. Unknown part types render nothing (silently dropped per spec).
 
@@ -73,7 +74,8 @@ describe('MessageBubble', () => {
     expect(screen.getByTestId('citation-link')).toBeInTheDocument();
     expect(screen.getByTestId('source-document')).toBeInTheDocument();
     expect(screen.getByTestId('tool-part')).toBeInTheDocument();
-    expect(screen.getByTestId('data-policy-placeholder')).toBeInTheDocument();
+    // Wave 2: DataPolicyPart dispatches to VerdictCard via isVerdict().
+    expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
     expect(screen.getByTestId('step-start')).toBeInTheDocument();
   });
 
@@ -162,9 +164,11 @@ describe('MessageBubble', () => {
     } as unknown as UIMessage;
 
     render(<MessageBubble message={message} />);
-    const placeholder = screen.getByTestId('data-policy-placeholder');
-    expect(placeholder).toHaveAttribute('data-policy-status', '合规');
-    expect(placeholder).toHaveAttribute('data-policy-review-required', 'false');
+    // Wave 2: DataPolicyPart dispatches to VerdictCard; the legacy
+    // .policy key is ignored and .data drives the verdict status.
+    const card = screen.getByTestId('verdict-card');
+    expect(card).toHaveAttribute('data-verdict-status', '合规');
+    expect(card).toHaveAttribute('data-review-required', 'false');
   });
 
   it('Tool parts tool-${name} and dynamic-tool both render', () => {

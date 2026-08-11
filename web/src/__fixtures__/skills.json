@@ -1,0 +1,14 @@
+[
+  {
+    "id": "compliance-review",
+    "name": "企业合规/制度审查",
+    "description": "审查合同/制度/条款是否符合企业合规要求。",
+    "reads": ["权威"]
+  },
+  {
+    "id": "general-qa",
+    "name": "通用问答",
+    "description": "通用问答 Skill，覆盖全部 4 个知识层。",
+    "reads": ["权威", "历史", "个人", "草稿"]
+  }
+]

@@ -18,7 +18,8 @@
 
 import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
-import { DataPolicyPart } from './parts/DataPolicyPart';
+import DataPolicyPart from './parts/DataPolicyPart';
+import DataSubprogressPart from './parts/DataSubprogressPart';
 import ReasoningPart from './parts/ReasoningPart';
 import { SourceDocumentPart } from './parts/SourceDocumentPart';
 import { SourceUrlPart } from './parts/SourceUrlPart';
@@ -46,8 +47,12 @@ function renderPart(part: UIMessage['parts'][number], i: number): ReactNode {
     case 'data-policy':
       return <DataPolicyPart key={i} part={part as Parameters<typeof DataPolicyPart>[0]['part']} />;
     case 'data-subprogress':
-      // Wave 3 adds DataSubprogressPart renderer (FEUI-06).
-      return null;
+      return (
+        <DataSubprogressPart
+          key={i}
+          part={part as Parameters<typeof DataSubprogressPart>[0]['part']}
+        />
+      );
     case 'step-start':
       return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
     default:
