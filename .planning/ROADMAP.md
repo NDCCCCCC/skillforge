@@ -14,7 +14,8 @@
  (completed 2026-08-11)
 - [~] **Phase 2: Compliance Vertical Slice** — one Skill / one authoritative tier / one endpoint / verifiable cited answer or structured refusal (proves the "Skill-as-platform" thesis) — Plan 3/4 complete (verdict pipeline + cmd/server done; skills endpoints remaining)
 - [ ] **Phase 3: Agentic Retrieval & Trust Evaluation** — hybrid retrieval + BGE-M3 rerank + Self-RAG self-verification + 50–100-case golden set + Ragas quality gates
-- [ ] **Phase 4: Streaming Trust UI** — React chat with visible reasoning chain + clickable citations + structured verdicts + explainable refusals
+- [~] **Phase 4: Streaming Trust UI** — React chat with visible reasoning chain + clickable citations + structured verdicts + explainable refusals — Wave 1/3 complete (foundation: wire types + mock transport + parts renderer)
+- [ ] **Phase 5: Skill Platform & Full Knowledge Boundaries** — semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline
 - [ ] **Phase 5: Skill Platform & Full Knowledge Boundaries** — semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline
 - [ ] **Phase 6: Eval Dashboard & Production Hardening** — CI regression gates + tracing + metrics + queryable audits + session isolation + retention / redaction
 - [ ] **Phase 7: Open-Source Release** — Docker Compose + sample docs + docs + live demo + showcase Skills + published eval results
@@ -187,10 +188,10 @@
 | 1. Integration Spike & Trust Contract | 4/4 | Complete | 2026-08-11 |
 | 2. Compliance Vertical Slice | 2/4 | Executing | 02-01: 2026-08-11, 02-02: 2026-08-11 |
 | 3. Agentic Retrieval & Trust Evaluation | 0/? | Not started | - |
-| 4. Streaming Trust UI | 0/? | Not started | - |
+| 4. Streaming Trust UI | 1/3 | Executing | 04-01: 2026-08-11 |
 | 5. Skill Platform & Full Knowledge Boundaries | 0/? | Not started | - |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
 | 7. Open-Source Release | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-11 after Phase 2 Plan 2 completion (skill package + authority corpus)*
+*Last updated: 2026-08-11 after Phase 4 Plan 1 completion (Wave 1 foundation: wire types + mock transport + parts renderer)*

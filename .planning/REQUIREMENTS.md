@@ -56,12 +56,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Frontend (FEUI)
 
-- [ ] **FEUI-01**: User can chat with the agent and see streaming responses (React 19 + Vercel AI SDK v5)
-- [ ] **FEUI-02**: Reasoning chain is collapsible and visible by default (typed message parts: reasoning / tool-invocation / text / source)
+- [x] **FEUI-01**: User can chat with the agent and see streaming responses (React 19 + Vercel AI SDK v5)
+- [x] **FEUI-02**: Reasoning chain is collapsible and visible by default (typed message parts: reasoning / tool-invocation / text / source)
 - [ ] **FEUI-03**: Citations are clickable links opening side panel with retrieved chunk verbatim + tier + version + effective date
 - [ ] **FEUI-04**: User can switch between installed Skills via a skill picker
 - [ ] **FEUI-05**: Refusal UX distinguishes "out-of-scope" from "I don't know" with structured reason + suggested rephrasing
-- [ ] **FEUI-06**: Loading state shows sub-progress during tool calls ("Searching 权威 tier... Found 12 candidates... Re-ranking...")
+- [x] **FEUI-06**: Loading state shows sub-progress during tool calls ("Searching 权威 tier... Found 12 candidates... Re-ranking...")
 
 ### Open-Source Distribution (DIST)
 
@@ -181,12 +181,12 @@ Which phases cover which requirements.
 | GEVL-05 | Phase 3 | Pending |
 | GEVL-06 | Phase 6 | Pending |
 | GEVL-07 | Phase 6 | Pending |
-| FEUI-01 | Phase 4 | Pending |
-| FEUI-02 | Phase 4 | Pending |
+| FEUI-01 | Phase 4 | Complete |
+| FEUI-02 | Phase 4 | Complete |
 | FEUI-03 | Phase 4 | Pending |
 | FEUI-04 | Phase 4 | Pending |
 | FEUI-05 | Phase 4 | Pending |
-| FEUI-06 | Phase 4 | Pending |
+| FEUI-06 | Phase 4 | Complete |
 | DIST-01 | Phase 7 | Pending |
 | DIST-02 | Phase 7 | Pending |
 | DIST-03 | Phase 7 | Pending |
