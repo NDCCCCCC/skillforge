@@ -1,12 +1,15 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 04-01 Task 3 — MessageBubble tests.
+// Plan 04-01 Task 3 + Plan 04-02 Task 2 — MessageBubble tests.
 //
 // Pins the seven acceptance assertions from the plan:
 //  1. All 7 part types render without crash (text, reasoning, source-url,
 //     source-document, tool parts, data-policy, step-start).
 //  2. Reasoning renders BEFORE text in DOM order (D-08 invariant).
+//     [Wave 2: the placeholder was replaced with the real
+//     ReasoningPart; testid moved from 'reasoning' to
+//     'reasoning-preview'.]
 //  3. SourceUrlPart with javascript: URL renders citation-blocked span,
 //     NOT a link (T-1-08).
 //  4. SourceUrlPart with allowlisted URL renders <a rel="noopener
@@ -66,7 +69,7 @@ describe('MessageBubble', () => {
 
     render(<MessageBubble message={message} />);
     expect(screen.getByText('Hello.')).toBeInTheDocument();
-    expect(screen.getByTestId('reasoning')).toBeInTheDocument();
+    expect(screen.getByTestId('reasoning-preview')).toBeInTheDocument();
     expect(screen.getByTestId('citation-link')).toBeInTheDocument();
     expect(screen.getByTestId('source-document')).toBeInTheDocument();
     expect(screen.getByTestId('tool-part')).toBeInTheDocument();
@@ -85,7 +88,7 @@ describe('MessageBubble', () => {
     };
 
     const { container } = render(<MessageBubble message={message} />);
-    const reasoningEl = screen.getByTestId('reasoning');
+    const reasoningEl = screen.getByTestId('reasoning-preview');
     const textEl = screen.getByText('answer content');
     // Reasoning must come BEFORE text in document order.
     const pos = reasoningEl.compareDocumentPosition(textEl);

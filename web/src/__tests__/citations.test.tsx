@@ -4,7 +4,7 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 01-03 Task 2 — SC-4 citation rendering tests.
+// Plan 01-03 Task 2 + Plan 04-02 Task 2 — SC-4 citation rendering tests.
 //
 // These tests pin the three rendering behaviors the spike stub MUST
 // guarantee before Phase 4 builds on top of it:
@@ -12,9 +12,10 @@
 //     chunk's URL as href (the core SC-4 contract).
 //  2. Unknown part types are silently dropped (AI SDK v5+ spec) so a
 //     newer-server / older-client combo doesn't crash the UI.
-//  3. Reasoning chunks render inside <details> so the trace is hidden
-//     behind a disclosure widget (matches sketch-findings-ai-agent
-//     layout decision: reasoning is collapsible, not always-visible).
+//  3. Reasoning chunks render the progressive-disclosure preview
+//     (D-08 / FEUI-02) — Wave 2 replaced the <details> placeholder
+//     with the real ReasoningPart; assertion updated to look for the
+//     preview wrapper.
 //
 // Phase 4 update (T-1-08): source-url chunks now pass through the
 // sanitization gate; non-allowlisted hosts (e.g. policy.example) render
@@ -76,19 +77,21 @@ describe('SpikeStub citations (SC-4)', () => {
     expect(screen.queryByText('irrelevant')).toBeNull();
   });
 
-  it('renders reasoning in <details>', () => {
+  it('renders reasoning as the progressive-disclosure preview (D-08)', () => {
     const messages: UIMessage[] = [
       {
         id: 'm1',
         role: 'assistant',
-        parts: [{ type: 'reasoning', text: 'deep thought' }],
+        parts: [{ type: 'reasoning', text: 'deep thought', state: 'complete' }],
       },
     ];
 
     render(<App initialMessages={messages} />);
 
-    const details = screen.getByText('deep thought');
-    expect(details.closest('details')).not.toBeNull();
+    const preview = screen.getByTestId('reasoning-preview');
+    expect(preview).toBeInTheDocument();
+    expect(preview).toHaveTextContent('deep thought');
+    expect(preview).toHaveAttribute('data-expanded', 'false');
   });
 
   it('blocks source-url with non-allowlisted host (T-1-08 hard gate)', () => {

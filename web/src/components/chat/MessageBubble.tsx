@@ -19,32 +19,22 @@
 import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
 import { DataPolicyPart } from './parts/DataPolicyPart';
+import ReasoningPart from './parts/ReasoningPart';
 import { SourceDocumentPart } from './parts/SourceDocumentPart';
 import { SourceUrlPart } from './parts/SourceUrlPart';
 import { StepStartPart } from './parts/StepStartPart';
 import { TextPart } from './parts/TextPart';
 import { ToolPart } from './parts/ToolPart';
 
-function ReasoningPartPlaceholder({ part }: { part: { type: 'reasoning'; text: string; state?: string } }) {
-  // Wave 2 will replace with progressive-disclosure preview (D-08).
-  // Wave 1 keeps the simple <details> so we have a test seam; the
-  // order BEFORE text is the only invariant Wave 1 enforces.
-  return (
-    <details className="my-2 rounded-md bg-reasoning border-l-2 border-primary p-2" data-testid="reasoning">
-      <summary className="cursor-pointer text-xs font-semibold text-primary">
-        推理
-      </summary>
-      <pre className="mt-2 whitespace-pre-wrap text-xs text-text-muted">
-        {part.text}
-      </pre>
-    </details>
-  );
-}
-
 function renderPart(part: UIMessage['parts'][number], i: number): ReactNode {
   switch (part.type) {
     case 'reasoning':
-      return <ReasoningPartPlaceholder key={i} part={part as { type: 'reasoning'; text: string; state?: string }} />;
+      return (
+        <ReasoningPart
+          key={i}
+          part={part as Extract<UIMessage['parts'][number], { type: 'reasoning' }>}
+        />
+      );
     case 'text':
       return <TextPart key={i} part={part as Parameters<typeof TextPart>[0]['part']} />;
     case 'source-url':
