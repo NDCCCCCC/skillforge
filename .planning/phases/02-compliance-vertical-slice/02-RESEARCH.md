@@ -585,7 +585,7 @@ func Index(ctx context.Context, knowledgeDir string, mc client.Client, cfg retri
     var docs []retriever.Document
     nextID := int64(1)
     for _, tierDir := range tiers {
-        tierVal, _ := retriever.TierEnum[tierDir] // "权威" etc.
+        tierVal, _ := skill.TierEnum[tierDir] // "权威" etc. — DEVIATION: TierEnum lives in internal/skill (not internal/retriever) per 02-02, for Wave-1 parallel-safety (avoids internal/skill → internal/retriever import). retriever.BuildMilvusFilter still owns CN-char escaping but takes pre-resolved tier values from skill.ResolveTiers.
         files, _ := filepath.Glob(filepath.Join(knowledgeDir, tierDir, "*.md"))
         for _, f := range files {
             raw, _ := os.ReadFile(f)
@@ -765,7 +765,13 @@ RULES:
 | A5 | The Eino ADK `runner.Query(ctx, query string, opts...)` signature takes a plain string query (not `[]schema.Message`). Verified at `eino@v0.7.7/adk/runner.go:98` + used in `cmd/spiked/e2e.go:208`. | Pattern 6 (Pipeline) | LOW — already proven in spike e2e. |
 | A6 | `golang.org/x/text@v0.13.0` (the currently-resolved indirect version) is compatible with go1.24.5. Based on the module cache having it transitively resolved via eino/hertz without build errors. | Standard Stack | LOW — if incompatible, `go get golang.org/x/text@latest` resolves a newer compatible version; the `width.Narrow` API is stable across all v0.13+ versions. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> All 4 resolved by the Phase 2 plans (plan-checker Dimension 11):
+> 1. **Q1 (collection name)** → RESOLVED in 02-03 (`cmd/server/main.go` uses `skillforge_knowledge`; `cmd/spiked` keeps `skillforge_spike_test` for regression).
+> 2. **Q2 (`steps` YAML format)** → RESOLVED in 02-02 Task 1 (parse `steps` as `string`; validator checks non-empty — most permissive per SKILL_SCHEMA "declarative Markdown").
+> 3. **Q3 (`suggested_alternative_query` source)** → RESOLVED in 02-03 Task 2 Step 5 (rule-based only; the refusal path precedes any LLM call per D-09, so LLM-gen is structurally impossible — D2-14 amended).
+> 4. **Q4 (contract test shape)** → RESOLVED in 02-01 Task 2/3 (UPDATE existing `TestContractStructuredOutputSchema` for `[]Citation`; ADD `TestContractCitationGrounding`).
 
 1. **Does the production Milvus collection name graduate from `skillforge_spike_test` to something else?**
    - What we know: spike used `skillforge_spike_test` (`milvus_client.go:66`); D2-12 implies a "real" knowledge collection.

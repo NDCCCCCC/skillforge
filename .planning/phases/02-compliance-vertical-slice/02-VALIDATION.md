@@ -1,9 +1,9 @@
 ---
 phase: 2
 slug: compliance-vertical-slice
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-08-11
 ---
 
@@ -75,11 +75,11 @@ Task IDs fill in during planning (`02-NN-PLAN.md`). The planner MUST assign each
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 10s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies (tests co-located with implementation per plans)
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (go.mod + testify already present; no MISSING refs)
+- [x] No watch-mode flags
+- [x] Feedback latency < 10s (contract suite <10s; internal unit tests ~3s)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-08-11 (after plan-checker; all 6 SCs mechanically enforced with adversarial tests)

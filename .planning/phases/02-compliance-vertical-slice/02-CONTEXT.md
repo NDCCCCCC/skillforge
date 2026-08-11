@@ -40,7 +40,7 @@ Phase 2 delivers one complete compliance-review vertical slice: **one Skill (com
 
 ### Refusal Taxonomy & Thresholds (ARAG-05, GEVL-01) — Claude's discretion
 - **D2-13 (discretion): refusal reason enum** = `{no_authorized_source, low_retrieval_score, out_of_scope}`. `no_authorized_source` pinned by SC-2; `low_retrieval_score` from GEVL-01; `out_of_scope` for queries outside the Skill's domain (e.g., contact-info). Structured refusal shape `{reason, can_user_rephrase: bool, suggested_alternative_query: string}` per ARAG-05.
-- **D2-14 (discretion): `suggested_alternative_query` = LLM-generated** (single-shot, same verdict call or a cheap follow-up); rule-based fallback if the LLM omits it.
+- **D2-14 (discretion, AMENDED during planning): `suggested_alternative_query` = rule-based only in Phase 2** (rephrase to include the tier keyword, e.g. 权威制度). The original "LLM-generated + rule-based fallback" is structurally impossible on the refusal path: SC-2 / ARAG-05 refuses BEFORE any LLM call (refusal-by-construction, D-09), so there is no LLM in-flight to generate a suggestion. LLM-generated suggestions for non-refusal cases are deferred to Phase 5 polish. *(Plan-checker warning #3, resolved.)*
 - **D2-15 (discretion): retrieval-score refusal threshold** — STATE.md open question #4 flags thresholds as needing empirical calibration. For Phase 2 use a conservative placeholder (e.g., cosine < 0.3 → `low_retrieval_score` refusal) and mark it for Phase 3 eval calibration. The `review_required` confidence threshold is pinned at `< 0.9` by SC-5.
 
 ### Claude's Discretion
