@@ -114,5 +114,7 @@ type Deps struct {
 func New(addr string, deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(addr))
 	h.POST("/api/chat", deps.chatHandler)
+	h.GET("/api/skills", deps.listSkillsHandler)
+	h.POST("/api/skills", deps.validateSkillHandler)
 	return h
 }
