@@ -79,6 +79,35 @@ func isWhitespace(r rune) bool {
 	return false
 }
 
+// canonicalChunkID normalizes a citation's ChunkID for map lookup. The
+// pipeline frames chunks to the LLM as "[CHUNK <id>]" and the LLM echoes
+// "CHUNK <id>" as the chunk_id; the grounding map is keyed by the bare
+// "<id>". This helper strips the "CHUNK "/"chunk " prefix (case-insensitive)
+// and surrounding whitespace so the lookup matches regardless of which
+// form the LLM emitted.
+func canonicalChunkID(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > len("CHUNK ") {
+		if strings.EqualFold(s[:len("CHUNK ")], "CHUNK ") {
+			s = strings.TrimSpace(s[len("CHUNK "):])
+		}
+	}
+	return s
+}
+
+// lookupChunk finds a chunk's text in chunksByID, trying the canonical
+// (prefix-stripped) key first, then the raw key as a fallback. Returns
+// (text, true) on hit.
+func lookupChunk(chunksByID map[string]string, chunkID string) (string, bool) {
+	if t, ok := chunksByID[canonicalChunkID(chunkID)]; ok {
+		return t, true
+	}
+	if t, ok := chunksByID[chunkID]; ok { // raw fallback (verbatim key)
+		return t, true
+	}
+	return "", false
+}
+
 // GroundingReport summarizes the result of a GroundingCheck call.
 type GroundingReport struct {
 	// Grounded is true when at least one citation's Span was found (after
@@ -116,7 +145,14 @@ type GroundingReport struct {
 func GroundingCheck(v Verdict, chunksByID map[string]string) GroundingReport {
 	report := GroundingReport{Grounded: true}
 	for _, c := range v.Citations {
-		chunkText, ok := chunksByID[c.ChunkID]
+		// The LLM emits ChunkID in the form it saw in the prompt
+		// ("CHUNK 7"), but chunksByID is keyed by the bare numeric id
+		// ("7", via strconv.FormatInt in the pipeline). Normalize the
+		// lookup key so the moat actually verifies spans instead of
+		// silently flagging every citation as a "novel claim". Tolerates
+		// "CHUNK 7" / "chunk 7" / "7" / " CHUNK 7 " (LLM casing/spacing
+		// drift); falls back to the raw key if the map is keyed verbatim.
+		chunkText, ok := lookupChunk(chunksByID, c.ChunkID)
 		if !ok {
 			// Chunk not retrieved — the LLM cited something it never saw.
 			// This is the "novel claim" failure mode (D2-02 / D-01).
