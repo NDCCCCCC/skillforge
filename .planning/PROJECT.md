@@ -18,6 +18,8 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 - ✅ **Phase 2: Compliance Vertical Slice** (2026-08-11) — **"Skill 即平台"论点证明**。一个 Skill（合规）/ 一个权威层 / 一个端点（`POST /api/chat`），对任何查询给出**带引用裁决 OR 结构化拒答，绝不臆造**。6/6 SC 对真实 MongoDB + Ollama-BGE-M3 + GLM-5.2 全绿（人工 checkpoint approved）。**D2-01 护城河实测有效**：SC-3 裁决 confidence 0.95 未被降到 0.89，证明 Go grounding checker 成功验证了 citation span 逐字出现在 chunk 原文（P-COMPL-1 头号风险落地）。产物：`internal/{verdict,wire,retriever/{milvus,mongo},embedder/bge,skill,knowledge,server}` + `cmd/server` Hertz 服务 + `skills/compliance/SKILL.md` + `knowledge/authority/` 7 篇语料 + `scripts/live-verify.sh`。**多后端能力兑现**：`retriever.Retriever` + `embedder.Embedder` 接口抽象（11 commits），MongoDB 后端实战落地（5 commits，因用户 Milvus 环境损坏而启用）。活体验证发现并修复 5 个真实 bug（bge model 字段 / bge 超时 / unanswered→refusal 映射 / mongo seed 去重 / grounding key 不匹配导致护城河静默失效）。**Phase 3 待办**：embedding 区分度低（Ollama bge-m3 所有 doc 0.29-0.40）、LLM temp=0 非确定性——均靠 Phase 3 Ragas eval 驱动校准。
 
+- ✅ **Phase 4: Streaming Trust UI** (2026-08-11) — **信任可视化前端落地**。React 19 + Vite + TS + Vercel AI SDK（`ai@7`）三面板（资料库 / 审查结论 / 对话）聊天 UI，把 Phase 2 后端的"带引用裁决 + 结构化拒答"翻译成可审计的用户体验：可见推理链（D-08 高度受限、可折叠，DOM 序在答案之前）、可点击引用（D-01 → ChunkSourceView 展示 TierBadge + 版本 + 生效日期 + 逐字原文）、结构化 VerdictCard（D-06 状态色边框 + 置信度条 + 需复核 badge）/ RefusalCard（D-07 超范围 🚫 vs 不知道 ❓ 强区分）、子进度指示器（FEUI-06 五步文案）、Skill 选择器（FEUI-04 切换 Skill 并联动 CenterPanel）。**UAT 12/12 全绿**（chrome-devtools MCP 自动化 + 单元测试证据），83/83 单元测试绿，1 个 gap（CenterPanel 标签指示器未受控于 `centerView.kind`）已修复（commit `e757d6e` + 回归测试）。**关键工程决策固化**：D-04 transport-swap 不变量（Mock ↔ Default 字节级一致，`transport-swap.test.tsx` 把关生产切换）、T-1-08 source-URL 白名单消毒门、Pitfall 7 状态边界（Zustand store 文件级禁止 `messages` 字段，`useChat` 独占消息流）、wire-type 编译期漂移报警（`AssertAssignable<SkillForgeChunk, UIMessageChunk>`）。覆盖需求：FEUI-01..06、SYSK-03、KNOW-05、CMPL-05、T-1-08。**已知的 Phase 5 延期项**：LeftSidebar 真实多会话/文件树、ChatInput `@` 模糊搜索、Skill 管理器 UI、双向 tab 导航 + UI-SPEC §169 chunk 空状态。
+
 ### Active
 
 <!-- Current scope. Building toward these. -->
@@ -76,6 +78,10 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | 内置 demo Skill = **企业合规/制度审查** | 痛点尖锐（合规不容许臆测）、真源分离天然契合（制度是权威真源）、拒答机制能出彩 | — Pending |
 | 受众 = **开源建个人品牌** | 打磨重点：文档 + 易上手 + 可衡量结果（区别于纯面试项目） | — Pending |
 | Skill 规范 **6 字段（显式 reads / writes）** | 把 denova 隐含在 body 步骤里的"读什么/写什么"结构化显式化 → 更规范、更安全、更易被 Skill 向导自动生成 | — Pending |
+| **D-04 transport-swap 不变量**（Phase 4） | Mock 与 Default transport 必须从同一 fixture 产出字节级一致的 UIMessageChunk 序列；`transport-swap.test.tsx` 把关，避免生产切换到真实 Hertz 端点时 UI 漂移 | ✅ Validated — Phase 4 |
+| **T-1-08 source-URL 白名单消毒门**（Phase 4） | `source-url` href 是 XSS 头号入口；在 SourceUrlPart 边界强制协议+主机白名单，拒绝即渲染 blocked 态，`<a>` 恒带 `rel=noopener noreferrer` | ✅ Validated — Phase 4（7 断言回归门） |
+| **状态边界：Zustand 不存 `messages`**（Pitfall 7，Phase 4） | `useChat` 独占消息流；`app-store.ts` 文件级注释禁止 `messages` 字段，杜绝双真值源 | ✅ Validated — Phase 4 |
+| **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 
 ## Evolution
 
@@ -95,4 +101,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-11 after Phase 1 (Integration Spike) completion*
+*Last updated: 2026-08-11 after Phase 4 (Streaming Trust UI) completion*

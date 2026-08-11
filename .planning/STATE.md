@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
-current_phase: 04
+current_phase: 5
 current_plan: 1
 status: ready_to_plan
-last_updated: 2026-08-11T14:41:00.705Z
+last_updated: 2026-08-11T14:54:45.813Z
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 10
   completed_plans: 13
   percent: 43
-stopped_at: Phase 02 complete (6/4) — ready to discuss Phase 04
+stopped_at: Phase 04 complete (3/2) — ready to discuss Phase 5
 ---
 
 # State — SkillForge
@@ -21,12 +21,11 @@ stopped_at: Phase 02 complete (6/4) — ready to discuss Phase 04
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 04
+**Current Phase:** 5 (skill-platform-&-full-knowledge-boundaries)
 **Current Plan:** Not started
-**Total Plans in Phase:** 3
-**Plan Status:** Plan 1 COMPLETE 2026-08-11 — ready for Wave 2 (04-02)
+**Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** `/gsd:verify-work 4` to close Phase 4 — UAT is now 12/12 after quick task `260811-uaf` (CenterPanel tab-indicator sync). Then `/gsd:secure-phase 04` if config requires, then advance.
+**Next action:** Phase 3 (Agentic Retrieval & Trust Eval) was deferred under MVP vertical-slice reordering — decide whether to (a) plan Phase 5 next per dependency chain, or (b) circle back to Phase 3 first. Run `/gsd:discuss-phase 5` or `/gsd:discuss-phase 3`.
 
 ---
 
@@ -42,42 +41,34 @@ stopped_at: Phase 02 complete (6/4) — ready to discuss Phase 04
 
 **License:** Apache-2.0.
 
+**Current focus:** Phase 5 — Skill Platform & Full Knowledge Boundaries (semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline). Note: Phase 3 (Agentic Retrieval & Trust Eval) was deferred under MVP reordering and remains open.
+**See:** `.planning/PROJECT.md` (updated 2026-08-11 after Phase 4)
+
 ---
 
 ## Current Position
 
-Phase: 04 (streaming-trust-ui) — EXECUTING
-Plan: 1 of 3
-**Phase:** 2
-**Plan:** 3 (verdict pipeline + cmd/server) — COMPLETE 2026-08-11
+**Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
+**Plan:** not started
 **Status:** Ready to plan
-**Next action:** `/gsd:execute-phase 02` (continue to 02-04)
+**Just completed:** Phase 4 (streaming-trust-ui) — 3/3 plans, UAT 12/12, SECURITY verified (0 open threats)
 
-**02-01 deliverables:**
+**Phase 4 shipped (trust visualization front-end):**
 
-- internal/spike/ retired (graduated to internal/{verdict, wire, retriever})
-- D2-06 Verdict.Citations upgraded to []Citation{{ChunkID, Span, Tier}}
-- D2-01 GroundingChecker (Normalize + substring + D2-02 downgrade)
-- 5 adversarial grounding tests + D2-05 normalize tests
-- integration/contract test pinned to []Citation schema
+- Three-panel React 19 UI (资料库 / 审查结论 / 对话) — `web/src/components/layout/{ThreePanel,LeftSidebar,RightChat}.tsx`
+- VerdictCard (D-06) + RefusalCard (D-07) + ReasoningPart (D-08) + ChunkSourceView (D-01/FEUI-03) + SkillPicker (FEUI-04) + DataSubprogressPart (FEUI-06)
+- Wire-type compile-time drift alarm + MockChatTransport (D-04 swap invariant) + T-1-08 source-URL sanitization gate
+- 83/83 unit tests green; UAT 12/12 (chrome-devtools MCP + unit evidence); 1 gap fixed (commit `e757d6e`)
+- Requirements covered: FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08
 
-**02-02 deliverables:**
+**Deferred to Phase 5 (from 04-03 Known Stubs + 260811-uaf):**
 
-- internal/skill/ package: Manifest (7-field, *float32 Temperature) + Validate + TierEnum + ResolveTiers + Loader.Scan + parseFrontmatter
-- skills/compliance/SKILL.md (canonical 7-field showcase — CMPL-01)
-- knowledge/authority/{travel_expense,contract_approval,non_compete,annual_leave,expense_reimbursement_scope,business_gift_prohibition,anti_corruption_clause}.md (7 hand-authored clauses)
-- knowledge/{historical,personal,draft}/.gitkeep (empty tier dirs preserved — personal/ IS the SC-4 refusal mechanism)
-- testdata/skills/*/SKILL.md reconciled to 7-field (D2-10)
+- LeftSidebar real multi-session + file tree (current = mock skeleton)
+- ChatInput `@`-mention fuzzy search (current = drag-drop + 10MB validation only)
+- Skill manager / settings UI (topbar chevron is a no-op stub)
+- Bidirectional tab nav + UI-SPEC §169 chunk empty-state
 
-**02-03 deliverables (THE Phase 2 heart):**
-
-- internal/knowledge Index (Pattern 7 one-doc-one-chunk loader; BGE-M3 production embed; skill.TierEnum dir→tier mapping)
-- internal/server: Deps + Embedder/Searcher/Runner interface seams + New() (Pattern 1)
-- internal/server VerdictPipeline 10-step orchestrator (Pattern 6) — embed → retrieve → refuse-or-LLM → ground → emit
-- internal/server chatHandler + emitVerdictStream + emitRefusal + drainFinalContent (Pattern 2 SSE wiring)
-- cmd/server long-running Hertz binary reading 5 env vars (D2-09 / Pattern 1); h.Spin() blocks until SIGINT/SIGTERM
-- 7 acceptance tests pinning SC-2/3/4/5/6 + AGNT-03 + ARAG-05 + GEVL-01/02 + SYSK-07 + SYSK-08 + CMPL-05
-- 8 unit tests in internal/knowledge/indexer_test.go pinning the 4 indexer success criteria + static-analysis guard against EmbedQueryDeterministic fallback
+**Open dependency note:** Phase 3 (Agentic Retrieval & Trust Eval) was skipped under MVP vertical-slice reordering (Phase 2 → Phase 4). Its scope (Self-RAG self-verification, multi-hop, Ragas golden-set gates, audit row) is still open and may need to be sequenced before or alongside Phase 5.
 
 ---
 
@@ -96,6 +87,10 @@ Plan: 1 of 3
 | D9 | Refusal-by-construction on missing tier-match | Default-deny; never improvise (GEVL-02, KNOW-04) |
 | D10 | Self-RAG / CRAG self-verification | Re-read & verify claims before final answer (ARAG-03) |
 | D11 | MongoDB 4.4+ as alternate retriever backend (`RETRIEVER_BACKEND=mongo`) | Internal Milvus is broken (image configured for external etcd). Tier filter via `{tier:{$in}}` query BEFORE in-Go cosine; D-09 holds structurally on both backends. Proves the `retriever.Retriever` abstraction is real. |
+| D12 | D-04 transport-swap invariant (Phase 4) | Mock ↔ Default transport must produce byte-identical UIMessageChunk sequences from the same fixture; `transport-swap.test.tsx` gates the production swap to the real Hertz endpoint, preventing UI drift. |
+| D13 | T-1-08 source-URL allowlist sanitization gate (Phase 4) | `source-url` href is the primary XSS vector; protocol+hostname allowlist at the SourceUrlPart boundary, rejected URLs render a blocked state, `<a>` always carries `rel=noopener noreferrer`. 7-assertion regression gate. |
+| D14 | State boundary: Zustand store bans `messages` (Pitfall 7, Phase 4) | `useChat` owns the message stream; `app-store.ts` file-level comment forbids a `messages` field, eliminating the dual-source-of-truth class of bugs. |
+| D15 | Wire-type compile-time drift alarm (Phase 4) | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` fails the build if the SDK upstream renames any chunk discriminator — the compiler IS the drift alarm (cheaper than runtime contract tests alone). |
 
 ---
 
@@ -138,22 +133,25 @@ Plan: 1 of 3
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
 | 04 | 1 | 75m | 4 tasks / 38 files — Wave 1 foundation (wire types + mock transport + parts) |
+| 04 | 2 | 50m | 3 tasks — Wave 2: VerdictCard + RefusalCard + ReasoningPart + CenterPanel + locked-file reconciliation (24 new / 8 mod) |
+| 04 | 3 | 50m | 3 tasks — Wave 3: ThreePanel + SkillPicker + ChunkSourceView wire + transport-swap integration test (17 new / 8 mod) |
 | 02 | 3 | — | verdict pipeline + cmd/server |
 | 02 | 2 | — | skill package + corpus |
 | 02 | 1 | — | grounding + verdict schema |
 | 02 | 04-MONGO | 13m | 5 commits — MongoDB retriever backend (RETRIEVER_BACKEND=mongo). See 02-04-MONGO-SUMMARY.md |
 | 04 (quick) | 260811-uaf | ~20m | CenterPanel tab-indicator ↔ centerView.kind sync — closed UAT #8 (83/83 green). See quick/260811-uaf-*-SUMMARY.md |
 
-- Phases completed: 1 / 7 (Phase 1 spike done; Phase 2 Plans 1-3 done)
-- Requirements covered: 14 / 55 + FEUI-01/02/06, T-1-08 (CMPL-02/03/04/05, ARAG-04/05, AGNT-03, GEVL-01/02, SYSK-01/02/07/08, CMPL-01)
-- Plans run: 8 (4 from Phase 1 spike + 3 from Phase 2 + 1 from Phase 4 Wave 1)
-- Last plan: 02-04-MONGO (extension) — committed at 3585f30 + 4743a4b + 0546db2 + 2169266
+- Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering
+- Requirements covered: 22 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08)
+- Frontend tests: 83/83 green (12 files); UAT 12/12
+- Plans run: 11 (4 Phase 1 + 4 Phase 2 incl. MONGO + 3 Phase 4)
+- Last plan: 04-03 (Wave 3) — commits d65a3b8 + 081b743 + 73d26a7
 
 ---
 
 ## Session Continuity
 
-**Resume point:** Phase 4 UAT is 12/12 (tab-sync fix `260811-uaf` done, commit `e757d6e`). Next: `/gsd:verify-work 4` to close the phase → check `/gsd:secure-phase 04` gate → advance. The `HANDOFF.json` + `.continue-here.md` pause artifacts were removed once the fix landed. Bidirectional tab nav + UI-SPEC 169 chunk empty-state deferred (see `260811-uaf-SUMMARY.md`).
+**Resume point:** Phase 4 (streaming-trust-ui) is COMPLETE — UAT 12/12, SECURITY verified (0 open threats), transitioned to Phase 5. Next: decide Phase 3 (deferred Agentic Retrieval & Trust Eval) vs Phase 5 (Skill Platform) sequencing, then `/clear` → `/gsd:discuss-phase 5` (or `3`). Bidirectional tab nav + UI-SPEC §169 chunk empty-state + LeftSidebar real sessions + ChatInput `@`-search deferred to Phase 5 (see 04-03 Known Stubs + 260811-uaf-SUMMARY).
 
 **Hot files this session:**
 
@@ -165,4 +163,4 @@ Plan: 1 of 3
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 5 on 2026-08-11.*
