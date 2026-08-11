@@ -1,0 +1,340 @@
+// Copyright 2026 SkillForge Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package mongo
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/skillforge/skillforge/internal/retriever"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
+)
+
+// Network resilience — mirrors the milvus dial timeouts so a typo in
+// MONGO_URI fails fast (not after the default 30s server-selection
+// timeout) while still tolerating a transient LAN blip.
+const (
+	dialTimeout = 5 * time.Second
+	pingTimeout = 5 * time.Second
+)
+
+// Default Database / Collection names. The operator can override via
+// Config; cmd/server always sets these explicitly so the defaults are
+// only used by ad-hoc tooling / tests that construct Config{} directly.
+const (
+	DefaultDatabase   = "skillforge"
+	DefaultCollection = "knowledge"
+)
+
+// Config configures the MongoDB client. URI is required; Database and
+// Collection fall back to Default* when empty (mirrors the milvus.Config
+// withDefaults pattern).
+type Config struct {
+	URI        string // e.g. "mongodb://10.62.10.34:27017"
+	Database   string // defaults to DefaultDatabase
+	Collection string // defaults to DefaultCollection
+}
+
+func (cfg Config) withDefaults() Config {
+	if cfg.Database == "" {
+		cfg.Database = DefaultDatabase
+	}
+	if cfg.Collection == "" {
+		cfg.Collection = DefaultCollection
+	}
+	return cfg
+}
+
+// rowFinder is the testable seam for the row-fetch step of Search.
+// Production wires this to mongoCollectionFinder (a thin wrapper around
+// *mongo.Collection.Find); tests inject a fake that returns canned rows
+// so the Search ranking logic can be exercised without a live MongoDB.
+//
+// The filter argument is whatever Search builds (a bson.D in production)
+// and the finder is expected to apply it unchanged — this is where the
+// PRE-similarity tier gate lives (SYSK-07 / P-RAG-2).
+type rowFinder interface {
+	FindRows(ctx context.Context, filter any) ([]docRow, error)
+}
+
+// mongoCollectionFinder adapts *mongo.Collection to the rowFinder
+// interface. Find → cursor → cursor.All decodes the BSON rows into the
+// docRow value type with no per-row allocation beyond the slice grow.
+type mongoCollectionFinder struct {
+	coll *mongo.Collection
+}
+
+func (f mongoCollectionFinder) FindRows(ctx context.Context, filter any) ([]docRow, error) {
+	cur, err := f.coll.Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("mongo.Find: %w", err)
+	}
+	defer func() {
+		// Use a fresh context for Close so a cancelled query does not
+		// leak the cursor. The driver tolerates a nil/ctx-cancelled Close.
+		closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = cur.Close(closeCtx)
+	}()
+	var rows []docRow
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("mongo.Cursor.All: %w", err)
+	}
+	return rows, nil
+}
+
+// Client implements retriever.Retriever against a MongoDB 4.4+ server.
+// It owns the underlying mongo-driver *Client + the resolved collection
+// handle. The tier-filter PRE-cosine contract (SYSK-07, P-RAG-2) is
+// enforced inside Search via the {tier: {$in: tiers}} filter.
+type Client struct {
+	cfg    Config
+	conn   *mongo.Client
+	coll   *mongo.Collection
+	finder rowFinder // injectable; defaults to mongoCollectionFinder{coll}
+}
+
+// Compile-time check that *Client satisfies retriever.Retriever.
+// Drift in the interface will fail the build here, not at runtime.
+var _ retriever.Retriever = (*Client)(nil)
+
+// New dials MongoDB, pings it (Connect itself does not validate
+// reachability), resolves the collection handle, and returns a connected
+// Client. cfg.URI is required; cfg.Database / cfg.Collection default.
+//
+// Bounded by dialTimeout for the connect+ping so a typo in MONGO_URI
+// surfaces in seconds rather than after the driver's 30s server-selection
+// timeout. After New the collection may not yet exist — call Ensure to
+// create it (idempotent).
+func New(ctx context.Context, cfg Config) (*Client, error) {
+	cfg = cfg.withDefaults()
+	if cfg.URI == "" {
+		return nil, errors.New("mongo.New: Config.URI is empty (set MONGO_URI)")
+	}
+
+	conn, err := mongo.Connect(options.Client().ApplyURI(cfg.URI))
+	if err != nil {
+		return nil, fmt.Errorf("mongo.Connect: %w", err)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+	if err := conn.Ping(pingCtx, readpref.Primary()); err != nil {
+		// Best-effort disconnect so we don't leak the connection pool when
+		// the ping fails. Errors are ignored — the ping error is the one
+		// we want to surface.
+		_ = conn.Disconnect(context.Background())
+		return nil, fmt.Errorf("mongo.Ping %s: %w", cfg.URI, err)
+	}
+
+	coll := conn.Database(cfg.Database).Collection(cfg.Collection)
+	c := &Client{
+		cfg:    cfg,
+		conn:   conn,
+		coll:   coll,
+		finder: mongoCollectionFinder{coll: coll},
+	}
+	return c, nil
+}
+
+// Health probes the live connection (Ping). Used by cmd/server startup
+// to fail fast on a misconfigured MONGO_URI.
+func (c *Client) Health(ctx context.Context) error {
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+	return c.conn.Ping(pingCtx, readpref.Primary())
+}
+
+// Disconnect closes the underlying client. The instance is unusable
+// after this call.
+func (c *Client) Disconnect() error {
+	if c.conn == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+	return c.conn.Disconnect(ctx)
+}
+
+// Ensure creates the collection + a {tier:1} index if absent. Idempotent
+// — safe to call on every startup. The {tier:1} index makes the PRE-
+// similarity tier filter an indexed lookup; for the Phase 2 ~30-row
+// corpus this is overkill, but it future-proofs against a 100k-row
+// corpus where a collection scan on tier would dominate the latency.
+//
+// We use CreateCollection explicitly so a brand-new MongoDB instance
+// gets the collection created with our defaults (no validator needed —
+// the indexer writes well-formed docs and we trust the write path).
+func (c *Client) Ensure(ctx context.Context) error {
+	db := c.conn.Database(c.cfg.Database)
+
+	// CreateCollection errors if the collection already exists; that case
+	// is expected and tolerated. Any other error is surfaced.
+	if err := db.CreateCollection(ctx, c.cfg.Collection); err != nil {
+		// v2 driver returns a mongo.CommandError with a "collection already
+		// exists" NamespaceExists code (48) on re-run. Tolerate it.
+		var ce mongo.CommandError
+		if !errors.As(err, &ce) || !isNamespaceExists(ce) {
+			// Fall back to a name-based sniff so we tolerate drivers/versions
+			// that phrase the error differently. Lowercase substring match
+			// is intentionally permissive.
+			if !containsAlreadyExists(err.Error()) {
+				return fmt.Errorf("mongo.CreateCollection(%q): %w", c.cfg.Collection, err)
+			}
+		}
+	}
+
+	// Create the {tier:1} index. CreateOne tolerates a re-run by treating
+	// "IndexOptionsConflict" / already-exists as success.
+	idxName, err := c.coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{{Key: "tier", Value: 1}},
+	})
+	if err != nil && !containsAlreadyExists(err.Error()) {
+		return fmt.Errorf("mongo.CreateIndex(tier): %w (name=%q)", err, idxName)
+	}
+	return nil
+}
+
+// isNamespaceExists returns true for the v2 "NamespaceExists" CommandError
+// code (48). Kept as a helper so the Ensure path reads cleanly.
+func isNamespaceExists(ce mongo.CommandError) bool {
+	// The v2 CommandError exposes Code via an embedded field; check both
+	// the named code and the message as a defensive fallback.
+	return ce.Code == 48 || containsAlreadyExists(ce.Message)
+}
+
+// containsAlreadyExists matches the substring "already exists" in any
+// case. The driver's exact wording has varied across versions; a
+// case-insensitive substring is the most stable predicate.
+func containsAlreadyExists(s string) bool {
+	const needle = "already exists"
+	// ASCII-lowercase to avoid pulling unicode/norm tables.
+	for i := 0; i+len(needle) <= len(s); i++ {
+		if equalFoldASCII(s[i:i+len(needle)], needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// equalFoldASCII is a tiny ASCII-only fold comparator used by
+// containsAlreadyExists. Pulling in strings.ToLower would add a unicode
+// table dependency for a single substring check.
+func equalFoldASCII(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		ca, cb := a[i], b[i]
+		if ca >= 'A' && ca <= 'Z' {
+			ca += 'a' - 'A'
+		}
+		if cb >= 'A' && cb <= 'Z' {
+			cb += 'a' - 'A'
+		}
+		if ca != cb {
+			return false
+		}
+	}
+	return true
+}
+
+// Insert adds docs to the collection via InsertMany. Caller pre-assigns
+// numeric IDs; we do NOT auto-dedup (mirrors the milvus MilvusClient.Insert
+// contract — re-running inserts duplicates).
+//
+// Each retriever.Document is wrapped in a bson.M so the field names on
+// the wire match the docRow bson tags (id/tier/content/source/embedding)
+// exactly. We do not insert an _id: the collection uses MongoDB's default
+// ObjectId for _id and stores our 1-based numeric ID in the `id` field,
+// matching the milvus collection layout (where id IS the primary key).
+func (c *Client) Insert(ctx context.Context, docs []retriever.Document) error {
+	if len(docs) == 0 {
+		return errors.New("mongo.Insert: no docs to insert")
+	}
+	docsAny := make([]any, len(docs))
+	for i, d := range docs {
+		docsAny[i] = bson.M{
+			"id":        d.ID,
+			"tier":      d.Tier,
+			"content":   d.Content,
+			"source":    d.Source,
+			"embedding": d.Embedding,
+		}
+	}
+	if _, err := c.coll.InsertMany(ctx, docsAny); err != nil {
+		return fmt.Errorf("mongo.InsertMany: %w", err)
+	}
+	return nil
+}
+
+// Search applies the tier filter as a real MongoDB query BEFORE computing
+// cosine similarity in Go. The PRE-filter semantics (SYSK-07, P-RAG-2)
+// are enforced by the database query itself — we never load all docs and
+// then filter.
+//
+// Empty tiers → {tier: {$in: []}} matches no documents → 0 hits. This
+// is the structural refusal-by-construction (D-09): the database itself
+// refuses, independent of any agent policy. We do not special-case the
+// empty-tiers branch in Go — the same code path runs and produces zero
+// rows, which is the precise guarantee D-09 requires.
+//
+// The queryVec length is validated against the first row's embedding
+// length (defensive — production inserts a fixed BGE-M3 dim=1024). The
+// per-row length check happens inside rank() which skips mismatched rows
+// rather than panicking.
+func (c *Client) Search(ctx context.Context, queryVec []float32, tiers []string, topK int) ([]retriever.Hit, error) {
+	if topK <= 0 {
+		return nil, errors.New("mongo.Search: topK must be > 0")
+	}
+	if len(queryVec) == 0 {
+		return nil, errors.New("mongo.Search: queryVec is empty")
+	}
+
+	// {tier: {$in: tiers}}. Empty tiers → $in:[] → no matches → 0 hits
+	// (D-09). This is THE trust boundary: building the filter any other
+	// way (e.g. skipping the find on empty tiers) would still produce
+	// 0 rows but would not be the DATABASE refusing — the structural
+	// guarantee would be in Go, not in the storage layer. Always build
+	// the filter, always run the find.
+	filter := bson.D{{
+		Key:   "tier",
+		Value: bson.D{{Key: "$in", Value: tiers}},
+	}}
+
+	rows, err := c.finder.FindRows(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return rank(rows, queryVec, topK), nil
+}
+
+// CollectionName exposes the resolved collection name (used by cmd/server
+// logging + future tooling). Read-only — callers must not mutate.
+func (c *Client) CollectionName() string { return c.cfg.Collection }
+
+// DatabaseName exposes the resolved database name (mirrors CollectionName).
+func (c *Client) DatabaseName() string { return c.cfg.Database }
