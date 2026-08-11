@@ -14,19 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package spike tests.
+// Package retriever tests.
 //
-// These tests cover the pure-function behavior of BuildMilvusFilter — the
-// security-critical helper that converts a Skill.reads slice into a Milvus
-// filter expression. The filter must be correct WITHOUT a live Milvus
-// instance because it is SkillForge's structural tier-isolation boundary
-// (T-1-04 / T-1-05): a malformed expression would either leak cross-tier
-// docs or zero out results.
+// Graduated from internal/spike/milvus_client_test.go in Plan 02-01 (MOVE,
+// not copy). These tests cover the pure-function behavior of
+// BuildMilvusFilter — the security-critical helper that converts a
+// Skill.reads slice into a Milvus filter expression. The filter must be
+// correct WITHOUT a live Milvus instance because it is SkillForge's
+// structural tier-isolation boundary (T-1-04 / T-1-05): a malformed
+// expression would either leak cross-tier docs or zero out results.
 //
-// SDK-dependent helpers (NewMilvusClient, SeedDocuments, EmbedQuery, Search)
-// are exercised by cmd/spiked/milvus_test.go's TestSeedAndFilterIntegration,
-// which is gated behind MILVUS_INTEGRATION=1.
-package spike
+// SDK-dependent helpers (NewMilvusClient, SeedDocuments, EmbedQuery,
+// SearchWithTierFilter) are exercised by cmd/spiked/milvus_test.go's
+// TestSeedAndFilterIntegration, which is gated behind MILVUS_INTEGRATION=1.
+package retriever
 
 import (
 	"strings"
@@ -138,6 +139,9 @@ func TestBuildMilvusFilterSpecialChars(t *testing.T) {
 // the deterministic hash-based embedder must return exactly 1024 floats for
 // any non-empty input and be stable across calls (same input → same vector).
 // This is the fallback path used when BGE_M3_URL is unreachable.
+//
+// SPIKE-ONLY: production (02-03 cmd/server) MUST refuse on BGE-M3 outage
+// rather than silently degrade to this fallback (Pitfall 8).
 func TestEmbedQueryDeterministicSanity(t *testing.T) {
 	vec := EmbedQueryDeterministic("出差住宿费超标 200 元")
 	assert.Len(t, vec, 1024, "deterministic embedding must be 1024-dim (BGE-M3 dim)")

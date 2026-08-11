@@ -17,7 +17,7 @@
 // Package main — milvus subcommand tests.
 //
 // TestBuildMilvusFilter is a fast (<1s) smoke test that runs on every
-// commit. It re-checks the spike.BuildMilvusFilter contract from the cmd
+// commit. It re-checks the retriever.BuildMilvusFilter contract from the cmd
 // package's perspective (verifying the import works + the exported symbol
 // produces the exact filter strings SC-2 depends on).
 //
@@ -33,33 +33,33 @@ import (
 	"os"
 	"testing"
 
-	"github.com/skillforge/skillforge/internal/spike"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestBuildMilvusFilter re-asserts the BuildMilvusFilter contract from the
 // cmd package. The canonical table-driven suite lives in
-// internal/spike/milvus_client_test.go; this is a thin smoke test that
+// internal/retriever/filter_test.go; this is a thin smoke test that
 // catches import-wiring regressions and verifies the few cases the bleed
 // assertion in runMilvus depends on.
 func TestBuildMilvusFilter(t *testing.T) {
 	// Default-deny: nil/empty → "false" (D-09 structural enforcement).
-	assert.Equal(t, "false", spike.BuildMilvusFilter(nil))
-	assert.Equal(t, "false", spike.BuildMilvusFilter([]string{}))
+	assert.Equal(t, "false", retriever.BuildMilvusFilter(nil))
+	assert.Equal(t, "false", retriever.BuildMilvusFilter([]string{}))
 
 	// Single CN tier — exact bytes (the filter SC-2 asserts on).
-	assert.Equal(t, `tier in ["权威"]`, spike.BuildMilvusFilter([]string{"权威"}))
-	assert.Equal(t, `tier in ["历史"]`, spike.BuildMilvusFilter([]string{"历史"}))
-	assert.Equal(t, `tier in ["个人"]`, spike.BuildMilvusFilter([]string{"个人"}))
-	assert.Equal(t, `tier in ["草稿"]`, spike.BuildMilvusFilter([]string{"草稿"}))
+	assert.Equal(t, `tier in ["权威"]`, retriever.BuildMilvusFilter([]string{"权威"}))
+	assert.Equal(t, `tier in ["历史"]`, retriever.BuildMilvusFilter([]string{"历史"}))
+	assert.Equal(t, `tier in ["个人"]`, retriever.BuildMilvusFilter([]string{"个人"}))
+	assert.Equal(t, `tier in ["草稿"]`, retriever.BuildMilvusFilter([]string{"草稿"}))
 
 	// Multi-tier ordering preserved.
 	assert.Equal(t, `tier in ["权威","历史"]`,
-		spike.BuildMilvusFilter([]string{"权威", "历史"}))
+		retriever.BuildMilvusFilter([]string{"权威", "历史"}))
 
 	// Hostile characters do not crash (Pitfall 7 — injection safety).
 	assert.NotPanics(t, func() {
-		_ = spike.BuildMilvusFilter([]string{"O'Brien"})
+		_ = retriever.BuildMilvusFilter([]string{"O'Brien"})
 	})
 }
 
@@ -88,11 +88,11 @@ func TestSeedAndFilterIntegration(t *testing.T) {
 		t.Fatalf("findProjectRoot: %v", err)
 	}
 
-	cfg := spike.MilvusConfig{
+	cfg := retriever.MilvusConfig{
 		Addr:           addr,
 		Token:          os.Getenv("MILVUS_TOKEN"),
-		CollectionName: spike.DefaultCollectionName,
-		EmbedDim:       spike.DefaultEmbedDim,
+		CollectionName: retriever.DefaultCollectionName,
+		EmbedDim:       retriever.DefaultEmbedDim,
 		BGEURL:         os.Getenv("BGE_M3_URL"),
 	}
 
@@ -105,7 +105,7 @@ func TestSeedAndFilterIntegration(t *testing.T) {
 	t.Logf("embed mode: %s", embedMode)
 
 	// Connect to Milvus.
-	mc, err := spike.NewMilvusClient(ctx, cfg)
+	mc, err := retriever.NewMilvusClient(ctx, cfg)
 	if err != nil {
 		t.Fatalf("NewMilvusClient: %v", err)
 	}
@@ -115,15 +115,15 @@ func TestSeedAndFilterIntegration(t *testing.T) {
 	_ = mc.DropCollection(ctx, cfg.CollectionName)
 
 	// Seed.
-	if err := spike.SeedDocuments(ctx, mc, cfg, docs); err != nil {
+	if err := retriever.SeedDocuments(ctx, mc, cfg, docs); err != nil {
 		t.Fatalf("SeedDocuments: %v", err)
 	}
 
 	// Run 4 single-tier queries — assert zero bleed.
 	zeroVec := make([]float32, cfg.EmbedDim)
 	for _, tier := range []string{"权威", "历史", "个人", "草稿"} {
-		filter := spike.BuildMilvusFilter([]string{tier})
-		hits, err := spike.SearchWithTierFilter(ctx, mc, cfg, zeroVec, filter, 10)
+		filter := retriever.BuildMilvusFilter([]string{tier})
+		hits, err := retriever.SearchWithTierFilter(ctx, mc, cfg, zeroVec, filter, 10)
 		assert.NoError(t, err, "search tier=%s", tier)
 		assert.NotEmpty(t, hits, "tier=%s: expected at least 1 row from 3 seeded docs", tier)
 		bleed := findBleed(hits, []string{tier})
@@ -135,8 +135,8 @@ func TestSeedAndFilterIntegration(t *testing.T) {
 	}
 
 	// Default-deny: empty tier list → 0 results.
-	emptyFilter := spike.BuildMilvusFilter(nil)
-	emptyHits, err := spike.SearchWithTierFilter(ctx, mc, cfg, zeroVec, emptyFilter, 10)
+	emptyFilter := retriever.BuildMilvusFilter(nil)
+	emptyHits, err := retriever.SearchWithTierFilter(ctx, mc, cfg, zeroVec, emptyFilter, 10)
 	assert.NoError(t, err, "default-deny search")
 	assert.Empty(t, emptyHits, "default-deny: empty tier list must return 0 rows (D-09), filter=%s", emptyFilter)
 }

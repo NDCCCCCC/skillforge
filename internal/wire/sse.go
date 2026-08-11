@@ -14,10 +14,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package spike — Hertz SSE writer wrapper.
+// Package wire — Hertz SSE writer wrapper.
 //
-// This file enforces the two wire-contract invariants from
-// 01-RESEARCH.md §Pitfall 2 + §Pitfall 6:
+// Graduated verbatim from internal/spike/hertz_sse.go in Plan 02-01 (MOVE
+// into the wire package, not a copy — anti-pattern #1 drift guard). This
+// is now the single source of truth for the SSE emission helpers.
+//
+// This file enforces the two wire-contract invariants from 01-RESEARCH.md
+// §Pitfall 2 + §Pitfall 6:
 //
 //  1. Use the ACTUAL Hertz v0.10.6 SSE API: sse.NewWriter(c) +
 //     w.WriteEvent(id, type, data). The Gin/Echo-style "publish an
@@ -37,7 +41,7 @@
 //   - line 64: func (w *Writer) WriteEvent(id, eventType string, data []byte) error
 //   - line 157:    return w.w.Flush()  // each WriteEvent flushes immediately
 //   - line 160: func (w *Writer) Close() error  // finalizes chunked encoding
-package spike
+package wire
 
 import (
 	"encoding/json"
@@ -75,7 +79,7 @@ import (
 // to call EmitChunk in a loop.
 func EmitChunk(c *app.RequestContext, chunk UIMessageChunk) error {
 	if !chunk.IsValidType() {
-		return fmt.Errorf("unknown chunk type %q: must be kebab-case member of spike.ValidTypes", chunk.Type)
+		return fmt.Errorf("unknown chunk type %q: must be kebab-case member of wire.ValidTypes", chunk.Type)
 	}
 	payload, err := json.Marshal(chunk)
 	if err != nil {
@@ -102,7 +106,7 @@ func StreamChunks(c *app.RequestContext, chunks <-chan UIMessageChunk) error {
 	w := sse.NewWriter(c)
 	for chunk := range chunks {
 		if !chunk.IsValidType() {
-			return fmt.Errorf("unknown chunk type %q: must be kebab-case member of spike.ValidTypes", chunk.Type)
+			return fmt.Errorf("unknown chunk type %q: must be kebab-case member of wire.ValidTypes", chunk.Type)
 		}
 		payload, err := json.Marshal(chunk)
 		if err != nil {

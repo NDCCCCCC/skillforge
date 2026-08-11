@@ -14,16 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package spike — tests for the Verdict schema gate (T-1-16 mitigation).
+// Package verdict — tests for the Verdict schema gate (T-1-16 mitigation).
+//
+// Graduated from internal/spike/verdict_test.go in Plan 02-01 with the
+// D2-06 evolution: Citations is now []Citation instead of []string.
 //
 // These tests pin the schema at the type level so that the integration
 // contract test (integration/contract/contract_test.go) can import the
 // Validate function without re-implementing the schema rules. Drift
-// between the cmd/spiked and integration/contract packages is caught
-// at compile time (no local duplicate type); drift between the rules
-// here and the rules the contract test expects is caught by the
-// contract test's own Validate assertions (TestContractStructuredOutputSchema).
-package spike
+// between the cmd/spiked producer / 02-03 verdict pipeline producer and
+// the integration/contract validator is caught at compile time (no local
+// duplicate type); drift between the rules here and the rules the
+// contract test expects is caught by the contract test's own Validate
+// assertions (TestContractStructuredOutputSchema).
+package verdict
 
 import (
 	"testing"
@@ -34,13 +38,15 @@ import (
 // TestValidateVerdictAcceptsValid covers every ValidStatuses key plus
 // the boundary confidence values 0.0 and 1.0. A regression here would
 // mean the production pipeline rejects verdicts the spec allows.
+//
+// D2-06: citations use the new []Citation shape (not []string).
 func TestValidateVerdictAcceptsValid(t *testing.T) {
 	cases := []Verdict{
-		{Status: "合规", Confidence: 0.85, Citations: []string{"auth_001"}, ReviewRequired: false},
-		{Status: "不合规", Confidence: 0.95, Citations: []string{"auth_002"}, ReviewRequired: false},
-		{Status: "需补充", Confidence: 0.4, Citations: []string{}, ReviewRequired: true},
-		{Status: "unanswered", Confidence: 0.0, Citations: []string{}, ReviewRequired: true},
-		{Status: "合规", Confidence: 1.0, Citations: []string{"auth_001", "auth_002"}, ReviewRequired: false},
+		{Status: "合规", Confidence: 0.85, Citations: []Citation{{ChunkID: "auth_001", Span: "出差住宿费超过标准额度时", Tier: "权威"}}, ReviewRequired: false},
+		{Status: "不合规", Confidence: 0.95, Citations: []Citation{{ChunkID: "auth_002", Span: "竞业限制期", Tier: "权威"}}, ReviewRequired: false},
+		{Status: "需补充", Confidence: 0.4, Citations: []Citation{}, ReviewRequired: true},
+		{Status: "unanswered", Confidence: 0.0, Citations: []Citation{}, ReviewRequired: true},
+		{Status: "合规", Confidence: 1.0, Citations: []Citation{{ChunkID: "auth_001", Span: "span1", Tier: "权威"}, {ChunkID: "auth_002", Span: "span2", Tier: "权威"}}, ReviewRequired: false},
 	}
 	for i, v := range cases {
 		ok, reason := Validate(v)
@@ -50,13 +56,13 @@ func TestValidateVerdictAcceptsValid(t *testing.T) {
 }
 
 // TestValidateVerdictRejectsUnknownStatus verifies the enum gate. A new
-// status value can only be added by editing ValidStatuses in verdict.go
+// status value can only be added by editing ValidStatuses in validate.go
 // — at which point this test must be updated. This forces an explicit
 // decision when the schema grows.
 func TestValidateVerdictRejectsUnknownStatus(t *testing.T) {
 	unknown := []string{"INVALID", "", "compliant", "yes", "合规️"} // last is 合规 + variation selector
 	for i, s := range unknown {
-		v := Verdict{Status: s, Confidence: 0.5, Citations: []string{}}
+		v := Verdict{Status: s, Confidence: 0.5, Citations: []Citation{}}
 		ok, reason := Validate(v)
 		assert.False(t, ok, "case %d status=%q should be rejected", i, s)
 		assert.Contains(t, reason, "invalid status", "case %d status=%q reason should mention invalid status", i, s)
@@ -69,7 +75,7 @@ func TestValidateVerdictRejectsUnknownStatus(t *testing.T) {
 func TestValidateVerdictRejectsConfidenceRange(t *testing.T) {
 	outOfRange := []float64{-0.01, -1.0, 1.0001, 1.5, 100.0}
 	for i, c := range outOfRange {
-		v := Verdict{Status: "合规", Confidence: c, Citations: []string{}}
+		v := Verdict{Status: "合规", Confidence: c, Citations: []Citation{}}
 		ok, reason := Validate(v)
 		assert.False(t, ok, "case %d confidence=%f should be rejected", i, c)
 		assert.Contains(t, reason, "confidence", "case %d confidence=%f reason should mention confidence", i, c)
@@ -92,12 +98,12 @@ func TestValidateVerdictRejectsNilCitations(t *testing.T) {
 // A typo here (e.g. a half-width vs full-width comma, a variation
 // selector, a traditional vs simplified variant) would silently change
 // semantics. The contract test re-checks this; this test catches the
-// typo at the internal/spike package level first.
+// typo at the internal/verdict package level first.
 func TestValidStatusesEnum(t *testing.T) {
 	expected := map[string]bool{
-		"合规":      true,
-		"不合规":     true,
-		"需补充":     true,
+		"合规":        true,
+		"不合规":       true,
+		"需补充":       true,
 		"unanswered": true,
 	}
 	assert.Equal(t, expected, ValidStatuses,

@@ -28,10 +28,10 @@
 //     runE2EWithBaseURL pipeline against real GLM-5.2 + asserts
 //     spike-e2e-trace.json is produced.
 //
-//  3. TestValidateVerdict — pure-logic test of spike.Validate (the
+//  3. TestValidateVerdict — pure-logic test of verdict.Validate (the
 //     Verdict schema gate). Always runs (no network). Imports
-//     spike.Validate / spike.Verdict from internal/spike per T-1-16 —
-//     any field rename in internal/spike/verdict.go breaks this test
+//     verdict.Validate / verdict.Verdict from internal/verdict per T-1-16 —
+//     any field rename in internal/verdict/verdict.go breaks this test
 //     at compile time (the single-source-of-trust guarantee).
 //
 // The cancellation test uses an in-process mock OpenAI server (spike 001
@@ -48,7 +48,7 @@ import (
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
-	"github.com/skillforge/skillforge/internal/spike"
+	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -197,8 +197,8 @@ func TestComplianceQueriesSkip(t *testing.T) {
 }
 
 // TestValidateVerdict is the pure-logic schema-gate test. Always runs
-// (no network). Imports spike.Validate + spike.Verdict — a rename in
-// internal/spike/verdict.go breaks this test at compile time (the
+// (no network). Imports verdict.Validate + verdict.Verdict — a rename in
+// internal/verdict/verdict.go breaks this test at compile time (the
 // T-1-16 single-source-of-truth guarantee that catches drift between
 // cmd/spiked and integration/contract).
 //
@@ -209,33 +209,34 @@ func TestComplianceQueriesSkip(t *testing.T) {
 //   - graceful refusal: "unanswered" + 0 confidence → ok (spike 002/003 finding)
 func TestValidateVerdict(t *testing.T) {
 	// 1. Valid verdict — all fields populated, normal compliance answer.
-	v1 := spike.Verdict{
+	// D2-06: Citations is now []Citation instead of []string.
+	v1 := verdict.Verdict{
 		Status:         "合规",
 		Confidence:     0.85,
-		Citations:      []string{"auth_001"},
+		Citations:      []verdict.Citation{{ChunkID: "auth_001", Span: "出差住宿费超过标准额度时", Tier: "权威"}},
 		ReviewRequired: false,
 	}
-	ok, reason := spike.Validate(v1)
+	ok, reason := verdict.Validate(v1)
 	assert.True(t, ok, "valid verdict should pass; reason=%s", reason)
 	assert.Empty(t, reason, "valid verdict should have empty reason")
 
 	// 2. Unknown status — must be rejected.
-	v2 := spike.Verdict{
+	v2 := verdict.Verdict{
 		Status:     "INVALID",
 		Confidence: 0.8,
-		Citations:  []string{},
+		Citations:  []verdict.Citation{},
 	}
-	ok2, reason2 := spike.Validate(v2)
+	ok2, reason2 := verdict.Validate(v2)
 	assert.False(t, ok2, "unknown status should fail")
 	assert.Contains(t, reason2, "invalid status")
 
 	// 3. Out-of-range confidence — must be rejected.
-	v3 := spike.Verdict{
+	v3 := verdict.Verdict{
 		Status:     "合规",
 		Confidence: 1.5,
-		Citations:  []string{},
+		Citations:  []verdict.Citation{},
 	}
-	ok3, reason3 := spike.Validate(v3)
+	ok3, reason3 := verdict.Validate(v3)
 	assert.False(t, ok3, "confidence > 1.0 should fail")
 	assert.Contains(t, reason3, "confidence")
 
@@ -244,23 +245,23 @@ func TestValidateVerdict(t *testing.T) {
 	// status="unanswered" confidence=0 citations=[] review_required=true.
 	// This MUST validate so the pipeline treats it as a legitimate
 	// refusal, not an error.
-	v4 := spike.Verdict{
+	v4 := verdict.Verdict{
 		Status:         "unanswered",
 		Confidence:     0,
-		Citations:      []string{},
+		Citations:      []verdict.Citation{},
 		ReviewRequired: true,
 	}
-	ok4, reason4 := spike.Validate(v4)
+	ok4, reason4 := verdict.Validate(v4)
 	assert.True(t, ok4, "graceful-refusal verdict should pass; reason=%s", reason4)
 	assert.Empty(t, reason4, "graceful-refusal verdict should have empty reason")
 
 	// 5. ValidStatuses contents — explicit assertion on the enum so a typo
 	// (e.g. variation selector on a CN char) is caught here, not at runtime.
-	assert.True(t, spike.ValidStatuses["合规"], "合规 must be in ValidStatuses")
-	assert.True(t, spike.ValidStatuses["不合规"], "不合规 must be in ValidStatuses")
-	assert.True(t, spike.ValidStatuses["需补充"], "需补充 must be in ValidStatuses")
-	assert.True(t, spike.ValidStatuses["unanswered"], "unanswered must be in ValidStatuses")
-	assert.False(t, spike.ValidStatuses["compliant"], "compliant (EN) must NOT be in ValidStatuses (CN-only)")
+	assert.True(t, verdict.ValidStatuses["合规"], "合规 must be in ValidStatuses")
+	assert.True(t, verdict.ValidStatuses["不合规"], "不合规 must be in ValidStatuses")
+	assert.True(t, verdict.ValidStatuses["需补充"], "需补充 must be in ValidStatuses")
+	assert.True(t, verdict.ValidStatuses["unanswered"], "unanswered must be in ValidStatuses")
+	assert.False(t, verdict.ValidStatuses["compliant"], "compliant (EN) must NOT be in ValidStatuses (CN-only)")
 }
 
 // startHangingMockServer was removed: the cancellation test now uses the

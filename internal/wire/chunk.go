@@ -14,16 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package spike holds the wire-contract primitives shared by the
-// `spiked sse` CLI subcommand and its round-trip test. The types here
-// mirror the Vercel AI SDK v5 UIMessageChunk discriminated union so
-// that Hertz-emitted frames parse cleanly through AI SDK v5's
-// DefaultChatTransport on the React side.
+// Package wire holds the wire-contract primitives shared by the Hertz SSE
+// emitter (internal/wire/sse.go), the verdict pipeline (02-03), and the
+// integration contract test. The types here mirror the Vercel AI SDK v5
+// UIMessageChunk discriminated union so that Hertz-emitted frames parse
+// cleanly through AI SDK v5's DefaultChatTransport on the React side.
+//
+// Graduated verbatim from internal/spike/uimsg.go in Plan 02-01 (MOVE + new
+// package, not a copy — anti-pattern #1 drift guard). The spike package is
+// retired; this is now the single source of truth for the chunk envelope.
 //
 // See .planning/phases/01-integration-spike-trust-contract/01-RESEARCH.md
 // §Pattern 2 (verified against hertz@v0.10.6/pkg/protocol/sse/writer.go)
 // and §Pitfall 6 (kebab-case type discriminator) for the contract.
-package spike
+package wire
 
 import "encoding/json"
 
@@ -46,7 +50,8 @@ import "encoding/json"
 //   - finish-*:      (no payload fields; just the Type marker)
 //
 // Marshal output preserves struct field order; see TestUIMessageChunkShape
-// for the exact JSON asserted per category.
+// (cmd/spiked/sse_test.go, retained for the regression binary) for the
+// exact JSON asserted per category.
 type UIMessageChunk struct {
 	Type           string          `json:"type"`                     // REQUIRED, kebab-case enum
 	ID             string          `json:"id,omitempty"`             // text/reasoning/tool/source lifecycle id

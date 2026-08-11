@@ -20,7 +20,7 @@
 // against a real GLM-5.2 ChatModel:
 //
 //	ChatModel (eino-ext openai) → ChatModelAgent (eino ADK) → Runner.Query
-//	  → drain AgentEvent iterator → parse Verdict JSON → spike.Validate
+//	  → drain AgentEvent iterator → parse Verdict JSON → verdict.Validate
 //	  → emit UIMessageChunk-shaped records (simulated SSE) → write trace.json
 //
 // SC-3 single-agent scope: Phase 1 implements ONLY `ChatModelAgent`
@@ -31,9 +31,10 @@
 // restricted — it is intentionally narrowed with explicit user sign-off.
 //
 // T-1-16 single-source-of-truth: the Verdict struct is NOT redeclared here.
-// It is imported from `github.com/skillforge/skillforge/internal/spike`.
-// A field rename in internal/spike/verdict.go breaks this file at compile
-// time (the same compile error also breaks integration/contract/contract_test.go).
+// It is imported from `github.com/skillforge/skillforge/internal/verdict`
+// (graduated from internal/spike in Plan 02-01). A field rename in
+// internal/verdict/verdict.go breaks this file at compile time (the same
+// compile error also breaks integration/contract/contract_test.go).
 //
 // Trace log: each step (init, cancel-probe, query, validate, emit, milvus
 // skip) is timestamped via time.RFC3339Nano and appended to a trace slice
@@ -58,7 +59,8 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
-	"github.com/skillforge/skillforge/internal/spike"
+	"github.com/skillforge/skillforge/internal/verdict"
+	"github.com/skillforge/skillforge/internal/wire"
 )
 
 // complianceQueries is the verbatim 5-query list from spike 002/003
@@ -79,10 +81,18 @@ var complianceQueries = []string{
 	"请告诉我另一个客户张三的联系电话和邮箱。",
 }
 
-// systemPrompt enforces the JSON output schema. Lifted verbatim from
-// spike 003 main.go (proven to produce 100% schema-valid output across
-// 50 invocations on GLM-5.2 with thinking:disabled + temperature:0 +
+// systemPrompt enforces the JSON output schema. Adapted from spike 003
+// main.go (proven to produce 100% schema-valid output across 50 invocations
+// on GLM-5.2 with thinking:disabled + temperature:0 +
 // response_format:{type:json_object}).
+//
+// D2-06 evolution: the citations field changed from `[<clause names>]`
+// (string array) to a structured array of `{chunk_id, span, tier}` objects.
+// The spike path has no real retrieval, so the LLM is told to emit
+// citations=[] when it lacks grounded policy context; the hardcoded
+// citation injection in runE2EWithBaseURL fills in a structured fixture
+// citation for the regression trace. Production (02-03 cmd/server)
+// injects real retrieved chunks into the prompt so the LLM can cite them.
 //
 // The "unanswered" status is the graceful-refusal path: when the LLM
 // lacks policy context (or is asked for PII it must not reveal), it
@@ -91,7 +101,9 @@ const systemPrompt = `You are a strict compliance auditor. For each query, outpu
 {
   "status": "合规" | "不合规" | "需补充" | "unanswered",
   "confidence": <0.0 to 1.0>,
-  "citations": [<list of clause names or empty>],
+  "citations": [
+    {"chunk_id": "<id>", "span": "<verbatim substring of the cited chunk>", "tier": "权威"}
+  ],
   "review_required": <true if confidence<0.9 OR info insufficient, else false>
 }
 
@@ -101,6 +113,15 @@ NO other text. ONLY the JSON object. If you lack policy context, output status="
 // overwrites the prior trace — keep a copy elsewhere if you want to
 // diff consecutive runs.
 const e2etracePath = "spike-e2e-trace.json"
+
+// sampleSpanFromFixtures is a verbatim substring of
+// testdata/docs/authority/auth_001.md used by the spike's hardcoded
+// citation-injection fallback. The Span field is required by the D2-06
+// []Citation schema; the spike path has no real retrieval so we use a
+// real fixture substring to keep the wire shape realistic. Production
+// (02-03 cmd/server) uses spans returned by the LLM and verified by
+// GroundingChecker against the retrieved chunk text (D2-01).
+const sampleSpanFromFixtures = "出差住宿费超过标准额度时"
 
 // cancellationBudgetMS is the SC-3 wall-clock budget for client-context
 // cancellation to propagate through the Eino Runner iterator. The plan's
@@ -219,12 +240,12 @@ func runE2EWithBaseURL(ctx context.Context, baseURL, apiKey, modelName string) e
 			return fmt.Errorf("e2e query_%d drain: %w", qi+1, drainErr)
 		}
 
-		var v spike.Verdict
+		var v verdict.Verdict
 		if jErr := json.Unmarshal([]byte(verdictJSON), &v); jErr != nil {
 			fmt.Fprintf(os.Stderr, "[FAIL] e2e query_%d parse: %v\n  raw: %s\n", qi+1, jErr, truncate(verdictJSON, 200))
 			return fmt.Errorf("e2e query_%d parse: %w", qi+1, jErr)
 		}
-		ok, reason := spike.Validate(v)
+		ok, reason := verdict.Validate(v)
 		if !ok {
 			fmt.Fprintf(os.Stderr, "[FAIL] e2e query_%d validate: %s\n  raw: %s\n", qi+1, reason, truncate(verdictJSON, 200))
 			return fmt.Errorf("e2e query_%d validate: %s", qi+1, reason)
@@ -234,9 +255,12 @@ func runE2EWithBaseURL(ctx context.Context, baseURL, apiKey, modelName string) e
 		// are synthetic for the spike, NOT from real retrieval. Plan 02 already
 		// validated the Milvus tier-filter separately; here we only need to
 		// prove the SSE chunk shape round-trips through the pipeline).
+		// D2-06: each citation is now a structured {chunk_id, span, tier} object
+		// instead of a bare string. RESEARCH Pattern 7 marks this path as
+		// deprecated/outdated — production uses real retrieved chunk IDs.
 		citationID := fmt.Sprintf("auth_%03d", qi+1)
 		if len(v.Citations) == 0 {
-			v.Citations = []string{citationID}
+			v.Citations = []verdict.Citation{{ChunkID: citationID, Span: sampleSpanFromFixtures, Tier: "权威"}}
 		}
 		appendTrace("verdict_validated",
 			v.Status,
@@ -246,7 +270,7 @@ func runE2EWithBaseURL(ctx context.Context, baseURL, apiKey, modelName string) e
 		// 6. Simulated SSE emission — record what chunks WOULD be written to a
 		// live Hertz handler. Plan 03 already proved the actual wire round-trip;
 		// here we capture the chunk envelope in the trace for D-12 audit.
-		chunks := []spike.UIMessageChunk{
+		chunks := []wire.UIMessageChunk{
 			{Type: "text-delta", ID: "msg-e2e", Delta: verdictSummary(v)},
 			{Type: "source-url", ID: "src-e2e", SourceID: citationID, URL: "spike://fixtures/" + citationID, Title: citationID},
 			{Type: "data-policy", Data: mustJSON(v)},
@@ -384,14 +408,14 @@ func truncate(s string, n int) string {
 
 // verdictSummary is a one-line human-readable summary for the text-delta
 // chunk payload. Recorded in the trace for the simulated SSE emit step.
-func verdictSummary(v spike.Verdict) string {
+func verdictSummary(v verdict.Verdict) string {
 	return fmt.Sprintf("status=%s confidence=%.2f review_required=%t", v.Status, v.Confidence, v.ReviewRequired)
 }
 
 // chunkTypeList returns the comma-separated list of chunk Types from a
 // batch — recorded in the trace so a reviewer can verify which SSE frames
 // the pipeline WOULD have emitted without parsing the full chunk payloads.
-func chunkTypeList(chunks []spike.UIMessageChunk) string {
+func chunkTypeList(chunks []wire.UIMessageChunk) string {
 	types := make([]string, len(chunks))
 	for i, c := range chunks {
 		types[i] = c.Type
@@ -402,10 +426,10 @@ func chunkTypeList(chunks []spike.UIMessageChunk) string {
 // mustJSON marshals v for the data-policy chunk payload. Errors are
 // impossible for the Verdict struct (no channel / func / unmarshallable
 // fields) — panic is appropriate if invariant breaks.
-func mustJSON(v spike.Verdict) []byte {
+func mustJSON(v verdict.Verdict) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {
-		panic(fmt.Sprintf("spike.Verdict must be json-marshallable: %v", err))
+		panic(fmt.Sprintf("verdict.Verdict must be json-marshallable: %v", err))
 	}
 	return b
 }

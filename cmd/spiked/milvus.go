@@ -40,16 +40,16 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/skillforge/skillforge/internal/spike"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"gopkg.in/yaml.v3"
 )
 
 // docFrontmatter is the YAML frontmatter schema for testdata/docs fixtures.
-// Fields mirror what internal/spike persists to Milvus.
+// Fields mirror what internal/retriever persists to Milvus.
 type docFrontmatter struct {
-	ID           string `yaml:"id"`
-	Tier         string `yaml:"tier"`
-	Source       string `yaml:"source"`
+	ID            string `yaml:"id"`
+	Tier          string `yaml:"tier"`
+	Source        string `yaml:"source"`
 	EffectiveFrom string `yaml:"effective_from"`
 }
 
@@ -65,11 +65,11 @@ func runMilvus(ctx context.Context, args []string) error {
 		return fmt.Errorf("resolve project root: %w", err)
 	}
 
-	cfg := spike.MilvusConfig{
+	cfg := retriever.MilvusConfig{
 		Addr:           os.Getenv("MILVUS_ADDRESS"),
 		Token:          os.Getenv("MILVUS_TOKEN"),
-		CollectionName: spike.DefaultCollectionName,
-		EmbedDim:       spike.DefaultEmbedDim,
+		CollectionName: retriever.DefaultCollectionName,
+		EmbedDim:       retriever.DefaultEmbedDim,
 		BGEURL:         os.Getenv("BGE_M3_URL"),
 	}
 
@@ -82,7 +82,7 @@ func runMilvus(ctx context.Context, args []string) error {
 	fmt.Printf("[SEED] %d fixtures loaded (embed mode: %s)\n", len(docs), embedMode)
 
 	// 2. Connect to Milvus (fail-fast; human-verify checkpoint on error).
-	mc, err := spike.NewMilvusClient(ctx, cfg)
+	mc, err := retriever.NewMilvusClient(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("milvus connect: %w", err)
 	}
@@ -96,7 +96,7 @@ func runMilvus(ctx context.Context, args []string) error {
 	}
 
 	// 4. Seed all 12 docs.
-	if err := spike.SeedDocuments(ctx, mc, cfg, docs); err != nil {
+	if err := retriever.SeedDocuments(ctx, mc, cfg, docs); err != nil {
 		return fmt.Errorf("seed: %w", err)
 	}
 	for _, d := range docs {
@@ -111,8 +111,8 @@ func runMilvus(ctx context.Context, args []string) error {
 	zeroVec := make([]float32, cfg.EmbedDim)
 	authorityCount := 0
 	for _, tier := range allTiers {
-		filter := spike.BuildMilvusFilter([]string{tier})
-		hits, err := spike.SearchWithTierFilter(ctx, mc, cfg, zeroVec, filter, 10)
+		filter := retriever.BuildMilvusFilter([]string{tier})
+		hits, err := retriever.SearchWithTierFilter(ctx, mc, cfg, zeroVec, filter, 10)
 		if err != nil {
 			return fmt.Errorf("search tier=%s: %w", tier, err)
 		}
@@ -127,8 +127,8 @@ func runMilvus(ctx context.Context, args []string) error {
 	}
 
 	// 6. Default-deny: empty tier list → "false" filter → 0 results (D-09).
-	emptyFilter := spike.BuildMilvusFilter(nil)
-	emptyHits, err := spike.SearchWithTierFilter(ctx, mc, cfg, zeroVec, emptyFilter, 10)
+	emptyFilter := retriever.BuildMilvusFilter(nil)
+	emptyHits, err := retriever.SearchWithTierFilter(ctx, mc, cfg, zeroVec, emptyFilter, 10)
 	if err != nil {
 		return fmt.Errorf("search default-deny: %w", err)
 	}
@@ -150,7 +150,7 @@ func runMilvus(ctx context.Context, args []string) error {
 // error (URL empty, network down, parse fail), fall back to deterministic
 // for ALL docs so the spike can run fully offline. Mixing real + mock
 // embeddings in one seed would corrupt the vector space.
-func loadAndEmbedFixtures(ctx context.Context, root, bgeURL string) ([]spike.Document, string, error) {
+func loadAndEmbedFixtures(ctx context.Context, root, bgeURL string) ([]retriever.Document, string, error) {
 	docsDir := filepath.Join(root, "testdata", "docs")
 	paths, err := filepath.Glob(filepath.Join(docsDir, "*", "*.md"))
 	if err != nil {
@@ -168,7 +168,7 @@ func loadAndEmbedFixtures(ctx context.Context, root, bgeURL string) ([]spike.Doc
 		embedMode = "deterministic"
 	}
 
-	docs := make([]spike.Document, 0, len(paths))
+	docs := make([]retriever.Document, 0, len(paths))
 	for i, p := range paths {
 		fm, body, err := parseDocFixture(p)
 		if err != nil {
@@ -176,24 +176,24 @@ func loadAndEmbedFixtures(ctx context.Context, root, bgeURL string) ([]spike.Doc
 		}
 		var emb []float32
 		if useBGE {
-			vec, embErr := spike.EmbedQuery(ctx, bgeURL, body)
+			vec, embErr := retriever.EmbedQuery(ctx, bgeURL, body)
 			if embErr != nil {
 				// BGE-M3 failed — fall back to deterministic for ALL docs.
 				fmt.Fprintf(os.Stderr, "[WARN] BGE-M3 unreachable (%v); falling back to deterministic embeddings for all docs\n", embErr)
 				embedMode = "deterministic"
 				useBGE = false
-				emb = spike.EmbedQueryDeterministic(body)
+				emb = retriever.EmbedQueryDeterministic(body)
 				// Re-embed already-processed docs for consistency.
 				for j := range docs {
-					docs[j].Embedding = spike.EmbedQueryDeterministic(docs[j].Content)
+					docs[j].Embedding = retriever.EmbedQueryDeterministic(docs[j].Content)
 				}
 			} else {
 				emb = vec
 			}
 		} else {
-			emb = spike.EmbedQueryDeterministic(body)
+			emb = retriever.EmbedQueryDeterministic(body)
 		}
-		docs = append(docs, spike.Document{
+		docs = append(docs, retriever.Document{
 			DocID:     fm.ID,
 			ID:        int64(i + 1), // 1-based numeric PK
 			Tier:      fm.Tier,
@@ -241,12 +241,12 @@ func parseDocFixture(path string) (*docFrontmatter, string, error) {
 
 // findBleed returns rows whose tier is NOT in allowedTiers. Empty result =
 // no bleed (the structural guarantee SC-2 asserts).
-func findBleed(hits []spike.TierSearchResult, allowedTiers []string) []spike.TierSearchResult {
+func findBleed(hits []retriever.TierSearchResult, allowedTiers []string) []retriever.TierSearchResult {
 	allowed := make(map[string]bool, len(allowedTiers))
 	for _, t := range allowedTiers {
 		allowed[t] = true
 	}
-	var leaked []spike.TierSearchResult
+	var leaked []retriever.TierSearchResult
 	for _, h := range hits {
 		if h.Tier == "" {
 			// No tier on the row is itself a bleed (filter should have excluded it).

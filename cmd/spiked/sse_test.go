@@ -17,7 +17,7 @@
 // Package main — Plan 01-03 SC-1 layer (b)+(c) tests.
 //
 // TestUIMessageChunkShape pins the UIMessageChunk JSON shape per category
-// and the spike.ValidTypes whitelist (T-1-11).
+// and the wire.ValidTypes whitelist (T-1-11).
 // TestSpikeSSERoundTrip spins a Hertz server on a dynamic port and proves
 // the full Hertz → HTTP → JSON parse round-trip preserves chunk envelopes
 // including the Content-Type=text/event-stream header and the `data: <json>`
@@ -37,14 +37,14 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
-	"github.com/skillforge/skillforge/internal/spike"
+	"github.com/skillforge/skillforge/internal/wire"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // shapeTypes enumerates one representative per UIMessageChunk category
 // (text / reasoning / tool / source / custom-data / finish). Each MUST
-// be a member of spike.ValidTypes so EmitChunk accepts it. This list
+// be a member of wire.ValidTypes so EmitChunk accepts it. This list
 // mirrors the 6 categories the spiked sse CLI handler emits so the
 // shape test + the live demo stay aligned on the contract surface.
 var shapeTypes = []string{
@@ -58,34 +58,34 @@ var shapeTypes = []string{
 
 // TestUIMessageChunkShape validates:
 //  1. snake_case Type variants are rejected by IsValidType (Pitfall 6).
-//  2. Every shapeTypes member is whitelisted in spike.ValidTypes.
+//  2. Every shapeTypes member is whitelisted in wire.ValidTypes.
 //  3. The JSON shape per category matches the AI SDK v5 wire spec
 //     (kebab-case `type` field, camelCase body field names).
 //
 // This is SC-1 layer (b): typed-parts serialization.
 func TestUIMessageChunkShape(t *testing.T) {
 	// 1. snake_case rejected, kebab-case accepted — Pitfall 6 protection.
-	assert.False(t, spike.UIMessageChunk{Type: "text_delta"}.IsValidType(),
+	assert.False(t, wire.UIMessageChunk{Type: "text_delta"}.IsValidType(),
 		"snake_case text_delta must be rejected by IsValidType")
-	assert.False(t, spike.UIMessageChunk{Type: "source_url"}.IsValidType(),
+	assert.False(t, wire.UIMessageChunk{Type: "source_url"}.IsValidType(),
 		"snake_case source_url must be rejected by IsValidType")
-	assert.True(t, spike.UIMessageChunk{Type: "text-delta"}.IsValidType(),
+	assert.True(t, wire.UIMessageChunk{Type: "text-delta"}.IsValidType(),
 		"kebab-case text-delta must be accepted")
-	assert.True(t, spike.UIMessageChunk{Type: "source-url"}.IsValidType(),
+	assert.True(t, wire.UIMessageChunk{Type: "source-url"}.IsValidType(),
 		"kebab-case source-url must be accepted")
 
 	// 2. Every shapeType is a ValidTypes member (so EmitChunk won't reject
 	//    the CLI handler's frames).
 	for _, ty := range shapeTypes {
 		t.Run("whitelist/"+ty, func(t *testing.T) {
-			assert.True(t, spike.UIMessageChunk{Type: ty}.IsValidType(),
-				"%q should be a member of spike.ValidTypes (T-1-11 whitelist)", ty)
+			assert.True(t, wire.UIMessageChunk{Type: ty}.IsValidType(),
+				"%q should be a member of wire.ValidTypes (T-1-11 whitelist)", ty)
 		})
 	}
 
 	// 3. JSON shape per category — kebab-case `type`, camelCase body fields.
 	t.Run("text-delta/json", func(t *testing.T) {
-		b, err := json.Marshal(spike.UIMessageChunk{
+		b, err := json.Marshal(wire.UIMessageChunk{
 			Type: "text-delta", ID: "x", Delta: "hi",
 		})
 		require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestUIMessageChunkShape(t *testing.T) {
 	})
 
 	t.Run("tool-input-available/json", func(t *testing.T) {
-		b, err := json.Marshal(spike.UIMessageChunk{
+		b, err := json.Marshal(wire.UIMessageChunk{
 			Type:       "tool-input-available",
 			ToolCallID: "tc-1",
 			ToolName:   "search",
@@ -111,7 +111,7 @@ func TestUIMessageChunkShape(t *testing.T) {
 	})
 
 	t.Run("source-url/json", func(t *testing.T) {
-		b, err := json.Marshal(spike.UIMessageChunk{
+		b, err := json.Marshal(wire.UIMessageChunk{
 			Type:     "source-url",
 			SourceID: "src-1",
 			URL:      "https://policy.example/auth-001",
@@ -126,7 +126,7 @@ func TestUIMessageChunkShape(t *testing.T) {
 	})
 
 	t.Run("data-policy/json", func(t *testing.T) {
-		b, err := json.Marshal(spike.UIMessageChunk{
+		b, err := json.Marshal(wire.UIMessageChunk{
 			Type: "data-policy",
 			Data: json.RawMessage(`{"verdict":"compliant"}`),
 		})
@@ -157,13 +157,13 @@ func TestSpikeSSERoundTrip(t *testing.T) {
 
 	h := server.Default(server.WithListener(ln))
 	h.GET("/api/spike/chat", func(ctx context.Context, c *app.RequestContext) {
-		chunks := []spike.UIMessageChunk{
+		chunks := []wire.UIMessageChunk{
 			{Type: "text-start", ID: "msg-1"},
 			{Type: "text-delta", ID: "msg-1", Delta: "hi"},
 			{Type: "finish-step"},
 		}
 		for _, ch := range chunks {
-			if err := spike.EmitChunk(c, ch); err != nil {
+			if err := wire.EmitChunk(c, ch); err != nil {
 				t.Logf("emit err (%s): %v", ch.Type, err)
 				return
 			}
@@ -225,7 +225,7 @@ func TestEmitChunkRejectsUnknownType(t *testing.T) {
 	emitErr := make(chan error, 1)
 	h.GET("/api/spike/chat", func(_ context.Context, c *app.RequestContext) {
 		// snake_case variant — must be rejected.
-		err := spike.EmitChunk(c, spike.UIMessageChunk{Type: "text_delta"})
+		err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text_delta"})
 		emitErr <- err
 	})
 

@@ -51,7 +51,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
-	"github.com/skillforge/skillforge/internal/spike"
+	"github.com/skillforge/skillforge/internal/wire"
 )
 
 // runSSE is the Plan 01-03 spike entry point. It is wired into the
@@ -145,7 +145,7 @@ func runSSE(ctx context.Context, args []string) error {
 // client observes actual streaming behavior; total stream budget
 // (~120ms) stays well under the 10s spike wall-clock cap.
 func sseChatHandler(ctx context.Context, c *app.RequestContext) {
-	chunks := []spike.UIMessageChunk{
+	chunks := []wire.UIMessageChunk{
 		{Type: "text-delta", ID: "msg-1", Delta: "Hello "},
 		{Type: "reasoning-delta", ID: "r-1", Delta: "evaluating policy..."},
 		{Type: "tool-input-available", ID: "tc-1", ToolCallID: "tc-1", ToolName: "search",
@@ -157,7 +157,7 @@ func sseChatHandler(ctx context.Context, c *app.RequestContext) {
 		{Type: "finish-step"},
 	}
 	for i, ch := range chunks {
-		if err := spike.EmitChunk(c, ch); err != nil {
+		if err := wire.EmitChunk(c, ch); err != nil {
 			// Once the first frame is on the wire we cannot change the
 			// response status; log to stderr and abort the stream.
 			fmt.Fprintf(os.Stderr, "[FAIL] sse emit chunk %d (%s): %v\n", i, ch.Type, err)
@@ -182,8 +182,8 @@ func sseChatHandler(ctx context.Context, c *app.RequestContext) {
 // Malformed JSON on a data: line is a hard error: it would indicate
 // either a Hertz serialization bug or an in-spec but unexpected chunk
 // shape, both of which would break the real client parser too.
-func parseSSEFrames(body []byte) ([]spike.UIMessageChunk, error) {
-	var out []spike.UIMessageChunk
+func parseSSEFrames(body []byte) ([]wire.UIMessageChunk, error) {
+	var out []wire.UIMessageChunk
 	for _, raw := range strings.Split(string(body), "\n") {
 		line := strings.TrimSpace(raw)
 		if !strings.HasPrefix(line, "data: ") {
@@ -193,7 +193,7 @@ func parseSSEFrames(body []byte) ([]spike.UIMessageChunk, error) {
 		if payload == "" {
 			continue // SSE keep-alive or terminator
 		}
-		var ch spike.UIMessageChunk
+		var ch wire.UIMessageChunk
 		if err := json.Unmarshal([]byte(payload), &ch); err != nil {
 			return nil, fmt.Errorf("unmarshal data line %q: %w", payload, err)
 		}
