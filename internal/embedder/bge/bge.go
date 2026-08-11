@@ -53,6 +53,7 @@ const (
 type Config struct {
 	URL       string // BGE-M3 REST endpoint (e.g. http://bge-m3.internal/v1/embeddings)
 	AuthToken string // optional bearer token; empty = no auth
+	Model     string // model name for OpenAI-compatible /v1/embeddings (Ollama needs "bge-m3"; vLLM/TEI accept it). Empty OMITS the field (back-compat with endpoints that reject unknown fields).
 }
 
 // BGE implements embedder.Embedder against a BGE-M3 HTTP service. Safe
@@ -72,10 +73,11 @@ func New(cfg Config) *BGE {
 }
 
 // Embed calls the BGE-M3 HTTP endpoint for a 1024-dim embedding.
-// Request body shape: {"input": "<text>"} (OpenAI/volcano-compatible;
-// the .env.example BGE_M3_URL points at a /v1/embeddings-style endpoint).
+// Request body shape: {"model": "<Model>", "input": "<text>"} when Model is
+// set (OpenAI-compatible; required by Ollama), else {"input": "<text>"}
+// (the .env.example BGE_M3_URL points at a /v1/embeddings-style endpoint).
 // Response is parsed tolerantly: OpenAI shape {"data":[{"embedding":[...]}]}
-// is tried first, then a bare-array shape [{"embedding":[...]}]
+// is tried first, then a bare-array shape [{"embedding":[...]}]}
 // (raw TEI).
 //
 // Bounded by embedTimeout with embedRetries attempts (1s backoff
@@ -95,7 +97,7 @@ func (b *BGE) Embed(ctx context.Context, text string) ([]float32, error) {
 			case <-time.After(1 * time.Second):
 			}
 		}
-		vec, err := embedOnce(ctx, b.cfg.URL, b.cfg.AuthToken, text)
+		vec, err := embedOnce(ctx, b.cfg.URL, b.cfg.AuthToken, b.cfg.Model, text)
 		if err == nil {
 			return vec, nil
 		}
@@ -108,8 +110,12 @@ func (b *BGE) Embed(ctx context.Context, text string) ([]float32, error) {
 func (b *BGE) Dimensions() int { return dimensions }
 
 // embedOnce performs a single BGE-M3 POST and parses the response.
-func embedOnce(ctx context.Context, url, token, text string) ([]float32, error) {
-	body, err := json.Marshal(map[string]string{"input": text})
+func embedOnce(ctx context.Context, url, token, model, text string) ([]float32, error) {
+	type embedReq struct {
+		Model string `json:"model,omitempty"`
+		Input string `json:"input"`
+	}
+	body, err := json.Marshal(embedReq{Model: model, Input: text})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}

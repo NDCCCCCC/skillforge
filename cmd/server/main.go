@@ -108,6 +108,7 @@ func main() {
 	// 1. Env var parsing. MILVUS_ADDRESS / MONGO_URI are validated inside
 	// the backend switch (only the configured backend's URI is required).
 	bgeURL := envRequired("BGE_M3_URL")
+	bgeModel := envOr("BGE_M3_MODEL", "bge-m3")
 	glmKey := envRequired("GLM_API_KEY")
 	glmBase := envOr("GLM_BASE_URL", defaultGLMBaseURL)
 	serverAddr := envOr("SERVER_ADDR", defaultServerAddr)
@@ -121,7 +122,9 @@ func main() {
 	log.Printf("[OK] loaded %d Skill(s)", len(manifests))
 
 	// 3. BGE-M3 HTTP embedder (production; refuses on outage).
-	emb := bge.New(bge.Config{URL: bgeURL})
+	// BGE_M3_MODEL defaults to "bge-m3" (required by Ollama's
+	// OpenAI-compatible /v1/embeddings; harmless on vLLM/TEI).
+	emb := bge.New(bge.Config{URL: bgeURL, Model: bgeModel})
 
 	// 4. Construct the configured retriever backend + seed the knowledge
 	// corpus. The default is "milvus" (unchanged historical behavior);
