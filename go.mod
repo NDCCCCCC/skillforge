@@ -8,6 +8,7 @@ require (
 	github.com/cloudwego/hertz v0.10.6
 	github.com/milvus-io/milvus-sdk-go/v2 v2.4.2
 	github.com/stretchr/testify v1.11.1
+	golang.org/x/text v0.13.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -62,7 +63,6 @@ require (
 	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/genproto v0.0.0-20220503193339-ba3ae3f07e29 // indirect
 	google.golang.org/grpc v1.48.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
