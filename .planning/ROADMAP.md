@@ -35,7 +35,13 @@
   4. A streaming "fake cited answer" demo reaches the UI with hardcoded chunk citations rendered as clickable elements (eventually Phase 4's `FEUI-03`)
   5. A version-pinned integration test (`go test ./integration/contract`) runs the above in under 10s and fails on any wire-format or filter-expression drift
 **Pitfalls addressed:** Version pinning (P-EINO-1); stream contract drift (P-FE-1); upfront Eino API surface risk; Milvus filter syntax validation
-**Plans**: TBD
+**Plans**: 4 plans
+**Plan list**:
+- [ ] 01-01-PLAN.md — Wave 0 scaffold + spike wire subcommand (SC-1 layer a) + Docker/API-key checkpoints
+- [ ] 01-02-PLAN.md — 12 fixtures + spike milvus subcommand + docker-compose (SC-2)
+- [ ] 01-03-PLAN.md — UIMessageChunk types + spike sse subcommand + React stub + vitest (SC-1 layers b+c, SC-4)
+- [ ] 01-04-PLAN.md — spike e2e subcommand + integration contract test (SC-3, SC-5)
+**Wave structure**: W1={01-01} → W2={01-02, 01-03 parallel} → W3={01-04}
 **UI hint**: no
 
 ### Phase 2: Compliance Vertical Slice
@@ -171,7 +177,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Integration Spike & Trust Contract | 0/1 | Not started | - |
+| 1. Integration Spike & Trust Contract | 0/4 | Not started | - |
 | 2. Compliance Vertical Slice | 0/? | Not started | - |
 | 3. Agentic Retrieval & Trust Evaluation | 0/? | Not started | - |
 | 4. Streaming Trust UI | 0/? | Not started | - |
