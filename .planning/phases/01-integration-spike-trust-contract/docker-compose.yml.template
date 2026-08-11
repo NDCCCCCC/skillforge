@@ -1,0 +1,33 @@
+# SkillForge Phase 7 deliverable — Docker Compose packaging for OSS release
+# NOT executed in Phase 1 spike. Phase 1 uses INTERNAL API endpoints (MILVUS_ADDRESS + BGE_M3_URL).
+# This file is the Phase 7 starting point; spike validates the wire contract
+# so Phase 7 only needs to focus on packaging, not debugging connections.
+#
+# Why this is a .template (not committed as docker-compose.yml):
+#   - Phase 1 spike explicitly uses INTERNAL services per user decision (no Docker install).
+#   - Shipping docker-compose.yml at repo root would mislead OSS users into thinking
+#     Phase 1 spike needs Docker (it does not).
+#   - Phase 7 will copy this template to docker-compose.yml and add the OSS-README.
+
+services:
+  milvus:
+    image: milvusdb/milvus:v2.5-latest
+    # Phase 7 will fill in:
+    #   - healthcheck (curl http://localhost:9091/healthz)
+    #   - volume mounts (./volumes/milvus:/var/lib/milvus)
+    #   - network mode (bridge vs host)
+    #   - environment (ETCD_ENDPOINTS, MINIO_ADDRESS, COMMON_STORAGETYPE)
+
+  bge-m3:
+    image: baai/bge-m3-embedding:latest
+    # Phase 7 will fill in:
+    #   - GPU reservation (deploy.resources.reservations.devices)
+    #   - model cache volume (./volumes/bge-m3:/root/.cache/huggingface)
+    #   - port mapping (8080:8080)
+    #   - healthcheck (curl http://localhost:8080/health)
+
+  # Phase 7 may also add:
+  #   - etcd (Milvus dependency)
+  #   - minio (Milvus S3 backend)
+  #   - prometheus + grafana (observability)
+  #   - langfuse (LLM tracing)
