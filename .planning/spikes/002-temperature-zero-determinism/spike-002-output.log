@@ -1,0 +1,23 @@
+[OK] SKILL.md: temperature=0
+
+[OK] ChatModel initialized (glm-5.2 via Coding Plan endpoint)
+Running 5 queries × 10 iterations with temperature=0.00...
+
+[Q1] 出差住宿费超标 200 元，能批吗？请引用具体制度条款。
+  [iter 1] hash=76ba344bfa83be23 len=1980
+  [iter 2] hash=35f97e3201f7ec9f len=1592
+  [iter 3] hash=e67323cd336adc6c len=1930
+  [iter 4] hash=eba4f76e6ae832c8 len=2418
+  [iter 5] hash=fcb759a6d3c65b12 len=1667
+  [iter 6] hash=e9094692f3520c74 len=2021
+  [iter 7] hash=a6c65c8f07d520b8 len=1358
+  [iter 8] hash=683182f53d4f00bb len=1768
+  [iter 9] hash=a76da310a9492153 len=1578
+  [iter 10] hash=e03358fd92a95f2e len=2035
+[Q2] 员工离职后竞业限制期是多久？请给出明确时长。
+  [iter 1] hash=ee790478f7f3fbf9 len=1437
+  [iter 2] hash=72983d5a5d2e960b len=1213
+  [iter 3] hash=0b430a7302556624 len=1315
+  [iter 4] hash=8f827c511b00346c len=1296
+  [iter 5] hash=6d0c1396ca3068da len=1550
+  [iter 6] hash=969fa74979eab011 len=1554

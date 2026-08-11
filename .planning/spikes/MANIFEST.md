@@ -21,7 +21,7 @@
 | # | Name | Type | Validates | Verdict | Tags |
 |---|------|------|-----------|---------|------|
 | 001 | eino-temperature-passthrough | standard | Given SKILL.md declares `temperature:0`, when Eino ChatModelAgent runs, then HTTP wire body contains `temperature:0` | ✓ VALIDATED | eino, openai-compat, temperature |
-| 002 | temperature-zero-determinism | standard | Given `temperature:0` + 同 query 跑 10 次 × 5 合规 query, when 提取所有输出, then token-level 一致率 ≥95% | PENDING | temperature, determinism, compliance |
+| 002 | temperature-zero-determinism | standard | Given `temperature:0` + 同 query 跑 10 次 × 5 合规 query, when 提取所有输出, then token-level 一致率 ≥95% | ✗ INVALIDATED | temperature, determinism, compliance, reasoning-model |
 | 003 | structured-output-temperature-zero | standard | Given `temperature:0` + 合规 verdict schema, when 跑 10 次, then JSON schema 解析成功率 100% | PENDING | temperature, structured-output, json-schema |
 
 ## Related Artifacts
