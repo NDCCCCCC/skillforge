@@ -2,7 +2,7 @@
 sketch: 001
 name: three-panel-layout
 question: "三列布局视觉该是什么样？宽度比例 / 中间预览模式 / 两边折叠 UX"
-winner: null
+winner: "A"
 tags: [layout, three-panel, denova-style, agent-collaboration]
 ---
 
