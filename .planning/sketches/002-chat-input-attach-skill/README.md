@@ -2,7 +2,7 @@
 sketch: 002
 name: chat-input-attach-skill
 question: "Chat 输入框怎么支持 file attachment 和 skill trigger？"
-winner: null
+winner: "B"
 tags: [chat-input, file-attachment, skill-trigger, slash-command, at-mention]
 ---
 
