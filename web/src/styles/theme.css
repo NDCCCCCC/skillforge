@@ -187,3 +187,45 @@ body,
   min-height: 100%;
   padding: var(--space-6);
 }
+
+/* Resize handles between panels (per sketch-findings
+   layout-three-panel.md). The handle is a 4px-wide hit area; the
+   visible 1px line turns primary on hover/drag. */
+.resize-handle {
+  position: relative;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 5;
+  margin: 0 -2px;
+  flex-shrink: 0;
+}
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background-color: var(--color-border-muted);
+  transition: background-color var(--transition-fast);
+}
+.resize-handle:hover::before,
+.resize-handle.dragging::before {
+  background-color: var(--color-primary);
+  width: 2px;
+  left: 1px;
+}
+body[data-dragging="true"] {
+  cursor: col-resize;
+  user-select: none;
+}
+body[data-dragging="true"] * {
+  pointer-events: none;
+}
+
+/* Chat input dragging visual feedback (per sketch chat-input-attach-skill.md) */
+.chat-input-dragging {
+  background-color: var(--color-primary-dim);
+  border: 2px dashed var(--color-primary);
+}

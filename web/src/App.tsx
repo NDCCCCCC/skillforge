@@ -1,20 +1,20 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 04-01 Task 3 + Plan 04-02 Task 3 — App composition root (P4 Wave 2).
-//
-// Wires the three-panel layout (LeftSidebar skeleton / CenterPanel /
-// right chat panel), useChat + createTransport(env) factory, and the
-// CenterPanel that hosts VerdictCard / RefusalCard / ChunkSourceView
-// / SkillMdPreview. Citation click flows through Zustand
-// (useAppStore.getState().setCenterView(...)) — no prop drilling.
-//
-// Wave 2 keeps LeftSidebar as a skeleton (Wave 3 fills it with the
-// skill/session list). Right panel hosts the MessageBubble list.
+// Plan 04-01 Task 3 + Plan 04-02 Task 3 + Plan 04-03 Task 2 — App
+// composition root. Wires the three-panel layout via ThreePanel,
+// useChat + createTransport(env), the CenterPanel that hosts
+// VerdictCard / RefusalCard / ChunkSourceView / SkillMdPreview, and
+// the right chat panel with SkillPicker + ChatInput. Citation click
+// flows through Zustand (useAppStore.getState().setCenterView(...)) —
+// no prop drilling.
 import { useEffect, useMemo, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import type { UIMessage } from 'ai';
 import CenterPanel from './components/center/CenterPanel';
+import RightChat from './components/layout/RightChat';
+import ThreePanel from './components/layout/ThreePanel';
+import LeftSidebar from './components/layout/LeftSidebar';
 import { MessageBubble } from './components/chat/MessageBubble';
 import { isVerdict } from './types/verdict';
 import type { Verdict } from './types/verdict';
@@ -42,7 +42,7 @@ export default function App({ initialMessages }: AppProps) {
 function LiveApp() {
   const env: 'prod' | 'dev' = ((import.meta as unknown) as { env: { PROD?: boolean } }).env.PROD ? 'prod' : 'dev';
   const transport = useMemo(() => createTransport(env), [env]);
-  const { messages } = useChat({ transport });
+  const { messages, sendMessage, status } = useChat({ transport });
   const [currentVerdict, setCurrentVerdict] = useState<Verdict | null>(null);
 
   // Walk messages in reverse, find the latest assistant message
@@ -64,24 +64,21 @@ function LiveApp() {
     setCurrentVerdict(null);
   }, [messages]);
 
+  function handleSend(text: string) {
+    void sendMessage({ text });
+  }
+
   return (
-    <div className="app-shell" data-testid="live-app">
-      <div className="app-main">
-        <div
-          data-testid="panel-left"
-          className="border-r border-border bg-surface"
+    <ThreePanel
+      left={<LeftSidebar />}
+      center={<CenterPanel currentVerdict={currentVerdict} />}
+      right={
+        <RightChat
+          messages={messages}
+          status={status}
+          onSend={handleSend}
         />
-        <CenterPanel currentVerdict={currentVerdict} />
-        <div data-testid="panel-right" className="bg-bg p-3">
-          {messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              role={m.role === 'user' ? 'user' : 'assistant'}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
+      }
+    />
   );
 }
