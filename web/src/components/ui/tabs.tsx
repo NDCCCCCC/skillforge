@@ -9,18 +9,29 @@
 // Pill variant (denova-aligned): the active tab is a filled rounded
 // chip (bg-primary-dim) instead of an underline. role=tab /
 // aria-selected semantics are unchanged so CenterPanel tests still pass.
+//
+// Supports both uncontrolled (caller passes `defaultValue`, Tabs owns
+// active state) and controlled (caller passes `value`, Tabs reflects the
+// prop and skips internal setState on click). Controlled mode is what
+// lets CenterPanel bind the active tab to `centerView.kind` so the
+// indicator follows programmatic store changes (04-UAT test 8).
 import { forwardRef, type HTMLAttributes, useState } from 'react';
 import { cn } from '../../lib/cn';
 
 export interface TabsProps extends HTMLAttributes<HTMLDivElement> {
-  defaultValue: string;
+  /** Initial active value for uncontrolled usage. Ignored when `value` is set. */
+  defaultValue?: string;
+  /** Controlled active value. When set, Tabs reflects this and does not keep internal state. */
+  value?: string;
   items: { value: string; label: string }[];
   onValueChange?: (value: string) => void;
 }
 
 export const Tabs = forwardRef<HTMLDivElement, TabsProps>(
-  ({ defaultValue, items, onValueChange, className, ...props }, ref) => {
-    const [value, setValue] = useState(defaultValue);
+  ({ defaultValue, value, items, onValueChange, className, ...props }, ref) => {
+    const isControlled = value !== undefined;
+    const [internalValue, setInternalValue] = useState(defaultValue);
+    const activeValue = isControlled ? value : internalValue;
 
     return (
       <div
@@ -30,7 +41,7 @@ export const Tabs = forwardRef<HTMLDivElement, TabsProps>(
         {...props}
       >
         {items.map((item) => {
-          const active = item.value === value;
+          const active = item.value === activeValue;
           return (
             <button
               key={item.value}
@@ -38,7 +49,7 @@ export const Tabs = forwardRef<HTMLDivElement, TabsProps>(
               aria-selected={active}
               data-state={active ? 'active' : 'inactive'}
               onClick={() => {
-                setValue(item.value);
+                if (!isControlled) setInternalValue(item.value);
                 onValueChange?.(item.value);
               }}
               className={cn(

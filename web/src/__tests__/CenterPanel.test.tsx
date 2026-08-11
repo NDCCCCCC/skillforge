@@ -102,4 +102,29 @@ describe('CenterPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: '引用原文' }));
     expect(useAppStore.getState().centerView.kind).toBe('verdict');
   });
+
+  it('tab indicator follows programmatic setCenterView (04-UAT test 8)', () => {
+    // SkillPicker path: selecting a skill sets kind='skill-md' — the
+    // Skill 定义 tab must be the active indicator (not stuck on 审查结论).
+    useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'compliance-review' } });
+    render(<CenterPanel currentVerdict={null} />);
+    expect(screen.getByRole('tab', { name: 'Skill 定义' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: '审查结论' })).toHaveAttribute('aria-selected', 'false');
+
+    // Citation-click path: clicking a citation sets kind='chunk-source'
+    // — the 引用原文 tab must be the active indicator.
+    cleanup();
+    useAppStore.setState({
+      centerView: {
+        kind: 'chunk-source',
+        chunkId: 'c-001',
+        tier: '权威',
+        version: 'v3.2',
+        effectiveDate: '2026-01-15',
+      },
+    });
+    render(<CenterPanel currentVerdict={null} />);
+    expect(screen.getByRole('tab', { name: '引用原文' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Skill 定义' })).toHaveAttribute('aria-selected', 'false');
+  });
 });
