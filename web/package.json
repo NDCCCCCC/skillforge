@@ -1,0 +1,31 @@
+{
+  "name": "skillforge-spike-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Phase 1 spike stub — proves Hertz SSE UIMessageChunk envelopes render source-url chunks as clickable <a> (SC-4).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ai": "^7.0.0",
+    "@ai-sdk/react": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.4.0",
+    "vitest": "^2.0.0",
+    "jsdom": "^25.0.0",
+    "typescript": "^5.6.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/node": "^22.0.0"
+  }
+}

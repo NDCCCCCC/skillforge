@@ -16,24 +16,17 @@
 
 // Package main — scaffold stubs for spike subcommands that are not yet
 // implemented. Each stub returns nil (not an error) so the router
-// can validate end-to-end dispatch during Wave 0. Plan 03/04
-// replace these stubs with real implementations.
+// can validate end-to-end dispatch during Wave 0. Plan 04
+// replaces the remaining stub with a real implementation.
 //
-// Note: runMilvus (Plan 02) is now implemented in milvus.go.
+// Note: runMilvus (Plan 02) is implemented in milvus.go.
+// Note: runSSE (Plan 03) is implemented in sse.go.
 package main
 
 import (
 	"context"
 	"fmt"
 )
-
-// runSSE is a placeholder for the Hertz SSE → Vercel AI SDK v5 spike (Plan 03).
-// Real implementation emits text/event-stream and asserts UIMessageChunk
-// alignment end-to-end.
-func runSSE(ctx context.Context, args []string) error {
-	fmt.Println("[STUB] sse: not yet implemented (Plan 03)")
-	return nil
-}
 
 // runE2E is a placeholder for the full E2E pipeline trace spike (Plan 04).
 // Real implementation runs 5 compliance queries through skill parse →
