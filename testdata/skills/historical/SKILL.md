@@ -1,13 +1,23 @@
 ---
-name: compliance-historical
 description: 历史 tier compliance auditor. When user asks about superseded rules, prior versions, or historical policy changes, this skill reads only the 历史 tier.
 agent: ChatModelAgent
-reads: ["历史"]
+reads:
+  - historical/**
 writes: []
-temperature: 0
-reasoning: false
+steps: |
+  1. Read relevant archived chunks via tier filter
+  2. Compose draft verdict with citations
+  3. Refuse if no historical chunks retrieved
 guardrails:
-  refuse_on_missing_tier: true
+  prohibitions:
+    - "Never cite clauses not retrieved from historical tier"
+    - "Never paraphrase critical clauses (quote verbatim span)"
+    - "Never modify historical tier content"
+  required_refusal_phrases:
+    - "no_authorized_source"
+  tier_limits:
+    historical: ["read-only"]
+temperature: 0.0
 ---
 
 # Compliance Review Skill — Historical Tier

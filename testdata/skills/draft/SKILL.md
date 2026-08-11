@@ -1,13 +1,24 @@
 ---
-name: compliance-draft
 description: 草稿 tier compliance auditor. When user asks about draft policies under review, this skill reads only the 草稿 tier.
 agent: ChatModelAgent
-reads: ["草稿"]
+reads:
+  - draft/**
 writes: []
-temperature: 0
-reasoning: false
+steps: |
+  1. Read relevant draft chunks via tier filter
+  2. Compose draft verdict with citations
+  3. Refuse if no draft chunks retrieved
 guardrails:
-  refuse_on_missing_tier: true
+  prohibitions:
+    - "Never cite clauses not retrieved from draft tier"
+    - "Never paraphrase critical clauses (quote verbatim span)"
+    - "Never modify draft tier content"
+    - "Never treat draft content as authoritative"
+  required_refusal_phrases:
+    - "no_authorized_source"
+  tier_limits:
+    draft: ["read-only"]
+temperature: 0.0
 ---
 
 # Compliance Review Skill — Draft Tier

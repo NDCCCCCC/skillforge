@@ -1,13 +1,24 @@
 ---
-name: compliance-personal
 description: 个人 tier compliance auditor. When user asks about individual records, personal leave, or single-employee matters, this skill reads only the 个人 tier.
 agent: ChatModelAgent
-reads: ["个人"]
+reads:
+  - personal/**
 writes: []
-temperature: 0
-reasoning: false
+steps: |
+  1. Read relevant individual-record chunks via tier filter
+  2. Compose draft response with citations
+  3. Refuse if no personal chunks retrieved
 guardrails:
-  refuse_on_missing_tier: true
+  prohibitions:
+    - "Never cite records not retrieved from personal tier"
+    - "Never reveal records belonging to other employees"
+    - "Never modify personal tier content"
+  required_refusal_phrases:
+    - "no_authorized_source"
+    - "out_of_scope"
+  tier_limits:
+    personal: ["read-only"]
+temperature: 0.0
 ---
 
 # Compliance Review Skill — Personal Tier

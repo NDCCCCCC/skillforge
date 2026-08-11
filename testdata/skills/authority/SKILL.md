@@ -1,13 +1,24 @@
 ---
-name: compliance-authority
 description: 权威 tier compliance auditor. When user asks about official policy, authoritative regulation, or current effective rules, this skill reads only the 权威 tier.
 agent: ChatModelAgent
-reads: ["权威"]
+reads:
+  - authority/**
 writes: []
-temperature: 0
-reasoning: false
+steps: |
+  1. Read relevant policy chunks via tier filter
+  2. Compose draft verdict with citations (chunk_id + verbatim span)
+  3. Self-verify each claim (Go programmatic grounding check)
+  4. Refuse if no authority chunks retrieved
 guardrails:
-  refuse_on_missing_tier: true
+  prohibitions:
+    - "Never cite clauses not retrieved from authority tier"
+    - "Never paraphrase critical clauses (quote verbatim span)"
+    - "Never modify authority tier content"
+  required_refusal_phrases:
+    - "no_authorized_source"
+  tier_limits:
+    authority: ["read-only"]
+temperature: 0.0
 ---
 
 # Compliance Review Skill — Authority Tier
