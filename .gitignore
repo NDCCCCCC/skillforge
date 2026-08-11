@@ -1,7 +1,9 @@
 .env
 *.exe
-spiked
-cmd/spiked/spiked
+/spiked
+/spiked.exe
+/cmd/spiked/spiked
+/cmd/spiked/spiked.exe
 spike-*trace.json
 .DS_Store
 node_modules/
