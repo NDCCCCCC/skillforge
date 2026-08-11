@@ -7,9 +7,9 @@ last_updated: "2026-08-11T16:00:00.000Z"
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 8
-  completed_plans: 6
-  percent: 22
+  total_plans: 9
+  completed_plans: 7
+  percent: 24
 ---
 
 # State — SkillForge
@@ -37,11 +37,11 @@ progress:
 ## Current Position
 
 Phase: 02 (compliance-vertical-slice) — EXECUTING
-Plan: 2 of 4 completed
+Plan: 3 of 4 completed
 **Phase:** 2
-**Plan:** 2 (skill package + corpus) — COMPLETE 2026-08-11
-**Status:** Ready to execute Plan 3 (verdict pipeline + cmd/server)
-**Next action:** `/gsd:execute-phase 02` (continue to 02-03 / 02-04)
+**Plan:** 3 (verdict pipeline + cmd/server) — COMPLETE 2026-08-11
+**Status:** Ready to execute Plan 4 (skills endpoints + live verify)
+**Next action:** `/gsd:execute-phase 02` (continue to 02-04)
 
 **02-01 deliverables:**
 - internal/spike/ retired (graduated to internal/{verdict, wire, retriever})
@@ -56,6 +56,15 @@ Plan: 2 of 4 completed
 - knowledge/authority/{travel_expense,contract_approval,non_compete,annual_leave,expense_reimbursement_scope,business_gift_prohibition,anti_corruption_clause}.md (7 hand-authored clauses)
 - knowledge/{historical,personal,draft}/.gitkeep (empty tier dirs preserved — personal/ IS the SC-4 refusal mechanism)
 - testdata/skills/*/SKILL.md reconciled to 7-field (D2-10)
+
+**02-03 deliverables (THE Phase 2 heart):**
+- internal/knowledge Index (Pattern 7 one-doc-one-chunk loader; BGE-M3 production embed; skill.TierEnum dir→tier mapping)
+- internal/server: Deps + Embedder/Searcher/Runner interface seams + New() (Pattern 1)
+- internal/server VerdictPipeline 10-step orchestrator (Pattern 6) — embed → retrieve → refuse-or-LLM → ground → emit
+- internal/server chatHandler + emitVerdictStream + emitRefusal + drainFinalContent (Pattern 2 SSE wiring)
+- cmd/server long-running Hertz binary reading 5 env vars (D2-09 / Pattern 1); h.Spin() blocks until SIGINT/SIGTERM
+- 7 acceptance tests pinning SC-2/3/4/5/6 + AGNT-03 + ARAG-05 + GEVL-01/02 + SYSK-07 + SYSK-08 + CMPL-05
+- 8 unit tests in internal/knowledge/indexer_test.go pinning the 4 indexer success criteria + static-analysis guard against EmbedQueryDeterministic fallback
 
 ---
 
@@ -106,10 +115,10 @@ Plan: 2 of 4 completed
 
 ## Performance Metrics
 
-- Phases completed: 1 / 7 (Phase 1 spike done; Phase 2 Plans 1-2 done)
-- Requirements covered: 8 / 55 (CMPL-02/03/04, ARAG-04 from 02-01; SYSK-01/02/08, CMPL-01 from 02-02)
-- Plans run: 6 (4 from Phase 1 spike + 2 from Phase 2 = 02-01 + 02-02)
-- Last plan: 02-02 (skill package + corpus) — committed at db43180 + 76ef812 + corpus + 5c0ae74 on branch worktree-agent-a4f798f416a88c35b
+- Phases completed: 1 / 7 (Phase 1 spike done; Phase 2 Plans 1-3 done)
+- Requirements covered: 14 / 55 (CMPL-02/03/04/05, ARAG-04/05, AGNT-03, GEVL-01/02, SYSK-01/02/07/08, CMPL-01)
+- Plans run: 7 (4 from Phase 1 spike + 3 from Phase 2 = 02-01 + 02-02 + 02-03)
+- Last plan: 02-03 (verdict pipeline + cmd/server) — committed at c5d5e42 + 741083b on branch worktree-agent-a19a58364375ee709
 
 ---
 
