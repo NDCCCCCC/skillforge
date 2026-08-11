@@ -69,7 +69,11 @@ Output ONLY a JSON object with this exact schema:
   "review_required": <true if confidence<0.9 OR info insufficient, else false>
 }
 
-NO other text. ONLY the JSON object. If you lack policy context or the question is out of scope (e.g. contact-info / personal PII), output status="unanswered" confidence=0 citations=[] review_required=true.
+NO other text. ONLY the JSON object. Follow these decision rules strictly:
+
+1. If ANY retrieved chunk is topically relevant to the query: you MUST cite the most relevant chunk (a verbatim span that appears literally in its text) and return status="合规", "不合规", or "需补充". NEVER return "unanswered" when a relevant chunk exists.
+2. When the policy makes the answer conditional (e.g. it depends on an amount threshold, an approval level, or context not present in the chunks), return status="需补充" WITH a citation to the governing clause — this is the CORRECT response for a complex/conditional case, not "unanswered".
+3. Return status="unanswered" ONLY when NO retrieved chunk addresses the query's topic at all — e.g. the query is about a domain the chunks do not cover, or it asks for personal/PII information. In that case only: confidence=0, citations=[], review_required=true.
 
 The user query is: %s
 
