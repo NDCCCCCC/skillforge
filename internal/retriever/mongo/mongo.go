@@ -215,6 +215,20 @@ func (c *Client) Ensure(ctx context.Context) error {
 	return nil
 }
 
+// Reset deletes every document in the collection. It makes the seed
+// path idempotent: SeedFromKnowledgeDir calls Reset before Insert so
+// repeated server starts (which re-seed the whole corpus) do not
+// accumulate duplicate rows. Without this, every restart appends
+// another copy of each chunk and top-K retrieval fills with duplicates
+// of whatever chunk happens to score highest — observed in live verify
+// as 4× the same id in the top-5.
+func (c *Client) Reset(ctx context.Context) error {
+	if _, err := c.coll.DeleteMany(ctx, bson.D{}); err != nil {
+		return fmt.Errorf("mongo.Reset: DeleteMany: %w", err)
+	}
+	return nil
+}
+
 // isNamespaceExists returns true for the v2 "NamespaceExists" CommandError
 // code (48). Kept as a helper so the Ensure path reads cleanly.
 func isNamespaceExists(ce mongo.CommandError) bool {

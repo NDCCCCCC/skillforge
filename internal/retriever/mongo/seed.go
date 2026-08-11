@@ -132,6 +132,12 @@ func (c *Client) SeedFromKnowledgeDir(ctx context.Context, knowledgeDir string, 
 		// query against the empty collection.
 		return nil
 	}
+	// Idempotent re-seed: clear prior rows so repeated server starts do
+	// not accumulate duplicates. Without this, top-K retrieval fills with
+	// repeated copies of the same chunk (live-verify SC-3 regression).
+	if err := c.Reset(ctx); err != nil {
+		return fmt.Errorf("mongo.SeedFromKnowledgeDir: reset: %w", err)
+	}
 	if err := c.Insert(ctx, docs); err != nil {
 		return fmt.Errorf("mongo.SeedFromKnowledgeDir: insert %d docs: %w", len(docs), err)
 	}
