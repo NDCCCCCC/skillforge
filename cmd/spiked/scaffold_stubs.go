@@ -14,24 +14,22 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package main — scaffold stubs for spike subcommands that are not yet
-// implemented. Each stub returns nil (not an error) so the router
-// can validate end-to-end dispatch during Wave 0. Plan 04
-// replaces the remaining stub with a real implementation.
+// Package main — scaffold_stubs.go tracked the not-yet-implemented spike
+// subcommands during Waves 0-2. As of Plan 01-04, ALL four subcommands
+// have real implementations:
 //
-// Note: runMilvus (Plan 02) is implemented in milvus.go.
-// Note: runSSE (Plan 03) is implemented in sse.go.
+//   - runWire    (Plan 01-01) — cmd/spiked/wire.go
+//   - runMilvus  (Plan 01-02) — cmd/spiked/milvus.go
+//   - runSSE     (Plan 01-03) — cmd/spiked/sse.go
+//   - runE2E     (Plan 01-04) — cmd/spiked/e2e.go
+//
+// This file is retained as a marker — Go's package system requires at
+// least one .go file per package, but a package can have any number of
+// files with documentation-only content. Keeping the file lets the
+// "no stubs remain" acceptance check (grep `func runE2E` returns empty
+// here) verify the scaffold transition is complete.
+//
+// If a future plan adds a new subcommand stub slot, add it here with a
+// `func runX(ctx, args) error` placeholder returning nil, then replace
+// with the real implementation in its own file.
 package main
-
-import (
-	"context"
-	"fmt"
-)
-
-// runE2E is a placeholder for the full E2E pipeline trace spike (Plan 04).
-// Real implementation runs 5 compliance queries through skill parse →
-// Eino → GLM-5.2 → SSE → mock client → Milvus → BGE-M3 → tier filter.
-func runE2E(ctx context.Context, args []string) error {
-	fmt.Println("[STUB] e2e: not yet implemented (Plan 04)")
-	return nil
-}
