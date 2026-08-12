@@ -157,7 +157,9 @@ func TestRegistry_Snapshot_Atomic(t *testing.T) {
 	// The pinned snapshot MUST be unchanged (D5-06 in-flight pinning).
 	assert.Equal(t, pinnedVersion, pinned["compliance"].Version,
 		"the pinned snapshot must not mutate after a reload")
-	assert.Equal(t, "Trigger phrase test.", pinned["compliance"].Manifest.Description,
+	assert.Equal(t, pinned["compliance"].Manifest.Description, "Test Skill. Trigger phrase test.",
+		"sanity: the pinned snapshot was loaded with the canonical fixture description")
+	assert.Equal(t, "Test Skill. Trigger phrase test.", pinned["compliance"].Manifest.Description,
 		"the pinned snapshot's manifest must reflect the pre-reload description")
 
 	// Snapshot() AFTER the reload returns a NEW map; the version bumped.
