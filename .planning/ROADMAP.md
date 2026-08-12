@@ -135,7 +135,7 @@
 **Plans**: 6 plans
 **Plan list**:
 - [x] 05-01-PLAN.md - Wave 1: Wire extensions (data-redline 17->18 + DecisionPayload routing fields) + Skill Registry (atomic.Pointer + fsnotify + V12 symlink re-check + 1s debounce)
-- [ ] 05-02-PLAN.md - Wave 1: Skill Router (BGE-M3 cosine + ambiguity gate) + Chunk schema migration (Document.EffectiveFrom/To + Milvus + Mongo + indexer validateEffective + pipeline threads now)
+- [x] 05-02-PLAN.md - Wave 1: Skill Router (BGE-M3 cosine + ambiguity gate) + Chunk schema migration (Document.EffectiveFrom/To + Milvus + Mongo + indexer validateEffective + pipeline threads now)
 - [ ] 05-03-PLAN.md - Wave 2: SC-1 routing trace + ambiguity picker + SC-2 hot-reload UI (toasts + statusbar pinned-version) + Skill Manager menu + 5-tab CenterPanel wiring (inspector + graph placeholders)
 - [ ] 05-04-PLAN.md - Wave 2: SC-3 Skill Wizard (backend Generate + Commit endpoints with path-traversal guard; right-panel wizard mode + 5-step interview + preview + alert-dialog cancel)
 - [ ] 05-05-PLAN.md - Wave 2: SC-4 Agent State Inspector (Accordion tree from useChat.messages) + SC-5 Knowledge Graph Browser (GET /api/knowledge/graph + 3-level Accordion + search filter) + SC-8 version badges on ChunkSourceView
