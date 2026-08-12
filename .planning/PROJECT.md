@@ -82,6 +82,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **T-1-08 source-URL 白名单消毒门**（Phase 4） | `source-url` href 是 XSS 头号入口；在 SourceUrlPart 边界强制协议+主机白名单，拒绝即渲染 blocked 态，`<a>` 恒带 `rel=noopener noreferrer` | ✅ Validated — Phase 4（7 断言回归门） |
 | **状态边界：Zustand 不存 `messages`**（Pitfall 7，Phase 4） | `useChat` 独占消息流；`app-store.ts` 文件级注释禁止 `messages` 字段，杜绝双真值源 | ✅ Validated — Phase 4 |
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
+| **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
 
 ## Evolution
 
@@ -101,4 +102,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-11 after Phase 4 (Streaming Trust UI) completion*
+*Last updated: 2026-08-12 — D6 reversed (Python/Ragas sidecar → Go-native evaluator) during Plan 03-06 execution*
