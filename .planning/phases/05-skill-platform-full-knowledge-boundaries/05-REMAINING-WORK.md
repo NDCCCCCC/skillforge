@@ -22,7 +22,7 @@ Ordered by recommended execution (see §3 for rationale). Two are quick/clear-cu
 
 ---
 
-## 1. eval/judge.go — consolidate onto llm.ExtractJSON (OOS-1 follow-up, tiny)
+## 1. eval/judge.go — consolidate onto llm.ExtractJSON (OOS-1 follow-up, tiny) ✅ DONE (commit `d1af0f6`, quick task 260813-1i6)
 
 - **Severity:** low (not on user-facing verdict path) — but silently degrades eval metrics if a judge model wraps output in prose+fences.
 - **Symptom:** `internal/eval/judge.go:362` carries its OWN `stripJSONDelim` copy (TrimPrefix/Suffix based) with the same prose-wrapped blind spot that OOS-1 just fixed elsewhere. `eval/faithfulness_test.go:156` pins only 4 basic shapes.

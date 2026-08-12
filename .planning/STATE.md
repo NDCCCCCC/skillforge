@@ -2,17 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
-current_phase: 05
-current_plan: 1
-status: ready_to_plan
-last_updated: 2026-08-12T12:29:59.924Z
+current_phase: 6
+current_plan: Not started
+status: planning
+last_updated: "2026-08-12T15:50:57.436Z"
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 23
   completed_plans: 26
-  percent: 57
-stopped_at: Phase 5 complete (6/6) — ready to discuss Phase 6
+  percent: 71
 ---
 
 # State — SkillForge
@@ -132,6 +131,7 @@ Plan: 1 of 6
 |---|-------------|------|--------|-----------|
 | 260811-uaf | Fix CenterPanel tab indicator sync with centerView.kind (04-UAT #8) | 2026-08-11 | e757d6e | [260811-uaf-fix-centerpanel-tab-indicator-sync-with-](./quick/260811-uaf-fix-centerpanel-tab-indicator-sync-with-/) |
 | 260812-cng | Finalize v0.7.7 dep-upgrade tail (drop scripts/test, reconcile STATE.md drift, track milestone audit) | 2026-08-12 | 6bbfa61 | [260812-cng-go-scripts-test-state-md-frontmatter-hea](./quick/260812-cng-go-scripts-test-state-md-frontmatter-hea/) |
+| 260813-1i6 | Consolidate eval/judge.go JSON parse onto shared llm.ExtractJSON (OOS-1 follow-up) | 2026-08-12 | d1af0f6 | [260813-1i6-eval-judge-go-llm-extractjson-oos-1](./quick/260813-1i6-eval-judge-go-llm-extractjson-oos-1/) |
 
 ---
 
@@ -163,6 +163,13 @@ Plan: 1 of 6
 ## Session Continuity
 
 **Resume point:** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
+
+**Debug fixes — 2026-08-13 (Phase 5 UAT blockers, /gsd-debug):**
+- **#9 (blocker) wizard commit registration** — FIXED, commit `af1ca9a`. `wizardCommitHandler` rescans `Loader` + `Registered` flag; FE gates toast on `registered`; `Loader.cached` race-guarded. Resolved session: `.planning/debug/resolved/wizard-commit-registration.md`.
+- **OOS-1 (blocker) GLM verdict fence-parse** — FIXED, commit `d62fe98`. New shared `internal/llm.ExtractJSON`; all 4 verdict parse sites re-routed. Resolved session: `.planning/debug/resolved/glm-verdict-fence-parse.md`.
+- **eval/judge.go OOS-1 follow-up** — FIXED, commit `d1af0f6` (quick task 260813-1i6). `glmJudge.generateJSON` now delegates to `llm.ExtractJSON`; private `stripJSONDelim` removed; hermetic judge-path regression test added.
+- **Remaining Phase 5 work (3 open UAT issues #2/#4/#7):** see `.planning/phases/05-skill-platform-full-knowledge-boundaries/05-REMAINING-WORK.md`. §1 (this eval follow-up) DONE; §2 (#7 hot-reload, polling-B), §3 (#4 graph chunk full-text), §4 (#2 left-sidebar IA) pending — gating decisions resolved (polling-B / full-text-in-scope / LEFT-sidebar).
+- Phase 5 UAT now effectively 9/11 pass; 3 open (#2 right-panel IA, #4 graph chunk-content, #7 hot-reload toast bridge).
 
 **Hot files this session:**
 
