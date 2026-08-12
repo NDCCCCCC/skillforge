@@ -26,15 +26,19 @@ import (
 )
 
 // Search runs a tier-filtered vector search against Milvus. The
-// filter is built INSIDE Search via BuildMilvusFilter(tiers) and
+// filter is built INSIDE Search via BuildMilvusFilter(tiers, now) and
 // applied PRE-similarity at the SDK layer (never post-filter).
 // Empty/zero tiers → "false" default-deny → 0 hits (D-09).
-func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []string, topK int) ([]retriever.Hit, error) {
+//
+// Plan 05-02 / D5-15: the filter co-layers the effective_to PRE-filter
+// at the same layer as the tier filter (NOT post-filter). `now` is the
+// epoch-seconds cutoff computed once at pipeline entry.
+func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]retriever.Hit, error) {
 	cfg := m.cfg.withDefaults()
 	if len(queryVec) != cfg.EmbedDim {
 		return nil, fmt.Errorf("queryVec dim=%d, want=%d", len(queryVec), cfg.EmbedDim)
 	}
-	filter := BuildMilvusFilter(tiers)
+	filter := BuildMilvusFilter(tiers, now)
 
 	sp, err := entity.NewIndexIvfFlatSearchParam(DefaultIVFNProbe)
 	if err != nil {
@@ -49,7 +53,9 @@ func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []s
 		cfg.CollectionName,
 		nil, // partitions (nil = default)
 		filter,
-		[]string{"id", "tier", "content", "source"},
+		// OutputFields include effective_from + effective_to (Plan 05-02 D5-15)
+		// so the returned Hit carries the policy-version window for audit.
+		[]string{"id", "tier", "content", "source", "effective_from", "effective_to"},
 		[]entity.Vector{entity.FloatVector(queryVec)},
 		"embedding",
 		entity.COSINE,
@@ -69,6 +75,8 @@ func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []s
 		tierCol := sr.Fields.GetColumn("tier")
 		contentCol := sr.Fields.GetColumn("content")
 		sourceCol := sr.Fields.GetColumn("source")
+		effectiveFromCol := sr.Fields.GetColumn("effective_from")
+		effectiveToCol := sr.Fields.GetColumn("effective_to")
 		for i := 0; i < sr.ResultCount; i++ {
 			row := retriever.Hit{Score: -1}
 			if i < len(sr.Scores) {
@@ -92,6 +100,16 @@ func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []s
 			if sourceCol != nil {
 				if v, e := sourceCol.GetAsString(i); e == nil {
 					row.Source = v
+				}
+			}
+			if effectiveFromCol != nil {
+				if v, e := effectiveFromCol.GetAsInt64(i); e == nil {
+					row.EffectiveFrom = v
+				}
+			}
+			if effectiveToCol != nil {
+				if v, e := effectiveToCol.GetAsInt64(i); e == nil {
+					row.EffectiveTo = v
 				}
 			}
 			out = append(out, row)

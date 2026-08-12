@@ -28,6 +28,12 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+// testNow is the Plan 05-02 D5-15 epoch-seconds cutoff used by tests
+// exercising the effective_to PRE-filter. Production passes
+// time.Now().Unix() computed once at pipeline entry; tests use a fixed
+// value so the bson.D $or shape assertions are deterministic.
+const testNow int64 = 1700000000
+
 // fakeFinder is the test stand-in for mongoCollectionFinder. It records
 // the last filter it was called with and returns a caller-configured
 // slice of rows (or error). The rows are returned as-is — the fake does
@@ -73,14 +79,26 @@ func newClientWithFake(f *fakeFinder) *Client {
 // filter the production code builds, so tests can assert "the tier list
 // we passed in is the tier list that hit the wire". Reflection-based
 // because bson.D is a []bson.E and we want to keep the assertion readable.
+//
+// Plan 05-02 D5-15: the filter is no longer single-field — it carries
+// the tier $in AND the effective_to $or co-layered. We scan for the
+// "tier" key (rather than hardcoding index 0) so the helper stays
+// robust against future clause additions.
 func extractTiersFromFilter(t *testing.T, filter any) []string {
 	t.Helper()
 	d, ok := filter.(bson.D)
 	require.True(t, ok, "filter is %T, want bson.D", filter)
-	require.Len(t, d, 1, "filter should be a single-field {tier:{$in:...}}")
-	require.Equal(t, "tier", d[0].Key, "filter field 0 key")
-	inner, ok := d[0].Value.(bson.D)
-	require.True(t, ok, "filter value is %T, want bson.D (the {$in:...} doc)", d[0].Value)
+	require.NotEmpty(t, d, "filter must have at least one field")
+	var tierVal any
+	for _, e := range d {
+		if e.Key == "tier" {
+			tierVal = e.Value
+			break
+		}
+	}
+	require.NotNil(t, tierVal, "filter must include a tier field")
+	inner, ok := tierVal.(bson.D)
+	require.True(t, ok, "tier value is %T, want bson.D (the {$in:...} doc)", tierVal)
 	require.Len(t, inner, 1, "{$in:...} should be a single-element doc")
 	require.Equal(t, "$in", inner[0].Key, "$in operator expected")
 	tiers, ok := inner[0].Value.([]string)
@@ -97,7 +115,7 @@ func TestSearch_PassesTierFilterAsIn(t *testing.T) {
 	f := &fakeFinder{rows: []docRow{}}
 	c := newClientWithFake(f)
 
-	_, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威", "历史"}, 3)
+	_, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威", "历史"}, 3, testNow)
 	require.NoError(t, err)
 
 	tiers := extractTiersFromFilter(t, f.lastFilter)
@@ -124,7 +142,7 @@ func TestSearch_EmptyTiersSendsInEmptyFilter(t *testing.T) {
 	c := newClientWithFake(f)
 
 	// Empty tiers slice → {$in: []} on the wire (NOT skipped, NOT nil).
-	_, err := c.Search(context.Background(), []float32{1, 0}, []string{}, 5)
+	_, err := c.Search(context.Background(), []float32{1, 0}, []string{}, 5, testNow)
 	require.NoError(t, err)
 	assert.Equal(t, 1, f.calls, "finder must be invoked even on empty tiers (D-09 Go-side)")
 	tiers := extractTiersFromFilter(t, f.lastFilter)
@@ -132,7 +150,7 @@ func TestSearch_EmptyTiersSendsInEmptyFilter(t *testing.T) {
 
 	// Also cover the nil-tiers branch — same behavior expected.
 	f.calls = 0
-	_, err = c.Search(context.Background(), []float32{1, 0}, nil, 5)
+	_, err = c.Search(context.Background(), []float32{1, 0}, nil, 5, testNow)
 	require.NoError(t, err)
 	assert.Equal(t, 1, f.calls, "nil tiers must also invoke finder (no short-circuit)")
 	tiers = extractTiersFromFilter(t, f.lastFilter)
@@ -152,7 +170,7 @@ func TestSearch_RanksByCosine(t *testing.T) {
 	}}
 	c := newClientWithFake(f)
 
-	hits, err := c.Search(context.Background(), q, []string{"权威", "历史"}, 3)
+	hits, err := c.Search(context.Background(), q, []string{"权威", "历史"}, 3, testNow)
 	require.NoError(t, err)
 	require.Len(t, hits, 3)
 	assert.Equal(t, int64(2), hits[0].ID, "top hit must be the cos=1 row")
@@ -170,7 +188,7 @@ func TestSearch_TopKClampsToRows(t *testing.T) {
 	}}
 	c := newClientWithFake(f)
 
-	hits, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 99)
+	hits, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 99, testNow)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	assert.Equal(t, int64(7), hits[0].ID)
@@ -190,7 +208,7 @@ func TestSearch_PreservesAllHitFields(t *testing.T) {
 		},
 	}}
 	c := newClientWithFake(f)
-	hits, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 1)
+	hits, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 1, testNow)
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	h := hits[0]
@@ -206,7 +224,7 @@ func TestSearch_FinderErrorPropagates(t *testing.T) {
 	wantErr := errors.New("connection lost")
 	f := &fakeFinder{err: wantErr}
 	c := newClientWithFake(f)
-	_, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 1)
+	_, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 1, testNow)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, wantErr)
 }
@@ -215,7 +233,7 @@ func TestSearch_FinderErrorPropagates(t *testing.T) {
 // is a programming error upstream and should fail loud.
 func TestSearch_NilQueryVecErrors(t *testing.T) {
 	c := newClientWithFake(&fakeFinder{})
-	_, err := c.Search(context.Background(), nil, []string{"权威"}, 1)
+	_, err := c.Search(context.Background(), nil, []string{"权威"}, 1, testNow)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "queryVec")
 }
@@ -225,10 +243,10 @@ func TestSearch_NilQueryVecErrors(t *testing.T) {
 // produce empty results for every query which is hard to diagnose).
 func TestSearch_ZeroOrNegativeTopKErrors(t *testing.T) {
 	c := newClientWithFake(&fakeFinder{})
-	_, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 0)
+	_, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 0, testNow)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "topK")
-	_, err = c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, -1)
+	_, err = c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, -1, testNow)
 	require.Error(t, err)
 }
 
@@ -237,7 +255,7 @@ func TestSearch_ZeroOrNegativeTopKErrors(t *testing.T) {
 func TestSearch_FinderReturnsNilRowsOK(t *testing.T) {
 	f := &fakeFinder{rows: nil}
 	c := newClientWithFake(f)
-	hits, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 5)
+	hits, err := c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 5, testNow)
 	require.NoError(t, err)
 	assert.Nil(t, hits)
 }
@@ -289,21 +307,32 @@ func TestEqualFoldASCII(t *testing.T) {
 }
 
 // TestFilterShapeIsTierIn — STATIC guarantee that the filter built by
-// Search is a bson.D with exactly one field {tier: {$in: []string}}.
+// Search is a bson.D with a {tier: {$in: []string}} entry. Plan 05-02
+// D5-15 added a co-layered $or entry; the test now scans for the "tier"
+// key (rather than asserting a single-field doc) so the tier clause
+// shape is locked independently of any future clause additions.
+//
 // Reflection-based so a refactor that changes bson.D → bson.M or that
-// adds a second field would break this test (intentionally — the wire
-// shape is the trust boundary and should not drift silently).
+// replaces []string with []any would break this test (intentionally —
+// the wire shape is the trust boundary and should not drift silently).
 func TestFilterShapeIsTierIn(t *testing.T) {
 	f := &fakeFinder{}
 	c := newClientWithFake(f)
-	_, _ = c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 1)
+	_, _ = c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 1, testNow)
 
 	d, ok := f.lastFilter.(bson.D)
 	require.True(t, ok, "filter must be bson.D (ordered), got %T", f.lastFilter)
-	require.Len(t, d, 1, "filter must be a single-field doc")
-	assert.Equal(t, "tier", d[0].Key)
-	inner, ok := d[0].Value.(bson.D)
-	require.True(t, ok)
+	// Find the tier entry (D5-15: scan, don't hardcode index 0).
+	var tierVal any
+	for _, e := range d {
+		if e.Key == "tier" {
+			tierVal = e.Value
+			break
+		}
+	}
+	require.NotNil(t, tierVal, "filter must include a tier field")
+	inner, ok := tierVal.(bson.D)
+	require.True(t, ok, "tier value is %T, want bson.D (the {$in:...} doc)", tierVal)
 	require.Len(t, inner, 1)
 	assert.Equal(t, "$in", inner[0].Key)
 	// The $in value must be a []string (not []any) so the BSON encoder
@@ -335,7 +364,7 @@ func TestImplementsRetriever(t *testing.T) {
 // it applies the filter via a hand-rolled predicate that mirrors
 // MongoDB's $or semantics. Production uses real MongoDB.
 func TestMongoSearch_EffectiveToFilter(t *testing.T) {
-	const now int64 = 1700000000
+	const now int64 = testNow
 	// Build two fake rows. EffectiveTo=0 is the perpetual sentinel;
 	// effective_to=now-1 is expired.
 	rows := []docRow{
@@ -373,7 +402,7 @@ func TestMongoSearch_EffectiveToFilter(t *testing.T) {
 // effective_to (per D5-15 sentinel design). A future refactor that
 // drops the clause would silently let expired policies through.
 func TestMongoSearch_FilterShapeIncludesEffectiveToOr(t *testing.T) {
-	const now int64 = 1700000000
+	const now int64 = testNow
 	f := &fakeFinder{}
 	c := newClientWithFake(f)
 	_, _ = c.Search(context.Background(), []float32{1, 0}, []string{"权威"}, 5, now)

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
@@ -142,7 +143,15 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// The retriever implementation owns the filter expression format
 	// (e.g. milvus.BuildMilvusFilter); the pipeline passes only the
 	// resolved tier values so it stays backend-agnostic.
-	chunks, err := s.Retriever.Search(ctx, qvec, tiers, 5)
+	//
+	// Plan 05-02 D5-15: `now` is computed ONCE at pipeline entry and
+	// passed through to Search. The backend applies the effective_to
+	// PRE-filter at the same layer as the tier filter (NOT a post-filter
+	// fallback). Computing it here (vs. inside each backend) keeps every
+	// call in a single request consistent — critical for audit
+	// reproducibility across multi-call Skills.
+	now := time.Now().Unix()
+	chunks, err := s.Retriever.Search(ctx, qvec, tiers, 5, now)
 	if err != nil {
 		return fmt.Errorf("verdict pipeline: retrieve: %w", err)
 	}

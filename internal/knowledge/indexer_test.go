@@ -231,8 +231,12 @@ func TestIndexer_RejectsEmptyInputs(t *testing.T) {
 	assert.Error(t, err, "nil embedder must error (Pitfall 8)")
 }
 
-// TestStripFrontmatter covers the helper directly with a few shapes.
-func TestStripFrontmatter(t *testing.T) {
+// TestSplitFrontmatter covers the helper directly with a few shapes.
+// Plan 05-02 D5-15: splitFrontmatter returns (body, frontmatter) so
+// callers can extract effective_from / effective_to. Tests assert on
+// the body only; the frontmatter return is covered indirectly by
+// TestParseEffectiveWindow.
+func TestSplitFrontmatter(t *testing.T) {
 	cases := []struct {
 		name string
 		raw  string
@@ -246,10 +250,44 @@ func TestStripFrontmatter(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := string(stripFrontmatter([]byte(tc.raw)))
+			body, _ := splitFrontmatter([]byte(tc.raw))
+			got := string(body)
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// TestParseEffectiveWindow — Plan 05-02 D5-15. The helper reads
+// effective_from / effective_to (epoch seconds) from a YAML frontmatter
+// block. Cases:
+//
+//   - nil / empty frontmatter → (0, 0) (sentinel).
+//   - frontmatter with effective_* → parsed values.
+//   - malformed YAML → (0, 0) + warning (don't brick the indexer).
+func TestParseEffectiveWindow(t *testing.T) {
+	t.Run("nil_returns_perpetual_sentinel", func(t *testing.T) {
+		from, to := parseEffectiveWindow(nil)
+		assert.Equal(t, int64(0), from)
+		assert.Equal(t, int64(0), to)
+	})
+	t.Run("empty_returns_perpetual_sentinel", func(t *testing.T) {
+		from, to := parseEffectiveWindow([]byte{})
+		assert.Equal(t, int64(0), from)
+		assert.Equal(t, int64(0), to)
+	})
+	t.Run("parses_bounded_window", func(t *testing.T) {
+		fm := []byte("effective_from: 1699000000\neffective_to: 1700000000\n")
+		from, to := parseEffectiveWindow(fm)
+		assert.Equal(t, int64(1699000000), from)
+		assert.Equal(t, int64(1700000000), to)
+	})
+	t.Run("malformed_yaml_falls_back_to_perpetual", func(t *testing.T) {
+		fm := []byte("not: valid: yaml: at all:") // unbalanced
+		from, to := parseEffectiveWindow(fm)
+		assert.Equal(t, int64(0), from)
+		assert.Equal(t, int64(0), to,
+		"malformed YAML must not brick the indexer (D5-15 fail-soft)")
+	})
 }
 
 // TestIndexer_ValidateEffective — Plan 05-02 D5-15. KNOW-02 extension:

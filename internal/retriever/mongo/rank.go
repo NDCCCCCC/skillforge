@@ -46,12 +46,20 @@ import (
 // interpreted only by the mongo-driver decoder; keeping the type in this
 // file means rank.go has zero external dependencies beyond the retriever
 // types and so is unit-testable with no MongoDB process.
+//
+// Plan 05-02 D5-15: EffectiveFrom / EffectiveTo are the policy-version
+// window (epoch seconds). Sentinel design — NOT nullable fields. Zero
+// means "open-ended" / perpetually valid. These fields round-trip
+// through to retriever.Hit so the pipeline can audit which version of
+// a policy each chunk was sourced from.
 type docRow struct {
-	ID        int64     `bson:"id"`
-	Tier      string    `bson:"tier"`
-	Content   string    `bson:"content"`
-	Source    string    `bson:"source"`
-	Embedding []float32 `bson:"embedding"`
+	ID            int64     `bson:"id"`
+	Tier          string    `bson:"tier"`
+	Content       string    `bson:"content"`
+	Source        string    `bson:"source"`
+	Embedding     []float32 `bson:"embedding"`
+	EffectiveFrom int64     `bson:"effective_from"`
+	EffectiveTo   int64     `bson:"effective_to"`
 }
 
 // Cosine returns the cosine similarity between two equal-length
@@ -111,11 +119,13 @@ func rank(rows []docRow, queryVec []float32, k int) []retriever.Hit {
 	for i := 0; i < k; i++ {
 		s := out[i]
 		hits = append(hits, retriever.Hit{
-			ID:      s.row.ID,
-			Score:   s.score,
-			Tier:    s.row.Tier,
-			Content: s.row.Content,
-			Source:  s.row.Source,
+			ID:            s.row.ID,
+			Score:         s.score,
+			Tier:          s.row.Tier,
+			Content:       s.row.Content,
+			Source:        s.row.Source,
+			EffectiveFrom: s.row.EffectiveFrom,
+			EffectiveTo:   s.row.EffectiveTo,
 		})
 	}
 	return hits
