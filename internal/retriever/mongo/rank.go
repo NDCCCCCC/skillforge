@@ -54,13 +54,20 @@ type docRow struct {
 	Embedding []float32 `bson:"embedding"`
 }
 
-// cosine returns the cosine similarity between two equal-length vectors.
+// Cosine returns the cosine similarity between two equal-length vectors.
 // Panics on length mismatch — callers MUST validate length before calling
 // (Search enforces this on the query vector and again per-row via the
 // rank helper). A zero-norm vector (no magnitude) returns 0 to avoid
 // div-by-zero; this is the standard convention and matches what Milvus
 // returns for the same input.
-func cosine(a, b []float32) float32 {
+//
+// Exported (Plan 05-02): the Skill Router in internal/skill reuses this
+// helper for description-embedding cosine against the registry snapshot —
+// per RESEARCH §Don't Hand-Roll, the existing vector-math implementation
+// is the single source of truth. The Mongo package owns the function
+// because Mongo is the backend that runs cosine in Go (Milvus runs it in
+// the SDK); the router happens to be the second consumer.
+func Cosine(a, b []float32) float32 {
 	if len(a) != len(b) {
 		panic("mongo.cosine: length mismatch")
 	}
@@ -108,7 +115,7 @@ func rank(rows []docRow, queryVec []float32, k int) []retriever.Hit {
 		if len(r.Embedding) != len(queryVec) || len(r.Embedding) == 0 {
 			continue
 		}
-		out = append(out, scored{row: r, score: cosine(queryVec, r.Embedding)})
+		out = append(out, scored{row: r, score: Cosine(queryVec, r.Embedding)})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].score != out[j].score {
