@@ -62,6 +62,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/model"
@@ -140,6 +141,14 @@ type Agent struct {
 	react    *react.Agent
 	cfg      AgentConfig
 	retrieve tool.InvokableTool
+
+	// lastAcc holds the chunkAccumulator from the most recent Run, so
+	// LastRetrieved() can expose the agent's actual retrieved chunks to
+	// the Plan 03-06 eval sidecar without replaying a separate
+	// retriever.Search. Guarded by lastMu (an RWMutex because
+	// LastRetrieved is read-heavy and Run is write-rare).
+	lastMu  sync.RWMutex
+	lastAcc *ChunkAccumulator
 }
 
 // ComputeMaxStep implements the D3-02 MaxStep formula. Given MaxHops N:
@@ -249,6 +258,61 @@ func NewAgent(ctx context.Context, cfg AgentConfig) (*Agent, error) {
 // future refactors can swap the underlying primitive without breaking
 // callers.
 func (a *Agent) React() *react.Agent { return a.react }
+
+// RetrievedChunk is a flat snapshot of one retriever.Hit collected
+// during the most recent Run, exposed for the Plan 03-06 eval sidecar.
+// The fields mirror retriever.Hit but as a value type with no Score
+// pointer indirection — the eval CLI consumes this directly to score
+// context_precision / context_recall against the agent's ACTUAL
+// retrieved context (not a parallel retrieval the eval CLI would have
+// to replay).
+type RetrievedChunk struct {
+	ID      int64
+	Score   float32
+	Content string
+	Tier    string
+}
+
+// LastRetrieved returns the chunks accumulated during the most recent
+// Run. Plan 03-06 additive accessor — the eval CLI calls this after
+// (*Agent).Run to score the agent's actual retrieved context without
+// replaying a separate retriever.Search (which could diverge from what
+// the agent saw if the embedder / retriever is stateful or if the
+// agent's retrieve tool re-ranked hits).
+//
+// Returns a freshly-allocated slice (caller-owned). Returns nil if Run
+// has never been called on this agent, or if the most recent Run
+// produced zero tier-matched chunks (refusal-by-construction fired).
+//
+// Concurrency: safe to call from a different goroutine than the one
+// that ran Run (the underlying ChunkAccumulator is mutex-guarded).
+// Returns a point-in-time snapshot — subsequent Run calls will replace
+// the accumulator and LastRetrieved will reflect the new Run.
+func (a *Agent) LastRetrieved() []RetrievedChunk {
+	// The accumulator is stashed in ctx per-Run; after Run returns we
+	// can no longer reach it via ctx. The chunkAccumulator state is
+	// owned by the Run call frame. To expose LastRetrieved we need a
+	// stable field on *Agent.
+	//
+	// Implementation: Run stashes the latest accumulator on a.lastAcc
+	// under a.lastMu before returning. This is read here.
+	a.lastMu.RLock()
+	defer a.lastMu.RUnlock()
+	if a.lastAcc == nil {
+		return nil
+	}
+	hits := a.lastAcc.TierMatched()
+	out := make([]RetrievedChunk, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, RetrievedChunk{
+			ID:      h.ID,
+			Score:   h.Score,
+			Content: h.Content,
+			Tier:    h.Tier,
+		})
+	}
+	return out
+}
 
 // RetrieveTool exposes the retrieve_compliance_chunks InvokableTool.
 // Exposed for the trust floor (Task 2): the post-run check inspects
@@ -382,6 +446,13 @@ func WithRunEmit(ctx context.Context, emit DecisionEmitFunc) context.Context {
 // SC-8 end-to-end test (real network + LLM) is in Plan 03-05.
 func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdict, *verdict.Refusal, error) {
 	acc := NewChunkAccumulator()
+	// Stash the accumulator on the Agent so LastRetrieved() can expose
+	// the agent's actual retrieved chunks after Run returns (Plan 03-06
+	// additive accessor). Written under lastMu so a concurrent
+	// LastRetrieved caller sees a consistent pointer.
+	a.lastMu.Lock()
+	a.lastAcc = acc
+	a.lastMu.Unlock()
 	ctx = context.WithValue(ctx, accCtxKey{}, acc)
 
 	// Resolve the effective emit: ctx override (per-Run, Plan 03-05 SSE

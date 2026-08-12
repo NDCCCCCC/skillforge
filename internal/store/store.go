@@ -141,6 +141,18 @@ type Store interface {
 	// a UNIQUE constraint + ON CONFLICT DO NOTHING.
 	AppendTurn(ctx context.Context, sessionID string, user, assistant SessionMessage) error
 
+	// UpdateAuditMetrics backfills the 4 metric columns on an existing
+	// audit row. This is the ONLY sanctioned UPDATE path — Plan 03-06's
+	// eval sidecar owns this exception; every other path is INSERT-only
+	// per T-3-AUDIT. The metric pointers are NULLable: pass nil for any
+	// metric you do not want to backfill (the column keeps its prior
+	// value, typically NULL from the original INSERT).
+	//
+	// Returns sql.ErrNoRows if the row does not exist (the caller treats
+	// this as "eval CLI ran before the chat path wrote the row" — a
+	// sequencing issue, surfaced loudly).
+	UpdateAuditMetrics(ctx context.Context, id int64, faithfulness, contextPrecision, answerRelevance, contextRecall *float64) error
+
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.
 	Health(ctx context.Context) error

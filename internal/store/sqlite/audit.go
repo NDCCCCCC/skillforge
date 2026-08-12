@@ -177,6 +177,58 @@ func toNullFloat64(v *float64) sql.NullFloat64 {
 	return sql.NullFloat64{Valid: true, Float64: *v}
 }
 
+// updateAuditMetricsSQL is the ONLY row-modification statement in the
+// store package. It is owned by Plan 03-06's eval sidecar — the
+// exception to the INSERT-only T-3-AUDIT invariant. The columns already
+// exist (Plan 03-02 reserved them); the eval sidecar sets them after
+// the chat path INSERTed the row with NULLs.
+//
+// Each metric argument is a `?` placeholder (T-3-SQLI: no fmt.Sprintf
+// with input). The COALESCE keeps a NULL column NULL when the caller
+// passes nil for that metric (the sidecar may compute only 3 of 4
+// metrics for a refusal case — the 4th should stay NULL, not get
+// overwritten with a spurious 0).
+const updateAuditMetricsSQL = `
+UPDATE audit SET
+    faithfulness      = COALESCE(?, faithfulness),
+    context_precision = COALESCE(?, context_precision),
+    answer_relevance  = COALESCE(?, answer_relevance),
+    context_recall    = COALESCE(?, context_recall)
+WHERE id = ?
+`
+
+// UpdateAuditMetrics backfills the 4 metric columns on audit row id.
+// See store.Store.UpdateAuditMetrics for the contract; see
+// updateAuditMetricsSQL above for the SQL shape (COALESCE preserves
+// prior values for nil metrics).
+//
+// Returns sql.ErrNoRows when the row does not exist — the driver-level
+// rows-affected check surfaces this as ErrNoRows via res.RowsAffected()
+// (the eval CLI treats this as a sequencing error and logs it).
+func (s *SQLiteStore) UpdateAuditMetrics(ctx context.Context, id int64, faithfulness, contextPrecision, answerRelevance, contextRecall *float64) error {
+	if s.isClosed() {
+		return sql.ErrConnDone
+	}
+	res, err := s.db.ExecContext(ctx, updateAuditMetricsSQL,
+		toNullFloat64(faithfulness),
+		toNullFloat64(contextPrecision),
+		toNullFloat64(answerRelevance),
+		toNullFloat64(contextRecall),
+		id,
+	)
+	if err != nil {
+		return fmtError("UpdateAuditMetrics", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmtError("UpdateAuditMetrics.RowsAffected", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // fromNullFloat64 is the scan-side inverse of toNullFloat64.
 func fromNullFloat64(n sql.NullFloat64) *float64 {
 	if !n.Valid {

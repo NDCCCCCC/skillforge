@@ -317,3 +317,60 @@ func TestPromptHashFormat(t *testing.T) {
 	require.Len(t, got, 1)
 	assert.Equal(t, hash, got[0].PromptHash, "prompt_hash must round-trip identically")
 }
+
+// TestUpdateAuditMetrics — Plan 03-06 eval sidecar backfill path. The
+// 4 metric columns start NULL (PutAudit writes NULL when the *float64
+// fields are nil); UpdateAuditMetrics fills them in. Verifies:
+//
+//   - All 4 metrics backfill correctly with the exact values passed.
+//   - Passing nil for one metric preserves the prior column value
+//     (COALESCE behavior — the eval CLI may compute only 3 of 4 metrics
+//     for a refusal case).
+//   - A second UpdateAuditMetrics on the same row replaces non-nil
+//     metrics (idempotent re-run of the eval CLI).
+//   - UpdateAuditMetrics on a non-existent row → sql.ErrNoRows.
+func TestUpdateAuditMetrics(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Insert a row with NULL metrics (the chat path's default state).
+	row := sampleAuditRow("sess-metrics")
+	id, err := s.PutAudit(ctx, row)
+	require.NoError(t, err)
+	require.Greater(t, id, int64(0))
+
+	// Sanity: metrics start NULL.
+	got, err := s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-metrics"})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Nil(t, got[0].Faithfulness, "metric starts NULL")
+	require.Nil(t, got[0].ContextPrecision)
+
+	// Backfill all 4 metrics.
+	faith, cprec, arel, crec := 0.92, 0.85, 0.88, 0.79
+	require.NoError(t, s.UpdateAuditMetrics(ctx, id, &faith, &cprec, &arel, &crec))
+
+	got, err = s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-metrics"})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, faith, *got[0].Faithfulness)
+	require.Equal(t, cprec, *got[0].ContextPrecision)
+	require.Equal(t, arel, *got[0].AnswerRelevance)
+	require.Equal(t, crec, *got[0].ContextRecall)
+
+	// Partial update: pass nil for context_recall — its prior value
+	// (0.79) MUST survive (COALESCE behavior).
+	newFaith := 0.95
+	require.NoError(t, s.UpdateAuditMetrics(ctx, id, &newFaith, nil, nil, nil))
+	got, err = s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-metrics"})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, newFaith, *got[0].Faithfulness, "faithfulness updated")
+	require.Equal(t, cprec, *got[0].ContextPrecision, "context_precision preserved (COALESCE)")
+	require.Equal(t, arel, *got[0].AnswerRelevance, "answer_relevance preserved (COALESCE)")
+	require.Equal(t, crec, *got[0].ContextRecall, "context_recall preserved (COALESCE)")
+
+	// Non-existent row → sql.ErrNoRows.
+	err = s.UpdateAuditMetrics(ctx, 999999, &faith, nil, nil, nil)
+	require.ErrorIs(t, err, sql.ErrNoRows, "missing row must surface as sql.ErrNoRows")
+}
