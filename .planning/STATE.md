@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
 current_phase: 03
-current_plan: 3
+current_plan: "3 (just completed: 03-02)"
 status: executing
-last_updated: "2026-08-12T01:00:30.561Z"
+last_updated: "2026-08-12T04:27:06.821Z"
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 16
-  completed_plans: 15
-  percent: 47
+  total_plans: 17
+  completed_plans: 18
+  percent: 43
 ---
 
 # State — SkillForge
@@ -158,7 +158,7 @@ Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session ba
 
 ## Session Continuity
 
-**Resume point:** Plan 03-02 (internal/store Store interface + SQLite audit/session backend) is COMPLETE — 3/3 tasks, 3 TDD commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 (audit SQL-queryable, T-3-SQLI regression-locked) and AGNT-05/SC-9 (session_id SQL partitioning under -race) unlocked at the store layer. Next: run Wave 2 plans — Plan 03-03 (agent emits data-decision via Eino callbacks, consumes 03-01's `wire.DecisionPayload`) and Plan 03-04 (KNOW-02 indexer calls 03-01's `skill.TierEnumByValue`). Plan 03-05 (server wires `Store.PutAudit` + `GetSession` + `AppendTurn`) and Plan 03-06 (eval sidecar reads `AuditRow` for JSONL) also unblocked. Pre-existing Phase 4 TS errors (unrelated to 03-01) still logged in `.planning/phases/03-agentic-retrieval-trust-evaluation/deferred-items.md` for a future 04-04 wire-contract realignment plan.
+**Resume point:** Plan 03-02 (internal/store Store interface + SQLite audit/session backend) is COMPLETE — 3/3 tasks, 3 TDD commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 (audit SQL-queryable, T-3-SQLI regression-locked) and AGNT-05/SC-9 (session_id SQL partitioning under -race) unlocked at the store layer. Next: run Wave 2 plans — Plan 03-03 (agent emits data-decision via Eino callbacks, consumes 03-01's `wire.DecisionPayload`) and Plan 03-04 (KNOW-02 indexer calls 03-01's `skill.TierEnumByValue`). Plan 03-05 (server wires `Store.PutAudit` + `GetSession` + `AppendTurn`) and Plan 03-06 (eval sidecar reads `AuditRow` for JSONL) also unblocked. Pre-existing Phase 4 TS errors (unrelated to 03-01) — logged in `.planning/phases/03-agentic-retrieval-trust-evaluation/deferred-items.md` — are now addressed by the planned **04-04 wire-contract realignment** (see `.planning/phases/04-streaming-trust-ui/04-04-PLAN.md`; gap-closure plan, `requirements: []`, checker-passed 2026-08-12).
 
 **Hot files this session:**
 
