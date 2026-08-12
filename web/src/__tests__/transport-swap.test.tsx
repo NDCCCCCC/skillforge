@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { DefaultChatTransport } from 'ai';
-import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai';
+import type { UIMessage, UIMessageChunk } from 'ai';
 import { MockChatTransport } from '../transport';
 import { FIXTURE_REGISTRY, type MockFixtureName } from '../__fixtures__';
 import { sanitizeSourceUrl } from '../lib/sanitize-url';
@@ -33,7 +33,19 @@ async function drain(stream: ReadableStream<UIMessageChunk>): Promise<UIMessageC
   return out;
 }
 
-function makeDefaultTransportFromFixture(fixture: UIMessageChunk[]): ChatTransport<UIMessage> {
+// Plan 04-04 (2026-08-12): the production `ChatTransport<UIMessage>`
+// interface types `sendMessages` with a required options argument
+// (ai@7 index.d.ts line 5270+), so calling `sendMessages()` with zero
+// args triggers TS2554 at every D-04 invariant call site. This test
+// owns the fixture-driven DefaultChatTransport wrapper, whose
+// `sendMessages` IS legitimately zero-arg (the fixture is captured in
+// the closure). Expose that contract via a local narrowing interface
+// so the call sites stay clean.
+type FixtureDrivenTransport = {
+  sendMessages(): Promise<ReadableStream<UIMessageChunk>>;
+};
+
+function makeDefaultTransportFromFixture(fixture: UIMessageChunk[]): FixtureDrivenTransport {
   const transport = new DefaultChatTransport({ api: '/api/chat' });
   (transport as unknown as { sendMessages: () => Promise<ReadableStream<UIMessageChunk>> }).sendMessages =
     async () =>
@@ -43,7 +55,7 @@ function makeDefaultTransportFromFixture(fixture: UIMessageChunk[]): ChatTranspo
           controller.close();
         },
       });
-  return transport;
+  return transport as unknown as FixtureDrivenTransport;
 }
 
 describe('transport-swap invariant (D-04)', () => {
@@ -52,7 +64,9 @@ describe('transport-swap invariant (D-04)', () => {
     const fixture = FIXTURE_REGISTRY[fixtureName];
 
     const mockTransport = new MockChatTransport({ fixture, delayMs: 0, jitterMs: 0 });
-    const defaultTransport = makeDefaultTransportFromFixture(fixture);
+    // SkillForgeChunk[] is assignable to UIMessageChunk[] per the D15 alarm;
+    // cast retained for the providerMetadata/finish-variant boundary (04-04).
+    const defaultTransport = makeDefaultTransportFromFixture(fixture as UIMessageChunk[]);
 
     const mockChunks = await drain(await mockTransport.sendMessages());
     const defaultChunks = await drain(await defaultTransport.sendMessages());
@@ -68,7 +82,9 @@ describe('transport-swap invariant (D-04)', () => {
     const fixture = FIXTURE_REGISTRY[fixtureName];
 
     const mockTransport = new MockChatTransport({ fixture, delayMs: 0, jitterMs: 0 });
-    const defaultTransport = makeDefaultTransportFromFixture(fixture);
+    // SkillForgeChunk[] is assignable to UIMessageChunk[] per the D15 alarm;
+    // cast retained for the providerMetadata/finish-variant boundary (04-04).
+    const defaultTransport = makeDefaultTransportFromFixture(fixture as UIMessageChunk[]);
 
     const mockChunks = await drain(await mockTransport.sendMessages());
     const defaultChunks = await drain(await defaultTransport.sendMessages());
@@ -82,7 +98,9 @@ describe('transport-swap invariant (D-04)', () => {
     const fixture = FIXTURE_REGISTRY[fixtureName];
 
     const mockTransport = new MockChatTransport({ fixture, delayMs: 0, jitterMs: 0 });
-    const defaultTransport = makeDefaultTransportFromFixture(fixture);
+    // SkillForgeChunk[] is assignable to UIMessageChunk[] per the D15 alarm;
+    // cast retained for the providerMetadata/finish-variant boundary (04-04).
+    const defaultTransport = makeDefaultTransportFromFixture(fixture as UIMessageChunk[]);
 
     const mockChunks = await drain(await mockTransport.sendMessages());
     const defaultChunks = await drain(await defaultTransport.sendMessages());
@@ -106,7 +124,9 @@ describe('transport-swap invariant (D-04)', () => {
     const fixture = FIXTURE_REGISTRY[fixtureName];
 
     const mockTransport = new MockChatTransport({ fixture, delayMs: 0, jitterMs: 0 });
-    const defaultTransport = makeDefaultTransportFromFixture(fixture);
+    // SkillForgeChunk[] is assignable to UIMessageChunk[] per the D15 alarm;
+    // cast retained for the providerMetadata/finish-variant boundary (04-04).
+    const defaultTransport = makeDefaultTransportFromFixture(fixture as UIMessageChunk[]);
 
     const mockChunks = await drain(await mockTransport.sendMessages());
     const defaultChunks = await drain(await defaultTransport.sendMessages());
@@ -133,7 +153,9 @@ describe('transport-swap invariant (D-04)', () => {
     const fixture = FIXTURE_REGISTRY[fixtureName];
 
     const mockTransport = new MockChatTransport({ fixture, delayMs: 0, jitterMs: 0 });
-    const defaultTransport = makeDefaultTransportFromFixture(fixture);
+    // SkillForgeChunk[] is assignable to UIMessageChunk[] per the D15 alarm;
+    // cast retained for the providerMetadata/finish-variant boundary (04-04).
+    const defaultTransport = makeDefaultTransportFromFixture(fixture as UIMessageChunk[]);
 
     const mockChunks = await drain(await mockTransport.sendMessages());
     const defaultChunks = await drain(await defaultTransport.sendMessages());

@@ -23,7 +23,15 @@ type AnyToolPart = ToolUIPart | DynamicToolUIPart | (UIMessage['parts'][number] 
 
 function getToolName(part: AnyToolPart): string {
   if (part.type === 'dynamic-tool') return 'dynamic-tool';
-  return (part as ToolUIPart).toolName ?? part.type;
+  // Plan 04-04 (2026-08-12): cast to a structural "{ toolName?: string }"
+  // shape instead of `ToolUIPart` — under ai@7, `ToolUIPart<UITools>` no
+  // longer exposes `toolName` directly when the tool name is unknown
+  // (`{ type: \`tool-${string}\` } & UIToolInvocation<UITool>`), which
+  // triggered TS2339 on the previous `(part as ToolUIPart).toolName`
+  // access. The structural cast covers both the enumerated-tool and
+  // un enumerated-tool paths; falling back to `part.type` preserves the
+  // prior rendering behavior for `tool-search_authority` and friends.
+  return ((part as { toolName?: string }).toolName) ?? part.type;
 }
 
 function getState(part: AnyToolPart): string {
