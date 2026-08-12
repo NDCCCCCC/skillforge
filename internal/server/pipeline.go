@@ -40,6 +40,15 @@ import (
 // this against measured cosine-distance distributions. Marking the
 // constant here so the audit trail reads "Phase 2 placeholder; Phase 3
 // replaces via eval" — not "magic 0.3 number".
+//
+// Phase 3 eval (Plan 03-06) emits a measured recommended value in
+// eval/calibration.json (produced by `go run ./cmd/eval
+// --golden=eval/golden/compliance.jsonl`). The literal 0.3 is retained
+// here as the default until the operator reviews the calibration data
+// and swaps the literal manually. This is an ops decision, not an
+// automatic one — the threshold governs the refusal floor (a trust
+// boundary), so its value is reviewed by a human before going live.
+// See eval/README.md for the calibration procedure.
 const retrievalScoreThreshold = 0.3
 
 // systemPromptTemplate is the production compliance-review system
