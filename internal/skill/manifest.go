@@ -50,13 +50,13 @@ package skill
 // post-Validate by calling ResolveTiers(m.Reads), so the pipeline in
 // plan 02-03 doesn't have to re-resolve on every request.
 type Manifest struct {
-	Description   string     `yaml:"description"   json:"description"`     // 1 — intent routing text
-	Agent         string     `yaml:"agent"         json:"agent"`           // 2 — Eino ADK agent type
-	Reads         []string   `yaml:"reads"         json:"reads"`           // 3 — tier patterns (no `*` wildcard)
-	Writes        []string   `yaml:"writes"        json:"writes"`          // 4 — operation patterns (`[]` = read-only)
-	Steps         string     `yaml:"steps"         json:"steps"`           // 5 — markdown ordered list (YAML block scalar)
-	Guardrails    Guardrails `yaml:"guardrails"    json:"guardrails"`      // 6 — prohibitions + refusal phrases + tier limits
-	Temperature   *float32    `yaml:"temperature"   json:"temperature"`     // 7 — [0.0, 1.0], pointer = required presence (SYSK-08)
+	Description   string     `yaml:"description"   json:"description"` // 1 — intent routing text
+	Agent         string     `yaml:"agent"         json:"agent"`       // 2 — Eino ADK agent type
+	Reads         []string   `yaml:"reads"         json:"reads"`       // 3 — tier patterns (no `*` wildcard)
+	Writes        []string   `yaml:"writes"        json:"writes"`      // 4 — operation patterns (`[]` = read-only)
+	Steps         string     `yaml:"steps"         json:"steps"`       // 5 — markdown ordered list (YAML block scalar)
+	Guardrails    Guardrails `yaml:"guardrails"    json:"guardrails"`  // 6 — prohibitions + refusal phrases + tier limits
+	Temperature   *float32   `yaml:"temperature"   json:"temperature"` // 7 — [0.0, 1.0], pointer = required presence (SYSK-08)
 	resolvedTiers []string   // not serialized — populated by Loader after Validate
 }
 
@@ -80,6 +80,22 @@ type Guardrails struct {
 // default-deny via BuildMilvusFilter).
 func (m *Manifest) ResolvedTiers() []string {
 	return m.resolvedTiers
+}
+
+// SetResolvedTiersForTest injects a resolved tier slice directly into the
+// manifest, bypassing the file-system Loader. This is the test affordance
+// introduced by Plan 03-03 (internal/agent unit tests): those tests need a
+// Manifest with a specific resolved-tier slice without paying the disk-I/O
+// cost of writing a SKILL.md to a temp dir + invoking Loader.Scan.
+//
+// Production code paths MUST continue to populate resolvedTiers via the
+// Loader (Loader.Scan → Validate → ResolveTiers → assignment). This method
+// has the `ForTest` suffix to flag any non-test caller in review.
+//
+// Calling with nil clears the cache; downstream consumers treat nil as
+// default-deny via BuildMilvusFilter.
+func (m *Manifest) SetResolvedTiersForTest(tiers []string) {
+	m.resolvedTiers = tiers
 }
 
 // validAgentTypes is the whitelist of Eino ADK agent type strings accepted
