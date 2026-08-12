@@ -63,7 +63,13 @@ type Manifest struct {
 	Guardrails     Guardrails `yaml:"guardrails"              json:"guardrails"`  // 6 — prohibitions + refusal phrases + tier limits
 	Temperature    *float32   `yaml:"temperature"             json:"temperature"` // 7 — [0.0, 1.0], pointer = required presence (SYSK-08)
 	DescriptionVec []float32  `yaml:"-"                       json:"-"`           // Phase 5 D5-01: cached embedding, in-memory only
-	resolvedTiers  []string   // not serialized — populated by Loader after Validate
+	// Name is the Skill's directory name (e.g. "compliance"). It is
+	// NOT a YAML field — the loader derives it from the parent dir
+	// basename on read. The wizard (Plan 05-04) sets it before Commit
+	// so the on-disk path can be constructed; production loaders leave
+	// it empty and rely on the directory layout.
+	Name         string `yaml:"-" json:"-"`
+	resolvedTiers []string // not serialized — populated by Loader after Validate
 }
 
 // SetDescriptionVec injects the cached embedding vector for `Description`.
