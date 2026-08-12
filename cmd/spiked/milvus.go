@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
@@ -112,8 +113,13 @@ func runMilvus(ctx context.Context, args []string) error {
 	//    returns rows from the filtered tier, which is all we assert on.
 	zeroVec := make([]float32, cfg.EmbedDim)
 	authorityCount := 0
+	// Plan 05-02 D5-15: spike computed once at the top of the per-tier
+	// loop. The effective_to PRE-filter is irrelevant to the tier-bleed
+	// assertion (all 12 fixtures have effective_to=0 = perpetual), but
+	// we pass the real `now` so the filter shape mirrors production.
+	now := time.Now().Unix()
 	for _, tier := range allTiers {
-		filter := milvus.BuildMilvusFilter([]string{tier})
+		filter := milvus.BuildMilvusFilter([]string{tier}, now)
 		hits, err := legacySearch(ctx, mc.ClientOf(), cfg, zeroVec, filter, 10)
 		if err != nil {
 			return fmt.Errorf("search tier=%s: %w", tier, err)
@@ -129,7 +135,7 @@ func runMilvus(ctx context.Context, args []string) error {
 	}
 
 	// 6. Default-deny: empty tier list → "false" filter → 0 results (D-09).
-	emptyFilter := milvus.BuildMilvusFilter(nil)
+	emptyFilter := milvus.BuildMilvusFilter(nil, now)
 	emptyHits, err := legacySearch(ctx, mc.ClientOf(), cfg, zeroVec, emptyFilter, 10)
 	if err != nil {
 		return fmt.Errorf("search default-deny: %w", err)
@@ -155,7 +161,12 @@ func legacySearch(ctx context.Context, mc client.Client, cfg milvus.Config, quer
 	// filter externally for direct assertion.
 	wrapped := milvus.Wrap(mc, cfg)
 	defer func() { _ = wrapped.Disconnect() }()
-	return wrapped.Search(ctx, queryVec, []string{}, 0) // tier param unused; filter pre-applied via internal helper
+	// Plan 05-02 D5-15: pass a computed now (irrelevant for the spike —
+	// the filter was pre-built with effective_to clauses already
+	// incorporated, and tiers=[] short-circuits the effective clause
+	// inside BuildMilvusFilter). Passing time.Now().Unix() keeps the
+	// signature honest.
+	return wrapped.Search(ctx, queryVec, []string{}, 0, time.Now().Unix())
 }
 
 // loadAndEmbedFixtures walks testdata/docs/*/*.md, parses each fixture's

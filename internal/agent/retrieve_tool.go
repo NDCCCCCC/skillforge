@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -142,7 +143,13 @@ func BuildRetrieveTool(emb embedder.Embedder, ret retriever.Retriever, m *skill.
 			return retrieveResponse{}, fmt.Errorf("retrieve_compliance_chunks: embed query: %w", err)
 		}
 
-		hits, err := ret.Search(ctx, vec, tiers, retrieveTopK)
+		// Plan 05-02 D5-15: compute now once per tool call. The tool is
+		// stateless beyond the closed-over manifest; multi-turn ReAct
+		// runs that revisit this tool get a fresh `now` per invocation,
+		// which is the desired semantics (each search reflects the
+		// current policy-version window).
+		now := time.Now().Unix()
+		hits, err := ret.Search(ctx, vec, tiers, retrieveTopK, now)
 		if err != nil {
 			return retrieveResponse{}, fmt.Errorf("retrieve_compliance_chunks: retriever.Search: %w", err)
 		}

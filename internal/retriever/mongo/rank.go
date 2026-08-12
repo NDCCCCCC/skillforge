@@ -35,10 +35,10 @@
 package mongo
 
 import (
-	"math"
 	"sort"
 
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/vecmath"
 )
 
 // docRow is the row shape used by both the rank helper (pure logic) and
@@ -46,39 +46,35 @@ import (
 // interpreted only by the mongo-driver decoder; keeping the type in this
 // file means rank.go has zero external dependencies beyond the retriever
 // types and so is unit-testable with no MongoDB process.
+//
+// Plan 05-02 D5-15: EffectiveFrom / EffectiveTo are the policy-version
+// window (epoch seconds). Sentinel design — NOT nullable fields. Zero
+// means "open-ended" / perpetually valid. These fields round-trip
+// through to retriever.Hit so the pipeline can audit which version of
+// a policy each chunk was sourced from.
 type docRow struct {
-	ID        int64     `bson:"id"`
-	Tier      string    `bson:"tier"`
-	Content   string    `bson:"content"`
-	Source    string    `bson:"source"`
-	Embedding []float32 `bson:"embedding"`
+	ID            int64     `bson:"id"`
+	Tier          string    `bson:"tier"`
+	Content       string    `bson:"content"`
+	Source        string    `bson:"source"`
+	Embedding     []float32 `bson:"embedding"`
+	EffectiveFrom int64     `bson:"effective_from"`
+	EffectiveTo   int64     `bson:"effective_to"`
 }
 
-// cosine returns the cosine similarity between two equal-length vectors.
-// Panics on length mismatch — callers MUST validate length before calling
-// (Search enforces this on the query vector and again per-row via the
-// rank helper). A zero-norm vector (no magnitude) returns 0 to avoid
-// div-by-zero; this is the standard convention and matches what Milvus
-// returns for the same input.
-func cosine(a, b []float32) float32 {
-	if len(a) != len(b) {
-		panic("mongo.cosine: length mismatch")
-	}
-	var dot, na, nb float32
-	for i := range a {
-		dot += a[i] * b[i]
-		na += a[i] * a[i]
-		nb += b[i] * b[i]
-	}
-	if na == 0 || nb == 0 {
-		return 0
-	}
-	// float32 precision is acceptable for ranking; BGE-M3 embeddings are
-	// L2-normalized in practice so the norms cluster near 1.0. math.Sqrt
-	// operates in float64 (hardware sqrt on amd64); the round-trip is
-	// negligible against the dot-product loop and keeps test assertions
-	// bit-exact across platforms.
-	return dot / float32(math.Sqrt(float64(na))*math.Sqrt(float64(nb)))
+// Cosine returns the cosine similarity between two equal-length
+// vectors. Plan 05-02: re-exported from internal/vecmath (the leaf
+// package shared with internal/skill/router.go) so callers within the
+// mongo package can continue using the convenient local symbol. The
+// canonical implementation lives in internal/vecmath — see that
+// package for the algorithm details and length-mismatch panic.
+//
+// Originally lived here in Plan 02-04; promoted to a leaf package in
+// Plan 05-02 because internal/skill/router.go needed to reuse cosine
+// without creating a cycle through internal/retriever/mongo/seed.go
+// (which itself imports internal/skill for TierEnum).
+func Cosine(a, b []float32) float32 {
+	return vecmath.Cosine(a, b)
 }
 
 // rank orders rows by cosine(queryVec, row.Embedding) descending and
@@ -108,7 +104,7 @@ func rank(rows []docRow, queryVec []float32, k int) []retriever.Hit {
 		if len(r.Embedding) != len(queryVec) || len(r.Embedding) == 0 {
 			continue
 		}
-		out = append(out, scored{row: r, score: cosine(queryVec, r.Embedding)})
+		out = append(out, scored{row: r, score: Cosine(queryVec, r.Embedding)})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].score != out[j].score {
@@ -123,11 +119,13 @@ func rank(rows []docRow, queryVec []float32, k int) []retriever.Hit {
 	for i := 0; i < k; i++ {
 		s := out[i]
 		hits = append(hits, retriever.Hit{
-			ID:      s.row.ID,
-			Score:   s.score,
-			Tier:    s.row.Tier,
-			Content: s.row.Content,
-			Source:  s.row.Source,
+			ID:            s.row.ID,
+			Score:         s.score,
+			Tier:          s.row.Tier,
+			Content:       s.row.Content,
+			Source:        s.row.Source,
+			EffectiveFrom: s.row.EffectiveFrom,
+			EffectiveTo:   s.row.EffectiveTo,
 		})
 	}
 	return hits

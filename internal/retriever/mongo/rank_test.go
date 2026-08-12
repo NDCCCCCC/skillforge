@@ -37,7 +37,7 @@ func approxEq(a, b float32) bool {
 // a valid baseline (cos of a vector with itself under L2 norm = 1).
 func TestCosine_IdenticalVectors(t *testing.T) {
 	v := []float32{1, 2, 3, 4}
-	got := cosine(v, v)
+	got := Cosine(v, v)
 	assert.True(t, approxEq(got, 1.0), "cosine(v,v) = %v, want ~1.0", got)
 }
 
@@ -46,7 +46,7 @@ func TestCosine_IdenticalVectors(t *testing.T) {
 func TestCosine_OrthogonalVectors(t *testing.T) {
 	a := []float32{1, 0, 0}
 	b := []float32{0, 1, 0}
-	got := cosine(a, b)
+	got := Cosine(a, b)
 	assert.True(t, approxEq(got, 0), "cosine(orthogonal) = %v, want ~0", got)
 }
 
@@ -54,7 +54,7 @@ func TestCosine_OrthogonalVectors(t *testing.T) {
 func TestCosine_OppositeVectors(t *testing.T) {
 	a := []float32{1, 2, 3}
 	b := []float32{-1, -2, -3}
-	got := cosine(a, b)
+	got := Cosine(a, b)
 	assert.True(t, approxEq(got, -1.0), "cosine(opposite) = %v, want ~-1.0", got)
 }
 
@@ -67,7 +67,7 @@ func TestCosine_LengthMismatchPanics(t *testing.T) {
 		r := recover()
 		assert.NotNil(t, r, "cosine must panic on length mismatch")
 	}()
-	_ = cosine([]float32{1, 2, 3}, []float32{1, 2})
+	_ = Cosine([]float32{1, 2, 3}, []float32{1, 2})
 }
 
 // TestCosine_ZeroNormReturnsZero — the zero-vector case (all zeros) is
@@ -76,14 +76,14 @@ func TestCosine_LengthMismatchPanics(t *testing.T) {
 func TestCosine_ZeroNormReturnsZero(t *testing.T) {
 	a := []float32{0, 0, 0}
 	b := []float32{1, 2, 3}
-	got := cosine(a, b)
+	got := Cosine(a, b)
 	assert.True(t, approxEq(got, 0), "cosine(0-norm, v) = %v, want 0 (not NaN)", got)
 }
 
 // TestCosine_EmptyVectors — zero-length input. cosine([]) has zero norm
 // on both sides; we expect 0 (not a panic, not NaN).
 func TestCosine_EmptyVectors(t *testing.T) {
-	got := cosine([]float32{}, []float32{})
+	got := Cosine([]float32{}, []float32{})
 	assert.True(t, approxEq(got, 0), "cosine([], []) = %v, want 0", got)
 }
 
@@ -93,7 +93,7 @@ func TestCosine_EmptyVectors(t *testing.T) {
 func TestCosine_KnownValue(t *testing.T) {
 	a := []float32{1, 0, 0}
 	b := []float32{1, 1, 0}
-	got := cosine(a, b)
+	got := Cosine(a, b)
 	want := float32(1.0 / math.Sqrt2)
 	assert.True(t, approxEq(got, want), "cosine([1,0,0],[1,1,0]) = %v, want %v", got, want)
 }

@@ -42,24 +42,32 @@ import (
 // internal/retriever/milvus/filter_test.go; this is a thin smoke test that
 // catches import-wiring regressions and verifies the few cases the bleed
 // assertion in runMilvus depends on.
+//
+// Plan 05-02 D5-15: BuildMilvusFilter gains a `now int64` parameter for
+// the effective_to PRE-filter clause. The smoke test passes 0 (legacy /
+// sentinel); the canonical tests in internal/retriever/milvus/filter_test.go
+// cover the populated case.
 func TestBuildMilvusFilter(t *testing.T) {
 	// Default-deny: nil/empty → "false" (D-09 structural enforcement).
-	assert.Equal(t, "false", milvus.BuildMilvusFilter(nil))
-	assert.Equal(t, "false", milvus.BuildMilvusFilter([]string{}))
+	assert.Equal(t, "false", milvus.BuildMilvusFilter(nil, 0))
+	assert.Equal(t, "false", milvus.BuildMilvusFilter([]string{}, 0))
 
-	// Single CN tier — exact bytes (the filter SC-2 asserts on).
-	assert.Equal(t, `tier in ["权威"]`, milvus.BuildMilvusFilter([]string{"权威"}))
-	assert.Equal(t, `tier in ["历史"]`, milvus.BuildMilvusFilter([]string{"历史"}))
-	assert.Equal(t, `tier in ["个人"]`, milvus.BuildMilvusFilter([]string{"个人"}))
-	assert.Equal(t, `tier in ["草稿"]`, milvus.BuildMilvusFilter([]string{"草稿"}))
+	// Single CN tier — exact bytes (the filter SC-2 asserts on). The
+	// effective_to clause is appended; tests in
+	// internal/retriever/milvus/filter_test.go assert the exact shape
+	// (D5-15 sentinel design).
+	assert.Contains(t, milvus.BuildMilvusFilter([]string{"权威"}, 0), `tier in ["权威"]`)
+	assert.Contains(t, milvus.BuildMilvusFilter([]string{"历史"}, 0), `tier in ["历史"]`)
+	assert.Contains(t, milvus.BuildMilvusFilter([]string{"个人"}, 0), `tier in ["个人"]`)
+	assert.Contains(t, milvus.BuildMilvusFilter([]string{"草稿"}, 0), `tier in ["草稿"]`)
 
 	// Multi-tier ordering preserved.
-	assert.Equal(t, `tier in ["权威","历史"]`,
-		milvus.BuildMilvusFilter([]string{"权威", "历史"}))
+	assert.Contains(t, milvus.BuildMilvusFilter([]string{"权威", "历史"}, 0),
+		`tier in ["权威","历史"]`)
 
 	// Hostile characters do not crash (Pitfall 7 — injection safety).
 	assert.NotPanics(t, func() {
-		_ = milvus.BuildMilvusFilter([]string{"O'Brien"})
+		_ = milvus.BuildMilvusFilter([]string{"O'Brien"}, 0)
 	})
 }
 
@@ -120,8 +128,11 @@ func TestSeedAndFilterIntegration(t *testing.T) {
 
 	// Run 4 single-tier queries — assert zero bleed.
 	zeroVec := make([]float32, cfg.EmbedDim)
+	// Plan 05-02 D5-15: pass a computed now (the fixtures all have
+	// effective_to=0 = perpetual, so the value is irrelevant here).
+	now := timeNow()
 	for _, tier := range []string{"权威", "历史", "个人", "草稿"} {
-		filter := milvus.BuildMilvusFilter([]string{tier})
+		filter := milvus.BuildMilvusFilter([]string{tier}, now)
 		hits, err := legacySearch(ctx, mc.ClientOf(), cfg, zeroVec, filter, 10)
 		assert.NoError(t, err, "search tier=%s", tier)
 		assert.NotEmpty(t, hits, "tier=%s: expected at least 1 row from 3 seeded docs", tier)
@@ -134,8 +145,16 @@ func TestSeedAndFilterIntegration(t *testing.T) {
 	}
 
 	// Default-deny: empty tier list → 0 results.
-	emptyFilter := milvus.BuildMilvusFilter(nil)
+	emptyFilter := milvus.BuildMilvusFilter(nil, now)
 	emptyHits, err := legacySearch(ctx, mc.ClientOf(), cfg, zeroVec, emptyFilter, 10)
 	assert.NoError(t, err, "default-deny search")
 	assert.Empty(t, emptyHits, "default-deny: empty tier list must return 0 rows (D-09), filter=%s", emptyFilter)
+}
+
+// timeNow is the Plan 05-02 D5-15 helper for tests that need a real
+// epoch-seconds value. Wrapping in a function (rather than inlining
+// time.Now().Unix()) lets tests freeze time without exporting the
+// helper from internal packages.
+func timeNow() int64 {
+	return 1700000000 // fixed value: deterministic across test runs
 }

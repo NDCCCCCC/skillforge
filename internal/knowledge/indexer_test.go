@@ -231,8 +231,12 @@ func TestIndexer_RejectsEmptyInputs(t *testing.T) {
 	assert.Error(t, err, "nil embedder must error (Pitfall 8)")
 }
 
-// TestStripFrontmatter covers the helper directly with a few shapes.
-func TestStripFrontmatter(t *testing.T) {
+// TestSplitFrontmatter covers the helper directly with a few shapes.
+// Plan 05-02 D5-15: splitFrontmatter returns (body, frontmatter) so
+// callers can extract effective_from / effective_to. Tests assert on
+// the body only; the frontmatter return is covered indirectly by
+// TestParseEffectiveWindow.
+func TestSplitFrontmatter(t *testing.T) {
 	cases := []struct {
 		name string
 		raw  string
@@ -246,8 +250,108 @@ func TestStripFrontmatter(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := string(stripFrontmatter([]byte(tc.raw)))
+			body, _ := splitFrontmatter([]byte(tc.raw))
+			got := string(body)
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// TestParseEffectiveWindow — Plan 05-02 D5-15. The helper reads
+// effective_from / effective_to (epoch seconds) from a YAML frontmatter
+// block. Cases:
+//
+//   - nil / empty frontmatter → (0, 0) (sentinel).
+//   - frontmatter with effective_* → parsed values.
+//   - malformed YAML → (0, 0) + warning (don't brick the indexer).
+func TestParseEffectiveWindow(t *testing.T) {
+	t.Run("nil_returns_perpetual_sentinel", func(t *testing.T) {
+		from, to := parseEffectiveWindow(nil)
+		assert.Equal(t, int64(0), from)
+		assert.Equal(t, int64(0), to)
+	})
+	t.Run("empty_returns_perpetual_sentinel", func(t *testing.T) {
+		from, to := parseEffectiveWindow([]byte{})
+		assert.Equal(t, int64(0), from)
+		assert.Equal(t, int64(0), to)
+	})
+	t.Run("parses_bounded_window", func(t *testing.T) {
+		fm := []byte("effective_from: 1699000000\neffective_to: 1700000000\n")
+		from, to := parseEffectiveWindow(fm)
+		assert.Equal(t, int64(1699000000), from)
+		assert.Equal(t, int64(1700000000), to)
+	})
+	t.Run("malformed_yaml_falls_back_to_perpetual", func(t *testing.T) {
+		fm := []byte("not: valid: yaml: at all:") // unbalanced
+		from, to := parseEffectiveWindow(fm)
+		assert.Equal(t, int64(0), from)
+		assert.Equal(t, int64(0), to,
+		"malformed YAML must not brick the indexer (D5-15 fail-soft)")
+	})
+}
+
+// TestIndexer_ValidateEffective — Plan 05-02 D5-15. KNOW-02 extension:
+// validateEffective rejects documents with invalid effective_to windows
+// at index time (fail-fast, before any backend write). Cases:
+//
+//	(a) effective_to == 0          → ok (perpetual sentinel).
+//	(b) effective_to < 0           → error (negative epoch nonsense).
+//	(c) both nonzero AND effective_to < effective_from → error (inverted window).
+//	(d) one side unset (from=0, to!=0) → ok (open-ended-from is valid).
+func TestIndexer_ValidateEffective(t *testing.T) {
+	const now int64 = 1700000000
+	cases := []struct {
+		name    string
+		doc     retriever.Document
+		wantErr bool
+	}{
+		{
+			name:    "perpetual_sentinel_ok",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			wantErr: false,
+		},
+		{
+			name:    "negative_effective_to_errors",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/b.md", EffectiveFrom: 0, EffectiveTo: -1},
+			wantErr: true,
+		},
+		{
+			name:    "inverted_window_errors",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/c.md", EffectiveFrom: now, EffectiveTo: now - 1},
+			wantErr: true,
+		},
+		{
+			name:    "one_side_unset_ok",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/d.md", EffectiveFrom: 0, EffectiveTo: now},
+			wantErr: false,
+		},
+		{
+			name:    "valid_bounded_window_ok",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/e.md", EffectiveFrom: now - 100, EffectiveTo: now + 100},
+			wantErr: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateEffective([]retriever.Document{tc.doc})
+			if tc.wantErr {
+				assert.Error(t, err, "expected error for %s", tc.name)
+			} else {
+				assert.NoError(t, err, "expected no error for %s", tc.name)
+			}
+		})
+	}
+}
+
+// TestIndexer_ProductionWiresValidateEffective — static guard. The
+// production Index path MUST call validateEffective after building the
+// docs slice (before seedDocs / any backend write). A future refactor
+// that drops the call would silently let invalid effective windows
+// through to the corpus.
+func TestIndexer_ProductionWiresValidateEffective(t *testing.T) {
+	data, err := os.ReadFile("indexer.go")
+	require.NoError(t, err)
+	src := string(data)
+	assert.Contains(t, src, "validateEffective(",
+		"internal/knowledge/indexer.go MUST call validateEffective on the built docs slice (Plan 05-02 D5-15)")
 }

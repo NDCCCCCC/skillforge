@@ -30,24 +30,42 @@ import "context"
 // implementations. Tier is the CN-char tier value (e.g. "权威") that
 // the Skill resolved from its reads slice; Source is the slash-
 // normalized path to the original corpus file (e.g.
-// "authority/travel_expense.md").
+// "authority/travel_expense.md"). EffectiveFrom / EffectiveTo round-
+// trip from the backend so the indexer / pipeline can audit which
+// version of a policy each chunk was sourced from.
 type Hit struct {
-	ID      int64
-	Score   float32
-	Tier    string
-	Content string
-	Source  string
+	ID            int64
+	Score         float32
+	Tier          string
+	Content       string
+	Source        string
+	EffectiveFrom int64
+	EffectiveTo   int64
 }
 
 // Document is the input to Retriever.Insert (used by the knowledge
 // indexer). The ID is the numeric primary key (Milvus INT64 PK; the
 // convention is 1-based and monotonically increasing across tier dirs).
+//
+// Plan 05-02 / D5-15: EffectiveFrom + EffectiveTo are the policy-
+// version window (epoch seconds). Sentinel design — NOT nullable
+// fields. Zero means "open-ended" / perpetually valid:
+//
+//   - EffectiveFrom = 0 AND EffectiveTo = 0 → perpetually valid (legacy).
+//   - EffectiveFrom = 0 AND EffectiveTo > 0 → open-ended start, ends at <to>.
+//   - EffectiveFrom > 0 AND EffectiveTo = 0 → starts at <from>, perpetual.
+//   - EffectiveFrom > 0 AND EffectiveTo > 0 → bounded window.
+//
+// KNOWN-02 (extended) at the indexer layer rejects inverted windows
+// (to < from when both nonzero) and negative values (to < 0).
 type Document struct {
-	ID        int64
-	Tier      string
-	Content   string
-	Source    string
-	Embedding []float32
+	ID            int64
+	Tier          string
+	Content       string
+	Source        string
+	Embedding     []float32
+	EffectiveFrom int64
+	EffectiveTo   int64
 }
 
 // Retriever is the abstraction over a tiered vector search backend.
@@ -55,6 +73,13 @@ type Document struct {
 // Tier-filter semantics: PRE-similarity at the SDK/Search layer
 // (NEVER post-filter). Empty/zero tiers → backend returns 0 hits
 // (refusal-by-construction, D-09).
+//
+// Plan 05-02 / D5-15: Search gains a `now int64` parameter that the
+// pipeline computes once at entry. The backend applies the effective_to
+// PRE-filter at the same layer as the tier filter (NOT a post-filter
+// fallback). Sentinel-0 design — NOT nullable fields. The Milvus +
+// Mongo backends implement `(effective_to == 0 OR effective_to >= now)`
+// co-layered with the existing tier clause.
 //
 // Implementations:
 //
@@ -65,17 +90,22 @@ type Retriever interface {
 	// startup to fail fast on a misconfigured Milvus address.
 	Health(ctx context.Context) error
 
-	// Search returns up to topK hits whose tier is in the tiers slice.
+	// Search returns up to topK hits whose tier is in the tiers slice AND
+	// whose effective_to is in the valid window (sentinel: 0 = perpetual).
 	// The filter is applied PRE-similarity at the SDK layer; an empty
-	// tiers slice MUST return zero hits (refusal-by-construction).
-	Search(ctx context.Context, queryVec []float32, tiers []string, topK int) ([]Hit, error)
+	// tiers slice MUST return zero hits (refusal-by-construction). The
+	// now parameter is the epoch-seconds cutoff the backend uses for
+	// the effective_to PRE-filter (compute once at pipeline entry).
+	Search(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]Hit, error)
 
 	// Ensure creates (or no-ops) the collection / index needed by Insert
 	// and Search. Idempotent — safe to call on every startup.
 	Ensure(ctx context.Context) error
 
 	// Insert adds docs to the backend. Caller pre-assigns numeric IDs;
-	// implementations do NOT auto-dedup.
+	// implementations do NOT auto-dedup. The Document.EffectiveFrom /
+	// EffectiveTo fields are written into the schema (default 0 for
+	// legacy documents).
 	Insert(ctx context.Context, docs []Document) error
 
 	// Disconnect closes the underlying client connection. After

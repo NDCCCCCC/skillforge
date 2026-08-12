@@ -38,7 +38,7 @@
 // Per-case flow:
 //
 //  1. embedder.Embed(query) → queryVec.
-//  2. retriever.Search(ctx, queryVec, tiers, topK) → scored Hits (for
+//  2. retriever.Search(ctx, queryVec, tiers, topK, now) → scored Hits (for
 //     context_precision/recall inputs + calibration MaxScore).
 //  3. agent.Run(ctx, sessionID, query) → verdict (+ refusal);
 //     agent.LastRetrieved() → the agent's actual chunks (primary metric
@@ -150,7 +150,10 @@ func main() {
 		if err != nil {
 			log.Printf("[WARN] cmd/eval: case %s embed: %v — metrics will score 0 context", c.ID, err)
 		} else {
-			hits, err = r.Search(caseCtx, queryVec, tiers, *topK)
+			// Plan 05-02 D5-15: compute now once per case (consistent with
+			// the agent's per-Retrieve-call semantics in internal/agent).
+			now := time.Now().Unix()
+			hits, err = r.Search(caseCtx, queryVec, tiers, *topK, now)
 			if err != nil {
 				log.Printf("[WARN] cmd/eval: case %s search: %v — metrics will score 0 context", c.ID, err)
 			} else {

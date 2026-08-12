@@ -282,6 +282,10 @@ func equalFoldASCII(a, b string) bool {
 // exactly. We do not insert an _id: the collection uses MongoDB's default
 // ObjectId for _id and stores our 1-based numeric ID in the `id` field,
 // matching the milvus collection layout (where id IS the primary key).
+//
+// Plan 05-02 D5-15: EffectiveFrom + EffectiveTo are written as INT64
+// columns (sentinel-0 design, NOT nullable). The default 0 value is the
+// explicit "perpetual" state.
 func (c *Client) Insert(ctx context.Context, docs []retriever.Document) error {
 	if len(docs) == 0 {
 		return errors.New("mongo.Insert: no docs to insert")
@@ -289,11 +293,13 @@ func (c *Client) Insert(ctx context.Context, docs []retriever.Document) error {
 	docsAny := make([]any, len(docs))
 	for i, d := range docs {
 		docsAny[i] = bson.M{
-			"id":        d.ID,
-			"tier":      d.Tier,
-			"content":   d.Content,
-			"source":    d.Source,
-			"embedding": d.Embedding,
+			"id":             d.ID,
+			"tier":           d.Tier,
+			"content":        d.Content,
+			"source":         d.Source,
+			"embedding":      d.Embedding,
+			"effective_from": d.EffectiveFrom,
+			"effective_to":   d.EffectiveTo,
 		}
 	}
 	if _, err := c.coll.InsertMany(ctx, docsAny); err != nil {
@@ -313,11 +319,23 @@ func (c *Client) Insert(ctx context.Context, docs []retriever.Document) error {
 // empty-tiers branch in Go — the same code path runs and produces zero
 // rows, which is the precise guarantee D-09 requires.
 //
+// Plan 05-02 D5-15: Search gains a `now int64` parameter. The filter
+// gains an $or clause on effective_to, co-layered at the same DB layer
+// as the tier filter (NEVER a post-filter fallback). The clause has two
+// arms:
+//
+//	{effective_to: 0}               — perpetual (sentinel)
+//	{effective_to: {$gte: <now>}}   — still in the validity window
+//
+// Sentinel-0 design (NOT nullable) sidesteps MongoDB's
+// NULL-evaluates-FALSE pitfall: legacy rows with no effective_*
+// metadata get the default 0 (perpetual) and pass the predicate.
+//
 // The queryVec length is validated against the first row's embedding
 // length (defensive — production inserts a fixed BGE-M3 dim=1024). The
 // per-row length check happens inside rank() which skips mismatched rows
 // rather than panicking.
-func (c *Client) Search(ctx context.Context, queryVec []float32, tiers []string, topK int) ([]retriever.Hit, error) {
+func (c *Client) Search(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]retriever.Hit, error) {
 	if topK <= 0 {
 		return nil, errors.New("mongo.Search: topK must be > 0")
 	}
@@ -331,10 +349,21 @@ func (c *Client) Search(ctx context.Context, queryVec []float32, tiers []string,
 	// 0 rows but would not be the DATABASE refusing — the structural
 	// guarantee would be in Go, not in the storage layer. Always build
 	// the filter, always run the find.
-	filter := bson.D{{
-		Key:   "tier",
-		Value: bson.D{{Key: "$in", Value: tiers}},
-	}}
+	//
+	// D5-15: the effective_to $or clause is co-layered at the same DB
+	// query level as the tier $in. bson.D is ordered, so the tier
+	// clause runs first (the selectivity win — a default-deny Skill
+	// never evaluates the effective clause).
+	filter := bson.D{
+		{Key: "tier", Value: bson.D{{Key: "$in", Value: tiers}}},
+		{
+			Key: "$or",
+			Value: bson.A{
+				bson.D{{Key: "effective_to", Value: 0}},
+				bson.D{{Key: "effective_to", Value: bson.D{{Key: "$gte", Value: now}}}},
+			},
+		},
+	}
 
 	rows, err := c.finder.FindRows(ctx, filter)
 	if err != nil {

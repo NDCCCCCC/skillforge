@@ -96,7 +96,7 @@ var _ retriever.Retriever = (*stubRetriever)(nil)
 
 func (s *stubRetriever) Health(_ context.Context) error { return nil }
 
-func (s *stubRetriever) Search(_ context.Context, _ []float32, tiers []string, topK int) ([]retriever.Hit, error) {
+func (s *stubRetriever) Search(_ context.Context, _ []float32, tiers []string, topK int, _ int64) ([]retriever.Hit, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Copy the tier slice so later assertions don't see downstream mutation.

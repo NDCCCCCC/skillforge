@@ -43,6 +43,8 @@ import (
 	"sort"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"gopkg.in/yaml.v3"
+
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
@@ -167,7 +169,7 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 				return fmt.Errorf("knowledge.Index: read %s: %w", path, err)
 			}
 
-			body := stripFrontmatter(raw)
+			body, fm := splitFrontmatter(raw)
 			if len(body) == 0 {
 				// Empty body (frontmatter-only file or 0-byte file). Skip
 				// silently — the operator probably wrote a placeholder.
@@ -198,12 +200,22 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 			}
 			relSlash := filepath.ToSlash(rel)
 
+			// Plan 05-02 D5-15: parse the optional effective_from /
+			// effective_to fields from the YAML frontmatter. Missing or
+			// unparseable fields default to the sentinel 0 (perpetual).
+			// validateEffective (called below) rejects inverted or
+			// negative windows; legacy docs without frontmatter get 0,0
+			// and pass.
+			ef, et := parseEffectiveWindow(fm)
+
 			docs = append(docs, retriever.Document{
-				ID:        nextID,
-				Tier:      tierVal,
-				Content:   string(body),
-				Source:    relSlash,
-				Embedding: vec,
+				ID:            nextID,
+				Tier:          tierVal,
+				Content:       string(body),
+				Source:        relSlash,
+				Embedding:     vec,
+				EffectiveFrom: ef,
+				EffectiveTo:   et,
 			})
 			nextID++
 		}
@@ -218,6 +230,15 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 	// enforcement). An empty docs slice trivially passes (loop is a
 	// no-op), so the empty-corpus path below still fires unchanged.
 	if err := validateTiers(docs); err != nil {
+		return err
+	}
+
+	// KNOW-02 extension (Plan 05-02 D5-15): policy-version window
+	// validation. validateEffective rejects docs with inverted or
+	// negative effective_to windows before they reach the backend.
+	// The check runs AFTER validateTiers (same backend-agnostic
+	// rationale: never let a known-bad doc reach the store).
+	if err := validateEffective(docs); err != nil {
 		return err
 	}
 
@@ -277,6 +298,44 @@ func validateTiers(docs []retriever.Document) error {
 	return nil
 }
 
+// validateEffective enforces the Plan 05-02 D5-15 policy-version window
+// invariants on a slice of docs built by Index, BEFORE the docs reach
+// seedDocs / any backend write. Sentinel-0 design (NOT nullable): zero
+// means "perpetually valid". A rejection here means a corrupted or
+// hand-edited frontmatter can never poison the effective_to PRE-filter
+// at the database layer.
+//
+// Rejected cases:
+//
+//   - effective_to < 0                              — negative epoch nonsense.
+//   - both effective_from > 0 AND effective_to < effective_from
+//                                                — inverted window.
+//
+// Permitted cases (each documented inline in retriever.Document.EffectiveTo):
+//
+//   - {from=0, to=0}        — perpetual (legacy / versionless).
+//   - {from=0, to>0}        — open-ended from, ends at <to>.
+//   - {from>0, to=0}        — starts at <from>, perpetual.
+//   - {from>0, to>=from}    — bounded window.
+//
+// Pure function (no I/O, no globals). An empty docs slice trivially
+// passes (the loop is a no-op). The static-guard test
+// TestIndexer_ProductionWiresValidateEffective asserts the production
+// Index path actually calls this helper.
+func validateEffective(docs []retriever.Document) error {
+	for i, d := range docs {
+		if d.EffectiveTo < 0 {
+			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has negative effective_to=%d (D5-15: epoch seconds must be >= 0)",
+				i, d.Source, d.EffectiveTo)
+		}
+		if d.EffectiveFrom > 0 && d.EffectiveTo > 0 && d.EffectiveTo < d.EffectiveFrom {
+			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has inverted window effective_to=%d < effective_from=%d (D5-15)",
+				i, d.Source, d.EffectiveTo, d.EffectiveFrom)
+		}
+	}
+	return nil
+}
+
 // seedDocs is the package-internal indirection point that tests use to
 // intercept the Milvus write without standing up a real Milvus server.
 //
@@ -297,9 +356,13 @@ func seedDocs(ctx context.Context, mc client.Client, cfg milvus.Config, docs []r
 	return milvus.SeedDocuments(ctx, mc, cfg, docs)
 }
 
-// stripFrontmatter extracts the markdown body after the YAML frontmatter
-// block (delimited by --- lines). Returns raw unchanged when no
-// frontmatter is present.
+// splitFrontmatter extracts the markdown body and the raw YAML
+// frontmatter block from raw. Returns (raw, nil) when no frontmatter
+// is present, (raw, nil) on unterminated frontmatter (treat as no
+// frontmatter; the file is still indexable). When frontmatter is
+// present and well-formed, returns (body, frontmatterBytes) where
+// frontmatterBytes is the YAML content between the --- markers (without
+// the --- lines themselves).
 //
 // Pattern adapted from internal/skill/loader.go:parseFrontmatter — the
 // skill loader is strict (opening --- must be on line 1, missing opener
@@ -308,15 +371,20 @@ func seedDocs(ctx context.Context, mc client.Client, cfg milvus.Config, docs []r
 // corpus file. The frontmatter IS stripped when present so a future
 // indexer can add metadata fields (effective_date, owner, etc.) without
 // poisoning the embedded body.
-func stripFrontmatter(raw []byte) []byte {
+//
+// Plan 05-02 D5-15: the frontmatter is returned so parseEffectiveWindow
+// can read the effective_from / effective_to fields. Legacy files
+// without frontmatter get (raw, nil) — parseEffectiveWindow returns
+// (0, 0) on nil input (the perpetual sentinel).
+func splitFrontmatter(raw []byte) (body []byte, frontmatter []byte) {
 	// Normalize CRLF → LF for marker matching across Windows-committed
 	// files (mirrors the skill loader behavior).
 	raw = bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))
 	const open = "---\n"
 	if !bytes.HasPrefix(raw, []byte(open)) {
-		return raw
+		return raw, nil
 	}
-	body := raw[len(open):]
+	body = raw[len(open):]
 	// Closing marker is "\n---" — the body continues after the next newline.
 	const close = "\n---"
 	end := bytes.Index(body, []byte(close))
@@ -324,9 +392,51 @@ func stripFrontmatter(raw []byte) []byte {
 		// Unterminated frontmatter — treat as no frontmatter (don't fail;
 		// the file is still indexable, just the frontmatter will be
 		// embedded as part of the body. Better than refusing to index).
-		return raw
+		return raw, nil
 	}
 	// Skip the close line itself ("\n---") + the trailing newline.
+	fm := body[:end]
 	after := body[end+len(close):]
-	return bytes.TrimLeft(after, "\n")
+	return bytes.TrimLeft(after, "\n"), fm
+}
+
+// parseEffectiveWindow reads effective_from / effective_to (epoch
+// seconds) from a YAML frontmatter block. Returns (0, 0) — the
+// perpetual sentinel — on nil input, malformed YAML, or missing fields.
+// Unknown / unparseable values fall back to 0 silently; inverted or
+// negative windows are caught downstream by validateEffective.
+//
+// Plan 05-02 D5-15: the indexer is permissive here because every Phase
+// 2 corpus file is unversioned (effective_* defaults to 0). Future
+// versions that DO use effective windows will populate the frontmatter
+// here; this helper is the structural seam that pulls the values
+// without coupling the rest of Index to YAML.
+func parseEffectiveWindow(fm []byte) (effectiveFrom, effectiveTo int64) {
+	if len(fm) == 0 {
+		return 0, 0
+	}
+	var doc struct {
+		EffectiveFrom int64 `yaml:"effective_from"`
+		EffectiveTo   int64 `yaml:"effective_to"`
+	}
+	// Tolerate malformed YAML — we don't want a stray frontmatter bug
+	// to brick the whole indexer; the missing fields default to 0.
+	if err := yamlUnmarshal(fm, &doc); err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] knowledge.parseEffectiveWindow: malformed frontmatter (%v); treating as perpetual\n", err)
+		return 0, 0
+	}
+	return doc.EffectiveFrom, doc.EffectiveTo
+}
+
+// yamlUnmarshal is a package-internal indirection so tests can swap the
+// YAML decoder (mirroring indexSeedHook). Production delegates to
+// gopkg.in/yaml.v3 directly.
+var yamlUnmarshal func(data []byte, v any) error = func(data []byte, v any) error {
+	return yamlUnmarshalDefault(data, v)
+}
+
+// yamlUnmarshalDefault is the production YAML decoder. Tests may
+// override yamlUnmarshal to assert specific frontmatter shapes.
+func yamlUnmarshalDefault(data []byte, v any) error {
+	return yaml.Unmarshal(data, v)
 }

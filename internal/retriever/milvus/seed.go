@@ -30,11 +30,21 @@ import (
 // EnsureCollection creates the collection + IVF_FLAT index if they do
 // not already exist. Idempotent: safe to call on every seed run. Schema:
 //
-//	id      INT64  primary key (auto-id OFF — caller assigns numeric IDs)
-//	tier    VARCHAR(20)
-//	content VARCHAR(8192)
-//	source  VARCHAR(256)
-//	embedding FLOAT_VECTOR(1024)
+//	id            INT64  primary key (auto-id OFF — caller assigns numeric IDs)
+//	tier          VARCHAR(20)
+//	content       VARCHAR(8192)
+//	source        VARCHAR(256)
+//	embedding     FLOAT_VECTOR(1024)
+//	effective_from INT64   Plan 05-02 D5-15 — policy-version window start
+//	effective_to   INT64   Plan 05-02 D5-15 — policy-version window end (0 = perpetual)
+//
+// Plan 05-02 D5-15: the two effective_* INT64 columns use sentinel-0
+// (NOT nullable). The default value 0 at the schema layer is the
+// explicit "no expiry / perpetual" state. Milvus INT64 columns are
+// non-nullable by default — the SDK's entity.Field type has no
+// WithNullable method (verified against milvus-sdk-go v2.4.2), so the
+// schema is structurally non-nullable. NULL-evaluates-FALSE is
+// therefore not a concern here.
 //
 // The IVF_FLAT index (nlist=128) is built with COSINE metric, the standard
 // for BGE-M3 dense embeddings (BGE-M3 outputs are meaningful under cosine
@@ -61,7 +71,12 @@ func EnsureCollection(ctx context.Context, mc client.Client, cfg Config) error {
 		WithField(entity.NewField().WithName("tier").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultTierMaxLen))).
 		WithField(entity.NewField().WithName("content").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultContentMaxLen))).
 		WithField(entity.NewField().WithName("source").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultSourceMaxLen))).
-		WithField(entity.NewField().WithName("embedding").WithDataType(entity.FieldTypeFloatVector).WithDim(int64(cfg.EmbedDim)))
+		WithField(entity.NewField().WithName("embedding").WithDataType(entity.FieldTypeFloatVector).WithDim(int64(cfg.EmbedDim))).
+		// Plan 05-02 D5-15 — sentinel-0 design (Milvus INT64 is
+		// non-nullable by default). Default value 0 = "perpetually valid"
+		// (the legacy / open-ended state).
+		WithField(entity.NewField().WithName("effective_from").WithDataType(entity.FieldTypeInt64)).
+		WithField(entity.NewField().WithName("effective_to").WithDataType(entity.FieldTypeInt64))
 
 	if err := mc.CreateCollection(ctx, schema, 1); err != nil { // shardsNum=1 (spike)
 		return fmt.Errorf("CreateCollection(%q): %w", cfg.CollectionName, err)
@@ -116,6 +131,8 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 	contents := make([]string, len(docs))
 	sources := make([]string, len(docs))
 	vecs := make([][]float32, len(docs))
+	effectiveFrom := make([]int64, len(docs))
+	effectiveTo := make([]int64, len(docs))
 	for i, d := range docs {
 		if len(d.Embedding) != cfg.EmbedDim {
 			return fmt.Errorf("doc (id=%d) embedding dim=%d, want=%d", d.ID, len(d.Embedding), cfg.EmbedDim)
@@ -125,6 +142,8 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 		contents[i] = truncateRunes(d.Content, DefaultContentMaxLen)
 		sources[i] = truncateRunes(d.Source, DefaultSourceMaxLen)
 		vecs[i] = d.Embedding
+		effectiveFrom[i] = d.EffectiveFrom
+		effectiveTo[i] = d.EffectiveTo
 	}
 
 	idCol := entity.NewColumnInt64("id", ids)
@@ -132,8 +151,10 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 	contentCol := entity.NewColumnVarChar("content", contents)
 	sourceCol := entity.NewColumnVarChar("source", sources)
 	vecCol := entity.NewColumnFloatVector("embedding", cfg.EmbedDim, vecs)
+	effectiveFromCol := entity.NewColumnInt64("effective_from", effectiveFrom)
+	effectiveToCol := entity.NewColumnInt64("effective_to", effectiveTo)
 
-	if _, err := mc.Insert(ctx, cfg.CollectionName, "", idCol, tierCol, contentCol, sourceCol, vecCol); err != nil {
+	if _, err := mc.Insert(ctx, cfg.CollectionName, "", idCol, tierCol, contentCol, sourceCol, vecCol, effectiveFromCol, effectiveToCol); err != nil {
 		return fmt.Errorf("Insert: %w", err)
 	}
 	// async=false + flush so the rows are durable + visible to the next Search.
