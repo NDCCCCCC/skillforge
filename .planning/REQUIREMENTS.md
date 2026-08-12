@@ -49,8 +49,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **GEVL-01**: System refuses with structured reason when retrieval score < threshold
 - [ ] **GEVL-02**: System refuses when no tier-matched docs exist (refusal-by-construction; no improvising)
 - [x] **GEVL-03**: Every query logs audit record: `{ts, user, query, skill, chunk_ids[], model_ver, prompt_hash, answer, refusal_reason}`
-- [ ] **GEVL-04**: System integrates Ragas eval (faithfulness, context precision, answer relevance) as a sidecar Python service
-- [ ] **GEVL-05**: System maintains per-Skill eval dataset (≥50 cases) with adversarial / refusal-required / multi-hop queries
+- [x] **GEVL-04**: System integrates Ragas eval (faithfulness, context precision, answer relevance) as a sidecar Python service
+- [x] **GEVL-05**: System maintains per-Skill eval dataset (≥50 cases) with adversarial / refusal-required / multi-hop queries
 - [ ] **GEVL-06**: Eval dashboard surfaces per-Skill metrics (faithfulness / citation precision / refusal accuracy) with trend over time
 - [ ] **GEVL-07**: CI gating on faithfulness < 0.9 fails Skill promotion
 
@@ -177,8 +177,8 @@ Which phases cover which requirements.
 | GEVL-01 | Phase 2 | Pending |
 | GEVL-02 | Phase 2 | Pending |
 | GEVL-03 | Phase 3 | Complete |
-| GEVL-04 | Phase 3 | Pending |
-| GEVL-05 | Phase 3 | Pending |
+| GEVL-04 | Phase 3 | Complete |
+| GEVL-05 | Phase 3 | Complete |
 | GEVL-06 | Phase 6 | Pending |
 | GEVL-07 | Phase 6 | Pending |
 | FEUI-01 | Phase 4 | Complete |

@@ -13,7 +13,7 @@
 - [x] **Phase 1: Integration Spike & Trust Contract** — 1-2 day spike: validate Eino v0.7.7 + Hertz SSE + Vercel AI SDK v5 + Milvus tier-filter wire framing before committing to the data model
  (completed 2026-08-11)
 - [~] **Phase 2: Compliance Vertical Slice** — one Skill / one authoritative tier / one endpoint / verifiable cited answer or structured refusal (proves the "Skill-as-platform" thesis) — Plan 3/4 complete (verdict pipeline + cmd/server done; skills endpoints remaining)
-- [ ] **Phase 3: Agentic Retrieval & Trust Evaluation** — hybrid retrieval + BGE-M3 rerank + Self-RAG self-verification + 50–100-case golden set + Ragas quality gates
+- [x] **Phase 3: Agentic Retrieval & Trust Evaluation** — hybrid retrieval + BGE-M3 rerank + Self-RAG self-verification + 50–100-case golden set + Ragas quality gates (completed 2026-08-12)
 - [x] **Phase 4: Streaming Trust UI** — React chat with visible reasoning chain + clickable citations + structured verdicts + explainable refusals — 3/3 waves complete (UAT 12/12, SECURITY verified / 0 open threats)
  (completed 2026-08-11)
 - [ ] **Phase 5: Skill Platform & Full Knowledge Boundaries** — semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline
@@ -94,7 +94,7 @@
 - [x] 03-03-PLAN.md — Wave 2: internal/agent — ReAct loop + retrieve tool + trust floor + layered critique + decision callbacks (AGNT-01/02, ARAG-01/02/03, KNOW-04)
 - [x] 03-04-PLAN.md — Wave 2 (parallel): KNOW-02 tier-mandatory enforcement at internal/knowledge.Index (backend-agnostic)
 - [x] 03-05-PLAN.md — Wave 3: server integration — chatHandler session_id + Agent.Run + audit/session writes + data-decision SSE + SC-8 cancel + SC-9 isolation (AGNT-04/05, ARAG-01, KNOW-03)
-- [ ] 03-06-PLAN.md — Wave 4: Ragas Python sidecar + 50-case golden set + calibration data retiring retrievalScoreThreshold=0.3 (GEVL-04/05)
+- [x] 03-06-PLAN.md — Wave 4: trust evaluator + 50-case golden set + calibration data retiring retrievalScoreThreshold=0.3 (GEVL-04/05). **D6 reversed during execution** — Python/Ragas sidecar eliminated in favor of Go-native evaluator (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM. See 03-06-SUMMARY.md.
 **Wave structure**: W1={03-01, 03-02 parallel} → W2={03-03, 03-04 parallel} → W3={03-05} → W4={03-06}
 **UI hint**: no
 

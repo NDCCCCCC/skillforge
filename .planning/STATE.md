@@ -3,28 +3,28 @@ gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
 current_phase: 03
-current_plan: "3 (just completed: 03-02)"
+current_plan: "6 (just completed: 03-06 — Phase 3 COMPLETE)"
 status: executing
-last_updated: "2026-08-12T04:49:21.950Z"
+last_updated: "2026-08-12T05:10:00.000Z"
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 17
-  completed_plans: 19
-  percent: 43
+  completed_plans: 20
+  percent: 57
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-12 (Plan 04-04 gap-closure complete — Phase 4 TS-drift debt closed)
+**Last updated:** 2026-08-12 (Plan 03-06 complete — Phase 3 agentic-retrieval-trust-evaluation COMPLETE 6/6 plans; D6 reversed to Go-native evaluator)
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 03
-**Current Plan:** 3 (just completed: 03-02)
+**Current Phase:** 03 — **COMPLETE (6/6 plans)**
+**Current Plan:** 6 (just completed: 03-06 — Go-native trust evaluator, D6 reversed)
 **Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** Continue Phase 3 Wave 2 — run `/gsd:execute-phase` for Plan 03-03 (agent emits data-decision via Eino callbacks) and Plan 03-04 (KNOW-02 indexer calls TierEnumByValue). 03-02 unblocked Plan 03-05 (server Store wiring) and Plan 03-06 (eval sidecar AuditRow reads).
+**Next action:** Plan 05-01 (Phase 5 skill-platform-&-full-knowledge-boundaries) is READY TO PLAN. Alternative: Phase 6 CI gate wiring (eval/report.json → GEVL-07 Skill promotion gate). The D2-15 threshold-swap procedure (manual ops review of `eval/calibration.json` `recommended_threshold` before editing `internal/server/pipeline.go:43`) is documented in `eval/README.md` + pipeline godoc.
 
 ---
 
@@ -47,12 +47,12 @@ progress:
 
 ## Current Position
 
-Phase: 03 (agentic-retrieval-trust-evaluation) — EXECUTING
-Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session backend, 3 TDD commits, 18m)
-**Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN (deferred; Phase 3 in progress)
+Phase: 03 (agentic-retrieval-trust-evaluation) — **COMPLETE (6/6 plans)**
+Plan: 6 of 6 (just completed 03-06 — Go-native trust evaluator, D6 reversed, 5 commits, 19m)
+**Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
 **Plan:** not started
-**Status:** Executing Phase 03 (Plans 03-01 + 03-02 COMPLETE; Wave 2 siblings 03-03 / 03-04 next)
-**Just completed:** Plan 03-02 — `internal/store.Store` interface + `SQLiteStore` default impl (modernc.org/sqlite@v1.56.0, pure-Go no cgo). D11 mirror of retriever.Retriever + mongo (compile-time `var _ store.Store = (*SQLiteStore)(nil)`). audit table INSERT+SELECT only (T-3-AUDIT); `QueryAudit` 100% `?`-parameterized (T-3-SQLI regression: `'; DROP TABLE audit; --` survives in UserID/SkillID/RefusalReason); `GetSession WHERE session_id=?` = SC-9 isolation; `AppendTurn` idempotent via `UNIQUE+ON CONFLICT DO NOTHING`. 3/3 tasks, 3 commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 + AGNT-05/SC-9 unlocked at the store layer; Plan 03-05 (server wiring) + Plan 03-06 (eval sidecar AuditRow reads) unblocked.
+**Status:** Phase 03 COMPLETE (Plans 03-01 through 03-06 all green). Phase 5 ready to plan.
+**Just completed:** Plan 03-06 — Go-native trust evaluator (`internal/eval` + `cmd/eval`). D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop + 5 spike-anchors, GEVL-05). D2-15 calibration vehicle (`Calibrate()` → `eval/calibration.json` `recommended_threshold`; manual ops swap of literal 0.3 in `internal/server/pipeline.go:43`). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder; 34 eval tests pass. Pitfall 8 counter-measures in place (deterministic grounding floor, human spot-check, JUDGE_MODEL slot). 5 commits: `52dab7e` (D6 reversal docs) + `d4f96fc` (Task 1) + `a77be40` (Task 2) + `f7979af` (Task 3 A+B) + `247dfd8` (Task 3 C-H). GEVL-04 + GEVL-05 marked complete.
 
 **Phase 4 shipped (trust visualization front-end):**
 
@@ -95,6 +95,7 @@ Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session ba
 | D16 | `data-decision` SSE chunk discriminator (Phase 3 / Plan 03-01) | Registers the ARAG-01 / SC-1 observability substrate — a per-hop wire-level slot for agent autonomous decisions (retrieve/answer/refuse/forced_stop). Mirrored Go + TS in one commit per the D15 two-PR rule; emitted by Plan 03-03's Eino callbacks (`newDecisionCallback`), parsed by the Phase 4 React UI's `SkillForgeChunk` union. |
 | D17 | TierEnum reverse-lookup helpers (Phase 3 / Plan 03-01) | `skill.TierEnumByValue` + `skill.TierEnumValues` expose the 4-tier enum for backend-agnostic validation. KNOW-02 enforcement at `internal/knowledge.Index` (Plan 03-04) calls `TierEnumByValue(doc.Tier)` — fail-closed default-deny on any tier outside {权威, 历史, 个人, 草稿}. |
 | D18 | Store interface-first + SQLite default (Phase 3 / Plan 03-02) | `internal/store.Store` + `internal/store/sqlite.SQLiteStore` mirror the D11 retriever pattern (interface in parent pkg, impl in subpkg, compile-time `var _ store.Store = (*SQLiteStore)(nil)`). modernc.org/sqlite@v1.56.0 = pure-Go (no cgo) zero-ops default; PG-ready drop-in without caller changes. audit table is INSERT+SELECT only (T-3-AUDIT); `QueryAudit` is 100% `?`-parameterized (T-3-SQLI); `GetSession WHERE session_id=?` is the SC-9 isolation boundary; `AppendTurn` idempotent via `UNIQUE(session_id,role,ts)+ON CONFLICT DO NOTHING`. Plan 03-05 (server wiring) + Plan 03-06 (eval sidecar AuditRow reads) unblocked. |
+| D19 | Go-native trust evaluator (Phase 3 / Plan 03-06) | `internal/eval` library + `cmd/eval` CLI ship 4 RAG-trust metrics (faithfulness / answer_relevancy / context_precision / context_recall). Faithfulness ports Ragas v0.1.21 claim-extraction + entailment prompts VERBATIM into Go string constants (Apache-2.0, attributed in `eval/NOTICE` — the headline number stays industry-comparable, "Ragas 口径"); the other 3 metrics use simple Go-authored yes/no judge prompts. 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop, 5 spike-anchors from cmd/spiked/e2e.go:76-82). D2-15 calibration vehicle: `Calibrate()` emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43` (trust-boundary human sign-off). Additive accessors: `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). Pitfall 8 counter-measures: deterministic Go grounding floor (D3-01), human spot-check, `JUDGE_MODEL` config slot (D3-07) for Phase 6 cross-eval. |
 
 ---
 
@@ -148,18 +149,19 @@ Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session ba
 | 03 | 01 | 7m | 2 TDD tasks / 4 commits / 5 files (2 created + 3 modified) — `data-decision` SSE chunk discriminator (Go `wire.ValidTypes` 16→17 + exported `DecisionPayload` + TS `SkillForgeChunk` variant) + `skill.TierEnumByValue`/`TierEnumValues` reverse-lookup helpers (additions only). ARAG-01/SC-1/KNOW-01 substrates unlocked. See 03-01-SUMMARY.md |
 | 03 | 02 | 18m | 3 TDD tasks / 3 commits / 8 files (6 created + 2 modified) — `internal/store.Store` interface + `SQLiteStore` default impl (modernc.org/sqlite@v1.56.0 pure-Go, no cgo). D11 mirror of retriever + mongo. audit INSERT+SELECT only (T-3-AUDIT); `QueryAudit` 100% `?`-parameterized (T-3-SQLI regression: DROP TABLE survives in 3 filter fields); SC-9 isolation at `WHERE session_id=?`; `AppendTurn` idempotent via UNIQUE+ON CONFLICT. GEVL-03/SC-7 + AGNT-05/SC-9 unlocked at store layer. See 03-02-SUMMARY.md |
 | 04 | 04 | 12m | 3 tasks / 3 commits / 6 modified — wire-contract TS realignment (gap closure, `requirements: []`). `cd web && npx tsc --noEmit` 21 → 0 errors; vitest 84/84; build 411.12 KB / 120.47 KB gzip (04-03 band). D15 alarm STRENGTHENED (`finishReason?: string` → `FinishReason`); Pitfall 1/3 guards preserved via string-cast; ToolPart toolName structural-type read; transport-swap `FixtureDrivenTransport` zero-arg contract. Closes Phase 4 TS-drift debt. See 04-04-SUMMARY.md |
+| 03 | 06 | 19m | 3 tasks / 5 commits / 22 files (15 created + 7 modified) — Go-native trust evaluator (D6 reversed): `internal/eval` library + `cmd/eval` CLI. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20/20/10, 5 spike-anchors, GEVL-05). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` (manual ops swap of literal 0.3). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder. Pitfall 8 counter-measures in place. See 03-06-SUMMARY.md |
 
 - Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering, now in progress
 - Requirements covered: 24 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08; Phase 3 03-01: +ARAG-01 substrate, +KNOW-01 substrate)
 - Frontend tests: 84/84 green (14 files); UAT 12/12; `cd web && npx tsc --noEmit` exit 0 (debt-free since 04-04)
-- Plans run: 14 (4 Phase 1 + 4 Phase 2 incl. MONGO + 4 Phase 4 incl. 04-04 gap-closure + 2 Phase 3)
-- Last plan: 04-04 (Phase 4 gap-closure) — commits d3ac4ed + 6857996 + e68b942
+- Plans run: 15 (4 Phase 1 + 4 Phase 2 incl. MONGO + 4 Phase 4 incl. 04-04 gap-closure + 3 Phase 3 incl. 03-06 Go-native evaluator)
+- Last plan: 03-06 (Phase 3 Go-native trust evaluator) — commits 52dab7e + d4f96fc + a77be40 + f7979af + 247dfd8. **Phase 3 COMPLETE (6/6 plans)**
 
 ---
 
 ## Session Continuity
 
-**Resume point:** Plan 03-02 (internal/store Store interface + SQLite audit/session backend) is COMPLETE — 3/3 tasks, 3 TDD commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 (audit SQL-queryable, T-3-SQLI regression-locked) and AGNT-05/SC-9 (session_id SQL partitioning under -race) unlocked at the store layer. Next: run Wave 2 plans — Plan 03-03 (agent emits data-decision via Eino callbacks, consumes 03-01's `wire.DecisionPayload`) and Plan 03-04 (KNOW-02 indexer calls 03-01's `skill.TierEnumByValue`). Plan 03-05 (server wires `Store.PutAudit` + `GetSession` + `AppendTurn`) and Plan 03-06 (eval sidecar reads `AuditRow` for JSONL) also unblocked. **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
+**Resume point:** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
 **Hot files this session:**
 
@@ -171,4 +173,4 @@ Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session ba
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11. Plan 03-02 complete 2026-08-12. Plan 04-04 (Phase 4 gap-closure, wire-contract TS realignment) complete 2026-08-12 — `cd web && npx tsc --noEmit` now exits 0; Phase 4 debt-free.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11. Plan 03-02 complete 2026-08-12. Plan 04-04 (Phase 4 gap-closure, wire-contract TS realignment) complete 2026-08-12 — `cd web && npx tsc --noEmit` now exits 0; Phase 4 debt-free. Plan 03-06 (Go-native trust evaluator, D6 reversed) complete 2026-08-12 — Phase 3 COMPLETE (6/6 plans); GEVL-04 + GEVL-05 marked complete.*
