@@ -100,7 +100,13 @@ function LiveApp() {
     <>
       <ThreePanel
         left={<LeftSidebar />}
-        center={<CenterPanel currentVerdict={currentVerdict} />}
+        center={
+          <CenterPanel
+            currentVerdict={currentVerdict}
+            messages={messages}
+            chatStatus={status}
+          />
+        }
         right={
           <RightChat
             messages={messages}

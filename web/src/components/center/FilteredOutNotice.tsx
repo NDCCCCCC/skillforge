@@ -20,6 +20,14 @@ export interface FilteredOutNoticeProps {
 }
 
 export default function FilteredOutNotice({ effectiveTo }: FilteredOutNoticeProps) {
+  // Guard: render nothing when the chunk is NOT superseded (perpetual
+  // OR active). ChunkSourceView already gates the mount via
+  // `isSuperseded`, but FilteredOutNotice is also exercised standalone
+  // in tests + future surfaces — keep the guard defensive so consumers
+  // don't need to repeat the predicate.
+  if (effectiveTo === null || effectiveTo === 0) {
+    return null;
+  }
   const date = formatEffectiveDate(effectiveTo);
   return (
     <div

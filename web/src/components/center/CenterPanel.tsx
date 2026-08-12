@@ -15,6 +15,7 @@
 // Empty-state hero per Copywriting Contract: `等待合规审查结果` +
 // `右侧提出合规问题，agent 推理与引用会显示在这里。`
 import { FileSearch } from 'lucide-react';
+import type { UIMessage } from 'ai';
 import { Tabs } from '../ui/tabs';
 import { useAppStore } from '../../store/app-store';
 import type { CenterView } from '../../store/app-store';
@@ -85,9 +86,22 @@ function tabValueToCenterView(value: string): CenterView | null {
 
 export interface CenterPanelProps {
   currentVerdict: Verdict | null;
+  /**
+   * Plan 05-05 / SC-4 (AGNT-06) — useChat.messages streamed down from
+   * <App>. NOT Zustand state (D14). Only the inspector consumes this;
+   * the verdict + chunk-source + skill-md panels read from props +
+   * store as before.
+   */
+  messages?: UIMessage[];
+  /** useChat.status — used by the inspector to detect active hop. */
+  chatStatus?: 'submitted' | 'streaming' | 'ready' | 'error';
 }
 
-export default function CenterPanel({ currentVerdict }: CenterPanelProps) {
+export default function CenterPanel({
+  currentVerdict,
+  messages = [],
+  chatStatus = 'ready',
+}: CenterPanelProps) {
   const centerView = useAppStore((s) => s.centerView);
   const setCenterView = useAppStore((s) => s.setCenterView);
 
@@ -112,7 +126,7 @@ export default function CenterPanel({ currentVerdict }: CenterPanelProps) {
     if (centerView.kind === 'agent-inspector') {
       return (
         <div className="center-panel-tab-content">
-          <AgentInspector />
+          <AgentInspector messages={messages} status={chatStatus} />
         </div>
       );
     }
