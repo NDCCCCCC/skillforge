@@ -58,6 +58,10 @@ type ChunkAccumulator struct {
 	closed bool
 	seen   map[string]struct{} // chunk ID (decimal string) → existence
 	byID   map[string]retriever.Hit
+
+	// callCount = number of retrieve tool calls (Add batches). Used by
+	// HasMultipleRetrieveCalls for critique gating.
+	callCount int
 }
 
 // NewChunkAccumulator returns a fresh, empty accumulator.
@@ -73,6 +77,10 @@ func NewChunkAccumulator() *ChunkAccumulator {
 // is treated as a valid chunk ID; the retrieve tool does not skip ID=0).
 // Safe for concurrent calls (mutex-guarded per Pitfall 2).
 //
+// Add increments the internal retrieve-call counter exactly once per
+// invocation (regardless of how many hits are in the batch). The counter
+// backs HasMultipleRetrieveCalls for critique gating.
+//
 // Add is a no-op when called after MarkClosed (defense-in-depth against
 // a stray callback firing post-iterator-EOF).
 func (a *ChunkAccumulator) Add(hits []retriever.Hit) {
@@ -85,6 +93,7 @@ func (a *ChunkAccumulator) Add(hits []retriever.Hit) {
 		// but if it does we prefer stable state over a panic.
 		return
 	}
+	a.callCount++
 	for _, h := range hits {
 		key := chunkKey(h.ID)
 		if _, dup := a.seen[key]; dup {
@@ -141,6 +150,21 @@ func (a *ChunkAccumulator) MarkClosed() {
 func chunkKey(id int64) string {
 	// Avoid strconv to keep imports minimal; int64 → decimal is small.
 	return fmt.Sprintf("%d", id)
+}
+
+// HasMultipleRetrieveCalls reports whether the retrieve tool was
+// invoked more than once during the Run. Used by (*Agent).Run to
+// decide whether MaybeCritique's multiHop gating branch should fire
+// (critique runs unconditionally when multiHop=true per D3-05).
+//
+// The count is the number of distinct Add() call batches (one per
+// retrieve invocation), NOT the number of unique chunks (one retrieve
+// can return multiple chunks). Tests do not assert on this directly;
+// it is a gating signal only.
+func (a *ChunkAccumulator) HasMultipleRetrieveCalls() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.callCount > 1
 }
 
 // ApplyTrustFloor implements the D3-01 / D-09 / KNOW-04 refusal-by-

@@ -147,6 +147,23 @@ func BuildRetrieveTool(emb embedder.Embedder, ret retriever.Retriever, m *skill.
 			return retrieveResponse{}, fmt.Errorf("retrieve_compliance_chunks: retriever.Search: %w", err)
 		}
 
+		// Record hits into the per-Run accumulator when one is present
+		// in ctx. The accumulator is stashed by (*Agent).Run via
+		// accCtxKey{}; when the retrieve tool is invoked outside Run
+		// (Task 1 unit tests), no accumulator is present and this
+		// branch is a no-op — behavior is identical modulo recording.
+		//
+		// Why ctx-injection (vs. rebuilding the tool per Run): the
+		// underlying react.Agent caches the tool at construction time
+		// (compose.ToolsNodeConfig.Tools). Rebuilding the tool per Run
+		// would force rebuilding react.NewAgent, which constructs a
+		// compose.Graph — expensive (multi-ms). ctx-injection lets us
+		// reuse the cached react.Agent across Runs without per-Run
+		// closure allocation.
+		if acc, ok := ctx.Value(accCtxKey{}).(*ChunkAccumulator); ok && acc != nil {
+			acc.Add(hits)
+		}
+
 		return retrieveResponse{
 			Chunks: formatChunksAsData(hits),
 			Count:  len(hits),
