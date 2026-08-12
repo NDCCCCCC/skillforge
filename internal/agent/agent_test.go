@@ -37,6 +37,7 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/verdict"
 )
 
 // ---------------------------------------------------------------------------
@@ -136,14 +137,35 @@ func (s *stubRetriever) LastTiers() []string {
 // NewAgent construction. The full multi-turn variant (returns tool-call
 // message on turn 1 + final Verdict JSON on turn 2) is added in Task 3
 // where the agent loop is actually exercised.
+//
+// Task 2 extension: configurable cannedResponse + cannedError so critique
+// tests can drive the maybeCritique LLM call deterministically.
 type stubChatModel struct {
-	mu sync.Mutex
+	cannedResponse string
+	cannedError    error
+
+	calls        int
+	capturedOpts []model.Option
+	mu           sync.Mutex
 }
 
 var _ model.ToolCallingChatModel = (*stubChatModel)(nil)
 
-func (m *stubChatModel) Generate(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
-	return &schema.Message{Role: schema.Assistant, Content: "{}"}, nil
+func (m *stubChatModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls++
+	m.capturedOpts = append(m.capturedOpts, opts...)
+	if m.cannedError != nil {
+		return nil, m.cannedError
+	}
+	// Default to "{}" when cannedResponse is unset so the Task 1 test
+	// (`&stubChatModel{}`) still gets a non-nil message back.
+	content := m.cannedResponse
+	if content == "" {
+		content = "{}"
+	}
+	return &schema.Message{Role: schema.Assistant, Content: content}, nil
 }
 
 func (m *stubChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
@@ -152,6 +174,13 @@ func (m *stubChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...mode
 
 func (m *stubChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
 	return m, nil
+}
+
+// CallCount returns the number of Generate invocations. Thread-safe.
+func (m *stubChatModel) CallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
 }
 
 // ---------------------------------------------------------------------------
@@ -330,4 +359,279 @@ func TestNewAgentConfig(t *testing.T) {
 	a, err := agent.NewAgent(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, a, "NewAgent must return non-nil *Agent")
+}
+
+// ---------------------------------------------------------------------------
+// Task 2 — trust_floor.go + critique.go
+// ---------------------------------------------------------------------------
+
+// newAgentForCritique is the minimal Agent construction for critique tests.
+// It reuses the Task 1 stubs but accepts a configurable stubChatModel so
+// each test can drive the critique LLM call deterministically.
+func newAgentForCritique(t *testing.T, chatModel *stubChatModel) *agent.Agent {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: &stubRetriever{chunksPerCall: [][]retriever.Hit{{}}},
+		ChatModel: chatModel,
+		MaxHops:   2,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+	return a
+}
+
+// TestTrustFloorForcesRefusal (KNOW-04 / SC-5) verifies the D3-01 / D-09
+// invariant: when the chunkAccumulator has zero tier-matched chunks (the
+// agent never successfully retrieved anything from an authorized tier),
+// the trust floor forces a structured Refusal{Reason: NoAuthorizedSource}
+// regardless of what verdict the agent may have produced.
+func TestTrustFloorForcesRefusal(t *testing.T) {
+	emptyAcc := agent.NewChunkAccumulator()
+	// No Add() calls — accumulator stays empty.
+
+	// Apply trust floor with a query and tier list; expect non-nil Refusal.
+	refusal := agent.ApplyTrustFloor(emptyAcc, "出差住宿标准", []string{"权威"})
+	require.NotNil(t, refusal, "trust floor MUST return non-nil Refusal when accumulator is empty (KNOW-04 / D-09)")
+	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, refusal.Reason,
+		"Refusal.Reason must be RefusalReasonNoAuthorizedSource (D2-13 enum)")
+	assert.True(t, refusal.CanRephrase,
+		"CanRephrase should be true — user can retry with a tier-keyword query (D2-14)")
+	assert.NotEmpty(t, refusal.SuggestedAlternativeQuery,
+		"SuggestedAlternativeQuery must be populated (ruleBasedSuggestion) so the UI can offer a retry chip")
+}
+
+// TestTrustFloorPassesWhenChunksExist verifies the trust floor returns nil
+// (no refusal) when the accumulator has at least one tier-matched chunk.
+// This is the inverse of TestTrustFloorForcesRefusal and locks the
+// non-refusal path so a future contributor cannot accidentally refuse
+// grounded answers.
+func TestTrustFloorPassesWhenChunksExist(t *testing.T) {
+	acc := agent.NewChunkAccumulator()
+	acc.Add([]retriever.Hit{
+		{ID: 1, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费标准为每天 500 元。", Score: 0.9},
+	})
+
+	refusal := agent.ApplyTrustFloor(acc, "出差住宿标准", []string{"权威"})
+	assert.Nil(t, refusal, "trust floor must NOT refuse when accumulator has ≥1 chunk")
+}
+
+// TestTrustFloorDedup (D3-01 open question 2) verifies the accumulator
+// dedups by chunk ID: hop 1 returns chunk X (id=1), hop 2 returns chunk X
+// again (same id=1, same content) — accumulator reports 1 unique chunk,
+// NOT 2. Without dedup, a flaky retriever returning the same chunk twice
+// would inflate the apparent grounding and bypass the floor.
+func TestTrustFloorDedup(t *testing.T) {
+	acc := agent.NewChunkAccumulator()
+	hits := []retriever.Hit{
+		{ID: 1, Tier: "权威", Source: "authority/policy.md", Content: "chunk body", Score: 0.9},
+	}
+	acc.Add(hits)
+	acc.Add(hits) // same hit again — dedup
+	acc.Add(hits) // third copy
+
+	matched := acc.TierMatched()
+	assert.Len(t, matched, 1, "dedup by chunk ID: 3 Add() calls with same ID must yield 1 unique chunk")
+
+	byID := acc.ChunksByID()
+	assert.Len(t, byID, 1, "ChunksByID map must have 1 entry (chunk ID 1)")
+	assert.Equal(t, "chunk body", byID["1"])
+}
+
+// TestAccumulatorConcurrent (Pitfall 2) verifies the chunkAccumulator is
+// race-free under parallel Add() calls. Run with -race to catch data races.
+// 100 goroutines × 10 hits each = 1000 total Add() calls; if 100 unique IDs
+// are used, TierMatched must report exactly 100 hits (dedup works under
+// contention).
+func TestAccumulatorConcurrent(t *testing.T) {
+	acc := agent.NewChunkAccumulator()
+	const goroutines = 100
+	const hitsPerCall = 10
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(gid int) {
+			defer wg.Done()
+			hits := make([]retriever.Hit, 0, hitsPerCall)
+			for j := 0; j < hitsPerCall; j++ {
+				hits = append(hits, retriever.Hit{
+					ID:      int64(gid*hitsPerCall + j), // unique IDs across goroutines
+					Tier:    "权威",
+					Source:  fmt.Sprintf("authority/%d.md", gid*hitsPerCall+j),
+					Content: fmt.Sprintf("body-%d-%d", gid, j),
+				})
+			}
+			acc.Add(hits)
+		}(i)
+	}
+	wg.Wait()
+
+	matched := acc.TierMatched()
+	assert.Len(t, matched, goroutines*hitsPerCall,
+		"all unique IDs must survive concurrent Add() — no lost writes (Pitfall 2)")
+}
+
+// TestCritiqueSemanticReversal (ARAG-03) verifies the happy path for
+// maybeCritique: when the critique LLM detects a semantic reversal (chunk
+// says X but the verdict cites the same chunk to support ¬X), maybeCritique
+// returns a verdict with ReviewRequired=true. Confidence and Status MUST
+// be unchanged.
+func TestCritiqueSemanticReversal(t *testing.T) {
+	cm := &stubChatModel{
+		cannedResponse: `{"semantic_reversal_detected": true, "explanation": "chunk says 'limit 500' but span cited to support 'no limit'"}`,
+	}
+	a := newAgentForCritique(t, cm)
+
+	original := verdict.Verdict{
+		Status:         "合规",
+		Confidence:     0.75,
+		Citations:      []verdict.Citation{{ChunkID: "1", Span: "no limit", Tier: "权威"}},
+		ReviewRequired: false,
+	}
+	chunks := map[string]string{"1": "出差住宿费上限为 500 元。"}
+
+	got := a.MaybeCritique(context.Background(), original, chunks, true)
+
+	assert.True(t, got.ReviewRequired,
+		"maybeCritique MUST set ReviewRequired=true when semantic reversal detected (D3-04)")
+	assert.Equal(t, original.Confidence, got.Confidence,
+		"maybeCritique MUST NOT mutate Confidence (D3-04 invariant)")
+	assert.Equal(t, original.Status, got.Status,
+		"maybeCritique MUST NOT mutate Status (D3-04 invariant)")
+	assert.Equal(t, original.Citations, got.Citations,
+		"maybeCritique MUST NOT remove or mutate Citations (D3-04 invariant)")
+}
+
+// TestCritiqueCannotRaiseConfidence (D3-04 regression-lock) verifies the
+// structural enforcement: even when a stub critique LLM "approves strongly"
+// (semantic_reversal_detected=false), maybeCritique MUST NOT raise the
+// verdict's Confidence above its original value. This test exists
+// specifically to fail loudly if a future contributor breaks the
+// "critique only adds strictness" invariant.
+func TestCritiqueCannotRaiseConfidence(t *testing.T) {
+	cm := &stubChatModel{
+		cannedResponse: `{"semantic_reversal_detected": false, "explanation": "all citations grounded; verdict is correct and high-confidence"}`,
+	}
+	a := newAgentForCritique(t, cm)
+
+	original := verdict.Verdict{
+		Status:         "需补充",
+		Confidence:     0.7, // status=需补充 forces critique to run (D3-05 gating)
+		Citations:      []verdict.Citation{{ChunkID: "1", Span: "上限", Tier: "权威"}},
+		ReviewRequired: false,
+	}
+	chunks := map[string]string{"1": "出差住宿费上限 500 元。"}
+
+	got := a.MaybeCritique(context.Background(), original, chunks, false)
+
+	assert.Equal(t, original.Confidence, got.Confidence,
+		"D3-04 INVARIANT: critique MUST NOT raise Confidence (was %.2f, now %.2f)",
+		original.Confidence, got.Confidence)
+	assert.LessOrEqual(t, got.Confidence, original.Confidence,
+		"D3-04 INVARIANT: critique MUST NOT raise Confidence")
+	assert.Equal(t, original.Status, got.Status,
+		"D3-04 INVARIANT: critique MUST NOT flip Status (e.g. 需补充 → 合规)")
+	assert.False(t, got.ReviewRequired,
+		"critique that detects NO semantic reversal MUST NOT set ReviewRequired (no strictness to add)")
+}
+
+// TestCritiqueGating (D3-05) verifies maybeCritique's skip conditions.
+// Critique runs only when at least one of the following holds:
+//   - multiHop == true (more retrieval → more reversal risk)
+//   - v.Status == 需补充 (downstream floor already flagged uncertainty)
+//   - v.Confidence ∈ [critiqueLowConfidence, critiqueHighConfidence] (uncertain band)
+//
+// Critique is skipped (LLM not called) when single-hop AND status≠需补充
+// AND confidence outside the uncertain band — saving cost on clear-cut
+// verdicts.
+func TestCritiqueGating(t *testing.T) {
+	cases := []struct {
+		name       string
+		verdict    verdict.Verdict
+		multiHop   bool
+		wantCalled bool
+	}{
+		{
+			name:       "single-hop high-confidence status=合规",
+			verdict:    verdict.Verdict{Status: "合规", Confidence: 0.95, Citations: []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}}},
+			multiHop:   false,
+			wantCalled: false, // outside uncertain band [0.6, 0.9]
+		},
+		{
+			name:       "single-hop low-confidence status=合规",
+			verdict:    verdict.Verdict{Status: "合规", Confidence: 0.5, Citations: []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}}},
+			multiHop:   false,
+			wantCalled: false, // outside uncertain band (below 0.6)
+		},
+		{
+			name:       "single-hop status=需补充",
+			verdict:    verdict.Verdict{Status: "需补充", Confidence: 0.95, Citations: []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}}},
+			multiHop:   false,
+			wantCalled: true, // status=需补充 forces run regardless of band
+		},
+		{
+			name:       "single-hop mid-band status=合规",
+			verdict:    verdict.Verdict{Status: "合规", Confidence: 0.75, Citations: []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}}},
+			multiHop:   false,
+			wantCalled: true, // confidence in [0.6, 0.9]
+		},
+		{
+			name:       "multi-hop high-confidence status=合规",
+			verdict:    verdict.Verdict{Status: "合规", Confidence: 0.95, Citations: []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}}},
+			multiHop:   true,
+			wantCalled: true, // multi-hop forces run regardless of band
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cm := &stubChatModel{
+				cannedResponse: `{"semantic_reversal_detected": false, "explanation": "n/a"}`,
+			}
+			a := newAgentForCritique(t, cm)
+			before := cm.CallCount()
+
+			chunks := map[string]string{"1": "x"}
+			_ = a.MaybeCritique(context.Background(), c.verdict, chunks, c.multiHop)
+
+			after := cm.CallCount()
+			calls := after - before
+			if c.wantCalled && calls == 0 {
+				t.Errorf("expected critique LLM to be called, but it was skipped (D3-05 gating wrong)")
+			}
+			if !c.wantCalled && calls > 0 {
+				t.Errorf("expected critique LLM to be SKIPPED (cost save), but it was called %d time(s)", calls)
+			}
+		})
+	}
+}
+
+// TestCritiqueErrorNonFatal (Pitfall 3) verifies that when the critique
+// LLM call fails, maybeCritique logs and returns the verdict UNCHANGED.
+// The deterministic floor remains authoritative — a flaky critique sidecar
+// MUST NOT break the agent's verdict path.
+func TestCritiqueErrorNonFatal(t *testing.T) {
+	cm := &stubChatModel{
+		cannedError: fmt.Errorf("simulated critique sidecar network timeout"),
+	}
+	a := newAgentForCritique(t, cm)
+
+	original := verdict.Verdict{
+		Status:         "需补充", // force critique to run
+		Confidence:     0.7,
+		Citations:      []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}},
+		ReviewRequired: false,
+	}
+	chunks := map[string]string{"1": "x"}
+
+	got := a.MaybeCritique(context.Background(), original, chunks, false)
+
+	assert.Equal(t, original, got,
+		"critique LLM error MUST be non-fatal — verdict returned UNCHANGED (Pitfall 3 / D3-04 floor-authoritative)")
+	assert.False(t, got.ReviewRequired,
+		"on critique error, ReviewRequired MUST stay false (cannot add strictness we could not compute)")
 }
