@@ -87,10 +87,10 @@ Ordered by recommended execution (see §3 for rationale). Two are quick/clear-cu
 
 Rationale: knock out the clear-cut, known-root-cause items first (§1→§3), defer the design-heavy IA work (§4) to the end where it can be scoped deliberately. §2 and §4 share the `/api/skills/reload` + `SkillManagerMenu` wiring — coordinate so #7's reload-route decision feeds #2.
 
-**Decisions to surface to the user up front** (these gate implementation):
-- §2: SSE-primary (A) vs polling-only (B) for the reload bridge?
-- §3: full-text from graph in-scope vs metadata-only?
-- §4: final IA = LEFT-sidebar consolidation (per sketch) vs RIGHT-drawer?
+**Decisions — RESOLVED 2026-08-13 (locked, do not re-ask):**
+- §2: **polling-only (B)** — serialize `registry.Entry.Version` into the `GET /api/skills` response (wrap `{manifest, version, status}`); reuse #9's live `Loader.Scan()` path to bump the version; delete the dead SSE EventSource; emit `status:failed` on broken YAML.
+- §3: **full-text in-scope** — add `GET /api/knowledge/chunk/:id` returning verbatim text + metadata; teach `chunk-lookup.ts` to fetch from it for graph-browsed (non-cited) chunks.
+- §4: **LEFT-sidebar consolidation** (per sketch source-of-truth) — reconcile with `05-UI-SPEC.md` BEFORE implementing; wire `SkillManagerMenu` to live `GET /api/skills` (fixes static-fixture bug + the `/api/skills/reload` 404 — coordinate with §2).
 
 ---
 
