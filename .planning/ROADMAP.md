@@ -13,7 +13,8 @@
 - [x] **Phase 1: Integration Spike & Trust Contract** — 1-2 day spike: validate Eino v0.7.7 + Hertz SSE + Vercel AI SDK v5 + Milvus tier-filter wire framing before committing to the data model
  (completed 2026-08-11)
 - [x] **Phase 2: Compliance Vertical Slice** — one Skill / one authoritative tier / one endpoint / verifiable cited answer or structured refusal (proves the "Skill-as-platform" thesis) — 5/5 plans complete (incl. 02-04-MONGO extension)
-- [x] **Phase 3: Agentic Retrieval & Trust Evaluation** — hybrid retrieval + BGE-M3 rerank + Self-RAG self-verification + 50–100-case golden set + Ragas quality gates (completed 2026-08-12)
+- [x] **Phase 3: Agentic Retrieval & Trust Evaluation** — hybrid retrieval + BGE-M3 rerank + Self-RAG self-verification + 50–100-case golden set + Ragas quality gates
+ (completed 2026-08-12)
 - [x] **Phase 4: Streaming Trust UI** — React chat with visible reasoning chain + clickable citations + structured verdicts + explainable refusals — 3/3 waves complete (UAT 12/12, SECURITY verified / 0 open threats)
  (completed 2026-08-11)
 - [ ] **Phase 5: Skill Platform & Full Knowledge Boundaries** — semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline
@@ -131,7 +132,15 @@
   7. The agent proposes a clause-level redline rewrite when its verdict flags a policy gap (CMPL-07)
   8. Querying chunks whose `effective_to < today` yields zero results (superseded policies are filtered out); the UI shows the active policy version (CMPL-08)
 **Pitfalls addressed:** Full P-SKILL-* (semantic routing, hot reload, wizard generation), P-EINO-1..3 (multi-Skill orchestration, in-flight hot reload, cross-tier conflict policy), full tier system (P-RAG-1)
-**Plans**: TBD
+**Plans**: 6 plans
+**Plan list**:
+- [ ] 05-01-PLAN.md - Wave 1: Wire extensions (data-redline 17->18 + DecisionPayload routing fields) + Skill Registry (atomic.Pointer + fsnotify + V12 symlink re-check + 1s debounce)
+- [ ] 05-02-PLAN.md - Wave 1: Skill Router (BGE-M3 cosine + ambiguity gate) + Chunk schema migration (Document.EffectiveFrom/To + Milvus + Mongo + indexer validateEffective + pipeline threads now)
+- [ ] 05-03-PLAN.md - Wave 2: SC-1 routing trace + ambiguity picker + SC-2 hot-reload UI (toasts + statusbar pinned-version) + Skill Manager menu + 5-tab CenterPanel wiring (inspector + graph placeholders)
+- [ ] 05-04-PLAN.md - Wave 2: SC-3 Skill Wizard (backend Generate + Commit endpoints with path-traversal guard; right-panel wizard mode + 5-step interview + preview + alert-dialog cancel)
+- [ ] 05-05-PLAN.md - Wave 2: SC-4 Agent State Inspector (Accordion tree from useChat.messages) + SC-5 Knowledge Graph Browser (GET /api/knowledge/graph + 3-level Accordion + search filter) + SC-8 version badges on ChunkSourceView
+- [ ] 05-06-PLAN.md - Wave 2: SC-6 Counter-evidence (BE post-verdict 历史 pass + FE teal annotation card with disclaimer) + SC-7 Redline (conditional LLM pass on 不合规/需补充 + FE diff view with copy/download)
+**Wave structure**: W1={05-01, 05-02 sequential} -> W2={05-03, 05-04, 05-05, 05-06 parallel}
 **UI hint**: yes
 
 ### Phase 6: Eval Dashboard & Production Hardening
@@ -198,9 +207,9 @@
 | 2. Compliance Vertical Slice | 5/5 (incl. 02-04-MONGO) | Complete | 2026-08-11 |
 | 3. Agentic Retrieval & Trust Evaluation | 6/6 | Complete | 2026-08-12 |
 | 4. Streaming Trust UI | 4/4 (incl. 04-04 gap-closure) | Complete | 2026-08-11 (04-04 debt-closure 2026-08-12) |
-| 5. Skill Platform & Full Knowledge Boundaries | 0/? | Not started | - |
+| 5. Skill Platform & Full Knowledge Boundaries | 0/6 | Not started | - |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
 | 7. Open-Source Release | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-12 after Phase 4 (Streaming Trust UI) gap-closure plan 04-04 (wire-contract TS realignment: `cd web && npx tsc --noEmit` now exits 0). Phase 4 originally shipped 2026-08-11 — 3/3 waves, UAT 12/12, SECURITY verified / 0 open threats.*
+*Last updated: 2026-08-12 — Phase 5 planned (6 plans: 2 in Wave 1 sequential; 4 in Wave 2 parallel). All 8 req IDs (SYSK-04/05/06, AGNT-06, KNOW-06, CMPL-06/07/08) covered; 15 locked D5-XX decisions implemented; 1 deferred item (DATA-*) explicitly out of scope per CONTEXT.md.*
