@@ -86,6 +86,13 @@ var knownTierDirs = []string{"authority", "historical", "personal", "draft"}
 //     increasing across tier dirs. Re-running on the same collection
 //     inserts duplicates (Milvus INT64 PK is not auto-deduped); the
 //     startup hook may want to drop+recreate for clean re-seeds.
+//   - KNOW-02 (Phase 3): docs with empty or unknown Tier are rejected at
+//     insert time before any embedder / backend call (see validateTiers).
+//     The valid tier values are skill.TierEnumValues() — currently
+//     ["权威","草稿","历史","个人"] (sorted by ASCII dir name). A rejection
+//     here means an operator can trust a downstream no_authorized_source
+//     refusal really means "no authorized source for this query", never
+//     "we forgot to tag the docs" (refusal-masking moat, T-3-MASK).
 //
 // Returns:
 //   - nil on success (collection seeded with N>=0 documents).
@@ -202,6 +209,18 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 		}
 	}
 
+	// KNOW-02: tier-mandatory enforcement at the indexer layer
+	// (backend-agnostic; the hard path around D7 per CONTEXT.md
+	// discretion). validateTiers runs BEFORE seedDocs so a rejected doc
+	// can never reach the backend — Milvus, Mongo, or any future backend
+	// (Pitfall 6: enforcing only at the backend would let a future
+	// contributor add RETRIEVER_BACKEND=foo and silently bypass tier
+	// enforcement). An empty docs slice trivially passes (loop is a
+	// no-op), so the empty-corpus path below still fires unchanged.
+	if err := validateTiers(docs); err != nil {
+		return err
+	}
+
 	// Seed in one batched Insert. An empty knowledge/ tree (all tier dirs
 	// empty) is valid — SeedDocuments rejects empty input so we skip
 	// the call entirely in that case (returning nil = "no corpus to index
@@ -214,6 +233,46 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 
 	if err := seedDocs(ctx, mc, cfg, docs); err != nil {
 		return fmt.Errorf("knowledge.Index: seed %d docs into %s: %w", len(docs), cfg.CollectionName, err)
+	}
+	return nil
+}
+
+// validateTiers enforces the KNOW-02 tier-mandatory invariant on a slice
+// of docs built by Index, BEFORE the docs reach seedDocs / any backend
+// write. A doc with an empty or unknown Tier is rejected with a wrapped
+// error that names the offending doc index (0-based, e.g. "doc[2]"),
+// the source path, the failing rule, and the canonical set of valid tier
+// values — so the operator can jump straight to the bad file and see what
+// to fix.
+//
+// This is the backend-agnostic hard path around D7 ("tier is metadata,
+// filter PRE-similarity"). Backend-specific schema validators (Milvus,
+// Mongo) are belt-and-suspenders on top of this Go-level check — the
+// indexer layer is the PRIMARY path per CONTEXT.md discretion
+// (03-RESEARCH.md §Pitfall 6: the wrong-layer trap; enforcing ONLY at the
+// backend would let a future contributor add RETRIEVER_BACKEND=foo and
+// silently bypass tier enforcement, and a tier-less doc would mask as an
+// SC-4 no_authorized_source refusal — eroding the refusal-by-construction
+// moat, T-3-MASK).
+//
+// The function is pure (no I/O, no globals beyond the read-only
+// skill.TierEnum map) so the rejection branches are unit-testable via
+// direct calls with hand-constructed doc slices. The normal scan path
+// always assigns Tier from skill.TierEnum[tierDir] and can therefore
+// never produce an empty / invalid Tier; the rejection branches exist
+// for defense-in-depth (a future code path that constructs docs without
+// going through the tier-dir scan, e.g. a batch-ingest CLI, would still
+// be gated by this check).
+func validateTiers(docs []retriever.Document) error {
+	for i, d := range docs {
+		if d.Tier == "" {
+			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has empty tier (KNOW-02: tier is mandatory metadata; valid values: %v)",
+				i, d.Source, skill.TierEnumValues())
+		}
+		if _, ok := skill.TierEnumByValue(d.Tier); !ok {
+			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has unknown tier=%q (KNOW-02: valid values: %v)",
+				i, d.Source, d.Tier, skill.TierEnumValues())
+		}
 	}
 	return nil
 }
