@@ -87,7 +87,7 @@ func entryForScaled(name string, pivotIndex, dim int, scale float32) *Entry {
 func TestRouter_PicksHighest(t *testing.T) {
 	const dim = 8
 	emb := &stubRouterEmbedder{pivotIndex: 1, dim: dim} // query → index 1
-	r := New(emb)
+	r := NewRouter(emb)
 
 	snap := map[string]*Entry{
 		"alpha": entryFor("alpha", 1, dim), // cosine = 1.0 with query
@@ -134,7 +134,7 @@ func TestRouter_Ambiguous_Top1Low(t *testing.T) {
 	// For this test we put BOTH entries at non-matching pivots so
 	// every score is 0.0 < 0.4.
 	emb := &stubRouterEmbedder{pivotIndex: 0, dim: dim}
-	r := New(emb)
+	r := NewRouter(emb)
 
 	snap := map[string]*Entry{
 		"alpha": entryFor("alpha", 3, dim), // cosine = 0
@@ -164,7 +164,7 @@ func TestRouter_Ambiguous_Top1Top2Close(t *testing.T) {
 	// dimension; cosine = (1*1 + 0*0 + ... ) / (1*1) * sqrt(scale^2)
 	// = scale = 0.94. Gap = 1.0 - 0.94 = 0.06 < 0.08 → ambiguous.
 	emb := &stubRouterEmbedder{pivotIndex: 1, dim: dim}
-	r := New(emb)
+	r := NewRouter(emb)
 
 	snap := map[string]*Entry{
 		"alpha": entryFor("alpha", 1, dim),                       // cosine = 1.0
@@ -183,7 +183,7 @@ func TestRouter_Ambiguous_Top1Top2Close(t *testing.T) {
 // SC-1 empty-state UX).
 func TestRouter_EmptySnapshot(t *testing.T) {
 	emb := &stubRouterEmbedder{pivotIndex: 0, dim: 8}
-	r := New(emb)
+	r := NewRouter(emb)
 
 	got, err := r.Route(context.Background(), "test query", map[string]*Entry{})
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func TestRouter_EmptySnapshot(t *testing.T) {
 // silently mask a real outage — T-2-25 analog).
 func TestRouter_EmbedderError(t *testing.T) {
 	emb := &stubRouterEmbedder{pivotIndex: 0, dim: 8, err: errors.New("bge-m3 timeout")}
-	r := New(emb)
+	r := NewRouter(emb)
 
 	snap := map[string]*Entry{
 		"alpha": entryFor("alpha", 1, 8),
@@ -214,10 +214,10 @@ func TestRouter_EmbedderError(t *testing.T) {
 // referenceable from outside the package — a regression that inlines
 // them as literals would break the calibration contract.
 func TestRouter_AmbiguityConstantsExported(t *testing.T) {
-	assert.Greater(t, AmbiguityLowFloor, float32(0.0), "AmbiguityLowFloor must be > 0")
-	assert.LessOrEqual(t, AmbiguityLowFloor, float32(1.0), "AmbiguityLowFloor must be ≤ 1")
-	assert.Greater(t, AmbiguityMargin, float32(0.0), "AmbiguityMargin must be > 0")
-	assert.LessOrEqual(t, AmbiguityMargin, float32(1.0), "AmbiguityMargin must be ≤ 1")
+	assert.Greater(t, float64(AmbiguityLowFloor), float64(0), "AmbiguityLowFloor must be > 0")
+	assert.LessOrEqual(t, float64(AmbiguityLowFloor), float64(1), "AmbiguityLowFloor must be ≤ 1")
+	assert.Greater(t, float64(AmbiguityMargin), float64(0), "AmbiguityMargin must be > 0")
+	assert.LessOrEqual(t, float64(AmbiguityMargin), float64(1), "AmbiguityMargin must be ≤ 1")
 }
 
 // TestRouter_NoMagicNumbersInRoute — static guard: the Route function
@@ -233,14 +233,9 @@ func TestRouter_NoMagicNumbersInRoute(t *testing.T) {
 	const marker = "func (r *Router) Route("
 	idx := indexOf(body, marker)
 	require.GreaterOrEqual(t, idx, 0, "Route method not found in router.go")
+	// Scan from the marker to end of file — Route's body should never
+	// exceed the rest of router.go in size.
 	routeBody := body[idx:]
-	// Take a reasonable slice so we don't accidentally scan the next
-	// function. 4000 chars covers a healthy Route body.
-	end := idx + len(marker) + 4000
-	if end > len(body) {
-		end = len(body)
-	}
-	routeBody = routeBody[:end]
 	assert.Contains(t, routeBody, "AmbiguityLowFloor",
 		"Route must reference AmbiguityLowFloor const (no magic 0.4 in body)")
 	assert.Contains(t, routeBody, "AmbiguityMargin",
