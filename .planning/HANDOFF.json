@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-08-12T15:53:05Z",
+  "phase": "05",
+  "phase_name": "05-skill-platform-full-knowledge-boundaries",
+  "phase_dir": ".planning/phases/05-skill-platform-full-knowledge-boundaries",
+  "workflow": "verify-work (UAT)",
+  "test": 9,
+  "total_tasks": 11,
+  "status": "paused",
+  "uat_summary": {"total": 11, "passed": 5, "issues": 3, "pending": 3, "skipped": 0, "blocked": 0},
+  "completed_tests": [
+    {"id": 1, "name": "Cold Start — Both Servers Boot Clean", "status": "pass"},
+    {"id": 2, "name": "App Shell + 5-Tab CenterPanel", "status": "issue", "severity": "major", "note": "right-panel IA: Skill selector wrong place, session list should be drawer"},
+    {"id": 3, "name": "Skill Manager Menu", "status": "pass"},
+    {"id": 4, "name": "Knowledge Graph Browser", "status": "issue", "severity": "major", "note": "graph chunk click → '(chunk not found in fixture)', no chunk-content endpoint"},
+    {"id": 5, "name": "Version Badges + Filtered-Out Notice", "status": "pass", "note": "via unit tests (corpus all-perpetual)"},
+    {"id": 6, "name": "Agent Inspector (SC-4)", "status": "pass", "note": "via alt path: 8/8 unit tests + backend emits data-decision; dev-UI empty = MockChatTransport limitation"},
+    {"id": 7, "name": "Hot-Reload Toast (SC-2)", "status": "issue", "severity": "major", "note": "signal path severed: SSE /api/skills/events=404 + GET /api/skills Manifest has no version field"},
+    {"id": 8, "name": "Skill Wizard — NL Interview", "status": "pass", "note": "full 5-step flow → POST /api/skills/wizard 200 → 7-field preview rendered"}
+  ],
+  "remaining_tests": [
+    {"id": 9, "name": "Skill Wizard — Commit Closed Loop (SC-3 / D5-11)", "status": "not_started", "note": "wizard is currently sitting on expense-audit preview (generated, NOT committed) — resume by clicking 确认并保存"},
+    {"id": 10, "name": "Skill Wizard — Cancel Dialog + Path-Traversal Guard (SC-3 / T-5-16)", "status": "not_started"},
+    {"id": 11, "name": "Routing Trace + Counter-Evidence + Redline (SC-1/6/7)", "status": "not_started", "note": "BLOCKED by OOS-1 verdict-parse bug — verify via /api/chat (refusal path works) + FE unit suites like Test 6"}
+  ],
+  "blockers": [
+    {"description": "OOS-1: Real backend verdict parse fails on GLM fenced-JSON (invalid character '`' after top-level value) → type:error, no final answer text. Hidden by MockChatTransport.", "type": "technical", "workaround": "verdict/refusal routing trace + counter-evidence + redline cannot render from a real compliant/non-compliant verdict. Refusal path works. Route fix via /gsd-debug (verdict pipeline is Phase 2-era, NOT Phase 5 gap closure).", "location": "internal/agent/callbacks.go:196 stripJSONDelim; internal/agent/agent.go:515,519"},
+    {"description": "Dev UI chat is hardcoded to MockChatTransport (App.tsx:49, Vite PROD flag, no .env override) — SC-1/4/6/7 chat-stream features untestable in live dev UI.", "type": "technical", "workaround": "Verify chat features via direct POST /api/chat :8888 + FE unit suites. To test live: flip App.tsx env='prod' OR run vite build."}
+  ],
+  "human_actions_pending": [
+    {"action": "Decide whether to run /gsd-debug on OOS-1 (verdict parse) + issue #7 (hot-reload signal) before finishing UAT Tests 9-11", "context": "Both are real bugs hidden by mock; OOS-1 blocks Test 11 real-verdict verification; #7 is a Phase 5 SC-2 defect", "blocking": false},
+    {"action": "Backend :8888 + Vite :5173 are currently running — keep alive for resume, or restart and note Cold Start already passed", "context": "Both servers verified live this session", "blocking": false}
+  ],
+  "decisions": [
+    {"decision": "Continue Phase 5 UAT within scope (Tests 7-10 real; Test 11 via /api/chat+unit); record OOS-1 verdict-bug for /gsd-debug not Phase 5 gap", "rationale": "User chose 'Phase 5 scope' route when asked; respects phase boundaries", "phase": "05"},
+    {"decision": "Verify SC-4 (Agent Inspector) via alt path (unit tests + backend API) rather than flag as fail", "rationale": "Same established methodology as SC-1/6/7 — MockChatTransport dev limitation, inspector code proven correct by 8/8 tests + backend emits data-decision", "phase": "05"}
+  ],
+  "uncommitted_files": [".planning/STATE.md (hook-managed)", ".planning/config.json (pre-existing M)"],
+  "next_action": "Resume UAT: /gsd-verify-work 5 — first pending test is #9 (Wizard Commit closed loop). The browser wizard is already sitting on the expense-audit preview; Test 9 clicks 确认并保存 → expect atomic write + success toast + fsnotify registration. Then Test 10 (cancel/path-traversal), then Test 11 (routing trace via /api/chat + unit tests).",
+  "context_notes": "UAT mode is automated (chrome-devtools MCP) + backend HTTP (:8888) + unit-test evidence. The single most important insight: the user's question 'are we using mock data?' revealed that MockChatTransport hides real backend integration bugs — always probe the real /api/chat, don't trust the dev UI chat stream. Three real issues found this phase (#2, #4, #7) + 1 out-of-scope blocker (OOS-1)."
+}
