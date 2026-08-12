@@ -18,6 +18,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -605,4 +606,259 @@ func parseFrames(t *testing.T, body string) []wire.UIMessageChunk {
 // up three levels to reach the repo root).
 func skillsDirPath() string {
 	return "../../skills"
+}
+
+// routerEmbedder is a deterministic embedder used by the routing
+// tests in this file. It points the query toward a single index in
+// dim-dimensional space so the router can match against a Skill with
+// DescVec at that same index.
+type routerEmbedder struct {
+	dim        int
+	pivotIndex int
+}
+
+func (e *routerEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
+	v := make([]float32, e.dim)
+	v[e.pivotIndex] = 1.0
+	return v, nil
+}
+func (e *routerEmbedder) Dimensions() int { return e.dim }
+
+// registryWithOneSkill builds a fresh skills/ root with a single
+// Skill under a custom name, returns a *Registry pointing at it.
+// Caller must close via cancel() (which stops the watcher goroutine).
+func registryWithOneSkill(t *testing.T, skillName, description string, emb *routerEmbedder) (*skill.Registry, context.CancelFunc) {
+	t.Helper()
+	root := t.TempDir()
+	skillDir := filepath.Join(root, skillName)
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	yaml := fmt.Sprintf(`---
+description: %s
+agent: ChatModelAgent
+reads:
+  - authority/**
+writes: []
+steps: |
+  1. Step 1
+guardrails:
+  prohibitions:
+    - "Never cite clauses not retrieved from authority tier"
+    - "Never paraphrase critical clauses"
+    - "Never reveal personal info"
+  required_refusal_phrases:
+    - "no_authorized_source"
+  tier_limits:
+    authority: ["read-only"]
+temperature: 0.0
+---
+# %s
+`, description, skillName)
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(yaml), 0o644))
+
+	r, err := skill.New(root, emb)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, r.Watch(ctx))
+	return r, cancel
+}
+
+// TestChatHandler_EmitsRoutingDecisionBeforePipeline — SC-1 / D5-05:
+// chatHandler emits the routing decision (data-decision, decision="route")
+// BEFORE VerdictPipeline is invoked. The router picks the Skill with
+// the highest cosine against the query embedder; chatHandler emits the
+// routing decision chunk with SkillScores + Selected + Ambiguous, then
+// runs the verdict.
+func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
+	emb := &routerEmbedder{dim: 8, pivotIndex: 3}
+	r, cancel := registryWithOneSkill(t, "compliance", "compliance skill", emb)
+	defer cancel()
+
+	deps := &Deps{
+		Embedder: emb,
+		Retriever: &stubRetriever{chunks: []retriever.Hit{
+			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.92},
+		}},
+		Runner:  newStubRunner(cannedVerdictJSON("合规", 0.95, []string{"1"}, "x", "权威")),
+		Router:  skill.NewRouter(emb),
+		Registry: r,
+	}
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "test query", "")
+	frames := parseFrames(t, body)
+
+	// Find the routing decision frame — it's the first data-decision
+	// frame with decision="route".
+	var routeFrame *wire.UIMessageChunk
+	var routeIdx int
+	for i, f := range frames {
+		if f.Type != "data-decision" {
+			continue
+		}
+		var p wire.DecisionPayload
+		if err := json.Unmarshal(f.Data, &p); err != nil {
+			continue
+		}
+		if p.Decision == "route" {
+			cp := frames[i]
+			routeFrame = &cp
+			routeIdx = i
+			break
+		}
+	}
+	require.NotNil(t, routeFrame, "expected a data-decision with decision=route")
+	assert.Equal(t, "compliance", routeFrame.SkillScores[0].SkillID, "Selected must be 'compliance'")
+	assert.True(t, routeFrame.SkillScores[0].Selected, "the chosen Skill must have Selected=true")
+	assert.False(t, routeFrame.Ambiguous, "single-Skill install must not be ambiguous")
+
+	// The route frame must appear BEFORE the verdict / source-document frames.
+	var verdictIdx = -1
+	for i, f := range frames {
+		if f.Type == "data-policy" {
+			verdictIdx = i
+			break
+		}
+	}
+	require.GreaterOrEqual(t, verdictIdx, 0, "expected a data-policy frame")
+	assert.Less(t, routeIdx, verdictIdx,
+		"routing decision MUST be emitted BEFORE the verdict pipeline output")
+}
+
+// TestChatHandler_EmptyRegistryDoesNotInvokePipeline — SC-1 empty-
+// state: registry has zero Skills installed. chatHandler emits the
+// routing decision with Selected="" + Ambiguous=true + Scores=nil and
+// returns WITHOUT calling VerdictPipeline. The FE renders the picker
+// empty state ("no Skills installed, open the wizard").
+func TestChatHandler_EmptyRegistryDoesNotInvokePipeline(t *testing.T) {
+	emb := &routerEmbedder{dim: 8, pivotIndex: 0}
+	// Build a registry rooted at an empty temp dir — New() will succeed
+	// (no SKILL.md to seed; the snapshot stays empty).
+	root := t.TempDir()
+	r, err := skill.New(root, emb)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	require.NoError(t, r.Watch(ctx))
+
+	sr := &stubRetriever{chunks: []retriever.Hit{}}
+	stubRun := newStubRunner("")
+	deps := &Deps{
+		Embedder:  emb,
+		Retriever: sr,
+		Runner:    stubRun,
+		Router:    skill.NewRouter(emb),
+		Registry:  r,
+	}
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "anything", "")
+	frames := parseFrames(t, body)
+
+	// The route decision must carry Selected="" + Ambiguous=true.
+	var foundRoute bool
+	for _, f := range frames {
+		if f.Type != "data-decision" {
+			continue
+		}
+		var p wire.DecisionPayload
+		if err := json.Unmarshal(f.Data, &p); err != nil {
+			continue
+		}
+		if p.Decision == "route" {
+			foundRoute = true
+			assert.Empty(t, p.Selected, "empty registry -> Selected=''")
+			assert.True(t, p.Ambiguous, "empty registry -> Ambiguous=true")
+			assert.Empty(t, p.SkillScores, "empty registry -> SkillScores=[]")
+		}
+	}
+	assert.True(t, foundRoute, "expected a route data-decision frame")
+
+	// VerdictPipeline must NOT be invoked (no source-document, no
+	// data-policy verdict; the runner must NOT be called).
+	assert.Equal(t, 0, stubRun.CallCount(),
+		"empty registry MUST NOT invoke VerdictPipeline / Runner")
+	// The retriever's Search is also not called (route short-circuits
+	// before any tier lookup).
+	assert.Equal(t, 0, sr.CallCount(),
+		"empty registry MUST NOT invoke the retriever either")
+}
+
+// TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline — D5-03 /
+// SC-1 picker UX: when the router returns Ambiguous=true, chatHandler
+// emits the routing decision and returns WITHOUT running VerdictPipeline.
+// The FE renders the SkillPicker so the user picks.
+func TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline(t *testing.T) {
+	emb := &routerEmbedder{dim: 8, pivotIndex: 3}
+	// Two Skills whose descriptions are identical (cos=1 with each other
+	// AND cos=1 with the query at the same pivot) — gap=0 < margin → ambiguous.
+	r, cancel := registryWithOneSkill(t, "alpha", "shared description", emb)
+	defer cancel()
+	// Inject a second Skill via direct reloadOne (manual path so we
+	// don't fight the filesystem shape).
+	root2 := t.TempDir()
+	secondDir := filepath.Join(root2, "bravo")
+	require.NoError(t, os.MkdirAll(secondDir, 0o755))
+	secondYaml := `---
+description: shared description
+agent: ChatModelAgent
+reads:
+  - authority/**
+writes: []
+steps: |
+  1. step
+guardrails:
+  prohibitions:
+    - "Never cite clauses not retrieved from authority tier"
+    - "Never paraphrase critical clauses"
+    - "Never reveal personal info"
+  required_refusal_phrases:
+    - "no_authorized_source"
+  tier_limits:
+    authority: ["read-only"]
+temperature: 0.0
+---
+# bravo
+`
+	require.NoError(t, os.WriteFile(filepath.Join(secondDir, "SKILL.md"), []byte(secondYaml), 0o644))
+	require.NoError(t, r.ReloadOne(filepath.Join(secondDir, "SKILL.md")))
+
+	sr := &stubRetriever{chunks: []retriever.Hit{}}
+	stubRun := newStubRunner("")
+	deps := &Deps{
+		Embedder:  emb,
+		Retriever: sr,
+		Runner:    stubRun,
+		Router:    skill.NewRouter(emb),
+		Registry:  r,
+	}
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "anything", "")
+	frames := parseFrames(t, body)
+
+	// Find the routing decision; assert ambiguous.
+	var foundRoute bool
+	for _, f := range frames {
+		if f.Type != "data-decision" {
+			continue
+		}
+		var p wire.DecisionPayload
+		if err := json.Unmarshal(f.Data, &p); err != nil {
+			continue
+		}
+		if p.Decision == "route" {
+			foundRoute = true
+			assert.True(t, p.Ambiguous, "tied Skills must produce Ambiguous=true")
+			assert.Empty(t, p.Selected, "ambiguous must clear Selected")
+			assert.GreaterOrEqual(t, len(p.SkillScores), 2, "ambiguous carries ≥2 candidates")
+		}
+	}
+	assert.True(t, foundRoute, "expected a route data-decision frame")
+	assert.Equal(t, 0, stubRun.CallCount(),
+		"ambiguous routing MUST NOT invoke VerdictPipeline / Runner")
+	assert.Equal(t, 0, sr.CallCount(),
+		"ambiguous routing MUST NOT invoke the retriever")
 }
