@@ -37,9 +37,11 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/hertz/pkg/app/server"
 
+	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // Embedder aliases the embedder.Embedder interface (the production
@@ -83,11 +85,45 @@ type Runner interface {
 // (TestChatHandlerSSE constructs a Deps with Loader=nil + a pre-built
 // Manifest passed directly to VerdictPipeline). In production cmd/server
 // Loader is always non-nil — the startup hook Scan()s skills/compliance/.
+//
+// Phase 3 wiring contract for Agent + Store (Plan 03-05):
+//
+//   - **Agent** supersedes Runner for the /api/chat path in Phase 3; the
+//     chatHandler branches on `s.Agent != nil`. Runner is retained for
+//     the eval golden-set runner (Plan 03-06) and as a fallback so the
+//     Phase 2 acceptance tests (which construct a Deps with only Runner
+//     set) stay green during the migration. cmd/server constructs BOTH.
+//
+//   - **Store** is the audit + session-memory backend (D3-09). The
+//     chatHandler writes one audit row + one (user, assistant) turn
+//     pair per /api/chat response before returning (GEVL-03 / AGNT-05).
+//     Tests may leave Store nil to exercise a degraded mode that streams
+//     a verdict/refusal without persisting it.
+//
+//   - **Decision-emit wiring (closure capture, NOT an adapter type):**
+//     internal/agent owns `type DecisionEmitFunc func(step int, decision,
+//     toolCallID, query string, confidence float64)` (Plan 03-03,
+//     hertz-free). chat.go owns `func emitDecision(c *app.RequestContext,
+//     p wire.DecisionPayload) error` (writes the data-decision SSE chunk).
+//     Per request, the chatHandler wraps emitDecision into the agent's
+//     DecisionEmitFunc via closure capture so the per-request `c` is
+//     available inside the callback goroutine. We do NOT introduce an
+//     EmitDecisionFunc adapter type taking *app.RequestContext in this
+//     file (would couple Deps to Hertz), and we do NOT bind Emit at
+//     main.go construction time (the per-request `c` is unavailable
+//     there). This keeps internal/agent free of hertz/app (D-04/D15
+//     wire boundary).
 type Deps struct {
 	Loader    *skill.Loader
 	Embedder  Embedder
 	Retriever Retriever
 	Runner    Runner
+	// Agent is the Phase 3 ReAct agent (Plan 03-03). nil = Phase 2
+	// fallback to Runner via VerdictPipeline (preserves existing tests).
+	Agent *agent.Agent
+	// Store persists audit rows + session turns (Plan 03-02). nil =
+	// degraded mode (responses still stream, nothing persisted).
+	Store store.Store
 }
 
 // New constructs a Hertz server bound to addr with the chat route

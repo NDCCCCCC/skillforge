@@ -18,16 +18,25 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	"github.com/cloudwego/hertz/pkg/app"
 
+	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
 )
@@ -45,16 +54,25 @@ type chatRequest struct {
 const defaultSkill = "compliance"
 
 // chatHandler is the SSE-emitting POST /api/chat handler. It is the
-// single HTTP entry point in this package; pipeline.go owns the
+// single HTTP entry point in this package; pipeline.go owns the Phase 2
 // orchestration, this file owns the wire + the request decode + the
-// skill-scope lookup.
+// skill-scope lookup + (Phase 3) the session_id plumbing + agent.Run
+// dispatch + audit/session writes.
 //
 // Behavior:
 //  1. Decode JSON body — empty query → 400.
 //  2. Resolve skill name → *skill.Manifest via deps.Loader.Skills().
 //     Empty skill → defaultSkill. Unknown skill → emit out_of_scope
 //     refusal + finish-step.
-//  3. Delegate to VerdictPipeline (the 10-step orchestrator).
+//  3. Resolve session_id (X-Session-Id header OR newSessionID) and
+//     echo it back on the response (AGNT-05 / SC-9).
+//  4. Branch on Agent availability:
+//     - Phase 3 path (s.Agent != nil): runAgent (ReAct loop + audit
+//       write + session turn append + data-decision SSE emission).
+//     - Phase 2 fallback (s.Agent == nil): VerdictPipeline (retained
+//       so existing acceptance tests that construct a Deps with only
+//       Runner set stay green during the Phase 3 migration; Plan 03-06
+//       also uses this path for the eval golden-set runner).
 //
 // Hertz's WithHostPorts(addr) + h.Spin() call shape (cmd/server/main.go)
 // blocks here until SIGINT/SIGTERM — this handler runs on every
@@ -79,6 +97,31 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		req.Skill = defaultSkill
 	}
 
+	// Phase 3: session_id resolution (AGNT-05 / SC-9). The header is the
+	// client's claim; if absent the server generates a fresh crypto/rand
+	// ID (T-3-SESSIONID — 32 hex chars = 128 bits of entropy, ASVS V6).
+	// The ID is echoed back on the response so a client that did not send
+	// one can capture and reuse it for the next turn. Resolved unconditionally
+	// so both the agent path and the Phase 2 fallback benefit from session
+	// correlation in the audit row.
+	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
+	if sessionID == "" {
+		sessionID = newSessionID()
+	}
+	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
+
+	// Phase 3 path: agent wired → run the ReAct loop + audit + session
+	// persistence + decision SSE emission. The agent closes over its own
+	// manifest (set at NewAgent construction), so findSkill is NOT
+	// consulted here — findSkill's manifest is only used by the Phase 2
+	// VerdictPipeline fallback. The req.Skill name still flows into the
+	// audit row's SkillID column for both paths.
+	if s.Agent != nil {
+		s.runAgentPath(ctx, c, req, sessionID)
+		return
+	}
+
+	// Phase 2 fallback: resolve manifest via Loader, then VerdictPipeline.
 	manifest := s.findSkill(req.Skill)
 	if manifest == nil {
 		// Unknown skill → out_of_scope refusal. The finish-step after the
@@ -89,7 +132,6 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		})
 		return
 	}
-
 	if err := s.VerdictPipeline(ctx, c, req.Query, manifest); err != nil {
 		// Pipeline returned an error AFTER the first SSE frame was written
 		// (we cannot change status now). Emit an error chunk so the client
@@ -98,6 +140,201 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		return
 	}
+}
+
+// runAgentPath is the Phase 3 /api/chat handler branch. It wires the
+// per-request emitDecision closure into the agent via ctx-value (Plan
+// 03-05 Rule 3 deviation — the agent's DecisionEmitFunc cannot be
+// re-bound post-construction; internal/agent.WithRunEmit injects a
+// per-Run override carrying the current *app.RequestContext). It then
+// calls Agent.Run, emits the verdict / refusal / error SSE frames, and
+// persists the audit row + session turn BEFORE returning (GEVL-03 +
+// AGNT-05). Audit / session write failures are logged and swallowed —
+// the response has already streamed; failing the request over a
+// persistence error is worse than degraded durability (T-3-AUDIT-WRITE
+// disposition: accept; Phase 6 adds fail-closed audit policy).
+//
+// AGNT-04 (SC-8): ctx cancellation propagates Hertz → Agent.Run →
+// reactAgent.Generate → compose.Graph. The SC-8 end-to-end test
+// (chat_session_test.go:TestCancelPropagationMidTool) asserts < 200ms
+// cancel latency.
+func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chatRequest, sessionID string) {
+	// Session history load (best-effort — AGNT-05 correlation). Errors
+	// are logged and swallowed; the agent still runs with no history.
+	// The history is NOT passed into Agent.Run in Phase 3 (the agent is
+	// single-turn per query; multi-turn conversation memory feeding is
+	// Phase 5+ — the load is exercised here so SC-9 end-to-end can
+	// assert cross-session isolation at the HTTP→Store boundary).
+	if s.Store != nil {
+		if _, err := s.Store.GetSession(ctx, sessionID); err != nil {
+			log.Printf("[WARN] server: session history load (sess=%s) failed: %v (continuing with empty history; non-fatal)", sessionID, err)
+		}
+	}
+
+	// Bind the per-request emitDecision closure into the agent via ctx.
+	// The closure converts the agent's 5-positional-arg DecisionEmitFunc
+	// into a wire.DecisionPayload and writes a data-decision SSE chunk
+	// (ARAG-01 / SC-1 end-to-end wiring).
+	emitClosure := agent.DecisionEmitFunc(func(step int, decision, toolCallID, query string, confidence float64) {
+		_ = emitDecision(c, wire.DecisionPayload{
+			Step:       step,
+			Decision:   decision,
+			ToolCallID: toolCallID,
+			Query:      query,
+			Confidence: confidence,
+		})
+	})
+	agentCtx := agent.WithRunEmit(ctx, emitClosure)
+
+	v, refusal, err := s.Agent.Run(agentCtx, sessionID, req.Query)
+	if err != nil {
+		// Agent error (cancel, ChatModel failure, parse failure). Emit
+		// the error frame + finish-step, then persist the audit row
+		// with RefusalReason="internal_error" (GEVL-03: every query
+		// writes one audit row before the handler returns).
+		_ = wire.EmitChunk(c, errorChunk(err.Error()))
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error")
+		if ctx.Err() != nil {
+			log.Printf("[INFO] server: agent run cancelled (sess=%s): %v", sessionID, err)
+		} else {
+			log.Printf("[ERROR] server: agent run (sess=%s): %v", sessionID, err)
+		}
+		return
+	}
+
+	if refusal != nil {
+		// Trust floor or out-of-scope refusal (verdict is zero-value).
+		_ = emitRefusal(c, *refusal)
+		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", refusal.Reason)
+		return
+	}
+
+	// Verdict path. chunks=nil is safe: sourcePathFor returns the chunk
+	// ID itself when no chunk matches, so the citation badge in the UI
+	// still renders with the chunk ID as the title. The agent's
+	// chunkAccumulator is not exposed across the package boundary; a
+	// future Plan can lift it via an accessor if richer source-document
+	// metadata is needed.
+	_ = emitVerdictStream(c, v, nil)
+	s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "")
+}
+
+// writeAuditAndTurn persists the audit row + (user, assistant) session
+// turn pair. Called from runAgentPath on every response shape (verdict,
+// refusal, error). Both writes are best-effort: errors are logged and
+// swallowed because the response has already streamed (T-3-AUDIT-WRITE
+// accept disposition). The audit row carries the SHA-256 prompt_hash
+// (T-3-HASH) so cross-run reproducibility is structurally guaranteed.
+//
+// modelVersion is hard-coded "glm-5.2" for Phase 3 (the only supported
+// model). Phase 5 lifts this to a Deps field when multi-model routing
+// arrives. refusalReason is "" for the verdict path, or the refusal
+// code ("no_authorized_source" / "internal_error" / ...) otherwise.
+func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason string) {
+	if s.Store == nil {
+		return
+	}
+	const modelVersion = "glm-5.2"
+	verdictJSON := ""
+	chunkIDs := ""
+	if refusalReason == "" {
+		if b, err := json.Marshal(v); err == nil {
+			verdictJSON = string(b)
+		}
+		ids := make([]string, 0, len(v.Citations))
+		for _, cit := range v.Citations {
+			ids = append(ids, cit.ChunkID)
+		}
+		chunkIDs = strings.Join(ids, ",")
+	}
+	row := store.AuditRow{
+		Timestamp:     time.Now().UTC(),
+		SessionID:     sessionID,
+		SkillID:       skillID,
+		Query:         query,
+		PromptHash:    computePromptHash(skillNameForHash, modelVersion),
+		ModelVersion:  modelVersion,
+		VerdictJSON:   verdictJSON,
+		RefusalReason: refusalReason,
+		ChunkIDs:      chunkIDs,
+	}
+	if _, err := s.Store.PutAudit(ctx, row); err != nil {
+		log.Printf("[WARN] server: audit write (sess=%s): %v (response already streamed; non-fatal)", sessionID, err)
+	}
+	assistantContent := verdictJSON
+	if refusalReason != "" {
+		assistantContent = refusalReason
+	}
+	if err := s.Store.AppendTurn(ctx, sessionID,
+		store.SessionMessage{Role: "user", Content: query, Ts: time.Now().UTC()},
+		store.SessionMessage{Role: "assistant", Content: assistantContent, Ts: time.Now().UTC()},
+	); err != nil {
+		log.Printf("[WARN] server: session turn append (sess=%s): %v (response already streamed; non-fatal)", sessionID, err)
+	}
+}
+
+// newSessionID generates a fresh 32-char hex session ID (128 bits of
+// entropy from crypto/rand — ASVS V6 / T-3-SESSIONID). On the
+// exceedingly-rare crypto/rand.Read failure we fall back to a
+// timestamp-suffixed counter ID — the request MUST NOT abort over a
+// session-id generation failure (degraded mode is preferable to a 500).
+func newSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback: 16 hex chars of timestamp + 16 hex chars of counter.
+		// NOT cryptographically strong, but uniqish under a single
+		// process restart. The branch is exercised only on a broken
+		// /dev/urandom — production deployment should fail loud
+		// elsewhere when that is the case.
+		var fallback [16]byte
+		binaryTime := uint64(time.Now().UnixNano())
+		for i := 0; i < 8; i++ {
+			fallback[i] = byte(binaryTime >> (i * 8))
+		}
+		cnt := sessionIDFallbackCounter.Add(1)
+		for i := 0; i < 8; i++ {
+			fallback[8+i] = byte(cnt >> (i * 8))
+		}
+		return hex.EncodeToString(fallback[:])
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// sessionIDFallbackCounter backs the crypto/rand-failure branch of
+// newSessionID. Kept as an atomic so concurrent fallback calls still
+// produce distinct IDs.
+var sessionIDFallbackCounter atomic.Uint64
+
+// emitDecision writes one data-decision SSE chunk for the supplied
+// DecisionPayload. The chatHandler wraps this in a closure that
+// captures the per-request *app.RequestContext and binds it into the
+// agent via internal/agent.WithRunEmit (see runAgentPath).
+//
+// Marshal failure returns a non-nil error (the caller is the agent's
+// callback goroutine; the agent logs and continues — a malformed
+// payload should never block the agent loop).
+func emitDecision(c *app.RequestContext, p wire.DecisionPayload) error {
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("marshal decision: %w", err)
+	}
+	return wire.EmitChunk(c, wire.UIMessageChunk{Type: "data-decision", Data: payload})
+}
+
+// computePromptHash returns the SHA-256 hex digest of (skillName +
+// modelVersion). GEVL-03 reproducibility — given the same Skill +
+// model, the hash is byte-identical across runs, so cross-run
+// comparison of audit rows with the same prompt_hash guarantees the
+// same Skill+model produced the verdict. The system-prompt body is
+// NOT hashed in Phase 3 because the agent's prompt (agent.go:systemPrompt)
+// is a compile-time constant — Phase 5 (hot-reloadable Skill-driven
+// prompts) lifts the rendered prompt body into the hash input.
+func computePromptHash(skillName, modelVersion string) string {
+	h := sha256.New()
+	h.Write([]byte(skillName))
+	h.Write([]byte(modelVersion))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // findSkill returns the manifest for name in deps.Loader.Skills(), or

@@ -300,6 +300,50 @@ var _ tool.BaseTool = (tool.InvokableTool)(nil)
 // a.react across Runs.
 type accCtxKey struct{}
 
+// emitCtxKey is the context.Value key that carries a per-Run DecisionEmitFunc
+// override. Plan 03-05's chatHandler uses this to bind a per-request emitter
+// that closes over the current *app.RequestContext WITHOUT rebuilding the
+// agent — the same ctx-injection pattern as accCtxKey above (compose.Graph
+// construction is expensive; ctx-injection lets us reuse the cached react
+// agent across concurrent Runs).
+//
+// Resolution rule in Run: the ctx override takes precedence over the
+// AgentConfig.Emit field. When neither is set, Run runs silently (batch
+// mode for Plan 03-06 eval sidecar). When both are set (e.g., a test that
+// constructs the agent with Emit AND injects via ctx), the ctx value wins
+// — this mirrors how Go's ctx cancellation propagates: closer-to-the-call
+// wins.
+//
+// Plan 03-05 Rule 3 deviation: the original plan assumed DecisionEmitFunc
+// was `func(p wire.DecisionPayload) error` and that Emit could be re-bound
+// per request via a simple field assignment. Both assumptions were wrong
+// against the actual Plan 03-03 contract (signature is 5 positional args;
+// Emit is set once at NewAgent and shared across all Runs). The ctx-value
+// override is the minimum-pollution fix that preserves the existing
+// AgentConfig.Emit API for the Plan 03-06 batch path while enabling the
+// Plan 03-05 SSE streaming path.
+type emitCtxKey struct{}
+
+// WithRunEmit returns a new ctx that overrides AgentConfig.Emit for ONE
+// Run call. The chatHandler uses this to inject a per-request emitter
+// that closes over the current *app.RequestContext:
+//
+//	emitClosure := agent.DecisionEmitFunc(func(step int, decision, ...) {
+//	    _ = emitDecision(c, wire.DecisionPayload{Step: step, Decision: decision, ...})
+//	})
+//	ctx = agent.WithRunEmit(ctx, emitClosure)
+//	v, refusal, err := ag.Run(ctx, sessionID, query)
+//
+// Passing nil emit clears the override (Run falls back to AgentConfig.Emit).
+// Passing emit on a ctx that already has an override replaces it (last-write
+// wins, mirroring context.WithValue semantics).
+func WithRunEmit(ctx context.Context, emit DecisionEmitFunc) context.Context {
+	if emit == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, emitCtxKey{}, emit)
+}
+
 // Run is the production entry point (Plan 03-05's chat handler calls
 // this). It executes the ReAct agent loop end-to-end, applies the
 // trust floor + grounding checker + optional critique, and returns
@@ -340,6 +384,14 @@ func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdi
 	acc := NewChunkAccumulator()
 	ctx = context.WithValue(ctx, accCtxKey{}, acc)
 
+	// Resolve the effective emit: ctx override (per-Run, Plan 03-05 SSE
+	// path) takes precedence over the construction-time AgentConfig.Emit
+	// (Plan 03-06 batch path). See emitCtxKey godoc for the rationale.
+	emit := a.cfg.Emit
+	if override, ok := ctx.Value(emitCtxKey{}).(DecisionEmitFunc); ok && override != nil {
+		emit = override
+	}
+
 	msgs := buildAgentMessages(query, a.cfg.Manifest)
 
 	// Build compose options. The decision callback is optional (nil
@@ -348,9 +400,9 @@ func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdi
 	// kept inline here so a future spike finding lands in ONE file.
 	var composeOpts []compose.Option
 	var sc *stepCounter
-	if a.cfg.Emit != nil {
+	if emit != nil {
 		var handler callbacks.Handler
-		handler, sc = newDecisionCallback(a.cfg.Emit)
+		handler, sc = newDecisionCallback(emit)
 		if handler != nil {
 			composeOpts = append(composeOpts, compose.WithCallbacks(handler))
 		}
@@ -377,8 +429,8 @@ func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdi
 	// is authoritative; if it fires, we discard whatever the agent
 	// produced and return a structured Refusal).
 	if refusal := ApplyTrustFloor(acc, query, a.cfg.Manifest.ResolvedTiers()); refusal != nil {
-		if a.cfg.Emit != nil {
-			a.cfg.Emit(0, DecisionRefuse, "", query, 0.0)
+		if emit != nil {
+			emit(0, DecisionRefuse, "", query, 0.0)
 		}
 		return verdict.Verdict{}, refusal, nil
 	}
@@ -392,7 +444,7 @@ func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdi
 	if err := json.Unmarshal([]byte(stripJSONDelim(raw)), &v); err != nil {
 		// Emit a forced_stop decision if we hit MaxStep mid-tool-call
 		// (the model bailed without producing a clean final answer).
-		emitForcedStop(a.cfg.Emit, sc)
+		emitForcedStop(emit, sc)
 		return verdict.Verdict{}, nil, fmt.Errorf("agent run: parse verdict: %w (raw: %s)", err, truncate(raw, 200))
 	}
 
