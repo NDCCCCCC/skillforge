@@ -1,9 +1,9 @@
 ---
-status: partial
+status: complete
 phase: 05-skill-platform-full-knowledge-boundaries
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md, 05-04-SUMMARY.md, 05-05-SUMMARY.md, 05-06-SUMMARY.md, 05-UI-SPEC.md]
 started: 2026-08-12T13:46:53Z
-updated: 2026-08-12T23:51:00Z
+updated: 2026-08-13T00:25:00Z
 verification_mode: automated (chrome-devtools MCP) + backend HTTP (:8888) + unit-test evidence
 dev_url: http://localhost:5173/ (Vite dev) → mock chat transport; backend http://localhost:8888 (Hertz, real data)
 constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks verified via direct /api/chat + unit tests, not live dev UI
@@ -11,7 +11,7 @@ constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks ver
 
 ## Current Test
 
-[testing paused — 3 items outstanding (Tests 9–11); 3 issues found: #2 right-panel IA (major), #4 graph chunk-content (major), #7 hot-reload toast signal severed (major). Plus OOS-1 verdict-parse bug (blocker, for /gsd-debug). Resume with `/gsd-verify-work 5` — first pending test is #9 (Wizard Commit closed loop).]
+[testing complete — 11/11 resolved: 7 pass, 4 issues (#2 right-panel IA, #4 graph chunk-content, #7 hot-reload toast, #9 wizard commit registration BLOCKER). OOS-1 verdict-parse bug logged for /gsd-debug. Diagnosis + gap-closure planning deferred to fresh session (context-limited).]
 
 ## Tests
 
@@ -64,22 +64,44 @@ evidence: Drove full flow via chrome-devtools. Wizard mode entered correctly (Sk
 
 ### 9. Skill Wizard — Commit Closed Loop (SC-3 / D5-11)
 expected: 确认并保存到 skills/{name}/SKILL.md → atomic write → success toast "Skill 已创建：{name}。已注册并热加载。" + path. fsnotify picks it up → appears in Skill Manager / routable. THE PLATFORM THESIS closed loop.
-result: [pending]
+result: issue
+sub_passed: Atomic write OK (skills/expense-audit/SKILL.md, 1088 bytes, valid YAML, all 7 fields match preview); success toast fired EXACTLY as spec — "Skill 已创建：expense-audit。已注册并热加载。" + full path; wizard exited cleanly → chat session restored.
+reported: "Closed loop BROKEN at registration step. Toast claims '已注册并热加载' but the new skill is NOT registered: absent from GET /api/skills (only 企业合规/制度审查 returned; '通用问答' appears in Skill Manager UI but NOT in /api/skills → it is FE/built-in injected, not registry-backed), absent from Skill Manager dropdown, and NOT picked up even after clicking 全部重载 (manual reload) — /api/skills still 1 skill, 0 expense-audit. Routability unconfirmed: POST /api/chat {skill:expense-audit} returned a no_authorized_source refusal, but that is consistent with fallback to the default compliance skill, not proof of routing. The platform thesis (write Skill file → agent adapts, no code change) is defeated for the wizard creation path — a wizard-created skill is dead-on-arrival until (likely) a server restart."
+severity: blocker
+root_cause_candidate: "Registration never happens for wizard-created skills. Three signals all negative: (1) fsnotify auto-reload did not register it (file written 23:59, /api/skills checked across 30+ s — never appears); (2) explicit 全部重载 (reload-all) ALSO did not register it; (3) not in Skill Manager. So the backend registry is not picking up skills/expense-audit/SKILL.md via any live path. Strongest hypothesis: registry rescan does not walk newly-created skill subdirectories (watches only paths known at startup, or reload re-scans a fixed set), AND the wizard commit handler writes the file but does not itself call registry.Reload()/rescan. The FE toast is fired optimistically on HTTP 200 from the commit endpoint without verifying registration — a false '已注册并热加载' claim. NOTE: distinct from Issue #7 — #7 is the FE→BE notification BRIDGE for EXISTING-skill reloads (SSE 404 / no version field); Test 9 is the BACKEND never registering a NEW skill at all. They may share the shaky hot-reload subsystem but are separate failure modes. Server-restart registration UNTESTED (left running per UAT constraint)."
+artifacts_to_investigate:
+  - "internal/server/skills.go — wizard commit handler: does it call registry reload after writing SKILL.md?"
+  - "internal/skill/registry.go — Reload()/scan: does it walk skills/*/SKILL.md dynamically, or only re-load a fixed known set?"
+  - "fsnotify watcher setup: does it add watches for new subdirs created under skills/?"
+  - "FE toast trigger (wizard commit response handler): fires on 200 without polling /api/skills to confirm"
+evidence: "GET /api/skills → only 企业合规/制度审查 (1 skill) before AND after 全部重载; grep '审查员工报销申请' = 0. Skill Manager dropdown: 企业合规/制度审查 + 通用问答 only, no expense-audit. File on disk: skills/expense-audit/SKILL.md valid. Test skill dir left in place for diagnosis (registration failed, so not installed in registry); clean up after diagnosis."
+test_skill_cleanup_pending: true
 
 ### 10. Skill Wizard — Cancel Dialog + Path-Traversal Guard (SC-3 / T-5-16)
 expected: 取消向导 → alert dialog "放弃当前进度？..." with 放弃 (danger) + 继续向导. Malformed purpose ("../etc/passwd" / "Foo Bar!") rejected at 400 (extractSkillName before LLM) with FE hint.
-result: [pending]
+result: pass
+evidence: |
+  PART A (cancel dialog): clicked 取消向导 at step 0/5 → alertdialog (role=alertdialog, modal) rendered with heading 「放弃当前向导？」 + body 「放弃当前进度？当前进度（0/5 步已回答）将丢失，无法恢复。」 + buttons 继续向导 (safe, auto-focused) + 放弃 (destructive). Progress counter (0/5) shown. Clicked 放弃 → wizard exited cleanly, right panel restored to normal chat session, ChatInput placeholder reverted from wizard mode. Cancel flow works end-to-end. (WizardCancelDialog.tsx component + WizardCancelDialog.test.tsx.)
+  PART B (path-traversal guard T-5-16): verified at the BACKEND gate (authoritative). Direct probe POST /api/skills/wizard {"answers":{"purpose":"../etc/passwd"}} → HTTP 400 + {"error":"the purpose \"../etc/passwd\" did not yield a usable Skill name (must contain English letters/digits, e.g. \"compliance-audit\")"}. extractSkillName (internal/server/wizard_name.go) truncates at the first '.' sentence-terminator → empty slug → error, BEFORE any LLM call (wizardHandler line 165-168 returns 400 before Wizard.Generate at line 171). FE hint is wired: requestPreview (useWizard.ts:182-185) does setError(body.error) and renders it on a 400 at 生成预览. NOTE: validation fires at 生成预览, not step 0 — by design (FE collects 5 answers locally; backend is the authoritative name+write gate, so no security gap: ../etc/passwd can never reach disk because wizardCommitHandler also re-validates name via skillNamePatternForWizard + resolved-path checks). No LLM cost on malicious input.
 
 ### 11. Routing Trace + Counter-Evidence + Redline (SC-1 / SC-6 / SC-7)
 expected: Chat emits data-decision routing trace (skillScores + selected/ambiguous) inline; on 不合规/需补充 emits counter-evidence (CounterEvidenceCard — 历史 conflict + disclaimer) + redline (RedlineCard — 原条款/建议改写/修改理由 + copy/download). 合规 → NO redline (0 LLM calls, D5-14). (Mock can't trigger; verify via POST /api/chat :8888 + FE unit suites.)
-result: [pending]
+result: pass
+via: alt path (same methodology as Test 6 — MockChatTransport dev limitation; real chat-stream features verified via direct /api/chat + FE unit suites)
+evidence: |
+  SC-1 (routing trace): real backend POST /api/chat emits data-decision routing trace LIVE — confirmed twice this session (Test 6 follow-up + the expense-audit routability probe): stream = data-decision{step:0,decision:answer} → data-decision{step:0,decision:refuse,query} → data-policy{reason:no_authorized_source,...} → finish-step. RoutingTracePart.test.tsx 7/7 pass.
+  SC-6 (counter-evidence): CounterEvidenceCard.test.tsx 9/9 pass — disclaimer rendered VERBATIM (T-5-27 load-bearing), one row per conflict chunk w/ teal tier badge + snippet, empty-state copy, click→setCenterView, D5-13 FE moat (props declare ONLY conflictChunks, no citations). Real 不合规/需补充 verdict path NOT live-verifiable (BLOCKED by OOS-1 — verdict parse fails before a non-refusal verdict can render); deferred to post-OOS-1-fix.
+  SC-7 (redline): RedlineCard.test.tsx 12/12 pass (原条款/建议改写/修改理由 + copy/download). Real-verdict path likewise blocked by OOS-1; deferred.
+  Refusal path (refuse verdict): works end-to-end — RefusalCard.test.tsx 8/8 + live /api/chat no_authorized_source observed.
+  Full FE suite: 29 files / 193 tests pass (exit 0).
+  CAVEAT: SC-6/SC-7 counter-evidence + redline on a REAL compliant/non-compliant verdict cannot be live-verified until OOS-1 (GLM fenced-JSON parse, /gsd-debug) is fixed. Components proven correct by unit suites + routing/refusal trace proven live; only the end-to-end non-refusal-verdict rendering is unobserved.
 
 ## Summary
 
 total: 11
-passed: 5
-issues: 3
-pending: 3
+passed: 7
+issues: 4
+pending: 0
 skipped: 0
 blocked: 0
 
@@ -132,6 +154,27 @@ blocked: 0
     - "Register GET /api/skills/events SSE endpoint that emits skill-reloaded events on fsnotify reload (primary path), AND/OR"
     - "Serialize registry.Entry.Version into the GET /api/skills response (e.g. wrap Manifest in {manifest, version}) so the polling fallback diff can detect increments."
     - "Ensure failure path (broken YAML → status:'failed', version:'old-kept') is observable: poller currently only emits status:'ok' (line 125); without SSE the failure toast is unreachable."
+  debug_session: ""  # Filled by diagnosis
+
+- truth: "A skill created via the Skill Wizard, on 确认并保存, is written to disk, AND registered + hot-loaded so it immediately appears in Skill Manager and is routable — the platform-thesis closed loop (write Skill file → agent adapts, no code change)."
+  status: failed
+  reason: "User-path observed: commit wrote skills/expense-audit/SKILL.md (valid, 1088 bytes, all 7 fields) and fired the 'Skill 已创建：expense-audit。已注册并热加载。' toast, but the skill is NOT registered — absent from GET /api/skills (1 skill only), absent from Skill Manager dropdown, and NOT picked up even after manual 全部重载. The '已注册并热加载' toast is a false claim. A wizard-created skill is dead-on-arrival until (likely) a server restart."
+  severity: blocker
+  test: 9
+  root_cause: ""     # Filled by diagnosis
+  artifacts:
+    - path: "internal/server/skills.go"
+      issue: "wizard commit handler — verify whether it calls registry reload/rescan after writing SKILL.md (suspected: it does not)"
+    - path: "internal/skill/registry.go"
+      issue: "Reload/scan — verify whether it dynamically walks skills/*/SKILL.md or only re-loads a fixed known set (suspected: new subdirs missed)"
+    - path: "fsnotify watcher setup"
+      issue: "verify whether watches are added for newly-created subdirs under skills/ (classic fsnotify gap)"
+    - path: "web/src — wizard commit response handler"
+      issue: "toast fires optimistically on HTTP 200 without confirming registration via /api/skills"
+  missing:
+    - "Wizard commit handler must trigger a registry rescan that includes the newly-created skills/<name>/ directory (or fsnotify must watch new subdirs)."
+    - "Confirm registration before showing the success toast — poll /api/skills or have the commit endpoint return the registered entry; on failure show an error toast, not '已注册并热加载'."
+    - "Decide whether 通用问答 (in Skill Manager UI but not /api/skills) is a FE-injected built-in — if so, document; it muddies the 'installed skills' contract."
   debug_session: ""  # Filled by diagnosis
 
 ## Findings (out of Phase 5 scope — for /gsd-debug, NOT Phase 5 gap closure)
