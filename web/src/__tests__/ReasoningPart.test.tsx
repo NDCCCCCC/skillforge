@@ -23,7 +23,7 @@ function makePart(overrides: Partial<ReasoningPartType> = {}): ReasoningPartType
   return {
     type: 'reasoning',
     text: 'thinking through the policy lookup...',
-    state: 'complete',
+    state: 'done',
     ...overrides,
   };
 }
@@ -66,12 +66,12 @@ describe('ReasoningPart', () => {
   });
 
   it('appends 生成中... suffix when streamingAnswer=true and part is complete', () => {
-    render(<ReasoningPart part={makePart({ state: 'complete' })} streamingAnswer />);
+    render(<ReasoningPart part={makePart({ state: 'done' })} streamingAnswer />);
     expect(screen.getByTestId('reasoning-preview')).toHaveTextContent('生成中...');
   });
 
   it('omits the suffix when part.state is complete and no streamingAnswer', () => {
-    render(<ReasoningPart part={makePart({ state: 'complete' })} />);
+    render(<ReasoningPart part={makePart({ state: 'done' })} />);
     const preview = screen.getByTestId('reasoning-preview');
     expect(preview).toHaveTextContent('推理');
     expect(preview.textContent).not.toMatch(/推理中|生成中/);

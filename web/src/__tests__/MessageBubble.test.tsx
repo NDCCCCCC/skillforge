@@ -36,7 +36,7 @@ describe('MessageBubble', () => {
       role: 'assistant',
       parts: [
         { type: 'text', text: 'Hello.' },
-        { type: 'reasoning', text: 'thinking...', state: 'complete' },
+        { type: 'reasoning', text: 'thinking...', state: 'done' },
         {
           type: 'source-url',
           sourceId: 'c1',
@@ -51,6 +51,7 @@ describe('MessageBubble', () => {
         },
         {
           type: 'dynamic-tool',
+          toolName: 'dynamic-tool',
           toolCallId: 'tc1',
           state: 'output-available',
           input: { query: 'foo' },
@@ -86,7 +87,7 @@ describe('MessageBubble', () => {
       id: 'm1',
       role: 'assistant',
       parts: [
-        { type: 'reasoning', text: 'reasoning content', state: 'complete' },
+        { type: 'reasoning', text: 'reasoning content', state: 'done' },
         { type: 'text', text: 'answer content' },
       ],
     };
@@ -180,6 +181,7 @@ describe('MessageBubble', () => {
       parts: [
         {
           type: 'dynamic-tool',
+          toolName: 'dynamic-tool',
           toolCallId: 'tc1',
           state: 'output-available',
           input: { q: 'x' },
