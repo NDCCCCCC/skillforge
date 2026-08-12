@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -173,6 +174,74 @@ func TestLoader_ScanFindsMultipleSkills(t *testing.T) {
 	// Both should be present (description is identical in our fixture,
 	// but the count is the load-bearing assertion).
 	assert.Contains(t, names, "Test Skill. Trigger phrase test.")
+}
+
+// TestLoader_ScanStampsManifestNameFromParentDir — UAT Test 9 regression
+// helper: Scan MUST stamp Manifest.Name with the parent-directory basename
+// (skills/<name>/SKILL.md → Name="<name>"). The wizard commit handler
+// relies on this to verify that a freshly-committed Skill landed in the
+// Loader's rescanned cache; without it, Registered would always be false
+// and the FE toast would never fire.
+func TestLoader_ScanStampsManifestNameFromParentDir(t *testing.T) {
+	tmp := t.TempDir()
+	writeSkillFile(t, filepath.Join(tmp, "compliance"), nil)
+	writeSkillFile(t, filepath.Join(tmp, "qa"), nil)
+
+	l := NewLoader(tmp)
+	skills, err := l.Scan()
+	require.NoError(t, err)
+	require.Len(t, skills, 2)
+
+	gotNames := map[string]bool{}
+	for _, s := range skills {
+		gotNames[s.Name] = true
+	}
+	assert.True(t, gotNames["compliance"],
+		"Manifest.Name MUST be stamped from the parent dir basename; got %v", gotNames)
+	assert.True(t, gotNames["qa"],
+		"Manifest.Name MUST be stamped from the parent dir basename; got %v", gotNames)
+}
+
+// TestLoader_ScanAndSkillsConcurrentNoRace — UAT Test 9 regression: the fix
+// made Loader.Scan reachable from a request handler (wizard commit rescan)
+// while GET /api/skills reads Loader.Skills from another handler goroutine.
+// This hammers Scan (writer) and Skills (reader) concurrently. Run under
+// `go test -race` — it FAILS (data race on cached) if anyone removes the
+// RWMutex added alongside the Test 9 fix.
+func TestLoader_ScanAndSkillsConcurrentNoRace(t *testing.T) {
+	tmp := t.TempDir()
+	writeSkillFile(t, filepath.Join(tmp, "compliance"), nil)
+
+	l := NewLoader(tmp)
+	if _, err := l.Scan(); err != nil {
+		t.Fatalf("prime scan: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	const writers, readers, iterations = 4, 8, 300
+
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				if _, err := l.Scan(); err != nil {
+					t.Errorf("scan: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	for r := 0; r < readers; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				_ = l.Skills()
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestLoader_ScanRejectsSymlinkEscape(t *testing.T) {

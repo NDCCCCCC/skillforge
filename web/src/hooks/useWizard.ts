@@ -228,8 +228,27 @@ export function useWizard(): UseWizardReturn {
         setPhase('previewing');
         return;
       }
+      // UAT Test 9 regression: gate the success toast on `registered`,
+      // NOT on `ok`. `ok=true` only confirms the file landed on disk;
+      // `registered=true` confirms GET /api/skills now lists the new
+      // Skill without a server restart. Firing the toast on `ok` alone
+      // produced a false "已注册并热加载" claim when the rescan missed
+      // (e.g. Loader nil in some server modes, or a transient FS race).
+      // When `ok=true` but `registered` is not confirmed, we surface an
+      // accurate error instead and stay in the preview phase so the user
+      // can retry or restart the server.
+      if (!body.registered) {
+        setError(
+          body.error ||
+            'Skill 已写入磁盘，但注册未确认（请稍后重试，或重启服务后再试）。',
+        );
+        setPhase('previewing');
+        return;
+      }
       // Dispatch a CustomEvent so the success toast (mounted above the
       // ThreePanel) can render Skill 已创建：{skillName}。已注册并热加载。
+      // The claim is now truthful: `registered=true` means GET /api/skills
+      // returns the new Skill.
       const detail = { skillName: preview.name, path: body.path };
       window.dispatchEvent(new CustomEvent('wizard-success', { detail }));
 

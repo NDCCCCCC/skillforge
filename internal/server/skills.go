@@ -61,12 +61,26 @@ type wizardCommitRequest struct {
 }
 
 // wizardCommitResponse carries the absolute path of the written file
-// (the fsnotify watcher in Plan 05-01 picks it up automatically; no
-// explicit rescan call). Path is empty on any failure.
+// plus a Registered flag the FE gates its "已注册并热加载" toast on.
+//
+// Registration contract (D5-11 closed loop, fix for UAT Test 9):
+//   - OK=true means the atomic write succeeded.
+//   - Registered=true means the new Skill also appears in the Loader's
+//     rescanned cache — i.e. GET /api/skills will list it WITHOUT a
+//     server restart. This is what the FE's success toast claims, so the
+//     FE MUST gate the toast on Registered (not OK).
+//   - When OK=true but Registered=false, the file landed on disk but the
+//     rescan did not confirm registration (Loader nil OR rescan error OR
+//     the new name did not appear). The FE surfaces an accurate error
+//     instead of the misleading "已注册并热加载" toast.
+//   - SkillsTotal is the post-rescan count; the FE may use it for
+//     telemetry / a "now N skills" subtitle.
 type wizardCommitResponse struct {
-	OK    bool   `json:"ok"`
-	Path  string `json:"path"`
-	Error string `json:"error,omitempty"`
+	OK          bool   `json:"ok"`
+	Path        string `json:"path"`
+	Registered  bool   `json:"registered"`
+	SkillsTotal int    `json:"skillsTotal,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // listSkillsHandler implements GET /api/skills (SYSK-01 HTTP layer).
@@ -182,9 +196,18 @@ func (s *Deps) wizardHandler(ctx context.Context, c *app.RequestContext) {
 // wizardCommitHandler implements POST /api/skills/wizard/commit. It
 // validates the previewed Manifest (third gate), refuses to overwrite
 // an existing skills/<name>/SKILL.md (fourth gate, W-1), writes the
-// file atomically (write-temp + rename), and returns the absolute path.
-// The fsnotify watcher (Plan 05-01) picks up the new file automatically
-// — no explicit rescan call (D5-11 closed loop).
+// file atomically (write-temp + rename), then SYNCHRONOUSLY rescans
+// the Loader so the new Skill is immediately visible to GET /api/skills
+// and the chat routing path — WITHOUT a server restart.
+//
+// Registration contract (D5-11 closed loop, fix for UAT Test 9):
+// the previous implementation relied on a fsnotify watcher that was
+// never wired in production (cmd/server/main.go does not construct
+// Deps.Registry). The handler now owns registration explicitly: after
+// the atomic write it calls s.Loader.Scan() and verifies req.Name
+// appears in the rescanned cache. The response's Registered flag is
+// the FE's signal that GET /api/skills now lists the new Skill; the FE
+// gates its "已注册并热加载" toast on Registered, not OK.
 //
 // Status codes:
 //   - 400 + {error:"..."} when the body is malformed or the name
@@ -193,8 +216,10 @@ func (s *Deps) wizardHandler(ctx context.Context, c *app.RequestContext) {
 //     exists (W-1). The operator must pick a different name or remove
 //     the existing directory explicitly — silent overwrite is forbidden.
 //   - 503 + {error:"..."} when Wizard is not initialized.
-//   - 200 + {ok:true, path} on success. Path is the absolute path the
-//     fsnotify watcher observed.
+//   - 200 + {ok:true, registered, path} on success. Registered=false on
+//     OK=true means the file was written but the rescan did not confirm
+//     registration (Loader nil OR rescan error OR new name absent);
+//     the FE must surface an accurate error instead of the success toast.
 func (s *Deps) wizardCommitHandler(ctx context.Context, c *app.RequestContext) {
 	if s.Wizard == nil {
 		c.JSON(http.StatusServiceUnavailable, wizardCommitResponse{
@@ -232,5 +257,35 @@ func (s *Deps) wizardCommitHandler(ctx context.Context, c *app.RequestContext) {
 		c.JSON(http.StatusOK, wizardCommitResponse{OK: false, Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, wizardCommitResponse{OK: true, Path: path})
+
+	// Synchronous registration: re-walk skills/ via the Loader so the
+	// new Skill appears in GET /api/skills immediately (no server
+	// restart, no fsnotify dependency — fixing UAT Test 9). If the
+	// Loader is nil (existing tests, or a server mode that bypasses
+	// listing) we report Registered=false so the FE does not fire the
+	// false "已注册并热加载" toast. A rescan that drops the new name
+	// (e.g. temporary filesystem race) also yields Registered=false with
+	// a non-empty Error so the operator can retry.
+	resp := wizardCommitResponse{OK: true, Path: path}
+	if s.Loader != nil {
+		manifests, scanErr := s.Loader.Scan()
+		if scanErr != nil {
+			resp.Error = "skill written to " + path + " but rescan failed: " + scanErr.Error()
+			c.JSON(http.StatusOK, resp)
+			return
+		}
+		resp.SkillsTotal = len(manifests)
+		for _, m := range manifests {
+			if m != nil && m.Name == req.Name {
+				resp.Registered = true
+				break
+			}
+		}
+		if !resp.Registered {
+			resp.Error = "skill written to " + path + " but its name (" + req.Name + ") was not found in the rescanned Loader cache"
+		}
+	} else {
+		resp.Error = "skill written to " + path + " but no Loader is wired; registration not confirmed"
+	}
+	c.JSON(http.StatusOK, resp)
 }

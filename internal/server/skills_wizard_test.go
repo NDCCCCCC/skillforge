@@ -424,6 +424,116 @@ func TestWizardCommitHandler_RefusesExistingSkillWith409(t *testing.T) {
 		"the refused commit must not mutate the existing SKILL.md")
 }
 
+// TestWizardCommitHandler_RegistersAndRefreshesLoader — UAT Test 9
+// regression: after a successful commit, the new Skill MUST be visible
+// to GET /api/skills WITHOUT a server restart. The handler now calls
+// Loader.Scan() synchronously after the atomic write and verifies the
+// new name landed in the cache; Registered=true is the FE's signal that
+// the "已注册并热加载" toast is truthful.
+//
+// The test stands up both a real Wizard and a real Loader against the
+// same temp dir (mirrors cmd/server/main.go wiring), registers BOTH
+// the commit route AND the GET /api/skills route, POSTs a commit, and
+// asserts:
+//   - response.OK == true AND response.Registered == true
+//   - response.SkillsTotal == 1 (the freshly-committed skill)
+//   - GET /api/skills immediately after returns 1 skill whose
+//     description matches the committed preview
+//
+// Pre-fix behavior was: OK=true, Registered=(field did not exist), and
+// GET /api/skills returned [] because the Loader's startup cache was
+// never refreshed.
+func TestWizardCommitHandler_RegistersAndRefreshesLoader(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Loader + Wizard share the same skills dir — same as cmd/server.
+	loader := skill.NewLoader(tmp)
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	require.Empty(t, loader.Skills(), "freshly-scanned empty skills dir must yield 0 skills")
+
+	deps := newTestDeps()
+	deps.Loader = loader
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+
+	// Stand up BOTH routes so we can drive the full closed loop in one test.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	h := server.Default(server.WithListener(ln))
+	h.POST("/api/skills/wizard/commit", deps.wizardCommitHandler)
+	h.GET("/api/skills", deps.listSkillsHandler)
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.Run() }()
+	defer func() { _ = h.Close(); <-errCh }()
+	addr := "127.0.0.1:" + portStr(port)
+
+	preview := &skill.Manifest{}
+	require.NoError(t, json.Unmarshal([]byte(wizardValidManifestJSON), preview))
+	body, err := json.Marshal(wizardCommitRequest{Name: "expense-audit", Preview: preview})
+	require.NoError(t, err)
+
+	// 1. POST commit → OK + Registered (the load-bearing assertion).
+	code, resp := postWizardCommit(t, addr, string(body))
+	require.Equal(t, http.StatusOK, code, "commit error=%s", resp.Error)
+	require.True(t, resp.OK, "atomic write must succeed: error=%s", resp.Error)
+	require.True(t, resp.Registered,
+		"after-fix contract: Registered MUST be true when the rescan finds the new name; error=%s", resp.Error)
+	assert.Equal(t, 1, resp.SkillsTotal, "the rescan should see exactly the 1 freshly-committed skill")
+	assert.NotEmpty(t, resp.Path)
+
+	// 2. GET /api/skills — the new skill is now listed WITHOUT a restart.
+	gList, gCode := getSkillsFromAddr(t, addr)
+	require.Equal(t, http.StatusOK, gCode)
+	require.Len(t, gList, 1,
+		"GET /api/skills MUST list the freshly-committed skill without a server restart")
+	assert.Contains(t, gList[0]["description"], "审批流", "the listed skill must be the one we just committed")
+	assert.Equal(t, "ChatModelAgent", gList[0]["agent"])
+}
+
+// TestWizardCommitHandler_RegisteredFalseWhenLoaderNil — defensive:
+// when Deps.Loader is nil (existing 503-fallback test config + any
+// future server mode that bypasses listing), the commit still writes
+// the file (OK=true) but reports Registered=false with a non-empty
+// Error so the FE does not fire the false "已注册并热加载" toast.
+func TestWizardCommitHandler_RegisteredFalseWhenLoaderNil(t *testing.T) {
+	tmp := t.TempDir()
+	deps := newTestDeps() // Loader is nil
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	addr, cleanup := newWizardHertz(t, deps)
+	defer cleanup()
+
+	preview := &skill.Manifest{}
+	require.NoError(t, json.Unmarshal([]byte(wizardValidManifestJSON), preview))
+	body, err := json.Marshal(wizardCommitRequest{Name: "no-loader-skill", Preview: preview})
+	require.NoError(t, err)
+
+	code, resp := postWizardCommit(t, addr, string(body))
+	require.Equal(t, http.StatusOK, code)
+	require.True(t, resp.OK, "file write succeeds even without a Loader")
+	assert.False(t, resp.Registered,
+		"Registered MUST be false when no Loader is wired — the toast must NOT fire on this path")
+	assert.NotEmpty(t, resp.Error,
+		"a non-empty Error guides the FE to the accurate 'written but not registered' toast copy")
+	assert.Contains(t, resp.Error, "Loader")
+}
+
+// getSkillsFromAddr issues GET /api/skills against a running test server
+// and returns the decoded list. Mirrors the helper in skills_test.go but
+// is local to the wizard test file so the closed-loop regression test is
+// self-contained.
+func getSkillsFromAddr(t *testing.T, addr string) ([]map[string]any, int) {
+	t.Helper()
+	resp, err := http.Get("http://" + addr + "/api/skills")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var out []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &out), "GET /api/skills body: %s", string(raw))
+	return out, resp.StatusCode
+}
+
 // TestWizardRoutes_Registered — regression: both wizard routes MUST be
 // wired into the default New() server. A grep-style regression check
 // that exercises the route table without standing up the wizard deps.

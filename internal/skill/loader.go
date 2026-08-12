@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -49,8 +50,9 @@ import (
 // ~40 lines of fragile frontmatter handling. Loader.Scan still walks the
 // directory at startup; Watch lives on Registry (a separate type).
 type Loader struct {
-	skillsDir string      // absolute path; rejected-against root for symlinks
-	cached    []*Manifest // populated by Scan
+	skillsDir string       // absolute path; rejected-against root for symlinks
+	cached    []*Manifest  // populated by Scan; guarded by mu
+	mu        sync.RWMutex // guards cached: Scan (wizard-commit rescan, request goroutine) writes; Skills (GET /api/skills, request goroutine) reads. Required since the UAT Test 9 fix made Scan reachable post-startup.
 }
 
 // NewLoader constructs a Loader rooted at skillsDir. The directory is
@@ -65,7 +67,13 @@ func NewLoader(skillsDir string) *Loader {
 // Skills returns the most recently scanned slice of validated manifests.
 // Order is filesystem-walk order (sorted by WalkDir's lexical traversal).
 // Returns nil if Scan has not been called yet.
+//
+// Concurrent-safe: takes the read lock because Scan is now reachable from
+// a request handler (wizard commit rescan, UAT Test 9) while other request
+// handlers read this slice via GET /api/skills.
 func (l *Loader) Skills() []*Manifest {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	return l.cached
 }
 
@@ -124,13 +132,27 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 			return err
 		}
 		m.resolvedTiers = tiers
+		// Stamp the parent-dir basename onto the parsed manifest so
+		// downstream consumers (the wizard commit handler verifying a
+		// freshly-committed skill landed in the cache; future hot-reload
+		// paths) can match a Manifest back to its on-disk name without
+		// re-walking the directory. The directory layout contract
+		// (skills/<name>/SKILL.md) guarantees this is the canonical id.
+		// Benign for existing callers: Manifest.Name is yaml:"-" json:"-".
+		m.Name = filepath.Base(filepath.Dir(path))
 		out = append(out, m)
 		return nil
 	})
 	if walkErr != nil {
 		return nil, walkErr
 	}
+	// Publish the rebuilt slice. The filesystem walk runs lock-free (no
+	// contention on disk I/O); only the field swap is guarded. Scan assigns
+	// a fresh slice rather than appending, so a concurrent Skills() reader
+	// holding the previous slice finishes iterating it undisturbed.
+	l.mu.Lock()
 	l.cached = out
+	l.mu.Unlock()
 	return out, nil
 }
 

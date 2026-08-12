@@ -177,7 +177,12 @@ describe('useWizard', () => {
         json: async () => ({ preview: VALID_PREVIEW, name: 'compliance-audit' }),
       } as unknown as Response)
       .mockResolvedValueOnce({
-        json: async () => ({ ok: true, path: '/skills/compliance-audit/SKILL.md' }),
+        json: async () => ({
+          ok: true,
+          registered: true,
+          skillsTotal: 2,
+          path: '/skills/compliance-audit/SKILL.md',
+        }),
       } as unknown as Response);
     vi.stubGlobal('fetch', fetchMock);
 
@@ -207,6 +212,56 @@ describe('useWizard', () => {
     expect(onSuccess).toHaveBeenCalled();
     const detail = (onSuccess.mock.calls[0][0] as CustomEvent).detail;
     expect(detail).toMatchObject({ skillName: 'compliance-audit' });
+
+    window.removeEventListener('wizard-success', onSuccess);
+  });
+
+  it('commit DOES NOT fire wizard-success when ok=true but registered is false (UAT Test 9)', async () => {
+    // Regression: when the BE wrote the file (ok=true) but could not
+    // confirm registration (registered=false — e.g. Loader nil, rescan
+    // failed, or the new name did not appear), the FE MUST NOT fire the
+    // 'wizard-success' event (whose toast text claims "已注册并热加载").
+    // The hook surfaces an accurate error instead and stays in the
+    // previewing phase so the user can retry.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () => ({ preview: VALID_PREVIEW, name: 'compliance-audit' }),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        json: async () => ({
+          ok: true,
+          registered: false,
+          path: '/skills/compliance-audit/SKILL.md',
+          error: 'skill written but no Loader is wired; registration not confirmed',
+        }),
+      } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onSuccess = vi.fn();
+    window.addEventListener('wizard-success', onSuccess);
+
+    const { result, rerender } = renderHook(() => useWizard());
+    act(() => {
+      useAppStore.getState().setWizardMode({ active: true, step: 1, totalSteps: 5 });
+    });
+    rerender();
+    await act(async () => {
+      await result.current.requestPreview();
+    });
+    rerender();
+    await act(async () => {
+      await result.current.commit();
+    });
+    rerender();
+
+    expect(
+      onSuccess,
+      'the false "已注册并热加载" toast MUST NOT fire when registered is false',
+    ).not.toHaveBeenCalled();
+    expect(result.current.phase).toBe('previewing');
+    expect(result.current.error).toContain('registration not confirmed');
+    expect(useAppStore.getState().wizardMode.active).toBe(true);
 
     window.removeEventListener('wizard-success', onSuccess);
   });

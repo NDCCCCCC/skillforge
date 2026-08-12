@@ -102,8 +102,20 @@ export interface WizardPreviewResponse {
 
 /** BE response shape for POST /api/skills/wizard/commit. */
 export interface WizardCommitResponse {
+  /** True when the atomic write succeeded (the file is on disk). */
   ok: boolean;
-  /** Absolute path of the file the fsnotify watcher observed. */
+  /** Absolute path of the written file. */
   path: string;
+  /**
+   * True when the new Skill is also confirmed registered in the Loader's
+   * rescanned cache — i.e. GET /api/skills now lists it WITHOUT a server
+   * restart. The FE MUST gate its "已注册并热加载" success toast on this
+   * flag (NOT on `ok`) so the toast text is truthful by construction
+   * (UAT Test 9 regression).
+   */
+  registered?: boolean;
+  /** Post-commit Skill count (the FE may use it for telemetry / subtitles). */
+  skillsTotal?: number;
+  /** Non-empty on any failure (write error, validation, registration not confirmed). */
   error?: string;
 }
