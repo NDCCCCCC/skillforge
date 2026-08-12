@@ -3,7 +3,7 @@ status: complete
 phase: 04-streaming-trust-ui
 source: [04-01-SUMMARY.md, 04-02-SUMMARY.md, 04-03-SUMMARY.md, 04-UI-SPEC.md]
 started: 2026-08-11T20:50:00Z
-updated: 2026-08-11T22:05:00Z
+updated: 2026-08-12T03:40:00Z
 verification_mode: automated (chrome-devtools MCP) + unit-test evidence
 dev_url: http://localhost:5177/ (Vite v5.4.21)
 ---
@@ -100,3 +100,16 @@ blocked: 0
   resolution: "Fixed in `e757d6e` — Tabs primitive gained optional controlled `value` prop (backward compatible); CenterPanel binds `value={activeTabValue(centerView.kind)}`. +1 regression test `tab indicator follows programmatic setCenterView` covers both skill-md and chunk-source paths. Re-verified in-browser (chrome-devtools MCP) on 2026-08-11: both programmatic paths flip the active tab indicator correctly. Suite 83/83 green."
   resolved_at: 2026-08-11T22:05:00Z
   debug_session: "closed — fix applied directly from the UAT diagnosis (root_cause + missing items were precise enough that no separate debug session was needed); see commit e757d6e."
+
+## Post-Completion Regression Check (2026-08-12)
+
+**Trigger:** `/gsd-verify-work 4` re-run. UAT was already `complete` (12/12, 2026-08-11); phase marked done in ROADMAP + STATE. User chose targeted regression check over full 12-test re-run.
+
+**Scope:** Only one `web/` commit landed after UAT completion — `0b43156 feat(03-01): add data-decision discriminator (Go + TS lockstep)` (+28 lines, `web/src/types/wire-types.ts` only). Adds `DecisionPayload` + a `data-decision` variant to the `SkillForgeChunk` union (D16 / ARAG-01 / SC-1 observability substrate). Type-only on the TS side; backend does not emit it yet (Plan 03-03 will).
+
+**Verification:**
+- Full frontend suite: **84/84 green** (was 83/83; +1 guard test below). Production build: PASS (411KB JS / 120KB gzip, 28KB CSS, 11s).
+- Dispatcher behavior confirmed by reading `MessageBubble.tsx`: `data-decision` is a declared union member with NO renderer case → the `default` arm runs, `'data-decision'.startsWith('tool-')` is `false` → `return null` (silently dropped, not crashed). AI-SDK-v7 older-client/newer-server forward-compat contract holds.
+- **+1 guard test added** — `MessageBubble.test.tsx` › "drops data-decision chunks gracefully (no renderer yet)": renders a message with a `data-decision` part + visible text, asserts the text shows and the decision payload (`retrieve` / query / confidence / testid) does NOT leak into the DOM. Distinct from the pre-existing generic "drops unknown part types silently" test because `data-decision` IS a declared `SkillForgeChunk` union member (just unhandled by the renderer), not a truly-unknown type.
+
+**Verdict:** Existing 12/12 UAT stands — no regression from `0b43156`. Phase 4 remains complete. (No browser/MCP re-verify needed: `data-decision` is unreachable via the UI today — no fixture or backend emits it — so the unit guard is the correct tool, matching how the original UAT pinned the other non-triggerable paths.)

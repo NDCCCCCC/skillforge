@@ -19,6 +19,8 @@
 //     isVerdict(), not the JSON-serializing placeholder.]
 //  6. Tool parts tool-${name} and dynamic-tool both render (Pitfall 3).
 //  7. Unknown part types render nothing (silently dropped per spec).
+//  8. data-decision chunks (Plan 03-01 wire variant, no renderer yet)
+//     drop gracefully — forward-compat: older UI tolerates newer wire.
 
 import { cleanup, render, screen } from '@testing-library/react';
 import type { UIMessage } from 'ai';
@@ -213,5 +215,42 @@ describe('MessageBubble', () => {
     render(<MessageBubble message={message} />);
     expect(screen.getByText('visible text')).toBeInTheDocument();
     expect(screen.queryByText('hidden')).toBeNull();
+  });
+
+  it('drops data-decision chunks gracefully (no renderer yet)', () => {
+    // data-decision was added to the SkillForgeChunk union in Plan 03-01
+    // (commit 0b43156) as the ARAG-01 / SC-1 per-hop decision substrate.
+    // The agent package (Plan 03-03) will emit it; no DataDecisionPart
+    // renderer exists yet. The dispatcher must silently drop it
+    // (default → return null) so an older UI tolerates the newer wire
+    // variant without crashing (AI SDK v7 older-client/newer-server
+    // forward-compat contract). Distinct from the generic "unknown drop"
+    // test above: data-decision IS a declared union member, just unhandled.
+    const message = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'visible answer' },
+        {
+          type: 'data-decision',
+          id: 'd1',
+          data: {
+            step: 1,
+            decision: 'retrieve',
+            toolCallId: 'tc1',
+            query: 'should-not-leak',
+            confidence: 0.42,
+          },
+        },
+      ],
+    } as unknown as UIMessage;
+
+    render(<MessageBubble message={message} />);
+    expect(screen.getByText('visible answer')).toBeInTheDocument();
+    // Decision payload must NOT leak into the rendered DOM.
+    expect(screen.queryByText('retrieve')).toBeNull();
+    expect(screen.queryByText('should-not-leak')).toBeNull();
+    expect(screen.queryByText('0.42')).toBeNull();
+    expect(screen.queryByTestId('data-decision')).toBeNull();
   });
 });
