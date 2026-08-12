@@ -21,6 +21,7 @@ import type { UIMessage } from 'ai';
 import DataPolicyPart from './parts/DataPolicyPart';
 import DataSubprogressPart from './parts/DataSubprogressPart';
 import ReasoningPart from './parts/ReasoningPart';
+import RoutingTracePart from './parts/RoutingTracePart';
 import { SourceDocumentPart } from './parts/SourceDocumentPart';
 import { SourceUrlPart } from './parts/SourceUrlPart';
 import { StepStartPart } from './parts/StepStartPart';
@@ -55,6 +56,21 @@ function renderPart(part: UIMessage['parts'][number], i: number): ReactNode {
       );
     case 'step-start':
       return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
+    case 'data-decision': {
+      // Plan 05-03 / SC-1 — only route / counter_evidence decisions render
+      // via RoutingTracePart. Other decision values (`retrieve`, `answer`,
+      // `refuse`, `forced_stop`) drop silently — they're consumed by the
+      // SC-4 AgentInspector panel (mounted in the center), not here.
+      const dp = (part as { data?: { decision?: string } }).data;
+      const decision = dp?.decision;
+      if (decision !== 'route' && decision !== 'counter_evidence') return null;
+      return (
+        <RoutingTracePart
+          key={i}
+          part={part as Parameters<typeof RoutingTracePart>[0]['part']}
+        />
+      );
+    }
     default:
       // For tool-${name} types we didn't pre-list (Pitfall 3), fall
       // through to ToolPart. Anything else silently drops per spec.
