@@ -19,6 +19,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -362,16 +363,16 @@ func TestWizard_Commit_RejectsInvalidManifest(t *testing.T) {
 
 	// Valid name + invalid manifest (no temperature).
 	m := &Manifest{
-		Name: "broken-skill",
+		Name:        "broken-skill",
 		Description: "broken test",
-		Agent: "ChatModelAgent",
-		Reads: []string{"authority/**"},
-		Writes: []string{},
-		Steps: "1. step",
+		Agent:       "ChatModelAgent",
+		Reads:       []string{"authority/**"},
+		Writes:      []string{},
+		Steps:       "1. step",
 		Guardrails: Guardrails{
-			Prohibitions: []string{"a", "b", "c"},
+			Prohibitions:           []string{"a", "b", "c"},
 			RequiredRefusalPhrases: []string{},
-			TierLimits: map[string][]string{},
+			TierLimits:             map[string][]string{},
 		},
 		Temperature: nil, // SYSK-08 violation
 	}
@@ -415,4 +416,77 @@ func TestWizard_Commit_FsnotifyPathClosesLoop(t *testing.T) {
 	name := skillNameFromPath(path)
 	assert.Equal(t, "qa-review", name,
 		"the fsnotify-driven reload path must derive the Skill name from the path")
+}
+
+// ---------------------------------------------------------------------------
+// TestWizard_Commit_RefusesExistingSkill — W-1 (Phase 5 review).
+// Commit MUST NOT silently overwrite an existing skills/<name>/SKILL.md.
+// The fsnotify watcher reloads the file the instant it is replaced, so a
+// silent overwrite would let a careless operator mutate the trust root
+// for the next verdict without any signal. The second commit returns
+// ErrSkillAlreadyExists (wrapped) and the originally-committed file is
+// preserved byte-for-byte.
+// ---------------------------------------------------------------------------
+func TestWizard_Commit_RefusesExistingSkill(t *testing.T) {
+	tmp := t.TempDir()
+	w := NewWizard(&stubWizardChatModel{}, tmp)
+
+	m := &Manifest{Name: "compliance-audit"}
+	require.NoError(t, json.Unmarshal([]byte(validWizardManifestJSON), m))
+	m.Name = "compliance-audit"
+
+	// First commit succeeds (file does not exist yet).
+	path1, err := w.Commit(context.Background(), m)
+	require.NoError(t, err)
+	require.NotEmpty(t, path1)
+
+	// Snapshot the originally-committed body so we can assert the second
+	// commit does NOT overwrite it.
+	originalBody, readErr := os.ReadFile(path1)
+	require.NoError(t, readErr)
+
+	// Second commit with the same name MUST refuse.
+	_, err = w.Commit(context.Background(), m)
+	require.Error(t, err, "Commit must refuse to overwrite an existing SKILL.md (W-1)")
+	assert.True(t, errors.Is(err, ErrSkillAlreadyExists),
+		"the error must wrap ErrSkillAlreadyExists so the HTTP layer can surface a 409; got %q", err.Error())
+	assert.Contains(t, err.Error(), "already exists",
+		"the error message must guide the operator (\"already exists\")")
+	assert.Contains(t, err.Error(), "compliance-audit",
+		"the error message must name the conflicting Skill")
+
+	// The originally-committed file is preserved byte-for-byte — the
+	// refusal runs BEFORE the temp-file + rename step.
+	afterBody, readErr := os.ReadFile(path1)
+	require.NoError(t, readErr)
+	assert.Equal(t, originalBody, afterBody,
+		"the refused commit must not mutate the existing SKILL.md")
+}
+
+// ---------------------------------------------------------------------------
+// TestWizard_Commit_AllowsOrphanDirectory — W-1 edge case.
+// An orphan skills/<name>/ directory (no SKILL.md, e.g. left by a
+// previously-failed commit) is NOT a signal that the Skill exists. Only
+// the SKILL.md file is. Commit must succeed in that case (MkdirAll is
+// idempotent), so a transient failure does not permanently block the name.
+// ---------------------------------------------------------------------------
+func TestWizard_Commit_AllowsOrphanDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	w := NewWizard(&stubWizardChatModel{}, tmp)
+
+	// Pre-create the Skill directory WITHOUT a SKILL.md (simulates a
+	// previously-failed commit that left an orphan dir).
+	orphanDir := filepath.Join(tmp, "compliance-audit")
+	require.NoError(t, os.MkdirAll(orphanDir, 0o755))
+
+	m := &Manifest{Name: "compliance-audit"}
+	require.NoError(t, json.Unmarshal([]byte(validWizardManifestJSON), m))
+	m.Name = "compliance-audit"
+
+	// Commit succeeds because SKILL.md does not exist — only the dir does.
+	path, err := w.Commit(context.Background(), m)
+	require.NoError(t, err,
+		"an orphan directory without SKILL.md must not block commit (only the file is the existence signal)")
+	require.NotEmpty(t, path)
+	assert.Equal(t, filepath.Join(orphanDir, "SKILL.md"), path)
 }

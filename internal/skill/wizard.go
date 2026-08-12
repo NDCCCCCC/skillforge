@@ -19,6 +19,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -236,8 +237,20 @@ func lastN(s string, n int) string {
 // relies on the name being a single safe token (no separators, no ..).
 var skillNamePattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 
+// ErrSkillAlreadyExists is returned by Commit when the target
+// skills/<name>/SKILL.md already exists. W-1 (Phase 5 review): the
+// wizard commit endpoint must NOT silently overwrite an existing Skill
+// — the trust root for compliance verdicts is the canonical
+// skills/<name>/SKILL.md file, and a careless re-commit (or a
+// network-reachable instance per CLAUDE.md's open-source deployment
+// posture) must not be able to replace it without an explicit signal.
+// The HTTP layer detects this via errors.Is and returns a 409-style
+// {ok:false, error:"..."} envelope so the FE can surface "pick a
+// different name" inline.
+var ErrSkillAlreadyExists = errors.New("skill already exists")
+
 // Commit atomically writes m to <skillsDir>/<m.Name>/SKILL.md and
-// returns the absolute path written. Three guards run before any disk
+// returns the absolute path written. Four guards run before any disk
 // write:
 //
 //  1. Skill name must match ^[a-z0-9-]+$ — first gate against path
@@ -248,6 +261,10 @@ var skillNamePattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 //     (V12 ASVS reuse from internal/skill/loader.go:158-178).
 //  3. The Manifest re-runs Validate — third gate (D5-11 closed-loop
 //     contract; an invalid manifest NEVER reaches disk).
+//  4. The target skills/<name>/SKILL.md must NOT already exist — fourth
+//     gate (W-1). Returns ErrSkillAlreadyExists so the HTTP layer can
+//     surface a 409-style "pick a different name" envelope. Default-deny
+//     per CLAUDE.md: the wizard never silently overwrites the trust root.
 //
 // The atomic write is write-temp + rename so the fsnotify watcher
 // (Plan 05-01) observes exactly one CREATE+WRITE+CHMOD burst followed
@@ -304,6 +321,28 @@ func (w *Wizard) Commit(ctx context.Context, m *Manifest) (string, error) {
 		return "", fmt.Errorf("wizard: Commit: resolved path %q escapes skills root %q", skillDir, skillsRoot)
 	}
 
+	// Fourth gate (W-1) — default-deny: refuse to overwrite an existing
+	// skills/<name>/SKILL.md. The fsnotify watcher reloads the file the
+	// instant it is replaced, so a silent overwrite would let a careless
+	// operator (or a network-reachable instance per CLAUDE.md's
+	// open-source deployment posture) mutate the trust root for the next
+	// verdict without any signal. The HTTP layer detects
+	// ErrSkillAlreadyExists via errors.Is and surfaces a 409-style
+	// envelope so the operator can pick a different name or remove the
+	// existing directory explicitly.
+	//
+	// We check the FILE (not the directory): an orphan
+	// skills/<name>/ directory left by a previously-failed commit is
+	// not a signal that the Skill exists — only the SKILL.md file is.
+	// MkdirAll below is idempotent and will reuse the existing dir.
+	finalPath := filepath.Join(skillDir, "SKILL.md")
+	if _, statErr := os.Stat(finalPath); statErr == nil {
+		return "", fmt.Errorf(
+			"wizard: Commit: skill %q already exists — pick a different name or remove the existing directory (%w)",
+			m.Name, ErrSkillAlreadyExists,
+		)
+	}
+
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		return "", fmt.Errorf("wizard: mkdir %s: %w", skillDir, err)
 	}
@@ -333,7 +372,6 @@ func (w *Wizard) Commit(ctx context.Context, m *Manifest) (string, error) {
 		return "", fmt.Errorf("wizard: close temp file: %w", err)
 	}
 
-	finalPath := filepath.Join(skillDir, "SKILL.md")
 	if err := os.Rename(tmpName, finalPath); err != nil {
 		return "", fmt.Errorf("wizard: atomic rename %s -> %s: %w", tmpName, finalPath, err)
 	}

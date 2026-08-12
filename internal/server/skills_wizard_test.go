@@ -379,6 +379,51 @@ func TestWizardCommitHandler_MissingPreviewReturns400(t *testing.T) {
 	assert.Contains(t, resp.Error, "preview is required")
 }
 
+// TestWizardCommitHandler_RefusesExistingSkillWith409 — W-1: committing
+// a Skill whose name already exists MUST return 409 Conflict with the
+// structured {ok:false, error:"..."} envelope. The originally-committed
+// file is preserved byte-for-byte (no silent overwrite). Distinguished
+// from the 200 + OK:false validation-failure path so the FE can surface
+// "pick a different name" inline.
+func TestWizardCommitHandler_RefusesExistingSkillWith409(t *testing.T) {
+	tmp := t.TempDir()
+	deps := newTestDeps()
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	addr, cleanup := newWizardHertz(t, deps)
+	defer cleanup()
+
+	preview := &skill.Manifest{}
+	require.NoError(t, json.Unmarshal([]byte(wizardValidManifestJSON), preview))
+	body, err := json.Marshal(wizardCommitRequest{Name: "compliance-audit", Preview: preview})
+	require.NoError(t, err)
+
+	// First commit succeeds.
+	code, resp := postWizardCommit(t, addr, string(body))
+	require.Equal(t, http.StatusOK, code)
+	require.True(t, resp.OK, "first commit must succeed: error=%s", resp.Error)
+
+	// Snapshot the original body so we can assert no overwrite.
+	originalBody, readErr := os.ReadFile(resp.Path)
+	require.NoError(t, readErr)
+
+	// Second commit with the same name MUST 409.
+	code2, resp2 := postWizardCommit(t, addr, string(body))
+	assert.Equal(t, http.StatusConflict, code2,
+		"a name collision is a Conflict (W-1), not a validation failure (200) or a malformed request (400)")
+	assert.False(t, resp2.OK, "the 409 envelope MUST carry OK=false")
+	assert.Empty(t, resp2.Path, "no path must be returned on the refusal path")
+	assert.Contains(t, resp2.Error, "already exists",
+		"the error message must guide the operator to pick a different name")
+	assert.Contains(t, resp2.Error, "compliance-audit",
+		"the error message must name the conflicting Skill")
+
+	// The originally-committed file is preserved byte-for-byte.
+	afterBody, readErr := os.ReadFile(resp.Path)
+	require.NoError(t, readErr)
+	assert.Equal(t, originalBody, afterBody,
+		"the refused commit must not mutate the existing SKILL.md")
+}
+
 // TestWizardRoutes_Registered — regression: both wizard routes MUST be
 // wired into the default New() server. A grep-style regression check
 // that exercises the route table without standing up the wizard deps.
@@ -390,7 +435,7 @@ func TestWizardRoutes_Registered(t *testing.T) {
 	// Both endpoints accept POST; they should respond (with 503 since
 	// Deps.Wizard is nil). A 404 would mean the route isn't registered.
 	for path, body := range map[string]string{
-		"/api/skills/wizard":       `{"answers":{"purpose":"x"}}`,
+		"/api/skills/wizard":        `{"answers":{"purpose":"x"}}`,
 		"/api/skills/wizard/commit": `{"name":"x","preview":{}}`,
 	} {
 		resp, err := http.Post("http://"+addr+path, "application/json", strings.NewReader(body))

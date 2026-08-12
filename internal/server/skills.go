@@ -19,6 +19,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -179,14 +180,18 @@ func (s *Deps) wizardHandler(ctx context.Context, c *app.RequestContext) {
 }
 
 // wizardCommitHandler implements POST /api/skills/wizard/commit. It
-// validates the previewed Manifest (third gate), writes the file
-// atomically (write-temp + rename), and returns the absolute path.
+// validates the previewed Manifest (third gate), refuses to overwrite
+// an existing skills/<name>/SKILL.md (fourth gate, W-1), writes the
+// file atomically (write-temp + rename), and returns the absolute path.
 // The fsnotify watcher (Plan 05-01) picks up the new file automatically
 // — no explicit rescan call (D5-11 closed loop).
 //
 // Status codes:
 //   - 400 + {error:"..."} when the body is malformed or the name
 //     fails the regex / resolved-path checks (T-5-16 + V12 ASVS).
+//   - 409 + {ok:false, error:"..."} when skills/<name>/SKILL.md already
+//     exists (W-1). The operator must pick a different name or remove
+//     the existing directory explicitly — silent overwrite is forbidden.
 //   - 503 + {error:"..."} when Wizard is not initialized.
 //   - 200 + {ok:true, path} on success. Path is the absolute path the
 //     fsnotify watcher observed.
@@ -215,6 +220,15 @@ func (s *Deps) wizardCommitHandler(ctx context.Context, c *app.RequestContext) {
 
 	path, err := s.Wizard.Commit(ctx, req.Preview)
 	if err != nil {
+		// W-1: a name collision is a Conflict, not a validation failure.
+		// The envelope shape ({ok:false, error:"..."}) matches the
+		// sibling wizardCommitResponse contract so the FE error-handling
+		// path is uniform; the 409 status lets the FE distinguish "name
+		// taken, pick another" from "manifest invalid, fix the preview".
+		if errors.Is(err, skill.ErrSkillAlreadyExists) {
+			c.JSON(http.StatusConflict, wizardCommitResponse{OK: false, Error: err.Error()})
+			return
+		}
 		c.JSON(http.StatusOK, wizardCommitResponse{OK: false, Error: err.Error()})
 		return
 	}
