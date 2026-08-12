@@ -1,7 +1,8 @@
 ---
 phase: 5
 slug: skill-platform-full-knowledge-boundaries
-status: draft
+status: approved
+reviewed_at: 2026-08-12
 shadcn_initialized: false
 preset: denova-dark-inline
 inherits_from: 04-UI-SPEC.md
@@ -146,7 +147,7 @@ All NEW user-facing copy is Simplified Chinese for domain surfaces; code-facing 
 | Routing-trace score row (non-selected) | `{skillName} · cos {score}` | Same shape; rendered in `--color-text-muted`. |
 | Ambiguity picker heading (D5-03, reuses SkillPicker) | `检测到歧义，请选择目标 Skill` | Appears when top-1 score low OR top-1/top-2 within delta (threshold calibrated per D2-15). |
 | Ambiguity picker CTA (per candidate) | `使用此 Skill` | Single-verb; mirrors Phase-4 `使用此提问` refusal-suggestion CTA pattern. |
-| Ambiguity picker dismiss | `取消` | Returns to default Skill; no routing forced. |
+| Ambiguity picker dismiss | `使用默认 Skill` | Returns to default Skill; no routing forced. Mirrors the per-candidate `使用此 Skill` CTA + states the fallback consequence (verb+noun, not a generic "Cancel"). |
 
 ### SC-2 — fsnotify hot reload (SYSK-04)
 
@@ -609,7 +610,7 @@ Per `05-CONTEXT.md` `<deferred>`. Recording here so the executor does not build 
 - [x] Dimension 5 Spacing: PASS — all tokens inherited multiples of 4; NO new spacing exceptions declared.
 - [x] Dimension 6 Registry Safety: PASS — shadcn official only (5 new blocks: accordion, command, progress, alert-dialog, sonner); no third-party; init task identified; graph browser explicitly NOT d3/react-flow.
 
-**Approval:** pending
+**Approval:** approved — verified by gsd-ui-checker (6/6 dimensions PASS, 2026-08-12)
 
 ---
 
