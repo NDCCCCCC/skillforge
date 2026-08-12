@@ -3,7 +3,7 @@ status: partial
 phase: 05-skill-platform-full-knowledge-boundaries
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md, 05-04-SUMMARY.md, 05-05-SUMMARY.md, 05-06-SUMMARY.md, 05-UI-SPEC.md]
 started: 2026-08-12T13:46:53Z
-updated: 2026-08-12T15:23:44Z
+updated: 2026-08-12T23:51:00Z
 verification_mode: automated (chrome-devtools MCP) + backend HTTP (:8888) + unit-test evidence
 dev_url: http://localhost:5173/ (Vite dev) → mock chat transport; backend http://localhost:8888 (Hertz, real data)
 constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks verified via direct /api/chat + unit tests, not live dev UI
@@ -11,7 +11,7 @@ constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks ver
 
 ## Current Test
 
-[testing paused — 6 items outstanding (Tests 6–11); 2 issues found: #2 right-panel IA (major), #4 graph chunk-content (major). Resume with `/gsd-verify-work 5` — first pending test is #6 (Agent Inspector).]
+[testing paused — 3 items outstanding (Tests 9–11); 3 issues found: #2 right-panel IA (major), #4 graph chunk-content (major), #7 hot-reload toast signal severed (major). Plus OOS-1 verdict-parse bug (blocker, for /gsd-debug). Resume with `/gsd-verify-work 5` — first pending test is #9 (Wizard Commit closed loop).]
 
 ## Tests
 
@@ -47,15 +47,20 @@ evidence: Graph chunk rows + ChunkSourceView show `当前有效` VersionBadge + 
 
 ### 6. Agent Inspector (SC-4)
 expected: Click Agent 状态 tab → Accordion hop tree derived from the latest assistant turn. Empty state 暂无 Agent 状态. With a streamed turn: hops grouped by data-decision step; active hop 2px primary left-border; tool calls expandable; reasoning collapsed; retrieval rows clickable. (messages via props, NOT Zustand — D14.)
-result: [pending]
+result: pass
+evidence: User observed empty 暂无 Agent 状态 after assistant turn in dev UI — root cause is the documented MockChatTransport limitation (grep: no __fixtures__/*.json contains `data-decision`; deriveHops() in AgentInspector.tsx:52 keys solely off `data-decision` parts → always [] in dev). Same class as SC-1/6/7. SC-4 verified via the established alternative path: (1) real backend POST /api/chat {"query":"年假能跨年吗","skill":"企业合规/制度审查"} emits `data-decision` routing trace live (2× data-decision + data-policy + finish-step confirmed on :8888); (2) AgentInspector.test.tsx 8/8 pass — empty/loading states, multi-hop grouping (1 hop per data-decision step, data-hop-step/data-decision attrs), active-hop 2px primary left-border (border-l-4 border-l-primary; past hops border-l-transparent), counter-evidence teal badge, tool-call expand (no dangerouslySetInnerHTML), reasoning collapsed by default, retrieval chunk-ID buttons (dispatch setCenterView).
 
 ### 7. Hot-Reload Toast (SC-2 / D5-07/D5-08)
 expected: Touch/save a skills/<name>/SKILL.md on disk → within ~1s debounce a ReloadToast appears (success on valid change; validation-error toast on broken YAML, FS paths stripped). D5-08: validation failure keeps old snapshot.
-result: [pending]
+result: issue
+reported: "Empirical (automated chrome-devtools + fs): appended a valid change to skills/compliance/SKILL.md, waited 3.5s (>2s poll interval) → ZERO toasts appeared. Browser console shows `404 [38 times]` — EventSource hammering /api/skills/events which the backend never registered."
+severity: major
+root_cause_candidate: "Hot-reload SIGNAL PATH is severed end-to-end. (1) SSE: GET /api/skills/events is NOT registered (server.go:191-196 lists only chat/skills/wizard/graph) → EventSource reconnect storm → 404. (2) Polling fallback (useSkillReload.ts:120) diffs `item.version`, but GET /api/skills returns []*skill.Manifest (manifest.go:57-73 = the 7 schema fields, NO version). Version int64 lives only on registry.Entry (registry.go:58), bumped on reload (registry.go:333) but NEVER serialized to HTTP. So neither path delivers a reload event → toast never fires. NOTE: backend reload machinery itself works (fsnotify → registry Version bump → router cache invalidation); the FE toast UI is unit-tested in isolation. Only the BE→FE notification bridge is broken. Failure-toast path (broken YAML) is additionally unobservable: poller always emits status:'ok' (useSkillReload.ts:125), and SSE is dead."
 
 ### 8. Skill Wizard — NL Interview (SC-3 / SYSK-06)
 expected: Click 新建 Skill（向导）→ right panel enters wizard mode (header 步骤 {N}/5 + 取消向导; ChatInput 模式：Skill 向导). Answer 5 NL prompts (purpose/reads/type/guardrails/temperature). 生成预览 → POST /api/skills/wizard returns 7-field preview; center auto-switches to Skill 定义.
-result: [pending]
+result: pass
+evidence: Drove full flow via chrome-devtools. Wizard mode entered correctly (Skill 向导 · 步骤 0/5 → 5/5, 取消向导 btn, ChatInput 模式：Skill 向导). 5 Chinese answers collected (purpose w/ ASCII token "expense-audit ...", reads=权威, skillType=合规审查, guardrails=中文, temp=0.0). 生成预览 → POST /api/skills/wizard (reqid 4132) → 200, returned full 7-field preview: description, agent=ChatModelAgent, reads=[authority/**], writes=[], 4-step steps, 5 prohibitions, temperature=0, name=expense-audit. FE rendered preview in center Skill 定义 area. LLM correctly normalized Chinese answers (合规审查→compliance, 权威→authority/**). NOTE: all-Chinese purpose w/o ASCII token is rejected by extractSkillName before LLM (T-5-16 guard, by design — confirmed in earlier probe).
 
 ### 9. Skill Wizard — Commit Closed Loop (SC-3 / D5-11)
 expected: 确认并保存到 skills/{name}/SKILL.md → atomic write → success toast "Skill 已创建：{name}。已注册并热加载。" + path. fsnotify picks it up → appears in Skill Manager / routable. THE PLATFORM THESIS closed loop.
@@ -72,9 +77,9 @@ result: [pending]
 ## Summary
 
 total: 11
-passed: 3
-issues: 2
-pending: 6
+passed: 5
+issues: 3
+pending: 3
 skipped: 0
 blocked: 0
 
@@ -107,3 +112,43 @@ blocked: 0
     - "Add a chunk-content fetch path (e.g. GET /api/knowledge/chunk/:id) OR have the graph browser hydrate ChunkSourceView content, so graph-browsed chunks display verbatim text."
     - "Decide SC-5 browse contract: is full-text view from the graph in-scope (needs content endpoint) or metadata-only (then chunk click should not promise a verbatim view)?"
   debug_session: ""  # Filled by diagnosis
+
+- truth: "Touching an installed skill file on disk (skills/<name>/SKILL.md) surfaces a ReloadToast in the UI within ~1s, for both valid changes (success) and broken YAML (validation error, paths stripped)."
+  status: failed
+  reason: "Empirical (automated): appended valid change to skills/compliance/SKILL.md, waited 3.5s → 0 toasts. Browser console: 404 [38 times] from EventSource hitting /api/skills/events."
+  severity: major
+  test: 7
+  root_cause_candidate: "Signal path severed end-to-end. SSE /api/skills/events is not registered (server.go:191-196) → 404 reconnect storm. Polling fallback (useSkillReload.ts:120) diffs item.version, but GET /api/skills returns []*skill.Manifest with NO version field (manifest.go:57-73); Version lives only on registry.Entry (registry.go:58), bumped but never serialized. Neither path delivers a reload event. Backend reload + FE toast UI each work in isolation; only the BE→FE bridge is broken."
+  artifacts:
+    - path: "internal/server/server.go"
+      issue: "Routes (lines 191-196) register no /api/skills/events SSE endpoint"
+    - path: "internal/server/skills.go"
+      issue: "listSkillsHandler returns []*skill.Manifest — no Version exposed"
+    - path: "internal/skill/manifest.go"
+      issue: "Manifest (lines 57-73) serializes only the 7 schema fields; no version json tag"
+    - path: "web/src/hooks/useSkillReload.ts"
+      issue: "Polling diff (line 120) keys off item.version which is always undefined in the response"
+  missing:
+    - "Register GET /api/skills/events SSE endpoint that emits skill-reloaded events on fsnotify reload (primary path), AND/OR"
+    - "Serialize registry.Entry.Version into the GET /api/skills response (e.g. wrap Manifest in {manifest, version}) so the polling fallback diff can detect increments."
+    - "Ensure failure path (broken YAML → status:'failed', version:'old-kept') is observable: poller currently only emits status:'ok' (line 125); without SSE the failure toast is unreachable."
+  debug_session: ""  # Filled by diagnosis
+
+## Findings (out of Phase 5 scope — for /gsd-debug, NOT Phase 5 gap closure)
+
+- id: OOS-1
+  title: "Real-backend verdict parse failure on GLM fenced-JSON (hidden by MockChatTransport)"
+  severity: blocker (core compliance-verdict value)
+  discovered_during: "Test 6 follow-up — user asked if dev UI uses mock data; confirmed MockChatTransport (App.tsx:49 hardcodes env=dev on Vite PROD flag, no .env override). Probed real POST /api/chat with UTF-8 query 员工年假有多少天 → agent ran retrieve→answer→forced_stop then emitted type:error."
+  evidence: |
+    curl POST /api/chat {"query":"员工年假有多少天","skill":"企业合规/制度审查"} →
+    errorText: "agent run: parse verdict: invalid character '`' after top-level value (raw: ```json\n{\n  "...)" → no text-delta / source-document emitted. Refusal path (no_authorized_source) works; the ANSWER path (compliant/non-compliant verdict) is broken.
+  root_cause_candidate: |
+    GLM wraps verdict JSON in ``` ```json ... ``` ``` fences. stripJSONDelim (internal/agent/callbacks.go:196) strips leading fence + lang tag + trailing fence, but the trailing fence is NOT fully removed in GLM's output → json.Unmarshal hits a backtick "after top-level value". Failing call site: internal/agent/agent.go:515 (parse verdict). Second site internal/server/pipeline.go:209.
+  artifacts:
+    - internal/agent/callbacks.go:196 (stripJSONDelim)
+    - internal/agent/agent.go:515,519 (verdict Unmarshal + error)
+    - internal/server/pipeline.go:209
+  impact_on_phase_5_uat: "Blocks live end-to-end verification of Test 11 (SC-1/6/7 routing trace + counter-evidence + redline all require a real verdict). Test 11 will fall back to /api/chat (refusal path is observable) + FE unit suites, same as Test 6."
+  resolution_route: "/gsd-debug (verdict pipeline is Phase 2-era; not a Phase 5 defect). DO NOT close under Phase 5 gap closure."
+  status: open
