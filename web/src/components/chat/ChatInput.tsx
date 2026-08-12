@@ -29,6 +29,16 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export interface ChatInputProps {
   onSend: (text: string) => void;
+  /** Optional mode label — when set, the Skill/currentSkill hint is
+   * replaced by the mode label (e.g. "模式：Skill 向导"). Plan 05-04. */
+  modeLabel?: string;
+  /** Disable the textarea + send button (e.g. while a preview fetch is
+   * in flight or the wizard is in the preview/commit phase). */
+  disabled?: boolean;
+  /** Show a small "busy" hint (replaces the send icon with a spinner
+   * when true; preserved so a future streaming wizard reply can show
+   * progress without churning the API). */
+  busy?: boolean;
 }
 
 interface AttachedFile {
@@ -39,7 +49,12 @@ interface AttachedFile {
 
 let fileIdCounter = 0;
 
-export default function ChatInput({ onSend }: ChatInputProps) {
+export default function ChatInput({
+  onSend,
+  modeLabel,
+  disabled = false,
+  busy = false,
+}: ChatInputProps) {
   const [text, setText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<AttachedFile[]>([]);
@@ -83,6 +98,8 @@ export default function ChatInput({ onSend }: ChatInputProps) {
   return (
     <div
       data-testid="chat-input"
+      data-mode={modeLabel ?? 'chat'}
+      data-busy={busy}
       onDragOver={(e) => {
         e.preventDefault();
         setIsDragging(true);
@@ -94,8 +111,15 @@ export default function ChatInput({ onSend }: ChatInputProps) {
         isDragging && 'chat-input-dragging',
       )}
     >
-      <div data-testid="chat-input-current-skill" className="text-xs text-text-muted mb-2 block">
-        {currentSkill ? `当前 Skill：${currentSkill.name}` : '未选择 Skill'}
+      <div
+        data-testid="chat-input-current-skill"
+        className="text-xs text-text-muted mb-2 block"
+      >
+        {modeLabel
+          ? `模式：${modeLabel}`
+          : currentSkill
+            ? `当前 Skill：${currentSkill.name}`
+            : '未选择 Skill'}
       </div>
 
       {files.length > 0 && (
@@ -128,15 +152,20 @@ export default function ChatInput({ onSend }: ChatInputProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入合规问题，或 @ 触发 file/skill，或拖放文件..."
-          className="w-full min-h-[96px] max-h-64 resize-y rounded-md border border-border bg-bg px-3 py-2 pr-12 text-base text-text leading-relaxed focus:outline-none focus:border-primary"
+          disabled={disabled}
+          placeholder={
+            modeLabel
+              ? '回答向导的问题…'
+              : '输入合规问题，或 @ 触发 file/skill，或拖放文件...'
+          }
+          className="w-full min-h-[96px] max-h-64 resize-y rounded-md border border-border bg-bg px-3 py-2 pr-12 text-base text-text leading-relaxed focus:outline-none focus:border-primary disabled:opacity-60"
           rows={3}
         />
         <button
           type="button"
           data-testid="chat-input-send"
           onClick={handleSend}
-          disabled={!text.trim()}
+          disabled={!text.trim() || disabled}
           aria-label="发送"
           className="absolute right-2 bottom-2 inline-flex items-center justify-center h-8 w-8 rounded-full bg-primary text-white disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
         >

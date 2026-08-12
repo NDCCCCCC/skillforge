@@ -24,6 +24,7 @@ import { useSkillReload } from './hooks/useSkillReload';
 import { isVerdict } from './types/verdict';
 import type { Verdict } from './types/verdict';
 import { createTransport } from './transport';
+import { useAppStore } from './store/app-store';
 
 interface AppProps {
   /** Optional seeded messages for tests (skips the live useChat hook). */
@@ -49,11 +50,28 @@ function LiveApp() {
   const transport = useMemo(() => createTransport(env), [env]);
   const { messages, sendMessage, status } = useChat({ transport });
   const [currentVerdict, setCurrentVerdict] = useState<Verdict | null>(null);
+  const lastCreatedSkill = useAppStore((s) => s.lastCreatedSkill);
+  const setLastCreatedSkill = useAppStore((s) => s.setLastCreatedSkill);
+  const clearLastCreatedSkill = useAppStore((s) => s.clearLastCreatedSkill);
 
   // Plan 05-03 — SC-2 hot-reload consumer. Mounted at the App root so
   // the subscription outlives route changes. Polling fallback disabled
   // in jsdom (the env is 'dev' and the SSE channel is mocked).
   useSkillReload();
+
+  // Plan 05-04 — SC-3 wizard success listener. The wizard hook fires
+  // 'wizard-success' as a window-level CustomEvent after a successful
+  // POST /api/skills/wizard/commit. We mirror it into the store so
+  // any consumer (toasts, status bar) can read it synchronously.
+  useEffect(() => {
+    function onSuccess(e: Event) {
+      const detail = (e as CustomEvent<{ skillName: string; path: string }>).detail;
+      if (!detail) return;
+      setLastCreatedSkill({ name: detail.skillName, path: detail.path, ts: Date.now() });
+    }
+    window.addEventListener('wizard-success', onSuccess);
+    return () => window.removeEventListener('wizard-success', onSuccess);
+  }, [setLastCreatedSkill]);
 
   // Walk messages in reverse, find the latest assistant message
   // carrying a data-policy part with a Verdict payload — that is the
@@ -92,6 +110,30 @@ function LiveApp() {
         }
       />
       <ReloadToast />
+      {lastCreatedSkill && (
+        <div
+          data-testid="wizard-success-toast"
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 right-4 z-40 rounded-md border border-status-compliant/40 bg-surface-2 px-4 py-3 shadow-lg"
+        >
+          <div className="flex items-center gap-2 text-xs font-semibold text-status-compliant">
+            <span>Skill 已创建：{lastCreatedSkill.name}。已注册并热加载。</span>
+          </div>
+          <div className="mt-1 font-mono text-[11px] text-text-muted">
+            {lastCreatedSkill.path}
+          </div>
+          <button
+            type="button"
+            data-testid="wizard-success-toast-close"
+            onClick={clearLastCreatedSkill}
+            className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-3"
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </>
   );
 }

@@ -16,6 +16,8 @@ import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
 import SessionPicker from '../chat/parts/SessionPicker';
 import SkillPicker from '../chat/parts/SkillPicker';
+import WizardMode from './WizardMode';
+import { useAppStore } from '../../store/app-store';
 
 const SUGGESTED_PROMPTS = [
   '这家公司的数据跨境是否符合《数据安全法》?',
@@ -32,8 +34,15 @@ export interface RightChatProps {
 export default function RightChat({ messages, status, onSend }: RightChatProps) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastStuckRef = useRef(true);
+  // Plan 05-04 — wizard mode swaps the chat header for the wizard
+  // header. The chat messages / ChatInput stay, but the user can no
+  // longer interact with them in wizard mode (WizardMode reuses the
+  // ChatInput component for answer capture, but routes through
+  // useWizard.submitAnswer, not onSend).
+  const wizardActive = useAppStore((s) => s.wizardMode.active);
 
   useEffect(() => {
+    if (wizardActive) return;
     const el = messagesRef.current;
     if (!el) return;
     // Auto-stick to bottom on new messages, but only if the user was
@@ -42,7 +51,7 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
     if (lastStuckRef.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, wizardActive]);
 
   function handleScroll() {
     const el = messagesRef.current;
@@ -50,6 +59,10 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
     const threshold = 32;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     lastStuckRef.current = distanceFromBottom <= threshold;
+  }
+
+  if (wizardActive) {
+    return <WizardMode />;
   }
 
   return (

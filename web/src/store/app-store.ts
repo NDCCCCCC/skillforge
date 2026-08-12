@@ -74,6 +74,12 @@ export interface AppState {
   wizardMode: WizardMode;
   skillReloadStatus: Record<string, SkillReloadEntry>;
   lastRouting?: { skillScores: SkillScore[]; ambiguous: boolean; selected?: string; ts: number };
+  // Plan 05-04 — SC-3 wizard success toast. Carries the Skill name +
+  // on-disk path so the success copy can quote both ("Skill 已创建：
+  // {name}。已注册并热加载。"). Set by App.tsx's wizard-success listener
+  // (the hook fires the event; the listener persists it for ReloadToast
+  // and any other consumers to read).
+  lastCreatedSkill?: { name: string; path: string; ts: number };
 }
 
 export interface AppActions {
@@ -87,6 +93,9 @@ export interface AppActions {
   setSkillReloadStatus(skillId: string, entry: SkillReloadEntry): void;
   clearSkillReloadStatus(skillId: string): void;
   setLastRouting(routing: { skillScores: SkillScore[]; ambiguous: boolean; selected?: string; ts: number }): void;
+  // Plan 05-04 — wizard success mirror
+  setLastCreatedSkill(s: { name: string; path: string; ts: number }): void;
+  clearLastCreatedSkill(): void;
 }
 
 const DEFAULT_LEFT_WIDTH = 260;
@@ -132,4 +141,6 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
       return { skillReloadStatus: next };
     }),
   setLastRouting: (routing) => set({ lastRouting: routing }),
+  setLastCreatedSkill: (s) => set({ lastCreatedSkill: s }),
+  clearLastCreatedSkill: () => set({ lastCreatedSkill: undefined }),
 }));
