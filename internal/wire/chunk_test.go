@@ -27,11 +27,18 @@
 // "data-decision" is not yet in ValidTypes. Subtests #2 ("snake_case")
 // and #3 ("round_trip") pass independently of the registry change but
 // are committed together as the contract surface.
+//
+// Plan 05-01 Task 1 (TDD): extends the wire contract — DecisionPayload
+// gains additive routing fields (D5-04) and the 18th wire type
+// `data-redline` is registered (D5-14). The D15 drift alarm (TS mirror
+// must stay in lockstep) is exercised by the TestValidTypes_Eighteen
+// counter + the npm tsc --noEmit gate run from the orchestrator.
 
 package wire
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,4 +94,111 @@ func TestDecisionChunkType(t *testing.T) {
 		assert.Equal(t, "retrieve", got.Data["decision"],
 			"decision field must survive the round-trip (D3-03 / SC-1 observability)")
 	})
+}
+
+// TestValidTypes_Eighteen — Plan 05-01 Task 1: count assertion on the
+// ValidTypes map. Phase 4 closed with 17 entries; Phase 5 adds exactly
+// ONE (`data-redline`, D5-14). The plan FORBIDS additional types (the
+// router/counter-evidence/redline-plan pipeline all use additive fields
+// on existing chunks, not new discriminators).
+//
+// RED phase: this test FAILS today because `data-redline` is not yet
+// in ValidTypes (counts 17, asserts 18). The GREEN commit registers
+// the 18th type.
+func TestValidTypes_Eighteen(t *testing.T) {
+	const expected = 18
+	assert.Equal(t, expected, len(ValidTypes),
+		"ValidTypes must hold exactly %d entries after Plan 05-01 (was 17, +1 for data-redline)", expected)
+	assert.True(t, ValidTypes["data-redline"],
+		"data-redline MUST be registered as the 18th wire type (D5-14)")
+	// Snake-case variant rejected — T-1-11 mitigation.
+	assert.False(t, ValidTypes["data_redline"],
+		"snake_case data_redline MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
+}
+
+// TestDecisionPayload_RouteFields — Plan 05-01 Task 1: DecisionPayload
+// round-trip with the additive D5-04 routing fields. The fields are
+// omitempty so non-routing decisions do not bloat the wire; a routing
+// decision carries the full skillScores slice + selected + ambiguous.
+//
+// RED phase: FAILS today because SkillScores/Selected/Ambiguous are
+// not yet on DecisionPayload.
+func TestDecisionPayload_RouteFields(t *testing.T) {
+	payload := DecisionPayload{
+		Step:     1,
+		Decision: "route",
+		SkillScores: []SkillScore{
+			{SkillID: "compliance", SkillName: "Compliance Review", Score: 0.91, Selected: true},
+			{SkillID: "policy-lookup", SkillName: "Policy Lookup", Score: 0.42, Selected: false},
+		},
+		Selected:   "compliance",
+		Ambiguous:  false,
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var got DecisionPayload
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t, "route", got.Decision,
+		"decision='route' MUST survive round-trip (D5-04)")
+	require.Len(t, got.SkillScores, 2,
+		"skillScores MUST round-trip with both entries intact (D5-04)")
+	assert.Equal(t, "compliance", got.SkillScores[0].SkillID)
+	assert.Equal(t, "Compliance Review", got.SkillScores[0].SkillName)
+	assert.InDelta(t, 0.91, got.SkillScores[0].Score, 1e-9)
+	assert.True(t, got.SkillScores[0].Selected)
+	assert.Equal(t, "policy-lookup", got.SkillScores[1].SkillID)
+	assert.False(t, got.SkillScores[1].Selected)
+	assert.Equal(t, "compliance", got.Selected,
+		"selected skill ID MUST survive round-trip (D5-04)")
+	assert.False(t, got.Ambiguous,
+		"ambiguous flag MUST round-trip (D5-04)")
+}
+
+// TestDecisionPayload_BackwardCompatible — Plan 05-01 Task 1: the
+// original 5-field DecisionPayload shape (no skillScores/selected/
+// ambiguous) MUST still unmarshal cleanly. Additive fields with
+// omitempty preserve backward compatibility; if the GREEN commit
+// accidentally made the new fields required, this test fails.
+func TestDecisionPayload_BackwardCompatible(t *testing.T) {
+	// Simulate a Phase-3/4 client (or stored decision JSON) that has
+	// only the 5 original fields.
+	raw := []byte(`{"step":2,"decision":"answer","toolCallId":"call_xyz","query":"差旅费","confidence":0.87}`)
+	var got DecisionPayload
+	require.NoError(t, json.Unmarshal(raw, &got),
+		"legacy 5-field DecisionPayload MUST still unmarshal (backward compatibility)")
+	assert.Equal(t, 2, got.Step)
+	assert.Equal(t, "answer", got.Decision)
+	assert.Equal(t, "call_xyz", got.ToolCallID)
+	assert.Equal(t, "差旅费", got.Query)
+	assert.InDelta(t, 0.87, got.Confidence, 1e-9)
+	assert.Empty(t, got.SkillScores,
+		"missing skillScores MUST decode to empty slice (NOT error)")
+	assert.Empty(t, got.Selected,
+		"missing selected MUST decode to empty string (NOT error)")
+	assert.False(t, got.Ambiguous,
+		"missing ambiguous MUST decode to false (NOT error)")
+}
+
+// TestDecisionPayload_NonRouteOmitsRoutingFields — Plan 05-01 Task 1:
+// non-routing decisions MUST NOT bloat the wire with empty routing
+// fields. omitempty on JSON tags is required; if a GREEN commit
+// forgets omitempty, this test fails because the wire payload carries
+// `"skillScores":null` etc.
+func TestDecisionPayload_NonRouteOmitsRoutingFields(t *testing.T) {
+	payload := DecisionPayload{
+		Step:     1,
+		Decision: "retrieve",
+		ToolCallID: "call_1",
+		Query:    "差旅费",
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	s := string(raw)
+	assert.False(t, strings.Contains(s, "skillScores"),
+		"non-routing decision MUST omit skillScores (omitempty required): %s", s)
+	assert.False(t, strings.Contains(s, `"selected"`),
+		"non-routing decision MUST omit selected (omitempty required): %s", s)
+	assert.False(t, strings.Contains(s, `"ambiguous"`),
+		"non-routing decision MUST omit ambiguous (omitempty required): %s", s)
 }
