@@ -210,6 +210,14 @@ func main() {
 	// behind the interfaces; Runner wraps the Eino Runner. Phase 3 adds
 	// Agent + Store so chatHandler can run the ReAct loop + persist audit
 	// rows + session turns (Plan 03-05).
+	//
+	// Wizard (Plan 05-04) is wired here so /api/skills/wizard + /commit
+	// are live in production. The wizard writes into the SAME skillsDir
+	// the Loader scans; the fsnotify-driven Registry (Plan 05-01) picks
+	// up the new file automatically and the chat path sees it on the
+	// next request — D5-11 closed loop. SkillsDir is intentionally the
+	// same string passed to skill.NewLoader("skills/") above so the
+	// "wizard wrote here, Loader reads there" contract holds.
 	deps := &server.Deps{
 		Loader:    loader,
 		Embedder:  emb,
@@ -217,14 +225,17 @@ func main() {
 		Runner:    &prodRunner{runner: runner, cm: cm},
 		Agent:     ag,
 		Store:     st,
+		Wizard:    skill.NewWizard(cm, "skills/"),
 	}
 
 	// 8. Hertz server (Pattern 1).
 	h := server.New(serverAddr, deps)
 	log.Printf("[OK] cmd/server: SkillForge listening on %s (backend=%s)", serverAddr, backendLabel)
-	log.Printf("     POST /api/chat       — verdict pipeline (verdict or structured refusal)")
-	log.Printf("     GET  /api/skills     — list loaded Skills")
-	log.Printf("     POST /api/skills     — dry-run Skill validator")
+	log.Printf("     POST /api/chat                — verdict pipeline (verdict or structured refusal)")
+	log.Printf("     GET  /api/skills              — list loaded Skills")
+	log.Printf("     POST /api/skills              — dry-run Skill validator")
+	log.Printf("     POST /api/skills/wizard       — SC-3 wizard (5-step interview -> preview)")
+	log.Printf("     POST /api/skills/wizard/commit — atomic write (fsnotify closes the loop)")
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()
