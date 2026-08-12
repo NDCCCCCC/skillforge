@@ -5,18 +5,18 @@ milestone_name: milestone
 current_phase: 03
 current_plan: "3 (just completed: 03-02)"
 status: executing
-last_updated: "2026-08-12T04:27:06.821Z"
+last_updated: "2026-08-12T04:49:21.950Z"
 progress:
   total_phases: 7
   completed_phases: 3
   total_plans: 17
-  completed_plans: 18
+  completed_plans: 19
   percent: 43
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-12
+**Last updated:** 2026-08-12 (Plan 04-04 gap-closure complete — Phase 4 TS-drift debt closed)
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
@@ -147,18 +147,19 @@ Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session ba
 | 04 (quick) | 260811-uaf | ~20m | CenterPanel tab-indicator ↔ centerView.kind sync — closed UAT #8 (83/83 green). See quick/260811-uaf-*-SUMMARY.md |
 | 03 | 01 | 7m | 2 TDD tasks / 4 commits / 5 files (2 created + 3 modified) — `data-decision` SSE chunk discriminator (Go `wire.ValidTypes` 16→17 + exported `DecisionPayload` + TS `SkillForgeChunk` variant) + `skill.TierEnumByValue`/`TierEnumValues` reverse-lookup helpers (additions only). ARAG-01/SC-1/KNOW-01 substrates unlocked. See 03-01-SUMMARY.md |
 | 03 | 02 | 18m | 3 TDD tasks / 3 commits / 8 files (6 created + 2 modified) — `internal/store.Store` interface + `SQLiteStore` default impl (modernc.org/sqlite@v1.56.0 pure-Go, no cgo). D11 mirror of retriever + mongo. audit INSERT+SELECT only (T-3-AUDIT); `QueryAudit` 100% `?`-parameterized (T-3-SQLI regression: DROP TABLE survives in 3 filter fields); SC-9 isolation at `WHERE session_id=?`; `AppendTurn` idempotent via UNIQUE+ON CONFLICT. GEVL-03/SC-7 + AGNT-05/SC-9 unlocked at store layer. See 03-02-SUMMARY.md |
+| 04 | 04 | 12m | 3 tasks / 3 commits / 6 modified — wire-contract TS realignment (gap closure, `requirements: []`). `cd web && npx tsc --noEmit` 21 → 0 errors; vitest 84/84; build 411.12 KB / 120.47 KB gzip (04-03 band). D15 alarm STRENGTHENED (`finishReason?: string` → `FinishReason`); Pitfall 1/3 guards preserved via string-cast; ToolPart toolName structural-type read; transport-swap `FixtureDrivenTransport` zero-arg contract. Closes Phase 4 TS-drift debt. See 04-04-SUMMARY.md |
 
 - Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering, now in progress
 - Requirements covered: 24 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08; Phase 3 03-01: +ARAG-01 substrate, +KNOW-01 substrate)
-- Frontend tests: 83/83 green (12 files); UAT 12/12
-- Plans run: 13 (4 Phase 1 + 4 Phase 2 incl. MONGO + 3 Phase 4 + 2 Phase 3)
-- Last plan: 03-02 (Wave 1) — commits 76787c2 + 3e24bda + 0810a7b
+- Frontend tests: 84/84 green (14 files); UAT 12/12; `cd web && npx tsc --noEmit` exit 0 (debt-free since 04-04)
+- Plans run: 14 (4 Phase 1 + 4 Phase 2 incl. MONGO + 4 Phase 4 incl. 04-04 gap-closure + 2 Phase 3)
+- Last plan: 04-04 (Phase 4 gap-closure) — commits d3ac4ed + 6857996 + e68b942
 
 ---
 
 ## Session Continuity
 
-**Resume point:** Plan 03-02 (internal/store Store interface + SQLite audit/session backend) is COMPLETE — 3/3 tasks, 3 TDD commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 (audit SQL-queryable, T-3-SQLI regression-locked) and AGNT-05/SC-9 (session_id SQL partitioning under -race) unlocked at the store layer. Next: run Wave 2 plans — Plan 03-03 (agent emits data-decision via Eino callbacks, consumes 03-01's `wire.DecisionPayload`) and Plan 03-04 (KNOW-02 indexer calls 03-01's `skill.TierEnumByValue`). Plan 03-05 (server wires `Store.PutAudit` + `GetSession` + `AppendTurn`) and Plan 03-06 (eval sidecar reads `AuditRow` for JSONL) also unblocked. Pre-existing Phase 4 TS errors (unrelated to 03-01) — logged in `.planning/phases/03-agentic-retrieval-trust-evaluation/deferred-items.md` — are now addressed by the planned **04-04 wire-contract realignment** (see `.planning/phases/04-streaming-trust-ui/04-04-PLAN.md`; gap-closure plan, `requirements: []`, checker-passed 2026-08-12).
+**Resume point:** Plan 03-02 (internal/store Store interface + SQLite audit/session backend) is COMPLETE — 3/3 tasks, 3 TDD commits (`76787c2` RED, `3e24bda` GREEN, `0810a7b` verify/harden). GEVL-03/SC-7 (audit SQL-queryable, T-3-SQLI regression-locked) and AGNT-05/SC-9 (session_id SQL partitioning under -race) unlocked at the store layer. Next: run Wave 2 plans — Plan 03-03 (agent emits data-decision via Eino callbacks, consumes 03-01's `wire.DecisionPayload`) and Plan 03-04 (KNOW-02 indexer calls 03-01's `skill.TierEnumByValue`). Plan 03-05 (server wires `Store.PutAudit` + `GetSession` + `AppendTurn`) and Plan 03-06 (eval sidecar reads `AuditRow` for JSONL) also unblocked. **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
 **Hot files this session:**
 
@@ -170,4 +171,4 @@ Plan: 3 of 6 (just completed 03-02 — Store interface + SQLite audit/session ba
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11. Plan 03-02 complete 2026-08-12.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11. Plan 03-02 complete 2026-08-12. Plan 04-04 (Phase 4 gap-closure, wire-contract TS realignment) complete 2026-08-12 — `cd web && npx tsc --noEmit` now exits 0; Phase 4 debt-free.*

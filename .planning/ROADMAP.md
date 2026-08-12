@@ -197,10 +197,10 @@
 | 1. Integration Spike & Trust Contract | 4/4 | Complete | 2026-08-11 |
 | 2. Compliance Vertical Slice | 2/4 | Executing | 02-01: 2026-08-11, 02-02: 2026-08-11 |
 | 3. Agentic Retrieval & Trust Evaluation | 1/6 | Executing | 03-01: 2026-08-11 |
-| 4. Streaming Trust UI | 3/3 | Complete | 2026-08-11 |
+| 4. Streaming Trust UI | 4/4 (incl. 04-04 gap-closure) | Complete | 2026-08-11 (04-04 debt-closure 2026-08-12) |
 | 5. Skill Platform & Full Knowledge Boundaries | 0/? | Not started | - |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
 | 7. Open-Source Release | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-11 after Phase 4 (Streaming Trust UI) completion — 3/3 waves, UAT 12/12, SECURITY verified*
+*Last updated: 2026-08-12 after Phase 4 (Streaming Trust UI) gap-closure plan 04-04 (wire-contract TS realignment: `cd web && npx tsc --noEmit` now exits 0). Phase 4 originally shipped 2026-08-11 — 3/3 waves, UAT 12/12, SECURITY verified / 0 open threats.*
