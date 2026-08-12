@@ -33,6 +33,7 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
       tier,
       version: meta.version,
       effectiveDate: meta.effectiveDate,
+      effectiveTo: null,
     });
   }, []);
 

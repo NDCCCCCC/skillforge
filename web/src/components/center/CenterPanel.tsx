@@ -147,6 +147,7 @@ export default function CenterPanel({ currentVerdict }: CenterPanelProps) {
             tier={centerView.tier as Tier}
             version={centerView.version}
             effectiveDate={centerView.effectiveDate}
+            effectiveTo={centerView.effectiveTo}
           />
         </div>
       );

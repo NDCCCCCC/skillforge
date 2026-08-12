@@ -14,14 +14,18 @@
 //     - `skill-md` → <SkillMdPreview>
 //   - tab clicks do NOT change centerView (read-only; Wave 3 wires
 //     CitationCluster click → setCenterView)
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import CenterPanel from '../components/center/CenterPanel';
 import { useAppStore } from '../store/app-store';
 import type { Verdict } from '../types/verdict';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const compliantVerdict: Verdict = {
   status: '合规',
@@ -55,6 +59,7 @@ describe('CenterPanel', () => {
         tier: '权威',
         version: 'v3.2',
         effectiveDate: '2026-01-15',
+        effectiveTo: null,
       },
     });
     render(<CenterPanel currentVerdict={null} />);
@@ -132,6 +137,7 @@ describe('CenterPanel', () => {
         tier: '权威',
         version: 'v3.2',
         effectiveDate: '2026-01-15',
+        effectiveTo: null,
       },
     });
     render(<CenterPanel currentVerdict={null} />);
@@ -146,10 +152,34 @@ describe('CenterPanel', () => {
     expect(screen.getByRole('tab', { name: 'Agent 状态' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('knowledge-graph kind mounts the empty-state placeholder (SC-5)', () => {
+  it('knowledge-graph kind mounts the empty-state hero when BE returns an empty corpus (SC-5)', async () => {
+    // Plan 05-05 replaced the placeholder with a real fetch-driven
+    // implementation. The browser reaches 'idle' on mount, fires a
+    // fetch, and renders 知识库为空 when the BE returns a corpus with
+    // 0 docs across all 4 tiers.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          tiers: [
+            { tier: '权威', docCount: 0, chunkCount: 0, docs: [] },
+            { tier: '历史', docCount: 0, chunkCount: 0, docs: [] },
+            { tier: '个人', docCount: 0, chunkCount: 0, docs: [] },
+            { tier: '草稿', docCount: 0, chunkCount: 0, docs: [] },
+          ],
+        }),
+      } as unknown as Response)),
+    );
+
     useAppStore.setState({ centerView: { kind: 'knowledge-graph' } });
     render(<CenterPanel currentVerdict={null} />);
-    expect(screen.getByTestId('knowledge-graph-empty')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '知识图谱' })).toHaveAttribute('aria-selected', 'true');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('knowledge-graph-empty')).toBeInTheDocument();
+    });
   });
 });

@@ -34,6 +34,14 @@ export type CenterView =
       tier: Tier;
       version: string | null;
       effectiveDate: string | null;
+      /**
+       * Plan 05-05 / SC-8 (CMPL-08) — epoch seconds when the chunk
+       * becomes superseded (filtered out of retriever results).
+       * Null = perpetual. The FilteredOutNotice banner renders ABOVE
+       * the body when the operator navigates to a superseded chunk
+       * from the graph browser.
+       */
+      effectiveTo: number | null;
     }
   | { kind: 'skill-md'; skillId: string }
   // Phase 5 — SC-4 inspector + SC-5 graph browser
