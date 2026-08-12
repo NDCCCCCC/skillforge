@@ -83,17 +83,52 @@ type UIMessageChunk struct {
 //
 // Field semantics:
 //   - Step:         1-indexed hop number (1 or 2 for max_hops=2).
-//   - Decision:     one of "retrieve" | "answer" | "refuse" | "forced_stop".
+//   - Decision:     one of "retrieve" | "answer" | "refuse" |
+//                   "forced_stop" | "route" | "counter_evidence".
+//                   The latter two were added in Plan 05-01 (D5-04) for
+//                   the skill-router observability surface.
 //   - ToolCallID:   links the decision to a specific tool invocation
 //                   (empty when Eino does not expose the id at OnStart).
 //   - Query:        the (possibly refined) query for a retrieve decision.
 //   - Confidence:   model-reported confidence for an answer decision.
+//   - SkillScores:  populated when Decision == "route"; ranked list of
+//                   candidate Skills with their cosine-similarity scores
+//                   and the Selected flag (exactly one entry has
+//                   Selected=true unless Ambiguous is true).
+//   - Selected:     the SkillID of the chosen Skill on a "route"
+//                   decision (empty for non-routing decisions).
+//   - Ambiguous:    true when the top-2 score gap is below the router's
+//                   confidence threshold and the agent defers to a
+//                   follow-up query; UI surfaces this as a clarification
+//                   prompt.
 type DecisionPayload struct {
-	Step       int     `json:"step"`                // 1-indexed hop number (1 or 2 for max_hops=2)
-	Decision   string  `json:"decision"`            // "retrieve" | "answer" | "refuse" | "forced_stop"
-	ToolCallID string  `json:"toolCallId,omitempty"`
-	Query      string  `json:"query,omitempty"`
-	Confidence float64 `json:"confidence,omitempty"`
+	Step        int         `json:"step"`                   // 1-indexed hop number (1 or 2 for max_hops=2)
+	Decision    string      `json:"decision"`               // "retrieve" | "answer" | "refuse" | "forced_stop" | "route" | "counter_evidence"
+	ToolCallID  string      `json:"toolCallId,omitempty"`
+	Query       string      `json:"query,omitempty"`
+	Confidence  float64     `json:"confidence,omitempty"`
+	SkillScores []SkillScore `json:"skillScores,omitempty"` // D5-04 — populated only on "route" decisions
+	Selected    string      `json:"selected,omitempty"`     // D5-04 — SkillID chosen on "route"
+	Ambiguous   bool        `json:"ambiguous,omitempty"`    // D5-04 — true when top-2 gap is below threshold
+}
+
+// SkillScore is one ranked candidate Skill in a DecisionPayload's
+// SkillScores slice. Used by the React SkillForgeInspector (Plan 05-04)
+// to render the router's confidence breakdown.
+//
+// Field semantics:
+//   - SkillID:   the directory name of the Skill (e.g. "compliance").
+//   - SkillName: human-readable name from Manifest.Description's first
+//                sentence (or the Skill directory name if absent).
+//   - Score:     cosine-similarity score from the embedder against the
+//                user's query (range [0.0, 1.0]; BGE-M3 default).
+//   - Selected:  exactly one entry in the slice has Selected=true
+//                unless the DecisionPayload.Ambiguous flag is true.
+type SkillScore struct {
+	SkillID   string  `json:"skillId"`
+	SkillName string  `json:"skillName"`
+	Score     float64 `json:"score"`
+	Selected  bool    `json:"selected"`
 }
 
 // ValidTypes enumerates the 17 kebab-case chunk types recognized by the
@@ -115,9 +150,16 @@ type DecisionPayload struct {
 // TS mirror at web/src/types/wire-types.ts MUST stay in lockstep per
 // the D15 two-PR drift invariant.
 //
-// Count: 17 types — text(3) + reasoning(3) + tool-input(3) +
+// Plan 05-01 adds `data-redline` (D5-14) — it carries the agent's
+// clause-level redline proposals (originalClause / proposedRewrite /
+// rationale / optional clauseId) emitted by the compliance Skill when
+// it rewrites a specific clause. The TS mirror MUST gain the matching
+// { type: 'data-redline'; id?: string; data: RedlinePayload } variant
+// or the D15 drift alarm (AssertAssignable) fails to compile.
+//
+// Count: 18 types — text(3) + reasoning(3) + tool-input(3) +
 // tool-output(1) + source(2) + data-policy(1) + data-decision(1) +
-// finish(2) + error(1).
+// data-redline(1) + finish(2) + error(1).
 var ValidTypes = map[string]bool{
 	"text-start":            true,
 	"text-delta":            true,
@@ -133,6 +175,7 @@ var ValidTypes = map[string]bool{
 	"source-document":       true,
 	"data-policy":           true,
 	"data-decision":         true,
+	"data-redline":          true,
 	"finish-step":           true,
 	"finish-message":        true,
 	"error":                 true,

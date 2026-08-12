@@ -55,18 +55,73 @@ import type { Refusal, SubprogressStep, Verdict } from './verdict';
 // UI can render the autonomous per-hop decisions (D3-03 / SC-1
 // observability substrate).
 //
+// Plan 05-01 Task 1 (D5-04): extended with skillScores / selected /
+// ambiguous for the skill-router observability surface, plus two new
+// decision enum values (`route`, `counter_evidence`) used by the
+// router/counter-evidence Skill flows.
+//
 // Field semantics match the Go struct 1:1 — JSON tags are camelCase
-// (matches the Go struct's `json:"toolCallId,omitempty"` etc.).
+// (matches the Go struct's `json:"toolCallId,omitempty"` etc.). All
+// additive fields are optional (omitempty on the Go side, `?:` here)
+// so legacy 5-field payloads from Phase 3/4 still parse cleanly.
+export interface SkillScore {
+  /** Directory name of the Skill (e.g. "compliance"). */
+  skillId: string;
+  /** Human-readable name from Manifest.Description. */
+  skillName: string;
+  /** Cosine-similarity score (range [0.0, 1.0]; BGE-M3 default). */
+  score: number;
+  /** Exactly one entry has selected=true unless DecisionPayload.ambiguous. */
+  selected: boolean;
+}
+
 export interface DecisionPayload {
   /** 1-indexed hop number (1 or 2 for max_hops=2). */
   step: number;
-  decision: 'retrieve' | 'answer' | 'refuse' | 'forced_stop';
+  decision:
+    | 'retrieve'
+    | 'answer'
+    | 'refuse'
+    | 'forced_stop'
+    | 'route'
+    | 'counter_evidence';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */
   query?: string;
   /** Model-reported confidence for an answer decision. */
   confidence?: number;
+  /** D5-04 — populated only on `route` decisions. */
+  skillScores?: SkillScore[];
+  /** D5-04 — SkillID chosen on a `route` decision. */
+  selected?: string;
+  /** D5-04 — true when the top-2 score gap is below the router threshold. */
+  ambiguous?: boolean;
+}
+
+// ----------------------------------------------------------------------------
+// RedlinePayload — mirror of internal/wire/redline.go RedlinePayload
+// ----------------------------------------------------------------------------
+
+// Plan 05-01 Task 1 — TS mirror of the 18th wire type's payload
+// (D5-14). Carried inside a `data-redline` chunk's `.data` field.
+// The compliance Skill emits one of these per clause-level rewrite.
+//
+// V8 mitigation (05-UI-SPEC §Registry Safety): the three core fields
+// are REQUIRED — a truncated payload fails JSON parse on the Go side
+// via RedlinePayload.UnmarshalJSON (which uses pointer-fields to
+// distinguish absent from empty). The TS mirror reflects this by
+// typing them as required (`originalClause` / `proposedRewrite` /
+// `rationale` carry no `?:` modifier).
+export interface RedlinePayload {
+  /** Optional stable id of the clause (e.g. "C-7.3.2") — links redline to citation. */
+  clauseId?: string;
+  /** REQUIRED — exact text of the original clause in the source document. */
+  originalClause: string;
+  /** REQUIRED — agent's proposed replacement text. */
+  proposedRewrite: string;
+  /** REQUIRED — human-readable explanation of why the rewrite is proposed. */
+  rationale: string;
 }
 
 // ----------------------------------------------------------------------------
@@ -101,6 +156,13 @@ export type SkillForgeChunk =
   // Strict refinement of AI SDK v5 DataUIMessageChunk — assignability
   // holds so the D15 drift alarm stays green.
   | { type: 'data-decision'; id?: string; data: DecisionPayload }
+  // Plan 05-01 — agent's clause-level redline proposals (D5-14). The
+  // 18th wire type. Required-field enforcement happens on the Go side
+  // (RedlinePayload.UnmarshalJSON — V8 mitigation). The TS mirror
+  // declares them as required types so a truncated JSON object
+  // matches the `(p: RedlinePayload) => void` consumer signature
+  // and the FE never tries to render a blank-diff redline card.
+  | { type: 'data-redline'; id?: string; data: RedlinePayload }
   // Step boundaries
   | { type: 'start-step' }
   | { type: 'finish-step' }
