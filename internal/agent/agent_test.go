@@ -205,21 +205,21 @@ func manifestWithTiers(tiers []string) *skill.Manifest {
 // ---------------------------------------------------------------------------
 
 // TestComputeMaxStepFormula locks in the D3-02 MaxStep formula. This is
-// the canonical translation of "max_hops=2 → MaxStep=6" documented in
-// 03-RESEARCH.md §Pitfall 1.
+// the canonical translation of "max_hops=2 → MaxStep=5" (Rule 1 deviation
+// from the original plan's MaxStep=6 — see ComputeMaxStep godoc).
 func TestComputeMaxStepFormula(t *testing.T) {
 	cases := []struct {
 		maxHops int
 		want    int
 	}{
-		{1, 4}, // 1 hop (2) + final answer (1) + safety margin (1)
-		{2, 6}, // 2 hops (4) + final answer (1) + safety margin (1) — D3-02 default
-		{3, 8}, // formula stays linear; capped elsewhere by config validation
+		{1, 3}, // 1 hop (2) + final answer (1)
+		{2, 5}, // 2 hops (4) + final answer (1) — D3-02 default (Rule 1 corrected)
+		{3, 7}, // formula stays linear; capped elsewhere by config validation
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("hops=%d", c.maxHops), func(t *testing.T) {
 			got := agent.ComputeMaxStep(c.maxHops)
-			assert.Equal(t, c.want, got, "MaxHops*2+2")
+			assert.Equal(t, c.want, got, "MaxHops*2+1")
 		})
 	}
 }
@@ -634,4 +634,332 @@ func TestCritiqueErrorNonFatal(t *testing.T) {
 		"critique LLM error MUST be non-fatal — verdict returned UNCHANGED (Pitfall 3 / D3-04 floor-authoritative)")
 	assert.False(t, got.ReviewRequired,
 		"on critique error, ReviewRequired MUST stay false (cannot add strictness we could not compute)")
+}
+
+// ---------------------------------------------------------------------------
+// Task 3 — callbacks.go + comprehensive agent_test.go (full Run loop)
+// ---------------------------------------------------------------------------
+
+// multiTurnStubChatModel is the Task 3 multi-turn test double. It returns
+// a tool-call message for the first maxToolCalls invocations, then the
+// finalMsg on the (maxToolCalls+1)-th call. Designed to drive the ReAct
+// loop through N retrieve hops + 1 final answer turn.
+//
+// For the MaxStep-cap test, set maxToolCalls to a large value (e.g., 100)
+// so the loop only terminates via react's MaxStep budget — proving the
+// D3-02 formula caps retrieve at 2 calls.
+type multiTurnStubChatModel struct {
+	toolCallQuery string // query string emitted in the canned tool-call message
+	maxToolCalls  int    // number of tool-call responses before final (math.MaxInt32 = always tool-call)
+	finalMsg      *schema.Message
+
+	calls       int
+	capturedMsg [][]*schema.Message
+	mu          sync.Mutex
+}
+
+var _ model.ToolCallingChatModel = (*multiTurnStubChatModel)(nil)
+
+func newMultiTurnStub(t *testing.T, maxToolCalls int, toolCallQuery, finalJSON string) *multiTurnStubChatModel {
+	t.Helper()
+	return &multiTurnStubChatModel{
+		toolCallQuery: toolCallQuery,
+		maxToolCalls:  maxToolCalls,
+		finalMsg: &schema.Message{
+			Role:    schema.Assistant,
+			Content: finalJSON,
+		},
+	}
+}
+
+func (m *multiTurnStubChatModel) Generate(ctx context.Context, msgs []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	m.mu.Lock()
+	m.calls++
+	m.capturedMsg = append(m.capturedMsg, msgs)
+	turnIdx := m.calls // 1-indexed
+	m.mu.Unlock()
+
+	if turnIdx <= m.maxToolCalls {
+		// Tool-call phase — emit a tool_call for retrieve_compliance_chunks.
+		return &schema.Message{
+			Role: schema.Assistant,
+			ToolCalls: []schema.ToolCall{
+				{
+					ID:   fmt.Sprintf("call_%d", turnIdx),
+					Type: "function",
+					Function: schema.FunctionCall{
+						Name:      agent.RetrieveToolName,
+						Arguments: fmt.Sprintf(`{"query":%q}`, m.toolCallQuery),
+					},
+				},
+			},
+		}, nil
+	}
+	return m.finalMsg, nil
+}
+
+func (m *multiTurnStubChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, fmt.Errorf("multiTurnStubChatModel: Stream not implemented")
+}
+
+func (m *multiTurnStubChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	return m, nil
+}
+
+func (m *multiTurnStubChatModel) CallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
+}
+
+// blockingStubChatModel blocks on ctx for the TestAgentRunCancelMidTool
+// test. Generate never returns a real message — it returns ctx.Err() the
+// moment ctx is cancelled. Designed so a Run call against this model
+// cannot complete unless ctx is cancelled first.
+type blockingStubChatModel struct {
+	calls int
+	mu    sync.Mutex
+}
+
+var _ model.ToolCallingChatModel = (*blockingStubChatModel)(nil)
+
+func (m *blockingStubChatModel) Generate(ctx context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	m.mu.Lock()
+	m.calls++
+	m.mu.Unlock()
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (m *blockingStubChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, fmt.Errorf("blockingStubChatModel: Stream not implemented")
+}
+
+func (m *blockingStubChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	return m, nil
+}
+
+// decisionCapturer is the test double for AgentConfig.Emit. Each call
+// appends a snapshot of the payload to captured; tests assert on the
+// captured slice after Run completes.
+type decisionCapturer struct {
+	captured []agent.DecisionRecord
+	mu       sync.Mutex
+}
+
+func (d *decisionCapturer) Emit(step int, decision, toolCallID, query string, confidence float64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.captured = append(d.captured, agent.DecisionRecord{
+		Step:       step,
+		Decision:   decision,
+		ToolCallID: toolCallID,
+		Query:      query,
+		Confidence: confidence,
+	})
+}
+
+func (d *decisionCapturer) Snapshot() []agent.DecisionRecord {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := make([]agent.DecisionRecord, len(d.captured))
+	copy(out, d.captured)
+	return out
+}
+
+// TestAgentRetrievesAndAnswers (AGNT-01) verifies the happy-path Run:
+// given a stubChatModel that issues 1 retrieve call then a final Verdict
+// JSON, Run returns the parsed Verdict and the retriever was called once.
+func TestAgentRetrievesAndAnswers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Final verdict: 合规 with one citation pointing at chunk 7.
+	finalJSON := `{"status":"合规","confidence":0.9,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}`
+	cm := newMultiTurnStub(t, 1, "出差住宿标准", finalJSON)
+	ret := &stubRetriever{
+		chunksPerCall: [][]retriever.Hit{
+			{{ID: 7, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费每天 500 元。", Score: 0.92}},
+		},
+	}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	v, refusal, err := a.Run(ctx, "sess-test", "出差住宿标准是多少？")
+	require.NoError(t, err, "Run must not error in the happy path")
+	require.Nil(t, refusal, "no refusal expected when retriever returns tier-matched chunks")
+	assert.Equal(t, "合规", v.Status)
+	assert.InDelta(t, 0.9, v.Confidence, 0.001)
+	require.Len(t, v.Citations, 1)
+	assert.Equal(t, "7", v.Citations[0].ChunkID)
+
+	assert.Equal(t, 1, ret.CallCount(), "agent should call retrieve exactly once in single-hop happy path")
+}
+
+// TestMultiHopCitationAggregation (ARAG-02 / SC-2) verifies the agent
+// accumulates chunks across 2 retrieve hops and the final verdict cites
+// chunks from BOTH hops.
+func TestMultiHopCitationAggregation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Final verdict cites chunks 1 (hop 1) and 2 (hop 2).
+	finalJSON := `{"status":"需补充","confidence":0.7,"citations":[{"chunk_id":"1","span":"住宿费标准","tier":"权威"},{"chunk_id":"2","span":"特殊情况","tier":"权威"}],"review_required":true}`
+	cm := newMultiTurnStub(t, 2, "出差住宿", finalJSON)
+	ret := &stubRetriever{
+		chunksPerCall: [][]retriever.Hit{
+			{{ID: 1, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费标准。", Score: 0.85}},
+			{{ID: 2, Tier: "权威", Source: "authority/edge_cases.md", Content: "特殊情况审批流程。", Score: 0.8}},
+		},
+	}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	v, _, err := a.Run(ctx, "sess-multi", "出差住宿和特殊情况的制度?")
+	require.NoError(t, err)
+
+	require.Len(t, v.Citations, 2, "final verdict must aggregate citations from both hops")
+	citationIDs := map[string]bool{v.Citations[0].ChunkID: true, v.Citations[1].ChunkID: true}
+	assert.True(t, citationIDs["1"], "citation from hop 1 (chunk 1) must be present")
+	assert.True(t, citationIDs["2"], "citation from hop 2 (chunk 2) must be present")
+
+	assert.Equal(t, 2, ret.CallCount(), "agent must call retrieve twice in multi-hop path")
+}
+
+// TestMaxStepBlocksThirdHop (ARAG-02 cap) verifies that the MaxStep=6
+// formula caps the agent at exactly 2 retrieve calls — a third retrieve
+// is structurally impossible. The stubChatModel ALWAYS returns a tool
+// call (maxToolCalls=100); without the MaxStep cap, the loop would
+// run indefinitely.
+func TestMaxStepBlocksThirdHop(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Always returns a tool-call message — loop would never terminate
+	// without the MaxStep budget. The final verdict is unreachable.
+	finalJSON := `{"status":"需补充","confidence":0.5,"citations":[],"review_required":true}`
+	cm := newMultiTurnStub(t, 100, "any", finalJSON)
+	ret := &stubRetriever{
+		// Return 1 chunk per call so the trust floor does not refuse.
+		chunksPerCall: [][]retriever.Hit{
+			{{ID: 1, Tier: "权威", Source: "authority/x.md", Content: "chunk 1", Score: 0.7}},
+		},
+	}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2, // → MaxStep=6 → caps at 2 retrieve calls
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	// The Run may return a verdict OR a refusal OR an error (the model
+	// bails mid-tool-call when MaxStep hits; the final message may not
+	// parse). This test ONLY asserts that the loop terminates at exactly
+	// 2 retrieve calls — that is the MaxStep cap proof.
+	_, _, _ = a.Run(ctx, "sess-cap", "any question")
+
+	assert.Equal(t, 2, ret.CallCount(),
+		"D3-02 MaxStep formula caps retrieve at 2 calls for MaxHops=2 (MaxStep=6); 3rd retrieve impossible")
+}
+
+// TestDecisionSSEEmission (ARAG-01 / SC-1) verifies that when Emit is
+// non-nil, the agent's Run emits at least 2 data-decision payloads:
+// one {Decision: "retrieve"} from the tool OnStart and one
+// {Decision: "answer"} from the ChatModel OnEnd.
+func TestDecisionSSEEmission(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	finalJSON := `{"status":"合规","confidence":0.9,"citations":[{"chunk_id":"1","span":"x","tier":"权威"}],"review_required":false}`
+	cm := newMultiTurnStub(t, 1, "出差", finalJSON)
+	ret := &stubRetriever{
+		chunksPerCall: [][]retriever.Hit{
+			{{ID: 1, Tier: "权威", Source: "authority/p.md", Content: "x", Score: 0.9}},
+		},
+	}
+	dc := &decisionCapturer{}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2,
+		Emit:      dc.Emit,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	_, _, err = a.Run(ctx, "sess-sse", "query")
+	require.NoError(t, err)
+
+	captured := dc.Snapshot()
+	require.Len(t, captured, 2,
+		"exactly 2 decision payloads expected: 1 retrieve + 1 answer")
+
+	assert.Equal(t, "retrieve", captured[0].Decision,
+		"first decision must be 'retrieve' (Tool OnStart)")
+	assert.GreaterOrEqual(t, captured[0].Step, 1,
+		"retrieve decision step must be ≥1")
+
+	assert.Equal(t, "answer", captured[1].Decision,
+		"second decision must be 'answer' (ChatModel OnEnd with no further tool calls)")
+}
+
+// TestAgentRunCancelMidTool (AGNT-04 cancel unit) verifies that ctx
+// cancellation propagates through the agent loop. The blocking stub
+// chat model never returns of its own accord — Run can only return
+// when ctx.Cancel fires. The test asserts Run returns within 250ms of
+// cancel (the underlying model returns immediately on ctx.Done).
+//
+// NOTE: the SC-8 end-to-end timing test (with real network + LLM) is
+// in Plan 03-05. This is the unit-level cancel-responsiveness check.
+func TestAgentRunCancelMidTool(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cm := &blockingStubChatModel{}
+	ret := &stubRetriever{
+		chunksPerCall: [][]retriever.Hit{{}},
+	}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, runErr := a.Run(ctx, "sess-cancel", "any")
+		done <- runErr
+	}()
+
+	// Give the goroutine time to enter the chat model call.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// success — Run observed the cancel and returned.
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("agent Run did not observe ctx cancellation within 250ms (AGNT-04 cancel propagation)")
+	}
 }
