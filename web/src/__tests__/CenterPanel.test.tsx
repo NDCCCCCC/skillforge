@@ -82,25 +82,36 @@ describe('CenterPanel', () => {
     expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('required_refusal_phrases:');
   });
 
-  it('renders three tab buttons with the correct Chinese labels', () => {
+  it('renders five tab buttons with the correct Chinese labels', () => {
     render(<CenterPanel currentVerdict={null} />);
     const tablist = screen.getByRole('tablist');
     expect(tablist).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '审查结论' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '引用原文' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Skill 定义' })).toBeInTheDocument();
+    // Phase 5 — SC-4 inspector + SC-5 graph browser
+    expect(screen.getByRole('tab', { name: 'Agent 状态' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '知识图谱' })).toBeInTheDocument();
   });
 
-  it('default tab is `verdict` (D-02) — clicking the second tab does NOT change centerView', () => {
+  it('default tab is `verdict` — clicking the Agent 状态 tab dispatches setCenterView (Phase-5 bidirectional nav)', () => {
     useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
     render(<CenterPanel currentVerdict={compliantVerdict} />);
 
     const verdictTab = screen.getByRole('tab', { name: '审查结论' });
     expect(verdictTab).toHaveAttribute('aria-selected', 'true');
 
-    // Clicking another tab is local UI; the store should remain at verdict.
-    fireEvent.click(screen.getByRole('tab', { name: '引用原文' }));
-    expect(useAppStore.getState().centerView.kind).toBe('verdict');
+    // Phase 5 — tabs are clickable; clicking Agent 状态 dispatches the
+    // agent-inspector CenterView kind (D-02 restriction lifted).
+    fireEvent.click(screen.getByRole('tab', { name: 'Agent 状态' }));
+    expect(useAppStore.getState().centerView.kind).toBe('agent-inspector');
+  });
+
+  it('clicking 知识图谱 tab dispatches setCenterView({kind:"knowledge-graph"})', () => {
+    useAppStore.setState({ centerView: { kind: 'empty' } });
+    render(<CenterPanel currentVerdict={null} />);
+    fireEvent.click(screen.getByRole('tab', { name: '知识图谱' }));
+    expect(useAppStore.getState().centerView.kind).toBe('knowledge-graph');
   });
 
   it('tab indicator follows programmatic setCenterView (04-UAT test 8)', () => {
@@ -126,5 +137,19 @@ describe('CenterPanel', () => {
     render(<CenterPanel currentVerdict={null} />);
     expect(screen.getByRole('tab', { name: '引用原文' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Skill 定义' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('agent-inspector kind mounts the empty-state placeholder (SC-4)', () => {
+    useAppStore.setState({ centerView: { kind: 'agent-inspector' } });
+    render(<CenterPanel currentVerdict={null} />);
+    expect(screen.getByTestId('agent-inspector-empty')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Agent 状态' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('knowledge-graph kind mounts the empty-state placeholder (SC-5)', () => {
+    useAppStore.setState({ centerView: { kind: 'knowledge-graph' } });
+    render(<CenterPanel currentVerdict={null} />);
+    expect(screen.getByTestId('knowledge-graph-empty')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '知识图谱' })).toHaveAttribute('aria-selected', 'true');
   });
 });

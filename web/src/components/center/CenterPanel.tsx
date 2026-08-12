@@ -1,16 +1,16 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// CenterPanel — D-02 three-tab center panel. Default tab is `verdict`
-// (the protagonist). Both the tab body AND the tab indicator are driven
-// by `centerView.kind` from the Zustand app store (Tabs is controlled
-// via `value`). This keeps a single source of truth: programmatic
-// `setCenterView` calls (SkillPicker → skill-md, CitationCluster →
-// chunk-source, verdict mirror) move both the content and the active
-// highlight together, so the indicator never disagrees with the body
-// (04-UAT test 8). The tabs are display-only status indicators here —
-// navigation flows through the SkillPicker / CitationCluster, not the
-// tab clicks (D-02).
+// CenterPanel — the center-panel tab strip + body. Phase 4 shipped 3
+// tabs (verdict / chunk-source / skill-md); Phase 5 extends to 5 tabs
+// (adds Agent 状态 + 知识图谱) and LIFTS the D-02 "tabs are display-only"
+// restriction — Phase 5 tabs are clickable and dispatch setCenterView
+// (Phase-4-deferred bidirectional tab nav, resolved per UI-SPEC §Layout).
+//
+// The tab indicator stays bound to `centerView.kind` via the controlled
+// `Tabs` `value` prop so programmatic setCenterView calls (SkillPicker
+// → skill-md, CitationCluster → chunk-source, etc.) keep working
+// alongside user clicks.
 //
 // Empty-state hero per Copywriting Contract: `等待合规审查结果` +
 // `右侧提出合规问题，agent 推理与引用会显示在这里。`
@@ -19,7 +19,9 @@ import { Tabs } from '../ui/tabs';
 import { useAppStore } from '../../store/app-store';
 import type { CenterView } from '../../store/app-store';
 import type { Tier, Verdict } from '../../types/verdict';
+import AgentInspector from '../inspector/AgentInspector';
 import ChunkSourceView from './ChunkSourceView';
+import KnowledgeGraphBrowser from '../graph/KnowledgeGraphBrowser';
 import RefusalCard from './RefusalCard';
 import SkillMdPreview from './SkillMdPreview';
 import VerdictCard from './VerdictCard';
@@ -33,10 +35,8 @@ const FALLBACK_VERDICT: Verdict = {
 
 /**
  * Maps the store's `centerView.kind` to the active tab value, so the
- * Tabs indicator follows programmatic `setCenterView` calls. `empty`
- * and `verdict` both surface under the `审查结论` (verdict) tab — the
- * empty-state hero renders in place of the VerdictCard when there is no
- * verdict yet (see renderBody).
+ * Tabs indicator follows programmatic `setCenterView` calls. Phase 5
+ * adds the two new tab values (Agent 状态, 知识图谱).
  */
 function activeTabValue(kind: CenterView['kind']): string {
   switch (kind) {
@@ -44,10 +44,42 @@ function activeTabValue(kind: CenterView['kind']): string {
       return 'chunk-source';
     case 'skill-md':
       return 'skill-md';
+    case 'agent-inspector':
+      return 'agent-inspector';
+    case 'knowledge-graph':
+      return 'knowledge-graph';
     case 'empty':
     case 'verdict':
     default:
       return 'verdict';
+  }
+}
+
+/**
+ * Maps a tab value (emitted by Tabs.onValueChange on click) to the
+ * matching CenterView kind. Phase 5 wires the 4th + 5th tabs through
+ * to the agent-inspector + knowledge-graph kinds (their full content
+ * ships in 05-05; the empty-state placeholders are mounted now).
+ */
+function tabValueToCenterView(value: string): CenterView | null {
+  switch (value) {
+    case 'verdict':
+      return { kind: 'empty' };
+    case 'chunk-source':
+      // Phase 4 had no entry-point into chunk-source from tab click
+      // because chunk-source requires a prior CitationCluster click.
+      // Keep that behavior: a bare tab click without context stays
+      // at the empty verdict tab. The inherited 04-UI-SPEC empty-state
+      // copy is `点击聊天中的引用以查看权威条款原文。`.
+      return null;
+    case 'skill-md':
+      return { kind: 'skill-md', skillId: 'compliance-review' };
+    case 'agent-inspector':
+      return { kind: 'agent-inspector' };
+    case 'knowledge-graph':
+      return { kind: 'knowledge-graph' };
+    default:
+      return null;
   }
 }
 
@@ -57,14 +89,41 @@ export interface CenterPanelProps {
 
 export default function CenterPanel({ currentVerdict }: CenterPanelProps) {
   const centerView = useAppStore((s) => s.centerView);
+  const setCenterView = useAppStore((s) => s.setCenterView);
 
+  // Phase 5 — 5 tabs in document order. The horizontal-scroll fallback
+  // for narrow widths is inherited from the .tabs CSS (overflow-x: auto
+  // on the parent tablist). No "more" dropdown (UI-SPEC §Layout).
   const items = [
     { value: 'verdict', label: '审查结论' },
     { value: 'chunk-source', label: '引用原文' },
     { value: 'skill-md', label: 'Skill 定义' },
+    { value: 'agent-inspector', label: 'Agent 状态' },
+    { value: 'knowledge-graph', label: '知识图谱' },
   ];
 
+  function handleTabChange(value: string) {
+    const next = tabValueToCenterView(value);
+    if (next) setCenterView(next);
+  }
+
   function renderBody() {
+    // Tab-4: Agent inspector (SC-4).
+    if (centerView.kind === 'agent-inspector') {
+      return (
+        <div className="center-panel-tab-content">
+          <AgentInspector />
+        </div>
+      );
+    }
+    // Tab-5: Knowledge graph browser (SC-5).
+    if (centerView.kind === 'knowledge-graph') {
+      return (
+        <div className="center-panel-tab-content">
+          <KnowledgeGraphBrowser />
+        </div>
+      );
+    }
     if (centerView.kind === 'empty' && !currentVerdict) {
       return (
         <div className="center-panel-tab-content flex flex-col items-center justify-center text-center min-h-[60vh]">
@@ -112,7 +171,7 @@ export default function CenterPanel({ currentVerdict }: CenterPanelProps) {
       data-testid="center-panel"
       className="overflow-y-auto border-r border-border bg-bg p-6"
     >
-      <Tabs value={activeTabValue(centerView.kind)} items={items} />
+      <Tabs value={activeTabValue(centerView.kind)} items={items} onValueChange={handleTabChange} />
       {renderBody()}
     </div>
   );
