@@ -30,6 +30,8 @@ Patterns and stack choices established across spike sessions for SkillForge (ai-
 - **Extra fields via Eino**: `openai.WithExtraFields(map[string]any{...})` for OpenAI extras like `response_format`, `thinking`, `modalities`, vendor-specific flags.
 - **Reasoning control**: `thinking:{type:disabled}` to disable glm-5.2's reasoning path (saves tokens, faster, cleaner output).
 - **Content safety**: Use ASCII content in JSON messages OR `--data-binary @file.json` (avoid UTF-8 jackson errors with curl `-d '{...}'` on win bash).
+- **Milvus tier-contract (spike 004)**: The tier filter is a **server-side expression string** — `BuildMilvusFilter` (`internal/retriever/milvus/filter.go`) ports **unchanged** across the `milvus-sdk-go/v2` → `client/v2` migration because `WithFilter(string)` accepts any Milvus expression. The filter is applied **PRE-similarity** (index-scan time), which is the trust moat — assert zero 个人-tier leak on a 权威-only filter, and 0 hits on empty tiers (`"false"`, D-09). `Flush` + `LoadCollection` are required before `Search`.
+- **Milvus deployment (environment, not contract)**: Milvus 3.0 standalone needs x86-64-v2 CPU (host-CPU passthrough on type-1 hypervisors), SELinux permissive or `chcon -Rt container_file_t` on bind mounts, and bind-volume `chown` to the container's uid/gid (not 1000). Diagnose these separately from filter logic.
 
 ## Tools & Libraries
 
@@ -37,6 +39,7 @@ Patterns and stack choices established across spike sessions for SkillForge (ai-
 |---|---|---|
 | github.com/cloudwego/eino | v0.9.13 | LLM framework core |
 | github.com/cloudwego/eino-ext/components/model/openai | v0.1.13 | OpenAI adapter (with WithExtraFields) |
+| github.com/milvus-io/milvus/client/v2 (milvusclient) | v2.6.5 | New Milvus SDK — fluent-option API (migration target for `internal/retriever/milvus/`, replacing `milvus-sdk-go/v2 v2.4.2`). VarChar columns MUST use `column.NewColumnVarChar`, not `NewColumnString` |
 | gopkg.in/yaml.v3 | latest | SKILL.md YAML frontmatter parsing |
 | (no test framework — minimal stdlib) | — | Single-file spike programs, no tests framework needed |
 
@@ -50,3 +53,5 @@ Patterns and stack choices established across spike sessions for SkillForge (ai-
 - **Trusting byte-determinism** with reasoning models (100% variance regardless of temperature + reasoning control)
 - **`response_format:{type:json_schema}`** on GLM-5.2 (use `{type:json_object}` + app-side validation instead)
 - **Trusting `Content` field** when reasoning is ON (reasoning budget may leave content empty)
+- **`column.NewColumnString` for a VarChar schema field** (spike 004) — Milvus DataType `String` (enum 20) ≠ `VarChar` (enum 21); Insert fails with a misleading "type string but is string" error. `NewColumnString` is marked `/* NOT USED */` in the SDK. Always pair `FieldTypeVarChar` with `column.NewColumnVarChar`.
+- **Treating the tier filter as a post-filter** (spike 004) — pulling top-K then filtering in Go leaks 个人-tier similarity scores. Keep the filter in `WithFilter(string)` server-side; this PRE-filter is the D-09 trust boundary.
