@@ -11,7 +11,7 @@ constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks ver
 
 ## Current Test
 
-[testing complete — 11/11 resolved: 7 pass, 4 issues (#2 right-panel IA, #4 graph chunk-content, #7 hot-reload toast, #9 wizard commit registration BLOCKER). OOS-1 verdict-parse bug logged for /gsd-debug. Diagnosis + gap-closure planning deferred to fresh session (context-limited).]
+[testing complete — 11/11 resolved: 9 pass (7 original + #9 + OOS-1 fixed 2026-08-13), 3 open (#2 right-panel IA, #4 graph chunk-content, #7 hot-reload toast). BLOCKERS #9 (wizard registration, commit af1ca9a) + OOS-1 (GLM verdict fence-parse, commit d62fe98) RESOLVED via /gsd-debug — see 05-REMAINING-WORK.md for the remaining 3 issues' plan.]
 
 ## Tests
 
@@ -64,7 +64,7 @@ evidence: Drove full flow via chrome-devtools. Wizard mode entered correctly (Sk
 
 ### 9. Skill Wizard — Commit Closed Loop (SC-3 / D5-11)
 expected: 确认并保存到 skills/{name}/SKILL.md → atomic write → success toast "Skill 已创建：{name}。已注册并热加载。" + path. fsnotify picks it up → appears in Skill Manager / routable. THE PLATFORM THESIS closed loop.
-result: issue
+result: fixed (commit af1ca9a, 2026-08-13) — wizardCommitHandler now rescans Loader + sets Registered; FE gates toast on `registered`; Loader.cached race-guarded. Closed-loop integration test TestWizardCommitHandler_RegistersAndRefreshesLoader passes.
 sub_passed: Atomic write OK (skills/expense-audit/SKILL.md, 1088 bytes, valid YAML, all 7 fields match preview); success toast fired EXACTLY as spec — "Skill 已创建：expense-audit。已注册并热加载。" + full path; wizard exited cleanly → chat session restored.
 reported: "Closed loop BROKEN at registration step. Toast claims '已注册并热加载' but the new skill is NOT registered: absent from GET /api/skills (only 企业合规/制度审查 returned; '通用问答' appears in Skill Manager UI but NOT in /api/skills → it is FE/built-in injected, not registry-backed), absent from Skill Manager dropdown, and NOT picked up even after clicking 全部重载 (manual reload) — /api/skills still 1 skill, 0 expense-audit. Routability unconfirmed: POST /api/chat {skill:expense-audit} returned a no_authorized_source refusal, but that is consistent with fallback to the default compliance skill, not proof of routing. The platform thesis (write Skill file → agent adapts, no code change) is defeated for the wizard creation path — a wizard-created skill is dead-on-arrival until (likely) a server restart."
 severity: blocker
@@ -157,7 +157,8 @@ blocked: 0
   debug_session: ""  # Filled by diagnosis
 
 - truth: "A skill created via the Skill Wizard, on 确认并保存, is written to disk, AND registered + hot-loaded so it immediately appears in Skill Manager and is routable — the platform-thesis closed loop (write Skill file → agent adapts, no code change)."
-  status: failed
+  status: fixed
+  fixed_commit: af1ca9a
   reason: "User-path observed: commit wrote skills/expense-audit/SKILL.md (valid, 1088 bytes, all 7 fields) and fired the 'Skill 已创建：expense-audit。已注册并热加载。' toast, but the skill is NOT registered — absent from GET /api/skills (1 skill only), absent from Skill Manager dropdown, and NOT picked up even after manual 全部重载. The '已注册并热加载' toast is a false claim. A wizard-created skill is dead-on-arrival until (likely) a server restart."
   severity: blocker
   test: 9
@@ -194,4 +195,5 @@ blocked: 0
     - internal/server/pipeline.go:209
   impact_on_phase_5_uat: "Blocks live end-to-end verification of Test 11 (SC-1/6/7 routing trace + counter-evidence + redline all require a real verdict). Test 11 will fall back to /api/chat (refusal path is observable) + FE unit suites, same as Test 6."
   resolution_route: "/gsd-debug (verdict pipeline is Phase 2-era; not a Phase 5 defect). DO NOT close under Phase 5 gap closure."
-  status: open
+  status: fixed
+  fixed_commit: d62fe98
