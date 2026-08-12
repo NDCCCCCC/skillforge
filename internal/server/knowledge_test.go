@@ -20,7 +20,9 @@
 // The handler test pins 4 acceptance assertions:
 //   1. KnowledgeBuilder nil → 503 + {error:"..."} envelope.
 //   2. KnowledgeBuilder.Build succeeds → 200 + the JSON tree.
-//   3. KnowledgeBuilder.Build fails → 500 + {error:"..."} envelope.
+//   3. KnowledgeBuilder.Build fails → 500 + {error:"knowledge graph
+//      build failed — see server logs"} envelope. The full err.Error()
+//      is logged at [WARN] server-side and MUST NOT leak to the FE (W-3).
 //   4. Route registration: GET /api/knowledge/graph never returns 404
 //      (mirror of the wizard handler route-registration regression).
 
@@ -103,7 +105,17 @@ func TestGraphHandler_BuildErrorReturns500(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, got.Code)
 	var body graphResponseError
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &body))
-	assert.Contains(t, body.Error, "milvus unavailable")
+	// W-3: the 500 envelope MUST NOT echo err.Error() to the client —
+	// internal errors (ErrInvalidTier / ErrEmptySource) embed numeric row
+	// IDs and source-path taxonomy that an attacker could probe if the
+	// endpoint were exposed. The full error is logged at [WARN]
+	// server-side; the FE gets a generic message.
+	assert.Contains(t, body.Error, "knowledge graph build failed",
+		"the 500 envelope must carry the generic build-failed message")
+	assert.Contains(t, body.Error, "see server logs",
+		"the operator is directed to the server logs for the full error")
+	assert.NotContains(t, body.Error, "milvus",
+		"the 500 envelope MUST NOT leak internal error detail (W-3)")
 }
 
 func TestGraphHandler_RouteRegistered(t *testing.T) {

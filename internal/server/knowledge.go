@@ -27,18 +27,25 @@
 //
 //	GET /api/knowledge/graph → 200 { tiers: [{ tier, docCount, chunkCount, docs: [...] }] }
 //	                         503 { error: "knowledge graph not initialized" }
-//	                         500 { error: "..." }                 (transient retriever failure)
+//	                         500 { error: "knowledge graph build failed — see server logs" }
 //
 // The 503 mirrors the wizard handler posture: when Deps.Knowledge is
 // nil (a test that bypasses the graph layer, or a misconfigured server)
 // the endpoint refuses the request rather than returning a misleading
 // empty array (which the FE would mount as the empty-state hero — a
 // valid signal only when the corpus is genuinely empty).
+//
+// The 500 envelope deliberately carries a generic message rather than
+// err.Error(): ErrInvalidTier / ErrEmptySource embed internal metadata
+// (numeric row IDs, source-path taxonomy) that an attacker could probe
+// via hand-edited retriever fixtures if the endpoint is exposed. The
+// full error is logged at [WARN] server-side (W-3).
 
 package server
 
 import (
 	"context"
+	"log"
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -72,8 +79,16 @@ func (s *Deps) graphHandler(ctx context.Context, c *app.RequestContext) {
 	}
 	g, err := s.Knowledge.Build(ctx)
 	if err != nil {
+		// W-3 (Phase 5 review): log the full err.Error() server-side at
+		// WARN — ErrInvalidTier / ErrEmptySource embed internal metadata
+		// (numeric row IDs, source-path taxonomy) that an attacker could
+		// probe via hand-edited retriever fixtures if /api/knowledge/graph
+		// is exposed. Return a generic message to the FE; the operator
+		// finds the full error in the server logs. Mirrors the [WARN]
+		// convention used in pipeline.go for non-fatal build failures.
+		log.Printf("[WARN] server: knowledge graph build failed: %v", err)
 		c.JSON(http.StatusInternalServerError, graphResponseError{
-			Error: err.Error(),
+			Error: "knowledge graph build failed — see server logs",
 		})
 		return
 	}
