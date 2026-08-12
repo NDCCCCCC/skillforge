@@ -64,7 +64,25 @@ export default function RedlineCard({ data }: RedlineCardProps) {
   }
 
   function handleDownload() {
-    const filename = (data.clauseId ? data.clauseId : 'redline') + '.md';
+    // W-2 (Phase 5 review): data.clauseId flows unvalidated from the
+    // redline LLM's JSON output (wire.RedlinePayload.ClauseID). V8
+    // rejects unknown fields but does NOT validate the CONTENT of known
+    // fields — so a clauseId containing path separators (../, \\), NUL,
+    // or other control characters could in principle be interpreted by
+    // file managers or older browser engines when the operator clicks
+    // "show in folder" after download. Modern evergreen browsers
+    // sanitize the download attribute themselves, but defense-in-depth
+    // is warranted for a fresh producer whose output has not yet been
+    // seen in production.
+    //
+    // Sanitization: strip path separators + control chars, trim leading
+    // / trailing dashes (avoid "-.md" or "----.md" style oddities), cap
+    // at 64 chars, fall back to 'redline' when nothing usable remains.
+    const safeClauseId = (data.clauseId ?? '')
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64) || 'redline';
+    const filename = safeClauseId + '.md';
     const body = `# 条款修订建议
 
 ## 原条款

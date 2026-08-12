@@ -191,4 +191,55 @@ describe('RedlineCard', () => {
     fireEvent.click(screen.getByTestId('redline-download-cta'));
     expect(setter).toHaveBeenCalledWith('redline.md');
   });
+
+  it('download filename sanitizes path separators / control chars from clauseId (W-2)', () => {
+    // The redline LLM is a fresh producer whose output has not been seen
+    // in production. A clauseId containing path separators (../, \\, :),
+    // could in principle be interpreted by file managers or older
+    // browser engines. Defense-in-depth: collapse to safe dashes.
+    const messy: RedlinePayload = {
+      clauseId: 'a/b\\c:d',
+      originalClause: 'foo',
+      proposedRewrite: 'bar',
+      rationale: 'baz',
+    };
+    render(<RedlineCard data={messy} />);
+    const setter = vi.spyOn(HTMLAnchorElement.prototype, 'download', 'set');
+    fireEvent.click(screen.getByTestId('redline-download-cta'));
+    // All of /, \, : collapse to '-': "a-b-c-d.md".
+    expect(setter).toHaveBeenCalledWith('a-b-c-d.md');
+  });
+
+  it('download filename strips leading/trailing dashes and falls back when only separators remain (W-2)', () => {
+    // clauseId is entirely path separators + control chars → after
+    // sanitization the result is empty → must fall back to 'redline'.
+    const allBad: RedlinePayload = {
+      clauseId: '/\\:',
+      originalClause: 'foo',
+      proposedRewrite: 'bar',
+      rationale: 'baz',
+    };
+    render(<RedlineCard data={allBad} />);
+    const setter = vi.spyOn(HTMLAnchorElement.prototype, 'download', 'set');
+    fireEvent.click(screen.getByTestId('redline-download-cta'));
+    expect(setter).toHaveBeenCalledWith('redline.md');
+  });
+
+  it('download filename caps clauseId at 64 characters (W-2)', () => {
+    // An adversarial or buggy LLM could emit a very long clauseId. Cap
+    // at 64 chars so the filename stays manageable in file managers.
+    const longClause = 'a'.repeat(100);
+    const long: RedlinePayload = {
+      clauseId: longClause,
+      originalClause: 'foo',
+      proposedRewrite: 'bar',
+      rationale: 'baz',
+    };
+    render(<RedlineCard data={long} />);
+    const setter = vi.spyOn(HTMLAnchorElement.prototype, 'download', 'set');
+    fireEvent.click(screen.getByTestId('redline-download-cta'));
+    // 64 a's + ".md".
+    const expected = 'a'.repeat(64) + '.md';
+    expect(setter).toHaveBeenCalledWith(expected);
+  });
 });
