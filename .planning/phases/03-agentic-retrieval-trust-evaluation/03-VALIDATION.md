@@ -9,6 +9,11 @@ created: 2026-08-12
 
 # Phase 3 — Validation Strategy
 
+> **⚠ SUPERSEDED 2026-08-12 (D6 reversal):** This file was drafted when D6 specified a **Python/Ragas sidecar**. D6 was reversed during Plan 03-06 execution — the evaluator is now **Go-native** (`internal/eval` + `cmd/eval`). All `pytest eval/...` commands, `pip install ragas==0.1.21`, and `eval/pyproject.toml` references below are **NO LONGER ACCURATE**. The authoritative validation for GEVL-04/05 is now the Go test suite:
+> - **GEVL-04 / SC-6 (reproducibility):** `go test ./internal/eval -run TestRunnerReproducibility` (StubJudge + deterministic embedder; `abs(run1-run2) < 1e-9`)
+> - **GEVL-05 (category coverage):** `go test ./internal/eval -run TestGoldenCategoryCoverage` (50 cases, 20/20/10 split)
+> - See `03-06-SUMMARY.md` for the full Go-native validation record. The Python-specific rows/commands below are retained as historical context only.
+>
 > Per-phase validation contract for feedback sampling during execution.
 > Source: `03-RESEARCH.md` § Validation Architecture + § Security Domain. Task IDs / Plan / Wave columns are filled by the planner; req-level rows are pre-populated from research.
 

@@ -12,7 +12,7 @@
 
 - [x] **Phase 1: Integration Spike & Trust Contract** — 1-2 day spike: validate Eino v0.7.7 + Hertz SSE + Vercel AI SDK v5 + Milvus tier-filter wire framing before committing to the data model
  (completed 2026-08-11)
-- [~] **Phase 2: Compliance Vertical Slice** — one Skill / one authoritative tier / one endpoint / verifiable cited answer or structured refusal (proves the "Skill-as-platform" thesis) — Plan 3/4 complete (verdict pipeline + cmd/server done; skills endpoints remaining)
+- [x] **Phase 2: Compliance Vertical Slice** — one Skill / one authoritative tier / one endpoint / verifiable cited answer or structured refusal (proves the "Skill-as-platform" thesis) — 5/5 plans complete (incl. 02-04-MONGO extension)
 - [x] **Phase 3: Agentic Retrieval & Trust Evaluation** — hybrid retrieval + BGE-M3 rerank + Self-RAG self-verification + 50–100-case golden set + Ragas quality gates (completed 2026-08-12)
 - [x] **Phase 4: Streaming Trust UI** — React chat with visible reasoning chain + clickable citations + structured verdicts + explainable refusals — 3/3 waves complete (UAT 12/12, SECURITY verified / 0 open threats)
  (completed 2026-08-11)
@@ -195,8 +195,8 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Integration Spike & Trust Contract | 4/4 | Complete | 2026-08-11 |
-| 2. Compliance Vertical Slice | 2/4 | Executing | 02-01: 2026-08-11, 02-02: 2026-08-11 |
-| 3. Agentic Retrieval & Trust Evaluation | 1/6 | Executing | 03-01: 2026-08-11 |
+| 2. Compliance Vertical Slice | 5/5 (incl. 02-04-MONGO) | Complete | 2026-08-11 |
+| 3. Agentic Retrieval & Trust Evaluation | 6/6 | Complete | 2026-08-12 |
 | 4. Streaming Trust UI | 4/4 (incl. 04-04 gap-closure) | Complete | 2026-08-11 (04-04 debt-closure 2026-08-12) |
 | 5. Skill Platform & Full Knowledge Boundaries | 0/? | Not started | - |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
