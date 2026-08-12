@@ -33,6 +33,41 @@ type validationResponse struct {
 	Error string `json:"error"`
 }
 
+// wizardRequest is the POST /api/skills/wizard body shape. The body
+// carries the 5 interview answers; the BE drives the structured-output
+// LLM call + the 7-field Validate gate (D5-11).
+type wizardRequest struct {
+	Answers     skill.Answers `json:"answers"`
+	CurrentStep int           `json:"currentStep,omitempty"` // echoed for FE-driven step indicator; BE does not branch on it
+}
+
+// wizardResponse carries the generated preview. Name is the Skill
+// directory name extracted from the purpose (first sentence,
+// slugified to ^[a-z0-9-]+$). Error is non-empty on any failure.
+type wizardResponse struct {
+	Preview *skill.Manifest `json:"preview"`
+	Name    string          `json:"name"`
+	Error   string          `json:"error,omitempty"`
+}
+
+// wizardCommitRequest is the POST /api/skills/wizard/commit body shape.
+// Name + Preview are both required — the BE uses Name to construct the
+// on-disk path (T-5-16 path-traversal gate) and Preview as the Manifest
+// payload to validate + write.
+type wizardCommitRequest struct {
+	Name    string          `json:"name"`
+	Preview *skill.Manifest `json:"preview"`
+}
+
+// wizardCommitResponse carries the absolute path of the written file
+// (the fsnotify watcher in Plan 05-01 picks it up automatically; no
+// explicit rescan call). Path is empty on any failure.
+type wizardCommitResponse struct {
+	OK    bool   `json:"ok"`
+	Path  string `json:"path"`
+	Error string `json:"error,omitempty"`
+}
+
 // listSkillsHandler implements GET /api/skills (SYSK-01 HTTP layer).
 //
 // Returns the manifests the Loader cached at startup, marshaled via the
@@ -87,4 +122,101 @@ func (s *Deps) validateSkillHandler(_ context.Context, c *app.RequestContext) {
 		return
 	}
 	c.JSON(http.StatusOK, validationResponse{Valid: true, Error: ""})
+}
+
+// wizardHandler implements POST /api/skills/wizard (SC-3 / SYSK-06
+// HTTP layer). It drives the 5-step interview → 7-field Manifest
+// pipeline:
+//   - Decodes the request body (Answers + currentStep).
+//   - Extracts a Skill name from the first sentence of the purpose,
+//     slugified to ^[a-z0-9-]+$ (T-5-16 first gate).
+//   - Calls Wizard.Generate (LLM call + structured output + retry on
+//     validation failure per T-5-18).
+//   - Returns the previewed Manifest in the response. The FE renders
+//     it in the Skill 定义 tab + offers 重新生成 / 确认并保存 / 取消向导.
+//   - Does NOT write to disk — the wizard commit endpoint does that.
+//
+// Status codes:
+//   - 400 + {error:"..."} when the body is not parseable JSON or the
+//     name extraction fails.
+//   - 503 + {error:"..."} when Wizard is not initialized (Deps.Wizard
+//     is nil — e.g., a test that bypasses the wizard). Mirrors the
+//     Phase-2 fallback posture of returning a structured error rather
+//     than a 500 with no context.
+//   - 200 + {preview, name} on success.
+func (s *Deps) wizardHandler(ctx context.Context, c *app.RequestContext) {
+	if s.Wizard == nil {
+		c.JSON(http.StatusServiceUnavailable, wizardResponse{
+			Error: "wizard not initialized (set Deps.Wizard at server construction)",
+		})
+		return
+	}
+	var req wizardRequest
+	raw, err := c.Body()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, wizardResponse{Error: "unreadable request body: " + err.Error()})
+		return
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		c.JSON(http.StatusBadRequest, wizardResponse{Error: "malformed json: " + err.Error()})
+		return
+	}
+	name, err := extractSkillName(req.Answers.Purpose)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, wizardResponse{Error: err.Error()})
+		return
+	}
+
+	preview, err := s.Wizard.Generate(ctx, req.Answers)
+	if err != nil {
+		// Validation-failed-twice OR LLM error — surface the message
+		// to the FE for inline display per UI-SPEC §SC-3.
+		c.JSON(http.StatusOK, wizardResponse{Error: err.Error()})
+		return
+	}
+	preview.Name = name
+	c.JSON(http.StatusOK, wizardResponse{Preview: preview, Name: name})
+}
+
+// wizardCommitHandler implements POST /api/skills/wizard/commit. It
+// validates the previewed Manifest (third gate), writes the file
+// atomically (write-temp + rename), and returns the absolute path.
+// The fsnotify watcher (Plan 05-01) picks up the new file automatically
+// — no explicit rescan call (D5-11 closed loop).
+//
+// Status codes:
+//   - 400 + {error:"..."} when the body is malformed or the name
+//     fails the regex / resolved-path checks (T-5-16 + V12 ASVS).
+//   - 503 + {error:"..."} when Wizard is not initialized.
+//   - 200 + {ok:true, path} on success. Path is the absolute path the
+//     fsnotify watcher observed.
+func (s *Deps) wizardCommitHandler(ctx context.Context, c *app.RequestContext) {
+	if s.Wizard == nil {
+		c.JSON(http.StatusServiceUnavailable, wizardCommitResponse{
+			Error: "wizard not initialized (set Deps.Wizard at server construction)",
+		})
+		return
+	}
+	var req wizardCommitRequest
+	raw, err := c.Body()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, wizardCommitResponse{Error: "unreadable request body: " + err.Error()})
+		return
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		c.JSON(http.StatusBadRequest, wizardCommitResponse{Error: "malformed json: " + err.Error()})
+		return
+	}
+	if req.Preview == nil {
+		c.JSON(http.StatusBadRequest, wizardCommitResponse{Error: "preview is required"})
+		return
+	}
+	req.Preview.Name = req.Name
+
+	path, err := s.Wizard.Commit(ctx, req.Preview)
+	if err != nil {
+		c.JSON(http.StatusOK, wizardCommitResponse{OK: false, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, wizardCommitResponse{OK: true, Path: path})
 }

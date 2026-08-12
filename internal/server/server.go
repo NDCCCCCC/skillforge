@@ -134,6 +134,11 @@ type Deps struct {
 	// Required by Router; nil + Router non-nil = chatHandler errors out
 	// at startup (the Router needs a snapshot to route from).
 	Registry *skill.Registry
+	// Wizard is the Plan 05-04 SC-3 wizard (SYSK-06 — NL → SKILL.md).
+	// When non-nil, POST /api/skills/wizard + POST /api/skills/wizard/commit
+	// are enabled; when nil, the wizard handlers return 503. Production
+	// wires it at cmd/server/main.go alongside Agent + Store.
+	Wizard *skill.Wizard
 }
 
 // New constructs a Hertz server bound to addr with the chat route
@@ -145,11 +150,15 @@ type Deps struct {
 // Server with mock deps without touching real Milvus/BGE-M3/GLM.
 //
 // Routes: POST /api/chat (verdict pipeline), GET /api/skills (list
-// loaded Skills), POST /api/skills (dry-run Skill validator).
+// loaded Skills), POST /api/skills (dry-run Skill validator),
+// POST /api/skills/wizard (SC-3 wizard interview → preview),
+// POST /api/skills/wizard/commit (atomic write + fsnotify loop close).
 func New(addr string, deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(addr))
 	h.POST("/api/chat", deps.chatHandler)
 	h.GET("/api/skills", deps.listSkillsHandler)
 	h.POST("/api/skills", deps.validateSkillHandler)
+	h.POST("/api/skills/wizard", deps.wizardHandler)
+	h.POST("/api/skills/wizard/commit", deps.wizardCommitHandler)
 	return h
 }
