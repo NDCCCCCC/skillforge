@@ -624,22 +624,28 @@ func (e *routerEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
 }
 func (e *routerEmbedder) Dimensions() int { return e.dim }
 
-// registryWithOneSkill builds a fresh skills/ root with a single
-// Skill under a custom name, returns a *Registry pointing at it.
+// registryWithSkills builds a fresh skills/ root with two Skills
+// under custom names. Both Skills use the same description so their
+// embeddings are identical (cos=1 with each other AND with any
+// query at the matching pivot) — gap=0 < margin → ambiguous. Used by
+// TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline to set up a
+// tied-Skill snapshot deterministically.
+//
 // Caller must close via cancel() (which stops the watcher goroutine).
-func registryWithOneSkill(t *testing.T, skillName, description string, emb *routerEmbedder) (*skill.Registry, context.CancelFunc) {
+func registryWithSkills(t *testing.T, emb *routerEmbedder, names ...string) (*skill.Registry, context.CancelFunc) {
 	t.Helper()
 	root := t.TempDir()
-	skillDir := filepath.Join(root, skillName)
-	require.NoError(t, os.MkdirAll(skillDir, 0o755))
-	yaml := fmt.Sprintf(`---
-description: %s
+	for _, name := range names {
+		skillDir := filepath.Join(root, name)
+		require.NoError(t, os.MkdirAll(skillDir, 0o755))
+		yaml := fmt.Sprintf(`---
+description: shared description
 agent: ChatModelAgent
 reads:
   - authority/**
 writes: []
 steps: |
-  1. Step 1
+  1. step
 guardrails:
   prohibitions:
     - "Never cite clauses not retrieved from authority tier"
@@ -652,8 +658,9 @@ guardrails:
 temperature: 0.0
 ---
 # %s
-`, description, skillName)
-	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(yaml), 0o644))
+`, name)
+		require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(yaml), 0o644))
+	}
 
 	r, err := skill.New(root, emb)
 	require.NoError(t, err)
@@ -670,7 +677,7 @@ temperature: 0.0
 // runs the verdict.
 func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
 	emb := &routerEmbedder{dim: 8, pivotIndex: 3}
-	r, cancel := registryWithOneSkill(t, "compliance", "compliance skill", emb)
+	r, cancel := registryWithSkills(t, emb, "compliance")
 	defer cancel()
 
 	deps := &Deps{
@@ -689,9 +696,10 @@ func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
 	frames := parseFrames(t, body)
 
 	// Find the routing decision frame — it's the first data-decision
-	// frame with decision="route".
-	var routeFrame *wire.UIMessageChunk
-	var routeIdx int
+	// frame with decision="route". The DecisionPayload rides in
+	// Data as raw JSON; unmarshal it for assertions.
+	var routeIdx int = -1
+	var routePayload wire.DecisionPayload
 	for i, f := range frames {
 		if f.Type != "data-decision" {
 			continue
@@ -701,16 +709,16 @@ func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
 			continue
 		}
 		if p.Decision == "route" {
-			cp := frames[i]
-			routeFrame = &cp
 			routeIdx = i
+			routePayload = p
 			break
 		}
 	}
-	require.NotNil(t, routeFrame, "expected a data-decision with decision=route")
-	assert.Equal(t, "compliance", routeFrame.SkillScores[0].SkillID, "Selected must be 'compliance'")
-	assert.True(t, routeFrame.SkillScores[0].Selected, "the chosen Skill must have Selected=true")
-	assert.False(t, routeFrame.Ambiguous, "single-Skill install must not be ambiguous")
+	require.NotEqual(t, -1, routeIdx, "expected a data-decision with decision=route")
+	require.NotEmpty(t, routePayload.SkillScores, "routing decision must carry SkillScores")
+	assert.Equal(t, "compliance", routePayload.SkillScores[0].SkillID, "Selected must be 'compliance'")
+	assert.True(t, routePayload.SkillScores[0].Selected, "the chosen Skill must have Selected=true")
+	assert.False(t, routePayload.Ambiguous, "single-Skill install must not be ambiguous")
 
 	// The route frame must appear BEFORE the verdict / source-document frames.
 	var verdictIdx = -1
@@ -791,38 +799,10 @@ func TestChatHandler_EmptyRegistryDoesNotInvokePipeline(t *testing.T) {
 // The FE renders the SkillPicker so the user picks.
 func TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline(t *testing.T) {
 	emb := &routerEmbedder{dim: 8, pivotIndex: 3}
-	// Two Skills whose descriptions are identical (cos=1 with each other
-	// AND cos=1 with the query at the same pivot) — gap=0 < margin → ambiguous.
-	r, cancel := registryWithOneSkill(t, "alpha", "shared description", emb)
+	// Two Skills with identical descriptions (cos=1 with each other AND
+	// cos=1 with the query at the matching pivot) — gap=0 < margin → ambiguous.
+	r, cancel := registryWithSkills(t, emb, "alpha", "bravo")
 	defer cancel()
-	// Inject a second Skill via direct reloadOne (manual path so we
-	// don't fight the filesystem shape).
-	root2 := t.TempDir()
-	secondDir := filepath.Join(root2, "bravo")
-	require.NoError(t, os.MkdirAll(secondDir, 0o755))
-	secondYaml := `---
-description: shared description
-agent: ChatModelAgent
-reads:
-  - authority/**
-writes: []
-steps: |
-  1. step
-guardrails:
-  prohibitions:
-    - "Never cite clauses not retrieved from authority tier"
-    - "Never paraphrase critical clauses"
-    - "Never reveal personal info"
-  required_refusal_phrases:
-    - "no_authorized_source"
-  tier_limits:
-    authority: ["read-only"]
-temperature: 0.0
----
-# bravo
-`
-	require.NoError(t, os.WriteFile(filepath.Join(secondDir, "SKILL.md"), []byte(secondYaml), 0o644))
-	require.NoError(t, r.ReloadOne(filepath.Join(secondDir, "SKILL.md")))
 
 	sr := &stubRetriever{chunks: []retriever.Hit{}}
 	stubRun := newStubRunner("")

@@ -124,6 +124,16 @@ type Deps struct {
 	// Store persists audit rows + session turns (Plan 03-02). nil =
 	// degraded mode (responses still stream, nothing persisted).
 	Store store.Store
+	// Router is the Plan 05-02 Skill Router (D5-01). When non-nil and
+	// Registry is non-nil, chatHandler routes via the registry snapshot
+	// BEFORE VerdictPipeline. When nil (existing tests), chatHandler
+	// falls back to the Phase 2 Loader-based findSkill path.
+	Router *skill.Router
+	// Registry is the Plan 05-01 Skill registry (atomic.Pointer snapshot
+	// of validated Skills + their cached description embeddings).
+	// Required by Router; nil + Router non-nil = chatHandler errors out
+	// at startup (the Router needs a snapshot to route from).
+	Registry *skill.Registry
 }
 
 // New constructs a Hertz server bound to addr with the chat route

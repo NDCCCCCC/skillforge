@@ -61,9 +61,10 @@ const defaultSkill = "compliance"
 //
 // Behavior:
 //  1. Decode JSON body — empty query → 400.
-//  2. Resolve skill name → *skill.Manifest via deps.Loader.Skills().
-//     Empty skill → defaultSkill. Unknown skill → emit out_of_scope
-//     refusal + finish-step.
+//  2. Resolve skill name → *skill.Manifest via deps.Loader.Skills()
+//     (Phase 2 fallback), OR via the Plan 05-02 Router if Registry is
+//     wired (D5-05 route-then-run). Empty skill → defaultSkill. Unknown
+//     skill → emit out_of_scope refusal + finish-step.
 //  3. Resolve session_id (X-Session-Id header OR newSessionID) and
 //     echo it back on the response (AGNT-05 / SC-9).
 //  4. Branch on Agent availability:
@@ -121,17 +122,35 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// Phase 2 fallback: resolve manifest via Loader, then VerdictPipeline.
-	manifest := s.findSkill(req.Skill)
-	if manifest == nil {
-		// Unknown skill → out_of_scope refusal. The finish-step after the
-		// data-policy is the canonical terminator — clients expect it.
-		_ = emitRefusal(c, verdict.Refusal{
-			Reason:      verdict.RefusalReasonOutOfScope,
-			CanRephrase: false,
-		})
-		return
+	// Plan 05-02 / D5-05: route-then-run. When the Registry + Router are
+	// wired, chatHandler invokes the Router FIRST and emits the routing
+	// decision chunk (data-decision with decision="route" + SkillScores
+	// + Selected + Ambiguous) BEFORE VerdictPipeline. On Ambiguous /
+	// empty-snapshot / embedder-error paths the verdict is NOT invoked —
+	// the FE renders the SkillPicker so the user picks (D5-03).
+	var manifest *skill.Manifest
+	if s.Registry != nil && s.Router != nil {
+		routed, ok := s.routeThenRun(ctx, c, req)
+		if !ok {
+			// Router short-circuited (empty snapshot, ambiguous, embedder
+			// error). The SSE stream is already finalized by routeThenRun.
+			return
+		}
+		manifest = routed
+	} else {
+		// Phase 2 fallback: resolve manifest via Loader.
+		manifest = s.findSkill(req.Skill)
+		if manifest == nil {
+			// Unknown skill → out_of_scope refusal. The finish-step after the
+			// data-policy is the canonical terminator — clients expect it.
+			_ = emitRefusal(c, verdict.Refusal{
+				Reason:      verdict.RefusalReasonOutOfScope,
+				CanRephrase: false,
+			})
+			return
+		}
 	}
+
 	if err := s.VerdictPipeline(ctx, c, req.Query, manifest); err != nil {
 		// Pipeline returned an error AFTER the first SSE frame was written
 		// (we cannot change status now). Emit an error chunk so the client
@@ -140,6 +159,74 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		return
 	}
+}
+
+// routeThenRun is the Plan 05-02 / D5-05 helper that drives the Router
+// BEFORE VerdictPipeline. Emits the routing decision chunk via
+// EmitChunk (no new wire type — D5-04 extends the existing data-decision
+// payload). On ambiguous / empty-snapshot / embedder-error paths,
+// returns (nil, false) so chatHandler can short-circuit WITHOUT
+// invoking VerdictPipeline — the FE renders the SkillPicker instead.
+//
+// Return values:
+//
+//	manifest, true  — router picked a Skill; chatHandler must invoke
+//	                   VerdictPipeline with manifest.
+//	nil, false      — router short-circuited; SSE stream is already
+//	                   finalized (data-decision emitted; chatHandler
+//	                   must NOT call VerdictPipeline).
+func (s *Deps) routeThenRun(ctx context.Context, c *app.RequestContext, req chatRequest) (*skill.Manifest, bool) {
+	snap := s.Registry.Snapshot()
+	result, err := s.Router.Route(ctx, req.Query, snap)
+	if err != nil {
+		// Embedder outage (BGE-M3 unreachable). Per spike-findings, a
+		// hash-based fallback would silently mask the outage — we emit
+		// an error envelope so the operator notices. chatHandler maps
+		// the error envelope to a structured 500 body.
+		c.SetStatusCode(http.StatusInternalServerError)
+		_ = wire.EmitChunk(c, errorChunk(fmt.Sprintf("router: %v", err)))
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+		return nil, false
+	}
+
+	// Emit the routing decision chunk (D5-04: extends the existing
+	// data-decision wire type, no new wire type). Step: 0 because the
+	// routing decision precedes the first agent hop. Decision: "route".
+	payload := wire.DecisionPayload{
+		Step:        0,
+		Decision:    "route",
+		SkillScores: result.Scores,
+		Selected:    result.Selected,
+		Ambiguous:   result.Ambiguous,
+	}
+	if err := emitDecision(c, payload); err != nil {
+		c.SetStatusCode(http.StatusInternalServerError)
+		_ = wire.EmitChunk(c, errorChunk(fmt.Sprintf("emit routing decision: %v", err)))
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+		return nil, false
+	}
+
+	if result.Ambiguous {
+		// Ambiguous: emit a finish-step so the client sees the stream
+		// close cleanly. The FE renders the SkillPicker with the
+		// SkillScores so the user can pick (D5-03).
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+		return nil, false
+	}
+
+	// Resolve the routed Skill's manifest from the registry snapshot.
+	entry, ok := snap[result.Selected]
+	if !ok || entry == nil {
+		// Defensive: the Selected Skill disappeared between Route() and
+		// here (race with a hot-reload). Surface as out_of_scope — the
+		// user can retry against the new snapshot.
+		_ = emitRefusal(c, verdict.Refusal{
+			Reason:      verdict.RefusalReasonOutOfScope,
+			CanRephrase: false,
+		})
+		return nil, false
+	}
+	return entry.Manifest, true
 }
 
 // runAgentPath is the Phase 3 /api/chat handler branch. It wires the
