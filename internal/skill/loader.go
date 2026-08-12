@@ -36,20 +36,20 @@ import (
 // File-driven registration (D2-07): the single source of truth for which
 // Skills exist is the filesystem. There is no DB or config file to keep in
 // sync — dropping skills/<name>/SKILL.md into the directory and restarting
-// the server is the entire workflow. Phase 5 extends this with fsnotify
-// hot-reload; Phase 2 uses startup-only loading.
+// the server is the entire workflow.
 //
 // Validation errors are NOT silently swallowed (TestLoader_ScanRejectsInvalidSkill
 // pins the propagation). The author of an invalid Skill must see the error
 // at startup; auto-skipping would mask the typo until a downstream query
 // failed in a confusing way.
 //
-// V12 ASVS path traversal (T-2-10): symlinks whose target resolves
-// OUTSIDE the skills directory are rejected before any parse happens.
-// filepath.WalkDir yields symlinks transparently, so we Lstat each entry
-// to detect them and EvalSymlinks to compare against the rooted root.
+// Phase 5: the per-file parse+validate+tiers body was extracted into the
+// unexported helper `parseAndValidate` so the new Registry.reloadOne can
+// reuse the same logic (and the same V12 symlink guard) without duplicating
+// ~40 lines of fragile frontmatter handling. Loader.Scan still walks the
+// directory at startup; Watch lives on Registry (a separate type).
 type Loader struct {
-	skillsDir string    // absolute path; rejected-against root for symlinks
+	skillsDir string      // absolute path; rejected-against root for symlinks
 	cached    []*Manifest // populated by Scan
 }
 
@@ -99,24 +99,6 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		// V12 ASVS — reject symlinks whose target is outside the root
-		// BEFORE any read happens.
-		if d.Type()&fs.ModeSymlink != 0 {
-			target, err := filepath.EvalSymlinks(path)
-			if err != nil {
-				return fmt.Errorf("resolve symlink %s: %w", path, err)
-			}
-			absTarget, err := filepath.Abs(target)
-			if err != nil {
-				return fmt.Errorf("abs symlink target %s: %w", target, err)
-			}
-			if !strings.HasPrefix(absTarget, root+string(filepath.Separator)) && absTarget != root {
-				return fmt.Errorf(
-					"symlink escape rejected: %s -> %s is outside skills root %s (V12 ASVS path-traversal protection)",
-					path, absTarget, root,
-				)
-			}
-		}
 		// Only SKILL.md (exact filename, case-sensitive) inside an
 		// immediate subdirectory is a Skill. README.md / notes.md /
 		// sub-SKILL.md files are ignored.
@@ -137,31 +119,12 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 			return nil
 		}
 
-		raw, err := os.ReadFile(path)
+		m, tiers, err := parseAndValidate(path)
 		if err != nil {
-			return fmt.Errorf("read %s: %w", path, err)
-		}
-		front, err := parseFrontmatter(raw)
-		if err != nil {
-			return fmt.Errorf("parse frontmatter in %s: %w", path, err)
-		}
-		var m Manifest
-		if err := yaml.Unmarshal(front, &m); err != nil {
-			return fmt.Errorf("unmarshal YAML in %s: %w", path, err)
-		}
-		if err := Validate(&m); err != nil {
-			return fmt.Errorf("validate %s: %w", path, err)
-		}
-		// Pre-compute resolved tiers once — the pipeline does not need
-		// to re-resolve on every request.
-		tiers, err := ResolveTiers(m.Reads)
-		if err != nil {
-			// Validate already rejected unknown dirs, so this is
-			// belt-and-braces; treat as fatal anyway.
-			return fmt.Errorf("resolve tiers for %s: %w", path, err)
+			return err
 		}
 		m.resolvedTiers = tiers
-		out = append(out, &m)
+		out = append(out, m)
 		return nil
 	})
 	if walkErr != nil {
@@ -169,6 +132,75 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 	}
 	l.cached = out
 	return out, nil
+}
+
+// parseAndValidate reads a single SKILL.md file, runs the V12 symlink
+// guard, parses frontmatter, unmarshals YAML, validates the 7-field
+// contract, and resolves the reads-pattern tier values. It is the
+// shared parse pipeline used by:
+//   - Loader.Scan (Phase 2 startup scan, via WalkDir callback).
+//   - Registry.reloadOne (Phase 5 hot-reload; the symlink guard is the
+//     single line of defense against atomic-save+rename replacing a
+//     SKILL.md with a symlink to /etc/passwd — V12 ASVS).
+//
+// The root for the symlink guard is computed as filepath.Dir(filepath.Dir(path))
+// because the layout contract guarantees every SKILL.md lives at
+// <root>/<skillname>/SKILL.md. A loose SKILL.md in the root is rejected
+// by the caller (Scan's rel check, the watcher's HasSuffix filter); the
+// helper does not need to defend against that case.
+//
+// On any error the returned Manifest is nil — callers MUST NOT use it.
+func parseAndValidate(path string) (*Manifest, []string, error) {
+	// V12 ASVS — symlink guard runs on EVERY parse (not just startup).
+	// An editor / wizard save+rename cycle can atomically replace a real
+	// SKILL.md with a symlink. Re-running this guard on each reload is
+	// the only correct posture (T-5-01).
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("lstat %s: %w", path, err)
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		root := filepath.Dir(filepath.Dir(path))
+		target, evalErr := filepath.EvalSymlinks(path)
+		if evalErr != nil {
+			return nil, nil, fmt.Errorf("resolve symlink %s: %w", path, evalErr)
+		}
+		absTarget, absErr := filepath.Abs(target)
+		if absErr != nil {
+			return nil, nil, fmt.Errorf("abs symlink target %s: %w", target, absErr)
+		}
+		if !strings.HasPrefix(absTarget, root+string(filepath.Separator)) && absTarget != root {
+			return nil, nil, fmt.Errorf(
+				"symlink escape rejected: %s -> %s is outside skills root %s (V12 ASVS path-traversal protection)",
+				path, absTarget, root,
+			)
+		}
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	front, err := parseFrontmatter(raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse frontmatter in %s: %w", path, err)
+	}
+	var m Manifest
+	if err := yaml.Unmarshal(front, &m); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal YAML in %s: %w", path, err)
+	}
+	if err := Validate(&m); err != nil {
+		return nil, nil, fmt.Errorf("validate %s: %w", path, err)
+	}
+	// Pre-compute resolved tiers once — the pipeline does not need
+	// to re-resolve on every request.
+	tiers, err := ResolveTiers(m.Reads)
+	if err != nil {
+		// Validate already rejected unknown dirs, so this is
+		// belt-and-braces; treat as fatal anyway.
+		return nil, nil, fmt.Errorf("resolve tiers for %s: %w", path, err)
+	}
+	return &m, tiers, nil
 }
 
 // parseFrontmatter extracts the YAML block between the first two `---`

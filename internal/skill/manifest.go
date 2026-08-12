@@ -49,16 +49,30 @@ package skill
 // The resolvedTiers field is NOT yaml-decoded. The Loader populates it
 // post-Validate by calling ResolveTiers(m.Reads), so the pipeline in
 // plan 02-03 doesn't have to re-resolve on every request.
+//
+// DescriptionVec is the in-memory cached vector of `Description`, populated
+// by Registry.reloadOne via the embedded embedder (Phase 5 D5-01 + D5-06
+// for hot-reload). It is in-memory only (json:"-") — the on-disk SKILL.md
+// never carries the vector and a JSON round-trip does not preserve it.
 type Manifest struct {
-	Description   string     `yaml:"description"   json:"description"` // 1 — intent routing text
-	Agent         string     `yaml:"agent"         json:"agent"`       // 2 — Eino ADK agent type
-	Reads         []string   `yaml:"reads"         json:"reads"`       // 3 — tier patterns (no `*` wildcard)
-	Writes        []string   `yaml:"writes"        json:"writes"`      // 4 — operation patterns (`[]` = read-only)
-	Steps         string     `yaml:"steps"         json:"steps"`       // 5 — markdown ordered list (YAML block scalar)
-	Guardrails    Guardrails `yaml:"guardrails"    json:"guardrails"`  // 6 — prohibitions + refusal phrases + tier limits
-	Temperature   *float32   `yaml:"temperature"   json:"temperature"` // 7 — [0.0, 1.0], pointer = required presence (SYSK-08)
-	resolvedTiers []string   // not serialized — populated by Loader after Validate
+	Description    string     `yaml:"description"             json:"description"` // 1 — intent routing text
+	Agent          string     `yaml:"agent"                   json:"agent"`       // 2 — Eino ADK agent type
+	Reads          []string   `yaml:"reads"                   json:"reads"`       // 3 — tier patterns (no `*` wildcard)
+	Writes         []string   `yaml:"writes"                  json:"writes"`      // 4 — operation patterns (`[]` = read-only)
+	Steps          string     `yaml:"steps"                   json:"steps"`       // 5 — markdown ordered list (YAML block scalar)
+	Guardrails     Guardrails `yaml:"guardrails"              json:"guardrails"`  // 6 — prohibitions + refusal phrases + tier limits
+	Temperature    *float32   `yaml:"temperature"             json:"temperature"` // 7 — [0.0, 1.0], pointer = required presence (SYSK-08)
+	DescriptionVec []float32  `yaml:"-"                       json:"-"`           // Phase 5 D5-01: cached embedding, in-memory only
+	resolvedTiers  []string   // not serialized — populated by Loader after Validate
 }
+
+// SetDescriptionVec injects the cached embedding vector for `Description`.
+// The setter is the only sanctioned way for Registry code to populate the
+// in-memory vector — direct field assignment is reserved for tests (see
+// SetResolvedTiersForTest). Production code paths MUST route through this
+// setter so a future audit grep for "DescriptionVec =" catches unintended
+// persisters.
+// (SetDescriptionVec implementation below — see field doc on Manifest.)
 
 // Guardrails is the structured form of SKILL.md field 6. Three sub-fields:
 //   - Prohibitions: forbidden actions the Skill must never take.
@@ -96,6 +110,13 @@ func (m *Manifest) ResolvedTiers() []string {
 // default-deny via BuildMilvusFilter.
 func (m *Manifest) SetResolvedTiersForTest(tiers []string) {
 	m.resolvedTiers = tiers
+}
+
+// SetDescriptionVec assigns the cached description embedding vector for
+// Phase 5 routing (D5-01, D5-06 hot-reload). The vector is owned by the
+// Manifest's lifetime — the caller may hand off its slice (we do not copy).
+func (m *Manifest) SetDescriptionVec(v []float32) {
+	m.DescriptionVec = v
 }
 
 // validAgentTypes is the whitelist of Eino ADK agent type strings accepted
