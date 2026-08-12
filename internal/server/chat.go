@@ -97,6 +97,31 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		req.Skill = defaultSkill
 	}
 
+	// Phase 3: session_id resolution (AGNT-05 / SC-9). The header is the
+	// client's claim; if absent the server generates a fresh crypto/rand
+	// ID (T-3-SESSIONID — 32 hex chars = 128 bits of entropy, ASVS V6).
+	// The ID is echoed back on the response so a client that did not send
+	// one can capture and reuse it for the next turn. Resolved unconditionally
+	// so both the agent path and the Phase 2 fallback benefit from session
+	// correlation in the audit row.
+	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
+	if sessionID == "" {
+		sessionID = newSessionID()
+	}
+	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
+
+	// Phase 3 path: agent wired → run the ReAct loop + audit + session
+	// persistence + decision SSE emission. The agent closes over its own
+	// manifest (set at NewAgent construction), so findSkill is NOT
+	// consulted here — findSkill's manifest is only used by the Phase 2
+	// VerdictPipeline fallback. The req.Skill name still flows into the
+	// audit row's SkillID column for both paths.
+	if s.Agent != nil {
+		s.runAgentPath(ctx, c, req, sessionID)
+		return
+	}
+
+	// Phase 2 fallback: resolve manifest via Loader, then VerdictPipeline.
 	manifest := s.findSkill(req.Skill)
 	if manifest == nil {
 		// Unknown skill → out_of_scope refusal. The finish-step after the
@@ -107,26 +132,6 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		})
 		return
 	}
-
-	// Phase 3: session_id resolution (AGNT-05 / SC-9). The header is the
-	// client's claim; if absent the server generates a fresh crypto/rand
-	// ID (T-3-SESSIONID — 32 hex chars = 128 bits of entropy, ASVS V6).
-	// The ID is echoed back on the response so a client that did not send
-	// one can capture and reuse it for the next turn.
-	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
-	if sessionID == "" {
-		sessionID = newSessionID()
-	}
-	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
-
-	// Phase 3 path: agent wired → run the ReAct loop + audit + session
-	// persistence + decision SSE emission. The Phase 2 fallback
-	// (VerdictPipeline) preserves the existing acceptance tests.
-	if s.Agent != nil {
-		s.runAgentPath(ctx, c, req, manifest, sessionID)
-		return
-	}
-
 	if err := s.VerdictPipeline(ctx, c, req.Query, manifest); err != nil {
 		// Pipeline returned an error AFTER the first SSE frame was written
 		// (we cannot change status now). Emit an error chunk so the client
@@ -153,7 +158,7 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 // reactAgent.Generate → compose.Graph. The SC-8 end-to-end test
 // (chat_session_test.go:TestCancelPropagationMidTool) asserts < 200ms
 // cancel latency.
-func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chatRequest, manifest *skill.Manifest, sessionID string) {
+func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chatRequest, sessionID string) {
 	// Session history load (best-effort — AGNT-05 correlation). Errors
 	// are logged and swallowed; the agent still runs with no history.
 	// The history is NOT passed into Agent.Run in Phase 3 (the agent is
