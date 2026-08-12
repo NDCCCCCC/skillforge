@@ -55,6 +55,17 @@
   --color-reasoning: #2a313b;
   --color-citation-bg: #1e3a5f;
 
+  /* ===== Plan 05-06 annotation tokens (SC-6 + SC-7) =====
+     Reserved SCOPED palette — these are the ONLY teal/redline surfaces
+     in the app. The 05-05 SUMMARY's GraphTree deliberately does NOT use
+     teal for the tier text ("teal reserved for SC-6 counter-evidence")
+     — keep that line bright by routing every teal request through this
+     single token. */
+  --color-annotation: #2dd4bf;            /* teal-400 — counter-evidence left-border + 历史 tier badge + redline rationale left-border */
+  --color-annotation-dim: #134e4a;        /* teal-900 — counter-evidence badge bg / hover */
+  --color-redline-removed: rgba(239, 68, 68, 0.10);   /* red-tinted bg block for 原条款 (D5-14 redline original) */
+  --color-redline-added: rgba(34, 197, 94, 0.10);     /* green-tinted bg block for 建议改写 (D5-14 redline rewrite) */
+
   /* ===== Spacing scale (multiples of 4) ===== */
   --space-1: 4px;
   --space-2: 8px;

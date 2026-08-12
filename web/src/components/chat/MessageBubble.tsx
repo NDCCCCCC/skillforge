@@ -27,6 +27,12 @@ import { SourceUrlPart } from './parts/SourceUrlPart';
 import { StepStartPart } from './parts/StepStartPart';
 import { TextPart } from './parts/TextPart';
 import { ToolPart } from './parts/ToolPart';
+// Plan 05-06 Task 2 — SC-6 / SC-7 post-verdict annotation cards.
+// Both render AFTER the verdict; RedlineCard is the LAST part in the
+// bubble (the operator's final affordance: copy / download the diff).
+import CounterEvidenceCard from '../verdict/CounterEvidenceCard';
+import RedlineCard from '../verdict/RedlineCard';
+import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
 
 function renderPart(part: UIMessage['parts'][number], i: number): ReactNode {
   switch (part.type) {
@@ -57,19 +63,37 @@ function renderPart(part: UIMessage['parts'][number], i: number): ReactNode {
     case 'step-start':
       return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
     case 'data-decision': {
-      // Plan 05-03 / SC-1 — only route / counter_evidence decisions render
-      // via RoutingTracePart. Other decision values (`retrieve`, `answer`,
-      // `refuse`, `forced_stop`) drop silently — they're consumed by the
-      // SC-4 AgentInspector panel (mounted in the center), not here.
-      const dp = (part as { data?: { decision?: string } }).data;
+      // Plan 05-03 / SC-1 — `route` decisions render via RoutingTracePart.
+      // Plan 05-06 / SC-6 — `counter_evidence` decisions render via the
+      // CounterEvidenceCard annotation surface (D5-13 trust moat: this
+      // is NOT routing info, it's the visible "history tier conflicts"
+      // marker that lives OUTSIDE the verdict's grounding).
+      // Other decision values (`retrieve`, `answer`, `refuse`,
+      // `forced_stop`) drop silently — they're consumed by the SC-4
+      // AgentInspector panel (mounted in the center), not here.
+      const dp = (part as { data?: { decision?: string; conflictChunks?: ConflictChunk[] } }).data;
       const decision = dp?.decision;
-      if (decision !== 'route' && decision !== 'counter_evidence') return null;
+      if (decision === 'counter_evidence') {
+        return <CounterEvidenceCard key={i} conflictChunks={dp?.conflictChunks} />;
+      }
+      if (decision !== 'route') return null;
       return (
         <RoutingTracePart
           key={i}
           part={part as Parameters<typeof RoutingTracePart>[0]['part']}
         />
       );
+    }
+    case 'data-redline': {
+      // Plan 05-06 / SC-7 — D5-14. The BE emits a data-redline chunk
+      // ONLY on 不合规 / 需补充 verdicts (合规 emits ZERO chunks + makes
+      // ZERO LLM calls). The card is therefore ABSENT on 合规 verdicts;
+      // this dispatcher simply never runs for them. If a future BE bug
+      // emits an empty/partial redline, RedlinePayload's required-field
+      // typing catches it at the cast below (TS refuses to narrow).
+      const data = (part as { data?: RedlinePayload }).data;
+      if (!data) return null;
+      return <RedlineCard key={i} data={data} />;
     }
     default:
       // For tool-${name} types we didn't pre-list (Pitfall 3), fall
