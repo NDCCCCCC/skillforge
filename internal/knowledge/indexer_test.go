@@ -251,3 +251,69 @@ func TestStripFrontmatter(t *testing.T) {
 		})
 	}
 }
+
+// TestIndexer_ValidateEffective — Plan 05-02 D5-15. KNOW-02 extension:
+// validateEffective rejects documents with invalid effective_to windows
+// at index time (fail-fast, before any backend write). Cases:
+//
+//	(a) effective_to == 0          → ok (perpetual sentinel).
+//	(b) effective_to < 0           → error (negative epoch nonsense).
+//	(c) both nonzero AND effective_to < effective_from → error (inverted window).
+//	(d) one side unset (from=0, to!=0) → ok (open-ended-from is valid).
+func TestIndexer_ValidateEffective(t *testing.T) {
+	const now int64 = 1700000000
+	cases := []struct {
+		name    string
+		doc     retriever.Document
+		wantErr bool
+	}{
+		{
+			name:    "perpetual_sentinel_ok",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			wantErr: false,
+		},
+		{
+			name:    "negative_effective_to_errors",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/b.md", EffectiveFrom: 0, EffectiveTo: -1},
+			wantErr: true,
+		},
+		{
+			name:    "inverted_window_errors",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/c.md", EffectiveFrom: now, EffectiveTo: now - 1},
+			wantErr: true,
+		},
+		{
+			name:    "one_side_unset_ok",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/d.md", EffectiveFrom: 0, EffectiveTo: now},
+			wantErr: false,
+		},
+		{
+			name:    "valid_bounded_window_ok",
+			doc:     retriever.Document{Tier: "权威", Source: "authority/e.md", EffectiveFrom: now - 100, EffectiveTo: now + 100},
+			wantErr: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateEffective([]retriever.Document{tc.doc})
+			if tc.wantErr {
+				assert.Error(t, err, "expected error for %s", tc.name)
+			} else {
+				assert.NoError(t, err, "expected no error for %s", tc.name)
+			}
+		})
+	}
+}
+
+// TestIndexer_ProductionWiresValidateEffective — static guard. The
+// production Index path MUST call validateEffective after building the
+// docs slice (before seedDocs / any backend write). A future refactor
+// that drops the call would silently let invalid effective windows
+// through to the corpus.
+func TestIndexer_ProductionWiresValidateEffective(t *testing.T) {
+	data, err := os.ReadFile("indexer.go")
+	require.NoError(t, err)
+	src := string(data)
+	assert.Contains(t, src, "validateEffective(",
+		"internal/knowledge/indexer.go MUST call validateEffective on the built docs slice (Plan 05-02 D5-15)")
+}
