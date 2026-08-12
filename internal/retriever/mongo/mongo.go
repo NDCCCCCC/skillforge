@@ -381,3 +381,36 @@ func (c *Client) CollectionName() string { return c.cfg.Collection }
 
 // DatabaseName exposes the resolved database name (mirrors CollectionName).
 func (c *Client) DatabaseName() string { return c.cfg.Database }
+
+// ListMetadata returns the metadata projection of every document in the
+// collection. Plan 05-05 / SC-5 / KNOW-06 — the graph browser data
+// source. No tier filter, no effective_to PRE-filter (the graph
+// deliberately includes superseded chunks so the operator can browse
+// them with the 已失效 badge per UI-SPEC §SC-8).
+//
+// The fields decoded are id / tier / source / effective_from /
+// effective_to only — embedding + content are not loaded. This keeps
+// the network round-trip lean and avoids loading chunk text into the
+// browser (the graph endpoint contract; threat T-5-22 mitigation).
+//
+// Implementation note: we reuse the existing mongoCollectionFinder with
+// a permissive bson.D{{}} filter (matches everything). For very large
+// corpora (>10k docs) this would warrant a cursor + pagination seam;
+// the Phase 2 corpus is hand-authored and ~30 docs total.
+func (c *Client) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, error) {
+	rows, err := c.finder.FindRows(ctx, bson.D{})
+	if err != nil {
+		return nil, fmt.Errorf("mongo.ListMetadata: FindRows: %w", err)
+	}
+	out := make([]retriever.DocumentMeta, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, retriever.DocumentMeta{
+			ID:            r.ID,
+			Tier:          r.Tier,
+			Source:        r.Source,
+			EffectiveFrom: r.EffectiveFrom,
+			EffectiveTo:   r.EffectiveTo,
+		})
+	}
+	return out, nil
+}

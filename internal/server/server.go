@@ -39,6 +39,7 @@ import (
 
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
@@ -74,6 +75,21 @@ type Retriever = retriever.Retriever
 type Runner interface {
 	Query(ctx context.Context, query string, opts ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent]
 	CallCount() int
+}
+
+// KnowledgeBuilder is the graph-endpoint seam (Plan 05-05 / SC-5 /
+// KNOW-06). The production implementation wraps a *knowledge.GraphBuilder
+// (which in turn calls Retriever.ListMetadata). Tests substitute a
+// stub that returns canned Graph fixtures so the handler tests do
+// not need a live Milvus / Mongo backend.
+//
+// Build receives a context.Context so the implementation can honor
+// the request's cancellation (the hertz chatHandler forwards the
+// request's context into Build). The interface lives in this file
+// (rather than internal/knowledge) to keep the knowledge package free
+// of hertz/app imports — mirroring the Runner pattern.
+type KnowledgeBuilder interface {
+	Build(ctx context.Context) (*knowledge.Graph, error)
 }
 
 // Deps bundles every dependency the chat pipeline needs. cmd/server's
@@ -139,6 +155,12 @@ type Deps struct {
 	// are enabled; when nil, the wizard handlers return 503. Production
 	// wires it at cmd/server/main.go alongside Agent + Store.
 	Wizard *skill.Wizard
+	// Knowledge is the Plan 05-05 / SC-5 graph builder (KNOW-06 —
+	// tier -> doc -> chunk tree for the FE knowledge browser). When
+	// non-nil, GET /api/knowledge/graph is enabled; when nil, the
+	// graph handler returns 503. Production wires it at cmd/server/main.go
+	// alongside the Retriever.
+	Knowledge KnowledgeBuilder
 }
 
 // New constructs a Hertz server bound to addr with the chat route
@@ -152,7 +174,8 @@ type Deps struct {
 // Routes: POST /api/chat (verdict pipeline), GET /api/skills (list
 // loaded Skills), POST /api/skills (dry-run Skill validator),
 // POST /api/skills/wizard (SC-3 wizard interview → preview),
-// POST /api/skills/wizard/commit (atomic write + fsnotify loop close).
+// POST /api/skills/wizard/commit (atomic write + fsnotify loop close),
+// GET /api/knowledge/graph (SC-5 graph browser data source).
 func New(addr string, deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(addr))
 	h.POST("/api/chat", deps.chatHandler)
@@ -160,5 +183,6 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/skills", deps.validateSkillHandler)
 	h.POST("/api/skills/wizard", deps.wizardHandler)
 	h.POST("/api/skills/wizard/commit", deps.wizardCommitHandler)
+	h.GET("/api/knowledge/graph", deps.graphHandler)
 	return h
 }

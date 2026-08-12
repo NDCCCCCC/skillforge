@@ -113,7 +113,10 @@ func (s *stubRetriever) Search(_ context.Context, _ []float32, tiers []string, t
 
 func (s *stubRetriever) Ensure(_ context.Context) error                         { return nil }
 func (s *stubRetriever) Insert(_ context.Context, _ []retriever.Document) error { return nil }
-func (s *stubRetriever) Disconnect() error                                      { return nil }
+func (s *stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
+	return nil, nil
+}
+func (s *stubRetriever) Disconnect() error { return nil }
 
 func (s *stubRetriever) CallCount() int {
 	s.mu.Lock()

@@ -226,6 +226,7 @@ func main() {
 		Agent:     ag,
 		Store:     st,
 		Wizard:    skill.NewWizard(cm, "skills/"),
+		Knowledge: knowledge.New(r),
 	}
 
 	// 8. Hertz server (Pattern 1).
@@ -236,6 +237,7 @@ func main() {
 	log.Printf("     POST /api/skills              — dry-run Skill validator")
 	log.Printf("     POST /api/skills/wizard       — SC-3 wizard (5-step interview -> preview)")
 	log.Printf("     POST /api/skills/wizard/commit — atomic write (fsnotify closes the loop)")
+	log.Printf("     GET  /api/knowledge/graph     — SC-5 graph browser (tier -> doc -> chunk)")
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()

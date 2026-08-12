@@ -68,6 +68,23 @@ type Document struct {
 	EffectiveTo   int64
 }
 
+// DocumentMeta is the metadata-only projection returned by
+// Retriever.ListMetadata. The graph builder (internal/knowledge.GraphBuilder,
+// Plan 05-05 / SC-5 / KNOW-06) reads these to construct the tier->doc->chunk
+// tree without going through the vector search path. No embedding
+// payload — keeps the network round-trip lean for the graph browser.
+//
+// Source is the slash-normalized corpus path (e.g. "authority/travel_expense.md").
+// Tier is the CN-char VARCHAR ("权威" / "历史" / "个人" / "草稿"). ID is the
+// numeric primary key (chunk_id used by citations).
+type DocumentMeta struct {
+	ID            int64
+	Tier          string
+	Source        string
+	EffectiveFrom int64
+	EffectiveTo   int64
+}
+
 // Retriever is the abstraction over a tiered vector search backend.
 //
 // Tier-filter semantics: PRE-similarity at the SDK/Search layer
@@ -80,6 +97,14 @@ type Document struct {
 // fallback). Sentinel-0 design — NOT nullable fields. The Milvus +
 // Mongo backends implement `(effective_to == 0 OR effective_to >= now)`
 // co-layered with the existing tier clause.
+//
+// Plan 05-05 / SC-5 / KNOW-06: ListMetadata returns the metadata of
+// every document across all tiers (no vector search, no tier filter).
+// Used by the knowledge graph browser; the endpoint streams tier+source
+// +effective_* only — the verbatim chunk text is fetched on-demand by
+// the ChunkSourceView when the operator clicks a chunk. Implementations
+// must NOT impose an effective_to PRE-filter here (the graph is a
+// browse surface that includes superseded chunks with the 已失效 badge).
 //
 // Implementations:
 //
@@ -107,6 +132,13 @@ type Retriever interface {
 	// EffectiveTo fields are written into the schema (default 0 for
 	// legacy documents).
 	Insert(ctx context.Context, docs []Document) error
+
+	// ListMetadata returns every document's metadata projection (no
+	// embedding payload). Used by the SC-5 / KNOW-06 graph browser;
+	// implementations must NOT apply the effective_to PRE-filter here
+	// (the graph deliberately surfaces superseded chunks so the
+	// operator can browse them with the 已失效 badge).
+	ListMetadata(ctx context.Context) ([]DocumentMeta, error)
 
 	// Disconnect closes the underlying client connection. After
 	// Disconnect the instance is unusable.

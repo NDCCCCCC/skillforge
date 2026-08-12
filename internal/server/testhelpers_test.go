@@ -114,6 +114,11 @@ func (s *stubRetriever) Ensure(_ context.Context) error { return nil }
 func (s *stubRetriever) Insert(_ context.Context, _ []retriever.Document) error {
 	return nil
 }
+func (s *stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return nil, nil
+}
 func (s *stubRetriever) Disconnect() error { return nil }
 
 // LastTiers returns the most recent tier list (or nil if none).

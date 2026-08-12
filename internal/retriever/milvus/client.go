@@ -18,8 +18,10 @@ package milvus
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 	"github.com/skillforge/skillforge/internal/retriever"
 )
 
@@ -85,4 +87,80 @@ func (m *MilvusClient) Ensure(ctx context.Context) error {
 // Insert seeds docs into the collection via the package-level helper.
 func (m *MilvusClient) Insert(ctx context.Context, docs []retriever.Document) error {
 	return SeedDocuments(ctx, m.mc, m.cfg, docs)
+}
+
+// ListMetadata returns the metadata projection of every row in the
+// collection (Plan 05-05 / SC-5 / KNOW-06 — graph browser data source).
+// No tier filter, no effective_to PRE-filter (the graph deliberately
+// surfaces superseded chunks with the 已失效 badge per UI-SPEC §SC-8).
+//
+// Implementation note: the milvus-sdk-go v2.4.2 Query API returns a
+// ResultSet ([]entity.Column). We iterate the columns by Name() and
+// pull each row's metadata. embedding + content are NOT loaded; the
+// graph endpoint never carries verbatim chunk text into the browser
+// (threat T-5-22 mitigation).
+func (m *MilvusClient) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, error) {
+	rs, err := m.mc.Query(
+		ctx,
+		m.cfg.CollectionName,
+		nil, // partitions (nil = default)
+		"",  // empty expr matches all rows
+		[]string{"id", "tier", "source", "effective_from", "effective_to"},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("milvus.ListMetadata: Query: %w", err)
+	}
+
+	var idCol, tierCol, sourceCol, efCol, etCol entity.Column
+	for _, c := range rs {
+		switch c.Name() {
+		case "id":
+			idCol = c
+		case "tier":
+			tierCol = c
+		case "source":
+			sourceCol = c
+		case "effective_from":
+			efCol = c
+		case "effective_to":
+			etCol = c
+		}
+	}
+	if idCol == nil {
+		// Empty collection — no rows; the graph builder produces an
+		// empty tier tree (still 4 tier entries, 0 docs each per
+		// UI-SPEC §SC-5).
+		return nil, nil
+	}
+
+	n := idCol.Len()
+	out := make([]retriever.DocumentMeta, 0, n)
+	for i := 0; i < n; i++ {
+		row := retriever.DocumentMeta{}
+		if v, e := idCol.GetAsInt64(i); e == nil {
+			row.ID = v
+		}
+		if tierCol != nil {
+			if v, e := tierCol.GetAsString(i); e == nil {
+				row.Tier = v
+			}
+		}
+		if sourceCol != nil {
+			if v, e := sourceCol.GetAsString(i); e == nil {
+				row.Source = v
+			}
+		}
+		if efCol != nil {
+			if v, e := efCol.GetAsInt64(i); e == nil {
+				row.EffectiveFrom = v
+			}
+		}
+		if etCol != nil {
+			if v, e := etCol.GetAsInt64(i); e == nil {
+				row.EffectiveTo = v
+			}
+		}
+		out = append(out, row)
+	}
+	return out, nil
 }
