@@ -25,6 +25,8 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
+	"github.com/skillforge/skillforge/internal/llm"
 )
 
 // Judge is the LLM-as-judge abstraction over the 5 atomic operations the
@@ -132,8 +134,8 @@ func (j *glmJudge) generateJSON(ctx context.Context, sys, user string, out any) 
 	if resp == nil || strings.TrimSpace(resp.Content) == "" {
 		return ErrEmptyJudgeResponse
 	}
-	raw := stripJSONDelim(resp.Content)
-	if err := json.Unmarshal([]byte(raw), out); err != nil {
+	raw := resp.Content
+	if err := json.Unmarshal([]byte(llm.ExtractJSON(raw)), out); err != nil {
 		return fmt.Errorf("eval.judge: parse JSON: %w (raw: %s)", err, truncate(raw, 200))
 	}
 	return nil
@@ -150,8 +152,8 @@ func (j *glmJudge) ExtractClaims(ctx context.Context, answer string) ([]string, 
 	user := fmt.Sprintf(longFormAnswerUser, answer)
 	var resp struct {
 		Analysis []struct {
-			SentenceIndex   int      `json:"sentence_index"`
-			SimplerClaims   []string `json:"simpler_statements"`
+			SentenceIndex int      `json:"sentence_index"`
+			SimplerClaims []string `json:"simpler_statements"`
 		} `json:"analysis"`
 	}
 	if err := j.generateJSON(ctx, longFormAnswerSystem, user, &resp); err != nil {
@@ -255,13 +257,13 @@ type StubJudge struct {
 	// to override the specific cases they assert on). Tests that want
 	// the stub to ALWAYS return the same list regardless of input can
 	// leave the map nil and rely on DefaultClaims.
-	ClaimsForAnswer  map[string][]string
-	DefaultClaims    []string
+	ClaimsForAnswer map[string][]string
+	DefaultClaims   []string
 
 	// EntailsClaim maps a claim string to its entailment verdict.
 	// Missing entry → DefaultEntails.
-	EntailsClaim     map[string]bool
-	DefaultEntails   bool
+	EntailsClaim   map[string]bool
+	DefaultEntails bool
 
 	// QuestionsForAnswer maps an answer to its pre-baked question list.
 	// Missing entry → DefaultQuestions.
@@ -270,8 +272,8 @@ type StubJudge struct {
 
 	// RelevantChunk marks a (query, chunk) pair as relevant. Missing →
 	// DefaultRelevant.
-	RelevantChunk     map[string]bool
-	DefaultRelevant   bool
+	RelevantChunk   map[string]bool
+	DefaultRelevant bool
 
 	// AttributableStatement marks a statement as attributable. Missing →
 	// DefaultAttributable.
@@ -353,23 +355,6 @@ func (s *StubJudge) IsAttributable(_ context.Context, statement, _ string) (bool
 // callers can treat "model gave up" differently from "model returned
 // malformed JSON".
 var ErrEmptyJudgeResponse = errors.New("eval.judge: model returned empty response")
-
-// stripJSONDelim removes a leading ```json / ``` fence if the model
-// wrapped its JSON output in a code block (GLM does this sometimes
-// despite response_format: json_object). Mirrors the agent package's
-// helper of the same name — duplicated here to keep the eval package
-// standalone (no internal/agent import for a 5-line helper).
-func stripJSONDelim(s string) string {
-	s = strings.TrimSpace(s)
-	if !strings.HasPrefix(s, "```") {
-		return s
-	}
-	// Strip leading ```json (or just ```) and trailing ```.
-	s = strings.TrimPrefix(s, "```")
-	s = strings.TrimPrefix(s, "json")
-	s = strings.TrimSuffix(s, "```")
-	return strings.TrimSpace(s)
-}
 
 // truncate keeps error messages bounded. Mirrors internal/server/truncate.
 func truncate(s string, n int) string {

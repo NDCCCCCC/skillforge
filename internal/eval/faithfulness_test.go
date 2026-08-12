@@ -99,8 +99,8 @@ func TestFaithfulnessDeterministicAcrossCalls(t *testing.T) {
 	ctx := context.Background()
 	claims := []string{"c1", "c2", "c3"}
 	judge := &StubJudge{
-		DefaultClaims:  claims,
-		EntailsClaim:   map[string]bool{"c1": true, "c2": true, "c3": false},
+		DefaultClaims: claims,
+		EntailsClaim:  map[string]bool{"c1": true, "c2": true, "c3": false},
 	}
 	s1, err := Faithfulness(ctx, "any", []string{"ctx"}, judge)
 	require.NoError(t, err)
@@ -140,19 +140,4 @@ func TestFaithfulnessNoneSupportedIsZero(t *testing.T) {
 	score, err := Faithfulness(ctx, "ans", []string{"ctx"}, judge)
 	require.NoError(t, err)
 	assert.Equal(t, 0.0, score)
-}
-
-// TestStripJSONDelim covers the fence-stripping helper (mirrors the
-// agent package's tests for the same shape).
-func TestStripJSONDelim(t *testing.T) {
-	for _, tc := range []struct {
-		in, want string
-	}{
-		{`{"a":1}`, `{"a":1}`},
-		{"```json\n{\"a\":1}\n```", `{"a":1}`},
-		{"```\n{\"a\":1}\n```", `{"a":1}`},
-		{"  {\"a\":1}  ", `{"a":1}`},
-	} {
-		assert.Equal(t, tc.want, stripJSONDelim(tc.in), "input: %q", tc.in)
-	}
 }
