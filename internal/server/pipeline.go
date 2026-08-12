@@ -30,6 +30,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/hertz/pkg/app"
 
+	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
@@ -205,7 +206,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 
 	var v verdict.Verdict
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+	if err := json.Unmarshal([]byte(llm.ExtractJSON(raw)), &v); err != nil {
 		return fmt.Errorf("verdict pipeline: parse verdict: %w (raw: %s)", err, truncate(raw, 200))
 	}
 	if ok, reason := verdict.Validate(v); !ok {

@@ -806,6 +806,89 @@ func TestAgentRetrievesAndAnswers(t *testing.T) {
 	assert.Equal(t, 1, ret.CallCount(), "agent should call retrieve exactly once in single-hop happy path")
 }
 
+// TestAgentRunParsesFencedVerdictGLMShape is the OOS-1 regression test
+// (glm-verdict-fence-parse). GLM (and other LLMs) wrap verdict JSON in
+// ```json ... ``` markdown fences even when response_format=json_object
+// is set. Before the fix, the verdict parse at agent.go:515 failed with
+// "invalid character '`' after top-level value" (or, for no-newline and
+// prose-wrapped variants, "unexpected end of JSON input" / "invalid
+// character 'H'"), breaking the entire compliant/non-compliant ANSWER
+// path end-to-end. This test drives Run with the EXACT GLM fence shape
+// via the multiTurnStubChatModel and asserts the verdict parses cleanly.
+//
+// Mirrors TestAgentRetrievesAndAnswers's chunk/span data so the
+// GroundingChecker passes and the test isolates the fence-parse behavior.
+func TestAgentRunParsesFencedVerdictGLMShape(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// The identical verdict body used by TestAgentRetrievesAndAnswers, but
+	// wrapped in the ```json ... ``` fence GLM emits. This is the raw bytes
+	// shape from the OOS-1 production error.
+	fencedFinalJSON := "```json\n" +
+		`{"status":"合规","confidence":0.9,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}` +
+		"\n```"
+	cm := newMultiTurnStub(t, 1, "出差住宿标准", fencedFinalJSON)
+	ret := &stubRetriever{
+		chunksPerCall: [][]retriever.Hit{
+			{{ID: 7, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费每天 500 元。", Score: 0.92}},
+		},
+	}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	v, refusal, err := a.Run(ctx, "sess-oos1", "出差住宿标准是多少？")
+	require.NoError(t, err, "Run must parse the fenced GLM verdict without error (OOS-1)")
+	require.Nil(t, refusal, "no refusal expected for a tier-matched fenced verdict")
+	assert.Equal(t, "合规", v.Status, "fenced verdict status must parse")
+	assert.InDelta(t, 0.9, v.Confidence, 0.001, "fenced verdict confidence must parse")
+	require.Len(t, v.Citations, 1, "fenced verdict citations must parse")
+	assert.Equal(t, "7", v.Citations[0].ChunkID)
+}
+
+// TestAgentRunParsesProseWrappedFencedVerdict locks the harder OOS-1
+// variant: a model that emits leading/trailing prose around the fenced
+// JSON block ("Here is the verdict:\n```json ... ```\nThanks!"). The old
+// stripJSONDelim could not detect a fence not anchored at the absolute
+// start; the robust llm.ExtractJSON isolates the object via the
+// first-'{'-to-last-'}' scan.
+func TestAgentRunParsesProseWrappedFencedVerdict(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	proseWrappedJSON := "Here is the verdict:\n```json\n" +
+		`{"status":"合规","confidence":0.88,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}` +
+		"\n```\nLet me know if you need more detail."
+	cm := newMultiTurnStub(t, 1, "出差住宿标准", proseWrappedJSON)
+	ret := &stubRetriever{
+		chunksPerCall: [][]retriever.Hit{
+			{{ID: 7, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费每天 500 元。", Score: 0.92}},
+		},
+	}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	v, refusal, err := a.Run(ctx, "sess-oos1-prose", "出差住宿标准是多少？")
+	require.NoError(t, err, "Run must parse the prose-wrapped fenced verdict (OOS-1 variant)")
+	require.Nil(t, refusal)
+	assert.Equal(t, "合规", v.Status)
+	assert.InDelta(t, 0.88, v.Confidence, 0.001)
+}
+
 // TestMultiHopCitationAggregation (ARAG-02 / SC-2) verifies the agent
 // accumulates chunks across 2 retrieve hops and the final verdict cites
 // chunks from BOTH hops.

@@ -25,6 +25,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
+	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/verdict"
 )
 
@@ -172,7 +173,7 @@ func (a *Agent) runCritiqueLLMCall(ctx context.Context, v verdict.Verdict, chunk
 	var parsed struct {
 		SemanticReversalDetected bool `json:"semantic_reversal_detected"`
 	}
-	if err := json.Unmarshal([]byte(out.Content), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(llm.ExtractJSON(out.Content)), &parsed); err != nil {
 		return false, fmt.Errorf("parse critique LLM JSON: %w (raw: %s)", err, truncate(out.Content, 200))
 	}
 	return parsed.SemanticReversalDetected, nil

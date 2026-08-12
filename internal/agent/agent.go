@@ -73,6 +73,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
@@ -512,7 +513,7 @@ func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdi
 		raw = out.Content
 	}
 	var v verdict.Verdict
-	if err := json.Unmarshal([]byte(stripJSONDelim(raw)), &v); err != nil {
+	if err := json.Unmarshal([]byte(llm.ExtractJSON(raw)), &v); err != nil {
 		// Emit a forced_stop decision if we hit MaxStep mid-tool-call
 		// (the model bailed without producing a clean final answer).
 		emitForcedStop(emit, sc)

@@ -25,6 +25,8 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	template "github.com/cloudwego/eino/utils/callbacks"
+
+	"github.com/skillforge/skillforge/internal/llm"
 )
 
 // Decision constants (D3-03 / SC-1). The data-decision SSE chunk's
@@ -157,7 +159,7 @@ func newDecisionCallback(emit DecisionEmitFunc) (callbacks.Handler, *stepCounter
 // Confidence field on the answer decision payload. Returns 0.0 on any
 // parse failure (the field is optional; UI treats 0.0 as "not reported").
 func tryParseConfidence(raw string) float64 {
-	raw = stripJSONDelim(raw)
+	raw = llm.ExtractJSON(raw)
 	if raw == "" {
 		return 0.0
 	}
@@ -187,36 +189,21 @@ func tryParseQuery(argsJSON string) string {
 	return ""
 }
 
-// stripJSONDelim trims leading code-block delimiters (```) and
-// whitespace from a model response. Some models (notably Claude-family
-// via OpenAI-compatible shims) wrap JSON output in ```json ... ```
-// fences even when response_format=json_object is set. The stripper is
-// intentionally minimal — it does NOT validate JSON; it just removes
-// obvious wrappers before the json.Unmarshal attempt.
-func stripJSONDelim(s string) string {
-	for len(s) > 0 && (s[0] == ' ' || s[0] == '\n' || s[0] == '\r' || s[0] == '\t') {
-		s = s[1:]
-	}
-	const fenceOpen = "```"
-	if len(s) >= len(fenceOpen) && s[:len(fenceOpen)] == fenceOpen {
-		s = s[len(fenceOpen):]
-		// optional language tag like "json"
-		for len(s) > 0 && s[0] != '\n' {
-			s = s[1:]
-		}
-		if len(s) > 0 {
-			s = s[1:] // drop the newline
-		}
-	}
-	// trailing fence
-	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\n' || s[len(s)-1] == '\r' || s[len(s)-1] == '\t') {
-		s = s[:len(s)-1]
-	}
-	if len(s) >= len(fenceOpen) && s[len(s)-len(fenceOpen):] == fenceOpen {
-		s = s[:len(s)-len(fenceOpen)]
-	}
-	return s
-}
+// stripJSONDelim previously lived here as a fragile byte-index fence
+// stripper. It was the root cause of OOS-1 (glm-verdict-fence-parse): its
+// language-tag loop `for s[0] != '\n'` consumed the entire input when no
+// newline followed the tag, and its leading-fence check required the
+// fence at the absolute start (prose-wrapped output defeated it). It has
+// been replaced by the shared, robust llm.ExtractJSON helper
+// (internal/llm/extract.go), which is used at every LLM-output parse site:
+//
+//   - internal/agent/agent.go (verdict parse, the OOS-1 failing site)
+//   - internal/agent/callbacks.go tryParseConfidence (above)
+//   - internal/agent/critique.go (critique LLM JSON parse)
+//   - internal/server/pipeline.go (Phase 2 linear verdict parse)
+//
+// See internal/llm/extract.go godoc and TestExtractJSON for the full
+// matrix of fence/prose/newline shapes the helper handles.
 
 // emitForcedStop is the helper Run uses when the MaxStep budget is hit
 // before the ChatModel produces a clean answer. It synthesizes a
