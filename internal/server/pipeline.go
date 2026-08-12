@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -238,7 +239,37 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 
 	// Step 10: SSE emit (CMPL-02 + SC-6 + AGNT-03).
-	return emitVerdictStream(c, v, chunks)
+	if err := emitVerdictStream(c, v, chunks); err != nil {
+		return fmt.Errorf("verdict pipeline: emit verdict stream: %w", err)
+	}
+
+	// Step 11: SC-6 / SC-7 post-verdict annotation passes (Plan 05-06).
+	//
+	//   - emitCounterEvidence (D5-13): runs an INDEPENDENT retrieval pass
+	//     against the 历史 tier and emits the contradicting chunks as
+	//     ANNOTATION — they NEVER enter the verdict's chunksByID map
+	//     (the trust moat lives in the function signature: emitCounterEvidence
+	//     does not receive chunksByID). Best-effort: errors are logged
+	//     and the verdict still stands (UI-SPEC §SC-6 error state).
+	//
+	//   - emitRedline (D5-14): calls ChatModel.Generate with a structured-
+	//     output prompt and emits ONE data-redline chunk. The cost-control
+	//     gate is the FIRST line of emitRedline: a 合规 verdict makes
+	//     ZERO LLM calls and emits ZERO data-redline chunks. Only
+	//     不合规 / 需补充 fire the pass.
+	//
+	// The two passes are SEQUENTIAL (counter-evidence first so it appears
+	// BEFORE redline in the message bubble; UI-SPEC §SC-6/7 ordering).
+	// Both are best-effort — a failure in either is logged and the
+	// pipeline returns nil (the verdict + counter-evidence / redline
+	// emitted so far are valid; downstream FE renders what arrived).
+	if err := s.emitCounterEvidence(ctx, c, qvec, now); err != nil {
+		log.Printf("[WARN] server: counter-evidence pass failed: %v (verdict stands; non-fatal)", err)
+	}
+	if err := s.emitRedline(ctx, c, v, chunksByID); err != nil {
+		log.Printf("[WARN] server: redline pass failed: %v (verdict stands; non-fatal)", err)
+	}
+	return nil
 }
 
 // buildPrompt renders the production system prompt with the query and

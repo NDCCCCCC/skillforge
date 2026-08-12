@@ -185,6 +185,15 @@ const ConfidenceFloor = 0.89
 // rather than the LLM's optimistic-but-fabricated status.
 const DowngradeStatus = "需补充"
 
+// NonCompliantStatus is the "fails compliance" verdict status. Plan 05-06
+// (SC-7 / CMPL-07 / D5-14) adds the redline pass that fires conditionally
+// on verdict.Status being NonCompliantStatus OR DowngradeStatus — a 合规
+// verdict emits NO redline chunk and makes NO LLM call (cost control).
+// Declared here alongside DowngradeStatus so the typed-status constants
+// live in one place (the package's only Status-string constants; the
+// validate.go map is the enum gate but does not export individual keys).
+const NonCompliantStatus = "不合规"
+
 // ApplyDowngrade applies the D2-02 downgrade policy to v when report
 // indicates grounding failure. Returns v unchanged when report.Grounded
 // is true (the happy path).

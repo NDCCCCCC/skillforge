@@ -75,6 +75,25 @@ export interface SkillScore {
   selected: boolean;
 }
 
+// Plan 05-06 / SC-6 / D5-13 — one 历史-tier annotation row carried inside
+// a counter_evidence DecisionPayload. The trust moat (D5-13) lives in
+// the BE function signature: emitCounterEvidence never receives the
+// verdict's chunksByID map; this struct is annotation-only metadata.
+export interface ConflictChunk {
+  /** Numeric chunk id rendered as decimal string (matches Hit.ID). */
+  chunkId: string;
+  /** Always "历史" today; kept on the struct for forward-compat. */
+  tier: string;
+  /** Slash-normalized corpus path (e.g. "history/2023-policy.md"). */
+  source: string;
+  /** 1-line text snippet for the annotation row (rendered as text, never HTML). */
+  snippet: string;
+  /** Epoch-seconds effective_from (0 / undefined = perpetual). */
+  effectiveFrom?: number;
+  /** Epoch-seconds effective_to (0 / undefined = perpetual). */
+  effectiveTo?: number;
+}
+
 export interface DecisionPayload {
   /** 1-indexed hop number (1 or 2 for max_hops=2). */
   step: number;
@@ -97,6 +116,9 @@ export interface DecisionPayload {
   selected?: string;
   /** D5-04 — true when the top-2 score gap is below the router threshold. */
   ambiguous?: boolean;
+  /** Plan 05-06 / D5-13 — populated only on `counter_evidence` decisions.
+   *  Carries the 历史-tier annotation rows (NEVER part of the verdict's grounding). */
+  conflictChunks?: ConflictChunk[];
 }
 
 // ----------------------------------------------------------------------------

@@ -74,6 +74,36 @@ type UIMessageChunk struct {
 	Data           json.RawMessage `json:"data,omitempty"`           // data-* custom payload (e.g. data-policy Verdict, data-decision DecisionPayload)
 }
 
+// ConflictChunk is one 历史-tier annotation row carried inside a
+// counter_evidence DecisionPayload. Plan 05-06 / SC-6 / D5-13.
+//
+// This struct is the load-bearing type for the D5-13 trust moat: it
+// carries the metadata of a chunk retrieved from the 历史 tier as
+// ANNOTATION ONLY — the verdict's chunksByID map is NEVER populated
+// with these chunks (the trust boundary is enforced structurally by
+// emitCounterEvidence's signature: it does not receive chunksByID).
+//
+// Field semantics:
+//   - ChunkID:       numeric chunk id rendered as a decimal string
+//                    (matches retriever.Hit.ID → strconv.FormatInt).
+//   - Tier:          always "历史" today (the counter-evidence pass
+//                    queries the 历史 tier only); kept on the struct
+//                    so a future cross-tier expansion (e.g. 草稿) does
+//                    not need a wire change.
+//   - Source:        slash-normalized corpus path (e.g. "history/2023-policy.md").
+//   - Snippet:       1-line text snippet for the annotation row. The FE
+//                    renders this verbatim as a text node (NEVER HTML).
+//   - EffectiveFrom: epoch-seconds effective_from (0 = perpetual).
+//   - EffectiveTo:   epoch-seconds effective_to (0 = perpetual).
+type ConflictChunk struct {
+	ChunkID       string `json:"chunkId"`
+	Tier          string `json:"tier"`
+	Source        string `json:"source"`
+	Snippet       string `json:"snippet"`
+	EffectiveFrom int64  `json:"effectiveFrom,omitempty"`
+	EffectiveTo   int64  `json:"effectiveTo,omitempty"`
+}
+
 // DecisionPayload is the JSON shape carried by data-decision SSE chunks.
 // Plan 03-03's agent package populates it via Eino callbacks
 // (newDecisionCallback — see 03-RESEARCH.md §Code Examples lines 670-676)
@@ -101,15 +131,24 @@ type UIMessageChunk struct {
 //                   confidence threshold and the agent defers to a
 //                   follow-up query; UI surfaces this as a clarification
 //                   prompt.
+//   - ConflictChunks: populated when Decision == "counter_evidence"
+//                     (Plan 05-06 / SC-6 / D5-13). The 历史-tier
+//                     annotation rows surfaced AFTER the verdict so the
+//                     operator can see contradicting evidence WITHOUT
+//                     the chunks entering the verdict's grounding map.
+//                     Empty slice (or nil) when the counter-evidence
+//                     pass found no conflicts — the FE renders the empty
+//                     state copy.
 type DecisionPayload struct {
-	Step        int         `json:"step"`                   // 1-indexed hop number (1 or 2 for max_hops=2)
-	Decision    string      `json:"decision"`               // "retrieve" | "answer" | "refuse" | "forced_stop" | "route" | "counter_evidence"
-	ToolCallID  string      `json:"toolCallId,omitempty"`
-	Query       string      `json:"query,omitempty"`
-	Confidence  float64     `json:"confidence,omitempty"`
-	SkillScores []SkillScore `json:"skillScores,omitempty"` // D5-04 — populated only on "route" decisions
-	Selected    string      `json:"selected,omitempty"`     // D5-04 — SkillID chosen on "route"
-	Ambiguous   bool        `json:"ambiguous,omitempty"`    // D5-04 — true when top-2 gap is below threshold
+	Step           int             `json:"step"`                      // 1-indexed hop number (1 or 2 for max_hops=2)
+	Decision       string          `json:"decision"`                  // "retrieve" | "answer" | "refuse" | "forced_stop" | "route" | "counter_evidence"
+	ToolCallID     string          `json:"toolCallId,omitempty"`
+	Query          string          `json:"query,omitempty"`
+	Confidence     float64         `json:"confidence,omitempty"`
+	SkillScores    []SkillScore    `json:"skillScores,omitempty"`     // D5-04 — populated only on "route" decisions
+	Selected       string          `json:"selected,omitempty"`        // D5-04 — SkillID chosen on "route"
+	Ambiguous      bool            `json:"ambiguous,omitempty"`       // D5-04 — true when top-2 gap is below threshold
+	ConflictChunks []ConflictChunk `json:"conflictChunks,omitempty"`  // Plan 05-06 / D5-13 — populated only on "counter_evidence" decisions
 }
 
 // SkillScore is one ranked candidate Skill in a DecisionPayload's

@@ -227,6 +227,7 @@ func main() {
 		Store:     st,
 		Wizard:    skill.NewWizard(cm, "skills/"),
 		Knowledge: knowledge.New(r),
+		ChatModel: cm,
 	}
 
 	// 8. Hertz server (Pattern 1).

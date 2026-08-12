@@ -35,6 +35,7 @@ import (
 	"context"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/hertz/pkg/app/server"
 
 	"github.com/skillforge/skillforge/internal/agent"
@@ -161,6 +162,15 @@ type Deps struct {
 	// graph handler returns 503. Production wires it at cmd/server/main.go
 	// alongside the Retriever.
 	Knowledge KnowledgeBuilder
+	// ChatModel is the Plan 05-06 / SC-7 redline LLM seam (D5-14). The
+	// redline pass calls Generate directly (no tool loop, no ADK) with
+	// a structured-output prompt, mirroring internal/agent.MaybeCritique.
+	// nil = the redline pass is skipped (production always wires it via
+	// the same model.ChatModel instance used to build Agent + prodRunner).
+	// Tests substitute a stub ChatModel that counts Generate invocations
+	// so TestRedline_Conditional can assert zero calls on a 合规 verdict
+	// (D5-14 cost control — the load-bearing regression).
+	ChatModel model.ToolCallingChatModel
 }
 
 // New constructs a Hertz server bound to addr with the chat route
