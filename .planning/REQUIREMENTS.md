@@ -12,9 +12,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **SYSK-01**: User can create a Skill from a declarative `SKILL.md` file in a Skill directory
 - [ ] **SYSK-02**: System parses and validates `SKILL.md` against the **7-field** schema (`description` / `agent` / `reads` / `writes` / `steps` / `guardrails` / **`temperature`**) — see `.planning/SKILL_SCHEMA.md`
 - [ ] **SYSK-03**: User can browse and select installed Skills via the UI
-- [ ] **SYSK-04**: System hot-reloads Skills on file change (fsnotify)
-- [ ] **SYSK-05**: System routes user queries to the right Skill via intent matching on `description`
-- [ ] **SYSK-06**: User can describe a Skill need in natural language and the **Skill Wizard** auto-generates a compliant `SKILL.md`
+- [x] **SYSK-04**: System hot-reloads Skills on file change (fsnotify)
+- [x] **SYSK-05**: System routes user queries to the right Skill via intent matching on `description`
+- [x] **SYSK-06**: User can describe a Skill need in natural language and the **Skill Wizard** auto-generates a compliant `SKILL.md`
 - [ ] **SYSK-07**: System enforces `reads` field as a hard filter at retrieval time (retriever cannot query outside declared tiers)
 - [ ] **SYSK-08**: System enforces `temperature` field as **required** (no default) and passes it to LLM calls via Eino `GenerateOption(temperature)` — supports per-Skill determinism level (compliance Skills use 0.0, creative Skills use 0.7+)
 
@@ -25,7 +25,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **AGNT-03**: System streams agent events (text / reasoning / tool-call / source) to client in real-time via Hertz SSE
 - [ ] **AGNT-04**: User can cancel an in-flight agent run
 - [x] **AGNT-05**: System maintains per-session conversation memory (with no cross-session bleed)
-- [ ] **AGNT-06**: User can inspect live agent state (turns / tools / retrievals) via the UI
+- [x] **AGNT-06**: User can inspect live agent state (turns / tools / retrievals) via the UI
 
 ### Knowledge Layer (KNOW)
 
@@ -34,7 +34,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **KNOW-03**: Retrieval filters by `tier` BEFORE similarity search (per Skill's `reads` declaration)
 - [ ] **KNOW-04**: System defaults to refusing when no tier-matched docs found (refusal-by-construction)
 - [ ] **KNOW-05**: UI displays citation tier alongside each citation (`[权威]` vs `[历史]` etc.)
-- [ ] **KNOW-06**: User can browse the knowledge graph (tier + doc + chunk relationships) in the UI
+- [x] **KNOW-06**: User can browse the knowledge graph (tier + doc + chunk relationships) in the UI
 
 ### Agentic RAG (ARAG)
 
@@ -83,9 +83,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CMPL-03**: Compliance Skill requires human review (`review_required: true`) when confidence < 0.9 OR claim is novel
 - [ ] **CMPL-04**: Compliance Skill reads ONLY 权威 tier (hard filter via `reads`; no 其他 tier bleed)
 - [ ] **CMPL-05**: UI displays compliance verdict with `needs human review` badge when triggered
-- [ ] **CMPL-06**: Counter-evidence highlighting — surface chunks that contradict the agent's verdict
-- [ ] **CMPL-07**: Redline suggestion — propose clause-level rewrites when policy gap detected
-- [ ] **CMPL-08**: Policy version tracking (chunk metadata `effective_from` / `effective_to`; superseded versions filtered out)
+- [x] **CMPL-06**: Counter-evidence highlighting — surface chunks that contradict the agent's verdict
+- [x] **CMPL-07**: Redline suggestion — propose clause-level rewrites when policy gap detected
+- [x] **CMPL-08**: Policy version tracking (chunk metadata `effective_from` / `effective_to`; superseded versions filtered out)
 
 ### Financial Data Layer (DATA)
 
@@ -152,9 +152,9 @@ Which phases cover which requirements.
 | SYSK-01 | Phase 2 | Pending |
 | SYSK-02 | Phase 2 | Pending |
 | SYSK-03 | Phase 4 | Pending |
-| SYSK-04 | Phase 5 | Pending |
-| SYSK-05 | Phase 5 | Pending |
-| SYSK-06 | Phase 5 | Pending |
+| SYSK-04 | Phase 5 | Complete |
+| SYSK-05 | Phase 5 | Complete |
+| SYSK-06 | Phase 5 | Complete |
 | SYSK-07 | Phase 2 | Pending |
 | SYSK-08 | Phase 2 | Pending |
 | AGNT-01 | Phase 3 | Pending |
@@ -162,13 +162,13 @@ Which phases cover which requirements.
 | AGNT-03 | Phase 2 | Pending |
 | AGNT-04 | Phase 3 | Pending |
 | AGNT-05 | Phase 3 | Complete |
-| AGNT-06 | Phase 5 | Pending |
+| AGNT-06 | Phase 5 | Complete |
 | KNOW-01 | Phase 3 | Complete |
 | KNOW-02 | Phase 3 | Pending |
 | KNOW-03 | Phase 3 | Pending |
 | KNOW-04 | Phase 3 | Pending |
 | KNOW-05 | Phase 4 | Pending |
-| KNOW-06 | Phase 5 | Pending |
+| KNOW-06 | Phase 5 | Complete |
 | ARAG-01 | Phase 3 | Complete |
 | ARAG-02 | Phase 3 | Pending |
 | ARAG-03 | Phase 3 | Pending |
@@ -202,9 +202,9 @@ Which phases cover which requirements.
 | CMPL-03 | Phase 2 | Pending |
 | CMPL-04 | Phase 2 | Pending |
 | CMPL-05 | Phase 2 | Pending |
-| CMPL-06 | Phase 5 | Pending |
-| CMPL-07 | Phase 5 | Pending |
-| CMPL-08 | Phase 5 | Pending |
+| CMPL-06 | Phase 5 | Complete |
+| CMPL-07 | Phase 5 | Complete |
+| CMPL-08 | Phase 5 | Complete |
 | DATA-01 | Phase 5 | Pending |
 | DATA-02 | Phase 5 | Pending |
 | DATA-03 | Phase 5 | Pending |
