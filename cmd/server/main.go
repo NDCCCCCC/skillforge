@@ -60,6 +60,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -70,6 +71,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 
+	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -77,6 +79,8 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
 	"github.com/skillforge/skillforge/internal/server"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/store"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 )
 
 // env-or-default helpers. Each required var aborts startup on empty.
@@ -155,7 +159,7 @@ func main() {
 	}
 
 	// 6. ChatModelAgent + Runner.
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	adkAgent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "skillforge-compliance",
 		Description: "SkillForge compliance-review ChatModelAgent",
 		Instruction: "You are a strict compliance auditor. Output ONLY the JSON object specified by the runtime system prompt.",
@@ -164,15 +168,55 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: adk agent init: %v", err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent})
+	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: adkAgent})
+
+	// 6b. Phase 3 ReAct Agent (Plan 03-03 — supersedes adk.NewChatModelAgent
+	// for the /api/chat path). The adk agent + runner above stay in scope
+	// because the eval golden-set runner (Plan 03-06) may use the simpler
+	// single-turn Runner.Query to drive 50 cases without the full ReAct
+	// loop; keeping both available preserves the option (per Plan 03-05).
+	//
+	// The agent's Manifest is the first loaded Skill (Phase 2 has exactly
+	// one Skill — compliance; multi-Skill routing is Phase 5). MaxHops=2
+	// is the D3-02 hard cap (ComputeMaxStep(2)=5 LLM turns max).
+	//
+	// Emit is NOT bound here — internal/agent's DecisionEmitFunc requires
+	// the per-request *app.RequestContext, which does not exist at server
+	// startup. The chatHandler wraps emitDecision(c, ...) into a closure
+	// per request (see internal/server/chat.go runAgentPath).
+	ag, err := agent.NewAgent(ctx, agent.AgentConfig{
+		Manifest:  firstManifest(loader),
+		Embedder:  emb,
+		Retriever: r,
+		ChatModel: cm,
+		MaxHops:   2, // D3-02 hard cap — see agent.ComputeMaxStep
+	})
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: agent init: %v", err)
+	}
+
+	// 6c. Store (audit + session-memory backend, Plan 03-02). Zero-ops
+	// default: pure-Go modernc.org/sqlite at SQLITE_DSN (default
+	// "skillforge.db" so a plain `go run cmd/server` produces a
+	// persistent audit trail next to the binary). Health-check fails
+	// fast on a misconfigured DSN — the operator sees the problem at
+	// startup, not at the first /api/chat request.
+	st, err := buildStore(ctx)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
+	}
 
 	// 7. Build *server.Deps. Embedder + Retriever are concrete impls
-	// behind the interfaces; Runner wraps the Eino Runner.
+	// behind the interfaces; Runner wraps the Eino Runner. Phase 3 adds
+	// Agent + Store so chatHandler can run the ReAct loop + persist audit
+	// rows + session turns (Plan 03-05).
 	deps := &server.Deps{
 		Loader:    loader,
 		Embedder:  emb,
 		Retriever: r,
 		Runner:    &prodRunner{runner: runner, cm: cm},
+		Agent:     ag,
+		Store:     st,
 	}
 
 	// 8. Hertz server (Pattern 1).
@@ -243,6 +287,44 @@ func buildRetriever(ctx context.Context, backend string, emb *bge.BGE) (retrieve
 		}
 		return mc, "milvus(" + milvusAddr + ")"
 	}
+}
+
+// buildStore constructs the audit + session-memory backend (Plan 03-02).
+// It mirrors buildRetriever's shape: read the env var, construct the
+// backend, run a Health check to fail-fast on misconfiguration, and
+// return the store.Store interface. Default SQLITE_DSN="skillforge.db"
+// (file-backed) so a plain `go run cmd/server` produces a durable audit
+// trail next to the binary; tests pass ":memory:" via the test harness.
+//
+// The returned store.Store is owned by the caller (cmd/server); Close
+// is wired to SIGINT in a future hardening pass (Phase 3 ships without
+// graceful-shutdown Close — the WAL journal_mode means a process kill
+// still leaves the database consistent).
+func buildStore(ctx context.Context) (store.Store, error) {
+	dsn := envOr("SQLITE_DSN", "skillforge.db")
+	s, err := sqlite.New(ctx, sqlite.Config{DSN: dsn})
+	if err != nil {
+		return nil, fmt.Errorf("sqlite.New(%q): %w", dsn, err)
+	}
+	if err := s.Health(ctx); err != nil {
+		_ = s.Close()
+		return nil, fmt.Errorf("store Health check: %w", err)
+	}
+	log.Printf("[OK] cmd/server: store open (dsn=%s, WAL mode)", dsn)
+	return s, nil
+}
+
+// firstManifest returns the first loaded Skill's manifest. Phase 2 ships
+// exactly one Skill (compliance); Phase 5 introduces semantic routing
+// across multiple Skills. Aborts startup if zero Skills loaded — the
+// agent requires a manifest to close over (ResolvedTiers → retrieve
+// tool's PRE-similarity filter; KNOW-03).
+func firstManifest(loader *skill.Loader) *skill.Manifest {
+	for _, m := range loader.Skills() {
+		return m
+	}
+	log.Fatalf("[FAIL] cmd/server: zero Skills loaded — cannot construct agent (the agent requires a manifest with resolved tiers; check skills/ directory)")
+	return nil
 }
 
 // prodRunner wraps adk.Runner for the Runner seam. Each Query call
