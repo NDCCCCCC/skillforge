@@ -93,7 +93,7 @@
 - [x] 03-02-PLAN.md — Wave 1 (parallel): internal/store.Store interface + SQLite default impl + audit row + session memory + SQLi/isolation tests (GEVL-03, AGNT-05)
 - [x] 03-03-PLAN.md — Wave 2: internal/agent — ReAct loop + retrieve tool + trust floor + layered critique + decision callbacks (AGNT-01/02, ARAG-01/02/03, KNOW-04)
 - [x] 03-04-PLAN.md — Wave 2 (parallel): KNOW-02 tier-mandatory enforcement at internal/knowledge.Index (backend-agnostic)
-- [ ] 03-05-PLAN.md — Wave 3: server integration — chatHandler session_id + Agent.Run + audit/session writes + data-decision SSE + SC-8 cancel + SC-9 isolation (AGNT-04/05, ARAG-01, KNOW-03)
+- [x] 03-05-PLAN.md — Wave 3: server integration — chatHandler session_id + Agent.Run + audit/session writes + data-decision SSE + SC-8 cancel + SC-9 isolation (AGNT-04/05, ARAG-01, KNOW-03)
 - [ ] 03-06-PLAN.md — Wave 4: Ragas Python sidecar + 50-case golden set + calibration data retiring retrievalScoreThreshold=0.3 (GEVL-04/05)
 **Wave structure**: W1={03-01, 03-02 parallel} → W2={03-03, 03-04 parallel} → W3={03-05} → W4={03-06}
 **UI hint**: no
