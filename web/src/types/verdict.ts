@@ -45,6 +45,12 @@ export interface Citation {
   span: string;
   /** knowledge tier: 权威 / 历史 / 个人 / 草稿 */
   tier: Tier;
+  /** D5-15 (SC-8): null = perpetually valid (backward-compat with versionless chunks). */
+  effective_from?: string | null;
+  /** D5-15 (SC-8): null = perpetually valid; < today = superseded (filtered by retriever). */
+  effective_to?: string | null;
+  /** D5-15 (SC-8): human-readable version label (e.g. "v2", "2026-03修订版"). */
+  version?: string | null;
 }
 
 // Refusal reason enum — matches internal/verdict/citation.go lines 78-94

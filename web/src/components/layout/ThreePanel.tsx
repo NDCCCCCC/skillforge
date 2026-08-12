@@ -5,20 +5,21 @@
 // localStorage persistence + collapse toggles per sketch-findings
 // `layout-three-panel.md`.
 //
+// Plan 04-03 → 05-03 refactor: the topbar and statusbar were inlined
+// here in Phase 4. Phase 5 extracts them into TopBar.tsx + StatusBar.tsx
+// so the SC-2 skill-manager menu + SC-2 in-flight pinned-version
+// indicator live in their own files (per 05-UI-SPEC §Component
+// Contracts). The grid layout + drag-to-resize + collapse behavior is
+// unchanged.
+//
 // Topbar (44px) → grid (1fr) → statusbar (26px) = the .app-shell CSS
-// class. The grid rows hold the topbar logo + collapse buttons, the
-// three panels + resize handles, and a minimal statusbar. Width state
-// is hydrated from `localStorage` on mount and written on drag-end.
+// class. The grid rows hold the topbar (now TopBar), the three panels
+// + resize handles, and the statusbar (now StatusBar).
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAppStore } from '../../store/app-store';
 import { cn } from '../../lib/cn';
-import {
-  Hexagon,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-} from 'lucide-react';
+import StatusBar from '../status/StatusBar';
+import TopBar from './TopBar';
 
 const LS_KEY_LEFT = 'sf-left-width';
 const LS_KEY_RIGHT = 'sf-right-width';
@@ -50,7 +51,6 @@ export default function ThreePanel({ left, center, right }: ThreePanelProps) {
   const sidebarLeft = useAppStore((s) => s.sidebarLeft);
   const sidebarRight = useAppStore((s) => s.sidebarRight);
   const setPanelWidth = useAppStore((s) => s.setPanelWidth);
-  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
 
   const [hydrated, setHydrated] = useState(false);
   const [dragStyle, setDragStyle] = useState<{ left: number; right: number } | null>(null);
@@ -139,47 +139,8 @@ export default function ThreePanel({ left, center, right }: ThreePanelProps) {
 
   return (
     <div className="app-shell" data-testid="app-shell">
-      {/* Topbar */}
-      <div
-        className="flex items-center justify-between px-3 border-b border-border bg-surface"
-        style={{ height: 'var(--topbar-height)' }}
-        data-testid="app-topbar"
-      >
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-dim">
-            <Hexagon className="h-4 w-4 text-primary" />
-          </div>
-          <div className="text-lg font-semibold text-text">SkillForge</div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            data-testid="collapse-left"
-            onClick={() => toggleSidebar('left')}
-            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
-            aria-label={sidebarLeft ? 'Collapse left panel' : 'Expand left panel'}
-          >
-            {sidebarLeft ? (
-              <PanelLeftClose className="h-4 w-4" />
-            ) : (
-              <PanelLeftOpen className="h-4 w-4" />
-            )}
-          </button>
-          <button
-            type="button"
-            data-testid="collapse-right"
-            onClick={() => toggleSidebar('right')}
-            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
-            aria-label={sidebarRight ? 'Collapse right panel' : 'Expand right panel'}
-          >
-            {sidebarRight ? (
-              <PanelRightClose className="h-4 w-4" />
-            ) : (
-              <PanelRightOpen className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-      </div>
+      {/* Topbar — Phase 5 extracted to TopBar.tsx for the SkillManagerMenu trigger */}
+      <TopBar />
 
       {/* Main grid */}
       <div
@@ -210,14 +171,8 @@ export default function ThreePanel({ left, center, right }: ThreePanelProps) {
         </div>
       </div>
 
-      {/* Statusbar */}
-      <div
-        className="bg-surface border-t border-border px-3 text-xs text-text-muted flex items-center"
-        style={{ height: 'var(--statusbar-height)' }}
-        data-testid="app-statusbar"
-      >
-        就绪
-      </div>
+      {/* Statusbar — Phase 5 extracted to StatusBar.tsx for the SC-2 pinned-version indicator */}
+      <StatusBar />
     </div>
   );
 }
