@@ -68,15 +68,24 @@ describe('wire contract drift detection (PITFALLS 1-3)', () => {
   // `dynamic-tool`. "tool-invocation" was the legacy v5 discriminator
   // and does not exist in v7; code switching on it falls through to
   // the unknown-type silent-drop default.
+  //
+  // Plan 04-04 (2026-08-12): the `chunk.type === 'finish-message'` /
+  // `'tool-invocation'` comparisons are now widened via a string cast
+  // (`const t = chunk.type as string;`) to eliminate TS2367 — TS knows
+  // the SkillForgeChunk discriminator union has no overlap with these
+  // stale literals, but the runtime guard's intent is precisely to
+  // catch a stale fixture that would silently break the SDK parser.
+  // The cast preserves the semantic guard without weakening it.
   it('no fixture contains type: "finish-message" or type: "tool-invocation" anywhere', () => {
     for (const [name, fixture] of Object.entries(FIXTURE_REGISTRY)) {
       for (const chunk of fixture) {
+        const t = chunk.type as string;
         expect(
-          chunk.type === 'finish-message',
+          t === 'finish-message',
           `${name}: chunk must NOT use "finish-message" (Pitfall 1 — use "finish")`,
         ).toBe(false);
         expect(
-          chunk.type === 'tool-invocation',
+          t === 'tool-invocation',
           `${name}: chunk must NOT use "tool-invocation" (Pitfall 3 — use "tool-${name}")`,
         ).toBe(false);
       }

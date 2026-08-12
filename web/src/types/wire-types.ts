@@ -31,8 +31,18 @@
 // of SkillForgeChunk is assignable to UIMessageChunk. If AI SDK
 // upstream changes a discriminator name, this file fails to compile
 // and CI catches the drift BEFORE any fixture is shipped.
+//
+// Plan 04-04 (2026-08-12) — the finishReason field on the `finish`
+// variant was narrowed from a free-form `string` to the SDK's
+// `FinishReason` enum (imported from 'ai') to align with the
+// UIMessageChunk `finish` arm (ai@7.0.59/dist/index.d.ts lines
+// 2407-2409, where FinishReason = 'stop' | 'length' |
+// 'content-filter' | 'tool-calls' | 'error' | 'other' per line 124).
+// This STRENGTHENS D15: the finish variant is now genuinely
+// assignable to UIMessageChunk's finish arm, not merely tolerated by
+// conditional-type distribution over the SkillForgeChunk union.
 
-import type { UIMessageChunk } from 'ai';
+import type { FinishReason, UIMessageChunk } from 'ai';
 import type { Refusal, SubprogressStep, Verdict } from './verdict';
 
 // ----------------------------------------------------------------------------
@@ -66,7 +76,7 @@ export interface DecisionPayload {
 export type SkillForgeChunk =
   // Lifecycle chunks (Pitfall 1 corrections)
   | { type: 'start'; messageId?: string; messageMetadata?: unknown }
-  | { type: 'finish'; finishReason?: string; messageMetadata?: unknown }
+  | { type: 'finish'; finishReason?: FinishReason; messageMetadata?: unknown }
   // Text streaming
   | { type: 'text-start'; id: string; providerMetadata?: unknown }
   | { type: 'text-delta'; id: string; delta: string; providerMetadata?: unknown }
