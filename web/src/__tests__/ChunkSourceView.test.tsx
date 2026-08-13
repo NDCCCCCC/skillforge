@@ -14,11 +14,28 @@
 //   5. For a chunkId NOT in the fixture, renders `(chunk not found
 //      in fixture)` and `版本: 未知` / `生效日期: 未知`.
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import ChunkSourceView from '../components/center/ChunkSourceView';
 
 afterEach(cleanup);
+
+// Plan 260813-dno — graph-browsed chunks now fetch their content async.
+// Mock globalThis.fetch for the whole describe block so the fixture-miss
+// branch has a deterministic backend. The fixture-hit cases (c-001,
+// c-002, c-004) never reach the fetch — their result.text !== NOT_FOUND_TEXT
+// so the effect returns early. Restored between tests to keep the mock
+// state isolated.
+let fetchSpy: MockInstance;
+
+beforeEach(() => {
+  fetchSpy = vi.fn();
+  vi.stubGlobal('fetch', fetchSpy);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('ChunkSourceView', () => {
   it('renders chunk-verbatim with the literal text from chunks.json for c-001', () => {
@@ -89,19 +106,80 @@ describe('ChunkSourceView', () => {
     expect(screen.getByTestId('tier-badge')).toHaveAttribute('data-tier', '草稿');
   });
 
-  it('renders "(chunk not found in fixture)" and 未知 metadata for a missing chunkId', () => {
+  it('fetches + renders the verbatim text for a graph-browsed chunk not in the fixture (260813-dno)', async () => {
+    // Graph-browsed chunks now fetch their content from
+    // GET /api/knowledge/chunk/:id when the fixture lookup misses.
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'c-graph-1',
+          tier: '历史',
+          source: 'historical/old.md',
+          content: '来自后端的原文',
+          effectiveFrom: 0,
+          effectiveTo: 0,
+          version: '',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
     render(
       <ChunkSourceView
-        chunkId="c-nonexistent"
+        chunkId="c-graph-1"
+        tier="历史"
+        version={null}
+        effectiveDate={null}
+        effectiveTo={null}
+      />,
+    );
+
+    // findByTestId awaits the async resolve — the body flips from
+    // 「加载中…」 to the fetched verbatim text.
+    const verbatim = await screen.findByTestId('chunk-verbatim');
+    expect(verbatim.textContent).toContain('来自后端的原文');
+    expect(verbatim.textContent).not.toContain('(chunk not found in fixture)');
+    // Metadata row is still prop-driven and correct (历史 from the prop).
+    expect(screen.getByTestId('chunk-version')).toHaveTextContent('版本: 未知');
+    expect(screen.getByTestId('chunk-effective-date')).toHaveTextContent('生效日期: 未知');
+    expect(screen.getByTestId('chunk-source-view')).toHaveAttribute('data-tier', '历史');
+  });
+
+  it('renders 加载中… before the fetch resolves for a fixture-miss chunk', () => {
+    // A never-resolving promise keeps the component in the loading state
+    // so the synchronous assertion can pin the 「加载中…」 body.
+    fetchSpy.mockReturnValue(new Promise(() => {}));
+
+    render(
+      <ChunkSourceView
+        chunkId="c-graph-2"
+        tier="历史"
+        version={null}
+        effectiveDate={null}
+        effectiveTo={null}
+      />,
+    );
+    expect(screen.getByTestId('chunk-verbatim').textContent).toContain('加载中…');
+  });
+
+  it('renders 加载片段失败 when the chunk fetch rejects (260813-dno)', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'boom' }), { status: 500 }),
+    );
+
+    render(
+      <ChunkSourceView
+        chunkId="c-graph-err"
         tier="权威"
         version={null}
         effectiveDate={null}
         effectiveTo={null}
       />,
     );
-    expect(screen.getByTestId('chunk-verbatim')).toHaveTextContent('(chunk not found in fixture)');
-    expect(screen.getByTestId('chunk-version')).toHaveTextContent('版本: 未知');
-    expect(screen.getByTestId('chunk-effective-date')).toHaveTextContent('生效日期: 未知');
+
+    const verbatim = await screen.findByTestId('chunk-verbatim');
+    expect(verbatim.textContent).toContain('加载片段失败');
+    expect(verbatim.textContent).not.toContain('(chunk not found in fixture)');
   });
 
   // Plan 05-05 / SC-8 (CMPL-08) — VersionBadge + effective_to row tests.

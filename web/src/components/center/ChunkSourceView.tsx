@@ -16,10 +16,13 @@
 // Wave 2 shipped the metadata row + a placeholder body. Wave 3 wires
 // the `chunk-lookup` helper so the metadata row reflects the chunk's
 // real version / effective date and the body shows the verbatim text
-// from the chunks.json fixture (or `未知` / `(chunk not found in
-// fixture)` for misses).
-import { useMemo } from 'react';
-import { lookupChunk } from '../../lib/chunk-lookup';
+// from the chunks.json fixture for citations. Plan 260813-dno / UAT #4
+// adds the async-fetch branch: a graph-browsed chunk the fixture does
+// NOT carry is fetched on-demand from GET /api/knowledge/chunk/:id
+// (the graph endpoint is metadata-only per T-5-22). The citation path
+// stays synchronous; the fetch fires ONLY on a fixture miss.
+import { useEffect, useMemo, useState } from 'react';
+import { fetchChunkContent, lookupChunk, NOT_FOUND_TEXT } from '../../lib/chunk-lookup';
 import { formatEffectiveDate } from '../../lib/format-effective';
 import TierBadge from '../common/TierBadge';
 import FilteredOutNotice from './FilteredOutNotice';
@@ -48,6 +51,51 @@ export default function ChunkSourceView({
   // CenterView; the body text comes from the fixture).
   const result = useMemo(() => lookupChunk(chunkId), [chunkId]);
 
+  // Plan 260813-dno / UAT #4 — async chunk-content fetch for graph-browsed
+  // chunks the fixture does NOT carry. The fixture path (result.text !==
+  // NOT_FOUND_TEXT, i.e. verdict citations) is unchanged; this branch
+  // fires ONLY on a fixture miss, which is the graph-browser case (the
+  // graph endpoint is metadata-only per T-5-22, so its chunks have no
+  // fixture entry).
+  const [asyncText, setAsyncText] = useState<string | null>(null);
+  const [asyncStatus, setAsyncStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+
+  const isFixtureMiss = result.text === NOT_FOUND_TEXT;
+  useEffect(() => {
+    // Only the fixture-miss branch fetches. The citation path is synchronous.
+    if (!isFixtureMiss) {
+      return;
+    }
+    setAsyncStatus('loading');
+    setAsyncText(null);
+    let cancelled = false;
+    fetchChunkContent(chunkId)
+      .then((data) => {
+        if (cancelled) return;
+        // 404 → null → render the 「片段不存在」 body (soft miss, not an error).
+        setAsyncText(data === null ? '（片段不存在）' : data.text);
+        setAsyncStatus('ready');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAsyncStatus('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chunkId, isFixtureMiss]);
+
+  // Compute the rendered body: fixture hit → fixture text; fixture miss →
+  // switch on the async status (loading / error / ready).
+  const body =
+    !isFixtureMiss
+      ? result.text
+      : asyncStatus === 'loading'
+        ? '加载中…'
+        : asyncStatus === 'error'
+          ? '加载片段失败'
+          : (asyncText ?? '');
+
   // SC-8 filtered-out notice: a superseded chunk only reaches the FE
   // via the graph browser (the retriever PRE-filter guarantees it
   // never appears in a verdict.citations payload). The condition
@@ -62,7 +110,7 @@ export default function ChunkSourceView({
     <div
       data-testid="chunk-source-view"
       data-chunk-id={chunkId}
-      data-tier={result.tier}
+      data-tier={tier}
     >
       {isSuperseded && <FilteredOutNotice effectiveTo={effectiveTo} />}
       <div data-testid="chunk-meta" className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
@@ -85,7 +133,7 @@ export default function ChunkSourceView({
         data-testid="chunk-verbatim"
         className="mt-3 whitespace-pre-wrap text-xs text-text font-mono bg-surface-2 p-4 rounded-md"
       >
-        {result.text}
+        {body}
       </pre>
     </div>
   );

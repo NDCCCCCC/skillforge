@@ -45,7 +45,12 @@ export interface ChunkMetadata {
   effectiveDate: string | null;
 }
 
-const NOT_FOUND_TEXT = '(chunk not found in fixture)';
+// Exported so ChunkSourceView can detect the fixture-miss branch (graph-
+// browsed chunks the fixture does not carry) and fire the async content
+// fetch against GET /api/knowledge/chunk/:id. The string value is stable
+// — it is the body the fixture path renders on a miss, so comparing
+// result.text === NOT_FOUND_TEXT is the canonical fixture-miss signal.
+export const NOT_FOUND_TEXT = '(chunk not found in fixture)';
 
 export function lookupChunk(chunkId: string): ChunkLookupResult {
   const entry = CHUNKS[chunkId];
@@ -79,4 +84,50 @@ export function extractChunkMetadata(chunkId: string): ChunkMetadata {
     };
   }
   return { tier: '权威', version: null, effectiveDate: null };
+}
+
+// Plan 260813-dno / UAT #4 — fetchChunkContent is the on-demand chunk-
+// content fetch against GET /api/knowledge/chunk/:id. It is the FE half
+// of the T-5-22 graph-payload contract: the graph endpoint stays
+// metadata-only, so ChunkSourceView fires this ONLY when the fixture
+// lookup misses (i.e. the operator clicked a graph-browsed chunk the
+// fixture does not carry). The verdict-citation path never reaches here.
+//
+// Return contract:
+//   - 200 → { text: verbatimContent, tier: Tier | null }
+//   - 404 → null (a soft miss — ChunkSourceView renders 「片段不存在」)
+//   - other !ok → throws (let the caller render the error state; do NOT swallow)
+//
+// Mirrors the API-base + Accept-header convention in useKnowledgeGraph.ts
+// (same /api/knowledge/... origin; Vite dev proxy handles :8888 in dev).
+export async function fetchChunkContent(
+  chunkId: string,
+): Promise<{ text: string; tier: Tier | null } | null> {
+  const resp = await fetch(
+    `/api/knowledge/chunk/${encodeURIComponent(chunkId)}`,
+    { headers: { Accept: 'application/json' } },
+  );
+  // A missing chunk is a soft miss, NOT an initialization failure
+  // (distinct from the graph hook's 503 handling). Return null so the
+  // caller can render a 「片段不存在」 state without surfacing an error.
+  if (resp.status === 404) {
+    return null;
+  }
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(
+      (body as { error?: string }).error ??
+        `HTTP ${resp.status} ${resp.statusText}`,
+    );
+  }
+  const body = (await resp.json()) as {
+    id: string;
+    tier: string;
+    source: string;
+    content: string;
+    effectiveFrom: number;
+    effectiveTo: number;
+    version: string;
+  };
+  return { text: body.content, tier: (body.tier as Tier) ?? null };
 }
