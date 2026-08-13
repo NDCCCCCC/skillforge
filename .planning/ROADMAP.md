@@ -116,7 +116,7 @@
 **Plans**: 4 plans
 **Plan list**:
 - [x] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
-- [ ] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
+- [x] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
 - [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
 - [ ] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
 **Wave structure**: W1={06-01} → W2={06-02, 06-03} → W3={06-04}
@@ -166,7 +166,7 @@
 **Pitfalls addressed:** P-RAG-2 (monitoring + drift detection), P-COMPL-4 (audit trail integrity), P-EINO-2 (multi-tenant session isolation), P-OSS-5 (CI hygiene)
 **Plans**: 4 plans
 **Plan list**:
-- [ ] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
+- [x] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
 - [ ] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
 - [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
 - [ ] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
