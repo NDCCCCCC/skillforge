@@ -35,6 +35,12 @@
 //     Sessions store METADATA ONLY (D14 / Pitfall 7) — useChat owns
 //     the message stream per session id; messages are in-memory and
 //     lost on refresh (D5-IA-03).
+//
+// Plan 05-08 (IN-04) — `skillServiceOffline: boolean` is flipped true by
+// useSkillReload after 3 consecutive non-OK /api/skills responses (the
+// loud-failure signal). LeftSidebar renders a banner above the 技能
+// block when the flag is true. The flag is reset to false on the first
+// OK response. Pure UI feedback — no secret data crosses the boundary.
 
 import { create } from 'zustand';
 import type { Tier } from '../types/verdict';
@@ -129,6 +135,10 @@ export interface AppState {
   skills: SkillSummary[];
   sessions: SessionMeta[];
   activeSessionId: string;
+  // Plan 05-08 (IN-04) — loud-failure signal. Flipped true by
+  // useSkillReload after 3 consecutive non-OK /api/skills responses.
+  // LeftSidebar renders a banner above the 技能 block when true.
+  skillServiceOffline?: boolean;
 }
 
 export interface AppActions {
@@ -150,6 +160,8 @@ export interface AppActions {
   createSession(): string;
   setActiveSession(id: string): void;
   deleteSession(id: string): void;
+  // Plan 05-08 (IN-04) — loud-failure flag toggle.
+  setSkillServiceOffline(offline: boolean): void;
 }
 
 const DEFAULT_LEFT_WIDTH = 260;
@@ -179,8 +191,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // an active useChat instance immediately (D5-IA-03 + Vercel AI SDK v5
   // per-id chatStore semantics).
   skills: [],
-  sessions: [{ id: INITIAL_SESSION_ID, name: '新会话', createdAt: Date.now() }],
+  sessions: [{ id: INITIAL_SESSION_ID, name: '会话 1', createdAt: Date.now() }],
   activeSessionId: INITIAL_SESSION_ID,
+  // Plan 05-08 (IN-04) — loud-failure flag. Default false; flipped
+  // true by useSkillReload after 3 consecutive non-OK /api/skills
+  // responses. Reset to false on the first OK response.
+  skillServiceOffline: false,
 
   setCenterView: (view) => set({ centerView: view }),
   setCurrentSkill: (id) => set({ currentSkillId: id }),
@@ -242,4 +258,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
     set({ sessions: remaining, activeSessionId: active });
   },
+  // Plan 05-08 (IN-04) — loud-failure flag toggle. LeftSidebar
+  // observes this and renders a banner above the 技能 block.
+  setSkillServiceOffline: (offline) => set({ skillServiceOffline: offline }),
 }));
