@@ -70,11 +70,11 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DIST-03**: `.env.example` with every required variable
 - [ ] **DIST-04**: `docker-compose up` brings up full stack (Go backend + Milvus + frontend + pluggable embedding endpoint)
 - [ ] **DIST-05**: Recorded demo GIF in README hero (cited verdict + structured refusal flow) — D7-06 reversed the live-demo decision
-- [ ] **DIST-06**: Pre-bundled sample compliance docs (works without API key for retrieval)
+- [x] **DIST-06**: Pre-bundled sample compliance docs (works without API key for retrieval)
 - [x] **DIST-07**: `CONTRIBUTING.md` with "how to write a Skill", "add a tool", "add a knowledge tier"
-- [ ] **DIST-08**: `examples/` folder with 2-3 Skill templates (compliance, simple QA, calculator)
+- [x] **DIST-08**: `examples/` folder with 2-3 Skill templates (compliance, simple QA, calculator)
 - [ ] **DIST-09**: Published eval results in README (faithfulness %, citation precision %, refusal accuracy %)
-- [ ] **DIST-10**: Eval set sample included in repo
+- [x] **DIST-10**: Eval set sample included in repo
 
 ### Compliance Demo Skill (CMPL)
 
@@ -192,11 +192,11 @@ Which phases cover which requirements.
 | DIST-03 | Phase 7 | Complete |
 | DIST-04 | Phase 7 | Pending |
 | DIST-05 | Phase 7 | Pending |
-| DIST-06 | Phase 7 | Pending |
+| DIST-06 | Phase 7 | Complete |
 | DIST-07 | Phase 7 | Complete |
-| DIST-08 | Phase 7 | Pending |
+| DIST-08 | Phase 7 | Complete |
 | DIST-09 | Phase 7 | Pending |
-| DIST-10 | Phase 7 | Pending |
+| DIST-10 | Phase 7 | Complete |
 | CMPL-01 | Phase 2 | Pending |
 | CMPL-02 | Phase 2 | Pending |
 | CMPL-03 | Phase 2 | Pending |
