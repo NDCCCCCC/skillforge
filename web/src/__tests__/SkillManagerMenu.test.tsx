@@ -1,42 +1,53 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 05-03 Task 2 — SkillManagerMenu tests.
+// Plan 05-03 Task 2 + Plan 05-07 Task 2 — SkillManagerMenu tests.
 //
-// Pins the SC-2 + SC-3 acceptance assertions for the topbar dropdown:
-//   1. Trigger button renders + toggles the dropdown.
-//   2. Dropdown lists every installed Skill with per-skill status.
-//   3. Per-skill status shows 已加载 when skillReloadStatus is empty.
-//   4. 全部重载 CTA dispatches a POST to the reload path.
-//   5. 新建 Skill（向导） CTA sets wizardMode + routes center to skill-md.
-//   6. Per-skill status shows 加载失败（旧版可用） when reload status
-//      has a 'failed' entry for that skill.
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+// Plan 05-07 (D5-IA-04 + D5-IA-05) reduces the dropdown to the wizard
+// entry only:
+//   - 全部重载 button (skill-manager-reload-all) REMOVED — D5-IA-05
+//     deletes the dead POST /api/skills/reload route.
+//   - Per-skill list (skill-manager-item rows + status badges) MOVED
+//     to the LeftSidebar 技能 block per D5-IA-04 division of labor.
+//   - The 新建 Skill（向导） entry (skill-manager-new-skill) remains
+//     and is the sole entry point.
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import SkillManagerMenu from '../components/layout/SkillManagerMenu';
 import { useAppStore } from '../store/app-store';
 
+const originalState = useAppStore.getState();
+
 afterEach(() => {
   cleanup();
-  vi.restoreAllMocks();
-  // Reset store mutations from the test
+  // Reset every slice this test file touches.
   useAppStore.setState({
+    ...originalState,
     skillReloadStatus: {},
     wizardMode: { active: false, step: 0, totalSteps: 0 },
     centerView: { kind: 'empty' },
+    skills: [],
+    sessions: [{ id: 'session-init', name: '新会话', createdAt: 0 }],
+    activeSessionId: 'session-init',
+    currentSkillId: null,
   });
 });
 
 beforeEach(() => {
   useAppStore.setState({
+    ...originalState,
     skillReloadStatus: {},
     wizardMode: { active: false, step: 0, totalSteps: 0 },
     centerView: { kind: 'empty' },
+    skills: [],
+    sessions: [{ id: 'session-init', name: '新会话', createdAt: 0 }],
+    activeSessionId: 'session-init',
+    currentSkillId: null,
   });
 });
 
-describe('SkillManagerMenu', () => {
+describe('SkillManagerMenu (Plan 05-07 wizard-only per D5-IA-04 + D5-IA-05)', () => {
   it('renders the trigger button + opens the dropdown on click', () => {
     render(<SkillManagerMenu />);
     expect(screen.queryByTestId('skill-manager-dropdown')).toBeNull();
@@ -44,47 +55,11 @@ describe('SkillManagerMenu', () => {
     expect(screen.getByTestId('skill-manager-dropdown')).toBeInTheDocument();
   });
 
-  it('lists every installed skill with per-skill status', () => {
+  it('dropdown contains the 新建 Skill（向导） entry (data-testid=skill-manager-new-skill)', () => {
     render(<SkillManagerMenu />);
     fireEvent.click(screen.getByTestId('skill-manager-trigger'));
-    const items = screen.getAllByTestId('skill-manager-item');
-    expect(items.length).toBeGreaterThanOrEqual(2);
-    // Default status when skillReloadStatus is empty: 已加载
-    expect(within(items[0]).getByText('已加载')).toBeInTheDocument();
-  });
-
-  it('shows 加载失败（旧版可用） when reload status is failed for a skill', () => {
-    useAppStore.setState({
-      skillReloadStatus: {
-        'compliance-review': {
-          status: 'failed',
-          version: 'old-kept',
-          error: '缺字段 temperature',
-          ts: Date.now(),
-          skillName: '企业合规/制度审查',
-        },
-      },
-    });
-    render(<SkillManagerMenu />);
-    fireEvent.click(screen.getByTestId('skill-manager-trigger'));
-    const items = screen.getAllByTestId('skill-manager-item');
-    const failedItem = items.find(
-      (el) => el.getAttribute('data-skill-id') === 'compliance-review',
-    ) as HTMLElement | undefined;
-    expect(failedItem).toBeDefined();
-    if (failedItem) {
-      expect(within(failedItem).getByText('加载失败（旧版可用）')).toBeInTheDocument();
-      expect(failedItem.getAttribute('title')).toContain('缺字段 temperature');
-    }
-  });
-
-  it('clicking 全部重载 dispatches a POST to the reload path', () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true } as unknown as Response);
-    vi.stubGlobal('fetch', fetchMock);
-    render(<SkillManagerMenu reloadPath="/api/test/reload" />);
-    fireEvent.click(screen.getByTestId('skill-manager-trigger'));
-    fireEvent.click(screen.getByTestId('skill-manager-reload-all'));
-    expect(fetchMock).toHaveBeenCalledWith('/api/test/reload', expect.objectContaining({ method: 'POST' }));
+    expect(screen.getByTestId('skill-manager-new-skill')).toBeInTheDocument();
+    expect(screen.getByText('新建 Skill（向导）')).toBeInTheDocument();
   });
 
   it('clicking 新建 Skill（向导） sets wizardMode + routes center to skill-md', () => {
@@ -94,6 +69,26 @@ describe('SkillManagerMenu', () => {
     const state = useAppStore.getState();
     expect(state.wizardMode.active).toBe(true);
     expect(state.centerView.kind).toBe('skill-md');
+  });
+
+  it('dropdown does NOT contain the 全部重载 button (D5-IA-05 — removed)', () => {
+    render(<SkillManagerMenu />);
+    fireEvent.click(screen.getByTestId('skill-manager-trigger'));
+    expect(screen.queryByTestId('skill-manager-reload-all')).toBeNull();
+  });
+
+  it('dropdown does NOT contain any skill-manager-item rows (per-skill list moved to LeftSidebar)', () => {
+    // Seed the live skills so the menu would have data to render if it
+    // still showed the per-skill list. The assertion still must hold.
+    useAppStore.setState({
+      skills: [
+        { id: 's1', name: 'S1', description: 'd', status: 'ok' },
+        { id: 's2', name: 'S2', description: 'd', status: 'ok' },
+      ],
+    });
+    render(<SkillManagerMenu />);
+    fireEvent.click(screen.getByTestId('skill-manager-trigger'));
+    expect(screen.queryAllByTestId('skill-manager-item')).toHaveLength(0);
   });
 
   it('clicking outside closes the dropdown', () => {
