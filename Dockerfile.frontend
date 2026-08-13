@@ -31,7 +31,10 @@ COPY --from=builder /web/dist /usr/share/nginx/html
 #   - SPA fallback: try_files $uri -> /index.html (React Router client routes)
 #   - /api reverse proxy -> backend:8888 (compose service DNS)
 #   - proxy_buffering off + Connection "" -> unbuffered HTTP/1.1 upstream,
-#     required for SSE streaming of UIMessageChunk frames. Using a single
-#     printf keeps this a self-contained Dockerfile (no bundled nginx.conf).
-RUN printf 'server {\n  listen 80;\n  root /usr/share/nginx/html;\n  location / { try_files $uri /index.html; }\n  location /api { proxy_pass http://backend:8888; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_buffering off; }\n}\n' > /etc/nginx/conf.d/default.conf
+#     required for SSE streaming of UIMessageChunk frames.
+#   - proxy_read/send_timeout 3600s -> override nginx's default 60s read
+#     timeout so a long compliance chain-of-thought (>60s to first token)
+#     is NOT cut mid-stream (the trust-verdict SSE flow is the headline UX).
+#     Using a single printf keeps this a self-contained Dockerfile (no bundled nginx.conf).
+RUN printf 'server {\n  listen 80;\n  root /usr/share/nginx/html;\n  location / { try_files $uri /index.html; }\n  location /api { proxy_pass http://backend:8888; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_buffering off; proxy_read_timeout 3600s; proxy_send_timeout 3600s; }\n}\n' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
