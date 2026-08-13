@@ -25,7 +25,11 @@
 // currentSkillId (T-5-IA-02). Failed-skill title attributes are
 // passed through stripFsPath + multi-line flattening + 160-char
 // truncation (T-5-IA-04 closure — WR-01/04).
-import { CheckCircle2, FileWarning, Folder, FolderOpen, MessageCircle, Plus, Wrench } from 'lucide-react';
+//
+// Plan 06-04 (D6-01) — "Eval Dashboard" nav entry at section 0 (above
+// 新建会话). Clicking the button sets the route to 'eval' and pushes
+// /eval to history so popstate + reload land in admin mode.
+import { BarChart3, CheckCircle2, FileWarning, Folder, FolderOpen, MessageCircle, Plus, Wrench } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { stripFsPath } from '../../lib/stripFsPath';
 import { useAppStore } from '../../store/app-store';
@@ -57,6 +61,8 @@ export default function LeftSidebar() {
   // Plan 05-08 (IN-04) — subscribe to the loud-failure flag set by
   // useSkillReload after 3 consecutive non-OK /api/skills responses.
   const skillServiceOffline = useAppStore((s) => s.skillServiceOffline);
+  // Plan 06-04 (D6-01) — highlight the Eval Dashboard nav when active.
+  const route = useAppStore((s) => s.route);
 
   function handleNewSession() {
     useAppStore.getState().createSession();
@@ -78,13 +84,41 @@ export default function LeftSidebar() {
     useAppStore.getState().deleteSession(id);
   }
 
+  // Plan 06-04 (D6-01) — admin-mode route toggle. Navigating to /eval
+  // hides the chat three-panel; the EvalDashboard shell takes over.
+  function handleEvalDashboard() {
+    if (window.location.pathname !== '/eval' && window.location.pathname !== '/eval/audit') {
+      window.history.pushState({}, '', '/eval');
+    }
+    useAppStore.getState().setRoute('eval');
+    useAppStore.getState().setEvalSubroute('dashboard');
+  }
+
   return (
     <div
       data-testid="left-sidebar"
       className="h-full bg-surface border-r border-border overflow-y-auto"
     >
-      {/* 1. 新建会话 button */}
+      {/* 0. Plan 06-04 (D6-01) — admin-mode nav entry. Sits above the
+          新建会话 button so operators see it first. Active state mirrors
+          the session/skill rows (primary-dim background + left border). */}
       <div className="px-3 pt-3 pb-2">
+        <button
+          type="button"
+          data-testid="left-sidebar-eval-dashboard"
+          onClick={handleEvalDashboard}
+          className={cn(
+            'inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text hover:bg-surface-3',
+            route === 'eval' && 'bg-primary-dim border-l-2 border-l-primary',
+          )}
+        >
+          <BarChart3 className="h-3.5 w-3.5" />
+          <span>Eval Dashboard</span>
+        </button>
+      </div>
+
+      {/* 1. 新建会话 button */}
+      <div className="px-3 pt-2 pb-2">
         <button
           type="button"
           data-testid="left-sidebar-new-session"
