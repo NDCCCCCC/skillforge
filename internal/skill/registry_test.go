@@ -386,3 +386,37 @@ func TestManifest_DescriptionVec_NotSerialized(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &out))
 	assert.Nil(t, out.DescriptionVec, "DescriptionVec must be nil after JSON round-trip")
 }
+
+func TestRegistry_FailedMap_SurfacesValidationError(t *testing.T) {
+	// SC-2 polling toast (§2): a reload that fails the 7-field validator
+	// records the error in the failed map (the status:"failed" overlay
+	// surface) WITHOUT bumping Version; a subsequent successful reload
+	// clears it. The HTTP listing overlays Failed() onto every snapshot
+	// entry, so this map is the load-bearing failure surface.
+	tmp := t.TempDir()
+	skillDir := filepath.Join(tmp, "compliance")
+	writeRegistrySkill(t, skillDir)
+
+	r, err := New(tmp, &stubEmbedder{dim: 4})
+	require.NoError(t, err)
+	assert.Empty(t, r.Failed(), "no failures at startup")
+
+	// Break the SKILL.md (missing temperature) + reload synchronously.
+	writeRegistryBrokenSkill(t, skillDir)
+	r.reloadOne(filepath.Join(skillDir, "SKILL.md"))
+
+	failed := r.Failed()
+	require.Contains(t, failed, "compliance")
+	assert.Contains(t, failed["compliance"], "temperature",
+		"the failed-map message must carry the validator's SYSK-08 detail")
+
+	// Version unchanged by the failure (keep-old) but still seeded.
+	snap := r.Snapshot()
+	require.Contains(t, snap, "compliance")
+	assert.Greater(t, snap["compliance"].Version, int64(0), "startup-seeded version must persist across a failed reload")
+
+	// Reload a GOOD SKILL.md again → failure cleared.
+	writeRegistrySkill(t, skillDir)
+	r.reloadOne(filepath.Join(skillDir, "SKILL.md"))
+	assert.Empty(t, r.Failed(), "a successful reload must clear the failure")
+}

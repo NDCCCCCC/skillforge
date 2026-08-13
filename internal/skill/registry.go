@@ -271,6 +271,22 @@ func (r *Registry) Watch(ctx context.Context) error {
 	return nil
 }
 
+// Reload synchronously re-reads, re-validates, and re-applies the SKILL.md
+// at path — the non-debounced twin of the Watch goroutine's reloadOne. On a
+// validation/parse failure it records the error via the failed map (status
+// overlay) and invokes the LoadError hook WITHOUT touching the snapshot or
+// Version (keep-old contract); on success it bumps the Version and clears
+// any prior failure.
+//
+// Reload is the public, deterministic reload trigger used by tests (and a
+// future "reload now" admin path) that need to assert reload semantics
+// without racing the 1s debounce + fsnotify delivery latency. It is safe
+// to call concurrently with Watch — both route through the atomic.Pointer
+// copy-on-write snapshot.
+func (r *Registry) Reload(path string) {
+	r.reloadOne(path)
+}
+
 // watchLoop is the goroutine body. It selects between ctx.Done, the
 // fsnotify events channel, and the fsnotify errors channel. Errors are
 // logged and the loop continues — a transient fsnotify error must not

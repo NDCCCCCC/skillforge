@@ -152,6 +152,9 @@ const validSkillJSON = `{
 }`
 
 // TestListSkillsHandler_ReturnsCompliance — SYSK-01 HTTP layer.
+// Loader-only Deps (no Registry) → exercises the fallback path: the
+// wrapped skillItem shape with the manifest nested under "manifest" +
+// version:0 / status:"ok".
 func TestListSkillsHandler_ReturnsCompliance(t *testing.T) {
 	deps := newTestDeps()
 	deps.Loader = newComplianceLoader(t)
@@ -161,10 +164,104 @@ func TestListSkillsHandler_ReturnsCompliance(t *testing.T) {
 	code, list, raw := getSkills(t, addr)
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list, 1, "raw=%s", raw)
-	assert.True(t, strings.HasPrefix(list[0]["description"].(string), "企业合规"))
-	assert.Equal(t, "ChatModelAgent", list[0]["agent"])
-	assert.Equal(t, []any{"authority/**"}, list[0]["reads"])
-	assert.Equal(t, float64(0), list[0]["temperature"])
+	manifest := list[0]["manifest"].(map[string]any)
+	assert.True(t, strings.HasPrefix(manifest["description"].(string), "企业合规"))
+	assert.Equal(t, "ChatModelAgent", manifest["agent"])
+	assert.Equal(t, []any{"authority/**"}, manifest["reads"])
+	assert.Equal(t, float64(0), manifest["temperature"])
+	// Wrapped fields (fallback path).
+	assert.Equal(t, "compliance", list[0]["id"])
+	assert.Equal(t, "compliance", list[0]["name"])
+	assert.Equal(t, float64(0), list[0]["version"], "fallback (no Registry) → version 0")
+	assert.Equal(t, "ok", list[0]["status"])
+	_, hasError := list[0]["error"]
+	assert.False(t, hasError, "ok status must omit the error field")
+}
+
+// brokenSkillYAML is complianceSkillYAML with the `temperature:` line
+// dropped, so the 7-field validator rejects it (SYSK-08). Used to assert
+// the status:"failed" overlay WITHOUT a version bump (keep-old contract).
+const brokenSkillYAML = `---
+description: 企业合规/制度审查 Skill — 依据权威制度文档给出可核验的合规判定
+agent: ChatModelAgent
+reads:
+  - authority/**
+writes: []
+steps: |
+  1. 检索权威制度条款
+  2. 逐条比对并给出判定
+guardrails:
+  prohibitions:
+    - "Never cite clauses not retrieved from authority tier"
+    - "Never paraphrase critical clauses (quote verbatim span)"
+    - "Never reveal personal/contact information of any individual"
+  required_refusal_phrases:
+    - "no_authorized_source"
+  tier_limits:
+    authority: ["read-only"]
+---
+# 合规审查（broken — no temperature）
+`
+
+// newComplianceRegistry writes one valid compliance SKILL.md into a temp
+// skills root and returns the *skill.Registry over it (nil embedder —
+// description-embedding / routing is not exercised here) plus the skill's
+// SKILL.md path (for deterministic Reload calls).
+func newComplianceRegistry(t *testing.T) (*skill.Registry, string) {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "compliance")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(complianceSkillYAML), 0o644))
+	reg, err := skill.New(root, nil)
+	require.NoError(t, err)
+	return reg, filepath.Join(dir, "SKILL.md")
+}
+
+// TestListSkillsHandler_RegistryVersionAndFailedStatus — the §2 polling-B
+// primary path. A real skill.Registry over a temp skills dir exposes a
+// JS-safe version (>=1) + status:"ok"; a broken-YAML Reload surfaces
+// status:"failed" + a non-empty error WITHOUT bumping the version
+// (keep-old contract), end-to-end through the HTTP layer.
+func TestListSkillsHandler_RegistryVersionAndFailedStatus(t *testing.T) {
+	reg, skillPath := newComplianceRegistry(t)
+
+	deps := newTestDeps()
+	deps.Registry = reg // Loader nil → exercises the Registry (primary) path
+	addr, cleanup := newTestSkillsHertz(t, deps)
+	defer cleanup()
+
+	// Good state.
+	code, list, raw := getSkills(t, addr)
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list, 1, "raw=%s", raw)
+	assert.Equal(t, "compliance", list[0]["id"])
+	assert.Equal(t, "ok", list[0]["status"])
+	verGood := list[0]["version"].(float64)
+	assert.GreaterOrEqual(t, verGood, float64(1), "Registry version must be a JS-safe counter >=1")
+	manifest, ok := list[0]["manifest"].(map[string]any)
+	require.True(t, ok, "manifest must be present on a good skill")
+	assert.Contains(t, manifest["description"], "企业合规")
+	_, hasErr := list[0]["error"]
+	assert.False(t, hasErr, "ok status must omit error")
+
+	// Break the YAML + synchronously reload → status flips to failed,
+	// error surfaces, version UNCHANGED (keep-old contract).
+	require.NoError(t, os.WriteFile(skillPath, []byte(brokenSkillYAML), 0o644))
+	reg.Reload(skillPath)
+
+	code2, list2, raw2 := getSkills(t, addr)
+	require.Equal(t, http.StatusOK, code2)
+	require.Len(t, list2, 1, "raw=%s", raw2)
+	assert.Equal(t, "failed", list2[0]["status"], "broken-YAML reload must surface status:failed")
+	assert.Equal(t, verGood, list2[0]["version"].(float64), "a failed reload MUST NOT bump the version (keep-old)")
+	errMsg, _ := list2[0]["error"].(string)
+	assert.Contains(t, errMsg, "temperature", "the failure error must carry the SYSK-08 detail")
+	// keep-old: the manifest is the OLD (good) one — the snapshot entry
+	// is untouched by the failed reload.
+	manifestAfter, _ := list2[0]["manifest"].(map[string]any)
+	require.NotNil(t, manifestAfter)
+	assert.Contains(t, manifestAfter["description"], "企业合规", "keep-old: manifest unchanged on failure")
 }
 
 // TestListSkillsHandler_EmptyRegistry — `[]`, not `null`, not 404.

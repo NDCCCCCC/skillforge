@@ -487,8 +487,12 @@ func TestWizardCommitHandler_RegistersAndRefreshesLoader(t *testing.T) {
 	require.Equal(t, http.StatusOK, gCode)
 	require.Len(t, gList, 1,
 		"GET /api/skills MUST list the freshly-committed skill without a server restart")
-	assert.Contains(t, gList[0]["description"], "审批流", "the listed skill must be the one we just committed")
-	assert.Equal(t, "ChatModelAgent", gList[0]["agent"])
+	// GET /api/skills wraps each manifest in a skillItem {id,name,version,
+	// status,error?,manifest}; the 7 schema fields now live under "manifest".
+	gManifest := gList[0]["manifest"].(map[string]any)
+	assert.Contains(t, gManifest["description"], "审批流", "the listed skill must be the one we just committed")
+	assert.Equal(t, "ChatModelAgent", gManifest["agent"])
+	assert.Equal(t, "expense-audit", gList[0]["id"], "the wrapped id is the committed skill name")
 }
 
 // TestWizardCommitHandler_RegisteredFalseWhenLoaderNil — defensive:

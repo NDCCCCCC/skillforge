@@ -206,6 +206,25 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
 	}
 
+	// 6d. Skill Registry (Plan 05-01 / §2 hot-reload). The fsnotify-driven
+	// registry is the production source of truth for the GET /api/skills
+	// listing's version + status fields — touching skills/<name>/SKILL.md
+	// on disk bumps that skill's Entry.Version (which the FE polls) and, on
+	// a broken-YAML reload, records status:"failed" WITHOUT bumping the
+	// version (keep-old). A nil embedder disables description-embedding
+	// (routing is not wired here — Router stays nil and chatHandler falls
+	// back to the Loader findSkill path); this also avoids a BGE round-trip
+	// at startup. The watcher goroutine runs until ctx (background) is
+	// cancelled — i.e. process exit — matching the existing Store.Close
+	// posture (Phase 6 adds graceful shutdown).
+	reg, err := skill.New("skills/", nil)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: skill registry: %v (fix the SKILL.md or remove it from skills/)", err)
+	}
+	if err := reg.Watch(ctx); err != nil {
+		log.Fatalf("[FAIL] cmd/server: registry watch: %v", err)
+	}
+
 	// 7. Build *server.Deps. Embedder + Retriever are concrete impls
 	// behind the interfaces; Runner wraps the Eino Runner. Phase 3 adds
 	// Agent + Store so chatHandler can run the ReAct loop + persist audit
@@ -220,6 +239,7 @@ func main() {
 	// "wizard wrote here, Loader reads there" contract holds.
 	deps := &server.Deps{
 		Loader:    loader,
+		Registry:  reg,
 		Embedder:  emb,
 		Retriever: r,
 		Runner:    &prodRunner{runner: runner, cm: cm},

@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -83,21 +84,88 @@ type wizardCommitResponse struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// skillItem is the GET /api/skills wire shape. It wraps the 7-field
+// Manifest with the hot-reload signal fields the FE polling client
+// (useSkillReload) needs to detect reloads WITHOUT a server-SSE channel:
+//
+//   - id   — the skill directory name (canonical id; matches the POST
+//     /api/chat body { "skill": "<id>" }).
+//   - name — human-friendly label; currently the directory name.
+//   - version — registry.Entry.Version, a JS-safe (<< 2^53) per-process
+//     monotonic counter. The FE diffs this across polls; a reload that
+//     succeeds bumps it. A reload that FAILS does NOT bump it (keep-old
+//     contract) — failures surface only via status. 0 in the no-Registry
+//     fallback (tests / a server mode without a watcher).
+//   - status — "ok" | "failed". "failed" overlays a recorded reload error.
+//   - error  — the validation/parse error text when status == "failed"
+//     (omitempty otherwise).
+//
+// Design (05-REMAINING-WORK §2, polling-only / decision B): the dead SSE
+// EventSource on /api/skills/events was removed; polling the version field
+// on this endpoint is now the single reload signal.
+type skillItem struct {
+	ID       string          `json:"id"`
+	Name     string          `json:"name"`
+	Version  int64           `json:"version"`
+	Status   string          `json:"status"`
+	Error    string          `json:"error,omitempty"`
+	Manifest *skill.Manifest `json:"manifest"`
+}
+
 // listSkillsHandler implements GET /api/skills (SYSK-01 HTTP layer).
 //
-// Returns the manifests the Loader cached at startup, marshaled via the
-// Manifest json tags (the 7 schema fields). An empty / uninitialized
-// registry returns `[]` — NOT `null`, NOT 404 — so clients can iterate
+// Primary path (s.Registry != nil, production): iterate the registry's
+// atomic snapshot, overlaying the failed map so a broken-YAML reload
+// surfaces as status:"failed" WITHOUT a version bump (keep-old contract).
+// The Loader fallback (Registry nil — existing tests, or a server mode
+// that bypasses hot-reload) returns version:0 / status:"ok" per cached
+// manifest.
+//
+// The list is sorted by id for a stable array order across polls (map
+// iteration is randomized; a stable order keeps the FE diff + any
+// order-sensitive rendering deterministic). An empty / uninitialized
+// registry returns `[]` — NOT `null`, NOT 404 — so clients iterate
 // unconditionally.
 func (s *Deps) listSkillsHandler(_ context.Context, c *app.RequestContext) {
-	var skills []*skill.Manifest
-	if s.Loader != nil {
-		skills = s.Loader.Skills()
+	items := []skillItem{}
+	if s.Registry != nil {
+		snap := s.Registry.Snapshot()
+		failed := s.Registry.Failed()
+		ids := make([]string, 0, len(snap))
+		for id := range snap {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			it := skillItem{ID: id, Name: id, Version: 0, Status: "ok"}
+			if entry := snap[id]; entry != nil {
+				it.Version = entry.Version
+				it.Manifest = entry.Manifest
+			}
+			if msg, ok := failed[id]; ok {
+				it.Status = "failed"
+				it.Error = msg
+			}
+			items = append(items, it)
+		}
+		// Defensive: a skill that failed so early it never entered the
+		// snapshot still surfaces so the operator sees the error rather
+		// than a silent omission.
+		for name, msg := range failed {
+			if _, ok := snap[name]; ok {
+				continue
+			}
+			items = append(items, skillItem{ID: name, Name: name, Status: "failed", Error: msg})
+		}
+	} else if s.Loader != nil {
+		for _, m := range s.Loader.Skills() {
+			if m == nil {
+				continue
+			}
+			items = append(items, skillItem{ID: m.Name, Name: m.Name, Version: 0, Status: "ok", Manifest: m})
+		}
 	}
-	if skills == nil {
-		skills = []*skill.Manifest{}
-	}
-	c.JSON(http.StatusOK, skills)
+	c.JSON(http.StatusOK, items)
 }
 
 // validateSkillHandler implements POST /api/skills (SYSK-02 HTTP layer).
