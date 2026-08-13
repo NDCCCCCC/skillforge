@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-08-13T01:38:41Z",
+  "phase": "05",
+  "phase_name": "05-skill-platform-full-knowledge-boundaries",
+  "phase_dir": ".planning/phases/05-skill-platform-full-knowledge-boundaries",
+  "plan": "05-REMAINING-WORK.md gap-closure — §2 (UAT #7) COMPLETE; §3 (UAT #4) is NEXT, then §4 (UAT #2, LAST)",
+  "task": 1,
+  "total_tasks": 5,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "§2 (UAT #7 hot-reload toast bridge, polling-B) — FULLY DONE + closed out",
+      "status": "done",
+      "commit": "09ae711 (FE) + 269cb0c (closeout); BE was 3d77870 + 3265178",
+      "progress": "FE: useSkillReload.ts → polling-only (drop constructSSE/SSE conn/ssePath; SkillListItem += status?/error?; emit on version-increase OR status-flip; failed→{status:'failed',version:'old-kept',error}; first tick seeds baseline no-emit). DELETED web/src/lib/sse-client.ts + test. App.tsx SSE comments fixed. useSkillReload.test.tsx += status-flip case. Verified: tsc --noEmit 0 err; vitest 28 files/190 tests. Closeout: 260813-1y0-SUMMARY.md written; 05-UAT.md Test 7 + Gap #7 → fixed (8 pass/3 issue); 05-REMAINING-WORK.md §2→DONE, §0 REMAINING 4→2; STATE.md Quick Tasks row + Session Continuity (10/11 pass). One-shot handoff (prior HANDOFF.json + .continue-here.md) deleted."
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 2,
+      "name": "§3 UAT #4 — graph chunk full-text (LOCKED: full-text in-scope)",
+      "status": "not_started",
+      "steps": [
+        "BE: add GET /api/knowledge/chunk/:id route (server.go) + handler (knowledge.go) returning verbatim text + metadata from the internal/knowledge chunk store (found 200 / not-found 404). Reuse the store the graph endpoint already enumerates chunk IDs from.",
+        "BE test: handler found/not-found.",
+        "FE: teach web/src/lib/chunk-lookup.ts to fetch /api/knowledge/chunk/:id for graph-browsed (non-cited) chunks; KEEP the existing fixture/verdict-citation resolution path. Replace the NOT_FOUND_TEXT='(chunk not found in fixture)' fallback for the graph case.",
+        "FE test: chunk-lookup resolves a graph-browsed chunk verbatim.",
+        "Verify (match #7 bar): go build/vet/test + cd web && tsc --noEmit && vitest run; flip 05-UAT.md #4→fixed; 05-REMAINING-WORK.md §3→DONE; STATE.md."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "§4 UAT #2 — left-sidebar IA (LOCKED: LEFT-sidebar consolidation; DO LAST)",
+      "status": "not_started",
+      "note": "Largest + design-dependent. Reconcile 05-UI-SPEC.md FIRST. Wire SkillManagerMenu to LIVE GET /api/skills (fixes static-fixture __fixtures__/skills.json bug + the /api/skills/reload 404). Implement IA: skill selector→chat-input area, session list→drawer, 新建会话 button. See 05-REMAINING-WORK.md §4."
+    }
+  ],
+  "blockers": [
+    {
+      "description": "None. §2 closed cleanly; paused at a clean boundary (no in-flight task).",
+      "type": "technical",
+      "workaround": "Resume directly into §3."
+    }
+  ],
+  "human_actions_pending": [
+    {
+      "action": "Optional: add skillforge.db / skillforge.db-shm / skillforge.db-wal + .claude/ to .gitignore (untracked SQLite WAL + local Claude config currently show in git status every session).",
+      "context": "Low-risk hygiene; offered 2026-08-13, user did not answer before pausing. Not blocking.",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "§3 = full-text in-scope: add GET /api/knowledge/chunk/:id returning verbatim text + metadata; teach chunk-lookup.ts for graph-browsed chunks.",
+      "rationale": "LOCKED by user 2026-08-13 in 05-REMAINING-WORK.md. Do NOT re-ask.",
+      "phase": "05"
+    },
+    {
+      "decision": "§4 = LEFT-sidebar consolidation; reconcile 05-UI-SPEC.md BEFORE implementing; do LAST.",
+      "rationale": "LOCKED by user 2026-08-13. Largest + most design-dependent; §3 is clear-cut so it goes first.",
+      "phase": "05"
+    },
+    {
+      "decision": "LOAD-BEARING for §4: GET /api/skills response shape is now []{id,name,version,status,error?,manifest} (changed in §2 commit 3265178), NOT a bare []*skill.Manifest. When §4 wires SkillManagerMenu to the live endpoint it MUST read schema fields nested under item.manifest.*.",
+      "rationale": "§2 made this breaking change (verified safe — only useSkillReload consumed the live list then). §4's SkillManagerMenu wiring is the next live consumer.",
+      "phase": "05"
+    }
+  ],
+  "uncommitted_files": [
+    {"path": ".planning/config.json", "status": "modified", "note": "PRE-EXISTING unrelated drift (_auto_chain_active false→true, GSD internal state). Not §2/§3/§4 related. Left intentionally unstaged."},
+    {"path": ".claude/", "status": "untracked", "note": "Local Claude config/worktrees — NEVER commit."},
+    {"path": "skillforge.db / skillforge.db-shm / skillforge.db-wal", "status": "untracked", "note": "SQLite WAL files — NEVER commit (gitignore candidate)."}
+  ],
+  "next_action": "Start §3 (UAT #4 graph chunk full-text). First: read web/src/lib/chunk-lookup.ts (the NOT_FOUND_TEXT fallback + current resolution paths) + internal/server/knowledge.go (the graph handler + how it reads the chunk store) + internal/server/server.go routes. Then add GET /api/knowledge/chunk/:id (BE route + handler + test), then teach chunk-lookup.ts to fetch it for graph-browsed chunks (+ FE test). Full scope: .planning/phases/05-skill-platform-full-knowledge-boundaries/05-REMAINING-WORK.md §3.",
+  "context_notes": "§2 (UAT #7 hot-reload toast bridge) is FULLY DONE and closed out this session — commits 09ae711 (FE) + 269cb0c (closeout) on top of the prior BE commits 3d77870 + 3265178. Phase 5 UAT is now 10/11 pass. This is a CLEAN BOUNDARY pause, not a mid-task pause: there is no in-flight work, no uncommitted §2 code. The next unit is §3 (graph chunk full-text) — smaller, root-cause known (chunk-lookup.ts only resolves fixture/verdict citations; no chunk-content BE endpoint exists), LOCKED full-text-in-scope. §4 (left-sidebar IA) is the largest, design-dependent, explicitly LAST. Both §3 and §4 decisions are LOCKED in 05-REMAINING-WORK.md — do NOT re-ask the user. Entry point for §3: /gsd-quick or direct gap-closure; for §4: /gsd-discuss-phase (reconcile UI-SPEC) then UI impl."
+}
