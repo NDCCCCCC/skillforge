@@ -8,3 +8,10 @@ spike-*trace.json
 .DS_Store
 node_modules/
 web/dist/
+
+# Local SQLite audit store (Phase 3 / Plan 03-02). Must never be committed —
+# audit rows may carry query text. Plan 07-01 closes the .gitignore gap before
+# the repo goes public (T-7-OSS-SECRET).
+skillforge.db
+skillforge.db-shm
+skillforge.db-wal
