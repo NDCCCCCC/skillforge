@@ -132,7 +132,7 @@
   7. The agent proposes a clause-level redline rewrite when its verdict flags a policy gap (CMPL-07)
   8. Querying chunks whose `effective_to < today` yields zero results (superseded policies are filtered out); the UI shows the active policy version (CMPL-08)
 **Pitfalls addressed:** Full P-SKILL-* (semantic routing, hot reload, wizard generation), P-EINO-1..3 (multi-Skill orchestration, in-flight hot reload, cross-tier conflict policy), full tier system (P-RAG-1)
-**Plans**: 6 plans
+**Plans**: 7 plans (6 + 1 gap-closure)
 **Plan list**:
 - [x] 05-01-PLAN.md - Wave 1: Wire extensions (data-redline 17->18 + DecisionPayload routing fields) + Skill Registry (atomic.Pointer + fsnotify + V12 symlink re-check + 1s debounce)
 - [x] 05-02-PLAN.md - Wave 1: Skill Router (BGE-M3 cosine + ambiguity gate) + Chunk schema migration (Document.EffectiveFrom/To + Milvus + Mongo + indexer validateEffective + pipeline threads now)
@@ -140,7 +140,8 @@
 - [x] 05-04-PLAN.md - Wave 2: SC-3 Skill Wizard (backend Generate + Commit endpoints with path-traversal guard; right-panel wizard mode + 5-step interview + preview + alert-dialog cancel)
 - [x] 05-05-PLAN.md - Wave 2: SC-4 Agent State Inspector (Accordion tree from useChat.messages) + SC-5 Knowledge Graph Browser (GET /api/knowledge/graph + 3-level Accordion + search filter) + SC-8 version badges on ChunkSourceView
 - [x] 05-06-PLAN.md - Wave 2: SC-6 Counter-evidence (BE post-verdict 历史 pass + FE teal annotation card with disclaimer) + SC-7 Redline (conditional LLM pass on 不合规/需补充 + FE diff view with copy/download)
-**Wave structure**: W1={05-01, 05-02 sequential} -> W2={05-03, 05-04, 05-05, 05-06 parallel}
+- [ ] 05-07-PLAN.md - Wave 3 (gap-closure, UAT #2): left-sidebar IA — sessions + skills in LEFT sidebar, chat-input Skill selector, SkillManagerMenu wizard-only, all wired to LIVE /api/skills (item.manifest.*)
+**Wave structure**: W1={05-01, 05-02 sequential} -> W2={05-03, 05-04, 05-05, 05-06 parallel} -> W3={05-07 gap-closure}
 **UI hint**: yes
 
 ### Phase 6: Eval Dashboard & Production Hardening
