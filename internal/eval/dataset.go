@@ -87,7 +87,15 @@ type CaseResult struct {
 // scores per category (adversarial / refusal-required / multi-hop).
 // Cases carries the per-case detail so downstream tooling (the Phase 6
 // CI promotion gate) can sort/filter/aggregate.
+//
+// Skill names the Skill this run evaluated (Phase 6 / D6-10). It is
+// `omitempty` + additive: reports written before Phase 6 simply lack the
+// field and are still valid input to gateDecision, which falls back to
+// DefaultGateSkill. The field exists because the gate must be able to
+// NAME the failing Skill in its PR comment (SC-2) and the trend index
+// must group runs per Skill (D6-02).
 type Report struct {
+	Skill       string                        `json:"skill,omitempty"`
 	Overall     map[string]float64            `json:"overall"`
 	PerCategory map[string]map[string]float64 `json:"per_category"`
 	Cases       []CaseResult                  `json:"cases"`
