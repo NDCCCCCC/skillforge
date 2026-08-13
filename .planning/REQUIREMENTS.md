@@ -68,8 +68,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DIST-01**: README with badges, value prop, demo GIF, quick start, architecture diagram, contributing, license
 - [ ] **DIST-02**: Apache-2.0 license file present from day 1
 - [ ] **DIST-03**: `.env.example` with every required variable
-- [ ] **DIST-04**: `docker-compose up` brings up full stack (Go backend + Milvus + BGE-M3 + frontend)
-- [ ] **DIST-05**: Live demo site deployed (HuggingFace Spaces / fly.io / free tier) with sample compliance docs
+- [ ] **DIST-04**: `docker-compose up` brings up full stack (Go backend + Milvus + frontend + pluggable embedding endpoint)
+- [ ] **DIST-05**: Recorded demo GIF in README hero (cited verdict + structured refusal flow) — D7-06 reversed the live-demo decision
 - [ ] **DIST-06**: Pre-bundled sample compliance docs (works without API key for retrieval)
 - [ ] **DIST-07**: `CONTRIBUTING.md` with "how to write a Skill", "add a tool", "add a knowledge tier"
 - [ ] **DIST-08**: `examples/` folder with 2-3 Skill templates (compliance, simple QA, calculator)

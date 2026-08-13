@@ -181,11 +181,11 @@
 **Depends on:** Phase 6
 **Requirements:** DIST-01, DIST-02, DIST-03, DIST-04, DIST-05, DIST-06, DIST-07, DIST-08, DIST-09, DIST-10
 **Success Criteria** (what must be TRUE):
-  1. `git clone && docker compose up` brings up the full stack on a clean laptop — backend, frontend, Milvus, BGE-M3 (DIST-04)
+  1. `git clone && docker compose up` brings up the full stack on a clean laptop — backend, frontend, Milvus, pluggable embedding endpoint (DIST-04)
   2. README renders badges, value prop, demo GIF, quick start, architecture diagram, contributing, and license at the repo root (DIST-01, DIST-02, DIST-07)
   3. `.env.example` lists every required variable with comments; missing values produce a clear startup error (DIST-03)
   4. Pre-bundled sample compliance docs ship under `examples/data/` and the demo works with no API key for retrieval (only LLM calls require one) (DIST-06)
-  5. A live demo site on free-tier hosting responds to a sample compliance question and returns a cited verdict (DIST-05)
+  5. A recorded demo GIF in the README hero walks through a sample compliance question and returns a cited verdict + structured refusal (DIST-05)
   6. `examples/` ships 2-3 Skill templates (compliance, simple QA, calculator) each passing the schema validator (DIST-08)
   7. README's "Eval Results" section shows published per-Skill faithfulness %, citation precision %, refusal accuracy % from the latest CI run (DIST-09)
   8. `eval/sample.jsonl` ships a 50-case sample of the per-Skill eval set in the repo (DIST-10)
