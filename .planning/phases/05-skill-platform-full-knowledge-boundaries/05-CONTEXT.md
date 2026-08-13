@@ -159,5 +159,49 @@ Promote SkillForge from "one compliance Skill" to a true **Skill-driven platform
 </deferred>
 
 ---
+
+## §4 Left-Sidebar IA Decisions (2026-08-13 — post-implementation gap-closure, UAT #2)
+
+> Captured via `/gsd-discuss-phase` for the LAST remaining Phase-5 UAT item (#2 right-panel / left-sidebar IA). Phase 5 was 6/6 plans done; §1–§3 of the remaining-work closed; this closes the design-dependent gap. Source-of-truth: sketch-findings + 05-UI-SPEC §Layout. These decisions RECONCILE a documented sketch↔UAT-truth conflict (the Skill-selector placement) — see IA-01.
+
+### Domain
+Consolidate navigation (sessions + file tree + skill list) into the LEFT sidebar per sketch source-of-truth; place the Skill selector in the chat-input area; wire `SkillManagerMenu` to the LIVE `/api/skills`. Closes UAT #2 (IA only). **Out of scope:** `@`-mention (deferred, IA-06), real session persistence (deferred, IA-03).
+
+### Locked decisions
+
+- **D5-IA-01 — Skill selector → chat-input area (bottom).** The existing "未选择 Skill" / "当前 Skill：{name}" hint block (`ChatInput.tsx:114-123`, `data-testid="chat-input-current-skill"`) becomes a clickable Skill selector (popover/dropdown) listing installed skills from LIVE `GET /api/skills` reading `item.manifest.*` (BLOCKING — see `.continue-here.md` CONSTRAINT). Click sets `useAppStore.currentSkillId`. Right-panel header becomes minimal (read-only current-skill/conversation badge). **Rejected:** chat-header placement (sketch source-of-truth) — UAT #2 truth wins; the hint already lives at input, and the selector co-locates with the message authoring flow.
+- **D5-IA-02 — Left sidebar = stacked labeled sections.** `LeftSidebar.tsx` (currently 100% mock — hardcoded `SOURCES`) becomes 4 stacked blocks top-to-bottom, each behind a label divider (sketch rule #7): `＋新建会话` → `会话` → `文件` → `技能`. Whole sidebar scrolls as one. **Rejected:** tabs (hides the global view at 260px); accordion-as-top-organizer. The SC-5 `Accordion` is reused INSIDE the `文件` block for the tier→doc→chunk tree (per 05-UI-SPEC §Left-sidebar evolution), not as the section organizer.
+- **D5-IA-03 — Session list = left-sidebar resident, UI-local state.** Session list lives in the left `会话` block, always visible — **NOT a drawer** (the "drawer that mutually toggles with chat" phrasing in the old UAT #2 truth is SUPERSEDED by the LOCKED left-sidebar consolidation). 新建会话 button at the top of the left sidebar. **Persistence = UI-local (Zustand):** each session is an independent `useChat` instance keyed by ID; messages are in-memory and lost on refresh. **NO backend changes** — explicitly NOT adding `ListSessions` / `/api/sessions` (deferred). store.Store already persists turns by `sessionID` but cannot enumerate sessions; full persistence is a separate effort.
+- **D5-IA-04 — Skill management division of labor (no redundancy).** Three distinct roles, single source of truth `useAppStore.currentSkillId`:
+  - **Left `技能` block** = browse + status badge (`已加载` / `加载失败(旧版可用)`), read from live `/api/skills`.
+  - **Topbar `SkillManagerMenu`** = ACTIONS only: `新建 Skill（向导）`. Active skill marked with accent left-border.
+  - **Chat-input Skill selector (IA-01)** = quick switch for the current conversation (writer of `currentSkillId`, alongside the wizard).
+  - `SkillManagerMenu` + `ChatInput` retire their `__fixtures__/skills.json` dependency.
+- **D5-IA-05 — "全部重载" removed (polling-only, consistent with §2).** §2 LOCKED polling-only (B): `useSkillReload` polls `GET /api/skills` every 2s, diffs `version`, surfaces `status`. Manual reload is vestigial. **Remove** the `全部重载` button + the dead `reloadPath` (`POST /api/skills/reload` — currently 404, error silently swallowed by `.catch(()=>undefined)`). **Do NOT add** a `/api/skills/reload` route. New-skill registration already works via the wizard-commit `Loader.Scan()` path (#9); existing-skill reload is fsnotify→version-bump→poll.
+- **D5-IA-06 — `@`-mention deferred (out of §4 scope).** The sketch-002 unified `@` dropdown (files + skills) is deferred. Rationale: the chat-input Skill selector (IA-01) now covers quick skill selection, reducing `@`'s urgency; folding it in would unbalance §4's IA focus. `@` remains placeholder text only.
+
+### Canonical refs (§4 implementation — downstream MUST read)
+- `.planning/phases/05-skill-platform-full-knowledge-boundaries/.continue-here.md` — **BLOCKING CONSTRAINT**: `GET /api/skills` shape `[]{id,name,version,status,error?,manifest}`; read `item.manifest.*`.
+- `.planning/phases/05-skill-platform-full-knowledge-boundaries/05-REMAINING-WORK.md` §4 — scope + LOCKED decisions (LEFT-sidebar; do LAST).
+- `.planning/phases/05-skill-platform-full-knowledge-boundaries/05-UAT.md` Test 2 — the gap this closes.
+- `.claude/skills/sketch-findings-ai-agent/references/layout-three-panel.md` — source-of-truth (left = session+file+skill; right = chat; 260/flex/420; rule #7 labeled sections).
+- `.claude/skills/sketch-findings-ai-agent/references/chat-input-attach-skill.md` — input-area design (IA-01 selector placement; `@` deferred per IA-06).
+- `.planning/phases/05-skill-platform-full-knowledge-boundaries/05-UI-SPEC.md` §Layout & SC-5 — left-sidebar evolution (reuse Accordion), center 5-tab.
+
+### Current-state gaps (code, confirmed 2026-08-13)
+- `web/src/components/layout/LeftSidebar.tsx` — 100% mock (hardcoded `SOURCES`, no clicks/store). **REWRITE** into 4 labeled sections.
+- `web/src/components/layout/RightChat.tsx` — header `SessionPicker`+`SkillPicker` → minimal; **remove SessionPicker** (sessions move to left).
+- `web/src/components/chat/ChatInput.tsx` — hint (`chat-input-current-skill`) → clickable Skill selector; retire `__fixtures__/skills.json` (L20, L62-63).
+- `web/src/components/layout/SkillManagerMenu.tsx` → live `/api/skills` (`item.manifest.*`); **remove 全部重载 + `reloadPath`** (L42, L62-68, L144-152); keep `新建向导`.
+- `web/src/components/chat/parts/SessionPicker.tsx` (hardcoded mock) → removed/replaced (sessions in left sidebar).
+- `web/src/store/app-store.ts` → add sessions metadata field (**D14: NO `messages`** — messages stay in `useChat`).
+- `web/src/components/layout/TopBar.tsx` — brand + collapse stay real; SkillManagerMenu trigger stays.
+
+### Deferred (this §4)
+- `@`-mention unified dropdown (sketch 002) — later UI pass (IA-06).
+- Real session persistence (`ListSessions` store method + `/api/sessions` route + history reload into `useChat`) — separate effort (IA-03).
+- `/api/skills/reload` rescan route — explicitly NOT added (IA-05).
+
+---
 *Phase: 5-Skill-Platform-Full-Knowledge-Boundaries*
-*Context gathered: 2026-08-12*
+*Context gathered: 2026-08-12 · §4 left-sidebar IA added 2026-08-13*

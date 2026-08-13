@@ -59,5 +59,25 @@ Assumption (not separately asked): reload scope = Skill definition only; knowled
 - `data-redline` exact fields + diff format → planner.
 - `effective_from/to` per-backend index syntax → researcher validates (Milvus expr / Mongo query).
 
+## §4 Left-Sidebar IA (2026-08-13 — post-implementation gap-closure, UAT #2)
+
+**Scope:** the LAST Phase-5 remaining item; reconcile right-panel / left-sidebar IA per sketch source-of-truth. Touched off by a documented sketch↔UAT-truth conflict on Skill-selector placement (sketch = chat header; UAT #2 truth = chat-input area).
+
+| Q | Options presented | Selection |
+|---|---|---|
+| Skill 选择器位置 | Input 区(底部,UAT truth) / Chat header(顶部,sketch) / 左栏切换 | **Input 区** |
+| 左栏内部分区 | 分段堆叠带 label(sketch规则#7) / 标签页 / 手风琴 | **分段堆叠** |
+| 会话持久化 | UI 本地态(Zustand,零后端) / 真后端持久化(ListSessions+路由) | **UI 本地态** |
+| 全部重载按钮 | 移除(polling自动,与§2一致) / 保留→加 rescan 路由 | **移除** |
+| @-mention | §4 外(已有 selector) / 纳入 §4 | **§4 外** |
+
+**Carry-forward (builder recommendations, accepted without separate vote):**
+- 会话列表形态: 左栏常驻(非 drawer);新建会话按钮在左栏顶部。数据源 = 前端 Zustand sessions(非 store.Store)。
+- Skill 分工: 左栏=浏览+状态;顶栏 SkillManagerMenu=仅"新建向导";input selector=切换当前会话 skill;`currentSkillId` 单一真源。
+
+**Blocking constraint acknowledged:** `GET /api/skills` shape `[]{id,name,version,status,error?,manifest}` → must read `item.manifest.*` (from `.continue-here.md`).
+
+**Grounding facts (codebase scout, 2026-08-13):** `LeftSidebar.tsx` 100% mock; no `/api/skills/reload` route (404); no session routes; store has `GetSession`/`AppendTurn` but NO `ListSessions`; `useSkillReload` already polls live `/api/skills` → only the menu/input read the stale fixture.
+
 ---
-*All four areas resolved on 2026-08-12. All user selections were the recommended option.*
+*Areas 1–4 resolved on 2026-08-12. §4 left-sidebar IA resolved 2026-08-13. All user selections were the recommended option.*
