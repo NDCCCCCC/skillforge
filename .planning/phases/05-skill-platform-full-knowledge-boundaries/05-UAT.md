@@ -11,7 +11,7 @@ constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks ver
 
 ## Current Test
 
-[testing complete — 11/11 resolved: 9 pass (7 original + #9 + OOS-1 fixed 2026-08-13), 3 open (#2 right-panel IA, #4 graph chunk-content, #7 hot-reload toast). BLOCKERS #9 (wizard registration, commit af1ca9a) + OOS-1 (GLM verdict fence-parse, commit d62fe98) RESOLVED via /gsd-debug — see 05-REMAINING-WORK.md for the remaining 3 issues' plan.]
+[testing complete — 11/11 resolved: 10 pass (7 original + #9 + OOS-1 + #7 hot-reload fixed 2026-08-13), 2 open (#2 right-panel IA, #4 graph chunk-content). BLOCKERS #9 (wizard registration, af1ca9a) + OOS-1 (GLM verdict fence-parse, d62fe98) RESOLVED via /gsd-debug; #7 hot-reload bridge fixed (3d77870 + 3265178 BE + 09ae711 FE) — see 05-REMAINING-WORK.md for the remaining 2 issues' plan.]
 
 ## Tests
 
@@ -52,7 +52,7 @@ evidence: User observed empty 暂无 Agent 状态 after assistant turn in dev UI
 
 ### 7. Hot-Reload Toast (SC-2 / D5-07/D5-08)
 expected: Touch/save a skills/<name>/SKILL.md on disk → within ~1s debounce a ReloadToast appears (success on valid change; validation-error toast on broken YAML, FS paths stripped). D5-08: validation failure keeps old snapshot.
-result: issue
+result: fixed (commits 3d77870 + 3265178 BE, 09ae711 FE, 2026-08-13) — hot-reload bridge rebuilt polling-only (decision B): `registry.Entry.Version` (JS-safe per-process atomic counter, << 2^53) is serialized in the `GET /api/skills` wrapper `{id,name,version,status,error?,manifest}`; `useSkillReload` polls it and emits a reload event on version-increase OR status-flip; the dead SSE `EventSource` (`/api/skills/events`, source of the 404 storm) is deleted; broken-YAML reload surfaces `status:"failed"` WITHOUT a version bump (keep-old contract). BE wires `skill.Registry` + `Watch(ctx)` in `main.go` so the fsnotify watcher is real in production. See `.planning/quick/260813-1y0-hot-reload-toast-bridge-polling-b/260813-1y0-SUMMARY.md`.
 reported: "Empirical (automated chrome-devtools + fs): appended a valid change to skills/compliance/SKILL.md, waited 3.5s (>2s poll interval) → ZERO toasts appeared. Browser console shows `404 [38 times]` — EventSource hammering /api/skills/events which the backend never registered."
 severity: major
 root_cause_candidate: "Hot-reload SIGNAL PATH is severed end-to-end. (1) SSE: GET /api/skills/events is NOT registered (server.go:191-196 lists only chat/skills/wizard/graph) → EventSource reconnect storm → 404. (2) Polling fallback (useSkillReload.ts:120) diffs `item.version`, but GET /api/skills returns []*skill.Manifest (manifest.go:57-73 = the 7 schema fields, NO version). Version int64 lives only on registry.Entry (registry.go:58), bumped on reload (registry.go:333) but NEVER serialized to HTTP. So neither path delivers a reload event → toast never fires. NOTE: backend reload machinery itself works (fsnotify → registry Version bump → router cache invalidation); the FE toast UI is unit-tested in isolation. Only the BE→FE notification bridge is broken. Failure-toast path (broken YAML) is additionally unobservable: poller always emits status:'ok' (useSkillReload.ts:125), and SSE is dead."
@@ -99,8 +99,8 @@ evidence: |
 ## Summary
 
 total: 11
-passed: 7
-issues: 4
+passed: 8
+issues: 3
 pending: 0
 skipped: 0
 blocked: 0
@@ -136,7 +136,8 @@ blocked: 0
   debug_session: ""  # Filled by diagnosis
 
 - truth: "Touching an installed skill file on disk (skills/<name>/SKILL.md) surfaces a ReloadToast in the UI within ~1s, for both valid changes (success) and broken YAML (validation error, paths stripped)."
-  status: failed
+  status: fixed
+  fixed_commit: 3d77870 + 3265178 (BE) + 09ae711 (FE)
   reason: "Empirical (automated): appended valid change to skills/compliance/SKILL.md, waited 3.5s → 0 toasts. Browser console: 404 [38 times] from EventSource hitting /api/skills/events."
   severity: major
   test: 7

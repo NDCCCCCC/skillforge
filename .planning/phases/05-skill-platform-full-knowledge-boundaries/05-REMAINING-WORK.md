@@ -16,9 +16,9 @@
 
 Resolved debug sessions: `.planning/debug/resolved/wizard-commit-registration.md`, `.planning/debug/resolved/glm-verdict-fence-parse.md`.
 
-### ⏳ REMAINING (4 items)
+### ⏳ REMAINING (2 items — §1 + §2 DONE)
 
-Ordered by recommended execution (see §3 for rationale). Two are quick/clear-cut, two are larger.
+Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consolidation) + §2 (#7 hot-reload bridge) are DONE; §3 (#4 graph chunk-content) + §4 (#2 right-panel IA) remain.
 
 ---
 
@@ -33,7 +33,7 @@ Ordered by recommended execution (see §3 for rationale). Two are quick/clear-cu
 - **GSD entry:** `/gsd-quick eval-judge-extractjson-consolidation`
 - **Size:** ~15 min.
 
-## 2. UAT #7 (major) — Hot-reload toast bridge severed
+## 2. UAT #7 (major) — Hot-reload toast bridge severed ✅ DONE (commits 3d77870 + 3265178 BE, 09ae711 FE; quick task 260813-1y0)
 
 - **Severity:** major. Completes the Skill hot-reload subsystem together with #9 (which fixed NEW-skill registration; this is the EXISTING-skill reload notification bridge).
 - **Symptom:** Touch `skills/<name>/SKILL.md` on disk → no ReloadToast. Browser console: `404 [38×]` (EventSource hammering `/api/skills/events`). Broken-YAML failure toast also unreachable.
