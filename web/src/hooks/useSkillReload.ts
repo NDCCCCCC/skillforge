@@ -1,7 +1,8 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// useSkillReload — Plan 05-03 / SC-2 (SYSK-04) hot-reload consumer.
+// useSkillReload — Plan 05-03 / SC-2 (SYSK-04) hot-reload consumer
+//                          + Plan 05-07 / D5-IA-01/04 live-skill surface.
 //
 // Polls `GET /api/skills` and updates `store.skillReloadStatus` whenever a
 // skill's reload signal changes. The endpoint returns one item per skill:
@@ -21,6 +22,13 @@
 //     (the keep-old contract: a failed reload does NOT bump version), so
 //     ReloadToast can say "校验失败，已保留上一版本" alongside the error text.
 //
+// Plan 05-07 extension: every tick ALSO normalizes the fetched list
+// into SkillSummary[] and dispatches `setSkills(summaries)`. The list
+// itself is NOT a reload signal — only version/status diffs emit toasts.
+// The 7 schema fields live NESTED under item.manifest.* per the
+// .continue-here.md BLOCKING CONSTRAINT; reading item.description
+// directly yields undefined. We read item.manifest.description here.
+//
 // The first tick establishes a baseline per skill WITHOUT emitting —
 // otherwise mounting the hook would spuriously fire a toast for every
 // already-loaded skill.
@@ -39,7 +47,7 @@
 // Mount at the app root so polling outlives route changes.
 import { useEffect } from 'react';
 import { useAppStore } from '../store/app-store';
-import type { SkillReloadEntry } from '../store/app-store';
+import type { SkillReloadEntry, SkillSummary } from '../store/app-store';
 
 interface SkillReloadedPayload {
   type: 'skill-reloaded';
@@ -56,6 +64,12 @@ interface SkillListItem {
   version?: number;
   status?: 'ok' | 'failed';
   error?: string;
+  /**
+   * Plan 05-07 — manifest carries the 7 schema fields nested under it
+   * per .continue-here.md BLOCKING CONSTRAINT. We widen SkillListItem
+   * inline to access manifest.description for the SkillSummary surface.
+   */
+  manifest?: { description?: string };
 }
 
 /** Coerce a payload into a SkillReloadEntry. Defensive — accepts the
@@ -114,6 +128,25 @@ export function useSkillReload(opts: UseSkillReloadOptions = {}): void {
         const res = await fetch(pollPath, { credentials: 'same-origin' });
         if (!res.ok) return;
         const list = (await res.json()) as SkillListItem[];
+        // Plan 05-07 — normalize the list into SkillSummary[] and seed
+        // store.skills. The list itself is NOT a reload signal — only
+        // version/status diffs inside the loop emit toasts below.
+        // item.manifest.description is the load-bearing field per
+        // .continue-here.md BLOCKING CONSTRAINT; reading item.description
+        // directly yields undefined (the bug this plan fixes).
+        const summaries: SkillSummary[] = list
+          .filter((item): item is SkillListItem & { id: string } => typeof item.id === 'string')
+          .map((item) => ({
+            id: item.id,
+            name: item.name ?? item.id,
+            description: item.manifest?.description ?? '',
+            version: typeof item.version === 'number' ? item.version : undefined,
+            status: item.status === 'failed' ? 'failed' : 'ok',
+            error: typeof item.error === 'string' ? item.error : undefined,
+          }));
+        if (!cancelled) {
+          useAppStore.getState().setSkills(summaries);
+        }
         for (const item of list) {
           if (typeof item.id !== 'string') continue;
           const curVersion = typeof item.version === 'number' ? item.version : undefined;

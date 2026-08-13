@@ -1,21 +1,30 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// RightChat — right chat panel. Header holds the SessionPicker +
-// SkillPicker (session + skill selection both live here per the
-// denova-aligned IA: the left sidebar is a read-only source library,
-// all switching happens in the chat). The messages scroll area renders
-// one MessageBubble per message with auto-stick-to-bottom (preserves
-// user scroll position if they scrolled up). Empty-state hero shows 3
-// suggested prompts per 04-UI-SPEC §Copywriting Contract. Footer mounts
-// ChatInput.
+// RightChat — right chat panel.
+//
+// Plan 05-07 (D5-IA-01 + D5-IA-02 + D5-IA-04) — the header is now a
+// MINIMAL read-only badge showing the active session name + the
+// current Skill name. Selection lives elsewhere:
+//   - Skill selection: ChatInput selector (D5-IA-01).
+//   - Session list + 新建会话: LeftSidebar 会话 block (D5-IA-02/03).
+//   - Skill browse + status: LeftSidebar 技能 block (D5-IA-04).
+// The header badge is informational only (no controls) and falls back
+// to safe placeholder copy when nothing is selected.
+//
+// SkillPicker + SessionPicker header USAGE is removed (D5-IA-01/02).
+// The SkillPicker COMPONENT stays in the codebase — RoutingTracePart
+// still imports it for the SC-1 ambiguity picker mode.
+//
+// The messages scroll area renders one MessageBubble per message with
+// auto-stick-to-bottom (preserves user scroll position if they scrolled
+// up). Empty-state hero shows 3 suggested prompts per 04-UI-SPEC
+// §Copywriting Contract. Footer mounts ChatInput.
 import { useEffect, useRef } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
-import SessionPicker from '../chat/parts/SessionPicker';
-import SkillPicker from '../chat/parts/SkillPicker';
 import WizardMode from './WizardMode';
 import { useAppStore } from '../../store/app-store';
 
@@ -40,6 +49,13 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
   // ChatInput component for answer capture, but routes through
   // useWizard.submitAnswer, not onSend).
   const wizardActive = useAppStore((s) => s.wizardMode.active);
+  // Plan 05-07 — read-only header badge sources.
+  const sessions = useAppStore((s) => s.sessions);
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const skills = useAppStore((s) => s.skills);
+  const currentSkillId = useAppStore((s) => s.currentSkillId);
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const currentSkill = skills.find((s) => s.id === currentSkillId);
 
   useEffect(() => {
     if (wizardActive) return;
@@ -67,13 +83,17 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
 
   return (
     <div data-testid="right-chat" className="flex flex-col h-full bg-bg">
-      <div className="border-b border-border px-3 py-2 flex items-center gap-2">
-        <div className="flex-1 min-w-0">
-          <SessionPicker />
-        </div>
-        <div className="flex-1 min-w-0">
-          <SkillPicker />
-        </div>
+      <div
+        data-testid="right-chat-badge"
+        className="border-b border-border px-3 py-2 flex items-center gap-2 text-xs"
+      >
+        <span data-testid="right-chat-badge-session" className="font-semibold text-text">
+          {activeSession?.name ?? '新会话'}
+        </span>
+        <span aria-hidden className="text-text-dim">·</span>
+        <span data-testid="right-chat-badge-skill" className="text-text-muted">
+          {currentSkill ? currentSkill.name : '未选择 Skill'}
+        </span>
       </div>
 
       {messages.length === 0 ? (

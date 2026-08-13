@@ -17,7 +17,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 beforeEach(() => {
-  useAppStore.setState({ skillReloadStatus: {} });
+  useAppStore.setState({ skillReloadStatus: {}, skills: [] });
 });
 
 describe('useSkillReload', () => {
@@ -108,5 +108,51 @@ describe('useSkillReload', () => {
     expect(entry?.status).toBe('failed');
     expect(entry?.version).toBe('old-kept');
     expect(entry?.error).toContain('temperature');
+  });
+
+  it('Plan 05-07 — populates store.skills from manifest.description (NOT item.description)', async () => {
+    // BLOCKING CONSTRAINT (.continue-here.md): GET /api/skills returns items
+    // shaped {id,name,version,status,error?,manifest} where the 7 schema
+    // fields live NESTED under manifest. The poller MUST read
+    // item.manifest.description (reading item.description directly is the
+    // bug this plan fixes — yields undefined).
+    const responses: Array<
+      Array<{
+        id: string;
+        name: string;
+        version: number;
+        status: 'ok';
+        manifest: { description: string };
+      }>
+    > = [
+      [
+        {
+          id: 's1',
+          name: 'S1',
+          version: 1,
+          status: 'ok',
+          manifest: { description: 'desc-from-manifest' },
+        },
+      ],
+    ];
+    const fetchMock = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      json: async () => responses[0],
+    } as unknown as Response));
+    vi.stubGlobal('fetch', fetchMock);
+
+    function Probe() {
+      useSkillReload({ disablePolling: false, pollIntervalMs: 30, pollPath: '/api/test/skills' });
+      return null;
+    }
+    render(<Probe />);
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    const skills = useAppStore.getState().skills;
+    expect(skills).toHaveLength(1);
+    expect(skills[0].id).toBe('s1');
+    expect(skills[0].description).toBe('desc-from-manifest');
+    expect(skills[0].status).toBe('ok');
   });
 });

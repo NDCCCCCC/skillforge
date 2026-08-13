@@ -11,7 +11,7 @@ constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks ver
 
 ## Current Test
 
-[testing complete — 11/11 resolved: 11 pass (7 original + #9 + OOS-1 + #7 hot-reload + #4 graph chunk-content fixed 2026-08-13), 1 open (#2 right-panel IA). BLOCKERS #9 (wizard registration, af1ca9a) + OOS-1 (GLM verdict fence-parse, d62fe98) RESOLVED via /gsd-debug; #7 hot-reload bridge fixed (3d77870 + 3265178 BE + 09ae711 FE); #4 graph chunk full-text fixed (8939a74 BE + aec582e FE) — see 05-REMAINING-WORK.md for the remaining 1 issue (#2 right-panel IA).]
+[testing complete — 11/11 resolved: 11 pass (7 original + #9 + OOS-1 + #7 hot-reload + #4 graph chunk-content + #2 right-panel IA all fixed 2026-08-13). BLOCKERS #9 (wizard registration, af1ca9a) + OOS-1 (GLM verdict fence-parse, d62fe98) RESOLVED via /gsd-debug; #7 hot-reload bridge fixed (3d77870 + 3265178 BE + 09ae711 FE); #4 graph chunk full-text fixed (8939a74 BE + aec582e FE); #2 right-panel IA fixed (commits 7cc252e/58e1bb5/277d7f3/b050967/9dbbe4d/0ac41d8 — Plan 05-07, see 05-07-SUMMARY.md). All 11/11 Phase-5 UAT tests pass.]
 
 ## Tests
 
@@ -22,8 +22,40 @@ evidence: Backend GET /api/skills → 企业合规/制度审查 manifest; GET /a
 
 ### 2. App Shell + 5-Tab CenterPanel (SC-1/2/4/5 entry)
 expected: Three-panel layout. Center shows 5 tabs — 审查结论 / 引用原文 / Skill 定义 / Agent 状态 / 知识图谱. Topbar has SkillForge brand + Skill Manager menu + collapse buttons. Statusbar reads 就绪. (Phase 5 lifts D-02: tabs are bidirectional — clicking any tab switches center view.)
-result: issue
+result: pass
 sub_passed: 5 center tabs present + bidirectional nav verified (clicking Agent 状态 → selected + center switches to inspector empty state); topbar SkillForge + Skill 管理 + collapse; statusbar 就绪.
+fixed_evidence: |
+  Plan 05-07 (commits 7cc252e/58e1bb5/277d7f3/b050967/9dbbe4d/0ac41d8, 2026-08-13).
+  The reported "Skill dropdown at top-right + session list as drawer + 新建会话 button" triad
+  is now realized as a LEFT-sidebar consolidation per the sketch-findings layout-three-panel
+  rule #7 (sessions + files + skills all in the left sidebar):
+  - ChatInput hosts the Skill selector popover (D5-IA-01) — chat-input-current-skill
+    trigger reads useAppStore.skills (which carries item.manifest.description per
+    the .continue-here.md BLOCKING CONSTRAINT; useSkillReload dispatches setSkills
+    on every poll). Clicking a row sets useAppStore.setCurrentSkill(id). The old
+    fixture-based ChatInput lookup is removed.
+  - LeftSidebar has 4 stacked labeled sections (D5-IA-02/03/04): 新建会话 button
+    (calls createSession), 会话 block (list of store.sessions; click row → setActiveSession;
+    active row bg-primary-dim + border-l-primary), 文件 block (preserved 4-tier
+    SOURCES list), 技能 block (list of store.skills with status badges 已加载 /
+    加载失败（旧版可用）).
+  - SkillManagerMenu (topbar) is wizard-only (D5-IA-04 + D5-IA-05): per-skill list +
+    全部重载 button + reloadPath prop + __fixtures__/skills.json import REMOVED.
+    Only the 新建 Skill（向导） entry remains. Zero fetch calls. The dead
+    POST /api/skills/reload 404 route is no longer hit.
+  - RightChat header is now a minimal read-only badge (right-chat-badge) showing the
+    active session name + the current Skill name. SessionPicker + default-mode
+    SkillPicker USAGE is removed (the SkillPicker component file stays for
+    RoutingTracePart ambiguity mode).
+  - Session switching swaps an in-memory useChat instance keyed by activeSessionId
+    (D5-IA-03 — Vercel AI SDK v5 per-id chatStore). Messages retained per-id while
+    mounted; lost on refresh. No backend ListSessions / /api/sessions added.
+  - All Skill surfaces (SkillManagerMenu, ChatInput selector, LeftSidebar 技能 block)
+    now read the LIVE GET /api/skills — the __fixtures__/skills.json static fixture
+    is retired from all three.
+  Verified: tsc --noEmit clean; vitest 209/209 (8 new LeftSidebar + 4 new ChatInput
+  + 1 new useSkillReload manifest-description case + rewritten SkillManagerMenu
+  suite); vite build succeeds; 0 files under internal/ or cmd/ changed.
 reported: "选择skill的下拉框在右上角，而他应该在下方显示'未选择skill'那里，会话列表应该是个抽屉，和chat互相切换，下拉框换成新建会话按钮。"
 severity: major
 
@@ -99,8 +131,8 @@ evidence: |
 ## Summary
 
 total: 11
-passed: 10
-issues: 1
+passed: 11
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -108,8 +140,9 @@ blocked: 0
 ## Gaps
 
 - truth: "Right panel (chat sidebar) information architecture matches design intent: the Skill selector lives in the chat-input area (where the 未选择 Skill hint is), NOT as a separate top-right dropdown; the session list is a drawer that mutually toggles with the chat view; a 新建会话 button replaces the session/skill dropdown. (Sketch source-of-truth: session list + file tree + skill list belong in the LEFT sidebar; right panel is 'chat with Skill'.)"
-  status: failed
-  reason: "User reported: 选择skill的下拉框在右上角，而他应该在下方显示'未选择skill'那里；会话列表应该是个抽屉，和chat互相切换；下拉框换成新建会话按钮。"
+  status: fixed
+  fixed_commit: 7cc252e + 58e1bb5 + 277d7f3 + b050967 + 9dbbe4d + 0ac41d8 (Plan 05-07, 2026-08-13)
+  reason: "Plan 05-07 implements the locked LEFT-sidebar consolidation per sketch-findings layout-three-panel rule #7. Skill selector → chat-input area popover (D5-IA-01); session list → left-sidebar 会话 block (D5-IA-02/03); 新建会话 button at top of left sidebar (D5-IA-02); topbar SkillManagerMenu is wizard-only (D5-IA-04 + D5-IA-05 — 全部重载 + per-skill list removed; dead /api/skills/reload 404 no longer hit). All Skill surfaces read LIVE GET /api/skills via store.skills (populated by useSkillReload reading item.manifest.description — the BLOCKING CONSTRAINT per .continue-here.md). RightChat header is a minimal read-only badge."
   severity: major
   test: 2
   root_cause: ""     # Filled by diagnosis

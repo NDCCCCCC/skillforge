@@ -5,7 +5,13 @@
 // Implements the sketch-findings `chat-input-attach-skill.md` minimum:
 // textarea + send button + Enter-to-send + Shift+Enter newline + drag-
 // drop file affordance + 10MB file size validation. The current Skill
-// is shown as a hint above the textarea (display only).
+// is shown as a clickable selector above the textarea (D5-IA-01).
+//
+// Plan 05-07 (D5-IA-01) — chat-input-current-skill is a clickable
+// Skill selector popover reading store.skills (populated by
+// useSkillReload from item.manifest.description). Selecting a row
+// calls useAppStore.setCurrentSkill(id). When store.skills is empty
+// the popover shows a muted 尚未安装任何 Skill row.
 //
 // denova-aligned composer (visual only): the textarea is a multi-line
 // (≥3 rows) box whose height the user can drag-resize (resize-y), and
@@ -13,18 +19,11 @@
 // paper-plane affordance — matching the reference app's in-box send
 // pattern. The textarea carries right padding so text never runs under
 // the button.
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Send } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
-import skillsData from '../../__fixtures__/skills.json';
 
-interface SkillFixtureEntry {
-  id: string;
-  name: string;
-}
-
-const SKILLS: SkillFixtureEntry[] = skillsData as SkillFixtureEntry[];
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export interface ChatInputProps {
@@ -58,8 +57,29 @@ export default function ChatInput({
   const [text, setText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<AttachedFile[]>([]);
+  // Plan 05-07 (D5-IA-01) — subscribe to the live skill surface
+  // populated by useSkillReload (item.manifest.description).
   const currentSkillId = useAppStore((s) => s.currentSkillId);
-  const currentSkill = SKILLS.find((s) => s.id === currentSkillId);
+  const skills = useAppStore((s) => s.skills);
+  const currentSkill = skills.find((s) => s.id === currentSkillId);
+  // Popover state (Plan 05-07) — toggled by the trigger button.
+  const [skillOpen, setSkillOpen] = useState(false);
+  const skillRef = useRef<HTMLDivElement>(null);
+
+  // Outside-click closes the skill popover (mirrors SkillManagerMenu
+  // pattern: ref-contains check + mousedown listener).
+  useEffect(() => {
+    if (!skillOpen) return;
+    function onMouseDown(e: MouseEvent) {
+      const target = e.target as Node | null;
+      if (!target || !skillRef.current) return;
+      if (!skillRef.current.contains(target)) {
+        setSkillOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [skillOpen]);
 
   function handleSend() {
     const trimmed = text.trim();
@@ -111,16 +131,67 @@ export default function ChatInput({
         isDragging && 'chat-input-dragging',
       )}
     >
-      <div
-        data-testid="chat-input-current-skill"
-        className="text-xs text-text-muted mb-2 block"
-      >
-        {modeLabel
-          ? `模式：${modeLabel}`
-          : currentSkill
-            ? `当前 Skill：${currentSkill.name}`
-            : '未选择 Skill'}
-      </div>
+      {modeLabel ? (
+        <div
+          data-testid="chat-input-current-skill"
+          className="text-xs text-text-muted mb-2 block"
+        >
+          {`模式：${modeLabel}`}
+        </div>
+      ) : (
+        <div className="relative mb-2" ref={skillRef}>
+          <button
+            type="button"
+            data-testid="chat-input-current-skill"
+            onClick={() => setSkillOpen((v) => !v)}
+            className="text-xs text-text-muted hover:text-text inline-flex items-center gap-1"
+            aria-label="切换 Skill"
+          >
+            {currentSkill ? `当前 Skill：${currentSkill.name}` : '未选择 Skill'}
+            <span aria-hidden className="text-text-dim">▾</span>
+          </button>
+          {skillOpen && (
+            <div
+              data-testid="chat-input-skill-popover"
+              className="absolute bottom-full mb-1 left-0 z-20 w-72 rounded-md border border-border bg-surface-2 shadow-lg"
+            >
+              <div className="px-3 pt-2 pb-1 text-xs font-semibold text-text-muted">
+                选择 Skill
+              </div>
+              <ul className="px-1 pb-2 max-h-64 overflow-y-auto">
+                {skills.length === 0 && (
+                  <li
+                    data-testid="chat-input-skill-empty"
+                    className="px-2 py-1 text-xs text-text-muted"
+                  >
+                    尚未安装任何 Skill
+                  </li>
+                )}
+                {skills.map((skill) => (
+                  <li key={skill.id}>
+                    <button
+                      type="button"
+                      data-testid="chat-input-skill-option"
+                      data-skill-id={skill.id}
+                      onClick={() => {
+                        useAppStore.getState().setCurrentSkill(skill.id);
+                        setSkillOpen(false);
+                      }}
+                      className={cn(
+                        'block w-full text-left px-2 py-1 text-xs hover:bg-surface-3 rounded-md',
+                        skill.id === currentSkillId && 'bg-primary-dim',
+                      )}
+                    >
+                      <div className="text-text">{skill.name}</div>
+                      <div className="text-text-muted">{skill.description}</div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {files.length > 0 && (
         <div data-testid="chat-input-files" className="mb-2 flex flex-wrap gap-2">

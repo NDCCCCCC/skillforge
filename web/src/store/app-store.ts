@@ -19,6 +19,22 @@
 //     (consumed by ReloadToast).
 //   - `lastRouting` mirrors the latest routing decision's skillScores
 //     so SkillPicker (used as the ambiguity picker) can read synchronously.
+//
+// Plan 05-07 (D5-IA-01/03/04) — UI-local session + live-skill surface:
+//   - `SkillSummary` is the normalized view of an item in the live
+//     GET /api/skills response. The description field is sourced from
+//     item.manifest.description (the 7 schema fields are NESTED under
+//     manifest per .continue-here.md BLOCKING CONSTRAINT — reading
+//     item.description directly yields undefined).
+//   - `skills: SkillSummary[]` + `setSkills(list)` make the live skill
+//     surface read by ChatInput selector (D5-IA-01), LeftSidebar 技能
+//     block (D5-IA-04), and SkillManagerMenu wizard-only entry.
+//   - `SessionMeta` + `sessions[]` + `activeSessionId` + `createSession` /
+//     `setActiveSession` / `deleteSession` drive the left-sidebar
+//     会话 list (D5-IA-02/03) and the session-scoped useChat in App.tsx.
+//     Sessions store METADATA ONLY (D14 / Pitfall 7) — useChat owns
+//     the message stream per session id; messages are in-memory and
+//     lost on refresh (D5-IA-03).
 
 import { create } from 'zustand';
 import type { Tier } from '../types/verdict';
@@ -70,6 +86,27 @@ export interface WizardMode {
   skillName?: string;
 }
 
+export interface SkillSummary {
+  id: string;
+  name: string;
+  /** Read from item.manifest.description per BLOCKING CONSTRAINT.
+   * Falls back to '' when the live response lacks a manifest. */
+  description: string;
+  version?: number;
+  status: 'ok' | 'failed';
+  error?: string;
+}
+
+/** UI-local session metadata (D14 + D5-IA-03). The message stream is
+ * owned by useChat, NOT this store — sessions are keyed by id into
+ * useChat({id}) so each session retains its in-memory messages until
+ * the user refreshes the page. */
+export interface SessionMeta {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
 export interface AppState {
   currentSkillId: string | null;
   centerView: CenterView;
@@ -88,6 +125,10 @@ export interface AppState {
   // (the hook fires the event; the listener persists it for ReloadToast
   // and any other consumers to read).
   lastCreatedSkill?: { name: string; path: string; ts: number };
+  // Plan 05-07 (D5-IA-01/03/04) — live skill surface + UI-local sessions.
+  skills: SkillSummary[];
+  sessions: SessionMeta[];
+  activeSessionId: string;
 }
 
 export interface AppActions {
@@ -104,12 +145,25 @@ export interface AppActions {
   // Plan 05-04 — wizard success mirror
   setLastCreatedSkill(s: { name: string; path: string; ts: number }): void;
   clearLastCreatedSkill(): void;
+  // Plan 05-07 — live skills + sessions
+  setSkills(list: SkillSummary[]): void;
+  createSession(): string;
+  setActiveSession(id: string): void;
+  deleteSession(id: string): void;
 }
 
 const DEFAULT_LEFT_WIDTH = 260;
 const DEFAULT_RIGHT_WIDTH = 420;
 
-export const useAppStore = create<AppState & AppActions>((set) => ({
+// Plan 05-07 — session id generation. Sessions are UI-local and
+// in-memory (D5-IA-03), so a stable monotonic counter is sufficient
+// (we do not need UUID uniqueness across reloads — the page reloads
+// wipe all session state). `INITIAL_SESSION_ID` seeds the boot state
+// so activeSessionId is never empty when the app mounts.
+let sessionCounter = 1;
+const INITIAL_SESSION_ID = `session-${sessionCounter++}`;
+
+export const useAppStore = create<AppState & AppActions>((set, get) => ({
   currentSkillId: null,
   centerView: { kind: 'empty' },
   sidebarLeft: true,
@@ -121,6 +175,12 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
   wizardMode: { active: false, step: 0, totalSteps: 0 },
   skillReloadStatus: {},
   lastRouting: undefined,
+  // Plan 05-07 defaults — one boot session so the right panel renders
+  // an active useChat instance immediately (D5-IA-03 + Vercel AI SDK v5
+  // per-id chatStore semantics).
+  skills: [],
+  sessions: [{ id: INITIAL_SESSION_ID, name: '新会话', createdAt: Date.now() }],
+  activeSessionId: INITIAL_SESSION_ID,
 
   setCenterView: (view) => set({ centerView: view }),
   setCurrentSkill: (id) => set({ currentSkillId: id }),
@@ -151,4 +211,35 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
   setLastRouting: (routing) => set({ lastRouting: routing }),
   setLastCreatedSkill: (s) => set({ lastCreatedSkill: s }),
   clearLastCreatedSkill: () => set({ lastCreatedSkill: undefined }),
+  // Plan 05-07 actions
+  setSkills: (list) => set({ skills: list }),
+  createSession: () => {
+    const id = `session-${sessionCounter++}`;
+    const name = `会话 ${sessionCounter - 1}`;
+    set((state) => ({
+      sessions: [...state.sessions, { id, name, createdAt: Date.now() }],
+      activeSessionId: id,
+    }));
+    return id;
+  },
+  setActiveSession: (id) => set({ activeSessionId: id }),
+  deleteSession: (id) => {
+    const state = get();
+    const remaining = state.sessions.filter((s) => s.id !== id);
+    // Guarantee activeSessionId is never empty: if we just deleted the
+    // active session, fall back to the first remaining session (or
+    // mint a fresh default session if none remain).
+    let active = state.activeSessionId;
+    if (active === id) {
+      if (remaining.length > 0) {
+        active = remaining[0].id;
+      } else {
+        const freshId = `session-${sessionCounter++}`;
+        const freshName = `会话 ${sessionCounter - 1}`;
+        remaining.push({ id: freshId, name: freshName, createdAt: Date.now() });
+        active = freshId;
+      }
+    }
+    set({ sessions: remaining, activeSessionId: active });
+  },
 }));
