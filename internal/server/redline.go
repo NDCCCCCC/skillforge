@@ -25,6 +25,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/cloudwego/hertz/pkg/app"
 
+	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
 )
@@ -138,7 +139,14 @@ func (s *Deps) emitRedline(ctx context.Context, c *app.RequestContext, v verdict
 	// three required fields (OriginalClause / ProposedRewrite /
 	// Rationale) — this is the wire-contract enforcement at the parse
 	// boundary. Unknown fields are also rejected by UnmarshalRedline.
-	payload, err := wire.UnmarshalRedline([]byte(out.Content))
+	//
+	// Strip a markdown code fence FIRST. GLMs frequently wrap JSON in
+	// ```json ... ``` despite the "Output ONLY the JSON" instruction, and
+	// UnmarshalRedline's json.Decode then chokes on the leading backtick.
+	// The verdict path does the same via llm.ExtractJSON (pipeline.go).
+	// Live failure: every 需补充 verdict silently dropped its redline
+	// suggestion (non-fatal WARN) until this strip was added.
+	payload, err := wire.UnmarshalRedline([]byte(llm.ExtractJSON(out.Content)))
 	if err != nil {
 		// Non-fatal — invalid LLM output, no chunk emitted. Caller logs.
 		return fmt.Errorf("redline: parse payload: %w (raw: %s)", err, snippetOf(out.Content, 200))

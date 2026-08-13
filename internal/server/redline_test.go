@@ -277,3 +277,32 @@ func TestRedline_LLMReturnsInvalidJSON(t *testing.T) {
 	_, _, ok := findRedlineFrame(frames)
 	assert.False(t, ok, "invalid JSON → no data-redline chunk (parse fails; verdict stands)")
 }
+
+// TestRedline_LLMReturnsFencedJSON — the LLM wraps its JSON in a
+// ```json ... ``` markdown fence (common GLM behavior despite the
+// "Output ONLY the JSON" instruction). emitRedline MUST strip the fence
+// via llm.ExtractJSON before parsing, else json.Decode chokes on the
+// leading backtick and the redline suggestion is silently dropped.
+//
+// Live failure: every 需补充 verdict dropped its redline (non-fatal WARN
+// "invalid character '`'") until the strip was added. Mirrors the verdict
+// path's use of ExtractJSON (pipeline.go). Without this test a regression
+// that drops the strip reads as "redline occasionally missing" — this pins
+// it as a hard parse failure.
+func TestRedline_LLMReturnsFencedJSON(t *testing.T) {
+	stubCM := &stubChatModel{cannedJSON: "```json\n{\n  \"originalClause\": \"原条款\",\n  \"proposedRewrite\": \"建议改写\",\n  \"rationale\": \"修改理由\"\n}\n```"}
+	deps := newTestDeps()
+	deps.ChatModel = stubCM
+	v := verdict.Verdict{
+		Status:     verdict.DowngradeStatus,
+		Confidence: 0.6,
+		Citations: []verdict.Citation{
+			{ChunkID: "1", Span: "x", Tier: "权威"},
+		},
+	}
+
+	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"})
+	payload, _, ok := findRedlineFrame(frames)
+	require.True(t, ok, "fenced JSON MUST be unwrapped and emitted (strip the ```json fence via llm.ExtractJSON)")
+	assert.Equal(t, "建议改写", payload.ProposedRewrite, "payload fields parse after fence strip")
+}
