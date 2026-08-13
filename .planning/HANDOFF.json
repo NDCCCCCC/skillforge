@@ -1,109 +1,132 @@
 {
   "version": "1.0",
-  "timestamp": "2026-08-13T00:49:33Z",
+  "timestamp": "2026-08-13T01:14:54Z",
   "phase": "05",
   "phase_name": "05-skill-platform-full-knowledge-boundaries",
   "phase_dir": ".planning/phases/05-skill-platform-full-knowledge-boundaries",
   "plan": "05-REMAINING-WORK.md §2 (quick task 260813-1y0, hot-reload-toast-bridge-polling-b)",
-  "task": 1,
-  "total_tasks": 3,
+  "task": 5,
+  "total_tasks": 7,
   "status": "paused",
   "completed_tasks": [
     {
       "id": 1,
-      "name": "§2 UAT #7 hot-reload toast bridge (polling-B) — backend core of internal/skill/registry.go",
-      "status": "in_progress",
-      "progress": "registry.go FULLY done + green (go build/vet/test ./internal/skill/ pass). Added: (a) JS-safe per-process monotonic version counter `seq atomic.Int64` + nextVersion() replacing time.Now().UnixNano() at startupScan + reloadOne-else-branch (prev.Version+1 kept for existing-skill reload); (b) copy-on-write `failed atomic.Pointer[map[string]string]` + setFailed/clearFailed/Failed(); (c) reloadOne error path now calls setFailed(name, err) then the existing loadError hook — Version + manifest left UNCHANGED; success path (after snapshot.Store) calls clearFailed(name). UNCOMMITTED. Verified: build exit 0, internal/skill tests cached ok.",
-      "commit": "uncommitted"
+      "name": "§2 BE core — registry.go JS-safe version counter + failed map",
+      "status": "done",
+      "commit": "3d77870",
+      "progress": "feat(skill): JS-safe version counter + failed map. seq atomic.Int64 + nextVersion() replaces UnixNano at startupScan + reloadOne else-branch; copy-on-write failed atomic.Pointer[map[string]string] + setFailed/clearFailed/Failed; reloadOne error path setFailed then loadError hook (version+manifest unchanged), success path clearFailed."
+    },
+    {
+      "id": 2,
+      "name": "§2 BE wiring — skills.go wrapped listSkillsHandler (skillItem)",
+      "status": "done",
+      "commit": "3265178",
+      "progress": "feat(server): GET /api/skills wraps version+status. skillItem{ID,Name,Version,Status,Error?,Manifest}; if Registry!=nil iterate sorted Snapshot() overlay Failed(); else Loader fallback version:0/status:ok. Empty→[]."
+    },
+    {
+      "id": 3,
+      "name": "§2 BE wiring — main.go constructs Registry + Watch(ctx)",
+      "status": "done",
+      "commit": "3265178",
+      "progress": "skill.New(\"skills/\", nil) (nil embedder — routing not wired, avoids BGE at startup) + reg.Watch(ctx); Registry: reg added to deps literal after Loader. Router stays nil (chatHandler falls back to Loader findSkill)."
+    },
+    {
+      "id": 4,
+      "name": "§2 BE tests — registry.go exported Reload + skills_test.go nested shape + registry_test.go FailedMap",
+      "status": "done",
+      "commit": "3265178",
+      "progress": "Added Registry.Reload(path) (wraps reloadOne) as legit public API for server tests + future admin path. skills_test.go: TestListSkillsHandler_ReturnsCompliance→nested manifest+wrapped fields; +brokenSkillYAML const, +newComplianceRegistry helper, +TestListSkillsHandler_RegistryVersionAndFailedStatus (good state version>=1/ok; broken-YAML Reload→status failed/version unchanged/manifest unchanged/error carries temperature). skills_wizard_test.go #9 regression→nested gList[0]['manifest'].registry_test.go:+TestRegistry_FailedMap_SurfacesValidationError. ALL GREEN: go build/vet ./...; go test ./internal/skill/ ./internal/server/ (normal + -race)."
     }
   ],
   "remaining_tasks": [
     {
-      "id": 1,
-      "name": "§2 backend remainder: main.go wire Registry + skills.go wrapped listSkillsHandler + skills_test.go + registry_test.go",
-      "status": "not_started"
-    },
-    {
-      "id": 2,
-      "name": "§2 frontend: useSkillReload.ts polling-only; delete sse-client.ts+test; App.tsx comment; useSkillReload.test.tsx status-flip case",
-      "status": "not_started"
-    },
-    {
-      "id": 3,
-      "name": "§2 closeout: verify (build/vet/test/-race; tsc/vitest) + atomic commit + SUMMARY + flip 05-UAT.md #7 + 05-REMAINING-WORK.md §2 + STATE.md quick-tasks row",
-      "status": "not_started"
-    },
-    {
-      "id": 4,
-      "name": "§3 UAT #4 — graph chunk full-text: add GET /api/knowledge/chunk/:id; teach chunk-lookup.ts for graph-browsed chunks",
-      "status": "not_started"
-    },
-    {
       "id": 5,
-      "name": "§4 UAT #2 — left-sidebar IA: reconcile 05-UI-SPEC.md; wire SkillManagerMenu to live GET /api/skills; implement IA (skill selector→chat-input, session list→drawer, 新建会话 button). Do LAST.",
+      "name": "§2 FE — useSkillReload.ts polling-only rewrite; DELETE sse-client.ts + sse-client.test.ts; App.tsx comment fix",
+      "status": "not_started",
+      "note": "Files confirmed present + sse-client confirmed only consumed by useSkillReload (safe to delete). PLAN steps 6-8."
+    },
+    {
+      "id": 6,
+      "name": "§2 FE test — useSkillReload.test.tsx status-flip case",
+      "status": "not_started",
+      "note": "PLAN step 9."
+    },
+    {
+      "id": 7,
+      "name": "§2 closeout — verify (tsc --noEmit + vitest run) + atomic FE commit + 260813-1y0-SUMMARY.md + flip 05-UAT.md #7→fixed + 05-REMAINING-WORK.md §2→DONE + STATE.md quick-tasks row",
+      "status": "not_started"
+    },
+    {
+      "id": 8,
+      "name": "§3 UAT #4 — graph chunk full-text: add GET /api/knowledge/chunk/:id; teach chunk-lookup.ts for graph-browsed chunks. LOCKED full-text in-scope.",
+      "status": "not_started"
+    },
+    {
+      "id": 9,
+      "name": "§4 UAT #2 — left-sidebar IA: reconcile 05-UI-SPEC.md FIRST; wire SkillManagerMenu to live GET /api/skills; implement IA (skill selector→chat-input, session list→drawer, 新建会话 button). Do LAST.",
       "status": "not_started"
     }
   ],
   "blockers": [
     {
-      "description": "None technical — paused purely on context-window pressure at a clean, self-contained stopping point (registry.go is one complete, green, uncommitted file).",
+      "description": "None technical — paused on context-window pressure at a clean stopping point (§2 BE half DONE + committed + green; FE half untouched).",
       "type": "technical",
-      "workaround": "Resume directly from next_action."
+      "workaround": "Resume directly from next_action (the FE work)."
     }
   ],
   "human_actions_pending": [],
   "decisions": [
     {
-      "decision": "§2 design = polling-only (B): serialize registry.Entry.Version into GET /api/skills response (wrap {id,name,version,status,error?,manifest}); reuse #9's live Loader.Scan() for wizard-commit registration; DELETE the dead SSE EventSource (GET /api/skills/events is unregistered → 404 storm); emit status:failed on broken YAML.",
-      "rationale": "LOCKED by user 2026-08-13. Simpler than SSE primary; matches #9's explicit-rescan approach. Do NOT re-ask.",
+      "decision": "§2 design = polling-only (B): serialize registry.Entry.Version into GET /api/skills response (wrap {id,name,version,status,error?,manifest}); reuse #9's live Loader.Scan() for wizard-commit registration; DELETE the dead SSE EventSource; emit status:failed on broken YAML.",
+      "rationale": "LOCKED by user 2026-08-13. Do NOT re-ask.",
       "phase": "05"
     },
     {
       "decision": "Wire skill.Registry (NOT skill.Loader) as the listing/reload signal source. Loader stays for wizard-commit registration confirmation + chat findSkill + agent construction; Registry is additive for the listing/reload path.",
-      "rationale": "Registry already has correct, TESTED fsnotify + per-skill Entry.Version + graceful per-file failure (D5-06 keep-old + D5-08 loadError hook). Re-implementing on Loader would duplicate the Registry AND break Loader.Scan's fail-fast startup contract. Dual startup scan (~1 skill) is negligible.",
+      "rationale": "Registry already has correct, TESTED fsnotify + per-skill Entry.Version + graceful per-file failure. Dual startup scan (~1 skill) is negligible.",
       "phase": "05"
     },
     {
       "decision": "Replace time.Now().UnixNano() Entry.Version with a per-process monotonic atomic.Int64 counter (from 1).",
-      "rationale": "UnixNano (~1.7e18 > 2^53); reloadOne bumps prev.Version+1, but at 1.7e18 the JS double ULP ≈ 512, so a +1 reload bump is INVISIBLE to the JS polling client — reloads could not be detected. The counter keeps every Version well under 2^53. All existing registry_test.go assertions are RELATIVE (>0, >pinned, ==goodVersion, unchanged-on-failure) so a counter satisfies every one; no test asserts UnixNano shape. Per-process reset is fine because the FE known-version map also resets on page load.",
+      "rationale": "UnixNano (~1.7e18 > 2^53) makes a +1 reload bump INVISIBLE to JS (ULP≈512). Counter keeps every Version well under 2^53. All existing registry_test.go assertions are RELATIVE so the counter satisfies every one.",
       "phase": "05"
     },
     {
-      "decision": "Surface reload failures via a NEW copy-on-write Registry.failed map (name→err.Error()), overlaid as status:\"failed\" in the HTTP listing, WITHOUT bumping Entry.Version.",
-      "rationale": "T4 (TestRegistry_Reload_ValidationFailure_KeepsOld) + T6 (_SymlinkEscape_Rejected) pin the keep-old contract: on failure the Version AND manifest MUST stay unchanged. Bumping version on failure would break those tests and the keep-old semantic. setFailed on error; clearFailed on next success.",
+      "decision": "Surface reload failures via a copy-on-write Registry.failed map (name→err.Error()), overlaid as status:\"failed\" in the HTTP listing, WITHOUT bumping Entry.Version.",
+      "rationale": "T4 + T6 pin keep-old: on failure Version AND manifest MUST stay unchanged.",
       "phase": "05"
     },
     {
-      "decision": "GET /api/skills response shape changes from []*skill.Manifest to []{id,name,version,status,error?,manifest}. Breaking — but verified safe: the only live-list-endpoint FE consumer is useSkillReload.ts; all other Skill components (SkillManagerMenu, ChatInput, SkillPicker, SkillMdPreview) read the STATIC fixture __fixtures__/skills.json (that static-fixture bug is §4's problem, untouched here).",
-      "rationale": "Adding the wrapper fields is forward-compatible for the current FE.",
+      "decision": "Added exported Registry.Reload(path) (wraps reloadOne) as the public synchronous-reload API.",
+      "rationale": "Same-package reloadOne is unreachable from the server package tests; Reload is a legit public API for server tests + any future admin/trigger path.",
       "phase": "05"
     },
     {
-      "decision": "§3 = full-text in-scope; §4 = LEFT-sidebar consolidation (per sketch source-of-truth), reconcile with 05-UI-SPEC.md first.",
+      "decision": "GET /api/skills response shape changed from []*skill.Manifest to []{id,name,version,status,error?,manifest}. Breaking but verified safe: only live-list-endpoint FE consumer is useSkillReload.ts.",
+      "rationale": "Other Skill components read STATIC fixture __fixtures__/skills.json (that bug is §4's problem).",
+      "phase": "05"
+    },
+    {
+      "decision": "§3 = full-text in-scope; §4 = LEFT-sidebar consolidation, reconcile with 05-UI-SPEC.md first.",
       "rationale": "LOCKED by user 2026-08-13 in 05-REMAINING-WORK.md. Do NOT re-ask.",
       "phase": "05"
     }
   ],
   "uncommitted_files": [
     {
-      "path": "internal/skill/registry.go",
-      "status": "modified",
-      "note": "§2 backend core. GREEN (build+vet+test). The load-bearing JS-counter + failed-map + reloadOne/startupScan wiring. INCLUDE in the §2 atomic code commit."
-    },
-    {
-      "path": ".planning/quick/260813-1y0-hot-reload-toast-bridge-polling-b/260813-1y0-PLAN.md",
-      "status": "untracked",
-      "note": "Authoritative file-by-file resume spec for §2. INCLUDE in §2 commit (or this WIP commit)."
-    },
-    {
       "path": ".planning/STATE.md",
       "status": "modified",
-      "note": "PRE-EXISTING UNRELATED DRIFT (CRLF + a 1-line continuity tweak). Do NOT bundle into the §2 code commit — reconcile separately."
+      "note": "PRE-EXISTING UNRELATED DRIFT (CRLF + a 1-line continuity tweak). Do NOT bundle into the §2 FE commit — reconcile separately."
     },
     {
       "path": ".planning/config.json",
       "status": "modified",
-      "note": "PRE-EXISTING UNRELATED DRIFT. Do NOT bundle into the §2 code commit — reconcile separately."
+      "note": "PRE-EXISTING UNRELATED DRIFT. Do NOT bundle into the §2 FE commit — reconcile separately."
+    },
+    {
+      "path": ".planning/HANDOFF.json + .continue-here.md",
+      "status": "modified",
+      "note": "This WIP pause commit (the only thing the pause-work WIP commit stages, apart from the 1y0 PLAN if still untracked)."
     },
     {
       "path": ".claude/",
@@ -116,6 +139,6 @@
       "note": "SQLite WAL files — NEVER commit (consider gitignore)."
     }
   ],
-  "next_action": "Resume §2 backend. (1) Confirm registry.go still green: `go build ./... && go vet ./... && go test ./internal/skill/`. (2) Edit cmd/server/main.go: after the existing loader.Scan(), construct `reg, err := skill.New(\"skills/\", nil)` (nil embedder — routing not wired, avoids BGE at startup); on err log.Fatalf; `reg.Watch(ctx)`; add `Registry: reg,` to the `deps := &server.Deps{...}` literal. (3) Rewrite internal/server/skills.go:listSkillsHandler to the `skillItem` struct {ID,Name,Version,Status,Error?,Manifest}: if s.Registry != nil iterate Snapshot() overlaying Failed(); else fallback to s.Loader.Skills() with version:0/status:ok. (4) Update skills_test.go (3 tests → nested manifest + add Registry variant) + add registry_test.go TestRegistry_FailedMap_SurfacesValidationError. (5) Then FE per PLAN.md. Full spec: .planning/quick/260813-1y0-hot-reload-toast-bridge-polling-b/260813-1y0-PLAN.md.",
-  "context_notes": "Executing `/gsd-progress --do` to finish 05-REMAINING-WORK.md §2→§3→§4 (decisions LOCKED, do not re-ask). User narrowed scope to '现在做 §2 后端核心并提交' (do §2 backend core now + commit) when context pressure appeared. §2 is the UAT #7 hot-reload toast bridge — completes the Skill hot-reload subsystem alongside the already-fixed #9 (wizard commit registration, af1ca9a). The reload machinery itself was already correct in Registry; the gap was (a) Registry never wired in main.go (watcher was fictional in prod), (b) Version never serialized to HTTP, (c) dead SSE EventSource 404-storming, (d) failure path never surfaced. Stopped at a clean point: registry.go is one complete, compiling, tested file — no half-finished bodies. The remainder (main.go wiring, skills.go rewrite, tests, FE) is well-specified in 260813-1y0-PLAN.md."
+  "next_action": "Resume §2 FRONTEND half (PLAN steps 6-9). (1) web/src/hooks/useSkillReload.ts → polling-only: drop `import { constructSSE }` + the SSE conn block + ssePath; keep pollPath. SkillListItem += status?:'ok'|'failed'; error?:string. Poll tick tracks Map<id,{version?,status?}>; emit on version-increase OR status-flip: failed→{status:'failed',version:'old-kept',error}; else {status:'ok',version:'new'}. Update file header doc comment (no SSE primary). (2) DELETE web/src/lib/sse-client.ts + web/src/__tests__/sse-client.test.ts (grep confirms useSkillReload was the only consumer). (3) web/src/App.tsx line ~8 comment 'subscribes to /api/skills/events + polling' → 'polls /api/skills'. (4) web/src/__tests__/useSkillReload.test.tsx ADD status-flip case: resp [{version:1,status:'ok'}] then [{version:1,status:'failed',error:'temperature'}] (NO version bump) → store entry status failed/version old-kept/error set. (5) Verify: cd web && npx tsc --noEmit && npx vitest run. (6) Atomic FE commit; 260813-1y0-SUMMARY.md; flip 05-UAT.md #7→fixed; 05-REMAINING-WORK.md §2→DONE; STATE.md quick-tasks row. Full spec: .planning/quick/260813-1y0-hot-reload-toast-bridge-polling-b/260813-1y0-PLAN.md (BE steps 1-5 now DONE/committed; do FE steps 6-9).",
+  "context_notes": "BE half of §2 (UAT #7 hot-reload toast bridge) is DONE + committed (3d77870 core, 3265178 wiring+tests) and verified green this turn (go build/vet/test ./internal/skill/ ./internal/server/ all ok). The reload machinery in Registry was already correct; this session closed the gaps: Registry now wired in main.go (watcher was fictional in prod), Version serialized to HTTP via the skillItem wrapper, dead SSE EventSource path slated for FE deletion, failure path surfaces via failed-map→status:failed WITHOUT version bump (keep-old contract, pinned by T4/T6). Stopped clean: BE committed; FE half untouched and fully specified in 260813-1y0-PLAN.md steps 6-9. Old FE continues to work because the wrapper still carries id+version. Pre-existing unrelated drift in STATE.md/config.json must NOT ride the §2 FE commit. After §2 closeout: §3 (graph chunk full-text) then §4 (left-sidebar IA, reconcile 05-UI-SPEC.md first) — both LOCKED, last."
 }
