@@ -81,6 +81,17 @@ export default function ChatInput({
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [skillOpen]);
 
+  // Plan 05-08 Task 1 (WR-02 fix) — stale currentSkillId defense.
+  // If the selected skill is removed from store.skills (e.g. backend
+  // dropped the YAML or reload failed and the Skill was unregistered),
+  // the trigger renders '未选择 Skill' but currentSkillId is still set
+  // in the store. Without this effect, the next /api/chat could carry a
+  // dangling id. Clear it so the UI + outbound messages stay consistent.
+  useEffect(() => {
+    const stale = currentSkillId !== null && !skills.some((s) => s.id === currentSkillId);
+    if (stale) useAppStore.getState().setCurrentSkill(null);
+  }, [currentSkillId, skills]);
+
   function handleSend() {
     const trimmed = text.trim();
     if (!trimmed) return;
