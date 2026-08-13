@@ -33,6 +33,12 @@ type MilvusClient struct {
 	cfg Config
 }
 
+// Compile-time check that *MilvusClient satisfies retriever.Retriever.
+// Defense-in-depth so future Retriever drift surfaces HERE (next to the
+// type decl) rather than at a distant call site. The mongo backend has
+// the same assertion; this matches it.
+var _ retriever.Retriever = (*MilvusClient)(nil)
+
 // New dials Milvus, runs a GetVersion health probe, and returns a
 // connected MilvusClient. cfg.Addr is required; other zero-value fields
 // are replaced with package defaults.
@@ -163,4 +169,85 @@ func (m *MilvusClient) ListMetadata(ctx context.Context) ([]retriever.DocumentMe
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+// GetChunk looks up a single chunk by numeric primary key and returns
+// its verbatim content + metadata. Plan 260813-dno / UAT #4 — the
+// on-demand chunk-content fetch backing GET /api/knowledge/chunk/:id.
+// The graph payload stays metadata-only (T-5-22); this is the separate
+// fetch path the FE fires when the operator clicks a graph chunk.
+//
+// Implementation mirrors ListMetadata: a Query-by-expression (NOT a
+// vector Search) against id == <id>. The id is int64 so the %d format
+// is injection-safe (no raw URL param string-concatenation). Empty
+// idCol or zero rows → ErrChunkNotFound; any other SDK error is wrapped
+// and surfaced to the server layer (→ 500).
+//
+// NOTE: milvus is runtime-broken per D11 (image configured for external
+// etcd). This only needs to COMPILE and mirror the same SDK Query shape
+// as ListMetadata — the by-id semantics are pinned by the mongo tests.
+func (m *MilvusClient) GetChunk(ctx context.Context, id int64) (retriever.ChunkContent, error) {
+	rs, err := m.mc.Query(
+		ctx,
+		m.cfg.CollectionName,
+		nil, // partitions (nil = default)
+		fmt.Sprintf("id == %d", id),
+		[]string{"id", "tier", "content", "source", "effective_from", "effective_to"},
+	)
+	if err != nil {
+		return retriever.ChunkContent{}, fmt.Errorf("milvus.GetChunk: Query: %w", err)
+	}
+
+	var idCol, tierCol, contentCol, sourceCol, efCol, etCol entity.Column
+	for _, c := range rs {
+		switch c.Name() {
+		case "id":
+			idCol = c
+		case "tier":
+			tierCol = c
+		case "content":
+			contentCol = c
+		case "source":
+			sourceCol = c
+		case "effective_from":
+			efCol = c
+		case "effective_to":
+			etCol = c
+		}
+	}
+	if idCol == nil || idCol.Len() == 0 {
+		// No row carries this id — soft miss, not a backend error.
+		return retriever.ChunkContent{}, retriever.ErrChunkNotFound
+	}
+
+	row := retriever.ChunkContent{}
+	if v, e := idCol.GetAsInt64(0); e == nil {
+		row.ID = v
+	}
+	if tierCol != nil {
+		if v, e := tierCol.GetAsString(0); e == nil {
+			row.Tier = v
+		}
+	}
+	if contentCol != nil {
+		if v, e := contentCol.GetAsString(0); e == nil {
+			row.Content = v
+		}
+	}
+	if sourceCol != nil {
+		if v, e := sourceCol.GetAsString(0); e == nil {
+			row.Source = v
+		}
+	}
+	if efCol != nil {
+		if v, e := efCol.GetAsInt64(0); e == nil {
+			row.EffectiveFrom = v
+		}
+	}
+	if etCol != nil {
+		if v, e := etCol.GetAsInt64(0); e == nil {
+			row.EffectiveTo = v
+		}
+	}
+	return row, nil
 }

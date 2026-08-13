@@ -116,6 +116,9 @@ func (s *stubRetriever) Insert(_ context.Context, _ []retriever.Document) error 
 func (s *stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
 	return nil, nil
 }
+func (s *stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
+	return retriever.ChunkContent{}, retriever.ErrChunkNotFound
+}
 func (s *stubRetriever) Disconnect() error { return nil }
 
 func (s *stubRetriever) CallCount() int {

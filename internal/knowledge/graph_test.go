@@ -32,12 +32,21 @@ import (
 // seam is read-only here (no Insert / Search), so the other Retriever
 // methods are stubs returning zero values.
 type stubMetaRetriever struct {
-	rows []retriever.DocumentMeta
-	err  error
+	rows     []retriever.DocumentMeta
+	err      error
+	chunk    retriever.ChunkContent
+	chunkErr error
 }
 
 func (s *stubMetaRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
 	return s.rows, s.err
+}
+
+// GetChunk returns the configured chunk / chunkErr. Plan 260813-dno —
+// exercised by the GetChunk tests below; the existing graph Build tests
+// leave both fields zero-valued (GetChunk is never called on the Build path).
+func (s *stubMetaRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
+	return s.chunk, s.chunkErr
 }
 
 func (s *stubMetaRetriever) Health(_ context.Context) error { return nil }
@@ -249,4 +258,65 @@ func TestGraphBuilder_GroupsBySource(t *testing.T) {
 	require.Len(t, xDoc.Chunks, 2)
 	assert.Equal(t, "10", xDoc.Chunks[0].ID, "chunks sort by ID ascending")
 	assert.Equal(t, "11", xDoc.Chunks[1].ID)
+}
+
+// Plan 260813-dno — GetChunk tests (the on-demand chunk-content fetch).
+
+func TestGraphBuilder_GetChunk_Found(t *testing.T) {
+	const (
+		jan2026 int64 = 1735689600 // 2025-01-01 UTC
+	)
+	chunk := retriever.ChunkContent{
+		ID:            7,
+		Tier:          "权威",
+		Source:        "authority/contract-approval.md",
+		Content:       "出差住宿费超过 500 元须审批。",
+		EffectiveFrom: jan2026,
+		EffectiveTo:   0,
+	}
+	b := New(&stubMetaRetriever{chunk: chunk})
+
+	got, err := b.GetChunk(context.Background(), 7)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// ID is rendered via the same int64ToChunkID the graph node uses.
+	assert.Equal(t, "7", got.ID, "ID uses int64ToChunkID (byte-identical to graph node label)")
+	assert.Equal(t, "权威", got.Tier)
+	assert.Equal(t, "authority/contract-approval.md", got.Source)
+	assert.Equal(t, "出差住宿费超过 500 元须审批。", got.Content)
+	assert.Equal(t, jan2026, got.EffectiveFrom)
+	assert.Equal(t, int64(0), got.EffectiveTo)
+	// Version is derived from versionFromEffective — same label the graph node carries.
+	expectedVer := versionFromEffective(jan2026, 0)
+	assert.Equal(t, expectedVer, got.Version)
+	assert.True(t, strings.HasPrefix(got.Version, "自 "), "version label mirrors graph node for {from>0,to==0}")
+}
+
+func TestGraphBuilder_GetChunk_NotFound(t *testing.T) {
+	b := New(&stubMetaRetriever{chunkErr: retriever.ErrChunkNotFound})
+	_, err := b.GetChunk(context.Background(), 999)
+	require.Error(t, err)
+	// retriever.ErrChunkNotFound is mapped to the layer-local sentinel.
+	assert.ErrorIs(t, err, ErrChunkNotFound)
+	// And is NOT the raw retriever error leaking across the package boundary.
+	assert.NotErrorIs(t, err, retriever.ErrChunkNotFound)
+}
+
+func TestGraphBuilder_GetChunk_NilRetriever(t *testing.T) {
+	b := New(nil)
+	_, err := b.GetChunk(context.Background(), 1)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNoRetriever)
+}
+
+func TestGraphBuilder_GetChunk_PropagatesRetrieverError(t *testing.T) {
+	boom := errors.New("boom: backend down")
+	b := New(&stubMetaRetriever{chunkErr: boom})
+	_, err := b.GetChunk(context.Background(), 1)
+	require.Error(t, err)
+	// The raw error propagates verbatim (server maps it to 500).
+	assert.ErrorIs(t, err, boom)
+	// And it is NOT the not-found sentinel (distinct code path).
+	assert.NotErrorIs(t, err, ErrChunkNotFound)
 }

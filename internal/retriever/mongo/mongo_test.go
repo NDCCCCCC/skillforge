@@ -349,6 +349,66 @@ func TestImplementsRetriever(t *testing.T) {
 	var _ retriever.Retriever = (*Client)(nil)
 }
 
+// Plan 260813-dno — GetChunk tests (the on-demand chunk-content fetch).
+// The fake finder seam makes the by-id path hermetic (no live MongoDB).
+
+// TestClient_GetChunk_Found — a finder that returns one row hands back
+// a ChunkContent with every field round-tripped. Pins the by-id
+// semantics + the lean projection (Content included, no Score/Embedding).
+func TestClient_GetChunk_Found(t *testing.T) {
+	f := &fakeFinder{rows: []docRow{{
+		ID:            7,
+		Tier:          "权威",
+		Source:        "authority/x.md",
+		Content:       "正文",
+		EffectiveFrom: 1700000000,
+		EffectiveTo:   0,
+	}}}
+	c := newClientWithFake(f)
+
+	got, err := c.GetChunk(context.Background(), 7)
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), got.ID)
+	assert.Equal(t, "权威", got.Tier)
+	assert.Equal(t, "authority/x.md", got.Source)
+	assert.Equal(t, "正文", got.Content)
+	assert.Equal(t, int64(1700000000), got.EffectiveFrom)
+	assert.Equal(t, int64(0), got.EffectiveTo)
+
+	// The finder was called with a {id: <id>} filter — assert the shape
+	// so a refactor that drops the id clause (e.g. returns the whole
+	// collection) fails here, not at the FE.
+	d, ok := f.lastFilter.(bson.D)
+	require.True(t, ok, "filter must be bson.D, got %T", f.lastFilter)
+	require.Len(t, d, 1)
+	assert.Equal(t, "id", d[0].Key)
+	assert.EqualValues(t, 7, d[0].Value)
+}
+
+// TestClient_GetChunk_NotFound — an empty result set surfaces as
+// retriever.ErrChunkNotFound (→ 404 at the server), NOT a generic error.
+func TestClient_GetChunk_NotFound(t *testing.T) {
+	f := &fakeFinder{rows: nil}
+	c := newClientWithFake(f)
+
+	_, err := c.GetChunk(context.Background(), 999)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, retriever.ErrChunkNotFound)
+}
+
+// TestClient_GetChunk_FinderErrorPropagates — a finder error surfaces
+// verbatim (wrapped), not swallowed and not converted to ErrChunkNotFound.
+func TestClient_GetChunk_FinderErrorPropagates(t *testing.T) {
+	wantErr := errors.New("mongo blew up")
+	f := &fakeFinder{err: wantErr}
+	c := newClientWithFake(f)
+
+	_, err := c.GetChunk(context.Background(), 1)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, wantErr)
+	assert.NotErrorIs(t, err, retriever.ErrChunkNotFound, "a real backend error is NOT a 404")
+}
+
 // TestMongoSearch_EffectiveToFilter — Plan 05-02 D5-15. The Search
 // filter gains an $or on effective_to:
 //

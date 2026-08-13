@@ -414,3 +414,38 @@ func (c *Client) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, er
 	}
 	return out, nil
 }
+
+// GetChunk looks up a single chunk by numeric primary key and returns
+// its verbatim content + metadata. Plan 260813-dno / UAT #4 — the
+// on-demand chunk-content fetch backing GET /api/knowledge/chunk/:id.
+// The graph payload stays metadata-only (T-5-22); this is the separate
+// fetch path the FE fires when the operator clicks a graph chunk.
+//
+// Implementation mirrors ListMetadata's rowFinder seam: a FindRows
+// call with a {id: <id>} filter. len(rows)==0 → ErrChunkNotFound (soft
+// miss, → 404 at the server); any finder error is wrapped (→ 500). The
+// D-09 trust boundary is preserved because the id was already
+// enumerated by ListMetadata (the graph only lists existing chunks).
+//
+// docRow (mongo/rank.go) carries every field incl Content, so the
+// mapping is a straight 1:1 field copy. No tier filter is applied
+// here — this is a by-PK read of a specific chunk the caller already
+// chose to view, not a similarity search.
+func (c *Client) GetChunk(ctx context.Context, id int64) (retriever.ChunkContent, error) {
+	rows, err := c.finder.FindRows(ctx, bson.D{{Key: "id", Value: id}})
+	if err != nil {
+		return retriever.ChunkContent{}, fmt.Errorf("mongo.GetChunk: FindRows: %w", err)
+	}
+	if len(rows) == 0 {
+		return retriever.ChunkContent{}, retriever.ErrChunkNotFound
+	}
+	r := rows[0]
+	return retriever.ChunkContent{
+		ID:            r.ID,
+		Tier:          r.Tier,
+		Source:        r.Source,
+		Content:       r.Content,
+		EffectiveFrom: r.EffectiveFrom,
+		EffectiveTo:   r.EffectiveTo,
+	}, nil
+}

@@ -46,6 +46,14 @@ import (
 // retriever; tests may inject).
 var ErrNoRetriever = errors.New("knowledge.GraphBuilder: retriever is nil")
 
+// ErrChunkNotFound is returned by GraphBuilder.GetChunk when the
+// retriever has no row for the requested id. The knowledge layer keeps
+// its OWN sentinel (rather than re-exporting retriever.ErrChunkNotFound)
+// so the server package depends on knowledge, not retriever — the
+// retriever error is mapped to this one inside GetChunk. The server
+// maps knowledge.ErrChunkNotFound → HTTP 404.
+var ErrChunkNotFound = errors.New("knowledge: chunk not found")
+
 // ErrInvalidTier wraps a doc row with an unknown tier value. KNOW-02
 // already rejects this at the indexer layer, but the graph builder
 // re-checks at the metadata-read seam (defense-in-depth).
@@ -107,6 +115,25 @@ type ChunkNode struct {
 	EffectiveFrom int64  `json:"effectiveFrom"` // 0 = perpetual start
 	EffectiveTo   int64  `json:"effectiveTo"`   // 0 = perpetual / open-ended
 	Version       string `json:"version"`        // empty when source has no frontmatter
+}
+
+// ChunkPayload is the wire shape returned by GET /api/knowledge/chunk/:id
+// (Plan 260813-dno / UAT #4). It carries the verbatim chunk text +
+// metadata for the on-demand chunk-content fetch the FE fires when the
+// operator clicks a graph chunk. The graph endpoint itself stays
+// metadata-only (T-5-22); this is the separate fetch path.
+//
+// ID + Version reuse the same helpers the graph node uses
+// (int64ToChunkID / versionFromEffective) so the labels are byte-
+// identical between the graph listing and the chunk detail view.
+type ChunkPayload struct {
+	ID            string `json:"id"`
+	Tier          string `json:"tier"`
+	Source        string `json:"source"`
+	Content       string `json:"content"`
+	EffectiveFrom int64  `json:"effectiveFrom"`
+	EffectiveTo   int64  `json:"effectiveTo"`
+	Version       string `json:"version"`
 }
 
 // GraphBuilder reads retriever metadata and assembles a Graph.
@@ -205,6 +232,48 @@ func (b *GraphBuilder) Build(ctx context.Context) (*Graph, error) {
 		out.Tiers = append(out.Tiers, node)
 	}
 	return out, nil
+}
+
+// GetChunk looks up a single chunk by numeric primary key and returns
+// a ChunkPayload carrying the verbatim text + metadata. Plan 260813-dno
+// / UAT #4 — the on-demand chunk-content fetch backing
+// GET /api/knowledge/chunk/:id. The graph payload stays metadata-only
+// (T-5-22); this is the separate fetch path the FE fires when the
+// operator clicks a graph chunk.
+//
+// Error mapping (the server turns these into HTTP codes):
+//   - nil retriever (should not happen in production — cmd/server
+//     always wires one) → ErrNoRetriever → 500.
+//   - retriever.GetChunk returns retriever.ErrChunkNotFound → mapped
+//     to this layer's ErrChunkNotFound → 404.
+//   - any other retriever error is propagated verbatim → 500 (the
+//     server logs the full err at [WARN], per W-3).
+//
+// D-09 trust boundary: this is a by-id READ of a chunk the graph
+// already enumerated. It does NOT bypass tier filtering — the caller
+// only ever requests ids the graph listed (which itself read every
+// tier). Reusing int64ToChunkID + versionFromEffective makes the ID +
+// Version labels byte-identical to the graph node labels.
+func (b *GraphBuilder) GetChunk(ctx context.Context, id int64) (*ChunkPayload, error) {
+	if b.retriever == nil {
+		return nil, ErrNoRetriever
+	}
+	c, err := b.retriever.GetChunk(ctx, id)
+	if errors.Is(err, retriever.ErrChunkNotFound) {
+		return nil, ErrChunkNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ChunkPayload{
+		ID:            int64ToChunkID(c.ID),
+		Tier:          c.Tier,
+		Source:        c.Source,
+		Content:       c.Content,
+		EffectiveFrom: c.EffectiveFrom,
+		EffectiveTo:   c.EffectiveTo,
+		Version:       versionFromEffective(c.EffectiveFrom, c.EffectiveTo),
+	}, nil
 }
 
 // int64ToChunkID renders the numeric primary key as a decimal string

@@ -24,7 +24,16 @@
 // backends (MongoDB, pgvector) will sit alongside it.
 package retriever
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrChunkNotFound is returned by GetChunk when no row carries the
+// requested numeric id. The server layer maps this to HTTP 404. It is
+// distinct from a generic backend error (→ 500) so the FE can render
+// a soft "片段不存在" state rather than a hard error.
+var ErrChunkNotFound = errors.New("retriever: chunk not found by id")
 
 // Hit is a generic search result returned by all Retriever
 // implementations. Tier is the CN-char tier value (e.g. "权威") that
@@ -85,6 +94,27 @@ type DocumentMeta struct {
 	EffectiveTo   int64
 }
 
+// ChunkContent is the by-id content projection used by the on-demand
+// chunk-content fetch (Plan 260813-dno / UAT #4). It is deliberately
+// lean: no Score (Hit carries a meaningless one) and no Embedding
+// (Document carries it — a chunk-content fetch must NEVER leak the
+// vector over the wire). Fields mirror DocumentMeta + the verbatim
+// Content string the FE renders inside ChunkSourceView.
+//
+// This is the separate fetch path that preserves the graph payload
+// contract (T-5-22): the graph endpoint stays metadata-only; this
+// type is what GET /api/knowledge/chunk/:id returns. The D-09 trust
+// boundary is preserved because the chunk id was already enumerated
+// by the graph (the caller cannot invent an id the graph did not list).
+type ChunkContent struct {
+	ID            int64
+	Tier          string
+	Source        string
+	Content       string
+	EffectiveFrom int64
+	EffectiveTo   int64
+}
+
 // Retriever is the abstraction over a tiered vector search backend.
 //
 // Tier-filter semantics: PRE-similarity at the SDK/Search layer
@@ -139,6 +169,18 @@ type Retriever interface {
 	// (the graph deliberately surfaces superseded chunks so the
 	// operator can browse them with the 已失效 badge).
 	ListMetadata(ctx context.Context) ([]DocumentMeta, error)
+
+	// GetChunk looks up a single chunk by its numeric primary key and
+	// returns the verbatim content + metadata. Used by the on-demand
+	// chunk-content fetch (Plan 260813-dno / GET /api/knowledge/chunk/:id)
+	// — the graph payload stays metadata-only (T-5-22), so chunk text
+	// is fetched here ONLY when the operator clicks a chunk. Returns
+	// ErrChunkNotFound when no row carries the requested id; any other
+	// backend error is surfaced verbatim (the server maps it to 500).
+	// The D-09 trust boundary is preserved: the id was already
+	// enumerated by ListMetadata (graph), so this is a by-id READ of a
+	// chunk the caller was already authorized to see.
+	GetChunk(ctx context.Context, id int64) (ChunkContent, error)
 
 	// Disconnect closes the underlying client connection. After
 	// Disconnect the instance is unusable.

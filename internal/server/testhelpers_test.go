@@ -119,6 +119,9 @@ func (s *stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMet
 	defer s.mu.Unlock()
 	return nil, nil
 }
+func (s *stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
+	return retriever.ChunkContent{}, retriever.ErrChunkNotFound
+}
 func (s *stubRetriever) Disconnect() error { return nil }
 
 // LastTiers returns the most recent tier list (or nil if none).

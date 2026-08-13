@@ -89,8 +89,15 @@ type Runner interface {
 // request's context into Build). The interface lives in this file
 // (rather than internal/knowledge) to keep the knowledge package free
 // of hertz/app imports — mirroring the Runner pattern.
+//
+// GetChunk (Plan 260813-dno / UAT #4) is the on-demand chunk-content
+// fetch backing GET /api/knowledge/chunk/:id. The graph endpoint stays
+// metadata-only (T-5-22); this returns the verbatim text + metadata
+// when the operator clicks a graph chunk. Returns knowledge.ErrChunkNotFound
+// (→ 404), knowledge.ErrNoRetriever (→ 500), or propagates other errors (→ 500).
 type KnowledgeBuilder interface {
 	Build(ctx context.Context) (*knowledge.Graph, error)
+	GetChunk(ctx context.Context, id int64) (*knowledge.ChunkPayload, error)
 }
 
 // Deps bundles every dependency the chat pipeline needs. cmd/server's
@@ -185,7 +192,8 @@ type Deps struct {
 // loaded Skills), POST /api/skills (dry-run Skill validator),
 // POST /api/skills/wizard (SC-3 wizard interview → preview),
 // POST /api/skills/wizard/commit (atomic write + fsnotify loop close),
-// GET /api/knowledge/graph (SC-5 graph browser data source).
+// GET /api/knowledge/graph (SC-5 graph browser data source),
+// GET /api/knowledge/chunk/:id (SC-5 on-demand chunk-content fetch).
 func New(addr string, deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(addr))
 	h.POST("/api/chat", deps.chatHandler)
@@ -194,5 +202,6 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/skills/wizard", deps.wizardHandler)
 	h.POST("/api/skills/wizard/commit", deps.wizardCommitHandler)
 	h.GET("/api/knowledge/graph", deps.graphHandler)
+	h.GET("/api/knowledge/chunk/:id", deps.chunkHandler)
 	return h
 }

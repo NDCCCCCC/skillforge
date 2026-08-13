@@ -45,8 +45,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -93,6 +95,62 @@ func (s *Deps) graphHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	c.JSON(http.StatusOK, g)
+}
+
+// chunkHandler implements GET /api/knowledge/chunk/:id. Plan 260813-dno
+// / UAT #4 — the on-demand chunk-content fetch. The graph endpoint stays
+// metadata-only (T-5-22); this handler returns the verbatim chunk text
+// + metadata when the operator clicks a graph chunk (the FE fires it
+// only on a fixture-miss in chunk-lookup, so the verdict-citation path
+// is untouched).
+//
+// Posture mirrors graphHandler exactly so the FE error handling is
+// uniform across /api/knowledge/*:
+//
+//	GET /api/knowledge/chunk/:id → 200 { id, tier, source, content,
+//	                                  effectiveFrom, effectiveTo, version }
+//	                             → 503 { error: "knowledge graph not initialized..." }  (nil Knowledge)
+//	                             → 400 { error: "invalid chunk id" }                    (non-int64 path)
+//	                             → 404 { error: "chunk not found" }                     (ErrChunkNotFound)
+//	                             → 500 { error: "knowledge chunk fetch failed — see server logs" }  (other err, W-3)
+//
+// W-3 (Phase 5 review, mirrored from graphHandler): the 500 envelope
+// carries a generic message — NEVER err.Error(). The full error is
+// logged at [WARN] server-side so the operator can diagnose without the
+// FE leaking internal detail to a potential attacker.
+func (s *Deps) chunkHandler(ctx context.Context, c *app.RequestContext) {
+	if s.Knowledge == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{
+			Error: "knowledge graph not initialized (set Deps.Knowledge at server construction)",
+		})
+		return
+	}
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{
+			Error: "invalid chunk id",
+		})
+		return
+	}
+	payload, err := s.Knowledge.GetChunk(ctx, id)
+	if errors.Is(err, knowledge.ErrChunkNotFound) {
+		c.JSON(http.StatusNotFound, graphResponseError{
+			Error: "chunk not found",
+		})
+		return
+	}
+	if err != nil {
+		// W-3: log the full err.Error() server-side at WARN; return a
+		// generic message to the FE. Mirrors graphHandler's [WARN]
+		// convention so a future refactor stays consistent.
+		log.Printf("[WARN] server: knowledge chunk fetch failed: %v", err)
+		c.JSON(http.StatusInternalServerError, graphResponseError{
+			Error: "knowledge chunk fetch failed — see server logs",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, payload)
 }
 
 // Compile-time check that knowledge.GraphBuilder satisfies the
