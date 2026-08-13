@@ -208,7 +208,7 @@
 | 2. Compliance Vertical Slice | 5/5 (incl. 02-04-MONGO) | Complete | 2026-08-11 |
 | 3. Agentic Retrieval & Trust Evaluation | 6/6 | Complete | 2026-08-12 |
 | 4. Streaming Trust UI | 4/4 (incl. 04-04 gap-closure) | Complete | 2026-08-11 (04-04 debt-closure 2026-08-12) |
-| 5. Skill Platform & Full Knowledge Boundaries | 0/6 | Not started | - |
+| 5. Skill Platform & Full Knowledge Boundaries | 8/8 (incl. 05-08 gap-closure) | Complete | 2026-08-12 (05-08 debt-closure 2026-08-13) |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
 | 7. Open-Source Release | 0/? | Not started | - |
 
