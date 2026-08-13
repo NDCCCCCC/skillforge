@@ -52,6 +52,9 @@
 //   - GLM_API_KEY       (required) — Zhipu Coding Plan subscription key
 //   - GLM_BASE_URL      (optional) — default https://open.bigmodel.cn/api/coding/paas/v4
 //   - SERVER_ADDR       (optional) — default ":8888" (Pitfall 7)
+//   - USE_AGENT_PATH    (optional) — "true" opts into the Phase 3 ReAct
+//     agent path (runAgentPath). Default unset → VerdictPipeline is the
+//     /api/chat handler. See .planning/debug/agent-llm-query-rewrite.md.
 //
 // All are read at startup; missing required vars are fatal with
 // an actionable error message. The Skill author / operator should be
@@ -127,6 +130,17 @@ func main() {
 	serverAddr := envOr("SERVER_ADDR", defaultServerAddr)
 	evalReportsDir := envOr("EVAL_REPORTS_DIR", defaultEvalReportsDir)
 	evalFrozenDir := envOr("EVAL_FROZEN_DIR", defaultEvalFrozenDir)
+	// USE_AGENT_PATH (opt-in) selects the Phase 3 ReAct agent path
+	// (internal/server.runAgentPath) for /api/chat. The PRODUCTION
+	// DEFAULT is the Phase 2 VerdictPipeline (code-forced original-query
+	// retrieval → LLM emits verdict JSON only). The agent path delegates
+	// query rewrite / chunk selection / refusal judgement to the LLM,
+	// which live-verified drifts on GLM-5.2 (年假 → 出差住宿费 rewrite
+	// → unanswered on a query the retriever answers correctly with the
+	// original phrasing). The agent + its pre-retrieve code stay in-tree
+	// and unit-tested; this flag only gates whether cmd/server
+	// CONSTRUCTS that agent. See .planning/debug/agent-llm-query-rewrite.md.
+	useAgentPath := strings.EqualFold(os.Getenv("USE_AGENT_PATH"), "true")
 
 	// 2. Load Skills (SYSK-02 validation at startup).
 	loader := skill.NewLoader("skills/")
@@ -179,29 +193,43 @@ func main() {
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: adkAgent})
 
-	// 6b. Phase 3 ReAct Agent (Plan 03-03 — supersedes adk.NewChatModelAgent
-	// for the /api/chat path). The adk agent + runner above stay in scope
-	// because the eval golden-set runner (Plan 03-06) may use the simpler
-	// single-turn Runner.Query to drive 50 cases without the full ReAct
-	// loop; keeping both available preserves the option (per Plan 03-05).
+	// 6b. Phase 3 ReAct Agent (Plan 03-03). Constructed ONLY when
+	// USE_AGENT_PATH=true (opt-in). The PRODUCTION DEFAULT is the Phase 2
+	// VerdictPipeline (chatHandler falls through to it when s.Agent ==
+	// nil), which live-verified 6/6 SC green and is robust against LLM
+	// query-rewrite drift. The agent path (runAgentPath) delegates query
+	// rewrite / chunk selection / relevance+refusal judgement to the LLM;
+	// on GLM-5.2 every layer drifts (年假 → 出差住宿费 rewrite → wrong doc
+	// → unanswered; a tweaked "MUST answer from chunks" prompt then broke
+	// the refusal moat on out-of-scope queries). That direction is
+	// live-verified FAILED — see
+	// .planning/debug/agent-llm-query-rewrite.md. The agent code, the
+	// pre-retrieve guard (commits 0171680 + d3178ed), and its unit tests
+	// stay in-tree as the opt-in experimental path; this flag only
+	// determines whether cmd/server constructs it.
 	//
-	// The agent's Manifest is the first loaded Skill (Phase 2 has exactly
-	// one Skill — compliance; multi-Skill routing is Phase 5). MaxHops=2
-	// is the D3-02 hard cap (ComputeMaxStep(2)=5 LLM turns max).
-	//
+	// MaxHops=2 is the D3-02 hard cap (ComputeMaxStep(2)=5 LLM turns max).
 	// Emit is NOT bound here — internal/agent's DecisionEmitFunc requires
 	// the per-request *app.RequestContext, which does not exist at server
 	// startup. The chatHandler wraps emitDecision(c, ...) into a closure
 	// per request (see internal/server/chat.go runAgentPath).
-	ag, err := agent.NewAgent(ctx, agent.AgentConfig{
-		Manifest:  firstManifest(loader),
-		Embedder:  emb,
-		Retriever: r,
-		ChatModel: cm,
-		MaxHops:   2, // D3-02 hard cap — see agent.ComputeMaxStep
-	})
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: agent init: %v", err)
+	ag := (*agent.Agent)(nil)
+	if useAgentPath {
+		ag, err = agent.NewAgent(ctx, agent.AgentConfig{
+			Manifest:  firstManifest(loader),
+			Embedder:  emb,
+			Retriever: r,
+			ChatModel: cm,
+			MaxHops:   2, // D3-02 hard cap — see agent.ComputeMaxStep
+		})
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: agent init: %v", err)
+		}
+	}
+	if useAgentPath {
+		log.Printf("[OK] cmd/server: /api/chat path = runAgentPath (USE_AGENT_PATH=true; experimental)")
+	} else {
+		log.Printf("[OK] cmd/server: /api/chat path = VerdictPipeline (default; USE_AGENT_PATH unset)")
 	}
 
 	// 6c. Store (audit + session-memory backend, Plan 03-02). Zero-ops
@@ -248,10 +276,15 @@ func main() {
 	// "wizard wrote here, Loader reads there" contract holds.
 	//
 	// EvalReporter (Plan 06-02 / SC-1) reads the same eval/reports/
-	// directory cmd/eval --archive writes; this is the single source
-	// of truth for the trend history. Empty paths default to
+	// directory cmd/eval --archive writes; this is the single source of
+	// truth for the trend history. Empty paths default to
 	// "eval/reports" / "eval/frozen" inside FilesystemEvalReporter so
 	// a plain `go run cmd/server` finds the archive the CLI produced.
+	//
+	// Agent is nil unless USE_AGENT_PATH=true (see 6b). A nil Agent
+	// makes chatHandler take the VerdictPipeline branch (the production
+	// default); the agent path remains constructable + unit-tested for
+	// future use.
 	deps := &server.Deps{
 		Loader:       loader,
 		Registry:     reg,
