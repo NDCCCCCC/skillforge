@@ -20,6 +20,29 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 - ✅ **Phase 4: Streaming Trust UI** (2026-08-11) — **信任可视化前端落地**。React 19 + Vite + TS + Vercel AI SDK（`ai@7`）三面板（资料库 / 审查结论 / 对话）聊天 UI，把 Phase 2 后端的"带引用裁决 + 结构化拒答"翻译成可审计的用户体验：可见推理链（D-08 高度受限、可折叠，DOM 序在答案之前）、可点击引用（D-01 → ChunkSourceView 展示 TierBadge + 版本 + 生效日期 + 逐字原文）、结构化 VerdictCard（D-06 状态色边框 + 置信度条 + 需复核 badge）/ RefusalCard（D-07 超范围 🚫 vs 不知道 ❓ 强区分）、子进度指示器（FEUI-06 五步文案）、Skill 选择器（FEUI-04 切换 Skill 并联动 CenterPanel）。**UAT 12/12 全绿**（chrome-devtools MCP 自动化 + 单元测试证据），83/83 单元测试绿，1 个 gap（CenterPanel 标签指示器未受控于 `centerView.kind`）已修复（commit `e757d6e` + 回归测试）。**关键工程决策固化**：D-04 transport-swap 不变量（Mock ↔ Default 字节级一致，`transport-swap.test.tsx` 把关生产切换）、T-1-08 source-URL 白名单消毒门、Pitfall 7 状态边界（Zustand store 文件级禁止 `messages` 字段，`useChat` 独占消息流）、wire-type 编译期漂移报警（`AssertAssignable<SkillForgeChunk, UIMessageChunk>`）。覆盖需求：FEUI-01..06、SYSK-03、KNOW-05、CMPL-05、T-1-08。**已知的 Phase 5 延期项**：LeftSidebar 真实多会话/文件树、ChatInput `@` 模糊搜索、Skill 管理器 UI、双向 tab 导航 + UI-SPEC §169 chunk 空状态。
 
+- ✅ **Phase 6: Eval Dashboard & Production Hardening** (2026-08-13) — **可衡量效果护城河收尾**。把 Phase-3 已交付的 Go-native 信任评估器（`internal/eval` + `cmd/eval`）从批量 CLI 升级为 **CI 推广网关 + 可视化仪表板 + 生产级隐私姿态**。3/4 计划交付（06-03 CI 工作流按用户"先跳过 CI"决策延迟）。**全部 6 个 SC 在单元/集成级别已验证**（11/12 must-haves，仅 GEVL-07 端到端 Actions 管道待处理）：
+  - **SC-1 / GEVL-06 — 仪表板**：`/eval` 独立全屏路由（admin 模式）+ SkillsTable（per-Skill 5 个指标 + ✅/❌ 徽章）+ TrendPanel（recharts 折线 + 灰色虚线冻结基线 + >5% 漂移标记）+ CrossEvalTab（自我评估偏差检测）+ AuditTable（`/eval/audit` 子路由）。14 个 FE 测试绿色；D14 无 `messages` 不变量保留；D-04/D12 transport-swap 不变量隔离（`/eval` 使用自己的传输，聊天 SSE 未触动）。
+  - **SC-2 / GEVL-07 — 网关逻辑**：`internal/eval.gateDecision` 纯函数 + `FormatGateMarkdown` + `runGateCheck`（cmd/eval 的唯一非零退出路径）+ `skills/compliance/eval-gate.json`（Q2 解决路径，`{"faithfulness_threshold": 0.9}`）。CI 工作流 `.github/workflows/eval-gate.yml` 存在于未合并 worktree 分支（commit `fc26d12`，138 行）——按用户决策推迟。
+  - **SC-3 — 审计查询 UI + 行级脱敏**：`/api/audit` 7 参数 1:1 映射到 `store.QueryAudit(AuditFilter)`（100% 参数化，T-3-SQLI 回归绿色）；AuditTable 过滤栏 + `[REDACTED (90d+)]` 徽章 + 悬停详情。
+  - **SC-4 — 50×5 会话隔离**：`TestSessionIsolation50x5` 在 `-race` 下运行，50 会话 × 5 轮，每次恰好 10 条消息；2.398s 内绿色；D18 `WHERE session_id=?` 分区保留。
+  - **SC-5 — 保留/脱敏**：`redact()` 在 `QueryAudit` 和 `c.JSON` 之间运行（读取时投影，保留 T-3-AUDIT INSERT-only）；`SKILLFORGE_RETENTION_DAYS` env（默认 90）；`X-Admin-Token` 通过 `crypto/subtle.ConstantTimeCompare`（ASVS V6.2.1）门控原始行；unset admin token → 所有非管理员。
+  - **SC-6 — 可复现性**：`computePromptHash` 3 参数（含渲染提示体）通过 `internal/reprohash` 叶子包（Q1 解决）；50 个冻结集 + `compliance.lock.json`（5 字段 pin：model_ver / prompt_hash / seed / eval_set_version / skill_name）；`TestShippedFrozenLockIsInSync` 证明字节身份；两层容差：StubJudge `1e-6`（严格）+ `//go:build liveeval` `1e-3`（抖动容忍）。
+
+  **关键工程决策固化**：
+  - **Q1 prompt_hash 加强**：hash 现在覆盖渲染提示体（之前仅 `skillName+modelVersion`），使 SC-6 冻结 pin 有意义。`internal/reprohash` 打破 server↔eval 导入循环；长度前缀字段防碰撞。
+  - **Q2 eval-gate.json 路径**：`skills/<skill>/eval-gate.json`（非 `.claude/skills/`）——与产品 Skill 共置（D6-10 意图），匹配 D6-09 path-filter `skills/*/SKILL.md`。
+  - **读取时脱敏**：保留 T-3-AUDIT INSERT-only 不变量（无 UPDATE/DELETE 存储路径）；脱敏是查询后投影，非写时修改。
+  - **T-6-PATH Windows 安全**：`:ts` 正则从 `^[0-9T:-]+Z$` 收紧到 `^[0-9T-]+Z$`（冒号在 Windows 文件名中非法）。
+  - **零新增 Go 依赖**（除 recharts@3.10.1 + human-verify 检查点）——符合 RESEARCH.md 要求。
+
+  **4 个人工 UAT 项目待处理**（已持久化到 `06-HUMAN-UAT.md`）：
+  1. 合并 eval-gate.yml 从 worktree 分支 + 牺牲性 PR（SC-2 端到端）
+  2. 本地运行 `cmd/eval --frozen --archive` → 打开 `/eval` + `/eval/audit` 验证基线覆盖 + 脱敏徽章
+  3. `SKILLFORGE_ADMIN_TOKEN` 切换（脱敏 vs 原始行）
+  4. `go test -tags liveeval ./internal/eval/` 带 `GLM_API_KEY`（SC-6 抖动层）
+
+  **产物**：`internal/reprohash/` + `internal/eval/{frozen,archive,gate,crosseval}.go` + `internal/server/{audit,eval}.go` + `internal/store/sqlite/audit.go`（OFFSET 支持）+ `cmd/eval` 标志矩阵 + `web/src/components/eval/{EvalDashboard,SkillsTable,TrendPanel,CrossEvalTab,AuditTable}.tsx` + `web/src/store/app-store.ts` eval slice + `web/src/App.tsx` 路由分支 + `web/src/components/layout/LeftSidebar.tsx` 导航条目 + `web/src/hooks/useEvalReports.ts` + `web/src/types/eval.ts` + `eval/frozen/compliance.jsonl` + `eval/frozen/compliance.lock.json` + `skills/compliance/eval-gate.json`。
+
 ### Active
 
 <!-- Current scope. Building toward these. -->
