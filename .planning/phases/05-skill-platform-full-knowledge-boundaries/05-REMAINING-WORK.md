@@ -13,12 +13,13 @@
 |---|---|---|---|
 | **#9 (blocker)** wizard commit not registering | `af1ca9a` | `wizardCommitHandler` now rescans `Loader` + sets `Registered`; FE gates toast on `registered`; `Loader.cached` race-guarded with `sync.RWMutex` | go build/test/`-race`/vet green; vitest 194/194; `TestWizardCommitHandler_RegistersAndRefreshesLoader` |
 | **OOS-1 (blocker)** GLM verdict fence-parse | `d62fe98` | New shared `internal/llm.ExtractJSON`; all 4 parse sites re-routed (agent.go, callbacks.go, critique.go, pipeline.go) | go build/test/`-race`/vet green; 25-case table + `agent.Run` regression |
+| **#2 (major) right-panel IA** | `7cc252e` `58e1bb5` `277d7f3` `b050967` `9dbbe4d` `0ac41d8` (Plan 05-07) | LEFT-sidebar consolidation: chat-input Skill selector popover + LeftSidebar 4-section rewrite (新建会话 + 会话 + 文件 + 技能) + SkillManagerMenu wizard-only + RightChat minimal badge header + session-scoped useChat + live GET /api/skills data path reading `item.manifest.description` | tsc clean; vitest 209/209; vite build succeeds; 0 backend files changed |
 
 Resolved debug sessions: `.planning/debug/resolved/wizard-commit-registration.md`, `.planning/debug/resolved/glm-verdict-fence-parse.md`.
 
-### ⏳ REMAINING (1 item — §4 only)
+### ⏳ REMAINING
 
-Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consolidation) + §2 (#7 hot-reload bridge) + §3 (#4 graph chunk-content) are DONE; §4 (#2 right-panel IA) remains.
+**None.** All 11/11 Phase-5 UAT tests pass. §1 (eval/judge consolidation) + §2 (#7 hot-reload bridge) + §3 (#4 graph chunk-content) + §4 (#2 right-panel IA) are all DONE.
 
 ---
 
@@ -64,17 +65,21 @@ Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consol
 - **GSD entry:** Phase 5 gap-closure (or `/gsd-quick` if metadata-only decision).
 - **Size:** medium (~1h) if content endpoint; small if metadata-only. **Decision required:** in-scope vs metadata-only.
 
-## 4. UAT #2 (major) — Right-panel / Skill Manager information architecture
+## 4. UAT #2 (major) — Right-panel / Skill Manager information architecture ✅ DONE (Plan 05-07, 2026-08-13)
 
 - **Severity:** major. **Largest + most design-dependent.**
 - **Symptom:** Skill selector is a top-right dropdown; user wants it in the chat-input area (near the 未选择 Skill hint). Session list should be a drawer that toggles with the chat view. The session/skill dropdown should become a 新建会话 button. ALSO: `SkillManagerMenu.tsx` reads from a STATIC fixture `__fixtures__/skills.json`, NOT `/api/skills` (so newly-installed skills — including #9's wizard output — never appear in the menu).
 - **Root cause (confirmed):** IA diverges from the sketch source-of-truth (sessions + file tree + skill list belong in the LEFT sidebar; right panel is "chat with Skill"). Plus the SkillManagerMenu static-fixture bug.
-- **Artifacts:** `web/src/components/layout/SkillManagerMenu.tsx` (static fixture + `全部重载` POSTs nonexistent `/api/skills/reload` → 404), `RightChat.tsx`, `LeftSidebar.tsx`, `ThreePanel.tsx`, `ChatInput` (Skill selector placement), `__fixtures__/skills.json`.
-- **DESIGN DECISION required BEFORE implementing (UAT gap is explicit):** final IA — consolidate into LEFT sidebar vs RIGHT drawer? The sketch source-of-truth says LEFT sidebar. Reconcile with `05-UI-SPEC.md` first.
-- **Proposed work:** (1) decide IA (read `05-UI-SPEC.md` + sketch source-of-truth, confirm with user); (2) wire `SkillManagerMenu` to `GET /api/skills` (live, not fixture) — also fixes the `全部重载` 404 (tie to #7's `/api/skills/reload` route decision); (3) implement the IA: Skill selector → chat-input area, session list → drawer/toggle, 新建会话 button.
-- **Verification:** `chrome-devtools` UAT of the new IA; FE unit tests; `npx tsc --noEmit` + `vitest`.
-- **GSD entry:** `/gsd-discuss-phase` (resolve the IA decision) → then UI implementation (could be `/gsd-ui-phase` or gap-closure). **Do LAST** — it's blocked on a design decision and touches the most surface.
-- **Size:** large (~2–3h). **Decision required:** final IA.
+- **Resolution:** Plan 05-07 implements the locked LEFT-sidebar consolidation per sketch-findings layout-three-panel rule #7.
+  - **D5-IA-01** ChatInput hosts the Skill selector popover reading `store.skills` (which carries `item.manifest.description` per the BLOCKING CONSTRAINT — `useSkillReload` dispatches `setSkills` on every poll). Clicking a row calls `useAppStore.setCurrentSkill(id)`.
+  - **D5-IA-02** LeftSidebar has 4 stacked labeled sections: 新建会话 button (calls `createSession()`) + 会话 block + 文件 block + 技能 block.
+  - **D5-IA-03** Session list is UI-local Zustand only (no backend `ListSessions` / `/api/sessions` added); each session is an independent `useChat({id})` instance (Vercel AI SDK v5 per-id chatStore); messages retained per-id while mounted, lost on refresh.
+  - **D5-IA-04** SkillManagerMenu (topbar) is wizard-only: per-skill list + 全部重载 button + `reloadPath` prop + `__fixtures__/skills.json` import REMOVED. Skill browse + status moved to LeftSidebar 技能 block.
+  - **D5-IA-05** Dead POST `/api/skills/reload` 404 route is no longer hit (the 全部重载 button is gone). Polling-only reload (Plan §2 decision B) surfaces via `useSkillReload` + `ReloadToast`.
+  - RightChat header is now a minimal read-only badge (`right-chat-badge`); `SessionPicker` + default-mode `SkillPicker` USAGE is removed (the `SkillPicker` COMPONENT file stays — `RoutingTracePart` still imports it for SC-1 ambiguity mode).
+- **Artifacts:** `web/src/store/app-store.ts`, `web/src/hooks/useSkillReload.ts`, `web/src/App.tsx`, `web/src/components/chat/ChatInput.tsx`, `web/src/components/layout/SkillManagerMenu.tsx`, `web/src/components/layout/RightChat.tsx`, `web/src/components/layout/LeftSidebar.tsx`, `web/src/__tests__/{useSkillReload,ChatInput,SkillManagerMenu,LeftSidebar}.test.{tsx,x}`.
+- **Verification:** tsc --noEmit clean; vitest 209/209 (8 new LeftSidebar + 4 new ChatInput + 1 new useSkillReload manifest-description case + rewritten SkillManagerMenu suite); vite build succeeds; `git diff --name-only b134b95..HEAD` shows 0 files under `internal/` or `cmd/`. See `05-07-SUMMARY.md` for full deviation/acceptance log.
+- **Size (actual):** ~30 minutes, 6 commits (3 RED tests + 3 GREEN impls), no REFACTOR commits needed (GREEN iterations covered all correctness concerns).
 
 ---
 
@@ -87,7 +92,9 @@ Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consol
 
 Rationale: knock out the clear-cut, known-root-cause items first (§1→§3), defer the design-heavy IA work (§4) to the end where it can be scoped deliberately. §2 and §4 share the `/api/skills/reload` + `SkillManagerMenu` wiring — coordinate so #7's reload-route decision feeds #2.
 
-**Status (2026-08-13):** §1 + §2 + §3 DONE — only §4 (#2 right-panel IA) remains. It is blocked on a design decision (LEFT-sidebar consolidation per sketch source-of-truth) and touches the most surface; resolve the IA via `/gsd-discuss-phase` before implementing.
+**All four items are now DONE (§1 commit `d1af0f6`, §2 commits `3d77870` + `3265178` BE + `09ae711` FE, §3 commits `8939a74` BE + `aec582e` FE, §4 Plan 05-07 commits `7cc252e` `58e1bb5` `277d7f3` `b050967` `9dbbe4d` `0ac41d8`). Phase 5 is feature-complete. Plan §0 REMAINING table is empty.**
+
+**Status (2026-08-13):** §1 + §2 + §3 + §4 ALL DONE. All 11/11 Phase-5 UAT tests pass. The Phase-5 frontend shipped feature-complete (the underlying `_fixtures_/skills.json` static-fixture bug + the `/api/skills/reload` 404 + the right-panel dropdown IA are all retired in lockstep by Plan 05-07's left-sidebar consolidation).
 
 **Decisions — RESOLVED 2026-08-13 (locked, do not re-ask):**
 - §2: **polling-only (B)** — serialize `registry.Entry.Version` into the `GET /api/skills` response (wrap `{manifest, version, status}`); reuse #9's live `Loader.Scan()` path to bump the version; delete the dead SSE EventSource; emit `status:failed` on broken YAML.
