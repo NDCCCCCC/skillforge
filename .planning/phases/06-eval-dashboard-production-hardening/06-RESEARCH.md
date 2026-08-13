@@ -610,23 +610,25 @@ function TrendPanel({ runs, baseline, deltaThresholdPct }: Props) {
 
 **If this table's only `[ASSUMED]`-of-substance items are A1/A2/A3:** they are all planner-gated (Q1) or `checkpoint:human-verify`-gated (A1/A2). No silent assumptions flow into the plan.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **`prompt_hash` strengthening (BLOCKING — resolves before planning frozen-set tasks).**
+> Q1–Q4 are BLOCKING gates; both were resolved during planning. Q5 (git-tracking) is a non-blocking `.gitignore` decision for the executor. All four BLOCKING questions are documented in their target plan.
+
+1. **`prompt_hash` strengthening (BLOCKING — RESOLVED in 06-01 T1 + T3).**
    - What we know: `computePromptHash` (`internal/server/chat.go:420-425`) hashes ONLY `skillName+modelVersion`. The chat.go comment says Phase 5 would lift the rendered prompt body into the hash; that lift was NOT done. SC-6 + D6-13 say the frozen lock pins `prompt_hash`.
    - What's unclear: does Phase 6 (a) STRENGTHEN the hash to include the rendered system prompt body (making the frozen pin meaningful for prompt drift), or (b) KEEP the current semantics and pin the frozen JSONL content hash instead?
    - Recommendation: **(a) strengthen** — it's a ~5-line change in `chat.go` + a matching one in the lock writer, makes the frozen pin meaningful, and `prompt_hash` has no external consumer. Migration cost: existing audit rows' hashes change (acceptable — dev-scale, reproducibility key not lookup key). If the planner wants (b), the lock MUST add a `eval_set_sha256` field pinning the frozen JSONL content as the real drift signal.
 
-2. **`eval-gate.json` path (BLOCKING — resolves before planning the CI gate).**
+2. **`eval-gate.json` path (BLOCKING — RESOLVED in 06-01 T3 + 06-03 T1).**
    - What we know: CONTEXT D6-10 says `.claude/skills/<skill>/eval-gate.json`; the D6 "specifics" says "co-located with the Skill it gates — same directory as SKILL.md." The product Skill is at `skills/compliance/SKILL.md`.
    - What's unclear: which path wins?
    - Recommendation: **`skills/<skill>/eval-gate.json`** (i.e. `skills/compliance/eval-gate.json`) — honors the "co-located" specificity, matches the D6-09 path-filter (`skills/*/SKILL.md`), and is where a fork contributor would look. The `.claude/skills/` path is a CONTEXT typo.
 
-3. **Trend chart library: recharts vs hand-rolled SVG (planner decision).**
+3. **Trend chart library: recharts vs hand-rolled SVG (RESOLVED in 06-04 T1 — recharts + checkpoint:human-verify).**
    - What we know: recharts 3.10.1 supports React 19 (peers verified); the project has a strong anti-dep stance (D14, shadcn copy-paste); the trend panel is a headline SC-1 feature.
    - Recommendation: **recharts** for polish + lower risk; the ~95KB gzipped is proportionate to a headline dashboard feature. Hand-rolled SVG is the defensible anti-dep alternative for a line + dashed baseline + points.
 
-4. **Routing: react-router vs minimal in-store router (planner decision).**
+4. **Routing: react-router vs minimal in-store router (RESOLVED in 06-04 T1 — in-store router, D14 alignment).**
    - What we know: only 3 routes (`/`, `/eval`, `/eval/audit`); admin-mode (no user deep-links needed); 5 phases of avoiding react-router.
    - Recommendation: **minimal in-store router** (a `route` field on `app-store.ts` + a `popstate` listener) — aligns with D14 + the project pattern. Use react-router only if shareable URLs become a requirement.
 
