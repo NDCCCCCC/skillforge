@@ -66,7 +66,23 @@ function LiveApp() {
 // The eval route has its own (non-SSE) transport; the chat SSE wire
 // stays untouched.
   const route = useAppStore((s) => s.route);
-  const env: 'prod' | 'dev' = ((import.meta as unknown) as { env: { PROD?: boolean } }).env.PROD ? 'prod' : 'dev';
+  // Transport selection (D-03/D-04 swap point). Production builds always
+  // hit the real backend (DefaultChatTransport → /api/chat). Dev defaults
+  // to MockChatTransport (recorded fixtures, zero-network) so the UI is
+  // fully testable without a backend and the vitest suite is never
+  // coupled to one (T-04-04). Set VITE_REAL_BACKEND=1 (shell env var or
+  // web/.env.local) to point dev at the live Hertz backend through the
+  // vite /api→:8888 proxy — the only way to end-to-end test real RAG with
+  // HMR. Mock stays the default so `npm run dev` is always standalone.
+  //
+  // Access import.meta.env.* DIRECTLY (not via an intermediate const):
+  // Vite static-replaces the literal text `import.meta.env.X` in the
+  // compiled output. Storing import.meta in a variable breaks that
+  // replacement and leaves import.meta.env undefined at runtime — the
+  // browser's native import.meta has no env property. Types live in
+  // src/vite-env.d.ts (vite/client + VITE_REAL_BACKEND).
+  const env: 'prod' | 'dev' =
+    import.meta.env.PROD || import.meta.env.VITE_REAL_BACKEND === '1' ? 'prod' : 'dev';
   const transport = useMemo(() => createTransport(env), [env]);
   // Plan 05-08 Task 1 (CR-01 fix) — per-session Chat<UIMessage> map
   // kept in a useRef so each session retains its own message stream
