@@ -113,7 +113,13 @@
   5. While the agent works, a sub-progress indicator shows "Searching 权威 tier... Found 12 candidates... Re-ranking..." with step-level updates (FEUI-06)
   6. A compliance verdict with `review_required: true` shows a yellow "needs human review" badge over the message (CMPL-05)
 **Pitfalls addressed:** P-FE-1..5 (UI integration, citation rendering, refusal UX), P-COMPL-3 (UI side-by-side), P-COMPL-5 (HITL badge visibility)
-**Plans**: TBD
+**Plans**: 4 plans
+**Plan list**:
+- [ ] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
+- [ ] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
+- [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
+- [ ] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
+**Wave structure**: W1={06-01} → W2={06-02, 06-03} → W3={06-04}
 **UI hint**: yes
 
 ### Phase 5: Skill Platform & Full Knowledge Boundaries
@@ -158,7 +164,13 @@
   5. Retention / redaction policy is enforced: queries past the retention window have `query` and `answer` fields redacted in storage; access requires an explicit access policy
   6. Eval runs are reproducible: re-running against a frozen eval set + pinned `model_ver` + pinned `prompt_hash` returns numerically identical Ragas scores within tolerance
 **Pitfalls addressed:** P-RAG-2 (monitoring + drift detection), P-COMPL-4 (audit trail integrity), P-EINO-2 (multi-tenant session isolation), P-OSS-5 (CI hygiene)
-**Plans**: TBD
+**Plans**: 4 plans
+**Plan list**:
+- [ ] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
+- [ ] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
+- [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
+- [ ] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
+**Wave structure**: W1={06-01} → W2={06-02, 06-03} → W3={06-04}
 **UI hint**: yes
 
 ### Phase 7: Open-Source Release
@@ -177,7 +189,13 @@
   7. README's "Eval Results" section shows published per-Skill faithfulness %, citation precision %, refusal accuracy % from the latest CI run (DIST-09)
   8. `eval/sample.jsonl` ships a 50-case sample of the per-Skill eval set in the repo (DIST-10)
 **Pitfalls addressed:** P-OSS-1..6 (README, demo, Docker, contributing, license, eval results publication)
-**Plans**: TBD
+**Plans**: 4 plans
+**Plan list**:
+- [ ] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
+- [ ] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
+- [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
+- [ ] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
+**Wave structure**: W1={06-01} → W2={06-02, 06-03} → W3={06-04}
 **UI hint**: yes
 
 ---
