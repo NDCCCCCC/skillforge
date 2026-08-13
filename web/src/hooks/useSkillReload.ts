@@ -3,30 +3,41 @@
 
 // useSkillReload — Plan 05-03 / SC-2 (SYSK-04) hot-reload consumer.
 //
-// Subscribes to the SSE channel `GET /api/skills/events` and updates
-// `store.skillReloadStatus` with each `skill-reloaded` payload:
+// Polls `GET /api/skills` and updates `store.skillReloadStatus` whenever a
+// skill's reload signal changes. The endpoint returns one item per skill:
 //
-//   { type: 'skill-reloaded', skillId, skillName, status, error?, version }
+//   { id, name, version, status, error?, manifest }
 //
-// Strategy (per UI-SPEC §SC-2):
-//   - Primary path: SSE EventSource on `/api/skills/events` with exp
-//     backoff (3s base, 30s cap) via sse-client.constructSSE.
-//   - Fallback: when EventSource is unavailable (jsdom / dev-only
-//     mode), poll `GET /api/skills` every 2s and diff the per-skill
-//     `version` field. If the version increments AND status changes,
-//     emit a synthetic reload event.
+// Strategy (per UI-SPEC §SC-2, decision B — polling-only):
+//   - Poll `GET /api/skills` every 2s (default) and diff each item's
+//     `version` + `status` against the previous poll.
+//   - Emit a synthetic reload event on EITHER:
+//       (a) version increased — a successful reload bumped the per-process
+//           monotonic counter (JS-safe, << 2^53), so every bump is visible
+//           to the polling client; OR
+//       (b) status flipped — ok→failed surfaces a broken-YAML reload with
+//           the prior version KEPT; failed→ok surfaces a recovery.
+//   - On a failure status the emitted entry carries version:'old-kept'
+//     (the keep-old contract: a failed reload does NOT bump version), so
+//     ReloadToast can say "校验失败，已保留上一版本" alongside the error text.
+//
+// The first tick establishes a baseline per skill WITHOUT emitting —
+// otherwise mounting the hook would spuriously fire a toast for every
+// already-loaded skill.
 //
 // Threat model:
-//   - T-5-11 — reconnect storm mitigated by sse-client exp backoff.
-//   - T-5-12 — spoofed toast cannot affect routing (toast is informational,
-//     actual Skill reload is BE-side per D5-08 + 05-01 atomic.Pointer).
+//   - T-5-11 — no SSE EventSource, so there is no reconnect storm. Polling
+//     is a single setInterval; a failed fetch is retried silently on the
+//     next tick (no exp backoff needed at this cadence).
+//   - T-5-12 — a spoofed toast cannot affect routing (the toast is
+//     informational; the actual Skill reload is BE-side per D5-08 +
+//     05-01 atomic.Pointer).
 //   - T-5-14 — validation errors from the BE are text-rendered only;
 //     filesystem paths are stripped to their basename by the ReloadToast
 //     consumer (defense-in-depth).
 //
-// Mount at the app root so the subscription outlives route changes.
+// Mount at the app root so polling outlives route changes.
 import { useEffect } from 'react';
-import { constructSSE } from '../lib/sse-client';
 import { useAppStore } from '../store/app-store';
 import type { SkillReloadEntry } from '../store/app-store';
 
@@ -43,10 +54,12 @@ interface SkillListItem {
   id: string;
   name?: string;
   version?: number;
+  status?: 'ok' | 'failed';
+  error?: string;
 }
 
 /** Coerce a payload into a SkillReloadEntry. Defensive — accepts the
- * SSE payload shape with optional fields and falls back to safe defaults. */
+ * synthetic payload shape with optional fields and falls back to safe defaults. */
 function toReloadEntry(payload: Partial<SkillReloadedPayload> & { skillId: string }): SkillReloadEntry {
   const status: SkillReloadEntry['status'] = payload.status === 'failed' ? 'failed' : 'ok';
   const version: SkillReloadEntry['version'] = payload.version === 'old-kept' ? 'old-kept' : 'new';
@@ -60,23 +73,20 @@ function toReloadEntry(payload: Partial<SkillReloadedPayload> & { skillId: strin
 }
 
 export interface UseSkillReloadOptions {
-  /** Override the SSE path (default `/api/skills/events`). */
-  ssePath?: string;
-  /** Override the polling fallback URL (default `/api/skills`). */
+  /** Override the polling URL (default `/api/skills`). */
   pollPath?: string;
-  /** Polling cadence when SSE is unavailable (default 2000 ms). */
+  /** Polling cadence (default 2000 ms). */
   pollIntervalMs?: number;
-  /** Disable the polling fallback entirely (default false). */
+  /** Disable polling entirely (default false). */
   disablePolling?: boolean;
 }
 
 /**
  * Mount once at the app root. Returns nothing — the hook's effect
- * drives the subscription and updates the Zustand store. ReloadToast
+ * drives the poll loop and updates the Zustand store. ReloadToast
  * observes the store and surfaces toasts.
  */
 export function useSkillReload(opts: UseSkillReloadOptions = {}): void {
-  const ssePath = opts.ssePath ?? '/api/skills/events';
   const pollPath = opts.pollPath ?? '/api/skills';
   const pollIntervalMs = opts.pollIntervalMs ?? 2000;
 
@@ -93,21 +103,10 @@ export function useSkillReload(opts: UseSkillReloadOptions = {}): void {
       }
     }
 
-    // Primary path: SSE with auto-reconnect.
-    const conn = constructSSE({
-      path: ssePath,
-      onMessage: handleEvent,
-      // Suppress uncaught errors during dev — the sse-client swallows
-      // them and schedules a reconnect. Production telemetry should
-      // wire opts.onError to a logger.
-      onError: () => undefined,
-    });
-    conn.connect();
-
-    // Fallback: polling — runs alongside SSE. If both fire, the store
-    // updates are idempotent (same skillId, latest ts wins).
+    // Polling-only reload signal. Tracks the last-seen version + status
+    // per skill so the first tick seeds a baseline WITHOUT emitting.
     let pollTimer: ReturnType<typeof setInterval> | null = null;
-    const knownVersions = new Map<string, number>();
+    const known = new Map<string, { version?: number; status: 'ok' | 'failed' }>();
 
     async function tick() {
       if (cancelled) return;
@@ -116,19 +115,26 @@ export function useSkillReload(opts: UseSkillReloadOptions = {}): void {
         if (!res.ok) return;
         const list = (await res.json()) as SkillListItem[];
         for (const item of list) {
-          const prev = knownVersions.get(item.id);
-          if (prev !== undefined && typeof item.version === 'number' && item.version > prev) {
-            handleEvent({
-              type: 'skill-reloaded',
-              skillId: item.id,
-              skillName: item.name ?? item.id,
-              status: 'ok',
-              version: 'new',
-            });
+          if (typeof item.id !== 'string') continue;
+          const curVersion = typeof item.version === 'number' ? item.version : undefined;
+          const curStatus: 'ok' | 'failed' = item.status === 'failed' ? 'failed' : 'ok';
+          const prev = known.get(item.id);
+          if (prev !== undefined) {
+            const versionBumped =
+              curVersion !== undefined && prev.version !== undefined && curVersion > prev.version;
+            const statusChanged = prev.status !== curStatus;
+            if (versionBumped || statusChanged) {
+              handleEvent({
+                type: 'skill-reloaded',
+                skillId: item.id,
+                skillName: item.name ?? item.id,
+                status: curStatus,
+                version: curStatus === 'failed' ? 'old-kept' : 'new',
+                error: curStatus === 'failed' ? item.error : undefined,
+              });
+            }
           }
-          if (typeof item.version === 'number') {
-            knownVersions.set(item.id, item.version);
-          }
+          known.set(item.id, { version: curVersion, status: curStatus });
         }
       } catch {
         // Network failure — silently retry on next tick.
@@ -144,9 +150,8 @@ export function useSkillReload(opts: UseSkillReloadOptions = {}): void {
 
     return () => {
       cancelled = true;
-      conn.close();
       if (pollTimer !== null) clearInterval(pollTimer);
     };
-    // Re-subscribe if paths change (rare; included for completeness).
-  }, [ssePath, pollPath, pollIntervalMs, opts.disablePolling]);
+    // Re-subscribe if the poll config changes (rare; included for completeness).
+  }, [pollPath, pollIntervalMs, opts.disablePolling]);
 }

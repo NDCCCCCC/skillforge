@@ -65,4 +65,48 @@ describe('useSkillReload', () => {
     // and may fire extra times within the wait window.
     expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('polling detects a status flip (ok→failed) with no version bump (keep-old)', async () => {
+    // Sequence: baseline v1 ok, then a broken-YAML reload → status flips
+    // to failed with version UNCHANGED (keep-old contract, pinned by T4/T6).
+    // The store entry must reflect status:'failed' / version:'old-kept' /
+    // error carrying the validation message.
+    const responses: Array<
+      Array<{ id: string; name: string; version: number; status: 'ok' | 'failed'; error?: string }>
+    > = [
+      [{ id: 'compliance-review', name: 'compliance', version: 1, status: 'ok' }],
+      [
+        {
+          id: 'compliance-review',
+          name: 'compliance',
+          version: 1,
+          status: 'failed',
+          error: 'temperature must be ≤ 2',
+        },
+      ],
+    ];
+    let callIdx = 0;
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      const idx = callIdx++;
+      return {
+        ok: true,
+        json: async () => responses[idx] ?? [],
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    function Probe() {
+      useSkillReload({ disablePolling: false, pollIntervalMs: 30, pollPath: '/api/test/skills' });
+      return null;
+    }
+    render(<Probe />);
+
+    await new Promise((r) => setTimeout(r, 120));
+
+    const entry = useAppStore.getState().skillReloadStatus['compliance-review'];
+    expect(entry).toBeDefined();
+    expect(entry?.status).toBe('failed');
+    expect(entry?.version).toBe('old-kept');
+    expect(entry?.error).toContain('temperature');
+  });
 });

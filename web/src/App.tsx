@@ -5,8 +5,8 @@
 // 05-03 Task 2 — App composition root. Wires:
 //   - ThreePanel layout (with extracted TopBar / StatusBar in 05-03)
 //   - useChat + createTransport(env) — chat streaming
-//   - useSkillReload — subscribes to /api/skills/events + polling
-//     fallback; updates store.skillReloadStatus on every reload event
+//   - useSkillReload — polls /api/skills; updates store.skillReloadStatus
+//     on every version bump or status flip (ok↔failed)
 //   - ReloadToast — surfaces success/failure toasts (auto-dismiss 4s
 //     on success; persistent on failure)
 //   - CenterPanel — 5-tab strip (Phase 5: Agent 状态 + 知识图谱)
@@ -55,8 +55,8 @@ function LiveApp() {
   const clearLastCreatedSkill = useAppStore((s) => s.clearLastCreatedSkill);
 
   // Plan 05-03 — SC-2 hot-reload consumer. Mounted at the App root so
-  // the subscription outlives route changes. Polling fallback disabled
-  // in jsdom (the env is 'dev' and the SSE channel is mocked).
+  // polling outlives route changes. Polls GET /api/skills and diffs the
+  // per-skill version/status, emitting on a version bump or status flip.
   useSkillReload();
 
   // Plan 05-04 — SC-3 wizard success listener. The wizard hook fires
