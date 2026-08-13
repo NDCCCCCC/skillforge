@@ -19,7 +19,6 @@ package server
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -34,6 +33,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/agent"
+	"github.com/skillforge/skillforge/internal/reprohash"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
@@ -340,7 +340,7 @@ func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query 
 		SessionID:     sessionID,
 		SkillID:       skillID,
 		Query:         query,
-		PromptHash:    computePromptHash(skillNameForHash, modelVersion),
+		PromptHash:    computePromptHash(skillNameForHash, modelVersion, s.renderedPromptBody(skillNameForHash)),
 		ModelVersion:  modelVersion,
 		VerdictJSON:   verdictJSON,
 		RefusalReason: refusalReason,
@@ -409,19 +409,58 @@ func emitDecision(c *app.RequestContext, p wire.DecisionPayload) error {
 	return wire.EmitChunk(c, wire.UIMessageChunk{Type: "data-decision", Data: payload})
 }
 
-// computePromptHash returns the SHA-256 hex digest of (skillName +
-// modelVersion). GEVL-03 reproducibility — given the same Skill +
-// model, the hash is byte-identical across runs, so cross-run
-// comparison of audit rows with the same prompt_hash guarantees the
-// same Skill+model produced the verdict. The system-prompt body is
-// NOT hashed in Phase 3 because the agent's prompt (agent.go:systemPrompt)
-// is a compile-time constant — Phase 5 (hot-reloadable Skill-driven
-// prompts) lifts the rendered prompt body into the hash input.
-func computePromptHash(skillName, modelVersion string) string {
-	h := sha256.New()
-	h.Write([]byte(skillName))
-	h.Write([]byte(modelVersion))
-	return hex.EncodeToString(h.Sum(nil))
+// computePromptHash returns the SHA-256 hex digest that pins one
+// reproducible agent configuration: (skillName + renderedPromptBody +
+// modelVersion). GEVL-03 reproducibility — given the same Skill, the
+// same rendered prompt and the same model, the hash is byte-identical
+// across runs, so cross-run comparison of audit rows carrying the same
+// prompt_hash guarantees the same configuration produced the verdict.
+//
+// Phase 6 / Q1 — THE LIFT IS DONE. Phase 3 hashed ONLY
+// (skillName + modelVersion) and deferred the prompt body to Phase 5;
+// Phase 5 shipped without doing it. That weak hash made the frozen
+// eval set's prompt_hash pin (SC-6 / D6-13) meaningless: editing a
+// Skill's steps or agent declaration WITHOUT renaming it left the hash
+// unchanged, so the frozen gate would pass green while the system had
+// actually drifted. The rendered body is now part of the digest, which
+// is exactly what makes internal/eval.AssertPin able to detect drift.
+//
+// The digest itself lives in internal/reprohash so internal/eval can
+// re-compute it byte-identically without importing this package (which
+// would be an import cycle). This function stays as the named,
+// package-local seam the audit write path calls.
+//
+// MIGRATION NOTE (accepted, T-06-02): audit rows written BEFORE this
+// change carry prompt_hash values produced by the old algorithm and are
+// intentionally left stale. prompt_hash is a REPRODUCIBILITY key, not a
+// lookup key — nothing joins on it, no external consumer reads it, and
+// the store is dev-scale. Rows are immutable (T-3-AUDIT INSERT-only), so
+// back-filling them is not an option we want anyway.
+func computePromptHash(skillName, modelVersion, renderedPromptBody string) string {
+	return reprohash.PromptHash(skillName, modelVersion, renderedPromptBody)
+}
+
+// renderedPromptBody returns the system-prompt body that this Deps'
+// configuration would send to the model — the third input to
+// computePromptHash (Phase 6 / Q1).
+//
+// Resolution order:
+//  1. The wired Agent's own rendering. This is the authoritative source
+//     on the Phase 3+ agent path: it is literally the prompt the model
+//     saw for the request being audited.
+//  2. The routed Skill's manifest via the Loader, when no Agent is
+//     wired (Phase 2 fallback / unit-test Deps).
+//  3. "" when neither is available — the hash still pins
+//     (skillName, modelVersion), i.e. it degrades to exactly the old
+//     Phase 3 semantics rather than failing the request.
+func (s *Deps) renderedPromptBody(skillName string) string {
+	if s.Agent != nil {
+		return s.Agent.RenderedSystemPrompt()
+	}
+	if m := s.findSkill(skillName); m != nil {
+		return agent.RenderSystemPrompt(m)
+	}
+	return ""
 }
 
 // findSkill returns the manifest for name in deps.Loader.Skills(), or
