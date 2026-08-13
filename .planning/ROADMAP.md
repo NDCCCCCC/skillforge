@@ -115,7 +115,7 @@
 **Pitfalls addressed:** P-FE-1..5 (UI integration, citation rendering, refusal UX), P-COMPL-3 (UI side-by-side), P-COMPL-5 (HITL badge visibility)
 **Plans**: 4 plans
 **Plan list**:
-- [ ] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
+- [x] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
 - [ ] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
 - [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
 - [ ] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)

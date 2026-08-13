@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
-current_phase: 6
-current_plan: Not started
+current_phase: 06
+current_plan: 1
 status: executing
-last_updated: "2026-08-13T07:11:34.153Z"
+last_updated: "2026-08-13T07:13:18.193Z"
 progress:
   total_phases: 7
   completed_phases: 5
@@ -20,8 +20,8 @@ progress:
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 6
-**Current Plan:** Not started
+**Current Phase:** 06
+**Current Plan:** 1
 **Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** Plan 05-01 (Phase 5 skill-platform-&-full-knowledge-boundaries) is READY TO PLAN. Alternative: Phase 6 CI gate wiring (eval/report.json → GEVL-07 Skill promotion gate). The D2-15 threshold-swap procedure (manual ops review of `eval/calibration.json` `recommended_threshold` before editing `internal/server/pipeline.go:43`) is documented in `eval/README.md` + pipeline godoc.
@@ -40,18 +40,18 @@ progress:
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 6 — eval dashboard & production hardening
+**Current focus:** Phase 06 — eval-dashboard-production-hardening
 **See:** `.planning/PROJECT.md` (updated 2026-08-11 after Phase 4)
 
 ---
 
 ## Current Position
 
-Phase: 05 (skill-platform-full-knowledge-boundaries) — EXECUTING
-Plan: 1 of 8
+Phase: 06 (eval-dashboard-production-hardening) — EXECUTING
+Plan: 1 of 4
 **Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
 **Plan:** not started
-**Status:** Ready to execute
+**Status:** Executing Phase 06
 **Just completed:** Plan 03-06 — Go-native trust evaluator (`internal/eval` + `cmd/eval`). D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop + 5 spike-anchors, GEVL-05). D2-15 calibration vehicle (`Calibrate()` → `eval/calibration.json` `recommended_threshold`; manual ops swap of literal 0.3 in `internal/server/pipeline.go:43`). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder; 34 eval tests pass. Pitfall 8 counter-measures in place (deterministic grounding floor, human spot-check, JUDGE_MODEL slot). 5 commits: `52dab7e` (D6 reversal docs) + `d4f96fc` (Task 1) + `a77be40` (Task 2) + `f7979af` (Task 3 A+B) + `247dfd8` (Task 3 C-H). GEVL-04 + GEVL-05 marked complete.
 
 **Phase 4 shipped (trust visualization front-end):**
