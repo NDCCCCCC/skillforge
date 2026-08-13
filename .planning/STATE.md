@@ -5,12 +5,12 @@ milestone_name: milestone
 current_phase: 05
 current_plan: 1
 status: executing
-last_updated: "2026-08-13T03:54:09.609Z"
+last_updated: "2026-08-13T05:15:04.031Z"
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 24
-  completed_plans: 26
+  total_plans: 25
+  completed_plans: 27
   percent: 57
 ---
 
@@ -51,7 +51,7 @@ Phase: 05 (skill-platform-full-knowledge-boundaries) — EXECUTING
 Plan: 1 of 7
 **Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
 **Plan:** not started
-**Status:** Executing Phase 05
+**Status:** Ready to execute
 **Just completed:** Plan 03-06 — Go-native trust evaluator (`internal/eval` + `cmd/eval`). D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop + 5 spike-anchors, GEVL-05). D2-15 calibration vehicle (`Calibrate()` → `eval/calibration.json` `recommended_threshold`; manual ops swap of literal 0.3 in `internal/server/pipeline.go:43`). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder; 34 eval tests pass. Pitfall 8 counter-measures in place (deterministic grounding floor, human spot-check, JUDGE_MODEL slot). 5 commits: `52dab7e` (D6 reversal docs) + `d4f96fc` (Task 1) + `a77be40` (Task 2) + `f7979af` (Task 3 A+B) + `247dfd8` (Task 3 C-H). GEVL-04 + GEVL-05 marked complete.
 
 **Phase 4 shipped (trust visualization front-end):**
