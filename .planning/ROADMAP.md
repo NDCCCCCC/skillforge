@@ -17,7 +17,8 @@
  (completed 2026-08-12)
 - [x] **Phase 4: Streaming Trust UI** — React chat with visible reasoning chain + clickable citations + structured verdicts + explainable refusals — 3/3 waves complete (UAT 12/12, SECURITY verified / 0 open threats)
  (completed 2026-08-11)
-- [x] **Phase 5: Skill Platform & Full Knowledge Boundaries** — semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline (completed 2026-08-12)
+- [x] **Phase 5: Skill Platform & Full Knowledge Boundaries** — semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline
+ (completed 2026-08-12)
 - [ ] **Phase 6: Eval Dashboard & Production Hardening** — CI regression gates + tracing + metrics + queryable audits + session isolation + retention / redaction
 - [ ] **Phase 7: Open-Source Release** — Docker Compose + sample docs + docs + live demo + showcase Skills + published eval results
 
@@ -189,14 +190,16 @@
   7. README's "Eval Results" section shows published per-Skill faithfulness %, citation precision %, refusal accuracy % from the latest CI run (DIST-09)
   8. `eval/sample.jsonl` ships a 50-case sample of the per-Skill eval set in the repo (DIST-10)
 **Pitfalls addressed:** P-OSS-1..6 (README, demo, Docker, contributing, license, eval results publication)
-**Plans**: 4 plans
+**Plans**: 6 plans
 **Plan list**:
-- [x] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
-- [x] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
-- [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
-- [x] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
-**Wave structure**: W1={06-01} → W2={06-02, 06-03} → W3={06-04}
-**UI hint**: yes
+- [ ] 07-01-PLAN.md — Wave 1: Release-meta foundations (LICENSE + .env.example internal-cleanup + .gitignore/.dockerignore hygiene + ROADMAP/REQUIREMENTS SC-1/SC-5 + DIST-04/DIST-05 revisions per D7-03/D7-06)
+- [ ] 07-02-PLAN.md — Wave 1 (parallel): Containerization (docker-compose + Dockerfile.backend + Dockerfile.frontend; Milvus v2.4.x pinned to SDK v2.4.2; SSE proxy_buffering off; autonomous:false — Docker verify gate)
+- [ ] 07-03-PLAN.md — Wave 2: Docs (README hero+quick-start+Mermaid architecture+eval placeholder+license; CONTRIBUTING write-a-Skill/add-a-tool/add-a-knowledge-tier)
+- [ ] 07-04-PLAN.md — Wave 2 (parallel): Examples + eval sample (3 SKILL.md templates passing internal/skill.Validate via examples_validate_test.go + 7 sample docs + eval/sample.jsonl 50-case copy)
+- [ ] 07-05-PLAN.md — Wave 3: Eval snapshot + demo GIF (scripts/eval_snapshot derives refusal_accuracy from Report.Cases; autonomous:false — needs live Milvus+BGE-M3+GLM + screen capture)
+- [ ] 07-06-PLAN.md — Wave 4: Publication governance (single combined git filter-repo: strip .planning/ + scrub internal IPs/domains; 4 post-rewrite audit gates zero-match; force-push to public skillforge remote; autonomous:false — destructive, git-filter-repo not installed, no remote)
+**Wave structure**: W1={07-01, 07-02 parallel} → W2={07-03, 07-04 parallel} → W3={07-05} → W4={07-06}
+**UI hint**: no (packaging/docs/release-engineering phase — no new product UI)
 
 ---
 
@@ -228,7 +231,7 @@
 | 4. Streaming Trust UI | 4/4 (incl. 04-04 gap-closure) | Complete | 2026-08-11 (04-04 debt-closure 2026-08-12) |
 | 5. Skill Platform & Full Knowledge Boundaries | 8/8 (incl. 05-08 gap-closure) | Complete | 2026-08-12 (05-08 debt-closure 2026-08-13) |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
-| 7. Open-Source Release | 0/? | Not started | - |
+| 7. Open-Source Release | 0/6 | Planned | - |
 
 ---
 *Last updated: 2026-08-12 — Phase 5 planned (6 plans: 2 in Wave 1 sequential; 4 in Wave 2 parallel). All 8 req IDs (SYSK-04/05/06, AGNT-06, KNOW-06, CMPL-06/07/08) covered; 15 locked D5-XX decisions implemented; 1 deferred item (DATA-*) explicitly out of scope per CONTEXT.md.*
