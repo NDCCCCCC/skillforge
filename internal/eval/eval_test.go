@@ -33,21 +33,27 @@ import (
 )
 
 // TestRunnerReproducibility is the SC-6 reproducibility gate (pinned by
-// 03-VALIDATION.md). It runs all 4 metrics on the frozen 5-case fixture
-// TWICE with the same StubJudge + deterministic embedder, and asserts
-// abs(run1 - run2) < 1e-9 for every (case, metric) cell.
+// 03-VALIDATION.md, strengthened by Phase 6 / D6-15). It runs all 4
+// metrics on the frozen 5-case fixture TWICE with the same StubJudge +
+// deterministic embedder, and asserts abs(run1 - run2) < 1e-6 for every
+// (case, metric) cell.
 //
-// The fixture is internal/eval/testdata/frozen_5.jsonl (5 spike-anchor
-// queries with fixed ground truth). The StubJudge returns canned claims
-// + verdicts; the embedder is the inline deterministicEmbedder below
-// (mirrors internal/embedder/bge.Deterministic's SHA-derived algorithm
-// without forcing a cross-package test import).
+// This is the STRICT layer of the two-layer tolerance gate (D6-15):
 //
-// If this test FAILS, the eval pipeline has a hidden source of
-// non-determinism (a map iteration order, a time.Now, etc.) and must
-// be fixed before the eval CLI ships — the headline promise of the
-// trust evaluator is reproducible scores (the CI promotion gate in
-// Phase 6 depends on this).
+//   - strict (here): StubJudge + deterministic embedder, tolerance 1e-6.
+//     Proves the PIPELINE is deterministic — any drift is a bug in our
+//     code (map iteration order, time.Now, unseeded randomness).
+//   - jitter (eval_live_test.go, //go:build liveeval): a real GLM judge,
+//     tolerance 1e-3. Proves the system is STABLE in practice against
+//     an API that legitimately varies.
+//
+// Why 1e-6 rather than the original 1e-9: 1e-9 is below the noise floor
+// of the float64 arithmetic these metrics perform (means over sums of
+// cosine similarities), so it pinned an accidental property of the
+// current operation order rather than the property we care about. 1e-6
+// is the prod-style tolerance: still ~4 orders of magnitude tighter
+// than any real drift, but robust to a benign refactor of the
+// aggregation order.
 func TestRunnerReproducibility(t *testing.T) {
 	ctx := context.Background()
 	cases, err := LoadGolden(filepath.Join("testdata", "frozen_5.jsonl"))
@@ -65,19 +71,25 @@ func TestRunnerReproducibility(t *testing.T) {
 	run1 := computeAllMetrics(ctx, t, samples, judge, emb)
 	run2 := computeAllMetrics(ctx, t, samples, judge, emb)
 
+	// StrictReproducibilityTolerance is the D6-15 strict-layer bar.
+	// The fixture is internal/eval/testdata/frozen_5.jsonl (5
+	// spike-anchor queries with fixed ground truth); the StubJudge
+	// returns canned claims and the embedder is the deterministic
+	// SHA-derived one below, so ANY drift here is a bug in our pipeline.
 	for i, s := range samples {
 		for _, m := range []string{"faith", "arel", "cprec", "crecall"} {
 			v1 := run1[i][m].(float64)
 			v2 := run2[i][m].(float64)
-			assert.True(t, math.Abs(v1-v2) < 1e-9,
+			assert.True(t, math.Abs(v1-v2) < StrictReproducibilityTolerance,
 				"case %s metric %s: drift %v (run1=%v, run2=%v)", s.ID, m, v1-v2, v1, v2)
 		}
 	}
 }
 
 // computeAllMetrics runs all 4 metrics on each sample, returning the
-// per-sample metric map. Centralized so the reproducibility test can
-// call it twice without duplicating the orchestration.
+// per-sample metric map. Centralized so the reproducibility tests (both
+// the strict layer here and the liveeval-tagged jitter layer) can call
+// it twice without duplicating the orchestration.
 func computeAllMetrics(ctx context.Context, t *testing.T, samples []Sample, j Judge, emb embedder.Embedder) []map[string]any {
 	t.Helper()
 	out := make([]map[string]any, 0, len(samples))

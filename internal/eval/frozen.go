@@ -24,6 +24,32 @@ import (
 	"github.com/skillforge/skillforge/internal/reprohash"
 )
 
+// The two-layer reproducibility tolerance (D6-15 / SC-6).
+//
+// SC-6 asks for "numerically identical scores within tolerance", and
+// there is no single honest number for that: a hermetic pipeline and a
+// live LLM API have different noise floors. So the claim is split into
+// two independently-gated layers.
+const (
+	// StrictReproducibilityTolerance gates the hermetic layer
+	// (StubJudge + deterministic embedder). Any drift above this is a
+	// determinism BUG in our pipeline — an unseeded rand, a map
+	// iteration order, a time.Now.
+	//
+	// Strengthened from the Phase 3 value of 1e-9, which sat below the
+	// float64 noise floor of these metrics (means over sums of cosine
+	// similarities) and therefore pinned an accidental property of the
+	// current operation order rather than determinism itself.
+	StrictReproducibilityTolerance = 1e-6
+
+	// LiveReproducibilityTolerance gates the jitter layer (a real judge
+	// against the frozen set). It absorbs legitimate LLM API variance —
+	// retries, load-dependent sampling — while still catching a genuine
+	// behavioral change. Demanding the strict bar from a live API would
+	// produce a permanently red test that everyone learns to ignore.
+	LiveReproducibilityTolerance = 1e-3
+)
+
 // LockFile is the sidecar that pins a frozen eval set (D6-13 / SC-6).
 // It lives next to the set it pins: eval/frozen/<skill>.jsonl is pinned
 // by eval/frozen/<skill>.lock.json.

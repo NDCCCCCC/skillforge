@@ -24,7 +24,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/reprohash"
+	"github.com/skillforge/skillforge/internal/skill"
 )
 
 // TestComputePromptHash_BodyDrift is THE Q1 regression test.
@@ -210,4 +212,56 @@ func TestActiveModelVersion(t *testing.T) {
 
 	t.Setenv("JUDGE_MODEL", "deepseek-chat")
 	assert.Equal(t, "deepseek-chat", ActiveModelVersion())
+}
+
+// TestShippedFrozenLockIsInSync verifies the REAL
+// eval/frozen/compliance.lock.json against the REAL Skill's rendered
+// prompt — i.e. it runs AssertPin against the shipped artifacts,
+// hermetically (no LLM, no network).
+//
+// This is what keeps the pin honest between re-freezes. Without it, an
+// edit to skills/compliance/SKILL.md would leave a stale lock that only
+// fails much later, inside a CI eval run, as a confusing hard stop.
+// Here it fails immediately, in the unit suite, with a clear message
+// telling the author to re-freeze.
+func TestShippedFrozenLockIsInSync(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+
+	lock, err := LoadLock(filepath.Join(repoRoot, "eval", "frozen", "compliance.lock.json"))
+	require.NoError(t, err, "the shipped frozen lock must parse")
+	assert.Equal(t, "compliance", lock.SkillName)
+	assert.Equal(t, DefaultJudgeModel, lock.ModelVersion)
+
+	loader := skill.NewLoader(filepath.Join(repoRoot, "skills"))
+	_, err = loader.Scan()
+	require.NoError(t, err, "scan skills/")
+
+	var manifest *skill.Manifest
+	for _, m := range loader.Skills() {
+		if m.Name == "compliance" {
+			manifest = m
+		}
+	}
+	require.NotNil(t, manifest, "the compliance Skill must load")
+
+	err = AssertPin(lock, lock.ModelVersion, "compliance", agent.RenderSystemPrompt(manifest))
+	assert.NoError(t, err,
+		"the shipped lock is stale: the rendered compliance prompt no longer matches the pinned prompt_hash — re-freeze eval/frozen/compliance.lock.json")
+}
+
+// TestShippedFrozenSetLoads: the pinned 50-case set must parse with the
+// same reader the golden set uses (identical Case schema — D6-13).
+func TestShippedFrozenSetLoads(t *testing.T) {
+	cases, err := LoadGolden(filepath.Join("..", "..", "eval", "frozen", "compliance.jsonl"))
+	require.NoError(t, err)
+	assert.Len(t, cases, 50, "the frozen set is the pinned 50-case golden set")
+
+	var refusalCases int
+	for _, c := range cases {
+		if c.Category == RefusalCategory {
+			refusalCases++
+		}
+	}
+	assert.Positive(t, refusalCases,
+		"the frozen set must retain refusal-required cases — refusal_accuracy is derived from that category")
 }
