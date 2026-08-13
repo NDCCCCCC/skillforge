@@ -94,6 +94,23 @@ type Registry struct {
 		timer *time.Timer
 	}
 	loadError func(name string, err error) // D5-08 hook; nil = no-op
+	// seq is the per-process monotonic counter backing nextVersion. It
+	// replaces the prior time.Now().UnixNano() initial-version scheme so
+	// that Entry.Version values stay well below 2^53 — the +1 reload bump
+	// is now visible to JS consumers (the GET /api/skills polling client),
+	// which could not distinguish a UnixNano±1 pair at double precision
+	// (ULP at 1.7e18 ≈ 512). The counter is per-process: it resets on
+	// restart, which is fine because the polling client's known-version
+	// map also resets on page load.
+	seq atomic.Int64
+	// failed holds the last validation/parse error per skill name — the
+	// D5-08 surface for the SC-2 polling reload toast. Copy-on-write
+	// atomic like snapshot. A name present here overlays status:"failed"
+	// onto its snapshot entry in the HTTP listing WITHOUT bumping the
+	// entry's Version (the keep-old contract pinned by
+	// TestRegistry_Reload_ValidationFailure_KeepsOld). Cleared on the
+	// next successful reload of the same name.
+	failed atomic.Pointer[map[string]string]
 }
 
 // New constructs a Registry by scanning skillsDir at startup, validating
@@ -163,6 +180,78 @@ func (r *Registry) Snapshot() map[string]*Entry {
 		return map[string]*Entry{}
 	}
 	return *snap
+}
+
+// nextVersion returns a process-unique, JS-safe (<< 2^53) monotonic
+// version number for a freshly-loaded Entry. Used at startup-scan and
+// the first reload of a previously-unseen skill. Subsequent reloads of
+// an existing skill use prev.Version+1 (per-skill monotonic, also
+// JS-safe from this counter base).
+func (r *Registry) nextVersion() int64 {
+	return r.seq.Add(1)
+}
+
+// Failed returns the current per-skill validation-error map (name →
+// error message). The returned map is safe to read concurrently but
+// MUST be treated as read-only (callers MUST NOT mutate it). Empty when
+// no skill is in a failed-reload state.
+func (r *Registry) Failed() map[string]string {
+	m := r.failed.Load()
+	if m == nil {
+		return map[string]string{}
+	}
+	return *m
+}
+
+// setFailed records (copy-on-write) that `name` failed its most recent
+// reload with msg. Called on the reloadOne error path; does NOT touch
+// the snapshot or any Entry.Version (keep-old contract, D5-08).
+func (r *Registry) setFailed(name, msg string) {
+	for {
+		old := r.failed.Load()
+		var next map[string]string
+		if old == nil {
+			next = map[string]string{name: msg}
+		} else {
+			// Idempotent: if the message is unchanged, no swap needed.
+			if cur, ok := (*old)[name]; ok && cur == msg {
+				return
+			}
+			next = make(map[string]string, len(*old)+1)
+			for k, v := range *old {
+				next[k] = v
+			}
+			next[name] = msg
+		}
+		if r.failed.CompareAndSwap(old, &next) {
+			return
+		}
+		// Lost the race against another writer — retry with the new base.
+	}
+}
+
+// clearFailed removes (copy-on-write) any recorded failure for `name`.
+// Called on the reloadOne success path so a skill that recovers no
+// longer surfaces status:"failed" in the listing.
+func (r *Registry) clearFailed(name string) {
+	for {
+		old := r.failed.Load()
+		if old == nil {
+			return
+		}
+		if _, ok := (*old)[name]; !ok {
+			return // nothing to clear
+		}
+		next := make(map[string]string, len(*old)-1)
+		for k, v := range *old {
+			if k != name {
+				next[k] = v
+			}
+		}
+		if r.failed.CompareAndSwap(old, &next) {
+			return
+		}
+	}
 }
 
 // Watch spawns the goroutine that consumes events from the watcher created
@@ -292,6 +381,11 @@ func (r *Registry) reloadOne(path string) {
 	}
 	m, tiers, err := parseAndValidate(path)
 	if err != nil {
+		// Record the failure for the HTTP listing's status:"failed"
+		// overlay (SC-2 polling toast). The snapshot + Entry.Version are
+		// left UNTOUCHED — the keep-old contract pinned by
+		// TestRegistry_Reload_ValidationFailure_KeepsOld / _SymlinkEscape_Rejected.
+		r.setFailed(name, err.Error())
 		if r.loadError != nil {
 			r.loadError(name, err)
 		}
@@ -334,7 +428,7 @@ func (r *Registry) reloadOne(path string) {
 	if prev, ok := next[name]; ok && prev != nil {
 		newVersion = prev.Version + 1
 	} else {
-		newVersion = time.Now().UnixNano()
+		newVersion = r.nextVersion()
 	}
 	next[name] = &Entry{
 		Manifest: m,
@@ -342,6 +436,9 @@ func (r *Registry) reloadOne(path string) {
 		Version:  newVersion,
 	}
 	r.snapshot.Store(&next)
+	// A successful reload clears any prior failure state for this skill
+	// so the listing flips back to status:"ok".
+	r.clearFailed(name)
 }
 
 // startupScan is the synchronous seed of the snapshot at New() time.
@@ -379,7 +476,7 @@ func (r *Registry) startupScan() error {
 		out[name] = &Entry{
 			Manifest: m,
 			DescVec:  descVec,
-			Version:  time.Now().UnixNano(),
+			Version:  r.nextVersion(),
 		}
 		return nil
 	})
