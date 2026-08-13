@@ -192,7 +192,7 @@
 **Pitfalls addressed:** P-OSS-1..6 (README, demo, Docker, contributing, license, eval results publication)
 **Plans**: 6 plans
 **Plan list**:
-- [ ] 07-01-PLAN.md — Wave 1: Release-meta foundations (LICENSE + .env.example internal-cleanup + .gitignore/.dockerignore hygiene + ROADMAP/REQUIREMENTS SC-1/SC-5 + DIST-04/DIST-05 revisions per D7-03/D7-06)
+- [x] 07-01-PLAN.md — Wave 1: Release-meta foundations (LICENSE + .env.example internal-cleanup + .gitignore/.dockerignore hygiene + ROADMAP/REQUIREMENTS SC-1/SC-5 + DIST-04/DIST-05 revisions per D7-03/D7-06)
 - [ ] 07-02-PLAN.md — Wave 1 (parallel): Containerization (docker-compose + Dockerfile.backend + Dockerfile.frontend; Milvus v2.4.x pinned to SDK v2.4.2; SSE proxy_buffering off; autonomous:false — Docker verify gate)
 - [ ] 07-03-PLAN.md — Wave 2: Docs (README hero+quick-start+Mermaid architecture+eval placeholder+license; CONTRIBUTING write-a-Skill/add-a-tool/add-a-knowledge-tier)
 - [ ] 07-04-PLAN.md — Wave 2 (parallel): Examples + eval sample (3 SKILL.md templates passing internal/skill.Validate via examples_validate_test.go + 7 sample docs + eval/sample.jsonl 50-case copy)
@@ -231,7 +231,7 @@
 | 4. Streaming Trust UI | 4/4 (incl. 04-04 gap-closure) | Complete | 2026-08-11 (04-04 debt-closure 2026-08-12) |
 | 5. Skill Platform & Full Knowledge Boundaries | 8/8 (incl. 05-08 gap-closure) | Complete | 2026-08-12 (05-08 debt-closure 2026-08-13) |
 | 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
-| 7. Open-Source Release | 0/6 | Planned | - |
+| 7. Open-Source Release | 1/6 | In Progress | - |
 
 ---
 *Last updated: 2026-08-12 — Phase 5 planned (6 plans: 2 in Wave 1 sequential; 4 in Wave 2 parallel). All 8 req IDs (SYSK-04/05/06, AGNT-06, KNOW-06, CMPL-06/07/08) covered; 15 locked D5-XX decisions implemented; 1 deferred item (DATA-*) explicitly out of scope per CONTEXT.md.*

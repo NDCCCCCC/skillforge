@@ -3,25 +3,25 @@ gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
 current_phase: 7
-current_plan: Not started
+current_plan: 2
 status: executing
-last_updated: "2026-08-13T12:05:57.590Z"
+last_updated: "2026-08-13T12:32:05Z"
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 35
-  completed_plans: 31
-  percent: 71
+  completed_plans: 32
+  percent: 91
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-12 (Plan 03-06 complete — Phase 3 agentic-retrieval-trust-evaluation COMPLETE 6/6 plans; D6 reversed to Go-native evaluator)
+**Last updated:** 2026-08-13 (Plan 07-01 complete — Phase 7 open-source-release release-meta foundations: LICENSE + .dockerignore + .gitignore hygiene + .env.example scrub + ROADMAP/REQUIREMENTS SC revisions)
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 7
-**Current Plan:** Not started
+**Current Plan:** 2
 **Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** Plan 05-01 (Phase 5 skill-platform-&-full-knowledge-boundaries) is READY TO PLAN. Alternative: Phase 6 CI gate wiring (eval/report.json → GEVL-07 Skill promotion gate). The D2-15 threshold-swap procedure (manual ops review of `eval/calibration.json` `recommended_threshold` before editing `internal/server/pipeline.go:43`) is documented in `eval/README.md` + pipeline godoc.
@@ -40,18 +40,18 @@ progress:
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 7 — open source release
+**Current focus:** Phase 7 — open-source-release
 **See:** `.planning/PROJECT.md` (updated 2026-08-11 after Phase 4)
 
 ---
 
 ## Current Position
 
-Phase: 06 (eval-dashboard-production-hardening) — EXECUTING
-Plan: 1 of 4
+Phase: 7 (open-source-release) — EXECUTING
+Plan: 2 of 6
 **Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
 **Plan:** not started
-**Status:** Ready to execute
+**Status:** Executing Phase 7
 **Just completed:** Plan 03-06 — Go-native trust evaluator (`internal/eval` + `cmd/eval`). D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop + 5 spike-anchors, GEVL-05). D2-15 calibration vehicle (`Calibrate()` → `eval/calibration.json` `recommended_threshold`; manual ops swap of literal 0.3 in `internal/server/pipeline.go:43`). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder; 34 eval tests pass. Pitfall 8 counter-measures in place (deterministic grounding floor, human spot-check, JUDGE_MODEL slot). 5 commits: `52dab7e` (D6 reversal docs) + `d4f96fc` (Task 1) + `a77be40` (Task 2) + `f7979af` (Task 3 A+B) + `247dfd8` (Task 3 C-H). GEVL-04 + GEVL-05 marked complete.
 
 **Phase 4 shipped (trust visualization front-end):**
@@ -154,6 +154,7 @@ Plan: 1 of 4
 | 04 | 04 | 12m | 3 tasks / 3 commits / 6 modified — wire-contract TS realignment (gap closure, `requirements: []`). `cd web && npx tsc --noEmit` 21 → 0 errors; vitest 84/84; build 411.12 KB / 120.47 KB gzip (04-03 band). D15 alarm STRENGTHENED (`finishReason?: string` → `FinishReason`); Pitfall 1/3 guards preserved via string-cast; ToolPart toolName structural-type read; transport-swap `FixtureDrivenTransport` zero-arg contract. Closes Phase 4 TS-drift debt. See 04-04-SUMMARY.md |
 | 03 | 06 | 19m | 3 tasks / 5 commits / 22 files (15 created + 7 modified) — Go-native trust evaluator (D6 reversed): `internal/eval` library + `cmd/eval` CLI. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20/20/10, 5 spike-anchors, GEVL-05). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` (manual ops swap of literal 0.3). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder. Pitfall 8 counter-measures in place. See 03-06-SUMMARY.md |
 | 05 | 07 | ~30m | 3 TDD tasks / 7 commits / 13 files (10 web/ + SUMMARY + UAT + REMAINING-WORK) — **left-sidebar IA gap-closure (UAT #2)**, the LAST open Phase-5 item. `gap_closure:true` + `closes_uat:#2`. Store contract: `SkillSummary` + `SessionMeta` + `sessions[]/activeSessionId/createSession/setActiveSession/deleteSession` (D14 — no `messages` field); `skills[]` + `setSkills`. Live data path: `useSkillReload.tick()` normalizes `GET /api/skills` reading **`item.manifest.description`** (BLOCKING CONSTRAINT, not `item.description`). `App.tsx` passes `id: activeSessionId` into `useChat` (Vercel AI SDK v5 in-memory per-id chatStore). `ChatInput` becomes a live Skill popover (reads `store.skills`); `SkillManagerMenu` collapses to wizard-only (`skill-manager-new-skill`); `RightChat` header becomes read-only badge (`right-chat-badge`). `LeftSidebar` rewrites to 4 stacked sections: `新建会话` + `会话` + `文件`(SOURCES preserved) + `技能` with status badges (已加载/加载失败(旧版可用)). Dead `/api/skills/reload` 404 gone (D5-IA-05); `__fixtures__/skills.json` retired from all 3 Skill surfaces. Merge `2873776`: +984/-228 across 14 files. `npx tsc --noEmit` 0; `vitest run` **209/209** (baseline 196 + 13 new/updated across 31 files); `vite build` 466.50 KB / 135.02 KB gzip. 14 grep gates pass. See 05-07-SUMMARY.md |
+| 07 | 01 | 3m | 3 tasks / 3 commits / 6 files — **Phase 7 release-meta foundations**. LICENSE (verbatim Apache-2.0 SPDX, closes DIST-02) + `.dockerignore` (build-context boundary = backend source + skills/ + knowledge/ + web/ only; T-7-OSS-CONTAINER) + `.gitignore` skillforge.db* (T-7-OSS-SECRET) + `.env.example` internal-IP scrub (milvus.internal→milvus:19530, bge-m3.internal→localhost:11434, 10.62.10.34→localhost; T-7-OSS-ENV zero matches at HEAD) + two-layer fail-fast contract doc (envRequired + `${VAR:?}`) + `ollama pull bge-m3` one-liner (D7-02). ROADMAP SC-1/SC-5 + REQ DIST-04/DIST-05 revised per D7-03/D7-06 (pluggable embedding endpoint / recorded demo GIF). DIST-02/DIST-03 marked complete. History scrub (T-7-OSS-INFO) deferred to Plan 07-06. See 07-01-SUMMARY.md |
 
 - Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering, now in progress
 - Requirements covered: 24 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08; Phase 3 03-01: +ARAG-01 substrate, +KNOW-01 substrate)
@@ -165,7 +166,9 @@ Plan: 1 of 4
 
 ## Session Continuity
 
-**Resume point:** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
+**Resume point (Phase 7):** Plan 07-01 (release-meta foundations) is COMPLETE — 3/3 tasks, 3 commits (`2a76533` LICENSE + ignore hygiene + .dockerignore + `418800b` SC/DIST revisions + `e4e34ef` .env.example scrub). LICENSE = verbatim Apache-2.0 SPDX (DIST-02 closed); `.env.example` has zero internal IP/domain matches at HEAD (T-7-OSS-ENV mitigated); `.dockerignore` boundary = backend source + skills/ + knowledge/ + web/ only (T-7-OSS-CONTAINER); `.gitignore` covers skillforge.db* (T-7-OSS-SECRET). ROADMAP SC-1/SC-5 + REQUIREMENTS DIST-04/DIST-05 revised per D7-03/D7-06. DIST-02/DIST-03 marked complete. **Next: Plan 07-02** (containerization — docker-compose + Dockerfile.backend + Dockerfile.frontend; consumes .env.example defaults + .dockerignore boundary; autonomous:false — Docker verify gate) or Plan 07-03/07-04 (Wave 2, parallelizable). History scrub (T-7-OSS-INFO) is Plan 07-06's gate. See `.planning/phases/07-open-source-release/07-01-SUMMARY.md`.
+
+**Resume point (legacy):** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
 **Debug fixes — 2026-08-13 (Phase 5 UAT blockers, /gsd-debug):**
 

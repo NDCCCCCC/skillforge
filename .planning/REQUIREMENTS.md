@@ -66,8 +66,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Open-Source Distribution (DIST)
 
 - [ ] **DIST-01**: README with badges, value prop, demo GIF, quick start, architecture diagram, contributing, license
-- [ ] **DIST-02**: Apache-2.0 license file present from day 1
-- [ ] **DIST-03**: `.env.example` with every required variable
+- [x] **DIST-02**: Apache-2.0 license file present from day 1
+- [x] **DIST-03**: `.env.example` with every required variable
 - [ ] **DIST-04**: `docker-compose up` brings up full stack (Go backend + Milvus + frontend + pluggable embedding endpoint)
 - [ ] **DIST-05**: Recorded demo GIF in README hero (cited verdict + structured refusal flow) — D7-06 reversed the live-demo decision
 - [ ] **DIST-06**: Pre-bundled sample compliance docs (works without API key for retrieval)
@@ -188,8 +188,8 @@ Which phases cover which requirements.
 | FEUI-05 | Phase 4 | Pending |
 | FEUI-06 | Phase 4 | Complete |
 | DIST-01 | Phase 7 | Pending |
-| DIST-02 | Phase 7 | Pending |
-| DIST-03 | Phase 7 | Pending |
+| DIST-02 | Phase 7 | Complete |
+| DIST-03 | Phase 7 | Complete |
 | DIST-04 | Phase 7 | Pending |
 | DIST-05 | Phase 7 | Pending |
 | DIST-06 | Phase 7 | Pending |
