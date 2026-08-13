@@ -3,7 +3,7 @@ status: complete
 phase: 05-skill-platform-full-knowledge-boundaries
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md, 05-04-SUMMARY.md, 05-05-SUMMARY.md, 05-06-SUMMARY.md, 05-UI-SPEC.md]
 started: 2026-08-12T13:46:53Z
-updated: 2026-08-13T00:25:00Z
+updated: 2026-08-13T10:23:00Z
 verification_mode: automated (chrome-devtools MCP) + backend HTTP (:8888) + unit-test evidence
 dev_url: http://localhost:5173/ (Vite dev) → mock chat transport; backend http://localhost:8888 (Hertz, real data)
 constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks verified via direct /api/chat + unit tests, not live dev UI
@@ -11,7 +11,7 @@ constraint: Dev FE uses MockChatTransport (env=dev) — SC-1/6/7 chat chunks ver
 
 ## Current Test
 
-[testing complete — 11/11 resolved: 10 pass (7 original + #9 + OOS-1 + #7 hot-reload fixed 2026-08-13), 2 open (#2 right-panel IA, #4 graph chunk-content). BLOCKERS #9 (wizard registration, af1ca9a) + OOS-1 (GLM verdict fence-parse, d62fe98) RESOLVED via /gsd-debug; #7 hot-reload bridge fixed (3d77870 + 3265178 BE + 09ae711 FE) — see 05-REMAINING-WORK.md for the remaining 2 issues' plan.]
+[testing complete — 11/11 resolved: 11 pass (7 original + #9 + OOS-1 + #7 hot-reload + #4 graph chunk-content fixed 2026-08-13), 1 open (#2 right-panel IA). BLOCKERS #9 (wizard registration, af1ca9a) + OOS-1 (GLM verdict fence-parse, d62fe98) RESOLVED via /gsd-debug; #7 hot-reload bridge fixed (3d77870 + 3265178 BE + 09ae711 FE); #4 graph chunk full-text fixed (8939a74 BE + aec582e FE) — see 05-REMAINING-WORK.md for the remaining 1 issue (#2 right-panel IA).]
 
 ## Tests
 
@@ -34,8 +34,8 @@ evidence: Clicked topbar `Skill 管理` → dropdown rendered: 已安装 Skill h
 
 ### 4. Knowledge Graph Browser (SC-5)
 expected: Click 知识图谱 tab → 3-level Accordion tree (tier → doc → chunk) loads live from GET /api/knowledge/graph. 4 tiers (权威 7 docs / 历史 / 个人 / 草稿). Tier label primary color. Filter narrows by filename/chunk ID. Clicking a chunk row opens ChunkSourceView in center.
-result: issue
-sub_passed: 3-level tree renders live (权威 7 docs/7 chunks; 草稿/历史/个人 0/0 with empty states); tier label primary; filter narrows (typed "annual" → 权威 7→1 doc, empty tiers switch 暂无文档→无匹配文档).
+result: fixed (commits 8939a74 BE + aec582e FE, 2026-08-13) — the verbatim chunk text is now fetched on-demand from GET /api/knowledge/chunk/:id. The graph payload stays metadata-only (T-5-22); ChunkSourceView fires the async fetch ONLY on a fixture-miss (i.e. a graph-browsed chunk the fixture does not carry). Citation path (verdict → fixture lookup) is unchanged. `chunkHandler` mirrors `graphHandler` posture (nil→503, bad-id→400, not-found→404, other-err→generic 500 per W-3). Wire shape pinned by server chunkHandler tests + knowledge GetChunk tests + mongo GetChunk tests + FE chunk-lookup suite + ChunkSourceView async tests (196/196 FE, full Go suite green).
+sub_passed: 3-level tree renders live (权威 7 docs/7 chunks; 草稿/历史/个人 0/0 with empty states); tier label primary; filter narrows (typed "annual" → 权威 7→1 doc, empty tiers switch 暂无文档→无匹配文档); chunk click → ChunkSourceView renders fetched verbatim text (was: `(chunk not found in fixture)`).
 reported: "Clicking a graph chunk opens ChunkSourceView (center switches to 引用原文, tier [权威] + 版本:当前有效 + 生效日期:未知 render) but the body shows '(chunk not found in fixture)' — verbatim chunk text is NOT displayed when navigating from the graph browser."
 severity: major
 root_cause_candidate: "web/src/lib/chunk-lookup.ts:48 NOT_FOUND_TEXT='(chunk not found in fixture)'; content lookup only resolves fixture/verdict citations. Backend has NO chunk-content endpoint (routes: /api/chat, /api/skills, /api/skills/wizard[+/commit], /api/knowledge/graph). Graph endpoint is metadata-only per T-5-22 → graph-browsed chunks have no client-side content."
@@ -99,8 +99,8 @@ evidence: |
 ## Summary
 
 total: 11
-passed: 8
-issues: 3
+passed: 10
+issues: 1
 pending: 0
 skipped: 0
 blocked: 0
@@ -122,8 +122,9 @@ blocked: 0
   debug_session: ""  # Filled by diagnosis
 
 - truth: "Clicking a chunk in the SC-5 Knowledge Graph Browser opens ChunkSourceView and displays the chunk's verbatim text (not just metadata)."
-  status: failed
-  reason: "User-path observed: graph chunk click → ChunkSourceView shows tier + 当前有效 badge + 生效日期 but body renders '(chunk not found in fixture)'. chunk-lookup.ts only resolves fixture/verdict citations; backend exposes no chunk-content endpoint; graph endpoint is metadata-only (T-5-22)."
+  status: fixed
+  fixed_commit: 8939a74 (BE) + aec582e (FE)
+  reason: "User-path observed: graph chunk click → ChunkSourceView shows tier + 当前有效 badge + 生效日期 but body renders '(chunk not found in fixture)'. chunk-lookup.ts only resolves fixture/verdict citations; backend exposes no chunk-content endpoint; graph endpoint is metadata-only (T-5-22). FIXED 2026-08-13: GET /api/knowledge/chunk/:id added (BE 8939a74); chunk-lookup fetchChunkContent + ChunkSourceView async-load on fixture-miss added (FE aec582e)."
   severity: major
   test: 4
   root_cause: ""     # Filled by diagnosis

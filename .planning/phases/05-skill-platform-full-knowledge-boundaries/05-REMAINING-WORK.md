@@ -16,9 +16,9 @@
 
 Resolved debug sessions: `.planning/debug/resolved/wizard-commit-registration.md`, `.planning/debug/resolved/glm-verdict-fence-parse.md`.
 
-### ⏳ REMAINING (2 items — §1 + §2 DONE)
+### ⏳ REMAINING (1 item — §4 only)
 
-Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consolidation) + §2 (#7 hot-reload bridge) are DONE; §3 (#4 graph chunk-content) + §4 (#2 right-panel IA) remain.
+Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consolidation) + §2 (#7 hot-reload bridge) + §3 (#4 graph chunk-content) are DONE; §4 (#2 right-panel IA) remains.
 
 ---
 
@@ -51,7 +51,7 @@ Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consol
 - **GSD entry:** `/gsd-debug hot-reload-toast-bridge` (bug-shaped, root cause known) OR Phase 5 gap-closure.
 - **Size:** medium (~1–1.5h). **Decision required:** design A vs B.
 
-## 3. UAT #4 (major) — Knowledge Graph chunk shows "(chunk not found in fixture)"
+## 3. UAT #4 (major) — Knowledge Graph chunk shows "(chunk not found in fixture)" ✅ DONE (commits 8939a74 BE + aec582e FE, quick task 260813-dno)
 
 - **Severity:** major.
 - **Symptom:** Click a chunk in the SC-5 Knowledge Graph → ChunkSourceView opens (tier + 当前有效 + 生效日期) but body renders `(chunk not found in fixture)`.
@@ -86,6 +86,8 @@ Ordered by recommended execution (see §3 for rationale). §1 (eval/judge consol
 4. **#2 right-panel IA** (§4) — largest, design-dependent; do last, after the IA decision.
 
 Rationale: knock out the clear-cut, known-root-cause items first (§1→§3), defer the design-heavy IA work (§4) to the end where it can be scoped deliberately. §2 and §4 share the `/api/skills/reload` + `SkillManagerMenu` wiring — coordinate so #7's reload-route decision feeds #2.
+
+**Status (2026-08-13):** §1 + §2 + §3 DONE — only §4 (#2 right-panel IA) remains. It is blocked on a design decision (LEFT-sidebar consolidation per sketch source-of-truth) and touches the most surface; resolve the IA via `/gsd-discuss-phase` before implementing.
 
 **Decisions — RESOLVED 2026-08-13 (locked, do not re-ask):**
 - §2: **polling-only (B)** — serialize `registry.Entry.Version` into the `GET /api/skills` response (wrap `{manifest, version, status}`); reuse #9's live `Loader.Scan()` path to bump the version; delete the dead SSE EventSource; emit `status:failed` on broken YAML.
