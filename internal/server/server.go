@@ -169,6 +169,15 @@ type Deps struct {
 	// graph handler returns 503. Production wires it at cmd/server/main.go
 	// alongside the Retriever.
 	Knowledge KnowledgeBuilder
+	// EvalReporter is the Plan 06-02 / SC-1 dashboard data source.
+	// When non-nil, GET /api/eval/reports, /api/eval/reports/:ts,
+	// and /api/eval/frozen are enabled; when nil, the handlers
+	// return 503 (mirrors Knowledge / Wizard / Store nil-posture).
+	// Production wires a *FilesystemEvalReporter at cmd/server/main.go
+	// so the same eval/reports/ directory cmd/eval --archive writes
+	// is what /api/eval/reports reads (single source of truth for
+	// the trend history).
+	EvalReporter EvalReporter
 	// ChatModel is the Plan 05-06 / SC-7 redline LLM seam (D5-14). The
 	// redline pass calls Generate directly (no tool loop, no ADK) with
 	// a structured-output prompt, mirroring internal/agent.MaybeCritique.
@@ -193,7 +202,11 @@ type Deps struct {
 // POST /api/skills/wizard (SC-3 wizard interview → preview),
 // POST /api/skills/wizard/commit (atomic write + fsnotify loop close),
 // GET /api/knowledge/graph (SC-5 graph browser data source),
-// GET /api/knowledge/chunk/:id (SC-5 on-demand chunk-content fetch).
+// GET /api/knowledge/chunk/:id (SC-5 on-demand chunk-content fetch),
+// GET /api/eval/reports (SC-1 eval dashboard data),
+// GET /api/eval/reports/:ts (SC-1 single eval report),
+// GET /api/eval/frozen (D6-13 frozen-set metadata),
+// GET /api/audit (SC-3 audit query + retention projection).
 func New(addr string, deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(addr))
 	h.POST("/api/chat", deps.chatHandler)
@@ -203,5 +216,9 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/skills/wizard/commit", deps.wizardCommitHandler)
 	h.GET("/api/knowledge/graph", deps.graphHandler)
 	h.GET("/api/knowledge/chunk/:id", deps.chunkHandler)
+	h.GET("/api/eval/reports", deps.evalIndexHandler)
+	h.GET("/api/eval/reports/:ts", deps.evalReportHandler)
+	h.GET("/api/eval/frozen", deps.evalFrozenHandler)
+	h.GET("/api/audit", deps.auditHandler)
 	return h
 }
