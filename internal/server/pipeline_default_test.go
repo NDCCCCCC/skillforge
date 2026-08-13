@@ -248,3 +248,50 @@ func TestVerdictPipelineDefault_NoChunksRefusalPersistsAudit(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, rows[0].RefusalReason)
 }
+
+// TestVerdictPipeline_FinishStepIsLastAfterRedline — finish-step MUST be
+// the final chunk in the SSE stream, emitted only AFTER every post-verdict
+// annotation (counter-evidence, redline). Regression for the live Phase 7
+// failure where finish-step was emitted inside emitVerdictStream (right
+// after the verdict): the AI SDK v5 frontend stopped reading at finish-step,
+// so the subsequent data-redline write hit a half-closed socket (wsasend
+// connection-aborted) and the redline card never rendered.
+func TestVerdictPipeline_FinishStepIsLastAfterRedline(t *testing.T) {
+	deps := newVerdictPipelineDeps(t)
+	chunkText := "员工累计工作已满1年不满10年的，年假5天。"
+	deps.Retriever = &stubRetriever{chunks: []retriever.Hit{
+		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/annual_leave.md", Score: 0.65},
+	}}
+	// 需补充 verdict trips the D5-14 redline gate (status ∈ {需补充, 不合规}).
+	deps.Runner = newStubRunner(cannedVerdictJSON("需补充", 0.9, []string{"1"}, chunkText, "权威"))
+	deps.ChatModel = &stubChatModel{cannedJSON: `{"originalClause":"原条款","proposedRewrite":"建议改写","rationale":"修改理由"}`}
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+	ctx := context.Background()
+	resp, err := postChatRaw(t, ctx, addr, "sess-finish-order", "年假有几天")
+	require.NoError(t, err, "POST /api/chat")
+	frames := parseFrames(t, drainBody(t, resp))
+	require.NotEmpty(t, frames, "stream must produce frames")
+
+	// finish-step MUST be the very last frame.
+	assert.Equal(t, "finish-step", frames[len(frames)-1].Type,
+		"finish-step must be the final chunk (was emitted mid-stream, truncating the redline)")
+
+	// data-redline MUST precede finish-step (the bug had them reversed:
+	// finish-step inside emitVerdictStream, redline after it).
+	redlineIdx, finishIdx := -1, -1
+	for i, f := range frames {
+		switch f.Type {
+		case "data-redline":
+			redlineIdx = i
+		case "finish-step":
+			finishIdx = i
+		}
+	}
+	require.GreaterOrEqual(t, finishIdx, 0, "stream must contain a finish-step")
+	if redlineIdx >= 0 {
+		assert.Less(t, redlineIdx, finishIdx,
+			"data-redline must precede finish-step; finish-step is the stream terminator")
+	}
+}

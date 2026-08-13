@@ -397,6 +397,9 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	// future Plan can lift it via an accessor if richer source-document
 	// metadata is needed.
 	_ = emitVerdictStream(c, v, nil)
+	// finish-step is caller-owned now (emitVerdictStream no longer emits
+	// it); emit it as the final chunk after the verdict stream.
+	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 	s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "")
 }
 
@@ -596,7 +599,9 @@ func (s *Deps) findSkill(name string) *skill.Manifest {
 //     Citations[].Tier field — keeps source-document AI-SDK-v5-clean).
 //   - one data-policy chunk carrying the entire Verdict JSON
 //     (CMPL-02 / CMPL-05).
-//   - one finish-step terminator.
+//
+// finish-step is NOT emitted here — the caller owns it so it lands after
+// the post-verdict annotation passes (see the function-body comment).
 //
 // The tier info stays in the data-policy payload rather than the
 // source-document metadata because the AI SDK v5 UIMessageChunk
@@ -626,8 +631,14 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 	}); err != nil {
 		return fmt.Errorf("emit data-policy: %w", err)
 	}
-	// 3. finish-step terminator (AGNT-03).
-	return wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+	// finish-step is intentionally NOT emitted here. The caller owns it so
+	// it lands AFTER every post-verdict annotation pass (counter-evidence,
+	// redline). Emitting it here — right after the verdict — made the AI
+	// SDK v5 frontend stop reading the stream before the data-redline chunk
+	// arrived, so the redline write hit a half-closed socket (live failure:
+	// wsasend connection-aborted, Phase 7). VerdictPipeline and runAgentPath
+	// each emit finish-step as their final chunk.
+	return nil
 }
 
 // emitRefusal emits a single data-policy chunk carrying the Refusal,

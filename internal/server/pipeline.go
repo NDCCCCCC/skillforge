@@ -297,6 +297,15 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	if err := s.emitRedline(ctx, c, v, chunksByID); err != nil {
 		log.Printf("[WARN] server: redline pass failed: %v (verdict stands; non-fatal)", err)
 	}
+	// finish-step is the FINAL chunk — emitted only after every post-verdict
+	// annotation (counter-evidence, redline) has streamed. Emitting it
+	// earlier (inside emitVerdictStream, right after the verdict) made the
+	// AI SDK v5 frontend stop reading before data-redline arrived, so the
+	// redline write hit a half-closed socket (live: wsasend connection-
+	// aborted). This is the stream terminator — nothing may follow it.
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"}); err != nil {
+		return fmt.Errorf("verdict pipeline: emit finish-step: %w", err)
+	}
 	return nil
 }
 
