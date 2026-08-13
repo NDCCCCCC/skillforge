@@ -1077,3 +1077,84 @@ func TestAgentRunCancelMidTool(t *testing.T) {
 		t.Fatal("agent Run did not observe ctx cancellation within 250ms (AGNT-04 cancel propagation)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Debug: agent-llm-query-rewrite — code-forced original-query retrieve
+// ---------------------------------------------------------------------------
+
+// TestRunPreRetrievesOriginalQuery (debug: agent-llm-query-rewrite) is the
+// regression test for the code-forced original-query retrieve in (*Agent).Run.
+//
+// Production symptom: GLM-5.2 rewrote the retrieve_compliance_chunks query
+// (年假 → 出差住宿费 → recalled travel_expense.md → answered-as-unanswered).
+// The fix embeds the user's ORIGINAL query and runs Search against the
+// resolved tiers ONCE before the ReAct loop starts, recording hits into the
+// accumulator AND surfacing them in the user message (DATA-framed) so the
+// LLM can cite them without first calling retrieve.
+//
+// This test deliberately uses a stub chat model that issues ZERO retrieve
+// tool calls (maxToolCalls=0) — the LLM "fully doesn't cooperate" with
+// retrieval. The retriever is seeded so the ORIGINAL query (call 0 =
+// pre-retrieve) returns the annual_leave chunk ID 42. Without the fix:
+// the accumulator would be empty after the ReAct loop → trust floor would
+// refuse → no verdict, no citations. With the fix: the accumulator has
+// chunk 42 (from pre-retrieve), the trust floor passes, the citation
+// grounds via ChunksByID, and the verdict parses cleanly.
+//
+// Why the stub "knows" to cite chunk 42: in production the LLM sees chunk
+// 42 in the user-message DATA envelope (via buildUserMessageBody) and
+// cites it. The stub does not read messages, so the expected citation is
+// encoded directly in finalJSON to drive post-Run assertions deterministically.
+// Confidence is set to 0.95 (outside the critique uncertain band [0.6, 0.9])
+// so MaybeCritique is skipped — isolating the test to the pre-retrieve path.
+func TestRunPreRetrievesOriginalQuery(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// maxToolCalls=0 → the stub skips the tool-call phase entirely and
+	// emits the final verdict on turn 1. toolCallQuery is unused.
+	finalJSON := `{"status":"合规","confidence":0.95,"citations":[{"chunk_id":"42","span":"年假 5 天","tier":"权威"}],"review_required":false}`
+	cm := newMultiTurnStub(t, 0, "unused-toolCallQuery", finalJSON)
+	ret := &stubRetriever{
+		chunksPerCall: [][]retriever.Hit{
+			// Call 0: pre-retrieve on the ORIGINAL query (年假有几天).
+			// Returns the annual_leave chunk — the document the LLM-driven
+			// retrieve would have MISSED had it fired with a rewritten query.
+			{{ID: 42, Tier: "权威", Source: "authority/annual_leave.md", Content: "年假 5 天。", Score: 0.6}},
+		},
+	}
+	cfg := agent.AgentConfig{
+		Manifest:  manifestWithTiers([]string{"权威"}),
+		Embedder:  newStubEmbedder(),
+		Retriever: ret,
+		ChatModel: cm,
+		MaxHops:   2,
+	}
+	a, err := agent.NewAgent(ctx, cfg)
+	require.NoError(t, err)
+
+	v, refusal, err := a.Run(ctx, "sess-preretrieve", "年假有几天")
+	require.NoError(t, err,
+		"Run must not error — pre-retrieve supplies grounding even when LLM skips retrieve")
+	require.Nil(t, refusal,
+		"trust floor MUST NOT refuse — pre-retrieve populated the accumulator with annual_leave")
+	require.NotEmpty(t, v.Citations,
+		"verdict MUST include citations grounded via pre-retrieve (the LLM skipped retrieve entirely)")
+	assert.Equal(t, "42", v.Citations[0].ChunkID,
+		"citation points at the pre-retrieved annual_leave chunk (the document the rewrite-miss would have lost)")
+
+	// The retriever was called exactly once — the pre-retrieve. The LLM
+	// emitted zero tool calls (maxToolCalls=0), so no LLM-driven retrieve
+	// fired. This is the core regression-lock: pre-retrieve ran with the
+	// ORIGINAL query independent of LLM cooperation.
+	assert.Equal(t, 1, ret.CallCount(),
+		"only the pre-retrieve Search call expected — LLM did not issue any retrieve tool calls")
+
+	// LastRetrieved exposes the pre-retrieved chunk — proves the
+	// accumulator was populated by pre-retrieve (not by some other path).
+	retrieved := a.LastRetrieved()
+	require.Len(t, retrieved, 1, "LastRetrieved must expose the pre-retrieved chunk")
+	assert.Equal(t, int64(42), retrieved[0].ID)
+	assert.Equal(t, "年假 5 天。", retrieved[0].Content,
+		"LastRetrieved content must be the annual_leave chunk the original query actually matched")
+}
