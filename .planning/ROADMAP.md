@@ -193,7 +193,7 @@
 **Plans**: 6 plans
 **Plan list**:
 - [x] 07-01-PLAN.md — Wave 1: Release-meta foundations (LICENSE + .env.example internal-cleanup + .gitignore/.dockerignore hygiene + ROADMAP/REQUIREMENTS SC-1/SC-5 + DIST-04/DIST-05 revisions per D7-03/D7-06)
-- [ ] 07-02-PLAN.md — Wave 1 (parallel): Containerization (docker-compose + Dockerfile.backend + Dockerfile.frontend; Milvus v2.4.x pinned to SDK v2.4.2; SSE proxy_buffering off; autonomous:false — Docker verify gate)
+- [~] 07-02-PLAN.md — Wave 1 (parallel): Containerization (docker-compose + Dockerfile.backend + Dockerfile.frontend; Milvus v2.4.x pinned to SDK v2.4.2; SSE proxy_buffering off; autonomous:false — Docker verify gate) — **2/3 tasks committed (`798248d`+`3d9f590`); Task 3 docker-build human-verify BLOCKING (Docker not in PATH)**
 - [ ] 07-03-PLAN.md — Wave 2: Docs (README hero+quick-start+Mermaid architecture+eval placeholder+license; CONTRIBUTING write-a-Skill/add-a-tool/add-a-knowledge-tier)
 - [ ] 07-04-PLAN.md — Wave 2 (parallel): Examples + eval sample (3 SKILL.md templates passing internal/skill.Validate via examples_validate_test.go + 7 sample docs + eval/sample.jsonl 50-case copy)
 - [ ] 07-05-PLAN.md — Wave 3: Eval snapshot + demo GIF (scripts/eval_snapshot derives refusal_accuracy from Report.Cases; autonomous:false — needs live Milvus+BGE-M3+GLM + screen capture)
