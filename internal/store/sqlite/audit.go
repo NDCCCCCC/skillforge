@@ -128,6 +128,16 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 	}
 	q += " ORDER BY ts DESC LIMIT ?"
 	args = append(args, limit)
+	// Phase 6 / D6-05: LIMIT/OFFSET pagination. The OFFSET value is
+	// appended to args as a `?` placeholder — NEVER fmt.Sprintf'd into
+	// the SQL string (T-3-SQLI). The existing DROP TABLE regression
+	// (store_test.go::TestAuditRowSQLInjection) MUST stay green; the
+	// payload is treated as a literal string by the parameterized
+	// driver, never as SQL.
+	if filter.Offset > 0 {
+		q += " OFFSET ?"
+		args = append(args, filter.Offset)
+	}
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {

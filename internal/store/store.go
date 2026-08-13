@@ -106,6 +106,11 @@ type AuditFilter struct {
 	Until time.Time
 	// Limit caps the number of returned rows. Zero defaults to 100.
 	Limit int
+	// Offset skips this many rows from the start of the result set.
+	// Phase 6 (D6-05) adds LIMIT/OFFSET pagination to /api/audit; the
+	// store layer is unchanged in posture (still 100% `?`-parameterized)
+	// — the new value is appended to args, not fmt.Sprintf'd into SQL.
+	Offset int
 }
 
 // Store is the abstraction over the audit + session-memory backend.

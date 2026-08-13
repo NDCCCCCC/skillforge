@@ -85,9 +85,16 @@ import (
 
 // env-or-default helpers. Each required var aborts startup on empty.
 const (
-	defaultGLMBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
-	defaultServerAddr = ":8888"
-	defaultCollection = "skillforge_knowledge"
+	defaultGLMBaseURL    = "https://open.bigmodel.cn/api/coding/paas/v4"
+	defaultServerAddr    = ":8888"
+	defaultCollection    = "skillforge_knowledge"
+	// Plan 06-02 / SC-1: the eval dashboard reads the same files
+	// cmd/eval --archive writes. Keeping these paths in sync with
+	// cmd/eval's defaults is the load-bearing invariant — a
+	// dashboard that reads a different directory than the CLI
+	// writes would be silently empty.
+	defaultEvalReportsDir = "eval/reports"
+	defaultEvalFrozenDir  = "eval/frozen"
 )
 
 // envRequired reads a required env var; returns the value or aborts
@@ -118,6 +125,8 @@ func main() {
 	glmKey := envRequired("GLM_API_KEY")
 	glmBase := envOr("GLM_BASE_URL", defaultGLMBaseURL)
 	serverAddr := envOr("SERVER_ADDR", defaultServerAddr)
+	evalReportsDir := envOr("EVAL_REPORTS_DIR", defaultEvalReportsDir)
+	evalFrozenDir := envOr("EVAL_FROZEN_DIR", defaultEvalFrozenDir)
 
 	// 2. Load Skills (SYSK-02 validation at startup).
 	loader := skill.NewLoader("skills/")
@@ -237,17 +246,24 @@ func main() {
 	// next request — D5-11 closed loop. SkillsDir is intentionally the
 	// same string passed to skill.NewLoader("skills/") above so the
 	// "wizard wrote here, Loader reads there" contract holds.
+	//
+	// EvalReporter (Plan 06-02 / SC-1) reads the same eval/reports/
+	// directory cmd/eval --archive writes; this is the single source
+	// of truth for the trend history. Empty paths default to
+	// "eval/reports" / "eval/frozen" inside FilesystemEvalReporter so
+	// a plain `go run cmd/server` finds the archive the CLI produced.
 	deps := &server.Deps{
-		Loader:    loader,
-		Registry:  reg,
-		Embedder:  emb,
-		Retriever: r,
-		Runner:    &prodRunner{runner: runner, cm: cm},
-		Agent:     ag,
-		Store:     st,
-		Wizard:    skill.NewWizard(cm, "skills/"),
-		Knowledge: knowledge.New(r),
-		ChatModel: cm,
+		Loader:       loader,
+		Registry:     reg,
+		Embedder:     emb,
+		Retriever:    r,
+		Runner:       &prodRunner{runner: runner, cm: cm},
+		Agent:        ag,
+		Store:        st,
+		Wizard:       skill.NewWizard(cm, "skills/"),
+		Knowledge:    knowledge.New(r),
+		EvalReporter: server.NewFilesystemEvalReporter(evalReportsDir, evalFrozenDir),
+		ChatModel:    cm,
 	}
 
 	// 8. Hertz server (Pattern 1).
@@ -259,6 +275,9 @@ func main() {
 	log.Printf("     POST /api/skills/wizard       — SC-3 wizard (5-step interview -> preview)")
 	log.Printf("     POST /api/skills/wizard/commit — atomic write (fsnotify closes the loop)")
 	log.Printf("     GET  /api/knowledge/graph     — SC-5 graph browser (tier -> doc -> chunk)")
+	log.Printf("     GET  /api/eval/reports        — SC-1 eval dashboard (INDEX.json + per-report fetch)")
+	log.Printf("     GET  /api/eval/frozen         — D6-13 frozen-set metadata (skill + lock)")
+	log.Printf("     GET  /api/audit               — SC-3 audit query (with retention redaction)")
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()
