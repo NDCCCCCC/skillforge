@@ -48,6 +48,47 @@ import (
 type chatRequest struct {
 	Query string `json:"query"`
 	Skill string `json:"skill"`
+	// Messages is the AI SDK v5 DefaultChatTransport body shape. The
+	// frontend useChat hook sends {messages:[UIMessage]} (not {query});
+	// chatHandler extracts the last user turn's text as the query so the
+	// React UI works against this custom {query,skill} backend without a
+	// bespoke transport. See lastUserQuery.
+	Messages []chatMessage `json:"messages"`
+}
+
+// chatMessage is the minimal AI SDK v5 UIMessage shape the backend reads:
+// role + parts (only text parts are extracted). Other UIMessage fields
+// (id, metadata) are ignored by json decode.
+type chatMessage struct {
+	Role  string    `json:"role"`
+	Parts []msgPart `json:"parts"`
+}
+
+// msgPart is the minimal UIMessagePart shape: a text part carries the
+// user's input in Text. Non-text parts (file/tool/reasoning) are ignored.
+type msgPart struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+// lastUserQuery extracts the text of the last user message from an AI SDK
+// v5 UIMessage list (scanned newest-first). The frontend's useChat +
+// DefaultChatTransport sends the full conversation as {messages}; the
+// backend is single-turn (VerdictPipeline), so only the latest user turn
+// matters. Returns "" when there is no user text part — the caller's
+// empty-query check then 400s with "query is required".
+func lastUserQuery(msgs []chatMessage) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role != "user" {
+			continue
+		}
+		for _, p := range msgs[i].Parts {
+			if p.Type == "text" && p.Text != "" {
+				return p.Text
+			}
+		}
+	}
+	return ""
 }
 
 // defaultSkill is the Phase 2-only Skill name. The pipeline refuses on
@@ -112,6 +153,14 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 			CanRephrase: false,
 		})
 		return
+	}
+	// AI SDK v5 compatibility: DefaultChatTransport sends {messages:[UIMessage]}
+	// not {query}. Extract the last user turn's text part so the React useChat
+	// hook works against this custom backend. Live-discovered when
+	// VITE_REAL_BACKEND first connected the UI (Phase 7): every request 400'd
+	// "query is required" because the body had no `query` field.
+	if req.Query == "" {
+		req.Query = lastUserQuery(req.Messages)
 	}
 	if req.Query == "" {
 		c.SetStatusCode(http.StatusBadRequest)

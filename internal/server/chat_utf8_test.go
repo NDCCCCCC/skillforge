@@ -89,3 +89,55 @@ func jsonMarshalUTF8(t *testing.T, query, skill string) ([]byte, error) {
 	t.Helper()
 	return []byte(`{"query":"` + query + `","skill":"` + skill + `"}`), nil
 }
+
+// TestLastUserQuery covers the AI SDK v5 UIMessage → query extraction.
+// The frontend useChat hook sends {messages:[{role,parts:[{type,text}]}]};
+// the backend is single-turn, so only the newest user text part matters.
+func TestLastUserQuery(t *testing.T) {
+	tests := []struct {
+		name string
+		msgs []chatMessage
+		want string
+	}{
+		{"empty", nil, ""},
+		{"single user text", []chatMessage{{Role: "user", Parts: []msgPart{{Type: "text", Text: "hi"}}}}, "hi"},
+		{"last user turn wins", []chatMessage{
+			{Role: "user", Parts: []msgPart{{Type: "text", Text: "first"}}},
+			{Role: "assistant", Parts: []msgPart{{Type: "text", Text: "reply"}}},
+			{Role: "user", Parts: []msgPart{{Type: "text", Text: "second"}}},
+		}, "second"},
+		{"no user turn", []chatMessage{{Role: "assistant", Parts: []msgPart{{Type: "text", Text: "reply"}}}}, ""},
+		{"skips non-text parts, finds text", []chatMessage{{Role: "user", Parts: []msgPart{{Type: "file"}, {Type: "text", Text: "found"}}}}, "found"},
+		{"user with no text part", []chatMessage{{Role: "user", Parts: []msgPart{{Type: "file"}}}}, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, lastUserQuery(tc.msgs))
+		})
+	}
+}
+
+// TestChatHandlerExtractsQueryFromAIMessagesBody — the AI SDK v5
+// DefaultChatTransport body ({messages:[UIMessage]}, no `query` field)
+// must have its last user text part extracted as the query, NOT 400 with
+// "query is required". Live failure: every frontend request 400'd until
+// lastUserQuery was wired into chatHandler.
+func TestChatHandlerExtractsQueryFromAIMessagesBody(t *testing.T) {
+	deps := newTestDeps()
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	// Exact AI SDK v5 shape: {id, messages:[{id,role,parts:[{type:text,text}]}], trigger, messageId}.
+	body := []byte(`{"id":"chat-1","messages":[{"id":"m1","role":"user","parts":[{"type":"text","text":"annual leave"}]}],"trigger":"send-message","messageId":"m1"}`)
+	resp, err := http.Post("http://"+addr+"/api/chat", "application/json", bytes.NewReader(body))
+	require.NoError(t, err, "POST /api/chat")
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "read body")
+
+	// query was extracted → proceeds past the "query is required" gate. It
+	// then hits findSkill (newTestDeps has no Loader → out_of_scope 200),
+	// which still proves extraction worked.
+	assert.NotContains(t, string(b), "query is required",
+		"AI SDK v5 {messages} body must have its last user text part extracted; body=%q", string(b))
+}
