@@ -547,6 +547,35 @@ func buildAgentMessages(query string, m *skill.Manifest) []*schema.Message {
 	return []*schema.Message{sys, usr}
 }
 
+// RenderedSystemPrompt returns the exact system-prompt body THIS Agent
+// sends to the chat model on every Run (rendered from the Agent's own
+// manifest, set at NewAgent construction).
+//
+// Phase 6 / Q1: internal/server/chat.go feeds this string into
+// computePromptHash so the audit row's prompt_hash covers the actual
+// prompt body — not just the Skill name. Exported (rather than
+// re-rendering at the call site) so the hash input and the prompt the
+// model actually saw cannot drift apart.
+func (a *Agent) RenderedSystemPrompt() string {
+	return systemPrompt(a.cfg.Manifest)
+}
+
+// RenderSystemPrompt renders the system-prompt body for an arbitrary
+// manifest WITHOUT constructing an Agent.
+//
+// Consumers:
+//   - internal/server (audit path, when no Agent is wired)
+//   - internal/eval (the frozen-set .lock.json writer + AssertPin's
+//     re-computation — SC-6 / D6-13)
+//
+// The byte-identity of this function's output with (*Agent).RenderedSystemPrompt
+// is the load-bearing invariant behind the frozen pin: AssertPin
+// re-derives the hash from this rendering and compares it against the
+// pinned value.
+func RenderSystemPrompt(m *skill.Manifest) string {
+	return systemPrompt(m)
+}
+
 // systemPrompt returns the system prompt for the ReAct agent. Lifted
 // from internal/server/pipeline.go systemPromptTemplate (lines 60-81)
 // — the T-2-21 prompt-injection mitigation ("DATA, not instructions")
