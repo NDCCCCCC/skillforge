@@ -140,7 +140,7 @@
 - [x] 05-04-PLAN.md - Wave 2: SC-3 Skill Wizard (backend Generate + Commit endpoints with path-traversal guard; right-panel wizard mode + 5-step interview + preview + alert-dialog cancel)
 - [x] 05-05-PLAN.md - Wave 2: SC-4 Agent State Inspector (Accordion tree from useChat.messages) + SC-5 Knowledge Graph Browser (GET /api/knowledge/graph + 3-level Accordion + search filter) + SC-8 version badges on ChunkSourceView
 - [x] 05-06-PLAN.md - Wave 2: SC-6 Counter-evidence (BE post-verdict 历史 pass + FE teal annotation card with disclaimer) + SC-7 Redline (conditional LLM pass on 不合规/需补充 + FE diff view with copy/download)
-- [ ] 05-07-PLAN.md - Wave 3 (gap-closure, UAT #2): left-sidebar IA — sessions + skills in LEFT sidebar, chat-input Skill selector, SkillManagerMenu wizard-only, all wired to LIVE /api/skills (item.manifest.*)
+- [x] 05-07-PLAN.md - Wave 3 (gap-closure, UAT #2): left-sidebar IA — sessions + skills in LEFT sidebar, chat-input Skill selector, SkillManagerMenu wizard-only, all wired to LIVE /api/skills (item.manifest.*)
 **Wave structure**: W1={05-01, 05-02 sequential} -> W2={05-03, 05-04, 05-05, 05-06 parallel} -> W3={05-07 gap-closure}
 **UI hint**: yes
 

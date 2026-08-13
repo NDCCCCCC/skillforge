@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.7.7
 milestone_name: milestone
-current_phase: 6
-current_plan: Not started
+current_phase: 05
+current_plan: 1
 status: executing
-last_updated: "2026-08-13T03:48:53.199Z"
+last_updated: "2026-08-13T03:54:09.609Z"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -20,8 +20,8 @@ progress:
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 6
-**Current Plan:** Not started
+**Current Phase:** 05
+**Current Plan:** 1
 **Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** Plan 05-01 (Phase 5 skill-platform-&-full-knowledge-boundaries) is READY TO PLAN. Alternative: Phase 6 CI gate wiring (eval/report.json → GEVL-07 Skill promotion gate). The D2-15 threshold-swap procedure (manual ops review of `eval/calibration.json` `recommended_threshold` before editing `internal/server/pipeline.go:43`) is documented in `eval/README.md` + pipeline godoc.
@@ -40,7 +40,7 @@ progress:
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 6 — eval dashboard & production hardening
+**Current focus:** Phase 05 — skill-platform-full-knowledge-boundaries
 **See:** `.planning/PROJECT.md` (updated 2026-08-11 after Phase 4)
 
 ---
@@ -48,10 +48,10 @@ progress:
 ## Current Position
 
 Phase: 05 (skill-platform-full-knowledge-boundaries) — EXECUTING
-Plan: 1 of 6
+Plan: 1 of 7
 **Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
 **Plan:** not started
-**Status:** Ready to execute
+**Status:** Executing Phase 05
 **Just completed:** Plan 03-06 — Go-native trust evaluator (`internal/eval` + `cmd/eval`). D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop + 5 spike-anchors, GEVL-05). D2-15 calibration vehicle (`Calibrate()` → `eval/calibration.json` `recommended_threshold`; manual ops swap of literal 0.3 in `internal/server/pipeline.go:43`). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder; 34 eval tests pass. Pitfall 8 counter-measures in place (deterministic grounding floor, human spot-check, JUDGE_MODEL slot). 5 commits: `52dab7e` (D6 reversal docs) + `d4f96fc` (Task 1) + `a77be40` (Task 2) + `f7979af` (Task 3 A+B) + `247dfd8` (Task 3 C-H). GEVL-04 + GEVL-05 marked complete.
 
 **Phase 4 shipped (trust visualization front-end):**
@@ -153,6 +153,7 @@ Plan: 1 of 6
 | 03 | 02 | 18m | 3 TDD tasks / 3 commits / 8 files (6 created + 2 modified) — `internal/store.Store` interface + `SQLiteStore` default impl (modernc.org/sqlite@v1.56.0 pure-Go, no cgo). D11 mirror of retriever + mongo. audit INSERT+SELECT only (T-3-AUDIT); `QueryAudit` 100% `?`-parameterized (T-3-SQLI regression: DROP TABLE survives in 3 filter fields); SC-9 isolation at `WHERE session_id=?`; `AppendTurn` idempotent via UNIQUE+ON CONFLICT. GEVL-03/SC-7 + AGNT-05/SC-9 unlocked at store layer. See 03-02-SUMMARY.md |
 | 04 | 04 | 12m | 3 tasks / 3 commits / 6 modified — wire-contract TS realignment (gap closure, `requirements: []`). `cd web && npx tsc --noEmit` 21 → 0 errors; vitest 84/84; build 411.12 KB / 120.47 KB gzip (04-03 band). D15 alarm STRENGTHENED (`finishReason?: string` → `FinishReason`); Pitfall 1/3 guards preserved via string-cast; ToolPart toolName structural-type read; transport-swap `FixtureDrivenTransport` zero-arg contract. Closes Phase 4 TS-drift debt. See 04-04-SUMMARY.md |
 | 03 | 06 | 19m | 3 tasks / 5 commits / 22 files (15 created + 7 modified) — Go-native trust evaluator (D6 reversed): `internal/eval` library + `cmd/eval` CLI. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20/20/10, 5 spike-anchors, GEVL-05). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` (manual ops swap of literal 0.3). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder. Pitfall 8 counter-measures in place. See 03-06-SUMMARY.md |
+| 05 | 07 | ~30m | 3 TDD tasks / 7 commits / 13 files (10 web/ + SUMMARY + UAT + REMAINING-WORK) — **left-sidebar IA gap-closure (UAT #2)**, the LAST open Phase-5 item. `gap_closure:true` + `closes_uat:#2`. Store contract: `SkillSummary` + `SessionMeta` + `sessions[]/activeSessionId/createSession/setActiveSession/deleteSession` (D14 — no `messages` field); `skills[]` + `setSkills`. Live data path: `useSkillReload.tick()` normalizes `GET /api/skills` reading **`item.manifest.description`** (BLOCKING CONSTRAINT, not `item.description`). `App.tsx` passes `id: activeSessionId` into `useChat` (Vercel AI SDK v5 in-memory per-id chatStore). `ChatInput` becomes a live Skill popover (reads `store.skills`); `SkillManagerMenu` collapses to wizard-only (`skill-manager-new-skill`); `RightChat` header becomes read-only badge (`right-chat-badge`). `LeftSidebar` rewrites to 4 stacked sections: `新建会话` + `会话` + `文件`(SOURCES preserved) + `技能` with status badges (已加载/加载失败(旧版可用)). Dead `/api/skills/reload` 404 gone (D5-IA-05); `__fixtures__/skills.json` retired from all 3 Skill surfaces. Merge `2873776`: +984/-228 across 14 files. `npx tsc --noEmit` 0; `vitest run` **209/209** (baseline 196 + 13 new/updated across 31 files); `vite build` 466.50 KB / 135.02 KB gzip. 14 grep gates pass. See 05-07-SUMMARY.md |
 
 - Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering, now in progress
 - Requirements covered: 24 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08; Phase 3 03-01: +ARAG-01 substrate, +KNOW-01 substrate)
@@ -171,8 +172,8 @@ Plan: 1 of 6
 - **#9 (blocker) wizard commit registration** — FIXED, commit `af1ca9a`. `wizardCommitHandler` rescans `Loader` + `Registered` flag; FE gates toast on `registered`; `Loader.cached` race-guarded. Resolved session: `.planning/debug/resolved/wizard-commit-registration.md`.
 - **OOS-1 (blocker) GLM verdict fence-parse** — FIXED, commit `d62fe98`. New shared `internal/llm.ExtractJSON`; all 4 verdict parse sites re-routed. Resolved session: `.planning/debug/resolved/glm-verdict-fence-parse.md`.
 - **eval/judge.go OOS-1 follow-up** — FIXED, commit `d1af0f6` (quick task 260813-1i6). `glmJudge.generateJSON` now delegates to `llm.ExtractJSON`; private `stripJSONDelim` removed; hermetic judge-path regression test added.
-- **Remaining Phase 5 work (1 open UAT issue #2):** see `.planning/phases/05-skill-platform-full-knowledge-boundaries/05-REMAINING-WORK.md`. §1 (eval follow-up) DONE; §2 (#7 hot-reload, polling-B) DONE 2026-08-13 (3d77870 + 3265178 BE + 09ae711 FE); §3 (#4 graph chunk full-text) DONE 2026-08-13 (8939a74 BE + aec582e FE + c646382 closeout — quick task 260813-dno; GET /api/knowledge/chunk/:id by-id content fetch, retriever→knowledge→server 3-layer mirroring graphHandler); §4 (#2 left-sidebar IA) pending — gating decisions resolved (full-text-in-scope / LEFT-sidebar).
-- Phase 5 UAT now effectively 11/11 pass; 1 open (#2 right-panel / left-sidebar IA — blocked on the LEFT-sidebar design decision; entry point `/gsd-discuss-phase` → UI impl).
+- **Remaining Phase 5 work (1 open UAT issue #2):** see `.planning/phases/05-skill-platform-full-knowledge-boundaries/05-REMAINING-WORK.md`. §1 (eval follow-up) DONE; §2 (#7 hot-reload, polling-B) DONE 2026-08-13 (3d77870 + 3265178 BE + 09ae711 FE); §3 (#4 graph chunk full-text) DONE 2026-08-13 (8939a74 BE + aec582e FE + c646382 closeout — quick task 260813-dno; GET /api/knowledge/chunk/:id by-id content fetch, retriever→knowledge→server 3-layer mirroring graphHandler); **§4 (#2 left-sidebar IA) DONE 2026-08-13** (Plan 05-07, `gap_closure:true` `closes_uat:#2` — 7 commits `7cc252e`+`58e1bb5`+`277d7f3`+`b050967`+`9dbbe4d`+`0ac41d8`+`f6859d0`, merge `2873776`; 4 LOCKED decisions D5-IA-01/03/04/06 implemented; BLOCKING CONSTRAINT `item.manifest.*` honored; 209/209 vitest).
+- Phase 5 UAT **11/11 pass — all Phase 5 work complete**. SYSK-04 gap closed by 05-07. Awaiting Phase-5 verification + phase completion.
 
 **Hot files this session:**
 
