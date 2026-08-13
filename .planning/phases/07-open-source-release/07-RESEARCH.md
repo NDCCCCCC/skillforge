@@ -677,26 +677,32 @@ temperature: 0.0
 | A6 | `git-filter-repo` 与 `vhs` 可在操作机安装（pip / brew / go install） | Environment Availability | 中 — 两者均为知名上游工具，但环境未预装；planner 应 gate 在 checkpoint 后 |
 | A7 | examples/calculator 用 `reads: [draft/**]` 占位能通过 validator（避免改 validator） | Code Examples Q2 | 中 — 若 validator 对占位 tier 有额外检查可能失败；executor 实测 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **DIST-09 的 "refusal accuracy" 指标如何精确产生？**
+> All four questions are resolved and implemented in the Phase 7 plans (verified by gsd-plan-checker).
+
+1. **DIST-09 的 "refusal accuracy" 指标如何精确产生？** — RESOLVED
    - What we know: evaluator（`internal/eval`）计算 4 个指标：faithfulness / context_precision / answer_relevance / context_recall。`Report.Overall` 与 `Report.PerCategory` 都只有这 4 个 key。
    - What's unclear: DIST-09 文案要 "refusal accuracy"，无字面对应字段。
    - Recommendation: 从 `Report.Cases` 派生（`refusal-required` 类目里 `refused==true` 的比例）。代码见 Example 6。这是一小段渲染逻辑，**不是新工具**。executor 写一个一次性脚本（或手工算）填进 README 快照。
+   - **RESOLVED:** Plan 07-05 Task 1 ships `scripts/eval_snapshot` with `deriveRefusalAccuracy` (pure fn, tested via all-refused/partial/zero-refusal-required fixtures) producing the README snapshot.
 
-2. **examples/calculator（纯工具型，reads 为空）如何通过 7-field validator？**
+2. **examples/calculator（纯工具型，reads 为空）如何通过 7-field validator？** — RESOLVED
    - What we know: `internal/skill.Validate` 要求 `reads` 非空（P-SKILL-3 default-deny）。
    - What's unclear: 纯工具型 Skill 没有 tier 可读，空 reads 会被拒。
    - Recommendation: calculator 声明一个语义占位 tier（如 `reads: [draft/**]`）并通过校验，README 注明"演示 writes 声明，纯工具运行时后续版本支持"。**不改 validator**（改 validator = 新能力，超范围）。
+   - **RESOLVED:** Plan 07-04 calculator declares `reads: [draft/**]` placeholder tier; passes `internal/skill.Validate` unchanged (locked decision D7-10 honored).
 
-3. **GitHub 用户名 / 仓库最终路径？**
+3. **GitHub 用户名 / 仓库最终路径？** — RESOLVED
    - What we know: 公开名锁定 `skillforge`（D7-07）；module path 已是 `github.com/skillforge/skillforge`；当前 git **无 remote**。
    - What's unclear: 用户 GitHub 用户名（`ninedrunk`？CONTEXT 提及待确认）。
    - Recommendation: planner/executor 在 force-push 前 confirm 用户名；README 的 clone URL + badges 用最终路径。
+   - **RESOLVED:** Plan 07-06 Task 3 (blocking-human checkpoint) confirms the GitHub username before force-push to the public `skillforge` remote.
 
-4. **是否暴露 `cmd/skillforge validate <path>` 子命令？**（Claude's Discretion）
+4. **是否暴露 `cmd/skillforge validate <path>` 子命令？**（Claude's Discretion） — RESOLVED
    - What we know: CONTEXT 把此列为 discretion；现校验逻辑在 `internal/skill.Validate`（库），无独立 CLI。
    - Recommendation: **建议暴露**——一个轻量 `cmd/skillforge`（或 `cmd/server` 加 `validate` 子命令）让贡献者校验自己的 SKILL.md。成本低（复用 Validate），提升 CONTRIBUTING 体验。planner 决定。
+   - **RESOLVED:** Planner chose to validate examples via `go test ./internal/skill -run TestExamplesValidate` (new `examples_validate_test.go`) rather than a new CLI subcommand — lighter surface, CONTRIBUTING references the test.
 
 ## Environment Availability
 
