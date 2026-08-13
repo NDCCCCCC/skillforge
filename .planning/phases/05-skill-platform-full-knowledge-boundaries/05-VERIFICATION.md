@@ -1,257 +1,197 @@
 ---
 phase: 05-skill-platform-full-knowledge-boundaries
-verified: 2026-08-13T15:55:00Z
-status: gaps_found
-score: 13/15 must-haves verified (8 ROADMAP SCs + 7/7 Plan-05-07 wiring must-haves; CR-01 session-message-retention FAILED; CR-02 setSkills wipe = WARN)
+verified: 2026-08-13T14:00:00Z
+status: passed
+score: 26/26 must-haves verified (8/8 ROADMAP SCs structurally + 10/10 Plan-05-07 wiring + 8/8 Plan-05-08 gap-closure)
 overrides_applied: 0
 re_verification:
-  previous_status: passed (Aug 12) — OVERRIDDEN by code review Aug 13 (commit 8462409) that surfaced 2 critical findings not present in the original verification
-  previous_score: 8/8
-  gaps_closed: []
+  previous_status: gaps_found
+  previous_score: 13/15
+  previous_verified: 2026-08-13T15:55:00Z
+  gaps_closed:
+    - "CR-01 (BLOCKER): per-session Chat<UIMessage> map keeps messages across activeSessionId flips (Plan 05-08 Task 1)"
+    - "CR-02 (WARN): transient-empty /api/skills no longer wipes live store.skills (Plan 05-08 Task 2)"
+    - "WR-01: stripFsPath lifted to web/src/lib/stripFsPath.ts and reused by LeftSidebar (Plan 05-08 Task 3)"
+    - "WR-02: stale currentSkillId auto-cleared when selected skill disappears (Plan 05-08 Task 1)"
+    - "WR-03: useSkillReload manifest test hardened with vi.waitFor + callIdx counter (Plan 05-08 Task 2)"
+    - "WR-04: multi-line errors flattened + truncated to 160 chars in tooltip (Plan 05-08 Task 3)"
+    - "WR-05: FROZEN_TS replaces Date.now() snapshots in test fixtures (Plan 05-08 Task 3)"
+    - "IN-01: deleteSession reachable via × button per session row (Plan 05-08 Task 3)"
+    - "IN-03: boot session named '会话 1' matching createSession convention (Plan 05-08 Task 3)"
+    - "IN-04: loud offline banner after 3 consecutive non-OK /api/skills responses (Plan 05-08 Task 2)"
   regressions: []
-  driver: Code review (05-REVIEW.md commit 8462409, 11 files reviewed) verified two critical claims against actual @ai-sdk/react@4.0.62 source. CR-01 falsified the "per-id chatStore" assumption that anchored Plan 05-07's session model. CR-02 surfaced a transient-empty API response fragility in tick() that wipes the live skill list.
-gaps:
-  - truth: "Switching sessions swaps the active useChat instance; each session's messages are independent and in-memory (lost on refresh)"
-    status: failed
-    reason: "useChat({ id: activeSessionId }) in @ai-sdk/react@4.0.62 allocates a new Chat() every time the id changes — verified directly in node_modules/@ai-sdk/react/dist/index.js:326-328. The plan's claim of 'Vercel AI SDK v5 per-id chatStore semantics' is not accurate for the installed React hook. Switching sessions loses ALL previously-streamed messages (and from any prior in-flight stream), not just on refresh. Test suite (209 vitest, 8 new LeftSidebar tests + 4 new ChatInput tests) does NOT exercise a session switch — no App-level test mounts <App>, sends a message, switches activeSessionId, and asserts message persistence. The user-visible feature 'messages retained across session switches' is broken in production."
-    artifacts:
-      - path: "web/src/App.tsx"
-        issue: "Line 62: `useChat({ id: activeSessionId, transport })` — id changes cause Chat() recreation via shouldRecreateChat branch (lib line 326-328)."
-      - path: "web/node_modules/@ai-sdk/react/dist/index.js"
-        issue: "Lines 326-328: shouldRecreateChat evaluates true when chatRef.current.id !== options.id; new Chat(chatOptions) is allocated with no messages. No chatStore exists in @ai-sdk/react — searched the package for chatStore, allChats, registry, messageCache, perId — none exist."
-      - path: "web/src/__tests__/"
-        issue: "No App.test.tsx; no test exercises session switching with message retention assertion. ChatInput.test.tsx + LeftSidebar.test.tsx only check store state changes (createSession, setActiveSession), never that messages persist across an activeSessionId flip."
-    missing:
-      - "Maintain a `useRef<Map<string, Chat<UIMessage>>>` in App.tsx (or equivalent) so each session retains its Chat instance; pass `chat` to useChat instead of `id` (the chat prop is preserved while id is recreating)."
-      - "Or, accept the broken state as MVP and update the must_have to 'messages do NOT persist across session switches; each switch starts a fresh useChat instance'."
-      - "Add an integration test that mounts <App>, sends a message in session A, switches to session B via LeftSidebar click, and asserts session A's messages are still present (or that the new behavior is intentional)."
-  - truth: "Skill list is stable across transient empty /api/skills responses"
-    status: failed
-    reason: "useSkillReload.tick() calls useAppStore.getState().setSkills(summaries) UNCONDITIONALLY on every poll. A single transient empty response (server restart, brief backend hiccup, schema-migration window) wipes store.skills — LeftSidebar 技能 block empties, ChatInput selector shows '尚未安装任何 Skill', RightChat badge shows '未选择 Skill', currentSkillId becomes a dangling reference. Plan 05-07's manifest.description test (useSkillReload.test.tsx:113-157) happens to queue the same response every call (mock returns `responses[0]` regardless of callIdx) so the bug is masked in that test. The other two useSkillReload tests (version bump, status flip) use the callIdx queue pattern with `responses[idx] ?? []` — a third empty poll DOES call setSkills([]), but the assertions only inspect skillReloadStatus, not skills, so the wipe is unobserved."
-    artifacts:
-      - path: "web/src/hooks/useSkillReload.ts"
-        issue: "Line 148: `if (!cancelled) useAppStore.getState().setSkills(summaries)` — no guard against transient empty list when current skills list is non-empty."
-      - path: "web/src/__tests__/useSkillReload.test.tsx"
-        issue: "Lines 138-141: manifest test mocks fetch to return `responses[0]` always (no callIdx counter), so the wipe never fires in this test. Lines 41-47 + 89-95: version/status tests DO exercise the wipe, but don't assert against skills."
-    missing:
-      - "Guard: skip setSkills dispatch when summaries.length === 0 AND current.length > 0 (treat as transient glitch per the bug fix sketch in 05-REVIEW.md lines 99-103)."
-      - "Extend the useSkillReload manifest test to use vi.waitFor against useAppStore.getState().skills rather than wall-clock time, OR queue enough responses to outlast the wait window."
-deferred: []
-human_verification:
-  - test: "Switch between two sessions in the live UI: type and send a message in session A, click 新建会话 in the left sidebar, type and send a message in session B, click back to session A in the 会话 list. Observe whether session A's previously-streamed messages are present."
-    expected: "If CR-01 fix is missing (current state), session A's messages are gone — only session B's messages remain. The assistant message bubble and any stream history vanishes when activeSessionId flips."
-    why_human: "Cannot verify programmatic message-loss for useChat's internal Chat instance from a static check alone — requires the React runtime. The vitest suite does not mount <App> at the level needed."
-  - test: "Watch the LeftSidebar 技能 block and the chat-input Skill selector while the backend restarts (or while /api/skills returns [] for a single tick — easiest: open DevTools → Network, block the GET /api/skills response for one cycle)."
-    expected: "Skills vanish from both UI surfaces for one poll cycle, then reappear. currentSkillId remains valid even when the list temporarily empties."
-    why_human: "Timing-sensitive behavior not exercised by unit tests; visual UI confirmation required."
+  driver: "Independent re-verification confirmed every fix is wired into the actual code (not just claimed in 05-08-SUMMARY.md). App.tsx imports Chat + uses chatMapRef; useSkillReload.ts has the summaries.length guard + consecutiveFailures counter; new App.test.tsx is present and includes the CR-01 round-trip case; 32 files / 219 tests pass; tsc --noEmit exit 0; backend files (internal/, cmd/) untouched since f8ca4f7."
 ---
 
 # Phase 5: Skill Platform, Full Knowledge Boundaries — Verification Report (RE-VERIFICATION)
 
 **Phase Goal:** Promote SkillForge from "one Skill" to a true Skill-driven platform — semantic routing across multiple Skills, hot reload of in-flight Skills, a Skill Wizard that generates a `SKILL.md` from natural language, the full 4-tier knowledge boundary system with conflict surfacing, and an Agent state inspector.
 
-**Verified:** 2026-08-13T15:55:00Z (RE-VERIFICATION, after code review surfaced CR-01 + CR-02)
+**Verified:** 2026-08-13T14:00:00Z (RE-VERIFICATION, after Plan 05-08 gap closure)
 
-**Status:** gaps_found
+**Status:** passed
 
 **Mode:** mvp
 
 ---
 
-## 1. Verification Scope
+## 1. Re-Verification Scope
 
-This is a **re-verification** triggered by `05-REVIEW.md` (commit 8462409, 2026-08-13T15:30, 11 files standard-depth review). The original verification (2026-08-12) marked Phase 5 PASS at 8/8 ROADMAP SCs. The review traced two critical claims to actual `@ai-sdk/react@4.0.62` source and FE regression tests, finding both to be FALSE in production code despite the green test suite.
+This re-verification closes the two critical findings (CR-01 BLOCKER + CR-02 WARN) and the 7 cleanup items (WR-01/02/03/04/05 + IN-01/03/04) addressed by **Plan 05-08** (gap-closure plan, executed in commit `88e1a10` + `78f5bcd` + `f045004` + `bc12e61`, merged via `bb363dd`).
 
-The previous VERIFICATION's `passed` verdict was anchored on the assumption that "Vercel AI SDK v5 retains per-id message state in its in-memory chatStore." That assumption is not accurate for the installed React hook (`@ai-sdk/react@4.0.62`), where `shouldRecreateChat` allocates a new `Chat()` on every id change with empty messages.
+Independently verified against actual code (not `05-08-SUMMARY.md` claims):
 
-This re-verification confirms:
-- ROADMAP SCs 1-8 are still structurally PASS at the BE level (the platform capability is built).
-- Plan 05-07 must_have "Switching sessions swaps the active useChat instance; each session's messages are independent and in-memory (lost on refresh)" is **NOT met** at runtime — directly conflicts with @ai-sdk/react@4.0.62 behavior verified at the source level.
-- Plan 05-07 must_have "Skill surfaces read the LIVE GET /api/skills" has a related fragility (CR-02) — the data path works, but a transient empty response wipes the live list.
+| Verification step | Evidence source |
+|---|---|
+| CR-01 fix is in the code | `web/src/App.tsx:21` imports `Chat` from `@ai-sdk/react`; `:66` declares `chatMapRef`; `:74` calls `useChat({ chat })` (no `id` prop) |
+| CR-01 integration test exists and exercises round-trip | `web/src/__tests__/App.test.tsx:74-123` test (3) "retains session A messages after switching to session B and back" — sends SENTINEL-MESSAGE-A, creates session B, asserts A's bubble hidden, clicks A back, asserts A's bubble STILL present |
+| CR-02 transient-empty guard | `web/src/hooks/useSkillReload.ts:185-188` `const currentSkills = useAppStore.getState().skills; if (summaries.length > 0 \|\| currentSkills.length === 0)` |
+| CR-02 test exists | `web/src/__tests__/useSkillReload.test.tsx:190-225` seeds `skills=[s1]`, mocks `[]` on every call, waits 120ms, asserts `skills` still has length 1 with `id='s1'` |
+| IN-04 consecutive-failure counter | `web/src/hooks/useSkillReload.ts:141` declaration; `:150-153` increment + threshold dispatch; `:158-160` reset on first OK; `:217-220` catch-branch increment |
+| IN-04 test exists | `web/src/__tests__/useSkillReload.test.tsx:227-250` mocks `ok: false`, asserts `skillServiceOffline === true` |
+| Offline banner rendered | `web/src/components/layout/LeftSidebar.tsx:174-181` conditional `{skillServiceOffline && <div data-testid="skill-service-offline-banner">无法连接到 Skill 服务 — 显示的内容可能已过时</div>}` |
+| stripFsPath shared utility | `web/src/lib/stripFsPath.ts` exists with `export function stripFsPath`; `LeftSidebar.tsx:30` and `ReloadToast.tsx:28` both import it; `ReloadToast.tsx` no longer has inline `function stripFsPath` (grep returns 0 hits) |
+| WR-04 flattenError | `LeftSidebar.tsx:44-48` `flattenError(s)` strips FS path, replaces `\r?\n` with space, truncates to 160 chars + `…`; applied at `:200` in `title={failed && skill.error ? \`加载失败：${flattenError(skill.error)}\` : undefined}` |
+| × delete button | `LeftSidebar.tsx:125-134` renders `<button data-testid="left-sidebar-session-delete">` with `e.stopPropagation()` + `deleteSession(s.id)` |
+| Boot session '会话 1' | `app-store.ts:194` `sessions: [{ id: INITIAL_SESSION_ID, name: '会话 1', createdAt: Date.now() }]` |
+| Stale currentSkillId clear | `ChatInput.tsx:90-93` `useEffect([currentSkillId, skills])` that calls `setCurrentSkill(null)` when `currentSkillId !== null && !skills.some(...)` |
+| Manifest test hardened | `useSkillReload.test.tsx:161-168` uses `callIdx` counter returning `responses[idx] ?? responses[0]`; `:178-187` `vi.waitFor` against `useAppStore.getState().skills` |
+| FROZEN_TS in test fixtures | `ChatInput.test.tsx:22`, `LeftSidebar.test.tsx:26`, `SkillManagerMenu.test.tsx:20` each declare `const FROZEN_TS = 1700000000000;` and use it in seed/reset blocks |
+| Backend invariance | `git diff --name-only f8ca4f7..HEAD -- internal/ cmd/` returns 0 files. The 17 changed files are all under `web/src` + `.planning/` + `web/package-lock.json` |
+| Typecheck | `cd web && npx tsc --noEmit` → EXIT 0 |
+| Test suite | `cd web && npx vitest run` → **32 files / 219 tests pass** (matches the planned 209 baseline + 10 new: 4 App + 1 ChatInput stale-id + 2 useSkillReload + 3 LeftSidebar) |
+| App.test.tsx timing resilience | Run 5/5 consecutive runs all pass (verified live) |
 
 ---
 
-## 2. ROADMAP Success Criteria — Goal-Backward Matrix
+## 2. Re-Verification Against Must-Haves
 
-| # | Success Criterion (ROADMAP.md:127-133) | Status | Evidence |
+### 2.1 Plan 05-08 Must-Haves (gap-closure)
+
+Loaded from `05-08-PLAN.md` frontmatter — all 8 must_haves now verified against actual code:
+
+| # | Truth | Status | Evidence |
 |---|---|---|---|
-| **SC-1** | With two Skills installed, an ambiguous query routes to the right Skill by description semantic match — trace shows score + selected Skill (SYSK-05) | **VERIFIED** (code-level; bundled sample count observation in §6) | `internal/skill/router.go:37` `AmbiguityLowFloor=0.4`, `:47` `AmbiguityMargin=0.08`; cosine via `vecmath.Cosine`; `internal/server/chat.go:132` guard; routing decision emitted BEFORE VerdictPipeline. Router tests green (`go test ./internal/skill/`). |
-| **SC-2** | Editing a SKILL.md on disk triggers fsnotify reload; next query after 1s debounce uses the new behavior (SYSK-04) | **VERIFIED** | `internal/skill/registry.go:42` `ReloadDebounce = 1*time.Second`; `:90` `atomic.Pointer[map[string]*Entry]` lock-free snapshot; `:131` `fsnotify.NewWatcher` directory watch; `:373` `time.AfterFunc` debounce. BE has `internal/server/skills.go` exposing registry-backed GET /api/skills with `version` field for diff-based polling (POST /api/skills/reload 404 retired per 05-07). `TestRegistry_Reload_Debounce` passes; `TestRegistry_Reload_ValidationFailure_KeepsOld` passes. (Symlink test skipped on Windows — code compiled in.) |
-| **SC-3** | Skill Wizard takes NL input → emits validated `SKILL.md` passing Phase 2 validator (SYSK-06) | **VERIFIED** | BE: `internal/server/skills.go:230` `wizardHandler` (preview) + `:230+` `wizardCommitHandler` (atomic write + Loader rescan — fix af1ca9a closed UAT #9 registration loop); `internal/skill/wizard.go:114` `Wizard.Generate` (LLM + structured output + retry); `server.go:202-203` route registration; V12 path-traversal guard. FE: 5-step interview via `useWizard.ts`. UAT #8/9/10 all pass live. |
-| **SC-4** | Live Agent State Inspector shows current turn's tool calls / retrievals / reasoning (AGNT-06) | **VERIFIED** | `internal/server/chat.go:178-230` emits `data-decision` chunks BEFORE VerdictPipeline. FE: `web/src/components/inspector/AgentInspector.tsx` builds an Accordion from `useChat.messages` parts (D14: messages live in useChat, store stays metadata-only). `AgentInspector.test.tsx` 8/8 pass; UAT #6 confirms live via direct POST /api/chat (MockChatTransport dev limitation acknowledged). |
-| **SC-5** | Knowledge graph browser shows tier → doc → chunk; clicking a chunk reveals its citations (KNOW-06) | **VERIFIED** (after 2026-08-13 fix) | Graph endpoint live: `internal/server/knowledge.go:75` `graphHandler`. FE: `web/src/components/graph/KnowledgeGraphBrowser.tsx` 3-level Accordion + filter. **Chunk-content gap closed by UAT #4 fix (commits 8939a74 BE + aec582e FE)**: GET `/api/knowledge/chunk/:id` returns verbatim text; `chunk-lookup.ts` async-fetches on fixture-miss; `ChunkSourceView` renders body. `KnowledgeGraphBrowser.test.tsx` green. |
-| **SC-6** | Policy conflict (权威 vs 历史) surfaces counter-evidence as annotation, NOT grounding (CMPL-06, D5-13) | **VERIFIED** — structural | `internal/server/annotate.go:71` signature `emitCounterEvidence(ctx, c, qvec, now)` — **no chunksByID parameter**. Compiler rejects any leak. `:76` queries `["历史"]` only. `pipeline.go:267-269` invokes AFTER `emitVerdictStream`. FE `CounterEvidenceCard.test.tsx` 9/9 pass; `MessageBubble.tsx:33-77` dispatcher routes `decision="counter_evidence"` to `CounterEvidenceCard`. The moat IS the signature. |
-| **SC-7** | Conditional redline rewrites on 不合规/需补充 only (CMPL-07, D5-14) | **VERIFIED** — structural | `internal/server/redline.go:108-110`: first executable line is the gate `if v.Status != verdict.NonCompliantStatus && v.Status != verdict.DowngradeStatus { return nil }` — BEFORE any LLM call, BEFORE any wire emit. `TestRedline_Conditional` covers `compliant_skips_LLM`, `non_compliant_fires_LLM`, `needs_info_fires_LLM`. FE `RedlineCard.test.tsx` 12/12 pass; `MessageBubble.tsx:87-96` dispatcher. |
-| **SC-8** | Querying chunks whose `effective_to < today` yields zero (CMPL-08) | **VERIFIED** | `pipeline.go:155` `now := time.Now().Unix()` computed ONCE at pipeline entry (T-5-10 / D5-15); `:156` passed to `Retriever.Search(qvec, tiers, 5, now)`; backend applies `effective_to < today` as PRE-filter (Milvus + Mongo). Zero results for expired rows, NEVER a post-filter fallback. |
+| **05-08-T1** | Switching sessions retains the prior session's in-memory messages; CR-01 closed | ✓ VERIFIED | `App.tsx:66-73` chatMapRef + useMemo; `App.test.tsx:74-123` round-trip test passes 5/5 consecutive runs |
+| **05-08-T2** | A transient empty /api/skills response does NOT wipe store.skills; CR-02 closed | ✓ VERIFIED | `useSkillReload.ts:185-188` guard; `useSkillReload.test.tsx:190-225` transient-empty test passes |
+| **05-08-T3** | App.test.tsx mounts <App>, sends in session A, switches to B and back, asserts message presence | ✓ VERIFIED | `App.test.tsx` test (3) lines 74-123 — `SENTINEL-MESSAGE-A` survives the round-trip |
+| **05-08-T4** | Stale currentSkillId auto-cleared (WR-02 closed) | ✓ VERIFIED | `ChatInput.tsx:90-93` useEffect + `ChatInput.test.tsx:107-127` stale-id-clear case passes |
+| **05-08-T5** | FS paths stripped + multi-line flattened in title (WR-01+04 closed) | ✓ VERIFIED | `stripFsPath.ts` module + `LeftSidebar.tsx:30,44-48,200` flattenError + `LeftSidebar.test.tsx:191-213` stripFsPath case passes |
+| **05-08-T6** | deleteSession reachable via × button per session row (IN-01 closed) | ✓ VERIFIED | `LeftSidebar.tsx:125-134` × button + `LeftSidebar.test.tsx:161-181` delete-button case passes |
+| **05-08-T7** | Boot session named '会话 1' (IN-03 closed) | ✓ VERIFIED | `app-store.ts:194` name='会话 1'; `useAppStore.getState()` returns `{ name: '会话 1', ... }` after reset |
+| **05-08-T8** | Loud offline banner after 3 consecutive failures (IN-04 closed) | ✓ VERIFIED | `useSkillReload.ts:141,150-153` counter + threshold + `LeftSidebar.tsx:174-181` banner + `useSkillReload.test.tsx:227-250` consecutive-failure case + `LeftSidebar.test.tsx:183-189` banner case |
 
-**Score: 8/8 ROADMAP Success Criteria VERIFIED at the structural level.** The platform capabilities (routing, hot reload, wizard, inspector, graph, counter-evidence, redline, version filtering) are all present in code with confirmed wiring.
+**Score: 8/8 Plan 05-08 must_haves VERIFIED.**
 
----
+### 2.2 Plan 05-07 Must-Haves (UAT #2 — D5-IA-01/03/04/06)
 
-## 3. Plan 05-07 Must-Haves (D5-IA-01/03/04/06 — UAT #2 Gap Closure)
+CR-01 was the only gap from the previous verification. All 10 Plan 05-07 must_haves now verified:
 
-Loaded from `05-07-PLAN.md` frontmatter:
-
-| # | Must-Have Truth | Status | Evidence |
+| # | Truth | Status | Evidence |
 |---|---|---|---|
-| 05-07-T1 | Skill selector lives in chat-input area (NOT a separate top-right dropdown) | **VERIFIED** | `web/src/components/chat/ChatInput.tsx` `chat-input-current-skill` is the clickable trigger; popover lists `store.skills`; click sets `currentSkillId`. Old fixture-based lookup REMOVED. |
-| 05-07-T2 | Selecting a Skill sets `useAppStore.currentSkillId` | **VERIFIED** | `ChatInput.test.tsx:77-90` asserts `useAppStore.getState().currentSkillId === 's1'` after click. Green. |
-| 05-07-T3 | Session list always visible in left sidebar 会话 block (NOT a drawer, NOT in chat header) | **VERIFIED** | `LeftSidebar.tsx` 4-section: 新建会话 button + 会话 block + 文件 block + 技能 block. `RightChat.tsx` SessionPicker usage REMOVED from header (now in `LeftSidebar.tsx` as a `<ul>`). `SkillManagerMenu.test.tsx` rewritten; `LeftSidebar.test.tsx` 8/8 pass. |
-| 05-07-T4 | Clicking 新建会话 at the top of the left sidebar creates a new session and makes it active | **VERIFIED** | `LeftSidebar.test.tsx:51-60` asserts `sessions.length` increases by 1, `activeSessionId` changes to the new id. Green. `app-store.ts:216-224` `createSession()` does append + setActive. |
-| 05-07-T5 | **Switching sessions swaps the active useChat instance; each session's messages are independent and in-memory (lost on refresh)** | **FAILED** | See §4 — CR-01. `useChat({ id: activeSessionId })` in `@ai-sdk/react@4.0.62` recreates `Chat` on every id change (verified at `node_modules/@ai-sdk/react/dist/index.js:326-328`). Messages lost on EACH switch, not only on refresh. No test exercises this behavior. |
-| 05-07-T6 | Topbar Skill 管理 menu shows ONLY 新建 Skill（向导） entry | **VERIFIED** | `SkillManagerMenu.tsx` is now wizard-only: per-skill `<ul>` + 全部重载 button + reloadPath + `__fixtures__/skills.json` import REMOVED. Test `SkillManagerMenu.test.tsx:6 cases` asserts `skill-manager-reload-all` is null and `skill-manager-item` rows are absent. |
-| 05-07-T7 | All Skill surfaces read LIVE `GET /api/skills` (item.manifest.*), NOT `__fixtures__/skills.json` | **VERIFIED** — with WARN (CR-02) | `useSkillReload.ts:142` normalizes `item.manifest?.description` (per BLOCKING CONSTRAINT); `setSkills` dispatched every tick. `SkillManagerMenu.tsx` + `ChatInput.tsx` + `LeftSidebar.tsx` 技能 block all read `store.skills`. Fixture imports = 0. WARN: `setSkills` is unconditional on transient empty responses (CR-02). |
-| 05-07-T8 | No HTTP request to `/api/skills/reload` (dead 404 route retired, 全部重载 removed) | **VERIFIED** | `grep "api/skills/reload" web/src/components/layout/SkillManagerMenu.tsx` returns 0 hits. `SkillManagerMenu.test.tsx` asserts `queryByTestId('skill-manager-reload-all')` is null. |
-| 05-07-T9 | RightChat header is read-only badge (SessionPicker + default SkillPicker removed) | **VERIFIED** | `RightChat.tsx` header is `data-testid="right-chat-badge"` with active session name + current skill name. `SkillPicker` COMPONENT file retained (RoutingTracePart ambiguity mode) but USAGE in header is gone. |
-| 05-07-T10 | LeftSidebar 4-stacked sections (新建会话 / 会话 / 文件 / 技能) | **VERIFIED** | `LeftSidebar.test.tsx:8/8` covers all 4 sections including 新建会话 button + 4-tier SOURCES 权威/历史/个人/草稿 + 已加载/加载失败（旧版可用） status badges. |
+| **05-07-T1** | Skill selector lives in chat-input area | ✓ VERIFIED | `ChatInput.tsx:153-203` chat-input-current-skill trigger + popover reading `store.skills` |
+| **05-07-T2** | Selecting a Skill sets `currentSkillId` | ✓ VERIFIED | `ChatInput.test.tsx:85-98` asserts `currentSkillId === 's1'` after click; green |
+| **05-07-T3** | Session list always visible in left sidebar | ✓ VERIFIED | `LeftSidebar.tsx` 4-section layout; `SkillManagerMenu.test.tsx` per-skill list removed |
+| **05-07-T4** | Clicking 新建会话 creates new session and makes it active | ✓ VERIFIED | `LeftSidebar.test.tsx:60-69` asserts length grows + activeSessionId flips; `createSession()` appends + sets active |
+| **05-07-T5** | **Switching sessions retains in-memory messages** (was CR-01 FAILED, now closed via 05-08-T1) | ✓ VERIFIED | `App.tsx` per-session Chat map + `App.test.tsx:74-123` round-trip |
+| **05-07-T6** | Topbar Skill 管理 menu shows ONLY 新建 Skill（向导） | ✓ VERIFIED | `SkillManagerMenu.test.tsx:77-95` wizard-only assertions hold |
+| **05-07-T7** | All Skill surfaces read LIVE GET /api/skills | ✓ VERIFIED | `useSkillReload.ts` normalizes item.manifest.description; surfaces read `store.skills`; CR-02 transient-empty guard prevents wipe |
+| **05-07-T8** | No request to /api/skills/reload (dead 404 retired) | ✓ VERIFIED | `grep` returns 0 hits; `skill-manager-reload-all` null in tests |
+| **05-07-T9** | RightChat header is read-only badge | ✓ VERIFIED | `RightChat.tsx` right-chat-badge; SessionPicker usage gone from header |
+| **05-07-T10** | LeftSidebar 4-stacked sections (新建会话 / 会话 / 文件 / 技能) | ✓ VERIFIED | `LeftSidebar.test.tsx` 8/8 original + 3/3 new (delete + banner + stripFsPath) = 11/11 pass |
 
-**Score: 9/10 must-haves VERIFIED.** One FAILED (T5 session messages).
+**Score: 10/10 Plan 05-07 must_haves VERIFIED.** (Was 9/10 with T5 FAILED.)
 
----
+### 2.3 ROADMAP Success Criteria (SC-1..SC-8)
 
-## 4. Critical Findings (from 05-REVIEW.md commit 8462409)
+Backend invariance confirmed (no `internal/` or `cmd/` files modified since `f8ca4f7`). All 8 ROADMAP SCs remain structurally verified per the previous report (unchanged because Plan 05-08 is frontend-only):
 
-### 4.1 CR-01 — Session-scoped useChat loses messages on every switch
-
-**Source-level evidence (this re-verification independently confirms the reviewer's finding):**
-
-```js
-// web/node_modules/@ai-sdk/react/dist/index.js:314-330
-const chatOptions = {
-  ...options,
-  transport: { /* ... wrapped to use latestRef ... */ },
-  // ... onToolCall, onData, onFinish, onError wrappers ...
-};
-const chatRef = useRef2(
-  "chat" in options ? options.chat : new Chat(chatOptions)
-);
-const shouldRecreateChat =
-  "chat" in options && options.chat !== chatRef.current ||
-  "id" in options && options.id != null && chatRef.current.id !== options.id;
-if (shouldRecreateChat) {
-  chatRef.current = "chat" in options ? options.chat : new Chat(chatOptions);
-}
-```
-
-`web/src/App.tsx:62` passes `useChat({ id: activeSessionId, transport })`. When `activeSessionId` changes:
-1. `shouldRecreateChat` evaluates to `true` (because `chatRef.current.id !== options.id`).
-2. `chatRef.current = new Chat(chatOptions)` is allocated.
-3. `chatOptions` does NOT include `messages` — the constructor `Chat({ ...init })` (line 259) takes `messages` separately, but the `chatOptions` spread only puts in transport/callbacks. The new Chat has empty messages.
-4. All previously-streamed messages in the previous session become unreachable.
-
-There is **no** chatStore, allChats, registry, messageCache, or perId mechanism in `@ai-sdk/react` (verified via grep across the package: `chatStore|allChats|registry|messageCache|perId` returns 0 hits in `node_modules/@ai-sdk/react/src/` and `dist/`). The "Vercel AI SDK v5 retains per-id message state" claim in `web/src/App.tsx:8-11` and `:56-60` is FACTUALLY WRONG for the installed React hook.
-
-**Note:** "AI SDK v5" in PROJECT.md / Phase 4 communications refers to the UIMessageChunk **wire format** (product-code-name), NOT the npm package version. The installed React SDK is `@ai-sdk/react@4.0.62` (verified via `node_modules/@ai-sdk/react/package.json`). The original verification read "AI SDK v5" as the npm version and assumed a chatStore semantics that does not exist in v4.
-
-**Test coverage gap:** No `App.test.tsx` exists. `LeftSidebar.test.tsx` + `ChatInput.test.tsx` only exercise store mutations — `createSession`, `setActiveSession`, `setCurrentSkill`. None of them mount `<App>` and assert that messages persist across an `activeSessionId` flip. The bug is unverified by tests because no test touches the runtime behavior.
-
-**User-visible impact:** Type messages in session A → click 新建会话 (creates session B + flips activeSessionId) → click the session A row in the LeftSidebar to switch back → session A's messages are gone. The user sees an empty chat bubble where they had conversation a moment ago. This directly violates the must_have "each session's messages are independent and in-memory (lost on refresh **only**)".
-
-**Fix sketch (per 05-REVIEW.md lines 64-77):** Maintain `useRef<Map<string, Chat<UIMessage>>>` keyed by session id; pass the existing Chat instance via `chat` prop instead of `id`. The `chat` prop is preserved while `id` triggers recreation. Add an integration test that actually exercises the switch.
-
-### 4.2 CR-02 — useSkillReload.tick() wipes the live skill list on transient empty response
-
-**File:** `web/src/hooks/useSkillReload.ts:147-149`
-
-```ts
-if (!cancelled) {
-  useAppStore.getState().setSkills(summaries);
-}
-```
-
-When `summaries.length === 0` (transient response), this dispatch replaces the live `store.skills` with `[]` even when the prior list had entries. Visible symptoms:
-- LeftSidebar 技能 block (line 144+) renders the empty branch "尚未安装任何 Skill".
-- ChatInput selector (`chat-input-current-skill`) shows the muted empty row (line 92-97 ChatInput.test.tsx).
-- RightChat badge shows "未选择 Skill" (`RightChat.tsx` `right-chat-badge` fallback).
-- `useAppStore.currentSkillId` is silently stale — it points to an id that is no longer in `store.skills`.
-
-**Test mask:** `web/src/__tests__/useSkillReload.test.tsx:138-141` manifest test mocks fetch to return `responses[0]` always (no `callIdx` counter), so the wipe never fires in this test. Other two tests (`TestRegistry_Reload_Debounce` analog lines 33-67 + `ok→failed` lines 69-111) DO use the `responses[idx] ?? []` pattern that returns `[]` for index-out-of-range — but the assertions only inspect `skillReloadStatus`, not `skills`. The wipe is unobserved.
-
-**Fix sketch (per 05-REVIEW.md lines 92-103):** Skip `setSkills` dispatch when `summaries.length === 0 && current.length > 0`. Extend the manifest test to either queue enough responses OR use `vi.waitFor()` against the actual store state.
-
----
-
-## 5. Phase 5 Requirement ID Traceability
-
-Per `REQUIREMENTS.md` lines 153-237 (Phase 5 column), 8 requirement IDs map to this phase:
-
-| Requirement | Title | ROADMAP SC | Status |
+| # | Success Criterion | Status | Evidence (unchanged from prior — see full table in §2 of original report) |
 |---|---|---|---|
-| **SYSK-04** | Hot-reload Skills | SC-2 | Satisfied |
-| **SYSK-05** | Multi-Skill routing | SC-1 | Satisfied (capability shipped; only 1 sample bundled — see §6) |
-| **SYSK-06** | Skill Wizard | SC-3 | Satisfied (UAT #8/9/10 PASS live) |
-| **AGNT-06** | Agent state inspector | SC-4 | Satisfied |
-| **KNOW-06** | Knowledge graph browser | SC-5 | Satisfied (post 8939a74/aec582e fix) |
-| **CMPL-06** | Counter-evidence ≠ grounding | SC-6 | Satisfied (structural signature moat) |
-| **CMPL-07** | Conditional redline | SC-7 | Satisfied (first-line gate structural) |
-| **CMPL-08** | Effective-to filtering | SC-8 | Satisfied (PRE-filter structural) |
+| **SC-1** | Ambiguous query routes to right Skill by description semantic match (SYSK-05) | ✓ VERIFIED | `internal/skill/router.go:37` + `internal/server/chat.go:132` guard; router tests green |
+| **SC-2** | Editing SKILL.md triggers fsnotify reload; next query uses new behavior (SYSK-04) | ✓ VERIFIED | `internal/skill/registry.go:42,90,131,373`; ReloadDebounce + atomic.Pointer + fsnotify |
+| **SC-3** | Skill Wizard takes NL → emits validated SKILL.md (SYSK-06) | ✓ VERIFIED | `internal/server/skills.go:230` + `internal/skill/wizard.go:114`; UAT #8/9/10 pass |
+| **SC-4** | Live Agent State Inspector (AGNT-06) | ✓ VERIFIED | `internal/server/chat.go:178-230` emits data-decision; `AgentInspector.tsx` |
+| **SC-5** | Knowledge graph browser with chunk citations (KNOW-06) | ✓ VERIFIED | `internal/server/knowledge.go:75` graphHandler + `ChunkSourceView` renders verbatim text |
+| **SC-6** | Counter-evidence ≠ grounding (CMPL-06) | ✓ VERIFIED | `internal/server/annotate.go:71` signature moat + CounterEvidenceCard dispatcher |
+| **SC-7** | Conditional redline on 不合规/需补充 (CMPL-07) | ✓ VERIFIED | `internal/server/redline.go:108-110` first-line gate; RedlineCard dispatcher |
+| **SC-8** | Effective-to < today yields zero (CMPL-08) | ✓ VERIFIED | `pipeline.go:155` now := time.Now().Unix() + PRE-filter |
+
+**Score: 8/8 ROADMAP Success Criteria STRUCTURALLY VERIFIED.**
+
+---
+
+## 3. Requirements Coverage
+
+| Requirement | ROADMAP SC | Status | Evidence |
+|---|---|---|---|
+| **SYSK-04** Hot-reload Skills | SC-2 | ✓ Satisfied | ReloadDebounce + atomic.Pointer + fsnotify; ReloadToast consumer; useSkillReload polling (05-08 tightened CR-02 guard) |
+| **SYSK-05** Multi-Skill routing | SC-1 | ✓ Satisfied | Router with cosine + ambiguity floor; routing decision emitted before VerdictPipeline |
+| **SYSK-06** Skill Wizard | SC-3 | ✓ Satisfied | wizardHandler + Wizard.Generate; UAT #8/9/10 pass live |
+| **AGNT-06** Agent state inspector | SC-4 | ✓ Satisfied | data-decision chunks + AgentInspector Accordion |
+| **KNOW-06** Knowledge graph browser | SC-5 | ✓ Satisfied | graphHandler + 3-level Accordion + ChunkSourceView |
+| **CMPL-06** Counter-evidence ≠ grounding | SC-6 | ✓ Satisfied (structural) | annotate.go signature moat |
+| **CMPL-07** Conditional redline | SC-7 | ✓ Satisfied (structural) | redline.go first-line gate |
+| **CMPL-08** Effective-to filtering | SC-8 | ✓ Satisfied | PRE-filter now := time.Now().Unix() |
 
 All 8 Phase 5 requirement IDs accounted for. No orphans.
 
 ---
 
-## 6. Observations (non-blocking, for the record)
+## 4. Anti-Patterns
 
-### 6.1 Bundled sample Skill count (SC-1 wording)
+Grep across `web/src/**/*.{ts,tsx}` for debt markers:
 
-**Observation:** `skills/` ships with exactly one sample (`skills/compliance/SKILL.md`). SC-1's strict text references "two Skills installed (compliance + general QA)". Reuse model: a second sample can be added via the Skill Wizard (SC-3) in <5 minutes without code changes.
+- `TBD|FIXME|XXX|HACK|PLACEHOLDER|coming soon|will be here|not yet implemented` → 0 hits
+- `TODO` → 0 hits
 
-**Assessment:** Non-blocking. Routing capability is structurally verified across N Skills; the demo corpus happens to be 1 sample.
-
-### 6.2 SC-5 "reveals its citations" wording
-
-**Observation:** ROADMAP SC-5 says "clicking a chunk reveals its citations." `ChunkSourceView` renders the chunk's verbatim text + TierBadge + VersionBadge + 生效日期 + 失效日期 — i.e., what is citable ABOUT the chunk. It does NOT show reverse citations (which verdicts cited this chunk).
-
-**Assessment:** Non-blocking. `REQUIREMENTS.md:37` KNOW-06 = "User can browse the knowledge graph (tier + doc + chunk relationships) in the UI" — met. UI-SPEC §SC-5 explicitly narrows to "navigate to ChunkSourceView." If the original wording intended reverse-citation tracking, that is a separate data path not in Phase 5 scope.
-
-### 6.3 MockChatTransport dev limitation (SC-4 live verification)
-
-**Observation:** `web/src/App.tsx:54` defaults `env: 'dev'` on Vite's PROD flag — Vite dev uses `MockChatTransport`, which has no `data-decision` parts in fixtures. The dev UI cannot demonstrate SC-4 (routing trace → Agent Inspector Accordion) without overriding `env=prod` or reading direct `/api/chat` on :8888.
-
-**Assessment:** Non-blocking. Backend POST `/api/chat` does emit `data-decision` + `data-policy` + `data-redline` + finish-step live (re-confirmed via curl in UAT #6/11). The dev-mode mock is a documented limitation, not a Phase 5 regression.
-
-### 6.4 Pre-existing / unfixed warnings (05-REVIEW.md)
-
-The review surfaced 5 warnings (WR-01 through WR-05) and 4 info findings (IN-01 through IN-04). None are blockers for the Phase 5 goal but are logged for future cleanup:
-
-- WR-01 (LeftSidebar title attribute doesn't sanitize FS paths)
-- WR-02 (stale currentSkillId not cleared when selected skill is removed)
-- WR-03 (useSkillReload manifest test fragility — overlaps with CR-02)
-- WR-04 (title attribute multi-line error rendering)
-- WR-05 (test fixture `originalState` snapshots `Date.now()`)
-- IN-01 (deleteSession unreachable from any UI)
-- IN-02 (LeftSidebar 暂无会话 branch unreachable)
-- IN-03 (inconsistent session naming)
-- IN-04 (silent error swallowing on non-OK /api/skills)
-
-### 6.5 build / typecheck / tests
-
-| Check | Command | Result |
-|---|---|---|
-| Go build | `go build ./...` | **exit 0** |
-| Go test | `go test ./...` | **all packages green** (registry reload tests pass; counter-evidence + redline tests pass; pipeline tests pass) |
-| TS typecheck | `cd web && npx tsc --noEmit` | **exit 0** |
-| Frontend vitest | `cd web && npx vitest run` | **31 files / 209 tests PASS** (no coverage for session message retention) |
+No anti-patterns introduced by Plan 05-08. `console.warn` in ChatInput.tsx:117 is intentional logging for the 10MB file size validation (not a debt marker).
 
 ---
 
-## 7. Gaps Summary
+## 5. Behavioral Spot-Checks
 
-Two critical findings render the Phase 5 goal PARTIALLY achieved at the runtime level, even though every SC and every structural guarantee is met:
-
-1. **CR-01 (BLOCKER, FAILED):** The must_have "Switching sessions swaps the active useChat instance; each session's messages are independent and in-memory (lost on refresh)" is NOT met. The user-visible session-switching feature is broken: every switch wipes prior messages, not just refresh. This is a real user-facing defect, not a stub or hole — the wiring exists, the store contract exists, the SDK just doesn't preserve messages the way the plan said. Fix requires implementation rework (useRef chat-map + `chat` prop + integration test).
-
-2. **CR-02 (WARNING, FAILED):** The must_have "All Skill surfaces read LIVE GET /api/skills" works on the happy path. But `useSkillReload.tick()` unconditionally dispatches `setSkills(summaries)` — transient empty responses wipe the live list. Fragility rather than user-visible failure in the brief window, but the test suite does not catch it (manifest test happens to return the same response every call, masking the wipe).
-
-**Phase 5 goal status:** The "Skill-driven platform thesis" (semantic routing, hot reload, wizard authoring, 4-tier boundaries, counter-evidence, redline, agent inspector) IS delivered at structural level. The user-facing session-switching feature (Plan 05-07's contribution to UAT #2) is broken at runtime. Without a fix, the platform is functional but session-management is misrepresented to operators (the LeftSidebar UI implies per-session message persistence, the must_have claims it, and the SDK does not deliver it). This gap deserves a follow-up plan.
-
-**Recommended remediation (one plan, code-shaped):**
-- Fix CR-01 with `useRef<Map<string, Chat>>` keyed by activeSessionId, pass `chat` prop to useChat. Add `App.test.tsx` integration test that mounts <App>, sends a message, switches sessions, asserts message retention.
-- Fix CR-02 with the empty-list guard. Extend the useSkillReload manifest test to use `vi.waitFor` against the actual store state.
-- Address the 5 warnings + 4 info findings opportunistically while the relevant files are touched.
+| Behavior | Command | Result | Status |
+|---|---|---|---|
+| TypeScript compiles | `cd web && npx tsc --noEmit` | Exit 0 | ✓ PASS |
+| All tests green | `cd web && npx vitest run` | 32 files / 219 tests pass | ✓ PASS |
+| App.test.tsx timing resilience | `for i in 1..5; do npx vitest run src/__tests__/App.test.tsx; done` | 5/5 passes | ✓ PASS |
+| Backend files unchanged | `git diff --name-only f8ca4f7..HEAD -- internal/ cmd/` | Empty output | ✓ PASS |
 
 ---
 
-_Verified: 2026-08-13T15:55:00Z_
-_Verifier: Claude (gsd-verifier, re-verification mode)_
-_Drivers: 05-REVIEW.md commit 8462409 surfaced 2 critical findings; this verification independently traced both against actual code._
+## 6. Verification Summary
+
+**26/26 must-haves verified across:**
+- 8/8 ROADMAP SCs (structural backend capabilities — unchanged from prior report because Plan 05-08 was frontend-only)
+- 10/10 Plan-05-07 must-haves (was 9/10 with T5 FAILED; Plan 05-08 Task 1 closed the CR-01 gap)
+- 8/8 Plan-05-08 must_haves (all new gap-closure items verified against actual code)
+
+**Gaps closed by this re-verification (vs. the prior `gaps_found` report):**
+
+1. **CR-01 (BLOCKER) → closed.** Per-session `Chat<UIMessage>` map kept in `chatMapRef`; `useChat({ chat })` (no `id`); `App.test.tsx:74-123` integration test proves session A's messages survive a round-trip to session B and back. App.test.tsx passes 5/5 consecutive runs (timing-resilient).
+2. **CR-02 (WARN) → closed.** `useSkillReload.tick()` skips `setSkills` when `summaries.length === 0 && currentSkills.length > 0`. New test seeds `[s1]`, mocks `[]` on every call, asserts the seed survives.
+3. **WR-01 → closed.** `web/src/lib/stripFsPath.ts` is the single source; `LeftSidebar` + `ReloadToast` both import from it; the inline `function stripFsPath` in ReloadToast.tsx is gone (grep returns 0 hits).
+4. **WR-02 → closed.** `ChatInput.tsx:90-93` useEffect clears stale `currentSkillId`; new test in `ChatInput.test.tsx:107-127` proves it.
+5. **WR-03 → closed.** `useSkillReload.test.tsx:161-168` callIdx counter + `:178-187` `vi.waitFor` against `useAppStore.getState().skills`. No wall-clock `setTimeout(60)`.
+6. **WR-04 → closed.** `LeftSidebar.tsx:44-48` `flattenError` strips FS path + replaces `\r?\n` with space + truncates to 160 chars + `…`. Applied at `:200` in the `title` attribute.
+7. **WR-05 → closed.** `FROZEN_TS = 1700000000000` declared at module scope in `ChatInput.test.tsx`, `LeftSidebar.test.tsx`, `SkillManagerMenu.test.tsx`; `createdAt: 0`/`createdAt: 1` replaced with `FROZEN_TS`/`FROZEN_TS + 1`.
+8. **IN-01 → closed.** `LeftSidebar.tsx:125-134` `×` button per session row with `e.stopPropagation()` + `deleteSession(s.id)`; new test in `LeftSidebar.test.tsx:161-181` proves session removal without activeSessionId flipping.
+9. **IN-03 → closed.** `app-store.ts:194` boot session renamed to `'会话 1'` (matching `createSession()` convention).
+10. **IN-04 → closed.** `useSkillReload.ts:141,150-153,158-160,217-220` consecutive-failure counter; `LeftSidebar.tsx:174-181` loud banner; new tests in `useSkillReload.test.tsx:227-250` + `LeftSidebar.test.tsx:183-189`.
+
+**No regressions:** all 209 baseline tests still green; no backend modifications; threat model still closed (stripFsPath covers all FS path leaks; currentSkillId clears on staleness; no client-side path construction from user input).
+
+**Phase 5 goal status: ACHIEVED.** The Skill-driven platform thesis (semantic routing, hot reload, wizard authoring, 4-tier boundaries, counter-evidence, redline, agent inspector) is delivered at structural level AND the user-facing session-switching feature (Plan 05-07's contribution to UAT #2) actually works at runtime.
+
+---
+
+## 7. UAT #2 Closure
+
+Plan 05-08 closes the gaps surfaced by `05-REVIEW.md` (commit 8462409) and the prior `05-VERIFICATION.md` (commit f8ca4f7). The 11/11 UAT test count is restored (no regression — the test count baseline of 11 holds because Plan 05-08 fixes the runtime defect that UAT #2 had been tracking, not the count of UAT items).
+
+---
+
+_Verified: 2026-08-13T14:00:00Z_
+_Verifier: Claude (gsd-verifier, re-verification — independent trace against actual code)_
+_Driver: Plan 05-08 (commits 88e1a10, 78f5bcd, f045004, bc12e61) closed the 2 critical findings + 7 of 9 cleanup items from the prior gaps_found report._
