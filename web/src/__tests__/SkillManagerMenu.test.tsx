@@ -1,7 +1,7 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 05-03 Task 2 + Plan 05-07 Task 2 — SkillManagerMenu tests.
+// Plan 05-03 Task 2 + Plan 05-07 Task 2 + Plan 05-08 Task 3 — SkillManagerMenu tests.
 //
 // Plan 05-07 (D5-IA-04 + D5-IA-05) reduces the dropdown to the wizard
 // entry only:
@@ -17,6 +17,7 @@ import '@testing-library/jest-dom/vitest';
 import SkillManagerMenu from '../components/layout/SkillManagerMenu';
 import { useAppStore } from '../store/app-store';
 
+const FROZEN_TS = 1700000000000;
 const originalState = useAppStore.getState();
 
 afterEach(() => {
@@ -28,9 +29,10 @@ afterEach(() => {
     wizardMode: { active: false, step: 0, totalSteps: 0 },
     centerView: { kind: 'empty' },
     skills: [],
-    sessions: [{ id: 'session-init', name: '新会话', createdAt: 0 }],
+    sessions: [{ id: 'session-init', name: '会话 1', createdAt: FROZEN_TS }],
     activeSessionId: 'session-init',
     currentSkillId: null,
+    skillServiceOffline: false,
   });
 });
 
@@ -41,9 +43,10 @@ beforeEach(() => {
     wizardMode: { active: false, step: 0, totalSteps: 0 },
     centerView: { kind: 'empty' },
     skills: [],
-    sessions: [{ id: 'session-init', name: '新会话', createdAt: 0 }],
+    sessions: [{ id: 'session-init', name: '会话 1', createdAt: FROZEN_TS }],
     activeSessionId: 'session-init',
     currentSkillId: null,
+    skillServiceOffline: false,
   });
 });
 

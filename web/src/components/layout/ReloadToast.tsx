@@ -25,19 +25,9 @@ import { useEffect, useRef } from 'react';
 import { CheckCircle2, FileWarning, X } from 'lucide-react';
 import { useAppStore } from '../../store/app-store';
 import type { SkillReloadEntry } from '../../store/app-store';
+import { stripFsPath } from '../../lib/stripFsPath';
 
 const SUCCESS_AUTO_DISMISS_MS = 4000;
-
-/** Strip an absolute filesystem path to its basename. Defensive —
- * the BE LoadError hook may include a path; we never want to leak
- * server filesystem structure into the UI. */
-function stripFsPath(s: string | undefined): string | undefined {
-  if (!s) return s;
-  // Last `/` or `\` wins.
-  const idx = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
-  if (idx < 0) return s;
-  return s.slice(idx + 1);
-}
 
 interface ToastItemProps {
   entry: SkillReloadEntry;
