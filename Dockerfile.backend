@@ -1,0 +1,39 @@
+# SkillForge backend image — multi-stage Go build (D7-04 source build).
+#
+# Build stage: golang:1.25-alpine (matches go.mod `go 1.25.0`).
+# Runtime stage: alpine:3.20 + ca-certificates + tzdata + the static binary
+# + skills/ + knowledge/ (runtime data the loader + indexer scan).
+# CGO_ENABLED=0 is safe because modernc.org/sqlite is pure Go (no cgo).
+# All base images are pinned to specific tags (T-7-OSS-CONTAINER mitigation).
+
+# ---------- build stage ----------
+FROM golang:1.25-alpine AS builder
+WORKDIR /src
+# Copy deps first to leverage the layer cache (go.sum is committed).
+COPY go.mod go.sum ./
+RUN go mod download
+# Bring in the rest of the source (build context is bounded by .dockerignore:
+# backend source + skills/ + knowledge/ + web/ only; .planning/ .git/ .env
+# *.exe node_modules/ web/dist/ are excluded).
+COPY . .
+# Pure-static build:
+#   -trimpath       strips $GOPATH / build-machine paths from the binary
+#   -ldflags="-s -w" strips debug symbols + DWARF table
+#   CGO_ENABLED=0    no cgo -> static binary, runs on alpine/distroless
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/skillforge ./cmd/server
+
+# ---------- runtime stage ----------
+FROM alpine:3.20
+# ca-certificates: the backend dials GLM (https) + the embedding endpoint (https).
+# tzdata: audit timestamps render in the local zone regardless of container UTC.
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+COPY --from=builder /out/skillforge /app/skillforge
+# Runtime data — the Phase 2 cmd/server/main.go hardcodes these relative
+# paths: skill.NewLoader("skills/") + knowledge.Index over "knowledge/".
+# Shipping them in the image means `docker compose up` works without a
+# volume mount for the demo corpus.
+COPY skills/ /app/skills/
+COPY knowledge/ /app/knowledge/
+EXPOSE 8888
+ENTRYPOINT ["/app/skillforge"]
