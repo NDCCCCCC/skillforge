@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Plan 04-01 Task 3 + Plan 04-02 Task 3 + Plan 04-03 Task 2 + Plan
-// 05-03 Task 2 — App composition root. Wires:
+// 05-03 Task 2 + Plan 05-07 Task 1 — App composition root. Wires:
 //   - ThreePanel layout (with extracted TopBar / StatusBar in 05-03)
 //   - useChat + createTransport(env) — chat streaming
+//     (Plan 05-07: id: activeSessionId — Vercel AI SDK v5 per-id
+//     chatStore; switching activeSessionId swaps the in-memory
+//     conversation. Messages are in-memory and lost on refresh —
+//     D5-IA-03 forbids backend ListSessions.)
 //   - useSkillReload — polls /api/skills; updates store.skillReloadStatus
-//     on every version bump or status flip (ok↔failed)
+//     on every version bump or status flip (ok↔failed) AND seeds
+//     store.skills from item.manifest.description
 //   - ReloadToast — surfaces success/failure toasts (auto-dismiss 4s
 //     on success; persistent on failure)
 //   - CenterPanel — 5-tab strip (Phase 5: Agent 状态 + 知识图谱)
@@ -48,7 +53,13 @@ export default function App({ initialMessages }: AppProps) {
 function LiveApp() {
   const env: 'prod' | 'dev' = ((import.meta as unknown) as { env: { PROD?: boolean } }).env.PROD ? 'prod' : 'dev';
   const transport = useMemo(() => createTransport(env), [env]);
-  const { messages, sendMessage, status } = useChat({ transport });
+  // Plan 05-07 (D5-IA-03) — session-scoped useChat. Vercel AI SDK v5
+  // retains per-id message state in its in-memory chatStore while the
+  // hook stays mounted; switching activeSessionId swaps which in-memory
+  // conversation is rendered. Messages are in-memory and lost on refresh
+  // (D5-IA-03) — no backend ListSessions / /api/sessions is added.
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
+  const { messages, sendMessage, status } = useChat({ id: activeSessionId, transport });
   const [currentVerdict, setCurrentVerdict] = useState<Verdict | null>(null);
   const lastCreatedSkill = useAppStore((s) => s.lastCreatedSkill);
   const setLastCreatedSkill = useAppStore((s) => s.setLastCreatedSkill);
