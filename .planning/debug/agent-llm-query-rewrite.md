@@ -1,8 +1,8 @@
 ---
-status: fixed-pending-live-verify-direction-A
-trigger: "Phase 7 live 验证发现 agent RAG 检索对应该回答的查询（如'年假有几天'）返回 unanswered（拒答）。根因已用 scripts/retrieve_probe 实测锁定：embedding/Milvus/检索全健康，唯一问题是 agent 路径 runAgentPath 让 GLM-5.2 自主改写 retrieve query（年假→出差住宿费），召回错文档。"
+status: resolved-encoding-rootcause
+trigger: "Phase 7 live 验证发现 RAG 检索对应该回答的查询（如'年假有几天'）返回 unanswered（拒答）。"
 created: 2026-08-13
-updated: 2026-08-13
+updated: 2026-08-14
 ---
 
 # Debug: agent-llm-query-rewrite
@@ -79,6 +79,26 @@ updated: 2026-08-13
   - `internal/server/pipeline_default_test.go` — 新增 3 个回归测试。
   - `.env.example` — 文档化 USE_AGENT_PATH（默认 unset → VerdictPipeline）。
   - `internal/agent/agent.go` / `internal/agent/retrieve_tool.go` — **无变化**（pre-retrieve 代码 + 系统提示词保持原样，作为 opt-in 实验路径）。
+
+## Post-Resolution (2026-08-14): 真正根因 = 客户端编码（非后端 bug）
+
+切到 VerdictPipeline（方向 A）后，live 验证「年假有几天」**仍然** unanswered。这与 probe（独立 Go 进程，UTF-8 字面量）召回 annual_leave 0.65 矛盾。临时 `[DEBUG-VP]` log 显示 server 召回 anti_corruption_clause.md 0.3094（错 chunk），且**4 次完全一致**（非随机）→ 排除了「embedding 不稳」假设。
+
+**决定性实验**：用 `printf` 强制 UTF-8 body + `-H "Content-Type: application/json"` curl → VerdictPipeline 召回 annual_leave 0.65 → `需补充 0.8 + 引用「结转上限 5 天」` ✅。三个回归 query 全绿（年假 需补充 0.8 / 差旅 需补充 0.95 / 量子力学 low_retrieval_score 拒答）。
+
+**根因**：用户在 PowerShell（GBK codepage 936）里 curl 中文，字节被编成 GBK 发出。Hertz 的 sonic JSON 解码把无效 UTF-8 字节 sanitize 成 U+FFFD → query 变成 U+FFFD 串 → embed 出垃圾向量 → 低分召回 anti_corruption（近似随机向量的 top-1，跟 probe 的「量子力学→anti_corruption 0.26」是同一现象）。证据闭环：(1) `[DEBUG-VP]` query 乱码 = server **真收到**乱码字节，非终端显示问题；(2) 4 次稳定 = GBK 编码确定性；(3) probe 对 = Go 源码字面量 UTF-8 不经 shell/curl；(4) 差旅偶尔 work = 那次用了 UTF-8 shell。
+
+**结论：后端 VerdictPipeline + BGE-M3 embed + Milvus + 检索 + 拒答护城河全部正确。** 前端用 fetch/JSON（UTF-8），真实用户永远不受影响。这是命令行测试的编码陷阱，不是后端代码缺陷。
+
+> 注：agent 路径 runAgentPath 的 LLM query-rewrite 漂移（年假→出差住宿费，probe 证据）仍是**独立的真实问题**，保留为 agent 路径的已知缺陷（opt-in 实验路径，默认不走）。但它**不是**默认路径 unanswered 的根因——默认路径 unanswered 纯粹是编码。
+
+**加固（已实现 + 测试全绿）**：
+- `internal/server/chat.go`：chatHandler 在 `BindAndValidate` **之前**对 raw body 做 `utf8.Valid` 校验，无效 → 400 `"request body must be valid UTF-8"`。必须在 BindAndValidate 前——sonic 在解码时已把无效字节 sanitize 成 U+FFFD，之后无法检测（单元测试 `TestChatHandlerRejectsNonUTF8Query` 探明此行为：放 query 后校验时 sonic 已转 U+FFFD，校验失效，落到 findSkill 的 out_of_scope 而非 400）。
+- `internal/server/chat_utf8_test.go`：`TestChatHandlerRejectsNonUTF8Query`（手搓 GBK body → 断言 400）+ `TestChatHandlerAcceptsUTF8Query`（UTF-8 → 不拒，正对照）。
+- `internal/server/pipeline.go`：删除临时 `[DEBUG-VP]` 诊断 log。
+- 验证：`go build ./...` 绿；`go test ./...` 全仓绿；`go test -race ./internal/server/` 绿；`go vet` 干净。
+
+**Live 验证（PENDING USER）**：重启 server + 用 GBK/PowerShell 中文 curl → 期望 400；用 UTF-8 curl → 期望正常裁决（已确认）。
 
 ## Notes
 

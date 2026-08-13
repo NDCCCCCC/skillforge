@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -84,6 +85,24 @@ const defaultSkill = "compliance"
 // blocks here until SIGINT/SIGTERM — this handler runs on every
 // request concurrently.
 func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
+	// UTF-8 validity guard (BEFORE BindAndValidate). Sonic — Hertz's JSON
+	// decoder — silently replaces invalid UTF-8 bytes in string values with
+	// U+FFFD, so by the time req.Query is populated the original encoding
+	// error is unrecoverable. A Windows shell running a legacy GBK codepage
+	// POSTs "年假有几天" as mojibake bytes; after sonic's sanitization it
+	// becomes a U+FFFD string that embeds to a garbage vector and silently
+	// recalls the wrong chunk (live failure: anti_corruption_clause.md 0.31
+	// instead of annual_leave.md 0.65) — a confidently-wrong verdict that
+	// looks like a RAG bug. Check the RAW request body so the operator gets
+	// an explicit 400 instead. The React frontend sends UTF-8 JSON via
+	// fetch, so legitimate clients never trip this — it catches
+	// misconfigured CLI clients (curl from a non-UTF-8 shell).
+	if raw := c.Request.Body(); len(raw) > 0 && !utf8.Valid(raw) {
+		c.SetStatusCode(http.StatusBadRequest)
+		_ = wire.EmitChunk(c, errorChunk("request body must be valid UTF-8 (client likely sent a legacy codepage such as GBK/Shift-JIS)"))
+		return
+	}
+
 	var req chatRequest
 	if err := c.BindAndValidate(&req); err != nil {
 		// BindAndValidate decodes the JSON body and validates basic types.

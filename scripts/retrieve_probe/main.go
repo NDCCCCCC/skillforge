@@ -54,7 +54,7 @@ func main() {
 
 	// Three probes: a should-hit (annual_leave), a known-good (travel_expense),
 	// and a should-miss control (quantum mechanics). Read-only — no re-seed.
-	queries := []string{"年假", "出差住宿费", "竞业限制", "量子力学"}
+	queries := []string{"年假有几天", "年假", "出差住宿费超过500元合规吗", "量子力学原理"}
 	now := time.Now().Unix()
 
 	for _, q := range queries {
