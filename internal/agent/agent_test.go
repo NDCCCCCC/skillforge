@@ -525,8 +525,8 @@ func TestCritiqueCannotRaiseConfidence(t *testing.T) {
 	a := newAgentForCritique(t, cm)
 
 	original := verdict.Verdict{
-		Status:         "需补充",
-		Confidence:     0.7, // status=需补充 forces critique to run (D3-05 gating)
+		Status:         "需补充", // status=需补充 forces critique to run (D3-05 gating)
+		Confidence:     0.7,
 		Citations:      []verdict.Citation{{ChunkID: "1", Span: "上限", Tier: "权威"}},
 		ReviewRequired: false,
 	}
@@ -785,6 +785,11 @@ func TestAgentRetrievesAndAnswers(t *testing.T) {
 	cm := newMultiTurnStub(t, 1, "出差住宿标准", finalJSON)
 	ret := &stubRetriever{
 		chunksPerCall: [][]retriever.Hit{
+			// Call 0: code-forced pre-retrieve on the ORIGINAL query —
+			// returns chunk 7, which the LLM's own retrieve (call 1)
+			// also returns; dedup leaves acc with the single chunk 7.
+			{{ID: 7, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费每天 500 元。", Score: 0.92}},
+			// Call 1: LLM-driven retrieve (single-hop happy path).
 			{{ID: 7, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费每天 500 元。", Score: 0.92}},
 		},
 	}
@@ -806,7 +811,10 @@ func TestAgentRetrievesAndAnswers(t *testing.T) {
 	require.Len(t, v.Citations, 1)
 	assert.Equal(t, "7", v.Citations[0].ChunkID)
 
-	assert.Equal(t, 1, ret.CallCount(), "agent should call retrieve exactly once in single-hop happy path")
+	// Pre-retrieve (1) + LLM-driven retrieve (1) = 2 Search calls. The
+	// pre-retrieve runs the ORIGINAL query outside the ReAct loop; the
+	// LLM-driven retrieve happens inside the loop (1 hop here).
+	assert.Equal(t, 2, ret.CallCount(), "pre-retrieve (1) + LLM retrieve (1) = 2 Search calls")
 }
 
 // TestAgentRunParsesFencedVerdictGLMShape is the OOS-1 regression test
@@ -904,7 +912,12 @@ func TestMultiHopCitationAggregation(t *testing.T) {
 	cm := newMultiTurnStub(t, 2, "出差住宿", finalJSON)
 	ret := &stubRetriever{
 		chunksPerCall: [][]retriever.Hit{
+			// Call 0: code-forced pre-retrieve on ORIGINAL query — returns
+			// chunk 1, which dedups against the LLM's hop-1 retrieve (call 1).
 			{{ID: 1, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费标准。", Score: 0.85}},
+			// Call 1: LLM retrieve hop 1.
+			{{ID: 1, Tier: "权威", Source: "authority/policy.md", Content: "出差住宿费标准。", Score: 0.85}},
+			// Call 2: LLM retrieve hop 2.
 			{{ID: 2, Tier: "权威", Source: "authority/edge_cases.md", Content: "特殊情况审批流程。", Score: 0.8}},
 		},
 	}
@@ -926,14 +939,21 @@ func TestMultiHopCitationAggregation(t *testing.T) {
 	assert.True(t, citationIDs["1"], "citation from hop 1 (chunk 1) must be present")
 	assert.True(t, citationIDs["2"], "citation from hop 2 (chunk 2) must be present")
 
-	assert.Equal(t, 2, ret.CallCount(), "agent must call retrieve twice in multi-hop path")
+	// Pre-retrieve (1) + LLM retrieve hop 1 (1) + LLM retrieve hop 2 (1) = 3.
+	assert.Equal(t, 3, ret.CallCount(),
+		"pre-retrieve (1) + 2 LLM retrieve hops = 3 Search calls")
 }
 
-// TestMaxStepBlocksThirdHop (ARAG-02 cap) verifies that the MaxStep=6
-// formula caps the agent at exactly 2 retrieve calls — a third retrieve
-// is structurally impossible. The stubChatModel ALWAYS returns a tool
-// call (maxToolCalls=100); without the MaxStep cap, the loop would
-// run indefinitely.
+// TestMaxStepBlocksThirdHop (ARAG-02 cap) verifies that the MaxStep=5
+// formula (MaxHops=2 → MaxStep=2*2+1=5) caps the ReAct-LOOP at exactly 2
+// retrieve calls — a third LOOP retrieve is structurally impossible.
+//
+// Note on the code-forced pre-retrieve (debug: agent-llm-query-rewrite):
+// the pre-retrieve runs ONCE BEFORE the ReAct loop starts and is NOT
+// subject to MaxStep (MaxStep bounds LLM turns within the loop). So the
+// total Retriever.Search call count is 1 (pre-retrieve) + 2 (loop cap) = 3.
+// The stubChatModel ALWAYS returns a tool call (maxToolCalls=100); without
+// the MaxStep cap, the loop would run indefinitely.
 func TestMaxStepBlocksThirdHop(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -945,6 +965,10 @@ func TestMaxStepBlocksThirdHop(t *testing.T) {
 	ret := &stubRetriever{
 		// Return 1 chunk per call so the trust floor does not refuse.
 		chunksPerCall: [][]retriever.Hit{
+			// Call 0: code-forced pre-retrieve (outside the loop).
+			{{ID: 1, Tier: "权威", Source: "authority/x.md", Content: "chunk 1", Score: 0.7}},
+			// Calls 1, 2: LLM-driven retrieves inside the loop (capped at 2 by MaxStep).
+			{{ID: 1, Tier: "权威", Source: "authority/x.md", Content: "chunk 1", Score: 0.7}},
 			{{ID: 1, Tier: "权威", Source: "authority/x.md", Content: "chunk 1", Score: 0.7}},
 		},
 	}
@@ -953,7 +977,7 @@ func TestMaxStepBlocksThirdHop(t *testing.T) {
 		Embedder:  newStubEmbedder(),
 		Retriever: ret,
 		ChatModel: cm,
-		MaxHops:   2, // → MaxStep=6 → caps at 2 retrieve calls
+		MaxHops:   2, // → MaxStep=5 → caps LOOP retrieve at 2 calls
 	}
 	a, err := agent.NewAgent(ctx, cfg)
 	require.NoError(t, err)
@@ -961,11 +985,12 @@ func TestMaxStepBlocksThirdHop(t *testing.T) {
 	// The Run may return a verdict OR a refusal OR an error (the model
 	// bails mid-tool-call when MaxStep hits; the final message may not
 	// parse). This test ONLY asserts that the loop terminates at exactly
-	// 2 retrieve calls — that is the MaxStep cap proof.
+	// 2 LOOP retrieve calls (3 total Search calls including pre-retrieve)
+	// — that is the MaxStep cap proof.
 	_, _, _ = a.Run(ctx, "sess-cap", "any question")
 
-	assert.Equal(t, 2, ret.CallCount(),
-		"D3-02 MaxStep formula caps retrieve at 2 calls for MaxHops=2 (MaxStep=6); 3rd retrieve impossible")
+	assert.Equal(t, 3, ret.CallCount(),
+		"D3-02 MaxStep caps LOOP retrieve at 2 calls for MaxHops=2 (MaxStep=5); code-forced pre-retrieve adds 1 → total 3 Search calls. 3rd LOOP retrieve impossible.")
 }
 
 // TestDecisionSSEEmission (ARAG-01 / SC-1) verifies that when Emit is
@@ -1000,7 +1025,7 @@ func TestDecisionSSEEmission(t *testing.T) {
 
 	captured := dc.Snapshot()
 	require.Len(t, captured, 2,
-		"exactly 2 decision payloads expected: 1 retrieve + 1 answer")
+		"exactly 2 decision payloads expected: 1 retrieve + 1 answer (pre-retrieve runs outside the loop and emits no decisions)")
 
 	assert.Equal(t, "retrieve", captured[0].Decision,
 		"first decision must be 'retrieve' (Tool OnStart)")
