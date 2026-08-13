@@ -68,12 +68,17 @@ const defaultSkill = "compliance"
 //  3. Resolve session_id (X-Session-Id header OR newSessionID) and
 //     echo it back on the response (AGNT-05 / SC-9).
 //  4. Branch on Agent availability:
-//     - Phase 3 path (s.Agent != nil): runAgent (ReAct loop + audit
-//       write + session turn append + data-decision SSE emission).
-//     - Phase 2 fallback (s.Agent == nil): VerdictPipeline (retained
-//       so existing acceptance tests that construct a Deps with only
-//       Runner set stay green during the Phase 3 migration; Plan 03-06
-//       also uses this path for the eval golden-set runner).
+//     - Agent path (s.Agent != nil, OPT-IN via USE_AGENT_PATH=true at
+//       cmd/server/main.go): runAgent (ReAct loop + audit write +
+//       session turn append + data-decision SSE emission).
+//     - VerdictPipeline (s.Agent == nil, the PRODUCTION DEFAULT):
+//       code-forced original-query retrieval → LLM emits verdict JSON
+//       only. Audit + session writes happen inside VerdictPipeline at
+//       each emit site (refusal / verdict) and in this handler on the
+//       error branch — same writeAuditAndTurn helper as runAgentPath.
+//       Existing acceptance tests that construct a Deps with only
+//       Runner set (no Agent) stay green via this path; Plan 03-06's
+//       eval golden-set runner also uses it.
 //
 // Hertz's WithHostPorts(addr) + h.Spin() call shape (cmd/server/main.go)
 // blocks here until SIGINT/SIGTERM — this handler runs on every
@@ -103,20 +108,31 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// ID (T-3-SESSIONID — 32 hex chars = 128 bits of entropy, ASVS V6).
 	// The ID is echoed back on the response so a client that did not send
 	// one can capture and reuse it for the next turn. Resolved unconditionally
-	// so both the agent path and the Phase 2 fallback benefit from session
-	// correlation in the audit row.
+	// so both the agent path and the VerdictPipeline default benefit from
+	// session correlation in the audit row.
 	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
 	if sessionID == "" {
 		sessionID = newSessionID()
 	}
 	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
 
-	// Phase 3 path: agent wired → run the ReAct loop + audit + session
-	// persistence + decision SSE emission. The agent closes over its own
-	// manifest (set at NewAgent construction), so findSkill is NOT
-	// consulted here — findSkill's manifest is only used by the Phase 2
-	// VerdictPipeline fallback. The req.Skill name still flows into the
-	// audit row's SkillID column for both paths.
+	// Agent path (runAgentPath) is OPT-IN via USE_AGENT_PATH=true at
+	// cmd/server/main.go (which gates agent construction). The PRODUCTION
+	// DEFAULT is the VerdictPipeline branch below (code-forced original-
+	// query retrieval → LLM emits verdict JSON only), which is robust
+	// against LLM query-rewrite drift. The agent path delegates query
+	// rewrite / chunk selection / refusal judgement to the LLM; on
+	// GLM-5.2 every layer drifts (年假 was rewritten to 出差住宿费 → wrong
+	// doc → unanswered on a query the retriever answers correctly with
+	// the original phrasing), so it is retained in-tree as an experimental
+	// opt-in. See .planning/debug/agent-llm-query-rewrite.md for the
+	// live-verified failure evidence. Tests that set s.Agent directly
+	// still exercise runAgentPath (chat_session_test.go); production
+	// leaves Agent nil unless USE_AGENT_PATH=true. The agent closes over
+	// its own manifest (set at NewAgent construction), so findSkill is
+	// NOT consulted on this branch — findSkill's manifest is used only by
+	// the VerdictPipeline default. req.Skill flows into the audit row's
+	// SkillID column on both paths.
 	if s.Agent != nil {
 		s.runAgentPath(ctx, c, req, sessionID)
 		return
@@ -151,12 +167,19 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		}
 	}
 
-	if err := s.VerdictPipeline(ctx, c, req.Query, manifest); err != nil {
+	if err := s.VerdictPipeline(ctx, c, req.Query, manifest, sessionID, req.Skill); err != nil {
 		// Pipeline returned an error AFTER the first SSE frame was written
 		// (we cannot change status now). Emit an error chunk so the client
-		// sees something meaningful, then finish-step.
+		// sees something meaningful, then finish-step. Persist the audit
+		// row with refusal_reason="internal_error" (GEVL-03: every query
+		// writes one audit row; mirrors runAgentPath's error call site at
+		// the bottom of runAgentPath). Refusal + verdict shapes are already
+		// persisted inside VerdictPipeline at their emit sites — this
+		// branch covers only the true-error returns (embed / retrieve /
+		// LLM drain / verdict parse / validate).
 		_ = wire.EmitChunk(c, errorChunk(err.Error()))
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error")
 		return
 	}
 }
@@ -229,17 +252,19 @@ func (s *Deps) routeThenRun(ctx context.Context, c *app.RequestContext, req chat
 	return entry.Manifest, true
 }
 
-// runAgentPath is the Phase 3 /api/chat handler branch. It wires the
-// per-request emitDecision closure into the agent via ctx-value (Plan
-// 03-05 Rule 3 deviation — the agent's DecisionEmitFunc cannot be
-// re-bound post-construction; internal/agent.WithRunEmit injects a
-// per-Run override carrying the current *app.RequestContext). It then
-// calls Agent.Run, emits the verdict / refusal / error SSE frames, and
-// persists the audit row + session turn BEFORE returning (GEVL-03 +
-// AGNT-05). Audit / session write failures are logged and swallowed —
-// the response has already streamed; failing the request over a
-// persistence error is worse than degraded durability (T-3-AUDIT-WRITE
-// disposition: accept; Phase 6 adds fail-closed audit policy).
+// runAgentPath is the Phase 3 /api/chat handler branch (OPT-IN via
+// USE_AGENT_PATH=true — the production default is VerdictPipeline; see
+// chatHandler). It wires the per-request emitDecision closure into the
+// agent via ctx-value (Plan 03-05 Rule 3 deviation — the agent's
+// DecisionEmitFunc cannot be re-bound post-construction;
+// internal/agent.WithRunEmit injects a per-Run override carrying the
+// current *app.RequestContext). It then calls Agent.Run, emits the
+// verdict / refusal / error SSE frames, and persists the audit row +
+// session turn BEFORE returning (GEVL-03 + AGNT-05). Audit / session
+// write failures are logged and swallowed — the response has already
+// streamed; failing the request over a persistence error is worse than
+// degraded durability (T-3-AUDIT-WRITE disposition: accept; Phase 6
+// adds fail-closed audit policy).
 //
 // AGNT-04 (SC-8): ctx cancellation propagates Hertz → Agent.Run →
 // reactAgent.Generate → compose.Graph. The SC-8 end-to-end test
@@ -309,15 +334,22 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 
 // writeAuditAndTurn persists the audit row + (user, assistant) session
 // turn pair. Called from runAgentPath on every response shape (verdict,
-// refusal, error). Both writes are best-effort: errors are logged and
-// swallowed because the response has already streamed (T-3-AUDIT-WRITE
-// accept disposition). The audit row carries the SHA-256 prompt_hash
-// (T-3-HASH) so cross-run reproducibility is structurally guaranteed.
+// refusal, error) AND from VerdictPipeline (the production default
+// path) at its refusal / verdict emit sites, plus chatHandler's error
+// branch for the pipeline's true-error returns. Both writes are best-
+// effort: errors are logged and swallowed because the response has
+// already streamed (T-3-AUDIT-WRITE accept disposition). The audit row
+// carries the SHA-256 prompt_hash (T-3-HASH) so cross-run
+// reproducibility is structurally guaranteed.
 //
 // modelVersion is hard-coded "glm-5.2" for Phase 3 (the only supported
 // model). Phase 5 lifts this to a Deps field when multi-model routing
 // arrives. refusalReason is "" for the verdict path, or the refusal
 // code ("no_authorized_source" / "internal_error" / ...) otherwise.
+// skillNameForHash is the skillID on the verdict path (so the hash
+// pins the skill that produced the verdict) and "" on refusal / error
+// paths (mirrors runAgentPath's historical args exactly — refusal rows
+// hash only model_version since no skill-specific prompt was rendered).
 func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason string) {
 	if s.Store == nil {
 		return
@@ -449,7 +481,7 @@ func computePromptHash(skillName, modelVersion, renderedPromptBody string) strin
 //     on the Phase 3+ agent path: it is literally the prompt the model
 //     saw for the request being audited.
 //  2. The routed Skill's manifest via the Loader, when no Agent is
-//     wired (Phase 2 fallback / unit-test Deps).
+//     wired (VerdictPipeline default / unit-test Deps).
 //  3. "" when neither is available — the hash still pins
 //     (skillName, modelVersion), i.e. it degrades to exactly the old
 //     Phase 3 semantics rather than failing the request.
