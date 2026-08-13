@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "runs": [
+    {
+      "ts": "2026-08-13T10-05-21Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.2",
+      "faithfulness": 0.92,
+      "context_precision": 0.85,
+      "answer_relevance": 0.88,
+      "context_recall": 0.79,
+      "refusal_accuracy": 0.95,
+      "frozen_version": "compliance-2026-08-13-v1",
+      "report_path": "2026-08-13T10-05-21Z.json"
+    },
+    {
+      "ts": "2026-08-13T10-10-33Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.2",
+      "faithfulness": 0.88,
+      "context_precision": 0.82,
+      "answer_relevance": 0.86,
+      "context_recall": 0.77,
+      "refusal_accuracy": 0.94,
+      "frozen_version": "compliance-2026-08-13-v1",
+      "report_path": "2026-08-13T10-10-33Z.json"
+    },
+    {
+      "ts": "2026-08-13T10-15-07Z",
+      "skill": "compliance",
+      "judge_model": "deepseek-chat",
+      "faithfulness": 0.91,
+      "context_precision": 0.84,
+      "answer_relevance": 0.87,
+      "context_recall": 0.78,
+      "refusal_accuracy": 0.96,
+      "frozen_version": "compliance-2026-08-13-v1",
+      "report_path": "deepseek-chat/2026-08-13T10-15-07Z.json"
+    }
+  ]
+}

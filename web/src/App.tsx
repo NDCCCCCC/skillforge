@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Plan 04-01 Task 3 + Plan 04-02 Task 3 + Plan 04-03 Task 2 + Plan
-// 05-03 Task 2 + Plan 05-07 Task 1 + Plan 05-08 Task 1 — App composition root.
+// 05-03 Task 2 + Plan 05-07 Task 1 + Plan 05-08 Task 1 + Plan 06-04
+// T1 — App composition root.
 // Wires:
 //   - ThreePanel layout (with extracted TopBar / StatusBar in 05-03)
 //   - useChat + createTransport(env) — chat streaming
@@ -17,6 +18,12 @@
 //     on success; persistent on failure)
 //   - CenterPanel — 5-tab strip (Phase 5: Agent 状态 + 知识图谱)
 //   - RightChat — SkillPicker + ChatInput + MessageBubble per message
+//   - Plan 06-04 (D6-01 + D-04/D12): route branch — when the store's
+//     `route === 'eval'`, the chat three-panel is replaced by
+//     <EvalDashboard /> (admin mode). The eval route has its OWN
+//     transport (plain fetch + 30s interval per D6-03); the chat SSE
+//     wire is untouched. A popstate listener mirrors
+//     window.location.pathname into the store so back/forward works.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chat, useChat } from '@ai-sdk/react';
 import type { UIMessage } from 'ai';
@@ -25,6 +32,7 @@ import ReloadToast from './components/layout/ReloadToast';
 import RightChat from './components/layout/RightChat';
 import ThreePanel from './components/layout/ThreePanel';
 import LeftSidebar from './components/layout/LeftSidebar';
+import EvalDashboard from './components/eval/EvalDashboard';
 import { MessageBubble } from './components/chat/MessageBubble';
 import { useSkillReload } from './hooks/useSkillReload';
 import { isVerdict } from './types/verdict';
@@ -52,6 +60,12 @@ export default function App({ initialMessages }: AppProps) {
 }
 
 function LiveApp() {
+  // Plan 06-04 (D6-01 + D-04/D12) — route branch. When the user navigates
+// to /eval (via LeftSidebar, popstate, or a programmatic setRoute),
+// the chat three-panel is replaced by EvalDashboard (admin mode).
+// The eval route has its own (non-SSE) transport; the chat SSE wire
+// stays untouched.
+  const route = useAppStore((s) => s.route);
   const env: 'prod' | 'dev' = ((import.meta as unknown) as { env: { PROD?: boolean } }).env.PROD ? 'prod' : 'dev';
   const transport = useMemo(() => createTransport(env), [env]);
   // Plan 05-08 Task 1 (CR-01 fix) — per-session Chat<UIMessage> map
@@ -76,6 +90,32 @@ function LiveApp() {
   const lastCreatedSkill = useAppStore((s) => s.lastCreatedSkill);
   const setLastCreatedSkill = useAppStore((s) => s.setLastCreatedSkill);
   const clearLastCreatedSkill = useAppStore((s) => s.clearLastCreatedSkill);
+  const setRoute = useAppStore((s) => s.setRoute);
+  const setEvalSubroute = useAppStore((s) => s.setEvalSubroute);
+
+  // Plan 06-04 — sync window.location.pathname into the store. We
+  // boot from the current URL on mount (so a hard reload at /eval
+  // lands in admin mode), and listen for popstate so back/forward
+  // navigates between /eval and /eval/audit correctly. pushState is
+  // driven by the LeftSidebar nav button and the in-app subroute
+  // tabs inside EvalDashboard.
+  useEffect(() => {
+    function syncFromLocation() {
+      const path = window.location.pathname;
+      if (path === '/eval/audit') {
+        setRoute('eval');
+        setEvalSubroute('audit');
+      } else if (path === '/eval') {
+        setRoute('eval');
+        setEvalSubroute('dashboard');
+      } else {
+        setRoute('chat');
+      }
+    }
+    syncFromLocation();
+    window.addEventListener('popstate', syncFromLocation);
+    return () => window.removeEventListener('popstate', syncFromLocation);
+  }, [setRoute, setEvalSubroute]);
 
   // Plan 05-03 — SC-2 hot-reload consumer. Mounted at the App root so
   // polling outlives route changes. Polls GET /api/skills and diffs the
@@ -117,6 +157,18 @@ function LiveApp() {
 
   function handleSend(text: string) {
     void sendMessage({ text });
+  }
+
+  // Plan 06-04 (D6-01) — admin-mode route renders the EvalDashboard
+  // shell instead of the chat three-panel. The eval component handles
+  // its own data fetching + subroute switching (D6-04) and has no SSE.
+  if (route === 'eval') {
+    return (
+        <>
+          <EvalDashboard />
+          <ReloadToast />
+        </>
+      );
   }
 
   return (

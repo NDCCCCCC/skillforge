@@ -41,10 +41,24 @@
 // loud-failure signal). LeftSidebar renders a banner above the 技能
 // block when the flag is true. The flag is reset to false on the first
 // OK response. Pure UI feedback — no secret data crosses the boundary.
+//
+// Plan 06-04 — Phase 6 eval dashboard slice. INVARIANT (D14): the
+// eval slice holds route + reports + audit rows + filters ONLY.
+// It MUST NEVER contain a `messages` field — useChat owns the chat
+// message stream on the chat route, and adding messages here would
+// create two sources of truth that drift (Pitfall 7 in RESEARCH.md).
+// The `/eval` route has its own (non-SSE) transport (D-04/D12) so the
+// chat SSE wire is untouched.
 
 import { create } from 'zustand';
 import type { Tier } from '../types/verdict';
 import type { SkillScore } from '../types/wire-types';
+import type {
+  AuditFilter,
+  AuditRow,
+  FrozenSetInfo,
+  IndexRun,
+} from '../types/eval';
 
 /** Discriminated union for the center panel's active view (D-02). */
 export type CenterView =
@@ -113,6 +127,13 @@ export interface SessionMeta {
   createdAt: number;
 }
 
+/** Plan 06-04 (D6-01) — admin-mode route toggle. The dashboard
+ * replaces the chat three-panel when `route === 'eval'`. */
+export type AppRoute = 'chat' | 'eval';
+
+/** Plan 06-04 (D6-04) — `/eval` has a sub-route for the audit table. */
+export type EvalSubroute = 'dashboard' | 'audit';
+
 export interface AppState {
   currentSkillId: string | null;
   centerView: CenterView;
@@ -139,6 +160,18 @@ export interface AppState {
   // useSkillReload after 3 consecutive non-OK /api/skills responses.
   // LeftSidebar renders a banner above the 技能 block when true.
   skillServiceOffline?: boolean;
+  // Plan 06-04 (D6-01..04) — admin-mode eval dashboard slice.
+  // INVARIANT (D14): NO `messages` field on this slice. The eval route
+  // uses its own JSON transport; the chat SSE wire is untouched.
+  route: AppRoute;
+  evalSubroute: EvalSubroute;
+  indexReports: IndexRun[];
+  auditRows: AuditRow[];
+  auditFilter: AuditFilter;
+  frozenBaseline?: FrozenSetInfo;
+  /** Loading + error mirror for the eval reports fetch (UI-only). */
+  evalStatus: 'idle' | 'loading' | 'ready' | 'error';
+  evalError?: string;
 }
 
 export interface AppActions {
@@ -162,6 +195,15 @@ export interface AppActions {
   deleteSession(id: string): void;
   // Plan 05-08 (IN-04) — loud-failure flag toggle.
   setSkillServiceOffline(offline: boolean): void;
+  // Plan 06-04 — eval dashboard actions (no messages setter).
+  setRoute(route: AppRoute): void;
+  setEvalSubroute(sub: EvalSubroute): void;
+  setIndexReports(runs: IndexRun[]): void;
+  setAuditRows(rows: AuditRow[]): void;
+  setAuditFilter(filter: AuditFilter): void;
+  setFrozenBaseline(f: FrozenSetInfo | undefined): void;
+  setEvalError(msg: string | null): void;
+  setEvalStatus(s: 'idle' | 'loading' | 'ready' | 'error'): void;
 }
 
 const DEFAULT_LEFT_WIDTH = 260;
@@ -197,6 +239,17 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // true by useSkillReload after 3 consecutive non-OK /api/skills
   // responses. Reset to false on the first OK response.
   skillServiceOffline: false,
+  // Plan 06-04 (D6-01..04) — eval dashboard defaults. NO messages
+  // field on this slice (D14 invariant). The chat route is the
+  // default; eval is opt-in via LeftSidebar / popstate.
+  route: 'chat',
+  evalSubroute: 'dashboard',
+  indexReports: [],
+  auditRows: [],
+  auditFilter: { limit: 100, offset: 0 },
+  frozenBaseline: undefined,
+  evalStatus: 'idle',
+  evalError: undefined,
 
   setCenterView: (view) => set({ centerView: view }),
   setCurrentSkill: (id) => set({ currentSkillId: id }),
@@ -261,4 +314,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // Plan 05-08 (IN-04) — loud-failure flag toggle. LeftSidebar
   // observes this and renders a banner above the 技能 block.
   setSkillServiceOffline: (offline) => set({ skillServiceOffline: offline }),
+  // Plan 06-04 — eval dashboard actions. These never touch the
+  // chat useChat stream; the chat wire is owned by useChat + the
+  // SSE transport (D14 + D-04/D12 preserved by isolation).
+  setRoute: (route) => set({ route }),
+  setEvalSubroute: (sub) => set({ evalSubroute: sub }),
+  setIndexReports: (runs) => set({ indexReports: runs }),
+  setAuditRows: (rows) => set({ auditRows: rows }),
+  setAuditFilter: (filter) => set({ auditFilter: filter }),
+  setFrozenBaseline: (f) => set({ frozenBaseline: f }),
+  setEvalError: (msg) => set({ evalError: msg ?? undefined, evalStatus: msg ? 'error' : 'ready' }),
+  setEvalStatus: (s) => set({ evalStatus: s }),
 }));
