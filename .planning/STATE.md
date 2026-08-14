@@ -133,16 +133,19 @@ Plan: 5 of 6 — **IN PROGRESS (1/3 tasks; Task 1 DONE via TDD; Tasks 2 & 3 `che
 
 ### Quick Tasks Completed
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260811-uaf | Fix CenterPanel tab indicator sync with centerView.kind (04-UAT #8) | 2026-08-11 | e757d6e | [260811-uaf-fix-centerpanel-tab-indicator-sync-with-](./quick/260811-uaf-fix-centerpanel-tab-indicator-sync-with-/) |
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260811-uaf | Fix CenterPanel tab indicator sync with centerView.kind (04-UAT #8) | 2026-08-11 | e757d6e |  | [260811-uaf-fix-centerpanel-tab-indicator-sync-with-](./quick/260811-uaf-fix-centerpanel-tab-indicator-sync-with-/) |
 | 260812-cng | Finalize v0.7.7 dep-upgrade tail (drop scripts/test, reconcile STATE.md drift, track milestone audit) | 2026-08-12 | 6bbfa61 | [260812-cng-go-scripts-test-state-md-frontmatter-hea](./quick/260812-cng-go-scripts-test-state-md-frontmatter-hea/) |
 | 260813-1i6 | Consolidate eval/judge.go JSON parse onto shared llm.ExtractJSON (OOS-1 follow-up) | 2026-08-12 | d1af0f6 | [260813-1i6-eval-judge-go-llm-extractjson-oos-1](./quick/260813-1i6-eval-judge-go-llm-extractjson-oos-1/) |
 | 260813-1y0 | UAT #7 hot-reload toast bridge (polling-B): JS-safe registry version counter + failed map (BE) → GET /api/skills wrapper + useSkillReload polling-only + drop dead SSE (FE) | 2026-08-13 | 3d77870 + 3265178 + 09ae711 | [260813-1y0-hot-reload-toast-bridge-polling-b](./quick/260813-1y0-hot-reload-toast-bridge-polling-b/) |
 | 260813-dno | UAT #4 graph chunk full-text: GET /api/knowledge/chunk/:id (retriever.GetChunk → knowledge.GetChunk → chunkHandler) + chunk-lookup async fetch on fixture-miss (FE) | 2026-08-13 | 8939a74 + aec582e + c646382 | [260813-dno-uat-4-graph-chunk-full-text-get-api-know](./quick/260813-dno-uat-4-graph-chunk-full-text-get-api-know/) |
 | 260814-ofn | 修正过时注释：indexer.go 3处 + grounding.go/grounding_test.go 2处 "markdown splitter deferred to Phase 3 (CMPL-06)" → 真实状态（分块器从未被任何 phase 认领；CMPL-06 = Phase 5 反证高亮，05-06 已完成） | 2026-08-14 | 70cd1e5 + 01fd467 | [260814-ofn-fix-stale-splitter-comments](./quick/260814-ofn-fix-stale-splitter-comments/) |
 | 260814-tsr | 文档叙事层去合规化：README/CLAUDE.md/CONTRIBUTING.md 不再以 compliance 为主线，Quick Start 改用 simple-qa 通用文档问答演示，突出平台全面性/通用性（代码与 examples/ 不动） | 2026-08-14 | f30d7d1 + 2c3f7f8 | [260814-tsr-remove-compliance-wording](./quick/260814-tsr-remove-compliance-wording/) |
-| 260814-vga | 代码层去合规化：web/ 前端 UI 文案泛化为通用文档问答（标题/tab/空状态/建议问题/占位符）+ skills/ 默认 Skill 从 compliance 换为 simple-qa（examples 模板保留，eval-gate.json 随迁 examples）| 2026-08-14 | e42220e + 4bda3ce + 80b6c2d | [260814-vga-ui-skill-simple-qa](./quick/260814-vga-ui-skill-simple-qa/) |
+| 260814-vga | 代码层去合规化：web/ 前端 UI 文案泛化为通用文档问答（标题/tab/空状态/建议问题/占位符）+ skills/ 默认 Skill 从 compliance 换为 simple-qa（examples 模板保留，eval-gate.json 随迁 examples）| 2026-08-14 | e42220e + 4bda3ce + 80b6c2d |  | [260814-vga-ui-skill-simple-qa](./quick/260814-vga-ui-skill-simple-qa/) |
+| 260814-w4n | 修复 Skill 热重载目录级缺口：fsnotify 监听 skills/ 目录 create/remove，新 Skill 目录自动发现 + 已删 Skill 自动移除（含 O(n) 存在性扫描兜底交织突发），启动时补 Add 直属子目录修复 Linux 非递归缺口 | 2026-08-14 | 3a46a24 + c3ccf55 | Verified* | [260814-w4n-skill-fsnotify-skills-create-remove-skil](./quick/260814-w4n-skill-fsnotify-skills-create-remove-skil/) |
+
+*260814-w4n：代码层 5/5 must-haves 全部验证通过（5 个真实 fsnotify 测试 Windows 本机 PASS，无 skip）；唯一待办为完整 HTTP E2E——本机无 Milvus/Docker 无法起独立实例，待用户重启其 dev 服务器时由 chrome-devtools 复验关闭。
 
 ---
 
