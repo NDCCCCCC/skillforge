@@ -29,10 +29,10 @@ const TIER_RING = 110; // inner ring radius (tier nodes)
 const DOC_RING_BASE = 260; // outer ring base radius (doc nodes)
 
 const TIER_COLOR: Record<string, string> = {
-  权威: 'var(--status-compliant, #16a34a)',
-  历史: 'var(--status-needs-info, #d97706)',
-  个人: 'var(--primary, #2563eb)',
-  草稿: 'var(--text-muted, #6b7280)',
+  权威: 'var(--color-status-compliant, #16a34a)',
+  历史: 'var(--color-status-needs-info, #d97706)',
+  个人: 'var(--color-primary, #2563eb)',
+  草稿: 'var(--color-text-muted, #6b7280)',
 };
 
 interface PositionedDoc {
@@ -131,8 +131,9 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
               y1={t.y}
               x2={d.x}
               y2={d.y}
-              stroke={hovered === d.key ? 'var(--primary, #2563eb)' : 'var(--border, #d1d5db)'}
+              stroke={hovered === d.key ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #d1d5db)'}
               strokeWidth={hovered === d.key ? 2 : 1}
+              strokeOpacity={0.55}
             />
           )),
         )}
@@ -153,11 +154,11 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
                 onClick={() => openDoc(d.tier, d.filename)}
                 className="cursor-pointer"
               >
-                <circle r={9} fill="var(--surface-1, #fff)" stroke={TIER_COLOR[d.tier]} strokeWidth={2} />
-                <text y={-14} textAnchor="middle" fontSize={11} fill="var(--text, #111827)">
+                <circle r={9} fill="var(--color-surface, #fff)" stroke={TIER_COLOR[d.tier]} strokeWidth={2} />
+                <text y={-14} textAnchor="middle" fontSize={11} fill="var(--color-text, #111827)">
                   {d.filename.replace(/\.md$/, '').slice(0, 18)}
                 </text>
-                <text y={22} textAnchor="middle" fontSize={9} fill="var(--text-muted, #6b7280)">
+                <text y={22} textAnchor="middle" fontSize={9} fill="var(--color-text-muted, #6b7280)">
                   {d.chunkCount} chunk
                 </text>
               </g>
@@ -176,10 +177,10 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
           >
             <circle r={26} fill={TIER_COLOR[t.tier]} opacity={0.16} />
             <circle r={26} fill="none" stroke={TIER_COLOR[t.tier]} strokeWidth={2} />
-            <text textAnchor="middle" dy={-2} fontSize={14} fontWeight={600} fill="var(--text, #111827)">
+            <text textAnchor="middle" dy={-2} fontSize={14} fontWeight={600} fill="var(--color-text, #111827)">
               {t.tier}
             </text>
-            <text textAnchor="middle" dy={14} fontSize={9} fill="var(--text-muted, #6b7280)">
+            <text textAnchor="middle" dy={14} fontSize={9} fill="var(--color-text-muted, #6b7280)">
               {t.docCount} 文档
             </text>
           </g>
