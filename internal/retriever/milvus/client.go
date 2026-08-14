@@ -112,6 +112,13 @@ func (m *MilvusClient) ListMetadata(ctx context.Context) ([]retriever.DocumentMe
 		nil, // partitions (nil = default)
 		"",  // empty expr matches all rows
 		[]string{"id", "tier", "source", "effective_from", "effective_to"},
+		// Milvus REQUIRES an explicit limit when the expression is empty
+		// ("empty expression should be used with limit: invalid parameter"
+		// — live failure against Milvus 2.4). 16384 is the server's default
+		// query max window (queryNode segcore topKMixRatio window), so this
+		// is the most rows a Query can return anyway — the graph endpoint
+		// gets the full corpus for any dev/demo-scale knowledge tree.
+		client.WithLimit(16384),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("milvus.ListMetadata: Query: %w", err)

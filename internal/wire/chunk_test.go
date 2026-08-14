@@ -31,7 +31,7 @@
 // Plan 05-01 Task 1 (TDD): extends the wire contract — DecisionPayload
 // gains additive routing fields (D5-04) and the 18th wire type
 // `data-redline` is registered (D5-14). The D15 drift alarm (TS mirror
-// must stay in lockstep) is exercised by the TestValidTypes_Eighteen
+// must stay in lockstep) is exercised by the TestValidTypes_Nineteen
 // counter + the npm tsc --noEmit gate run from the orchestrator.
 
 package wire
@@ -96,7 +96,9 @@ func TestDecisionChunkType(t *testing.T) {
 	})
 }
 
-// TestValidTypes_Eighteen — Plan 05-01 Task 1: count assertion on the
+// TestValidTypes_Nineteen — Plan 05-01 Task 1 count assertion (extended:
+// the message-level `finish` terminator became the 19th type when the
+// VerdictPipeline started emitting the full AI SDK v5 lifecycle).
 // ValidTypes map. Phase 4 closed with 17 entries; Phase 5 adds exactly
 // ONE (`data-redline`, D5-14). The plan FORBIDS additional types (the
 // router/counter-evidence/redline-plan pipeline all use additive fields
@@ -105,12 +107,14 @@ func TestDecisionChunkType(t *testing.T) {
 // RED phase: this test FAILS today because `data-redline` is not yet
 // in ValidTypes (counts 17, asserts 18). The GREEN commit registers
 // the 18th type.
-func TestValidTypes_Eighteen(t *testing.T) {
-	const expected = 18
+func TestValidTypes_Nineteen(t *testing.T) {
+	const expected = 19
 	assert.Equal(t, expected, len(ValidTypes),
-		"ValidTypes must hold exactly %d entries after Plan 05-01 (was 17, +1 for data-redline)", expected)
+		"ValidTypes must hold exactly %d entries (18 through data-redline, +1 for the finish terminator)", expected)
 	assert.True(t, ValidTypes["data-redline"],
-		"data-redline MUST be registered as the 18th wire type (D5-14)")
+		"data-redline MUST be registered (18th wire type, D5-14)")
+	assert.True(t, ValidTypes["finish"],
+		"finish MUST be registered — VerdictPipeline emits it as the message terminator (AI SDK v5 schema member)")
 	// Snake-case variant rejected — T-1-11 mitigation.
 	assert.False(t, ValidTypes["data_redline"],
 		"snake_case data_redline MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")

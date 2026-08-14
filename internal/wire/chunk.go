@@ -141,15 +141,15 @@ type ConflictChunk struct {
 //                     pass found no conflicts — the FE renders the empty
 //                     state copy.
 type DecisionPayload struct {
-	Step           int             `json:"step"`                      // 1-indexed hop number (1 or 2 for max_hops=2)
-	Decision       string          `json:"decision"`                  // "retrieve" | "answer" | "refuse" | "forced_stop" | "route" | "counter_evidence"
+	Step           int             `json:"step"`     // 1-indexed hop number (1 or 2 for max_hops=2)
+	Decision       string          `json:"decision"` // "retrieve" | "answer" | "refuse" | "forced_stop" | "route" | "counter_evidence"
 	ToolCallID     string          `json:"toolCallId,omitempty"`
 	Query          string          `json:"query,omitempty"`
 	Confidence     float64         `json:"confidence,omitempty"`
-	SkillScores    []SkillScore    `json:"skillScores,omitempty"`     // D5-04 — populated only on "route" decisions
-	Selected       string          `json:"selected,omitempty"`        // D5-04 — SkillID chosen on "route"
-	Ambiguous      bool            `json:"ambiguous,omitempty"`       // D5-04 — true when top-2 gap is below threshold
-	ConflictChunks []ConflictChunk `json:"conflictChunks,omitempty"`  // Plan 05-06 / D5-13 — populated only on "counter_evidence" decisions
+	SkillScores    []SkillScore    `json:"skillScores,omitempty"`    // D5-04 — populated only on "route" decisions
+	Selected       string          `json:"selected,omitempty"`       // D5-04 — SkillID chosen on "route"
+	Ambiguous      bool            `json:"ambiguous,omitempty"`      // D5-04 — true when top-2 gap is below threshold
+	ConflictChunks []ConflictChunk `json:"conflictChunks,omitempty"` // Plan 05-06 / D5-13 — populated only on "counter_evidence" decisions
 }
 
 // SkillScore is one ranked candidate Skill in a DecisionPayload's
@@ -197,9 +197,10 @@ type SkillScore struct {
 // { type: 'data-redline'; id?: string; data: RedlinePayload } variant
 // or the D15 drift alarm (AssertAssignable) fails to compile.
 //
-// Count: 18 types — text(3) + reasoning(3) + tool-input(3) +
+// Count: 19 types — text(3) + reasoning(3) + tool-input(3) +
 // tool-output(1) + source(2) + data-policy(1) + data-decision(1) +
-// data-redline(1) + finish(2) + error(1).
+// data-redline(1) + finish(3: finish / finish-step / finish-message) +
+// error(1).
 var ValidTypes = map[string]bool{
 	"text-start":            true,
 	"text-delta":            true,
@@ -216,9 +217,14 @@ var ValidTypes = map[string]bool{
 	"data-policy":           true,
 	"data-decision":         true,
 	"data-redline":          true,
-	"finish-step":           true,
-	"finish-message":        true,
-	"error":                 true,
+	// `finish` is the message-level terminator in AI SDK v5's
+	// uiMessageChunkSchema (distinct from finish-step / finish-message).
+	// VerdictPipeline emits it as the final chunk; the whitelist gate
+	// rejected it until now (live WARN "unknown chunk type \"finish\"").
+	"finish":         true,
+	"finish-step":    true,
+	"finish-message": true,
+	"error":          true,
 }
 
 // IsValidType reports whether the chunk's Type field is a recognized

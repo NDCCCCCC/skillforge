@@ -274,24 +274,27 @@ func TestVerdictPipeline_FinishStepIsLastAfterRedline(t *testing.T) {
 	frames := parseFrames(t, drainBody(t, resp))
 	require.NotEmpty(t, frames, "stream must produce frames")
 
-	// finish-step MUST be the very last frame.
-	assert.Equal(t, "finish-step", frames[len(frames)-1].Type,
-		"finish-step must be the final chunk (was emitted mid-stream, truncating the redline)")
+	// `finish` (the AI SDK v5 message-level terminator) MUST be the very
+	// last frame, with finish-step just before it.
+	assert.Equal(t, "finish", frames[len(frames)-1].Type,
+		"finish must be the final chunk (message-level terminator)")
+	assert.Equal(t, "finish-step", frames[len(frames)-2].Type,
+		"finish-step must be the second-to-last chunk (step terminator)")
 
-	// data-redline MUST precede finish-step (the bug had them reversed:
-	// finish-step inside emitVerdictStream, redline after it).
-	redlineIdx, finishIdx := -1, -1
+	// data-redline MUST precede both terminators (the bug had finish-step
+	// inside emitVerdictStream, truncating the redline).
+	redlineIdx, finishStepIdx := -1, -1
 	for i, f := range frames {
 		switch f.Type {
 		case "data-redline":
 			redlineIdx = i
 		case "finish-step":
-			finishIdx = i
+			finishStepIdx = i
 		}
 	}
-	require.GreaterOrEqual(t, finishIdx, 0, "stream must contain a finish-step")
+	require.GreaterOrEqual(t, finishStepIdx, 0, "stream must contain a finish-step")
 	if redlineIdx >= 0 {
-		assert.Less(t, redlineIdx, finishIdx,
-			"data-redline must precede finish-step; finish-step is the stream terminator")
+		assert.Less(t, redlineIdx, finishStepIdx,
+			"data-redline must precede finish-step; terminators close the stream")
 	}
 }
