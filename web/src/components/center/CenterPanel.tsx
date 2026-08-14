@@ -12,8 +12,8 @@
 // → skill-md, CitationCluster → chunk-source, etc.) keep working
 // alongside user clicks.
 //
-// Empty-state hero per Copywriting Contract: `等待合规审查结果` +
-// `右侧提出合规问题，agent 推理与引用会显示在这里。`
+// Empty-state hero per Copywriting Contract: `等待回答结果` +
+// `右侧提出问题，agent 推理与引用会显示在这里。`
 import { FileSearch } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { Tabs } from '../ui/tabs';
@@ -77,7 +77,7 @@ function tabValueToCenterView(value: string): CenterView | null {
       // copy is `点击聊天中的引用以查看权威条款原文。`.
       return null;
     case 'skill-md':
-      return { kind: 'skill-md', skillId: 'compliance-review' };
+      return { kind: 'skill-md', skillId: 'simple-qa' };
     case 'agent-inspector':
       return { kind: 'agent-inspector' };
     case 'knowledge-graph':
@@ -112,7 +112,7 @@ export default function CenterPanel({
   // for narrow widths is inherited from the .tabs CSS (overflow-x: auto
   // on the parent tablist). No "more" dropdown (UI-SPEC §Layout).
   const items = [
-    { value: 'verdict', label: '审查结论' },
+    { value: 'verdict', label: '结论' },
     { value: 'chunk-source', label: '引用原文' },
     { value: 'skill-md', label: 'Skill 定义' },
     { value: 'agent-inspector', label: 'Agent 状态' },
@@ -148,10 +148,10 @@ export default function CenterPanel({
             <FileSearch className="h-6 w-6 text-primary" />
           </div>
           <div className="text-2xl font-semibold text-text">
-            等待合规审查结果
+            等待回答结果
           </div>
           <p className="mt-2 text-base text-text-muted">
-            右侧提出合规问题，agent 推理与引用会显示在这里。
+            右侧提出问题，agent 推理与引用会显示在这里。
           </p>
         </div>
       );

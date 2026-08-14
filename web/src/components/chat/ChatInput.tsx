@@ -238,7 +238,7 @@ export default function ChatInput({
           placeholder={
             modeLabel
               ? '回答向导的问题…'
-              : '输入合规问题，或 @ 触发 file/skill，或拖放文件...'
+              : '输入问题，或 @ 触发 file/skill，或拖放文件...'
           }
           className="w-full min-h-[96px] max-h-64 resize-y rounded-md border border-border bg-bg px-3 py-2 pr-12 text-base text-text leading-relaxed focus:outline-none focus:border-primary disabled:opacity-60"
           rows={3}

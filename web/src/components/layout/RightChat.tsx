@@ -21,7 +21,7 @@
 // up). Empty-state hero shows 3 suggested prompts per 04-UI-SPEC
 // §Copywriting Contract. Footer mounts ChatInput.
 import { useEffect, useRef } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
@@ -29,9 +29,9 @@ import WizardMode from './WizardMode';
 import { useAppStore } from '../../store/app-store';
 
 const SUGGESTED_PROMPTS = [
-  '这家公司的数据跨境是否符合《数据安全法》?',
-  '请审查这份员工离职条款的合规性',
-  '差旅报销制度有哪些合规风险?',
+  '年假未休完的部分如何折算或结转？',
+  '采购合同 50 万元以下由谁审批？',
+  '出差住宿费超过标准额度时如何审批？',
 ];
 
 export interface RightChatProps {
@@ -102,11 +102,11 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
           className="flex flex-col items-center justify-center h-full text-center p-6"
         >
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-dim mb-4">
-            <ShieldCheck className="h-6 w-6 text-primary" />
+            <BookOpen className="h-6 w-6 text-primary" />
           </div>
-          <div className="text-2xl font-semibold text-text">开始一次合规审查</div>
+          <div className="text-2xl font-semibold text-text">开始一次文档问答</div>
           <p className="mt-2 text-base text-text-muted">
-            选择 Skill，在此处提问。每个结论都附可点击的引用与置信度。
+            选择 Skill，在此处提问。每个回答都附可点击的引用与置信度。
           </p>
           <div className="mt-5 flex flex-col gap-2 w-full max-w-sm">
             {SUGGESTED_PROMPTS.map((prompt, i) => (

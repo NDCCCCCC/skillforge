@@ -60,12 +60,12 @@ describe('SkillPicker', () => {
   });
 
   it('the active skill in the menu has the bg-primary-dim class', () => {
-    useAppStore.setState({ currentSkillId: 'compliance-review' });
+    useAppStore.setState({ currentSkillId: 'simple-qa' });
     render(<SkillPicker />);
     fireEvent.click(screen.getByTestId('skill-picker-trigger'));
     const activeItem = screen.getByTestId('skill-picker-item-active');
     expect(activeItem).toHaveClass('bg-primary-dim');
-    expect(activeItem).toHaveAttribute('data-skill-id', 'compliance-review');
+    expect(activeItem).toHaveAttribute('data-skill-id', 'simple-qa');
   });
 
   it('clicking outside the picker closes the menu', () => {

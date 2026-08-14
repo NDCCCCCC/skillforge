@@ -47,7 +47,7 @@ export default function SkillManagerMenu() {
     // the Skill 定义 tab. The full wizard UI ships in 05-04; this
     // gate marks the entry point + the click handler.
     setWizardMode({ active: true, step: 1, totalSteps: 5 });
-    setCenterView({ kind: 'skill-md', skillId: 'compliance-review' });
+    setCenterView({ kind: 'skill-md', skillId: 'simple-qa' });
     setOpen(false);
   }
 
