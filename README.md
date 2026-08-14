@@ -2,7 +2,9 @@
 
 > **Same agent kernel, customized per enterprise via pluggable Skill files — without code changes.**
 
-SkillForge is an open-source, Skill-driven enterprise Agent platform. The same Go + Eino ADK agent core adapts to any business domain by editing or adding a `SKILL.md` file — no recompilation, no code changes. The built-in demo Skill is **enterprise compliance / policy review** (企业合规 / 制度审查), where hallucination is unacceptable and every claim must cite a retrieved clause.
+SkillForge is an open-source, Skill-driven enterprise Agent platform. The same Go + Eino ADK agent core adapts to any business domain by editing or adding a `SKILL.md` file — no recompilation, no code changes.
+
+**Compliance is just one Skill — not the product.** The built-in showcase is **enterprise compliance / policy review** (企业合规 / 制度审查), chosen because it is the harshest trust test: hallucination is unacceptable and every claim must cite a retrieved clause. Swap in your own `SKILL.md` and the same kernel serves legal review, HR policy, IT helpdesk, or any document-grounded domain. Three ready-to-run templates ship in [`examples/skills/`](examples/skills/) (compliance, simple-qa, calculator), and [`CONTRIBUTING.md`](CONTRIBUTING.md) walks you through writing your own.
 
 ![SkillForge demo](docs/demo.gif)
 
@@ -56,6 +58,8 @@ Open **http://localhost:8080**, pick the **compliance** Skill, and ask:
 
 You should see either a **cited verdict** (with clickable chunk references) or a **structured refusal** (e.g. `no_authorized_source`) — never a fabricated answer.
 
+That is the compliance Skill in action. To see the **platform** side, drop a different template into the Skill picker — the `simple-qa` or `calculator` Skill from `examples/skills/` runs on the same kernel with a different knowledge boundary and a different set of guardrails.
+
 The backend is also directly reachable at `http://localhost:8888` for `curl` probes, and Milvus gRPC is at `localhost:19530`.
 
 ---
@@ -88,6 +92,8 @@ flowchart TD
     class backend glm milvus moat;
 ```
 
+**The compliance demo is replaceable, not the product.** The Milvus tier-filter, the Skill registry, and the trust evaluator are domain-agnostic. All of the compliance behavior — the retrieval boundary, the verdict format, the refusal guardrails — lives in a single 30-line Markdown file ([`skills/compliance/SKILL.md`](skills/compliance/SKILL.md)). Delete it and SkillForge has no compliance code left to remove.
+
 ---
 
 ## Why SkillForge? — The Three Moats
@@ -112,10 +118,10 @@ Hallucination is the #1 failure mode for enterprise RAG. SkillForge ships a sing
 
 Skills are declarative Markdown + YAML frontmatter files. Each defines a 7-field manifest (`description` / `agent` / `reads` / `writes` / `steps` / `guardrails` / `temperature`) that the kernel loads, validates, and routes against.
 
-- **Showcase:** [`skills/compliance/SKILL.md`](skills/compliance/SKILL.md) — the built-in compliance review Skill.
-- **Templates:** the `examples/` directory ships additional Skill templates (simple QA, calculator) for contributors learning the format.
+- **Templates:** [`examples/skills/`](examples/skills/) ships three ready-to-run Skills — `simple-qa` (34 lines, minimal authority-tier QA), `calculator` (49 lines, tool-calling), and `compliance` (30 lines, cited verdicts + refusals). Each passes the schema validator out of the box.
+- **Showcase:** [`skills/compliance/SKILL.md`](skills/compliance/SKILL.md) — the built-in compliance review Skill loaded by default.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to write your own Skill.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to write your own Skill — the format is 7 fields of YAML frontmatter plus Markdown steps.
 
 ---
 
