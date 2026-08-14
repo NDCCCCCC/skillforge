@@ -4,7 +4,7 @@
 
 SkillForge is an open-source, Skill-driven enterprise Agent platform. The same Go + Eino ADK agent core adapts to any business domain by editing or adding a `SKILL.md` file — no recompilation, no code changes.
 
-**Compliance is just one Skill — not the product.** The built-in showcase is **enterprise compliance / policy review** (企业合规 / 制度审查), chosen because it is the harshest trust test: hallucination is unacceptable and every claim must cite a retrieved clause. Swap in your own `SKILL.md` and the same kernel serves legal review, HR policy, IT helpdesk, or any document-grounded domain. Three ready-to-run templates ship in [`examples/skills/`](examples/skills/) (compliance, simple-qa, calculator), and [`CONTRIBUTING.md`](CONTRIBUTING.md) walks you through writing your own.
+The same kernel serves legal review, HR policy, IT helpdesk, document-grounded QA, or any business domain — swap in your own `SKILL.md` and the new domain is live. Three ready-to-run templates ship in [`examples/skills/`](examples/skills/) — `simple-qa`, `calculator`, and `compliance` — and [`CONTRIBUTING.md`](CONTRIBUTING.md) walks you through writing your own.
 
 ![SkillForge demo](docs/demo.gif)
 
@@ -16,7 +16,7 @@ SkillForge is an open-source, Skill-driven enterprise Agent platform. The same G
 
 ## Quick Start
 
-Get a cited compliance verdict running in your browser in under 10 minutes.
+Get a document-grounded, cited answer running in your browser in under 10 minutes.
 
 ### Prerequisites
 
@@ -43,22 +43,27 @@ cp .env.example .env
 # 3. Start the embedding endpoint (local minimum)
 ollama pull bge-m3
 
-# 4. Bring up the full stack (Milvus + backend + frontend)
+# 4. Pick the demo Skill: the minimal QA template
+#    (the kernel loads whatever is under skills/ — drop any
+#     examples/skills/ template there to make it live)
+cp -r examples/skills/simple-qa skills/
+
+# 5. Bring up the full stack (Milvus + backend + frontend)
 docker compose up
 
-# 5. Open the app
+# 6. Open the app
 #    Browser: http://localhost:8080
 ```
 
 ### Try it
 
-Open **http://localhost:8080**, pick the **compliance** Skill, and ask:
+Open **http://localhost:8080**, pick the **simple-qa** Skill, and ask a question about the loaded documents, e.g.:
 
-> 出差住宿费超标 200 元，能批吗？
+> 差旅住宿费的报销标准是什么？
 
-You should see either a **cited verdict** (with clickable chunk references) or a **structured refusal** (e.g. `no_authorized_source`) — never a fabricated answer.
+You should see either a **cited answer** (with clickable chunk references) or a **structured refusal** (e.g. `no_relevant_source`) — never a fabricated answer.
 
-That is the compliance Skill in action. To see the **platform** side, drop a different template into the Skill picker — the `simple-qa` or `calculator` Skill from `examples/skills/` runs on the same kernel with a different knowledge boundary and a different set of guardrails.
+That is the platform in action: one kernel, one Markdown Skill file. Swap in a different template — the `calculator` or `compliance` Skill from `examples/skills/` — and the same kernel runs a different behavior, with a different knowledge boundary and a different set of guardrails.
 
 The backend is also directly reachable at `http://localhost:8888` for `curl` probes, and Milvus gRPC is at `localhost:19530`.
 
@@ -92,7 +97,7 @@ flowchart TD
     class backend glm milvus moat;
 ```
 
-**The compliance demo is replaceable, not the product.** The Milvus tier-filter, the Skill registry, and the trust evaluator are domain-agnostic. All of the compliance behavior — the retrieval boundary, the verdict format, the refusal guardrails — lives in a single 30-line Markdown file ([`skills/compliance/SKILL.md`](skills/compliance/SKILL.md)). Delete it and SkillForge has no compliance code left to remove.
+**The demo Skill is replaceable, not the product.** The Milvus tier-filter, the Skill registry, and the trust evaluator are domain-agnostic. All of the demo behavior — the retrieval boundary, the answer format, the refusal guardrails — lives in a single 30-line Markdown file ([`skills/compliance/SKILL.md`](skills/compliance/SKILL.md)). Delete it and SkillForge has no domain-specific logic left to remove.
 
 ---
 
@@ -102,7 +107,7 @@ These three already-validated mechanisms are the defensible core. Each is proven
 
 ### 1. 真源分离 Tier-Filter (True-Source Separation)
 
-Knowledge is split into four tiers — **权威** (authority), **历史** (historical), **个人** (personal), **草稿** (draft). Each Skill declares which tiers it may read via the `reads` field. The retriever applies a **metadata filter before similarity search** (`tier IN [...]`), so a compliance Skill physically cannot see draft or personal notes — the trust boundary is enforced in the database query, not in prompt pleading. Validated by Phase 1 SC-2 (Milvus tier-filter) and the default-deny validator (`internal/skill.Validate` rejects empty `reads`).
+Knowledge is split into four tiers — **权威** (authority), **历史** (historical), **个人** (personal), **草稿** (draft). Each Skill declares which tiers it may read via the `reads` field. The retriever applies a **metadata filter before similarity search** (`tier IN [...]`), so an authority-only Skill physically cannot see draft or personal notes — the trust boundary is enforced in the database query, not in prompt pleading. Validated by Phase 1 SC-2 (Milvus tier-filter) and the default-deny validator (`internal/skill.Validate` rejects empty `reads`).
 
 ### 2. Skill-as-Platform
 
@@ -118,8 +123,8 @@ Hallucination is the #1 failure mode for enterprise RAG. SkillForge ships a sing
 
 Skills are declarative Markdown + YAML frontmatter files. Each defines a 7-field manifest (`description` / `agent` / `reads` / `writes` / `steps` / `guardrails` / `temperature`) that the kernel loads, validates, and routes against.
 
-- **Templates:** [`examples/skills/`](examples/skills/) ships three ready-to-run Skills — `simple-qa` (34 lines, minimal authority-tier QA), `calculator` (49 lines, tool-calling), and `compliance` (30 lines, cited verdicts + refusals). Each passes the schema validator out of the box.
-- **Showcase:** [`skills/compliance/SKILL.md`](skills/compliance/SKILL.md) — the built-in compliance review Skill loaded by default.
+- **Templates:** [`examples/skills/`](examples/skills/) ships three ready-to-run Skills — `simple-qa` (minimal authority-tier QA), `calculator` (tool-calling), and `compliance` (cited verdicts + structured refusals). Each passes the schema validator out of the box.
+- **Loaded Skills:** the kernel loads whatever is under [`skills/`](skills/) — the repo default is [`skills/compliance/SKILL.md`](skills/compliance/SKILL.md); drop any template there (and restart or let hot-reload pick it up) to make it the live domain.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to write your own Skill — the format is 7 fields of YAML frontmatter plus Markdown steps.
 
