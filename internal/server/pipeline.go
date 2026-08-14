@@ -270,7 +270,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	if emitErr != nil {
 		return fmt.Errorf("verdict pipeline: emit verdict stream: %w", emitErr)
 	}
-
+	//
 	// Step 11: SC-6 / SC-7 post-verdict annotation passes (Plan 05-06).
 	//
 	//   - emitCounterEvidence (D5-13): runs an INDEPENDENT retrieval pass
@@ -297,14 +297,28 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	if err := s.emitRedline(ctx, c, v, chunksByID); err != nil {
 		log.Printf("[WARN] server: redline pass failed: %v (verdict stands; non-fatal)", err)
 	}
-	// finish-step is the FINAL chunk — emitted only after every post-verdict
-	// annotation (counter-evidence, redline) has streamed. Emitting it
-	// earlier (inside emitVerdictStream, right after the verdict) made the
-	// AI SDK v5 frontend stop reading before data-redline arrived, so the
-	// redline write hit a half-closed socket (live: wsasend connection-
-	// aborted). This is the stream terminator — nothing may follow it.
+	// Close the AI SDK v5 message lifecycle AFTER all post-verdict
+	// annotations. emitVerdictStream opened the message with text-start;
+	// text-end closes that text part, finish-step ends the step, and finish
+	// ends the message. All three are required for useChat to finalize +
+	// render the assistant message (a bare finish-step without text-end /
+	// finish leaves the message unregistered — the live Phase 7 failure
+	// where the UI showed only the user's echo despite the full stream).
+	//
+	// Terminal emits are best-effort: the verdict + annotations are already
+	// streamed, so a terminal-chunk failure must NOT propagate to chatHandler
+	// (which would write a second "internal_error" audit row — the audit row
+	// was already written above; GEVL-03 wants exactly one per query).
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"}); err != nil {
+		log.Printf("[WARN] server: text-end emit failed (verdict + annotations already streamed; non-fatal): %v", err)
+		return nil
+	}
 	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"}); err != nil {
-		return fmt.Errorf("verdict pipeline: emit finish-step: %w", err)
+		log.Printf("[WARN] server: finish-step emit failed (non-fatal): %v", err)
+		return nil
+	}
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"}); err != nil {
+		log.Printf("[WARN] server: finish emit failed (non-fatal): %v", err)
 	}
 	return nil
 }
