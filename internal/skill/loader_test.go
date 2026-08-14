@@ -280,13 +280,15 @@ func TestLoader_ScanRejectsSymlinkEscape(t *testing.T) {
 }
 
 func TestLoader_ParseComplianceCanonicalSkill(t *testing.T) {
-	// Test 6 — CMPL-01: the real repo path skills/compliance/SKILL.md
-	// loads cleanly. This is the canonical example downstream plans
-	// (02-03 pipeline, 02-04 GET /api/skills) rely on.
+	// Test 6 — CMPL-01: the canonical compliance SKILL.md loads
+	// cleanly. The repo default Skill is simple-qa (quick task
+	// 260814-vga); the compliance Skill ships as the examples/
+	// template downstream plans (02-03 pipeline, 02-04 GET /api/skills)
+	// rely on.
 	repoRoot, err := findRepoRoot(t)
 	require.NoError(t, err)
 
-	skillsDir := filepath.Join(repoRoot, "skills")
+	skillsDir := filepath.Join(repoRoot, "examples", "skills")
 	l := NewLoader(skillsDir)
 	skills, err := l.Scan()
 	require.NoError(t, err)
@@ -299,7 +301,7 @@ func TestLoader_ParseComplianceCanonicalSkill(t *testing.T) {
 			break
 		}
 	}
-	require.NotNil(t, found, "the canonical compliance Skill MUST be discoverable in skills/")
+	require.NotNil(t, found, "the canonical compliance Skill MUST be discoverable in examples/skills/")
 	assert.Contains(t, found.Description, "合规", "compliance Skill description must be the canonical one")
 	assert.Equal(t, []string{"authority/**"}, found.Reads)
 	require.NotNil(t, found.Temperature)

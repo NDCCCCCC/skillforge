@@ -220,10 +220,12 @@ func TestActiveModelVersion(t *testing.T) {
 // hermetically (no LLM, no network).
 //
 // This is what keeps the pin honest between re-freezes. Without it, an
-// edit to skills/compliance/SKILL.md would leave a stale lock that only
+// edit to the compliance SKILL.md would leave a stale lock that only
 // fails much later, inside a CI eval run, as a confusing hard stop.
 // Here it fails immediately, in the unit suite, with a clear message
-// telling the author to re-freeze.
+// telling the author to re-freeze. The compliance Skill ships as the
+// examples/skills/compliance template (repo default is simple-qa since
+// quick task 260814-vga), so the manifest side loads from examples/.
 func TestShippedFrozenLockIsInSync(t *testing.T) {
 	repoRoot := filepath.Join("..", "..")
 
@@ -232,7 +234,7 @@ func TestShippedFrozenLockIsInSync(t *testing.T) {
 	assert.Equal(t, "compliance", lock.SkillName)
 	assert.Equal(t, DefaultJudgeModel, lock.ModelVersion)
 
-	loader := skill.NewLoader(filepath.Join(repoRoot, "skills"))
+	loader := skill.NewLoader(filepath.Join(repoRoot, "examples", "skills"))
 	_, err = loader.Scan()
 	require.NoError(t, err, "scan skills/")
 
