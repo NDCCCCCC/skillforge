@@ -39,9 +39,12 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
 
   return (
     <div data-testid="citation-cluster" className="flex flex-wrap gap-2">
-      {citations.map((citation) => (
+      {citations.map((citation, index) => (
         <button
-          key={citation.chunk_id}
+          // chunk_id alone is NOT unique — the LLM may cite the same
+          // chunk twice with different spans (live-verified 2026-08-15:
+          // duplicate key `1` warning). Composite key keeps both chips.
+          key={`${index}-${citation.chunk_id}`}
           type="button"
           className={cn('citation-chip')}
           data-testid="citation-chip"
