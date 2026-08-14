@@ -98,9 +98,11 @@ reason: "No git remote (probe empty). Requires user to confirm GitHub username (
 total: 15
 passed: 10
 issues: 0
-pending: 0
+pending: 5
 skipped: 0
 blocked: 5
+
+> 2026-08-14 audit note: `status: partial` 的未决项即下面 5 个 blocked 项（环境门，非代码问题）——它们同步登记在 `07-HUMAN-UAT.md`（result: [pending]，共 5 处）。`pending: 5` 与 blocked 计数是同一批事项的两个视角。
 
 ## Gaps
 

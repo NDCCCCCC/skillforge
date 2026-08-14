@@ -20,7 +20,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 - ✅ **Phase 4: Streaming Trust UI** (2026-08-11) — **信任可视化前端落地**。React 19 + Vite + TS + Vercel AI SDK（`ai@7`）三面板（资料库 / 审查结论 / 对话）聊天 UI，把 Phase 2 后端的"带引用裁决 + 结构化拒答"翻译成可审计的用户体验：可见推理链（D-08 高度受限、可折叠，DOM 序在答案之前）、可点击引用（D-01 → ChunkSourceView 展示 TierBadge + 版本 + 生效日期 + 逐字原文）、结构化 VerdictCard（D-06 状态色边框 + 置信度条 + 需复核 badge）/ RefusalCard（D-07 超范围 🚫 vs 不知道 ❓ 强区分）、子进度指示器（FEUI-06 五步文案）、Skill 选择器（FEUI-04 切换 Skill 并联动 CenterPanel）。**UAT 12/12 全绿**（chrome-devtools MCP 自动化 + 单元测试证据），83/83 单元测试绿，1 个 gap（CenterPanel 标签指示器未受控于 `centerView.kind`）已修复（commit `e757d6e` + 回归测试）。**关键工程决策固化**：D-04 transport-swap 不变量（Mock ↔ Default 字节级一致，`transport-swap.test.tsx` 把关生产切换）、T-1-08 source-URL 白名单消毒门、Pitfall 7 状态边界（Zustand store 文件级禁止 `messages` 字段，`useChat` 独占消息流）、wire-type 编译期漂移报警（`AssertAssignable<SkillForgeChunk, UIMessageChunk>`）。覆盖需求：FEUI-01..06、SYSK-03、KNOW-05、CMPL-05、T-1-08。**已知的 Phase 5 延期项**：LeftSidebar 真实多会话/文件树、ChatInput `@` 模糊搜索、Skill 管理器 UI、双向 tab 导航 + UI-SPEC §169 chunk 空状态。
 
-- ✅ **Phase 6: Eval Dashboard & Production Hardening** (2026-08-13) — **可衡量效果护城河收尾**。把 Phase-3 已交付的 Go-native 信任评估器（`internal/eval` + `cmd/eval`）从批量 CLI 升级为 **CI 推广网关 + 可视化仪表板 + 生产级隐私姿态**。3/4 计划交付（06-03 CI 工作流按用户"先跳过 CI"决策延迟）。**全部 6 个 SC 在单元/集成级别已验证**（11/12 must-haves，仅 GEVL-07 端到端 Actions 管道待处理）：
+- ✅ **Phase 6: Eval Dashboard & Production Hardening — Code-Side (6a)** (2026-08-13；2026-08-14 正式拆分) — **可衡量效果护城河收尾（代码侧）**。把 Phase-3 已交付的 Go-native 信任评估器（`internal/eval` + `cmd/eval`）从批量 CLI 升级为 **gate 逻辑 + 可视化仪表板 + 生产级隐私姿态**。**2026-08-14 拆分决策**：本 phase 范围收窄为 code-side（ROADMAP 已同步），原 06-03（CI workflow wiring）+ 4 项 live human UAT 正式后置到 **Backlog Phase 999.2（= Phase 6b）**——需要 GitHub Actions 运行时 + GLM key，v0.7.7 里程碑内不承诺。代码侧 3/3 计划交付，**全部 6 个 SC 在单元/集成级别已验证**（11/12 must-haves，唯一 fail 即 06-03 的端到端 Actions 管道，已按拆分决策移出本 phase 范围）：
   - **SC-1 / GEVL-06 — 仪表板**：`/eval` 独立全屏路由（admin 模式）+ SkillsTable（per-Skill 5 个指标 + ✅/❌ 徽章）+ TrendPanel（recharts 折线 + 灰色虚线冻结基线 + >5% 漂移标记）+ CrossEvalTab（自我评估偏差检测）+ AuditTable（`/eval/audit` 子路由）。14 个 FE 测试绿色；D14 无 `messages` 不变量保留；D-04/D12 transport-swap 不变量隔离（`/eval` 使用自己的传输，聊天 SSE 未触动）。
   - **SC-2 / GEVL-07 — 网关逻辑**：`internal/eval.gateDecision` 纯函数 + `FormatGateMarkdown` + `runGateCheck`（cmd/eval 的唯一非零退出路径）+ `skills/compliance/eval-gate.json`（Q2 解决路径，`{"faithfulness_threshold": 0.9}`）。CI 工作流 `.github/workflows/eval-gate.yml` 存在于未合并 worktree 分支（commit `fc26d12`，138 行）——按用户决策推迟。
   - **SC-3 — 审计查询 UI + 行级脱敏**：`/api/audit` 7 参数 1:1 映射到 `store.QueryAudit(AuditFilter)`（100% 参数化，T-3-SQLI 回归绿色）；AuditTable 过滤栏 + `[REDACTED (90d+)]` 徽章 + 悬停详情。
@@ -35,7 +35,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
   - **T-6-PATH Windows 安全**：`:ts` 正则从 `^[0-9T:-]+Z$` 收紧到 `^[0-9T-]+Z$`（冒号在 Windows 文件名中非法）。
   - **零新增 Go 依赖**（除 recharts@3.10.1 + human-verify 检查点）——符合 RESEARCH.md 要求。
 
-  **4 个人工 UAT 项目待处理**（已持久化到 `06-HUMAN-UAT.md`）：
+  **4 个人工 UAT 项目 + CI wiring 已后置到 Backlog Phase 999.2**（原 `06-HUMAN-UAT.md`，2026-08-14 拆分时移入 999.2 范围）：
   1. 合并 eval-gate.yml 从 worktree 分支 + 牺牲性 PR（SC-2 端到端）
   2. 本地运行 `cmd/eval --frozen --archive` → 打开 `/eval` + `/eval/audit` 验证基线覆盖 + 脱敏徽章
   3. `SKILLFORGE_ADMIN_TOKEN` 切换（脱敏 vs 原始行）
@@ -125,4 +125,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-12 — D6 reversed (Python/Ragas sidecar → Go-native evaluator) during Plan 03-06 execution*
+*Last updated: 2026-08-14 — Phase 6 formally split: code-side scope (6a) validated; CI wiring + 4 live human UAT items moved to Backlog Phase 999.2 (6b). Prior: 2026-08-12 D6 reversed (Python/Ragas sidecar → Go-native evaluator) during Plan 03-06 execution*

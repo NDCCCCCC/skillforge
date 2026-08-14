@@ -5,18 +5,20 @@ milestone_name: milestone
 current_phase: 7
 current_plan: 4
 status: executing
-last_updated: "2026-08-13T13:32:44.221Z"
+last_updated: "2026-08-14T13:05:10.354Z"
 progress:
-  total_phases: 7
-  completed_phases: 5
+  total_phases: 9
+  completed_phases: 6
   total_plans: 35
   completed_plans: 36
-  percent: 71
+  percent: 67
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-13 (Plan 07-05 IN PROGRESS — Task 1 DONE: `scripts/eval_snapshot/{main.go,main_test.go}` shipped via TDD RED `abf2f4d` → GREEN `4873213`; `deriveRefusalAccuracy` pure fn is the ONE derivation point for DIST-09 refusal_accuracy [count(Cases cat=refusal-required && Refused) / count(Cases cat=refusal-required)]; 6/6 hermetic unit tests PASS, `go vet` clean, end-to-end smoke render matches RESEARCH Example 6 format; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. Tasks 2 & 3 are `checkpoint:human-verify gate=blocking` and BLOCKING — Task 2 needs live Milvus+BGE-M3+GLM stack to run `cmd/eval --frozen=compliance` and paste `scripts/eval_snapshot` stdout into README Eval Results [still PLACEHOLDER]; Task 3 needs screen capture to record `docs/demo.gif` [cited verdict + structured refusal, <5MB]. Plan 07-02 Task 3 docker-build human-verify gate ALSO still BLOCKING — Docker not in PATH. Phase 7 has 2 concurrent blocking checkpoints: 07-02 Task 3 + 07-05 Tasks 2/3.)
+**Last updated:** 2026-08-14 (**Phase 6 正式拆分**：code-side 范围（6a）标记完成 — 3/3 active plans + 11/12 must-haves（唯一 fail = 06-03 Actions 管道，移出范围）；06-03 CI wiring + 4 项 live human UAT 后置到 **Backlog Phase 999.2（= 6b）**。ROADMAP/PROJECT 已同步。修复 ROADMAP 预存损坏：Phase 4 段落的 plan list 曾错贴 06 内容，已还原 04-01..04-04。`06-VERIFICATION.md` 保持 `human_needed` 不变（反映真实状态），999.2 启动时转为其输入。)
+
+**Prior:** 2026-08-13 (Plan 07-05 IN PROGRESS — Task 1 DONE: `scripts/eval_snapshot/{main.go,main_test.go}` shipped via TDD RED `abf2f4d` → GREEN `4873213`; `deriveRefusalAccuracy` pure fn is the ONE derivation point for DIST-09 refusal_accuracy [count(Cases cat=refusal-required && Refused) / count(Cases cat=refusal-required)]; 6/6 hermetic unit tests PASS, `go vet` clean, end-to-end smoke render matches RESEARCH Example 6 format; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. Tasks 2 & 3 are `checkpoint:human-verify gate=blocking` and BLOCKING — Task 2 needs live Milvus+BGE-M3+GLM stack to run `cmd/eval --frozen=compliance` and paste `scripts/eval_snapshot` stdout into README Eval Results [still PLACEHOLDER]; Task 3 needs screen capture to record `docs/demo.gif` [cited verdict + structured refusal, <5MB]. Plan 07-02 Task 3 docker-build human-verify gate ALSO still BLOCKING — Docker not in PATH. Phase 7 has 2 concurrent blocking checkpoints: 07-02 Task 3 + 07-05 Tasks 2/3.)
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
@@ -100,6 +102,10 @@ Plan: 5 of 6 — **IN PROGRESS (1/3 tasks; Task 1 DONE via TDD; Tasks 2 & 3 `che
 ---
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 6 edited: edited fields: title,goal,sc-2,plan-list (split into code-side 6a complete + 06-03 deferred to new Phase 999.2 backlog; also repaired pre-existing corruption: Phase 4 section carried a stray copy of the 06 plan list — restored real 04-01..04-04 list)
 
 **Open questions (from research SUMMARY.md):**
 

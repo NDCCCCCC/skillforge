@@ -19,7 +19,8 @@
  (completed 2026-08-11)
 - [x] **Phase 5: Skill Platform & Full Knowledge Boundaries** — semantic routing + hot reload + Skill Wizard + full 4-tier system + Agent state inspector + counter-evidence / redline
  (completed 2026-08-12)
-- [ ] **Phase 6: Eval Dashboard & Production Hardening** — CI regression gates + tracing + metrics + queryable audits + session isolation + retention / redaction
+- [x] **Phase 6: Eval Dashboard & Production Hardening — Code-Side (6a)** — dashboard + gate logic + queryable audits + session isolation + retention / redaction (CI workflow wiring deferred → Phase 999.2)
+ (code-side complete 2026-08-13; split decision 2026-08-14)
 - [ ] **Phase 7: Open-Source Release** — Docker Compose + sample docs + docs + live demo + showcase Skills + published eval results
 
 ---
@@ -114,13 +115,13 @@
   5. While the agent works, a sub-progress indicator shows "Searching 权威 tier... Found 12 candidates... Re-ranking..." with step-level updates (FEUI-06)
   6. A compliance verdict with `review_required: true` shows a yellow "needs human review" badge over the message (CMPL-05)
 **Pitfalls addressed:** P-FE-1..5 (UI integration, citation rendering, refusal UX), P-COMPL-3 (UI side-by-side), P-COMPL-5 (HITL badge visibility)
-**Plans**: 4 plans
+**Plans**: 4 plans (3 + 1 gap-closure; 04-01 was folded into 04-02 execution — PLAN file superseded by SUMMARY)
 **Plan list**:
-- [x] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
-- [x] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
-- [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
-- [x] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
-**Wave structure**: W1={06-01} → W2={06-02, 06-03} → W3={06-04}
+- [x] 04-01-PLAN.md — Wave 1: Foundation — wire types + Mock Transport + Parts Renderer
+- [x] 04-02-PLAN.md — Wave 2: VerdictCard + RefusalCard + ReasoningPart + CenterPanel + locked-file reconciliation
+- [x] 04-03-PLAN.md — Wave 3: Three-Panel + SkillPicker + ChunkSourceView wire + transport-swap integration test
+- [x] 04-04-PLAN.md — Wave 4: gap-closure — AI SDK v7 drift alarm (D15) + tsc clean
+**Wave structure**: W1={04-01} → W2={04-02} → W3={04-03} → W4={04-04 gap-closure}
 **UI hint**: yes
 
 ### Phase 5: Skill Platform & Full Knowledge Boundaries
@@ -151,25 +152,25 @@
 **Wave structure**: W1={05-01, 05-02 sequential} -> W2={05-03, 05-04, 05-05, 05-06 parallel} -> W3={05-07 gap-closure}
 **UI hint**: yes
 
-### Phase 6: Eval Dashboard & Production Hardening
+### Phase 6: Eval Dashboard & Production Hardening — Code-Side (6a)
 
-**Goal:** Turn the eval pipeline into a CI gate, surface per-Skill metrics on a dashboard, and stand up the production-grade observability + privacy posture — audit retention, redaction, session isolation.
+**Goal:** Surface per-Skill metrics on a dashboard and stand up the production-grade observability + privacy posture — audit retention, redaction, session isolation. CI-gate WORKFLOW wiring is deferred to Phase 999.2 (user decision 2026-08-14: 先跳过 CI). Gate LOGIC (gateDecision / runGateCheck / eval-gate.json) is complete and unit-tested on master.
 **Mode:** mvp
 **Depends on:** Phase 5
 **Requirements:** GEVL-06, GEVL-07
 **Success Criteria** (what must be TRUE):
   1. A web dashboard surfaces per-Skill metrics — faithfulness, citation precision, refusal accuracy — with a trend line across runs (GEVL-06)
-  2. Opening a pull request that drops a Skill's faithfulness below 0.9 fails the CI gate; the PR comment names the Skill and the threshold (GEVL-07)
+  2. The gate DECISION logic is pure, unit-tested, and shipped (`internal/eval/gate.go::gateDecision` + `cmd/eval runGateCheck` + `skills/compliance/eval-gate.json` with `faithfulness_threshold: 0.9`); the GitHub Actions workflow wiring lives in Phase 999.2 (GEVL-07 end-to-end deferred 2026-08-14)
   3. Audit records are queryable via a UI table filterable by user / skill / time range / `refusal_reason` with row-level redaction toggled by access policy
   4. Session isolation is proven by a concurrency test: 50 sessions × 5 turns each see only their own conversation history (no cross-session bleed)
   5. Retention / redaction policy is enforced: queries past the retention window have `query` and `answer` fields redacted in storage; access requires an explicit access policy
   6. Eval runs are reproducible: re-running against a frozen eval set + pinned `model_ver` + pinned `prompt_hash` returns numerically identical Ragas scores within tolerance
 **Pitfalls addressed:** P-RAG-2 (monitoring + drift detection), P-COMPL-4 (audit trail integrity), P-EINO-2 (multi-tenant session isolation), P-OSS-5 (CI hygiene)
-**Plans**: 4 plans
+**Plans**: 3 active + 1 deferred (06-03 → 999.2)
 **Plan list**:
 - [x] 06-01-PLAN.md — Wave 1: Reproducibility substrate + gate logic (SC-6 + Q1/Q2 + GEVL-07 gateDecision)
 - [x] 06-02-PLAN.md — Wave 2: Backend API surface — audit/redaction, /api/eval/*, SC-4 concurrency
-- [ ] 06-03-PLAN.md — Wave 2: CI gate workflow (SC-2/GEVL-07) + GitHub Actions secrets checkpoint
+- [→] 06-03-PLAN.md — DEFERRED to Phase 999.2 (2026-08-14, user decision: 先跳过 CI; workflow file exists only on unmerged worktree branch `worktree-agent-a1bfd67bedf21ad40` commit fc26d12)
 - [x] 06-04-PLAN.md — Wave 3: Dashboard frontend — SkillsTable, TrendPanel, AuditTable (GEVL-06)
 **Wave structure**: W1={06-01} → W2={06-02, 06-03} → W3={06-04}
 **UI hint**: yes
@@ -230,8 +231,8 @@
 | 3. Agentic Retrieval & Trust Evaluation | 6/6 | Complete | 2026-08-12 |
 | 4. Streaming Trust UI | 4/4 (incl. 04-04 gap-closure) | Complete | 2026-08-11 (04-04 debt-closure 2026-08-12) |
 | 5. Skill Platform & Full Knowledge Boundaries | 8/8 (incl. 05-08 gap-closure) | Complete | 2026-08-12 (05-08 debt-closure 2026-08-13) |
-| 6. Eval Dashboard & Production Hardening | 0/? | Not started | - |
-| 7. Open-Source Release | 1/6 | In Progress | - |
+| 6. Eval Dashboard & Production Hardening — Code-Side | 3/3 active (+06-03 deferred→999.2) | Complete (code-side) | 2026-08-13 |
+| 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
 
 ---
 *Last updated: 2026-08-12 — Phase 5 planned (6 plans: 2 in Wave 1 sequential; 4 in Wave 2 parallel). All 8 req IDs (SYSK-04/05/06, AGNT-06, KNOW-06, CMPL-06/07/08) covered; 15 locked D5-XX decisions implemented; 1 deferred item (DATA-*) explicitly out of scope per CONTEXT.md.*
@@ -244,6 +245,12 @@
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
+**Plans:** 0 plans
+
+### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
+
+**Goal:** Complete the deferred CI-gate half of Phase 6 (split decision 2026-08-14: code-side scope completed as Phase 6a, this backlog holds the runtime-dependent remainder). Items: (1) merge `.github/workflows/eval-gate.yml` from unmerged worktree branch `worktree-agent-a1bfd67bedf21ad40` (commit fc26d12, 138 lines) to master; (2) register `GLM_API_KEY` (required) + optional `BGE_M3_URL` / `MILVUS_ADDRESS` as GitHub repository secrets; (3) sacrificial PR proving the gate blocks a faithfulness < 0.9 regression with `gh pr comment` naming skill + threshold + ❌; (4) the 4 pending `06-HUMAN-UAT.md` items — dashboard visual check (`--archive` → `/eval` + `/eval/audit`), `SKILLFORGE_ADMIN_TOKEN` redaction toggle, `go test -tags liveeval` jitter layer with `GLM_API_KEY`, archive→dashboard walkthrough.
+**Requirements:** GEVL-07 (end-to-end)
 **Plans:** 0 plans
 
 Plans:
