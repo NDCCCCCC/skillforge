@@ -171,7 +171,25 @@ type SkillScore struct {
 	Selected  bool    `json:"selected"`
 }
 
-// ValidTypes enumerates the 17 kebab-case chunk types recognized by the
+// SubprogressStep is the JSON payload carried by data-subprogress SSE
+// chunks (quick plan 260815-0xb — the FEUI-06 channel). The VerdictPipeline
+// emits one per stage so the React UI can render streaming progress
+// during the LLM wait; the FE mirror is the SubprogressStep interface at
+// web/src/types/verdict.ts rendered by DataSubprogressPart.tsx.
+//
+// Field semantics (must stay field-aligned with the FE enum):
+//   - Step:  one of "retrieve" | "found_candidates" | "rerank" |
+//     "self_verify" | "generate". The pipeline emits 4 of these
+//     (rerank is reserved for a future reranker pass).
+//   - Tier:  the tier being searched (retrieve / found_candidates only).
+//   - Count: the candidate chunk count (found_candidates only).
+type SubprogressStep struct {
+	Step  string `json:"step"`
+	Tier  string `json:"tier,omitempty"`
+	Count int    `json:"count,omitempty"`
+}
+
+// ValidTypes enumerates the 20 kebab-case chunk types recognized by the
 // AI SDK v5 UIMessageChunk parser (see ai-sdk.dev streaming-data docs
 // + process-ui-message-stream.ts). EmitChunk rejects any Type not in
 // this set BEFORE writing to the wire — this is the T-1-11 mitigation
@@ -197,10 +215,19 @@ type SkillScore struct {
 // { type: 'data-redline'; id?: string; data: RedlinePayload } variant
 // or the D15 drift alarm (AssertAssignable) fails to compile.
 //
-// Count: 19 types — text(3) + reasoning(3) + tool-input(3) +
+// Quick plan 260815-0xb adds `data-subprogress` — the FEUI-06 channel.
+// The VerdictPipeline emits one chunk per pipeline stage (retrieve /
+// found_candidates / generate / self_verify) so the React UI renders
+// streaming progress DURING the LLM wait instead of a long blank gap.
+// The payload mirrors the FE SubprogressStep interface
+// (web/src/types/verdict.ts) via wire.SubprogressStep below; the TS side
+// (web/src/types/wire-types.ts) already declares this variant, so the
+// D15 drift alarm needs no change.
+//
+// Count: 20 types — text(3) + reasoning(3) + tool-input(3) +
 // tool-output(1) + source(2) + data-policy(1) + data-decision(1) +
-// data-redline(1) + finish(3: finish / finish-step / finish-message) +
-// error(1).
+// data-redline(1) + data-subprogress(1) + finish(3: finish /
+// finish-step / finish-message) + error(1).
 var ValidTypes = map[string]bool{
 	"text-start":            true,
 	"text-delta":            true,
@@ -217,6 +244,7 @@ var ValidTypes = map[string]bool{
 	"data-policy":           true,
 	"data-decision":         true,
 	"data-redline":          true,
+	"data-subprogress":      true,
 	// `finish` is the message-level terminator in AI SDK v5's
 	// uiMessageChunkSchema (distinct from finish-step / finish-message).
 	// VerdictPipeline emits it as the final chunk; the whitelist gate
