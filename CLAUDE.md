@@ -3,7 +3,7 @@
 
 **SkillForge**
 
-SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 agent 工程能力。技术栈为 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端）。核心创新是"**Skill 驱动**"：企业通过编写或更新 Skill 文件（`SKILL.md`）让同一个 agent 内核适配不同业务需求，无需改代码。内置"企业合规/制度审查"Skill 作为样板间，开源发布，用于建个人技术品牌。
+SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 agent 工程能力。技术栈为 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端）。核心创新是"**Skill 驱动**"：企业通过编写或更新 Skill 文件（`SKILL.md`）让同一个 agent 内核适配任何业务领域（法律审查、HR 制度、IT 服务台、文档问答等），无需改代码。仓库在 `examples/skills/` 下提供三个开箱即用的示例 Skill（simple-qa、calculator、compliance），证明同一内核不改代码即可切换业务领域。开源发布，用于建个人技术品牌。
 
 **Core Value:** **同一个 agent 内核，通过可插拔的 Skill 文件被任意企业快速定制，无需改代码** —— 这是从"应用"到"平台"的护城河，也是"通过更新 Skill 让项目更理解企业使用需求"这一设计哲学的直接落地。
 

@@ -110,7 +110,7 @@ go test ./internal/skill -run TestExamplesValidate
 
 This calls `internal/skill.Validate` on every `examples/skills/*/SKILL.md`. To validate your new Skill, either drop it under `examples/skills/` temporarily, or write a one-off test that calls `skill.Validate` on your parsed manifest. The error messages name the failing field + rule, so fixing is straightforward.
 
-For the canonical reference, see [`skills/compliance/SKILL.md`](skills/compliance/SKILL.md).
+For complete reference Skills, see the three validated templates under [`examples/skills/`](examples/skills/) and the loaded copy at [`skills/compliance/SKILL.md`](skills/compliance/SKILL.md).
 
 ---
 
