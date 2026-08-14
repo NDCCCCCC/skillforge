@@ -104,7 +104,7 @@ func TestGroundingCheckVerbatimSpan(t *testing.T) {
 func TestGroundingCheckFullwidthHalfwidthMix(t *testing.T) {
 	// Span uses 全角 punctuation (，, 。, ；, ：) — the LLM emitted these
 	// thinking they were "more Chinese". The chunk has halfwidth (, . ; :)
-	// because the markdown chunker passed them through verbatim.
+	// because chunks are stored verbatim (one-doc-one-chunk, no chunker).
 	v := Verdict{
 		Status:     "合规",
 		Confidence: 0.95,

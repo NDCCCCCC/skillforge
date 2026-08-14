@@ -27,9 +27,10 @@ import (
 // canonical string form suitable for substring comparison.
 //
 // Why this matters: the LLM emits Span as a verbatim quote from a chunk,
-// but the chunk text in Milvus has been processed by the chunker
-// (markdown header splitter) which may normalize whitespace differently
-// than the LLM. Naive substring contains would fail to match "出差住宿费
+// but the chunk text in Milvus is the verbatim .md file body
+// (one-doc-one-chunk, no chunker/splitter exists), and the LLM may
+// emit its Span quote with different whitespace than the source text.
+// Naive substring contains would fail to match "出差住宿费
 // 超过标准额度时" vs "出差住宿费超过标准额度时" if the chunk had no
 // whitespace between the LLM's emitted span's words. width.Narrow
 // handles the CN 全角→半角 drift (Pitfall 4 mitigation: the LLM
