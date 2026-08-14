@@ -183,6 +183,19 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		return emitErr
 	}
 
+	// FEUI-06 channel (quick plan 260815-0xb): retrieval succeeded with
+	// candidates — emit the retrieve + found_candidates progress pair.
+	// NOTE (deviation from plan wording): the plan sketched retrieve
+	// BEFORE the Search call, but its refusal-path contract (zero
+	// data-subprogress on the 0-chunk short-circuit, Test 3) forbids
+	// that placement — a pre-Search emit would leak onto the refusal
+	// stream and un-send is impossible on SSE. Retrieval is a
+	// millisecond-scale Milvus call (the dominant wait is the LLM,
+	// covered by generate/self_verify below), so the post-gate placement
+	// preserves both the UX goal and the refusal contract.
+	emitSubprogress(c, wire.SubprogressStep{Step: "retrieve", Tier: tiers[0]})
+	emitSubprogress(c, wire.SubprogressStep{Step: "found_candidates", Tier: tiers[0], Count: len(chunks)})
+
 	// Step 6: GEVL-01 — max retrieval score below threshold → refusal,
 	// NO LLM call.
 	if maxScore(chunks) < retrievalScoreThreshold {
@@ -217,6 +230,10 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			openai.WithExtraFields(extraFields),
 		}),
 	}
+	// FEUI-06: emit the generate progress BEFORE the (dominant) LLM wait
+	// so the user sees 生成结论中... while the model is producing the
+	// structured Verdict JSON.
+	emitSubprogress(c, wire.SubprogressStep{Step: "generate"})
 	iter := s.Runner.Query(ctx, prompt, opts...)
 	raw, err := drainFinalContent(iter)
 	if err != nil {
@@ -233,6 +250,9 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 
 	// Step 9: grounding check (D2-01). Each citation's span must appear
 	// (after D2-05 normalization) in the chunk text keyed by ChunkID.
+	// FEUI-06: emit the self_verify progress before the grounding check
+	// so the user sees 自校验中... while spans are verified.
+	emitSubprogress(c, wire.SubprogressStep{Step: "self_verify"})
 	chunksByID := make(map[string]string, len(chunks))
 	for _, ch := range chunks {
 		chunksByID[strconv.FormatInt(ch.ID, 10)] = ch.Content
@@ -321,6 +341,25 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		log.Printf("[WARN] server: finish emit failed (non-fatal): %v", err)
 	}
 	return nil
+}
+
+// emitSubprogress writes one data-subprogress SSE chunk (quick plan
+// 260815-0xb — the FEUI-06 channel rendered by DataSubprogressPart.tsx).
+//
+// Best-effort by design (T-0xb-02 mitigate): progress chunks are purely
+// decorative observability, so marshal/emit failures are logged and
+// swallowed — a dead socket will surface on the next REAL emit (the
+// verdict/refusal path propagates those errors), and a progress failure
+// must never interrupt the pipeline's trust-bearing decision path.
+func emitSubprogress(c *app.RequestContext, p wire.SubprogressStep) {
+	payload, err := json.Marshal(p)
+	if err != nil {
+		log.Printf("[WARN] server: marshal subprogress %+v: %v (non-fatal)", p, err)
+		return
+	}
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "data-subprogress", Data: payload}); err != nil {
+		log.Printf("[WARN] server: emit subprogress %s: %v (non-fatal)", p.Step, err)
+	}
 }
 
 // buildPrompt renders the production system prompt with the query and

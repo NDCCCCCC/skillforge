@@ -1,19 +1,24 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 05-07 Task 2 + Plan 05-08 Task 1 — ChatInput skill-selector tests.
+// Quick plan 260815-0xb Task 2 — ChatInput slash-command Skill menu
+// tests (Claude Code-style interaction, replacing the Plan 05-07
+// D5-IA-01 click-popover tests).
 //
-// Pins D5-IA-01: the chat-input-current-skill block is a clickable Skill
-// selector popover listing skills from useAppStore.skills (which is
-// populated by useSkillReload reading item.manifest.description).
-// Selecting a row calls useAppStore.setCurrentSkill(id). When the skills
-// list is empty the selector shows a muted 尚未安装任何 Skill row.
-//
-// Plan 05-08 (WR-02) — when the selected skill is removed from
-// store.skills (e.g. backend dropped the YAML), currentSkillId is
-// automatically cleared so the trigger shows '未选择 Skill' and no
-// dangling id leaks to /api/chat.
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+// Pins the slash-menu contract:
+//  - typing "/" (non-wizard mode) opens chat-input-skill-menu listing
+//    store.skills name + description
+//  - continued typing filters (case-insensitive substring on name +
+//    description)
+//  - ArrowDown/ArrowUp move the data-active highlight (clamped, cyclic);
+//    Enter selects (setCurrentSkill + clear input + close menu) and does
+//    NOT send
+//  - Esc closes the menu keeping the typed text; outside mousedown also
+//    closes
+//  - empty skills renders the 尚未安装任何 Skill empty row (no crash)
+//  - wizard mode (modeLabel) never opens the menu; Plan 05-08 WR-02
+//    stale-skill defense still clears a dangling currentSkillId
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import ChatInput from '../components/chat/ChatInput';
@@ -47,82 +52,149 @@ beforeEach(() => {
   });
 });
 
-describe('ChatInput Skill selector (Plan 05-07 D5-IA-01 + Plan 05-08 WR-02)', () => {
-  it('renders the chat-input-current-skill trigger with 未选择 Skill when no skill is selected', () => {
+function seedSkills() {
+  useAppStore.setState({
+    skills: [
+      { id: 'calculator', name: 'Calculator', description: 'performs arithmetic', status: 'ok' },
+      { id: 'compliance', name: 'Compliance Review', description: '合规审查 skill', status: 'ok' },
+    ],
+  });
+}
+
+function type(value: string) {
+  fireEvent.change(screen.getByTestId('chat-input-textarea'), { target: { value } });
+}
+
+describe('ChatInput slash-command Skill menu (quick plan 260815-0xb)', () => {
+  it('renders the read-only current-skill badge; typing "/" opens the menu listing skills', () => {
+    seedSkills();
     render(<ChatInput onSend={() => undefined} />);
-    const trigger = screen.getByTestId('chat-input-current-skill');
-    expect(trigger).toBeInTheDocument();
-    expect(trigger.textContent).toContain('未选择 Skill');
+    // Read-only badge — a div, not a clickable popover trigger.
+    const badge = screen.getByTestId('chat-input-current-skill');
+    expect(badge.textContent).toContain('未选择 Skill');
+    // Menu closed before any input.
+    expect(screen.queryByTestId('chat-input-skill-menu')).toBeNull();
+    type('/');
+    const menu = screen.getByTestId('chat-input-skill-menu');
+    expect(within_text(menu, 'Calculator')).toBe(true);
+    expect(within_text(menu, 'performs arithmetic')).toBe(true);
+    expect(within_text(menu, 'Compliance Review')).toBe(true);
   });
 
-  it('clicking the trigger opens a popover listing skills from store.skills with name + description', () => {
-    useAppStore.setState({
-      skills: [
-        {
-          id: 's1',
-          name: 'S1',
-          description: 'desc-from-manifest',
-          status: 'ok',
-        },
-        {
-          id: 's2',
-          name: 'S2',
-          description: 'second skill',
-          status: 'ok',
-        },
-      ],
-    });
+  it('continued typing filters skills by case-insensitive substring on name or description', () => {
+    seedSkills();
     render(<ChatInput onSend={() => undefined} />);
-    fireEvent.click(screen.getByTestId('chat-input-current-skill'));
-    const rows = screen.getAllByTestId('chat-input-skill-option');
-    expect(rows).toHaveLength(2);
-    expect(within(rows[0]).getByText('S1')).toBeInTheDocument();
-    expect(within(rows[0]).getByText('desc-from-manifest')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('S2')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('second skill')).toBeInTheDocument();
+    type('/cal');
+    const menu = screen.getByTestId('chat-input-skill-menu');
+    // "Calculator" name matches; "Compliance Review"/"合规审查" does not.
+    const options = menu.querySelectorAll('[data-testid="chat-input-skill-option"]');
+    expect(options).toHaveLength(1);
+    expect(options[0].getAttribute('data-skill-id')).toBe('calculator');
+    // Description match is case-insensitive too ("Arithmetic").
+    type('/ARITH');
+    expect(
+      menu.querySelectorAll('[data-testid="chat-input-skill-option"]'),
+    ).toHaveLength(1);
+    // Non-matching filter leaves the empty state, not a crash.
+    type('/zzz-no-match');
+    expect(menu.querySelector('[data-testid="chat-input-skill-empty"]')).not.toBeNull();
   });
 
-  it('clicking a skill option sets currentSkillId via the store and closes the popover', () => {
-    useAppStore.setState({
-      skills: [
-        { id: 's1', name: 'S1', description: 'desc', status: 'ok' },
-      ],
-    });
-    render(<ChatInput onSend={() => undefined} />);
-    fireEvent.click(screen.getByTestId('chat-input-current-skill'));
-    const option = screen.getByTestId('chat-input-skill-option');
-    fireEvent.click(option);
-    expect(useAppStore.getState().currentSkillId).toBe('s1');
-    // Popover closes — queryByTestId returns null when not in DOM.
-    expect(screen.queryByTestId('chat-input-skill-option')).toBeNull();
+  it('ArrowDown/ArrowUp move the data-active highlight; Enter selects without sending', () => {
+    seedSkills();
+    let sent = 0;
+    render(<ChatInput onSend={() => { sent += 1; }} />);
+    type('/');
+    const menu = screen.getByTestId('chat-input-skill-menu');
+    const options = () => menu.querySelectorAll('[data-testid="chat-input-skill-option"]');
+    // Initial highlight on the first option.
+    expect(options()[0].getAttribute('data-active')).toBe('true');
+    expect(options()[1].getAttribute('data-active')).not.toBe('true');
+
+    const textarea = screen.getByTestId('chat-input-textarea');
+    fireEvent.keyDown(textarea, { key: 'ArrowDown' });
+    expect(options()[0].getAttribute('data-active')).not.toBe('true');
+    expect(options()[1].getAttribute('data-active')).toBe('true');
+    fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+    expect(options()[0].getAttribute('data-active')).toBe('true');
+
+    // Enter selects the highlighted skill: store written, input cleared,
+    // menu closed, onSend NOT invoked.
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(useAppStore.getState().currentSkillId).toBe('calculator');
+    expect(
+      (screen.getByTestId('chat-input-textarea') as HTMLTextAreaElement).value,
+    ).toBe('');
+    expect(screen.queryByTestId('chat-input-skill-menu')).toBeNull();
+    expect(sent).toBe(0);
+    // Badge immediately reflects the selection.
+    expect(screen.getByTestId('chat-input-current-skill').textContent).toContain('Calculator');
   });
 
-  it('renders a muted 尚未安装任何 Skill row when store.skills is empty (no crash)', () => {
+  it('Esc closes the menu keeping the text; outside mousedown also closes', () => {
+    seedSkills();
     render(<ChatInput onSend={() => undefined} />);
-    fireEvent.click(screen.getByTestId('chat-input-current-skill'));
-    expect(screen.queryByTestId('chat-input-skill-option')).toBeNull();
+    type('/cal');
+    const textarea = screen.getByTestId('chat-input-textarea');
+    fireEvent.keyDown(textarea, { key: 'Escape' });
+    expect(screen.queryByTestId('chat-input-skill-menu')).toBeNull();
+    expect((textarea as HTMLTextAreaElement).value).toBe('/cal');
+
+    // Reopen, then close via outside mousedown.
+    type('/');
+    expect(screen.getByTestId('chat-input-skill-menu')).not.toBeNull();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId('chat-input-skill-menu')).toBeNull();
+    // Text preserved on outside-close as well.
+    expect((textarea as HTMLTextAreaElement).value).toBe('/');
+  });
+
+  it('renders 尚未安装任何 Skill when store.skills is empty (no crash)', () => {
+    render(<ChatInput onSend={() => undefined} />);
+    type('/');
+    const menu = screen.getByTestId('chat-input-skill-menu');
+    expect(
+      menu.querySelectorAll('[data-testid="chat-input-skill-option"]'),
+    ).toHaveLength(0);
     expect(screen.getByText('尚未安装任何 Skill')).toBeInTheDocument();
   });
 
+  it('wizard mode (modeLabel) never opens the menu on "/"', () => {
+    seedSkills();
+    render(<ChatInput onSend={() => undefined} modeLabel="Skill 向导" />);
+    type('/');
+    expect(screen.queryByTestId('chat-input-skill-menu')).toBeNull();
+  });
+
   it('Plan 05-08 WR-02 — clears currentSkillId when the selected skill disappears from store.skills', async () => {
-    // Seed currentSkillId='s1' BEFORE render so the ChatInput mounts
-    // with an active selection.
     useAppStore.setState({
       skills: [{ id: 's1', name: 'S1', description: 'd', status: 'ok' }],
       currentSkillId: 's1',
     });
     render(<ChatInput onSend={() => undefined} />);
-    // Trigger shows the active Skill.
     expect(screen.getByTestId('chat-input-current-skill').textContent).toContain('S1');
 
     // Backend removes the Skill (reload-failed YAML, manual delete, etc.).
     useAppStore.setState({ skills: [] });
 
-    // Wait for the useEffect to clear the stale id.
     await waitFor(() => {
       expect(useAppStore.getState().currentSkillId).toBeNull();
     });
-    // Trigger reverts to '未选择 Skill' fallback.
     expect(screen.getByTestId('chat-input-current-skill').textContent).toContain('未选择 Skill');
   });
+
+  it('Enter sends when the menu is NOT open (unchanged legacy behavior)', () => {
+    seedSkills();
+    let sent: string[] = [];
+    render(<ChatInput onSend={(t) => { sent.push(t); }} />);
+    type('普通问题');
+    fireEvent.keyDown(screen.getByTestId('chat-input-textarea'), { key: 'Enter' });
+    expect(sent).toEqual(['普通问题']);
+  });
 });
+
+// within_text — minimal containment helper (avoids re-importing `within`
+// for plain DOM text assertions on a menu element).
+function within_text(container: HTMLElement, text: string): boolean {
+  return container.textContent?.includes(text) ?? false;
+}
