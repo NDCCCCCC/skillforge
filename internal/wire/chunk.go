@@ -70,6 +70,7 @@ type UIMessageChunk struct {
 	SourceID       string          `json:"sourceId,omitempty"`       // source-url / source-document id
 	URL            string          `json:"url,omitempty"`            // source-url href
 	Title          string          `json:"title,omitempty"`          // source-url / source-document label
+	MediaType      string          `json:"mediaType,omitempty"`      // source-document MIME type (AI SDK v5 REQUIRED: text/markdown for policy clauses)
 	ErrorText      string          `json:"errorText,omitempty"`      // error chunk payload (no API key ever)
 	Data           json.RawMessage `json:"data,omitempty"`           // data-* custom payload (e.g. data-policy Verdict, data-decision DecisionPayload)
 }

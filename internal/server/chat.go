@@ -622,13 +622,20 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: " "}); err != nil {
 		return fmt.Errorf("emit text-delta: %w", err)
 	}
-	// 1. source-document per citation (SC-6).
+	// 1. source-document per citation (SC-6). mediaType is REQUIRED by the
+	// AI SDK v5 source-document schema (index.js:6672-6679): sourceId +
+	// mediaType + title are all non-optional. Omitting mediaType fails zod
+	// validation, which THROWS and kills the whole SSE stream — every
+	// subsequent chunk (data-policy verdict, data-redline) is then dropped
+	// (the live Phase 7 failure: verdict rendered nothing). text/markdown
+	// is the accurate type for policy-clause source docs.
 	for _, cit := range v.Citations {
 		if err := wire.EmitChunk(c, wire.UIMessageChunk{
-			Type:     "source-document",
-			ID:       "src-" + cit.ChunkID,
-			SourceID: cit.ChunkID,
-			Title:    sourcePathFor(chunks, cit.ChunkID),
+			Type:      "source-document",
+			ID:        "src-" + cit.ChunkID,
+			SourceID:  cit.ChunkID,
+			MediaType: "text/markdown",
+			Title:     sourcePathFor(chunks, cit.ChunkID),
 		}); err != nil {
 			return fmt.Errorf("emit source-document for %s: %w", cit.ChunkID, err)
 		}
