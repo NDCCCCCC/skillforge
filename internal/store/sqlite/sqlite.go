@@ -47,7 +47,7 @@ import (
 // 4 for a file-backed DSN (SQLite serializes writes through its own
 // file lock — 4 reader connections is a safe conservative pool size).
 type Config struct {
-	DSN        string
+	DSN          string
 	MaxOpenConns int
 }
 

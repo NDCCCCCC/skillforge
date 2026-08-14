@@ -313,7 +313,7 @@ func validateTiers(docs []retriever.Document) error {
 //
 //   - effective_to < 0                              — negative epoch nonsense.
 //   - both effective_from > 0 AND effective_to < effective_from
-//                                                — inverted window.
+//     — inverted window.
 //
 // Permitted cases (each documented inline in retriever.Document.EffectiveTo):
 //

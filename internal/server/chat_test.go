@@ -685,8 +685,8 @@ func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
 		Retriever: &stubRetriever{chunks: []retriever.Hit{
 			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.92},
 		}},
-		Runner:  newStubRunner(cannedVerdictJSON("合规", 0.95, []string{"1"}, "x", "权威")),
-		Router:  skill.NewRouter(emb),
+		Runner:   newStubRunner(cannedVerdictJSON("合规", 0.95, []string{"1"}, "x", "权威")),
+		Router:   skill.NewRouter(emb),
 		Registry: r,
 	}
 	addr, cleanup := newTestHertz(t, deps)

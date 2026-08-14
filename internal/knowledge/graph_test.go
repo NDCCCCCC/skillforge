@@ -53,9 +53,9 @@ func (s *stubMetaRetriever) Health(_ context.Context) error { return nil }
 func (s *stubMetaRetriever) Search(_ context.Context, _ []float32, _ []string, _ int, _ int64) ([]retriever.Hit, error) {
 	return nil, nil
 }
-func (s *stubMetaRetriever) Ensure(_ context.Context) error                        { return nil }
+func (s *stubMetaRetriever) Ensure(_ context.Context) error                         { return nil }
 func (s *stubMetaRetriever) Insert(_ context.Context, _ []retriever.Document) error { return nil }
-func (s *stubMetaRetriever) Disconnect() error                                     { return nil }
+func (s *stubMetaRetriever) Disconnect() error                                      { return nil }
 
 // Compile-time check that *stubMetaRetriever satisfies the full
 // retriever.Retriever interface — required by knowledge.New.

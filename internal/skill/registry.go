@@ -86,11 +86,11 @@ type Entry struct {
 // skills root is rejected; the old version is retained and the registered
 // LoadError hook is invoked (D5-08 — never silent-drop).
 type Registry struct {
-	skillsDir string            // as-passed; rootAbs is the canonical absolute form
-	rootAbs   string            // absolute resolved skills dir (for Lstat root if ever needed)
-	embedder  embedder.Embedder // nil allowed; descriptions get nil DescVec
+	skillsDir string                            // as-passed; rootAbs is the canonical absolute form
+	rootAbs   string                            // absolute resolved skills dir (for Lstat root if ever needed)
+	embedder  embedder.Embedder                 // nil allowed; descriptions get nil DescVec
 	snapshot  atomic.Pointer[map[string]*Entry] // immutable; copy-on-write
-	watcher   *fsnotify.Watcher                  // owned by Registry; created + Add in New, closed in watchLoop exit
+	watcher   *fsnotify.Watcher                 // owned by Registry; created + Add in New, closed in watchLoop exit
 	debounce  struct {
 		mu    sync.Mutex
 		timer *time.Timer
@@ -324,8 +324,9 @@ func (r *Registry) Reload(path string) {
 // emits dir-level WRITE/CHMOD events WITHOUT the file name — event.Name
 // is the parent directory. We handle both shapes by deriving the
 // candidate SKILL.md path two ways:
-//   1. event.Name ends in SKILL.md → use it directly.
-//   2. event.Name is a directory containing a SKILL.md → join them.
+//  1. event.Name ends in SKILL.md → use it directly.
+//  2. event.Name is a directory containing a SKILL.md → join them.
+//
 // If neither matches, the event is a CREATE/REMOVE on an unrelated
 // file (or on the skills dir itself) and we ignore it.
 func (r *Registry) watchLoop(ctx context.Context, watcher *fsnotify.Watcher) {

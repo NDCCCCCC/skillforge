@@ -101,9 +101,9 @@ func TestValidateVerdictRejectsNilCitations(t *testing.T) {
 // typo at the internal/verdict package level first.
 func TestValidStatusesEnum(t *testing.T) {
 	expected := map[string]bool{
-		"合规":        true,
-		"不合规":       true,
-		"需补充":       true,
+		"合规":         true,
+		"不合规":        true,
+		"需补充":        true,
 		"unanswered": true,
 	}
 	assert.Equal(t, expected, ValidStatuses,

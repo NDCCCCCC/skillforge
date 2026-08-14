@@ -36,7 +36,7 @@ import (
 // tests can assert the same description produces the same vector (and a
 // different description produces a different vector).
 type stubEmbedder struct {
-	dim  int
+	dim   int
 	calls atomic.Int64
 }
 
@@ -245,7 +245,7 @@ func TestRegistry_Reload_ValidationFailure_KeepsOld(t *testing.T) {
 
 	// Capture load errors via the hook.
 	var loadErrName atomic.Value // string
-	var loadErr atomic.Value    // error
+	var loadErr atomic.Value     // error
 	r.SetLoadErrorHook(func(name string, err error) {
 		loadErrName.Store(name)
 		loadErr.Store(err)

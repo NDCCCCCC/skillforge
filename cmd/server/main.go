@@ -26,12 +26,12 @@
 //     Skill is fatal — the operator should see the SYSK-02 violation
 //     in the startup log, not as a confusing 500 later.
 //  2. Construct the configured retriever backend (RETRIEVER_BACKEND):
-//       "milvus" (default) — milvus.New (bounded retries) + Ensure + Index.
-//       "mongo"            — mongo.New (Connect+Ping) + Ensure +
-//                            SeedFromKnowledgeDir. Used when the internal
-//                            Milvus is unavailable; MongoDB 4.4+ has no
-//                            native vector search, so cosine is computed
-//                            in Go against the tier-filtered rows.
+//     "milvus" (default) — milvus.New (bounded retries) + Ensure + Index.
+//     "mongo"            — mongo.New (Connect+Ping) + Ensure +
+//     SeedFromKnowledgeDir. Used when the internal
+//     Milvus is unavailable; MongoDB 4.4+ has no
+//     native vector search, so cosine is computed
+//     in Go against the tier-filtered rows.
 //  3. BGE-M3 outage is NOT fatal at startup (Pitfall 8 — production
 //     refuses on BGE-M3 outage at request time, not startup time, so
 //     the server can boot into a known-broken state and operators can
@@ -88,9 +88,9 @@ import (
 
 // env-or-default helpers. Each required var aborts startup on empty.
 const (
-	defaultGLMBaseURL    = "https://open.bigmodel.cn/api/coding/paas/v4"
-	defaultServerAddr    = ":8888"
-	defaultCollection    = "skillforge_knowledge"
+	defaultGLMBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
+	defaultServerAddr = ":8888"
+	defaultCollection = "skillforge_knowledge"
 	// Plan 06-02 / SC-1: the eval dashboard reads the same files
 	// cmd/eval --archive writes. Keeping these paths in sync with
 	// cmd/eval's defaults is the load-bearing invariant — a

@@ -112,9 +112,9 @@ func computeAllMetrics(ctx context.Context, t *testing.T, samples []Sample, j Ju
 		require.NoError(t, err, "ContextRecall %s", s.ID)
 
 		out = append(out, map[string]any{
-			"faith":  faith,
-			"arel":   arel,
-			"cprec":  cprec,
+			"faith":   faith,
+			"arel":    arel,
+			"cprec":   cprec,
 			"crecall": crecall,
 		})
 	}

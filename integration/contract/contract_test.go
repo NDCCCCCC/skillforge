@@ -254,9 +254,9 @@ func TestContractStructuredOutputSchema(t *testing.T) {
 	// A typo here (e.g. variation selector on a CN char) would silently
 	// change semantics; this assertion catches it.
 	expectedStatuses := map[string]bool{
-		"合规":        true,
-		"不合规":       true,
-		"需补充":       true,
+		"合规":         true,
+		"不合规":        true,
+		"需补充":        true,
 		"unanswered": true,
 	}
 	assert.Equal(t, expectedStatuses, verdict.ValidStatuses,
@@ -394,12 +394,12 @@ func TestContractRunsUnder10s(t *testing.T) {
 // TestContractFullSpikeSuite shells out to the spike subcommands that
 // can run without external services. SC-5 integration coverage.
 //
-// - spiked wire: always runnable (mock OpenAI server in-process).
-// - spiked sse: always runnable (Hertz on dynamic port).
-// - spiked milvus: SKIPPED — requires live Milvus cluster (Plan 02
-//   human-verify checkpoint).
-// - spiked e2e: SKIPPED — requires real GLM-5.2 (Plan 04 human-verify
-//   checkpoint).
+//   - spiked wire: always runnable (mock OpenAI server in-process).
+//   - spiked sse: always runnable (Hertz on dynamic port).
+//   - spiked milvus: SKIPPED — requires live Milvus cluster (Plan 02
+//     human-verify checkpoint).
+//   - spiked e2e: SKIPPED — requires real GLM-5.2 (Plan 04 human-verify
+//     checkpoint).
 //
 // Both skips are recorded so the suite output documents what was NOT
 // covered (not silently dropped).

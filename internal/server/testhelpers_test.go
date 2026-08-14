@@ -82,8 +82,8 @@ func (e *stubEmbedder) LastQuery() string {
 // whatever chunks were pre-loaded; tests assert the tier list the
 // pipeline passed.
 type stubRetriever struct {
-	chunks []retriever.Hit
-	err    error
+	chunks  []retriever.Hit
+	err     error
 	lastTop int
 	// capturedTiers records every tier slice the pipeline passed.
 	// TestPersonalTierRefusal asserts on the latest tier list.

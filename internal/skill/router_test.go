@@ -37,10 +37,10 @@ import (
 // below AmbiguityLowFloor (cosine ≈ 0 when orthogonal — but we scale
 // down to push scores below the threshold; see TestRouter_Ambiguous_*).
 type stubRouterEmbedder struct {
-	pivotIndex int   // index where the unit vector has 1.0; rest are 0
-	dim        int   // total vector dim
+	pivotIndex int     // index where the unit vector has 1.0; rest are 0
+	dim        int     // total vector dim
 	scale      float32 // multiplies the unit vector; default 1.0; < 1.0 lowers cosine
-	err        error  // if non-nil, Embed returns this error (BGE-M3 outage simulation)
+	err        error   // if non-nil, Embed returns this error (BGE-M3 outage simulation)
 }
 
 func (e *stubRouterEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
@@ -167,8 +167,8 @@ func TestRouter_Ambiguous_Top1Top2Close(t *testing.T) {
 	r := NewRouter(emb)
 
 	snap := map[string]*Entry{
-		"alpha": entryFor("alpha", 1, dim),                       // cosine = 1.0
-		"bravo": entryForScaled("bravo", 1, dim, 0.94),           // cosine = 0.94
+		"alpha": entryFor("alpha", 1, dim),             // cosine = 1.0
+		"bravo": entryForScaled("bravo", 1, dim, 0.94), // cosine = 0.94
 	}
 
 	got, err := r.Route(context.Background(), "test query", snap)

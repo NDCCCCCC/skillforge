@@ -148,11 +148,11 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 	var out []store.AuditRow
 	for rows.Next() {
 		var (
-			r            store.AuditRow
-			faith        sql.NullFloat64
-			ctxPrec      sql.NullFloat64
-			ansRel       sql.NullFloat64
-			ctxRecall    sql.NullFloat64
+			r         store.AuditRow
+			faith     sql.NullFloat64
+			ctxPrec   sql.NullFloat64
+			ansRel    sql.NullFloat64
+			ctxRecall sql.NullFloat64
 		)
 		if err := rows.Scan(
 			&r.ID, &r.Timestamp, &r.SessionID, &r.UserID, &r.SkillID,

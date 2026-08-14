@@ -164,8 +164,8 @@ func TestSearch_EmptyTiersSendsInEmptyFilter(t *testing.T) {
 func TestSearch_RanksByCosine(t *testing.T) {
 	q := []float32{1, 0}
 	f := &fakeFinder{rows: []docRow{
-		{ID: 1, Tier: "权威", Content: "low", Source: "authority/a.md", Embedding: []float32{0, 1}}, // cos=0
-		{ID: 2, Tier: "权威", Content: "top", Source: "authority/b.md", Embedding: []float32{1, 0}}, // cos=1
+		{ID: 1, Tier: "权威", Content: "low", Source: "authority/a.md", Embedding: []float32{0, 1}},  // cos=0
+		{ID: 2, Tier: "权威", Content: "top", Source: "authority/b.md", Embedding: []float32{1, 0}},  // cos=1
 		{ID: 3, Tier: "历史", Content: "mid", Source: "historical/c.md", Embedding: []float32{1, 1}}, // cos≈.707
 	}}
 	c := newClientWithFake(f)
@@ -428,7 +428,7 @@ func TestMongoSearch_EffectiveToFilter(t *testing.T) {
 	// Build two fake rows. EffectiveTo=0 is the perpetual sentinel;
 	// effective_to=now-1 is expired.
 	rows := []docRow{
-		{ID: 1, Tier: "权威", EffectiveTo: 0, Embedding: []float32{1, 0}},        // perpetual
+		{ID: 1, Tier: "权威", EffectiveTo: 0, Embedding: []float32{1, 0}},         // perpetual
 		{ID: 2, Tier: "权威", EffectiveTo: now - 100, Embedding: []float32{1, 0}}, // expired
 	}
 
@@ -511,11 +511,11 @@ func TestMongoInsert_WritesEffectiveFields(t *testing.T) {
 	// fields set, verify the Insert signature accepts them, and check
 	// the Document type exposes them.
 	doc := retriever.Document{
-		ID:           1,
-		Tier:         "权威",
-		Content:      "x",
-		Source:       "authority/x.md",
-		Embedding:    []float32{1, 0},
+		ID:            1,
+		Tier:          "权威",
+		Content:       "x",
+		Source:        "authority/x.md",
+		Embedding:     []float32{1, 0},
 		EffectiveFrom: 1699000000,
 		EffectiveTo:   1700000000,
 	}

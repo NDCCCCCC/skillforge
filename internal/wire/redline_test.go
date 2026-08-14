@@ -69,10 +69,10 @@ func TestRedlinePayload_RequiredFields(t *testing.T) {
 func TestRedlinePayload_RoundTrip(t *testing.T) {
 	// Full payload (with clauseId).
 	r := RedlinePayload{
-		ClauseID:         "C-7.3.2",
-		OriginalClause:   "员工差旅费应在30日内报销。",
-		ProposedRewrite:  "员工差旅费应在15个工作日内报销。",
-		Rationale:        "缩短报销周期，提升员工满意度。",
+		ClauseID:        "C-7.3.2",
+		OriginalClause:  "员工差旅费应在30日内报销。",
+		ProposedRewrite: "员工差旅费应在15个工作日内报销。",
+		Rationale:       "缩短报销周期，提升员工满意度。",
 	}
 	raw, err := json.Marshal(r)
 	require.NoError(t, err)

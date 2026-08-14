@@ -89,19 +89,19 @@ func NewRouter(emb embedder.Embedder) *Router {
 //
 // Field semantics:
 //   - Selected:    the chosen Skill's directory name (e.g. "compliance").
-//                  Empty when Ambiguous is true (including the empty-
-//                  snapshot case — "no Skills installed" routes to the
-//                  picker UX with the wizard empty state).
+//     Empty when Ambiguous is true (including the empty-
+//     snapshot case — "no Skills installed" routes to the
+//     picker UX with the wizard empty state).
 //   - Scores:      ranked list of every candidate Skill in the snapshot,
-//                  sorted by cosine descending. Exactly one entry has
-//                  Selected=true when Ambiguous is false; no entry has
-//                  Selected=true when Ambiguous is true (the user picks).
-//                  Used by the React SkillForgeInspector (SC-1 trace) to
-//                  render the routing confidence breakdown.
+//     sorted by cosine descending. Exactly one entry has
+//     Selected=true when Ambiguous is false; no entry has
+//     Selected=true when Ambiguous is true (the user picks).
+//     Used by the React SkillForgeInspector (SC-1 trace) to
+//     render the routing confidence breakdown.
 //   - Ambiguous:   true when (top-1 score < AmbiguityLowFloor) OR
-//                  (top-1 - top-2 < AmbiguityMargin). The chatHandler
-//                  emits the data-decision chunk and returns WITHOUT
-//                  invoking VerdictPipeline; the FE surfaces the picker.
+//     (top-1 - top-2 < AmbiguityMargin). The chatHandler
+//     emits the data-decision chunk and returns WITHOUT
+//     invoking VerdictPipeline; the FE surfaces the picker.
 type DecisionResult struct {
 	Selected  string
 	Scores    []wire.SkillScore

@@ -111,16 +111,16 @@ const defaultSkill = "compliance"
 //     echo it back on the response (AGNT-05 / SC-9).
 //  4. Branch on Agent availability:
 //     - Agent path (s.Agent != nil, OPT-IN via USE_AGENT_PATH=true at
-//       cmd/server/main.go): runAgent (ReAct loop + audit write +
-//       session turn append + data-decision SSE emission).
+//     cmd/server/main.go): runAgent (ReAct loop + audit write +
+//     session turn append + data-decision SSE emission).
 //     - VerdictPipeline (s.Agent == nil, the PRODUCTION DEFAULT):
-//       code-forced original-query retrieval → LLM emits verdict JSON
-//       only. Audit + session writes happen inside VerdictPipeline at
-//       each emit site (refusal / verdict) and in this handler on the
-//       error branch — same writeAuditAndTurn helper as runAgentPath.
-//       Existing acceptance tests that construct a Deps with only
-//       Runner set (no Agent) stay green via this path; Plan 03-06's
-//       eval golden-set runner also uses it.
+//     code-forced original-query retrieval → LLM emits verdict JSON
+//     only. Audit + session writes happen inside VerdictPipeline at
+//     each emit site (refusal / verdict) and in this handler on the
+//     error branch — same writeAuditAndTurn helper as runAgentPath.
+//     Existing acceptance tests that construct a Deps with only
+//     Runner set (no Agent) stay green via this path; Plan 03-06's
+//     eval golden-set runner also uses it.
 //
 // Hertz's WithHostPorts(addr) + h.Spin() call shape (cmd/server/main.go)
 // blocks here until SIGINT/SIGTERM — this handler runs on every

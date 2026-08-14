@@ -449,6 +449,7 @@ func WithRunEmit(ctx context.Context, emit DecisionEmitFunc) context.Context {
 //  8. Parse the agent's final message into verdict.Verdict.
 //  9. Apply verdict.GroundingChecker (D3-04 layer-1 floor — unchanged
 //     from Phase 2).
+//
 // 10. Apply MaybeCritique (D3-04 / D3-05 — additive strictness only).
 //
 // 11. Return (verdict, nil, nil).

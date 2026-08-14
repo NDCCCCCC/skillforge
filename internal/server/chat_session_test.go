@@ -348,14 +348,14 @@ func TestSessionIsolationConcurrent(t *testing.T) {
 // Pitfall 5 invariants (load-bearing — preserved verbatim from
 // the 2-session test):
 //
-//   1. Each goroutine gets a UNIQUE X-Session-Id.
-//   2. Each goroutine does 5 sequential POSTs.
-//   3. After settle: GetSession(sessN) returns exactly 10
-//      messages (5 user + 5 assistant).
-//   4. Cross-session leakage check: for each session, NONE of
-//      its messages contain any OTHER session's query text.
-//   5. Reuse cannedChatModel (refuses every request → exercises
-//      the refusal-path audit write too).
+//  1. Each goroutine gets a UNIQUE X-Session-Id.
+//  2. Each goroutine does 5 sequential POSTs.
+//  3. After settle: GetSession(sessN) returns exactly 10
+//     messages (5 user + 5 assistant).
+//  4. Cross-session leakage check: for each session, NONE of
+//     its messages contain any OTHER session's query text.
+//  5. Reuse cannedChatModel (refuses every request → exercises
+//     the refusal-path audit write too).
 //
 // Sampling: per-wave under -race (not per-commit — 250 canned
 // POSTs add overhead; the WHERE session_id=? invariant is

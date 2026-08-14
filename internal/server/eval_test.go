@@ -320,7 +320,7 @@ func TestEvalReports_InvalidTs(t *testing.T) {
 		{"2026-08-13T10:05:21Z", http.StatusBadRequest}, // colons illegal
 		{"2026-08-13", http.StatusBadRequest},           // no Z suffix
 		{"2026-08-13T10-05-21", http.StatusBadRequest},  // no Z suffix
-		{"2026-08-13T10-05-21z", http.StatusBadRequest},  // lowercase z
+		{"2026-08-13T10-05-21z", http.StatusBadRequest}, // lowercase z
 	}
 	for _, c := range cases {
 		t.Run("bad="+c.input, func(t *testing.T) {

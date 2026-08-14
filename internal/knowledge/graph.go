@@ -92,9 +92,9 @@ type Graph struct {
 // canonical CN-char tiers per UI-SPEC §SC-5 (even if its Docs list is
 // empty).
 type TierNode struct {
-	Tier       string   `json:"tier"`
-	DocCount   int      `json:"docCount"`
-	ChunkCount int      `json:"chunkCount"`
+	Tier       string    `json:"tier"`
+	DocCount   int       `json:"docCount"`
+	ChunkCount int       `json:"chunkCount"`
 	Docs       []DocNode `json:"docs"`
 }
 
@@ -102,9 +102,9 @@ type TierNode struct {
 // file in the corpus). Filename is the basename (no dir prefix) per
 // UI-SPEC §SC-5.
 type DocNode struct {
-	ID         string     `json:"id"`
-	Filename   string     `json:"filename"`
-	ChunkCount int        `json:"chunkCount"`
+	ID         string      `json:"id"`
+	Filename   string      `json:"filename"`
+	ChunkCount int         `json:"chunkCount"`
 	Chunks     []ChunkNode `json:"chunks"`
 }
 
@@ -114,7 +114,7 @@ type ChunkNode struct {
 	ID            string `json:"id"`
 	EffectiveFrom int64  `json:"effectiveFrom"` // 0 = perpetual start
 	EffectiveTo   int64  `json:"effectiveTo"`   // 0 = perpetual / open-ended
-	Version       string `json:"version"`        // empty when source has no frontmatter
+	Version       string `json:"version"`       // empty when source has no frontmatter
 }
 
 // ChunkPayload is the wire shape returned by GET /api/knowledge/chunk/:id

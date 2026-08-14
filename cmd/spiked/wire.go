@@ -226,9 +226,9 @@ func runWire(ctx context.Context, args []string) error {
 	// Assert all 3 extras reached the wire.
 	body := captured.String()
 	wantSubstrings := []string{
-		`"temperature"`,  // skill.Temperature = 0
-		`"json_object"`,  // response_format.type
-		`"disabled"`,     // thinking.type
+		`"temperature"`, // skill.Temperature = 0
+		`"json_object"`, // response_format.type
+		`"disabled"`,    // thinking.type
 	}
 	for _, want := range wantSubstrings {
 		if !strings.Contains(body, want) {

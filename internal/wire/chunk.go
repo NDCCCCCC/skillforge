@@ -86,14 +86,14 @@ type UIMessageChunk struct {
 //
 // Field semantics:
 //   - ChunkID:       numeric chunk id rendered as a decimal string
-//                    (matches retriever.Hit.ID → strconv.FormatInt).
+//     (matches retriever.Hit.ID → strconv.FormatInt).
 //   - Tier:          always "历史" today (the counter-evidence pass
-//                    queries the 历史 tier only); kept on the struct
-//                    so a future cross-tier expansion (e.g. 草稿) does
-//                    not need a wire change.
+//     queries the 历史 tier only); kept on the struct
+//     so a future cross-tier expansion (e.g. 草稿) does
+//     not need a wire change.
 //   - Source:        slash-normalized corpus path (e.g. "history/2023-policy.md").
 //   - Snippet:       1-line text snippet for the annotation row. The FE
-//                    renders this verbatim as a text node (NEVER HTML).
+//     renders this verbatim as a text node (NEVER HTML).
 //   - EffectiveFrom: epoch-seconds effective_from (0 = perpetual).
 //   - EffectiveTo:   epoch-seconds effective_to (0 = perpetual).
 type ConflictChunk struct {
@@ -115,31 +115,31 @@ type ConflictChunk struct {
 // Field semantics:
 //   - Step:         1-indexed hop number (1 or 2 for max_hops=2).
 //   - Decision:     one of "retrieve" | "answer" | "refuse" |
-//                   "forced_stop" | "route" | "counter_evidence".
-//                   The latter two were added in Plan 05-01 (D5-04) for
-//                   the skill-router observability surface.
+//     "forced_stop" | "route" | "counter_evidence".
+//     The latter two were added in Plan 05-01 (D5-04) for
+//     the skill-router observability surface.
 //   - ToolCallID:   links the decision to a specific tool invocation
-//                   (empty when Eino does not expose the id at OnStart).
+//     (empty when Eino does not expose the id at OnStart).
 //   - Query:        the (possibly refined) query for a retrieve decision.
 //   - Confidence:   model-reported confidence for an answer decision.
 //   - SkillScores:  populated when Decision == "route"; ranked list of
-//                   candidate Skills with their cosine-similarity scores
-//                   and the Selected flag (exactly one entry has
-//                   Selected=true unless Ambiguous is true).
+//     candidate Skills with their cosine-similarity scores
+//     and the Selected flag (exactly one entry has
+//     Selected=true unless Ambiguous is true).
 //   - Selected:     the SkillID of the chosen Skill on a "route"
-//                   decision (empty for non-routing decisions).
+//     decision (empty for non-routing decisions).
 //   - Ambiguous:    true when the top-2 score gap is below the router's
-//                   confidence threshold and the agent defers to a
-//                   follow-up query; UI surfaces this as a clarification
-//                   prompt.
+//     confidence threshold and the agent defers to a
+//     follow-up query; UI surfaces this as a clarification
+//     prompt.
 //   - ConflictChunks: populated when Decision == "counter_evidence"
-//                     (Plan 05-06 / SC-6 / D5-13). The 历史-tier
-//                     annotation rows surfaced AFTER the verdict so the
-//                     operator can see contradicting evidence WITHOUT
-//                     the chunks entering the verdict's grounding map.
-//                     Empty slice (or nil) when the counter-evidence
-//                     pass found no conflicts — the FE renders the empty
-//                     state copy.
+//     (Plan 05-06 / SC-6 / D5-13). The 历史-tier
+//     annotation rows surfaced AFTER the verdict so the
+//     operator can see contradicting evidence WITHOUT
+//     the chunks entering the verdict's grounding map.
+//     Empty slice (or nil) when the counter-evidence
+//     pass found no conflicts — the FE renders the empty
+//     state copy.
 type DecisionPayload struct {
 	Step           int             `json:"step"`     // 1-indexed hop number (1 or 2 for max_hops=2)
 	Decision       string          `json:"decision"` // "retrieve" | "answer" | "refuse" | "forced_stop" | "route" | "counter_evidence"
@@ -159,11 +159,11 @@ type DecisionPayload struct {
 // Field semantics:
 //   - SkillID:   the directory name of the Skill (e.g. "compliance").
 //   - SkillName: human-readable name from Manifest.Description's first
-//                sentence (or the Skill directory name if absent).
+//     sentence (or the Skill directory name if absent).
 //   - Score:     cosine-similarity score from the embedder against the
-//                user's query (range [0.0, 1.0]; BGE-M3 default).
+//     user's query (range [0.0, 1.0]; BGE-M3 default).
 //   - Selected:  exactly one entry in the slice has Selected=true
-//                unless the DecisionPayload.Ambiguous flag is true.
+//     unless the DecisionPayload.Ambiguous flag is true.
 type SkillScore struct {
 	SkillID   string  `json:"skillId"`
 	SkillName string  `json:"skillName"`

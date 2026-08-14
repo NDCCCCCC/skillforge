@@ -51,10 +51,10 @@ type CaseScore struct {
 // indicates the embedder's score signal is weak (the Phase 2 finding
 // re Ollama BGE-M3).
 type Recommendation struct {
-	RecommendedThreshold  float64            `json:"recommended_threshold"`
-	Rationale             string             `json:"rationale"`
-	ScoreDistribution     map[string]float64 `json:"score_distribution"`
-	RefusalBoundaryScore  float64            `json:"refusal_boundary_score"`
+	RecommendedThreshold float64            `json:"recommended_threshold"`
+	Rationale            string             `json:"rationale"`
+	ScoreDistribution    map[string]float64 `json:"score_distribution"`
+	RefusalBoundaryScore float64            `json:"refusal_boundary_score"`
 }
 
 // Calibrate computes a RecommendedThreshold from the empirical score
