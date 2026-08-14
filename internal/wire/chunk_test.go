@@ -96,28 +96,76 @@ func TestDecisionChunkType(t *testing.T) {
 	})
 }
 
-// TestValidTypes_Nineteen — Plan 05-01 Task 1 count assertion (extended:
-// the message-level `finish` terminator became the 19th type when the
-// VerdictPipeline started emitting the full AI SDK v5 lifecycle).
-// ValidTypes map. Phase 4 closed with 17 entries; Phase 5 adds exactly
-// ONE (`data-redline`, D5-14). The plan FORBIDS additional types (the
-// router/counter-evidence/redline-plan pipeline all use additive fields
-// on existing chunks, not new discriminators).
+// TestValidTypes_Twenty — count assertion, extended by quick plan
+// 260815-0xb: the FEUI-06 `data-subprogress` streaming-progress type
+// became the 20th wire type when the VerdictPipeline started emitting
+// per-stage progress chunks (retrieve / found_candidates / generate /
+// self_verify). History: Phase 4 closed with 17 entries; Phase 5 added
+// `data-redline` (18th, D5-14); the message-level `finish` terminator
+// became the 19th when VerdictPipeline emitted the full AI SDK v5
+// lifecycle.
 //
-// RED phase: this test FAILS today because `data-redline` is not yet
-// in ValidTypes (counts 17, asserts 18). The GREEN commit registers
-// the 18th type.
-func TestValidTypes_Nineteen(t *testing.T) {
-	const expected = 19
+// The plan FORBIDS additional types beyond this set (the router /
+// counter-evidence / redline / subprogress pipeline all use additive
+// fields on existing chunks, not new discriminators).
+//
+// RED phase (260815-0xb): FAILS before the change because
+// `data-subprogress` is not yet in ValidTypes (counts 19, asserts 20).
+// The GREEN commit registers the 20th type.
+func TestValidTypes_Twenty(t *testing.T) {
+	const expected = 20
 	assert.Equal(t, expected, len(ValidTypes),
-		"ValidTypes must hold exactly %d entries (18 through data-redline, +1 for the finish terminator)", expected)
+		"ValidTypes must hold exactly %d entries (19 through finish, +1 for data-subprogress)", expected)
 	assert.True(t, ValidTypes["data-redline"],
 		"data-redline MUST be registered (18th wire type, D5-14)")
 	assert.True(t, ValidTypes["finish"],
 		"finish MUST be registered — VerdictPipeline emits it as the message terminator (AI SDK v5 schema member)")
+	assert.True(t, ValidTypes["data-subprogress"],
+		"data-subprogress MUST be registered (20th wire type, FEUI-06 / 260815-0xb)")
 	// Snake-case variant rejected — T-1-11 mitigation.
 	assert.False(t, ValidTypes["data_redline"],
 		"snake_case data_redline MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
+	assert.False(t, ValidTypes["data_subprogress"],
+		"snake_case data_subprogress MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
+}
+
+// TestSubprogressStepRoundTrip — quick plan 260815-0xb Task 1: the
+// wire.SubprogressStep payload mirrors the FE SubprogressStep interface
+// (web/src/types/verdict.ts) field-for-field. Every step the
+// VerdictPipeline emits must round-trip its discriminator + tier/count
+// so DataSubprogressPart renders the right Copywriting-Contract line.
+//
+// RED phase: FAILS before the change because wire.SubprogressStep does
+// not exist yet.
+func TestSubprogressStepRoundTrip(t *testing.T) {
+	steps := []SubprogressStep{
+		{Step: "retrieve", Tier: "权威"},
+		{Step: "found_candidates", Tier: "权威", Count: 5},
+		{Step: "generate"},
+		{Step: "self_verify"},
+	}
+	for _, p := range steps {
+		raw, err := json.Marshal(p)
+		require.NoError(t, err)
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(raw, &got))
+		assert.Equal(t, p.Step, got["step"],
+			"step discriminator %q must round-trip", p.Step)
+		if p.Tier != "" {
+			assert.Equal(t, p.Tier, got["tier"],
+				"tier must round-trip for %q (FE renders 检索 [tier] 知识层)", p.Step)
+		}
+		if p.Count != 0 {
+			assert.InDelta(t, float64(p.Count), got["count"].(float64), 1e-9,
+				"count must round-trip for %q (FE renders 找到 N 条候选)", p.Step)
+		}
+	}
+	// omitempty contract: generate/self_verify carry neither tier nor
+	// count — the wire payload must not bloat with zero-value fields.
+	lean, err := json.Marshal(SubprogressStep{Step: "generate"})
+	require.NoError(t, err)
+	assert.Equal(t, `{"step":"generate"}`, string(lean),
+		"omitempty required on tier/count so non-retrieval steps stay minimal")
 }
 
 // TestDecisionPayload_RouteFields — Plan 05-01 Task 1: DecisionPayload
