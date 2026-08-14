@@ -142,6 +142,7 @@ Plan: 5 of 6 — **IN PROGRESS (1/3 tasks; Task 1 DONE via TDD; Tasks 2 & 3 `che
 | 260813-dno | UAT #4 graph chunk full-text: GET /api/knowledge/chunk/:id (retriever.GetChunk → knowledge.GetChunk → chunkHandler) + chunk-lookup async fetch on fixture-miss (FE) | 2026-08-13 | 8939a74 + aec582e + c646382 | [260813-dno-uat-4-graph-chunk-full-text-get-api-know](./quick/260813-dno-uat-4-graph-chunk-full-text-get-api-know/) |
 | 260814-ofn | 修正过时注释：indexer.go 3处 + grounding.go/grounding_test.go 2处 "markdown splitter deferred to Phase 3 (CMPL-06)" → 真实状态（分块器从未被任何 phase 认领；CMPL-06 = Phase 5 反证高亮，05-06 已完成） | 2026-08-14 | 70cd1e5 + 01fd467 | [260814-ofn-fix-stale-splitter-comments](./quick/260814-ofn-fix-stale-splitter-comments/) |
 | 260814-tsr | 文档叙事层去合规化：README/CLAUDE.md/CONTRIBUTING.md 不再以 compliance 为主线，Quick Start 改用 simple-qa 通用文档问答演示，突出平台全面性/通用性（代码与 examples/ 不动） | 2026-08-14 | f30d7d1 + 2c3f7f8 | [260814-tsr-remove-compliance-wording](./quick/260814-tsr-remove-compliance-wording/) |
+| 260814-vga | 代码层去合规化：web/ 前端 UI 文案泛化为通用文档问答（标题/tab/空状态/建议问题/占位符）+ skills/ 默认 Skill 从 compliance 换为 simple-qa（examples 模板保留，eval-gate.json 随迁 examples）| 2026-08-14 | e42220e + 4bda3ce + 80b6c2d | [260814-vga-ui-skill-simple-qa](./quick/260814-vga-ui-skill-simple-qa/) |
 
 ---
 
