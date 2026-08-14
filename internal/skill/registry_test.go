@@ -420,3 +420,244 @@ func TestRegistry_FailedMap_SurfacesValidationError(t *testing.T) {
 	r.reloadOne(filepath.Join(skillDir, "SKILL.md"))
 	assert.Empty(t, r.Failed(), "a successful reload must clear the failure")
 }
+
+// mustWatchRegistry is the shared harness for the real-fsnotify Watch
+// tests below: seeds one or two skills, constructs the Registry, and
+// starts the Watch consumer goroutine with a cancelled-on-cleanup ctx.
+func mustWatchRegistry(t *testing.T, tmp string) *Registry {
+	t.Helper()
+	emb := &stubEmbedder{dim: 4}
+	r, err := New(tmp, emb)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	require.NoError(t, r.Watch(ctx))
+	return r
+}
+
+func TestRegistry_Watch_NewSkillDirDiscovered(t *testing.T) {
+	// Must-have truth 1 — a NEW skills/<name>/SKILL.md created while the
+	// watcher is running (new dir + file, e.g. cp -r / git checkout) is
+	// automatically discovered and registered: snapshot gains the entry
+	// with a parsed manifest and a positive version. Covers the full
+	// chain "dir CREATE → subdir watch Add → SKILL.md write → debounce →
+	// reconcile registers", including the cp -r race backstop: even if
+	// SKILL.md landed BEFORE the subdir Add (so no per-file event ever
+	// fires), the dir-Create reconcile's existence check still finds it
+	// 1s later and registers it.
+	if testing.Short() {
+		t.Skip("fsnotify real-time test relies on real debounce timing; skip in -short")
+	}
+	tmp := t.TempDir()
+	writeRegistrySkill(t, filepath.Join(tmp, "compliance"))
+	r := mustWatchRegistry(t, tmp)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "new-skill"), 0o755))
+	writeRegistrySkill(t, filepath.Join(tmp, "new-skill"))
+
+	require.Eventually(t, func() bool {
+		snap := r.Snapshot()
+		e, ok := snap["new-skill"]
+		return ok && e != nil && e.Manifest != nil && e.Version > 0
+	}, 8*time.Second, 100*time.Millisecond,
+		"a newly created skill dir must be discovered and registered by the watcher")
+
+	// The pre-existing skill must be untouched.
+	assert.Contains(t, r.Snapshot(), "compliance")
+}
+
+func TestRegistry_Watch_RemovedSkillDirDropped(t *testing.T) {
+	// Must-have truth 2 — deleting skills/<name>/ while the watcher runs
+	// removes the entry from the snapshot (GET /api/skills stops listing
+	// it) and leaves NO phantom residue in the failed map. Windows
+	// (ReadDirectoryChangesW often reports only the dir name) and Linux
+	// (subdir watch reports the SKILL.md remove) both converge through
+	// the same reconcile — no per-platform branching needed here.
+	if testing.Short() {
+		t.Skip("fsnotify real-time test relies on real debounce timing; skip in -short")
+	}
+	tmp := t.TempDir()
+	writeRegistrySkill(t, filepath.Join(tmp, "compliance"))
+	writeRegistrySkill(t, filepath.Join(tmp, "qa"))
+	r := mustWatchRegistry(t, tmp)
+	require.Len(t, r.Snapshot(), 2)
+
+	require.NoError(t, os.RemoveAll(filepath.Join(tmp, "compliance")))
+
+	require.Eventually(t, func() bool {
+		snap := r.Snapshot()
+		_, hasCompliance := snap["compliance"]
+		_, hasQA := snap["qa"]
+		return !hasCompliance && hasQA
+	}, 8*time.Second, 100*time.Millisecond,
+		"removing a skill dir must drop the entry while keeping unrelated skills")
+
+	assert.Empty(t, r.Failed(),
+		"a removed skill must not leave a phantom failed-map entry behind")
+}
+
+func TestRegistry_Watch_EditorAtomicSave_NotDropped(t *testing.T) {
+	// Must-have truth 3 — editors and the wizard save atomically
+	// (write temp file, remove SKILL.md, rename temp over it). The
+	// remove+rename burst must NOT be mistaken for a skill deletion:
+	// after the 1s debounce the file exists again, so reconcile takes
+	// the reload branch — the skill stays registered AND the new
+	// description is picked up. Budget covers the 1s debounce plus
+	// fsnotify delivery latency.
+	if testing.Short() {
+		t.Skip("fsnotify real-time test relies on real debounce timing; skip in -short")
+	}
+	tmp := t.TempDir()
+	skillDir := filepath.Join(tmp, "compliance")
+	skillPath := writeRegistrySkill(t, skillDir)
+	r := mustWatchRegistry(t, tmp)
+	require.Contains(t, r.Snapshot(), "compliance")
+
+	tmpFile := filepath.Join(skillDir, "SKILL.md.tmp")
+	require.NoError(t, os.WriteFile(tmpFile, []byte("---\n"+
+		"description: atomic-save-new\n"+
+		"agent: ChatModelAgent\n"+
+		"reads: [\"authority/**\"]\n"+
+		"writes: []\n"+
+		"steps: |\n"+
+		"  1. step\n"+
+		"  2. step\n"+
+		"  3. step\n"+
+		"guardrails:\n"+
+		"  prohibitions:\n"+
+		"    - \"p1\"\n"+
+		"    - \"p2\"\n"+
+		"    - \"p3\"\n"+
+		"  required_refusal_phrases: []\n"+
+		"  tier_limits: {}\n"+
+		"temperature: 0.0\n"+
+		"---\n\n# Body\n"), 0o644))
+	require.NoError(t, os.Remove(skillPath))
+	require.NoError(t, os.Rename(tmpFile, skillPath))
+
+	require.Eventually(t, func() bool {
+		snap := r.Snapshot()
+		e, ok := snap["compliance"]
+		return ok && e != nil && e.Manifest != nil &&
+			e.Manifest.Description == "atomic-save-new"
+	}, 8*time.Second, 100*time.Millisecond,
+		"an atomic editor save must reload the skill (new description), not drop it")
+
+	assert.Empty(t, r.Failed())
+}
+
+func TestRegistry_Watch_InterleavedBurst_Converges(t *testing.T) {
+	// Must-have truth 4 — the motivating interleaved burst: "rm -r
+	// skills/compliance" and "add skills/burst-new" executed back-to-back
+	// with NO wait in between, so both events land in the SAME 1s
+	// debounce window and the new skill's schedule overwrites the pending
+	// path of the removal (single timer, single pending path). The
+	// reconcile callback's O(n) snapshot existence sweep must backstop
+	// the overwritten removal: compliance is gone, burst-new is
+	// registered, qa survives, no phantom failure.
+	if testing.Short() {
+		t.Skip("fsnotify real-time test relies on real debounce timing; skip in -short")
+	}
+	tmp := t.TempDir()
+	writeRegistrySkill(t, filepath.Join(tmp, "compliance"))
+	writeRegistrySkill(t, filepath.Join(tmp, "qa"))
+	r := mustWatchRegistry(t, tmp)
+	require.Len(t, r.Snapshot(), 2)
+
+	// Back-to-back, no polling/waiting between the two operations — the
+	// whole point is that both events share one debounce window.
+	require.NoError(t, os.RemoveAll(filepath.Join(tmp, "compliance")))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "burst-new"), 0o755))
+	writeRegistrySkill(t, filepath.Join(tmp, "burst-new"))
+
+	require.Eventually(t, func() bool {
+		snap := r.Snapshot()
+		_, hasCompliance := snap["compliance"]
+		_, hasQA := snap["qa"]
+		burst, hasBurst := snap["burst-new"]
+		return !hasCompliance && hasQA && hasBurst &&
+			burst != nil && burst.Manifest != nil && burst.Version > 0
+	}, 8*time.Second, 100*time.Millisecond,
+		"interleaved same-window burst must converge: A removed, B registered, qa intact")
+
+	assert.Empty(t, r.Failed())
+}
+
+func TestRegistry_Reconcile_MissingFile_RemovesDeterministic(t *testing.T) {
+	// Deterministic same-package companion to the Watch tests above (no
+	// fsnotify, no debounce, never skipped in -short). Pins the two
+	// reconcileOne branches plus the existence sweep:
+	//   a) file missing → entry removed, Failed() stays empty (removal
+	//      is NOT a load failure — no phantom failed entry);
+	//   b) file present → reload branch updates the description;
+	//   c) an ORPHAN entry whose dir was deleted without any event is
+	//      swept by the O(n) existence check on an unrelated reconcile.
+	tmp := t.TempDir()
+	compliancePath := writeRegistrySkill(t, filepath.Join(tmp, "compliance"))
+	qaPath := writeRegistrySkill(t, filepath.Join(tmp, "qa"))
+	orphanPath := writeRegistrySkill(t, filepath.Join(tmp, "orphan"))
+
+	r, err := New(tmp, &stubEmbedder{dim: 4})
+	require.NoError(t, err)
+	require.Len(t, r.Snapshot(), 3)
+
+	// (c) setup: register the orphan via a direct reload. Its dir is
+	// deleted LATER (below) without any watcher arbitration — its
+	// removal event never fires.
+	r.reloadOne(orphanPath)
+	require.Contains(t, r.Snapshot(), "orphan")
+
+	// (a) delete compliance, reconcile its path directly: the missing
+	// file must take the remove branch (not reloadOne → setFailed).
+	require.NoError(t, os.RemoveAll(filepath.Join(tmp, "compliance")))
+	r.reconcileOne(compliancePath)
+
+	snap := r.Snapshot()
+	assert.NotContains(t, snap, "compliance",
+		"reconcile on a deleted SKILL.md path must remove the entry")
+	assert.Empty(t, r.Failed(),
+		"removal must not surface as a failed-load entry")
+	assert.Contains(t, snap, "qa")
+	assert.Contains(t, snap, "orphan",
+		"sanity: the orphan is still registered — its dir still exists at this point")
+
+	// (c) delete the orphan's dir (no event, no reconcile yet), then
+	// reconcile an UNRELATED path (qa, which exists → reload branch):
+	// the O(n) existence sweep must remove the orphan whose dir is gone.
+	require.NoError(t, os.RemoveAll(filepath.Join(tmp, "orphan")))
+	r.reconcileOne(qaPath)
+	snap = r.Snapshot()
+	assert.NotContains(t, snap, "orphan",
+		"the existence sweep must remove entries whose SKILL.md is gone, even without their own event")
+	assert.Contains(t, snap, "qa")
+	assert.Empty(t, r.Failed())
+
+	// (b) recreate compliance with a new description; reconcile takes the
+	// reload branch and the new content shows up.
+	writeCustomSkill(t, filepath.Join(tmp, "compliance"),
+		"description: reconciled-new\n"+
+			"agent: ChatModelAgent\n"+
+			"reads: [\"authority/**\"]\n"+
+			"writes: []\n"+
+			"steps: |\n"+
+			"  1. step\n"+
+			"  2. step\n"+
+			"  3. step\n"+
+			"guardrails:\n"+
+			"  prohibitions:\n"+
+			"    - \"p1\"\n"+
+			"    - \"p2\"\n"+
+			"    - \"p3\"\n"+
+			"  required_refusal_phrases: []\n"+
+			"  tier_limits: {}\n"+
+			"temperature: 0.0\n")
+	r.reconcileOne(compliancePath)
+
+	snap = r.Snapshot()
+	require.Contains(t, snap, "compliance",
+		"reconcile on an existing SKILL.md must (re)register the skill")
+	require.NotNil(t, snap["compliance"].Manifest)
+	assert.Equal(t, "reconciled-new", snap["compliance"].Manifest.Description,
+		"the reload branch must pick up the new file content")
+	assert.Greater(t, snap["compliance"].Version, int64(0))
+}

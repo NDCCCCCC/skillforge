@@ -77,7 +77,9 @@ type Entry struct {
 //     CREATE/CHMOD bursts that fsnotify emits for the dir itself are
 //     ignored.
 //   - the 1s debouncer (ReloadDebounce) resets on every event; only a
-//     full 1s of quiet triggers reloadOne(path).
+//     full 1s of quiet triggers reconcileOne(path) (quick-260814-w4n:
+//     reload-if-present, remove-if-gone, plus a snapshot existence
+//     sweep).
 //
 // V12 ASVS symlink guard runs on every reloadOne (parseAndValidate
 // encapsulates it). A symlink whose EvalSymlinks resolves outside the
@@ -152,6 +154,30 @@ func New(skillsDir string, emb embedder.Embedder) (*Registry, error) {
 	if err := watcher.Add(root); err != nil {
 		_ = watcher.Close()
 		return nil, fmt.Errorf("watch %s: %w", root, err)
+	}
+
+	// Subscribe each direct subdirectory BEFORE startupScan (but strictly
+	// AFTER watcher.Add(root) — see the Windows ordering note above).
+	//
+	// Why per-subdir Add: fsnotify is non-recursive on Linux (inotify
+	// requires one watch descriptor per directory). Without this, a
+	// SKILL.md edit inside skills/<name>/ never produces an event on
+	// Linux — a gap that was only masked on Windows, where the
+	// ReadDirectoryChangesW backend happens to deliver nested events.
+	// Explicit Add makes both platforms behave identically. A failed Add
+	// is logged and skipped (a racing dir delete must not kill startup).
+	if entries, readErr := os.ReadDir(root); readErr != nil {
+		slog.Warn("skill registry: read skills dir for subdir watches failed", "dir", root, "err", readErr)
+	} else {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			if addErr := watcher.Add(filepath.Join(root, e.Name())); addErr != nil {
+				slog.Warn("skill registry: watch skill subdir failed (non-fatal)",
+					"dir", e.Name(), "err", addErr)
+			}
+		}
 	}
 
 	r := &Registry{
@@ -317,11 +343,51 @@ func (r *Registry) watchLoop(ctx context.Context, watcher *fsnotify.Watcher) {
 			if !ok {
 				return
 			}
+			// Directory-level events (quick-260814-w4n). Before the
+			// per-file resolveSkillPath filter, classify CREATE and
+			// REMOVE/RENAME on skills/ subdirectories so that new skill
+			// dirs are discovered and deleted ones are dropped:
+			//
+			//   - CREATE on a fresh direct subdirectory (cp -r / git
+			//     checkout / editor mkdir): attach a per-dir watch (Linux
+			//     inotify needs it to see later per-file events) AND
+			//     schedule a reconcile for <dir>/SKILL.md. The reconcile
+			//     runs after the 1s debounce — by then cp -r has finished,
+			//     and its existence check closes the race where SKILL.md
+			//     landed BEFORE our Add (no per-file event would ever
+			//     arrive for it).
+			//   - REMOVE/RENAME: Windows ReadDirectoryChangesW frequently
+			//     reports a directory deletion as just the dir name (no
+			//     per-file events for its contents), while Linux inotify
+			//     reports the per-file REMOVE from the subdir watch. Both
+			//     shapes are normalized to <dir>/SKILL.md and routed into
+			//     the same debounce → reconcile. watcher.Add on an
+			//     already-deleted dir returns an error — ignored.
+			if event.Op&fsnotify.Create != 0 && r.isDirectSubdir(event.Name, true) {
+				if err := watcher.Add(event.Name); err != nil {
+					slog.Warn("skill registry: watch new skill subdir failed (non-fatal)",
+						"dir", event.Name, "err", err)
+				}
+				r.scheduleReconcile(filepath.Join(event.Name, "SKILL.md"))
+				continue
+			}
+			if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+				if filepath.Base(event.Name) == "SKILL.md" {
+					r.scheduleReconcile(event.Name)
+					continue
+				}
+				// Strict path comparison only — the dir is already gone,
+				// so Stat-based detection is impossible here.
+				if r.isDirectSubdir(event.Name, false) {
+					r.scheduleReconcile(filepath.Join(event.Name, "SKILL.md"))
+					continue
+				}
+			}
 			skillPath := resolveSkillPath(event.Name)
 			if skillPath == "" {
 				continue
 			}
-			r.scheduleReload(skillPath)
+			r.scheduleReconcile(skillPath)
 		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
@@ -359,20 +425,118 @@ func resolveSkillPath(eventName string) string {
 	return ""
 }
 
-// scheduleReload arms (or re-arms) the 1s debounce timer for path. Every
-// event resets the timer; reloadOne only fires after 1s of quiet. This
+// scheduleReconcile arms (or re-arms) the 1s debounce timer for path. Every
+// event resets the timer; reconcileOne only fires after 1s of quiet. This
 // is the canonical fsnotify #553 pattern — editors save via temp-file
 // + rename which produces a burst of CREATE/WRITE/CHMOD events within
-// milliseconds, and we want a SINGLE reload after the editor finishes.
-func (r *Registry) scheduleReload(path string) {
+// milliseconds, and we want a SINGLE reconcile after the editor finishes.
+//
+// NOTE: the debounce holds a single pending path (single timer). A later
+// scheduleReconcile overwrites the pending path — the earlier path's
+// event is NOT replayed. This is safe for reload semantics (any SKILL.md
+// event for the same file converges to "re-read whatever is on disk")
+// but would silently lose a REMOVE if it were the overwritten event. That
+// loss is exactly what reconcileOne's snapshot existence sweep repairs.
+func (r *Registry) scheduleReconcile(path string) {
 	r.debounce.mu.Lock()
 	defer r.debounce.mu.Unlock()
 	if r.debounce.timer != nil {
 		r.debounce.timer.Stop()
 	}
 	r.debounce.timer = time.AfterFunc(ReloadDebounce, func() {
-		r.reloadOne(path)
+		r.reconcileOne(path)
 	})
+}
+
+// isDirectSubdir reports whether path names a child directory of the
+// skills root (filepath.Dir(path) == rootAbs, strict equality — prevents
+// nested paths and the root itself from matching). When statOK is true a
+// Stat is required to confirm the path currently exists as a directory
+// (used for CREATE events, where the dir is present); pass statOK=false
+// for REMOVE/RENAME events where the path is already gone and only the
+// path shape can be checked.
+func (r *Registry) isDirectSubdir(path string, statOK bool) bool {
+	if path == "" || filepath.Clean(filepath.Dir(path)) != r.rootAbs {
+		return false
+	}
+	base := filepath.Base(path)
+	if base == "" || base == "." || base == string(filepath.Separator) {
+		return false
+	}
+	if !statOK {
+		return true
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// reconcileOne is the debounce callback: after the 1s quiet period it
+// converges the registry to on-disk truth for path (quick-260814-w4n).
+//
+//   - SKILL.md still exists → reloadOne (register/reload, including lazy
+//     embed). This is the normal single-file reload path, unchanged.
+//   - SKILL.md is GONE → removeFromSnapshot. Crucially, the missing-file
+//     branch must NOT fall through to reloadOne: parseAndValidate would
+//     fail on lstat and record a setFailed entry — a phantom "failed"
+//     skill that the GET /api/skills listing would surface forever. A
+//     deleted skill is a removal, not a load failure.
+//   - Finally, an O(n) existence sweep over the whole snapshot: every
+//     registered entry whose <root>/<name>/SKILL.md no longer lstats is
+//     removed. Why: the debounce is a single timer with a single pending
+//     path, so in an interleaved burst ("rm -r skills/A" + "cp -r
+//     skills/B" inside one 1s window) B's schedule overwrites A's pending
+//     path and A's removal event is dropped. The sweep is the backstop
+//     that makes removal converge regardless of which events were
+//     delivered or overwritten. Cost is one lstat per registered skill,
+//     at most once per debounce window — negligible at v1 scale (tens of
+//     skills).
+func (r *Registry) reconcileOne(path string) {
+	if _, err := os.Lstat(path); err == nil {
+		// File exists → normal reload path (parse/validate/embed/store).
+		r.reloadOne(path)
+	} else if name := skillNameFromPath(path); name != "" {
+		// File gone and the path names a skill → drop it (no setFailed).
+		r.removeFromSnapshot(name)
+	}
+
+	// Existence sweep (see comment above): catch removals whose events
+	// were lost to the single-pending-path debounce, and orphans whose
+	// deletion never produced an event at all.
+	snap := r.Snapshot()
+	for name := range snap {
+		if _, err := os.Lstat(filepath.Join(r.rootAbs, name, "SKILL.md")); err == nil {
+			continue
+		}
+		r.removeFromSnapshot(name)
+	}
+}
+
+// removeFromSnapshot removes (copy-on-write) the entry for name, clearing
+// any recorded failure so the HTTP listing's Failed() overlay does not
+// surface a phantom "failed" entry for a skill that no longer exists on
+// disk. No-op when name is not in the snapshot (idempotent).
+func (r *Registry) removeFromSnapshot(name string) {
+	for {
+		old := r.snapshot.Load()
+		if old == nil {
+			return
+		}
+		if _, ok := (*old)[name]; !ok {
+			return // not registered — nothing to remove
+		}
+		next := make(map[string]*Entry, len(*old)-1)
+		for k, v := range *old {
+			if k != name {
+				next[k] = v
+			}
+		}
+		if r.snapshot.CompareAndSwap(old, &next) {
+			r.clearFailed(name)
+			slog.Info("skill registry: removed skill (SKILL.md no longer on disk)", "skill", name)
+			return
+		}
+		// Lost the race against another writer — retry with the new base.
+	}
 }
 
 // reloadOne re-reads path, re-runs the V12 symlink guard, re-parses,
