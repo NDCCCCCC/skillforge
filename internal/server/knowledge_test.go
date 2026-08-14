@@ -50,11 +50,11 @@ import (
 // here use canned graphs so the handler logic can be exercised without
 // a live Milvus / Mongo backend.
 type stubKnowledgeBuilder struct {
-	graph        *knowledge.Graph
-	err          error
-	calls        int
-	chunkPayload *knowledge.ChunkPayload
-	chunkErr     error
+	graph         *knowledge.Graph
+	err           error
+	calls         int
+	chunkPayload  *knowledge.ChunkPayload
+	chunkErr      error
 	getChunkCalls int
 }
 

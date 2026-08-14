@@ -286,7 +286,7 @@ func TestParseEffectiveWindow(t *testing.T) {
 		from, to := parseEffectiveWindow(fm)
 		assert.Equal(t, int64(0), from)
 		assert.Equal(t, int64(0), to,
-		"malformed YAML must not brick the indexer (D5-15 fail-soft)")
+			"malformed YAML must not brick the indexer (D5-15 fail-soft)")
 	})
 }
 

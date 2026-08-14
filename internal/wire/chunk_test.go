@@ -49,7 +49,7 @@ import (
 //   - Test 1 (valid):         IsValidType accepts "data-decision".
 //   - Test 2 (snake_case):    IsValidType rejects "data_decision" (T-1-11 regression).
 //   - Test 4 (round_trip):    marshalling UIMessageChunk{Type:"data-decision", Data:...}
-//                             produces JSON with "type":"data-decision" + non-empty data.
+//     produces JSON with "type":"data-decision" + non-empty data.
 func TestDecisionChunkType(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		c := UIMessageChunk{Type: "data-decision"}
@@ -69,11 +69,11 @@ func TestDecisionChunkType(t *testing.T) {
 		// concrete Go struct that may move between packages; the GREEN
 		// commit lands the exported wire.DecisionPayload alongside.
 		payload := map[string]any{
-			"step":        1,
-			"decision":    "retrieve",
-			"toolCallId":  "call_abc",
-			"query":       "差旅费报销制度",
-			"confidence":  0.0,
+			"step":       1,
+			"decision":   "retrieve",
+			"toolCallId": "call_abc",
+			"query":      "差旅费报销制度",
+			"confidence": 0.0,
 		}
 		raw, err := json.Marshal(payload)
 		require.NoError(t, err)
@@ -83,8 +83,8 @@ func TestDecisionChunkType(t *testing.T) {
 		require.NoError(t, err)
 
 		var got struct {
-			Type string            `json:"type"`
-			Data map[string]any    `json:"data"`
+			Type string         `json:"type"`
+			Data map[string]any `json:"data"`
 		}
 		require.NoError(t, json.Unmarshal(out, &got))
 		assert.Equal(t, "data-decision", got.Type,
@@ -135,8 +135,8 @@ func TestDecisionPayload_RouteFields(t *testing.T) {
 			{SkillID: "compliance", SkillName: "Compliance Review", Score: 0.91, Selected: true},
 			{SkillID: "policy-lookup", SkillName: "Policy Lookup", Score: 0.42, Selected: false},
 		},
-		Selected:   "compliance",
-		Ambiguous:  false,
+		Selected:  "compliance",
+		Ambiguous: false,
 	}
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
@@ -191,10 +191,10 @@ func TestDecisionPayload_BackwardCompatible(t *testing.T) {
 // `"skillScores":null` etc.
 func TestDecisionPayload_NonRouteOmitsRoutingFields(t *testing.T) {
 	payload := DecisionPayload{
-		Step:     1,
-		Decision: "retrieve",
+		Step:       1,
+		Decision:   "retrieve",
 		ToolCallID: "call_1",
-		Query:    "差旅费",
+		Query:      "差旅费",
 	}
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)

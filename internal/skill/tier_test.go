@@ -41,10 +41,10 @@ import (
 // (e.g. "草稿" → "draft") is a one-line append.
 func TestTierEnumByValue(t *testing.T) {
 	tests := []struct {
-		name     string
-		value    string
-		wantDir  string
-		wantOK   bool
+		name    string
+		value   string
+		wantDir string
+		wantOK  bool
 	}{
 		{name: "authority", value: "权威", wantDir: "authority", wantOK: true},
 		{name: "historical", value: "历史", wantDir: "historical", wantOK: true},

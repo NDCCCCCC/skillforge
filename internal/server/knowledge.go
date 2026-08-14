@@ -194,7 +194,7 @@ type docEntry struct {
 
 // docsTier is one tier block in the /api/knowledge/docs response.
 type docsTier struct {
-	Tier string    `json:"tier"`
+	Tier string     `json:"tier"`
 	Docs []docEntry `json:"docs"`
 }
 

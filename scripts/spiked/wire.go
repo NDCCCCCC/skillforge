@@ -64,7 +64,7 @@ type SKILLFrontmatter struct {
 // findProjectRoot walks up from the current working directory looking for
 // go.mod. Returns the directory containing go.mod, or an error if not
 // found within 10 levels. Used to make fixture paths robust regardless of
-// where the binary or test was launched from (cmd/spiked/ vs project root).
+// where the binary or test was launched from (scripts/spiked/ vs project root).
 func findProjectRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -226,9 +226,9 @@ func runWire(ctx context.Context, args []string) error {
 	// Assert all 3 extras reached the wire.
 	body := captured.String()
 	wantSubstrings := []string{
-		`"temperature"`,  // skill.Temperature = 0
-		`"json_object"`,  // response_format.type
-		`"disabled"`,     // thinking.type
+		`"temperature"`, // skill.Temperature = 0
+		`"json_object"`, // response_format.type
+		`"disabled"`,    // thinking.type
 	}
 	for _, want := range wantSubstrings {
 		if !strings.Contains(body, want) {

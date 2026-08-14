@@ -130,18 +130,18 @@ func TestRenderSnapshot_IncludesLockMetadataAndColumns(t *testing.T) {
 	out := renderSnapshot(report, lock, "2026-08-13")
 
 	wantSubstrings := []string{
-		"2026-08-13",                       // run date
-		"compliance-2026-08-13-v1",        // eval_set_version
-		"glm-5.2",                         // model_ver
-		"bd59cbe0",                        // prompt_hash short prefix
-		"compliance",                      // skill name (from report.Skill)
-		"Faithfulness",                    // column header
-		"Context Precision",               // column header
-		"Refusal Accuracy",                // column header
-		"Cases",                           // column header
-		"50%",                             // derived 1/2 refusal accuracy → 50% (1/2)
-		"92%",                             // faithfulness 0.92 → 92%
-		"85%",                             // context_precision 0.85 → 85%
+		"2026-08-13",                            // run date
+		"compliance-2026-08-13-v1",              // eval_set_version
+		"glm-5.2",                               // model_ver
+		"bd59cbe0",                              // prompt_hash short prefix
+		"compliance",                            // skill name (from report.Skill)
+		"Faithfulness",                          // column header
+		"Context Precision",                     // column header
+		"Refusal Accuracy",                      // column header
+		"Cases",                                 // column header
+		"50%",                                   // derived 1/2 refusal accuracy → 50% (1/2)
+		"92%",                                   // faithfulness 0.92 → 92%
+		"85%",                                   // context_precision 0.85 → 85%
 		"go run ./cmd/eval --frozen=compliance", // reproduce command
 	}
 	for _, want := range wantSubstrings {

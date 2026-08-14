@@ -47,19 +47,19 @@ import (
 //
 // Field semantics:
 //   - ClauseID:         optional stable id of the clause being rewritten
-//                       (e.g. "C-7.3.2" — must match the source-document
-//                       id in the citation list so the UI can link the
-//                       redline back to its citation). Empty when the
-//                       redline targets an ad-hoc clause without a
-//                       stable id.
+//     (e.g. "C-7.3.2" — must match the source-document
+//     id in the citation list so the UI can link the
+//     redline back to its citation). Empty when the
+//     redline targets an ad-hoc clause without a
+//     stable id.
 //   - OriginalClause:   REQUIRED — the exact text of the clause as it
-//                       currently exists in the cited source document.
+//     currently exists in the cited source document.
 //   - ProposedRewrite:  REQUIRED — the agent's proposed replacement
-//                       text. Must be non-empty.
+//     text. Must be non-empty.
 //   - Rationale:        REQUIRED — human-readable explanation of WHY
-//                       the rewrite is proposed (the SkillForge
-//                       inspector renders this verbatim so the user
-//                       can accept / reject the redline).
+//     the rewrite is proposed (the SkillForge
+//     inspector renders this verbatim so the user
+//     can accept / reject the redline).
 type RedlinePayload struct {
 	ClauseID        string `json:"clauseId,omitempty"`
 	OriginalClause  string `json:"originalClause"`

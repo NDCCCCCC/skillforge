@@ -35,7 +35,7 @@
 // `wire.UIMessageChunk` from internal/wire, and `milvus.BuildMilvusFilter`
 // from internal/retriever/milvus. It does NOT redeclare a local
 // ContractVerdict type. A field rename in internal/verdict/verdict.go
-// breaks this file at compile time — drift between cmd/spiked (which
+// breaks this file at compile time — drift between scripts/spiked (which
 // also imports verdict.Verdict) and this file is structurally impossible.
 //
 // D2-06 evolution: Verdict.Citations graduated from []string to
@@ -156,11 +156,13 @@ func TestContractWireFormat(t *testing.T) {
 	// produces a JSON-safe escaped string for hostile characters. The
 	// filter string must be parseable by Milvus (heuristic: contains
 	// `in [` and ends with `]`).
-	filter := milvus.BuildMilvusFilter([]string{`O'Brien`})
+	// now=0 asserts expression shape only (see filter.go godoc); production
+	// passes time.Now().Unix() from the VerdictPipeline.
+	filter := milvus.BuildMilvusFilter([]string{`O'Brien`}, 0)
 	assert.True(t, strings.Contains(filter, "in ["),
 		"filter with apostrophe should still be parseable (contains 'in ['); got: %s", filter)
-	assert.True(t, strings.HasSuffix(filter, "]"),
-		"filter should end with ']'; got: %s", filter)
+	assert.True(t, strings.HasSuffix(filter, ")"),
+		"filter should end with ')' (effective_to clause, D5-15); got: %s", filter)
 	assert.True(t, strings.Contains(filter, `O'Brien`) || strings.Contains(filter, `O\'Brien`),
 		"filter should preserve the tier value (escaped or not); got: %s", filter)
 }
@@ -171,46 +173,49 @@ func TestContractWireFormat(t *testing.T) {
 //
 // Three cases:
 //  1. Empty tiers → "false" (default-deny — D-09 structural enforcement).
-//  2. Single tier → `tier in ["权威"]` (CN-char properly escaped via %q).
-//  3. Multi-tier → `tier in ["权威","历史"]`.
+//  2. Single tier → `tier in ["权威"] and (effective_to == 0 or
+//     effective_to >= <now>)` (CN-char escaped via %q + D5-15 PRE-filter).
+//  3. Multi-tier → `tier in ["权威","历史"] and (...)`.
 //
 // These are pure-function assertions — no live Milvus needed. Plan 02
 // validated the live bleed assertion separately (gated on
 // MILVUS_INTEGRATION=1 + human-verify checkpoint).
 func TestContractMilvusFilter(t *testing.T) {
-	assert.Equal(t, "false", milvus.BuildMilvusFilter([]string{}),
+	assert.Equal(t, "false", milvus.BuildMilvusFilter([]string{}, 0),
 		"empty tier list must produce literal 'false' (default-deny per D-09)")
-	assert.Equal(t, "false", milvus.BuildMilvusFilter(nil),
+	assert.Equal(t, "false", milvus.BuildMilvusFilter(nil, 0),
 		"nil tier list must produce literal 'false' (default-deny per D-09)")
 
-	assert.Equal(t, `tier in ["权威"]`, milvus.BuildMilvusFilter([]string{"权威"}),
-		"single CN tier must be JSON-escaped + wrapped in tier in [...]")
+	assert.Equal(t, `tier in ["权威"] and (effective_to == 0 or effective_to >= 0)`,
+		milvus.BuildMilvusFilter([]string{"权威"}, 0),
+		"single CN tier must be JSON-escaped + tier clause + effective_to PRE-filter (D5-15)")
 
-	assert.Equal(t, `tier in ["权威","历史"]`, milvus.BuildMilvusFilter([]string{"权威", "历史"}),
-		"multi CN tier must be comma-separated JSON-escaped values")
+	assert.Equal(t, `tier in ["权威","历史"] and (effective_to == 0 or effective_to >= 0)`,
+		milvus.BuildMilvusFilter([]string{"权威", "历史"}, 0),
+		"multi CN tier must be comma-separated JSON-escaped values + effective_to PRE-filter (D5-15)")
 
 	// Sub-test: CN-char escape edge cases (Pitfall 7).
 	t.Run("CN_char_escape", func(t *testing.T) {
 		hostile := []string{`O'Brien`, `a"b`, `a\b`, `正常`}
 		for _, h := range hostile {
-			f := milvus.BuildMilvusFilter([]string{h})
+			f := milvus.BuildMilvusFilter([]string{h}, 0)
 			assert.True(t, strings.Contains(f, "in ["),
 				"hostile tier %q should still produce parseable filter; got: %s", h, f)
-			assert.True(t, strings.HasSuffix(f, "]"),
-				"filter for hostile tier %q should end with ]: got %s", h, f)
+			assert.True(t, strings.HasSuffix(f, ")"),
+				"filter for hostile tier %q should end with ) (effective_to clause); got %s", h, f)
 		}
 	})
 }
 
 // TestContractStructuredOutputSchema asserts SC-3 + SC-5 schema gate:
 // the Verdict struct shape + ValidStatuses enum are the single source
-// of truth, shared between cmd/spiked/e2e.go (the producer) and this
+// of truth, shared between scripts/spiked/e2e.go (the producer) and this
 // file (the validator).
 //
 // T-1-16 mitigation: this test imports `verdict.Verdict` /
 // `verdict.ValidStatuses` / `verdict.Validate` — it does NOT redeclare
 // a local ContractVerdict type. A field rename in internal/verdict/verdict.go
-// breaks both cmd/spiked/e2e.go AND this file at compile time. Runtime
+// breaks both scripts/spiked/e2e.go AND this file at compile time. Runtime
 // drift between producer and validator is structurally impossible.
 //
 // D2-06 evolution: Verdict.Citations is now []verdict.Citation (chunk_id +
@@ -254,9 +259,9 @@ func TestContractStructuredOutputSchema(t *testing.T) {
 	// A typo here (e.g. variation selector on a CN char) would silently
 	// change semantics; this assertion catches it.
 	expectedStatuses := map[string]bool{
-		"合规":        true,
-		"不合规":       true,
-		"需补充":       true,
+		"合规":         true,
+		"不合规":        true,
+		"需补充":        true,
 		"unanswered": true,
 	}
 	assert.Equal(t, expectedStatuses, verdict.ValidStatuses,
@@ -394,12 +399,12 @@ func TestContractRunsUnder10s(t *testing.T) {
 // TestContractFullSpikeSuite shells out to the spike subcommands that
 // can run without external services. SC-5 integration coverage.
 //
-// - spiked wire: always runnable (mock OpenAI server in-process).
-// - spiked sse: always runnable (Hertz on dynamic port).
-// - spiked milvus: SKIPPED — requires live Milvus cluster (Plan 02
-//   human-verify checkpoint).
-// - spiked e2e: SKIPPED — requires real GLM-5.2 (Plan 04 human-verify
-//   checkpoint).
+//   - spiked wire: always runnable (mock OpenAI server in-process).
+//   - spiked sse: always runnable (Hertz on dynamic port).
+//   - spiked milvus: SKIPPED — requires live Milvus cluster (Plan 02
+//     human-verify checkpoint).
+//   - spiked e2e: SKIPPED — requires real GLM-5.2 (Plan 04 human-verify
+//     checkpoint).
 //
 // Both skips are recorded so the suite output documents what was NOT
 // covered (not silently dropped).
@@ -469,7 +474,7 @@ func findModuleRoot(t *testing.T) string {
 	return ""
 }
 
-// buildSpiked compiles ./cmd/spiked into a process-scoped temp directory
+// buildSpiked compiles ./scripts/spiked into a process-scoped temp directory
 // and returns the binary path. Uses sync.Once so the build runs exactly
 // once per test process — subsequent callers reuse the cached binary.
 //
@@ -495,7 +500,7 @@ func buildSpiked(t *testing.T) string {
 		// Use the full import path so `go build` resolves the package
 		// correctly regardless of the test's working directory (Go tests
 		// run from their package directory, not from the module root).
-		cmd := exec.CommandContext(buildCtx, "go", "build", "-o", binPath, "github.com/skillforge/skillforge/cmd/spiked")
+		cmd := exec.CommandContext(buildCtx, "go", "build", "-o", binPath, "github.com/skillforge/skillforge/scripts/spiked")
 		cmd.Dir = findModuleRoot(t)
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {

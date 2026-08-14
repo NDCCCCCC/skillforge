@@ -28,7 +28,7 @@ SkillForge trust evaluator (`cmd/eval`). It is the GEVL-05 deliverable
     should surface). The production `ContextRecall` scores attribution
     against the ground-truth *statements*, not chunk IDs.
   - `source: "spike-anchor"` marks the 5 cases reused verbatim from
-    `cmd/spiked/e2e.go:76-82` (the Phase 1 spike's `complianceQueries`).
+    `scripts/spiked/e2e.go:76-82` (the Phase 1 spike's `complianceQueries`).
     Reusing them gives cross-phase comparability — the same 5 queries
     drive the Phase 1 wire-contract spike AND the Phase 3 eval.
 
@@ -50,7 +50,7 @@ that priority.
 - **Synthetic + hand-authored.** Every case is hand-written by the
   project author. No real user queries, no scraped PII, no licensed
   corpus. The 5 spike-anchor cases are the 5 original
-  `cmd/spiked/e2e.go:76-82` queries (themselves synthetic).
+  `scripts/spiked/e2e.go:76-82` queries (themselves synthetic).
 - **Schema mirrors `internal/eval/dataset.go` `Case`.** New cases added
   to `compliance.jsonl` are picked up automatically by `LoadGolden`
   (no code change required).

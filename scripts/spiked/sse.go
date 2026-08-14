@@ -33,6 +33,7 @@
 //   - server.WithListener(ln net.Listener)    (app/server/option.go:176)
 //   - (*Hertz).Run() error                    (embedded *route.Engine.Run)
 //   - (*Hertz).Close() error                  (embedded *route.Engine.Close)
+//
 // Run blocks until Close; Close unblocks Run (verified via Spin() in
 // hertz.go:56-79 which calls Run in a goroutine then waits on a signal
 // before calling Shutdown/Close).

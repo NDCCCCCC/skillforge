@@ -29,17 +29,17 @@ import (
 // Case is one row of the golden-set JSONL. The schema is the
 // eval/golden/compliance.jsonl wire contract — every row has exactly
 // these 5 fields (a 6th optional field, "source", tags provenance:
-// "spike-anchor" marks the 5 cases reused from cmd/spiked/e2e.go:76-82).
+// "spike-anchor" marks the 5 cases reused from scripts/spiked/e2e.go:76-82).
 //
 // Category is one of:
 //
 //   - "adversarial"      — questions where the LLM is tempted to
-//                          hallucinate. Faithfulness most differs here.
+//     hallucinate. Faithfulness most differs here.
 //   - "refusal-required" — questions that MUST be refused (out-of-scope,
-//                          PII, or insufficient context). The moat's
-//                          headline behavior (over-weighted per GEVL-05).
+//     PII, or insufficient context). The moat's
+//     headline behavior (over-weighted per GEVL-05).
 //   - "multi-hop"        — questions requiring 2+ retrievals. Stress
-//                          context_recall.
+//     context_recall.
 //
 // ExpectedChunks is the list of chunk IDs (decimal strings) the
 // retriever SHOULD surface for this query. Empty for refusal-required
@@ -73,13 +73,13 @@ type Sample struct {
 // Case ID + Category (so the report is self-describing without a join
 // back to the golden set) and the 4 metric scores.
 type CaseResult struct {
-	ID                string  `json:"id"`
-	Category          string  `json:"category"`
-	Faithfulness      float64 `json:"faithfulness"`
-	ContextPrecision  float64 `json:"context_precision"`
-	AnswerRelevance   float64 `json:"answer_relevance"`
-	ContextRecall     float64 `json:"context_recall"`
-	Refused           bool    `json:"refused"`
+	ID               string  `json:"id"`
+	Category         string  `json:"category"`
+	Faithfulness     float64 `json:"faithfulness"`
+	ContextPrecision float64 `json:"context_precision"`
+	AnswerRelevance  float64 `json:"answer_relevance"`
+	ContextRecall    float64 `json:"context_recall"`
+	Refused          bool    `json:"refused"`
 }
 
 // Report is the top-level JSON written by WriteReport. The Overall map

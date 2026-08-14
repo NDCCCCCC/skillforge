@@ -79,7 +79,7 @@ func TestBuildMilvusFilter(t *testing.T) {
 // To run: set MILVUS_ADDRESS, BGE_M3_URL (optional — deterministic fallback
 // used if unset), then:
 //
-//	MILVUS_INTEGRATION=1 go test ./cmd/spiked -run TestSeedAndFilterIntegration -v -count=1 -timeout 60s
+//	MILVUS_INTEGRATION=1 go test ./scripts/spiked -run TestSeedAndFilterIntegration -v -count=1 -timeout 60s
 func TestSeedAndFilterIntegration(t *testing.T) {
 	if os.Getenv("MILVUS_INTEGRATION") != "1" {
 		t.Skip("set MILVUS_INTEGRATION=1 + MILVUS_ADDRESS to run live Milvus tier-bleed test")

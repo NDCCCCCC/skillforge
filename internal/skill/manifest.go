@@ -68,7 +68,7 @@ type Manifest struct {
 	// basename on read. The wizard (Plan 05-04) sets it before Commit
 	// so the on-disk path can be constructed; production loaders leave
 	// it empty and rely on the directory layout.
-	Name         string `yaml:"-" json:"-"`
+	Name          string   `yaml:"-" json:"-"`
 	resolvedTiers []string // not serialized — populated by Loader after Validate
 }
 

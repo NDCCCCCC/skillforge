@@ -36,9 +36,9 @@ func TestExtractJSON(t *testing.T) {
 	const canonicalObject = `{"status":"合规","confidence":0.95,"review_required":false}`
 
 	type tc struct {
-		name      string
-		in        string
-		want      string // expected ExtractJSON return; "" means caller will see parse error
+		name       string
+		in         string
+		want       string // expected ExtractJSON return; "" means caller will see parse error
 		wantParses bool   // true iff json.Unmarshal(out) must succeed
 	}
 	cases := []tc{
@@ -232,7 +232,7 @@ func TestExtractJSONRealisticVerdictShape(t *testing.T) {
 	var v struct {
 		Status         string  `json:"status"`
 		Confidence     float64 `json:"confidence"`
-		ReviewRequired bool     `json:"review_required"`
+		ReviewRequired bool    `json:"review_required"`
 	}
 	if err := json.Unmarshal([]byte(extracted), &v); err != nil {
 		t.Fatalf("realistic GLM verdict failed to parse after ExtractJSON: %v (extracted=%q)", err, extracted)

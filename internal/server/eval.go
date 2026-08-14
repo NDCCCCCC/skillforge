@@ -167,6 +167,7 @@ func (s *Deps) evalIndexHandler(ctx context.Context, c *app.RequestContext) {
 //   - any character outside [0-9T:-]
 //   - implicit path separators (/, \, .)
 //   - any input that does not end in Z
+//
 // This is the T-6-PATH mitigation. The reporter implementation
 // may further sanitize (e.g. path.Join the timestamp into a
 // fixed directory), but the regex here is the load-bearing

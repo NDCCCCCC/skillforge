@@ -29,9 +29,9 @@ import "fmt"
 // (graceful-refusal finding) and carries verbatim into the production
 // verdict package.
 var ValidStatuses = map[string]bool{
-	"合规":        true,
-	"不合规":       true,
-	"需补充":       true,
+	"合规":         true,
+	"不合规":        true,
+	"需补充":        true,
 	"unanswered": true,
 }
 

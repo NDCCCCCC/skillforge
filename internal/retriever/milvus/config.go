@@ -20,7 +20,7 @@
 // internal/retriever/.
 //
 // Package-level helpers (BuildMilvusFilter, EnsureCollection,
-// SeedDocuments) are exported because cmd/spiked (regression binary)
+// SeedDocuments) are exported because scripts/spiked (regression binary)
 // and the BGE-M3 fallback tests exercise them directly. The
 // MilvusClient methods consume them internally so the production
 // pipeline stays backend-agnostic via the Retriever interface.
@@ -36,7 +36,7 @@ import (
 )
 
 // Spike collection / index defaults. The default collection name is fixed
-// so the regression binary (cmd/spiked) can reuse the seeded data without
+// so the regression binary (scripts/spiked) can reuse the seeded data without
 // re-configuring. Production (cmd/server) overrides via Config.
 const (
 	DefaultCollectionName = "skillforge_spike_test"

@@ -105,7 +105,7 @@ var knownTierDirs = []string{"authority", "historical", "personal", "draft"}
 //   - wrapped error on Milvus or embed failure. Embed failure is a HARD
 //     error in production — we never fall back to a deterministic offline
 //     vector (Pitfall 8 / T-2-25): the deterministic fallback exists for
-//     cmd/spiked regression only and would silently mask a BGE-M3 outage
+//     scripts/spiked regression only and would silently mask a BGE-M3 outage
 //     with semantically meaningless vectors.
 //
 // knowledgeDir is expected to be the project-relative "knowledge/" path
@@ -313,7 +313,7 @@ func validateTiers(docs []retriever.Document) error {
 //
 //   - effective_to < 0                              — negative epoch nonsense.
 //   - both effective_from > 0 AND effective_to < effective_from
-//                                                — inverted window.
+//     — inverted window.
 //
 // Permitted cases (each documented inline in retriever.Document.EffectiveTo):
 //

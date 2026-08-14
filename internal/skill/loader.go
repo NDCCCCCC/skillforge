@@ -227,7 +227,7 @@ func parseAndValidate(path string) (*Manifest, []string, error) {
 
 // parseFrontmatter extracts the YAML block between the first two `---`
 // markers. Returns the YAML bytes ready for yaml.Unmarshal. Pattern
-// adapted from cmd/spiked/wire.go:parseSKILL (the spike-era frontmatter
+// adapted from scripts/spiked/wire.go:parseSKILL (the spike-era frontmatter
 // extractor) with these differences:
 //   - Operates on raw bytes (not a file path) so it is testable without
 //     a filesystem.

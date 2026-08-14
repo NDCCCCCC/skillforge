@@ -18,10 +18,10 @@
 // subcommands during Waves 0-2. As of Plan 01-04, ALL four subcommands
 // have real implementations:
 //
-//   - runWire    (Plan 01-01) — cmd/spiked/wire.go
-//   - runMilvus  (Plan 01-02) — cmd/spiked/milvus.go
-//   - runSSE     (Plan 01-03) — cmd/spiked/sse.go
-//   - runE2E     (Plan 01-04) — cmd/spiked/e2e.go
+//   - runWire    (Plan 01-01) — scripts/spiked/wire.go
+//   - runMilvus  (Plan 01-02) — scripts/spiked/milvus.go
+//   - runSSE     (Plan 01-03) — scripts/spiked/sse.go
+//   - runE2E     (Plan 01-04) — scripts/spiked/e2e.go
 //
 // This file is retained as a marker — Go's package system requires at
 // least one .go file per package, but a package can have any number of

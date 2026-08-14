@@ -6,6 +6,7 @@ require (
 	github.com/cloudwego/eino v0.7.7
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.5
 	github.com/cloudwego/hertz v0.10.6
+	github.com/fsnotify/fsnotify v1.5.4
 	github.com/milvus-io/milvus-sdk-go/v2 v2.4.2
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver/v2 v2.8.0
@@ -31,7 +32,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect
 	github.com/evanphx/json-patch v0.5.2 // indirect
-	github.com/fsnotify/fsnotify v1.5.4
 	github.com/getsentry/sentry-go v0.12.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

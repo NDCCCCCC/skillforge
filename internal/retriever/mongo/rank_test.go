@@ -103,10 +103,10 @@ func TestCosine_KnownValue(t *testing.T) {
 func TestRank_OrdersBySimilarityDesc(t *testing.T) {
 	q := []float32{1, 0}
 	rows := []docRow{
-		{ID: 1, Embedding: []float32{0, 1}},           // cos=0 (orthogonal)
-		{ID: 2, Embedding: []float32{1, 0}},           // cos=1 (identical direction)
-		{ID: 3, Embedding: []float32{-1, 0}},          // cos=-1 (opposite)
-		{ID: 4, Embedding: []float32{1, 1}},           // cos≈0.7071 (45 degrees)
+		{ID: 1, Embedding: []float32{0, 1}},  // cos=0 (orthogonal)
+		{ID: 2, Embedding: []float32{1, 0}},  // cos=1 (identical direction)
+		{ID: 3, Embedding: []float32{-1, 0}}, // cos=-1 (opposite)
+		{ID: 4, Embedding: []float32{1, 1}},  // cos≈0.7071 (45 degrees)
 	}
 	hits := rank(rows, q, 4)
 	require.Len(t, hits, 4)
@@ -175,10 +175,10 @@ func TestRank_ZeroOrNegativeKReturnsNil(t *testing.T) {
 func TestRank_SkipsDimensionMismatchedRows(t *testing.T) {
 	q := []float32{1, 0}
 	rows := []docRow{
-		{ID: 1, Embedding: []float32{1, 0}},        // match
-		{ID: 2, Embedding: []float32{1, 0, 0}},     // wrong dim — skip
-		{ID: 3, Embedding: nil},                    // nil embedding — skip
-		{ID: 4, Embedding: []float32{0, 1}},        // match (orthogonal)
+		{ID: 1, Embedding: []float32{1, 0}},    // match
+		{ID: 2, Embedding: []float32{1, 0, 0}}, // wrong dim — skip
+		{ID: 3, Embedding: nil},                // nil embedding — skip
+		{ID: 4, Embedding: []float32{0, 1}},    // match (orthogonal)
 	}
 	hits := rank(rows, q, 4)
 	require.Len(t, hits, 2, "only dim-matching rows participate in ranking")
@@ -191,9 +191,9 @@ func TestRank_SkipsDimensionMismatchedRows(t *testing.T) {
 func TestRank_TieBreakByID(t *testing.T) {
 	q := []float32{1, 0}
 	rows := []docRow{
-		{ID: 30, Embedding: []float32{1, 0}},  // cos=1
-		{ID: 10, Embedding: []float32{1, 0}},  // cos=1 (tie)
-		{ID: 20, Embedding: []float32{1, 0}},  // cos=1 (tie)
+		{ID: 30, Embedding: []float32{1, 0}}, // cos=1
+		{ID: 10, Embedding: []float32{1, 0}}, // cos=1 (tie)
+		{ID: 20, Embedding: []float32{1, 0}}, // cos=1 (tie)
 	}
 	hits := rank(rows, q, 3)
 	require.Len(t, hits, 3)

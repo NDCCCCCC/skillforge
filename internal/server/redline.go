@@ -67,9 +67,9 @@ Rules:
 //
 // D5-14 COST CONTROL — THE GATE IS THE FIRST LINE OF THIS FUNCTION.
 //
-//   if v.Status != verdict.NonCompliantStatus && v.Status != verdict.DowngradeStatus {
-//       return nil  // BEFORE any LLM call, BEFORE any wire emit
-//   }
+//	if v.Status != verdict.NonCompliantStatus && v.Status != verdict.DowngradeStatus {
+//	    return nil  // BEFORE any LLM call, BEFORE any wire emit
+//	}
 //
 // A 合规 verdict makes ZERO LLM calls and emits ZERO data-redline
 // chunks. TestRedline_Conditional is the load-bearing regression: it
