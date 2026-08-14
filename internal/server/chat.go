@@ -397,9 +397,17 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	// future Plan can lift it via an accessor if richer source-document
 	// metadata is needed.
 	_ = emitVerdictStream(c, v, nil)
-	// finish-step is caller-owned now (emitVerdictStream no longer emits
-	// it); emit it as the final chunk after the verdict stream.
+	// Close the AI SDK v5 message lifecycle. emitVerdictStream opens the
+	// text part (text-start + conclusion text-delta) but deliberately
+	// does NOT close it (the VerdictPipeline closes it after its
+	// post-verdict annotation passes). This path has no annotation
+	// passes, so close here: text-end closes the text part, finish-step
+	// ends the step, finish ends the message. All three are required for
+	// useChat to register the assistant message (live Phase 7 finding —
+	// see the Step-11 comment in pipeline.go).
+	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
 	s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "")
 }
 
@@ -615,11 +623,19 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"}); err != nil {
 		return fmt.Errorf("emit text-start: %w", err)
 	}
-	// text-delta with a non-empty placeholder so useChat processes the
-	// message as having real content (some AI SDK v5 builds skip rendering
-	// a message whose only parts are data-* chunks until a text part
-	// exists; a single space keeps the UI clean while satisfying that).
-	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: " "}); err != nil {
+	// text-delta carrying the human-readable conclusion. The Verdict
+	// schema is structured-only (status/confidence/citations — the LLM is
+	// prompted to emit JSON and nothing else), so the conclusion SENTENCE
+	// is derived deterministically here from the already-grounded fields
+	// (conclusionText). This is what makes the final answer visible in the
+	// chat conversation stream itself — the data-policy chunk below feeds
+	// the structured 结论 tab UI, but a text part is what a user reading
+	// the chat expects as "the answer" (the Phase 4 mock fixtures, e.g.
+	// __fixtures__/multi-part.json, always carried conclusion text-deltas;
+	// the backend originally shipped a single-space placeholder, which
+	// left the real backend's chat stream conclusion-less — see
+	// .planning/debug/chat-conclusion-not-in-chat.md).
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: conclusionText(v)}); err != nil {
 		return fmt.Errorf("emit text-delta: %w", err)
 	}
 	// 1. source-document per citation (SC-6). mediaType is REQUIRED by the
@@ -661,14 +677,33 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 	return nil
 }
 
-// emitRefusal emits a single data-policy chunk carrying the Refusal,
-// then a finish-step. This is the canonical "refusal path" stream —
-// both the SC-2 (no_authorized_source), GEVL-01 (low_retrieval_score),
-// and D2-13 (out_of_scope) reasons use the same shape (ARAG-05).
+// emitRefusal emits the refusal-path SSE stream: a text part carrying the
+// human-readable refusal sentence (refusalText), then a data-policy chunk
+// with the structured Refusal, then finish-step + finish. This is the
+// canonical "refusal path" stream — the SC-2 (no_authorized_source),
+// GEVL-01 (low_retrieval_score), and D2-13 (out_of_scope) reasons all use
+// the same shape (ARAG-05).
+//
+// The text part matters for the same reason it does in
+// emitVerdictStream: a data-only stream leaves the assistant message
+// unregistered in useChat (live Phase 7 finding — see the Step-11 comment
+// in pipeline.go), so the refusal would be invisible in the chat stream.
+// The Phase 4 mock fixtures (e.g. __fixtures__/refusal-out-of-scope.json)
+// always carried a refusal text-delta; this closes the same backend/FE
+// contract gap fixed for verdicts.
 //
 // Returns the last wire.EmitChunk error (always nil in practice —
 // writer.go:157 flushes immediately so a writer error is catastrophic).
 func emitRefusal(c *app.RequestContext, r verdict.Refusal) error {
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"}); err != nil {
+		return err
+	}
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: refusalText(r)}); err != nil {
+		return err
+	}
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"}); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(r)
 	if err != nil {
 		return fmt.Errorf("marshal refusal: %w", err)
@@ -679,7 +714,56 @@ func emitRefusal(c *app.RequestContext, r verdict.Refusal) error {
 	}); err != nil {
 		return err
 	}
-	return wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"}); err != nil {
+		return err
+	}
+	return wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
+}
+
+// conclusionText derives the human-readable conclusion sentence for a
+// Verdict, deterministically, from the structured fields the pipeline
+// already verified (status validated by verdict.Validate; every
+// citation span grounded by verdict.GroundingChecker). No LLM call, no
+// new schema field — the sentence is a template over grounded data, so
+// it cannot hallucinate (semantic-determinism philosophy: the readable
+// surface is a pure function of the trust-checked structure).
+func conclusionText(v verdict.Verdict) string {
+	pct := int(v.Confidence*100 + 0.5)
+	var b strings.Builder
+	fmt.Fprintf(&b, "结论：%s（置信度 %d%%）。", v.Status, pct)
+	if len(v.Citations) > 0 {
+		fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", v.Citations[0].Tier, v.Citations[0].Span)
+	}
+	if v.ReviewRequired {
+		b.WriteString("置信度未达自动采信阈值，需人工复核。")
+	}
+	return b.String()
+}
+
+// refusalReasonText maps the wire refusal-reason codes to the
+// operator-facing Chinese sentences rendered in the chat stream. Unknown
+// codes (a future reason constant the FE/BE pair has not taught this
+// table) fall through to a generic sentence rather than leaking the raw
+// code into the user-facing text.
+var refusalReasonText = map[string]string{
+	verdict.RefusalReasonNoAuthorizedSource: "未检索到可回答该问题的授权知识源",
+	verdict.RefusalReasonLowRetrievalScore:  "检索到的条款与该问题相关度不足",
+	verdict.RefusalReasonOutOfScope:         "该问题超出当前 Skill 的处理范围",
+}
+
+// refusalText derives the human-readable refusal sentence for a Refusal
+// (same deterministic-template contract as conclusionText).
+func refusalText(r verdict.Refusal) string {
+	msg, ok := refusalReasonText[r.Reason]
+	if !ok {
+		msg = "无法基于已授权的知识源回答该问题"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "无法给出结论：%s。", msg)
+	if r.CanRephrase && r.SuggestedAlternativeQuery != "" {
+		fmt.Fprintf(&b, "可尝试调整问题，例如：「%s」。", r.SuggestedAlternativeQuery)
+	}
+	return b.String()
 }
 
 // sourcePathFor returns the original Source path for the chunk whose

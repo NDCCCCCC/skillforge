@@ -842,3 +842,101 @@ func TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline(t *testing.T) {
 	assert.Equal(t, 0, sr.CallCount(),
 		"ambiguous routing MUST NOT invoke the retriever")
 }
+
+// TestVerdictStreamCarriesConclusionText — regression for
+// .planning/debug/chat-conclusion-not-in-chat.md. The verdict stream's
+// text-delta used to be a single-space placeholder, so the final
+// conclusion never appeared in the chat conversation stream (it existed
+// only as the structured data-policy payload rendered by the 结论 tab).
+// The stream must now carry a human-readable conclusion sentence derived
+// from the validated + grounded Verdict fields (conclusionText).
+func TestVerdictStreamCarriesConclusionText(t *testing.T) {
+	deps := newTestDeps()
+	span := "出差住宿费超标 200 元以内由部门负责人审批"
+	chunks := []retriever.Hit{
+		{ID: 1, Tier: "权威", Content: span, Source: "authority/travel_expense.md", Score: 0.92},
+	}
+	deps.Retriever = &stubRetriever{chunks: chunks}
+	// confidence 0.85 < 0.9 → ReviewRequired=true, so the conclusion
+	// sentence must also surface the human-review note.
+	deps.Runner = newStubRunner(cannedVerdictJSON("需补充", 0.85, []string{"1"}, span, "权威"))
+
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "出差住宿费超标 200 元如何审批", "compliance")
+	frames := parseFrames(t, body)
+
+	var textDelta string
+	for _, f := range frames {
+		if f.Type == "text-delta" {
+			textDelta = f.Delta
+		}
+	}
+	require.NotEmpty(t, textDelta, "verdict stream must carry a text-delta part")
+	assert.NotEqual(t, " ", textDelta,
+		"text-delta must not be the legacy single-space placeholder (conclusion must be readable in chat)")
+	assert.Contains(t, textDelta, "结论：需补充",
+		"conclusion sentence must state the verdict status")
+	assert.Contains(t, textDelta, "85%",
+		"conclusion sentence must state the confidence")
+	assert.Contains(t, textDelta, span,
+		"conclusion sentence must quote the grounded citation span verbatim")
+	assert.Contains(t, textDelta, "需人工复核",
+		"review_required=true verdict must surface the human-review note")
+}
+
+// TestRefusalStreamCarriesTextPart — regression for the same debug
+// session. emitRefusal used to be a data-only stream (data-policy +
+// finish-step), which leaves the assistant message unregistered in
+// useChat (live Phase 7 finding — see pipeline.go Step-11 comment), so a
+// refusal was invisible in the chat stream. The refusal stream must now
+// carry a full text part (text-start/delta/end) with the human-readable
+// refusal sentence (refusalText) and a finish terminator.
+func TestRefusalStreamCarriesTextPart(t *testing.T) {
+	deps := newTestDeps()
+	deps.Retriever = &stubRetriever{chunks: nil}
+
+	loader := skill.NewLoader(skillsDirPath())
+	_, err := loader.Scan()
+	require.NoError(t, err)
+	deps.Loader = loader
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "查询员工联系方式", "compliance")
+	frames := parseFrames(t, body)
+
+	var sawStart, sawEnd, sawFinish bool
+	var textDelta string
+	for _, f := range frames {
+		switch f.Type {
+		case "text-start":
+			sawStart = true
+		case "text-delta":
+			textDelta = f.Delta
+		case "text-end":
+			sawEnd = true
+		case "finish":
+			sawFinish = true
+		}
+	}
+	assert.True(t, sawStart, "refusal stream must open a text part (anchor the assistant message)")
+	assert.True(t, sawEnd, "refusal stream must close the text part")
+	assert.True(t, sawFinish, "refusal stream must end with a finish terminator")
+	require.NotEmpty(t, textDelta, "refusal stream must carry a text-delta part")
+	assert.Contains(t, textDelta, "无法给出结论",
+		"refusal text must lead with the no-conclusion sentence")
+	assert.Contains(t, textDelta, "未检索到可回答该问题的授权知识源",
+		"0-chunk refusal reason must be rendered in operator-facing Chinese")
+	// SC-2: CanRephrase=true + non-empty rule-based suggestion must be
+	// surfaced so the user sees the rephrase hint in the chat itself.
+	assert.Contains(t, textDelta, "可尝试调整问题",
+		"rephrasable refusal must surface the suggestion hint in chat")
+}
