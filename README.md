@@ -43,10 +43,12 @@ cp .env.example .env
 # 3. Start the embedding endpoint (local minimum)
 ollama pull bge-m3
 
-# 4. Pick the demo Skill: the minimal QA template
-#    (the kernel loads whatever is under skills/ — drop any
-#     examples/skills/ template there to make it live)
-cp -r examples/skills/simple-qa skills/
+# 4. The repo already ships the minimal QA Skill as the live default
+#    (skills/simple-qa) — nothing to do. To swap the demo domain, drop
+#    any examples/skills/ template into skills/ and remove the old one,
+#    e.g. the cited-verdict compliance demo:
+#      cp -r examples/skills/compliance skills/ && rm -r skills/simple-qa
+#    Restart (or let hot-reload pick it up) for the change to take effect.
 
 # 5. Bring up the full stack (Milvus + backend + frontend)
 docker compose up
@@ -97,7 +99,7 @@ flowchart TD
     class backend glm milvus moat;
 ```
 
-**The demo Skill is replaceable, not the product.** The Milvus tier-filter, the Skill registry, and the trust evaluator are domain-agnostic. All of the demo behavior — the retrieval boundary, the answer format, the refusal guardrails — lives in a single 30-line Markdown file ([`skills/compliance/SKILL.md`](skills/compliance/SKILL.md)). Delete it and SkillForge has no domain-specific logic left to remove.
+**The demo Skill is replaceable, not the product.** The Milvus tier-filter, the Skill registry, and the trust evaluator are domain-agnostic. All of the demo behavior — the retrieval boundary, the answer format, the refusal guardrails — lives in a single 30-line Markdown file ([`skills/simple-qa/SKILL.md`](skills/simple-qa/SKILL.md)). Delete it and SkillForge has no domain-specific logic left to remove.
 
 ---
 
@@ -124,7 +126,7 @@ Hallucination is the #1 failure mode for enterprise RAG. SkillForge ships a sing
 Skills are declarative Markdown + YAML frontmatter files. Each defines a 7-field manifest (`description` / `agent` / `reads` / `writes` / `steps` / `guardrails` / `temperature`) that the kernel loads, validates, and routes against.
 
 - **Templates:** [`examples/skills/`](examples/skills/) ships three ready-to-run Skills — `simple-qa` (minimal authority-tier QA), `calculator` (tool-calling), and `compliance` (cited verdicts + structured refusals). Each passes the schema validator out of the box.
-- **Loaded Skills:** the kernel loads whatever is under [`skills/`](skills/) — the repo default is [`skills/compliance/SKILL.md`](skills/compliance/SKILL.md); drop any template there (and restart or let hot-reload pick it up) to make it the live domain.
+- **Loaded Skills:** the kernel loads whatever is under [`skills/`](skills/) — the repo default is [`skills/simple-qa/SKILL.md`](skills/simple-qa/SKILL.md); drop any template there (and restart or let hot-reload pick it up) to make it the live domain.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to write your own Skill — the format is 7 fields of YAML frontmatter plus Markdown steps.
 

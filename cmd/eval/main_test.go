@@ -124,13 +124,18 @@ func TestRunGateCheck_MissingInputs(t *testing.T) {
 	assert.Equal(t, 1, runGateCheck(writeTestReport(t, t.TempDir(), "compliance", 0.99), badSkills))
 }
 
-// TestShippedGateFileIsValid: the repo's real skills/compliance/eval-gate.json
-// must parse and declare 0.9 (D6-10 + Q2 path resolution). This is the
-// file CI reads, so a typo in it would silently change the gate.
+// TestShippedGateFileIsValid: the shipped compliance gate file at
+// examples/skills/compliance/eval-gate.json must parse and declare 0.9
+// (D6-10 + Q2 path resolution). The repo default Skill is simple-qa
+// (quick task 260814-vga); the compliance Skill — and its gate
+// threshold — ship as the examples/ template that a `cp -r
+// examples/skills/compliance skills/` restore copies back into skills/
+// for eval runs. A typo in the shipped file would silently change the
+// gate after such a restore.
 func TestShippedGateFileIsValid(t *testing.T) {
-	thresholds, err := eval.LoadThresholds(filepath.Join("..", "..", defaultSkillsDir))
+	thresholds, err := eval.LoadThresholds(filepath.Join("..", "..", "examples", defaultSkillsDir))
 	require.NoError(t, err)
 	require.Contains(t, thresholds, "compliance",
-		"skills/compliance/eval-gate.json must exist at the Q2-resolved path (NOT .claude/skills/)")
+		"examples/skills/compliance/eval-gate.json must exist at the Q2-resolved path (NOT .claude/skills/)")
 	assert.Equal(t, 0.9, thresholds["compliance"])
 }

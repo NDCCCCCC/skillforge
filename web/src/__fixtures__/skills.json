@@ -1,25 +1,24 @@
 [
   {
-    "id": "compliance-review",
-    "name": "企业合规/制度审查",
-    "description": "审查合同/制度/条款是否符合企业合规要求。",
+    "id": "simple-qa",
+    "name": "通用问答",
+    "description": "通用问答 / general Q&A。基于权威知识层回答事实性问题（如“制度对 X 是怎么规定的”“总结 Y 的规则”）。",
     "agent": "ChatModelAgent",
     "reads": ["权威"],
     "writes": [],
-    "temperature": 0.0,
+    "temperature": 0.3,
     "steps": [
-      "1. 检索权威 tier 制度条款",
-      "2. 对照问题生成 verdict",
-      "3. 自校验每条引用 (Self-RAG)",
-      "4. 输出结构化 verdict 或结构化 refusal"
+      "1. 通过 reads.tier 过滤检索权威 tier 中最相关的 chunks",
+      "2. 仅基于检索到的 chunks 组织简洁回答；每条主张引用 chunk_id",
+      "3. 若未检索到权威 chunks，以 no_relevant_source 拒答"
     ],
     "guardrails": {
       "prohibitions": [
-        "Never cite clauses not retrieved",
-        "Never paraphrase critical clauses (quote verbatim)",
-        "Never modify authority tier content"
+        "Never answer without at least one retrieved citation",
+        "Never fabricate sources or chunk ids",
+        "Never reveal personal/contact information of any individual"
       ],
-      "required_refusal_phrases": ["out-of-scope", "no_authorized_source"]
+      "required_refusal_phrases": ["no_relevant_source"]
     }
   },
   {

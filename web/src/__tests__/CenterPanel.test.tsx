@@ -6,9 +6,9 @@
 // Pins D-02 invariants:
 //   - default tab is `verdict`
 //   - tabs component renders 3 tab buttons with labels
-//     `审查结论`, `引用原文`, `Skill 定义`
+//     `结论`, `引用原文`, `Skill 定义`
 //   - body switches on centerView.kind:
-//     - `empty` + no currentVerdict → empty-state hero `等待合规审查结果`
+//     - `empty` + no currentVerdict → empty-state hero `等待回答结果`
 //     - `verdict` + currentVerdict → <VerdictCard>
 //     - `chunk-source` → <ChunkSourceView> with chunk-verbatim + TierBadge
 //     - `skill-md` → <SkillMdPreview>
@@ -41,7 +41,7 @@ beforeEach(() => {
 describe('CenterPanel', () => {
   it('renders empty-state hero when centerView.kind === "empty" and no currentVerdict', () => {
     render(<CenterPanel currentVerdict={null} />);
-    expect(screen.getByTestId('center-panel')).toHaveTextContent('等待合规审查结果');
+    expect(screen.getByTestId('center-panel')).toHaveTextContent('等待回答结果');
   });
 
   it('renders VerdictCard when centerView.kind === "verdict" and a currentVerdict is provided', () => {
@@ -73,11 +73,11 @@ describe('CenterPanel', () => {
   });
 
   it('renders SkillMdPreview with 7-field SKILL.md content when centerView.kind === "skill-md"', () => {
-    useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'compliance-review' } });
+    useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'simple-qa' } });
     render(<CenterPanel currentVerdict={null} />);
     expect(screen.getByTestId('skill-md-preview')).toBeInTheDocument();
     // Wave 3: SkillMdPreview renders all 7 fields from skills.json.
-    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('企业合规/制度审查');
+    expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('通用问答');
     expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('agent:');
     expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('reads:');
     expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('writes:');
@@ -91,7 +91,7 @@ describe('CenterPanel', () => {
     render(<CenterPanel currentVerdict={null} />);
     const tablist = screen.getByRole('tablist');
     expect(tablist).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '审查结论' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '结论' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '引用原文' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Skill 定义' })).toBeInTheDocument();
     // Phase 5 — SC-4 inspector + SC-5 graph browser
@@ -103,7 +103,7 @@ describe('CenterPanel', () => {
     useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
     render(<CenterPanel currentVerdict={compliantVerdict} />);
 
-    const verdictTab = screen.getByRole('tab', { name: '审查结论' });
+    const verdictTab = screen.getByRole('tab', { name: '结论' });
     expect(verdictTab).toHaveAttribute('aria-selected', 'true');
 
     // Phase 5 — tabs are clickable; clicking Agent 状态 dispatches the
@@ -121,11 +121,11 @@ describe('CenterPanel', () => {
 
   it('tab indicator follows programmatic setCenterView (04-UAT test 8)', () => {
     // SkillPicker path: selecting a skill sets kind='skill-md' — the
-    // Skill 定义 tab must be the active indicator (not stuck on 审查结论).
-    useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'compliance-review' } });
+    // Skill 定义 tab must be the active indicator (not stuck on 结论).
+    useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'simple-qa' } });
     render(<CenterPanel currentVerdict={null} />);
     expect(screen.getByRole('tab', { name: 'Skill 定义' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: '审查结论' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tab', { name: '结论' })).toHaveAttribute('aria-selected', 'false');
 
     // Citation-click path: clicking a citation sets kind='chunk-source'
     // — the 引用原文 tab must be the active indicator.
