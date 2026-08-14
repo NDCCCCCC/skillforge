@@ -609,17 +609,18 @@ func (s *Deps) findSkill(name string) *skill.Manifest {
 // variant; stuffing it in Data would not parse through the v5
 // client parser. The Verdict payload is the canonical place.
 func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retriever.Hit) error {
-	// text-start FIRST. AI SDK v5's useChat only creates + renders an
-	// assistant message when it sees a content chunk (text-start /
-	// text-delta / tool-*). A data-* chunk alone appends to an INTERNAL
-	// state.message.parts but never registers the message in chat.messages
-	// — so a stream of only source-document + data-policy renders ZERO
-	// assistant bubbles (the live Phase 7 failure: backend sent the full
-	// verdict + redline, the UI showed only the user's echo). The text-start
-	// is the canonical message anchor; the verdict itself rides the
-	// data-policy part, not the text part (which stays empty).
+	// text-start anchors the AI SDK v5 assistant message so useChat
+	// registers it in chat.messages. A data-only stream (source-document +
+	// data-policy) creates no message without a content chunk.
 	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"}); err != nil {
 		return fmt.Errorf("emit text-start: %w", err)
+	}
+	// text-delta with a non-empty placeholder so useChat processes the
+	// message as having real content (some AI SDK v5 builds skip rendering
+	// a message whose only parts are data-* chunks until a text part
+	// exists; a single space keeps the UI clean while satisfying that).
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: " "}); err != nil {
+		return fmt.Errorf("emit text-delta: %w", err)
 	}
 	// 1. source-document per citation (SC-6).
 	for _, cit := range v.Citations {
