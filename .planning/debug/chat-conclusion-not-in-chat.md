@@ -60,6 +60,11 @@ reasoning_checkpoint:
   found: 用户实际运行 = VerdictPipeline 生产默认路径 + 真实后端。
   implication: 复现路径锁定。
 
+- timestamp: 2026-08-15 (session 3 — live verify round 1)
+  checked: 用户 live 验证截图 + 浏览器 console
+  found: 结论已流式出现在 chat 气泡（主修复 LIVE-VERIFIED 视觉确认）。连带暴露：CitationCluster.tsx React duplicate key `1` 警告 —— LLM 对同一 chunk（chunk_id="1"）给出多条不同 span 的引用，key=chunk_id 撞键。
+  implication: 前端 chip key 需复合键；已修复（commit fd070bb，key=`${index}-${chunk_id}`），vitest 233/233 + tsc 0 错误。
+
 ## Eliminated
 
 - hypothesis: 前端把 data-policy chunk 只路由到结论 tab、不落入 useChat 消息流
@@ -79,6 +84,7 @@ fix: 在 SSE 发射层确定性推导结论文本（不动 LLM prompt / Verdict 
 - `internal/server/chat.go` — emitRefusal 补全 text-start/text-delta(refusalText)/text-end 消息锚 + finish 终止符；refusalText 把 reason 码映射为中文可读句 + 改写建议。
 - `internal/server/chat.go` — runAgentPath 尾部补 text-end + finish（与 VerdictPipeline Step-11 同构，修复 opt-in agent 路径消息不注册的同类隐患）。
 - `internal/server/chat_test.go` — 新增 TestVerdictStreamCarriesConclusionText + TestRefusalStreamCarriesTextPart 回归测试。
+- `web/src/components/center/CitationCluster.tsx` —（live verify 连带修复）引用 chip key 从 chunk_id 改为 `${index}-${chunk_id}` 复合键：LLM 可对同一 chunk 给多条不同 span 引用，chunk_id 撞键触发 React duplicate key 警告。
 
 verification: go build ./... + go vet 通过；go test ./... 全绿（含 2 个新回归测试）；web vitest 233/233 全绿（FE 零改动，fixture 契约本就要求 text part）。live 端到端（真实 Milvus+GLM 环境 + 浏览器）待用户验证。
 
