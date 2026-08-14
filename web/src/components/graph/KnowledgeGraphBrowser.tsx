@@ -101,7 +101,7 @@ export default function KnowledgeGraphBrowser({
         </div>
         <div className="text-2xl font-semibold text-text">知识库为空</div>
         <p className="mt-2 text-base text-text-muted max-w-md">
-          请先通过知识索引导入文档（权威 / 历史 / 个人 / 草稿），或运行 <code className="font-mono text-xs">cmd/spiked index</code> 示例语料。
+          请先通过知识索引导入文档（权威 / 历史 / 个人 / 草稿），或运行 <code className="font-mono text-xs">scripts/spiked index</code> 示例语料。
         </p>
       </div>
     );

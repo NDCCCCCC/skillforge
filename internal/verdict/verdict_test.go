@@ -22,7 +22,7 @@
 // These tests pin the schema at the type level so that the integration
 // contract test (integration/contract/contract_test.go) can import the
 // Validate function without re-implementing the schema rules. Drift
-// between the cmd/spiked producer / 02-03 verdict pipeline producer and
+// between the scripts/spiked producer / 02-03 verdict pipeline producer and
 // the integration/contract validator is caught at compile time (no local
 // duplicate type); drift between the rules here and the rules the
 // contract test expects is caught by the contract test's own Validate

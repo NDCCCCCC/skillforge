@@ -29,7 +29,7 @@ import (
 // Case is one row of the golden-set JSONL. The schema is the
 // eval/golden/compliance.jsonl wire contract — every row has exactly
 // these 5 fields (a 6th optional field, "source", tags provenance:
-// "spike-anchor" marks the 5 cases reused from cmd/spiked/e2e.go:76-82).
+// "spike-anchor" marks the 5 cases reused from scripts/spiked/e2e.go:76-82).
 //
 // Category is one of:
 //

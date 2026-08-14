@@ -50,7 +50,7 @@ import "encoding/json"
 //   - finish-*:      (no payload fields; just the Type marker)
 //
 // Marshal output preserves struct field order; see TestUIMessageChunkShape
-// (cmd/spiked/sse_test.go, retained for the regression binary) for the
+// (scripts/spiked/sse_test.go, retained for the regression binary) for the
 // exact JSON asserted per category.
 //
 // Plan 03-01 added the data-decision discriminator (D3-03 / SC-1

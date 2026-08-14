@@ -54,7 +54,7 @@ import (
 // route registered against deps. Returns the bound TCP address so the
 // caller can issue real HTTP requests against it.
 //
-// Pattern reused from cmd/spiked/sse_test.go (the proven dynamic-port
+// Pattern reused from scripts/spiked/sse_test.go (the proven dynamic-port
 // pattern; Pitfall 7 / hertz v0.10.6 verified).
 func newTestHertz(t *testing.T, deps *Deps) (string, func()) {
 	t.Helper()
@@ -82,7 +82,7 @@ func newTestHertz(t *testing.T, deps *Deps) (string, func()) {
 }
 
 // waitForListener polls the TCP addr until it accepts a connection or
-// the deadline expires. Pattern reused from cmd/spiked/sse.go.
+// the deadline expires. Pattern reused from scripts/spiked/sse.go.
 func waitForListener(addr string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -577,7 +577,7 @@ func findRefusal(t *testing.T, frames []wire.UIMessageChunk) verdict.Refusal {
 }
 
 // parseFrames decodes SSE `data: {...}` lines into UIMessageChunk
-// values. Mirrors cmd/spiked/sse.go:parseSSEFrames; we re-implement it
+// values. Mirrors scripts/spiked/sse.go:parseSSEFrames; we re-implement it
 // locally to avoid an import cycle (spiked is package main).
 func parseFrames(t *testing.T, body string) []wire.UIMessageChunk {
 	t.Helper()

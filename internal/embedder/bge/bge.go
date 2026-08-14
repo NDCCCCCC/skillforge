@@ -20,7 +20,7 @@
 // 8K-token context).
 //
 // Deterministic is a package-level fallback used ONLY by the regression
-// binary (cmd/spiked) when BGE_M3_URL is unreachable. The BGE.Embed
+// binary (scripts/spiked) when BGE_M3_URL is unreachable. The BGE.Embed
 // method does NOT call Deterministic — production refuses on BGE-M3
 // outage (Pitfall 8: a hash-based fallback would silently mask a real
 // outage with semantically meaningless vectors).
@@ -192,7 +192,7 @@ func authTokenFromEnv() string {
 // endpoint is down or the spike is run offline.
 //
 // SPIKE-ONLY FALLBACK — production refuses on BGE-M3 outage (Pitfall 8).
-// This exists solely so cmd/spiked's tier-filter assertion (SC-2) can run
+// This exists solely so scripts/spiked's tier-filter assertion (SC-2) can run
 // end-to-end without blocking on embedding-service availability. The
 // production verdict pipeline (cmd/server) MUST call BGE.Embed only
 // and surface any error as a refusal, never silently degrade to this

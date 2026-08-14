@@ -34,7 +34,7 @@ import (
 //   - Exactly 50 cases total.
 //   - Exactly 20 adversarial + 20 refusal-required + 10 multi-hop.
 //   - The 5 spike-anchor cases are present (reused from
-//     cmd/spiked/e2e.go:76-82 for cross-phase comparability).
+//     scripts/spiked/e2e.go:76-82 for cross-phase comparability).
 //   - Every case has a non-empty query + category.
 //
 // Pinned by 03-VALIDATION.md. If this test fails, the golden set has
@@ -74,7 +74,7 @@ func TestGoldenCategoryCoverage(t *testing.T) {
 	// does not carry the "source" field — it's metadata, not a metric
 	// input).
 	spikeAnchors = countSpikeAnchors(t, path)
-	assert.Equal(t, 5, spikeAnchors, "expected 5 spike-anchor cases (cmd/spiked/e2e.go:76-82)")
+	assert.Equal(t, 5, spikeAnchors, "expected 5 spike-anchor cases (scripts/spiked/e2e.go:76-82)")
 
 	assert.Equal(t, 20, counts["adversarial"],
 		"GEVL-05: exactly 20 adversarial cases (got %d)", counts["adversarial"])

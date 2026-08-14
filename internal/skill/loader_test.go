@@ -367,7 +367,7 @@ func TestParseFrontmatter_NoCloser(t *testing.T) {
 
 // findRepoRoot walks up from the test's CWD to locate go.mod. Test-only
 // helper — keeps TestLoader_ParseComplianceCanonicalSkill independent of
-// the cmd/spiked/wire.go:findProjectRoot helper (which lives in the
+// the scripts/spiked/wire.go:findProjectRoot helper (which lives in the
 // binary package, not the library package).
 func findRepoRoot(t *testing.T) (string, error) {
 	t.Helper()

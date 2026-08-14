@@ -81,7 +81,7 @@ const DefaultJudgeModel = "glm-5.2"
 // natively.
 //
 // NOTE: this construction is byte-identical to cmd/server/main.go:152
-// and cmd/spiked/e2e.go:179. The 4 existing sites COULD be refactored
+// and scripts/spiked/e2e.go:179. The 4 existing sites COULD be refactored
 // to share this helper, but that is out of scope for Plan 03-06 — the
 // eval package deliberately stands alone so it can be lifted into a
 // separate binary (cmd/eval) without dragging cmd/server's wiring.

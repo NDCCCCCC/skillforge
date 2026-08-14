@@ -64,7 +64,7 @@ type SKILLFrontmatter struct {
 // findProjectRoot walks up from the current working directory looking for
 // go.mod. Returns the directory containing go.mod, or an error if not
 // found within 10 levels. Used to make fixture paths robust regardless of
-// where the binary or test was launched from (cmd/spiked/ vs project root).
+// where the binary or test was launched from (scripts/spiked/ vs project root).
 func findProjectRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {

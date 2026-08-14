@@ -2,8 +2,8 @@
 *.exe
 /spiked
 /spiked.exe
-/cmd/spiked/spiked
-/cmd/spiked/spiked.exe
+/scripts/spiked/spiked
+/scripts/spiked/spiked.exe
 spike-*trace.json
 .DS_Store
 node_modules/
@@ -15,3 +15,8 @@ web/dist/
 skillforge.db
 skillforge.db-shm
 skillforge.db-wal
+
+# GBK/UTF-8 chat-body debug dumps written by spike-era request-body probes
+# (see scripts/spiked) — likely to reappear during local debugging.
+/body_gbk_*
+/body_quantum.json

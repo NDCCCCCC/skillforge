@@ -701,7 +701,7 @@ func sourcePathFor(chunks []retriever.Hit, chunkID string) string {
 // ChatModelAgent the iterator emits exactly one AgentEvent whose
 // Output.MessageOutput carries the final assistant message.
 //
-// This function graduates from cmd/spiked/e2e.go:341-374 — the proven
+// This function graduates from scripts/spiked/e2e.go:341-374 — the proven
 // shape from the Phase 1 spike. Any future streaming work (Phase 3+)
 // will iterate over multiple events; for the Phase 2 single-shot
 // verdict path the final message is all we need.

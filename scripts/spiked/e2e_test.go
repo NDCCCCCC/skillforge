@@ -200,7 +200,7 @@ func TestComplianceQueriesSkip(t *testing.T) {
 // (no network). Imports verdict.Validate + verdict.Verdict — a rename in
 // internal/verdict/verdict.go breaks this test at compile time (the
 // T-1-16 single-source-of-truth guarantee that catches drift between
-// cmd/spiked and integration/contract).
+// scripts/spiked and integration/contract).
 //
 // Four sub-cases:
 //   - valid: 合规 + 0.85 confidence + 1 citation → ok

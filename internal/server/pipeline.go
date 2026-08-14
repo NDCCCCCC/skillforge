@@ -55,7 +55,7 @@ import (
 const retrievalScoreThreshold = 0.3
 
 // systemPromptTemplate is the production compliance-review system
-// prompt. Differs from cmd/spiked/e2e.go in two material ways:
+// prompt. Differs from scripts/spiked/e2e.go in two material ways:
 //   - The "context" section is injected with retrieved chunks framed
 //     as DATA blocks (not instructions), one [CHUNK <id>] per chunk.
 //     This is the T-2-21 prompt-injection mitigation: even if a chunk
