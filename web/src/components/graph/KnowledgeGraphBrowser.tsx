@@ -21,8 +21,8 @@
 // path).
 import { Network } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import GraphCanvas from './GraphCanvas';
 import GraphFilterInput from './GraphFilterInput';
-import GraphTree from './GraphTree';
 import { useKnowledgeGraph } from '../../hooks/useKnowledgeGraph';
 
 export interface KnowledgeGraphBrowserProps {
@@ -110,7 +110,7 @@ export default function KnowledgeGraphBrowser({
   return (
     <div data-testid="knowledge-graph" className="flex flex-col gap-3">
       <GraphFilterInput value={filter} onChange={setFilter} />
-      <GraphTree graph={graph} filter={filter} />
+      <GraphCanvas graph={graph} filter={filter} />
     </div>
   );
 }

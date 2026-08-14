@@ -22,6 +22,7 @@ import type { CenterView } from '../../store/app-store';
 import type { Tier, Verdict } from '../../types/verdict';
 import AgentInspector from '../inspector/AgentInspector';
 import ChunkSourceView from './ChunkSourceView';
+import DocViewer from './DocViewer';
 import KnowledgeGraphBrowser from '../graph/KnowledgeGraphBrowser';
 import RefusalCard from './RefusalCard';
 import SkillMdPreview from './SkillMdPreview';
@@ -42,6 +43,8 @@ const FALLBACK_VERDICT: Verdict = {
 function activeTabValue(kind: CenterView['kind']): string {
   switch (kind) {
     case 'chunk-source':
+    // doc-view shares the 引用原文 tab (both are source-text views).
+    case 'doc-view':
       return 'chunk-source';
     case 'skill-md':
       return 'skill-md';
@@ -170,6 +173,15 @@ export default function CenterPanel({
       return (
         <div className="center-panel-tab-content">
           <SkillMdPreview skillId={centerView.skillId} />
+        </div>
+      );
+    }
+    // Doc viewer — full corpus-doc source (left FILES click / graph
+    // doc-node click entry points).
+    if (centerView.kind === 'doc-view') {
+      return (
+        <div className="center-panel-tab-content">
+          <DocViewer tier={centerView.tier} file={centerView.file} />
         </div>
       );
     }

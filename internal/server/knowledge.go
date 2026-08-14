@@ -48,7 +48,10 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -156,3 +159,107 @@ func (s *Deps) chunkHandler(ctx context.Context, c *app.RequestContext) {
 // Compile-time check that knowledge.GraphBuilder satisfies the
 // KnowledgeBuilder type alias declared in server.go.
 var _ KnowledgeBuilder = (*knowledge.GraphBuilder)(nil)
+
+// knowledgeRootDir is the on-disk corpus the indexer seeds from (see
+// internal/knowledge/indexer.go — the same project-relative path). The
+// docs endpoints read from it directly: the graph endpoint answers
+// "what is INDEXED" (Milvus rows), while /api/knowledge/docs answers
+// "what is ON DISK" — the left-sidebar FILES tree. They can differ
+// transiently (a file added but not yet re-indexed); the FE shows the
+// disk truth for browsing and the graph truth for retrieval.
+const knowledgeRootDir = "knowledge/"
+
+// validKnowledgeTiers gates the `tier` query param on /api/knowledge/doc.
+// Everything else 400s — the value is concatenated into a filesystem
+// path, so an open tier would let a caller probe arbitrary directories
+// (e.g. tier=../cmd). Keep in lockstep with the indexer's 4-tier set.
+var validKnowledgeTiers = map[string]bool{
+	"权威": true, "历史": true, "个人": true, "草稿": true,
+}
+
+// tierDirEn maps a canonical tier to its on-disk subdirectory. The
+// corpus tree uses ENGLISH directory names (knowledge/authority/...) —
+// the Chinese tier names are wire/UI vocabulary only. Joining the tier
+// name directly into the path silently produced empty listings (the
+// live "文件树为空" trap: knowledge/权威 does not exist on disk).
+var tierDirEn = map[string]string{
+	"权威": "authority", "历史": "historical", "个人": "personal", "草稿": "draft",
+}
+
+// docEntry is one file row in the /api/knowledge/docs response.
+type docEntry struct {
+	Filename string `json:"filename"`
+	Bytes    int64  `json:"bytes"`
+}
+
+// docsTier is one tier block in the /api/knowledge/docs response.
+type docsTier struct {
+	Tier string    `json:"tier"`
+	Docs []docEntry `json:"docs"`
+}
+
+// docsHandler implements GET /api/knowledge/docs — the disk-truth file
+// tree for the left-sidebar FILES panel (and the doc nodes' click target
+// in the knowledge graph view). Unlike graphHandler this does NOT touch
+// the retriever: it walks knowledge/<tier>/ and returns filenames +
+// sizes. Frontmatter stays in the content (the doc viewer renders it as
+// the metadata header block).
+//
+//	GET /api/knowledge/docs → 200 { tiers: [ { tier, docs: [{filename, bytes}] } ] }
+//	                        → 500 { error: "knowledge docs scan failed — see server logs" }
+func (s *Deps) docsHandler(ctx context.Context, c *app.RequestContext) {
+	tiers := make([]docsTier, 0, len(validKnowledgeTiers))
+	for _, tier := range []string{"权威", "历史", "个人", "草稿"} {
+		entries, err := os.ReadDir(filepath.Join(knowledgeRootDir, tierDirEn[tier]))
+		if err != nil {
+			// Missing tier dir (e.g. a fresh checkout with only .gitkeep
+			// gone) is an empty tier, not a 500 — the tree shows 0 docs.
+			tiers = append(tiers, docsTier{Tier: tier, Docs: []docEntry{}})
+			continue
+		}
+		docs := make([]docEntry, 0, len(entries))
+		for _, e := range entries {
+			if e.IsDir() || e.Name() == ".gitkeep" || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			docs = append(docs, docEntry{Filename: e.Name(), Bytes: info.Size()})
+		}
+		tiers = append(tiers, docsTier{Tier: tier, Docs: docs})
+	}
+	c.JSON(http.StatusOK, map[string]any{"tiers": tiers})
+}
+
+// docContentHandler implements GET /api/knowledge/doc?tier=&file= — the
+// full markdown source of one corpus doc, backing the DocViewer (left
+// FILES click → center panel; graph doc-node click). Path traversal is
+// blocked structurally: tier must be in validKnowledgeTiers AND file
+// must be a bare base name (filepath.Base(file) == file — rejects any
+// separator, so "../" prefixes and nested paths never reach Join).
+//
+//	GET /api/knowledge/doc → 200 { tier, file, content }
+//	                       → 400 { error: "invalid tier or file" }
+//	                       → 404 { error: "doc not found" }
+func (s *Deps) docContentHandler(ctx context.Context, c *app.RequestContext) {
+	tier := string(c.Query("tier"))
+	file := string(c.Query("file"))
+	if !validKnowledgeTiers[tier] || file == "" || filepath.Base(file) != file || strings.Contains(file, "\\") {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid tier or file"})
+		return
+	}
+	content, err := os.ReadFile(filepath.Join(knowledgeRootDir, tierDirEn[tier], file))
+	if err != nil {
+		// Missing file (deleted between docs listing and click) → 404, not
+		// a 500 with a path-bearing error message (W-3 posture).
+		c.JSON(http.StatusNotFound, graphResponseError{Error: "doc not found"})
+		return
+	}
+	c.JSON(http.StatusOK, map[string]any{
+		"tier":    tier,
+		"file":    file,
+		"content": string(content),
+	})
+}

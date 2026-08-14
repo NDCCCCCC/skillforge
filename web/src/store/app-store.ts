@@ -80,6 +80,10 @@ export type CenterView =
       effectiveTo: number | null;
     }
   | { kind: 'skill-md'; skillId: string }
+  // Doc viewer — full markdown source of one knowledge corpus doc.
+  // Entry points: left-sidebar FILES tree click + knowledge-graph doc-node
+  // click. Backed by GET /api/knowledge/doc?tier=&file=.
+  | { kind: 'doc-view'; tier: Tier; file: string }
   // Phase 5 — SC-4 inspector + SC-5 graph browser
   | { kind: 'agent-inspector' }
   | { kind: 'knowledge-graph' };

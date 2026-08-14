@@ -113,57 +113,59 @@ describe('KnowledgeGraphBrowser', () => {
     expect(screen.getByTestId('graph-refresh')).toBeInTheDocument();
   });
 
-  it('renders the 3-level tree (tier / doc / chunk) for a populated corpus', async () => {
+  it('renders the relation graph (tier nodes + doc nodes) for a populated corpus', async () => {
     mockFetchOk(POPULATED_GRAPH);
     render(<KnowledgeGraphBrowser />);
-    const tree = await screen.findByTestId('knowledge-graph');
-    expect(tree).toBeInTheDocument();
-    expect(tree).toHaveTextContent('权威');
-    expect(tree).toHaveTextContent('员工差旅管理办法.md');
-    const chunks = screen.getAllByTestId('graph-chunk-node');
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]).toHaveAttribute('data-chunk-id', 'c-001');
-    expect(chunks[1]).toHaveAttribute('data-chunk-id', 'c-002');
+    const graphRoot = await screen.findByTestId('knowledge-graph');
+    expect(graphRoot).toBeInTheDocument();
+    expect(screen.getByTestId('graph-canvas')).toBeInTheDocument();
+    // Tier node renders the tier name + doc count.
+    const tierNode = screen.getByTestId('graph-tier-node');
+    expect(tierNode).toHaveAttribute('data-tier', '权威');
+    expect(tierNode).toHaveTextContent('1 文档');
+    // Doc node renders the filename (basename, .md stripped) + chunk
+    // count badge, carrying tier/file for the doc-view dispatch.
+    const docNode = screen.getByTestId('graph-doc-node');
+    expect(docNode).toHaveAttribute('data-tier', '权威');
+    expect(docNode).toHaveAttribute('data-file', '员工差旅管理办法.md');
+    expect(docNode).toHaveTextContent('员工差旅管理办法');
+    expect(docNode).toHaveTextContent('2 chunk');
   });
 
-  it('the filter input narrows visible docs by filename (case-insensitive)', async () => {
+  it('the filter input narrows visible doc nodes by filename (case-insensitive)', async () => {
     mockFetchOk(POPULATED_GRAPH);
     render(<KnowledgeGraphBrowser />);
     await screen.findByTestId('knowledge-graph');
 
     const input = screen.getByTestId('graph-filter-input').querySelector('input') as HTMLInputElement;
 
-    // Filter by the doc filename substring — the populated doc remains
-    // visible. We assert via the data-doc-id because the filename text
-    // is concatenated with " · N 片段" inside a single <summary>.
+    // Filter by the doc filename substring — the doc node remains.
     fireEvent.change(input, { target: { value: '差旅' } });
     await waitFor(() => {
-      expect(
-        screen.getByTestId('graph-doc'),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId('graph-doc-node')).toBeInTheDocument();
     });
 
-    // Filter by something unrelated — the doc row disappears.
+    // Filter by something unrelated — the doc node disappears.
     fireEvent.change(input, { target: { value: 'unrelated-keyword' } });
     await waitFor(() => {
-      expect(screen.queryByTestId('graph-doc')).toBeNull();
+      expect(screen.queryByTestId('graph-doc-node')).toBeNull();
     });
   });
 
-  it('clicking a chunk row dispatches setCenterView({kind:"chunk-source", chunkId, tier})', async () => {
+  it('clicking a doc node dispatches setCenterView({kind:"doc-view", tier, file})', async () => {
     mockFetchOk(POPULATED_GRAPH);
     render(<KnowledgeGraphBrowser />);
     await screen.findByTestId('knowledge-graph');
 
-    const chunks = screen.getAllByTestId('graph-chunk-node');
-    fireEvent.click(chunks[0]);
+    const docNode = screen.getByTestId('graph-doc-node');
+    fireEvent.click(docNode);
 
     await waitFor(() => {
       const cv = useAppStore.getState().centerView;
-      expect(cv.kind).toBe('chunk-source');
-      if (cv.kind === 'chunk-source') {
-        expect(cv.chunkId).toBe('c-001');
+      expect(cv.kind).toBe('doc-view');
+      if (cv.kind === 'doc-view') {
         expect(cv.tier).toBe('权威');
+        expect(cv.file).toBe('员工差旅管理办法.md');
       }
     });
   });
