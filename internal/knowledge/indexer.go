@@ -30,7 +30,10 @@
 // exactly one Document row. The corpus is hand-authored, each clause is
 // 300-800 bytes, well under BGE-M3's 8192-token context window, and
 // further splitting would fragment a clause and hurt retrieval precision.
-// The hierarchical markdown splitter is deferred to Phase 3 (CMPL-06).
+// A hierarchical markdown splitter has never been scheduled by any
+// phase (it was silently dropped from planning); whether to build one
+// is an open backlog decision. CMPL-06 is unrelated — it is the Phase 5
+// counter-evidence highlighting feature, completed in Plan 05-06.
 package knowledge
 
 import (
@@ -58,7 +61,8 @@ import (
 // is a guardrail against an operator dropping a 100 KB policy PDF into
 // knowledge/authority/ and silently degrading retrieval for everyone else.
 // When a file exceeds the cap we emit a warning and skip it; the operator
-// can either split the doc or opt-in via the splitter in Phase 3.
+// can split the doc manually. (No automatic splitter exists; whether to
+// build one is an open backlog decision.)
 const maxDocBytes = 4000
 
 // knownTierDirs is the fixed enumeration of tier subdirectories we scan.
@@ -178,7 +182,7 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 			if len(body) > maxDocBytes {
 				fmt.Fprintf(os.Stderr,
 					"[WARN] knowledge.Index: %s body=%d bytes exceeds cap=%d; skipping. "+
-						"Split the doc or wait for the Phase 3 hierarchical splitter (CMPL-06).\n",
+						"Split the doc manually (no automatic splitter is scheduled).\n",
 					path, len(body), maxDocBytes)
 				continue
 			}
