@@ -33,7 +33,7 @@ import type { MockChatTransportOptions } from './mock-types';
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Status reported to the DraftStreamChip via onDraftUpdate. */
-export type DraftStatus = 'pending' | 'verified' | 'refused';
+export type DraftStatus = 'idle' | 'pending' | 'verified' | 'refused';
 
 /** Draft buffer snapshot exposed to the App via onDraftUpdate. */
 export interface DraftUpdate {
@@ -117,6 +117,18 @@ export class MockChatTransport implements ChatTransport<UIMessage> {
                   emitDraft('refused', '');
                 }
               }
+            }
+
+            // Plan 260815-k8d — text-end is the terminal signal for the
+            // conclusion text stream. The draft channel's own
+            // text-delta-draft-end was handled above (continue), so this
+            // branch only fires for the FINAL answer text-end. Emit
+            // ('idle', '') so RightChat unmounts the DraftStreamChip —
+            // without this the chip stays pinned at "✅ 已验证" forever
+            // after every successful verdict. Symmetric with
+            // RealChatTransport so the mock path doesn't regress.
+            if (chunkType === 'text-end') {
+              emitDraft('idle', '');
             }
 
             // Honor abortSignal via a noop check at the top of each chunk;

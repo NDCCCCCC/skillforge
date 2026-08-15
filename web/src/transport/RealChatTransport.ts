@@ -197,6 +197,17 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
                 }
               }
 
+              // Plan 260815-k8d — text-end is the terminal signal for the
+              // conclusion text stream. The draft channel's own
+              // text-delta-draft-end was intercepted above (continue),
+              // so this branch only fires for the FINAL answer text-end.
+              // Emit ('idle', '') so RightChat unmounts the
+              // DraftStreamChip — without this the chip stays pinned at
+              // "✅ 已验证" forever after every successful verdict.
+              if (wireChunk.type === 'text-end') {
+                emitDraft('idle', '');
+              }
+
               controller.enqueue(chunk);
             }
           }
