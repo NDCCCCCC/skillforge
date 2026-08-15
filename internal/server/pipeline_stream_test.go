@@ -61,6 +61,8 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -90,6 +92,10 @@ type stubStreamingChatModel struct {
 	tokens         []string
 	generateMessage string
 	streamErr      error
+	// streamMessages captures the []*schema.Message slice passed to
+	// every Stream call (Quick 260815-grw — used to assert the
+	// {System, User} two-message shape sent to GLM Coding Plan).
+	streamMessages [][]*schema.Message
 }
 
 func (m *stubStreamingChatModel) Generate(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
@@ -110,10 +116,22 @@ func (m *stubStreamingChatModel) Generate(_ context.Context, _ []*schema.Message
 // Stream feeds the canned tokens into a schema.Pipe and closes the
 // writer so Recv sees io.EOF after the last token. The returned
 // reader is single-use (matches the Eino contract — Copy is opt-in).
-func (m *stubStreamingChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+// Quick 260815-grw — also records the messages slice passed by the
+// caller so tests can assert the {System, User} dual-message shape.
+func (m *stubStreamingChatModel) Stream(_ context.Context, msgs []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.count++
+	// Capture a snapshot so the caller cannot mutate after-the-fact.
+	snapshot := make([]*schema.Message, len(msgs))
+	for i, mm := range msgs {
+		if mm == nil {
+			continue
+		}
+		copyMsg := *mm
+		snapshot[i] = &copyMsg
+	}
+	m.streamMessages = append(m.streamMessages, snapshot)
 	if m.streamErr != nil {
 		return nil, m.streamErr
 	}
@@ -136,6 +154,21 @@ func (m *stubStreamingChatModel) StreamCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.count
+}
+
+// StreamMessages returns the captured []*schema.Message slices passed
+// to Stream (Quick 260815-grw — used by the dual-message assertion).
+// Returns a copy so callers cannot mutate the recorded slice.
+func (m *stubStreamingChatModel) StreamMessages() [][]*schema.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([][]*schema.Message, len(m.streamMessages))
+	for i, s := range m.streamMessages {
+		copied := make([]*schema.Message, len(s))
+		copy(copied, s)
+		out[i] = copied
+	}
+	return out
 }
 
 // Compile-time check: stubStreamingChatModel satisfies model.BaseChatModel.
@@ -425,4 +458,62 @@ func TestVerdictPipelineStreaming_RefusalReplacesDraft(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "streaming refusal path writes one audit row")
 	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, rows[0].RefusalReason)
+}
+
+// TestStreamAndAssembleSendsSystemAndUserMessages — Quick 260815-grw.
+//
+// The GLM Coding Plan API rejects a single-{System} messages slice
+// with "messages 参数非法". streamAndAssemble MUST emit a 2-message
+// shape: messages[0] = schema.System carrying the rendered system
+// instructions, messages[1] = schema.User carrying the rendered query
+// + chunks. The stub captures the messages slice via the
+// streamMessages recorder added to stubStreamingChatModel.
+//
+// RED signal: this test calls streamAndAssemble(ctx, c, system, user,
+// opts) — the pre-fix signature is streamAndAssemble(ctx, c, prompt
+// string, opts) which makes this call a compile error. The GREEN
+// refactor in Task 2 widens the signature to (ctx, c, system, user,
+// opts) and the test asserts the dual-message invariant.
+//
+// The test does NOT exercise the full VerdictPipeline → SSE → audit
+// pipeline (which is covered by TestVerdictPipelineStreaming_*). It
+// pins the single contract: whatever the caller passes as (system,
+// user) MUST reach PipelineChatModel.Stream as the two-message slice,
+// byte-equal, in order.
+func TestStreamAndAssembleSendsSystemAndUserMessages(t *testing.T) {
+	stubCM := &stubStreamingChatModel{
+		tokens: []string{`{"status":"合规","confidence":1.0,"citations":[],"review_required":false}`},
+	}
+	deps := &Deps{PipelineChatModel: stubCM}
+
+	const systemIn = "SYS-INSTR: you are an auditor."
+	const userIn = "USER-DATA: query=foo, chunks=[]"
+
+	// Build a minimal RequestContext for streamAndAssemble's SSE emit
+	// calls. We don't POST through Hertz — this is a unit-level seam
+	// test on the LLM call contract.
+	c := app.NewContext(0)
+	c.Request = protocol.Request{}
+	c.Response = protocol.Response{}
+
+	out, err := deps.streamAndAssemble(context.Background(), c, systemIn, userIn, nil)
+	require.NoError(t, err, "streamAndAssemble must succeed with a recording stub")
+	assert.Equal(t,
+		`{"status":"合规","confidence":1.0,"citations":[],"review_required":false}`,
+		out, "streamAndAssemble must return the canned token buffer")
+
+	recorded := stubCM.StreamMessages()
+	require.Len(t, recorded, 1,
+		"PipelineChatModel.Stream must be invoked exactly once (got %d)", len(recorded))
+	msgs := recorded[0]
+	require.Len(t, msgs, 2,
+		"streamAndAssemble must pass EXACTLY 2 messages to PipelineChatModel.Stream (got %d)", len(msgs))
+	assert.Equal(t, schema.System, msgs[0].Role,
+		"messages[0] must be schema.System (got %q)", msgs[0].Role)
+	assert.Equal(t, systemIn, msgs[0].Content,
+		"messages[0].Content must equal the system string verbatim")
+	assert.Equal(t, schema.User, msgs[1].Role,
+		"messages[1] must be schema.User (got %q)", msgs[1].Role)
+	assert.Equal(t, userIn, msgs[1].Content,
+		"messages[1].Content must equal the user string verbatim")
 }
