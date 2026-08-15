@@ -49,6 +49,9 @@
 //   - MILVUS_ADDRESS    (milvus only, required) — gRPC host:port
 //   - MONGO_URI         (mongo only, required)  — e.g. mongodb://10.62.10.34:27017
 //   - BGE_M3_URL        (required) — internal BGE-M3 HTTP endpoint
+//   - BGE_M3_TLS_SKIP_VERIFY (optional) — "true" disables TLS cert verification
+//     for BGE_M3_URL. Internal-network self-signed HTTPS ONLY; logs [WARN]
+//     at startup. Default unset means verify-on (production safe).
 //   - GLM_API_KEY       (required) — Zhipu Coding Plan subscription key
 //   - GLM_BASE_URL      (optional) — default https://open.bigmodel.cn/api/coding/paas/v4
 //   - SERVER_ADDR       (optional) — default ":8888" (Pitfall 7)
@@ -125,6 +128,12 @@ func main() {
 	bgeURL := envRequired("BGE_M3_URL")
 	bgeModel := envOr("BGE_M3_MODEL", "bge-m3")
 	bgeTimeoutSec := envOr("BGE_M3_TIMEOUT", "60")
+	// BGE_M3_TLS_SKIP_VERIFY (opt-in) disables TLS certificate verification
+	// for the BGE-M3 endpoint. ONLY for internal-network self-signed HTTPS
+	// (BGE-M3 behind a corporate reverse proxy); production must leave
+	// this unset so verify-on is the default. Case-insensitive "true" maps
+	// to true; any other value (including empty / unset) keeps verify-on.
+	bgeTLSSkipVerify := strings.EqualFold(os.Getenv("BGE_M3_TLS_SKIP_VERIFY"), "true")
 	glmKey := envRequired("GLM_API_KEY")
 	glmBase := envOr("GLM_BASE_URL", defaultGLMBaseURL)
 	serverAddr := envOr("SERVER_ADDR", defaultServerAddr)
@@ -159,7 +168,10 @@ func main() {
 	if err != nil || bgeTimeout <= 0 {
 		bgeTimeout = 60 * time.Second
 	}
-	emb := bge.New(bge.Config{URL: bgeURL, Model: bgeModel, Timeout: bgeTimeout})
+	emb := bge.New(bge.Config{URL: bgeURL, Model: bgeModel, Timeout: bgeTimeout, InsecureSkipVerify: bgeTLSSkipVerify})
+	if bgeTLSSkipVerify {
+		log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", bgeURL)
+	}
 
 	// 4. Construct the configured retriever backend + seed the knowledge
 	// corpus. The default is "milvus" (unchanged historical behavior);
