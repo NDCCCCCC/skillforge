@@ -206,6 +206,65 @@ describe('RealChatTransport (Plan 260815-j4y)', () => {
     ]);
   });
 
+  it('routes onDraftUpdate terminal: verified → idle on text-end (unmounts DraftStreamChip)', async () => {
+    // Plan 260815-k8d — full SSE sequence through the verified terminal
+    // state must finish with an emitDraft('idle', '') so RightChat
+    // unmounts the DraftStreamChip. Without this final idle emit the
+    // chip stays pinned at "✅ 已验证" forever (the chip is only
+    // rendered when draftStatus !== 'idle').
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({ type: 'text-start', id: 'msg-1' }),
+        sseFrame({ type: 'text-delta-draft', id: 'draft-1', delta: 'hi ' }),
+        sseFrame({ type: 'text-delta-draft', id: 'draft-1', delta: 'there' }),
+        sseFrame({ type: 'text-delta-draft-end', id: 'draft-1' }),
+        sseFrame({
+          type: 'data-policy',
+          id: 'pol-1',
+          data: { status: 'verified', confidence: 0.91, citations: [] },
+        }),
+        sseFrame({ type: 'text-delta', id: 'msg-1', delta: 'final answer' }),
+        sseFrame({ type: 'text-end', id: 'msg-1' }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const updates: DraftUpdate[] = [];
+    const transport = new RealChatTransport(
+      { api: '/api/chat', fetch: fetchMock as unknown as typeof globalThis.fetch },
+      { onDraftUpdate: (u) => updates.push(u) },
+    );
+
+    await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'chat-1',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    // 3 pending emits (2 draft deltas + 1 draft-end) + 1 verified + 1 idle = 5.
+    expect(updates.length).toBeGreaterThanOrEqual(5);
+    // The LAST emit must be the idle reset — that's what unmounts the
+    // DraftStreamChip. Without the fix (no idle on text-end), this is
+    // {status: 'verified', draftText: 'hi there'} and the chip hangs.
+    expect(updates[updates.length - 1]).toEqual({
+      status: 'idle',
+      draftText: '',
+    });
+    // The penultimate emit must be the verified state — order matters.
+    expect(updates[updates.length - 2]).toEqual({
+      status: 'verified',
+      draftText: 'hi there',
+    });
+  });
+
   it('reconnectToStream returns null (parity with MockChatTransport)', async () => {
     const transport = new RealChatTransport({ api: '/api/chat' });
     const result = await transport.reconnectToStream({
