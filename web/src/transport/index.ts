@@ -19,14 +19,15 @@
 // test path simple and the prod path pristine (no draft buffering
 // needed when the AI SDK parser owns the stream shape).
 
-import { DefaultChatTransport, type ChatTransport, type UIMessage } from 'ai';
+import { type ChatTransport, type UIMessage } from 'ai';
 import { DEFAULT_FIXTURE, FIXTURE_REGISTRY, type MockFixtureName } from '../__fixtures__';
 import { MockChatTransport, type DraftUpdateHandler } from './MockChatTransport';
+import { RealChatTransport } from './RealChatTransport';
 
 export type TransportEnv = 'prod' | 'dev' | 'test';
 
 export interface CreateTransportOptions {
-  /** Plan 260815-cos — draft channel state mirror (dev / test only). */
+  /** Plan 260815-cos + 260815-j4y — draft channel state mirror. */
   onDraftUpdate?: DraftUpdateHandler;
 }
 
@@ -36,7 +37,15 @@ export function createTransport(
   opts: CreateTransportOptions = {},
 ): ChatTransport<UIMessage> {
   if (env === 'prod') {
-    return new DefaultChatTransport({ api: '/api/chat' });
+    // Plan 260815-j4y: RealChatTransport wraps DefaultChatTransport and
+    // filters `text-delta-draft` / `text-delta-draft-end` SSE frames at
+    // the SSE→UIMessageChunk layer (defaulting to onDraftUpdate) so the
+    // AI SDK v7 parser never sees them and aborts the stream with
+    // UIMessageStreamError. See RealChatTransport.ts for the dispatcher.
+    return new RealChatTransport(
+      { api: '/api/chat' },
+      { onDraftUpdate: opts.onDraftUpdate },
+    );
   }
   // dev | test — both run Mock; tests pass 'test' to ensure Mock is the
   // only path used (per T-04-04 threat model mitigation).
@@ -50,5 +59,5 @@ export function createTransport(
   );
 }
 
-export { MockChatTransport };
+export { MockChatTransport, RealChatTransport };
 export type { MockFixtureName } from '../__fixtures__';
