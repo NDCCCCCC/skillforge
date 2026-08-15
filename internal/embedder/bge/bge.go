@@ -30,6 +30,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -55,12 +56,24 @@ type Config struct {
 	AuthToken string        // optional bearer token; empty = no auth
 	Model     string        // model name for OpenAI-compatible /v1/embeddings (Ollama needs "bge-m3"; vLLM/TEI accept it). Empty OMITS the field (back-compat with endpoints that reject unknown fields).
 	Timeout   time.Duration // per-request timeout; zero → defaultEmbedTimeout (60s). Ollama cold-start tolerant.
+	// InsecureSkipVerify disables TLS certificate verification for HTTPS
+	// endpoints (BGE_M3_TLS_SKIP_VERIFY=true). ONLY for internal-network
+	// self-signed HTTPS endpoints; production MUST leave this false so
+	// the default posture remains verify-on. Opt-in is per-instance — each
+	// BGE gets its own *http.Client so the TLS posture is isolated and
+	// never bleeds into http.DefaultClient (which other packages may share).
+	InsecureSkipVerify bool
 }
 
 // BGE implements embedder.Embedder against a BGE-M3 HTTP service. Safe
-// for concurrent use; the http.DefaultClient handles connection pooling.
+// for concurrent use. Each instance owns a dedicated *http.Client with a
+// per-instance http.Transport so the TLS posture (verify-on vs
+// InsecureSkipVerify) is isolated per instance — the embedder never
+// shares http.DefaultClient, eliminating cross-package coupling on the
+// global transport.
 type BGE struct {
-	cfg Config
+	cfg    Config
+	client *http.Client
 }
 
 // Compile-time check that BGE implements embedder.Embedder.
@@ -69,8 +82,19 @@ var _ embedder.Embedder = (*BGE)(nil)
 // New constructs a BGE-M3 HTTP embedder. Returns an error if URL is
 // empty (the caller decides the failure mode; production fails fast
 // at startup, the indexer tests skip if BGE is nil).
+//
+// The returned BGE owns a dedicated *http.Client whose http.Transport
+// carries the InsecureSkipVerify config — http.DefaultClient is NEVER
+// used, so per-instance TLS posture is isolated and never bleeds into
+// other packages that share the global default.
 func New(cfg Config) *BGE {
-	return &BGE{cfg: cfg}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}, //nolint:gosec // operator opt-in via BGE_M3_TLS_SKIP_VERIFY for internal self-signed HTTPS
+	}
+	return &BGE{
+		cfg:    cfg,
+		client: &http.Client{Transport: transport},
+	}
 }
 
 // Embed calls the BGE-M3 HTTP endpoint for a 1024-dim embedding.
@@ -102,7 +126,7 @@ func (b *BGE) Embed(ctx context.Context, text string) ([]float32, error) {
 			case <-time.After(1 * time.Second):
 			}
 		}
-		vec, err := embedOnce(ctx, b.cfg.URL, b.cfg.AuthToken, b.cfg.Model, timeout, text)
+		vec, err := embedOnce(ctx, b.client, b.cfg.URL, b.cfg.AuthToken, b.cfg.Model, timeout, text)
 		if err == nil {
 			return vec, nil
 		}
@@ -115,7 +139,7 @@ func (b *BGE) Embed(ctx context.Context, text string) ([]float32, error) {
 func (b *BGE) Dimensions() int { return dimensions }
 
 // embedOnce performs a single BGE-M3 POST and parses the response.
-func embedOnce(ctx context.Context, url, token, model string, timeout time.Duration, text string) ([]float32, error) {
+func embedOnce(ctx context.Context, client *http.Client, url, token, model string, timeout time.Duration, text string) ([]float32, error) {
 	type embedReq struct {
 		Model string `json:"model,omitempty"`
 		Input string `json:"input"`
@@ -141,7 +165,7 @@ func embedOnce(ctx context.Context, url, token, model string, timeout time.Durat
 		req.Header.Set("Authorization", "Bearer "+envToken)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("POST %s: %w", url, err)
 	}
