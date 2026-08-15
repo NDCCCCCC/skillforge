@@ -65,6 +65,84 @@ type graphResponseError struct {
 	Error string `json:"error"`
 }
 
+// parseLenientChunkID extracts a numeric chunk ID from LLM-emitted or
+// human-typed strings. The pipeline frames chunks as `[ref-<id>]` in the
+// prompt and instructs the LLM to output digits-only in `chunk_id`, but
+// the LLM occasionally echoes the label prefix verbatim
+// (e.g. "CHUNK 7" / "ref-7" / "[ref-7]"). The earlier verdict-layer
+// fix (verdict.canonicalChunkID) handles the in-process grounding map;
+// this helper is the URL-path analogue for /api/knowledge/chunk/:id.
+//
+// Accepted forms (returns (id, true)):
+//   - "7"              → 7
+//   - "CHUNK 7"        → 7
+//   - "chunk 7"        → 7 (case-insensitive prefix)
+//   - "CHUNK7"         → 7 (no space also accepted)
+//   - "ref-7"          → 7
+//   - "[ref-7]"        → 7
+//   - "  7  "          → 7 (whitespace trimmed)
+//   - `"7"` / `'7'`    → 7 (quotes stripped)
+//   - "-7"             → -7 (negative numbers pass through; the
+//                         knowledge layer returns 404 for missing IDs)
+//
+// Rejected (returns (0, false)):
+//   - "abc"
+//   - ""
+//   - "CHUNK abc"      (prefix stripped but remainder non-numeric)
+//   - "7abc"           (no substring extraction; full string must be digits)
+//
+// Implementation: trim + strip matching pairs of brackets/parens/quotes
+// (handles nested forms like "[[7]]") + strip a "CHUNK"/"REF" prefix
+// (case-insensitive, with optional separator) + re-trim. The remainder
+// is then run through strconv.ParseInt.
+func parseLenientChunkID(s string) (int64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	for {
+		changed := false
+		switch {
+		case len(s) >= 2 && s[0] == '[' && s[len(s)-1] == ']':
+			s = strings.TrimSpace(s[1 : len(s)-1])
+			changed = true
+		case len(s) >= 2 && s[0] == '(' && s[len(s)-1] == ')':
+			s = strings.TrimSpace(s[1 : len(s)-1])
+			changed = true
+		case len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"':
+			s = strings.TrimSpace(s[1 : len(s)-1])
+			changed = true
+		case len(s) >= 2 && s[0] == '\'' && s[len(s)-1] == '\'':
+			s = strings.TrimSpace(s[1 : len(s)-1])
+			changed = true
+		}
+		if !changed {
+			break
+		}
+	}
+	for _, prefix := range []string{"CHUNK", "REF"} {
+		if len(s) > len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+			rest := s[len(prefix):]
+			// Accept the prefix as a label iff what follows is clearly a
+			// numeric payload: space, dash, or digit. Reject "CHUNKabc"
+			// / "REFnote" — those are not label+digit forms.
+			if len(rest) == 0 || rest[0] == ' ' || rest[0] == '-' || (rest[0] >= '0' && rest[0] <= '9') {
+				s = strings.TrimLeft(rest, " -")
+				break
+			}
+		}
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return id, true
+}
+
 // graphHandler implements GET /api/knowledge/graph. The Deps.Knowledge
 // field holds the GraphBuilder. When nil (test mode or unconfigured
 // production), the handler returns 503 with the standard envelope.
@@ -129,12 +207,20 @@ func (s *Deps) chunkHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	id, ok := parseLenientChunkID(idStr)
+	if !ok {
 		c.JSON(http.StatusBadRequest, graphResponseError{
 			Error: "invalid chunk id",
 		})
 		return
+	}
+	if idStr != strconv.FormatInt(id, 10) {
+		// Lenient parse: the URL segment was not a bare integer. Log
+		// the original form so ops can spot LLM-output drift on chunk_id
+		// (live Phase 7 symptom: verdict JSON emits "CHUNK 7" and the
+		// BE rejected it). The acceptance is intentional — see
+		// parseLenientChunkID godoc.
+		log.Printf("[WARN] server: chunkHandler lenient parse: %q → %d (LLM likely echoed label prefix)", idStr, id)
 	}
 	payload, err := s.Knowledge.GetChunk(ctx, id)
 	if errors.Is(err, knowledge.ErrChunkNotFound) {

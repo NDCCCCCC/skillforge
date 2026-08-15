@@ -95,7 +95,7 @@ Output ONLY a JSON object with this exact schema:
   "status": "合规" | "不合规" | "需补充" | "unanswered",
   "confidence": <0.0 to 1.0>,
   "citations": [
-    {"chunk_id": "<the chunk id you are quoting>", "span": "<verbatim substring of that chunk — must appear literally in the chunk text>", "tier": "<the tier of that chunk>"}
+    {"chunk_id": "<the literal numeric chunk ID from [ref-N] — output digits only, no prefix>", "span": "<verbatim substring of that chunk — must appear literally in the chunk text>", "tier": "<the tier of that chunk>"}
   ],
   "review_required": <true if confidence<0.9 OR info insufficient, else false>
 }
@@ -575,7 +575,15 @@ func emitSubprogress(c *app.RequestContext, p wire.SubprogressStep) {
 func buildPrompt(query string, chunks []retriever.Hit) (string, string) {
 	var b strings.Builder
 	for _, ch := range chunks {
-		fmt.Fprintf(&b, "[CHUNK %d] tier=%s source=%s\n%s\n---\n",
+		// Layer 1 (quick 260815-jpu) — switched the prefix from
+		// "[CHUNK %d]" to "[ref-%d]" so the LLM sees a non-literal
+		// label and is less likely to echo it verbatim into the
+		// chunk_id field of the verdict JSON. The system instructions
+		// also tell the model "output digits only, no prefix" (Layer 2),
+		// and the BE chunkHandler accepts both bare and prefixed forms
+		// (Layer 3 / quick 260815-jpu parseLenientChunkID), so any
+		// residual drift is absorbed by the FE normalize (Layer 4).
+		fmt.Fprintf(&b, "[ref-%d] tier=%s source=%s\n%s\n---\n",
 			ch.ID, ch.Tier, ch.Source, ch.Content)
 	}
 	return fmt.Sprintf(systemInstructionsTemplate), fmt.Sprintf(userQueryTemplate, query, b.String())

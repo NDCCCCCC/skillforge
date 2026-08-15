@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -159,6 +160,12 @@ var _ KnowledgeBuilder = (*stubKnowledgeBuilder)(nil)
 // Mirrors the graphHandler test posture: nil builder → 503, bad id → 400,
 // found → 200 + JSON round-trip, not-found → 404, other-err → 500 generic
 // (W-3: no err.Error() leak), route registered → never 404.
+//
+// Quick 260815-jpu (Layer 3) adds tolerant parsing: the handler now
+// accepts prefixed / bracketed / quoted forms of the chunk ID
+// (e.g. "CHUNK 7", "ref-7", "[ref-7]", "\"7\"") and routes them to the
+// same numeric ID. Pure-numeric input still takes the fast path (no
+// WARN log emitted). Completely non-numeric input still 400s.
 
 func TestChunkHandler_NilBuilderReturns503(t *testing.T) {
 	deps := &Deps{Knowledge: nil}
@@ -251,6 +258,80 @@ func TestChunkHandler_RouteRegistered(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// Quick 260815-jpu (Layer 3) — parseLenientChunkID is the BE URL-path
+// analogue of FE normalizeChunkID: it accepts the prefixed / bracketed
+// / quoted forms the LLM occasionally emits and reduces them to a bare
+// int64. Pure-numeric input takes the fast path; fully non-numeric
+// input (no digits) returns ok=false so the handler can still 400.
+func TestParseLenientChunkID(t *testing.T) {
+	cases := []struct {
+		in     string
+		wantID int64
+		wantOK bool
+	}{
+		{"7", 7, true},
+		{"CHUNK 7", 7, true},
+		{"chunk 7", 7, true},
+		{"CHUNK7", 7, true},
+		{"ref-7", 7, true},
+		{"REF-7", 7, true},
+		{"[ref-7]", 7, true},
+		{"  7  ", 7, true},
+		{`"7"`, 7, true},
+		{"abc", 0, false},
+		{"", 0, false},
+		{"CHUNK abc", 0, false},
+		{"-7", -7, true},
+		{"7abc", 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			id, ok := parseLenientChunkID(tc.in)
+			assert.Equal(t, tc.wantID, id)
+			assert.Equal(t, tc.wantOK, ok)
+		})
+	}
+}
+
+// Quick 260815-jpu (Layer 3) — the chunkHandler must accept all the
+// prefixed forms the LLM emits and route them to the same ChunkPayload.
+// The fixture KnowledgeBuilder returns ID="7" so each variant must
+// resolve to the same 200 + ChunkPayload{ID:"7"} body.
+func TestChunkHandler_TolerantIDAcceptsPrefix(t *testing.T) {
+	payload := &knowledge.ChunkPayload{ID: "7", Tier: "权威", Source: "authority/x.md", Content: "正文片段"}
+	stub := &stubKnowledgeBuilder{chunkPayload: payload}
+	deps := &Deps{Knowledge: stub}
+
+	for _, idPath := range []string{"7", "CHUNK 7", "chunk 7", "ref-7", "REF-7", "[ref-7]"} {
+		t.Run(idPath, func(t *testing.T) {
+			got := invokeChunkHandler(t, deps, idPath)
+			assert.Equal(t, http.StatusOK, got.Code, "lenient parse must accept %q", idPath)
+			var decoded knowledge.ChunkPayload
+			require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
+			assert.Equal(t, "7", decoded.ID)
+		})
+	}
+}
+
+// Quick 260815-jpu (Layer 3) — the lenient parse must NOT swallow truly
+// garbage input. "abc" / "CHUNK abc" / "[ref-abc]" still 400 with the
+// canonical envelope and the handler must NOT call GetChunk.
+func TestChunkHandler_GarbageIDStillReturns400(t *testing.T) {
+	stub := &stubKnowledgeBuilder{chunkPayload: &knowledge.ChunkPayload{}}
+	deps := &Deps{Knowledge: stub}
+
+	for _, idPath := range []string{"abc", "CHUNK abc", "[ref-abc]"} {
+		t.Run(idPath, func(t *testing.T) {
+			got := invokeChunkHandler(t, deps, idPath)
+			assert.Equal(t, http.StatusBadRequest, got.Code, "must still 400 on garbage %q", idPath)
+			var body graphResponseError
+			require.NoError(t, json.Unmarshal(got.Body.Bytes(), &body))
+			assert.Equal(t, "invalid chunk id", body.Error)
+			assert.Equal(t, 0, stub.getChunkCalls, "GetChunk must NOT be invoked on garbage %q", idPath)
+		})
+	}
+}
+
 // invokeChunkHandler runs the GET /api/knowledge/chunk/:id handler in
 // an isolated hertz instance and returns the recorder. idPath is the
 // raw path segment (e.g. "1" or "abc"). Mirrors invokeGraphHandler.
@@ -258,7 +339,12 @@ func invokeChunkHandler(t *testing.T, deps *Deps, idPath string) *ut.ResponseRec
 	t.Helper()
 	h := server.Default(server.WithHostPorts(":0"))
 	h.GET("/api/knowledge/chunk/:id", deps.chunkHandler)
-	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/chunk/"+idPath, nil)
+	// url.PathEscape so prefixed IDs that contain spaces / brackets
+	// (e.g. "CHUNK 7", "[ref-7]") reach the handler as a single path
+	// segment — the raw " " would split the request line. The handler
+	// reads `c.Param("id")` which hertz pre-decodes, so the test still
+	// sees the original idStr. Quick 260815-jpu.
+	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/chunk/"+url.PathEscape(idPath), nil)
 	return w
 }
 
