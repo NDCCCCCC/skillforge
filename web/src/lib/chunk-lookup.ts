@@ -52,11 +52,72 @@ export interface ChunkMetadata {
 // result.text === NOT_FOUND_TEXT is the canonical fixture-miss signal.
 export const NOT_FOUND_TEXT = '(chunk not found in fixture)';
 
+/**
+ * normalizeChunkID strips common LLM-emitted or human-typed prefixes
+ * from a chunk ID so the canonical numeric form ("7") is what reaches
+ * the BE URL path. The BE chunkHandler also accepts prefixed forms
+ * (Layer 3 of quick 260815-jpu), so this is a UX optimization — the
+ * popover fetch fires immediately instead of waiting for the BE WARN
+ * log path.
+ *
+ * Accepted transformations:
+ *   - trim outer whitespace
+ *   - strip matching brackets/parens/quotes pairs (handles [[7]], etc.)
+ *   - strip case-insensitive "CHUNK"/"REF" prefix with optional
+ *     separator (space / dash / nothing)
+ *
+ * Non-numeric input is returned UNCHANGED — the BE chunkHandler will
+ * reject it with a 400, which is the correct boundary: the FE has no
+ * way to know if an arbitrary string is a valid chunk ID.
+ */
+export function normalizeChunkID(chunkId: string): string {
+  let s = chunkId.trim();
+  // Strip matching pairs of brackets/parens/quotes (repeated for nested forms).
+  // Wrappers are always safe to strip — they don't change numeric-ness.
+  for (;;) {
+    let changed = false;
+    if (s.length >= 2) {
+      const first = s[0];
+      const last = s[s.length - 1];
+      if ((first === '[' && last === ']') ||
+          (first === '(' && last === ')') ||
+          (first === '"' && last === '"') ||
+          (first === "'" && last === "'")) {
+        s = s.slice(1, -1).trim();
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  // Try CHUNK/REF prefix strip — but ONLY if the stripped remainder is
+  // a valid int64. If the prefix syntactically applies but the rest is
+  // not numeric (e.g. "CHUNK abc"), return the input UNCHANGED so the
+  // BE parseLenientChunkID can still 400 on it — the FE has no way to
+  // know if "CHUNK abc" is a typo vs a legit key.
+  const lower = s.toLowerCase();
+  for (const prefix of ['chunk', 'ref']) {
+    if (lower.startsWith(prefix)) {
+      const rest = s.slice(prefix.length);
+      if (rest.length === 0 || rest[0] === ' ' || rest[0] === '-' || (rest[0] >= '0' && rest[0] <= '9')) {
+        const stripped = rest.replace(/^[\s-]+/, '');
+        if (/^-?\d+$/.test(stripped)) {
+          return stripped;
+        }
+        // Prefix could be stripped but remainder is non-numeric — bail.
+        return chunkId;
+      }
+    }
+  }
+  s = s.trim();
+  return s || chunkId; // normalize 后为空则原样返回
+}
+
 export function lookupChunk(chunkId: string): ChunkLookupResult {
-  const entry = CHUNKS[chunkId];
+  const normalized = normalizeChunkID(chunkId);
+  const entry = CHUNKS[normalized];
   if (entry) {
     return {
-      chunkId,
+      chunkId: normalized, // sync 规范化后的 ID 写到返回，让下游显示一致
       tier: entry.tier,
       version: entry.version,
       effectiveDate: entry.effective_date,
@@ -66,7 +127,7 @@ export function lookupChunk(chunkId: string): ChunkLookupResult {
   // eslint-disable-next-line no-console
   console.warn('[chunk-lookup] missing chunk:', chunkId);
   return {
-    chunkId,
+    chunkId, // fixture miss 路径保留原文（让 console.warn 打原文便于诊断）
     tier: '权威',
     version: null,
     effectiveDate: null,
@@ -75,7 +136,8 @@ export function lookupChunk(chunkId: string): ChunkLookupResult {
 }
 
 export function extractChunkMetadata(chunkId: string): ChunkMetadata {
-  const entry = CHUNKS[chunkId];
+  const normalized = normalizeChunkID(chunkId);
+  const entry = CHUNKS[normalized];
   if (entry) {
     return {
       tier: entry.tier,
@@ -103,8 +165,9 @@ export function extractChunkMetadata(chunkId: string): ChunkMetadata {
 export async function fetchChunkContent(
   chunkId: string,
 ): Promise<{ text: string; tier: Tier | null } | null> {
+  const normalized = normalizeChunkID(chunkId);
   const resp = await fetch(
-    `/api/knowledge/chunk/${encodeURIComponent(chunkId)}`,
+    `/api/knowledge/chunk/${encodeURIComponent(normalized)}`,
     { headers: { Accept: 'application/json' } },
   );
   // A missing chunk is a soft miss, NOT an initialization failure
