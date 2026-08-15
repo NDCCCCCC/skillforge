@@ -126,6 +126,15 @@ const defaultSkill = "compliance"
 // blocks here until SIGINT/SIGTERM — this handler runs on every
 // request concurrently.
 func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
+	// DEBUG (260815-gcw): /api/chat diagnostic logging seam.
+	// Trigger: `curl -X POST :8888/api/chat -H 'Content-Type: application/json' -d '{"query":"...","skill":"compliance"}'`
+	// Expected log sequence (happy path fires all 14 sites):
+	//   1. chatHandler enter  2. routing to VerdictPipeline (Loader)  3. dispatching to VerdictPipeline
+	//   4. VerdictPipeline enter  5. streamAndAssemble entering  6. calling PipelineChatModel.Stream
+	//   7. Stream returned OK  8. about to call first Recv  9. recv token_n=N  10. completed
+	// Hang-location decision: no log 1 = hertz; log 1 only = decode/lookup;
+	// logs 1-3 only = embed/retrieve; logs 1-5 only = Stream() (GLM/endpoint);
+	// logs 1-7 only = first Recv; slow recv N = mid-stream; logs OK but no FE draft = SSE wire.
 	// UTF-8 validity guard (BEFORE BindAndValidate). Sonic — Hertz's JSON
 	// decoder — silently replaces invalid UTF-8 bytes in string values with
 	// U+FFFD, so by the time req.Query is populated the original encoding
@@ -184,6 +193,12 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	}
 	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
 
+	// DEBUG (260815-gcw): entry log — fires before any routing decision so
+	// operators can confirm /api/chat was reached even if the request hangs
+	// inside VerdictPipeline or LLM. query is truncated to 80 chars to bound
+	// log volume; full query is in the audit row regardless.
+	log.Printf("[INFO] server: chatHandler enter query=%q skill=%s sess=%s", truncate(req.Query, 80), req.Skill, sessionID)
+
 	// Agent path (runAgentPath) is OPT-IN via USE_AGENT_PATH=true at
 	// cmd/server/main.go (which gates agent construction). The PRODUCTION
 	// DEFAULT is the VerdictPipeline branch below (code-forced original-
@@ -201,6 +216,10 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// NOT consulted on this branch — findSkill's manifest is used only by
 	// the VerdictPipeline default. req.Skill flows into the audit row's
 	// SkillID column on both paths.
+	// DEBUG (260815-gcw): Agent path branch (OPT-IN via USE_AGENT_PATH=true).
+	// Fires only when cmd/server wired s.Agent — the production default leaves
+	// Agent nil and falls through to the VerdictPipeline branch below.
+	log.Printf("[INFO] server: chatHandler routing to runAgentPath (USE_AGENT_PATH=true) skill=%s sess=%s", req.Skill, sessionID)
 	if s.Agent != nil {
 		s.runAgentPath(ctx, c, req, sessionID)
 		return
@@ -212,6 +231,10 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// + Selected + Ambiguous) BEFORE VerdictPipeline. On Ambiguous /
 	// empty-snapshot / embedder-error paths the verdict is NOT invoked —
 	// the FE renders the SkillPicker so the user picks (D5-03).
+	// DEBUG (260815-gcw): Registry+Router branch (D5-05 route-then-run).
+	// Fires when cmd/server wired both Registry + Router; the Router picks a
+	// Skill BEFORE VerdictPipeline runs, emitting data-decision + SkillScores.
+	log.Printf("[INFO] server: chatHandler routing to Registry+Router skill=%s sess=%s", req.Skill, sessionID)
 	var manifest *skill.Manifest
 	if s.Registry != nil && s.Router != nil {
 		routed, ok := s.routeThenRun(ctx, c, req)
@@ -224,6 +247,11 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	} else {
 		// Phase 2 fallback: resolve manifest via Loader.
 		manifest = s.findSkill(req.Skill)
+		// DEBUG (260815-gcw): Loader fallback (Phase 2 default). Fires when
+		// the Registry+Router branch above did not take (production cmd/server
+		// leaves Registry nil). findSkill returned a non-nil manifest, so
+		// VerdictPipeline will run below.
+		log.Printf("[INFO] server: chatHandler routing to VerdictPipeline (Loader) skill=%s sess=%s", req.Skill, sessionID)
 		if manifest == nil {
 			// Unknown skill → out_of_scope refusal. The finish-step after the
 			// data-policy is the canonical terminator — clients expect it.
@@ -235,6 +263,11 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		}
 	}
 
+	// DEBUG (260815-gcw): VerdictPipeline dispatch — the moment we hand off
+	// to the orchestration that drives embed → retrieve → LLM → grounding.
+	// If this log appears but VerdictPipeline never logs (D-1), the hang is
+	// in the function-call boundary (nil manifest, ctx cancel, etc.).
+	log.Printf("[INFO] server: chatHandler dispatching to VerdictPipeline skill=%s sess=%s", req.Skill, sessionID)
 	if err := s.VerdictPipeline(ctx, c, req.Query, manifest, sessionID, req.Skill); err != nil {
 		// Pipeline returned an error AFTER the first SSE frame was written
 		// (we cannot change status now). Emit an error chunk so the client
@@ -339,6 +372,11 @@ func (s *Deps) routeThenRun(ctx context.Context, c *app.RequestContext, req chat
 // (chat_session_test.go:TestCancelPropagationMidTool) asserts < 200ms
 // cancel latency.
 func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chatRequest, sessionID string) {
+	// DEBUG (260815-gcw): Agent-path entry log. Only fires when
+	// USE_AGENT_PATH=true at cmd/server/main.go wired s.Agent; the production
+	// default (VerdictPipeline) does not call this function. Mirrors the
+	// chatHandler enter log so operators can correlate the branch decision.
+	log.Printf("[INFO] server: runAgentPath enter query=%q skill=%s sess=%s", truncate(req.Query, 80), req.Skill, sessionID)
 	// Session history load (best-effort — AGNT-05 correlation). Errors
 	// are logged and swallowed; the agent still runs with no history.
 	// The history is NOT passed into Agent.Run in Phase 3 (the agent is
