@@ -176,6 +176,11 @@ export interface AppState {
   /** Loading + error mirror for the eval reports fetch (UI-only). */
   evalStatus: 'idle' | 'loading' | 'ready' | 'error';
   evalError?: string;
+  // Plan 260815-cos — DraftStreamChip state. status='idle' means
+  // the chip is hidden (no in-flight stream). MockChatTransport's
+  // onDraftUpdate callback writes here as it parses SSE chunks.
+  draftStatus: 'idle' | 'pending' | 'verified' | 'refused';
+  draftText: string;
 }
 
 export interface AppActions {
@@ -208,6 +213,11 @@ export interface AppActions {
   setFrozenBaseline(f: FrozenSetInfo | undefined): void;
   setEvalError(msg: string | null): void;
   setEvalStatus(s: 'idle' | 'loading' | 'ready' | 'error'): void;
+  // Plan 260815-cos — draft channel mirror (status + buffered text).
+  // MockChatTransport's onDraftUpdate callback writes here; RightChat
+  // subscribes to render the DraftStreamChip. Setting status='idle'
+  // clears the chip entirely.
+  setDraft(status: 'idle' | 'pending' | 'verified' | 'refused', text: string): void;
 }
 
 const DEFAULT_LEFT_WIDTH = 260;
@@ -254,6 +264,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   frozenBaseline: undefined,
   evalStatus: 'idle',
   evalError: undefined,
+  // Plan 260815-cos — draft channel defaults (no chip rendered).
+  draftStatus: 'idle',
+  draftText: '',
 
   setCenterView: (view) => set({ centerView: view }),
   setCurrentSkill: (id) => set({ currentSkillId: id }),
@@ -329,4 +342,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setFrozenBaseline: (f) => set({ frozenBaseline: f }),
   setEvalError: (msg) => set({ evalError: msg ?? undefined, evalStatus: msg ? 'error' : 'ready' }),
   setEvalStatus: (s) => set({ evalStatus: s }),
+  // Plan 260815-cos — draft channel writer.
+  setDraft: (status, text) => set({ draftStatus: status, draftText: text }),
 }));
