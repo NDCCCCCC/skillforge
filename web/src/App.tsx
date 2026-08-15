@@ -83,7 +83,18 @@ function LiveApp() {
   // src/vite-env.d.ts (vite/client + VITE_REAL_BACKEND).
   const env: 'prod' | 'dev' =
     import.meta.env.PROD || import.meta.env.VITE_REAL_BACKEND === '1' ? 'prod' : 'dev';
-  const transport = useMemo(() => createTransport(env), [env]);
+  // Plan 260815-cos — DraftStreamChip wiring. The transport's
+  // onDraftUpdate callback writes into useAppStore.draftStatus +
+  // draftText; RightChat subscribes to render the chip. Memoized so
+  // the chatMapRef doesn't churn on every render.
+  const setDraft = useAppStore((s) => s.setDraft);
+  const transport = useMemo(
+    () =>
+      createTransport(env, undefined, {
+        onDraftUpdate: ({ status, draftText }) => setDraft(status, draftText),
+      }),
+    [env, setDraft],
+  );
   // Plan 05-08 Task 1 (CR-01 fix) — per-session Chat<UIMessage> map
   // kept in a useRef so each session retains its own message stream
   // across activeSessionId flips. The `chat` prop is passed to useChat

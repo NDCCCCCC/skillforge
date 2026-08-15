@@ -1,15 +1,19 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 05-06 Task 2 — CounterEvidenceCard tests.
+// Plan 05-06 Task 2 + Plan 260815-cos Task 3 — CounterEvidenceCard tests.
 //
 // Pins the SC-6 acceptance assertions (and the D5-13 trust moat on the
 // FE side):
-//   (a) DISCLAIMER sentence present verbatim — load-bearing T-5-27 test.
-//       The disclaimer is a hardcoded JSX literal (no prop customization)
-//       so the operator ALWAYS sees the "annotation ≠ grounding" framing.
-//   (b) Empty state copy: 未检索到与本次结论冲突的历史片段。 when
-//       conflictChunks is empty / undefined.
+//   (a) Plan 260815-cos / decision E1 — zero rows → component renders
+//       NOTHING (return null). The disclaimer / header chrome / empty-
+//       state copy are ALL GONE in this branch. Tests assert absence
+//       of counter-evidence-card, counter-evidence-disclaimer, and
+//       counter-evidence-empty.
+//   (b) Non-empty render — disclaimer sentence present verbatim
+//       (load-bearing T-5-27 test). The disclaimer is a hardcoded JSX
+//       literal (no prop customization) so the operator ALWAYS sees
+//       the "annotation ≠ grounding" framing when conflicts exist.
 //   (c) Conflict chunk row renders the 历史 tier badge with teal bg +
 //       the snippet text + the chunk id.
 //   (d) Click chunk row dispatches setCenterView({ kind:'chunk-source', ...})
@@ -31,7 +35,6 @@ import type { ConflictChunk } from '../types/wire-types';
 afterEach(cleanup);
 
 const DISCLAIMER = '以下内容来自「历史」知识层，仅供人工参考，不参与本次结论的生成与校验。';
-const EMPTY_COPY = '未检索到与本次结论冲突的历史片段。';
 
 const conflict: ConflictChunk = {
   chunkId: 'c-101',
@@ -60,32 +63,29 @@ describe('CounterEvidenceCard', () => {
     restore();
   });
 
-  it('renders the disclaimer sentence VERBATIM (T-5-27 load-bearing)', () => {
-    render(<CounterEvidenceCard conflictChunks={[]} />);
+  // Plan 260815-cos / decision E1: zero rows → no DOM at all. No
+  // header, no disclaimer, no empty-state copy. The card simply
+  // vanishes — the trust floor is "no annotations = no card".
+  it('returns null when conflictChunks is empty', () => {
+    const { container } = render(<CounterEvidenceCard conflictChunks={[]} />);
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId('counter-evidence-card')).toBeNull();
+    expect(screen.queryByTestId('counter-evidence-disclaimer')).toBeNull();
+    expect(screen.queryByTestId('counter-evidence-empty')).toBeNull();
+  });
+
+  it('returns null when conflictChunks is undefined', () => {
+    const { container } = render(<CounterEvidenceCard />);
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId('counter-evidence-card')).toBeNull();
+  });
+
+  it('renders the disclaimer sentence VERBATIM on non-empty conflictChunks (T-5-27 load-bearing)', () => {
+    render(<CounterEvidenceCard conflictChunks={[conflict]} />);
     const disclaimer = screen.getByTestId('counter-evidence-disclaimer');
     // Strict equality — any edit to the disclaimer must be a deliberate
     // spec change, not a silent copy tweak. The test fails red on drift.
     expect(disclaimer.textContent).toBe(DISCLAIMER);
-  });
-
-  it('renders the disclaimer even when conflictChunks is undefined', () => {
-    render(<CounterEvidenceCard />);
-    // The disclaimer is the trust-moat marker — it must show regardless
-    // of whether the BE returned any conflicts.
-    expect(screen.getByTestId('counter-evidence-disclaimer').textContent).toBe(DISCLAIMER);
-  });
-
-  it('renders empty-state copy when conflictChunks is empty', () => {
-    render(<CounterEvidenceCard conflictChunks={[]} />);
-    const empty = screen.getByTestId('counter-evidence-empty');
-    expect(empty.textContent).toBe(EMPTY_COPY);
-    // Rows container absent on empty.
-    expect(screen.queryByTestId('counter-evidence-rows')).toBeNull();
-  });
-
-  it('renders empty-state copy when conflictChunks is undefined', () => {
-    render(<CounterEvidenceCard />);
-    expect(screen.getByTestId('counter-evidence-empty').textContent).toBe(EMPTY_COPY);
   });
 
   it('renders one row per conflict chunk with teal tier badge + snippet', () => {
@@ -111,11 +111,6 @@ describe('CounterEvidenceCard', () => {
     expect(badge).toHaveAttribute('data-tier', '历史');
     expect(badge).toHaveTextContent('历史');
     expect(badge).toHaveClass('bg-annotation-dim', 'text-annotation');
-  });
-
-  it('omits empty-state copy when conflict chunks are present', () => {
-    render(<CounterEvidenceCard conflictChunks={[conflict]} />);
-    expect(screen.queryByTestId('counter-evidence-empty')).toBeNull();
   });
 
   it('click chunk row dispatches setCenterView with kind=chunk-source', () => {

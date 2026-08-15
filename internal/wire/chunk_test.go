@@ -112,21 +112,35 @@ func TestDecisionChunkType(t *testing.T) {
 // RED phase (260815-0xb): FAILS before the change because
 // `data-subprogress` is not yet in ValidTypes (counts 19, asserts 20).
 // The GREEN commit registers the 20th type.
+//
+// Quick plan 260815-cos extends to 22 types — adds
+// `text-delta-draft` + `text-delta-draft-end` for the LLM-token
+// streaming channel that the DraftStreamChip listens to (FE renders 🟡
+// 待校验 → ✅ 已验证 on grounding pass). Same T-1-11 rule applies
+// (snake_case variants stay rejected).
 func TestValidTypes_Twenty(t *testing.T) {
-	const expected = 20
+	const expected = 22
 	assert.Equal(t, expected, len(ValidTypes),
-		"ValidTypes must hold exactly %d entries (19 through finish, +1 for data-subprogress)", expected)
+		"ValidTypes must hold exactly %d entries (20 through data-subprogress, +2 for text-delta-draft + text-delta-draft-end per 260815-cos)", expected)
 	assert.True(t, ValidTypes["data-redline"],
 		"data-redline MUST be registered (18th wire type, D5-14)")
 	assert.True(t, ValidTypes["finish"],
 		"finish MUST be registered — VerdictPipeline emits it as the message terminator (AI SDK v5 schema member)")
 	assert.True(t, ValidTypes["data-subprogress"],
 		"data-subprogress MUST be registered (20th wire type, FEUI-06 / 260815-0xb)")
+	assert.True(t, ValidTypes["text-delta-draft"],
+		"text-delta-draft MUST be registered (21st wire type, draft streaming channel / 260815-cos)")
+	assert.True(t, ValidTypes["text-delta-draft-end"],
+		"text-delta-draft-end MUST be registered (22nd wire type, draft streaming end marker / 260815-cos)")
 	// Snake-case variant rejected — T-1-11 mitigation.
 	assert.False(t, ValidTypes["data_redline"],
 		"snake_case data_redline MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
 	assert.False(t, ValidTypes["data_subprogress"],
 		"snake_case data_subprogress MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
+	assert.False(t, ValidTypes["text_delta_draft"],
+		"snake_case text_delta_draft MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
+	assert.False(t, ValidTypes["text_delta_draft_end"],
+		"snake_case text_delta_draft_end MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
 }
 
 // TestSubprogressStepRoundTrip — quick plan 260815-0xb Task 1: the

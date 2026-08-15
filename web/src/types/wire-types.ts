@@ -158,6 +158,20 @@ export type SkillForgeChunk =
   | { type: 'text-start'; id: string; providerMetadata?: unknown }
   | { type: 'text-delta'; id: string; delta: string; providerMetadata?: unknown }
   | { type: 'text-end'; id: string; providerMetadata?: unknown }
+  // Plan 260815-cos: draft streaming channel (LLM tokens before grounding).
+  // NOT routed through AI SDK v5 DefaultChatTransport parser — the
+  // MockChatTransport keeps draft-* frames in a separate buffer so they
+  // cannot pollute message.parts[].text. ID namespace "draft-1" isolates
+  // from "msg-1" text parts so useChat sees zero draft frames.
+  //
+  // D15 drift alarm: text-delta-draft is structurally narrower than
+  // AI SDK v5's text-delta variant ({ type, id, delta } vs
+  // { type, id, delta, providerMetadata? }). The narrower field set
+  // stays assignable because every required field on SkillForgeChunk
+  // exists on the SDK shape; the SDK's optional providerMetadata is
+  // simply not asserted here.
+  | { type: 'text-delta-draft'; id: string; delta: string }
+  | { type: 'text-delta-draft-end'; id: string }
   // Reasoning streaming
   | { type: 'reasoning-start'; id: string; providerMetadata?: unknown }
   | { type: 'reasoning-delta'; id: string; delta: string; providerMetadata?: unknown }

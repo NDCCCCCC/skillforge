@@ -2,10 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // VerdictCard — D-06 / FEUI/CMPL-05 verdict card. Status-colored
-// header + confidence bar + review-required corner badge. The
-// citations count footer renders below the verdict body, then the
-// CitationCluster renders BELOW the footer (chips live in their own
-// clickable cluster, not inside the header).
+// header + review-required corner badge. The citations count footer
+// renders below the verdict body, then the CitationCluster renders
+// BELOW the footer (superscripts live in their own cluster, not
+// inside the header — Plan 260815-cos Task 3 switched from chips to
+// inline superscripts).
+//
+// Plan 260815-cos / locked CONTEXT.md decision D: the green confidence
+// bar + 「置信度 N%」 text are REMOVED. The data-testid="confidence-bar"
+// DOM node is RETAINED as a `hidden` (display:none) element with the
+// data-confidence attribute so existing test assertions / snapshot
+// scrapers do not break. The verdict's confidence value is still
+// available on the Verdict payload for any future re-introduction.
 //
 // Wave 2 simplifies the signature to `{ verdict }` only — the
 // citation click handler invokes useAppStore.getState() directly
@@ -20,13 +28,6 @@ const STATUS_BORDER: Record<VerdictStatus, string> = {
   不合规: 'border-l-status-non-compliant',
   需补充: 'border-l-status-needs-info',
   unanswered: 'border-l-status-unanswered',
-};
-
-const STATUS_BAR: Record<VerdictStatus, string> = {
-  合规: 'bg-status-compliant',
-  不合规: 'bg-status-non-compliant',
-  需补充: 'bg-status-needs-info',
-  unanswered: 'bg-status-unanswered',
 };
 
 export interface VerdictCardProps {
@@ -48,18 +49,20 @@ export default function VerdictCard({ verdict }: VerdictCardProps) {
       >
         <div className="flex items-center justify-between gap-2">
           <StatusBadge status={verdict.status} />
-          <span className="font-mono text-xs">置信度 {pct}%</span>
-        </div>
-        <div className="mt-2 h-0.5 w-full rounded-full bg-border-muted">
-          <div
-            data-testid="confidence-bar"
-            className={cn('h-0.5 rounded-full transition-all', STATUS_BAR[verdict.status])}
-            style={{ width: `${pct}%` }}
-          />
         </div>
         <div className="mt-3 text-xs text-text-muted">
           {verdict.citations.length} 条引用
         </div>
+        {/* Plan 260815-cos / CONTEXT.md decision D: confidence bar is
+            visually hidden. The data-testid + data-confidence attributes
+            are retained so existing test assertions / scrapers do not
+            regress; `hidden` is Tailwind's display:none equivalent. */}
+        <div
+          data-testid="confidence-bar"
+          data-confidence={pct}
+          className="hidden"
+          aria-hidden="true"
+        />
       </div>
       {verdict.review_required && (
         <span

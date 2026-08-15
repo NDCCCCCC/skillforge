@@ -19,7 +19,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"strconv"
 	"strings"
@@ -28,6 +30,7 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/llm"
@@ -223,21 +226,46 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		"response_format": map[string]string{"type": "json_object"},
 		"thinking":        map[string]string{"type": "disabled"},
 	}
+	// chatModelOpts is the underlying model.Option slice used by both
+	// branches. The streaming path (Plan 260815-cos) feeds it directly
+	// to PipelineChatModel.Stream; the Phase 2 fallback wraps the same
+	// slice in adk.WithChatModelOptions for Runner.Query.
+	chatModelOpts := []model.Option{
+		model.WithTemperature(temp),
+		model.WithMaxTokens(600),
+		openai.WithExtraFields(extraFields),
+	}
 	opts := []adk.AgentRunOption{
-		adk.WithChatModelOptions([]model.Option{
-			model.WithTemperature(temp),
-			model.WithMaxTokens(600),
-			openai.WithExtraFields(extraFields),
-		}),
+		adk.WithChatModelOptions(chatModelOpts),
 	}
 	// FEUI-06: emit the generate progress BEFORE the (dominant) LLM wait
 	// so the user sees 生成结论中... while the model is producing the
 	// structured Verdict JSON.
 	emitSubprogress(c, wire.SubprogressStep{Step: "generate"})
-	iter := s.Runner.Query(ctx, prompt, opts...)
-	raw, err := drainFinalContent(iter)
-	if err != nil {
-		return fmt.Errorf("verdict pipeline: drain LLM: %w", err)
+	// Plan 260815-cos: streaming branch. When Deps.PipelineChatModel is
+	// non-nil, the LLM's Stream method feeds us tokens one at a time;
+	// we emit text-delta-draft per token + text-delta-draft-end as the
+	// terminator. The assembled buffer then walks the SAME parse /
+	// validate / grounding path as the Phase 2 fallback — the draft
+	// channel is purely additive observability on the wire (FE renders
+	// 🟡 待校验 / ✅ 已验证 on DraftStreamChip; the trust boundary stays
+	// grounded verdict → emitVerdictStream).
+	//
+	// PipelineChatModel == nil → fall back to Runner.Query + drainFinalContent
+	// (the Phase 2 byte-identical path). Tests that build a Deps without
+	// PipelineChatModel keep the Phase 2 regression baseline.
+	var raw string
+	if s.PipelineChatModel != nil {
+		raw, err = s.streamAndAssemble(ctx, c, prompt, chatModelOpts)
+		if err != nil {
+			return fmt.Errorf("verdict pipeline: stream LLM: %w", err)
+		}
+	} else {
+		iter := s.Runner.Query(ctx, prompt, opts...)
+		raw, err = drainFinalContent(iter)
+		if err != nil {
+			return fmt.Errorf("verdict pipeline: drain LLM: %w", err)
+		}
 	}
 
 	var v verdict.Verdict
@@ -341,6 +369,69 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		log.Printf("[WARN] server: finish emit failed (non-fatal): %v", err)
 	}
 	return nil
+}
+
+// streamAndAssemble drives the Plan 260815-cos streaming LLM seam.
+// It calls PipelineChatModel.Stream, emits one text-delta-draft SSE
+// frame per token + a terminal text-delta-draft-end, and returns the
+// concatenated token buffer so Step 9 (parse / validate / grounding)
+// runs on the same shape as Phase 2's drainFinalContent.
+//
+// Best-effort emit (log.Printf + swallow on EmitChunk error) mirrors
+// the data-subprogress pattern: the draft channel is decorative
+// observability, the verdict + audit + session writes are the trust
+// boundary. A dead socket surfaces on the next REAL emit.
+//
+// opts are the model.Option slice (temperature / max-tokens /
+// extra-fields) shared with the Phase 2 Runner.Query fallback so the
+// two paths produce identical judgement JSON shape.
+func (s *Deps) streamAndAssemble(
+	ctx context.Context,
+	c *app.RequestContext,
+	prompt string,
+	opts []model.Option,
+) (string, error) {
+	stream, err := s.PipelineChatModel.Stream(ctx, []*schema.Message{
+		{Role: schema.System, Content: prompt},
+	}, opts...)
+	if err != nil {
+		return "", fmt.Errorf("open LLM stream: %w", err)
+	}
+	defer stream.Close()
+
+	var buf strings.Builder
+	for {
+		msg, recErr := stream.Recv()
+		if errors.Is(recErr, io.EOF) {
+			break
+		}
+		if recErr != nil {
+			return buf.String(), fmt.Errorf("recv LLM token: %w", recErr)
+		}
+		if msg == nil || msg.Content == "" {
+			continue
+		}
+		// Best-effort draft emit. A dead SSE socket logs + swallows
+		// the failure — the verdict emit (the trust-bearing path)
+		// surfaces the real error to the caller.
+		if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
+			Type:  "text-delta-draft",
+			ID:    "draft-1",
+			Delta: msg.Content,
+		}); emitErr != nil {
+			log.Printf("[WARN] server: emit text-delta-draft: %v (non-fatal)", emitErr)
+		}
+		buf.WriteString(msg.Content)
+	}
+	// Terminal marker — FE uses this to switch DraftStreamChip from 🟡
+	// 待校验 → ✅ 已验证 on grounding pass (Refusal clears the chip).
+	if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
+		Type: "text-delta-draft-end",
+		ID:   "draft-1",
+	}); emitErr != nil {
+		log.Printf("[WARN] server: emit text-delta-draft-end: %v (non-fatal)", emitErr)
+	}
+	return buf.String(), nil
 }
 
 // emitSubprogress writes one data-subprogress SSE chunk (quick plan

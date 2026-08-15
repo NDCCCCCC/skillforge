@@ -224,14 +224,26 @@ type SubprogressStep struct {
 // (web/src/types/wire-types.ts) already declares this variant, so the
 // D15 drift alarm needs no change.
 //
-// Count: 20 types — text(3) + reasoning(3) + tool-input(3) +
-// tool-output(1) + source(2) + data-policy(1) + data-decision(1) +
-// data-redline(1) + data-subprogress(1) + finish(3: finish /
-// finish-step / finish-message) + error(1).
+// Count: 22 types — text(5: text-start/text-delta/text-end +
+// text-delta-draft/text-delta-draft-end) + reasoning(3) +
+// tool-input(3) + tool-output(1) + source(2) + data-policy(1) +
+// data-decision(1) + data-redline(1) + data-subprogress(1) +
+// finish(3: finish / finish-step / finish-message) + error(1).
+//
+// Quick plan 260815-cos adds `text-delta-draft` + `text-delta-draft-end`
+// — the draft streaming channel that carries LLM tokens BEFORE
+// grounding. The discriminator uses the `draft-1` ID namespace so
+// draft frames cannot be confused with the `msg-1` text part (which
+// AI SDK v5 routes into message.parts[].text). useChat does NOT
+// consume draft-* frames; the FE transport (MockChatTransport) keeps
+// them in a separate buffer so the chip's status state machine can
+// render 🟡 待校验 → ✅ 已验证 on grounding pass.
 var ValidTypes = map[string]bool{
 	"text-start":            true,
 	"text-delta":            true,
 	"text-end":              true,
+	"text-delta-draft":      true,
+	"text-delta-draft-end":  true,
 	"reasoning-start":       true,
 	"reasoning-delta":       true,
 	"reasoning-end":         true,

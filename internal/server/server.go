@@ -187,6 +187,22 @@ type Deps struct {
 	// so TestRedline_Conditional can assert zero calls on a 合规 verdict
 	// (D5-14 cost control — the load-bearing regression).
 	ChatModel model.ToolCallingChatModel
+	// PipelineChatModel is the Plan 260815-cos streaming seam. When
+	// non-nil, VerdictPipeline Step 8 calls Stream on this model and
+	// emits text-delta-draft / text-delta-draft-end frames per token
+	// BEFORE the parsed verdict lands on the wire (FE renders 🟡 待校验
+	// → ✅ 已验证 on the DraftStreamChip).
+	//
+	// Independent field from ChatModel — same model instance in
+	// production (model.ToolCallingChatModel embeds model.BaseChatModel
+	// so Stream is reachable through either type), but keeping them
+	// separate means the streaming verdict path can be tested in
+	// isolation from the redline path (D5-14 cost-control invariant
+	// on the redline seam must NOT be affected by this draft channel).
+	// nil = Step 8 falls back to Runner.Query + drainFinalContent
+	// (the Phase 2 byte-identical path). cmd/server/main.go wires cm
+	// to both fields at startup.
+	PipelineChatModel model.BaseChatModel
 }
 
 // New constructs a Hertz server bound to addr with the chat route

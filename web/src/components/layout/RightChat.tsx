@@ -25,6 +25,7 @@ import { BookOpen } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
+import DraftStreamChip from '../chat/parts/DraftStreamChip';
 import WizardMode from './WizardMode';
 import { useAppStore } from '../../store/app-store';
 
@@ -56,6 +57,12 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
   const currentSkillId = useAppStore((s) => s.currentSkillId);
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const currentSkill = skills.find((s) => s.id === currentSkillId);
+  // Plan 260815-cos — DraftStreamChip subscription. Status='idle'
+  // means the chip is unmounted (DraftStreamChip only renders for
+  // pending/verified — refused also unmounts via the component's own
+  // null return).
+  const draftStatus = useAppStore((s) => s.draftStatus);
+  const draftText = useAppStore((s) => s.draftText);
 
   useEffect(() => {
     if (wizardActive) return;
@@ -137,6 +144,17 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
               role={m.role === 'user' ? 'user' : 'assistant'}
             />
           ))}
+          {/* Plan 260815-cos — DraftStreamChip renders BELOW the
+              latest message bubble while the assistant is streaming
+              the LLM draft. status='idle' (no in-flight stream) hides
+              the chip entirely; status='refused' is handled inside the
+              component (returns null). */}
+          {draftStatus !== 'idle' && (
+            <DraftStreamChip
+              status={draftStatus as 'pending' | 'verified' | 'refused'}
+              draftText={draftText}
+            />
+          )}
         </div>
       )}
 
