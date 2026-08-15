@@ -297,6 +297,11 @@ func main() {
 		Knowledge:    knowledge.New(r),
 		EvalReporter: server.NewFilesystemEvalReporter(evalReportsDir, evalFrozenDir),
 		ChatModel:    cm,
+		// Plan 260815-cos: PipelineChatModel = cm activates Step 8
+		// streaming (text-delta-draft + text-delta-draft-end per token
+		// before grounding). model.ToolCallingChatModel embeds
+		// model.BaseChatModel so Stream is reachable on cm directly.
+		PipelineChatModel: cm,
 	}
 
 	// 8. Hertz server (Pattern 1).
