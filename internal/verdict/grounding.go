@@ -179,21 +179,70 @@ func GroundingCheck(v Verdict, chunksByID map[string]string) GroundingReport {
 // treating the answer as fully authoritative.
 const ConfidenceFloor = 0.89
 
-// DowngradeStatus is the Status a downgraded Verdict is forced to. Per
-// D2-02, when grounding fails the verdict is downgraded to "需补充"
-// ("needs more information") so the UI + downstream consumers can
-// render a clear "we don't have enough grounded context" affordance
-// rather than the LLM's optimistic-but-fabricated status.
-const DowngradeStatus = "需补充"
+// DowngradeStatus is the platform-neutral Status a downgraded Verdict is
+// forced to. Per D2-02, when grounding fails the verdict is downgraded
+// to Status="needs_input" so the UI + downstream consumers can render a
+// clear "we don't have enough grounded context" affordance rather than
+// the LLM's optimistic-but-fabricated verdict.
+//
+// 260817-vsm: was "需补充" (compliance-specific Chinese). Migrated to
+// platform-neutral English as part of the verdict-subject-mismatch fix
+// (debug session verdict-subject-mismatch.md) — the platform envelope
+// no longer carries compliance vocabulary.
+const DowngradeStatus = "needs_input"
 
-// NonCompliantStatus is the "fails compliance" verdict status. Plan 05-06
-// (SC-7 / CMPL-07 / D5-14) adds the redline pass that fires conditionally
-// on verdict.Status being NonCompliantStatus OR DowngradeStatus — a 合规
-// verdict emits NO redline chunk and makes NO LLM call (cost control).
-// Declared here alongside DowngradeStatus so the typed-status constants
-// live in one place (the package's only Status-string constants; the
-// validate.go map is the enum gate but does not export individual keys).
-const NonCompliantStatus = "不合规"
+// NonCompliantStatus is the Compliance-Skill-specific verdict value
+// carried in Verdict.ComplianceStatus when the review concludes the
+// subject fails the policy. Plan 05-06 (SC-7 / CMPL-07 / D5-14) adds the
+// redline pass that fires conditionally on Verdict.ComplianceStatus
+// being NonCompliantStatus OR DowngradeStatus — a Compliant verdict
+// emits NO redline chunk and makes NO LLM call (cost control).
+//
+// 260817-vsm: was Verdict.Status="不合规" (compliance-Skill column
+// bleeding into the platform envelope). Migrated to
+// Verdict.ComplianceStatus="non_compliant" so the platform envelope stays
+// neutral and compliance vocabulary lives only on the Compliance Skill's
+// own payload field.
+const NonCompliantStatus = "non_compliant"
+
+// CompliantStatus is the Compliance-Skill-specific verdict value when
+// the subject conforms to the cited policy. Used as the ComplianceStatus
+// field value on Verdict for a clean "yes, this matches" review.
+//
+// 260817-vsm: introduced alongside NonCompliantStatus to give the
+// Compliance Skill's verdict a binary (compliant / non_compliant) shape.
+// The previous single-Status-enum design ("合规/不合规/需补充/unanswered")
+// conflated platform-level outcomes with Compliance-Skill outcomes;
+// splitting them is the platform-decoupling fix.
+const CompliantStatus = "compliant"
+
+// NotApplicableStatus is the Compliance-Skill-specific verdict value when
+// the query is a factual lookup (not a compliance review). The
+// Compliance Skill's system prompt instructs the LLM to set
+// ComplianceStatus="not_applicable" for factual queries so the
+// conclusionText renderer knows to lead with Answer (not ComplianceStatus).
+//
+// 260817-vsm: factual queries previously got ComplianceStatus="compliant"
+// by default — semantically wrong ("compliant" doesn't mean "answered"),
+// which is exactly the verdict-subject-mismatch root cause.
+const NotApplicableStatus = "not_applicable"
+
+// ComplianceStatuses is the Compliance-Skill-specific verdict enum for
+// Verdict.ComplianceStatus. Distinct from ValidStatuses (the platform-
+// neutral Status enum). Used by the Compliance Skill's own validators
+// + tests to gate which ComplianceStatus values are acceptable.
+//
+// Semantics:
+//
+//	"compliant"     — subject matches the cited policy.
+//	"non_compliant" — subject fails the cited policy.
+//	"not_applicable" — query is a factual lookup (not a compliance review);
+//	                   see Answer field for the actual answer.
+var ComplianceStatuses = map[string]bool{
+	CompliantStatus:     true,
+	NonCompliantStatus:  true,
+	NotApplicableStatus: true,
+}
 
 // ApplyDowngrade applies the D2-02 downgrade policy to v when report
 // indicates grounding failure. Returns v unchanged when report.Grounded
@@ -231,8 +280,19 @@ func ApplyDowngrade(v Verdict, report GroundingReport) Verdict {
 		v.Confidence = ConfidenceFloor
 	}
 
-	// Rule 3: Status overwrite to "需补充".
-	//    Idempotent: if v.Status is already "需补充", assignment is a no-op.
+	// Rule 3: Status overwrite to DowngradeStatus ("needs_input").
+	//    Idempotent: if v.Status is already DowngradeStatus, assignment is a no-op.
+	//    260817-vsm: also propagate to ComplianceStatus when the verdict
+	//    already carries a compliance verdict — the Compliance Skill's UI
+	//    reads ComplianceStatus (not Status) for the verdict badge, so
+	//    leaving it stale would render a mismatch (e.g. UI shows "合规"
+	//    while the platform Status says "needs_input"). When ComplianceStatus
+	//    is empty (non-compliance Skill / no verdict yet), leave it — the
+	//    platform Status alone is enough.
+	if v.ComplianceStatus != "" {
+		v.ComplianceStatus = DowngradeStatus
+	}
+
 	v.Status = DowngradeStatus
 
 	return v

@@ -67,25 +67,35 @@ Rules:
 //
 // D5-14 COST CONTROL — THE GATE IS THE FIRST LINE OF THIS FUNCTION.
 //
-//	if v.Status != verdict.NonCompliantStatus && v.Status != verdict.DowngradeStatus {
+//  260817-vsm (verdict-subject-mismatch): gate now ORs Status against
+//  DowngradeStatus AND ComplianceStatus against NonCompliantStatus,
+//  because the Compliance Skill's verdict now lives in ComplianceStatus
+//  (Status is the platform-neutral envelope).
+//
+//	if v.Status != verdict.DowngradeStatus && v.ComplianceStatus != verdict.NonCompliantStatus {
 //	    return nil  // BEFORE any LLM call, BEFORE any wire emit
 //	}
 //
-// A 合规 verdict makes ZERO LLM calls and emits ZERO data-redline
-// chunks. TestRedline_Conditional is the load-bearing regression: it
-// asserts stubChatModel.count == 0 on the 合规 branch. A future
-// "simplification" that moves the gate after the LLM call is a COST-
-// CONTROL BREACH — the test catches it immediately.
+// A compliant verdict (ComplianceStatus="compliant") makes ZERO LLM
+// calls and emits ZERO data-redline chunks. TestRedline_Conditional is
+// the load-bearing regression: it asserts stubChatModel.count == 0 on
+// the compliant branch. A future "simplification" that moves the gate
+// after the LLM call is a COST-CONTROL BREACH — the test catches it
+// immediately.
 //
-// The gate's status set is {NonCompliantStatus="不合规",
-// DowngradeStatus="需补充"} — both are policy-gap signals where a
-// rewrite proposal is actionable. 合规 has no gap to rewrite.
+// The gate's trigger set is:
+//   - Status=DowngradeStatus ("needs_input") — platform-level downgrade
+//     (grounding failure → GroundingChecker downgraded).
+//   - ComplianceStatus=NonCompliantStatus ("non_compliant") —
+//     Compliance Skill verdict indicating the subject fails the policy.
+// Both are policy-gap signals where a rewrite proposal is actionable.
+// ComplianceStatus="compliant" or empty has no gap to rewrite.
 //
 // LLM advisory only (T-5-29 accept): the proposedRewrite is rendered
 // to the operator with copy/download CTAs. v1 does NOT write the
 // rewrite back to the source doc. The verdict is final — the redline
-// pass MUST NOT mutate v.Status (verdict is final before this pass
-// runs; the LLM is advisory only).
+// pass MUST NOT mutate v.Status or v.ComplianceStatus (verdict is final
+// before this pass runs; the LLM is advisory only).
 //
 // Wire shape: ONE data-redline chunk (the 18th wire type added in
 // Plan 05-01). The chunk carries wire.RedlinePayload in its Data field.
@@ -103,10 +113,13 @@ Rules:
 // (tampering via dangerouslySetInnerHTML) is FE-side: RedlineCard
 // renders text only.
 func (s *Deps) emitRedline(ctx context.Context, c *app.RequestContext, v verdict.Verdict, chunksByID map[string]string) error {
-	// D5-14 COST-CONTROL GATE — FIRST LINE. A 合规 verdict returns nil
+	// D5-14 COST-CONTROL GATE — FIRST LINE. A compliant verdict returns nil
 	// BEFORE any LLM call AND BEFORE any wire emit. Moving this gate
 	// after the LLM call is a TRUST-BOUNDARY BREACH (cost blowup).
-	if v.Status != verdict.NonCompliantStatus && v.Status != verdict.DowngradeStatus {
+	// 260817-vsm: OR'd check — Status=needs_input OR ComplianceStatus=
+	// non_compliant triggers the rewrite pass; everything else (incl. the
+	// happy path where ComplianceStatus="compliant") skips.
+	if v.Status != verdict.DowngradeStatus && v.ComplianceStatus != verdict.NonCompliantStatus {
 		return nil
 	}
 	// No ChatModel wired (e.g. test deps that exercise only the

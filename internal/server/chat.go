@@ -765,10 +765,42 @@ func emitRefusal(c *app.RequestContext, r verdict.Refusal) error {
 // new schema field — the sentence is a template over grounded data, so
 // it cannot hallucinate (semantic-determinism philosophy: the readable
 // surface is a pure function of the trust-checked structure).
+//
+// 260817-vsm (verdict-subject-mismatch): the renderer now leads with
+// Answer when populated (factual queries) and falls back to
+// ComplianceStatus (Compliance Skill) or Status (other Skills) when not.
+// This fixes the "结论主体是合规/不合规而非回答" root cause: factual queries
+// ("采购合同 50 万元以下由谁审批？") now render the direct answer as the
+// main body, with the compliance-style verdict badge trailing only when
+// relevant.
 func conclusionText(v verdict.Verdict) string {
 	pct := int(v.Confidence*100 + 0.5)
 	var b strings.Builder
-	fmt.Fprintf(&b, "结论：%s（置信度 %d%%）。", v.Status, pct)
+
+	// Branch 1: factual query — Answer is the main body. ComplianceStatus
+	// (if set) is dropped from the sentence (it'd be "not_applicable",
+	// which adds no signal). The review-required / confidence framing
+	// is preserved.
+	if v.Answer != "" {
+		fmt.Fprintf(&b, "结论：%s。", v.Answer)
+		if v.ReviewRequired {
+			b.WriteString("置信度未达自动采信阈值，需人工复核。")
+		}
+		if len(v.Citations) > 0 {
+			fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", v.Citations[0].Tier, v.Citations[0].Span)
+		}
+		return b.String()
+	}
+
+	// Branch 2: compliance-review or other Skill query — the main body
+	// is the verdict. Prefer ComplianceStatus (Compliance Skill-specific
+	// verdict code) when populated; otherwise fall back to the
+	// platform-neutral Status.
+	mainStatus := v.ComplianceStatus
+	if mainStatus == "" {
+		mainStatus = v.Status
+	}
+	fmt.Fprintf(&b, "结论：%s（置信度 %d%%）。", mainStatus, pct)
 	if len(v.Citations) > 0 {
 		fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", v.Citations[0].Tier, v.Citations[0].Span)
 	}

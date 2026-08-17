@@ -18,21 +18,37 @@ package verdict
 
 import "fmt"
 
-// ValidStatuses is the enum gate for Verdict.Status. Exported so the
-// integration contract test can assert the enum contents (a typo here
-// would silently change semantics — `不合规` ≠ `不合规`<U+FE0F>; the
-// contract test guards the exact rune sequence).
+// ValidStatuses is the platform-neutral enum gate for Verdict.Status.
+// 260817-vsm: this is now skill-agnostic — every Skill (compliance /
+// simple-qa / calculator / future) emits one of these four values. The
+// compliance-specific verdict semantics (合规 / 不合规) live in the
+// ComplianceStatus field on Verdict, not here.
 //
-// The "unanswered" status is the graceful-refusal path: when the LLM
-// lacks policy context, it returns status="unanswered" confidence=0
-// citations=[] review_required=true. This was proven in spike 002/003
-// (graceful-refusal finding) and carries verbatim into the production
-// verdict package.
+// Semantics:
+//
+//	"ok"          — Skill produced an answer (factual answer in `Answer` for
+//	                 simple-qa, OR a ComplianceStatus verdict for compliance).
+//	"needs_input" — Information insufficient; UI prompts user for more.
+//	                Replaces the old 需补充 (which was compliance-specific).
+//	"refused"     — Graceful refusal: the Skill cannot / will not answer.
+//	                Replaces the old "unanswered" (which was refusal-by-
+//	                construction AND LLM-side opt-out combined). Pure LLM-
+//	                side opt-out now uses compliance_status=不适用 for the
+//	                compliance Skill; out-of-scope Skill routing uses the
+//	                Refusal struct (not Verdict).
+//	"error"       — Internal failure surfaced to the user. Distinct from
+//	                "refused" so audit dashboards can distinguish user-
+//	                facing refusal from system errors.
+//
+// The map is exported so the integration contract test can assert the
+// enum contents — a typo here (e.g. a half-width vs full-width comma, a
+// variation selector) would silently change semantics; the contract
+// test guards the exact rune sequence.
 var ValidStatuses = map[string]bool{
-	"合规":         true,
-	"不合规":        true,
-	"需补充":        true,
-	"unanswered": true,
+	"ok":          true,
+	"needs_input": true,
+	"refused":     true,
+	"error":       true,
 }
 
 // Validate checks that v has a known Status, a Confidence in [0, 1],
@@ -49,9 +65,14 @@ var ValidStatuses = map[string]bool{
 // Validate does NOT verify that each citation's Span literally appears
 // in any chunk — that is the grounding checker's job (grounding.go, D2-01).
 // Validate only asserts the structural shape of the Verdict.
+//
+// 260817-vsm: the Compliance-Skill-specific verdict (合规 / 不合规 / 不适用)
+// lives in ComplianceStatus, not Status. Validate does NOT enforce a
+// ComplianceStatus enum — that is the Compliance Skill's responsibility
+// (validated by the Compliance Skill's own tests, not the platform).
 func Validate(v Verdict) (bool, string) {
 	if !ValidStatuses[v.Status] {
-		return false, fmt.Sprintf("invalid status: %q (must be one of 合规/不合规/需补充/unanswered)", v.Status)
+		return false, fmt.Sprintf("invalid status: %q (must be one of ok/needs_input/refused/error)", v.Status)
 	}
 	if v.Confidence < 0 || v.Confidence > 1 {
 		return false, fmt.Sprintf("invalid confidence: %f (must be 0.0-1.0)", v.Confidence)

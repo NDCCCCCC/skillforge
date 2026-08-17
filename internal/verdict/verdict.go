@@ -42,21 +42,48 @@
 // D2-06 evolution: Citations was `[]string` (clause IDs) in Phase 1; Phase 2
 // upgrades it to `[]Citation{{ChunkID, Span, Tier}}` so each citation can be
 // programmatically verified by the grounding checker (D2-01).
+//
+// 260817-vsm platform-decoupling evolution: Verdict is the platform-agnostic
+// response envelope shared by all Skills (compliance / simple-qa / calculator
+// / future). The platform-level Status is neutral ({ok, needs_input,
+// refused, error}) — compliance-specific verdict semantics live in
+// ComplianceStatus ({合规, 不合规, 不适用}). Factual queries (「X 是多少/谁/
+// 何时/怎么办」) populate Answer with the direct answer; the conclusionText
+// renderer leads with Answer when present, otherwise with ComplianceStatus.
 package verdict
 
-// Verdict is the JSON schema produced by a compliance-review ChatModelAgent.
-// All four fields are required in the LLM's JSON output; Citations may be an
-// empty array but must not be nil (Go decodes a missing JSON array as nil —
-// Validate rejects that to force the LLM to emit an explicit []).
+// Verdict is the platform-agnostic JSON schema for a Skill's response. It is
+// produced by every Skill's LLM call (compliance / simple-qa / calculator /
+// future Skills) and validated by Validate against the platform-neutral
+// ValidStatuses enum.
+//
+// Field semantics:
+//
+//	Status         — platform-neutral: one of {ok, needs_input, refused, error}.
+//	Confidence     — [0.0, 1.0]; semantics: "how confident is the LLM that the
+//	                 citations grounding support the Answer / ComplianceStatus".
+//	Citations      — D2-06 structured citations; may be empty (must NOT be nil
+//	                 — Validate rejects nil to force the LLM to emit explicit []).
+//	ReviewRequired — true when Confidence < 0.9 OR grounding downgrade applied.
+//	Answer         — direct answer for factual queries (e.g. "由部门负责人审批").
+//	                 Optional: empty for compliance-review queries where the
+//	                 answer IS the ComplianceStatus. Rendered as conclusion
+//	                 main body when non-empty (260817-vsm).
+//	ComplianceStatus — Compliance-Skill-specific verdict: one of
+//	                 {合规, 不合规, 不适用}. Optional: empty for non-compliance
+//	                 Skills (simple-qa / calculator). The Compliance Skill's
+//	                 system prompt instructs the LLM to populate this whenever
+//	                 Status="ok" AND the query is a compliance review.
 //
 // JSON tags match spike 003 verbatim for Status / Confidence /
-// ReviewRequired. Citations changes shape per D2-06: each element is now a
-// structured {chunk_id, span, tier} object instead of a bare string. This is
-// a deliberate wire-contract evolution pinned by the integration contract
-// test (TestContractStructuredOutputSchema).
+// ReviewRequired. Citations changes shape per D2-06. Answer and
+// ComplianceStatus are 260817-vsm additions; both are omitempty so legacy
+// producers (and Skills that don't use them) round-trip cleanly.
 type Verdict struct {
-	Status         string     `json:"status"`          // one of ValidStatuses keys
-	Confidence     float64    `json:"confidence"`      // [0.0, 1.0]
-	Citations      []Citation `json:"citations"`       // D2-06: structured citations; may be empty
-	ReviewRequired bool       `json:"review_required"` // true if Confidence < 0.9 OR grounding downgrade applied (D2-02)
+	Status           string     `json:"status"`                     // platform-neutral (ValidStatuses)
+	Confidence       float64    `json:"confidence"`                 // [0.0, 1.0]
+	Citations        []Citation `json:"citations"`                  // D2-06: structured citations; may be empty
+	ReviewRequired   bool       `json:"review_required"`            // true if Confidence < 0.9 OR grounding downgrade
+	Answer           string     `json:"answer,omitempty"`           // 260817-vsm: factual-query direct answer
+	ComplianceStatus string     `json:"compliance_status,omitempty"` // 260817-vsm: Compliance-Skill-specific verdict
 }
