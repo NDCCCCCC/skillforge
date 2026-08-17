@@ -425,24 +425,26 @@ assert.True(t, strings.Contains(body, ".../eino-ext/components/model/openai v0.1
 
 **其余所有 API 断言均为 [VERIFIED]**（module cache 源码 file:line）或 [CITED]（官方 release 页 / 官方 HITL 文档原文）。
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **ROADMAP/REQUIREMENTS/CLAUDE.md 中 v0.9.13 字样是否随本 phase 更新为 v0.9.14？**
+> 2026-08-17 planner 修订：以下 4 题全部在 Phase 8 plan 集内采纳落地（Q1→08-03 T2 文档对齐；Q2→08-04 T1 重启层级=新 DB handle + 新 Runner；Q3→08-05 T3 口径裁决；Q4→08-05 checkpoint 模式），无遗留待确认项。
+
+1. **ROADMAP/REQUIREMENTS/CLAUDE.md 中 v0.9.13 字样是否随本 phase 更新为 v0.9.14？（RESOLVED → 08-03 Task 2 文档对齐：三文件定点改 v0.9.14 + 决策注记；目录名不动）**
    - What we know: ROADMAP Phase 8 标题与 goal、REQUIREMENTS PLAT-04、STATE.md、CLAUDE.md 栈表均写 v0.9.13；用户决策已改 v0.9.14。phase 目录名也含 `v0-9-13`。
    - What's unclear: 文档对齐属于本 phase 还是独立 quick task。
    - Recommendation: 本 phase 收尾加一个纯文档提交（REQUIREMENTS/ROADMAP/CLAUDE.md 三处版本字串 + 必要处注一句「用户 2026-08-17 决策 v0.9.14」）；目录名不动（GSD 目录名是身份锚点）。
 
-2. **SC-5 的「进程重启」验证深度：新 DB handle + 新 Runner 是否足够，还是要真子进程？**
+2. **SC-5 的「进程重启」验证深度：新 DB handle + 新 Runner 是否足够，还是要真子进程？（RESOLVED → 08-04 Task 1：重启层级 = 新 DB handle + 新 Agent + 新 Runner 实例；真子进程列为可选加固非硬门）**
    - What we know: 官方文档确认跨实例/跨进程 resume 的成立条件就是「同 CheckPointID + 共享 CheckPointStore」；序列化边界（bytes 进出 store）已被 round-trip 覆盖。
    - What's unclear: 用户对「进程重启」字面的验收期望。
    - Recommendation: 主测试用「重开 DB + 新 Runner + 新 Agent 实例」（覆盖序列化与状态恢复的全部风险面）；真子进程版（`go test` 环境变量两阶段或 `exec.Command` 自身再跑）列为可选加固，不作 SC 硬门。
 
-3. **冻结 eval「重新运行全绿」的判定口径**
+3. **冻结 eval「重新运行全绿」的判定口径（RESOLVED → 08-05 Task 3 口径裁决：frozen run 完成 + gate 通过 + 指标留档为 v0.8 基线；绝不重生成 lock 掩盖漂移）**
    - What we know: `eval/frozen/compliance.lock.json` 只含 `model_ver/prompt_hash/seed/eval_set_version/skill_name`，不含 eino 版本 [VERIFIED: 本会话读文件]；eino 升级不改变 pin 输入。
    - What's unclear: 全绿 = 四指标与既有 report 在容差内一致（SC-6 可复现性口径），还是允许刷新基线。
    - Recommendation: 按前者执行（与 Phase 6 SC-6 同口径）；若漂移超容差，那是升级引入的真实回归，按 blocking 处理并归因——绝不刷新 lock 掩盖。
 
-4. **live 重锁三项（cancel live / Milvus tier-filter / 冻结 eval）的 checkpoint 归属**
+4. **live 重锁三项（cancel live / Milvus tier-filter / 冻结 eval）的 checkpoint 归属（RESOLVED → 08-05：三项全设 checkpoint:human-verify gate=blocking，Phase 7 先例模式；hermetic 部分自动跑）**
    - What we know: 本机无 Docker、无 .env；`scripts/test`（untracked）显示内网 Milvus 10.62.10.34:19530 + BGE 10.62.0.123:11434 + live GLM key 可达。
    - Recommendation: 全部标 `checkpoint:human-verify gate=blocking`（Phase 7 先例模式）；hermetic 部分（TestCancelPropagationMidTool、contract 套件）自动跑。
 
