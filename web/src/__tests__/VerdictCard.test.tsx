@@ -22,6 +22,12 @@
 // Verdict.compliance_status ({compliant, non_compliant, not_applicable}).
 // Tests assert the platform Status on data-verdict-status and the
 // Compliance-Skill code on data-compliance-status.
+//
+// 260817-hck: verdict-answer 在 chatText 已含结论时隐藏 — when the caller
+// (MessageBubble via DataPolicyPart) passes the concatenated chat text and
+// it verbatim contains verdict.answer (backend conclusionText embeds the
+// answer verbatim, chat.go:801-809), the in-card verdict-answer block is
+// suppressed so the conclusion renders only once.
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
@@ -159,5 +165,47 @@ describe('VerdictCard', () => {
     render(<VerdictCard verdict={multi} />);
     expect(screen.getByTestId('citation-cluster')).toBeInTheDocument();
     expect(screen.getAllByTestId('citation-superscript')).toHaveLength(3);
+  });
+
+  // --- 260817-hck: chatText dedupe of verdict-answer ---
+
+  it('hides verdict-answer when chatText already contains the answer verbatim (260817-hck)', () => {
+    render(
+      <VerdictCard
+        verdict={factualQuery}
+        chatText="结论：由部门负责人审批。依据 权威 tier 条款：「采购合同金额 50 万元以下由部门负责人审批」。"
+      />,
+    );
+    // The duplicated answer block is gone — the chat body already shows it.
+    expect(screen.queryByTestId('verdict-answer')).toBeNull();
+    // The rest of the card survives: frame, citations count, cluster, badge.
+    expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
+    expect(screen.getByTestId('citation-cluster')).toBeInTheDocument();
+    expect(screen.getByTestId('status-badge')).toBeInTheDocument();
+    expect(screen.getByText('1 条引用')).toBeInTheDocument();
+  });
+
+  it('keeps verdict-answer when chatText does NOT contain the answer (260817-hck)', () => {
+    render(<VerdictCard verdict={factualQuery} chatText="一些不包含答案的正文" />);
+    const answer = screen.getByTestId('verdict-answer');
+    expect(answer).toBeInTheDocument();
+    expect(answer).toHaveTextContent('由部门负责人审批');
+  });
+
+  it('keeps verdict-answer when chatText is not provided (CenterPanel path, 260817-hck)', () => {
+    // CenterPanel.tsx:191 renders <VerdictCard verdict={verdict} /> with no
+    // chat context — behavior must be unchanged. Assert explicitly with a
+    // compliance-status verdict that the answer block still renders.
+    const withCompliance: Verdict = { ...factualQuery, compliance_status: 'compliant' };
+    render(<VerdictCard verdict={withCompliance} />);
+    const answer = screen.getByTestId('verdict-answer');
+    expect(answer).toBeInTheDocument();
+    expect(answer).toHaveTextContent('由部门负责人审批');
+    expect(screen.getByTestId('compliance-status-badge')).toBeInTheDocument();
+  });
+
+  it('keeps verdict-answer when chatText is an empty string (260817-hck)', () => {
+    render(<VerdictCard verdict={factualQuery} chatText="" />);
+    expect(screen.getByTestId('verdict-answer')).toBeInTheDocument();
   });
 });
