@@ -782,14 +782,20 @@ func conclusionText(v verdict.Verdict) string {
 	// which adds no signal). The review-required / confidence framing
 	// is preserved.
 	if v.Answer != "" {
-		fmt.Fprintf(&b, "结论：%s。", v.Answer)
+		// 260817-i36 (④): the LLM's Answer often carries its own terminal
+		// punctuation ("。", ".", "！", "!", "？", "?"). The template adds
+		// another "。", producing 「。。」 in the chat conclusion. Strip the
+		// trailing sentence-punctuation run first so the sentence always
+		// ends with exactly one "。".
+		answer := strings.TrimRight(strings.TrimSpace(v.Answer), "。.！!？?")
+		fmt.Fprintf(&b, "结论：%s。", answer)
 		if v.ReviewRequired {
 			b.WriteString("置信度未达自动采信阈值，需人工复核。")
 		}
 		if len(v.Citations) > 0 {
 			fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", v.Citations[0].Tier, v.Citations[0].Span)
 		}
-		return b.String()
+		return normalizeConclusionPunctuation(b.String())
 	}
 
 	// Branch 2: compliance-review or other Skill query — the main body
@@ -807,7 +813,17 @@ func conclusionText(v verdict.Verdict) string {
 	if v.ReviewRequired {
 		b.WriteString("置信度未达自动采信阈值，需人工复核。")
 	}
-	return b.String()
+	return normalizeConclusionPunctuation(b.String())
+}
+
+// normalizeConclusionPunctuation is the defensive final pass shared by
+// both conclusionText branches (260817-i36 ④): no matter how the
+// sentence was assembled, any "。。" run collapses to a single "。".
+// Branch 1 already strips the Answer's terminal punctuation; this pass
+// covers any future template / status-string path that might reintroduce
+// a doubled period.
+func normalizeConclusionPunctuation(s string) string {
+	return strings.ReplaceAll(s, "。。", "。")
 }
 
 // refusalReasonText maps the wire refusal-reason codes to the
