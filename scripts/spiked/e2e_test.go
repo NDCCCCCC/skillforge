@@ -202,19 +202,23 @@ func TestComplianceQueriesSkip(t *testing.T) {
 // T-1-16 single-source-of-truth guarantee that catches drift between
 // scripts/spiked and integration/contract).
 //
-// Four sub-cases:
-//   - valid: 合规 + 0.85 confidence + 1 citation → ok
+// 260817-vsm: ValidStatuses is platform-neutral ({ok, needs_input,
+// refused, error}); Compliance-Skill-specific codes live in
+// Verdict.ComplianceStatus. Four sub-cases:
+//   - valid: ok + 0.85 confidence + ComplianceStatus=compliant → ok
 //   - unknown status: "INVALID" → not ok
 //   - out-of-range confidence: 1.5 → not ok
-//   - graceful refusal: "unanswered" + 0 confidence → ok (spike 002/003 finding)
+//   - graceful refusal: "refused" + 0 confidence → ok (was "unanswered")
 func TestValidateVerdict(t *testing.T) {
 	// 1. Valid verdict — all fields populated, normal compliance answer.
 	// D2-06: Citations is now []Citation instead of []string.
+	// 260817-vsm: Compliance verdict lives in ComplianceStatus, Status is "ok".
 	v1 := verdict.Verdict{
-		Status:         "合规",
-		Confidence:     0.85,
-		Citations:      []verdict.Citation{{ChunkID: "auth_001", Span: "出差住宿费超过标准额度时", Tier: "权威"}},
-		ReviewRequired: false,
+		Status:           "ok",
+		Confidence:       0.85,
+		Citations:        []verdict.Citation{{ChunkID: "auth_001", Span: "出差住宿费超过标准额度时", Tier: "权威"}},
+		ReviewRequired:   false,
+		ComplianceStatus: verdict.CompliantStatus,
 	}
 	ok, reason := verdict.Validate(v1)
 	assert.True(t, ok, "valid verdict should pass; reason=%s", reason)
@@ -232,7 +236,7 @@ func TestValidateVerdict(t *testing.T) {
 
 	// 3. Out-of-range confidence — must be rejected.
 	v3 := verdict.Verdict{
-		Status:     "合规",
+		Status:     "ok",
 		Confidence: 1.5,
 		Citations:  []verdict.Citation{},
 	}
@@ -242,11 +246,12 @@ func TestValidateVerdict(t *testing.T) {
 
 	// 4. Graceful refusal — spike 002/003 finding: when the LLM lacks
 	// policy context (or is asked for PII it must not reveal), it returns
-	// status="unanswered" confidence=0 citations=[] review_required=true.
+	// status="refused" confidence=0 citations=[] review_required=true.
 	// This MUST validate so the pipeline treats it as a legitimate
 	// refusal, not an error.
+	// 260817-vsm: was "unanswered" (compliance-specific); now "refused" (platform).
 	v4 := verdict.Verdict{
-		Status:         "unanswered",
+		Status:         "refused",
 		Confidence:     0,
 		Citations:      []verdict.Citation{},
 		ReviewRequired: true,
@@ -255,13 +260,18 @@ func TestValidateVerdict(t *testing.T) {
 	assert.True(t, ok4, "graceful-refusal verdict should pass; reason=%s", reason4)
 	assert.Empty(t, reason4, "graceful-refusal verdict should have empty reason")
 
-	// 5. ValidStatuses contents — explicit assertion on the enum so a typo
-	// (e.g. variation selector on a CN char) is caught here, not at runtime.
-	assert.True(t, verdict.ValidStatuses["合规"], "合规 must be in ValidStatuses")
-	assert.True(t, verdict.ValidStatuses["不合规"], "不合规 must be in ValidStatuses")
-	assert.True(t, verdict.ValidStatuses["需补充"], "需补充 must be in ValidStatuses")
-	assert.True(t, verdict.ValidStatuses["unanswered"], "unanswered must be in ValidStatuses")
-	assert.False(t, verdict.ValidStatuses["compliant"], "compliant (EN) must NOT be in ValidStatuses (CN-only)")
+	// 5. ValidStatuses contents — explicit assertion on the platform-neutral
+	// enum. Compliance-Skill-specific codes (compliant / non_compliant /
+	// not_applicable) live in ComplianceStatuses, not ValidStatuses, so
+	// they must NOT appear here.
+	assert.True(t, verdict.ValidStatuses["ok"], "ok must be in ValidStatuses")
+	assert.True(t, verdict.ValidStatuses["needs_input"], "needs_input must be in ValidStatuses")
+	assert.True(t, verdict.ValidStatuses["refused"], "refused must be in ValidStatuses")
+	assert.True(t, verdict.ValidStatuses["error"], "error must be in ValidStatuses")
+	assert.False(t, verdict.ValidStatuses["合规"], "合规 must NOT be in ValidStatuses (moved to ComplianceStatus)")
+	assert.False(t, verdict.ValidStatuses["不合规"], "不合规 must NOT be in ValidStatuses (moved to ComplianceStatus)")
+	assert.False(t, verdict.ValidStatuses["需补充"], "需补充 must NOT be in ValidStatuses (now needs_input)")
+	assert.False(t, verdict.ValidStatuses["unanswered"], "unanswered must NOT be in ValidStatuses (now refused)")
 }
 
 // startHangingMockServer was removed: the cancellation test now uses the

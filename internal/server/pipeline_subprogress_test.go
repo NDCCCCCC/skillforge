@@ -48,6 +48,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
 )
 
@@ -83,7 +84,7 @@ func TestVerdictPipeline_SubprogressOrder(t *testing.T) {
 		{ID: 2, Tier: "权威", Content: "备用条款", Source: "authority/other.md", Score: 0.55},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
-	deps.Runner = newStubRunner(cannedVerdictJSON("合规", 0.95, []string{"1"}, chunkText, "权威"))
+	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, chunkText, "权威"))
 
 	addr, cleanup := newTestHertz(t, deps)
 	defer cleanup()

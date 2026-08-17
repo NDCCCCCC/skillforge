@@ -525,7 +525,7 @@ func TestCritiqueCannotRaiseConfidence(t *testing.T) {
 	a := newAgentForCritique(t, cm)
 
 	original := verdict.Verdict{
-		Status:         "需补充", // status=需补充 forces critique to run (D3-05 gating)
+		Status:         verdict.DowngradeStatus, // DowngradeStatus forces critique to run (D3-05 gating)
 		Confidence:     0.7,
 		Citations:      []verdict.Citation{{ChunkID: "1", Span: "上限", Tier: "权威"}},
 		ReviewRequired: false,
@@ -540,7 +540,7 @@ func TestCritiqueCannotRaiseConfidence(t *testing.T) {
 	assert.LessOrEqual(t, got.Confidence, original.Confidence,
 		"D3-04 INVARIANT: critique MUST NOT raise Confidence")
 	assert.Equal(t, original.Status, got.Status,
-		"D3-04 INVARIANT: critique MUST NOT flip Status (e.g. 需补充 → 合规)")
+		"D3-04 INVARIANT: critique MUST NOT flip Status (e.g. needs_input → ok)")
 	assert.False(t, got.ReviewRequired,
 		"critique that detects NO semantic reversal MUST NOT set ReviewRequired (no strictness to add)")
 }
@@ -548,10 +548,10 @@ func TestCritiqueCannotRaiseConfidence(t *testing.T) {
 // TestCritiqueGating (D3-05) verifies maybeCritique's skip conditions.
 // Critique runs only when at least one of the following holds:
 //   - multiHop == true (more retrieval → more reversal risk)
-//   - v.Status == 需补充 (downstream floor already flagged uncertainty)
+//   - v.Status == verdict.DowngradeStatus ("needs_input"; downstream floor already flagged uncertainty)
 //   - v.Confidence ∈ [critiqueLowConfidence, critiqueHighConfidence] (uncertain band)
 //
-// Critique is skipped (LLM not called) when single-hop AND status≠需补充
+// Critique is skipped (LLM not called) when single-hop AND status≠DowngradeStatus
 // AND confidence outside the uncertain band — saving cost on clear-cut
 // verdicts.
 func TestCritiqueGating(t *testing.T) {
@@ -574,10 +574,10 @@ func TestCritiqueGating(t *testing.T) {
 			wantCalled: false, // outside uncertain band (below 0.6)
 		},
 		{
-			name:       "single-hop status=需补充",
-			verdict:    verdict.Verdict{Status: "需补充", Confidence: 0.95, Citations: []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}}},
+			name:       "single-hop status=needs_input",
+			verdict:    verdict.Verdict{Status: verdict.DowngradeStatus, Confidence: 0.95, Citations: []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}}},
 			multiHop:   false,
-			wantCalled: true, // status=需补充 forces run regardless of band
+			wantCalled: true, // Status=DowngradeStatus forces run regardless of band
 		},
 		{
 			name:       "single-hop mid-band status=合规",
@@ -627,7 +627,7 @@ func TestCritiqueErrorNonFatal(t *testing.T) {
 	a := newAgentForCritique(t, cm)
 
 	original := verdict.Verdict{
-		Status:         "需补充", // force critique to run
+		Status:         verdict.DowngradeStatus, // force critique to run
 		Confidence:     0.7,
 		Citations:      []verdict.Citation{{ChunkID: "1", Span: "x", Tier: "权威"}},
 		ReviewRequired: false,
@@ -908,7 +908,7 @@ func TestMultiHopCitationAggregation(t *testing.T) {
 	defer cancel()
 
 	// Final verdict cites chunks 1 (hop 1) and 2 (hop 2).
-	finalJSON := `{"status":"需补充","confidence":0.7,"citations":[{"chunk_id":"1","span":"住宿费标准","tier":"权威"},{"chunk_id":"2","span":"特殊情况","tier":"权威"}],"review_required":true}`
+	finalJSON := `{"status":"needs_input","confidence":0.7,"citations":[{"chunk_id":"1","span":"住宿费标准","tier":"权威"},{"chunk_id":"2","span":"特殊情况","tier":"权威"}],"review_required":true}`
 	cm := newMultiTurnStub(t, 2, "出差住宿", finalJSON)
 	ret := &stubRetriever{
 		chunksPerCall: [][]retriever.Hit{
@@ -960,7 +960,7 @@ func TestMaxStepBlocksThirdHop(t *testing.T) {
 
 	// Always returns a tool-call message — loop would never terminate
 	// without the MaxStep budget. The final verdict is unreachable.
-	finalJSON := `{"status":"需补充","confidence":0.5,"citations":[],"review_required":true}`
+	finalJSON := `{"status":"needs_input","confidence":0.5,"citations":[],"review_required":true}`
 	cm := newMultiTurnStub(t, 100, "any", finalJSON)
 	ret := &stubRetriever{
 		// Return 1 chunk per call so the trust floor does not refuse.

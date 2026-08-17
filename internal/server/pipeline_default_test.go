@@ -99,7 +99,7 @@ func TestVerdictPipelineDefault_PersistsAuditAndCitedVerdict(t *testing.T) {
 		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/annual_leave.md", Score: 0.65},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
-	stubRun := newStubRunner(cannedVerdictJSON("需补充", 0.9,
+	stubRun := newStubRunner(cannedVerdictJSON(verdict.DowngradeStatus, 0.9,
 		[]string{"1"}, chunkText, "权威"))
 	deps.Runner = stubRun
 
@@ -263,7 +263,7 @@ func TestVerdictPipeline_FinishStepIsLastAfterRedline(t *testing.T) {
 		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/annual_leave.md", Score: 0.65},
 	}}
 	// 需补充 verdict trips the D5-14 redline gate (status ∈ {需补充, 不合规}).
-	deps.Runner = newStubRunner(cannedVerdictJSON("需补充", 0.9, []string{"1"}, chunkText, "权威"))
+	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.DowngradeStatus, 0.9, []string{"1"}, chunkText, "权威"))
 	deps.ChatModel = &stubChatModel{cannedJSON: `{"originalClause":"原条款","proposedRewrite":"建议改写","rationale":"修改理由"}`}
 
 	addr, cleanup := newTestHertz(t, deps)

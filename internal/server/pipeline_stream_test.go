@@ -206,10 +206,14 @@ func TestVerdictPipelineStreaming_DraftChunksEmitted(t *testing.T) {
 	// verdict JSON so the existing parse + grounding path succeeds
 	// unchanged — Step 8 only adds streaming emit AROUND the buffer,
 	// it does NOT change what feeds Step 9.
+	//
+	// 260817-vsm: status=DowngradeStatus (was "需补充"); compliance_status
+	// paired for Compliance Skill routing. "compliance_status":"needs_input"
+	// is the Compliance-Skill-side rendering of the platform "needs_input".
 	tokens := []string{
-		`{"status":"需补充","confidence":0.9,"citations":[{"chunk_id":"1","span":"`,
+		`{"status":"needs_input","confidence":0.9,"citations":[{"chunk_id":"1","span":"`,
 		chunkText,
-		`","tier":"权威"}],"review_required":false}`,
+		`","tier":"权威"}],"review_required":false,"compliance_status":"needs_input"}`,
 	}
 	stubCM := &stubStreamingChatModel{tokens: tokens}
 	deps.PipelineChatModel = stubCM
@@ -338,7 +342,7 @@ func TestVerdictPipelineDefault_PipelineChatModelNilFallback(t *testing.T) {
 		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/annual_leave.md", Score: 0.65},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
-	stubRun := newStubRunner(cannedVerdictJSON("需补充", 0.9,
+	stubRun := newStubRunner(cannedVerdictJSON(verdict.DowngradeStatus, 0.9,
 		[]string{"1"}, chunkText, "权威"))
 	deps.Runner = stubRun
 	// PipelineChatModel is NOT set (newVerdictPipelineDeps leaves it nil).
@@ -380,7 +384,10 @@ func TestVerdictPipelineDefault_PipelineChatModelNilFallback(t *testing.T) {
 		}
 	}
 	require.NotNil(t, v, "Phase 2 fallback must still emit a Verdict on data-policy")
-	assert.Equal(t, "需补充", v.Status)
+	assert.Equal(t, verdict.DowngradeStatus, v.Status,
+		"platform-neutral Status is needs_input when compliance-side downgrade (260817-vsm)")
+	assert.Equal(t, verdict.DowngradeStatus, v.ComplianceStatus,
+		"Compliance Skill code (needs_input) is paired on ComplianceStatus")
 
 	rows, err := deps.Store.QueryAudit(ctx, store.AuditFilter{SessionID: sessID})
 	require.NoError(t, err)
@@ -407,11 +414,16 @@ func TestVerdictPipelineStreaming_RefusalReplacesDraft(t *testing.T) {
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
 
-	// Stub returns a complete JSON verdict with status="unanswered"
+	// Stub returns a complete JSON verdict with status="refused"
 	// — the model's semantic "I cannot ground this" signal. The
 	// pipeline Step 9b short-circuits to refusal (ARAG-05).
-	unansweredJSON := `{"status":"unanswered","confidence":0,"citations":[],"review_required":true}`
-	stubCM := &stubStreamingChatModel{tokens: []string{unansweredJSON}}
+	//
+	// 260817-vsm: platform Status enum replaced "unanswered" with "refused"
+	// so the platform envelope stays skill-agnostic. The compliance Skill's
+	// not_applicable / compliance opt-out is signaled via ComplianceStatus
+	// (omitted here — refused is sufficient).
+	refusedJSON := `{"status":"refused","confidence":0,"citations":[],"review_required":true}`
+	stubCM := &stubStreamingChatModel{tokens: []string{refusedJSON}}
 	deps.PipelineChatModel = stubCM
 	deps.Runner = newStubRunner("")
 
@@ -446,7 +458,7 @@ func TestVerdictPipelineStreaming_RefusalReplacesDraft(t *testing.T) {
 			break
 		}
 	}
-	require.NotNil(t, r, "streaming path with status=unanswered MUST emit a Refusal data-policy")
+	require.NotNil(t, r, "streaming path with status=refused MUST emit a Refusal data-policy")
 	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, r.Reason,
 		"LLM 'unanswered' on the streaming path MUST map to no_authorized_source refusal")
 

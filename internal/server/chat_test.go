@@ -210,7 +210,7 @@ func TestChatHandlerSSE(t *testing.T) {
 	// for every citation in the Verdict, not every chunk in the
 	// retrieval set — so chunk 2 does NOT appear as a source-document
 	// frame. The assertion below reflects this.
-	deps.Runner = newStubRunner(cannedVerdictJSON("合规", 0.95,
+	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95,
 		[]string{"1"}, chunk1, "权威"))
 
 	// Loader with the real compliance SKILL.md so findSkill returns the manifest.
@@ -250,7 +250,10 @@ func TestChatHandlerSSE(t *testing.T) {
 		}
 	}
 	require.NotNil(t, dataPolicy, "expected at least one data-policy frame")
-	assert.Equal(t, "合规", dataPolicy.Status)
+	assert.Equal(t, "ok", dataPolicy.Status,
+		"platform-neutral Status is ok when ComplianceStatus=compliant (260817-vsm)")
+	assert.Equal(t, verdict.CompliantStatus, dataPolicy.ComplianceStatus,
+		"Compliance Skill verdict rides in ComplianceStatus, not Status (260817-vsm)")
 	assert.Equal(t, 0.95, dataPolicy.Confidence)
 	require.Len(t, dataPolicy.Citations, 1)
 	assert.Equal(t, "权威", dataPolicy.Citations[0].Tier,
@@ -392,7 +395,7 @@ func TestTemperaturePassthrough(t *testing.T) {
 	}
 	stubSrch := &stubRetriever{chunks: chunks}
 	deps.Retriever = stubSrch
-	stubRun := newStubRunner(cannedVerdictJSON("合规", 0.95,
+	stubRun := newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95,
 		[]string{"1"}, "出差住宿费超标 200 元以内由部门负责人审批", "权威"))
 	deps.Runner = stubRun
 
@@ -464,7 +467,7 @@ func TestPipelineInvokesGroundingChecker(t *testing.T) {
 		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/travel_expense.md", Score: 0.95},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
-	stubRun := newStubRunner(cannedVerdictJSON("合规", 0.95,
+	stubRun := newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95,
 		[]string{"1"}, chunkText, "权威"))
 	deps.Runner = stubRun
 
@@ -483,7 +486,9 @@ func TestPipelineInvokesGroundingChecker(t *testing.T) {
 	// The data-policy Verdict must NOT be downgraded — the span IS in
 	// the chunk text (verbatim substring), so GroundingChecker leaves
 	// it alone. We assert this via the Verdict payload: Status stays
-	// "合规" (not "需补充"), Confidence stays 0.95 (not capped at 0.89).
+	// "ok" (not "needs_input"), ComplianceStatus stays CompliantStatus
+	// (not DowngradeStatus-propagated), Confidence stays 0.95 (not capped
+	// at 0.89).
 	frames := parseFrames(t, body)
 	var v *verdict.Verdict
 	for _, f := range frames {
@@ -494,8 +499,10 @@ func TestPipelineInvokesGroundingChecker(t *testing.T) {
 		}
 	}
 	require.NotNil(t, v, "data-policy Verdict must be on the wire")
-	assert.Equal(t, "合规", v.Status,
-		"grounded span → no D2-02 downgrade (Status must stay 合规)")
+	assert.Equal(t, "ok", v.Status,
+		"grounded span → no D2-02 downgrade (Status must stay ok; 260817-vsm)")
+	assert.Equal(t, verdict.CompliantStatus, v.ComplianceStatus,
+		"grounded span → no D2-02 downgrade (ComplianceStatus must stay compliant)")
 	assert.Equal(t, 0.95, v.Confidence,
 		"grounded span → no D2-02 confidence cap (must stay 0.95)")
 }
@@ -685,7 +692,7 @@ func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
 		Retriever: &stubRetriever{chunks: []retriever.Hit{
 			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.92},
 		}},
-		Runner:   newStubRunner(cannedVerdictJSON("合规", 0.95, []string{"1"}, "x", "权威")),
+		Runner:   newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, "x", "权威")),
 		Router:   skill.NewRouter(emb),
 		Registry: r,
 	}
@@ -859,7 +866,7 @@ func TestVerdictStreamCarriesConclusionText(t *testing.T) {
 	deps.Retriever = &stubRetriever{chunks: chunks}
 	// confidence 0.85 < 0.9 → ReviewRequired=true, so the conclusion
 	// sentence must also surface the human-review note.
-	deps.Runner = newStubRunner(cannedVerdictJSON("需补充", 0.85, []string{"1"}, span, "权威"))
+	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.DowngradeStatus, 0.85, []string{"1"}, span, "权威"))
 
 	loader := skill.NewLoader(skillsDirPath())
 	_, err := loader.Scan()
@@ -881,8 +888,8 @@ func TestVerdictStreamCarriesConclusionText(t *testing.T) {
 	require.NotEmpty(t, textDelta, "verdict stream must carry a text-delta part")
 	assert.NotEqual(t, " ", textDelta,
 		"text-delta must not be the legacy single-space placeholder (conclusion must be readable in chat)")
-	assert.Contains(t, textDelta, "结论：需补充",
-		"conclusion sentence must state the verdict status")
+	assert.Contains(t, textDelta, "结论：needs_input",
+		"conclusion sentence must state the verdict status (platform-neutral per 260817-vsm)")
 	assert.Contains(t, textDelta, "85%",
 		"conclusion sentence must state the confidence")
 	assert.Contains(t, textDelta, span,

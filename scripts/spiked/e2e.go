@@ -92,22 +92,38 @@ var complianceQueries = []string{
 // citations=[] when it lacks grounded policy context; the hardcoded
 // citation injection in runE2EWithBaseURL fills in a structured fixture
 // citation for the regression trace. Production (02-03 cmd/server)
+// systemPrompt enforces the JSON output schema. Adapted from spike 003
+// main.go (proven to produce 100% schema-valid output across 50 invocations
+// on GLM-5.2 with thinking:disabled + temperature:0 +
+// response_format:{type:json_object}).
+//
+// D2-06 evolution: the citations field changed from `[<clause names>]`
+// (string array) to a structured array of `{chunk_id, span, tier}` objects.
+// The spike path has no real retrieval, so the LLM is told to emit
+// citations=[] when it lacks grounded policy context; the hardcoded
+// citation injection in runE2EWithBaseURL fills in a structured fixture
+// citation for the regression trace. Production (02-03 cmd/server)
 // injects real retrieved chunks into the prompt so the LLM can cite them.
 //
-// The "unanswered" status is the graceful-refusal path: when the LLM
-// lacks policy context (or is asked for PII it must not reveal), it
-// returns status="unanswered" confidence=0 citations=[] review_required=true.
+// 260817-vsm: Status enum migrated to the platform-neutral
+// {ok, needs_input, refused, error}. The Compliance-Skill-specific verdict
+// lives in compliance_status ({compliant, non_compliant, not_applicable}).
+// The "refused" status is the graceful-refusal path (replaces the old
+// "unanswered"): when the LLM lacks policy context (or is asked for PII
+// it must not reveal), it returns status="refused" confidence=0
+// citations=[] review_required=true.
 const systemPrompt = `You are a strict compliance auditor. For each query, output ONLY a JSON object with this exact schema:
 {
-  "status": "合规" | "不合规" | "需补充" | "unanswered",
+  "status": "ok" | "needs_input" | "refused" | "error",
   "confidence": <0.0 to 1.0>,
   "citations": [
     {"chunk_id": "<id>", "span": "<verbatim substring of the cited chunk>", "tier": "权威"}
   ],
-  "review_required": <true if confidence<0.9 OR info insufficient, else false>
+  "review_required": <true if confidence<0.9 OR info insufficient, else false>,
+  "compliance_status": "<'compliant' | 'non_compliant' | 'not_applicable'; omit when not a compliance review>"
 }
 
-NO other text. ONLY the JSON object. If you lack policy context, output status="unanswered" confidence=0 citations=[] review_required=true.`
+NO other text. ONLY the JSON object. If you lack policy context, output status="refused" confidence=0 citations=[] review_required=true.`
 
 // e2etracePath is the output artifact (D-12 deliverable). Each run
 // overwrites the prior trace — keep a copy elsewhere if you want to

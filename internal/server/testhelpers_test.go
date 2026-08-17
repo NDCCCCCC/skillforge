@@ -233,16 +233,33 @@ func (r *stubRunner) CapturedQueries() []string {
 
 // cannedVerdictJSON returns a JSON-encoded Verdict string for use as
 // stubRunner input. Tests use it to build the mock LLM response.
-func cannedVerdictJSON(status string, confidence float64, chunkIDs []string, span string, tier string) string {
+//
+// 260817-vsm: pass the compliance-Skill-specific verdict via
+// Verdict.ComplianceStatus (not Verdict.Status) so the platform-neutral
+// Status enum stays clean. Status is forced to "ok" when complianceStatus
+// is one of {compliant, non_compliant}; DowngradeStatus forces
+// Status="needs_input"; NotApplicableStatus forces Status="ok" for
+// factual-query verdicts (the Answer field is intentionally NOT set here
+// — tests that need a populated Answer construct Verdict directly).
+func cannedVerdictJSON(complianceStatus string, confidence float64, chunkIDs []string, span string, tier string) string {
 	cits := make([]verdict.Citation, 0, len(chunkIDs))
 	for _, id := range chunkIDs {
 		cits = append(cits, verdict.Citation{ChunkID: id, Span: span, Tier: tier})
 	}
+	// Map ComplianceSkill-specific verdict code to platform-neutral Status.
+	// Callers that want a platform-level refusal (refused/error) construct
+	// Verdict directly — this helper is for the Compliance Skill's three
+	// outcome codes.
+	status := "ok"
+	if complianceStatus == verdict.DowngradeStatus {
+		status = verdict.DowngradeStatus
+	}
 	v := verdict.Verdict{
-		Status:         status,
-		Confidence:     confidence,
-		Citations:      cits,
-		ReviewRequired: confidence < 0.9,
+		Status:           status,
+		Confidence:       confidence,
+		Citations:        cits,
+		ReviewRequired:   confidence < 0.9,
+		ComplianceStatus: complianceStatus,
 	}
 	b, _ := json.Marshal(v)
 	return string(b)

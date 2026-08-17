@@ -132,59 +132,67 @@ func findRedlineFrame(frames []wire.UIMessageChunk) (wire.RedlinePayload, wire.U
 
 // TestRedline_Conditional — THE D5-14 COST-CONTROL REGRESSION.
 //
-// A 合规 verdict MUST:
+// A verdict with ComplianceStatus="compliant" (or empty) and Status="ok"
+// MUST:
 //   - make ZERO ChatModel.Generate calls (the gate is the FIRST line of
-//     emitRedline; a 合规 verdict returns nil before any LLM work)
+//     emitRedline; a compliant verdict returns nil before any LLM work)
 //   - emit NO data-redline chunk on the wire
 //
-// A 不合规 verdict MUST:
+// A verdict with ComplianceStatus=NonCompliantStatus ("non_compliant") MUST:
 //   - make exactly 1 ChatModel.Generate call
 //   - emit a data-redline chunk on the wire
 //
-// A 需补充 verdict (verdict.DowngradeStatus) MUST also fire the redline
-// pass — D5-14 explicitly includes this status as a policy-gap signal.
+// A verdict with Status=DowngradeStatus ("needs_input") MUST also fire the
+// redline pass — D5-14 explicitly includes this platform status as a
+// policy-gap signal.
+//
+// 260817-vsm: Compliance verdicts moved from Verdict.Status to
+// Verdict.ComplianceStatus; the gate ORs Status against DowngradeStatus
+// AND ComplianceStatus against NonCompliantStatus.
 func TestRedline_Conditional(t *testing.T) {
-	// Sub-case 1: 合规 verdict → no LLM call, no chunk.
+	// Sub-case 1: compliant verdict → no LLM call, no chunk.
 	t.Run("compliant_skips_LLM", func(t *testing.T) {
 		stubCM := &stubChatModel{cannedJSON: `{"originalClause":"x","proposedRewrite":"y","rationale":"z"}`}
 		deps := newTestDeps()
 		deps.ChatModel = stubCM
 		v := verdict.Verdict{
-			Status:     "合规",
-			Confidence: 0.95,
+			Status:           "ok",
+			Confidence:       0.95,
 			Citations: []verdict.Citation{
 				{ChunkID: "1", Span: "权威条款", Tier: "权威"},
 			},
+			ComplianceStatus: verdict.CompliantStatus,
 		}
 		frames := runRedlinePass(t, deps, v, map[string]string{"1": "权威条款"})
 
 		assert.Equal(t, 0, stubCM.count,
-			"D5-14 cost control: 合规 verdict MUST NOT call ChatModel.Generate")
+			"D5-14 cost control: compliant verdict MUST NOT call ChatModel.Generate")
 		_, _, ok := findRedlineFrame(frames)
-		assert.False(t, ok, "合规 verdict MUST NOT emit a data-redline chunk")
+		assert.False(t, ok, "compliant verdict MUST NOT emit a data-redline chunk")
 	})
 
-	// Sub-case 2: 不合规 verdict → 1 LLM call, 1 chunk.
+	// Sub-case 2: non_compliant verdict → 1 LLM call, 1 chunk.
 	t.Run("non_compliant_fires_LLM", func(t *testing.T) {
 		stubCM := &stubChatModel{cannedJSON: `{"originalClause":"原条款","proposedRewrite":"建议改写","rationale":"修改理由"}`}
 		deps := newTestDeps()
 		deps.ChatModel = stubCM
 		v := verdict.Verdict{
-			Status:     verdict.NonCompliantStatus,
-			Confidence: 0.85,
+			Status:           "ok",
+			Confidence:       0.85,
 			Citations: []verdict.Citation{
 				{ChunkID: "1", Span: "违规条款", Tier: "权威"},
 			},
+			ComplianceStatus: verdict.NonCompliantStatus,
 		}
 		frames := runRedlinePass(t, deps, v, map[string]string{"1": "违规条款"})
 
 		assert.Equal(t, 1, stubCM.count,
-			"不合规 verdict MUST call ChatModel.Generate exactly once")
+			"non_compliant verdict MUST call ChatModel.Generate exactly once")
 		_, _, ok := findRedlineFrame(frames)
-		assert.True(t, ok, "不合规 verdict MUST emit a data-redline chunk")
+		assert.True(t, ok, "non_compliant verdict MUST emit a data-redline chunk")
 	})
 
-	// Sub-case 3: 需补充 verdict → also fires (D5-14).
+	// Sub-case 3: needs_input verdict → also fires (D5-14).
 	t.Run("needs_info_fires_LLM", func(t *testing.T) {
 		stubCM := &stubChatModel{cannedJSON: `{"originalClause":"原条款","proposedRewrite":"建议改写","rationale":"修改理由"}`}
 		deps := newTestDeps()
@@ -199,9 +207,9 @@ func TestRedline_Conditional(t *testing.T) {
 		frames := runRedlinePass(t, deps, v, map[string]string{"1": "不完整条款"})
 
 		assert.Equal(t, 1, stubCM.count,
-			"需补充 verdict MUST call ChatModel.Generate exactly once (D5-14)")
+			"needs_input verdict MUST call ChatModel.Generate exactly once (D5-14)")
 		_, _, ok := findRedlineFrame(frames)
-		assert.True(t, ok, "需补充 verdict MUST emit a data-redline chunk (D5-14)")
+		assert.True(t, ok, "needs_input verdict MUST emit a data-redline chunk (D5-14)")
 	})
 }
 
@@ -217,11 +225,12 @@ func TestRedline_PayloadStructure(t *testing.T) {
 	deps := newTestDeps()
 	deps.ChatModel = stubCM
 	v := verdict.Verdict{
-		Status:     verdict.NonCompliantStatus,
-		Confidence: 0.8,
+		Status:           "ok",
+		Confidence:       0.8,
 		Citations: []verdict.Citation{
 			{ChunkID: "1", Span: "违规原文", Tier: "权威"},
 		},
+		ComplianceStatus: verdict.NonCompliantStatus,
 	}
 
 	frames := runRedlinePass(t, deps, v, map[string]string{"1": "违规原文"})

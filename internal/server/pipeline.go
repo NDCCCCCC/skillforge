@@ -357,7 +357,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 	v = verdict.GroundingChecker(v, chunksByID)
 
-	// Step 9b: an LLM "unanswered" verdict means the model could not
+	// Step 9b: an LLM "refused" verdict means the model could not
 	// ground any claim in the retrieved context — the semantic equivalent
 	// of a refusal. Map it to the structured refusal shape (SC-2 / SC-4 /
 	// ARAG-05), NEVER emit an improvised answer. This catches out-of-corpus
@@ -367,7 +367,10 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// tuning the magic cosine number — the LLM is a better judge of
 	// grounding than a threshold, and aligns with the semantic-determinism
 	// philosophy (rely on structured output + grounding, not magic scores).
-	if v.Status == "unanswered" {
+	//
+	// 260817-vsm: Status is now platform-neutral; "refused" replaces the
+	// legacy compliance-specific "unanswered".
+	if v.Status == "refused" {
 		emitErr := emitRefusal(c, verdict.Refusal{
 			Reason:                    verdict.RefusalReasonNoAuthorizedSource,
 			CanRephrase:               true,
