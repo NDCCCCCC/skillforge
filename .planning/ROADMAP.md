@@ -234,8 +234,15 @@
   4. sqlite `CheckPointStore`（复用 `internal/store/sqlite`，~100 LOC）Get/Set round-trip：所有自定义状态类型经 `gob.RegisterName` 注册后可序列化写库、进程重启后读回等值（PLAT-05）
   5. 真实中断运行往返测试通过：一次 Run 中断 → checkpoint 持久化到 sqlite → 进程重启后 Resume 恢复到中断点继续执行（PLAT-05，Pitfall 4）
 **Pitfalls addressed:** Pitfall 4（内存 checkpoint 丢中断态 — store 骨架），Pitfall 5（Interrupt/Resume 双语义并存 — 一次性切换 + lint 禁用）
-**Research flag:** RF-2 — 30 分钟 compile-check spike 确认升级后 `CheckPointStore` 接口精确形状
-**Plans**: TBD
+**Research flag:** RF-2 — 已在研究期解决（`CheckPointStore` 接口 = Get/Set 两方法，eino@v0.9.14 internal/core/interrupt.go:27-30；编译 spike 实证升级零源码改动）
+**Plans**: 5 plans
+**Plan list**:
+- [ ] 08-01-PLAN.md — Wave 1: 升级主提交（eino v0.9.14 + ext openai v0.1.13 + TestContractVersionPin 改写 + 8 处 godoc 重核）+ hermetic 回归重锁（全量单测 / contract 套件 / cancel <200ms）
+- [ ] 08-02-PLAN.md — Wave 2: sqlite CheckPointStore 骨架（schema DDL 追加 + SQLiteStore Get/Set + 编译期断言）+ 六面测试 TDD（round-trip / 重开 DB / upsert / unknown-id / SQLi / closed）
+- [ ] 08-03-PLAN.md — Wave 2（parallel）: legacy interrupt API 禁令门（test-as-gate，含触发负向证明）+ 版本叙事文档对齐（REQUIREMENTS/ROADMAP/CLAUDE.md → v0.9.14）
+- [ ] 08-04-PLAN.md — Wave 3: SC-5 真实中断往返测试（schema.RegisterName 注册 + stub 剧本 + adk Runner + 重开 DB 新 Runner Resume）+ phase hermetic 全量收口
+- [ ] 08-05-PLAN.md — Wave 4: live 重锁 human-verify 三门（cancel <200ms 真 GLM / Milvus tier-filter 声明外零行 / 冻结 eval + gate 重跑）
+**Wave structure**: W1={08-01} → W2={08-02, 08-03 parallel} → W3={08-04} → W4={08-05}
 **UI hint**: no
 
 ### Phase 9: 历史注入 trust-floor spike 硬门（P8.S — SPIKE / HARD GATE）
@@ -366,7 +373,7 @@
 | 5. Skill Platform & Full Knowledge Boundaries | 8/8 (incl. 05-08 gap-closure) | Complete | 2026-08-12 (05-08 debt-closure 2026-08-13) |
 | 6. Eval Dashboard & Production Hardening — Code-Side | 3/3 active (+06-03 deferred→999.2) | Complete (code-side) | 2026-08-13 |
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
-| 8. 全量依赖升级 (P8.0) | 0/? | Not started | - |
+| 8. 全量依赖升级 (P8.0) | 0/5 | Planned (5 plans, 4 waves) | - |
 | 9. 历史注入 spike 硬门 (P8.S) | 0/? | Not started — HARD GATE for Phase 10 | - |
 | 10. 多轮对话记忆 (P8.1) | 0/? | Not started — gated by Phase 9 | - |
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
