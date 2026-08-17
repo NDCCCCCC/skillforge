@@ -1,344 +1,296 @@
-# Feature Landscape: SkillForge
+# Feature Research
 
-**Project:** SkillForge (Skill-driven enterprise Agent platform)
-**Researched:** 2026-08-10
-**Mode:** Ecosystem — features dimension
-**Confidence:** HIGH for table-stakes features (well-established 2026 ecosystem); MEDIUM for differentiator scope (pivot from denova + 2026 trends); MEDIUM for anti-feature rationale (judgment calls).
+**Domain:** Trusted-action agent harness (multi-turn memory, HITL write approval, planning, sub-agent fan-out) for enterprise compliance Q&A
+**Researched:** 2026-08-17
+**Confidence:** MEDIUM-HIGH (primary sources: Anthropic engineering blog, LangChain official docs, Dify official blog/docs, Claude Code permission guides; MEDIUM on ChatGPT/Gemini UI specifics via secondary sources)
 
----
+## Feature Landscape
 
-## Executive Summary
-
-SkillForge sits at the intersection of three 2026 mega-trends: **Agentic RAG** (autonomous retrieval with refusal), **Skills-as-a-platform** (post-MCP standardization led by Anthropic Skills spec, Oct 2025), and **enterprise guardrails** (audit + eval). The feature landscape is well-mapped for "agent framework" projects, but the **Skill-driven customization** is the novel axis — that's where differentiators live.
-
-Key tension: **Anthropic already shipped Skills in Oct 2025**. SkillForge cannot compete on "we have Skills" — it must pivot to **enterprise** (compliance domain, audit trail, eval at scale) and **structured** (6-field SKILL.md with explicit reads/writes, not just unstructured markdown instructions). The differentiation is **discipline + structure**, not the existence of the abstraction.
-
-**MVP must include**: Skill loading + parsing + intent routing (table stakes), one demo Skill end-to-end (table stakes), refusal + citation (table stakes for credibility), minimal eval dashboard (differentiator — most open-source agents skip this), one-click Docker + README (table stakes for open-source).
-
-**Defer**: Skill marketplace UI, multi-agent orchestration v2, custom eval dashboards beyond basics, anything requiring multi-tenant.
+Cross-product baseline: Claude Code (permission model, TodoWrite/Tasks, Task sub-agents), LangGraph (interrupt/Resume HITL middleware, checkpointer), ChatGPT Deep Research / agent mode (plan narration, confirmation before consequential actions), Gemini Deep Research (plan approval gate before execution), Dify/Coze (memory windows, weak HITL — a gap, not a bar).
 
 ---
 
-## Table Stakes (Must Have)
+## Capability 1: Multi-Turn Conversation Memory
 
-These are baseline expectations. Missing them = product feels incomplete or unsafe.
+### How Production Products Do It
 
-### 1. Skill System
+| Product | Pattern |
+|---------|---------|
+| ChatGPT / Claude.ai | Full history in-window; automatic summarization/compaction for long conversations; "new chat" = clean slate; anaphora ("the second one") just works |
+| Dify | `TokenBufferMemory` sliding window, session-scoped, hard backend caps (2,000 tokens / 500 messages); no built-in summarization; long-term via knowledge base or Conversation Variables |
+| Coze | Basic memory only — weakest of the set |
+| Claude Code | Session history + auto-compaction at token threshold; persistent memory via files (CLAUDE.md), not chat history |
+| LangGraph | Checkpointer for in-thread state; Store for cross-thread long-term memory; official summarization middleware |
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Parse SKILL.md** (markdown + YAML frontmatter) | Anthropic Skills spec (Oct 2025) made this the industry standard. Without it, the platform has no abstraction. | **Low** | Required: `name`, `description`. SkillForge adds 4 more fields. |
-| **Skill load/unload from disk** | Without hot-reload, iteration requires server restart — kills authoring UX. | **Low** | File watcher pattern (e.g., fsnotify in Go). |
-| **Intent routing on `description`** | Skills must activate by semantic match. Without it, user picks skills manually → not a platform. | **Medium** | Embedding-based similarity; threshold tuning required. |
-| **Validation against 6-field schema** | User-defined Skills must not break the system. Schema validation = safety net. | **Low** | Reject on load with clear error message. |
-| **Skill enable/disable toggle** | Operators must be able to turn off misbehaving Skills without deleting them. | **Low** | Boolean flag persisted alongside Skill metadata. |
-
-### 2. Agent Core
+### Table Stakes (Users Expect These)
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| **Streaming responses (SSE)** | UX baseline for chat applications; users expect token-by-token rendering. | **Low** | Hertz supports SSE natively; pair with Vercel AI SDK `useChat` on frontend. |
-| **Tool calling (function-calling protocol)** | Any non-trivial Agent needs tools (search, retrieve, write). Eino ADK provides this. | **Medium** | Standard JSON-schema tool definitions. |
-| **Multi-turn conversation memory (short-term)** | Without it, the Agent forgets prior messages in the same session. | **Low** | In-context, capped by model window. |
-| **Cancel / interrupt running response** | Users will hit "stop" mid-stream. Without graceful cancel, threads leak. | **Medium** | SSE abort + Eino ADK cancellation context. |
-| **Structured output (JSON schema enforcement)** | Compliance verdicts, citations, eval results all need typed output. | **Low** | Eino's structured-output node. |
+| Anaphora/follow-up resolution ("那第二条呢") | ChatGPT-grade baseline; broken follow-ups feel like a toy | MEDIUM | History must reach the ReAct agent; fixes `chat.go` single-turn limit |
+| History survives page refresh | Every chat product does this | LOW | sqlite session table already exists (Phase 6 SC-4 proved 50×5 isolation) |
+| Context-window management (window + summarization, never silent truncation) | Users punish "loses the thread" behavior | MEDIUM | Eino `adk/middlewares/summarization` (v0.8.x) — requires dep upgrade |
+| "New conversation" affordance | Mental model for clean scope / privacy | LOW | SessionPicker already exists in UI |
 
-### 3. Knowledge / True-Source Layer
+### Differentiators (Competitive Advantage — trusted angle)
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Tiered knowledge (authoritative / historical / personal)** | Core denova concept; differentiates "real platform" from "RAG wrapper." | **High** | Requires per-tier storage, retrieval strategies, and provenance metadata. |
-| **Per-Skill knowledge boundary (`reads` field)** | Without it, Skills leak across knowledge tiers → unsafe. | **Medium** | Enforcement at retrieval layer (reject queries against tiers not in `reads`). |
-| **Citation to specific passage** (not just doc) | Compliance demo requires clause-level citation. Vague "source X" is not credible. | **Medium** | Chunks need stable IDs; UI needs deep-link to source. |
-| **Source credibility annotation** | Authoritative vs historical tier differ in trustworthiness; user must see this. | **Low** | Display tier badge next to citation. |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Trust-floor regression gate on history injection | Nobody else proves memory doesn't degrade refusal/citation behavior; golden-set A/B (baseline vs history-injected four metrics) | MEDIUM | This IS the milestone's spike seed; uses existing frozen eval set + gate |
+| Compaction transparency marker | UI shows "earlier turns summarized" — auditable context | LOW | Natural extension of DataSubprogressPart |
+| Tier-aware memory | Personal-tier facts enter memory only via approved writes; memory reads respect tier boundary | MEDIUM | Ties Capability 1 to Capability 2; leverages existing `reads`/`writes` spec |
 
-### 4. Agentic RAG
+### Anti-Features (Commonly Requested, Often Problematic)
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Autonomous decision: retrieve vs ask-clarifying vs refuse** | Adaptive RAG / Self-RAG patterns are 2025-2026 SOTA. Without it, system is a dumb pipeline. | **High** | LLM-as-router prompt; needs eval to tune threshold. |
-| **Self-verification (check answer against retrieved context)** | Without it, hallucination rate is unmeasurable and high. | **Medium** | NLI-style or LLM-judge verification before returning. |
-| **Refusal with reason** ("I cannot answer because X is not in the knowledge base") | The #1 credibility feature for compliance domain. Dumb hallucination kills trust. | **Low** | Branch in agent graph on low confidence. |
-
-### 5. Guardrails & Eval
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Refusal accuracy metric** | Must quantify "how often does the system refuse when it should." Without a number, guardrails are vibes. | **Medium** | Eval dataset with known-unanswerable queries. |
-| **Citation faithfulness metric** (RAGAS `faithfulness`) | Industry-standard; without it, eval claims are unsubstantiated. | **Medium** | RAGAS or equivalent LLM-judge; offline batch. |
-| **Hallucination rate** | The metric users care about most. | **Medium** | Same as faithfulness, different name. |
-| **Eval results view (basic)** | Numbers in README are nice; a live dashboard is credible. | **Medium** | Could use Langfuse self-hosted, or simple JSON + table view. |
-
-### 6. Frontend
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Chat UI with message streaming** | Bare minimum for "Agent platform." | **Low** | Vercel AI SDK `useChat` + shadcn `<Message>`. |
-| **Citation display (clickable to source)** | Without clickable citations, "grounded answers" is a lie. | **Medium** | Side-panel with highlighted passage. |
-| **Skill switcher** | User must be able to choose / change the active Skill. | **Low** | Dropdown in header. |
-| **Reasoning chain display** | "Why did the Agent do X?" — without this, debugging and trust both fail. | **Medium** | Collapsible panel per assistant turn. |
-
-### 7. Open-Source Distribution
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **README with quickstart** | First impression for GitHub visitors. Missing = ignored. | **Low** | Hero shot, 5-min quickstart, badge row. |
-| **Docker one-click run** | "Works on my machine" is the #1 reason OSS projects fail to spread. | **Low** | `docker compose up` + env file with API key. |
-| **Apache-2.0 LICENSE** | Enterprise-compatible; matches denova lineage. | **Trivial** | Copy file. |
-| **CONTRIBUTING.md** | Without it, contributions look like burden, not invitation. | **Low** | Section: how to add a Skill, how to file issues. |
-| **Demo GIF in README** | 10× README conversion rate vs static screenshots. | **Low** | Record 30s of `skills-creator` flow. |
-
-### 8. Demo Skill: Compliance Review (合规/制度审查)
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| **Structured verdict (合规/不合规/需补充)** | Compliance demands auditable categorical judgments, not prose. | **Low** | JSON schema; LLM constrained to output one of three labels. |
-| **Clause-level citation** | "Section 4.2 says X" is the entire value prop of compliance AI. | **Medium** | Required for credibility; shared with knowledge layer feature above. |
-| **Refusal when question is out of knowledge scope** | Compliance cannot guess — guessing creates legal liability. | **Low** | Strict guardrail in Skill's `steps` field. |
-| **Audit log entry per query** | Compliance officers must show "what did the system answer and why." | **Medium** | Persist query, retrieved chunks, verdict, citations, timestamp. |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Cross-session semantic long-term memory (Mem0-style user profile) | "Remember me across chats" | Enterprise data-residency/privacy risk; scope creep; Dify delegates this to plugins for a reason | Defer to v2; session-scoped memory is enough for the milestone |
+| Vectorizing chat history into knowledge tiers | "Search past conversations like docs" | Pollutes authority tier; breaks true-source separation (the moat) | Memory stays in session store, never in Milvus/Mongo tiers |
+| History as citation evidence | Agent "remembers" a fact from turn 3 and cites it | Hallucination amplifier; grounding checker can't verify against chunks | History = context only; citations still require retrieval; grounding checker unchanged |
 
 ---
 
-## Differentiators (Competitive Edge)
+## Capability 2: Write Tools + Human Approval Gate
 
-These are the features that distinguish SkillForge from "yet another RAG chatbot" or "yet another agent framework." Most open-source projects skip these — that's the gap.
+### How Production Products Do It
 
-### 1. Skill System Differentiators
+| Product | Pattern |
+|---------|---------|
+| Claude Code | Three-rule model: `allow` / `ask` / `deny`, deny always wins, first match wins; modes (`default`, `acceptEdits`, `plan`, `bypassPermissions`); prompt shows tool + key args; options: Allow once / Always allow (scope) / Deny |
+| LangGraph HITL middleware | Four decision types: **approve** / **edit** (modify args before execution) / **reject** (feedback to agent) / **respond** (synthetic tool result — only for ask-user tools); checkpointer makes interrupts survive refresh; UX guidance: show full args + why, make approve one click, validate edits, log all decisions, set timeouts, keep resolved cards on screen |
+| ChatGPT agent mode | Live "watch it work" view; confirmation before consequential/irreversible actions |
+| Dify / Coze | Tool on/off toggles, no fine-grained per-call approval UX — **this is the gap SkillForge exploits** |
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **6-field structured SKILL.md** (`description / agent / reads / writes / steps / guardrails`) | Anthropic Skills (Oct 2025) is unstructured prose + 2 fields. SkillForge's explicit `reads`/`writes` make Skills **machine-parseable + safer**. This is the core IP. | **Medium** | Schema design is the work; runtime enforcement is follow-on. |
-| **Skill authoring wizard (NL → SKILL.md)** | denova has `skills-creator` (referenced in PROJECT.md). SkillForge must match this. Reduces time-to-first-Skill from hours to minutes. | **High** | LLM generates draft; user reviews; commit to disk. |
-| **Skill validation + dry-run before publish** | "Will this Skill leak across knowledge tiers?" answer before runtime → safer enterprise rollout. | **Medium** | Static analysis + sample-query dry-run. |
-| **Skill version management** (Git-style) | "Which version is in prod?" answer. Enterprise needs this. | **Medium** | Could leverage Git tags, or roll a simple version field. |
+Known weaknesses to avoid (from Claude Code issue tracker): whole-string matching lets compound commands bypass allow-patterns; "Always allow" as default is a dangerous UX regression; "don't ask again" persistence bugs erode trust. LangGraph practitioner gotcha: interrupt placed **after** a non-deterministic step means resume re-runs it and executes something different from what was approved — gate **before** the action, persist inputs.
 
-### 2. Knowledge Layer Differentiators
+### Table Stakes (Users Expect These)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Per-Skill knowledge boundary enforcement at retrieval time** | Most RAG systems let any query hit any document. SkillForge's `reads` field *physically* restricts the retrieval index per Skill. This is the denova "true-source separation" idea, but made explicit and enforceable. | **High** | Index-per-Skill or filter-on-retrieve; both have trade-offs. |
-| **Authoritative tier = no-write, no-override** | Compliance knowledge must be immutable. Hard constraint, not convention. | **Low** | Tier-level write policy enforced in code. |
-| **Historical tier = append-only, time-travel queries** | "What did policy say in March?" — this needs append-only + time-indexed retrieval. | **High** | Snapshot per change; vector index per snapshot. |
-| **Personal tier = scoped to user/session** | "My notes" vs "Company policy" — different blast radius. | **Medium** | Auth context gates this tier. |
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Approval card shows what/tool/full-args/why | LangChain docs #1 UX rule; Claude Code issue consensus | LOW | Reuses ToolPart.tsx rendering patterns |
+| Three decisions minimum: approve once / reject (with reason) / approve-and-remember | Claude Code baseline | LOW-MEDIUM | "Remember" = scoped rule, not global |
+| Approval state survives refresh (checkpoint) | LangGraph checkpointer baseline; users refresh mid-approval constantly | MEDIUM | Eino `compose.WithCheckPointStore` + `WithCheckPointID` |
+| Immutable audit row per decision (timestamp, actor, args, decision, reason) | Enterprise table stakes (EU AI Act Art. 12 record-keeping direction; every enterprise audit-trail guide) | LOW | Extends existing T-3-AUDIT INSERT-only store — read-time redaction pattern already proven |
+| Resume continues from checkpoint (idempotent), never re-runs the gated action | LangGraph idempotency pitfall is the canonical HITL bug | MEDIUM | Gate before the side effect; persist tool inputs in checkpoint |
+| Timeout/cancel affordance | Don't block the session forever | LOW | |
 
-### 3. Agentic RAG Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Multi-hop retrieval** (decompose query → multiple retrievals → synthesize) | Single-shot RAG fails on "compare policy A vs policy B." Multi-hop is the answer. | **High** | Query decomposition + intermediate verification. |
-| **Self-verification with explicit confidence score** | Most agents don't show "I'm 40% sure." SkillForge returns `confidence` field, downstream UI can warn the user. | **Medium** | LLM-judge or calibration from RAGAS. |
-| **Retrieval eval set per Skill** | "Is Skill X's retrieval good?" answer is per-Skill, not system-wide. Most projects evaluate the whole pipeline. | **High** | Each Skill ships with `eval.jsonl` of (query, expected_citation). |
-
-### 4. Guardrails Differentiators
+### Differentiators (Competitive Advantage — trusted angle)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| **Eval dashboard (per-Skill breakdown)** | Langfuse is great but generic. Per-Skill eval = "this Skill is degrading" alerts. | **High** | Could integrate Langfuse + custom aggregation; or roll a minimal dashboard. |
-| **Live refusal-accuracy regression test in CI** | Eval datasets drift; CI catches "Skill update broke refusal." | **Medium** | GitHub Action running eval set, fail on threshold drop. |
-| **Citation preview before send** | Show user "I will cite X, Y, Z" → user can override. Reduces blind-trust hallucination. | **Medium** | Mid-stream UI component. |
+| Edit-before-approve (modify args in card, validated) | LangGraph's `edit` decision; almost no CN product has it; "可信×行动" made tangible | MEDIUM | Validate edited JSON before resume; conservative-edit warning |
+| Skill-declared write boundary as deterministic gate | Agent **cannot** invoke a write tool outside its Skill's `writes:` frontmatter — code-enforced, not prompt-enforced | LOW-MEDIUM | The 6-field spec already has `writes`; enforcement is new — this is platform-level differentiation |
+| Refusable writes | Trust floor applies to actions: "我不能生成该报告，缺少权威依据" with structured refusal | LOW | Reuses existing RefusalCard + verdict pipeline |
+| Approval→audit→eval linkage | Approval row links to plan step (Capability 3) and appears in existing `/eval/audit` UI with redaction | LOW | Audit UI + redaction already shipped (Phase 6 SC-3/SC-5) |
 
-### 5. Frontend Differentiators
+### Anti-Features (Commonly Requested, Often Problematic)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Agent state inspector** (show tool calls, intermediate retrieval, decision branches) | Most chat UIs show only final answer. State inspector = debugging + trust + "wow" demo moment. | **High** | Side-panel with timeline view of agent steps. |
-| **Skill diff viewer** (compare two versions of a Skill side-by-side) | "What changed in policy review v2?" — useful for both authors and auditors. | **Medium** | Markdown diff; reuse react-diff-viewer. |
-| **Eval results view with per-question drilldown** | Click a metric → see which queries failed. Debug loop closes. | **Medium** | Eval set + run history table. |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Bypass/YOLO mode ("approve everything") | Power users hate prompts | Directly contradicts the compliance positioning; Claude Code's `dangerously-skip-permissions` is a sandboxed-dev tool, not an enterprise feature | "Allow for session" per tool+args pattern at most |
+| Gating reads behind approval | "Maximum control" | Approval fatigue is the #1 HITL failure mode; Claude Code learned to gate only writes/irreversibles | Gate writes only; reads stay free |
+| LLM self-classifies whether approval is needed | "Smart gating" | Non-deterministic trust boundary = no trust boundary | Declarative: `writes:` frontmatter decides |
+| Async/webhook approval delegation (mobile push, Telegram) | "Approve from phone" | Real feature request in Claude Code ecosystem, but v2 scope; adds identity/delivery complexity | Defer; in-app queue is enough |
+| Compound-action auto-approval via string matching | Convenience | Claude Code's known bypass: `git status && rm -rf /` matches allow pattern for `git status` | Approval binds to structured tool call (name + arg hash), never raw strings |
 
-### 6. Open-Source Distribution Differentiators
+### Approval UX During Streaming Chat (answers the milestone's key question)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Live demo site** | A deployed SkillForge on a public URL = passive marketing. Most agent projects skip this. | **Medium** | Vercel/Fly/Railway for frontend; one Node for backend. |
-| **Eval score badges in README** | "Faithfulness: 0.92" badge = credibility signal. | **Low** | GitHub Action + shields.io. |
-| **Showcase Skills gallery** (3-5 built-in Skills beyond compliance) | Demonstrates breadth; gives users a copy-paste starting point. | **Medium** | E.g., HR Q&A, Code Review, Meeting Notes — each simple but credible. |
+Synthesized from LangGraph frontend HITL guidance + Vercel AI SDK part model + SkillForge's existing chunk pipeline:
 
-### 7. Compliance Demo Skill Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Risk score per verdict** (low/medium/high) | Beyond just 合规/不合规, gives reviewer a hint of severity. | **Low** | Add to JSON schema; rule-based or LLM-judge. |
-| **Counter-evidence highlighting** ("This clause is contradicted by section X") | Goes beyond citation — actively surfaces conflicts. | **High** | Cross-passage comparison; high value but complex. |
-| **Redline suggestion** (propose amendment text when non-compliant) | "Here's how to fix it" = concrete actionability. | **High** | Generative, but grounded in same tier-1 knowledge. |
-| **Policy version diff** ("This answer changes if you use 2024 policy vs 2025") | Enterprise compliance always has version drift. | **Medium** | Requires the historical tier feature above. |
+1. **Inline card, not modal.** The approval request renders as a message part in the chat stream at the point of interruption (a `data-*` UIMessageChunk, matching existing DataSubprogressPart/RoutingTracePart precedent). Streamed reasoning above the card stays visible — the user sees *why* the agent wants to act.
+2. **Stream lifecycle.** SSE emits the interrupt payload and cleanly ends (or idles) with a checkpoint ID. On decision, a new SSE connection resumes with that checkpoint ID; tokens continue appending into the **same** assistant message — no duplicate bubble, no flicker.
+3. **Resolved card persists.** After decide, the card stays in the transcript with a stamped state ("已批准 · 14:32 · admin" / "已拒绝 · 原因： …"), committed atomically to state (LangGraph: `stream.respond(decision, {update: …})` pattern) so it survives refresh and doubles as the audit-visible record.
+4. **Input area state.** While awaiting approval, the chat input switches to approval context (disabled free-text or "reply to agent" mode feeding the `reject` reason); approve is the one-click/Enter path; reject requires a reason (feedback to the agent).
+5. **Queue, never stack.** Multiple pending approvals render as an ordered queue resolved one at a time — deterministic interrupt order, no stacked modals.
+6. **Edit mode.** Args render as an editable form inside the card; invalid JSON blocks submission inline.
 
 ---
 
-## Anti-Features (Deliberately NOT Build)
+## Capability 3: Planning Layer (Task Decomposition + Todos + Replayable Trace)
 
-These are features that look attractive but would dilute the platform, bloat scope, or contradict the design philosophy.
+### How Production Products Do It
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| **LLM fine-tuning / training pipelines** | PROJECT.md explicit "Out of Scope." Also: model training is a different discipline; competing with Hugging Face is suicide. | Use API-based LLMs; provide config for any provider. |
-| **Multi-tenant SaaS (billing, orgs, user management)** | PROJECT.md explicit. Also: distracts from agent-engineering story; Auth0/Clerk exist. | Defer to v2. Single-user / single-org mode is fine. |
-| **Custom vector DB / embedding infra** | Reinventing pgvector + sentence-transformers. Massive engineering cost. | Use pgvector (Postgres) + a hosted embedding API. |
-| **Native mobile app** | PROJECT.md explicit. Also: React Native / Swift would double frontend scope. | Responsive web + PWA. Mobile users get a good-enough experience. |
-| **Real-time multi-user Skill co-editing** (Google Docs style) | PROJECT.md explicit. Also: CRDTs are a deep rabbit hole. | "Edit SKILL.md, push to Git, agent reloads" workflow. |
-| **Production Kubernetes / Helm deployment** | PROJECT.md explicit. Also: most OSS users are solo devs or small teams — K8s is overkill. | Docker Compose for v1; K8s manifests can be community-contributed later. |
-| **Full enterprise SSO (SAML, OIDC federation)** | PROJECT.md explicit. Also: SSO vendors (Okta/Auth0) already exist. | Local-mode auth (single user); OAuth optional, but SAML is overkill. |
-| **Voice input/output** | Modal mismatch — Skills are text. Voice would require Whisper + TTS pipeline + VAD. | Defer to v2 if ever. Text-only keeps focus. |
-| **Agent-to-Agent protocol (A2A / ANP)** | 2026 hype but immature; protocol wars will burn months. | REST/SSE between Skills; revisit A2A when stable. |
-| **Custom chat UI library / design system from scratch** | shadcn exists; rolling your own is anti-pattern. | shadcn/ui + Tailwind. |
-| **"Universal" multi-modal (image/video input)** | Compliance domain is text. Multi-modal doubles model complexity. | Defer; only add if a Skill explicitly requires it. |
-| **Auto-Skill-discovery across the web** (crawl + ingest Skills from random URLs) | Security nightmare; supply chain attack vector. | Manual Skill install + signed provenance later. |
-| **Free-form "agent" mode with no Skill** | Without Skills, SkillForge is just another agent framework. Always require a Skill to be active. | The Skill IS the value. No-Skill mode is a non-goal. |
-| **Custom reasoning model (replace the LLM's CoT)** | Cannot out-engineer frontier labs on reasoning. Use what they ship. | Rely on model's native CoT; surface it in UI. |
-| **Per-user cost tracking / token billing dashboards** | PROJECT.md says no SaaS. Also: Langfuse already does this. | If needed, integrate Langfuse self-hosted. |
+| Product | Pattern |
+|---------|---------|
+| Claude Code | TodoWrite (flat, in-context scratchpad) → Tasks system (persistent, dependency graph with blocking semantics, hierarchy, multi-session shared board) |
+| Gemini Deep Research | Proposes a research plan and asks user **confirmation before executing** — the plan-approval gate |
+| ChatGPT Deep Research / agent mode | Live plan + step narration during execution |
+| LangChain Deep Agents | Four ingredients: detailed system prompt, planning tool (write_todos), sub-agents, file system |
+| Eino | `adk/prebuilt/deep` ships `write_todos` middleware built-in (pending/in_progress/completed) |
+
+### Table Stakes (Users Expect These)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Visible live checklist (pending → in_progress → completed) | Every serious agent product shows this; invisible planning reads as flailing | LOW-MEDIUM | write_todos state maps directly onto existing subprogress UI |
+| Current-step highlighting, updates stream in real time | Progress transparency during long runs | LOW | SSE data-chunk; precedent: DataSubprogressPart five-step copy |
+| Agent re-planning is visible, not silent | Silent plan changes break trust | LOW | Emit plan-revision event |
+| Plan persists with the session | Refresh/resume continuity | MEDIUM | Same store as Capability 1 history |
+
+### Differentiators (Competitive Advantage — trusted angle)
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Plan confirmation gate before execution (Gemini pattern) | "Agent 先报计划再动手" — for compliance buyers this is the single most legible trust feature | MEDIUM | Reuses Capability 2's approval card + checkpoint machinery; approve/edit/re-plan decisions |
+| Replayable plan trace | Each step links to its tool calls, retrievals, verdicts, and approval rows; inspectable after the fact | MEDIUM-HIGH | The "可回放" third of 可审计/可拒答/可回放； builds on reasoning-trace + routing-trace UI already shipped |
+| Step-completion evidence integrity | Agent cannot mark a step completed without a corresponding tool output/verdict | MEDIUM | Deterministic check in plan middleware, not prompt discipline |
+
+### Anti-Features (Commonly Requested, Often Problematic)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Hidden reasoning-only plans | "Less UI noise" | Contradicts transparency positioning; indistinguishable from no planning | Always materialize plan as todos |
+| 20+ micro-step auto-plans | "Thoroughness" | Noise; users tune out; Anthropic's own guidance is a few meaningful steps | Cap at 3–7 steps; agent may nest detail inside a step |
+| Direct user editing of the plan DAG | "Control" | Dependency-graph editing UX is a rabbit hole (Claude Code Tasks needs a whole tool family for it) | approve / edit-as-text / re-plan only |
+| Multi-session shared task boards (Agent Teams Kanban) | Cross-session collaboration | Far outside v1; coordination protocol complexity | Defer to v2+ |
+
+---
+
+## Capability 4: Sub-Agent Fan-Out (Parallel Multi-Hop Retrieval, Tier-Boundary Inheritance)
+
+### How Production Products Do It
+
+| Product | Pattern |
+|---------|---------|
+| Anthropic multi-agent research system | Orchestrator-worker: lead agent decomposes → parallel sub-agents, each isolated context → sub-agents return **compressed** findings (intelligent filters, not raw dumps) → synthesis (+ CitationAgent); ~15× tokens for ~90% quality gain on research tasks; plan persisted to survive truncation |
+| OpenAI Deep Research | Single-agent RL-trained model (the contrast case — not reproducible without training) |
+| Gemini Deep Research | Splits into sub-problems, multiple parallel browsing agents per sub-problem |
+| Claude Code | Task tool spawns ephemeral sub-agents: isolated context, self-contained prompts, parallelism + isolation + specialization; parallelism pays only when tasks share no state and have no inter-dependencies |
+
+### Table Stakes (Users Expect These)
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| True parallel fan-out (not sequential in disguise) | Latency is the entire point | MEDIUM | Go goroutines + Eino ADK are natural fits |
+| Compressed sub-agent returns | Raw dumps blow up orchestrator context (Anthropic's core finding) | MEDIUM | Sub-agent summarizes + cites; orchestrator synthesizes |
+| Aggregate progress indicator ("3 个子任务并行检索中") | Long multi-hop runs need legibility | LOW | Extends DataSubprogressPart |
+| Failure isolation (one sub-agent fails → graceful degradation, not total failure) | Parallel systems must degrade | MEDIUM | Partial-failure verdict state ("部分来源未能检索") |
+
+### Differentiators (Competitive Advantage — trusted angle; unique to SkillForge)
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Tier-boundary inheritance enforced at retriever level | Sub-agent inherits parent Skill's `reads` tiers and **cannot** exceed them — deterministic filter, not prompt instruction. Nobody else does this | MEDIUM | Reuses existing Milvus/Mongo tier-filter (Phase 1 SC-2 proven); enforcement is in fan-out construction |
+| Per-sub-agent grounding | Grounding checker runs on each sub-agent's output before merge, not just the final answer | MEDIUM | Reuses the D2-01 moat (verbatim citation-span check) |
+| Provenance-preserving merge | Citations carry sub-agent identity through orchestration; citation UI can show "via 子任务： 历史制度对比" | MEDIUM | Extends existing citation/ChunkSourceView |
+| Auditable fan-out decision | Routing trace records why orchestrator split into N sub-tasks | LOW-MEDIUM | Extends RoutingTracePart |
+
+### Anti-Features (Commonly Requested, Often Problematic)
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| Recursive spawning (sub-agents spawning sub-agents) | "Depth" | Unbounded cost, unauditable traces, timeout cascades | One fan-out level max in v0.8 |
+| Fan-out for simple single-hop questions | "Use the architecture" | 15× token cost for zero gain; slower answers | Orchestrator classifies 1 vs N; single-hop stays on the current ReAct path |
+| Shared mutable state between parallel sub-agents | "Coordination" | Races, non-determinism, audit impossibility; isolation is the point of the pattern | Isolated contexts; merge only via orchestrator |
+| Raw sub-agent transcripts in main chat | "Full transparency" | Context explosion in the UI | Compressed summary inline; full trace behind expand (replay view) |
 
 ---
 
 ## Feature Dependencies
 
 ```
-SKILL.md schema (6-field)
-  ├── Skill validation (depends on schema)
-  ├── Skill authoring wizard (depends on schema)
-  └── Per-Skill knowledge boundary (depends on schema's reads field)
+[Eino dep upgrade to v0.8.x+]
+    └──required by──> [C1 Memory: summarization middleware]
+    └──required by──> [C2 Approval: ADK HITL Interrupt/Resume maturity]
 
-Tiered knowledge layer
-  ├── Per-Skill knowledge boundary enforcement (depends on tier model)
-  ├── Historical tier (depends on tier model + version mgmt)
-  └── Personal tier (depends on tier model + auth context)
+[C1 Multi-turn memory]
+    └──required by──> [C3 Planning]          (plan persists across turns within session)
+    └──enhances────> [C2 Approval]           (approval context references conversation)
 
-Agentic RAG
-  ├── Self-verification (depends on retrieval pipeline)
-  ├── Multi-hop retrieval (depends on self-verification + query decomposition)
-  ├── Retrieval eval per Skill (depends on retrieval pipeline)
-  └── Eval dashboard (depends on retrieval eval)
+[C2 Write tools + approval]
+    └──requires────> [audit store]            (EXISTS: T-3-AUDIT INSERT-only, Phase 6)
+    └──requires────> [checkpoint store]       (NEW: Eino WithCheckPointStore)
+    └──requires────> [skill writes: spec]     (EXISTS: 6-field spec, enforcement NEW)
 
-Guardrails
-  ├── Refusal accuracy metric (depends on refusal branch in agent graph)
-  ├── CI regression test (depends on refusal metric + retrieval eval)
-  └── Eval dashboard (depends on metrics)
+[C3 Planning]
+    └──enhances────> [C4 Fan-out]            (plan steps drive fan-out decomposition)
+    └──requires────> [subprogress UI]         (EXISTS: DataSubprogressPart)
 
-Demo Skill (Compliance)
-  ├── Structured verdict (depends on structured-output feature)
-  ├── Clause-level citation (depends on knowledge layer citation feature)
-  ├── Audit log (depends on short-term memory + persistence)
-  ├── Risk score (depends on structured verdict)
-  └── Policy version diff (depends on historical tier)
+[C4 Sub-agent fan-out]
+    └──requires────> [tier reads + retriever filter]  (EXISTS: Phase 1/2)
+    └──requires────> [grounding checker]               (EXISTS: D2-01)
+    └──conflicts──> [single-hop ReAct path]            (must coexist, not replace)
 
-Frontend
-  ├── Reasoning chain display (depends on agent state introspection)
-  ├── Citation display (depends on clause-level citation)
-  ├── Agent state inspector (depends on streaming events with tool-call annotations)
-  └── Skill diff viewer (depends on version management)
+[ALL FOUR] ──gated by──> [frozen eval set + gate]     (EXISTS: trust-floor metrics must not drift)
 ```
 
-**Critical-path observations:**
+### Dependency Notes
 
-1. **SKILL.md 6-field schema** blocks Skill authoring wizard, validation, AND knowledge boundary. Get this right first.
-2. **Tiered knowledge + retrieval pipeline** blocks the demo Skill's compliance value. Tier model + citation are inseparable.
-3. **Streaming events with tool-call annotations** block reasoning-chain UI AND agent-state-inspector. Eino ADK must emit structured events.
-4. **Eval dataset** is a prerequisite for *any* eval dashboard. Without curated (query, expected) pairs, you can't claim metrics.
+- **C1 requires dep upgrade:** summarization middleware and ADK HITL are v0.8.x-era; the milestone's "前置： 全量依赖升级" is a hard blocker, not hygiene.
+- **C1 requires the trust-floor spike:** history injection can contaminate refusal judgment (the milestone's only identified substantive risk). Golden-set A/B must run **before** memory ships, and the gate threshold stays the promotion criterion.
+- **C2 requires checkpoint persistence:** approval-survives-refresh is table stakes; without `WithCheckPointStore` the approval card is a toy.
+- **C2's write-boundary enforcement leverages an existing spec field:** `writes:` was designed into the 6-field spec (Key Decision: explicit reads/writes) — v0.8 finally enforces it. Cheap, high-credibility win.
+- **C3 enhances C4 but isn't required by it:** fan-out can ship with classifier-driven decomposition; plan-driven decomposition is the better UX. Keep C3 before C4 (matches user's pillar order).
+- **C4 conflicts with the single-hop path if not gated:** fan-out must be orchestrator-decided per query; never force every question through multi-agent.
+- **All four gated by the existing eval harness:** every capability ships with a frozen-set regression showing faithfulness/refusal metrics did not drift. This is the "可信税" made mechanical.
 
----
+## MVP Definition (milestone scope)
 
-## MVP Recommendation
+### Launch With (v0.8)
 
-**Phase 1 (Must ship before "MVP"):**
-1. SKILL.md 6-field schema + parser
-2. Skill load + intent routing
-3. Two-tier knowledge (authoritative + historical); personal tier deferred
-4. Agent core: streaming + tool calling + structured output
-5. Agentic RAG: retrieve / refuse / ask-clarifying (single-hop only)
-6. Citation to passage level
-7. Demo Skill: Compliance Review end-to-end (verdict + citation + refusal + audit log)
-8. Frontend: chat UI + reasoning chain + citation panel + skill switcher
-9. Eval: faithfulness + refusal accuracy on a small (50-100 query) eval set
-10. Docker Compose + README + LICENSE
+- [ ] C1: session history → agent + summarization + trust-floor spike gate — foundation for everything
+- [ ] C2: two write tools (memory:facts write, review-report generation) + inline approval card + audit row + checkpoint resume — the moat's first positive proof
+- [ ] C3: write_todos plan checklist + plan confirmation gate + basic replay view — "先报计划再动手"
+- [ ] C4: one-level parallel retrieval fan-out with tier inheritance + per-sub-agent grounding — the architectural flex
 
-**Phase 2 (Credibility boosters):**
-11. Skill authoring wizard (NL → SKILL.md)
-12. Self-verification + confidence score
-13. Eval dashboard (basic, per-Skill)
-14. Live demo site deployed
-15. 2-3 additional showcase Skills
-16. Eval badges in README
+### Add After Validation (v0.8.x)
 
-**Phase 3 (Differentiators, if time):**
-17. Multi-hop retrieval
-18. Agent state inspector UI
-19. Skill diff viewer
-20. Skill version management (Git tags or similar)
-21. Counter-evidence highlighting in compliance Skill
-22. CI regression test for eval metrics
+- [ ] Edit-before-approve (after base approval UX is validated with real users)
+- [ ] Step-completion evidence integrity checks
+- [ ] Partial-failure verdict states for fan-out
 
-**Defer indefinitely:**
-- Multi-tenant SaaS
-- Native mobile
-- K8s / Helm
-- Custom vector DB
-- Multi-modal
-- A2A protocol
+### Future Consideration (v2+)
 
----
+- [ ] Cross-session long-term memory — privacy design needed first
+- [ ] Async/webhook approval delegation — needs identity + delivery infra
+- [ ] Multi-session task boards / agent teams — coordination protocol scope
+- [ ] Recursive sub-agents — cost/audit model needed first
 
-## Confidence Assessment
+## Feature Prioritization Matrix
 
-| Area | Confidence | Reason |
-|------|------------|--------|
-| Skill system table stakes | **HIGH** | Anthropic Skills spec (Oct 2025) is well-documented; the 6-field extension is opinionated but grounded in denova. |
-| Agent core table stakes | **HIGH** | SSE + tool calling + cancel are mature patterns; Eino ADK confirmed available (v0.5.0, June 2026). |
-| Knowledge / true-source features | **MEDIUM** | Tiered model is denova-derived; per-Skill enforcement details have multiple implementation paths. |
-| Agentic RAG features | **HIGH** | Self-RAG / CRAG / Adaptive RAG are well-published (2024-2026); refusal-with-reason is industry-standard. |
-| Guardrails & eval | **HIGH** | RAGAS metrics are standardized; Langfuse is the obvious OSS dashboard. |
-| Frontend features | **MEDIUM** | Vercel AI SDK + shadcn patterns confirmed; reasoning-chain UI is more convention than standard. |
-| Open-source distribution | **HIGH** | README/Docker/License/CONTRIBUTING are universal OSS hygiene. |
-| Compliance demo Skill | **MEDIUM** | Verdict structure + citation + refusal confirmed in industry; counter-evidence/redline are speculative value-adds. |
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| C1 history → ReAct agent | HIGH (broken follow-ups = broken product) | MEDIUM | P1 |
+| C1 trust-floor spike (history A/B) | HIGH (de-risks the whole milestone) | LOW-MEDIUM | P1 |
+| C2 approval card + checkpoint + audit row | HIGH (the "可信×行动" headline) | MEDIUM | P1 |
+| C2 skill `writes:` enforcement | HIGH (platform credibility) | LOW-MEDIUM | P1 |
+| C3 plan checklist + confirmation gate | MEDIUM-HIGH | MEDIUM | P2 |
+| C3 replayable plan trace | MEDIUM (demo gold, daily-use less critical) | MEDIUM-HIGH | P2 |
+| C4 parallel fan-out + tier inheritance | MEDIUM-HIGH | HIGH | P2 |
+| C2 edit-before-approve | MEDIUM | MEDIUM | P3 |
+| C4 provenance-preserving citation merge | MEDIUM | MEDIUM | P3 |
 
----
+## Competitor Feature Analysis
 
-## Gaps & Open Questions
+| Capability | Claude Code | LangGraph | ChatGPT/Gemini DR | Dify/Coze | SkillForge v0.8 Approach |
+|-----------|-------------|-----------|-------------------|-----------|--------------------------|
+| Memory | Session + compaction + file memory | Checkpointer + Store + summarization mw | Auto-compaction | Token window (weak) | Session memory + summarization + **trust-floor regression gate** |
+| Approval | allow/ask/deny rules, modes | approve/edit/reject/respond + checkpoint | Confirm before irreversible | Tool toggles (weak) | Inline streaming card + **skill-declared write boundary + audit row + refusable writes** |
+| Planning | TodoWrite → Tasks (persistent, deps) | write_todos (Deep Agents) | Live plan; Gemini: plan approval gate | Workflow DAG (design-time) | write_todos + **plan confirmation gate + replayable trace linked to audit** |
+| Fan-out | Task tool, isolated ephemeral sub-agents | Orchestrator-worker patterns | Anthropic: parallel compressed sub-agents | Workflow parallel branches | One-level fan-out + **tier inheritance + per-sub-agent grounding + provenance merge** |
 
-- **Skill validation depth**: Static analysis of `reads` field vs sample-query dry-run — needs phase-specific research. Trade-off: speed vs safety.
-- **Historical tier implementation**: Snapshot-per-change vs event-sourcing — performance vs simplicity trade-off not yet decided.
-- **Eval dataset curation**: 50 queries is small but shippable; how to grow without manual curation burden?
-- **Multi-hop vs single-hop for compliance**: Does multi-hop actually improve compliance answer quality, or just latency? Needs empirical testing.
-- **Agent state inspector UX**: Timeline view vs tree view vs DAG? User research needed in a later phase.
-
----
+The rightmost column is the differentiation statement: every competitor ships the capability; nobody ships the capability **with the trust tax applied**. Dify/Coze's weak HITL is the clearest market gap for a compliance-positioned product.
 
 ## Sources
 
-### Primary (HIGH confidence)
+**HIGH confidence (official/primary):**
+- LangChain docs — [Human-in-the-loop](https://docs.langchain.com/oss/python/langchain/human-in-the-loop), [Frontend HITL](https://docs.langchain.com/oss/python/langchain/frontend/human-in-the-loop), [Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts): four decision types (approve/edit/reject/respond), checkpointer persistence, resolved-card persistence, idempotency-before-interrupt guidance
+- Anthropic engineering — [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system): orchestrator-worker, compressed sub-agent returns, ~15× tokens / ~90% quality, plan persistence
+- Dify official — [Conversation Variables blog](https://dify.ai/blog/enhancing-llm-memory-with-conversation-variables-and-variable-assigners), [Agent docs](https://docs.dify.ai/en/cloud/use-dify/nodes/agent), [GitHub Discussion #22907](https://github.com/langgenius/dify/discussions/22907): TokenBufferMemory, 2,000-token/500-message caps, session-scoped
+- LangChain blog — [Deep Agents](https://www.langchain.com/blog/deep-agents): four ingredients (system prompt, planning tool, sub-agents, file system)
+- OpenAI — [Introducing deep research](https://openai.com/index/introducing-deep-research/), [Deep research help article](https://help.openai.com/en/articles/10500283-deep-research-in-chatgpt)
 
-- Anthropic Skills (Oct 2025 launch) — `SKILL.md` YAML frontmatter spec (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`)
-  - https://blog.csdn.net/javastack/p/19531825
-  - https://www.cnblogs.com/javastack/p/19531825
-  - https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md (referenced)
-- CloudWeGo Eino ADK v0.5.0 release (June 2026) — multi-agent orchestration
-  - https://github.com/cloudwego/eino/releases/tag/v0.5.0
-- RAGAS framework — faithfulness, answer relevancy, context precision/recall metrics
-  - https://blog.csdn.net/qq_36722887/article/details/148519357
-  - https://www.cnblogs.com/pass-ion/p/19113902
+**MEDIUM confidence (multiple secondary sources agree):**
+- Claude Code permission model — [claudedirectory.org permissions guide](https://claudedirectory.org/blog/claude-code-permissions-guide), [arte.itlibra.com rules guide](https://arte.itlibra.com/en/articles/claude-code-permission-rules-settings), [stackademic permission system walkthrough](https://blog.stackademic.com/stop-fighting-claude-codes-permission-prompts-here-s-how-the-system-actually-works-ae594e59fb13): deny→ask→allow order, deny absolute, modes
+- Claude Code Tasks/TodoWrite — [aibuilderclub comparison](https://www.aibuilderclub.com/blog/claude-code-todowrite-vs-task), [echofold Tasks overview](https://echofold.ai/news/claude-code-tasks-multi-session-collaboration), [mindstudio agent teams](https://www.mindstudio.ai/blog/what-is-claude-code-agent-teams)
+- HITL workflow practices — [Towards Data Science HITL workflows](https://towardsdatascience.com/building-human-in-the-loop-agentic-workflows/)
+- Deep Research architecture surveys — [waylandz AI Agent Architecture ch.27](https://waylandz.com/ai-agent-book-en/chapter-27-deep-research/), [ai-blacksmith architecture series](https://ai-blacksmith.com/blog/deep-research-agent-architecture), [tritonite patterns](https://tritonite.io/stories/building-deep-research-agents-patterns)
 
-### Secondary (MEDIUM confidence)
-
-- Self-RAG / Corrective RAG / Adaptive RAG patterns
-  - https://blog.csdn.net/qq_46094651/article/details/143078093
-  - https://www.cnblogs.com/deephub/p/archive/2026/02/24
-- Langfuse OSS eval dashboard reference
-  - https://github.com/langfuse/langfuse
-- Agent memory tiers (short-term / working / long-term)
-  - https://arxiv.org/abs/2507.21428 (MemTool paper)
-  - https://blog.csdn.net/yangzhihua/article/details/160419045
-- Vercel AI SDK + shadcn chat UI patterns
-  - https://tool.lu/article/7x4/detail
-  - https://blog.csdn.net/weixin_63764436/article/details/161512313
-- Enterprise compliance AI tooling patterns
-  - https://blog.csdn.net/zzb1580/article/details/158735390
-  - https://www.cnblogs.com/flyingsir/p/19225297
-- Open-source agent platform best practices
-  - https://github.com/heilcheng/awesome-agent-skills
-
-### Project Context
-
-- `D:\code\ClaudeCode\ai-agent\.planning\PROJECT.md` — SkillForge requirements, decisions, scope.
-- denova reference (alfredxw/denova) — Skills / true-source separation / Eino lineage.
-  - https://github.com/alfredxw/denova (referenced; could not fetch directly)
+**LOW confidence (single-source / issue-tracker, flagged):**
+- Claude Code "Always allow" default regression — [GitHub issue #48550](https://github.com/anthropics/claude-code/issues/48550) (single-user report; treat as UX hazard to design against, not established fact)
+- Compound-command allow-bypass — [claude-hooks community hook](https://github.com/liberzon/claude-hooks) (community analysis; directionally credible)
+- Webhook approval demand — [GitHub issue #26000](https://github.com/anthropics/claude-code/issues/26000) (feature request; used only as v2 signal)
+- Enterprise audit-trail direction — vendor blogs ([prompthalo](https://www.prompthalo.ai/feeds/blog/ai-audit-trail), [runlayer](https://www.runlayer.com/blog/ai-agent-audit-trails-dos-and-donts), [miniorange](https://www.miniorange.com/blog/ai-agent-audit-trail/)); EU AI Act Art. 12 record-keeping reference via [inkog glossary](https://inkog.io/glossary/ai-agent-logging). Vendor content — use for direction, not specifics.
 
 ---
-
-*End of FEATURES.md*
+*Feature research for: trusted-action agent harness (SkillForge v0.8)*
+*Researched: 2026-08-17*
