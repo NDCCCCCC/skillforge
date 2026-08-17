@@ -34,7 +34,7 @@
 
 贯穿性不变量：**citation 白名单 = 本轮检索结果，代码强制** —— 历史/摘要/子 agent 输出/resume 注入的文本永远不能成为证据。每个 phase 以「可信税」产物收尾：spike 报告 → 消毒规则 → 3 行审计生命周期 → 可回放规划 → tier 继承证明测试。依赖为严格链：8 → 9 → 10 → 11 → 12 → 13。
 
-- [ ] **Phase 8: 全量依赖升级（P8.0）** — eino v0.7.7 → v0.9.14 + lockstep eino-ext 联动升级 + sqlite CheckPointStore 骨架；回归套件全绿，legacy interrupt API lint 禁用
+- [x] **Phase 8: 全量依赖升级（P8.0）** — eino v0.7.7 → v0.9.14 + lockstep eino-ext 联动升级 + sqlite CheckPointStore 骨架；回归套件全绿，legacy interrupt API lint 禁用 (completed 2026-08-18 — live 三门 human-verify approved；PLAT-04/PLAT-05 勾选)
 - [ ] **Phase 9: 历史注入 trust-floor spike 硬门（P8.S）** — golden-set A/B 证明历史投影不漂移拒答/引用行为（四指标漂移 <5%、refusal delta <10%）；不过门则记忆不得发布
 - [ ] **Phase 10: 多轮对话记忆（P8.1）** — sqlite 历史投影喂 agent + 投影消毒 + citation 白名单代码强制 + token 预算/摘要压缩
 - [ ] **Phase 11: 写工具 + 审批门（P8.2）** — Eino Interrupt/Resume HITL + 流内审批卡 + 跨刷新审批态 + 3 行 INSERT-only 审计生命周期 + `writes:` 代码级强制
@@ -277,7 +277,7 @@
 - [x] 08-02-PLAN.md — Wave 2: sqlite CheckPointStore 骨架（schema DDL 追加 + SQLiteStore Get/Set + 编译期断言）+ 六面测试 TDD（round-trip / 重开 DB / upsert / unknown-id / SQLi / closed）(completed 2026-08-17, commits 9a557b1 RED + e6a580a GREEN — 六面全绿，internal/store 零回归，SC-4 store 层语义锁定)
 - [x] 08-03-PLAN.md — Wave 2（parallel）: legacy interrupt API 禁令门（test-as-gate，含触发负向证明）+ 版本叙事文档对齐（REQUIREMENTS/ROADMAP/CLAUDE.md → v0.9.14）
 - [x] 08-04-PLAN.md — Wave 3: SC-5 真实中断往返测试（schema.RegisterName 注册 + stub 剧本 + adk Runner + 重开 DB 新 Runner Resume）+ phase hermetic 全量收口
-- [ ] 08-05-PLAN.md — Wave 4: live 重锁 human-verify 三门（cancel <200ms 真 GLM / Milvus tier-filter 声明外零行 / 冻结 eval + gate 重跑）
+- [x] 08-05-PLAN.md — Wave 4: live 重锁 human-verify 三门（cancel <200ms 真 GLM / Milvus tier-filter 声明外零行 / 冻结 eval + gate 重跑）(completed 2026-08-18 — 三门 approved：cancel 实测 0ms；tier 5 行/0 行零泄漏；frozen eval 50/50 gate PASS faithfulness 0.9720、refusal_accuracy 95%、lock 50bb1688… 未动，指标留档 v0.8 基线 D8-07；零代码 plan)
 
 **Wave structure**: W1={08-01} → W2={08-02, 08-03 parallel} → W3={08-04} → W4={08-05}
 **UI hint**: no
@@ -420,7 +420,7 @@
 | 5. Skill Platform & Full Knowledge Boundaries | 8/8 (incl. 05-08 gap-closure) | Complete | 2026-08-12 (05-08 debt-closure 2026-08-13) |
 | 6. Eval Dashboard & Production Hardening — Code-Side | 3/3 active (+06-03 deferred→999.2) | Complete (code-side) | 2026-08-13 |
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
-| 8. 全量依赖升级 (P8.0) | 4/5 | In Progress (W1 upgrade + W2 checkpoint-store + 08-03 ban gate/docs + 08-04 SC-5 round-trip done; 08-05 live re-lock human-verify remains) | - |
+| 8. 全量依赖升级 (P8.0) | 5/5 | Complete — live 三门 human-verify approved 2026-08-18（cancel 0ms / tier 5行+0行 / frozen eval gate PASS 0.972，v0.8 基线留档）；ready for verify-work | 2026-08-18 |
 | 9. 历史注入 spike 硬门 (P8.S) | 0/? | Not started — HARD GATE for Phase 10 | - |
 | 10. 多轮对话记忆 (P8.1) | 0/? | Not started — gated by Phase 9 | - |
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
@@ -428,7 +428,7 @@
 | 13. 子 agent 扇出 (P8.4) | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged). Prior: 2026-08-12 — Phase 5 planned (6 plans: 2 in Wave 1 sequential; 4 in Wave 2 parallel). All 8 req IDs (SYSK-04/05/06, AGNT-06, KNOW-06, CMPL-06/07/08) covered; 15 locked D5-XX decisions implemented; 1 deferred item (DATA-*) explicitly out of scope per CONTEXT.md.*
+*Last updated: 2026-08-18 — Phase 8 COMPLETE (5/5)：08-05 live 三门重锁全部 human-verify approved（真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%，lock 未动，指标留档 v0.8 基线 D8-07）；PLAT-04 + PLAT-05 勾选。Next: Phase 9 (GEVL-08 spike 硬门). Prior: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
 
 ---
 
