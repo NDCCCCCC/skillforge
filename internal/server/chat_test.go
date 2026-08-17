@@ -947,3 +947,83 @@ func TestRefusalStreamCarriesTextPart(t *testing.T) {
 	assert.Contains(t, textDelta, "可尝试调整问题",
 		"rephrasable refusal must surface the suggestion hint in chat")
 }
+
+// TestConclusionTextPunctuationNormalization — 260817-i36 Task 1 (④).
+// conclusionText's Branch 1 template "结论：%s。" produced a double period
+// 「。。」 whenever the LLM's Answer already carried a terminal punctuation
+// mark (v.Answer = "…审批。" → "结论：…审批。。"). After normalization any
+// trailing sentence punctuation ("。", ".", "！", "!", "？", "?", or none)
+// must yield a sentence that contains no "。。" and ends with exactly
+// one "。".
+func TestConclusionTextPunctuationNormalization(t *testing.T) {
+	const span = "采购合同金额 50 万元以下由部门负责人审批"
+	mkVerdict := func(answer string) verdict.Verdict {
+		return verdict.Verdict{
+			Status:     "ok",
+			Confidence: 0.97,
+			Answer:     answer,
+			Citations:  []verdict.Citation{{ChunkID: "3", Span: span, Tier: "权威"}},
+		}
+	}
+	citationSuffix := "依据 权威 tier 条款：「" + span + "」。"
+
+	cases := []struct {
+		name   string
+		answer string
+		want   string
+	}{
+		{
+			name:   "answer already ends with 。 (no double period)",
+			answer: "50 万元以下由部门负责人审批。",
+			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+		},
+		{
+			name:   "answer without trailing punctuation",
+			answer: "50 万元以下由部门负责人审批",
+			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+		},
+		{
+			name:   "answer ends with fullwidth exclamation",
+			answer: "50 万元以下由部门负责人审批！",
+			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+		},
+		{
+			name:   "answer ends with halfwidth exclamation",
+			answer: "50 万元以下由部门负责人审批!",
+			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+		},
+		{
+			name:   "answer ends with question marks (run stripped)",
+			answer: "50 万元以下由谁审批？?",
+			want:   "结论：50 万元以下由谁审批。" + citationSuffix,
+		},
+		{
+			name:   "answer ends with ascii period",
+			answer: "50 万元以下由部门负责人审批.",
+			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := conclusionText(mkVerdict(tc.answer))
+			assert.NotContains(t, out, "。。",
+				"conclusion must never contain a double period")
+			assert.True(t, strings.HasSuffix(out, "。"),
+				"conclusion must end with 。")
+			assert.False(t, strings.HasSuffix(out, "。。"),
+				"conclusion must end with exactly one 。")
+			assert.Equal(t, tc.want, out)
+		})
+	}
+
+	t.Run("review-required note also free of double periods", func(t *testing.T) {
+		v := mkVerdict("50 万元以下由部门负责人审批。")
+		v.ReviewRequired = true
+		out := conclusionText(v)
+		assert.NotContains(t, out, "。。",
+			"review-required branch must never contain a double period")
+		assert.Equal(t,
+			"结论：50 万元以下由部门负责人审批。置信度未达自动采信阈值，需人工复核。"+citationSuffix,
+			out)
+	})
+}
