@@ -61,10 +61,11 @@ describe('MessageBubble', () => {
           type: 'data-policy',
           id: 'p1',
           data: {
-            status: '合规',
+            status: 'ok',
             confidence: 0.9,
             citations: [],
             review_required: false,
+            compliance_status: 'compliant',
           },
         },
         { type: 'step-start' },
@@ -154,10 +155,11 @@ describe('MessageBubble', () => {
           type: 'data-policy',
           id: 'p1',
           data: {
-            status: '合规',
+            status: 'ok',
             confidence: 0.91,
             citations: [],
             review_required: false,
+            compliance_status: 'compliant',
           },
           // Cast: include the legacy .policy key as a stale-fixture
           // simulation; the component should ignore it.
@@ -170,7 +172,8 @@ describe('MessageBubble', () => {
     // Wave 2: DataPolicyPart dispatches to VerdictCard; the legacy
     // .policy key is ignored and .data drives the verdict status.
     const card = screen.getByTestId('verdict-card');
-    expect(card).toHaveAttribute('data-verdict-status', '合规');
+    expect(card).toHaveAttribute('data-verdict-status', 'ok');
+    expect(card).toHaveAttribute('data-compliance-status', 'compliant');
     expect(card).toHaveAttribute('data-review-required', 'false');
   });
 

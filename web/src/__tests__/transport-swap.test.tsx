@@ -144,7 +144,7 @@ describe('transport-swap invariant (D-04)', () => {
     const mockPolicy = findPolicy(mockChunks);
     const defaultPolicy = findPolicy(defaultChunks);
     expect(mockPolicy).toEqual(defaultPolicy);
-    expect(mockPolicy?.status).toBe('合规');
+    expect(mockPolicy?.status).toBe('ok');
     expect(mockPolicy?.confidence).toBeCloseTo(0.93);
   });
 

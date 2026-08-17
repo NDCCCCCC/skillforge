@@ -1,12 +1,10 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// VerdictCard — D-06 / FEUI/CMPL-05 verdict card. Status-colored
-// header + review-required corner badge. The citations count footer
-// renders below the verdict body, then the CitationCluster renders
-// BELOW the footer (superscripts live in their own cluster, not
-// inside the header — Plan 260815-cos Task 3 switched from chips to
-// inline superscripts).
+// VerdictCard — D-06 / FEUI/CMPL-05 verdict card. 260817-vsm: leads with
+// the direct answer for factual queries (Verdict.answer); falls back to
+// the Compliance-Skill verdict badge (compliance_status) for compliance
+// reviews. The platform StatusBadge rides along as a secondary chip.
 //
 // Plan 260815-cos / locked CONTEXT.md decision D: the green confidence
 // bar + 「置信度 N%」 text are REMOVED. The data-testid="confidence-bar"
@@ -21,13 +19,19 @@
 import { cn } from '../../lib/cn';
 import type { Verdict, VerdictStatus } from '../../types/verdict';
 import StatusBadge from '../common/StatusBadge';
+import ComplianceStatusBadge from '../common/ComplianceStatusBadge';
 import CitationCluster from './CitationCluster';
 
+// Border color maps the platform Status (not ComplianceStatus) so the
+// card frame reflects "did we produce a grounded answer?" — the
+// Compliance-Skill-specific verdict code shows up on the badge inside.
+// 260817-vsm: was keyed by compliance-Skill-specific Status values
+// (合规 / 不合规 / 需补充 / unanswered); now platform-neutral.
 const STATUS_BORDER: Record<VerdictStatus, string> = {
-  合规: 'border-l-status-compliant',
-  不合规: 'border-l-status-non-compliant',
-  需补充: 'border-l-status-needs-info',
-  unanswered: 'border-l-status-unanswered',
+  ok: 'border-l-status-compliant',         // grounded answer (factual or compliant verdict)
+  needs_input: 'border-l-status-needs-info',
+  refused: 'border-l-status-unanswered',
+  error: 'border-l-status-error',
 };
 
 export interface VerdictCardProps {
@@ -36,11 +40,20 @@ export interface VerdictCardProps {
 
 export default function VerdictCard({ verdict }: VerdictCardProps) {
   const pct = Math.round(verdict.confidence * 100);
+  const isFactualQuery = !!verdict.answer;
+  // For compliance reviews the ComplianceStatusBadge carries the verdict
+  // code; for factual queries the platform StatusBadge ("已给出") plus the
+  // answer text together carry the message. We show both when
+  // compliance_status is "not_applicable" so the user sees that the
+  // answer was derived from a factual lookup, not a compliance review.
+  const showComplianceBadge =
+    !!verdict.compliance_status && verdict.compliance_status !== 'not_applicable';
   return (
     <div className="relative">
       <div
         data-testid="verdict-card"
         data-verdict-status={verdict.status}
+        data-compliance-status={verdict.compliance_status ?? ''}
         data-review-required={String(verdict.review_required)}
         className={cn(
           'my-2 rounded-lg border-0 border-l-4 bg-surface pl-4 pr-5 py-3 text-text',
@@ -48,8 +61,21 @@ export default function VerdictCard({ verdict }: VerdictCardProps) {
         )}
       >
         <div className="flex items-center justify-between gap-2">
-          <StatusBadge status={verdict.status} />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={verdict.status} />
+            {showComplianceBadge && (
+              <ComplianceStatusBadge status={verdict.compliance_status!} />
+            )}
+          </div>
         </div>
+        {isFactualQuery && (
+          <div
+            data-testid="verdict-answer"
+            className="mt-2 text-sm text-text leading-relaxed"
+          >
+            {verdict.answer}
+          </div>
+        )}
         <div className="mt-3 text-xs text-text-muted">
           {verdict.citations.length} 条引用
         </div>

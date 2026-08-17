@@ -33,10 +33,11 @@
   { "type": "source-url", "sourceId": "c-001", "url": "http://skillforge.local/chunks/authority/contract-approval.md#L5", "title": "合同审批管理办法 §5" },
 
   { "type": "data-policy", "id": "p-001", "data": {
-    "status": "合规",
+    "status": "ok",
     "confidence": 0.93,
     "citations": [{ "chunk_id": "c-001", "span": "单笔金额超过 100 万元的合同需经法务部会签", "tier": "权威" }],
-    "review_required": false
+    "review_required": false,
+    "compliance_status": "compliant"
   }},
 
   { "type": "finish", "finishReason": "stop" }

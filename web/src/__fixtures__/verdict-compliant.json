@@ -15,10 +15,11 @@
   { "type": "source-url", "sourceId": "c-001", "url": "http://skillforge.local/chunks/authority/travel-policy.md#L12", "title": "差旅管理办法 §12" },
 
   { "type": "data-policy", "id": "p-001", "data": {
-    "status": "合规",
+    "status": "ok",
     "confidence": 0.93,
     "citations": [{ "chunk_id": "c-001", "span": "经济舱机票每日 800 元", "tier": "权威" }],
-    "review_required": false
+    "review_required": false,
+    "compliance_status": "compliant"
   }},
 
   { "type": "finish", "finishReason": "stop" }

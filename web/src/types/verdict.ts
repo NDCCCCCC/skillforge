@@ -4,40 +4,75 @@
 // Plan 04-01 Task 1 — TypeScript mirror of internal/verdict/* structs.
 //
 // Source of truth (Go):
-//   - internal/verdict/verdict.go       lines 57-62 (Verdict struct)
-//   - internal/verdict/citation.go      lines 28-44 (Citation struct)
-//   - internal/verdict/citation.go      lines 56-73 (Refusal struct)
-//   - internal/verdict/citation.go      lines 78-94 (RefusalReason* consts)
-//   - internal/verdict/validate.go      lines 31-36 (ValidStatuses)
+//   - internal/verdict/verdict.go       (Verdict struct)
+//   - internal/verdict/citation.go      (Citation + Refusal structs)
+//   - internal/verdict/validate.go      (ValidStatuses enum)
+//   - internal/verdict/grounding.go     (DowngradeStatus / NonCompliantStatus /
+//                                         CompliantStatus / NotApplicableStatus /
+//                                         ComplianceStatuses)
 //
 // NOTE on field casing: the Go wire emits snake_case JSON tags
 // (`review_required`, `can_user_rephrase`, `suggested_alternative_query`,
-// `chunk_id`) — this is the wire contract pinned by
+// `chunk_id`, `compliance_status`) — this is the wire contract pinned by
 // integration/contract/contract_test.go. Phase 4 fixtures emit the
 // same snake_case so the Go-side emitter (Phase 2) can transition
 // without re-encoding. Do NOT camelCase these here; UI-SPEC line 311's
 // `reviewRequired` reference was an error caught by RESEARCH.md.
 
-// Verdict status enum — matches internal/verdict/validate.go lines 31-36
-export const VERDICT_STATUSES = ['合规', '不合规', '需补充', 'unanswered'] as const;
+// Platform-neutral Status enum — matches internal/verdict/validate.go
+// ValidStatuses. 260817-vsm: was ['合规', '不合规', '需补充', 'unanswered']
+// (compliance-Skill-specific Chinese); migrated to platform-neutral English
+// so the shared envelope is skill-agnostic (multi-Skill platform fix).
+//
+// Semantics:
+//   - 'ok'          — produced a grounded answer (factual or compliance verdict)
+//   - 'needs_input' — info insufficient (replaces 需补充)
+//   - 'refused'     — graceful refusal (replaces unanswered)
+//   - 'error'       — internal failure (new; audit distinguishes from refusal)
+export const VERDICT_STATUSES = ['ok', 'needs_input', 'refused', 'error'] as const;
 export type VerdictStatus = typeof VERDICT_STATUSES[number];
+
+// Compliance-Skill-specific verdict enum — matches
+// internal/verdict/grounding.go ComplianceStatuses. Rides in
+// Verdict.compliance_status (NOT Verdict.status). 260817-vsm.
+//
+// Semantics:
+//   - 'compliant'      — subject matches cited policy (was 合规)
+//   - 'non_compliant'  — subject fails cited policy (was 不合规)
+//   - 'not_applicable' — query is factual lookup, see Verdict.answer
+export const COMPLIANCE_STATUSES = ['compliant', 'non_compliant', 'not_applicable'] as const;
+export type ComplianceStatus = typeof COMPLIANCE_STATUSES[number];
 
 // Knowledge tier enum — matches internal/skill/manifest.go ResolveTiers
 // (4-tier system; SKILL.md may declare a subset via `reads`)
 export const TIERS = ['权威', '历史', '个人', '草稿'] as const;
 export type Tier = typeof TIERS[number];
 
-// Verdict struct — mirrors internal/verdict/verdict.go lines 57-62
+// Verdict struct — mirrors internal/verdict/verdict.go
+//
+// 260817-vsm: Verdict is now the platform-agnostic response envelope.
+// Compliance-Skill verdict codes live in `compliance_status`; factual-query
+// direct answers live in `answer`. Renderers should lead with `answer` when
+// populated (factual query), otherwise use `compliance_status` (Compliance
+// Skill) or `status` (other Skills).
 export interface Verdict {
+  /** platform-neutral: one of VERDICT_STATUSES */
   status: VerdictStatus;
   /** [0.0, 1.0] — Phase 2 threshold: < 0.9 OR grounding downgrade → review_required=true */
   confidence: number;
   citations: Citation[];
   /** snake_case matches Go wire tag (do NOT camelCase) */
   review_required: boolean;
+  /** 260817-vsm: factual-query direct answer (e.g. "由部门负责人审批").
+   * Empty for compliance-review queries. Leads the conclusion render when
+   * populated. */
+  answer?: string;
+  /** 260817-vsm: Compliance-Skill-specific verdict. One of COMPLIANCE_STATUSES.
+   * Empty for non-compliance Skills (simple-qa / calculator). */
+  compliance_status?: ComplianceStatus;
 }
 
-// Citation struct — mirrors internal/verdict/citation.go lines 28-44 (D2-06)
+// Citation struct — mirrors internal/verdict/citation.go (D2-06)
 export interface Citation {
   /** chunk identifier (Milvus INT64 PK rendered as string) */
   chunk_id: string;
@@ -53,7 +88,7 @@ export interface Citation {
   version?: string | null;
 }
 
-// Refusal reason enum — matches internal/verdict/citation.go lines 78-94
+// Refusal reason enum — matches internal/verdict/citation.go
 export const REFUSAL_REASONS = [
   'no_authorized_source',
   'low_retrieval_score',
@@ -61,7 +96,7 @@ export const REFUSAL_REASONS = [
 ] as const;
 export type RefusalReason = typeof REFUSAL_REASONS[number];
 
-// Refusal struct — mirrors internal/verdict/citation.go lines 56-73 (ARAG-05)
+// Refusal struct — mirrors internal/verdict/citation.go (ARAG-05)
 export interface Refusal {
   reason: RefusalReason;
   /** snake_case matches Go wire tag */

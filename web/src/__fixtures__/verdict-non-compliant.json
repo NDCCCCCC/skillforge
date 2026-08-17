@@ -13,10 +13,11 @@
   { "type": "source-url", "sourceId": "c-003", "url": "http://skillforge.local/chunks/authority/non-compete.md#L3", "title": "反不正当竞争协议 §3" },
 
   { "type": "data-policy", "id": "p-003", "data": {
-    "status": "不合规",
+    "status": "ok",
     "confidence": 0.88,
     "citations": [{ "chunk_id": "c-003", "span": "竞业限制不得超过 2 年", "tier": "权威" }],
-    "review_required": true
+    "review_required": true,
+    "compliance_status": "non_compliant"
   }},
 
   { "type": "finish", "finishReason": "stop" }

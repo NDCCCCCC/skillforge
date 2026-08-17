@@ -16,6 +16,12 @@
 //     visually hidden (display:none via Tailwind `hidden`).
 //     Tests assert both presence (testid survives) and absence of
 //     the visual rendering (no 置信度 text).
+//
+// 260817-vsm: Verdict.status is now platform-neutral ({ok, needs_input,
+// refused, error}); the Compliance Skill's verdict rides in
+// Verdict.compliance_status ({compliant, non_compliant, not_applicable}).
+// Tests assert the platform Status on data-verdict-status and the
+// Compliance-Skill code on data-compliance-status.
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
@@ -25,42 +31,87 @@ import type { Verdict } from '../types/verdict';
 afterEach(cleanup);
 
 const compliant: Verdict = {
-  status: '合规',
+  status: 'ok',
   confidence: 0.93,
   citations: [{ chunk_id: 'c-001', span: '经济舱机票每日 800 元', tier: '权威' }],
   review_required: false,
+  compliance_status: 'compliant',
 };
 
 const needsInfo: Verdict = {
-  status: '需补充',
+  status: 'needs_input',
   confidence: 0.65,
   citations: [{ chunk_id: 'c-002', span: '商务礼品赠送限额', tier: '权威' }],
   review_required: true,
+  compliance_status: 'not_applicable',
 };
 
 const nonCompliant: Verdict = {
-  status: '不合规',
+  status: 'ok',
   confidence: 0.88,
   citations: [{ chunk_id: 'c-003', span: '竞业限制不得超过 2 年', tier: '权威' }],
   review_required: true,
+  compliance_status: 'non_compliant',
+};
+
+const factualQuery: Verdict = {
+  status: 'ok',
+  confidence: 0.97,
+  citations: [
+    { chunk_id: 'c-001', span: '采购合同金额 50 万元以下由部门负责人审批', tier: '权威' },
+  ],
+  review_required: false,
+  answer: '由部门负责人审批',
+  compliance_status: 'not_applicable',
 };
 
 describe('VerdictCard', () => {
-  it('renders data-testid="verdict-card" and data-verdict-status="合规"', () => {
+  it('renders data-testid="verdict-card" and data-verdict-status="ok"', () => {
     render(<VerdictCard verdict={compliant} />);
     const card = screen.getByTestId('verdict-card');
     expect(card).toBeInTheDocument();
-    expect(card).toHaveAttribute('data-verdict-status', '合规');
+    expect(card).toHaveAttribute('data-verdict-status', 'ok');
   });
 
-  it('renders data-verdict-status="不合规" for a non-compliant verdict', () => {
+  it('renders data-compliance-status="compliant" for a compliant verdict', () => {
+    render(<VerdictCard verdict={compliant} />);
+    expect(screen.getByTestId('verdict-card')).toHaveAttribute(
+      'data-compliance-status',
+      'compliant',
+    );
+  });
+
+  it('renders data-compliance-status="non_compliant" for a non-compliant verdict', () => {
     render(<VerdictCard verdict={nonCompliant} />);
-    expect(screen.getByTestId('verdict-card')).toHaveAttribute('data-verdict-status', '不合规');
+    expect(screen.getByTestId('verdict-card')).toHaveAttribute(
+      'data-compliance-status',
+      'non_compliant',
+    );
   });
 
-  it('renders data-verdict-status="需补充" for a needs-info verdict', () => {
+  it('renders data-verdict-status="needs_input" for a needs-info verdict', () => {
     render(<VerdictCard verdict={needsInfo} />);
-    expect(screen.getByTestId('verdict-card')).toHaveAttribute('data-verdict-status', '需补充');
+    expect(screen.getByTestId('verdict-card')).toHaveAttribute(
+      'data-verdict-status',
+      'needs_input',
+    );
+  });
+
+  it('renders the ComplianceStatusBadge only when compliance_status is a real review verdict', () => {
+    const { rerender } = render(<VerdictCard verdict={compliant} />);
+    expect(screen.getByTestId('compliance-status-badge')).toBeInTheDocument();
+
+    // not_applicable → badge is hidden (factual query, no compliance verdict).
+    rerender(<VerdictCard verdict={needsInfo} />);
+    expect(screen.queryByTestId('compliance-status-badge')).toBeNull();
+  });
+
+  it('renders the factual-answer text in verdict-answer when answer is populated', () => {
+    render(<VerdictCard verdict={factualQuery} />);
+    const answer = screen.getByTestId('verdict-answer');
+    expect(answer).toHaveTextContent('由部门负责人审批');
+    // The compliance badge is suppressed for factual queries (not_applicable).
+    expect(screen.queryByTestId('compliance-status-badge')).toBeNull();
   });
 
   it('renders data-testid="review-required-badge" only when review_required=true', () => {

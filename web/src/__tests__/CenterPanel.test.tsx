@@ -28,10 +28,11 @@ afterEach(() => {
 });
 
 const compliantVerdict: Verdict = {
-  status: '合规',
+  status: 'ok',
   confidence: 0.93,
   citations: [{ chunk_id: 'c-001', span: '条款', tier: '权威' }],
   review_required: false,
+  compliance_status: 'compliant',
 };
 
 beforeEach(() => {
@@ -48,7 +49,11 @@ describe('CenterPanel', () => {
     useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
     render(<CenterPanel currentVerdict={compliantVerdict} />);
     expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
-    expect(screen.getByTestId('verdict-card')).toHaveAttribute('data-verdict-status', '合规');
+    expect(screen.getByTestId('verdict-card')).toHaveAttribute('data-verdict-status', 'ok');
+    expect(screen.getByTestId('verdict-card')).toHaveAttribute(
+      'data-compliance-status',
+      'compliant',
+    );
   });
 
   it('renders ChunkSourceView with real chunk verbatim when centerView.kind === "chunk-source"', () => {

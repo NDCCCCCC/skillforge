@@ -11,7 +11,7 @@
   { "type": "text-end", "id": "t-1" },
 
   { "type": "data-policy", "id": "p-004", "data": {
-    "status": "unanswered",
+    "status": "refused",
     "confidence": 0,
     "citations": [],
     "review_required": false

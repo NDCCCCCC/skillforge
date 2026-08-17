@@ -12,7 +12,7 @@
   { "type": "source-url", "sourceId": "c-004", "url": "http://skillforge.local/chunks/draft/draft-policy.md", "title": "草稿政策" },
 
   { "type": "data-policy", "id": "p-001", "data": {
-    "status": "需补充",
+    "status": "needs_input",
     "confidence": 0.72,
     "citations": [
       { "chunk_id": "c-001", "span": "权威 tier 条款", "tier": "权威" },
@@ -20,7 +20,8 @@
       { "chunk_id": "c-003", "span": "个人 tier 备注", "tier": "个人" },
       { "chunk_id": "c-004", "span": "草稿 tier 条款", "tier": "草稿" }
     ],
-    "review_required": true
+    "review_required": true,
+    "compliance_status": "not_applicable"
   }},
 
   { "type": "finish", "finishReason": "stop" }

@@ -29,7 +29,7 @@ import SkillMdPreview from './SkillMdPreview';
 import VerdictCard from './VerdictCard';
 
 const FALLBACK_VERDICT: Verdict = {
-  status: 'unanswered',
+  status: 'refused',
   confidence: 0,
   citations: [],
   review_required: false,
