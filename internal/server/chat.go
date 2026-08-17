@@ -689,7 +689,7 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 			ID:        "src-" + cit.ChunkID,
 			SourceID:  cit.ChunkID,
 			MediaType: "text/markdown",
-			Title:     sourcePathFor(chunks, cit.ChunkID),
+			Title:     titleFor(chunks, cit.ChunkID),
 		}); err != nil {
 			return fmt.Errorf("emit source-document for %s: %w", cit.ChunkID, err)
 		}
@@ -864,6 +864,21 @@ func sourcePathFor(chunks []retriever.Hit, chunkID string) string {
 		}
 	}
 	return chunkID
+}
+
+// titleFor derives the source-document chip title for a citation
+// (260817-i36 ③): "<source path> · chunk <id>", so two citations into
+// different chunks of the SAME document render distinguishable chips in
+// the chat stream. When sourcePathFor misses (the chunk ID is not in the
+// retriever result set) its fallback IS the chunk ID — appending
+// " · chunk <id>" would self-repeat ("9 · chunk 9"), so the miss path
+// keeps the bare ID.
+func titleFor(chunks []retriever.Hit, chunkID string) string {
+	p := sourcePathFor(chunks, chunkID)
+	if p == chunkID {
+		return p
+	}
+	return fmt.Sprintf("%s · chunk %s", p, chunkID)
 }
 
 // drainFinalContent consumes a Runner.Query iterator until close,
