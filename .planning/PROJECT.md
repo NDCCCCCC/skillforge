@@ -107,6 +107,20 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 | **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
 
+## Current Milestone: v0.8 Harness — 可信×行动融合
+
+**Goal:** 把 SkillForge 从「可信问答内核」升级为「可信行动 harness」——每一步行动可审计、可拒答、可回放。
+
+**Target features:**
+- 前置：全量依赖升级到最新 stable（含 eino 大版本；summarization 中间件与 ADK HITL 需要）
+- 前置：spike 验证历史注入对 trust floor 拒答率的影响（golden set 对比 baseline 四指标漂移）
+- 多轮对话记忆：sqlite session history 喂进 agent（修复 chat.go 单轮限制）+ 摘要压缩
+- 写操作 + 审批门：Eino ADK Interrupt/Resume HITL + 审计行，「可信×行动」首次正面验证
+- 规划层：DeepAgent（`adk/prebuilt/deep` + write_todos），规划轨迹可回放
+- 子 agent 扇出：multi-hop 并行化，子 agent 继承 tier 知识边界
+
+**Key context:** 开源发布（Phase 07-06）用户决定延后至本里程碑之后（2026-08-17）；可信税原则——每个 harness 维度都嫁接可信机制（审批门 / 审计行 / tier 继承 / 可回放）。定位与 Eino 能力事实清单见 `.planning/notes/harness-roadmap-decision.md`。
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -125,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-14 — Phase 6 formally split: code-side scope (6a) validated; CI wiring + 4 live human UAT items moved to Backlog Phase 999.2 (6b). Prior: 2026-08-12 D6 reversed (Python/Ragas sidecar → Go-native evaluator) during Plan 03-06 execution*
+*Last updated: 2026-08-17 — Milestone v0.8 (Harness — 可信×行动融合) started; open-source release (07-06) deferred to after this milestone by user decision. Prior: 2026-08-14 — Phase 6 formally split: code-side scope (6a) validated; CI wiring + 4 live human UAT items moved to Backlog Phase 999.2 (6b)*

@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.7.7
-milestone_name: milestone
-current_phase: 7
-current_plan: 4
-status: executing
-last_updated: "2026-08-14T13:05:10.354Z"
+milestone: v0.8
+milestone_name: Harness — 可信×行动融合
+status: planning
+last_updated: "2026-08-17T10:48:01.646Z"
+last_activity: 2026-08-17
 progress:
-  total_phases: 9
-  completed_phases: 6
-  total_plans: 35
-  completed_plans: 36
-  percent: 67
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # State — SkillForge
@@ -49,31 +48,10 @@ progress:
 
 ## Current Position
 
-Phase: 7 (open-source-release) — EXECUTING
-Plan: 5 of 6 — **IN PROGRESS (1/3 tasks; Task 1 DONE via TDD; Tasks 2 & 3 `checkpoint:human-verify gate=blocking` BLOCKING — need live Milvus+BGE-M3+GLM stack + screen capture)**
-**Phase:** 5 (skill-platform-&-full-knowledge-boundaries) — READY TO PLAN
-**Plan:** not started
-**Status:** Executing Phase 7 — Plan 07-05 awaiting human-verify of live-stack eval run + GIF capture (Plan 07-02 Task 3 docker-build also still BLOCKING)
-**Just completed:** Plan 03-06 — Go-native trust evaluator (`internal/eval` + `cmd/eval`). D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack. 4 RAG-trust metrics (faithfulness ports Ragas v0.1.21 prompts VERBATIM, Apache-2.0 attributed in `eval/NOTICE`; other 3 use Go-authored judge prompts). 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop + 5 spike-anchors, GEVL-05). D2-15 calibration vehicle (`Calibrate()` → `eval/calibration.json` `recommended_threshold`; manual ops swap of literal 0.3 in `internal/server/pipeline.go:43`). Additive accessors `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). SC-6 reproducibility gate via StubJudge + deterministic embedder; 34 eval tests pass. Pitfall 8 counter-measures in place (deterministic grounding floor, human spot-check, JUDGE_MODEL slot). 5 commits: `52dab7e` (D6 reversal docs) + `d4f96fc` (Task 1) + `a77be40` (Task 2) + `f7979af` (Task 3 A+B) + `247dfd8` (Task 3 C-H). GEVL-04 + GEVL-05 marked complete.
-
-**Phase 4 shipped (trust visualization front-end):**
-
-- Three-panel React 19 UI (资料库 / 审查结论 / 对话) — `web/src/components/layout/{ThreePanel,LeftSidebar,RightChat}.tsx`
-- VerdictCard (D-06) + RefusalCard (D-07) + ReasoningPart (D-08) + ChunkSourceView (D-01/FEUI-03) + SkillPicker (FEUI-04) + DataSubprogressPart (FEUI-06)
-- Wire-type compile-time drift alarm + MockChatTransport (D-04 swap invariant) + T-1-08 source-URL sanitization gate
-- 83/83 unit tests green; UAT 12/12 (chrome-devtools MCP + unit evidence); 1 gap fixed (commit `e757d6e`)
-- Requirements covered: FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08
-
-**Deferred to Phase 5 (from 04-03 Known Stubs + 260811-uaf):**
-
-- LeftSidebar real multi-session + file tree (current = mock skeleton)
-- ChatInput `@`-mention fuzzy search (current = drag-drop + 10MB validation only)
-- Skill manager / settings UI (topbar chevron is a no-op stub)
-- Bidirectional tab nav + UI-SPEC §169 chunk empty-state
-
-**Open dependency note:** Phase 3 (Agentic Retrieval & Trust Eval) was skipped under MVP vertical-slice reordering (Phase 2 → Phase 4). Its scope (Self-RAG self-verification, multi-hop, Ragas golden-set gates, audit row) is still open and may need to be sequenced before or alongside Phase 5.
-
----
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-08-17 — Milestone v0.8 started
 
 ## Decisions (from PROJECT.md + SUMMARY.md)
 
