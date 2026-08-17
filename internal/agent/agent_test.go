@@ -780,8 +780,11 @@ func TestAgentRetrievesAndAnswers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Final verdict: 合规 with one citation pointing at chunk 7.
-	finalJSON := `{"status":"合规","confidence":0.9,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}`
+	// Final verdict: compliant with one citation pointing at chunk 7.
+	// 260817-vsm: platform-neutral status "ok" + compliance verdict in
+	// compliance_status (CR-01 — Run now Validates against
+	// verdict.ValidStatuses, so legacy "合规" fixtures fail the gate).
+	finalJSON := `{"status":"ok","compliance_status":"compliant","confidence":0.9,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}`
 	cm := newMultiTurnStub(t, 1, "出差住宿标准", finalJSON)
 	ret := &stubRetriever{
 		chunksPerCall: [][]retriever.Hit{
@@ -806,7 +809,8 @@ func TestAgentRetrievesAndAnswers(t *testing.T) {
 	v, refusal, err := a.Run(ctx, "sess-test", "出差住宿标准是多少？")
 	require.NoError(t, err, "Run must not error in the happy path")
 	require.Nil(t, refusal, "no refusal expected when retriever returns tier-matched chunks")
-	assert.Equal(t, "合规", v.Status)
+	assert.Equal(t, "ok", v.Status)
+	assert.Equal(t, "compliant", v.ComplianceStatus)
 	assert.InDelta(t, 0.9, v.Confidence, 0.001)
 	require.Len(t, v.Citations, 1)
 	assert.Equal(t, "7", v.Citations[0].ChunkID)
@@ -837,7 +841,7 @@ func TestAgentRunParsesFencedVerdictGLMShape(t *testing.T) {
 	// wrapped in the ```json ... ``` fence GLM emits. This is the raw bytes
 	// shape from the OOS-1 production error.
 	fencedFinalJSON := "```json\n" +
-		`{"status":"合规","confidence":0.9,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}` +
+		`{"status":"ok","compliance_status":"compliant","confidence":0.9,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}` +
 		"\n```"
 	cm := newMultiTurnStub(t, 1, "出差住宿标准", fencedFinalJSON)
 	ret := &stubRetriever{
@@ -858,7 +862,7 @@ func TestAgentRunParsesFencedVerdictGLMShape(t *testing.T) {
 	v, refusal, err := a.Run(ctx, "sess-oos1", "出差住宿标准是多少？")
 	require.NoError(t, err, "Run must parse the fenced GLM verdict without error (OOS-1)")
 	require.Nil(t, refusal, "no refusal expected for a tier-matched fenced verdict")
-	assert.Equal(t, "合规", v.Status, "fenced verdict status must parse")
+	assert.Equal(t, "ok", v.Status, "fenced verdict status must parse")
 	assert.InDelta(t, 0.9, v.Confidence, 0.001, "fenced verdict confidence must parse")
 	require.Len(t, v.Citations, 1, "fenced verdict citations must parse")
 	assert.Equal(t, "7", v.Citations[0].ChunkID)
@@ -875,7 +879,7 @@ func TestAgentRunParsesProseWrappedFencedVerdict(t *testing.T) {
 	defer cancel()
 
 	proseWrappedJSON := "Here is the verdict:\n```json\n" +
-		`{"status":"合规","confidence":0.88,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}` +
+		`{"status":"ok","compliance_status":"compliant","confidence":0.88,"citations":[{"chunk_id":"7","span":"住宿费每天 500 元","tier":"权威"}],"review_required":false}` +
 		"\n```\nLet me know if you need more detail."
 	cm := newMultiTurnStub(t, 1, "出差住宿标准", proseWrappedJSON)
 	ret := &stubRetriever{
@@ -896,7 +900,7 @@ func TestAgentRunParsesProseWrappedFencedVerdict(t *testing.T) {
 	v, refusal, err := a.Run(ctx, "sess-oos1-prose", "出差住宿标准是多少？")
 	require.NoError(t, err, "Run must parse the prose-wrapped fenced verdict (OOS-1 variant)")
 	require.Nil(t, refusal)
-	assert.Equal(t, "合规", v.Status)
+	assert.Equal(t, "ok", v.Status)
 	assert.InDelta(t, 0.88, v.Confidence, 0.001)
 }
 
@@ -1001,7 +1005,7 @@ func TestDecisionSSEEmission(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	finalJSON := `{"status":"合规","confidence":0.9,"citations":[{"chunk_id":"1","span":"x","tier":"权威"}],"review_required":false}`
+	finalJSON := `{"status":"ok","confidence":0.9,"citations":[{"chunk_id":"1","span":"x","tier":"权威"}],"review_required":false}`
 	cm := newMultiTurnStub(t, 1, "出差", finalJSON)
 	ret := &stubRetriever{
 		chunksPerCall: [][]retriever.Hit{
@@ -1113,7 +1117,7 @@ func TestRunPreRetrievesOriginalQuery(t *testing.T) {
 
 	// maxToolCalls=0 → the stub skips the tool-call phase entirely and
 	// emits the final verdict on turn 1. toolCallQuery is unused.
-	finalJSON := `{"status":"合规","confidence":0.95,"citations":[{"chunk_id":"42","span":"年假 5 天","tier":"权威"}],"review_required":false}`
+	finalJSON := `{"status":"ok","answer":"年假 5 天","compliance_status":"not_applicable","confidence":0.95,"citations":[{"chunk_id":"42","span":"年假 5 天","tier":"权威"}],"review_required":false}`
 	cm := newMultiTurnStub(t, 0, "unused-toolCallQuery", finalJSON)
 	ret := &stubRetriever{
 		chunksPerCall: [][]retriever.Hit{

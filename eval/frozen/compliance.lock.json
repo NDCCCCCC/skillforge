@@ -1,6 +1,6 @@
 {
   "model_ver": "glm-5.2",
-  "prompt_hash": "bd59cbe0941d19174c3a29271ce710be02585c7c2df5ff5c13f166eeaffbecae",
+  "prompt_hash": "58ffea08ff7b51a78efb866861c8d0ac646a1928901de1151c53e1a7c92f395d",
   "seed": 42,
   "eval_set_version": "compliance-2026-08-13-v1",
   "skill_name": "compliance"
