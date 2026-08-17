@@ -319,6 +319,9 @@ func runE2EWithBaseURL(ctx context.Context, baseURL, apiKey, modelName string) e
 //
 // When called with a mock BaseURL (test path), the mock can intentionally
 // hang to simulate a slow upstream, making the cancellation measurable.
+// If the upstream is so fast that the iterator drains before cancel fires
+// (within the 20ms settle window), the probe reports an inconclusive error
+// rather than a false ~0ms pass (08-REVIEW IN-06).
 func probeCancellation(ctx context.Context, runner *adk.Runner) (int, error) {
 	const probeQuery = "probe: cancellation timing (no verdict expected)"
 	cancelCtx, cancel := context.WithCancel(ctx)
@@ -345,6 +348,18 @@ func probeCancellation(ctx context.Context, runner *adk.Runner) (int, error) {
 
 	// Give the iterator a moment to start, then cancel and measure.
 	time.Sleep(20 * time.Millisecond)
+
+	// False-pass guard (08-REVIEW IN-06): if the iterator already drained
+	// naturally during the sleep (e.g., a very fast mock upstream), cancel()
+	// has nothing left to propagate and the select below would return
+	// immediately with elapsed≈0ms — a constant "pass" that never measured
+	// cancellation. Report inconclusive instead of a bogus 0ms pass.
+	select {
+	case <-done:
+		return 0, fmt.Errorf("iterator completed before cancel; probe inconclusive (upstream responded within 20ms — cancellation propagation not measurable)")
+	default:
+	}
+
 	startCancel := time.Now()
 	cancel()
 
