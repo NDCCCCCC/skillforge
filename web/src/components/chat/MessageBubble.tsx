@@ -15,6 +15,12 @@
 //
 // Unknown part types silently drop (per AI SDK v7 spec — a newer-
 // server / older-client combo must not crash the UI).
+//
+// 260817-hck: the assistant branch concatenates all text parts into
+// `chatText` and passes it to DataPolicyPart, so VerdictCard can hide
+// a verdict-answer block that duplicates the chat body conclusion.
+// Prop drilling (not the Zustand store) per D14 — useChat owns the
+// message stream; three-level optional-prop drilling is the cheap fix.
 
 import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
@@ -34,7 +40,11 @@ import CounterEvidenceCard from '../verdict/CounterEvidenceCard';
 import RedlineCard from '../verdict/RedlineCard';
 import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
 
-function renderPart(part: UIMessage['parts'][number], i: number): ReactNode {
+function renderPart(
+  part: UIMessage['parts'][number],
+  i: number,
+  chatText?: string,
+): ReactNode {
   switch (part.type) {
     case 'reasoning':
       return (
@@ -52,7 +62,13 @@ function renderPart(part: UIMessage['parts'][number], i: number): ReactNode {
     case 'dynamic-tool':
       return <ToolPart key={i} part={part as Parameters<typeof ToolPart>[0]['part']} />;
     case 'data-policy':
-      return <DataPolicyPart key={i} part={part as Parameters<typeof DataPolicyPart>[0]['part']} />;
+      return (
+        <DataPolicyPart
+          key={i}
+          part={part as Parameters<typeof DataPolicyPart>[0]['part']}
+          chatText={chatText}
+        />
+      );
     case 'data-subprogress':
       return (
         <DataSubprogressPart
@@ -112,13 +128,24 @@ export interface MessageBubbleProps {
 
 export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProps) {
   const bg = role === 'user' ? 'bg-user-bubble' : 'bg-assistant-bubble';
+  // 260817-hck: aggregate all text parts into chatText so VerdictCard
+  // (via DataPolicyPart) can suppress a verdict-answer block that the
+  // chat body already renders verbatim. Assistant messages only — user
+  // messages never carry data-policy parts.
+  const chatText =
+    role === 'assistant'
+      ? message.parts
+          .filter((p) => p.type === 'text')
+          .map((p) => (p as { text: string }).text)
+          .join('')
+      : undefined;
   return (
     <div
       className={`my-3 rounded-lg ${bg} p-3 text-text`}
       data-testid="message-bubble"
       data-role={role}
     >
-      {message.parts.map((part, i) => renderPart(part, i))}
+      {message.parts.map((part, i) => renderPart(part, i, chatText))}
     </div>
   );
 }

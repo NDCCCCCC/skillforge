@@ -13,6 +13,11 @@
 // directly via the store singleton — no callback prop drilling.
 //
 // When refusal: render <RefusalCard />.
+//
+// 260817-hck: optional `chatText` prop (concatenated text parts of the
+// same assistant message, supplied by MessageBubble) is passed through
+// to VerdictCard so the card can suppress a duplicated verdict-answer
+// block. Refusal / unknown-payload branches are untouched.
 import type { UIMessage } from 'ai';
 import RefusalCard from '../../center/RefusalCard';
 import VerdictCard from '../../center/VerdictCard';
@@ -30,12 +35,16 @@ type DataPolicyPartType = {
 
 export default function DataPolicyPart({
   part,
+  chatText,
 }: {
   part: DataPolicyPartType | (UIMessage['parts'][number] & Record<string, unknown>);
+  // 260817-hck: concatenated text parts of the same message; forwarded to
+  // VerdictCard so it can hide a verdict-answer already shown in the body.
+  chatText?: string;
 }) {
   const data = (part as DataPolicyPartType).data;
   if (isVerdict(data)) {
-    return <VerdictCard verdict={data} />;
+    return <VerdictCard verdict={data} chatText={chatText} />;
   }
   if (isRefusal(data)) {
     return <RefusalCard refusal={data} />;
