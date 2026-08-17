@@ -21,6 +21,9 @@
 //  7. Unknown part types render nothing (silently dropped per spec).
 //  8. data-decision chunks (Plan 03-01 wire variant, no renderer yet)
 //     drop gracefully — forward-compat: older UI tolerates newer wire.
+//  9. 260817-hck: when the text parts verbatim contain verdict.answer,
+//     the VerdictCard's verdict-answer block is suppressed (dedupe);
+//     when they do not, verdict-answer still renders inside the card.
 
 import { cleanup, render, screen } from '@testing-library/react';
 import type { UIMessage } from 'ai';
@@ -257,5 +260,54 @@ describe('MessageBubble', () => {
     expect(screen.queryByText('should-not-leak')).toBeNull();
     expect(screen.queryByText('0.42')).toBeNull();
     expect(screen.queryByTestId('data-decision')).toBeNull();
+  });
+
+  // --- 260817-hck: verdict-answer dedupe against the chat text body ---
+
+  const factualVerdictData = {
+    status: 'ok',
+    confidence: 0.97,
+    citations: [
+      { chunk_id: 'c-001', span: '采购合同金额 50 万元以下由部门负责人审批', tier: '权威' },
+    ],
+    review_required: false,
+    answer: '由部门负责人审批',
+    compliance_status: 'not_applicable',
+  };
+
+  it('hides in-card verdict-answer when the text part already contains the conclusion (260817-hck)', () => {
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: '结论：由部门负责人审批。' },
+        { type: 'data-policy', id: 'p1', data: factualVerdictData },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    // The chat body keeps the conclusion text (it is the useChat anchor).
+    expect(screen.getByText('结论：由部门负责人审批。')).toBeInTheDocument();
+    // The card renders but WITHOUT the duplicated verdict-answer block.
+    expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('verdict-answer')).toBeNull();
+    expect(screen.getByTestId('citation-cluster')).toBeInTheDocument();
+  });
+
+  it('keeps in-card verdict-answer when the text part does NOT contain the answer (260817-hck)', () => {
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: '已为你查询相关条款。' },
+        { type: 'data-policy', id: 'p1', data: factualVerdictData },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    expect(screen.getByText('已为你查询相关条款。')).toBeInTheDocument();
+    const answer = screen.getByTestId('verdict-answer');
+    expect(answer).toBeInTheDocument();
+    expect(answer).toHaveTextContent('由部门负责人审批');
   });
 });
