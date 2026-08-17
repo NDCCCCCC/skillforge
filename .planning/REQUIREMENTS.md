@@ -112,8 +112,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Foundation (PLAT / GEVL)
 
-- [ ] **PLAT-04**: eino v0.7.7 → v0.9.13 升级 + eino-ext 逐组件联动升级；回归门 = `integration/contract` 漂移套件 + 冻结 eval 基线全绿 + Phase-1 live verify 重新锁定（cancel <200ms、Milvus tier-filter）；legacy interrupt API lint 禁用
-- [ ] **PLAT-05**: sqlite `CheckPointStore` 持久化实现（复用 `internal/store/sqlite`；所有自定义状态类型 `gob.RegisterName`；真实中断运行往返测试）
+- [ ] **PLAT-04**: eino v0.7.7 → v0.9.14 升级（用户决策 2026-08-17：v0.9.14 覆盖研究期 v0.9.13；不用 v0.10.0-alpha.x）+ eino-ext 逐组件联动升级；回归门 = `integration/contract` 漂移套件 + 冻结 eval 基线全绿 + Phase-1 live verify 重新锁定（cancel <200ms、Milvus tier-filter）；legacy interrupt API lint 禁用
+- [ ] **PLAT-05**: sqlite `CheckPointStore` 持久化实现（复用 `internal/store/sqlite`；所有自定义状态类型 `schema.RegisterName[T](name)`（其内部完成 gob.RegisterName 双注册——RESEARCH Pitfall 1 修正）；真实中断运行往返测试）
 - [ ] **GEVL-08**: 历史注入回归硬门——golden set A/B（`history=nil` vs 投影历史 × 善意追问/恶意注入/旧拒答上下文），四指标漂移 <5% 且 refusal delta <10%；不过门则记忆不得发布，产出消毒规则或逃逸方案（last-3-turns / prompt 附录 / 仅用户轮记忆）
 
 ### Multi-turn Memory (MEM)

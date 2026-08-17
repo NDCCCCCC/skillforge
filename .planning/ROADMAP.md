@@ -29,7 +29,7 @@
 
 贯穿性不变量：**citation 白名单 = 本轮检索结果，代码强制** —— 历史/摘要/子 agent 输出/resume 注入的文本永远不能成为证据。每个 phase 以「可信税」产物收尾：spike 报告 → 消毒规则 → 3 行审计生命周期 → 可回放规划 → tier 继承证明测试。依赖为严格链：8 → 9 → 10 → 11 → 12 → 13。
 
-- [ ] **Phase 8: 全量依赖升级（P8.0）** — eino v0.7.7 → v0.9.13 + lockstep eino-ext 联动升级 + sqlite CheckPointStore 骨架；回归套件全绿，legacy interrupt API lint 禁用
+- [ ] **Phase 8: 全量依赖升级（P8.0）** — eino v0.7.7 → v0.9.14 + lockstep eino-ext 联动升级 + sqlite CheckPointStore 骨架；回归套件全绿，legacy interrupt API lint 禁用
 - [ ] **Phase 9: 历史注入 trust-floor spike 硬门（P8.S）** — golden-set A/B 证明历史投影不漂移拒答/引用行为（四指标漂移 <5%、refusal delta <10%）；不过门则记忆不得发布
 - [ ] **Phase 10: 多轮对话记忆（P8.1）** — sqlite 历史投影喂 agent + 投影消毒 + citation 白名单代码强制 + token 预算/摘要压缩
 - [ ] **Phase 11: 写工具 + 审批门（P8.2）** — Eino Interrupt/Resume HITL + 流内审批卡 + 跨刷新审批态 + 3 行 INSERT-only 审计生命周期 + `writes:` 代码级强制
@@ -221,17 +221,17 @@
 
 > 依赖链（严格顺序）：8 → 9 → 10 → 11 → 12 → 13。Rationale（research SUMMARY.md §Implications for Roadmap）：升级先行（summarization 中间件与成熟 HITL 在 v0.7.7 不存在，混做会让回归归因不可能）→ spike 硬门（历史注入是唯一可能静默破坏已校准 trust floor 的行为风险，冻结基线自身抓不到漂移）→ 记忆先于审批（resume 回放整条消息列表，单轮记忆上做审批是返工）→ 审批先于 Deep（Runner 迁移落在简单 ReAct archetype 上最安全，全套回归套件做安全网）→ Deep 先于扇出（write_todos + 子 agent 槽位是天然的组合宿主，扇出继承 P8.3 的预算门）。
 
-### Phase 8: 全量依赖升级（P8.0 — eino v0.7.7 → v0.9.13）
+### Phase 8: 全量依赖升级（P8.0 — eino v0.7.7 → v0.9.14）
 
-**Goal:** 全量依赖升级到 eino v0.9.13（不用 v0.10.0-alpha.x，maintainer 明确警告 breaking）+ eino-ext 逐组件联动升级；sqlite `CheckPointStore` 骨架就位；所有既有回归门重新锁定——为整个 v0.8 提供干净的框架地基（升级不混功能，回归归因干净）。
+**Goal:** 全量依赖升级到 eino v0.9.14（不用 v0.10.0-alpha.x，maintainer 明确警告 breaking）+ eino-ext 逐组件联动升级；sqlite `CheckPointStore` 骨架就位；所有既有回归门重新锁定——为整个 v0.8 提供干净的框架地基（升级不混功能，回归归因干净）。（用户决策 2026-08-17：v0.9.14 而非研究原锁的 v0.9.13）
 **Mode:** mvp
 **Depends on:** Phase 7（v0.7.7 里程碑结束态；不阻塞 07-02/07-05 人工 checkpoint）
 **Requirements:** PLAT-04, PLAT-05
 **Success Criteria** (what must be TRUE):
-  1. `go build ./...` 与全部单元测试在 eino v0.9.13 + 联动升级的 eino-ext 下全绿；`integration/contract` 漂移套件与冻结 eval 基线重新运行全绿（PLAT-04）
+  1. `go build ./...` 与全部单元测试在 eino v0.9.14 + 联动升级的 eino-ext 下全绿；`integration/contract` 漂移套件与冻结 eval 基线重新运行全绿（PLAT-04）
   2. Phase-1 live verify 重新锁定：agent run cancel 从客户端到 agent <200ms；Milvus tier-filter 对声明外 tier 返回零行（PLAT-04）
   3. legacy interrupt API（`NewInterruptAndRerunErr` 等无地址旧语义）在代码库出现即 lint fail——Interrupt/Resume 双语义不并存（PLAT-04，Pitfall 5）
-  4. sqlite `CheckPointStore`（复用 `internal/store/sqlite`，~100 LOC）Get/Set round-trip：所有自定义状态类型经 `gob.RegisterName` 注册后可序列化写库、进程重启后读回等值（PLAT-05）
+  4. sqlite `CheckPointStore`（复用 `internal/store/sqlite`，~100 LOC）Get/Set round-trip：所有自定义状态类型经 `schema.RegisterName[T](name)` 注册后可序列化写库、进程重启后读回等值（PLAT-05）
   5. 真实中断运行往返测试通过：一次 Run 中断 → checkpoint 持久化到 sqlite → 进程重启后 Resume 恢复到中断点继续执行（PLAT-05，Pitfall 4）
 **Pitfalls addressed:** Pitfall 4（内存 checkpoint 丢中断态 — store 骨架），Pitfall 5（Interrupt/Resume 双语义并存 — 一次性切换 + lint 禁用）
 **Research flag:** RF-2 — 已在研究期解决（`CheckPointStore` 接口 = Get/Set 两方法，eino@v0.9.14 internal/core/interrupt.go:27-30；编译 spike 实证升级零源码改动）

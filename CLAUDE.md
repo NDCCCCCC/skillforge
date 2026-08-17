@@ -24,7 +24,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 |-------|--------|---------|------------|-----|
 | **Language (BE)** | Go | 1.22+ (preferably 1.23) | HIGH | User decision; matches denova; mature Eino support |
 | **HTTP (BE)** | CloudWeGo Hertz | v0.10.2+ | HIGH | First-class SSE (`pkg/protocol/sse`); same vendor as Eino; byte-dance prod-proven |
-| **Agent framework** | cloudwego/eino | v0.7.7+ (track latest) | HIGH | GA ADK since v0.5.0; explicit multi-agent API; callbacks for observability |
+| **Agent framework** | cloudwego/eino | v0.9.14（locked 2026-08-17；v0.10.0-alpha.x 明确不用） | HIGH | GA ADK since v0.5.0; explicit multi-agent API; callbacks for observability |
 | **Agent orchestration** | eino/adk | bundled with eino | HIGH | ChatModelAgent + Sequential/Parallel/Loop/Conditional/Failover agents; transfer/handoff built in |
 | **LLM provider (CN)** | eino-ext/model/ark (Volcano Ark → Doubao/DeepSeek) | latest | HIGH | CN-low-latency; Eino native adapter |
 | **LLM provider (intl)** | eino-ext/model/openai | latest | HIGH | OpenAI-compatible (works for Azure, DeepSeek, Moonshot, GLM, etc.) |
@@ -49,7 +49,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 - A graph composition engine (`compose.Graph`, `compose.Chain`)
 - A multi-agent orchestration kit (`adk` package — Agent Development Kit)
 - Callback handlers (`callbacks.Handler`) for cross-cutting concerns (logging, tracing, metrics)
-- **v0.7.7** is the latest tagged release on `cloudwego/eino`.
+- **v0.9.14** is the current locked release（2026-08-13 发布，升级决策 2026-08-17）on `cloudwego/eino`.
 - **Eino ADK was released as GA in v0.5.0** (June 2026). It was a landmark — Go finally got a first-class multi-agent library.
 - The `eino-ext` companion repo holds official adapters: chat models (openai, ark, ollama, deepseek, gemini), embeddings, retrievers (milvus, qdrant, volc_vikingdb, es), indexers, document parsers (pdf, html), splitters (markdown, recursive), tools, and observability callbacks (langfuse, coze, aliyun).
 - **Go-native agent story**: Until Eino, Go LLM apps were reimplementing LangChain patterns. Eino closes that gap with a typed, channel-streaming design.
