@@ -239,7 +239,7 @@
 **Plan list**:
 - [x] 08-01-PLAN.md — Wave 1: 升级主提交（eino v0.9.14 + ext openai v0.1.13 + TestContractVersionPin 改写 + 8 处 godoc 重核）+ hermetic 回归重锁（全量单测 / contract 套件 / cancel <200ms）(completed 2026-08-17, commit 36845c0 — 四道门全绿零修复提交)
 - [x] 08-02-PLAN.md — Wave 2: sqlite CheckPointStore 骨架（schema DDL 追加 + SQLiteStore Get/Set + 编译期断言）+ 六面测试 TDD（round-trip / 重开 DB / upsert / unknown-id / SQLi / closed）(completed 2026-08-17, commits 9a557b1 RED + e6a580a GREEN — 六面全绿，internal/store 零回归，SC-4 store 层语义锁定)
-- [ ] 08-03-PLAN.md — Wave 2（parallel）: legacy interrupt API 禁令门（test-as-gate，含触发负向证明）+ 版本叙事文档对齐（REQUIREMENTS/ROADMAP/CLAUDE.md → v0.9.14）
+- [x] 08-03-PLAN.md — Wave 2（parallel）: legacy interrupt API 禁令门（test-as-gate，含触发负向证明）+ 版本叙事文档对齐（REQUIREMENTS/ROADMAP/CLAUDE.md → v0.9.14）
 - [ ] 08-04-PLAN.md — Wave 3: SC-5 真实中断往返测试（schema.RegisterName 注册 + stub 剧本 + adk Runner + 重开 DB 新 Runner Resume）+ phase hermetic 全量收口
 - [ ] 08-05-PLAN.md — Wave 4: live 重锁 human-verify 三门（cancel <200ms 真 GLM / Milvus tier-filter 声明外零行 / 冻结 eval + gate 重跑）
 **Wave structure**: W1={08-01} → W2={08-02, 08-03 parallel} → W3={08-04} → W4={08-05}
