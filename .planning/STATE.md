@@ -5,13 +5,13 @@ milestone_name: — Harness（可信×行动融合）
 current_phase: 08
 current_plan: 4
 status: executing
-last_updated: "2026-08-17T16:06:01.564Z"
+last_updated: "2026-08-17T16:19:42.945Z"
 last_activity: 2026-08-17
 progress:
   total_phases: 13
   completed_phases: 5
   total_plans: 40
-  completed_plans: 39
+  completed_plans: 40
   percent: 38
 ---
 
@@ -51,9 +51,9 @@ progress:
 ## Current Position
 
 Phase: 08 (p8-0-eino-v0-7-7-v0-9-13) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
-Last activity: 2026-08-17 -- Plan 08-03 complete: SC-3 legacy interrupt 禁令门（test-as-gate `fea6114`——TestNoLegacyInterruptAPI 全仓 WalkDir 扫描三标识符，负向证明探针注入 FAIL→删除 PASS）+ 版本叙事对齐（`996c33a`——REQUIREMENTS/ROADMAP/CLAUDE.md 定点改 v0.9.14 + schema.RegisterName 修正，CLAUDE.md 历史出处/STATE.md 叙事句未动）
+Last activity: 2026-08-17 -- Plan 08-04 complete: SC-5 真实中断往返（`3c42c20`——TestInterruptResumeRoundTrip 全链路 hermetic 绿：tool.StatefulInterrupt → sqlite checkpoint 持久化 → 实例级重启 ResumeWithParams → 终答携带注入决策；schema.RegisterName 双注册面 + grep 门；phase hermetic 五门全绿，D8-06 固化）
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
@@ -96,6 +96,7 @@ Last activity: 2026-08-17 -- Plan 08-03 complete: SC-3 legacy interrupt 禁令�
 | D8-03 | sqlite CheckPointStore 骨架形态（Phase 8 / Plan 08-02） | Get/Set 挂 SQLiteStore（非独立类型，PATTERNS 形态 A），`var _ compose.CheckPointStore = (*SQLiteStore)(nil)` 一个断言同时锁 compose 与 adk 两个 alias 消费面；checkpoint 表 DDL 本 phase 即带 session_id/skill_id/expires_at 预留列（Phase 11 生命周期免 ALTER），本 phase 不写不滤 expires_at；不实现 Delete（CheckPointDeleter 留 Phase 11）；store 层 payload 纯透传不解析（resume-data 校验归 Phase 11 HITL-04）。六面测试（round-trip 含非 UTF8 / Close+reopen 等值读回 / upsert / unknown-id 三态 / DROP TABLE 存活 / closed 守卫）锁定 SC-4 store 层语义。 |
 | D8-04 | SC-3 禁令门形态（Phase 8 / Plan 08-03） | 独立 TestNoLegacyInterruptAPI（不并入 RunsUnder10s 聚合，contract_test.go 零改动）；WalkDir 从 findModuleRoot 扫全仓 .go（含 _test.go），排除 .claude/web/.git/node_modules/.planning/screenshots + 门自身文件；禁令清单三标识符（NewInterruptAndRerunErr / compose.InterruptAndRerun / deprecatedInterruptAndRerun）；WrapInterruptAndRerunIfNeeded 不禁（官方迁移辅助）；负向证明（探针注入 FAIL 点名 file:line→删除恢复 PASS）入 08-03-SUMMARY。 |
 | D8-05 | 版本叙事对齐口径（Phase 8 / Plan 08-03） | REQUIREMENTS/ROADMAP/CLAUDE.md 定点改 v0.9.14 + 双处用户决策注记（2026-08-17 覆盖研究期 v0.9.13 / 而非研究原锁）；PLAT-05/SC-4 注册 API 修正为 schema.RegisterName[T](name)（RESEARCH Pitfall 1）；CLAUDE.md:203/:227 历史研究出处、STATE.md、phase 目录名一律不动（身份锚点）。 |
+| D8-06 | SC-5「进程重启」口径 + 两进程 stub 剧本形态（Phase 8 / Plan 08-04） | 「重启」= 实例级重建（新 DB handle + 新 ChatModelAgent + 新 Runner，同一 DSN 文件）——官方跨实例 resume 语义（同 CheckPointID + 共享 store）成立；stub 剧本按对话历史分支（有无 Tool 消息）而非实例轮次计数（进程 2 新实例拿到恢复历史才走终答分支，计数剧本会死循环）；中断 ID 取 InterruptContexts[0].ID 并断言地址末段指向审批工具；注册面 schema.RegisterName[T](稳定名) 双注册由 round-trip 测试 + grep 门双重强制（裸 gob 注册 = 0）。 |
 
 ---
 
@@ -200,10 +201,11 @@ Last activity: 2026-08-17 -- Plan 08-03 complete: SC-3 legacy interrupt 禁令�
 
 ---
 | Phase 08 P03 | 6m | 2 tasks | 4 files |
+| Phase 08 P04 | 5m | 2 tasks | 1 files |
 
 ## Session Continuity
 
-**Resume point (v0.8):** Milestone v0.8 roadmap created 2026-08-17 — ROADMAP.md carries phases 8-13 (strict chain 8→9→10→11→12→13 per research SUMMARY.md §Implications for Roadmap); REQUIREMENTS.md traceability maps all 25 v0.8 requirements (PLAT-04/05, GEVL-08, MEM-01..05, HITL-01..08, PLAN-01..05, FAN-01..04); Phase 9 is the HARD GATE for Phase 10. **Plan 08-01 COMPLETE 2026-08-17 (commit `36845c0`)**: eino v0.9.14 + ext openai v0.1.13 落库，hermetic 四道门全绿零修复提交（TestContractVersionPin 已断言新 pin）。**Plan 08-02 COMPLETE 2026-08-17 (commits `9a557b1` RED + `e6a580a` GREEN)**: sqlite CheckPointStore 骨架就位——SQLiteStore.Get/Set 满足 compose.CheckPointStore（编译期断言），checkpoint 表同库 additive 幂等（Phase 11 预留列齐备），SC-4 store 层语义（含 Close+reopen 等值读回）六面测试锁定，internal/store 全树零回归。**Plan 08-03 COMPLETE 2026-08-17 (commits `fea6114` 禁令门 + `996c33a` 文档对齐)**: SC-3 legacy interrupt 禁令门 TestNoLegacyInterruptAPI 落地（全仓扫描 + 负向证明），REQUIREMENTS/ROADMAP/CLAUDE.md 版本叙事对齐 v0.9.14（PLAT-05/SC-4 → schema.RegisterName）。Next: Plan 08-04 (Wave 3: SC-5 真实中断往返——消费 08-02 的 store，经 adk.Runner CheckPointStore 字段 + schema.RegisterName 注册) 然后 08-05 (Wave 4: live 重锁 human-verify 三门)。Phase 7 leftovers (07-02 T3, 07-05 T2/T3, 07-06) are deferred to after this milestone by user decision 2026-08-17 — do not lose them.
+**Resume point (v0.8):** Milestone v0.8 roadmap created 2026-08-17 — ROADMAP.md carries phases 8-13 (strict chain 8→9→10→11→12→13 per research SUMMARY.md §Implications for Roadmap); REQUIREMENTS.md traceability maps all 25 v0.8 requirements (PLAT-04/05, GEVL-08, MEM-01..05, HITL-01..08, PLAN-01..05, FAN-01..04); Phase 9 is the HARD GATE for Phase 10. **Plan 08-01 COMPLETE 2026-08-17 (commit `36845c0`)**: eino v0.9.14 + ext openai v0.1.13 落库，hermetic 四道门全绿零修复提交（TestContractVersionPin 已断言新 pin）。**Plan 08-02 COMPLETE 2026-08-17 (commits `9a557b1` RED + `e6a580a` GREEN)**: sqlite CheckPointStore 骨架就位——SQLiteStore.Get/Set 满足 compose.CheckPointStore（编译期断言），checkpoint 表同库 additive 幂等（Phase 11 预留列齐备），SC-4 store 层语义（含 Close+reopen 等值读回）六面测试锁定，internal/store 全树零回归。**Plan 08-03 COMPLETE 2026-08-17 (commits `fea6114` 禁令门 + `996c33a` 文档对齐)**: SC-3 legacy interrupt 禁令门 TestNoLegacyInterruptAPI 落地（全仓扫描 + 负向证明），REQUIREMENTS/ROADMAP/CLAUDE.md 版本叙事对齐 v0.9.14（PLAT-05/SC-4 → schema.RegisterName）。**Plan 08-04 COMPLETE 2026-08-17 (commit `3c42c20`)**: SC-5 真实中断往返 TestInterruptResumeRoundTrip 落地——工具层 StatefulInterrupt 携带 schema.RegisterName 注册的 *approvalDecision → adk Runner Action.Interrupted（InterruptContexts[0].ID）→ checkpoint 持久化 sqlite（existed=true 实证）→ 实例级「进程重启」（Close + 同 DSN 重开 + 全新 Agent/Runner）→ ResumeWithParams(Targets) 注入决策 → 恢复到脚本化终答且注入值在终答文本 + 重启侧工具双重可见（D8-06）；phase hermetic 五门全绿（build+vet / go test ./... 全量 / contract 含 VersionPin+禁令门 / store 七面 / cancel 50.07ms<200ms）。Next: Plan 08-05 (Wave 4: live 重锁 human-verify 三门——真 GLM cancel / Milvus tier-filter / 冻结 eval 重跑；PLAT-04/PLAT-05 勾选留待此收口)。Phase 7 leftovers (07-02 T3, 07-05 T2/T3, 07-06) are deferred to after this milestone by user decision 2026-08-17 — do not lose them.
 
 **Resume point (Phase 7):** Plan 07-05 (eval snapshot + demo GIF) is IN PROGRESS — Task 1/3 DONE via TDD, 2 commits (`abf2f4d` RED test + `4873213` GREEN impl). `scripts/eval_snapshot/{main.go,main_test.go}` shipped: standalone Go program reads `eval/report.json` + `eval/frozen/compliance.lock.json` via `eval.LoadReport`/`eval.LoadLock`, **derives** `refusal_accuracy` from `Report.Cases` via the pure fn `deriveRefusalAccuracy` (count(cat=="refusal-required" && Refused) / count(cat=="refusal-required") — RESEARCH Q1 load-bearing, NOT an evaluator field), renders the README markdown snapshot block (date + lock metadata + Overall metrics + derived % + case breakdown + reproduce cmd). 6/6 hermetic unit tests PASS (all-refused 1.0 / half-refused 0.5 / zero-refusal-required graceful 0,N/A / category-filter invariant / renderSnapshot metadata / N/A cell); `go vet` clean; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. **Tasks 2 & 3 `checkpoint:human-verify gate=blocking` BLOCKING** — Task 2 needs live Milvus+BGE-M3+GLM stack (`docker compose up` + `ollama pull bge-m3` + populate `GLM_API_KEY`+`BGE_M3_URL` in `.env`) to run `go run ./cmd/eval --frozen=compliance` → `eval/report.json` → `go run ./scripts/eval_snapshot` → paste stdout into README `## Eval Results` (still PLACEHOLDER); Task 3 needs screen capture (ScreenToGif/OBS) to record `docs/demo.gif` (cited verdict + structured refusal flows, <5MB, embed already in README hero). Plan 07-02 (containerization) Task 3 docker-build ALSO still IN PROGRESS — Docker not in PATH. Plans 07-01 (release-meta) + 07-03 (docs) + 07-04 (examples+eval sample) COMPLETE. Next: human resolves 07-05 Task 2/3 checkpoints (which unblocks 07-06 publication governance — must NOT push to public remote until README eval numbers + GIF are in tree). See `.planning/phases/07-open-source-release/07-05-SUMMARY.md`.
 
