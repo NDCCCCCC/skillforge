@@ -18,17 +18,25 @@ package sqlite
 
 import "context"
 
-// schemaSQL creates the two tables the store owns. CREATE TABLE IF NOT
+// schemaSQL creates the three tables the store owns. CREATE TABLE IF NOT
 // EXISTS makes migrate() idempotent — safe to call on every New().
 //
 // audit (T-3-AUDIT anti-tampering): INSERT + SELECT paths only — there
-// is NO row-modification path anywhere in this package (the eval sidecar
-// owns the one-shot metrics backfill, the only sanctioned exception).
+// is NO row-modification path for audit rows (the eval sidecar owns the
+// one-shot metrics backfill, the only sanctioned exception).
 // The four Ragas metric columns are NULL until the sidecar backfills them.
 //
 // session_turn: the UNIQUE(session_id, role, ts) constraint is the
 // AppendTurn idempotency mechanism — a replayed (sessionID, user.Ts,
 // assistant.Ts) tuple hits ON CONFLICT DO NOTHING on both INSERTs.
+//
+// checkpoint (Plan 08-02): opaque eino CheckPointStore bytes. INSERT +
+// SELECT passthrough — the store never parses the payload; the only
+// write is the id-keyed upsert (ON CONFLICT(id) DO UPDATE) so a
+// re-interrupted run replaces its own checkpoint. session_id / skill_id
+// / expires_at are reserved for the Phase 11 lifecycle (bind-to-session,
+// TTL) — this phase neither writes nor filters on them (all-NULL rows
+// are indistinguishable from having no filter).
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS audit (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +69,15 @@ CREATE TABLE IF NOT EXISTS session_turn (
     UNIQUE(session_id, role, ts)
 );
 CREATE INDEX IF NOT EXISTS idx_session_turn_sid ON session_turn(session_id);
+
+CREATE TABLE IF NOT EXISTS checkpoint (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL DEFAULT '',
+    skill_id   TEXT NOT NULL DEFAULT '',
+    payload    BLOB NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    expires_at TEXT
+);
 `
 
 // migrate runs schemaSQL against the store's *sql.DB. Idempotent —
