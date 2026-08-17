@@ -49,7 +49,7 @@
 //
 //	The plan assumed `adk.NewRunner(ctx, adk.RunnerConfig{Agent: reactAgent})`
 //	+ iterator drain (per RESEARCH.md §Code Examples). Verified at compile
-//	time against eino@v0.7.7: `react.Agent` does NOT satisfy the `adk.Agent`
+//	time against eino@v0.9.14: `react.Agent` does NOT satisfy the `adk.Agent`
 //	interface (different Generate/Stream signatures), so `adk.NewRunner`
 //	cannot wrap it. The actual API is `react.NewAgent` →
 //	`reactAgent.Generate(ctx, msgs, agent.WithComposeOptions(...))` which
@@ -164,7 +164,7 @@ type Agent struct {
 // produces the agent's answer (no tool call). With DefaultMaxHops=2
 // this yields MaxStep=5: chat1 → tool1 → chat2 → tool2 → chat3 (final).
 //
-// Empirical verification (eino@v0.7.7/flow/agent/react/option_test.go:71):
+// Empirical verification (eino@v0.9.14/flow/agent/react/option_test.go:73):
 // MaxStep=3 produces a single-tool-call flow that returns a final
 // answer (chat1 → tool1 → chat2). Generalizing: MaxStep = 2N+1 is the
 // smallest value that allows exactly N retrieve calls plus a final
@@ -223,9 +223,9 @@ func NewAgent(ctx context.Context, cfg AgentConfig) (*Agent, error) {
 	retrieveTool := BuildRetrieveTool(cfg.Embedder, cfg.Retriever, cfg.Manifest)
 
 	// NOTE: the field name `ToolCallingModel` is verified against
-	// eino@v0.7.7/flow/agent/react/react.go:50 — it is the recommended
+	// eino@v0.9.14/flow/agent/react/react.go:139 — it is the recommended
 	// field. The deprecated `Model model.ChatModel` field exists at
-	// react.go:53 but does NOT accept ToolCallingChatModel-typed values
+	// react.go:142 but does NOT accept ToolCallingChatModel-typed values
 	// cleanly (the loss of WithTools capability breaks the ReAct loop).
 	// AgentConfig.ChatModel is already typed as model.ToolCallingChatModel
 	// so no runtime type assertion is needed here.
@@ -233,7 +233,7 @@ func NewAgent(ctx context.Context, cfg AgentConfig) (*Agent, error) {
 		ToolCallingModel: cfg.ChatModel,
 		ToolsConfig: compose.ToolsNodeConfig{
 			// compose.ToolsNodeConfig.Tools is `[]tool.BaseTool` (verified
-			// at eino@v0.7.7/compose/tool_node.go:121) — NOT
+			// at eino@v0.9.14/compose/tool_node.go:186) — NOT
 			// `InvokableTools` as the plan's research note A2 assumed.
 			// tool.InvokableTool satisfies tool.BaseTool (BaseTool is the
 			// minimal Info() interface; InvokableTool adds InvokableRun).

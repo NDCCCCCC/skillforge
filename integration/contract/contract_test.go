@@ -82,11 +82,12 @@ var (
 // re-running the spike suite is the only safe validation, so the
 // contract test fails fast on any version change.
 //
-// Per Plan 01-01 SUMMARY deviation #2: eino-ext was corrected from
-// pseudo-version to tagged v0.1.5 (the highest version compatible with
-// eino v0.7.7). This test asserts v0.1.5 — NOT the pseudo-version
-// pattern the original plan described. That plan assumption was
-// corrected by Plan 01-01 in 2026-08-11.
+// Phase 8 (Plan 08-01) re-pinned the stack 2026-08-17: eino upgraded to
+// v0.9.14 + eino-ext openai to v0.1.13. User decision 2026-08-17:
+// v0.9.14 covers the research-period v0.9.13 (v0.9.14 fixes the adk
+// summarization-middleware ctx bug that Phase 10 depends on); v0.10.0-alpha.x
+// is explicitly rejected — maintainer warns it is breaking. This test
+// asserts the NEW pins; hertz + milvus remain at their Phase-1 values.
 func TestContractVersionPin(t *testing.T) {
 	content, err := os.ReadFile(findGoMod(t))
 	if err != nil {
@@ -94,18 +95,19 @@ func TestContractVersionPin(t *testing.T) {
 	}
 	body := string(content)
 
-	// eino v0.7.7 EXACTLY (STACK.md locks the minimum).
-	assert.True(t, strings.Contains(body, "github.com/cloudwego/eino v0.7.7"),
-		"Version pin violated: github.com/cloudwego/eino must be v0.7.7 (got body without that substring)")
+	// eino v0.9.14 EXACTLY (Phase 8 pin — user decision 2026-08-17).
+	assert.True(t, strings.Contains(body, "github.com/cloudwego/eino v0.9.14"),
+		"Version pin violated: github.com/cloudwego/eino must be v0.9.14 (got body without that substring)")
 
 	// hertz v0.10.6 — locked by SC-1 (Hertz pkg/protocol/sse API verified at this version).
 	assert.True(t, strings.Contains(body, "github.com/cloudwego/hertz v0.10.6"),
 		"Version pin violated: github.com/cloudwego/hertz must be v0.10.6")
 
-	// eino-ext openai v0.1.5 — Plan 01-01 pinned to the highest version
-	// compatible with eino v0.7.7 (newer v0.1.13+ requires eino v0.7.13+).
-	assert.True(t, strings.Contains(body, "github.com/cloudwego/eino-ext/components/model/openai v0.1.5"),
-		"Version pin violated: github.com/cloudwego/eino-ext/components/model/openai must be v0.1.5")
+	// eino-ext openai v0.1.13 — Phase 8 co-upgraded with eino v0.9.14
+	// (its go.mod floor is eino v0.7.13+, MVS-compatible; compile-check
+	// spike verified the whole existing call surface unchanged).
+	assert.True(t, strings.Contains(body, "github.com/cloudwego/eino-ext/components/model/openai v0.1.13"),
+		"Version pin violated: github.com/cloudwego/eino-ext/components/model/openai must be v0.1.13")
 
 	// milvus-sdk-go v2.4.2 — Plan 01-02 verified positional Search API at this version.
 	assert.True(t, strings.Contains(body, "github.com/milvus-io/milvus-sdk-go/v2 v2.4.2"),

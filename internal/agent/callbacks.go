@@ -100,8 +100,8 @@ func (s *stepCounter) current() int {
 // The handler uses the canonical Eino callback template pattern
 // (template.NewHandlerHelper().ChatModel(modelHandler).Tool(toolHandler).Handler())
 // per 03-RESEARCH.md §Code Examples lines 696-710. Callback signatures
-// follow eino@v0.7.7/utils/callbacks/template.go:430-433 (ModelCallbackHandler.OnEnd)
-// and 502-503 (ToolCallbackHandler.OnStart) — both return context.Context
+// follow eino@v0.9.14/utils/callbacks/template.go:525-528 (ModelCallbackHandler)
+// and 596-600 (ToolCallbackHandler) — both return context.Context
 // (NOT error, as the original plan / research note assumed).
 //
 // Import-graph note: there are TWO callbacks packages in Eino:

@@ -177,9 +177,10 @@ func BuildRetrieveTool(emb embedder.Embedder, ret retriever.Retriever, m *skill.
 		}, nil
 	}
 
-	// utils.NewTool infers the JSON-args shape from the generic
-	// InvokeFunc type parameters. Verified at
-	// eino@v0.7.7/components/tool/utils/invokable_func.go:101-105.
+	// utils.NewTool takes the explicit *schema.ToolInfo above plus the
+	// typed invoke closure; the response JSON shape is inferred from the
+	// generic InvokeFunc type parameters. Verified at
+	// eino@v0.9.14/components/tool/utils/invokable_func.go:139-143.
 	return utils.NewTool(desc, invoke)
 }
 

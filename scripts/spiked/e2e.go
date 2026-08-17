@@ -241,7 +241,7 @@ func runE2EWithBaseURL(ctx context.Context, baseURL, apiKey, modelName string) e
 
 		// Runner.Query takes a single user-message string. Per-call options
 		// (temperature, max_tokens, response_format, thinking) are passed
-		// via WithChatModelOptions — verified at eino@v0.7.7/adk/call_option.go:54.
+		// via WithChatModelOptions — verified at eino@v0.9.14/adk/chatmodel.go:97.
 		iter := runner.Query(ctx, query,
 			adk.WithChatModelOptions([]model.Option{
 				model.WithTemperature(0),

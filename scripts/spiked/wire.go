@@ -19,8 +19,8 @@
 // Runs an in-process mock OpenAI server on a dynamic port, configures an
 // Eino ChatModel pointing at the mock, invokes Generate() with the
 // temperature / response_format / thinking extras, then asserts the
-// captured request body contains all three extras. This proves Eino v0.7.7
-// + eino-ext openai v0.1.5 serialize the extras correctly to the wire
+// captured request body contains all three extras. This proves Eino v0.9.14
+// + eino-ext openai v0.1.13 serialize the extras correctly to the wire
 // without burning any real API quota (per D-02).
 //
 // Pattern adapted from `.claude/skills/spike-findings-ai-agent/sources/001-eino-temperature-passthrough/main.go`
