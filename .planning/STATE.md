@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
-current_phase: 8
+current_phase: 08
 current_plan: 1
-status: planned
-last_updated: "2026-08-17T15:15:16.500Z"
-last_activity: 2026-08-17 -- Phase 8 planned: 5 plans (08-01..08-05) in 4 waves, plan-checker PASSED iteration 2 (0 blockers/0 warnings); upgrade target eino v0.9.14 per user decision 2026-08-17
+status: executing
+last_updated: "2026-08-17T15:31:24.131Z"
+last_activity: 2026-08-17 -- Phase 08 execution started
 progress:
   total_phases: 13
   completed_phases: 5
@@ -23,7 +23,7 @@ progress:
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 8
+**Current Phase:** 08
 **Current Plan:** 1
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
@@ -43,17 +43,17 @@ progress:
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 8 — 全量依赖升级（P8.0 — eino v0.7.7 → v0.9.13）
+**Current focus:** Phase 08 — p8-0-eino-v0-7-7-v0-9-13
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 
 ---
 
 ## Current Position
 
-Phase: 8 (全量依赖升级（P8.0 — eino v0.7.7 → v0.9.13）) — EXECUTING
+Phase: 08 (p8-0-eino-v0-7-7-v0-9-13) — EXECUTING
 Plan: 1 of 5
-Status: Executing Phase 8
-Last activity: 2026-08-17 -- Phase 8 execution started
+Status: Executing Phase 08
+Last activity: 2026-08-17 -- Phase 08 execution started
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
