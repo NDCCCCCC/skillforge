@@ -106,6 +106,50 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DATA-13**: Approval timeout = 持续挂起 (no auto-reject, no auto-timeout) — each query must be explicitly approved or rejected by data officer
 - [ ] **DATA-14**: Every approval creates audit row: `{query_id, user_id, business_reason, sql_preview, approve_or_reject_result, data_officer_id, ttl_token_id, timestamp, chunk_ids_returned}`
 
+## v0.8 Requirements (Harness Milestone — 可信×行动融合)
+
+> Added 2026-08-17 via /gsd:new-milestone. Research: `.planning/research/SUMMARY.md`. 贯穿性不变量：**citation 白名单 = 本轮检索结果，代码强制**——历史/摘要/子 agent 输出/resume 注入的文本永远不能成为证据。
+
+### Foundation (PLAT / GEVL)
+
+- [ ] **PLAT-04**: eino v0.7.7 → v0.9.13 升级 + eino-ext 逐组件联动升级；回归门 = `integration/contract` 漂移套件 + 冻结 eval 基线全绿 + Phase-1 live verify 重新锁定（cancel <200ms、Milvus tier-filter）；legacy interrupt API lint 禁用
+- [ ] **PLAT-05**: sqlite `CheckPointStore` 持久化实现（复用 `internal/store/sqlite`；所有自定义状态类型 `gob.RegisterName`；真实中断运行往返测试）
+- [ ] **GEVL-08**: 历史注入回归硬门——golden set A/B（`history=nil` vs 投影历史 × 善意追问/恶意注入/旧拒答上下文），四指标漂移 <5% 且 refusal delta <10%；不过门则记忆不得发布，产出消毒规则或逃逸方案（last-3-turns / prompt 附录 / 仅用户轮记忆）
+
+### Multi-turn Memory (MEM)
+
+- [ ] **MEM-01**: 用户可进行追问指代（「那第二条呢」「依据是什么」），agent 结合会话历史正确解析并作答
+- [ ] **MEM-02**: 会话历史跨页面刷新存活并喂给 agent（server 层 `internal/history` 投影 sqlite session → `[]schema.Message`）
+- [ ] **MEM-03**: citation 白名单代码强制——citation 只能引用**本轮** Run 检索到的 chunk；历史/摘要/resume 注入文本物理上不能成为证据
+- [ ] **MEM-04**: 历史投影消毒——投影时剥离 `[CHUNK id]` 标记，verdict JSON 经 `conclusionText`/`refusalText` 确定性渲染为纯文本
+- [ ] **MEM-05**: 长会话 token 预算 + 摘要压缩（先哑预算，summarization 中间件在 Runner 迁移后启用；project→then→summarize 顺序）
+
+### Write Tools + Approval Gate (HITL)
+
+- [ ] **HITL-01**: agent 调用写工具前中断（Eino Interrupt），流内呈现内联审批卡（what / tool / 完整参数快照 / why），SSE 流干净关闭
+- [ ] **HITL-02**: 用户可批准一次 / 拒绝（拒绝必填理由）；审批绑定结构化工具调用（name+args），永不绑定原始字符串
+- [ ] **HITL-03**: 审批态跨刷新/重启存活（sqlite checkpoint + GET resume 端点恢复）；checkpoint 绑定 skill 版本 + prompt_hash，过期 checkpoint 有显式 UI 态
+- [ ] **HITL-04**: 每个审批决策产生 INSERT-only 审计三行生命周期（`action_pending_approval` → `action_approved` / `action_rejected`）；写路径审计 **fail-closed**（与读路径 swallow 相反的显式 Key Decision）；interrupt 时冻结参数快照进 pending 行（批的 A 不会执行成 B）；tool_call_id 幂等键
+- [ ] **HITL-05**: `writes:` frontmatter 代码级强制——agent 无法调用其 Skill 未声明的写工具
+- [ ] **HITL-06**: 首批两个写工具落地：memory:facts 写入 + 审查报告生成
+- [ ] **HITL-07**: 用户可在批准前修改工具参数（edit-before-approve，LangGraph edit 决策）
+- [ ] **HITL-08**: 用户可「批准并记住」（approve-and-remember），规则按会话/Skill 级作用域存储，可查看可撤销
+
+### Planning Layer (PLAN)
+
+- [ ] **PLAN-01**: SKILL.md `agent: deep` 启用 DeepAgent archetype（`adk/prebuilt/deep` + write_todos），经 `internal/runtime` 工厂按 `Manifest.Agent` 分发；所有 archetype 统一经 `ApplyTrustStage`（floor→grounding→critique）出口
+- [ ] **PLAN-02**: 用户可看到实时计划清单流式更新（todo pending/in_progress/completed），计划随会话持久化
+- [ ] **PLAN-03**: 计划确认门——DeepAgent 执行前用户批准计划（复用 HITL 审批机制，Gemini 模式）
+- [ ] **PLAN-04**: 三层预算门——MaxIteration ≤10 + run 级 token 预算 + 回路检测；触发即保守收尾（forced_stop），预算事件进审计
+- [ ] **PLAN-05**: 可回放规划轨迹——write_todos 审计行可完整重建某次运行的计划演变，UI 可回放
+
+### Sub-agent Fan-out (FAN)
+
+- [ ] **FAN-01**: orchestrator 可将多跳检索扇出为并行子 agent（一层为限，禁止递归扇出），子 agent 返回压缩结果、故障隔离
+- [ ] **FAN-02**: tier 边界构造期闭包继承——子 agent 的 retrieve 工具闭包自父 manifest 的 `ResolvedTiers()`，结构性无法扩权；交集为空 = 加载期校验错误
+- [ ] **FAN-03**: 合并确定性（key 排序纯函数，契约测试 10× 一致）+ 保守部分失败合并（任一子 agent 拒答 → 合并结论最多「需补充」，绝不肯定）
+- [ ] **FAN-04**: per-sub-agent 合并前 grounding（复用 D2-01 逐字引用验证护城河）；扇出事件（RunPath/Transfer）写入审计
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -115,6 +159,9 @@ Deferred to future release. Tracked but not in current roadmap.
 - **PLAT-01**: Skill marketplace with version pinning and dependency resolution
 - **PLAT-02**: Multi-user real-time collaborative Skill editing
 - **PLAT-03**: Cross-Skill chaining (compose Skill A → Skill B pipelines)
+- **PLAT-06**: Cross-session semantic long-term memory（需先做隐私设计；v0.8 只做会话内记忆）
+- **PLAT-07**: Async / webhook 审批委托（需身份 + 投递基础设施；v0.8 只做会话内同步审批）
+- **PLAT-08**: 递归子 agent / 多会话任务板（需成本与审计模型；v0.8 子 agent 限一层）
 
 ### Scale & Production
 
@@ -138,6 +185,7 @@ Explicitly excluded. Documented to prevent scope creep.
 | Desktop-grade desktop app (denova-style binary) | v1 聚焦 Web 应用形态 |
 | Full private-deployment ops (K8s / Helm / enterprise SSO) | v1 给本地启动 + Docker，运维套件后续 |
 | Real-time multi-user Skill editing | v1 假设单人 / 小团队维护 Skill |
+| Bypass / YOLO 审批模式（自动批准所有写操作） | 与合规定位根本冲突，永不发布（FEATURES.md anti-feature 结论，2026-08-17） |
 | Custom LLM training / fine-tuning | 只做 agent 编排与工程，不做模型训练 |
 | Native mobile app | Web + PWA 足够，不做原生 |
 | Self-hosted LLM training infrastructure | Out of core value; rely on OpenAI-compatible APIs |
