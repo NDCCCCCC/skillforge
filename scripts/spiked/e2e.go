@@ -92,17 +92,6 @@ var complianceQueries = []string{
 // citations=[] when it lacks grounded policy context; the hardcoded
 // citation injection in runE2EWithBaseURL fills in a structured fixture
 // citation for the regression trace. Production (02-03 cmd/server)
-// systemPrompt enforces the JSON output schema. Adapted from spike 003
-// main.go (proven to produce 100% schema-valid output across 50 invocations
-// on GLM-5.2 with thinking:disabled + temperature:0 +
-// response_format:{type:json_object}).
-//
-// D2-06 evolution: the citations field changed from `[<clause names>]`
-// (string array) to a structured array of `{chunk_id, span, tier}` objects.
-// The spike path has no real retrieval, so the LLM is told to emit
-// citations=[] when it lacks grounded policy context; the hardcoded
-// citation injection in runE2EWithBaseURL fills in a structured fixture
-// citation for the regression trace. Production (02-03 cmd/server)
 // injects real retrieved chunks into the prompt so the LLM can cite them.
 //
 // 260817-vsm: Status enum migrated to the platform-neutral
@@ -383,9 +372,10 @@ func probeCancellation(ctx context.Context, runner *adk.Runner) (int, error) {
 // the iterator emits exactly one AgentEvent whose Output.MessageOutput
 // carries the final assistant message.
 //
-// If any event has a non-nil Err, drain returns that error immediately
-// (the iterator is still drained to completion in the deferred goroutine
-// to avoid leaking the underlying channel).
+// If any event has a non-nil Err, the FIRST such error is recorded and
+// returned after the loop — the iterator is still consumed to completion
+// in this same loop (no deferred goroutine; the drain is the loop itself)
+// to avoid leaking the underlying channel.
 func drainFinalContent(iter *adk.AsyncIterator[*adk.AgentEvent]) (string, error) {
 	var content strings.Builder
 	var firstErr error
