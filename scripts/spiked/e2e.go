@@ -415,11 +415,18 @@ func drainFinalContent(iter *adk.AsyncIterator[*adk.AgentEvent]) (string, error)
 
 // truncate keeps trace + error messages bounded. Long Chinese queries +
 // 400-token LLM responses would otherwise make the trace unreadable.
+// Rune-safe: n counts RUNES, not bytes — byte-slicing a multi-byte UTF-8
+// string (Chinese compliance queries) would produce invalid UTF-8 garbage
+// in the trace. Mirrors the rune-safe helper in internal/agent/critique.go.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "..."
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "..."
 }
 
 // verdictSummary is a one-line human-readable summary for the text-delta
