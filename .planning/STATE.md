@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
-current_phase: 08
-current_plan: 4
+current_phase: 9
+current_plan: Not started
 status: verifying
-last_updated: "2026-08-17T16:54:30.000Z"
-last_activity: 2026-08-18
+last_updated: "2026-08-17T17:14:11.997Z"
+last_activity: 2026-08-17
 progress:
   total_phases: 13
   completed_phases: 6
@@ -23,8 +23,8 @@ progress:
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 08
-**Current Plan:** 4
+**Current Phase:** 9
+**Current Plan:** Not started
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** `/gsd:verify-work 8` (Phase 8 全 5 plan 完成——08-05 live 三门 approved 2026-08-18)。验证通过后 `/gsd:plan-phase 9`（历史注入 spike 硬门，GEVL-08——Phase 10 的 HARD GATE）。
@@ -53,7 +53,7 @@ progress:
 Phase: 08 (p8-0-eino-v0-7-7-v0-9-13) — EXECUTING
 Plan: 5 of 5
 Status: Phase complete — ready for verification
-Last activity: 2026-08-18 -- **Phase 8 COMPLETE (5/5 plans)**: Plan 08-05 live 三门重锁全部经用户 human-verify 批准——①真 GLM cancel 传播实测 **0ms**（spiked e2e ×2 exit 0，<200ms 门）；②内网 Milvus tier-filter 声明 tier **5 行** / 声明外 **0 行**（个人 tier 在 expr 层排除，no_authorized_source 结构化拒答，零泄漏）；③冻结 eval 50/50 case gate **PASS**（faithfulness **0.9720** ≥ 0.9000，exit 0；refusal_accuracy **95%**；lock sha256 50bb1688… 逐字节一致）——Overall 指标留档为 v0.8 里程碑基线（D8-07）。PLAT-04 + PLAT-05 双勾选收口。Next: `/gsd:verify-work 8`，随后 Phase 9 规划（GEVL-08 spike 硬门）
+Last activity: 2026-08-17
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
