@@ -15,9 +15,9 @@
 //
 // 260817-i36 (②): the chip is now a BUTTON. Clicking dispatches
 // setCenterView({kind:'chunk-source', ...}) — the same navigation
-// contract as CitationCluster's superscript (normalizeChunkID entry
-// normalization + extractChunkMetadata for version/effectiveDate) —
-// making the doc chips under the conclusion the single, interactive
+// contract as the verdict card's citation superscript (normalizeChunkID
+// entry normalization + extractChunkMetadata for version/effectiveDate)
+// — making the doc chips under the conclusion the single, interactive
 // citation UI in the chat stream.
 import type { SourceDocumentUIPart } from 'ai';
 import { extractChunkMetadata, normalizeChunkID } from '../../../lib/chunk-lookup';

@@ -8,9 +8,12 @@
 // `isVerdict(data)` / `isRefusal(data)` type guards (exported from
 // types/verdict.ts).
 //
-// When verdict: render <VerdictCard />. The CitationCluster inside
-// VerdictCard dispatches `setCenterView({ kind: 'chunk-source', ... })`
-// directly via the store singleton — no callback prop drilling.
+// When verdict: render <VerdictCard /> (or nothing at all for a clean
+// ok factual verdict in chat — see 260817-i36 ② below). Citation clicks
+// dispatch `setCenterView({ kind: 'chunk-source', ... })` directly via
+// the store singleton — no callback prop drilling. In the chat stream
+// the clickable source-document chips (SourceDocumentPart) are the
+// single citation UI.
 //
 // When refusal: render <RefusalCard />.
 //
