@@ -25,7 +25,7 @@
 //     the VerdictCard's verdict-answer block is suppressed (dedupe);
 //     when they do not, verdict-answer still renders inside the card.
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { UIMessage } from 'ai';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MessageBubble } from '../components/chat/MessageBubble';
@@ -330,11 +330,15 @@ describe('MessageBubble', () => {
     expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
     expect(screen.getByTestId('review-required-badge')).toBeInTheDocument();
     // …but the large StatusBadge + CitationCluster + citation count are
-    // chat-stream noise and are stripped (the corner badge on the
-    // conclusion text carries the status — Task 4).
-    expect(screen.queryByTestId('status-badge')).toBeNull();
+    // chat-stream noise and are stripped from the CARD (260817-i36 ②).
+    const card = screen.getByTestId('verdict-card');
+    expect(within(card).queryByTestId('status-badge')).toBeNull();
     expect(screen.queryByTestId('citation-cluster')).toBeNull();
     expect(screen.queryByText(/条引用/)).toBeNull();
+    // The status survives as the small corner badge on the conclusion
+    // text (260817-i36 ①) — the bubble's single status-badge node.
+    const cornerBadge = screen.getByTestId('status-badge');
+    expect(cornerBadge).toHaveAttribute('data-status', 'needs_input');
   });
 
   // --- 260817-i36 Task 3 (②): clickable source-document chips ---
@@ -418,5 +422,44 @@ describe('MessageBubble', () => {
     expect(chips).toHaveLength(2);
     expect(chips[0]).toHaveTextContent('annual_leave.md · chunk 3');
     expect(chips[1]).toHaveTextContent('annual_leave.md · chunk 7');
+  });
+
+  // --- 260817-i36 Task 4 (①): verdict status as a corner badge on the conclusion text ---
+
+  it('renders the verdict status as a small corner badge attached to the conclusion text (260817-i36 ①)', () => {
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: '结论：由部门负责人审批。' },
+        { type: 'data-policy', id: 'p1', data: factualVerdictData },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    const badge = screen.getByTestId('status-badge');
+    expect(badge).toHaveAttribute('data-status', 'ok');
+    expect(badge).toHaveTextContent('已给出');
+    // The badge is attached to the conclusion text's relative wrapper,
+    // not floating elsewhere in the bubble.
+    const textEl = screen.getByText('结论：由部门负责人审批。');
+    const wrapper = textEl.closest('.relative');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.contains(badge)).toBe(true);
+    // The ok factual card is omitted (Task 3 ②), so this corner badge
+    // is the bubble's ONLY status-badge node.
+    expect(screen.getAllByTestId('status-badge')).toHaveLength(1);
+  });
+
+  it('renders NO corner badge when the message carries no data-policy verdict (260817-i36 ①)', () => {
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '流式中途的草稿文本。' }],
+    };
+
+    render(<MessageBubble message={message} />);
+    expect(screen.getByText('流式中途的草稿文本。')).toBeInTheDocument();
+    expect(screen.queryByTestId('status-badge')).toBeNull();
   });
 });
