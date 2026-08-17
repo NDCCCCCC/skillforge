@@ -231,13 +231,19 @@ func TestContractStructuredOutputSchema(t *testing.T) {
 	// the LLM-produced JSON + the verdict.Verdict Go struct — drift here
 	// would mean either the prompt template or the struct tags changed.
 	// D2-06: Citations is []Citation (not []string).
+	//
+	// 260817-vsm: the platform-neutral Status is "ok"; the Compliance
+	// Skill's verdict code rides in ComplianceStatus ("compliant").
+	// Answer is omitted here because this test pins the compliance-review
+	// shape; factual-query tests live in the pipeline + chat packages.
 	original := verdict.Verdict{
-		Status:     "合规",
+		Status:     "ok",
 		Confidence: 0.85,
 		Citations: []verdict.Citation{
 			{ChunkID: "auth-001", Span: "出差住宿费超过标准额度时", Tier: "权威"},
 		},
-		ReviewRequired: true,
+		ReviewRequired:   true,
+		ComplianceStatus: verdict.CompliantStatus,
 	}
 	jsonBytes, err := json.Marshal(original)
 	assert.NoError(t, err, "marshal sample Verdict")
@@ -254,22 +260,33 @@ func TestContractStructuredOutputSchema(t *testing.T) {
 		"Verdict.Citations round-trip mismatch (D2-06 []Citation schema)")
 	assert.Equal(t, original.ReviewRequired, roundTripped.ReviewRequired,
 		"Verdict.ReviewRequired round-trip mismatch (json tag drift)")
+	assert.Equal(t, original.ComplianceStatus, roundTripped.ComplianceStatus,
+		"Verdict.ComplianceStatus round-trip mismatch (260817-vsm)")
 
-	// 2. ValidStatuses contents — explicit assertion on the exact 4 keys.
-	// A typo here (e.g. variation selector on a CN char) would silently
-	// change semantics; this assertion catches it.
+	// 2. ValidStatuses contents — explicit assertion on the platform-neutral
+	// 4 keys. Compliance-Skill-specific codes (compliant / non_compliant /
+	// not_applicable) live in ComplianceStatuses, NOT here.
 	expectedStatuses := map[string]bool{
-		"合规":         true,
-		"不合规":        true,
-		"需补充":        true,
-		"unanswered": true,
+		"ok":          true,
+		"needs_input": true,
+		"refused":     true,
+		"error":       true,
 	}
 	assert.Equal(t, expectedStatuses, verdict.ValidStatuses,
-		"verdict.ValidStatuses must contain exactly the 4 expected keys")
+		"verdict.ValidStatuses must contain exactly the 4 platform-neutral keys")
+
+	// 2b. ComplianceStatuses contents — the Compliance Skill's payload enum.
+	expectedCompliance := map[string]bool{
+		"compliant":      true,
+		"non_compliant":  true,
+		"not_applicable": true,
+	}
+	assert.Equal(t, expectedCompliance, verdict.ComplianceStatuses,
+		"verdict.ComplianceStatuses must contain exactly the 3 Compliance-Skill keys")
 
 	// 3. Validate accepts the sample + rejects unknown status. This is
 	// the runtime gate that catches LLM output drift (e.g. if a future
-	// model returns "compliant" instead of "合规").
+	// model returns "compliant" as Status instead of "ok").
 	ok, reason := verdict.Validate(original)
 	assert.True(t, ok, "sample Verdict should validate; reason=%s", reason)
 	assert.Empty(t, reason, "valid sample should have empty reason")
@@ -278,6 +295,16 @@ func TestContractStructuredOutputSchema(t *testing.T) {
 	okBad, reasonBad := verdict.Validate(badStatus)
 	assert.False(t, okBad, "unknown status should fail Validate")
 	assert.Contains(t, reasonBad, "invalid status", "reason should mention invalid status")
+
+	// 3b. Legacy compliance-specific Chinese values must now fail the
+	// platform Validate (they live in ComplianceStatus, not Status).
+	for _, legacy := range []string{"合规", "不合规", "需补充", "unanswered"} {
+		badLegacy := verdict.Verdict{Status: legacy, Confidence: 0.5, Citations: []verdict.Citation{}}
+		okLegacy, reasonLegacy := verdict.Validate(badLegacy)
+		assert.False(t, okLegacy, "legacy CN status %q must fail Validate (260817-vsm)", legacy)
+		assert.Contains(t, reasonLegacy, "invalid status",
+			"legacy CN status %q must produce 'invalid status' reason", legacy)
+	}
 }
 
 // TestContractCitationGrounding is the D2-01 contract assertion: the
