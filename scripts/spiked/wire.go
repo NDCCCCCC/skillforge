@@ -131,7 +131,11 @@ func parseSKILL(path string) (*SKILLFrontmatter, error) {
 func startMockServer(capturedBody *bytes.Buffer) (port int, shutdown func() error, err error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "mock: read request body: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		capturedBody.Write(body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -173,7 +177,7 @@ func startMockServer(capturedBody *bytes.Buffer) (port int, shutdown func() erro
 //
 // Per D-01 + D-02: no real GLM call here. Real API is reserved for
 // `spike e2e` in Plan 04.
-func runWire(ctx context.Context, args []string) error {
+func runWire(ctx context.Context, _ []string) error {
 	var captured bytes.Buffer
 
 	port, shutdown, err := startMockServer(&captured)
