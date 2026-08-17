@@ -310,4 +310,55 @@ describe('MessageBubble', () => {
     expect(answer).toBeInTheDocument();
     expect(answer).toHaveTextContent('由部门负责人审批');
   });
+
+  // --- 260817-i36 Task 2 (③): chunk-disambiguated source-document chip titles ---
+
+  it('renders the chunk-disambiguated source-document title without the legacy "doc:" prefix (260817-i36)', () => {
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'source-document',
+          sourceId: '3',
+          mediaType: 'text/markdown',
+          title: 'authority/annual_leave.md · chunk 3',
+        },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    const chip = screen.getByTestId('source-document');
+    expect(chip).toHaveTextContent('annual_leave.md · chunk 3');
+    // The Title is self-describing now (backend appends "· chunk N"),
+    // so the legacy "doc:" prefix is dropped.
+    expect(chip).not.toHaveTextContent('doc:');
+  });
+
+  it('renders distinguishable chips for two chunks of the same document (260817-i36)', () => {
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'source-document',
+          sourceId: '3',
+          mediaType: 'text/markdown',
+          title: 'authority/annual_leave.md · chunk 3',
+        },
+        {
+          type: 'source-document',
+          sourceId: '7',
+          mediaType: 'text/markdown',
+          title: 'authority/annual_leave.md · chunk 7',
+        },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    const chips = screen.getAllByTestId('source-document');
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent('annual_leave.md · chunk 3');
+    expect(chips[1]).toHaveTextContent('annual_leave.md · chunk 7');
+  });
 });

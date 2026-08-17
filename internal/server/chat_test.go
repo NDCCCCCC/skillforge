@@ -896,6 +896,45 @@ func TestVerdictStreamCarriesConclusionText(t *testing.T) {
 		"conclusion sentence must quote the grounded citation span verbatim")
 	assert.Contains(t, textDelta, "需人工复核",
 		"review_required=true verdict must surface the human-review note")
+
+	// 260817-i36 Task 2 (③): the source-document frame title must carry
+	// the chunk ordinal so two citations into the SAME document render
+	// distinguishable chips ("authority/travel_expense.md · chunk 1").
+	var docTitle string
+	for _, f := range frames {
+		if f.Type == "source-document" {
+			docTitle = f.Title
+		}
+	}
+	require.NotEmpty(t, docTitle, "verdict stream must carry a source-document frame")
+	assert.Equal(t, "authority/travel_expense.md · chunk 1", docTitle,
+		"source-document Title must disambiguate same-document chunks (260817-i36 ③)")
+}
+
+// TestTitleFor — 260817-i36 Task 2 (③). The source-document chip title
+// must disambiguate citations that point at different chunks of the SAME
+// document: "<source path> · chunk <id>". On a sourcePathFor miss (the
+// chunk ID is unknown to the retriever result set) the title falls back
+// to the bare chunk ID — and must NOT self-repeat ("9 · chunk 9").
+func TestTitleFor(t *testing.T) {
+	chunks := []retriever.Hit{
+		{ID: 3, Tier: "权威", Content: "年假条款甲", Source: "authority/annual_leave.md", Score: 0.9},
+		{ID: 7, Tier: "权威", Content: "年假条款乙", Source: "authority/annual_leave.md", Score: 0.8},
+	}
+	cases := []struct {
+		name    string
+		chunkID string
+		want    string
+	}{
+		{"hit appends chunk ordinal", "3", "authority/annual_leave.md · chunk 3"},
+		{"same doc different chunk disambiguates", "7", "authority/annual_leave.md · chunk 7"},
+		{"miss falls back to bare chunk ID (no self-repeat)", "9", "9"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, titleFor(chunks, tc.chunkID))
+		})
+	}
 }
 
 // TestRefusalStreamCarriesTextPart — regression for the same debug
