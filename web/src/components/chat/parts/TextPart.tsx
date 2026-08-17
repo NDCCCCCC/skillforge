@@ -5,8 +5,36 @@
 // with body font size per 04-UI-SPEC.md §Typography. Trivial wrapper;
 // the work is done by the AI SDK v7 parser upstream (text-start /
 // text-delta / text-end collapse into a single text part).
+//
+// 260817-i36 (①): optional `verdictStatus` prop. When MessageBubble
+// finds a data-policy Verdict in the same message, the platform Status
+// is rendered as a SMALL corner badge attached to the conclusion text
+// (the large in-card StatusBadge is chat-stream noise, removed in ②).
+// Streaming note: data-policy arrives AFTER the text part, so the badge
+// appears only once the verdict lands — acceptable per locked decision.
+// When the prop is absent (no verdict in this message) the output is
+// byte-identical to the pre-260817-i36 renderer.
 import type { TextUIPart } from 'ai';
+import StatusBadge from '../../common/StatusBadge';
+import type { VerdictStatus } from '../../../types/verdict';
 
-export function TextPart({ part }: { part: TextUIPart }) {
-  return <p className="text-base text-text leading-relaxed">{part.text}</p>;
+export interface TextPartProps {
+  part: TextUIPart;
+  verdictStatus?: VerdictStatus;
+}
+
+export function TextPart({ part, verdictStatus }: TextPartProps) {
+  const body = <p className="text-base text-text leading-relaxed">{part.text}</p>;
+  if (verdictStatus === undefined) {
+    return body;
+  }
+  return (
+    <div className="relative">
+      {body}
+      <StatusBadge
+        status={verdictStatus}
+        className="absolute -top-2 left-0 px-1.5 py-0 text-[10px]"
+      />
+    </div>
+  );
 }

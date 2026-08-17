@@ -21,6 +21,12 @@
 // a verdict-answer block that duplicates the chat body conclusion.
 // Prop drilling (not the Zustand store) per D14 — useChat owns the
 // message stream; three-level optional-prop drilling is the cheap fix.
+//
+// 260817-i36 (①): the assistant branch also extracts the Verdict status
+// from the message's data-policy part (`verdictStatus`) and passes it
+// to TextPart, which renders it as a small corner badge on the
+// conclusion text — the large in-card StatusBadge is gone from the
+// chat stream (260817-i36 ②).
 
 import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
@@ -39,11 +45,13 @@ import { ToolPart } from './parts/ToolPart';
 import CounterEvidenceCard from '../verdict/CounterEvidenceCard';
 import RedlineCard from '../verdict/RedlineCard';
 import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
+import { isVerdict, type VerdictStatus } from '../../types/verdict';
 
 function renderPart(
   part: UIMessage['parts'][number],
   i: number,
   chatText?: string,
+  verdictStatus?: VerdictStatus,
 ): ReactNode {
   switch (part.type) {
     case 'reasoning':
@@ -54,7 +62,13 @@ function renderPart(
         />
       );
     case 'text':
-      return <TextPart key={i} part={part as Parameters<typeof TextPart>[0]['part']} />;
+      return (
+        <TextPart
+          key={i}
+          part={part as Parameters<typeof TextPart>[0]['part']}
+          verdictStatus={verdictStatus}
+        />
+      );
     case 'source-url':
       return <SourceUrlPart key={i} part={part as Parameters<typeof SourceUrlPart>[0]['part']} />;
     case 'source-document':
@@ -139,13 +153,28 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
           .map((p) => (p as { text: string }).text)
           .join('')
       : undefined;
+  // 260817-i36 (①): lift the Verdict status off the data-policy part so
+  // TextPart can render it as the corner badge on the conclusion text.
+  // Assistant messages only. Streaming: data-policy arrives after text —
+  // the badge appears once the verdict lands (locked decision,
+  // acceptable timing).
+  const policyData =
+    role === 'assistant'
+      ? (message.parts.find((p) => p.type === 'data-policy') as
+          | { data?: unknown }
+          | undefined)?.data
+      : undefined;
+  const verdictStatus =
+    policyData !== undefined && isVerdict(policyData)
+      ? policyData.status
+      : undefined;
   return (
     <div
       className={`my-3 rounded-lg ${bg} p-3 text-text`}
       data-testid="message-bubble"
       data-role={role}
     >
-      {message.parts.map((part, i) => renderPart(part, i, chatText))}
+      {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
     </div>
   );
 }
