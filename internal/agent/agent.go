@@ -548,9 +548,24 @@ func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdi
 	}
 	var v verdict.Verdict
 	if err := json.Unmarshal([]byte(llm.ExtractJSON(raw)), &v); err != nil {
-		// Emit a forced_stop decision if we hit MaxStep mid-tool-call
-		// (the model bailed without producing a clean final answer).
-		emitForcedStop(emit, sc)
+		// 08-REVIEW WR-02: emit forced_stop ONLY when the parse failure
+		// is a genuine MaxStep truncation — the structural signal is a
+		// final message that still carries pending tool calls (the model
+		// wanted another hop but the loop ended before the tools node
+		// could run). A clean termination that produced malformed JSON
+		// (ToolCalls empty) is a model-output defect, not a step-budget
+		// event; attributing it to forced_stop would corrupt the
+		// decision sequence and mislead the UI ("agent gave up after N
+		// hops" when the real cause is an unparseable answer).
+		//
+		// Note: on eino v0.9.14 a hard MaxStep overrun actually surfaces
+		// as compose.ErrExceedMaxSteps from Generate (the error branch
+		// above), so this gate primarily guards (a) eino versions that
+		// return the truncated message instead of erroring and (b) any
+		// future behavioral change in that contract.
+		if out != nil && len(out.ToolCalls) > 0 {
+			emitForcedStop(emit, sc)
+		}
 		return verdict.Verdict{}, nil, fmt.Errorf("agent run: parse verdict: %w (raw: %s)", err, truncate(raw, 200))
 	}
 
