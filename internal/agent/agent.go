@@ -189,8 +189,9 @@ func ComputeMaxStep(maxHops int) int {
 //   - cfg.Manifest, cfg.Embedder, cfg.Retriever, cfg.ChatModel MUST be non-nil.
 //   - cfg.MaxHops MUST be > 0 (zero falls back to DefaultMaxHops).
 //   - cfg.ChatModel MUST implement model.ToolCallingChatModel (react's
-//     ToolCallingModel field requires this interface — verified at the
-//     type assertion below).
+//     ToolCallingModel field requires this interface — enforced at
+//     compile time by the AgentConfig.ChatModel field type itself; no
+//     runtime assertion is involved).
 //
 // Post-conditions:
 //   - Returns a non-nil *Agent whose react field is a fully-constructed
@@ -342,11 +343,10 @@ func (a *Agent) Config() AgentConfig { return a.cfg }
 // other. ChatModel exposes BindTools; ToolCallingChatModel exposes
 // WithTools. They are NOT assignable to each other, so we do NOT
 // assert a subtyping relationship. react.AgentConfig.ToolCallingModel
-// requires the WithTools variant, and NewAgent enforces that via a
-// runtime type assertion (intentionally not compile-time — the
-// AgentConfig.ChatModel field accepts the wider model.ChatModel
-// interface for ergonomic reasons; rejecting a BindTools-only model
-// only at NewAgent call time is fine).
+// requires the WithTools variant, and that constraint is enforced at
+// compile time: AgentConfig.ChatModel is typed as
+// model.ToolCallingChatModel, so a BindTools-only model fails to build
+// at the NewAgent call site (no runtime assertion exists or is needed).
 var _ tool.BaseTool = (tool.InvokableTool)(nil)
 
 // accCtxKey is the context.Value key that carries the per-Run
