@@ -54,6 +54,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -95,23 +96,33 @@ func TestContractVersionPin(t *testing.T) {
 	}
 	body := string(content)
 
+	// assertExactPin matches the pin at LINE level: the module path and
+	// version must be the whole require entry (optional `// indirect`
+	// trailing comment allowed). A bare strings.Contains would accept
+	// pre-release variants such as v0.9.14-rc1 — exactly the semantic
+	// risk this gate exists to block (v0.10.0-alpha.x was explicitly
+	// rejected 2026-08-17), so suffixes MUST fail the match.
+	assertExactPin := func(module, version string) {
+		t.Helper()
+		re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(module) +
+			`\s+` + regexp.QuoteMeta(version) + `(\s*//[^\n]*)?\r?$`)
+		assert.True(t, re.MatchString(body),
+			"Version pin violated: %s must be exactly %s (pre-release/suffix variants rejected)", module, version)
+	}
+
 	// eino v0.9.14 EXACTLY (Phase 8 pin — user decision 2026-08-17).
-	assert.True(t, strings.Contains(body, "github.com/cloudwego/eino v0.9.14"),
-		"Version pin violated: github.com/cloudwego/eino must be v0.9.14 (got body without that substring)")
+	assertExactPin("github.com/cloudwego/eino", "v0.9.14")
 
 	// hertz v0.10.6 — locked by SC-1 (Hertz pkg/protocol/sse API verified at this version).
-	assert.True(t, strings.Contains(body, "github.com/cloudwego/hertz v0.10.6"),
-		"Version pin violated: github.com/cloudwego/hertz must be v0.10.6")
+	assertExactPin("github.com/cloudwego/hertz", "v0.10.6")
 
 	// eino-ext openai v0.1.13 — Phase 8 co-upgraded with eino v0.9.14
 	// (its go.mod floor is eino v0.7.13+, MVS-compatible; compile-check
 	// spike verified the whole existing call surface unchanged).
-	assert.True(t, strings.Contains(body, "github.com/cloudwego/eino-ext/components/model/openai v0.1.13"),
-		"Version pin violated: github.com/cloudwego/eino-ext/components/model/openai must be v0.1.13")
+	assertExactPin("github.com/cloudwego/eino-ext/components/model/openai", "v0.1.13")
 
 	// milvus-sdk-go v2.4.2 — Plan 01-02 verified positional Search API at this version.
-	assert.True(t, strings.Contains(body, "github.com/milvus-io/milvus-sdk-go/v2 v2.4.2"),
-		"Version pin violated: milvus-sdk-go/v2 must be v2.4.2 (positional Search API verified at this version)")
+	assertExactPin("github.com/milvus-io/milvus-sdk-go/v2", "v2.4.2")
 }
 
 // TestContractWireFormat asserts SC-1 layer (a) wire format is intact:
