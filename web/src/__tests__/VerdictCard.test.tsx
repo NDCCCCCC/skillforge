@@ -178,10 +178,45 @@ describe('VerdictCard', () => {
     );
     // The duplicated answer block is gone — the chat body already shows it.
     expect(screen.queryByTestId('verdict-answer')).toBeNull();
-    // The rest of the card survives: frame, citations count, cluster, badge.
+    // The card frame survives in chat context…
     expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
-    expect(screen.getByTestId('citation-cluster')).toBeInTheDocument();
+    // …but 260817-i36 (②) strips the duplicated citation UI + the large
+    // StatusBadge from the chat stream: the doc chips under the
+    // conclusion are the single citation UI, and the corner badge on
+    // the conclusion text (Task 4) carries the status.
+    expect(screen.queryByTestId('citation-cluster')).toBeNull();
+    expect(screen.queryByTestId('status-badge')).toBeNull();
+    expect(screen.queryByText('1 条引用')).toBeNull();
+  });
+
+  // --- 260817-i36 Task 3 (②): slim chat-context card vs full CenterPanel card ---
+
+  it('omits StatusBadge / citation count / CitationCluster when chatText is provided (chat context, 260817-i36)', () => {
+    render(<VerdictCard verdict={compliant} chatText="结论：符合规定。" />);
+    expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('status-badge')).toBeNull();
+    expect(screen.queryByTestId('citation-cluster')).toBeNull();
+    expect(screen.queryByText(/条引用/)).toBeNull();
+    // The Compliance-Skill verdict badge survives — it is skill-specific
+    // signal not duplicated anywhere else in the chat stream.
+    expect(screen.getByTestId('compliance-status-badge')).toBeInTheDocument();
+  });
+
+  it('keeps the review-required badge in chat context (260817-i36)', () => {
+    render(<VerdictCard verdict={nonCompliant} chatText="结论：不合规。" />);
+    expect(screen.getByTestId('review-required-badge')).toBeInTheDocument();
+    expect(screen.getByTestId('compliance-status-badge')).toBeInTheDocument();
+    expect(screen.queryByTestId('status-badge')).toBeNull();
+    expect(screen.queryByTestId('citation-cluster')).toBeNull();
+  });
+
+  it('renders the FULL card when chatText is not provided (CenterPanel path, 260817-i36)', () => {
+    // CenterPanel.tsx renders <VerdictCard verdict={verdict} /> with no
+    // chat context — StatusBadge + citation count + CitationCluster must
+    // all stay (the center 结论 tab is the structured citation surface).
+    render(<VerdictCard verdict={compliant} />);
     expect(screen.getByTestId('status-badge')).toBeInTheDocument();
+    expect(screen.getByTestId('citation-cluster')).toBeInTheDocument();
     expect(screen.getByText('1 条引用')).toBeInTheDocument();
   });
 

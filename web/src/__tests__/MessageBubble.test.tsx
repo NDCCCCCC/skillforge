@@ -25,10 +25,11 @@
 //     the VerdictCard's verdict-answer block is suppressed (dedupe);
 //     when they do not, verdict-answer still renders inside the card.
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { UIMessage } from 'ai';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MessageBubble } from '../components/chat/MessageBubble';
+import { useAppStore } from '../store/app-store';
 
 afterEach(cleanup);
 
@@ -275,12 +276,18 @@ describe('MessageBubble', () => {
     compliance_status: 'not_applicable',
   };
 
-  it('hides in-card verdict-answer when the text part already contains the conclusion (260817-hck)', () => {
+  it('omits the VerdictCard entirely for an ok factual verdict in chat — doc chips are the single citation UI (260817-i36 ②)', () => {
     const message: UIMessage = {
       id: 'm1',
       role: 'assistant',
       parts: [
         { type: 'text', text: '结论：由部门负责人审批。' },
+        {
+          type: 'source-document',
+          sourceId: 'c-001',
+          mediaType: 'text/markdown',
+          title: 'authority/contract_approval.md · chunk c-001',
+        },
         { type: 'data-policy', id: 'p1', data: factualVerdictData },
       ],
     };
@@ -288,27 +295,78 @@ describe('MessageBubble', () => {
     render(<MessageBubble message={message} />);
     // The chat body keeps the conclusion text (it is the useChat anchor).
     expect(screen.getByText('结论：由部门负责人审批。')).toBeInTheDocument();
-    // The card renders but WITHOUT the duplicated verdict-answer block.
-    expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
-    expect(screen.queryByTestId('verdict-answer')).toBeNull();
-    expect(screen.getByTestId('citation-cluster')).toBeInTheDocument();
+    // 260817-i36 (②): the ok factual card is fully redundant in chat —
+    // no VerdictCard frame, no duplicated CitationCluster / citation
+    // count; the source-document chip under the conclusion is the one
+    // citation UI (260817-hck's verdict-answer dedupe is subsumed).
+    expect(screen.queryByTestId('verdict-card')).toBeNull();
+    expect(screen.queryByTestId('citation-cluster')).toBeNull();
+    expect(screen.queryByText(/条引用/)).toBeNull();
+    expect(screen.getByTestId('source-document')).toBeInTheDocument();
   });
 
-  it('keeps in-card verdict-answer when the text part does NOT contain the answer (260817-hck)', () => {
+  it('renders the SLIM card for non-ok verdicts in chat (needs_input keeps frame, loses duplicated citation UI) (260817-i36)', () => {
+    const needsInputVerdict = {
+      status: 'needs_input',
+      confidence: 0.65,
+      citations: [
+        { chunk_id: 'c-002', span: '商务礼品赠送限额', tier: '权威' },
+      ],
+      review_required: true,
+      compliance_status: 'not_applicable',
+    };
     const message: UIMessage = {
       id: 'm1',
       role: 'assistant',
       parts: [
-        { type: 'text', text: '已为你查询相关条款。' },
-        { type: 'data-policy', id: 'p1', data: factualVerdictData },
+        { type: 'text', text: '结论：needs_input（置信度 65%）。' },
+        { type: 'data-policy', id: 'p1', data: needsInputVerdict },
       ],
     };
 
     render(<MessageBubble message={message} />);
-    expect(screen.getByText('已为你查询相关条款。')).toBeInTheDocument();
-    const answer = screen.getByTestId('verdict-answer');
-    expect(answer).toBeInTheDocument();
-    expect(answer).toHaveTextContent('由部门负责人审批');
+    // needs_input is NOT a clean factual answer — the card frame and
+    // the review-required badge stay visible…
+    expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
+    expect(screen.getByTestId('review-required-badge')).toBeInTheDocument();
+    // …but the large StatusBadge + CitationCluster + citation count are
+    // chat-stream noise and are stripped (the corner badge on the
+    // conclusion text carries the status — Task 4).
+    expect(screen.queryByTestId('status-badge')).toBeNull();
+    expect(screen.queryByTestId('citation-cluster')).toBeNull();
+    expect(screen.queryByText(/条引用/)).toBeNull();
+  });
+
+  // --- 260817-i36 Task 3 (②): clickable source-document chips ---
+
+  it('clicking a source-document chip dispatches setCenterView({kind:"chunk-source", ...}) (260817-i36)', () => {
+    useAppStore.setState({ centerView: { kind: 'empty' } });
+    const message: UIMessage = {
+      id: 'm1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'source-document',
+          sourceId: 'c-001',
+          mediaType: 'text/markdown',
+          title: 'authority/travel_expense.md · chunk c-001',
+        },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    const chip = screen.getByTestId('source-document');
+    expect(chip).toHaveAttribute('data-chunk-id', 'c-001');
+    fireEvent.click(chip);
+    const centerView = useAppStore.getState().centerView;
+    expect(centerView.kind).toBe('chunk-source');
+    if (centerView.kind === 'chunk-source') {
+      expect(centerView.chunkId).toBe('c-001');
+      // Real metadata pulled by extractChunkMetadata (fixture c-001).
+      expect(centerView.tier).toBe('权威');
+      expect(centerView.version).toBe('v3.2');
+      expect(centerView.effectiveDate).toBe('2026-01-15');
+    }
   });
 
   // --- 260817-i36 Task 2 (③): chunk-disambiguated source-document chip titles ---
