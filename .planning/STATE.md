@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 08
-current_plan: 2
+current_plan: 3
 status: executing
-last_updated: "2026-08-17T15:47:30.000Z"
-last_activity: 2026-08-17 -- Plan 08-01 complete (eino v0.9.14 upgrade + hermetic re-lock, commit 36845c0)
+last_updated: "2026-08-17T15:54:00.000Z"
+last_activity: 2026-08-17 -- Plan 08-02 complete (sqlite CheckPointStore skeleton, TDD RED 9a557b1 → GREEN e6a580a, six-face suite green)
 progress:
   total_phases: 13
   completed_phases: 5
   total_plans: 40
-  completed_plans: 37
+  completed_plans: 38
   percent: 38
 ---
 
@@ -24,7 +24,7 @@ progress:
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 08
-**Current Plan:** 1
+**Current Plan:** 3
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** `/gsd:plan-phase 8` (全量依赖升级 P8.0 — eino v0.7.7 → v0.9.13 + sqlite CheckPointStore; RF-2 compile-check spike on CheckPointStore interface shape). Phase 9 (历史注入 spike 硬门) is the HARD GATE for Phase 10 memory.
@@ -51,9 +51,9 @@ progress:
 ## Current Position
 
 Phase: 08 (p8-0-eino-v0-7-7-v0-9-13) — EXECUTING
-Plan: 2 of 5
-Status: Executing Phase 08 (08-01 complete)
-Last activity: 2026-08-17 -- Plan 08-01 complete: eino v0.7.7→v0.9.14 + ext openai v0.1.5→v0.1.13 升级原子提交 36845c0（8 文件零功能代码）；hermetic 四道门（build/vet、全量单测、contract -tags=contract、TestCancelPropagationMidTool 50.6ms）全绿零修复提交
+Plan: 3 of 5
+Status: Executing Phase 08 (08-01 + 08-02 complete)
+Last activity: 2026-08-17 -- Plan 08-02 complete: sqlite CheckPointStore 骨架 TDD 两提交（RED 9a557b1 六面测试 → GREEN e6a580a schema DDL 追加 + Get/Set + compose.CheckPointStore 编译期断言）；checkpoint 表同库 additive 幂等建出（session_id/skill_id/expires_at Phase 11 预留列），Close+reopen 等值读回（SC-4 store 层证明）/ SQLi 存活 / closed 守卫全绿，internal/store 全树零回归
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
@@ -93,6 +93,7 @@ Last activity: 2026-08-17 -- Plan 08-01 complete: eino v0.7.7→v0.9.14 + ext op
 | D19 | Go-native trust evaluator (Phase 3 / Plan 03-06) | `internal/eval` library + `cmd/eval` CLI ship 4 RAG-trust metrics (faithfulness / answer_relevancy / context_precision / context_recall). Faithfulness ports Ragas v0.1.21 claim-extraction + entailment prompts VERBATIM into Go string constants (Apache-2.0, attributed in `eval/NOTICE` — the headline number stays industry-comparable, "Ragas 口径"); the other 3 metrics use simple Go-authored yes/no judge prompts. 50-case synthetic golden set (20 adversarial + 20 refusal-required + 10 multi-hop, 5 spike-anchors from cmd/spiked/e2e.go:76-82). D2-15 calibration vehicle: `Calibrate()` emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43` (trust-boundary human sign-off). Additive accessors: `agent.LastRetrieved()` + `store.UpdateAuditMetrics()` (COALESCE partial backfill). Pitfall 8 counter-measures: deterministic Go grounding floor (D3-01), human spot-check, `JUDGE_MODEL` config slot (D3-07) for Phase 6 cross-eval. |
 | D8-01 | 升级目标 = eino v0.9.14 + eino-ext openai v0.1.13（Phase 8 / Plan 08-01） | 用户 2026-08-17 决策：v0.9.14 覆盖研究期 v0.9.13（v0.9.13→v0.9.14 仅 2 项变更，#1157 恰好修复 Phase 10 要用的 summarization middleware ctx bug）；v0.10.0-alpha.x maintainer 警告 breaking，明确不用。TestContractVersionPin 锁新 pin；hertz v0.10.6 / milvus v2.4.2 / sqlite v1.56.0 不动。8 处 godoc file:line 已按 v0.9.14 module cache 重核（react.go:139、tool_node.go:186、template.go:525-528/596-600、invokable_func.go:139-143、WithChatModelOptions 迁至 adk/chatmodel.go:97 等）。 |
 | D8-02 | 升级 = 行为同构（hermetic 面实证，Phase 8 / Plan 08-01） | eino v0.9.14 下 hermetic 四道门（go build+vet / go test ./... 全量 / contract -tags=contract 全绿含 VersionPin 新断言与 RunsUnder10s 81.8ms / TestCancelPropagationMidTool 50.6ms <200ms）零修复提交通过——RF-2「编译同构」扩展为「行为同构」（hermetic 面）。live 面（真 GLM cancel / Milvus tier-filter / 冻结 eval 重跑）归 08-05 checkpoint:human-verify，尚未重锁。 |
+| D8-03 | sqlite CheckPointStore 骨架形态（Phase 8 / Plan 08-02） | Get/Set 挂 SQLiteStore（非独立类型，PATTERNS 形态 A），`var _ compose.CheckPointStore = (*SQLiteStore)(nil)` 一个断言同时锁 compose 与 adk 两个 alias 消费面；checkpoint 表 DDL 本 phase 即带 session_id/skill_id/expires_at 预留列（Phase 11 生命周期免 ALTER），本 phase 不写不滤 expires_at；不实现 Delete（CheckPointDeleter 留 Phase 11）；store 层 payload 纯透传不解析（resume-data 校验归 Phase 11 HITL-04）。六面测试（round-trip 含非 UTF8 / Close+reopen 等值读回 / upsert / unknown-id 三态 / DROP TABLE 存活 / closed 守卫）锁定 SC-4 store 层语义。 |
 
 ---
 
@@ -187,6 +188,7 @@ Last activity: 2026-08-17 -- Plan 08-01 complete: eino v0.7.7→v0.9.14 + ext op
 | 07 | 04 | 4m | 2 TDD tasks / 3 commits / 12 files (11 created + 1 test) — **Phase 7 examples/ + eval sample (DIST-06 + DIST-08 + DIST-10)**. `examples/skills/compliance/SKILL.md` (verbatim copy of `skills/compliance/SKILL.md`, the canonical runnable 7-field Skill) + `examples/skills/simple-qa/SKILL.md` (minimal RAG template: ChatModelAgent, reads `[authority/**]`, writes `[]`, temp 0.3, 3 prohibitions) + `examples/skills/calculator/SKILL.md` (tool-type template: ReActAgent, reads `[draft/**]` PLACEHOLDER tier per D7-10 + RESEARCH Q2 so P-SKILL-3 default-deny invariant holds without changing the validator, writes `[skill_state]`, temp 0.0; body note flags validate-only status) + `examples/data/*.md` (7 verbatim copies of `knowledge/authority/*.md`: annual_leave / anti_corruption_clause / business_gift_prohibition / contract_approval / expense_reimbursement_scope / non_compete / travel_expense) + `internal/skill/examples_validate_test.go` (`TestExamplesValidate` drives `skill.NewLoader("../../examples/skills").Scan()` + asserts 3 manifests; CONTRIBUTING [Plan 07-03] points contributors at this test per CONTEXT Q4 — no `cmd/skillforge validate` subcommand) + `eval/sample.jsonl` (byte-identical copy of `eval/golden/compliance.jsonl`, 50 cases = 20 adversarial + 20 refusal-required + 10 multi-hop, D7-12). `internal/skill.Validate` UNCHANGED. Commits `9f2b734` (RED test) + `1eddc53` (GREEN examples/) + `51b042f` (sample.jsonl). DIST-06 + DIST-08 + DIST-10 marked complete. See 07-04-SUMMARY.md |
 | 07 | 05 | 2m | **1/3 tasks** (autonomous:false — checkpointed) / 2 commits / 2 files — **Phase 7 eval snapshot script (DIST-09 + DIST-05 — DIST-09 PENDING live-stack Task 2; DIST-05 PENDING screen-capture Task 3)**. `scripts/eval_snapshot/main.go` + `main_test.go`: standalone Go program reads `eval/report.json` + `eval/frozen/compliance.lock.json` via `eval.LoadReport`/`eval.LoadLoad` (read-only — `cmd/eval` + `internal/eval` UNCHANGED), **derives** `refusal_accuracy` from `Report.Cases` via pure fn `deriveRefusalAccuracy` (count(cat=refusal-required && Refused) / count(cat=refusal-required) — RESEARCH Q1 load-bearing, NOT an evaluator field), renders README markdown snapshot (date + lock metadata + Overall metrics + derived % + case breakdown + reproduce cmd). 6/6 hermetic unit tests PASS (all-refused 1.0 / half-refused 0.5 / zero-refusal-required graceful 0,N/A / category-filter invariant / renderSnapshot metadata / N/A cell); `go vet` clean; stdlib-only imports. Commits `abf2f4d` (RED test) + `4873213` (GREEN impl). **Tasks 2 & 3 `checkpoint:human-verify gate=blocking` BLOCKING** — Task 2: live stack (`docker compose up` + `ollama pull bge-m3` + `.env` keys) → `go run ./cmd/eval --frozen=compliance` → paste `scripts/eval_snapshot` stdout into README `## Eval Results` (still PLACEHOLDER); Task 3: record `docs/demo.gif` (cited verdict + structured refusal, <5MB). README PLACEHOLDER + docs/demo.gif are intentional stubs pending checkpoints. See 07-05-SUMMARY.md |
 | 08 | 01 | 6m | 2 tasks / 1 commit / 8 files — **eino v0.7.7→v0.9.14 + eino-ext openai v0.1.5→v0.1.13 升级原子提交**（`36845c0`，零功能代码：go.mod/go.sum 双 bump + TestContractVersionPin 改写 + 8 处 godoc file:line 按 v0.9.14 module cache 重核）。indirect 联动仅 acl/openai v0.1.17 + go-openai v0.1.2（tidy 自动）；hertz/milvus/sqlite 逐字未动。hermetic 四道门全绿零修复提交：build+vet / `go test ./...` 全量 / contract `-tags=contract`（VersionPin 新断言 PASS + RunsUnder10s 81.8ms）/ TestCancelPropagationMidTool 50.6ms（<200ms 未放松）。提交卫生：恰好 8 规定路径，scripts/test 等 untracked 未入提交。Task 2 验证性任务零提交（无回归→无归因 fix）。See 08-01-SUMMARY.md |
+| 08 | 02 | 6m | 2 TDD tasks / 2 commits / 3 files (2 created + 1 modified) — **sqlite CheckPointStore 骨架**（RED `9a557b1` 六面测试先行 → GREEN `e6a580a` schema DDL 追加 + checkpoint.go）。checkpoint 表随既有 migrate() 幂等建出（同库 additive，audit/session_turn 零触碰；session_id/skill_id/expires_at Phase 11 预留列）；SQLiteStore.Get/Set 满足 compose.CheckPointStore（编译期断言，== adk alias）；六面全绿：round-trip（含非 UTF8 BLOB 透传）/ Close+reopen 等值读回（SC-4「进程重启」store 层证明，Pitfall 4 反面）/ upsert 覆盖 / unknown-id (nil,false,nil) 三态 / DROP TABLE 注入存活（T-8-04）/ closed 守卫 sql.ErrConnDone。`go test ./internal/store/...` 全绿零回归 + `go build ./... && go vet ./...` exit 0。一处 Rule 1 注释准确性修正（audit 注释「anywhere in this package」→「for audit rows」，DDL 未动）。See 08-02-SUMMARY.md |
 
 - Phases completed: 3 (Phase 1 spike; Phase 2 compliance vertical slice; Phase 4 streaming trust UI) — Phase 3 deferred under MVP reordering, now in progress
 - Requirements covered: 24 / 55 (Phase 2: 14; Phase 4: +FEUI-01..06, SYSK-03, KNOW-05, CMPL-05, T-1-08; Phase 3 03-01: +ARAG-01 substrate, +KNOW-01 substrate)
@@ -198,7 +200,7 @@ Last activity: 2026-08-17 -- Plan 08-01 complete: eino v0.7.7→v0.9.14 + ext op
 
 ## Session Continuity
 
-**Resume point (v0.8):** Milestone v0.8 roadmap created 2026-08-17 — ROADMAP.md carries phases 8-13 (strict chain 8→9→10→11→12→13 per research SUMMARY.md §Implications for Roadmap); REQUIREMENTS.md traceability maps all 25 v0.8 requirements (PLAT-04/05, GEVL-08, MEM-01..05, HITL-01..08, PLAN-01..05, FAN-01..04); Phase 9 is the HARD GATE for Phase 10. **Plan 08-01 COMPLETE 2026-08-17 (commit `36845c0`)**: eino v0.9.14 + ext openai v0.1.13 落库，hermetic 四道门全绿零修复提交（TestContractVersionPin 已断言新 pin）。Next: Plan 08-02 (Wave 2: sqlite CheckPointStore 骨架 TDD) 与 08-03 (Wave 2 parallel: legacy interrupt 禁令 + 文档 v0.9.14 对齐)。Phase 7 leftovers (07-02 T3, 07-05 T2/T3, 07-06) are deferred to after this milestone by user decision 2026-08-17 — do not lose them.
+**Resume point (v0.8):** Milestone v0.8 roadmap created 2026-08-17 — ROADMAP.md carries phases 8-13 (strict chain 8→9→10→11→12→13 per research SUMMARY.md §Implications for Roadmap); REQUIREMENTS.md traceability maps all 25 v0.8 requirements (PLAT-04/05, GEVL-08, MEM-01..05, HITL-01..08, PLAN-01..05, FAN-01..04); Phase 9 is the HARD GATE for Phase 10. **Plan 08-01 COMPLETE 2026-08-17 (commit `36845c0`)**: eino v0.9.14 + ext openai v0.1.13 落库，hermetic 四道门全绿零修复提交（TestContractVersionPin 已断言新 pin）。**Plan 08-02 COMPLETE 2026-08-17 (commits `9a557b1` RED + `e6a580a` GREEN)**: sqlite CheckPointStore 骨架就位——SQLiteStore.Get/Set 满足 compose.CheckPointStore（编译期断言），checkpoint 表同库 additive 幂等（Phase 11 预留列齐备），SC-4 store 层语义（含 Close+reopen 等值读回）六面测试锁定，internal/store 全树零回归。Next: Plan 08-03 (Wave 2 parallel: legacy interrupt 禁令门 + 文档 v0.9.14 对齐) 然后 08-04 (Wave 3: SC-5 真实中断往返——消费本 plan 的 store，经 adk.Runner CheckPointStore 字段 + schema.RegisterName 注册)。Phase 7 leftovers (07-02 T3, 07-05 T2/T3, 07-06) are deferred to after this milestone by user decision 2026-08-17 — do not lose them.
 
 **Resume point (Phase 7):** Plan 07-05 (eval snapshot + demo GIF) is IN PROGRESS — Task 1/3 DONE via TDD, 2 commits (`abf2f4d` RED test + `4873213` GREEN impl). `scripts/eval_snapshot/{main.go,main_test.go}` shipped: standalone Go program reads `eval/report.json` + `eval/frozen/compliance.lock.json` via `eval.LoadReport`/`eval.LoadLock`, **derives** `refusal_accuracy` from `Report.Cases` via the pure fn `deriveRefusalAccuracy` (count(cat=="refusal-required" && Refused) / count(cat=="refusal-required") — RESEARCH Q1 load-bearing, NOT an evaluator field), renders the README markdown snapshot block (date + lock metadata + Overall metrics + derived % + case breakdown + reproduce cmd). 6/6 hermetic unit tests PASS (all-refused 1.0 / half-refused 0.5 / zero-refusal-required graceful 0,N/A / category-filter invariant / renderSnapshot metadata / N/A cell); `go vet` clean; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. **Tasks 2 & 3 `checkpoint:human-verify gate=blocking` BLOCKING** — Task 2 needs live Milvus+BGE-M3+GLM stack (`docker compose up` + `ollama pull bge-m3` + populate `GLM_API_KEY`+`BGE_M3_URL` in `.env`) to run `go run ./cmd/eval --frozen=compliance` → `eval/report.json` → `go run ./scripts/eval_snapshot` → paste stdout into README `## Eval Results` (still PLACEHOLDER); Task 3 needs screen capture (ScreenToGif/OBS) to record `docs/demo.gif` (cited verdict + structured refusal flows, <5MB, embed already in README hero). Plan 07-02 (containerization) Task 3 docker-build ALSO still IN PROGRESS — Docker not in PATH. Plans 07-01 (release-meta) + 07-03 (docs) + 07-04 (examples+eval sample) COMPLETE. Next: human resolves 07-05 Task 2/3 checkpoints (which unblocks 07-06 publication governance — must NOT push to public remote until README eval numbers + GIF are in tree). See `.planning/phases/07-open-source-release/07-05-SUMMARY.md`.
 
