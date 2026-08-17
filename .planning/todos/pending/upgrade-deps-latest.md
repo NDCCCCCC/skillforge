@@ -4,6 +4,7 @@ date: 2026-08-17
 priority: high
 status: pending
 trigger: v0.8 harness milestone 启动前（多轮记忆 phase 的前置）
+resolves_phase: 8
 ---
 
 # 升级所有依赖到最新 stable
