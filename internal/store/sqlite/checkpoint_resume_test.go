@@ -333,6 +333,8 @@ func TestInterruptResumeRoundTrip(t *testing.T) {
 				"the interrupt event must carry at least one InterruptContext")
 			ic := ev.Action.Interrupted.InterruptContexts[0]
 			interruptID = ic.ID
+			require.NotEmpty(t, ic.Address,
+				"InterruptContext must carry a non-empty address (indexing ic.Address[len-1] would panic otherwise)")
 			assert.Equal(t, approvalToolName, ic.Address[len(ic.Address)-1].ID,
 				"the root interrupt address must point at the approval tool")
 		}
