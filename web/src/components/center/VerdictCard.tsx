@@ -16,6 +16,14 @@
 // Wave 2 simplifies the signature to `{ verdict }` only — the
 // citation click handler invokes useAppStore.getState() directly
 // (Zustand is a singleton; no prop drilling required).
+//
+// 260817-hck: optional `chatText` prop. When the caller (MessageBubble
+// via DataPolicyPart) passes the concatenated text parts of the same
+// assistant message and that text verbatim contains verdict.answer
+// (backend conclusionText embeds the answer verbatim into the text-delta,
+// chat.go:801-809), the in-card verdict-answer block is suppressed so
+// the conclusion renders only once. Consumers without chat context
+// (CenterPanel) omit the prop and behavior is unchanged.
 import { cn } from '../../lib/cn';
 import type { Verdict, VerdictStatus } from '../../types/verdict';
 import StatusBadge from '../common/StatusBadge';
@@ -36,11 +44,23 @@ const STATUS_BORDER: Record<VerdictStatus, string> = {
 
 export interface VerdictCardProps {
   verdict: Verdict;
+  // 260817-hck: 调用方（MessageBubble 经 DataPolicyPart）传入本条消息全部
+  // text parts 的拼接文本；当该文本已逐字包含 verdict.answer 时（后端
+  // conclusionText 把 answer verbatim 嵌入「结论：…。」，chat.go:801-809），
+  // 卡片隐藏 verdict-answer 区块避免双份渲染。CenterPanel 等无 chat 流上下文
+  // 的使用方不传此 prop，行为不变。
+  chatText?: string;
 }
 
-export default function VerdictCard({ verdict }: VerdictCardProps) {
+export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
   const pct = Math.round(verdict.confidence * 100);
   const isFactualQuery = !!verdict.answer;
+  // 260817-hck: verbatim substring match is sufficient — the backend emits
+  // the conclusion as a single atomic text-delta, so there is no partial-
+  // text race when the card renders. No fuzzy/regex matching by design.
+  const answerText = verdict.answer?.trim() ?? '';
+  const answerDuplicatedInChat =
+    chatText !== undefined && answerText !== '' && chatText.includes(answerText);
   // For compliance reviews the ComplianceStatusBadge carries the verdict
   // code; for factual queries the platform StatusBadge ("已给出") plus the
   // answer text together carry the message. We show both when
@@ -68,7 +88,7 @@ export default function VerdictCard({ verdict }: VerdictCardProps) {
             )}
           </div>
         </div>
-        {isFactualQuery && (
+        {isFactualQuery && !answerDuplicatedInChat && (
           <div
             data-testid="verdict-answer"
             className="mt-2 text-sm text-text leading-relaxed"
