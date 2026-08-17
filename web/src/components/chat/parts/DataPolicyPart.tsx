@@ -44,6 +44,22 @@ export default function DataPolicyPart({
 }) {
   const data = (part as DataPolicyPartType).data;
   if (isVerdict(data)) {
+    // 260817-i36 (②): in the chat stream (chatText defined), a clean ok
+    // factual verdict's card is FULLY redundant — the conclusion text
+    // part already carries the answer (with the corner status badge,
+    // 260817-i36 ①) and the source-document chips are the single
+    // citation UI. Render nothing. needs_input / refused / error,
+    // compliance-review verdicts (compliance_status not not_applicable),
+    // and review_required verdicts (the 需人工复核 badge is a live
+    // signal that must not be dropped) keep the (slim) card — as does
+    // the CenterPanel path, which never passes chatText.
+    const okFactualInChat =
+      chatText !== undefined &&
+      data.status === 'ok' &&
+      (data.answer?.trim() ?? '') !== '' &&
+      (!data.compliance_status || data.compliance_status === 'not_applicable') &&
+      !data.review_required;
+    if (okFactualInChat) return null;
     return <VerdictCard verdict={data} chatText={chatText} />;
   }
   if (isRefusal(data)) {

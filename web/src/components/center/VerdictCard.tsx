@@ -61,6 +61,13 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
   const answerText = verdict.answer?.trim() ?? '';
   const answerDuplicatedInChat =
     chatText !== undefined && answerText !== '' && chatText.includes(answerText);
+  // 260817-i36 (②): chatText defined ⇔ chat-stream context. There the
+  // large StatusBadge, the 「N 条引用」 count, and the CitationCluster
+  // all DUPLICATE what the chat body already shows (conclusion text +
+  // corner status badge on the conclusion + clickable doc chips), so
+  // they are omitted. The CenterPanel 结论 tab (no chatText) keeps the
+  // full card — it is the structured citation surface.
+  const inChatStream = chatText !== undefined;
   // For compliance reviews the ComplianceStatusBadge carries the verdict
   // code; for factual queries the platform StatusBadge ("已给出") plus the
   // answer text together carry the message. We show both when
@@ -82,7 +89,7 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <StatusBadge status={verdict.status} />
+            {!inChatStream && <StatusBadge status={verdict.status} />}
             {showComplianceBadge && (
               <ComplianceStatusBadge status={verdict.compliance_status!} />
             )}
@@ -96,9 +103,11 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
             {verdict.answer}
           </div>
         )}
-        <div className="mt-3 text-xs text-text-muted">
-          {verdict.citations.length} 条引用
-        </div>
+        {!inChatStream && (
+          <div className="mt-3 text-xs text-text-muted">
+            {verdict.citations.length} 条引用
+          </div>
+        )}
         {/* Plan 260815-cos / CONTEXT.md decision D: confidence bar is
             visually hidden. The data-testid + data-confidence attributes
             are retained so existing test assertions / scrapers do not
@@ -118,7 +127,7 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
           需人工复核
         </span>
       )}
-      <CitationCluster citations={verdict.citations} />
+      {!inChatStream && <CitationCluster citations={verdict.citations} />}
     </div>
   );
 }
