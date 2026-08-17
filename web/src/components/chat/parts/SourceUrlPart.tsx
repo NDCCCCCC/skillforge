@@ -7,12 +7,11 @@
 // render an <a> with target="_blank" rel="noopener noreferrer" — the
 // mandatory rel attributes that prevent reverse-tabnabbing.
 //
-// Per 04-UI-SPEC.md §FEUI-03 the citation click also signals the center
-// panel to load the chunk verbatim (D-01). Wave 3 wires the full click
-// handler; Wave 1 emits the clickable element with the right safety
-// posture so the spike stub's XSS vector is eliminated.
+// Modernized: pill-style chip with a globe icon and the document/host
+// label, replacing the older dense inline badge.
 
 import type { SourceUrlUIPart } from 'ai';
+import { Globe, ShieldAlert } from 'lucide-react';
 import { sanitizeSourceUrl } from '../../../lib/sanitize-url';
 
 export function SourceUrlPart({ part }: { part: SourceUrlUIPart }) {
@@ -23,8 +22,8 @@ export function SourceUrlPart({ part }: { part: SourceUrlUIPart }) {
     console.warn(`[T-1-08] blocked citation URL host=${safe.hostname ?? '(unknown)'}`);
     return (
       <span className="citation-blocked" data-testid="citation-blocked">
-        引用 URL 未通过安全白名单，已拦截：
-        {safe.hostname ?? safe.reason}
+        <ShieldAlert className="h-3 w-3" />
+        <span>引用 URL 未通过安全白名单，已拦截</span>
       </span>
     );
   }
@@ -39,7 +38,8 @@ export function SourceUrlPart({ part }: { part: SourceUrlUIPart }) {
       rel="noopener noreferrer"
       data-testid="citation-link"
     >
-      {label}
+      <Globe className="h-3 w-3" />
+      <span>{label}</span>
     </a>
   );
 }

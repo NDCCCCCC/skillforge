@@ -1,18 +1,23 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// ToolPart — renders tool-call lifecycle (input-streaming →
-// input-available → output-available / output-error / output-denied).
-// Per Pitfall 3, the discriminator is `tool-${name}` or `dynamic-tool`
-// (NOT `tool-invocation` — that name doesn't exist in AI SDK v7).
+// ToolPart — modernized tool-call card (Phase 4 visual upgrade).
 //
+// Renders tool-call lifecycle as an elevated card with:
+//   - tool icon (🔧) in a colored badge
+//   - tool name in mono font
+//   - status dot (animated pulse for in-flight states)
+//   - expandable input/output JSON (when present)
+//   - state-driven left border color:
+//     * in-flight (input-streaming / input-available): cyan + pulse
+//     * success (output-available): green
+//     * error (output-error / output-denied): red
+//
+// Per Pitfall 3, the discriminator is `tool-${name}` or `dynamic-tool`.
 // For tools we didn't pre-list, MessageBubble's default arm catches
-// `part.type.startsWith('tool-')` and forwards here. This component
-// therefore accepts any tool-* part via a structural type.
-//
-// Wave 1 ships a minimal renderer (tool name + JSON-stringified input/
-// output). Wave 3 expands with per-tool custom views if needed.
+// `part.type.startsWith('tool-')` and forwards here.
 
+import { Wrench } from 'lucide-react';
 import type {
   DynamicToolUIPart,
   ToolUIPart,
@@ -23,19 +28,28 @@ type AnyToolPart = ToolUIPart | DynamicToolUIPart | (UIMessage['parts'][number] 
 
 function getToolName(part: AnyToolPart): string {
   if (part.type === 'dynamic-tool') return 'dynamic-tool';
-  // Plan 04-04 (2026-08-12): cast to a structural "{ toolName?: string }"
-  // shape instead of `ToolUIPart` — under ai@7, `ToolUIPart<UITools>` no
-  // longer exposes `toolName` directly when the tool name is unknown
-  // (`{ type: \`tool-${string}\` } & UIToolInvocation<UITool>`), which
-  // triggered TS2339 on the previous `(part as ToolUIPart).toolName`
-  // access. The structural cast covers both the enumerated-tool and
-  // un enumerated-tool paths; falling back to `part.type` preserves the
-  // prior rendering behavior for `tool-search_authority` and friends.
   return ((part as { toolName?: string }).toolName) ?? part.type;
 }
 
 function getState(part: AnyToolPart): string {
   return (part as { state?: string }).state ?? 'unknown';
+}
+
+function getStateLabel(state: string): string {
+  switch (state) {
+    case 'input-streaming':
+      return '准备参数';
+    case 'input-available':
+      return '调用中';
+    case 'output-available':
+      return '已完成';
+    case 'output-error':
+      return '执行失败';
+    case 'output-denied':
+      return '已拒绝';
+    default:
+      return state;
+  }
 }
 
 function safeStringify(value: unknown): string {
@@ -55,28 +69,35 @@ export function ToolPart({ part }: { part: AnyToolPart }) {
 
   return (
     <div
-      className="rounded-md border border-border bg-surface-2 p-2 my-2 text-xs font-mono"
+      className="tool-card"
       data-testid="tool-part"
       data-tool-name={name}
       data-state={state}
     >
-      <div className="flex items-center gap-2 text-text-muted">
-        <span className="text-primary font-semibold">🔧 {name}</span>
-        <span>·</span>
-        <span>{state}</span>
+      <div className="tool-card-header">
+        <span className="tool-card-icon" aria-hidden>
+          <Wrench className="h-3 w-3" />
+        </span>
+        <span className="tool-card-name">{name}</span>
+        <span className="tool-card-status">
+          <span className="tool-card-status-dot" aria-hidden />
+          <span>{getStateLabel(state)}</span>
+        </span>
       </div>
       {input !== undefined && (
-        <pre className="mt-2 overflow-x-auto text-text">
+        <pre className="tool-card-body">
           <code>{safeStringify(input)}</code>
         </pre>
       )}
       {output !== undefined && (
-        <pre className="mt-2 overflow-x-auto text-text">
+        <pre className="tool-card-body">
           <code>{safeStringify(output)}</code>
         </pre>
       )}
       {errorText !== undefined && (
-        <div className="mt-2 text-danger">error: {String(errorText)}</div>
+        <div className="tool-card-error">
+          错误：{String(errorText)}
+        </div>
       )}
     </div>
   );

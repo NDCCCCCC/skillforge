@@ -1,7 +1,8 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// ChatInput — composer at the bottom of the right chat panel.
+// ChatInput — modernized floating-card composer (Phase 4 visual upgrade).
+//
 // Implements the sketch-findings `chat-input-attach-skill.md` minimum:
 // textarea + send button + Enter-to-send + Shift+Enter newline + drag-
 // drop file affordance + 10MB file size validation.
@@ -10,21 +11,16 @@
 // popover was REPLACED by a Claude Code-style slash-command menu:
 // typing "/" at the start of a non-wizard, non-disabled input opens a
 // filterable Skill menu (arrow-key navigation + Enter select + Esc
-// close). The current Skill renders as a READ-ONLY badge above the
+// close). The current Skill renders as a READ-ONLY pill badge above the
 // textarea (chat-input-current-skill); selection happens exclusively
-// through the slash menu, which calls useAppStore.setCurrentSkill(id)
-// and clears the "/filter" token from the input on selection. The
-// interaction borrows Claude Code's harness mental model (slash →
-// filter → navigate → select) instead of a click-dropdown.
+// through the slash menu.
 //
-// denova-aligned composer (visual only): the textarea is a multi-line
-// (≥3 rows) box whose height the user can drag-resize (resize-y), and
-// the send button sits INSIDE the box at the bottom-right as a circular
-// paper-plane affordance — matching the reference app's in-box send
-// pattern. The textarea carries right padding so text never runs under
-// the button.
+// Visual upgrade (Phase 4): the composer is now a floating rounded
+// card with subtle shadow + focus glow, sitting on a transparent
+// background. The send button is a square-rounded button at the
+// bottom-right of the card (no longer a circular paper-plane).
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Send } from 'lucide-react';
+import { ArrowUp, Paperclip, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 
@@ -33,16 +29,13 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 export interface ChatInputProps {
   onSend: (text: string) => void;
   /** Optional mode label — when set, the Skill/currentSkill hint is
-   * replaced by the mode label (e.g. "模式：Skill 向导"). Plan 05-04.
-   * Wizard mode also disables the slash menu entirely. */
+   * replaced by the mode label (e.g. "模式：Skill 向导"). Plan 05-04. */
   modeLabel?: string;
   /** Disable the textarea + send button (e.g. while a preview fetch is
-   * in flight or the wizard is in the preview/commit phase). Disabled
-   * input never opens the slash menu. */
+   * in flight or the wizard is in the preview/commit phase). */
   disabled?: boolean;
   /** Show a small "busy" hint (replaces the send icon with a spinner
-   * when true; preserved so a future streaming wizard reply can show
-   * progress without churning the API). */
+   * when true). */
   busy?: boolean;
 }
 
@@ -130,11 +123,6 @@ export default function ChatInput({
   }, [menuOpen]);
 
   // Plan 05-08 Task 1 (WR-02 fix) — stale currentSkillId defense.
-  // If the selected skill is removed from store.skills (e.g. backend
-  // dropped the YAML or reload failed and the Skill was unregistered),
-  // the badge renders '未选择 Skill' but currentSkillId is still set
-  // in the store. Without this effect, the next /api/chat could carry a
-  // dangling id. Clear it so the UI + outbound messages stay consistent.
   useEffect(() => {
     const stale = currentSkillId !== null && !skills.some((s) => s.id === currentSkillId);
     if (stale) useAppStore.getState().setCurrentSkill(null);
@@ -153,9 +141,6 @@ export default function ChatInput({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    // Slash-menu keys take priority over Enter-to-send while the menu
-    // is open (an open menu means the input holds a pending /filter
-    // token, never a message the user intends to send).
     if (menuOpen) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -179,8 +164,6 @@ export default function ChatInput({
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        // Close the menu but KEEP the typed text — Esc dismisses the
-        // affordance, it does not discard the user's input.
         setDismissed(true);
         return;
       }
@@ -223,32 +206,45 @@ export default function ChatInput({
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
-      className={cn(
-        'border-t border-border bg-surface p-3',
-        isDragging && 'chat-input-dragging',
-      )}
+      className="composer-modern"
     >
       {modeLabel ? (
         <div
           data-testid="chat-input-current-skill"
-          className="text-xs text-text-muted mb-2 block"
+          className="chat-empty-prompt mb-2"
+          style={{ cursor: 'default' }}
         >
-          {`模式：${modeLabel}`}
+          <span className="chat-empty-prompt-icon" aria-hidden>
+            <Paperclip className="h-3 w-3" />
+          </span>
+          <span style={{ fontSize: 'var(--text-xs)' }}>模式：{modeLabel}</span>
         </div>
       ) : (
         <div className="relative mb-2">
           {/* Read-only badge (quick plan 260815-0xb): selection happens
               via the slash menu below, not via a click popover. */}
-          <div
-            data-testid="chat-input-current-skill"
-            className="text-xs text-text-muted inline-flex items-center gap-1"
-          >
-            {currentSkill ? `当前 Skill：${currentSkill.name}` : '未选择 Skill'}
-          </div>
+          {currentSkill && (
+            <div
+              data-testid="chat-input-current-skill"
+              className="composer-skill-badge"
+            >
+              <span className="composer-skill-badge-dot" aria-hidden />
+              <span>{currentSkill.name}</span>
+            </div>
+          )}
+          {!currentSkill && (
+            <div
+              data-testid="chat-input-current-skill"
+              className="chat-header-skill chat-header-skill-missing"
+              style={{ padding: '0 4px', fontSize: 11 }}
+            >
+              未选择 Skill · 输入 / 选择
+            </div>
+          )}
           {menuOpen && (
             <div
               data-testid="chat-input-skill-menu"
-              className="absolute bottom-full mb-1 left-0 z-20 w-72 rounded-md border border-border bg-surface-2 shadow-lg"
+              className="composer-skill-menu"
             >
               <div className="px-3 pt-2 pb-1 text-xs font-semibold text-text-muted">
                 {filter ? `匹配 “${filter}” 的 Skill` : '选择 Skill'}
@@ -291,38 +287,42 @@ export default function ChatInput({
         </div>
       )}
 
-      {files.length > 0 && (
-        <div data-testid="chat-input-files" className="mb-2 flex flex-wrap gap-2">
-          {files.map((file) => (
-            <span
-              key={file.id}
-              data-testid="chat-input-file-chip"
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-0.5 text-xs"
-            >
-              <span>{file.name}</span>
-              <span className="text-text-dim">{Math.round(file.size / 1024)} KB</span>
-              <button
-                type="button"
-                data-testid="chat-input-file-remove"
-                onClick={() => removeFile(file.id)}
-                className="text-text-muted hover:text-text"
-                aria-label={`Remove ${file.name}`}
+      <div
+        className="composer-card"
+        data-dragging={isDragging ? 'true' : 'false'}
+      >
+        {files.length > 0 && (
+          <div data-testid="chat-input-files" className="composer-files">
+            {files.map((file) => (
+              <span
+                key={file.id}
+                data-testid="chat-input-file-chip"
+                className="composer-file-chip"
               >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+                <Paperclip className="h-3 w-3" style={{ color: 'var(--color-text-muted)' }} />
+                <span>{file.name}</span>
+                <span className="composer-file-chip-size">
+                  {Math.round(file.size / 1024)} KB
+                </span>
+                <button
+                  type="button"
+                  data-testid="chat-input-file-remove"
+                  onClick={() => removeFile(file.id)}
+                  className="composer-file-remove"
+                  aria-label={`Remove ${file.name}`}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
-      <div className="relative">
         <textarea
           data-testid="chat-input-textarea"
           value={text}
           onChange={(e) => {
             setText(e.target.value);
-            // Any edit after an Esc/outside-click dismissal re-arms the
-            // slash menu (typing again reopens it, Claude Code-style).
             setDismissed(false);
           }}
           onKeyDown={handleKeyDown}
@@ -332,8 +332,8 @@ export default function ChatInput({
               ? '回答向导的问题…'
               : '输入问题，或键入 / 选择 Skill，或拖放文件...'
           }
-          className="w-full min-h-[96px] max-h-64 resize-y rounded-md border border-border bg-bg px-3 py-2 pr-12 text-base text-text leading-relaxed focus:outline-none focus:border-primary disabled:opacity-60"
-          rows={3}
+          className="composer-textarea"
+          rows={1}
         />
         <button
           type="button"
@@ -341,10 +341,14 @@ export default function ChatInput({
           onClick={handleSend}
           disabled={!text.trim() || disabled}
           aria-label="发送"
-          className="absolute right-2 bottom-2 inline-flex items-center justify-center h-8 w-8 rounded-full bg-primary text-white disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+          className="composer-send"
         >
-          <Send className="h-4 w-4" />
+          <ArrowUp className="h-4 w-4" />
         </button>
+      </div>
+
+      <div className="composer-hint">
+        Enter 发送 · Shift+Enter 换行 · / 选择 Skill · 拖放文件附件
       </div>
     </div>
   );

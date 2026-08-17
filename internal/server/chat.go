@@ -278,8 +278,25 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		// persisted inside VerdictPipeline at their emit sites — this
 		// branch covers only the true-error returns (embed / retrieve /
 		// LLM drain / verdict parse / validate).
+		//
+		// 260817 verdict-stream-hang: pre-fix this branch did NOT log the
+		// error and emitted only errorChunk + finish-step — the message
+		// never completed its text lifecycle (the Phase-7 unregistered-
+		// message failure mode) and App.tsx does not read useChat's error,
+		// so the FE froze at the 生成结论 node with zero backend logs.
+		// Now: log the full error server-side, then emit a complete text
+		// lifecycle carrying a deterministic readable message so the FE
+		// always reaches a visible terminal state (ai v7 keeps processing
+		// chunks after an error chunk — dist/index.js case "error" only
+		// calls onError). The readable text is a fixed template (no
+		// internal error detail leaks to the client).
+		log.Printf("[ERROR] server: chatHandler verdict pipeline failed sess=%s: %v", sessionID, err)
 		_ = wire.EmitChunk(c, errorChunk(err.Error()))
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"})
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: pipelineErrorText})
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
 		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error")
 		return
 	}
@@ -943,6 +960,14 @@ func joinStrings(parts []string) string {
 func errorChunk(msg string) wire.UIMessageChunk {
 	return wire.UIMessageChunk{Type: "error", ErrorText: msg}
 }
+
+// pipelineErrorText is the user-facing terminal message emitted on the
+// chatHandler error branch (260817 verdict-stream-hang). Deterministic
+// and detail-free by design: the internal error stays in server logs
+// (T-1-13 — no env values / upstream internals leak to the client),
+// the FE gets a readable terminal state instead of a frozen 生成结论
+// node.
+const pipelineErrorText = "结论生成失败：模型服务暂时不可用，请稍后重试。"
 
 // Compile-time guarantee: schema.UserMessage is imported for future
 // streaming hooks (Phase 3+); this package will not silently lose the

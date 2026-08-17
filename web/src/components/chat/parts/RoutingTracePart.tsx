@@ -69,33 +69,34 @@ export default function RoutingTracePart({ part, onPickAmbiguous, onDismissAmbig
       data-testid="routing-trace"
       data-decision={decision}
       data-ambiguous={String(ambiguous)}
-      className="my-2 rounded-md border-l-4 border-l-primary bg-surface-2 px-3 py-2 font-mono text-xs"
+      className="routing-trace-modern"
     >
-      <div className="flex items-center gap-2 text-text-muted">
-        <span className="font-semibold text-primary">路由分析</span>
+      <div className="routing-trace-modern-header">
+        <span aria-hidden>↳</span>
+        <span>路由分析</span>
       </div>
       {skillScores.length === 0 ? (
         <div
           data-testid="routing-trace-empty"
-          className="mt-1 text-text-muted"
+          className="text-text-muted"
         >
           路由信息缺失。
         </div>
       ) : (
-        <ul className="mt-1 space-y-0.5">
+        <div className="routing-trace-modern-list">
           {skillScores.map((s) => (
-            <li
+            <div
               key={s.skillId}
               data-testid="routing-trace-row"
               data-skill-id={s.skillId}
               data-selected={String(s.selected)}
-              className={s.selected ? 'text-primary font-semibold' : 'text-text-muted'}
+              className="routing-trace-modern-row"
             >
               <span>{s.skillName}</span>
-              <span className="ml-2">cos {formatScore(s.score)}</span>
-            </li>
+              <span className="routing-trace-modern-score">cos {formatScore(s.score)}</span>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
       {ambiguous && skillScores.length > 0 && (
         <div

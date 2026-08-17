@@ -51,11 +51,14 @@ describe('RoutingTracePart', () => {
     expect(compliance).toHaveAttribute('data-selected', 'true');
     expect(compliance).toHaveTextContent('企业合规/制度审查');
     expect(compliance).toHaveTextContent('cos 0.87');
-    expect(compliance).toHaveClass('text-primary');
+    // Phase 4 modernization: the selected row uses the
+    // .routing-trace-modern-row[data-selected="true"] selector for its
+    // primary highlight (background pill + brighter text). We assert
+    // both the class hook and the data-selected attribute.
+    expect(compliance).toHaveClass('routing-trace-modern-row');
 
     const general = rows[1];
     expect(general).toHaveAttribute('data-selected', 'false');
-    expect(general).toHaveClass('text-text-muted');
     expect(general).toHaveTextContent('cos 0.42');
   });
 

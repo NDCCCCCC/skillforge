@@ -1,8 +1,9 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "chat 最终结果不出现在 chat 对话流里，而是出现在页面中间的'结论'tab 中（用户：'chat逻辑很奇怪'）"
 created: 2026-08-15
 updated: 2026-08-15
+resolved: 2026-08-15
 ---
 
 # Debug: chat-conclusion-not-in-chat
@@ -20,7 +21,7 @@ updated: 2026-08-15
 - **hypothesis:** CONFIRMED + FIX APPLIED（见 Resolution）。
 - **test:** 已完成：2 个新回归测试 + 全仓 go test + web vitest 全绿。
 - **expecting:** 用户在真实环境（重启 Go server + 前端 VITE_REAL_BACKEND=1）发送「年假有几天」→ chat 流出现「结论：…（置信度 …%）。依据 权威 tier 条款：「…」。」文本；结论 tab 仍显示结构化卡。
-- **next_action:** await human verify（用户 live 确认后 → archive_session）。
+- **next_action:** DONE — 用户 live 确认已修复（2026-08-15）：结论流式出现在 chat、拒答路径正常、duplicate key 警告消除。会话归档至 resolved/。
 
 reasoning_checkpoint:
   hypothesis: "VerdictPipeline 从不产生结论文本：prompt 禁止非 JSON 输出（'NO other text'）、Verdict 无文本字段、emitVerdictStream 只发占位空格 text-delta —— 结论只存在于 data-policy 结构化 payload；FE 忠实渲染（结论 tab + 气泡内 VerdictCard），但 chat 流 text part 永远没有可读结论。refusal 路径同类：emitRefusal 是 data-only 流（无 text part），而 Phase 4 fixture（refusal-out-of-scope.json line 9-11）明确带 text part —— FE 契约要求两条路径都有可读文本。"
@@ -86,6 +87,6 @@ fix: 在 SSE 发射层确定性推导结论文本（不动 LLM prompt / Verdict 
 - `internal/server/chat_test.go` — 新增 TestVerdictStreamCarriesConclusionText + TestRefusalStreamCarriesTextPart 回归测试。
 - `web/src/components/center/CitationCluster.tsx` —（live verify 连带修复）引用 chip key 从 chunk_id 改为 `${index}-${chunk_id}` 复合键：LLM 可对同一 chunk 给多条不同 span 引用，chunk_id 撞键触发 React duplicate key 警告。
 
-verification: go build ./... + go vet 通过；go test ./... 全绿（含 2 个新回归测试）；web vitest 233/233 全绿（FE 零改动，fixture 契约本就要求 text part）。live 端到端（真实 Milvus+GLM 环境 + 浏览器）待用户验证。
+verification: go build ./... + go vet 通过；go test ./... 全绿（含 2 个新回归测试）；web vitest 233/233 全绿（FE 零改动，fixture 契约本就要求 text part）。live 端到端（真实 Milvus+GLM 环境 + 浏览器）已由用户确认修复（2026-08-15，两轮：round 1 结论流可见 + 暴露 CitationCluster 撞键 → fd070bb 修复；round 2 用户确认全部 OK）。
 
 files_changed: [internal/server/chat.go, internal/server/chat_test.go]

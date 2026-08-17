@@ -1,19 +1,20 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// DataSubprogressPart — FEUI-06 sub-progress step indicator.
+// DataSubprogressPart — FEUI-06 sub-progress step indicator (modernized).
 //
-// Wave 2 ships the minimum: a single-line component that maps each
-// `SubprogressStep` to the Copywriting Contract step copy. Wave 3
-// expands with collapse-on-finish animation per UI-SPEC §FEUI-06.
+// Renders each agent pipeline step as a row in a vertical timeline:
+//   - left: animated dot (pulse on the currently running step)
+//   - middle: connector line to the next step
+//   - right: human-readable step copy
+//
+// The component is intentionally append-only — the timeline grows
+// top-to-bottom as the agent emits more steps, with no animation on
+// the prior rows (they're done; the user already saw them stream in).
 import { cn } from '../../../lib/cn';
 import type { SubprogressStep } from '../../../types/verdict';
 import type { UIMessage } from 'ai';
 
-// AI SDK v7's UIMessage generic UIDataTypes defaults do not include
-// the custom data-* payloads we author in fixtures. Cast through
-// `unknown` to the structural shape the renderer actually reads.
-// (Pitfall 2: payload lives on .data, NOT .policy.)
 type DataSubprogressPartType = {
   type: 'data-subprogress';
   id?: string;
@@ -23,15 +24,15 @@ type DataSubprogressPartType = {
 function renderStep(step: SubprogressStep): string {
   switch (step.step) {
     case 'retrieve':
-      return `检索 [${step.tier ?? '权威'}] 知识层...`;
+      return `检索 [${step.tier ?? '权威'}] 知识层`;
     case 'found_candidates':
       return `找到 ${step.count ?? 0} 条候选`;
     case 'rerank':
-      return '重排序中...';
+      return '重排序';
     case 'self_verify':
-      return '自校验中...';
+      return '自校验';
     case 'generate':
-      return '生成结论中...';
+      return '生成结论';
     default:
       return '';
   }
@@ -43,15 +44,18 @@ export default function DataSubprogressPart({
   part: DataSubprogressPartType | (UIMessage['parts'][number] & Record<string, unknown>);
 }) {
   const data = (part as DataSubprogressPartType).data as SubprogressStep;
+  const isPending = data.state === 'pending';
+
   return (
     <div
       data-testid="data-subprogress"
       data-step={data.step}
-      className={cn(
-        'my-2 rounded-md border-l-4 border-l-primary bg-surface-2 px-3 py-2 font-mono text-xs text-text-muted',
-      )}
+      data-pending={String(isPending)}
+      className="subprogress-step"
     >
-      {renderStep(data)}
+      <span className="subprogress-step-dot" aria-hidden />
+      <span className={cn(isPending && 'text-text')}>{renderStep(data)}</span>
+      <span className="subprogress-step-line" aria-hidden />
     </div>
   );
 }

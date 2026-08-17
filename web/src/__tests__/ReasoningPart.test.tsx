@@ -3,13 +3,14 @@
 
 // Plan 04-02 Task 2 — ReasoningPart tests.
 //
-// Pins the D-08 invariants:
+// Pins the D-08 invariants (Phase 4 visual upgrade — modernized to
+// amber "thinking" card with `推理过程` label):
 //   - renders `data-testid="reasoning-preview"` wrapper
 //   - `data-expanded` boolean attribute reflects toggle state
-//   - body uses `.reasoning-preview` CSS class for the 160px cap
-//   - toggle button labeled `展开全部` when collapsed, `收起` when expanded
-//   - label text is `推理` plus `推理中...` suffix when part.state === 'streaming'
-//   - label text is `推理` (no suffix) when complete
+//   - body uses `.reasoning-card-body` CSS class for the 180px cap
+//   - toggle button labeled `展开` when collapsed, `收起` when expanded
+//   - label text is `推理过程` plus `推理中...` suffix when part.state === 'streaming'
+//   - label text is `推理过程` (no suffix) when complete
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { UIMessage } from 'ai';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -43,10 +44,10 @@ describe('ReasoningPart', () => {
     expect(preview).toHaveAttribute('data-expanded', 'true');
   });
 
-  it('toggles the button label between 展开全部 and 收起', () => {
+  it('toggles the button label between 展开 and 收起', () => {
     render(<ReasoningPart part={makePart()} />);
     const toggle = screen.getByTestId('reasoning-toggle');
-    expect(toggle).toHaveTextContent('展开全部');
+    expect(toggle).toHaveTextContent('展开');
 
     fireEvent.click(toggle);
     expect(toggle).toHaveTextContent('收起');
@@ -61,7 +62,7 @@ describe('ReasoningPart', () => {
 
   it('appends 推理中... suffix when part.state === "streaming"', () => {
     render(<ReasoningPart part={makePart({ state: 'streaming' })} />);
-    expect(screen.getByTestId('reasoning-preview')).toHaveTextContent('推理');
+    expect(screen.getByTestId('reasoning-preview')).toHaveTextContent('推理过程');
     expect(screen.getByTestId('reasoning-preview')).toHaveTextContent('推理中...');
   });
 
@@ -73,7 +74,7 @@ describe('ReasoningPart', () => {
   it('omits the suffix when part.state is complete and no streamingAnswer', () => {
     render(<ReasoningPart part={makePart({ state: 'done' })} />);
     const preview = screen.getByTestId('reasoning-preview');
-    expect(preview).toHaveTextContent('推理');
+    expect(preview).toHaveTextContent('推理过程');
     expect(preview.textContent).not.toMatch(/推理中|生成中/);
   });
 });

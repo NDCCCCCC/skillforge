@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // TextPart — renders the assistant's main response text. Wraps in <p>
-// with body font size per 04-UI-SPEC.md §Typography. Trivial wrapper;
-// the work is done by the AI SDK v7 parser upstream (text-start /
-// text-delta / text-end collapse into a single text part).
+// with body font + relaxed line height for comfortable reading.
+//
+// The AI SDK v7 parser upstream (text-start / text-delta / text-end)
+// collapses into a single text part. White-space is preserved so any
+// newlines from the model survive rendering.
 //
 // 260817-i36 (①): optional `verdictStatus` prop. When MessageBubble
 // finds a data-policy Verdict in the same message, the platform Status
@@ -24,7 +26,14 @@ export interface TextPartProps {
 }
 
 export function TextPart({ part, verdictStatus }: TextPartProps) {
-  const body = <p className="text-base text-text leading-relaxed">{part.text}</p>;
+  const body = (
+    <p
+      className="message-assistant-text"
+      style={{ whiteSpace: 'pre-wrap' }}
+    >
+      {part.text}
+    </p>
+  );
   if (verdictStatus === undefined) {
     return body;
   }

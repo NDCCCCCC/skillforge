@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // DraftStreamChip tests — Plan 260815-cos Task 2 (TDD RED→GREEN).
+// Phase 4 modernization: chip is now a slim pill with a pulsing dot;
+// status='pending' shows "正在生成回答" + draft text, status='verified'
+// shows "已验证" + draft text.
 //
 // Pinned invariants:
-//  1. status='pending' + draftText → renders 🟡 待校验 chip + the
+//  1. status='pending' + draftText → renders "正在生成回答" + the
 //     accumulated text (text-delta-draft frames have been buffered).
-//  2. status='verified' + draftText → renders ✅ 已验证 chip + the
-//     text is retained (the user watched it stream in, continuity
-//     matters for the trust transition 🟡 → ✅).
+//  2. status='verified' + draftText → renders "已验证" + the text is
+//     retained (the user watched it stream in, continuity matters).
 //  3. status='refused' → return null (RefusalCard takes its place).
 //  4. Streaming append (draftText grows over re-renders) → the chip
 //     always renders the latest accumulated text (progressive UX).
@@ -20,16 +22,16 @@ import DraftStreamChip from './DraftStreamChip';
 afterEach(cleanup);
 
 describe('DraftStreamChip', () => {
-  it('renders 🟡 待校验 chip with the draft text when status=pending', () => {
+  it('renders 正在生成回答 chip with the draft text when status=pending', () => {
     render(<DraftStreamChip status="pending" draftText="依据制度..." />);
     const chip = screen.getByTestId('draft-chip');
     expect(chip).toBeInTheDocument();
     expect(chip).toHaveAttribute('data-status', 'pending');
-    expect(chip).toHaveTextContent('待校验');
+    expect(chip).toHaveTextContent('正在生成回答');
     expect(screen.getByTestId('draft-text')).toHaveTextContent('依据制度...');
   });
 
-  it('renders ✅ 已验证 chip and retains the draft text on status=verified', () => {
+  it('renders 已验证 chip and retains the draft text on status=verified', () => {
     render(<DraftStreamChip status="verified" draftText="依据制度第3条" />);
     const chip = screen.getByTestId('draft-chip');
     expect(chip).toBeInTheDocument();

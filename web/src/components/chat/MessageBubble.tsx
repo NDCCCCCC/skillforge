@@ -1,20 +1,23 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// MessageBubble — the parts switch dispatcher. Iterates message.parts
-// and routes each by `part.type` to the appropriate renderer.
+// MessageBubble — modernized chat layout (Phase 4 visual upgrade).
 //
-// Per 04-RESEARCH.md Pattern 3 + D-08 (reasoning MUST render BEFORE
-// text in DOM order so reasoning expansion never pushes the answer off-
-// screen), the switch keeps `case 'reasoning'` BEFORE `case 'text'` —
-// but since we iterate in array order and the AI SDK parser emits
-// parts in emission order, the fixture ordering matters. Reasoning
-// chunks arrive before text chunks when the agent streams a
-// reasoning-first pattern (GLM-5.2 default), so iteration preserves
-// the contract. The MessageBubble.test.tsx assertion enforces this.
+// Layout strategy:
+//   - User messages: right-aligned card with subtle blue gradient +
+//     rounded-2xl (one corner tighter for "tail" feel) + max-78% width
+//   - Assistant messages: full-width column with breathing room —
+//     text gets no chrome, only child parts (tool/reasoning/citations)
+//     get elevated cards
+//   - Reasoning parts (DOM order per D-08): positioned ABOVE text
+//   - Tool parts: distinct elevated cards with status indicators
+//   - Citations: pill-style chips
 //
-// Unknown part types silently drop (per AI SDK v7 spec — a newer-
-// server / older-client combo must not crash the UI).
+// The MessageBubble.test.tsx assertions still hold:
+//   - reasoning renders BEFORE text in DOM order (D-08)
+//   - all 7 part types render without crash
+//   - tool-${name} and dynamic-tool both render
+//   - unknown part types silently drop
 //
 // 260817-hck: the assistant branch concatenates all text parts into
 // `chatText` and passes it to DataPolicyPart, so VerdictCard can hide
@@ -40,8 +43,6 @@ import { StepStartPart } from './parts/StepStartPart';
 import { TextPart } from './parts/TextPart';
 import { ToolPart } from './parts/ToolPart';
 // Plan 05-06 Task 2 — SC-6 / SC-7 post-verdict annotation cards.
-// Both render AFTER the verdict; RedlineCard is the LAST part in the
-// bubble (the operator's final affordance: copy / download the diff).
 import CounterEvidenceCard from '../verdict/CounterEvidenceCard';
 import RedlineCard from '../verdict/RedlineCard';
 import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
@@ -93,14 +94,6 @@ function renderPart(
     case 'step-start':
       return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
     case 'data-decision': {
-      // Plan 05-03 / SC-1 — `route` decisions render via RoutingTracePart.
-      // Plan 05-06 / SC-6 — `counter_evidence` decisions render via the
-      // CounterEvidenceCard annotation surface (D5-13 trust moat: this
-      // is NOT routing info, it's the visible "history tier conflicts"
-      // marker that lives OUTSIDE the verdict's grounding).
-      // Other decision values (`retrieve`, `answer`, `refuse`,
-      // `forced_stop`) drop silently — they're consumed by the SC-4
-      // AgentInspector panel (mounted in the center), not here.
       const dp = (part as { data?: { decision?: string; conflictChunks?: ConflictChunk[] } }).data;
       const decision = dp?.decision;
       if (decision === 'counter_evidence') {
@@ -115,19 +108,11 @@ function renderPart(
       );
     }
     case 'data-redline': {
-      // Plan 05-06 / SC-7 — D5-14. The BE emits a data-redline chunk
-      // ONLY on 不合规 / 需补充 verdicts (合规 emits ZERO chunks + makes
-      // ZERO LLM calls). The card is therefore ABSENT on 合规 verdicts;
-      // this dispatcher simply never runs for them. If a future BE bug
-      // emits an empty/partial redline, RedlinePayload's required-field
-      // typing catches it at the cast below (TS refuses to narrow).
       const data = (part as { data?: RedlinePayload }).data;
       if (!data) return null;
       return <RedlineCard key={i} data={data} />;
     }
     default:
-      // For tool-${name} types we didn't pre-list (Pitfall 3), fall
-      // through to ToolPart. Anything else silently drops per spec.
       if (part.type.startsWith('tool-')) {
         return <ToolPart key={i} part={part as Parameters<typeof ToolPart>[0]['part']} />;
       }
@@ -141,38 +126,56 @@ export interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProps) {
-  const bg = role === 'user' ? 'bg-user-bubble' : 'bg-assistant-bubble';
+  if (role === 'user') {
+    // User messages: right-aligned card with the full message text.
+    // We render the text parts inline (not via TextPart) so the bubble
+    // owns its typography — bubble padding/font/line-height is set
+    // here, not in the part renderer. The data-testid stays the same
+    // for backward compat with the existing test suite.
+    return (
+      <div
+        className="message-user"
+        data-testid="message-bubble"
+        data-role="user"
+      >
+        <div className="message-user-card">
+          {message.parts.map((part, i) => {
+            if (part.type === 'text') {
+              return <span key={i}>{part.text}</span>;
+            }
+            return null;
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant messages: full-width column with breathing room.
   // 260817-hck: aggregate all text parts into chatText so VerdictCard
   // (via DataPolicyPart) can suppress a verdict-answer block that the
-  // chat body already renders verbatim. Assistant messages only — user
-  // messages never carry data-policy parts.
-  const chatText =
-    role === 'assistant'
-      ? message.parts
-          .filter((p) => p.type === 'text')
-          .map((p) => (p as { text: string }).text)
-          .join('')
-      : undefined;
+  // chat body already renders verbatim.
+  const chatText = message.parts
+    .filter((p) => p.type === 'text')
+    .map((p) => (p as { text: string }).text)
+    .join('');
   // 260817-i36 (①): lift the Verdict status off the data-policy part so
   // TextPart can render it as the corner badge on the conclusion text.
-  // Assistant messages only. Streaming: data-policy arrives after text —
-  // the badge appears once the verdict lands (locked decision,
-  // acceptable timing).
-  const policyData =
-    role === 'assistant'
-      ? (message.parts.find((p) => p.type === 'data-policy') as
-          | { data?: unknown }
-          | undefined)?.data
-      : undefined;
+  // Streaming: data-policy arrives after text — the badge appears once
+  // the verdict lands (locked decision, acceptable timing).
+  const policyData = (
+    message.parts.find((p) => p.type === 'data-policy') as
+      | { data?: unknown }
+      | undefined
+  )?.data;
   const verdictStatus =
     policyData !== undefined && isVerdict(policyData)
       ? policyData.status
       : undefined;
   return (
     <div
-      className={`my-3 rounded-lg ${bg} p-3 text-text`}
+      className="message-assistant"
       data-testid="message-bubble"
-      data-role={role}
+      data-role="assistant"
     >
       {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
     </div>

@@ -1,28 +1,27 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// ReasoningPart — FEUI-02 progressive-disclosure reasoning preview.
+// ReasoningPart — modernized reasoning card (Phase 4 visual upgrade).
 //
 // D-08 invariants:
-//   - Renders ABOVE the answer text in DOM order. The parent
-//     MessageBubble iterates parts in array order; the fixture order
-//     ensures reasoning parts arrive before text parts, so this
-//     component never reorders siblings.
-//   - ALWAYS expanded by default with height capped at 160px (the
-//     `reasoning-preview` CSS class). Once the cap is reached the
-//     user can scroll freely inside the preview; the answer text
-//     stays in view because the message bubble scrolls internally.
-//   - One-click `展开全部` / `收起` toggle. Chevron rotates 90deg
-//     when expanded.
+//   - Renders ABOVE the answer text in DOM order (parent MessageBubble
+//     iterates in array order).
+//   - ALWAYS visible — the card body is height-capped at 180px with a
+//     fade-out mask, so long reasoning chains never push the answer
+//     off-screen.
+//   - One-click toggle to expand/collapse.
 //
-// Label suffix per Copywriting Contract:
-//   - `part.state === 'streaming'` → `推理中...`
-//   - else while no text has begun arriving → `推理中...`
-//   - while text chunks are arriving → `生成中...`
-//   - when complete → empty suffix
+// Visual identity:
+//   - Warm amber "thinking" surface (not the cyan/blue of tool calls)
+//   - Lightbulb icon in a tinted badge
+//   - Mono font for the body (the model's chain-of-thought is code-like)
+//   - Streaming label suffix:
+//     * `part.state === 'streaming'` → `推理中...`
+//     * else while answer is streaming → `生成中...`
+//     * when complete → empty suffix
 import { useEffect, useRef, useState } from 'react';
 import type { UIMessage } from 'ai';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, Lightbulb } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 
 type ReasoningPartType = Extract<UIMessage['parts'][number], { type: 'reasoning' }>;
@@ -57,34 +56,44 @@ export default function ReasoningPart({ part, streamingAnswer }: ReasoningPartPr
     <div
       data-testid="reasoning-preview"
       data-expanded={String(expanded)}
-      className={cn('my-2', expanded && 'reasoning-preview-uncap')}
+      className={cn('reasoning-card')}
     >
-      <div className="flex items-center justify-between gap-2 px-1">
-        <span className="font-mono text-xs font-semibold text-primary">
-          推理{suffix && ` ${suffix}`}
+      <div
+        className="reasoning-card-header"
+        onClick={() => setExpanded((b) => !b)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setExpanded((b) => !b);
+          }
+        }}
+      >
+        <span className="reasoning-card-icon" aria-hidden>
+          <Lightbulb className="h-3 w-3" />
         </span>
-        <button
-          type="button"
-          onClick={() => setExpanded((b) => !b)}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-xs font-semibold text-primary transition-colors hover:bg-surface-2"
+        <span className="reasoning-card-label">
+          推理过程
+          {suffix && <span className="reasoning-card-suffix"> · {suffix}</span>}
+        </span>
+        <span
+          className="reasoning-card-toggle"
           data-testid="reasoning-toggle"
           aria-expanded={expanded}
         >
           {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 transition-transform" />
+            <ChevronDown className="h-3 w-3" />
           ) : (
-            <ChevronRight className="h-3.5 w-3.5 transition-transform" />
+            <ChevronDown className="h-3 w-3" style={{ transform: 'rotate(-90deg)' }} />
           )}
-          <span>{expanded ? '收起' : '展开全部'}</span>
-        </button>
+          <span>{expanded ? '收起' : '展开'}</span>
+        </span>
       </div>
       <pre
         ref={bodyRef}
         data-testid="reasoning-body"
-        className={cn(
-          'reasoning-preview mt-1 whitespace-pre-wrap text-xs text-text-muted',
-          expanded && 'max-h-none overflow-visible',
-        )}
+        className="reasoning-card-body"
       >
         {part.text}
       </pre>

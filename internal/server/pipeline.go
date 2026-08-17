@@ -98,41 +98,16 @@ Output ONLY a JSON object with this exact schema:
     {"chunk_id": "<the literal numeric chunk ID from [ref-N] — output digits only, no prefix>", "span": "<verbatim substring of that chunk — must appear literally in the chunk text>", "tier": "<the tier of that chunk>"}
   ],
   "review_required": <true if confidence<0.9 OR info insufficient, else false>,
-  "answer": "<omit for compliance-review queries; populate with the direct answer for factual queries (e.g. '由部门负责人审批')>",
-  "compliance_status": "<omit for non-compliance queries; populate with 'compliant' / 'non_compliant' / 'not_applicable' for compliance-review queries>"
+  "answer": "<factual queries only: the direct answer>",
+  "compliance_status": "<compliance reviews only: compliant | non_compliant | not_applicable>"
 }
 
 NO other text. ONLY the JSON object. Follow these decision rules strictly:
 
-STEP 0 — Query type classification (CRITICAL):
-  Identify the query type BEFORE choosing a verdict. Two types:
-    - Factual lookup: the user asks "X 是多少 / 谁审批 / 何时 / 怎么办 / 标准是什么"
-      (e.g. "采购合同 50 万元以下由谁审批？", "年假有几天？", "竞业限制期多久？")
-      → answer = the direct answer extracted from the cited chunk.
-      → compliance_status = "not_applicable" (the query is not a compliance review).
-      → status = "ok".
-    - Compliance review: the user asks "X 合规吗 / 是否违反 / 是否符合制度"
-      (e.g. "差旅住宿费超过 500 元合规吗？", "这单合同能签吗？")
-      → answer = omit (empty).
-      → compliance_status = "compliant" / "non_compliant" / "needs_input".
-      → status = "ok" / "needs_input" accordingly.
-
-STEP 1 — Status:
-  - "ok"          — produced a grounded answer (factual or compliant verdict).
-  - "needs_input" — the cited policy is conditional / depends on context not in the chunks.
-  - "refused"     — NO retrieved chunk addresses the query's topic, or the query asks for personal/PII info. Then: confidence=0, citations=[], review_required=true.
-  - "error"       — only for the system to set, never emit this yourself.
-
-STEP 2 — Citations: for any "ok" or "needs_input" verdict, you MUST cite ≥1 chunk with a verbatim span. Never return "refused" when a relevant chunk exists.
-
-STEP 3 — compliance_status (Compliance Skill only — omit for non-compliance queries):
-  - "compliant"     — the subject matches the cited policy.
-  - "non_compliant" — the subject fails the cited policy.
-  - "not_applicable" — the query is a factual lookup (see STEP 0); paired with answer.
-
-STEP 4 — answer (factual queries only — omit for compliance reviews):
-  - Populate with the direct answer extracted from the cited chunk text.
-  - Must be a SHORT factual sentence, not a rephrasing of the citation span.`
+1. Classify the query FIRST. Factual lookup ("X 是多少 / 谁审批 / 有几天 / 多久", e.g. "采购合同 50 万元以下由谁审批？", "年假有几天？"): status="ok", answer = the direct answer extracted from the cited chunk (a SHORT factual sentence, not a rephrasing of the citation span), compliance_status="not_applicable". Compliance review ("X 合规吗 / 是否违反", e.g. "差旅住宿费超过 500 元合规吗？"): omit answer, compliance_status="compliant" | "non_compliant", status="ok".
+2. When the cited policy is conditional (depends on an amount threshold, approval level, or context not present in the chunks): status="needs_input" WITH a citation to the governing clause — this is the CORRECT response for a conditional case, not "refused".
+3. For any "ok" or "needs_input" verdict you MUST cite ≥1 chunk with a verbatim span.
+4. Return status="refused" ONLY when NO retrieved chunk addresses the query's topic at all, or the query asks for personal/PII information. Then: confidence=0, citations=[], review_required=true. NEVER refuse when a relevant chunk exists. Never emit "error" yourself — it is reserved for the system.`
 
 // userQueryTemplate — the query + the retrieved chunks framed as DATA.
 // The framing is the T-2-21 prompt-injection mitigation: even if a
@@ -465,6 +440,28 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 // opts are the model.Option slice (temperature / max-tokens /
 // extra-fields) shared with the Phase 2 Runner.Query fallback so the
 // two paths produce identical judgement JSON shape.
+//
+// 260817 verdict-stream-hang: streamAndAssemble is now a retry wrapper
+// around streamOnce. GLM-5.2 on the Coding Plan endpoint is
+// live-documented (agent-llm-query-rewrite.md) to intermittently return
+// EMPTY streams or fail stream-open on the verdict prompt (sensitive to
+// prompt length); pre-fix, both failure modes surfaced as a silent
+// chatHandler error and a FE "hang" at the 生成结论 node. Retry policy:
+// up to streamMaxAttempts attempts with 1s/2s/4s backoff, but ONLY when
+// zero tokens were received — a mid-stream failure already emitted
+// partial draft frames and re-streaming would duplicate them in the FE
+// draft chip. Each attempt runs under streamAttemptTimeout so a stalled
+// upstream (Recv blocked forever) becomes a retriable error instead of
+// a true hang.
+const streamMaxAttempts = 4 // initial + 3 retries (backoff 1s/2s/4s)
+const streamAttemptTimeout = 60 * time.Second
+
+// streamBackoff computes the pre-attempt sleep for attempt n (1-based;
+// n>=2). A package var so tests can pin it to zero.
+var streamBackoff = func(attempt int) time.Duration {
+	return time.Duration(1<<(attempt-2)) * time.Second // 1s, 2s, 4s
+}
+
 func (s *Deps) streamAndAssemble(
 	ctx context.Context,
 	c *app.RequestContext,
@@ -472,6 +469,50 @@ func (s *Deps) streamAndAssemble(
 	user string,
 	opts []model.Option,
 ) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= streamMaxAttempts; attempt++ {
+		if attempt > 1 {
+			backoff := streamBackoff(attempt)
+			log.Printf("[WARN] server: streamAndAssemble retry attempt=%d/%d backoff=%v last_err=%v",
+				attempt, streamMaxAttempts, backoff, lastErr)
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("open LLM stream: %w", ctx.Err())
+			case <-time.After(backoff):
+			}
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, streamAttemptTimeout)
+		raw, tokens, err := s.streamOnce(attemptCtx, c, system, user, opts)
+		cancel()
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+		if tokens > 0 {
+			// Mid-stream failure: partial draft frames already reached the
+			// FE. Retrying would re-emit the draft from scratch and the
+			// chip would show duplicated text — return the error as-is.
+			return raw, err
+		}
+	}
+	return "", fmt.Errorf("LLM stream failed after %d attempts: %w", streamMaxAttempts, lastErr)
+}
+
+// streamOnce runs a single streaming attempt: opens the LLM stream,
+// emits one text-delta-draft SSE frame per token + a terminal
+// text-delta-draft-end, and returns the concatenated buffer plus the
+// number of non-empty tokens received (the retry gate — see
+// streamAndAssemble). An empty stream (zero tokens at EOF) is an ERROR,
+// not an empty result: it is the GLM Coding Plan's documented silent-
+// failure mode (260817 verdict-stream-hang), and returning "" would
+// surface downstream as a misleading "parse verdict" failure.
+func (s *Deps) streamOnce(
+	ctx context.Context,
+	c *app.RequestContext,
+	system string,
+	user string,
+	opts []model.Option,
+) (string, int, error) {
 	// DEBUG (260815-gcw): streamAndAssemble entry. Fires immediately after
 	// VerdictPipeline has built the prompt (Step 7). sessionID is NOT in the
 	// signature — streamAndAssemble only knows system + user + opts, so we
@@ -504,7 +545,11 @@ func (s *Deps) streamAndAssemble(
 	// text-delta-draft).
 	log.Printf("[INFO] server: streamAndAssemble PipelineChatModel.Stream returned OK, entering Recv loop")
 	if err != nil {
-		return "", fmt.Errorf("open LLM stream: %w", err)
+		// 260817 verdict-stream-hang: log BEFORE returning — pre-fix this
+		// error propagated silently to chatHandler (which did not log it
+		// either), producing the "no logs after D-4" blind spot.
+		log.Printf("[WARN] server: streamAndAssemble PipelineChatModel.Stream open failed: %v", err)
+		return "", 0, fmt.Errorf("open LLM stream: %w", err)
 	}
 	defer stream.Close()
 
@@ -525,7 +570,7 @@ func (s *Deps) streamAndAssemble(
 			break
 		}
 		if recErr != nil {
-			return buf.String(), fmt.Errorf("recv LLM token: %w", recErr)
+			return buf.String(), tokenN, fmt.Errorf("recv LLM token: %w", recErr)
 		}
 		if msg == nil || msg.Content == "" {
 			continue
@@ -551,11 +596,16 @@ func (s *Deps) streamAndAssemble(
 	}
 	// Terminal marker — FE uses this to switch DraftStreamChip from 🟡
 	// 待校验 → ✅ 已验证 on grounding pass (Refusal clears the chip).
-	if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
-		Type: "text-delta-draft-end",
-		ID:   "draft-1",
-	}); emitErr != nil {
-		log.Printf("[WARN] server: emit text-delta-draft-end: %v (non-fatal)", emitErr)
+	// Only emitted when at least one token arrived: on an empty stream
+	// there is no draft to terminate, and the error return below routes
+	// to the chatHandler error branch instead.
+	if tokenN > 0 {
+		if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
+			Type: "text-delta-draft-end",
+			ID:   "draft-1",
+		}); emitErr != nil {
+			log.Printf("[WARN] server: emit text-delta-draft-end: %v (non-fatal)", emitErr)
+		}
 	}
 	// DEBUG (260815-gcw): completion log. Fires after text-delta-draft-end
 	// emit and before return. total_tokens is the recv-loop counter from
@@ -565,7 +615,16 @@ func (s *Deps) streamAndAssemble(
 	// strings; buf_bytes > 0 with zero total_tokens is unreachable (tokenN
 	// increments only on non-empty content that also gets written to buf).
 	log.Printf("[INFO] server: streamAndAssemble completed total_tokens=%d buf_bytes=%d", tokenN, buf.Len())
-	return buf.String(), nil
+	// 260817 verdict-stream-hang: an empty stream is the GLM Coding Plan's
+	// documented silent-failure mode (agent-llm-query-rewrite.md live
+	// session). Surface it as an error so the retry wrapper re-attempts
+	// instead of letting "" reach the verdict parser as a misleading
+	// "unexpected end of JSON input".
+	if tokenN == 0 {
+		log.Printf("[WARN] server: streamAndAssemble empty LLM stream (0 tokens) — upstream returned no content")
+		return "", 0, errors.New("empty LLM stream: upstream returned zero tokens")
+	}
+	return buf.String(), tokenN, nil
 }
 
 // emitSubprogress writes one data-subprogress SSE chunk (quick plan

@@ -1,27 +1,20 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// RightChat — right chat panel.
+// RightChat — right chat panel (modernized Phase 4 visual upgrade).
 //
 // Plan 05-07 (D5-IA-01 + D5-IA-02 + D5-IA-04) — the header is now a
 // MINIMAL read-only badge showing the active session name + the
-// current Skill name. Selection lives elsewhere:
-//   - Skill selection: ChatInput selector (D5-IA-01).
-//   - Session list + 新建会话: LeftSidebar 会话 block (D5-IA-02/03).
-//   - Skill browse + status: LeftSidebar 技能 block (D5-IA-04).
-// The header badge is informational only (no controls) and falls back
-// to safe placeholder copy when nothing is selected.
+// current Skill name (with a status dot when a Skill is active).
 //
-// SkillPicker + SessionPicker header USAGE is removed (D5-IA-01/02).
-// The SkillPicker COMPONENT stays in the codebase — RoutingTracePart
-// still imports it for the SC-1 ambiguity picker mode.
-//
-// The messages scroll area renders one MessageBubble per message with
-// auto-stick-to-bottom (preserves user scroll position if they scrolled
-// up). Empty-state hero shows 3 suggested prompts per 04-UI-SPEC
-// §Copywriting Contract. Footer mounts ChatInput.
+// Modernized visuals:
+//   - Header: clean two-line layout with title + skill pill status
+//   - Empty state: hero with gradient icon, helpful copy, and 3
+//     suggested prompts (each rendered as a hover-lift card)
+//   - Messages scroll area: subtle gradient backdrop
+//   - Auto-stick-to-bottom preserves user's scroll position
 import { useEffect, useRef } from 'react';
-import { BookOpen } from 'lucide-react';
+import { Sparkles, MessageCircle } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
@@ -30,9 +23,9 @@ import WizardMode from './WizardMode';
 import { useAppStore } from '../../store/app-store';
 
 const SUGGESTED_PROMPTS = [
-  '年假未休完的部分如何折算或结转？',
-  '采购合同 50 万元以下由谁审批？',
-  '出差住宿费超过标准额度时如何审批？',
+  { icon: '📅', text: '年假未休完的部分如何折算或结转？' },
+  { icon: '💼', text: '采购合同 50 万元以下由谁审批？' },
+  { icon: '🏨', text: '出差住宿费超过标准额度时如何审批？' },
 ];
 
 export interface RightChatProps {
@@ -44,23 +37,13 @@ export interface RightChatProps {
 export default function RightChat({ messages, status, onSend }: RightChatProps) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastStuckRef = useRef(true);
-  // Plan 05-04 — wizard mode swaps the chat header for the wizard
-  // header. The chat messages / ChatInput stay, but the user can no
-  // longer interact with them in wizard mode (WizardMode reuses the
-  // ChatInput component for answer capture, but routes through
-  // useWizard.submitAnswer, not onSend).
   const wizardActive = useAppStore((s) => s.wizardMode.active);
-  // Plan 05-07 — read-only header badge sources.
   const sessions = useAppStore((s) => s.sessions);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const skills = useAppStore((s) => s.skills);
   const currentSkillId = useAppStore((s) => s.currentSkillId);
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const currentSkill = skills.find((s) => s.id === currentSkillId);
-  // Plan 260815-cos — DraftStreamChip subscription. Status='idle'
-  // means the chip is unmounted (DraftStreamChip only renders for
-  // pending/verified — refused also unmounts via the component's own
-  // null return).
   const draftStatus = useAppStore((s) => s.draftStatus);
   const draftText = useAppStore((s) => s.draftText);
 
@@ -68,9 +51,6 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
     if (wizardActive) return;
     const el = messagesRef.current;
     if (!el) return;
-    // Auto-stick to bottom on new messages, but only if the user was
-    // already at the bottom (preserves their scroll position if they
-    // scrolled up to read older content).
     if (lastStuckRef.current) {
       el.scrollTop = el.scrollHeight;
     }
@@ -89,42 +69,62 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
   }
 
   return (
-    <div data-testid="right-chat" className="flex flex-col h-full bg-bg">
+    <div data-testid="right-chat" className="flex flex-col h-full">
       <div
         data-testid="right-chat-badge"
-        className="border-b border-border px-3 py-2 flex items-center gap-2 text-xs"
+        className="chat-header-modern"
       >
-        <span data-testid="right-chat-badge-session" className="font-semibold text-text">
+        <MessageCircle
+          className="h-4 w-4"
+          style={{ color: 'var(--color-primary)' }}
+        />
+        <span
+          data-testid="right-chat-badge-session"
+          className="chat-header-title"
+        >
           {activeSession?.name ?? '新会话'}
         </span>
-        <span aria-hidden className="text-text-dim">·</span>
-        <span data-testid="right-chat-badge-skill" className="text-text-muted">
-          {currentSkill ? currentSkill.name : '未选择 Skill'}
+        <span aria-hidden className="chat-header-divider">·</span>
+        <span
+          data-testid="right-chat-badge-skill"
+          className="chat-header-skill"
+        >
+          {currentSkill ? (
+            <>
+              <span className="chat-header-skill-dot" aria-hidden />
+              <span>{currentSkill.name}</span>
+            </>
+          ) : (
+            <span className="chat-header-skill-missing">未选择 Skill</span>
+          )}
         </span>
       </div>
 
       {messages.length === 0 ? (
         <div
           data-testid="right-chat-empty"
-          className="flex flex-col items-center justify-center h-full text-center p-6"
+          className="chat-empty-modern"
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-dim mb-4">
-            <BookOpen className="h-6 w-6 text-primary" />
+          <div className="chat-empty-icon">
+            <Sparkles className="h-6 w-6" />
           </div>
-          <div className="text-2xl font-semibold text-text">开始一次文档问答</div>
-          <p className="mt-2 text-base text-text-muted">
+          <div className="chat-empty-title">开始一次文档问答</div>
+          <p className="chat-empty-subtitle">
             选择 Skill，在此处提问。每个回答都附可点击的引用与置信度。
           </p>
-          <div className="mt-5 flex flex-col gap-2 w-full max-w-sm">
+          <div className="chat-empty-prompts">
             {SUGGESTED_PROMPTS.map((prompt, i) => (
               <button
                 key={i}
                 type="button"
                 data-testid={`right-chat-suggested-${i}`}
-                onClick={() => onSend(prompt)}
-                className="rounded-md px-3 py-2 text-xs text-text-muted bg-surface-2 border border-border hover:bg-surface-3 hover:text-text transition-colors"
+                onClick={() => onSend(prompt.text)}
+                className="chat-empty-prompt"
               >
-                {prompt}
+                <span className="chat-empty-prompt-icon" aria-hidden>
+                  {prompt.icon}
+                </span>
+                <span style={{ flex: 1 }}>{prompt.text}</span>
               </button>
             ))}
           </div>
@@ -135,7 +135,7 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
           onScroll={handleScroll}
           data-testid="chat-messages"
           data-chat-status={status}
-          className="flex-1 overflow-y-auto p-3 space-y-3"
+          className="chat-messages-modern flex-1 overflow-y-auto px-4 py-2"
         >
           {messages.map((m) => (
             <MessageBubble
@@ -144,11 +144,6 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
               role={m.role === 'user' ? 'user' : 'assistant'}
             />
           ))}
-          {/* Plan 260815-cos — DraftStreamChip renders BELOW the
-              latest message bubble while the assistant is streaming
-              the LLM draft. status='idle' (no in-flight stream) hides
-              the chip entirely; status='refused' is handled inside the
-              component (returns null). */}
           {draftStatus !== 'idle' && (
             <DraftStreamChip
               status={draftStatus as 'pending' | 'verified' | 'refused'}

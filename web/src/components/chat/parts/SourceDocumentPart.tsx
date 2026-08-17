@@ -1,10 +1,10 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// SourceDocumentPart — renders inline-document citations as an inline
-// badge with the document title. Distinct from SourceUrlPart (which
-// renders external URLs); these are document references attached to the
-// message by the agent.
+// SourceDocumentPart — renders inline-document citations as a pill
+// chip with a document icon and the document title. Distinct from
+// SourceUrlPart (which renders external URLs); these are document
+// references attached to the message by the agent.
 //
 // Per AI SDK v7 index.d.ts line 2382-2387, source-document requires
 // mediaType + title; we render the title and optionally the filename.
@@ -20,6 +20,7 @@
 // — making the doc chips under the conclusion the single, interactive
 // citation UI in the chat stream.
 import type { SourceDocumentUIPart } from 'ai';
+import { FileText } from 'lucide-react';
 import { extractChunkMetadata, normalizeChunkID } from '../../../lib/chunk-lookup';
 import { useAppStore } from '../../../store/app-store';
 
@@ -45,7 +46,8 @@ export function SourceDocumentPart({ part }: { part: SourceDocumentUIPart }) {
       data-chunk-id={part.sourceId}
       onClick={handleClick}
     >
-      [{label}]
+      <FileText className="h-3 w-3" />
+      <span>{label}</span>
     </button>
   );
 }
