@@ -401,7 +401,12 @@ type emitCtxKey struct{}
 //	ctx = agent.WithRunEmit(ctx, emitClosure)
 //	v, refusal, err := ag.Run(ctx, sessionID, query)
 //
-// Passing nil emit clears the override (Run falls back to AgentConfig.Emit).
+// Passing nil emit is a NO-OP: the ctx is returned unchanged and any
+// override previously injected on it is PRESERVED (context.WithValue
+// cannot remove a value, so "clear the override" is not implementable
+// on this API — 08-REVIEW WR-01). There is currently no caller that
+// needs clearing semantics; if one appears, add an explicit sentinel
+// value rather than overloading nil.
 // Passing emit on a ctx that already has an override replaces it (last-write
 // wins, mirroring context.WithValue semantics).
 func WithRunEmit(ctx context.Context, emit DecisionEmitFunc) context.Context {
