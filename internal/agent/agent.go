@@ -284,9 +284,12 @@ type RetrievedChunk struct {
 // the agent saw if the embedder / retriever is stateful or if the
 // agent's retrieve tool re-ranked hits).
 //
-// Returns a freshly-allocated slice (caller-owned). Returns nil if Run
-// has never been called on this agent, or if the most recent Run
-// produced zero tier-matched chunks (refusal-by-construction fired).
+// Returns a freshly-allocated slice (caller-owned). Returns nil ONLY if
+// Run has never been called on this agent. If the most recent Run
+// produced zero tier-matched chunks (refusal-by-construction fired),
+// returns an empty, NON-nil slice — callers MUST use len() == 0, not a
+// nil check, to detect the zero-hit case. The nil-vs-empty distinction
+// is deliberate: it separates "never ran" from "ran, zero hits".
 //
 // Concurrency: safe to call from a different goroutine than the one
 // that ran Run (the underlying ChunkAccumulator is mutex-guarded).
