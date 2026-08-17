@@ -10,6 +10,8 @@
 
 ## Phases
 
+### Milestone v0.7.7 — 可信问答内核 (phases 1-7)
+
 - [x] **Phase 1: Integration Spike & Trust Contract** — 1-2 day spike: validate Eino v0.7.7 + Hertz SSE + Vercel AI SDK v5 + Milvus tier-filter wire framing before committing to the data model
  (completed 2026-08-11)
 - [x] **Phase 2: Compliance Vertical Slice** — one Skill / one authoritative tier / one endpoint / verifiable cited answer or structured refusal (proves the "Skill-as-platform" thesis) — 5/5 plans complete (incl. 02-04-MONGO extension)
@@ -23,9 +25,20 @@
  (code-side complete 2026-08-13; split decision 2026-08-14)
 - [ ] **Phase 7: Open-Source Release** — Docker Compose + sample docs + docs + live demo + showcase Skills + published eval results
 
+### Milestone v0.8 — Harness（可信×行动融合）(phases 8-13)
+
+贯穿性不变量：**citation 白名单 = 本轮检索结果，代码强制** —— 历史/摘要/子 agent 输出/resume 注入的文本永远不能成为证据。每个 phase 以「可信税」产物收尾：spike 报告 → 消毒规则 → 3 行审计生命周期 → 可回放规划 → tier 继承证明测试。依赖为严格链：8 → 9 → 10 → 11 → 12 → 13。
+
+- [ ] **Phase 8: 全量依赖升级（P8.0）** — eino v0.7.7 → v0.9.13 + lockstep eino-ext 联动升级 + sqlite CheckPointStore 骨架；回归套件全绿，legacy interrupt API lint 禁用
+- [ ] **Phase 9: 历史注入 trust-floor spike 硬门（P8.S）** — golden-set A/B 证明历史投影不漂移拒答/引用行为（四指标漂移 <5%、refusal delta <10%）；不过门则记忆不得发布
+- [ ] **Phase 10: 多轮对话记忆（P8.1）** — sqlite 历史投影喂 agent + 投影消毒 + citation 白名单代码强制 + token 预算/摘要压缩
+- [ ] **Phase 11: 写工具 + 审批门（P8.2）** — Eino Interrupt/Resume HITL + 流内审批卡 + 跨刷新审批态 + 3 行 INSERT-only 审计生命周期 + `writes:` 代码级强制
+- [ ] **Phase 12: 规划层（P8.3）** — DeepAgent（write_todos）+ 计划确认门 + 三层预算门 + 审计可回放的规划轨迹
+- [ ] **Phase 13: 子 agent 扇出（P8.4）** — 一层并行多跳扇出 + tier 构造期闭包继承 + 确定性/保守合并 + 子 agent 独立 grounding
+
 ---
 
-## Phase Details
+## Phase Details — Milestone v0.7.7
 
 ### Phase 1: Integration Spike & Trust Contract
 
@@ -204,7 +217,115 @@
 
 ---
 
+## Phase Details — Milestone v0.8（Harness — 可信×行动融合）
+
+> 依赖链（严格顺序）：8 → 9 → 10 → 11 → 12 → 13。Rationale（research SUMMARY.md §Implications for Roadmap）：升级先行（summarization 中间件与成熟 HITL 在 v0.7.7 不存在，混做会让回归归因不可能）→ spike 硬门（历史注入是唯一可能静默破坏已校准 trust floor 的行为风险，冻结基线自身抓不到漂移）→ 记忆先于审批（resume 回放整条消息列表，单轮记忆上做审批是返工）→ 审批先于 Deep（Runner 迁移落在简单 ReAct archetype 上最安全，全套回归套件做安全网）→ Deep 先于扇出（write_todos + 子 agent 槽位是天然的组合宿主，扇出继承 P8.3 的预算门）。
+
+### Phase 8: 全量依赖升级（P8.0 — eino v0.7.7 → v0.9.13）
+
+**Goal:** 全量依赖升级到 eino v0.9.13（不用 v0.10.0-alpha.x，maintainer 明确警告 breaking）+ eino-ext 逐组件联动升级；sqlite `CheckPointStore` 骨架就位；所有既有回归门重新锁定——为整个 v0.8 提供干净的框架地基（升级不混功能，回归归因干净）。
+**Mode:** mvp
+**Depends on:** Phase 7（v0.7.7 里程碑结束态；不阻塞 07-02/07-05 人工 checkpoint）
+**Requirements:** PLAT-04, PLAT-05
+**Success Criteria** (what must be TRUE):
+  1. `go build ./...` 与全部单元测试在 eino v0.9.13 + 联动升级的 eino-ext 下全绿；`integration/contract` 漂移套件与冻结 eval 基线重新运行全绿（PLAT-04）
+  2. Phase-1 live verify 重新锁定：agent run cancel 从客户端到 agent <200ms；Milvus tier-filter 对声明外 tier 返回零行（PLAT-04）
+  3. legacy interrupt API（`NewInterruptAndRerunErr` 等无地址旧语义）在代码库出现即 lint fail——Interrupt/Resume 双语义不并存（PLAT-04，Pitfall 5）
+  4. sqlite `CheckPointStore`（复用 `internal/store/sqlite`，~100 LOC）Get/Set round-trip：所有自定义状态类型经 `gob.RegisterName` 注册后可序列化写库、进程重启后读回等值（PLAT-05）
+  5. 真实中断运行往返测试通过：一次 Run 中断 → checkpoint 持久化到 sqlite → 进程重启后 Resume 恢复到中断点继续执行（PLAT-05，Pitfall 4）
+**Pitfalls addressed:** Pitfall 4（内存 checkpoint 丢中断态 — store 骨架），Pitfall 5（Interrupt/Resume 双语义并存 — 一次性切换 + lint 禁用）
+**Research flag:** RF-2 — 30 分钟 compile-check spike 确认升级后 `CheckPointStore` 接口精确形状
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 9: 历史注入 trust-floor spike 硬门（P8.S — SPIKE / HARD GATE）
+
+**Goal:** 用 golden-set A/B 实验证明：把投影后的会话历史注入 prompt 不会静默漂移已校准的 trust floor（拒答率、faithfulness、引用精度）。**这是硬门——不过门，Phase 10 记忆不得发布。** 本 phase 是 spike，产出是报告 + 消毒规则，不是产品代码。
+**Mode:** mvp
+**Depends on:** Phase 8（冻结 eval 基线需在新依赖下重新锁定）
+**Requirements:** GEVL-08
+**Success Criteria** (what must be TRUE):
+  1. Spike 报告落盘：golden set 在 `history=nil`（baseline）vs 投影历史下逐指标对比，覆盖三组场景——善意追问 / 恶意注入（用户粘贴伪制度文本进历史）/ 旧拒答上下文；四指标（faithfulness / answer_relevancy / context_precision / context_recall）漂移数字逐项可见（GEVL-08）
+  2. Go/no-go 结论明确且有记录：四指标漂移 <5% 且 refusal delta <10% → go；不过门则产出逃逸方案选型（last-3-turns 预算 → prompt 附录 → 仅用户轮记忆）及理由（GEVL-08）
+  3. 恶意注入用例全部被拒答或标注「未验证用户陈述」——零例让历史中的伪文本穿透成 citation（GEVL-08，Pitfall 2 早期暴露）
+  4. 消毒规则作为 spike 主产物成文：历史投影剥离 `[CHUNK id]` 标记、历史 verdict JSON 经 `conclusionText`/`refusalText` 确定性渲染为纯文本——LLM 物理上复制不到它从未见过的引用标记（GEVL-08，供 Phase 10 实现）
+**Pitfalls addressed:** Pitfall 1（历史注入污染 trust floor，H1–H3），Pitfall 2（用户引用文本穿透 tier 边界 — 早期暴露）
+**Spike seed:** `spike-history-injection-trust-floor`（已预写；冻结 eval 集 + gate 已存在，无需 research-phase）
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 10: 多轮对话记忆（P8.1）
+
+**Goal:** 用户可跨页面刷新进行多轮追问——agent 结合消毒后的会话历史正确解析指代并作答；citation 白名单代码级锁定为本轮检索，历史/摘要文本永远不能成为证据。
+**Mode:** mvp
+**Depends on:** Phase 9（spike 硬门必须 go；消毒规则与逃逸方案选型是本 phase 的输入）
+**Requirements:** MEM-01, MEM-02, MEM-03, MEM-04, MEM-05
+**Success Criteria** (what must be TRUE):
+  1. 用户在收到回答后追问「那第二条呢」「依据是什么」，agent 结合会话历史正确解析指代对象，并给出带本轮检索引用的回答（MEM-01）
+  2. 页面刷新后会话历史仍存活并喂给 agent——server 层 `internal/history` 将 sqlite session 投影为 `[]schema.Message`；刷新后的追问仍正确解析（MEM-02）
+  3. Citation 白名单代码强制：构造历史中含旧 chunk 引用的会话，凡本轮未检索到的 chunk 出现在答案中即被 grounding 剥离或触发拒答——无代码路径可让历史/摘要/resume 注入文本成为证据（MEM-03）
+  4. 历史投影消毒生效：投影消息中不出现 `[CHUNK id]` 标记；历史 verdict JSON 经 `conclusionText`/`refusalText` 确定性渲染为纯文本（测试断言投影输出零 chunk 标记）（MEM-04）
+  5. 长会话超 token 预算时按 project→then→summarize 顺序压缩（先哑预算；summarization 中间件在 Runner 迁移后启用），会话可持续不报错，预算/压缩事件可观测（MEM-05）；`TestSessionIsolation50x5` 在新投影路径下重新跑绿
+**Pitfalls addressed:** Pitfall 1（消毒规则落地），Pitfall 2（白名单 + red-team tier 穿透用例入 eval），Pitfall 7（token 阈值对 GLM 真实用量校准）
+**Research flag:** RF-6 — summarization 中间件 token 计数器对 GLM 用量日志校准；tokenizer 可配置性未验证（启用前用哑预算兜底）
+**Plans**: TBD
+**UI hint**: yes（多轮聊天 UX — 历史恢复、刷新后连续性为用户可感知界面行为）
+
+### Phase 11: 写工具 + 审批门（P8.2）
+
+**Goal:** agent 调用写工具前必须经人在环审批——流内审批卡、跨刷新/重启存活的审批态、INSERT-only 三行审计生命周期、「批的 A 不会执行成 B」。「可信 × 行动」首次正面落地。Runner 迁移（Interrupt/Resume 新语义）落在简单 ReAct archetype 上，全套既有回归套件做安全网。**FE 与 BE HITL 同 phase 交付，不可拆。**
+**Mode:** mvp
+**Depends on:** Phase 10（resume 回放整条消息列表——审批不能建在单轮记忆上）
+**Requirements:** HITL-01, HITL-02, HITL-03, HITL-04, HITL-05, HITL-06, HITL-07, HITL-08
+**Success Criteria** (what must be TRUE):
+  1. agent 触发写工具时中断（Eino Interrupt），SSE 流干净关闭，聊天流内呈现内联审批卡：what（动作）/ tool（工具名）/ 完整参数快照 / why（理由）；用户可批准一次或拒绝（拒绝必填理由），审批绑定结构化工具调用（name+args），永不绑定原始字符串（HITL-01, HITL-02）
+  2. 中断后刷新页面或重启后端，审批态经 sqlite checkpoint + GET resume 端点恢复，审批卡回到待决态；checkpoint 绑定 skill 版本 + prompt_hash，二者变更后的过期 checkpoint 显示显式过期 UI 态且不可 resume（HITL-03）
+  3. 每次审批决策产生 INSERT-only 审计三行生命周期（`action_pending_approval` → `action_approved` / `action_rejected`）；interrupt 时冻结参数快照进 pending 行，Resume 执行的参数与快照逐字节一致（批的 A 不会执行成 B）；审计写入失败则写工具拒绝执行（fail-closed，与读路径 swallow 相反的显式 Key Decision）；tool_call_id 幂等键防重复执行（HITL-04）
+  4. `writes:` frontmatter 代码级强制——为未声明对应 writes 的 Skill 构造写工具调用被平台层拒绝（agent 无法绕过）；首批两个写工具可用：memory:facts 写入 + 审查报告生成（HITL-05, HITL-06）
+  5. 用户可在批准前修改工具参数（edit-before-approve），修改后参数进入审批审计行；用户可「批准并记住」，规则按会话/Skill 级作用域存储，可查看、可撤销，后续同类调用按规则自动放行（HITL-07, HITL-08）
+**Pitfalls addressed:** Pitfall 3（审批门破坏审计完整性 — write-ahead pending 行 + fail-closed），Pitfall 4（持久 checkpoint + GET resume 刷新恢复），Pitfall 6（checkpoint 绑定版本/prompt_hash 拒过期 resume），Pitfall 10（FE 审批状态机：审批态派生自 message parts，永不入 Zustand；D-04 transport-swap fixtures 覆盖 approve/deny 回路）；`TestCancelPropagationMidTool` <200ms 在 Runner 迁移后重新锁定
+**Research flags:** RF-3 — ai@7 custom transport resume 形状（独立端点 + transport 分支 vs 合成 user message）；RF-2 — 升级后 CheckPointStore 接口精确形状（廉价 compile-check）
+**Plans**: TBD
+**UI hint**: yes（流内审批卡 ApprovalPart + 过期/待决状态 UI）
+
+### Phase 12: 规划层（P8.3 — DeepAgent + write_todos + 可回放）
+
+**Goal:** Skill 声明 `agent: deep` 即获得 DeepAgent 规划能力——实时计划清单流、执行前计划确认门、三层预算门防成本爆炸、规划轨迹仅凭审计行即可完整回放。信任锚（floor→grounding→critique）在此 phase 提升为所有 archetype 统一经过的 `ApplyTrustStage`。
+**Mode:** mvp
+**Depends on:** Phase 11（Deep 落进已 Runner 化的 harness；复用审批机制做计划确认门；复用审计/checkpoint 基建）
+**Requirements:** PLAN-01, PLAN-02, PLAN-03, PLAN-04, PLAN-05
+**Success Criteria** (what must be TRUE):
+  1. SKILL.md 写 `agent: deep` 后该 Skill 经 `internal/runtime` 工厂按 `Manifest.Agent` 分发到 DeepAgent archetype（`adk/prebuilt/deep` + write_todos）；所有 archetype（chat / deep / 后续 sub-agent）统一经 `ApplyTrustStage`（floor→grounding→critique）出口，回归锁随重构迁移保持绿（PLAN-01）
+  2. 用户在执行期间看到计划清单实时流式更新（todo pending / in_progress / completed），计划随会话持久化——刷新后计划状态仍在（PLAN-02）
+  3. DeepAgent 执行前用户看到完整计划并可批准/拒绝（计划确认门复用 Phase 11 审批机制）；拒绝后 agent 修改计划重新提请（PLAN-03）
+  4. 三层预算门任一触发即保守收尾（`forced_stop`，绝不硬跑到底）：MaxIteration ≤10 + run 级 token 预算 + 回路检测；预算事件写入审计可查（PLAN-04）
+  5. 仅凭审计表中的 write_todos 行可完整重建某次运行的计划演变序列；UI 提供规划轨迹回放视图（PLAN-05）
+**Pitfalls addressed:** Pitfall 8（DeepAgent 默认 MaxIteration=50 成本爆炸 / 无界回路 — 三层预算门从第一天起在）
+**Research flag:** RF-5 — DeepAgent 最终消息 verdict JSON 解析率在 GLM-5.2 上实测；兜底 = 最终步 structured-output 选项（verdict-JSON 后缀 + `forced_stop` fallback 已定）
+**Plans**: TBD
+**UI hint**: yes（计划清单流 PlanTracePart + 轨迹回放视图 + 计划确认门 UI）
+
+### Phase 13: 子 agent 扇出（P8.4 — tier 继承）
+
+**Goal:** orchestrator 将多跳检索扇出为一层并行子 agent——子 agent 的 tier 知识边界在构造期以闭包继承（结构性无法扩权）、合并结果确定性且对部分失败保守、每个子 agent 结论合并前独立过逐字引用验证。首次用途保持窄：一层并行多跳检索。
+**Mode:** mvp
+**Depends on:** Phase 12（复用 P8.1 citation-ID 机制、P8.2 审计/checkpoint 基建、P8.3 预算门）
+**Requirements:** FAN-01, FAN-02, FAN-03, FAN-04
+**Success Criteria** (what must be TRUE):
+  1. 多跳问题触发 orchestrator 并行扇出子 agent（一层为限——子 agent 无扇出能力，禁止递归）；子 agent 返回压缩结果；任一子 agent 故障被隔离，主流程继续（FAN-01）
+  2. Tier 边界构造期闭包继承：子 agent 的 retrieve 工具闭包自父 manifest 的 `ResolvedTiers()`——测试证明子 agent 无法查询父未授权的 tier（结构性，非 prompt 约束）；父子 tier 交集为空 = 加载期校验错误而非运行时行为（FAN-02）
+  3. 合并确定性：同一组子 agent 结果合并 10 次输出字节一致（key 排序纯函数，契约测试把关）；保守部分失败合并——任一子 agent 拒答时合并结论最多「需补充」，绝不产出肯定裁决（FAN-03）
+  4. 每个子 agent 结论在合并前独立过 D2-01 逐字引用验证（per-sub-agent grounding，共享 per-Run ChunkAccumulator）；扇出事件（RunPath / Transfer）写入审计可按 run 查询（FAN-04）
+**Pitfalls addressed:** Pitfall 9（tier 泄漏 + 非确定性合并）
+**Research flag:** RF-4（最高不确定性）— ADK transfer/handoff ctx-value 传递到子 agent 工具闭包：本 phase 以此 spike 开场；已知兜底 = per-Run agent 构造（accumulator 烘进闭包），成本更高。子 agent tier 继承精确 API 形态在文档未验证（LOW-MEDIUM），需 plan 级研究
+**Plans**: TBD
+**UI hint**: no（扇出事件走既有审计/进度通道，无新产品 UI；如 plan 阶段发现需要子 agent 进度可视化再补注）
+
+---
+
 ## Coverage
+
+### Milestone v0.7.7 (v1 requirements)
 
 | Phase | Requirements | Count |
 |-------|--------------|-------|
@@ -217,7 +338,19 @@
 | 7 - Open-Source Release | DIST-01..10 | 10 |
 | **Total** | **55 of 55 v1 requirements mapped** | **55** |
 
-**Unmapped:** 0 ✓
+### Milestone v0.8 (Harness requirements)
+
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| 8 - 全量依赖升级 (P8.0) | PLAT-04, PLAT-05 | 2 |
+| 9 - 历史注入 spike 硬门 (P8.S) | GEVL-08 | 1 |
+| 10 - 多轮对话记忆 (P8.1) | MEM-01..05 | 5 |
+| 11 - 写工具 + 审批门 (P8.2) | HITL-01..08 | 8 |
+| 12 - 规划层 (P8.3) | PLAN-01..05 | 5 |
+| 13 - 子 agent 扇出 (P8.4) | FAN-01..04 | 4 |
+| **Total** | **25 of 25 v0.8 requirements mapped** | **25** |
+
+**Unmapped:** 0 ✓ (v1 + v0.8)
 **Orphaned groups:** None.
 
 ---
@@ -233,9 +366,15 @@
 | 5. Skill Platform & Full Knowledge Boundaries | 8/8 (incl. 05-08 gap-closure) | Complete | 2026-08-12 (05-08 debt-closure 2026-08-13) |
 | 6. Eval Dashboard & Production Hardening — Code-Side | 3/3 active (+06-03 deferred→999.2) | Complete (code-side) | 2026-08-13 |
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
+| 8. 全量依赖升级 (P8.0) | 0/? | Not started | - |
+| 9. 历史注入 spike 硬门 (P8.S) | 0/? | Not started — HARD GATE for Phase 10 | - |
+| 10. 多轮对话记忆 (P8.1) | 0/? | Not started — gated by Phase 9 | - |
+| 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
+| 12. 规划层 (P8.3) | 0/? | Not started | - |
+| 13. 子 agent 扇出 (P8.4) | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-12 — Phase 5 planned (6 plans: 2 in Wave 1 sequential; 4 in Wave 2 parallel). All 8 req IDs (SYSK-04/05/06, AGNT-06, KNOW-06, CMPL-06/07/08) covered; 15 locked D5-XX decisions implemented; 1 deferred item (DATA-*) explicitly out of scope per CONTEXT.md.*
+*Last updated: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged). Prior: 2026-08-12 — Phase 5 planned (6 plans: 2 in Wave 1 sequential; 4 in Wave 2 parallel). All 8 req IDs (SYSK-04/05/06, AGNT-06, KNOW-06, CMPL-06/07/08) covered; 15 locked D5-XX decisions implemented; 1 deferred item (DATA-*) explicitly out of scope per CONTEXT.md.*
 
 ---
 

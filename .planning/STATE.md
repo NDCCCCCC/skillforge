@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: Harness — 可信×行动融合
 status: planning
-last_updated: "2026-08-17T10:48:01.646Z"
+last_updated: "2026-08-17T12:00:00.000Z"
 last_activity: 2026-08-17
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -15,17 +15,17 @@ progress:
 
 # State — SkillForge
 
-**Last updated:** 2026-08-17 (Completed quick task 260817-i36: 聊天回答区四项 UI 修复 —「已给出」改为结论角标、引用 chips 去重并可点击跳转、同文档 chip 加 chunk N 区分、conclusionText 标点规范化；4 任务 10 commits，go test ok + vitest 280/280 PASS。同日早前完成 260817-hck VerdictCard 答案去重。)
+**Last updated:** 2026-08-17 (Milestone v0.8 roadmap created: phases 8-13 appended to ROADMAP.md per research SUMMARY.md strict dependency chain 8→9→10→11→12→13; 25/25 v0.8 requirements mapped in REQUIREMENTS.md traceability; v0.7.7 phases 1-7 + backlog 999.1/999.2 unchanged. Earlier same day: completed quick task 260817-i36: 聊天回答区四项 UI 修复 —「已给出」改为结论角标、引用 chips 去重并可点击跳转、同文档 chip 加 chunk N 区分、conclusionText 标点规范化；4 任务 10 commits，go test ok + vitest 280/280 PASS。同日早前完成 260817-hck VerdictCard 答案去重。)
 
 **Prior:** 2026-08-13 (Plan 07-05 IN PROGRESS — Task 1 DONE: `scripts/eval_snapshot/{main.go,main_test.go}` shipped via TDD RED `abf2f4d` → GREEN `4873213`; `deriveRefusalAccuracy` pure fn is the ONE derivation point for DIST-09 refusal_accuracy [count(Cases cat=refusal-required && Refused) / count(Cases cat=refusal-required)]; 6/6 hermetic unit tests PASS, `go vet` clean, end-to-end smoke render matches RESEARCH Example 6 format; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. Tasks 2 & 3 are `checkpoint:human-verify gate=blocking` and BLOCKING — Task 2 needs live Milvus+BGE-M3+GLM stack to run `cmd/eval --frozen=compliance` and paste `scripts/eval_snapshot` stdout into README Eval Results [still PLACEHOLDER]; Task 3 needs screen capture to record `docs/demo.gif` [cited verdict + structured refusal, <5MB]. Plan 07-02 Task 3 docker-build human-verify gate ALSO still BLOCKING — Docker not in PATH. Phase 7 has 2 concurrent blocking checkpoints: 07-02 Task 3 + 07-05 Tasks 2/3.)
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 7
-**Current Plan:** 4
-**Previous phase:** 04 (streaming-trust-ui) — COMPLETE 2026-08-11 (UAT 12/12, SECURITY verified / 0 open threats)
+**Current Phase:** 8 (v0.8 milestone — roadmap defined, not yet planned)
+**Current Plan:** —
+**Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** Plan 05-01 (Phase 5 skill-platform-&-full-knowledge-boundaries) is READY TO PLAN. Alternative: Phase 6 CI gate wiring (eval/report.json → GEVL-07 Skill promotion gate). The D2-15 threshold-swap procedure (manual ops review of `eval/calibration.json` `recommended_threshold` before editing `internal/server/pipeline.go:43`) is documented in `eval/README.md` + pipeline godoc.
+**Next action:** `/gsd:plan-phase 8` (全量依赖升级 P8.0 — eino v0.7.7 → v0.9.13 + sqlite CheckPointStore; RF-2 compile-check spike on CheckPointStore interface shape). Phase 9 (历史注入 spike 硬门) is the HARD GATE for Phase 10 memory.
 
 ---
 
@@ -37,21 +37,34 @@ progress:
 
 **Audience:** Open-source personal brand. Quality bar = a stranger can fork, run, and benchmark.
 
-**Stack (locked):** Go + Eino v0.7.7 (ADK GA) + Hertz SSE + Milvus (tier-filtered) + BGE-M3 + Go-native trust evaluator (internal/eval; faithfulness ports Ragas v0.1.21 prompt, Apache-2.0) + React 19 + Vite + TS + Vercel AI SDK v5 + shadcn / Tailwind v4. D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack.
+**Stack (locked):** Go + Eino v0.7.7 (ADK GA) + Hertz SSE + Milvus (tier-filtered) + BGE-M3 + Go-native trust evaluator (internal/eval; faithfulness ports Ragas v0.1.21 prompt, Apache-2.0) + React 19 + Vite + TS + Vercel AI SDK v5 + shadcn / Tailwind v4. D6 reversed 2026-08-12: Python/Ragas sidecar eliminated in favor of single-language Go stack. **v0.8 Phase 8 upgrades eino v0.7.7 → v0.9.13** (summarization middleware + mature ADK HITL; NOT v0.10.0-alpha.x per maintainer warning).
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 7 — open-source-release
-**See:** `.planning/PROJECT.md` (updated 2026-08-11 after Phase 4)
+**Current focus:** Milestone v0.8 Harness（可信×行动融合）— roadmap defined (phases 8-13); next is Phase 8 planning
+**See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 
 ---
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 8 (roadmap created; plans TBD)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-08-17 — Milestone v0.8 started
+Status: Roadmap approved-structure written; awaiting Phase 8 planning
+Last activity: 2026-08-17 — Milestone v0.8 roadmap created (6 phases: 8 dep-upgrade → 9 spike HARD GATE → 10 memory → 11 write-tools+approval → 12 planning → 13 fan-out; strict chain; 25/25 requirements mapped)
+
+**Milestone v0.8 phase map (from ROADMAP.md):**
+
+| Phase | Slug | Requirements | Notes |
+|-------|------|--------------|-------|
+| 8 | 全量依赖升级 (P8.0) | PLAT-04, PLAT-05 | eino → v0.9.13; sqlite CheckPointStore; legacy interrupt lint ban |
+| 9 | 历史注入 spike 硬门 (P8.S) | GEVL-08 | SPIKE / HARD GATE — memory must not ship unless gate passes (<5% drift, <10% refusal delta) |
+| 10 | 多轮对话记忆 (P8.1) | MEM-01..05 | gated by Phase 9; UI hint yes |
+| 11 | 写工具 + 审批门 (P8.2) | HITL-01..08 | FE+BE 同 phase 不可拆; UI hint yes |
+| 12 | 规划层 (P8.3) | PLAN-01..05 | DeepAgent + 预算门 + 可回放; UI hint yes |
+| 13 | 子 agent 扇出 (P8.4) | FAN-01..04 | RF-4 highest-uncertainty spike opens phase |
+
+**贯穿性不变量:** citation 白名单 = 本轮检索结果，代码强制 — 历史/摘要/子 agent 输出/resume 注入文本永远不能成为证据。
 
 ## Decisions (from PROJECT.md + SUMMARY.md)
 
@@ -83,6 +96,7 @@ Last activity: 2026-08-17 — Milestone v0.8 started
 
 ### Roadmap Evolution
 
+- 2026-08-17: Milestone v0.8 roadmap appended — phases 8-13 (P8.0 dep-upgrade → P8.S spike hard gate → P8.1 memory → P8.2 write-tools+approval → P8.3 planning → P8.4 fan-out), strict dependency chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 + backlog 999.1/999.2 untouched.
 - Phase 6 edited: edited fields: title,goal,sc-2,plan-list (split into code-side 6a complete + 06-03 deferred to new Phase 999.2 backlog; also repaired pre-existing corruption: Phase 4 section carried a stray copy of the 06 plan list — restored real 04-01..04-04 list)
 
 **Open questions (from research SUMMARY.md):**
@@ -98,6 +112,14 @@ Last activity: 2026-08-17 — Milestone v0.8 started
 
 **Research flags (phase-specific research needed):**
 
+- Phase 8: RF-2 — exact CheckPointStore interface shape post-upgrade (cheap 30-min compile-check spike)
+- Phase 10: RF-6 — summarization middleware token-counter calibration vs GLM usage logs; tokenizer configurability unverified
+- Phase 11: RF-3 — ai@7 custom transport resume shape (dedicated endpoint + transport branch vs synthetic user message)
+- Phase 12: RF-5 — DeepAgent final-message verdict-parse rate on GLM-5.2 (fallback: structured-output final step)
+- Phase 13: RF-4 (highest uncertainty) — ADK ctx-value propagation into sub-agent tool closures; fallback = per-Run agent construction with accumulator baked into closures
+
+**v0.7.7 legacy flags (closed milestones, kept for reference):**
+
 - Phase 1: Eino APIs in depth, Hertz-to-AI-SDK v5 transport, Milvus filter expression syntax
 - Phase 3: Chinese eval dataset sourcing, BGE-M3 reranker choice (self-host via TEI vs API), Ragas judge calibration
 - Phase 5: hot reload for in-flight conversations, cross-tier conflict policy, historical tier storage, multi-agent value proof
@@ -107,7 +129,7 @@ Last activity: 2026-08-17 — Milestone v0.8 started
 
 ## Blockers
 
-(none)
+(none for v0.8 planning; Phase 7 carries 2 human-verify checkpoints — 07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF — deferred to after the v0.8 milestone by user decision 2026-08-17)
 
 ### Quick Tasks Completed
 
@@ -171,6 +193,8 @@ Last activity: 2026-08-17 — Milestone v0.8 started
 
 ## Session Continuity
 
+**Resume point (v0.8):** Milestone v0.8 roadmap created 2026-08-17 — ROADMAP.md carries phases 8-13 (strict chain 8→9→10→11→12→13 per research SUMMARY.md §Implications for Roadmap); REQUIREMENTS.md traceability maps all 25 v0.8 requirements (PLAT-04/05, GEVL-08, MEM-01..05, HITL-01..08, PLAN-01..05, FAN-01..04); Phase 9 is the HARD GATE for Phase 10. Next: `/gsd:plan-phase 8`. Phase 7 leftovers (07-02 T3, 07-05 T2/T3, 07-06) are deferred to after this milestone by user decision 2026-08-17 — do not lose them.
+
 **Resume point (Phase 7):** Plan 07-05 (eval snapshot + demo GIF) is IN PROGRESS — Task 1/3 DONE via TDD, 2 commits (`abf2f4d` RED test + `4873213` GREEN impl). `scripts/eval_snapshot/{main.go,main_test.go}` shipped: standalone Go program reads `eval/report.json` + `eval/frozen/compliance.lock.json` via `eval.LoadReport`/`eval.LoadLock`, **derives** `refusal_accuracy` from `Report.Cases` via the pure fn `deriveRefusalAccuracy` (count(cat=="refusal-required" && Refused) / count(cat=="refusal-required") — RESEARCH Q1 load-bearing, NOT an evaluator field), renders the README markdown snapshot block (date + lock metadata + Overall metrics + derived % + case breakdown + reproduce cmd). 6/6 hermetic unit tests PASS (all-refused 1.0 / half-refused 0.5 / zero-refusal-required graceful 0,N/A / category-filter invariant / renderSnapshot metadata / N/A cell); `go vet` clean; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. **Tasks 2 & 3 `checkpoint:human-verify gate=blocking` BLOCKING** — Task 2 needs live Milvus+BGE-M3+GLM stack (`docker compose up` + `ollama pull bge-m3` + populate `GLM_API_KEY`+`BGE_M3_URL` in `.env`) to run `go run ./cmd/eval --frozen=compliance` → `eval/report.json` → `go run ./scripts/eval_snapshot` → paste stdout into README `## Eval Results` (still PLACEHOLDER); Task 3 needs screen capture (ScreenToGif/OBS) to record `docs/demo.gif` (cited verdict + structured refusal flows, <5MB, embed already in README hero). Plan 07-02 (containerization) Task 3 docker-build ALSO still IN PROGRESS — Docker not in PATH. Plans 07-01 (release-meta) + 07-03 (docs) + 07-04 (examples+eval sample) COMPLETE. Next: human resolves 07-05 Task 2/3 checkpoints (which unblocks 07-06 publication governance — must NOT push to public remote until README eval numbers + GIF are in tree). See `.planning/phases/07-open-source-release/07-05-SUMMARY.md`.
 
 **Resume point (legacy):** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
@@ -185,12 +209,12 @@ Last activity: 2026-08-17 — Milestone v0.8 started
 
 **Hot files this session:**
 
-- `.planning/PROJECT.md` — core value + decisions
-- `.planning/REQUIREMENTS.md` — 55 v1 requirements + traceability
-- `.planning/research/SUMMARY.md` — stack locked, pitfalls, recommended 7-phase order
-- `.planning/ROADMAP.md` — phase structure (this file's sibling)
+- `.planning/PROJECT.md` — core value + decisions + v0.8 milestone section
+- `.planning/REQUIREMENTS.md` — 55 v1 + 25 v0.8 requirements + traceability (updated 2026-08-17)
+- `.planning/research/SUMMARY.md` — v0.8 stack/pitfalls/6-phase order (P8.0 → P8.S → P8.1 → P8.2 → P8.3 → P8.4)
+- `.planning/ROADMAP.md` — phase structure (v0.8 phases 8-13 appended 2026-08-17)
 - `.planning/STATE.md` — this file
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11. Plan 03-02 complete 2026-08-12. Plan 04-04 (Phase 4 gap-closure, wire-contract TS realignment) complete 2026-08-12 — `cd web && npx tsc --noEmit` now exits 0; Phase 4 debt-free. Plan 03-06 (Go-native trust evaluator, D6 reversed) complete 2026-08-12 — Phase 3 COMPLETE (6/6 plans); GEVL-04 + GEVL-05 marked complete.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Milestone v0.8 roadmap created 2026-08-17 — phases 8-13 appended (25/25 v0.8 requirements mapped; Phase 9 = spike hard gate for Phase 10); Phase 7 leftovers deferred to after v0.8 by user decision. Prior: Phase 4 → Phase 3 (resumed) on 2026-08-11. Plan 03-01 complete 2026-08-11. Plan 03-02 complete 2026-08-12. Plan 04-04 (Phase 4 gap-closure, wire-contract TS realignment) complete 2026-08-12 — `cd web && npx tsc --noEmit` now exits 0; Phase 4 debt-free. Plan 03-06 (Go-native trust evaluator, D6 reversed) complete 2026-08-12 — Phase 3 COMPLETE (6/6 plans); GEVL-04 + GEVL-05 marked complete.*

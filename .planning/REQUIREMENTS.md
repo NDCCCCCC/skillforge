@@ -267,10 +267,37 @@ Which phases cover which requirements.
 | DATA-12 | Phase 5 | Pending |
 | DATA-13 | Phase 5 | Pending |
 | DATA-14 | Phase 5 | Pending |
+| PLAT-04 | Phase 8 | Pending |
+| PLAT-05 | Phase 8 | Pending |
+| GEVL-08 | Phase 9 | Pending |
+| MEM-01 | Phase 10 | Pending |
+| MEM-02 | Phase 10 | Pending |
+| MEM-03 | Phase 10 | Pending |
+| MEM-04 | Phase 10 | Pending |
+| MEM-05 | Phase 10 | Pending |
+| HITL-01 | Phase 11 | Pending |
+| HITL-02 | Phase 11 | Pending |
+| HITL-03 | Phase 11 | Pending |
+| HITL-04 | Phase 11 | Pending |
+| HITL-05 | Phase 11 | Pending |
+| HITL-06 | Phase 11 | Pending |
+| HITL-07 | Phase 11 | Pending |
+| HITL-08 | Phase 11 | Pending |
+| PLAN-01 | Phase 12 | Pending |
+| PLAN-02 | Phase 12 | Pending |
+| PLAN-03 | Phase 12 | Pending |
+| PLAN-04 | Phase 12 | Pending |
+| PLAN-05 | Phase 12 | Pending |
+| FAN-01 | Phase 13 | Pending |
+| FAN-02 | Phase 13 | Pending |
+| FAN-03 | Phase 13 | Pending |
+| FAN-04 | Phase 13 | Pending |
 
 **Coverage:**
 - v1 requirements: 70 total (was 55; +8 DATA +1 SYSK-08 +6 DATA-09..14 added via /gsd:explore 2026-08-10/11)
-- Mapped to phases: 70
+- v1 mapped to phases: 70
+- v0.8 requirements: 25 total (added 2026-08-17 via /gsd:new-milestone)
+- v0.8 mapped to phases: 25 (phases 8-13)
 - Unmapped: 0 ✓
 
 **Phase distribution:**
@@ -284,8 +311,15 @@ Which phases cover which requirements.
 | Phase 5 (Skill Platform & Full Knowledge Boundaries) | 8 | SYSK-04, SYSK-05, SYSK-06, AGNT-06, KNOW-06, CMPL-06, CMPL-07, CMPL-08 |
 | Phase 6 (Eval Dashboard & Production Hardening) | 2 | GEVL-06, GEVL-07 |
 | Phase 7 (Open-Source Release) | 10 | DIST-01..10 |
-| **Total** | **55** | |
+| **v1 Total** | **55** | |
+| Phase 8 (全量依赖升级 P8.0) | 2 | PLAT-04, PLAT-05 |
+| Phase 9 (历史注入 spike 硬门 P8.S) | 1 | GEVL-08 |
+| Phase 10 (多轮对话记忆 P8.1) | 5 | MEM-01..05 |
+| Phase 11 (写工具 + 审批门 P8.2) | 8 | HITL-01..08 |
+| Phase 12 (规划层 P8.3) | 5 | PLAN-01..05 |
+| Phase 13 (子 agent 扇出 P8.4) | 4 | FAN-01..04 |
+| **v0.8 Total** | **25** | |
 
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-08-10 after roadmap creation (7 phases, mvp mode)*
+*Last updated: 2026-08-17 — v0.8 milestone requirements (25) mapped to phases 8-13; traceability + distribution updated*
