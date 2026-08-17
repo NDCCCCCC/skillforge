@@ -237,7 +237,7 @@
 **Research flag:** RF-2 — 已在研究期解决（`CheckPointStore` 接口 = Get/Set 两方法，eino@v0.9.14 internal/core/interrupt.go:27-30；编译 spike 实证升级零源码改动）
 **Plans**: 5 plans
 **Plan list**:
-- [ ] 08-01-PLAN.md — Wave 1: 升级主提交（eino v0.9.14 + ext openai v0.1.13 + TestContractVersionPin 改写 + 8 处 godoc 重核）+ hermetic 回归重锁（全量单测 / contract 套件 / cancel <200ms）
+- [x] 08-01-PLAN.md — Wave 1: 升级主提交（eino v0.9.14 + ext openai v0.1.13 + TestContractVersionPin 改写 + 8 处 godoc 重核）+ hermetic 回归重锁（全量单测 / contract 套件 / cancel <200ms）(completed 2026-08-17, commit 36845c0 — 四道门全绿零修复提交)
 - [ ] 08-02-PLAN.md — Wave 2: sqlite CheckPointStore 骨架（schema DDL 追加 + SQLiteStore Get/Set + 编译期断言）+ 六面测试 TDD（round-trip / 重开 DB / upsert / unknown-id / SQLi / closed）
 - [ ] 08-03-PLAN.md — Wave 2（parallel）: legacy interrupt API 禁令门（test-as-gate，含触发负向证明）+ 版本叙事文档对齐（REQUIREMENTS/ROADMAP/CLAUDE.md → v0.9.14）
 - [ ] 08-04-PLAN.md — Wave 3: SC-5 真实中断往返测试（schema.RegisterName 注册 + stub 剧本 + adk Runner + 重开 DB 新 Runner Resume）+ phase hermetic 全量收口
