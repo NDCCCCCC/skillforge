@@ -1,16 +1,18 @@
 ---
 gsd_state_version: 1.0
 milestone: v0.8
-milestone_name: Harness — 可信×行动融合
-status: planning
-last_updated: "2026-08-17T12:00:00.000Z"
-last_activity: 2026-08-17
+milestone_name: — Harness（可信×行动融合）
+current_phase: 8
+current_plan: 1
+status: planned
+last_updated: "2026-08-17T15:15:16.500Z"
+last_activity: 2026-08-17 -- Phase 8 planned: 5 plans (08-01..08-05) in 4 waves, plan-checker PASSED iteration 2 (0 blockers/0 warnings); upgrade target eino v0.9.14 per user decision 2026-08-17
 progress:
-  total_phases: 6
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 13
+  completed_phases: 5
+  total_plans: 40
+  completed_plans: 36
+  percent: 38
 ---
 
 # State — SkillForge
@@ -21,8 +23,8 @@ progress:
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 8 (v0.8 milestone — roadmap defined, not yet planned)
-**Current Plan:** —
+**Current Phase:** 8
+**Current Plan:** 1
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** `/gsd:plan-phase 8` (全量依赖升级 P8.0 — eino v0.7.7 → v0.9.13 + sqlite CheckPointStore; RF-2 compile-check spike on CheckPointStore interface shape). Phase 9 (历史注入 spike 硬门) is the HARD GATE for Phase 10 memory.
@@ -41,17 +43,17 @@ progress:
 
 **License:** Apache-2.0.
 
-**Current focus:** Milestone v0.8 Harness（可信×行动融合）— roadmap defined (phases 8-13); next is Phase 8 planning
+**Current focus:** Phase 8 — 全量依赖升级（P8.0 — eino v0.7.7 → v0.9.13）
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 
 ---
 
 ## Current Position
 
-Phase: 8 (roadmap created; plans TBD)
-Plan: —
-Status: Roadmap approved-structure written; awaiting Phase 8 planning
-Last activity: 2026-08-17 — Milestone v0.8 roadmap created (6 phases: 8 dep-upgrade → 9 spike HARD GATE → 10 memory → 11 write-tools+approval → 12 planning → 13 fan-out; strict chain; 25/25 requirements mapped)
+Phase: 8 (全量依赖升级（P8.0 — eino v0.7.7 → v0.9.13）) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 8
+Last activity: 2026-08-17 -- Phase 8 execution started
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
