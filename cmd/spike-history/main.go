@@ -48,6 +48,10 @@
 //	                  (used by --summarize to reference baseline model_ver
 //	                   + prompt_hash; default eval/frozen/compliance.lock.json)
 //	--dry-run         run the pipeline with all externals stubbed
+//	--via-pipeline    route RunEntry through the production chat path
+//	                  (history.Project + rewrite + classifier + multi-turn
+//	                   messages prefix). Legacy direct path is the default
+//	                   for Phase 9 row-level reproducibility.
 //
 // Per the planner's stub-error discipline (Planner Ruling 2 + 3),
 // --history-length=long and --summarize exit with a grep-friendly
@@ -82,6 +86,8 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
+	"github.com/skillforge/skillforge/internal/server/classifier"
+	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
 )
@@ -127,6 +133,7 @@ func main() {
 	costLimit := flag.Float64("cost-limit", defaultCostLimit, "hard USD cap for live mode (dry-run ignores)")
 	baselineLock := flag.String("baseline-lock", "eval/frozen/compliance.lock.json",
 		"path to the Phase 8 frozen compliance.lock.json (used by --summarize to reference baseline model_ver + prompt_hash)")
+	viaPipeline := flag.Bool("via-pipeline", false, "route RunEntry through the production chat path (history.Project + rewrite + classifier + multi-turn messages prefix)")
 	dryRun := flag.Bool("dry-run", defaultDryRun, "run with all externals stubbed (no API keys / no Milvus / no BGE-M3)")
 	flag.Parse()
 
@@ -178,6 +185,14 @@ func main() {
 		deps = &runnerDeps{
 			DryRun: true,
 		}
+		// Plan 10-04: --via-pipeline in dry-run enables the production
+		// composition path with inert stub pointers. RunEntry stubs the
+		// rewriter (returns query unchanged) and classifier (returns allow)
+		// internally when DryRun=true, so zero external calls are made.
+		if *viaPipeline {
+			deps.Rewriter = &rewrite.QueryRewriter{}
+			deps.Classifier = &classifier.RefusalClassifier{}
+		}
 		log.Printf("[INFO] cmd/spike-history: dry-run mode — all externals stubbed (no API keys / no Milvus / no BGE-M3)")
 	} else {
 		// Live mode mirrors cmd/eval's bootstrap. envRequired aborts
@@ -195,6 +210,22 @@ func main() {
 			ChatModel: cm,
 			Judge:     judge,
 			DryRun:    false,
+		}
+		// Plan 10-04 (B5): when --via-pipeline is set, wire the production
+		// query rewriter + refusal classifier so the spike runner exercises
+		// the same chat-path composition the running product uses.
+		if *viaPipeline {
+			rewriter, err := rewrite.NewQueryRewriter(cm)
+			if err != nil {
+				log.Fatalf("[FAIL] cmd/spike-history: query rewriter init: %v", err)
+			}
+			refusalClassifier, err := classifier.NewRefusalClassifier(cm)
+			if err != nil {
+				log.Fatalf("[FAIL] cmd/spike-history: refusal classifier init: %v", err)
+			}
+			deps.Rewriter = rewriter
+			deps.Classifier = refusalClassifier
+			log.Printf("[INFO] cmd/spike-history: via-pipeline ACTIVE (rewriter + classifier wired)")
 		}
 		// buildStore is unused in the spike runner (spike never writes
 		// audit / session) but the helper is mirrored for completeness
