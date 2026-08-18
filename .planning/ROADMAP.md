@@ -256,7 +256,7 @@
 
 ### Phase 8: 全量依赖升级（P8.0 — eino v0.7.7 → v0.9.14）
 
-**Goal:** 全量依赖升级到 eino v0.9.14（不用 v0.10.0-alpha.x，maintainer 明确警告 breaking）+ eino-ext 逐组件联动升级；sqlite `CheckPointStore` 骨架就位；所有既有回归门重新锁定——为整个 v0.8 提供干净的框架地基（升级不混功能，回归归因干净）。（用户决策 2026-08-17：v0.9.14 而非研究原锁的 v0.9.13）
+**Goal:** As a SkillForge 二次开发者, I want to 把依赖栈升级到 eino v0.9.14 并就位 CheckPointStore 骨架, so that v0.8 的记忆与审批能力解锁且升级回归归因干净.
 **Mode:** mvp
 **Depends on:** Phase 7（v0.7.7 里程碑结束态；不阻塞 07-02/07-05 人工 checkpoint）
 **Requirements:** PLAT-04, PLAT-05
