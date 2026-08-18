@@ -34,11 +34,18 @@ import ThreePanel from './components/layout/ThreePanel';
 import LeftSidebar from './components/layout/LeftSidebar';
 import EvalDashboard from './components/eval/EvalDashboard';
 import { MessageBubble } from './components/chat/MessageBubble';
+import HistoryRewriteHint from './components/chat/HistoryRewriteHint';
 import { useSkillReload } from './hooks/useSkillReload';
+import { useSkillAutoSwitch } from './hooks/use-skill-auto-switch';
 import { isVerdict } from './types/verdict';
 import type { Verdict } from './types/verdict';
 import { createTransport } from './transport';
 import { useAppStore } from './store/app-store';
+import {
+  fetchHistory,
+  historyToUIMessages,
+  type SessionHistoryResponse,
+} from './lib/chat-restore';
 
 interface AppProps {
   /** Optional seeded messages for tests (skips the live useChat hook). */
@@ -105,13 +112,94 @@ function LiveApp() {
   // hold messages in their internal state).
   const activeSessionId = useAppStore((s) => s.activeSessionId);
   const chatMapRef = useRef<Map<string, Chat<UIMessage>>>(new Map());
+  // Plan 10-03 (D10-D1 + MEM-02) — fetch the prior session's history
+  // on mount and inject the transformed messages into the per-session
+  // Chat instance via Chat.messages setter. The AI SDK v5 React-side
+  // Chat class exposes a public `messages` setter
+  // (@ai-sdk/react/dist/index.js line 244) — assigning to it replaces
+  // the chat's message stream. The chatMapRef-driven CR-01 invariant
+  // requires the Chat to be created exactly once per session; we use
+  // a separate `messagesWrittenRef` to track which sessions have
+  // already had their restored messages written (so a re-render
+  // does NOT clobber user-typed messages from the live chat surface).
+  //
+  // D14 invariant: the message stream lives in the Chat instance
+  // (and the per-session chatMapRef), NEVER in the Zustand store. The
+  // store only carries session metadata (activeSessionId, sessions[]).
+  const [historySnapshot, setHistorySnapshot] = useState<SessionHistoryResponse | null | undefined>(
+    undefined,
+  );
+  const restoredSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (restoredSessionRef.current === activeSessionId) return;
+    restoredSessionRef.current = activeSessionId;
+    let cancelled = false;
+    void fetchHistory(activeSessionId).then((resp) => {
+      if (cancelled) return;
+      setHistorySnapshot(resp);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId]);
+  // Skill auto-switch (D10-D2) — the BE returns the session-bound
+  // skill_id on the history response; the hook writes it into the
+  // Zustand store when present in the loaded skills list. Idempotent
+  // (no-op when already set or when skillId is empty).
+  useSkillAutoSwitch(historySnapshot?.skill_id ?? null);
+  // Create the Chat instance once per session. The chatMapRef lookup
+  // ensures the same Chat instance survives re-renders; on the first
+  // render we build the Chat with the empty initialMessages and let
+  // the history-effect below write the restored stream into it.
   const chat = useMemo(() => {
     const existing = chatMapRef.current.get(activeSessionId);
     if (existing) return existing;
-    const created = new Chat({ id: activeSessionId, transport });
+    const created = new Chat({
+      id: activeSessionId,
+      transport,
+    });
     chatMapRef.current.set(activeSessionId, created);
     return created;
   }, [activeSessionId, transport]);
+  // Inject the restored messages into the Chat instance once the
+  // history arrives. Chat.messages setter is the AI SDK v5 React-side
+  // public seam (@ai-sdk/react/dist/index.js line 244) — assignment
+  // replaces the chat's message stream with the supplied list.
+  //
+  // CRITICAL: this effect must fire EXACTLY ONCE per session — on the
+  // first-ever restore for that session. Subsequent re-renders (e.g.
+  // when the user switches back to a previously-restored session)
+  // MUST NOT clobber the chat's live message stream (the user may
+  // have typed new messages). appliedSessionsRef is the per-session
+  // guard: it records every session that has already had its history
+  // applied so the effect is a no-op on the second visit.
+  //
+  // For a brand-new session the history may be null (the unknown-
+  // session 200+empty posture) so we write an empty message stream
+  // to the Chat — the empty list is the canonical "fresh session"
+  // state, and the chatMapRef stores the Chat instance for the
+  // session's lifetime.
+  const appliedSessionsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (historySnapshot === undefined) return;
+    if (appliedSessionsRef.current.has(activeSessionId)) return;
+    const c = chatMapRef.current.get(activeSessionId);
+    if (!c) return;
+    // CRITICAL: only inject the restored message stream into a
+    // freshly-created Chat. If the Chat already has messages (the
+    // user may have typed OR an in-flight stream may have already
+    // pushed frames), DO NOT overwrite — the restored history is
+    // strictly less informative than the live stream. This guards
+    // against the timing race where the user types a query BEFORE
+    // the history fetch resolves (the chat surface has messages
+    // before history arrives).
+    if (c.messages.length > 0) return;
+    const restored = historySnapshot
+      ? historyToUIMessages(historySnapshot, activeSessionId)
+      : [];
+    c.messages = restored;
+    appliedSessionsRef.current.add(activeSessionId);
+  }, [historySnapshot, activeSessionId]);
   const { messages, sendMessage, status } = useChat({ chat });
   const [currentVerdict, setCurrentVerdict] = useState<Verdict | null>(null);
   const lastCreatedSkill = useAppStore((s) => s.lastCreatedSkill);

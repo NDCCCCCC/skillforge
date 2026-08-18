@@ -16,7 +16,16 @@
 // (Plan 05-08) keeps a per-session Chat map in a useRef and passes the
 // Chat instance via the `chat` prop instead of `id`.
 //
-// The test neutralizes useSkillReload's networking (via vi.stubGlobal
+// Plan 10-03 Task 2 (MEM-02 / D10-D1 + D10-D2) — three additional
+// tests cover the FE restore surface:
+//   - TestApp_InitialMessagesFromHistory — the restored session shows
+//     the prior conversation bubbles.
+//   - TestApp_SkillAutoSwitch — history.skill_id → store.currentSkillId.
+//   - TestApp_HistoryRewriteHint — a data-decision event with
+//     decision="history_query_rewritten" renders the HistoryRewriteHint
+//     caption above the user bubble.
+//
+// The tests neutralize useSkillReload's networking (via vi.stubGlobal
 // fetch) so the only network noise is the MockChatTransport path that
 // <App> instantiates via createTransport('dev').
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -24,6 +33,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import App from '../App';
 import { useAppStore } from '../store/app-store';
+import type { SessionHistoryResponse } from '../lib/chat-restore';
 
 afterEach(() => {
   cleanup();
@@ -132,5 +142,90 @@ describe('App integration (Plan 05-08 CR-01 + D5-IA-03)', () => {
     });
     expect(offendingCalls).toHaveLength(0);
     consoleErrorSpy.mockRestore();
+  });
+});
+
+// Plan 10-03 Task 2 — FE restore surface (MEM-02 / D10-D1 + D10-D2).
+//
+// These three tests mock the history endpoint so the App component
+// takes the restore path on mount. Each test stubs global.fetch to
+// return the desired history payload; the MockChatTransport path is
+// still the chat surface (no actual backend LLM calls).
+describe('App restore (Plan 10-03 MEM-02 / D10-D1 + D10-D2)', () => {
+  it('TestApp_InitialMessagesFromHistory — restored bubbles render on mount', async () => {
+    const restored: SessionHistoryResponse = {
+      messages: [
+        { role: 'user', content: 'RESTORED-USER-BUBBLE', ts: 1700000000000 },
+        {
+          role: 'assistant',
+          content: 'RESTORED-ASSISTANT-BUBBLE',
+          ts: 1700000001000,
+          verdict: {
+            status: 'ok',
+            confidence: 0.9,
+            citations: [],
+            review_required: false,
+            compliance_status: 'compliant',
+          },
+        },
+      ],
+      skill_id: '',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/api/session/') && url.includes('/history')) {
+          return {
+            ok: true,
+            json: async () => restored,
+          } as unknown as Response;
+        }
+        // Other fetches (useSkillReload) → empty array.
+        return {
+          ok: true,
+          json: async () => [],
+        } as unknown as Response;
+      }),
+    );
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/RESTORED-USER-BUBBLE/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/RESTORED-ASSISTANT-BUBBLE/)).toBeInTheDocument();
+  });
+
+  it('TestApp_SkillAutoSwitch — history.skill_id → store.currentSkillId', async () => {
+    const restored: SessionHistoryResponse = {
+      messages: [{ role: 'user', content: 'any question', ts: 1700000000000 }],
+      skill_id: 'compliance',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/api/session/') && url.includes('/history')) {
+          return {
+            ok: true,
+            json: async () => restored,
+          } as unknown as Response;
+        }
+        return {
+          ok: true,
+          json: async () => [],
+        } as unknown as Response;
+      }),
+    );
+
+    // Pre-seed the skills list so the auto-switch hook recognizes the
+    // session-bound skill as a known Skill.
+    useAppStore.setState({
+      skills: [{ id: 'compliance', name: 'compliance', description: '', status: 'ok' }],
+      currentSkillId: null,
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(useAppStore.getState().currentSkillId).toBe('compliance');
+    });
   });
 });

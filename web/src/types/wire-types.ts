@@ -103,7 +103,19 @@ export interface DecisionPayload {
     | 'refuse'
     | 'forced_stop'
     | 'route'
-    | 'counter_evidence';
+    | 'counter_evidence'
+    // Plan 10-02 + Plan 10-03 — Phase 10 history-pipeline observability
+    // events. The 4 history_* constants live in
+    // internal/wire/chunk.go (DecisionHistoryProjected /
+    // DecisionHistoryBudgetTruncated / DecisionHistoryQueryRewritten /
+    // DecisionHistoryClassifierRefused); the DecisionPayload struct
+    // stays structurally identical (D15 invariant — zero new wire
+    // types). Only the decision enum widens by 4 string literals;
+    // HistoryRewriteHint renders the history_query_rewritten variant.
+    | 'history_projected'
+    | 'history_budget_truncated'
+    | 'history_query_rewritten'
+    | 'history_classifier_refused';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */

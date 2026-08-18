@@ -45,6 +45,9 @@ import { ToolPart } from './parts/ToolPart';
 // Plan 05-06 Task 2 — SC-6 / SC-7 post-verdict annotation cards.
 import CounterEvidenceCard from '../verdict/CounterEvidenceCard';
 import RedlineCard from '../verdict/RedlineCard';
+// Plan 10-03 Task 2 — D10-C3 transparency caption above the user
+// bubble when the history-pipeline rewriter fired.
+import HistoryRewriteHint from './HistoryRewriteHint';
 import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
 import { isVerdict, type VerdictStatus } from '../../types/verdict';
 
@@ -132,12 +135,27 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
     // owns its typography — bubble padding/font/line-height is set
     // here, not in the part renderer. The data-testid stays the same
     // for backward compat with the existing test suite.
+    //
+    // Plan 10-03 / D10-C3 — when the message carries a data-decision
+    // part with decision="history_query_rewritten", render the
+    // HistoryRewriteHint caption ABOVE the bubble so the user sees
+    // what the rewriter understood. The caption is co-located with the
+    // bubble (inside the same message container) so it travels with
+    // the message through re-renders / virtualization.
+    const rewriteDecision = message.parts.find(
+      (p) =>
+        p.type === 'data-decision' &&
+        (p as { data?: { decision?: string; query?: string } }).data?.decision ===
+          'history_query_rewritten',
+    ) as { data?: { decision: string; query?: string } } | undefined;
+    const rewriteText = rewriteDecision?.data?.query;
     return (
       <div
         className="message-user"
         data-testid="message-bubble"
         data-role="user"
       >
+        {rewriteText ? <HistoryRewriteHint rewrite={rewriteText} /> : null}
         <div className="message-user-card">
           {message.parts.map((part, i) => {
             if (part.type === 'text') {
