@@ -44,6 +44,9 @@
 //	--history-length  "short" (Plan 09-03) | "long" (Plan 09-04 stub gate)
 //	--summarize       non-empty triggers Plan 09-05 stub gate
 //	--cost-limit      hard USD cap for live mode (default 5.00; dry-run ignores)
+//	--baseline-lock   path to the Phase 8 frozen compliance.lock.json
+//	                  (used by --summarize to reference baseline model_ver
+//	                   + prompt_hash; default eval/frozen/compliance.lock.json)
 //	--dry-run         run the pipeline with all externals stubbed
 //
 // Per the planner's stub-error discipline (Planner Ruling 2 + 3),
@@ -122,6 +125,8 @@ func main() {
 	historyLength := flag.String("history-length", defaultHistoryLen, "short | long (long is Plan 09-04's territory)")
 	summarize := flag.String("summarize", "", "non-empty triggers Plan 09-05 summarize stub gate")
 	costLimit := flag.Float64("cost-limit", defaultCostLimit, "hard USD cap for live mode (dry-run ignores)")
+	baselineLock := flag.String("baseline-lock", "eval/frozen/compliance.lock.json",
+		"path to the Phase 8 frozen compliance.lock.json (used by --summarize to reference baseline model_ver + prompt_hash)")
 	dryRun := flag.Bool("dry-run", defaultDryRun, "run with all externals stubbed (no API keys / no Milvus / no BGE-M3)")
 	flag.Parse()
 
@@ -139,8 +144,26 @@ func main() {
 	// ---- 2. Stub error gates (Planner Rulings 2 + 3) ----
 	// Hit these BEFORE bootstrap so a fast failure does not require
 	// GLM_API_KEY / Milvus / BGE-M3 to be present.
+	//
+	// --summarize routes to runSummarize (Plan 09-05). The flag's
+	// value is interpreted as either:
+	//   - empty  → summarize skipped.
+	//   - "true" / "1" → use --out as the input directory.
+	//   - any other non-empty string → that string IS the input
+	//     directory (so a developer can `go run ./cmd/spike-history
+	//     --summarize=reports/` without changing --out).
+	//
+	// runSummarize returns 0 on GO / 1 on NO-GO; we os.Exit here so
+	// defer cancel() runs (defer fires across os.Exit at the top of a
+	// function — but not from arbitrary positions inside main, so the
+	// exit must be at the same scope as the defer).
 	if *summarize != "" {
-		log.Fatalf("[FAIL] --summarize=%s: not implemented in Plan 09-03; see Plan 09-05", *summarize)
+		out := *outDir
+		if *summarize != "true" && *summarize != "1" {
+			out = *summarize
+		}
+		code := runSummarize(out, *baselineLock)
+		os.Exit(code)
 	}
 
 	// ---- 3. Bootstrap selection ----
