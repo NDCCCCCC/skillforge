@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 10
-current_plan: Not started
-status: executing
-stopped_at: Phase 10 context gathered
-last_updated: "2026-08-18T07:28:12.358Z"
-last_activity: 2026-08-18 -- Phase 10 planning complete
+current_plan: 04
+status: executing-blocked
+stopped_at: "Task 2 live 35-case re-run blocked-pending-human (no .env / live stack in execution environment)"
+last_updated: "2026-08-18T10:47:00Z"
+last_activity: 2026-08-18 -- Plan 10-04 Task 1 shipped (via-pipeline flag + hermetic tests green); Task 2 live re-run blocked-pending-human
 progress:
   total_phases: 13
   completed_phases: 7
@@ -18,19 +18,22 @@ progress:
 
 # State — SkillForge
 
-**Last updated:** 2026-08-18 (**Phase 9 COMPLETE 6/6** — Plan 09-06 live spike 端到端跑完：35 例（10 恶意 + 15 善意 + 10 长会话）真 GLM-5.2 + Milvus + BGE-M3，实测成本 **$0.0481**（限额 $5.00/段）。机器裁决 **NO-GO**（exit 1）：SC-3 恶意零穿透 **0/10 PASS**（消毒规则 + grounding 白名单守住，证据链未被污染），但 refusal_accuracy **-95pp**（95%→0%，三类全灭）+ faithfulness -18.6%/-12.6%/-22.4% + context_recall -87.2%/-63.0%/-70.1% 漂移超门（Pitfall 1 H2 证实：拒答上下文使拒答率漂移）。用户 2026-08-18 签字「**接受 NO-GO 带逃逸方案**」——Phase 9 的交付物（明确且有记录的 go/no-go + 消毒规则 + 逃逸方案）按 SC-2/GEVL-08 口径达成；**Phase 10 记忆功能必须前置逃逸强化**（拒答判定不得依赖历史上下文；历史不得携带拒答语义；候选 = 信任地板 default-deny 强化 / MEM-05 摘要中间件 / prompt 历史投射收紧），且 memory 发布前须重跑 spike 硬门回到 <5%/<10pp。Next: `/gsd:verify-work 9` → `/gsd:plan-phase 10`。)
+**Last updated:** 2026-08-18 (**Phase 10 Plan 04 Task 1 shipped** — `--via-pipeline` flag + production chat-path composition in `cmd/spike-history` + hermetic `runner_pipeline_test.go`; all BE suites green, frozen lock byte-identity verified sha256 `5cf700f3...`). **Task 2 live 35-case re-run blocked-pending-human** (execution environment missing `.env` with `GLM_API_KEY` / `BGE_M3_URL` / `MILVUS_ADDRESS` and Docker Milvus + BGE-M3 stack). **Task 3 closeout transcription committed** with explicit blocker notes. Phase 10 remains in `executing-blocked` until operator provides live stack and the 35-case `--via-pipeline --summarize` gate is run.)
+
+**Prior:** 2026-08-18 (**Phase 10 Waves 1-3 complete** — 10-01 BE foundation / 10-02 pipeline injection / 10-03 FE restore; all hermetic green; FE `tsc` retains 1 pre-existing `DataSubprogressPart.tsx:47` error from 10-03.)
+
+**Prior:** 2026-08-18 (**Phase 9 COMPLETE 6/6** — Plan 09-06 live spike 端到端跑完：35 例（10 恶意 + 15 善意 + 10 长会话）真 GLM-5.2 + Milvus + BGE-M3，实测成本 **$0.0481**（限额 $5.00/段）。机器裁决 **NO-GO**（exit 1）：SC-3 恶意零穿透 **0/10 PASS**（消毒规则 + grounding 白名单守住，证据链未被污染），但 refusal_accuracy **-95pp**（95%→0%，三类全灭）+ faithfulness -18.6%/-12.6%/-22.4% + context_recall -87.2%/-63.0%/-70.1% 漂移超门（Pitfall 1 H2 证实：拒答上下文使拒答率漂移）。用户 2026-08-18 签字「**接受 NO-GO 带逃逸方案**」——Phase 9 的交付物（明确且有记录的 go/no-go + 消毒规则 + 逃逸方案）按 SC-2/GEVL-08 口径达成；**Phase 10 记忆功能必须前置逃逸强化**（拒答判定不得依赖历史上下文；历史不得携带拒答语义；候选 = 信任地板 default-deny 强化 / MEM-05 摘要中间件 / prompt 历史投射收紧），且 memory 发布前须重跑 spike 硬门回到 <5%/<10pp。)
 
 **Prior:** 2026-08-18 早前 (**Phase 8 COMPLETE 5/5** — Plan 08-05 live 三门重锁全部 approved：真 GLM cancel 0ms / Milvus tier 5行+0行 零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95% 留档 v0.8 基线；PLAT-04 + PLAT-05 双勾选；eino v0.9.14 编译同构 + 行为同构双证据闭环。)
 
-**Prior:** 2026-08-17 (Phase 8 plans 08-01..08-04 全部完成：升级 `36845c0` / CheckPointStore `9a557b1`+`e6a580a` / 禁令门+叙事对齐 `fea6114`+`996c33a` / SC-5 中断往返 `3c42c20`。同日早前：Milestone v0.8 roadmap created——phases 8-13 appended per research SUMMARY.md strict chain，25/25 v0.8 requirements mapped；quick tasks 260817-hck + 260817-i36 完成。)
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 10
-**Current Plan:** Not started
+**Current Plan:** 04
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** `/gsd:verify-work 9` (Phase 9 complete 6/6 — verdict NO-GO accepted with escape plan) → `/gsd:plan-phase 10`（Phase 10 规划须读 09-06-SUMMARY 的逃逸方案节：MEM 前置信任地板强化 + 发布前重跑 spike 硬门）.
+**Next action:** Operator populates `.env` (GLM_API_KEY, BGE_M3_URL, MILVUS_ADDRESS) and starts Docker Milvus + BGE-M3; then run `go run ./cmd/spike-history --via-pipeline --summarize --seed=42 --golden=eval/golden/compliance.jsonl --out=reports/ --cost-limit=5.00` and record results in 10-04-SUMMARY.md.
 
 ---
 
@@ -154,6 +157,18 @@ Resume File: .planning/phases/10-p8-1/10-CONTEXT.md
 
 ## Blockers
 
+### Phase 10 Plan 04 — Task 2 live re-run
+- **Status:** blocked-pending-human
+- **Blocked since:** 2026-08-18
+- **Reason:** Execution environment lacks the live stack required for the 35-case GLM/Milvus/BGE-M3 re-run. No `.env` file is present; `GLM_API_KEY`, `BGE_M3_URL`, and `MILVUS_ADDRESS` are not set; Docker Milvus + BGE-M3 endpoints are not confirmed reachable.
+- **Unblock action:** Operator populates `.env` and starts the Docker stack, then runs:
+  ```bash
+  go run ./cmd/spike-history --via-pipeline --summarize --seed=42 \
+    --golden=eval/golden/compliance.jsonl --out=reports/ --cost-limit=5.00
+  ```
+- **Verification:** All 4 gates PASS (4-metric drift <5%, refusal delta <10pp, SC-3 0/10, cost <$5.00/segment) and `git diff --quiet eval/frozen/compliance.lock.json` remains exit 0.
+
+### Prior blockers
 (none for v0.8 planning; Phase 7 carries 2 human-verify checkpoints — 07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF — deferred to after the v0.8 milestone by user decision 2026-08-17)
 
 ### Quick Tasks Completed

@@ -329,10 +329,10 @@
 **Plans**: 4 plans
 **Plan list**:
 
-- [ ] 10-01-PLAN.md — Wave 1: BE foundation — history verdict-renderer + neutral placeholder + char-budget window + RefusalClassifierInput type-isolation contract (MEM-04, MEM-05)
-- [ ] 10-02-PLAN.md — Wave 2: BE pipeline injection — query rewriter + refusal classifier + audit_meta sibling table + multi-turn messages prefix in VerdictPipeline + data-decision event extension (MEM-01..05)
-- [ ] 10-03-PLAN.md — Wave 3: FE restoration — GET /api/session/:id/history + chat-restore.ts + use-skill-auto-switch.ts + HistoryRewriteHint caption (MEM-02)
-- [ ] 10-04-PLAN.md — Wave 4: end-to-end spike gate — pre-flight hermetic + frozen-lock byte-identity + live 35-case re-run via cmd/spike-history --summarize + closeout (MEM-01..05; autonomous:false — live stack)
+- [x] 10-01-PLAN.md — Wave 1: BE foundation — history verdict-renderer + neutral placeholder + char-budget window + RefusalClassifierInput type-isolation contract (MEM-04, MEM-05)
+- [x] 10-02-PLAN.md — Wave 2: BE pipeline injection — query rewriter + refusal classifier + audit_meta sibling table + multi-turn messages prefix in VerdictPipeline + data-decision event extension (MEM-01..05)
+- [x] 10-03-PLAN.md — Wave 3: FE restoration — GET /api/session/:id/history + chat-restore.ts + use-skill-auto-switch.ts + HistoryRewriteHint caption (MEM-02)
+- [ ] 10-04-PLAN.md — Wave 4: end-to-end spike gate — pre-flight hermetic + frozen-lock byte-identity + live 35-case re-run via cmd/spike-history --summarize + closeout (MEM-01..05; autonomous:false — live stack). **Task 1 shipped (via-pipeline flag + hermetic tests); Task 2 live re-run blocked-pending-human (no .env / live stack in execution env).**
 
 **Wave structure**: W1={10-01} → W2={10-02} → W3={10-03} → W4={10-04}
 **UI hint**: yes（多轮聊天 UX — 历史恢复、刷新后连续性为用户可感知界面行为）
@@ -440,13 +440,13 @@
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
 | 8. 全量依赖升级 (P8.0) | 5/5 | Complete — live 三门 human-verify approved 2026-08-18（cancel 0ms / tier 5行+0行 / frozen eval gate PASS 0.972，v0.8 基线留档）；ready for verify-work | 2026-08-18 |
 | 9. 历史注入 spike 硬门 (P8.S) | 6/6 | Complete — live spike 裁决 **NO-GO**（用户 2026-08-18 签字「接受 NO-GO 带逃逸方案」）：SC-3 零穿透 0/10 PASS，refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录裁决 + 逃逸方案）；Phase 10 须前置信任地板强化，memory 发布前重跑硬门 | 2026-08-18 |
-| 10. 多轮对话记忆 (P8.1) | 0/? | Not started — gated by Phase 9 | - |
+| 10. 多轮对话记忆 (P8.1) | 3/4 (10-01..10-03 complete; 10-04 Task 1 shipped, Task 2 blocked-pending-human) | In Progress — live 35-case re-run pending operator stack (GLM_API_KEY / BGE_M3_URL / MILVUS_ADDRESS + Docker Milvus/BGE-M3) | 2026-08-18 (Task 1 + closeout transcription)
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
 | 13. 子 agent 扇出 (P8.4) | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-18 — **Phase 9 COMPLETE (6/6)**：09-06 live spike 端到端（35 例 = 10 恶意 + 15 善意 + 10 长会话，真 GLM-5.2 + Milvus + BGE-M3，seed=42，实测 cost $0.0481 < $5.00 限）→ `--summarize` 裁决 **NO-GO**（exit 1）。SC-3 恶意零穿透 **0/10 PASS**（D9-B1/B2/B3 消毒 + grounding 白名单守住，证据链未污染）；失败 = refusal_accuracy **-95pp**（95%→0%，三类全灭）+ faithfulness -18.6%/-12.6%/-22.4% + context_recall -87.2%/-63.0%/-70.1% 超门 → **Pitfall 1 H2 证实（拒答上下文使拒答率漂移）**。用户签字「接受 NO-GO 带逃逸方案」→ Phase 10（MEM-01..05）前置信任地板强化（拒答判定不依赖历史上下文 / 历史不携带拒答语义 / query-only 拒答分类器候选），memory 发布前重跑 spike 硬门回 <5%/<10pp。reports/ 七文件 git-ignore（planner ruling 3），头条数字转录进 09-06-SUMMARY 留档。Prior: Phase 8 COMPLETE 2026-08-18 (08-05 live 三门 human-verify approved 真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%, lock 未动，v0.8 基线留档 D8-07); PLAT-04 + PLAT-05 勾选. Earlier: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
+*Last updated: 2026-08-18 — **Phase 10 Plan 04 Task 1 shipped** (`--via-pipeline` flag + hermetic tests green); **Task 2 live 35-case re-run blocked-pending-human** (execution env missing `.env` / GLM_API_KEY / BGE_M3_URL / MILVUS_ADDRESS + Docker stack). Frozen lock byte-identity verified: sha256 `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded` (first 8 = `5cf700f3`), git diff clean. Prior: Phase 10 Waves 1-3 complete (10-01 BE foundation / 10-02 pipeline injection / 10-03 FE restore). Phase 9 COMPLETE 2026-08-18 — live spike 裁决 NO-GO accepted with escape plan.*
 
 ---
 

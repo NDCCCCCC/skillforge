@@ -270,11 +270,11 @@ Which phases cover which requirements.
 | PLAT-04 | Phase 8 | Complete |
 | PLAT-05 | Phase 8 | Complete |
 | GEVL-08 | Phase 9 | Complete |
-| MEM-01 | Phase 10 | Pending |
-| MEM-02 | Phase 10 | Pending |
-| MEM-03 | Phase 10 | Pending |
-| MEM-04 | Phase 10 | Pending |
-| MEM-05 | Phase 10 | Pending |
+| MEM-01 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
+| MEM-02 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
+| MEM-03 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
+| MEM-04 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
+| MEM-05 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
 | HITL-01 | Phase 11 | Pending |
 | HITL-02 | Phase 11 | Pending |
 | HITL-03 | Phase 11 | Pending |
