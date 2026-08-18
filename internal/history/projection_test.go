@@ -23,45 +23,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// task1KnownBrokenFixtures lists the fixtures that are KNOWN to be
-// inconsistent with the current projection behavior. Each entry is
-// retired by Plan 10-01 Task 2 — until then, the test skips the
-// fixture instead of failing. The Task 2 retirement evolves the
-// contract: the broken fixture is deleted and the two budget-window
-// fixtures are added.
-//
-// Why this exists: the Phase 9 fixture set was declared in
-// projection_test_fixtures.go but never executed (the package had no
-// _test.go file). When Plan 10-01 Task 1 added the first executable
-// test for the fixture contract, the inconsistency surfaced. Task 2
-// retires the broken fixture and replaces it with two budget-window
-// fixtures that align with the new D10-B3 budget-primary window.
-var task1KnownBrokenFixtures = map[string]bool{
-	// Inputs 9 messages; after role filter 8; 6-message cap keeps last
-	// 6, but the fixture's Expected only has 4 (claimed 3 pairs but
-	// only 2 pairs are listed). Task 2 retires this fixture.
-	"neg_history_truncated_to_three_pairs": true,
-}
-
 // TestProject_FixturesStillGreen iterates every exported Fixture and
 // asserts Project(f.Input) equals f.Expected exactly. The fixtures are
-// the executable contract for the history projection — they are what the
-// spike runner reads to compare D9-B1/B2/B3 behavior end-to-end.
+// the executable contract for the history projection — they are what
+// the spike runner reads to compare D9-B1/B2/B3 + D10-A2/B3 behavior
+// end-to-end.
 //
-// At Task 1 completion (verdict_renderer.go wired into Project) all
-// Phase 9 fixtures except the known-broken list must remain green
-// because none of them contain verdictJSON — the RenderConclusion
-// branch is a no-op for plain assistant prose (parse failure is a
-// pass-through).
-//
-// Task 2 retires neg_history_truncated_to_three_pairs and adds the two
-// budget-window fixtures; this test remains the same shape and simply
-// iterates whatever set is exported at the time of the run.
+// Fixture count after Plan 10-01 Task 2: 8 (7 Phase 9 contributions
+// minus the retired neg_history_truncated_to_three_pairs, plus the
+// two new budget-window fixtures and the refusal-placeholder fixture).
 func TestProject_FixturesStillGreen(t *testing.T) {
 	for _, f := range Fixtures {
-		if task1KnownBrokenFixtures[f.Name] {
-			continue
-		}
 		t.Run(f.Name, func(t *testing.T) {
 			got := Project(f.Input)
 			assert.Equal(t, f.Expected, got, "fixture %q drift detected", f.Name)
