@@ -195,3 +195,11 @@ None — Task 1 executed as planned.
 ---
 *Phase: 10-p8-1*
 *Completed: 2026-08-18*
+
+## Self-Check: PASSED
+
+- [x] `.planning/phases/10-p8-1/10-04-SUMMARY.md` exists.
+- [x] `cmd/spike-history/runner_pipeline_test.go` exists.
+- [x] Commit `fdbfe0a` (Task 1) found in git log.
+- [x] Commit `0c4becc` (Task 3 closeout) found in git log.
+- [x] Frozen lock `eval/frozen/compliance.lock.json` git-diff clean and sha256 `5cf700f3...` verified.
