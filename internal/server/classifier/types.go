@@ -100,14 +100,23 @@ var validDecisions = map[string]bool{
 }
 
 // Valid reports whether o satisfies the structural gate: Decision is
-// one of the enum keys and Confidence is in [0.0, 1.0] inclusive. The
-// Plan 02 Classify wrapper is responsible for the semantic gate (the
-// ConfidenceFloor and the Reason field); Valid only enforces shape.
+// one of the enum keys, Confidence is in [0.0, 1.0] inclusive, AND a
+// Decision="allow" carries Confidence >= ClassifierConfidenceFloor.
+//
+// The ConfidenceFloor on allow is the W3 / T-10-04 elevation-of-
+// privilege gate: under-confident allows default-deny rather than
+// propagate to the verdict LLM. The floor is enforced HERE so every
+// caller of Valid() (the Plan 02 Classify wrapper, the test
+// reflection lock, the spike runner's audit pass) gets the same
+// answer from one source of truth.
 func (o RefusalClassifierOutput) Valid() bool {
 	if !validDecisions[o.Decision] {
 		return false
 	}
 	if math.IsNaN(o.Confidence) || o.Confidence < 0.0 || o.Confidence > 1.0 {
+		return false
+	}
+	if o.Decision == "allow" && o.Confidence < ClassifierConfidenceFloor {
 		return false
 	}
 	return true

@@ -73,17 +73,20 @@ func TestRefusalClassifierInput_NoHistoryField(t *testing.T) {
 }
 
 // TestRefusalClassifierOutput_Valid — table-driven over the Valid
-// gate: Decision enum + Confidence range.
+// gate: Decision enum + Confidence range + W3 ConfidenceFloor on
+// Decision="allow".
 func TestRefusalClassifierOutput_Valid(t *testing.T) {
 	cases := []struct {
 		name string
 		out  RefusalClassifierOutput
 		want bool
 	}{
-		{name: "allow_valid_confidence", out: RefusalClassifierOutput{Decision: "allow", Confidence: 0.5}, want: true},
+		{name: "allow_at_floor", out: RefusalClassifierOutput{Decision: "allow", Confidence: 0.5}, want: true},
+		{name: "allow_above_floor", out: RefusalClassifierOutput{Decision: "allow", Confidence: 0.95}, want: true},
 		{name: "refuse_valid_confidence", out: RefusalClassifierOutput{Decision: "refuse", Confidence: 0.5}, want: true},
-		{name: "allow_zero_confidence", out: RefusalClassifierOutput{Decision: "allow", Confidence: 0.0}, want: true},
+		{name: "allow_zero_confidence_below_floor", out: RefusalClassifierOutput{Decision: "allow", Confidence: 0.0}, want: false},
 		{name: "allow_one_confidence", out: RefusalClassifierOutput{Decision: "allow", Confidence: 1.0}, want: true},
+		{name: "allow_below_floor", out: RefusalClassifierOutput{Decision: "allow", Confidence: 0.3}, want: false},
 		{name: "unknown_decision", out: RefusalClassifierOutput{Decision: "unknown", Confidence: 0.5}, want: false},
 		{name: "empty_decision", out: RefusalClassifierOutput{Decision: "", Confidence: 0.5}, want: false},
 		{name: "confidence_below_zero", out: RefusalClassifierOutput{Decision: "allow", Confidence: -0.1}, want: false},
