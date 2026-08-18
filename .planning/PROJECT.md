@@ -113,7 +113,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 **Target features:**
 - 前置：✅ 全量依赖升级（Phase 8 完成 2026-08-18：eino v0.9.14 + eino-ext openai v0.1.13 联动，summarization 中间件与 ADK HITL 解锁；hertz/milvus/sqlite pin 有意保持稳定，前端依赖升级仍挂 `todos/pending/upgrade-deps-latest.md`）
-- 前置：spike 验证历史注入对 trust floor 拒答率的影响（golden set 对比 baseline 四指标漂移）——Phase 9 硬门
+- 前置：✅ spike 验证历史注入对 trust floor 拒答率的影响（Phase 9 完成 2026-08-18，**NO-GO 已签字接受带逃逸方案**：拒答 95%→0% 崩塌 + faithfulness -18.6%，SC-3 恶意零穿透 0/10 守住；产出 `cmd/spike-history` spike runner + `internal/history` 消毒骨架 + reports/ A/B 报告。**Phase 10 必须前置 trust-floor default-deny 强化**（D9-V2 逃逸方案），且 09-REVIEW 4 个 Critical 工具链 bug 需在 Phase 10 重门控前修复）
 - 多轮对话记忆：sqlite session history 喂进 agent（修复 chat.go 单轮限制）+ 摘要压缩
 - 写操作 + 审批门：Eino ADK Interrupt/Resume HITL + 审计行，「可信×行动」首次正面验证
 - 规划层：DeepAgent（`adk/prebuilt/deep` + write_todos），规划轨迹可回放
@@ -139,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-18 — Phase 8 complete (eino v0.9.14 + eino-ext v0.1.13 lockstep, sqlite CheckPointStore 骨架, live 三门 human-verify approved; v0.8 frozen eval 基线 faithfulness 0.972 / refusal_accuracy 95%). Prior: 2026-08-17 — Milestone v0.8 (Harness — 可信×行动融合) started; open-source release (07-06) deferred to after this milestone by user decision.*
+*Last updated: 2026-08-18 — Phase 9 complete (历史注入 spike 硬门 GEVL-08: 6/6 plans, VERIFICATION passed 7/7; **NO-GO 签字接受带逃逸方案** — 拒答 95%→0% 实证 Pitfall 1 H2, SC-3 零穿透守住, 消毒骨架交付; Phase 10 前置 D9-V2 trust-floor 强化 + 4 Critical 工具链修复). Prior: Phase 8 complete (eino v0.9.14 + eino-ext v0.1.13 lockstep, sqlite CheckPointStore 骨架, live 三门 human-verify approved; v0.8 frozen eval 基线 faithfulness 0.972 / refusal_accuracy 95%).*
