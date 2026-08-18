@@ -300,7 +300,7 @@
 **Plans**: 6 plans
 **Plan list**:
 - [x] 09-01-PLAN.md — Wave 1: golden set 75 行口径（50 baseline + 10 恶意 + 15 善意三小类 5/5/5）+ GEVL-05 契约门升级
-- [ ] 09-02-PLAN.md — Wave 1: internal/history/projection.go + projection_test_fixtures.go（D9-B1/B2/B3 三规则 + 6+ fixtures）
+- [x] 09-02-PLAN.md — Wave 1: internal/history/projection.go + projection_test_fixtures.go（D9-B1/B2/B3 三规则 + 6+ fixtures）
 - [ ] 09-03-PLAN.md — Wave 2: cmd/spike-history spike-only 二进制（spike_row + runner + main；短历史 A/B 路径；dry-run + 成本守卫）
 - [ ] 09-04-PLAN.md — Wave 3: long.go 长会话用例合成器（10 例 × 8/12/15 长度 × seeded shuffle；Plan 09-03 stub gate 替换）
 - [ ] 09-05-PLAN.md — Wave 3: summary.go + summary_test.go（computeVerdict 6+ case hermetic + renderSummary + runSummarize；Plan 09-03 stub gate 替换）

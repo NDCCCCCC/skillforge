@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 9
-current_plan: Not started
+current_plan: 3 of 6
 status: executing
-last_updated: "2026-08-18T02:39:53.589Z"
-last_activity: 2026-08-18 -- Phase 09 planning complete
+last_updated: "2026-08-18T02:57:08.275Z"
+last_activity: 2026-08-18 -- Plan 09-02 completed; next 09-03
 progress:
   total_phases: 13
   completed_phases: 6
   total_plans: 46
-  completed_plans: 41
+  completed_plans: 43
   percent: 46
 ---
 
@@ -24,7 +24,7 @@ progress:
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 9
-**Current Plan:** Not started
+**Current Plan:** 3 of 6 — Plan 09-02 complete; next 09-03
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
 **Next action:** `/gsd:verify-work 8` (Phase 8 全 5 plan 完成——08-05 live 三门 approved 2026-08-18)。验证通过后 `/gsd:plan-phase 9`（历史注入 spike 硬门，GEVL-08——Phase 10 的 HARD GATE）。
@@ -51,10 +51,12 @@ progress:
 
 ## Current Position
 
-Phase: 08 (p8-0-eino-v0-7-7-v0-9-13) — EXECUTING
-Plan: 5 of 5
-Status: Ready to execute
-Last activity: 2026-08-18 -- Phase 09 planning complete
+Phase: 09 (trust-floor-spike-p8-s-spike-hard-gate) — EXECUTING
+Plan: 3 of 6
+Status: Executing Phase 09
+Last activity: 2026-08-18 -- Plan 09-02 completed; next 09-03
+Stopped At: Completed 09-02-PLAN.md
+Resume File: None
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
@@ -99,6 +101,10 @@ Last activity: 2026-08-18 -- Phase 09 planning complete
 | D8-05 | 版本叙事对齐口径（Phase 8 / Plan 08-03） | REQUIREMENTS/ROADMAP/CLAUDE.md 定点改 v0.9.14 + 双处用户决策注记（2026-08-17 覆盖研究期 v0.9.13 / 而非研究原锁）；PLAT-05/SC-4 注册 API 修正为 schema.RegisterName[T](name)（RESEARCH Pitfall 1）；CLAUDE.md:203/:227 历史研究出处、STATE.md、phase 目录名一律不动（身份锚点）。 |
 | D8-06 | SC-5「进程重启」口径 + 两进程 stub 剧本形态（Phase 8 / Plan 08-04） | 「重启」= 实例级重建（新 DB handle + 新 ChatModelAgent + 新 Runner，同一 DSN 文件）——官方跨实例 resume 语义（同 CheckPointID + 共享 store）成立；stub 剧本按对话历史分支（有无 Tool 消息）而非实例轮次计数（进程 2 新实例拿到恢复历史才走终答分支，计数剧本会死循环）；中断 ID 取 InterruptContexts[0].ID 并断言地址末段指向审批工具；注册面 schema.RegisterName[T](稳定名) 双注册由 round-trip 测试 + grep 门双重强制（裸 gob 注册 = 0）。 |
 | D8-07 | v0.8 frozen eval 基线口径与数值（Phase 8 / Plan 08-05） | gate 指标 PASS 留档：faithfulness **0.972** ≥ 0.9 阈值 + refusal_accuracy **95%**（19/20，scripts/eval_snapshot 派生），judge=glm-5.2，50/50 case，lock sha256 50bb1688… 逐字节未动（T-8-12——重生成 lock = 篡改基线）。非 gate 指标偏低（context_precision 0.10 / answer_relevance 0.1002 / context_recall 0.39）成因 = 拒答 case 被 judge 机械归零（D-09 refusal-by-construction 结构性后果）+ multi-hop 全拒答（检索阈值偏保守）——用户 2026-08-18 知悉接受，改善归 Phase 9+ 关注，不构成 blocking。 |
+| D9-B1 | History projection role/field contract (Phase 9 / Plan 09-02) | Keep only user/assistant Role and Content so tool/system metadata and implementation fields never reach Eino history. |
+| D9-B2 | History projection marker contract (Phase 9 / Plan 09-02) | Replace only user-side CHUNK markers with unpadded `[REF-N]`; preserve assistant citations byte-for-byte. |
+| D9-B3 | History projection window contract (Phase 9 / Plan 09-02) | Keep at most the final six filtered messages and drop a leading orphan assistant after role filtering. |
+| D9-B4 | Projection fixture handoff (Phase 9 / Plan 09-02) | Exported fixtures are a non-test contract for Phase 10, not a reason to expand the spike into unit-test implementation. |
 
 ---
 
@@ -205,6 +211,7 @@ Last activity: 2026-08-18 -- Phase 09 planning complete
 | Phase 08 P03 | 6m | 2 tasks | 4 files |
 | Phase 08 P04 | 5m | 2 tasks | 1 files |
 | Phase 08 P05 | 50m | 3 tasks | 0 files |
+| Phase 09 P02 | 3m10s | 2 tasks | 3 files |
 
 ## Session Continuity
 
@@ -213,6 +220,8 @@ Last activity: 2026-08-18 -- Phase 09 planning complete
 **Resume point (Phase 7):** Plan 07-05 (eval snapshot + demo GIF) is IN PROGRESS — Task 1/3 DONE via TDD, 2 commits (`abf2f4d` RED test + `4873213` GREEN impl). `scripts/eval_snapshot/{main.go,main_test.go}` shipped: standalone Go program reads `eval/report.json` + `eval/frozen/compliance.lock.json` via `eval.LoadReport`/`eval.LoadLock`, **derives** `refusal_accuracy` from `Report.Cases` via the pure fn `deriveRefusalAccuracy` (count(cat=="refusal-required" && Refused) / count(cat=="refusal-required") — RESEARCH Q1 load-bearing, NOT an evaluator field), renders the README markdown snapshot block (date + lock metadata + Overall metrics + derived % + case breakdown + reproduce cmd). 6/6 hermetic unit tests PASS (all-refused 1.0 / half-refused 0.5 / zero-refusal-required graceful 0,N/A / category-filter invariant / renderSnapshot metadata / N/A cell); `go vet` clean; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. **Tasks 2 & 3 `checkpoint:human-verify gate=blocking` BLOCKING** — Task 2 needs live Milvus+BGE-M3+GLM stack (`docker compose up` + `ollama pull bge-m3` + populate `GLM_API_KEY`+`BGE_M3_URL` in `.env`) to run `go run ./cmd/eval --frozen=compliance` → `eval/report.json` → `go run ./scripts/eval_snapshot` → paste stdout into README `## Eval Results` (still PLACEHOLDER); Task 3 needs screen capture (ScreenToGif/OBS) to record `docs/demo.gif` (cited verdict + structured refusal flows, <5MB, embed already in README hero). Plan 07-02 (containerization) Task 3 docker-build ALSO still IN PROGRESS — Docker not in PATH. Plans 07-01 (release-meta) + 07-03 (docs) + 07-04 (examples+eval sample) COMPLETE. Next: human resolves 07-05 Task 2/3 checkpoints (which unblocks 07-06 publication governance — must NOT push to public remote until README eval numbers + GIF are in tree). See `.planning/phases/07-open-source-release/07-05-SUMMARY.md`.
 
 **Resume point (Phase 9 — GEVL-08 spike hard gate):** Plan 09-01 (DONE 2026-08-18, 3 commits `0df3483` Task 1 + `1216c79` Task 2 + `8e56a27` Task 3). **Wave 1 spike 数据地基就位**：golden set 从 50 扩到 75（baseline 50 逐字节未动 + 10 history_injection_adversarial + 15 history_injection_followup 按 5/5/5 anaphora/post_refusal/multi_hop_chain 切分）。恶意行 A/B 锚点（baseline_id + history_anchor{turn_index, fake_chunk_ref}）与善意行 subclass 标签由新增 `TestGoldenHistoryInjectionRows` schema 门锁死，含 adversarial query ↔ baseline query 逐字相等断言（D9-A3）；恶意行 10 个 fake_chunk_ref 互异且每个 ref 作为子串出现于对应行的 history_turn（自洽）。`eval/frozen/` + `eval/sample.jsonl` 零触碰。Phase 9 关键 planner 裁决落地：(a) LLM 生成伪制度文本 = 执行者生成（planner 裁决 1，零 API 调用成本 + T-9-LLM-COST 规避）；(b) `golden_test.go` 改加法升级，原 20/20/10 + spike-anchor 5 + ID 去重 + 非空断言逐条保留；(c) `eval/sample.jsonl` 停留在 50 例（DIST-10 已发布样本，裁决 3）。Wave 1 partial — Wave 2/3/4 plans（09-02 projection.go 接口骨架 + 09-03 spike runner + 09-04 long.go + 09-05 summary.go + 09-06 live UAT）尚未启动，待本 plan summary 同步后启动 09-02。
+
+**Phase 9 execution (2026-08-18):** Plan 09-02 COMPLETE in 3m10s with task commits `7aa8a3c` + `7fe80db` and summary commit `0609656`; `internal/history/projection.go` now enforces D9-B1/B2/B3 and `projection_test_fixtures.go` exports 7 contracts. Next: Plan 09-03 spike runner. Stopped At: Completed 09-02-PLAN.md; Resume File: None.
 
 **Resume point (legacy):** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
