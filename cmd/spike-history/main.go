@@ -139,9 +139,6 @@ func main() {
 	// ---- 2. Stub error gates (Planner Rulings 2 + 3) ----
 	// Hit these BEFORE bootstrap so a fast failure does not require
 	// GLM_API_KEY / Milvus / BGE-M3 to be present.
-	if *historyLength == "long" {
-		log.Fatalf("[FAIL] --history-length=long: not implemented in Plan 09-03; see Plan 09-04")
-	}
 	if *summarize != "" {
 		log.Fatalf("[FAIL] --summarize=%s: not implemented in Plan 09-03; see Plan 09-05", *summarize)
 	}
@@ -183,20 +180,40 @@ func main() {
 	}
 
 	// ---- 4. Load + filter rows ----
-	rows, err := loadSpikeGolden(*goldenPath)
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/spike-history: load golden %q: %v", *goldenPath, err)
+	// Long mode (Plan 09-04) takes a different path: loadLongHistoryRows
+	// synthesizes 10 SpikeRows with 8/12/15 history turns. The resulting
+	// rows have Category="history_injection_long" so writeResult routes
+	// them to long.jsonl (planner ruling 5). The --limit / --cost-limit
+	// / main-loop plumbing below is shared between modes.
+	var rows []SpikeRow
+	if *historyLength == "long" {
+		longRows, err := loadLongHistoryRows(*goldenPath, int64(*seed))
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/spike-history: loadLongHistoryRows: %v", err)
+		}
+		rows = longRows
+		// Override --category so writeResult emits long.jsonl. We
+		// deliberately mutate the flag string (not a copy) — there
+		// is no other reader of *category after this point.
+		*category = "history_injection_long"
+		log.Printf("[INFO] cmd/spike-history: long mode: synthesized %d spike rows from seed=%d", len(rows), *seed)
+	} else {
+		loaded, err := loadSpikeGolden(*goldenPath)
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/spike-history: load golden %q: %v", *goldenPath, err)
+		}
+		categories := strings.Split(*category, ",")
+		loaded = filterByCategory(loaded, categories)
+		rows = loaded
 	}
-	categories := strings.Split(*category, ",")
-	rows = filterByCategory(rows, categories)
 	if *limit > 0 && *limit < len(rows) {
 		rows = rows[:*limit]
 		log.Printf("[INFO] cmd/spike-history: --limit=%d capped to %d", *limit, len(rows))
 	}
 	if len(rows) == 0 {
-		log.Fatalf("[FAIL] cmd/spike-history: zero rows after filterByCategory (categories=%v)", categories)
+		log.Fatalf("[FAIL] cmd/spike-history: zero rows after filterByCategory (history-length=%s, categories=%v)", *historyLength, *category)
 	}
-	log.Printf("[OK] cmd/spike-history: loaded %d rows from %s (categories=%v)", len(rows), *goldenPath, categories)
+	log.Printf("[OK] cmd/spike-history: loaded %d rows from %s (history-length=%s, categories=%v)", len(rows), *goldenPath, *historyLength, *category)
 
 	// ---- 5. Main loop ----
 	cost := &costState{LimitUSD: *costLimit}

@@ -175,9 +175,10 @@ type SpikeResult struct {
 // the caller — the main loop can keep running after a transient
 // failure (T-9-CHATMODEL-PANIC mitigation).
 //
-// historyLen is "short" for Plan 09-03 (the only implemented branch);
-// "long" returns an explicit stub error so the operator immediately
-// sees "this plan does not own long history; see Plan 09-04".
+// historyLen is "short" (Plan 09-03) or "long" (Plan 09-04). Both
+// branches share the same 8-step pipeline below; the only difference
+// is the shape of HistoryTurns on the row. Any other value returns
+// an explicit error so a future flag rename surfaces immediately.
 func RunEntry(
 	ctx context.Context,
 	row SpikeRow,
@@ -189,14 +190,8 @@ func RunEntry(
 	if deps == nil {
 		return nil, fmt.Errorf("spike-history: RunEntry: deps is nil")
 	}
-	if historyLen == "long" {
-		// Stub gate — Plan 09-04 owns the long-history path. The error
-		// string is grep-friendly so an operator can grep for
-		// "--history-length=long" in the logs and land on Plan 09-04.
-		return nil, fmt.Errorf("--history-length=long: not implemented in Plan 09-03; see Plan 09-04")
-	}
-	if historyLen != "short" {
-		return nil, fmt.Errorf("--history-length=%q: only \"short\" is implemented in Plan 09-03", historyLen)
+	if historyLen != "short" && historyLen != "long" {
+		return nil, fmt.Errorf("--history-length=%q: only \"short\" or \"long\" are implemented", historyLen)
 	}
 
 	now := time.Now().UTC()
@@ -245,6 +240,9 @@ func RunEntry(
 		// building the call slice.
 		projected = make([]schema.Message, len(msgs))
 		copy(projected, msgs)
+		// Long 模式下 HistoryTurns 已是 8/12/15 条，history.Project
+		// 的 B3 硬限（plan 09-02）会自动截断到 6 条，spike 报告
+		// （Plan 09-05）观察此截断是否足够。
 	}
 
 	// ---- Step 2: preRetrieve (embed + retriever.Search) ----
