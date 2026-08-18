@@ -989,26 +989,31 @@ resp, err := cm.Generate(ctx,
    - What we know: BGE-M3 tokenizer average ~0.7-0.9 chars/token on Chinese text; English ~0.25 chars/token; mixed varies widely
    - What's unclear: whether the end-of-phase spike's per-row usage logs will reveal a non-uniform distribution that breaks the constant
    - Recommendation: end-of-phase spike MUST collect `usage.completion_tokens` per row; if it diverges from the budget by > 20%, tighten `defaultCharBudget` and re-run
+   - **(DEFERRED to spike calibration loop, D10-B3):** per-row `usage.completion_tokens` is recorded by the Phase 10 re-run; `DefaultCharBudget` is tightened only if divergence > 20% -- constants ship conservative in Plan 10-01 Task 2 (`DefaultCharBudget=8000`, `FallbackMessageCeiling=6`). The end-of-phase spike (Plan 04) is the empirical calibration gate.
 
 2. **Query rewrite parse failure rate on adversarial history**
    - What we know: structured-output parse success is ≥ 95% on benign inputs (Phase 8 spike 003); adversarial history may trip the LLM into non-JSON output
    - What's unclear: exact rate of parse failure on the 10 hist-adversarial + 15 hist-followup rows
    - Recommendation: 3-retry default-deny in refusal_classifier; rewriter has 1 retry + best-effort fallback (no block); spike gates the behavior
+   - **(RESOLVED by design):** rewriter is best-effort with fallback to the original query (D10-C1 -- `TestRewrite_TimeoutFallback` + `TestRewrite_MalformedJSON` lock it); classifier is 3-retry default-deny (D10-A1 + W3 `ClassifierConfidenceFloor=0.5` -- `TestClassify_DefaultDenyOnParseFailure` + `TestClassify_DefaultDenyOnLowConfidence` lock it). Empirical parse-failure rates are recorded by the Phase 10 `--via-pipeline` re-run; no pre-implementation action remains.
 
 3. **`ENABLE_HISTORY_INJECTION` env flag value when Phase 11 lands**
    - What we know: rollback path per AI-SPEC §7 — flip flag false → Phase 9 single-turn behavior; cost returns to Phase 9 baseline
    - What's unclear: whether Phase 11 needs the flag's runtime toggle or just code-edit (probably the flag is removed in Phase 11 since history becomes mandatory)
    - Recommendation: ship the flag as optional (default `true`); Phase 11 deletes it post-Runner migration
+   - **(RESOLVED):** no env flag ships in Phase 10. Rollback = nil-gating at the Deps assembly in `cmd/server/main.go` (Plan 10-02 Task 4: `DISABLE_HISTORY_PIPELINE` sentinel + nil Rewriter/RefusalClassifier disables rewrite/classify only -- the history prefix still flows, per B2 fix + `TestVerdictPipeline_NilRewriterStillFlowsHistory`). Phase 11 Runner migration revisits whether a flag is still needed.
 
 4. **FE MessageBubble dispatcher ordering when `history_query_rewritten` arrives during streaming**
    - What we know: SSE arrival order is wired; the caption must render above the message bubble
    - What's unclear: whether useChat's setMessages() lifecycle injects the caption at the right timestamp
    - Recommendation: vitest case to assert arrival order (history_query_rewritten before text-delta) renders correctly; FE-04 plan revisits if assertion fails
+   - **(RESOLVED):** Plan 10-03 Task 2 renders `HistoryRewriteHint` above the bubble via the message-parts renderer; `TestApp_HistoryRewriteHint` (vitest, Plan 03 Task 2 acceptance) asserts placement. Revisit only if that vitest case fails during execution.
 
 5. **What rewriter should do when query has no anaphoric reference (e.g. "yes, ok, let's continue")**
    - What we know: rewriter runs on every follow-up; benign inputs are passed through verbatim
    - What's unclear: edge case where rewriter drops a sentence like "no" to nothing
    - Recommendation: rewriter prompt includes "return the query unchanged if no anaphoric reference exists"; spike asserts verbatim pass-through on a synthetic 5-row set
+   - **(RESOLVED):** `rewriterSystemTemplate` mandates verbatim return when no anaphoric reference exists; `TestRewrite_PassThroughOnNoAnaphora` locks the behavior hermetically in Plan 02 Task 1.
 
 ## Environment Availability
 

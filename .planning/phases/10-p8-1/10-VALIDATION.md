@@ -2,9 +2,10 @@
 phase: 10
 slug: p8-1
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
 created: 2026-08-18
+revised: 2026-08-18
+revision_note: "Regenerated after checker B1-B6 + W1-W8 fixes; test names map to ACTUAL names in the revised 10-01..10-04 plans; Wave 0 rows removed (no Wave 0 plan exists in this phase)."
 ---
 
 # Phase 10 — Validation Strategy
@@ -26,10 +27,10 @@ created: 2026-08-18
 | **Full suite command (FE)** | `cd web && npx vitest run` |
 | **Type-check (FE)** | `cd web && npx tsc --noEmit` |
 | **Build (FE)** | `cd web && npx vite build` |
-| **Spike gate command** | `go run ./cmd/spike-history --summarize --seed=42` |
+| **Spike gate command** | `go run ./cmd/spike-history --via-pipeline --summarize --baseline-lock=eval/frozen/compliance.lock.json --out=reports/ --cost-limit=5.00` (Phase 10 runs via `--via-pipeline`; legacy direct path remains default for Phase 9 reproducibility) |
 | **Estimated runtime (quick)** | ~30s |
 | **Estimated runtime (full suite)** | ~3 min (hermetic) |
-| **Estimated runtime (spike gate)** | ~75 min (live GLM-5.2 + Milvus) |
+| **Estimated runtime (spike gate)** | ~75 min (live GLM-5.2 + Milvus via `--via-pipeline` path) |
 
 ---
 
@@ -44,52 +45,54 @@ created: 2026-08-18
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 10-01-01 | 01 | 1 | MEM-04 | T-10-HIST-1 | Project() output has zero `[CHUNK ` literal | unit | `go test ./internal/history/... -run TestProject_ZeroChunkRefLeak -count=1` | ✅ | ⬜ pending |
-| 10-01-02 | 01 | 1 | MEM-04 | T-10-HIST-1 | verdictJSON → conclusionText deterministic render | unit | `go test ./internal/history/... -run TestRenderVerdict -count=1` | ✅ | ⬜ pending |
-| 10-01-03 | 01 | 1 | MEM-04 | T-10-HIST-1 | refusalReason → neutral placeholder (zero semantic words) | unit | `go test ./internal/history/... -run TestRenderRefusal -count=1` | ✅ | ⬜ pending |
-| 10-01-04 | 01 | 1 | MEM-05 | T-10-BUDGET-1 | Token-budget-driven window truncate oldest first | unit | `go test ./internal/history/... -run TestBudgetTruncation -count=1` | ✅ | ⬜ pending |
-| 10-01-05 | 01 | 1 | MEM-04 | T-10-ISOLATION-1 | RefusalClassifierInput struct has no History field | compile | `grep -E 'History\s+[]schema' internal/server/classifier/types.go` returns empty | ✅ | ⬜ pending |
-| 10-01-06 | 01 | 1 | MEM-04 | T-10-ISOLATION-1 | grep guard against history leaks into classifier | unit | `go test ./internal/server/... -run TestClassifierNoHistoryLeak -count=1` | ✅ | ⬜ pending |
-| 10-02-01 | 02 | 2 | MEM-01 | T-10-REWRITE-1 | Query rewriter produces rewrite for anaphoric input | unit | `go test ./internal/server/... -run TestRewriteAnaphora -count=1` | ❌ W0 | ⬜ pending |
-| 10-02-02 | 02 | 2 | MEM-01 | T-10-REWRITE-1 | Query rewriter failure → best-effort original query | unit | `go test ./internal/server/... -run TestRewriteFallback -count=1` | ❌ W0 | ⬜ pending |
-| 10-02-03 | 02 | 2 | MEM-04 | T-10-CLASSIFIER-1 | Refusal classifier decides refuse vs allow structurally | unit | `go test ./internal/server/... -run TestClassifierDecision -count=1` | ❌ W0 | ⬜ pending |
-| 10-02-04 | 02 | 2 | MEM-03 | T-10-CITE-1 | Citation whitelist code-enforced (current-Run only) | unit | `go test ./internal/server/... -run TestGroundingWhitelist -count=1` | ✅ (existing) | ⬜ pending |
-| 10-02-05 | 02 | 2 | MEM-01 | T-10-PIPELINE-1 | streamAndAssemble multi-turn messages prefix assembly | unit | `go test ./internal/server/... -run TestStreamMultiTurn -count=1` | ❌ W0 | ⬜ pending |
-| 10-02-06 | 02 | 2 | MEM-05 | T-10-BUDGET-1 | Budget truncation emits history_budget_truncated data-decision | unit | `go test ./internal/server/... -run TestBudgetEvent -count=1` | ❌ W0 | ⬜ pending |
-| 10-02-07 | 02 | 2 | MEM-01 | T-10-REWRITE-1 | Rewrite emits history_query_rewritten data-decision | unit | `go test ./internal/server/... -run TestRewriteEvent -count=1` | ❌ W0 | ⬜ pending |
-| 10-03-01 | 03 | 3 | MEM-02 | T-10-FE-RESTORE-1 | GET /api/session/:id/history returns structured payload | integration | `go test ./internal/server/... -run TestSessionHistoryAPI -count=1` | ❌ W0 | ⬜ pending |
-| 10-03-02 | 03 | 3 | MEM-02 | T-10-FE-RESTORE-1 | useChat initialMessages populates from API | unit | `cd web && npx vitest run --reporter=basic chat-restore` | ❌ W0 | ⬜ pending |
-| 10-03-03 | 03 | 3 | MEM-02 | T-10-FE-RESTORE-1 | Skill auto-switch on history restore | unit | `cd web && npx vitest run --reporter=basic skill-auto-switch` | ❌ W0 | ⬜ pending |
-| 10-03-04 | 03 | 3 | MEM-02 | T-10-FE-RESTORE-1 | FE TypeScript types remain zero-error | typecheck | `cd web && npx tsc --noEmit` exit 0 | ✅ | ⬜ pending |
-| 10-04-01 | 04 | 4 | MEM-01..05 | T-10-SPIKE-1 | Live 35-case spike re-run: 4-metric drift <5% | spike | `go run ./cmd/spike-history --summarize --seed=42` exit 0 | ✅ | ⬜ pending |
-| 10-04-02 | 04 | 4 | MEM-01..05 | T-10-SPIKE-1 | Live spike: refusal_accuracy drift <10pp | spike | (same command, gate-check) | ✅ | ⬜ pending |
-| 10-04-03 | 04 | 4 | MEM-03 | T-10-SPIKE-1 | Live spike: SC-3 zero-penetration 0/10 PASS | spike | (same command, penetration check) | ✅ | ⬜ pending |
-| 10-04-04 | 04 | 4 | MEM-04 | T-10-LOCK-1 | Frozen baseline lock sha256 50bb1688 byte-identical at HEAD | byte-compare | `git diff eval/frozen/compliance.lock.json` empty | ✅ | ⬜ pending |
-| 10-04-05 | 04 | 4 | MEM-01..05 | T-10-REGRESSION | Hermetic regression: full suite green | suite | `go test ./... -count=1` + `cd web && npx vitest run` | ✅ | ⬜ pending |
+Test names below are the ACTUAL test function names present in the revised 10-01..10-04 plans (2026-08-18 revision).
+
+| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | Status |
+|---------|------|------|-------------|------------|-----------------|-----------|-------------------|--------|
+| 10-01-T1a | 01 | 1 | MEM-04 | T-10-01 | `RenderConclusion` deterministic (Answer / ComplianceStatus / malformed) | unit | `go test ./internal/history/... -run TestRenderConclusion -v -count=1` | ⬜ pending |
+| 10-01-T1b | 01 | 1 | MEM-04 | T-10-01 | `RenderRefusal` user-facing refusal rendering (matches chat.go refusalText semantics) | unit | `go test ./internal/history/... -run TestRenderRefusal -v -count=1` | ⬜ pending |
+| 10-01-T1c | 01 | 1 | MEM-04 | T-10-02b | Project() renders verdictJSON via RenderConclusion; zero RenderRefusal references (B3 gate) | unit + grep | `go test ./internal/history/... -run TestProject_FixturesStillGreen -v -count=1` and `grep -c RenderRefusal internal/history/projection.go` == 0 | ⬜ pending |
+| 10-01-T2a | 01 | 1 | MEM-04 | T-10-02 | Neutral placeholder zero refusal-semantic words (canonical 11-entry list) | unit | `go test ./internal/history/... -run TestNeutralPlaceholder_NoRefusalSemanticWords -count=1` | ⬜ pending |
+| 10-01-T2b | 01 | 1 | MEM-04 | T-10-02 | `IsRefusalContent` table-driven over 5 reasons + 3 non-refusal | unit | `go test ./internal/history/... -run TestIsRefusalContent -v -count=1` | ⬜ pending |
+| 10-01-T2c | 01 | 1 | MEM-05 | T-10-03 | Budget-PRIMARY window: budget>0 keeps MORE than 3 pairs (B1 regression) | unit | `go test ./internal/history/... -run TestTruncateToCharBudget_BudgetPrimaryKeepsMoreThanThreePairs -count=1` | ⬜ pending |
+| 10-01-T2d | 01 | 1 | MEM-05 | T-10-03 | Oldest-first drop + SafeguardFloor | unit | `go test ./internal/history/... -run 'TestTruncateToCharBudget_OldestFirstDrop|TestTruncateToCharBudget_SafeguardFloor' -count=1` | ⬜ pending |
+| 10-01-T2e | 01 | 1 | MEM-05 | T-10-03 | Budget<=0 falls back to D9-B3 6-message ceiling (FallbackMessageCeiling) | unit | `go test ./internal/history/... -run TestTruncateToCharBudget_ZeroBudgetLegacyFallback -count=1` | ⬜ pending |
+| 10-01-T2f | 01 | 1 | MEM-04 | T-10-02 | 8 exported fixtures green (D9-B4→D10-B3 evolution documented) | unit | `go test ./internal/history/... -run TestProject_FixturesStillGreen -count=1` | ⬜ pending |
+| 10-01-T3a | 01 | 1 | MEM-04 | T-10-04 | `RefusalClassifierInput` has exactly 2 fields, no `History` | unit | `go test ./internal/server/classifier/... -run TestRefusalClassifierInput_NoHistoryField -count=1` | ⬜ pending |
+| 10-01-T3b | 01 | 1 | MEM-04 | T-10-04 | `Valid()` table-driven (Decision enum + Confidence range + ConfidenceFloor) | unit | `go test ./internal/server/classifier/... -run TestRefusalClassifierOutput_Valid -count=1` | ⬜ pending |
+| 10-01-T3c | 01 | 1 | MEM-04 | T-10-04 | Classifier types.go does NOT import history or store (D10-A1) | unit | `go test ./internal/server/classifier/... -run TestClassifierImports_NoHistoryPackage -count=1` | ⬜ pending |
+| 10-02-T1a | 02 | 2 | MEM-01 | T-10-05 | Rewriter happy path + pass-through + timeout + malformed-JSON + 4k trim | unit | `go test ./internal/server/rewrite/... -v -count=1` | ⬜ pending |
+| 10-02-T1b | 02 | 2 | MEM-04 | T-10-06 | Classifier 7 cases: Allow, AllowJustAboveFloor, Refuse, DefaultDenyOnParseFailure, DefaultDenyOnInvalidDecision, DefaultDenyOnLowConfidence (W3), DefaultDenyOnConfidenceOutOfRange | unit | `go test ./internal/server/classifier/... -v -count=1` | ⬜ pending |
+| 10-02-T2a | 02 | 2 | MEM-04 | T-10-09 | `audit_meta` DDL + insert + cascade + nullability | unit | `go test ./internal/store/sqlite/... -run 'TestAuditMetaDDL|TestAuditMetaInsertQuery|TestAuditMetaCascadeDelete|TestAuditMetaNullableOptionalColumns' -count=1` | ⬜ pending |
+| 10-02-T3a | 02 | 2 | MEM-01..05 | T-10-07 | Pipeline branches through history → rewrite → retrieve → classify → generate (8 tests) | unit | `go test ./internal/server/... -run 'TestVerdictPipeline_HistoryAwareness|TestVerdictPipeline_ClassifierRefuses|TestVerdictPipeline_RewriterFallback|TestVerdictPipeline_ClassificationTypeIsolation|TestVerdictPipeline_NilRewriterStillFlowSHistory|TestVerdictPipeline_HistoryChunkRefsSanitized|TestVerdictPipeline_BudgetTruncatedEvent|TestVerdictPipeline_RewriteEmitsEvent' -count=1` | ⬜ pending |
+| 10-02-T4a | 02 | 2 | MEM-01 | T-10-11 | Production binary builds with rewriter + classifier wired (B2 key fix) | build | `go build ./cmd/server && go vet ./... && go test ./... -count=1 -timeout 120s -race` | ⬜ pending |
+| 10-03-T1a | 03 | 3 | MEM-02 | T-10-11 | GET /api/session/:id/history 8 tests (empty / valid / SC9 / unknown-200+empty / invalid / missing-store / display-cap / handler-does-not-Project) | integration | `go test ./internal/server/... -run TestSessionHistoryAPI -count=1` and `! grep -q 'history\.Project' internal/server/handlers_session_history.go` | ⬜ pending |
+| 10-03-T2a | 03 | 3 | MEM-02 | T-10-12 | FE restore: fetchHistory + historyToUIMessages (5 vitest tests) | unit | `cd web && npx vitest run --reporter=basic chat-restore` | ⬜ pending |
+| 10-03-T2b | 03 | 3 | MEM-02 | T-10-14 | useSkillAutoSwitch hook (3 vitest tests) | unit | `cd web && npx vitest run --reporter=basic skill-auto-switch` | ⬜ pending |
+| 10-03-T2c | 03 | 3 | MEM-02 | T-10-13 | HistoryRewriteHint component (2 vitest tests) | unit | `cd web && npx vitest run --reporter=basic HistoryRewriteHint` | ⬜ pending |
+| 10-03-T2d | 03 | 3 | MEM-02 | T-10-15 | D15 drift alarm: TypeScript types remain zero-error | typecheck | `cd web && npx tsc --noEmit` exit 0 (after the single `cd web` in verify; checker W5 fix) | ⬜ pending |
+| 10-04-T1a | 04 | 4 | MEM-04 | T-10-04 | --via-pipeline composition hermetic dry-run test | unit | `go test ./cmd/spike-history/... -run 'TestBuildPipelineMessages_Structure|TestRunEntry_ViaPipelineDryRun' -count=1` | ⬜ pending |
+| 10-04-T1b | 04 | 4 | MEM-01..05 | T-10-SC | Pre-flight: full BE suite + contract + isolation -race + FE vitest + tsc + grounding | suite | `go test ./... -count=1 -timeout 120s -race && go test -tags=contract ./... -count=1 && go test ./internal/server/... -run TestSessionIsolation50x5 -count=1 -race && go test ./internal/verdict/... -run TestGroundingChecker -count=1` | ⬜ pending |
+| 10-04-T1c | 04 | 4 | MEM-04 | T-10-17 | Frozen lock BINDING gate (B6 fix): `git diff --quiet` + clean porcelain | byte-compare | `git diff --quiet eval/frozen/compliance.lock.json && git status --porcelain eval/frozen/ \| wc -l` == 0 | ⬜ pending |
+| 10-04-T2 | 04 | 4 | MEM-01..05 | T-10-20 | Live 35-case spike re-run via `--via-pipeline` (35 rows total + summarize exit 0/1) | spike | `go run ./cmd/spike-history --via-pipeline ... --summarize=reports/ --baseline-lock=eval/frozen/compliance.lock.json` | ⬜ pending |
+| 10-04-T3 | 04 | 4 | MEM-01..05 | T-10-18 | Phase closeout: SUMMARY (6 sections) + ROADMAP + REQUIREMENTS + STATE updated | integration | `test -s .planning/phases/10-p8-1/10-04-SUMMARY.md && grep -c MEM .planning/phases/10-p8-1/10-04-SUMMARY.md` | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
 ---
 
-## Wave 0 Requirements
+## Grep Gates (D10-A1 / D10-A2 / B3 / B4)
 
-- [x] `internal/history/projection.go` + `projection_test_fixtures.go` (Phase 9 stub) — extend with verdict renderer + neutral placeholder + budget window
-- [ ] `internal/server/classifier/types.go` — RefusalClassifierInput struct + var _ sentinel + grep guard
-- [ ] `internal/server/classifier/classifier.go` — NewRefusalClassifier + Classify method + JSON response_format
-- [ ] `internal/server/rewrite/rewrite.go` — NewQueryRewriter + Rewrite method + JSON response_format
-- [ ] `internal/server/pipeline.go` — extend streamAndAssemble with multi-turn messages prefix
-- [ ] `internal/server/chat.go` — extend chatHandler with rewrite → classifier → generate chain
-- [ ] `internal/server/handlers_session_history.go` — GET /api/session/:id/history handler
-- [ ] `internal/server/handlers_session_history_test.go` — in-process HTTP test
-- [ ] `web/src/lib/chat-restore.ts` — fetch history + transform to initialMessages
-- [ ] `web/src/lib/chat-restore.test.ts` — vitest unit test
-- [ ] `web/src/hooks/use-skill-auto-switch.ts` — auto-switch on history restore
-- [ ] `web/src/hooks/use-skill-auto-switch.test.ts` — vitest unit test
-- [ ] `internal/server/pipeline_default_test.go` — extend TestStreamMultiTurn + TestBudgetEvent + TestRewriteEvent
-
-*Existing infrastructure covers:** `internal/eval` library (Phase 3) + `cmd/spike-history` (Phase 9) + vitest 280/280 baseline (Phase 7) + Go-native test fixtures.
+| Gate ID | Purpose | Command | Expected Output |
+|---------|---------|---------|-----------------|
+| GG-A1-1 | Classifier struct has no `History` field (D10-A1 type-level isolation) | `grep -c 'History' internal/server/classifier/types.go` | 0 |
+| GG-A1-2 | Classifier types.go does not import history or store | `grep -c 'internal/history\|internal/store' internal/server/classifier/types.go` | 0 |
+| GG-A1-3 | Classifier implementation file (Plan 02) does not load or project history | `! grep -n 'GetSession\|loadHistory\|historyMsgs\|history\.Project' internal/server/classifier/classifier.go` | empty |
+| GG-A2-1 | Neutral placeholder template zero refusal-semantic words (canonical 11-entry list, comment-exempt) | `grep -v '^[[:space:]]*//' internal/history/neutral_placeholder.go \| grep -cE '拒绝\|不能\|无权\|无法\|不得\|不允许\|未在\|无可\|谢绝'` | 0 |
+| GG-B3-1 | Agent-path projection never references RenderRefusal (B3) — | `grep -c RenderRefusal internal/history/projection.go` | 0 |
+| GG-B4-1 | Handler user-facing path never calls Project() (B4) — | `! grep -n 'history\.Project' internal/server/handlers_session_history.go` | empty |
+| GG-B6-1 | Frozen lock byte-identical (B6 binding) — | `git diff --quiet eval/frozen/compliance.lock.json && git status --porcelain eval/frozen/ \| wc -l` | exit 0 + 0 |
+| GG-D14 | Zustand store has no `messages` field | `! grep -n 'messages: ' web/src/store/app-store.ts \| grep -v '//'` | empty |
 
 ---
 
@@ -97,8 +100,9 @@ created: 2026-08-18
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| End-of-phase spike live re-run | MEM-04 (refusal drift) + MEM-03 (cite-penetration) | Live GLM-5.2 + Milvus stack requires Docker compose + GLM_API_KEY + BGE_M3_URL + Milvus tier-filter setup; cannot be hermetic | `docker compose up -d milvus etcd minio` + `ollama pull bge-m3` + `pop .env` + `go run ./cmd/spike-history --summarize --seed=42`; observe `reports/summary.md` exit 0 + 4 gates PASS |
+| End-of-phase spike live re-run via `--via-pipeline` | MEM-04 (refusal drift) + MEM-03 (cite-penetration) + MEM-01..05 | Live GLM-5.2 + Milvus stack requires Docker compose + GLM_API_KEY + BGE_M3_URL + Milvus tier-filter setup; cannot be hermetic | `docker compose up -d milvus etcd minio` + `ollama pull bge-m3` + `pop .env` + `go run ./cmd/spike-history --via-pipeline --category=history_injection_adversarial --with-history=true --history-length=short --out=reports/ --seed=42 --cost-limit=5.00` (mirror Phase 9 09-06 sequence with `--via-pipeline` added); observe `reports/summary.md` exit 0 + 4 gates PASS |
 | Per-call cost monitoring | MEM-05 | Real $$; cost-cap threshold requires human confirmation before re-run | During spike, watch `[cost]` log; abort manually if >$5.00/segment |
+| Frozen lock provenance verification | T-10-17 (B6 fix) | Provenance note reconciliation is operator-confirmable | Confirm sha256sum output first 8 hex == `5cf700f3` (full sha `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded`); confirm STATE.md/08-05's `50bb1688...` is acknowledged as stale / hashed at a different scope |
 
 *All other behaviors have automated verification.*
 
@@ -106,11 +110,11 @@ created: 2026-08-18
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 90s (BE) / 60s (FE) / 75min (spike)
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or pre-task dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] No Wave 0 plan exists in this phase — Wave 0 rows removed (per checker W1)
+- [x] No watch-mode flags
+- [x] Feedback latency < 90s (BE) / 60s (FE) / 75min (spike live gate)
+- [x] `nyquist_compliant: true` set in frontmatter (revised after checker W1)
 
-**Approval:** pending
+**Approval:** pending (until execution completes — `/gsd:execute-phase 10` then `/gsd:verify-work 10` are the unblock gates)
