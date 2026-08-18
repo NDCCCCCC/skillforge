@@ -326,7 +326,15 @@
 
 **Pitfalls addressed:** Pitfall 1（消毒规则落地），Pitfall 2（白名单 + red-team tier 穿透用例入 eval），Pitfall 7（token 阈值对 GLM 真实用量校准）
 **Research flag:** RF-6 — summarization 中间件 token 计数器对 GLM 用量日志校准；tokenizer 可配置性未验证（启用前用哑预算兜底）
-**Plans**: TBD
+**Plans**: 4 plans
+**Plan list**:
+
+- [ ] 10-01-PLAN.md — Wave 1: BE foundation — history verdict-renderer + neutral placeholder + char-budget window + RefusalClassifierInput type-isolation contract (MEM-04, MEM-05)
+- [ ] 10-02-PLAN.md — Wave 2: BE pipeline injection — query rewriter + refusal classifier + audit_meta sibling table + multi-turn messages prefix in VerdictPipeline + data-decision event extension (MEM-01..05)
+- [ ] 10-03-PLAN.md — Wave 3: FE restoration — GET /api/session/:id/history + chat-restore.ts + use-skill-auto-switch.ts + HistoryRewriteHint caption (MEM-02)
+- [ ] 10-04-PLAN.md — Wave 4: end-to-end spike gate — pre-flight hermetic + frozen-lock byte-identity + live 35-case re-run via cmd/spike-history --summarize + closeout (MEM-01..05; autonomous:false — live stack)
+
+**Wave structure**: W1={10-01} → W2={10-02} → W3={10-03} → W4={10-04}
 **UI hint**: yes（多轮聊天 UX — 历史恢复、刷新后连续性为用户可感知界面行为）
 
 ### Phase 11: 写工具 + 审批门（P8.2）
