@@ -20,3 +20,6 @@ skillforge.db-wal
 # (see scripts/spiked) — likely to reappear during local debugging.
 /body_gbk_*
 /body_quantum.json
+
+# Phase 9 spike reports (一次性产物，不入 git 历史)
+reports/

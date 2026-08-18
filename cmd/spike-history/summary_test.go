@@ -465,8 +465,8 @@ func TestRunSummarizeHermetic(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("unmarshal summary.json: %v", err)
 	}
-	if got["verdict"] != v.Decision {
-		t.Errorf("summary.json verdict=%v, want %s", got["verdict"], v.Decision)
+	if got["decision"] != v.Decision {
+		t.Errorf("summary.json decision=%v, want %s", got["decision"], v.Decision)
 	}
 }
 
