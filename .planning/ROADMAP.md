@@ -303,7 +303,7 @@
 - [x] 09-02-PLAN.md — Wave 1: internal/history/projection.go + projection_test_fixtures.go（D9-B1/B2/B3 三规则 + 6+ fixtures）
 - [x] 09-03-PLAN.md — Wave 2: cmd/spike-history spike-only 二进制（spike_row + runner + main；短历史 A/B 路径；dry-run + 成本守卫 + 注入穿透标记 + 11 flags + long/summarize 显式 stub gate 归属 09-04/09-05）
 - [x] 09-04-PLAN.md — Wave 3: long.go 长会话用例合成器（10 例 × 8/12/15 长度 × seeded shuffle；Plan 09-03 stub gate 替换）
-- [ ] 09-05-PLAN.md — Wave 3: summary.go + summary_test.go（computeVerdict 6+ case hermetic + renderSummary + runSummarize；Plan 09-03 stub gate 替换）
+- [x] 09-05-PLAN.md — Wave 3: summary.go + summary_test.go（computeVerdict 6+ case hermetic + renderSummary + runSummarize；Plan 09-03 stub gate 替换）+ main.go --summarize wire + --baseline-lock flag（4 输出文件：summary.md ≤60 行 / short_history.md / long_history.md / summary.json）
 - [ ] 09-06-PLAN.md — Wave 4: live UAT 端到端（GLM-5.2 + Milvus + BGE-M3）+ 4 SC 静态验证 + human-verify go/no-go 决策签字
 
 **Wave structure**: W1={09-01, 09-02} → W2={09-03} → W3={09-04, 09-05} → W4={09-06}
@@ -437,7 +437,7 @@
 | 13. 子 agent 扇出 (P8.4) | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-18 — Phase 8 COMPLETE (5/5) + Phase 9 Wave 3 partial (09-04 long-history 合成器就位：long.go loadLongHistoryRows + 8/12/15 长度循环 + neutral filler + seeded RNG；Plan 09-03 stub gate 全部移除；history_injection_long.jsonl 10 条 + short 路径零回归；D9-L1/L2/L3 decisions 锁). 09-05 summarize + 09-06 live UAT 是 Wave 3 末 + Wave 4. Prior: Phase 8 COMPLETE 2026-08-18 (08-05 live 三门 human-verify approved 真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%, lock 未动，v0.8 基线留档 D8-07); PLAT-04 + PLAT-05 勾选. Earlier: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
+*Last updated: 2026-08-18 — Phase 8 COMPLETE (5/5) + Phase 9 Wave 3 partial (09-04 long-history 合成器就位：long.go loadLongHistoryRows + 8/12/15 长度循环 + neutral filler + seeded RNG；Plan 09-03 stub gate 全部移除；history_injection_long.jsonl 10 条 + short 路径零回归；D9-L1/L2/L3 decisions 锁) + Plan 09-05 summary.go + main.go --summarize wire 就位（12 flags 含 --baseline-lock；summary.md ≤60 行；4 输出文件；6+ hermetic gate cases；baseline 不重跑；零产品代码/零新依赖；GEVL-08 SC-1/SC-2 满足）。09-06 live UAT 是 Wave 4 唯一剩余。Prior: Phase 8 COMPLETE 2026-08-18 (08-05 live 三门 human-verify approved 真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%, lock 未动，v0.8 基线留档 D8-07); PLAT-04 + PLAT-05 勾选. Earlier: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
 
 ---
 

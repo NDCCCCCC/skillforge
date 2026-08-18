@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 9
-current_plan: 5 of 6 — Plan 09-04 complete; next 09-05
+current_plan: 6 of 6 — Plan 09-05 complete; next 09-06
 status: executing
-stopped_at: Completed 09-04-PLAN.md
-last_updated: "2026-08-18T03:21:20.564Z"
+stopped_at: Completed 09-05-PLAN.md
+last_updated: "2026-08-18T03:35:00.000Z"
 last_activity: 2026-08-18
 progress:
   total_phases: 13
@@ -15,6 +15,8 @@ progress:
   completed_plans: 45
   percent: 46
 ---
+
+
 
 # State — SkillForge
 
@@ -217,6 +219,7 @@ Resume File: None
 | Phase 08 P05 | 50m | 3 tasks | 0 files |
 | Phase 09 P02 | 3m10s | 2 tasks | 3 files |
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P04 | 12m | 2 tasks | 3 files |
+| Phase 09-trust-floor-spike-p8-s-spike-hard-gate P05 | 20m | 2 tasks | 3 files |
 
 ## Session Continuity
 
@@ -226,7 +229,7 @@ Resume File: None
 
 **Resume point (Phase 9 — GEVL-08 spike hard gate):** Plan 09-01 (DONE 2026-08-18, 3 commits `0df3483` Task 1 + `1216c79` Task 2 + `8e56a27` Task 3). **Wave 1 spike 数据地基就位**：golden set 从 50 扩到 75（baseline 50 逐字节未动 + 10 history_injection_adversarial + 15 history_injection_followup 按 5/5/5 anaphora/post_refusal/multi_hop_chain 切分）。恶意行 A/B 锚点（baseline_id + history_anchor{turn_index, fake_chunk_ref}）与善意行 subclass 标签由新增 `TestGoldenHistoryInjectionRows` schema 门锁死，含 adversarial query ↔ baseline query 逐字相等断言（D9-A3）；恶意行 10 个 fake_chunk_ref 互异且每个 ref 作为子串出现于对应行的 history_turn（自洽）。`eval/frozen/` + `eval/sample.jsonl` 零触碰。Phase 9 关键 planner 裁决落地：(a) LLM 生成伪制度文本 = 执行者生成（planner 裁决 1，零 API 调用成本 + T-9-LLM-COST 规避）；(b) `golden_test.go` 改加法升级，原 20/20/10 + spike-anchor 5 + ID 去重 + 非空断言逐条保留；(c) `eval/sample.jsonl` 停留在 50 例（DIST-10 已发布样本，裁决 3）。Wave 1 partial — Wave 2/3/4 plans（09-02 projection.go 接口骨架 + 09-03 spike runner + 09-04 long.go + 09-05 summary.go + 09-06 live UAT）尚未启动，待本 plan summary 同步后启动 09-02。
 
-**Phase 9 execution (2026-08-18):** Plan 09-02 COMPLETE in 3m10s with task commits `7aa8a3c` + `7fe80db` and summary commit `0609656`; `internal/history/projection.go` now enforces D9-B1/B2/B3 and `projection_test_fixtures.go` exports 7 contracts. Next: Plan 09-03 spike runner. **Plan 09-03 COMPLETE in 13m45s** (commits `7632923` + `b0b4571` + `cdd1377`) — `cmd/spike-history` spike-only binary ships: 11-flag CLI, RunEntry live+dry-run dual path (8-step pipeline), per-entry JSONL schema locked, stub gates for `--history-length=long` (Plan 09-04) + `--summarize` (Plan 09-05) with grep-friendly error strings. **Plan 09-04 COMPLETE in ~12m** (commits `923f1c0` long.go + `65cb8d0` main.go+runner.go) — `--history-length=long` path implemented: `loadLongHistoryRows` synthesizes 10 SpikeRows with 8/12/15-turn histories (1 signal per row + neutral filler from baseline 50 rows), seed=42 deterministic, output to `history_injection_long.jsonl`. D9-L1/L2/L3 decisions captured (Plan 09-03 category-as-filename convention + T-9-FILLER-LEAK fixed template + 8/12/15 upper-bound semantics). Stub gates removed from both main.go and runner.go; short path zero-regression. Next: Plan 09-05 (summarize report) — consumes JSONL streams from all three category files. Stopped At: Completed 09-04-PLAN.md; Resume File: None.
+**Phase 9 execution (2026-08-18):** Plan 09-02 COMPLETE in 3m10s with task commits `7aa8a3c` + `7fe80db` and summary commit `0609656`; `internal/history/projection.go` now enforces D9-B1/B2/B3 and `projection_test_fixtures.go` exports 7 contracts. Next: Plan 09-03 spike runner. **Plan 09-03 COMPLETE in 13m45s** (commits `7632923` + `b0b4571` + `cdd1377`) — `cmd/spike-history` spike-only binary ships: 11-flag CLI, RunEntry live+dry-run dual path (8-step pipeline), per-entry JSONL schema locked, stub gates for `--history-length=long` (Plan 09-04) + `--summarize` (Plan 09-05) with grep-friendly error strings. **Plan 09-04 COMPLETE in ~12m** (commits `923f1c0` long.go + `65cb8d0` main.go+runner.go) — `--history-length=long` path implemented: `loadLongHistoryRows` synthesizes 10 SpikeRows with 8/12/15-turn histories (1 signal per row + neutral filler from baseline 50 rows), seed=42 deterministic, output to `history_injection_long.jsonl`. D9-L1/L2/L3 decisions captured (Plan 09-03 category-as-filename convention + T-9-FILLER-LEAK fixed template + 8/12/15 upper-bound semantics). Stub gates removed from both main.go and runner.go; short path zero-regression. **Plan 09-05 COMPLETE in ~20m** (commits `e1660c6` plan 09-04 leftover fix + `3ef406e` RED test + `4078ab5` GREEN impl + `08d2920` main.go wire + `969ed25` docs closeout) — `--summarize` aggregator ships: `summary.go` 838 lines (loadSpikeResults / loadBaseline / computeCategoryMean / populateCategoryWorst / computeVerdict + 4 output renderers + runSummarize entry); 12 functions + 4 data types. TestComputeVerdict locks 6 gate scenarios (3 GO + 3 NO-GO), TestFormatDelta covers composite-threshold formatter, TestBaselineRefusalAccuracy verifies derived refusal rate, TestRunSummarizeHermetic does end-to-end tmp-dir e2e. main.go: --summarize stub gate replaced with runSummarize dispatch; --baseline-lock flag added (12 flags total). Summary.md ≤60 lines (smoke test: 46 lines). 4 output files per call (summary.md / short_history.md / long_history.md / summary.json). Baseline re-run cost-saving: loadBaseline reads eval/frozen/compliance.lock.json verbatim — no 50-case re-run needed. Next: Plan 09-06 (live UAT) — populates the three JSONL streams with real spike runs; this plan's gate semantics already cover the success criteria. Stopped At: Completed 09-05-PLAN.md; Resume File: None.
 
 **Resume point (legacy):** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
