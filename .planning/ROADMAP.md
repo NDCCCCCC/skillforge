@@ -301,7 +301,7 @@
 **Plan list**:
 - [x] 09-01-PLAN.md — Wave 1: golden set 75 行口径（50 baseline + 10 恶意 + 15 善意三小类 5/5/5）+ GEVL-05 契约门升级
 - [x] 09-02-PLAN.md — Wave 1: internal/history/projection.go + projection_test_fixtures.go（D9-B1/B2/B3 三规则 + 6+ fixtures）
-- [ ] 09-03-PLAN.md — Wave 2: cmd/spike-history spike-only 二进制（spike_row + runner + main；短历史 A/B 路径；dry-run + 成本守卫）
+- [x] 09-03-PLAN.md — Wave 2: cmd/spike-history spike-only 二进制（spike_row + runner + main；短历史 A/B 路径；dry-run + 成本守卫 + 注入穿透标记 + 11 flags + long/summarize 显式 stub gate 归属 09-04/09-05）
 - [ ] 09-04-PLAN.md — Wave 3: long.go 长会话用例合成器（10 例 × 8/12/15 长度 × seeded shuffle；Plan 09-03 stub gate 替换）
 - [ ] 09-05-PLAN.md — Wave 3: summary.go + summary_test.go（computeVerdict 6+ case hermetic + renderSummary + runSummarize；Plan 09-03 stub gate 替换）
 - [ ] 09-06-PLAN.md — Wave 4: live UAT 端到端（GLM-5.2 + Milvus + BGE-M3）+ 4 SC 静态验证 + human-verify go/no-go 决策签字
@@ -430,14 +430,14 @@
 | 6. Eval Dashboard & Production Hardening — Code-Side | 3/3 active (+06-03 deferred→999.2) | Complete (code-side) | 2026-08-13 |
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
 | 8. 全量依赖升级 (P8.0) | 5/5 | Complete — live 三门 human-verify approved 2026-08-18（cancel 0ms / tier 5行+0行 / frozen eval gate PASS 0.972，v0.8 基线留档）；ready for verify-work | 2026-08-18 |
-| 9. 历史注入 spike 硬门 (P8.S) | 1/6 | Wave 1 partial — 09-01 spike 数据地基 DONE (75-row golden set 50 baseline + 10 adversarial + 15 followup 5/5/5; GEVL-05 契约门 + spike row schema 门 green); 09-02..09-06 pending | 2026-08-18 |
+| 9. 历史注入 spike 硬门 (P8.S) | 3/6 | Wave 1+2 partial — 09-01 spike 数据地基 DONE (75-row golden); 09-02 D9-B1/B2/B3 投影骨架 + 7 fixtures DONE; 09-03 cmd/spike-history spike-only 二进制 DONE (spike_row + runner + main; 短历史 A/B 路径; dry-run smoke green; long/summarize 显式 stub gate 归属 09-04/09-05; 零硬约束改动); 09-04..09-06 pending | 2026-08-18 |
 | 10. 多轮对话记忆 (P8.1) | 0/? | Not started — gated by Phase 9 | - |
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
 | 13. 子 agent 扇出 (P8.4) | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-18 — Phase 8 COMPLETE (5/5)：08-05 live 三门重锁全部 human-verify approved（真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%，lock 未动，指标留档 v0.8 基线 D8-07）；PLAT-04 + PLAT-05 勾选。Next: Phase 9 (GEVL-08 spike 硬门). Prior: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
+*Last updated: 2026-08-18 — Phase 8 COMPLETE (5/5) + Phase 9 Wave 2 DONE (09-03 cmd/spike-history 二进制就位，dry-run smoke green，零硬约束改动). 09-04 long-history 与 09-05 summarize 是下一波接力. Prior: Phase 8 COMPLETE 2026-08-18 (08-05 live 三门 human-verify approved 真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%, lock 未动，v0.8 基线留档 D8-07); PLAT-04 + PLAT-05 勾选. Earlier: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
 
 ---
 

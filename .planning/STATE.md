@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 9
-current_plan: 3 of 6
+current_plan: 4 of 6
 status: executing
-last_updated: "2026-08-18T02:57:08.275Z"
-last_activity: 2026-08-18 -- Plan 09-02 completed; next 09-03
+last_updated: "2026-08-18T03:14:24Z"
+last_activity: 2026-08-18 -- Plan 09-03 completed; next 09-04
 progress:
   total_phases: 13
   completed_phases: 6
   total_plans: 46
-  completed_plans: 43
+  completed_plans: 44
   percent: 46
 ---
 
@@ -24,10 +24,10 @@ progress:
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 9
-**Current Plan:** 3 of 6 — Plan 09-02 complete; next 09-03
+**Current Plan:** 4 of 6 — Plan 09-03 complete; next 09-04
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** `/gsd:verify-work 8` (Phase 8 全 5 plan 完成——08-05 live 三门 approved 2026-08-18)。验证通过后 `/gsd:plan-phase 9`（历史注入 spike 硬门，GEVL-08——Phase 10 的 HARD GATE）。
+**Next action:** `/gsd:plan-phase 9 --plan 09-04` (long-history spike path — extends `RunEntry` `--history-length=long` branch from the current stub gate; Plan 09-05 extends `--summarize`).
 
 ---
 
@@ -52,10 +52,10 @@ progress:
 ## Current Position
 
 Phase: 09 (trust-floor-spike-p8-s-spike-hard-gate) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Executing Phase 09
-Last activity: 2026-08-18 -- Plan 09-02 completed; next 09-03
-Stopped At: Completed 09-02-PLAN.md
+Last activity: 2026-08-18 -- Plan 09-03 completed; next 09-04
+Stopped At: Completed 09-03-PLAN.md (cmd/spike-history binary + JSONL schema locked)
 Resume File: None
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
