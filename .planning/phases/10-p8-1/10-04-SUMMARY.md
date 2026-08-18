@@ -85,9 +85,9 @@ completed: 2026-08-18T10:47:00Z
 ## Task Commits
 
 1. **Task 1: Implement `--via-pipeline` flag + pre-flight hermetic regression** - `fdbfe0a` (feat)
-2. **Task 3: Closeout transcription** - `f2ae354` (docs)
+2. **Task 3: Closeout transcription** - `0c4becc` (docs)
 
-**Plan metadata:** `f2ae354` (docs: complete plan)
+**Plan metadata:** `0c4becc` (docs: complete plan)
 
 ## Files Created/Modified
 
