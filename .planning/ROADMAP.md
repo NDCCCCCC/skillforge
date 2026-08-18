@@ -299,7 +299,7 @@
 **Spike seed:** `spike-history-injection-trust-floor`（已预写；冻结 eval 集 + gate 已存在，无需 research-phase）
 **Plans**: 6 plans
 **Plan list**:
-- [ ] 09-01-PLAN.md — Wave 1: golden set 75 行口径（50 baseline + 10 恶意 + 15 善意三小类 5/5/5）+ GEVL-05 契约门升级
+- [x] 09-01-PLAN.md — Wave 1: golden set 75 行口径（50 baseline + 10 恶意 + 15 善意三小类 5/5/5）+ GEVL-05 契约门升级
 - [ ] 09-02-PLAN.md — Wave 1: internal/history/projection.go + projection_test_fixtures.go（D9-B1/B2/B3 三规则 + 6+ fixtures）
 - [ ] 09-03-PLAN.md — Wave 2: cmd/spike-history spike-only 二进制（spike_row + runner + main；短历史 A/B 路径；dry-run + 成本守卫）
 - [ ] 09-04-PLAN.md — Wave 3: long.go 长会话用例合成器（10 例 × 8/12/15 长度 × seeded shuffle；Plan 09-03 stub gate 替换）
@@ -430,7 +430,7 @@
 | 6. Eval Dashboard & Production Hardening — Code-Side | 3/3 active (+06-03 deferred→999.2) | Complete (code-side) | 2026-08-13 |
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
 | 8. 全量依赖升级 (P8.0) | 5/5 | Complete — live 三门 human-verify approved 2026-08-18（cancel 0ms / tier 5行+0行 / frozen eval gate PASS 0.972，v0.8 基线留档）；ready for verify-work | 2026-08-18 |
-| 9. 历史注入 spike 硬门 (P8.S) | 0/? | Not started — HARD GATE for Phase 10 | - |
+| 9. 历史注入 spike 硬门 (P8.S) | 1/6 | Wave 1 partial — 09-01 spike 数据地基 DONE (75-row golden set 50 baseline + 10 adversarial + 15 followup 5/5/5; GEVL-05 契约门 + spike row schema 门 green); 09-02..09-06 pending | 2026-08-18 |
 | 10. 多轮对话记忆 (P8.1) | 0/? | Not started — gated by Phase 9 | - |
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |

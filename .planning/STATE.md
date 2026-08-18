@@ -4,13 +4,13 @@ milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 9
 current_plan: Not started
-status: verifying
-last_updated: "2026-08-18T01:56:56.298Z"
-last_activity: 2026-08-17
+status: executing
+last_updated: "2026-08-18T02:39:53.589Z"
+last_activity: 2026-08-18 -- Phase 09 planning complete
 progress:
   total_phases: 13
   completed_phases: 6
-  total_plans: 40
+  total_plans: 46
   completed_plans: 41
   percent: 46
 ---
@@ -53,8 +53,8 @@ progress:
 
 Phase: 08 (p8-0-eino-v0-7-7-v0-9-13) — EXECUTING
 Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-08-17
+Status: Ready to execute
+Last activity: 2026-08-18 -- Phase 09 planning complete
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
@@ -211,6 +211,8 @@ Last activity: 2026-08-17
 **Resume point (v0.8):** Milestone v0.8 roadmap created 2026-08-17 — ROADMAP.md carries phases 8-13 (strict chain 8→9→10→11→12→13 per research SUMMARY.md §Implications for Roadmap); REQUIREMENTS.md traceability maps all 25 v0.8 requirements (PLAT-04/05, GEVL-08, MEM-01..05, HITL-01..08, PLAN-01..05, FAN-01..04); Phase 9 is the HARD GATE for Phase 10. **Plan 08-01 COMPLETE 2026-08-17 (commit `36845c0`)**: eino v0.9.14 + ext openai v0.1.13 落库，hermetic 四道门全绿零修复提交（TestContractVersionPin 已断言新 pin）。**Plan 08-02 COMPLETE 2026-08-17 (commits `9a557b1` RED + `e6a580a` GREEN)**: sqlite CheckPointStore 骨架就位——SQLiteStore.Get/Set 满足 compose.CheckPointStore（编译期断言），checkpoint 表同库 additive 幂等（Phase 11 预留列齐备），SC-4 store 层语义（含 Close+reopen 等值读回）六面测试锁定，internal/store 全树零回归。**Plan 08-03 COMPLETE 2026-08-17 (commits `fea6114` 禁令门 + `996c33a` 文档对齐)**: SC-3 legacy interrupt 禁令门 TestNoLegacyInterruptAPI 落地（全仓扫描 + 负向证明），REQUIREMENTS/ROADMAP/CLAUDE.md 版本叙事对齐 v0.9.14（PLAT-05/SC-4 → schema.RegisterName）。**Plan 08-04 COMPLETE 2026-08-17 (commit `3c42c20`)**: SC-5 真实中断往返 TestInterruptResumeRoundTrip 落地——工具层 StatefulInterrupt 携带 schema.RegisterName 注册的 *approvalDecision → adk Runner Action.Interrupted（InterruptContexts[0].ID）→ checkpoint 持久化 sqlite（existed=true 实证）→ 实例级「进程重启」（Close + 同 DSN 重开 + 全新 Agent/Runner）→ ResumeWithParams(Targets) 注入决策 → 恢复到脚本化终答且注入值在终答文本 + 重启侧工具双重可见（D8-06）；phase hermetic 五门全绿（build+vet / go test ./... 全量 / contract 含 VersionPin+禁令门 / store 七面 / cancel 50.07ms<200ms）。**Plan 08-05 COMPLETE 2026-08-18 (零代码——三门 blocking human-verify 全部 approved)**: ①真 GLM cancel 传播实测 **0ms**（`go run ./scripts/spiked e2e` ×2 exit 0，两次稳定复现，亚毫秒截断口径；5 query ~1.7s/case；400ms stuck-cleanup 探测器干净退出；pin = eino v0.9.14 + ext openai v0.1.13）；②内网 Milvus tier-filter：声明 tier(权威)「出差住宿费超过500元合规吗」→ **5 candidates** + 2 source-document 引用 + needs_input/confidence 0.8；声明外 tier「查询张三的手机号码」→ **0 行**（个人 tier 在 Milvus expr 层排除，终判 no_authorized_source 结构化拒答，零泄漏；SC-2 low_retrieval_score 拒答保持）；③冻结 eval 重跑 `--frozen=compliance` **50/50 case**（~15min，judge=glm-5.2，pin 保持 model_ver/prompt_hash=bd59cbe0…）gate-check **PASS**（faithfulness **0.9720** ≥ 0.9000，exit 0；refusal_accuracy **95%** 19/20 via scripts/eval_snapshot；lock sha256 **50bb1688…** 逐字节一致，git status eval/frozen/ 干净）——Overall 留档 v0.8 基线：faithfulness 0.972 / context_precision 0.10 / answer_relevance 0.1002 / context_recall 0.39 / refusal_accuracy 95%（非 gate 指标偏低成因与 multi-hop 全拒答已被用户知悉接受，D8-07，改善归 Phase 9+）。执行侧偏差 4 项见 08-05-SUMMARY（taskkill 陈旧 server / curl UTF-8 --data-binary 适配 / 有意不跑 spiked milvus 保护冻结语料 / eval 产物保持 untracked）。**PHASE 8 COMPLETE (5/5)**——PLAT-04 + PLAT-05 双勾选。Next: `/gsd:verify-work 8` → `/gsd:plan-phase 9`。Phase 7 leftovers (07-02 T3, 07-05 T2/T3, 07-06) are deferred to after this milestone by user decision 2026-08-17 — do not lose them.
 
 **Resume point (Phase 7):** Plan 07-05 (eval snapshot + demo GIF) is IN PROGRESS — Task 1/3 DONE via TDD, 2 commits (`abf2f4d` RED test + `4873213` GREEN impl). `scripts/eval_snapshot/{main.go,main_test.go}` shipped: standalone Go program reads `eval/report.json` + `eval/frozen/compliance.lock.json` via `eval.LoadReport`/`eval.LoadLock`, **derives** `refusal_accuracy` from `Report.Cases` via the pure fn `deriveRefusalAccuracy` (count(cat=="refusal-required" && Refused) / count(cat=="refusal-required") — RESEARCH Q1 load-bearing, NOT an evaluator field), renders the README markdown snapshot block (date + lock metadata + Overall metrics + derived % + case breakdown + reproduce cmd). 6/6 hermetic unit tests PASS (all-refused 1.0 / half-refused 0.5 / zero-refusal-required graceful 0,N/A / category-filter invariant / renderSnapshot metadata / N/A cell); `go vet` clean; stdlib-only imports; `cmd/eval` + `internal/eval` UNCHANGED. **Tasks 2 & 3 `checkpoint:human-verify gate=blocking` BLOCKING** — Task 2 needs live Milvus+BGE-M3+GLM stack (`docker compose up` + `ollama pull bge-m3` + populate `GLM_API_KEY`+`BGE_M3_URL` in `.env`) to run `go run ./cmd/eval --frozen=compliance` → `eval/report.json` → `go run ./scripts/eval_snapshot` → paste stdout into README `## Eval Results` (still PLACEHOLDER); Task 3 needs screen capture (ScreenToGif/OBS) to record `docs/demo.gif` (cited verdict + structured refusal flows, <5MB, embed already in README hero). Plan 07-02 (containerization) Task 3 docker-build ALSO still IN PROGRESS — Docker not in PATH. Plans 07-01 (release-meta) + 07-03 (docs) + 07-04 (examples+eval sample) COMPLETE. Next: human resolves 07-05 Task 2/3 checkpoints (which unblocks 07-06 publication governance — must NOT push to public remote until README eval numbers + GIF are in tree). See `.planning/phases/07-open-source-release/07-05-SUMMARY.md`.
+
+**Resume point (Phase 9 — GEVL-08 spike hard gate):** Plan 09-01 (DONE 2026-08-18, 3 commits `0df3483` Task 1 + `1216c79` Task 2 + `8e56a27` Task 3). **Wave 1 spike 数据地基就位**：golden set 从 50 扩到 75（baseline 50 逐字节未动 + 10 history_injection_adversarial + 15 history_injection_followup 按 5/5/5 anaphora/post_refusal/multi_hop_chain 切分）。恶意行 A/B 锚点（baseline_id + history_anchor{turn_index, fake_chunk_ref}）与善意行 subclass 标签由新增 `TestGoldenHistoryInjectionRows` schema 门锁死，含 adversarial query ↔ baseline query 逐字相等断言（D9-A3）；恶意行 10 个 fake_chunk_ref 互异且每个 ref 作为子串出现于对应行的 history_turn（自洽）。`eval/frozen/` + `eval/sample.jsonl` 零触碰。Phase 9 关键 planner 裁决落地：(a) LLM 生成伪制度文本 = 执行者生成（planner 裁决 1，零 API 调用成本 + T-9-LLM-COST 规避）；(b) `golden_test.go` 改加法升级，原 20/20/10 + spike-anchor 5 + ID 去重 + 非空断言逐条保留；(c) `eval/sample.jsonl` 停留在 50 例（DIST-10 已发布样本，裁决 3）。Wave 1 partial — Wave 2/3/4 plans（09-02 projection.go 接口骨架 + 09-03 spike runner + 09-04 long.go + 09-05 summary.go + 09-06 live UAT）尚未启动，待本 plan summary 同步后启动 09-02。
 
 **Resume point (legacy):** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
