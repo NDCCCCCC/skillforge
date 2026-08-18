@@ -297,7 +297,16 @@
 
 **Pitfalls addressed:** Pitfall 1（历史注入污染 trust floor，H1–H3），Pitfall 2（用户引用文本穿透 tier 边界 — 早期暴露）
 **Spike seed:** `spike-history-injection-trust-floor`（已预写；冻结 eval 集 + gate 已存在，无需 research-phase）
-**Plans**: TBD
+**Plans**: 6 plans
+**Plan list**:
+- [ ] 09-01-PLAN.md — Wave 1: golden set 75 行口径（50 baseline + 10 恶意 + 15 善意三小类 5/5/5）+ GEVL-05 契约门升级
+- [ ] 09-02-PLAN.md — Wave 1: internal/history/projection.go + projection_test_fixtures.go（D9-B1/B2/B3 三规则 + 6+ fixtures）
+- [ ] 09-03-PLAN.md — Wave 2: cmd/spike-history spike-only 二进制（spike_row + runner + main；短历史 A/B 路径；dry-run + 成本守卫）
+- [ ] 09-04-PLAN.md — Wave 3: long.go 长会话用例合成器（10 例 × 8/12/15 长度 × seeded shuffle；Plan 09-03 stub gate 替换）
+- [ ] 09-05-PLAN.md — Wave 3: summary.go + summary_test.go（computeVerdict 6+ case hermetic + renderSummary + runSummarize；Plan 09-03 stub gate 替换）
+- [ ] 09-06-PLAN.md — Wave 4: live UAT 端到端（GLM-5.2 + Milvus + BGE-M3）+ 4 SC 静态验证 + human-verify go/no-go 决策签字
+
+**Wave structure**: W1={09-01, 09-02} → W2={09-03} → W3={09-04, 09-05} → W4={09-06}
 **UI hint**: no
 
 ### Phase 10: 多轮对话记忆（P8.1）
