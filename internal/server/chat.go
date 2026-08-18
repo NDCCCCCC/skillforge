@@ -297,7 +297,7 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error")
+		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
 		return
 	}
 }
@@ -429,7 +429,7 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 		// writes one audit row before the handler returns).
 		_ = wire.EmitChunk(c, errorChunk(err.Error()))
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
-		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error")
+		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
 		if ctx.Err() != nil {
 			log.Printf("[INFO] server: agent run cancelled (sess=%s): %v", sessionID, err)
 		} else {
@@ -441,7 +441,7 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	if refusal != nil {
 		// Trust floor or out-of-scope refusal (verdict is zero-value).
 		_ = emitRefusal(c, *refusal)
-		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", refusal.Reason)
+		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", refusal.Reason, nil)
 		return
 	}
 
@@ -463,18 +463,26 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-	s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "")
+	s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "", nil)
 }
 
 // writeAuditAndTurn persists the audit row + (user, assistant) session
-// turn pair. Called from runAgentPath on every response shape (verdict,
-// refusal, error) AND from VerdictPipeline (the production default
-// path) at its refusal / verdict emit sites, plus chatHandler's error
-// branch for the pipeline's true-error returns. Both writes are best-
-// effort: errors are logged and swallowed because the response has
-// already streamed (T-3-AUDIT-WRITE accept disposition). The audit row
-// carries the SHA-256 prompt_hash (T-3-HASH) so cross-run
-// reproducibility is structurally guaranteed.
+// turn pair + (Phase 10) the audit_meta sibling row. Called from
+// runAgentPath on every response shape (verdict, refusal, error) AND
+// from VerdictPipeline (the production default path) at its refusal /
+// verdict emit sites, plus chatHandler's error branch for the
+// pipeline's true-error returns. All three writes are best-effort:
+// errors are logged and swallowed because the response has already
+// streamed (T-3-AUDIT-WRITE accept disposition). The audit row carries
+// the SHA-256 prompt_hash (T-3-HASH) so cross-run reproducibility is
+// structurally guaranteed.
+//
+// Phase 10 (Plan 10-02) — the new meta parameter carries the
+// Phase 10 sibling-table audit row. Pass nil on paths where no
+// Phase 10 signals exist (e.g. chatHandler's error branch — the
+// pipeline's true-error returns happen before Step 0 history-load).
+// The helper internally swallows the meta PutAuditMeta error to keep
+// the call-site symmetric with the audit + session-turn swallows.
 //
 // modelVersion is hard-coded "glm-5.2" for Phase 3 (the only supported
 // model). Phase 5 lifts this to a Deps field when multi-model routing
@@ -484,7 +492,7 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 // pins the skill that produced the verdict) and "" on refusal / error
 // paths (mirrors runAgentPath's historical args exactly — refusal rows
 // hash only model_version since no skill-specific prompt was rendered).
-func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason string) {
+func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason string, meta *store.AuditMeta) {
 	if s.Store == nil {
 		return
 	}
@@ -512,8 +520,17 @@ func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query 
 		RefusalReason: refusalReason,
 		ChunkIDs:      chunkIDs,
 	}
-	if _, err := s.Store.PutAudit(ctx, row); err != nil {
+	id, err := s.Store.PutAudit(ctx, row)
+	if err != nil {
 		log.Printf("[WARN] server: audit write (sess=%s): %v (response already streamed; non-fatal)", sessionID, err)
+	}
+	// Phase 10: write the audit_meta sibling row when the audit row
+	// landed. The FK ties the meta row to the audit row's ID. nil meta
+	// → no-op (a first-turn / empty-history path can legitimately
+	// choose not to write a meta row).
+	if id > 0 && meta != nil {
+		meta.QueryID = id
+		writeAuditMeta(ctx, s.Store, meta)
 	}
 	assistantContent := verdictJSON
 	if refusalReason != "" {

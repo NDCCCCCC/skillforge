@@ -189,6 +189,45 @@ type SubprogressStep struct {
 	Count int    `json:"count,omitempty"`
 }
 
+// Phase 10 (Plan 10-02) — history-aware pipeline data-decision
+// extensions (D10-B4 / D10-C3). The pipeline emits one data-decision
+// chunk per history-relevant event so the FE can render a
+// transparency hint ("已理解为: XX 制度第二条") and a budget-chip
+// indicator. The DecisionPayload struct is UNCHANGED — D15 invariant
+// (zero new wire types); the Step=0 + Decision=<one of these 4>
+// combination reuses the existing wire envelope.
+//
+// FE mirrors (web/) for these constants are registered in Plan 10-03;
+// they are NOT carried over the wire as new UIMessageChunk variants —
+// only the existing data-decision payload shape is used.
+//
+// The string values are stable wire contract identifiers — changing
+// any of them breaks the FE parser silently. Add new events here
+// (and to the FE mirror) when a future Phase needs them; never
+// repurpose existing values.
+const (
+	// DecisionHistoryProjected fires when VerdictPipeline loads + sanitizes
+	// prior session turns and projects them into the LLM messages prefix.
+	// Step=0, Decision="history_projected", Query=projected turn count.
+	DecisionHistoryProjected = "history_projected"
+
+	// DecisionHistoryBudgetTruncated fires when TruncateToCharBudget
+	// dropped at least one message (the char-budget window collapsed).
+	// Step=0, Decision="history_budget_truncated", Query=dropped count.
+	DecisionHistoryBudgetTruncated = "history_budget_truncated"
+
+	// DecisionHistoryQueryRewritten fires when the query rewriter
+	// produced a non-empty rewrite (D10-C1 / D10-C3 — transparency hint).
+	// Step=0, Decision="history_query_rewritten", Query=rewritten text.
+	DecisionHistoryQueryRewritten = "history_query_rewritten"
+
+	// DecisionHistoryClassifierRefused fires when the query-only
+	// refusal classifier returned Decision="refuse" — the verdict LLM
+	// is NOT invoked (Step 7 short-circuit). Step=0,
+	// Decision="history_classifier_refused", Query=refusal reason.
+	DecisionHistoryClassifierRefused = "history_classifier_refused"
+)
+
 // ValidTypes enumerates the 20 kebab-case chunk types recognized by the
 // AI SDK v5 UIMessageChunk parser (see ai-sdk.dev streaming-data docs
 // + process-ui-message-stream.ts). EmitChunk rejects any Type not in

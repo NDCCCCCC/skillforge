@@ -42,6 +42,8 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/server/classifier"
+	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
 )
@@ -203,7 +205,53 @@ type Deps struct {
 	// (the Phase 2 byte-identical path). cmd/server/main.go wires cm
 	// to both fields at startup.
 	PipelineChatModel model.BaseChatModel
+
+	// Rewriter is the Phase 10 query-rewriter wrapper (Plan 10-02).
+	// When non-nil AND history is non-empty, VerdictPipeline calls
+	// r.Rewrite(ctx, historyMsgs, query) before retrieve; the rewritten
+	// query drives the embedding + classifier input. The rewriter is
+	// best-effort — timeout / parse failure falls back to the original
+	// query (D10-C1). nil = the rewrite step is SKIPPED (history prefix
+	// STILL flows when history is non-empty — the nil-gate disables
+	// ONLY the rewriter step, NOT the history projection).
+	//
+	// cmd/server/main.go wires a *rewrite.QueryRewriter at startup.
+	// Tests may leave this nil to exercise the no-rewriter path.
+	Rewriter *rewrite.QueryRewriter
+
+	// RefusalClassifier is the Phase 10 query-only refusal-classifier
+	// wrapper (Plan 10-02). When non-nil, VerdictPipeline Step 7 calls
+	// c.Classify(ctx, RefusalClassifierInput{Query, Chunks}) before the
+	// verdict LLM; Decision="refuse" short-circuits to a refusal emit
+	// (D10-A1 / D10-A2 escape from the P9 -95pp drift finding).
+	// nil = the semantic refusal layer is SKIPPED; the code-level
+	// short-circuits in Step 5/6 (0-chunks / score<0.3) still refuse.
+	//
+	// cmd/server/main.go wires a *classifier.RefusalClassifier at
+	// startup. Tests may leave this nil to exercise the classifier-less
+	// path (matches the Phase 9 baseline).
+	//
+	// D10-A1 — the classifier's input struct has no History field. The
+	// type-level isolation is enforced by the classifier package's own
+	// test (TestRefusalClassifierInput_NoHistoryField) and the GG-A1-1
+	// CI grep gate.
+	RefusalClassifier *classifier.RefusalClassifier
 }
+
+// Phase 10 nil-gate table — the load-bearing behavior contract for the
+// Rewriter + RefusalClassifier fields above. The test
+// TestVerdictPipeline_NilRewriterStillFlowsHistory (pipeline_default_test.go)
+// is the regression lock for the "Both nil → history prefix STILL flows"
+// row. A future refactor that inadvertently couples history projection
+// to rewriter / classifier nil-gates will trip this test.
+//
+//	| Field              | nil behavior                                                |
+//	|--------------------|-------------------------------------------------------------|
+//	| Rewriter nil       | rewrite step skipped, original query used for retrieval      |
+//	|                    | + classification                                            |
+//	| RefusalClassifier  | classify step skipped, only the code-level SC-2 short-       |
+//	| nil                | circuits (0-chunks / score<0.3) refuse                      |
+//	| Both nil           | history prefix STILL flows when history exists (B2 fix)     |
 
 // New constructs a Hertz server bound to addr with the chat route
 // registered. Returns the *server.Hertz so cmd/server/main.go can call
