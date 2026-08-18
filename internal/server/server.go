@@ -286,5 +286,10 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/eval/reports/:ts", deps.evalReportHandler)
 	h.GET("/api/eval/frozen", deps.evalFrozenHandler)
 	h.GET("/api/audit", deps.auditHandler)
+	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
+	// history restore. The handler returns the session's rendered
+	// turns + the session-bound skill_id so the FE can rebuild the
+	// chat surface via useChat({ initialMessages }) on page load.
+	h.GET("/api/session/:id/history", deps.sessionHistoryHandler)
 	return h
 }
