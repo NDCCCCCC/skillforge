@@ -80,7 +80,7 @@ Each task was committed atomically:
 1. **Task 1: `projection.go` — Project() skeleton + three rules** - `7aa8a3c` (feat)
 2. **Task 2: `projection_test_fixtures.go` — 7 positive/negative fixtures** - `7fe80db` (feat)
 
-**Plan metadata:** `9b23b3f` (state, roadmap, requirements).
+**Plan metadata:** State, roadmap, and requirements are updated in the final metadata commit recorded in git.
 
 ## Files Created/Modified
 
