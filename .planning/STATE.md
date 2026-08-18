@@ -5,7 +5,7 @@ milestone_name: — Harness（可信×行动融合）
 current_phase: 9
 current_plan: Not started
 status: verifying
-last_updated: "2026-08-17T17:14:11.997Z"
+last_updated: "2026-08-18T01:56:56.298Z"
 last_activity: 2026-08-17
 progress:
   total_phases: 13
@@ -43,8 +43,9 @@ progress:
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 08 — p8-0-eino-v0-7-7-v0-9-13
+**Current focus:** Phase 09 — trust-floor-spike-p8-s-spike-hard-gate (context gathered 2026-08-18)
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
+**Phase 9 discuss session (2026-08-18):** A. 恶意注入 = LLM 生成 10 条到 adversarial / 第 N 轮 user / 双层 anchor；B. 投影 = 仅 user+assistant 纯文本 + 仅 user 文本扫 CHUNK id + 硬限 3 轮 + `internal/history/projection.go` 接口骨架 + 正负例 fixture；C. 善意追问 = 三小类 15 条 + 独立子集 baseline + 每条公开；D. 短+长双门 + 中立填充 + 独立长会话副报告 + 与短同门（<5% / <10%）。Claude discretion 兜底 no-go 逃逸方案。产出 = 报告 + 消毒骨架 + go/no-go 决策。Next action: `/gsd:plan-phase 9`。
 
 ---
 
