@@ -207,9 +207,11 @@ func loadLongHistoryRows(goldenPath string, seed int64) ([]SpikeRow, error) {
 			continue
 		}
 
-		// Pick fillerCount/2 distinct baseline rows.
-		pairCount := fillerCount / 2
-		filler := fillerTurns(baseline, pairCount, rng, i+1)
+		// fillerCount is the number of filler turns to produce (always
+		// even — computeFillerCount drops the odd one). fillerTurns
+		// derives pairCount = fillerCount/2 internally so the caller
+		// does not have to repeat the halving.
+		filler := fillerTurns(baseline, fillerCount, rng, i+1)
 
 		// Pick a random insert position (0..fillerCount inclusive)
 		// so the signal lands at a non-deterministic place. With
