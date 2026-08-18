@@ -84,6 +84,8 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
 	"github.com/skillforge/skillforge/internal/server"
+	"github.com/skillforge/skillforge/internal/server/classifier"
+	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
@@ -150,6 +152,17 @@ func main() {
 	// and unit-tested; this flag only gates whether cmd/server
 	// CONSTRUCTS that agent. See .planning/debug/agent-llm-query-rewrite.md.
 	useAgentPath := strings.EqualFold(os.Getenv("USE_AGENT_PATH"), "true")
+
+	// DISABLE_HISTORY_PIPELINE (opt-in) disables the Phase 10 history-
+	// aware pipeline wrappers (rewriter + refusal classifier). When
+	// true, Rewriter and RefusalClassifier in Deps are nil — the
+	// history prefix STILL flows when history is non-empty
+	// (TestVerdictPipeline_NilRewriterStillFlowsHistory is the B2
+	// regression lock). Use this flag to isolate behavior changes to
+	// the history-projection path without disabling the projection
+	// itself. The default (unset) keeps both wrappers active so
+	// production runs the SC-1/SC-2 escape mechanisms.
+	disableHistoryPipeline := strings.EqualFold(os.Getenv("DISABLE_HISTORY_PIPELINE"), "true")
 
 	// 2. Load Skills (SYSK-02 validation at startup).
 	loader := skill.NewLoader("skills/")
@@ -274,6 +287,37 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: registry watch: %v", err)
 	}
 
+	// 6e. Phase 10 history-aware pipeline assembly (Plan 10-02 Task 4 /
+	// checker B2 key fix). Without this step the running product would
+	// have nil Rewriter / RefusalClassifier and the SC-1 / SC-2 escape
+	// mechanisms would never fire. Both constructors fail-fast at
+	// startup (mirrors the existing `cm, err := openai.NewChatModel(…)`
+	// posture); the operator must see any wiring failure at startup,
+	// not at the first /api/chat request.
+	//
+	// The DISABLE_HISTORY_PIPELINE flag (opt-in) leaves both fields nil
+	// for incident-response scenarios where the operator wants to isolate
+	// a regression to the wrappers vs the projection. The history prefix
+	// STILL flows in that mode (the B2 nil-gate fix) — the regression
+	// surface is the rewriter + classifier layers, NOT the projection.
+	var (
+		rewriter         *rewrite.QueryRewriter
+		refusalClassifier *classifier.RefusalClassifier
+	)
+	if disableHistoryPipeline {
+		log.Printf("[WARN] cmd/server: DISABLE_HISTORY_PIPELINE=true — semantic rewrite + classifier layers DISABLED (history prefix still flows; non-fatal)")
+	} else {
+		rewriter, err = rewrite.NewQueryRewriter(cm)
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: query rewriter init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
+		}
+		refusalClassifier, err = classifier.NewRefusalClassifier(cm)
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: refusal classifier init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
+		}
+		log.Printf("[OK] cmd/server: history-aware pipeline ACTIVE (rewrite + classifier; budget window + neutral placeholder + multi-turn messages)")
+	}
+
 	// 7. Build *server.Deps. Embedder + Retriever are concrete impls
 	// behind the interfaces; Runner wraps the Eino Runner. Phase 3 adds
 	// Agent + Store so chatHandler can run the ReAct loop + persist audit
@@ -314,12 +358,21 @@ func main() {
 		// before grounding). model.ToolCallingChatModel embeds
 		// model.BaseChatModel so Stream is reachable on cm directly.
 		PipelineChatModel: cm,
+		// Plan 10-02 Task 4 (B2 fix): wire the Phase 10 history-aware
+		// pipeline wrappers. Rewriter + RefusalClassifier share the same
+		// `cm` ChatModel (one model, three call shapes). When
+		// DISABLE_HISTORY_PIPELINE=true both fields stay nil (the B2
+		// nil-gate table in internal/server/server.go documents the
+		// "history prefix STILL flows" behavior).
+		Rewriter:          rewriter,
+		RefusalClassifier: refusalClassifier,
 	}
 
 	// 8. Hertz server (Pattern 1).
 	h := server.New(serverAddr, deps)
 	log.Printf("[OK] cmd/server: SkillForge listening on %s (backend=%s)", serverAddr, backendLabel)
 	log.Printf("     POST /api/chat                — verdict pipeline (verdict or structured refusal)")
+	log.Printf("     GET  /api/session/:id/history — Phase 10 history restore (Plan 03)")
 	log.Printf("     GET  /api/skills              — list loaded Skills")
 	log.Printf("     POST /api/skills              — dry-run Skill validator")
 	log.Printf("     POST /api/skills/wizard       — SC-3 wizard (5-step interview -> preview)")
