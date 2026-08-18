@@ -185,7 +185,7 @@ func RunEntry(
 	historyLen string,
 	deps *runnerDeps,
 	cost *costState,
-) (*SpikeResult, error) {
+) (result *SpikeResult, err error) {
 	if deps == nil {
 		return nil, fmt.Errorf("spike-history: RunEntry: deps is nil")
 	}
@@ -204,7 +204,7 @@ func RunEntry(
 	if withHistory {
 		withHistoryStr = "true"
 	}
-	result := &SpikeResult{
+	result = &SpikeResult{
 		RunID:         fmt.Sprintf("%s-%s-%d", row.ID, withHistoryStr, now.UnixNano()),
 		CaseID:        row.ID,
 		Category:      row.Category,
@@ -219,12 +219,18 @@ func RunEntry(
 	}
 
 	// Panic guard — a chat-model quirk under malicious history MUST NOT
-	// kill the runner. T-9-CHATMODEL-PANIC mitigation.
+	// kill the runner. T-9-CHATMODEL-PANIC mitigation. Uses the named
+	// return value `result` so the deferred recover still produces a
+	// non-nil result on the caller's side (a recovered panic otherwise
+	// collapses the return to zero values, losing the error markers we
+	// just set above).
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[WARN] spike-history: RunEntry panic on case %s: %v — recording empty metrics", row.ID, r)
-			result.Refused = true
-			result.Metrics["error"] = 1
+			if result != nil {
+				result.Refused = true
+				result.Metrics["error"] = 1
+			}
 		}
 	}()
 
@@ -263,16 +269,16 @@ func RunEntry(
 	}
 
 	// ---- Step 3: build messages (sys + user) ----
+	// Dry-run keeps the system prompt empty so a developer reading
+	// the per-entry log line does not see a 1.5 KiB prompt body AND
+	// to avoid a nil-pointer panic on deps.Manifest (the manifest is
+	// not loaded in --dry-run mode — bootstrap is skipped).
 	sys := &schema.Message{
 		Role:    schema.System,
-		Content: agent.RenderSystemPrompt(deps.Manifest),
+		Content: "[DRY-RUN system prompt omitted]",
 	}
-	if deps.DryRun {
-		// Dry-run keeps the system prompt empty so a developer reading
-		// the per-entry log line does not see a 1.5 KiB prompt body.
-		// The empty string does NOT affect downstream stub calls — the
-		// dry-run branch never calls RenderSystemPrompt via the agent.
-		sys.Content = "[DRY-RUN system prompt omitted]"
+	if !deps.DryRun {
+		sys.Content = agent.RenderSystemPrompt(deps.Manifest)
 	}
 	user := &schema.Message{
 		Role:    schema.User,
@@ -321,7 +327,15 @@ func RunEntry(
 	// branch — both use the hits slice from Step 2.
 	acc := agent.NewChunkAccumulator()
 	acc.Add(hits)
-	if refusal := agent.ApplyTrustFloor(acc, row.Query, deps.Manifest.ResolvedTiers()); refusal != nil {
+	// ResolvedTiers comes from the live manifest. In dry-run mode we
+	// pass nil (the trust floor reads it as "no resolved tiers", which
+	// still produces the correct refusal when the accumulator is
+	// empty — and dry-run never lets the accumulator be empty).
+	var resolvedTiers []string
+	if !deps.DryRun && deps.Manifest != nil {
+		resolvedTiers = deps.Manifest.ResolvedTiers()
+	}
+	if refusal := agent.ApplyTrustFloor(acc, row.Query, resolvedTiers); refusal != nil {
 		result.Refused = true
 		cost.Record([]*schema.Message{sys, user})
 		result.CostUSD = cost.TotalUSD
