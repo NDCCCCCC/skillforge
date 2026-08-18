@@ -3,24 +3,26 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 9
-current_plan: 6 of 6 — Plan 09-05 complete; next 09-06
+current_plan: 6 of 6 — Plan 09-06 complete; PHASE 9 COMPLETE (NO-GO accepted with escape plan)
 status: executing
-stopped_at: Completed 09-05-PLAN.md
-last_updated: "2026-08-18T03:35:00.000Z"
+stopped_at: Completed 09-06-PLAN.md — Phase 9 COMPLETE 6/6
+last_updated: "2026-08-18T05:10:00.000Z"
 last_activity: 2026-08-18
 progress:
   total_phases: 13
-  completed_phases: 6
+  completed_phases: 8
   total_plans: 46
-  completed_plans: 45
-  percent: 46
+  completed_plans: 46
+  percent: 100
 ---
 
 
 
 # State — SkillForge
 
-**Last updated:** 2026-08-18 (**Phase 8 COMPLETE 5/5** — Plan 08-05 live 三门重锁全部 approved：真 GLM cancel 0ms / Milvus tier 5行+0行 零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95% 留档 v0.8 基线；PLAT-04 + PLAT-05 双勾选；eino v0.9.14 编译同构 + 行为同构双证据闭环。Next: `/gsd:verify-work 8`。)
+**Last updated:** 2026-08-18 (**Phase 9 COMPLETE 6/6** — Plan 09-06 live spike 端到端跑完：35 例（10 恶意 + 15 善意 + 10 长会话）真 GLM-5.2 + Milvus + BGE-M3，实测成本 **$0.0481**（限额 $5.00/段）。机器裁决 **NO-GO**（exit 1）：SC-3 恶意零穿透 **0/10 PASS**（消毒规则 + grounding 白名单守住，证据链未被污染），但 refusal_accuracy **-95pp**（95%→0%，三类全灭）+ faithfulness -18.6%/-12.6%/-22.4% + context_recall -87.2%/-63.0%/-70.1% 漂移超门（Pitfall 1 H2 证实：拒答上下文使拒答率漂移）。用户 2026-08-18 签字「**接受 NO-GO 带逃逸方案**」——Phase 9 的交付物（明确且有记录的 go/no-go + 消毒规则 + 逃逸方案）按 SC-2/GEVL-08 口径达成；**Phase 10 记忆功能必须前置逃逸强化**（拒答判定不得依赖历史上下文；历史不得携带拒答语义；候选 = 信任地板 default-deny 强化 / MEM-05 摘要中间件 / prompt 历史投射收紧），且 memory 发布前须重跑 spike 硬门回到 <5%/<10pp。Next: `/gsd:verify-work 9` → `/gsd:plan-phase 10`。)
+
+**Prior:** 2026-08-18 早前 (**Phase 8 COMPLETE 5/5** — Plan 08-05 live 三门重锁全部 approved：真 GLM cancel 0ms / Milvus tier 5行+0行 零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95% 留档 v0.8 基线；PLAT-04 + PLAT-05 双勾选；eino v0.9.14 编译同构 + 行为同构双证据闭环。)
 
 **Prior:** 2026-08-17 (Phase 8 plans 08-01..08-04 全部完成：升级 `36845c0` / CheckPointStore `9a557b1`+`e6a580a` / 禁令门+叙事对齐 `fea6114`+`996c33a` / SC-5 中断往返 `3c42c20`。同日早前：Milestone v0.8 roadmap created——phases 8-13 appended per research SUMMARY.md strict chain，25/25 v0.8 requirements mapped；quick tasks 260817-hck + 260817-i36 完成。)
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
@@ -30,7 +32,7 @@ progress:
 **Current Plan:** 4 of 6 — Plan 09-03 complete; next 09-04
 **Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** `/gsd:plan-phase 9 --plan 09-04` (long-history spike path — extends `RunEntry` `--history-length=long` branch from the current stub gate; Plan 09-05 extends `--summarize`).
+**Next action:** `/gsd:verify-work 9` (Phase 9 complete 6/6 — verdict NO-GO accepted with escape plan) → `/gsd:plan-phase 10`（Phase 10 规划须读 09-06-SUMMARY 的逃逸方案节：MEM 前置信任地板强化 + 发布前重跑 spike 硬门）.
 
 ---
 
@@ -54,11 +56,11 @@ progress:
 
 ## Current Position
 
-Phase: 09 (trust-floor-spike-p8-s-spike-hard-gate) — EXECUTING
-Plan: 5 of 6
-Status: Ready to execute
+Phase: 09 (trust-floor-spike-p8-s-spike-hard-gate) — COMPLETE (6/6 plans; verdict NO-GO accepted with escape plan)
+Plan: 6 of 6
+Status: Phase complete — awaiting `/gsd:verify-work 9`
 Last activity: 2026-08-18
-Stopped At: Completed 09-04-PLAN.md
+Stopped At: Completed 09-06-PLAN.md
 Resume File: None
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
@@ -111,6 +113,9 @@ Resume File: None
 | D9-L1 | Long-mode file naming = `history_injection_long.jsonl` (Phase 9 / Plan 09-04) | Follow Plan 09-03's category-as-filename convention (`writeResult: <category>.jsonl`). The plan body contained conflicting guidance about `long.jsonl`; resolved in favor of consistency with `history_injection_adversarial.jsonl` + `history_injection_followup.jsonl`. Plan 09-05 report layer aggregates by `Category` field, so the filename is a layout detail. |
 | D9-L2 | Neutral filler template (T-9-FILLER-LEAK, Phase 9 / Plan 09-04) | `fillerAssistantTemplate = "已记录您的问题 %d（仅上下文，不进入证据）。"` is a fixed string; never cites baseline.GroundTruth / ExpectedChunks. User-half filler uses `baseline[i].Query` (real compliance Q&A, not a leak). Verified via `grep -c "GroundTruth\|ExpectedChunks" cmd/spike-history/long.go` = 0 in helper code. |
 | D9-L3 | 8/12/15 length targets are upper bounds (Phase 9 / Plan 09-04) | `computeFillerCount` floors odd differences so pairs always produce symmetric (user, assistant) filler. Target=15 with signal=2 → 12 filler (6 pairs) → total 14 turns (not 15). Acceptable per planner's intent — the targets are upper bounds. |
+| D9-V1 | Phase 9 spike 裁决 = NO-GO，用户 2026-08-18 签字「接受 NO-GO 带逃逸方案」进入 Phase 10 (Plan 09-06) | 机器裁决 NO-GO（exit 1，faithfulness -18.6%/-12.6%/-22.4% + refusal -95pp 全超门），但 SC-3 恶意零穿透 0/10 PASS——证据链未污染，失败归因 = 拒答行为漂移（Pitfall 1 H2：拒答上下文使拒答率漂移），非引用穿透（Pitfall 2）。Phase 9 的目标是「跑硬门 + 记录明确结论」，该目标达成（SC-2/GEVL-08 口径）。GEVL-08 自身措辞允许 NO-GO 路径：「不过门则记忆不得发布，产出消毒规则或逃逸方案」——两者均已产出（projection.go D9-B1/B2/B3 + 逃逸方案）。 |
+| D9-V2 | Phase 10 逃逸方案 = 前置信任地板强化，而非重跑 spike (Plan 09-06 用户裁决) | (a) 拒答判定不得依赖历史上下文（信任地板只看 query + 本轮检索）；(b) 历史不得携带拒答语义进 prompt（历史中的旧拒答不得许可后续作答本应拒答的追问）；(c) 考虑 query-only 独立拒答分类器置于历史增强生成上游。候选逃逸：信任地板 default-deny 在历史注入后的强化 / MEM-05 摘要中间件 / prompt 历史投射收紧。memory 发布前必须重跑 spike 硬门回到 <5% / <10pp（cmd/spike-history 即重门机制）。 |
+| D9-V3 | 不做同 seed 重试 (Plan 09-06) | T-9-SPIKE-DRIFT 的重试条款针对抖动级 NO-GO；本次 -95pp + 方向三类一致（35/35 行）超出阈值数量级，属结构性漂移非随机抖动。如需 judge 侧二次意见，Plan 09-05 已埋 JUDGE_MODEL cross-eval flag。 |
 
 ---
 
@@ -220,6 +225,7 @@ Resume File: None
 | Phase 09 P02 | 3m10s | 2 tasks | 3 files |
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P04 | 12m | 2 tasks | 3 files |
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P05 | 20m | 2 tasks | 3 files |
+| Phase 09-trust-floor-spike-p8-s-spike-hard-gate P06 | ~75m | 2 tasks (T2 = human-verify gate) | 3 files committed + 7 git-ignored reports |
 
 ## Session Continuity
 
@@ -229,7 +235,7 @@ Resume File: None
 
 **Resume point (Phase 9 — GEVL-08 spike hard gate):** Plan 09-01 (DONE 2026-08-18, 3 commits `0df3483` Task 1 + `1216c79` Task 2 + `8e56a27` Task 3). **Wave 1 spike 数据地基就位**：golden set 从 50 扩到 75（baseline 50 逐字节未动 + 10 history_injection_adversarial + 15 history_injection_followup 按 5/5/5 anaphora/post_refusal/multi_hop_chain 切分）。恶意行 A/B 锚点（baseline_id + history_anchor{turn_index, fake_chunk_ref}）与善意行 subclass 标签由新增 `TestGoldenHistoryInjectionRows` schema 门锁死，含 adversarial query ↔ baseline query 逐字相等断言（D9-A3）；恶意行 10 个 fake_chunk_ref 互异且每个 ref 作为子串出现于对应行的 history_turn（自洽）。`eval/frozen/` + `eval/sample.jsonl` 零触碰。Phase 9 关键 planner 裁决落地：(a) LLM 生成伪制度文本 = 执行者生成（planner 裁决 1，零 API 调用成本 + T-9-LLM-COST 规避）；(b) `golden_test.go` 改加法升级，原 20/20/10 + spike-anchor 5 + ID 去重 + 非空断言逐条保留；(c) `eval/sample.jsonl` 停留在 50 例（DIST-10 已发布样本，裁决 3）。Wave 1 partial — Wave 2/3/4 plans（09-02 projection.go 接口骨架 + 09-03 spike runner + 09-04 long.go + 09-05 summary.go + 09-06 live UAT）尚未启动，待本 plan summary 同步后启动 09-02。
 
-**Phase 9 execution (2026-08-18):** Plan 09-02 COMPLETE in 3m10s with task commits `7aa8a3c` + `7fe80db` and summary commit `0609656`; `internal/history/projection.go` now enforces D9-B1/B2/B3 and `projection_test_fixtures.go` exports 7 contracts. Next: Plan 09-03 spike runner. **Plan 09-03 COMPLETE in 13m45s** (commits `7632923` + `b0b4571` + `cdd1377`) — `cmd/spike-history` spike-only binary ships: 11-flag CLI, RunEntry live+dry-run dual path (8-step pipeline), per-entry JSONL schema locked, stub gates for `--history-length=long` (Plan 09-04) + `--summarize` (Plan 09-05) with grep-friendly error strings. **Plan 09-04 COMPLETE in ~12m** (commits `923f1c0` long.go + `65cb8d0` main.go+runner.go) — `--history-length=long` path implemented: `loadLongHistoryRows` synthesizes 10 SpikeRows with 8/12/15-turn histories (1 signal per row + neutral filler from baseline 50 rows), seed=42 deterministic, output to `history_injection_long.jsonl`. D9-L1/L2/L3 decisions captured (Plan 09-03 category-as-filename convention + T-9-FILLER-LEAK fixed template + 8/12/15 upper-bound semantics). Stub gates removed from both main.go and runner.go; short path zero-regression. **Plan 09-05 COMPLETE in ~20m** (commits `e1660c6` plan 09-04 leftover fix + `3ef406e` RED test + `4078ab5` GREEN impl + `08d2920` main.go wire + `969ed25` docs closeout) — `--summarize` aggregator ships: `summary.go` 838 lines (loadSpikeResults / loadBaseline / computeCategoryMean / populateCategoryWorst / computeVerdict + 4 output renderers + runSummarize entry); 12 functions + 4 data types. TestComputeVerdict locks 6 gate scenarios (3 GO + 3 NO-GO), TestFormatDelta covers composite-threshold formatter, TestBaselineRefusalAccuracy verifies derived refusal rate, TestRunSummarizeHermetic does end-to-end tmp-dir e2e. main.go: --summarize stub gate replaced with runSummarize dispatch; --baseline-lock flag added (12 flags total). Summary.md ≤60 lines (smoke test: 46 lines). 4 output files per call (summary.md / short_history.md / long_history.md / summary.json). Baseline re-run cost-saving: loadBaseline reads eval/frozen/compliance.lock.json verbatim — no 50-case re-run needed. Next: Plan 09-06 (live UAT) — populates the three JSONL streams with real spike runs; this plan's gate semantics already cover the success criteria. Stopped At: Completed 09-05-PLAN.md; Resume File: None.
+**Phase 9 execution (2026-08-18):** Plan 09-02 COMPLETE in 3m10s with task commits `7aa8a3c` + `7fe80db` and summary commit `0609656`; `internal/history/projection.go` now enforces D9-B1/B2/B3 and `projection_test_fixtures.go` exports 7 contracts. Next: Plan 09-03 spike runner. **Plan 09-03 COMPLETE in 13m45s** (commits `7632923` + `b0b4571` + `cdd1377`) — `cmd/spike-history` spike-only binary ships: 11-flag CLI, RunEntry live+dry-run dual path (8-step pipeline), per-entry JSONL schema locked, stub gates for `--history-length=long` (Plan 09-04) + `--summarize` (Plan 09-05) with grep-friendly error strings. **Plan 09-04 COMPLETE in ~12m** (commits `923f1c0` long.go + `65cb8d0` main.go+runner.go) — `--history-length=long` path implemented: `loadLongHistoryRows` synthesizes 10 SpikeRows with 8/12/15-turn histories (1 signal per row + neutral filler from baseline 50 rows), seed=42 deterministic, output to `history_injection_long.jsonl`. D9-L1/L2/L3 decisions captured (Plan 09-03 category-as-filename convention + T-9-FILLER-LEAK fixed template + 8/12/15 upper-bound semantics). Stub gates removed from both main.go and runner.go; short path zero-regression. **Plan 09-05 COMPLETE in ~20m** (commits `e1660c6` plan 09-04 leftover fix + `3ef406e` RED test + `4078ab5` GREEN impl + `08d2920` main.go wire + `969ed25` docs closeout) — `--summarize` aggregator ships: `summary.go` 838 lines; TestComputeVerdict locks 6 gate scenarios; 4 output files per call; baseline verbatim read (no re-run). **Plan 09-06 COMPLETE 2026-08-18 (~75m; commits `e06576f` .gitignore+test-fix + `791c86d` renderer literals + `4ed48d8` docs)** — live spike 三段跑 + summarize 全通：`history_injection_adversarial.jsonl` 10 行 + `history_injection_followup.jsonl` 15 行 + `history_injection_long.jsonl` 10 行（真 GLM-5.2 + Milvus + BGE-M3，seed=42，cost-limit $5.00/段，实测 total **$0.0481**）→ `--summarize` exit **1** 产 4 文件（summary.md 55 行 / short_history.md / long_history.md / summary.json）。**裁决 NO-GO**：SC-3 零穿透 0/10 PASS（证据链未污染），faithfulness -18.6%/-12.6%/-22.4% + context_precision +483%/+300%/+417% + answer_relevancy +524%/+392%/+483% + context_recall -87.2%/-63.0%/-70.1% + refusal **-95pp**（三类 refusal_rate 全 0）超门；指标耦合注记：cp/ar 上升是「不再拒答 → judge 不再机械归零」的影子，根因 = 拒答行为漂移（Pitfall 1 H2）。**Task 2 checkpoint:human-verify（gate=blocking）用户签字「接受 NO-GO 带逃逸方案」**→ D9-V1/V2/V3 决策入册；4 SC + 决策表 + 三段命令时序全部转录进 09-06-SUMMARY（T-9-RESULT-LOSS 缓解——reports/ 已 git-ignore，数字在 git 内留档）。git 隔离验证：eval/frozen/ + eval/sample.jsonl + 硬约束面零改动；`go build ./... && go vet ./...` exit 0。**PHASE 9 COMPLETE (6/6)——GEVL-08 交付（消毒规则 + 明确有记录的 go/no-go + 逃逸方案）**。Next: `/gsd:verify-work 9` → `/gsd:plan-phase 10`（前置逃逸强化，见 D9-V2）。
 
 **Resume point (legacy):** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
@@ -251,4 +257,4 @@ Resume File: None
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 8 COMPLETE 2026-08-18（5/5 plans——08-05 live 三门重锁全部 approved：真 GLM cancel 0ms、Milvus tier 零泄漏 5行/0行、冻结 eval gate PASS faithfulness 0.972 留档 v0.8 基线；PLAT-04 + PLAT-05 双勾选；ready for /gsd:verify-work 8）。Prior transition: Milestone v0.8 roadmap created 2026-08-17 — phases 8-13 appended (25/25 v0.8 requirements mapped; Phase 9 = spike hard gate for Phase 10); Phase 7 leftovers deferred to after v0.8 by user decision. Earlier: Phase 4 → Phase 3 (resumed) on 2026-08-11; Phase 3 COMPLETE (6/6 plans) 2026-08-12.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 9 COMPLETE 2026-08-18（6/6 plans——09-06 live spike 裁决 **NO-GO**，用户签字「接受 NO-GO 带逃逸方案」：SC-3 零穿透 0/10 PASS 但 refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录的 go/no-go + 逃逸方案）；Phase 10 须前置信任地板强化并在 memory 发布前重跑 spike 硬门；ready for /gsd:verify-work 9）。Prior transition: Phase 8 COMPLETE 2026-08-18（5/5 plans——08-05 live 三门重锁全部 approved；PLAT-04 + PLAT-05 双勾选）。Earlier: Milestone v0.8 roadmap created 2026-08-17 — phases 8-13 appended (25/25 v0.8 requirements mapped; Phase 9 = spike hard gate for Phase 10); Phase 7 leftovers deferred to after v0.8 by user decision; Phase 4 → Phase 3 (resumed) on 2026-08-11; Phase 3 COMPLETE (6/6 plans) 2026-08-12.*

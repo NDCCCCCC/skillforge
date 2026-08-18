@@ -244,7 +244,9 @@ None — no external service configuration remains. (Live stack prerequisites �
 - **Hard-gate rule stands:** per GEVL-08, memory must not SHIP unless the gate passes — Phase 10 must re-run `cmd/spike-history` (or its successor harness) after the hardening and show the deltas back inside <5% / <10pp before MEM features are declared done.
 - **Reusable spike infrastructure:** `cmd/spike-history` is a permanent 12-flag regression harness; re-running the three segments + summarize after Phase 10's hardening is the built-in re-gate mechanism.
 
-## Self-Check
+## Self-Check: PASSED
+
+(All checklist items below verified by command at 2026-08-18T05:10Z; files FOUND, commits FOUND, reports/ properly git-ignored — 0 untracked lines.)
 
 - [x] Commits `e06576f` + `791c86d` exist on master (git log verified at resume).
 - [x] reports/ contains 7 files; row counts 10/15/10 = 35.

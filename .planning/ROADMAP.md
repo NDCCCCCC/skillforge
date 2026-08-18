@@ -35,7 +35,7 @@
 贯穿性不变量：**citation 白名单 = 本轮检索结果，代码强制** —— 历史/摘要/子 agent 输出/resume 注入的文本永远不能成为证据。每个 phase 以「可信税」产物收尾：spike 报告 → 消毒规则 → 3 行审计生命周期 → 可回放规划 → tier 继承证明测试。依赖为严格链：8 → 9 → 10 → 11 → 12 → 13。
 
 - [x] **Phase 8: 全量依赖升级（P8.0）** — eino v0.7.7 → v0.9.14 + lockstep eino-ext 联动升级 + sqlite CheckPointStore 骨架；回归套件全绿，legacy interrupt API lint 禁用 (completed 2026-08-18 — live 三门 human-verify approved；PLAT-04/PLAT-05 勾选)
-- [ ] **Phase 9: 历史注入 trust-floor spike 硬门（P8.S）** — golden-set A/B 证明历史投影不漂移拒答/引用行为（四指标漂移 <5%、refusal delta <10%）；不过门则记忆不得发布
+- [x] **Phase 9: 历史注入 trust-floor spike 硬门（P8.S）** — golden-set A/B 证明历史投影不漂移拒答/引用行为（四指标漂移 <5%、refusal delta <10%）；不过门则记忆不得发布 (completed 2026-08-18 — live spike 裁决 **NO-GO**，用户签字「接受 NO-GO 带逃逸方案」：SC-3 零穿透 0/10 PASS / refusal -95pp 超门；GEVL-08 交付消毒规则 + 有记录裁决 + 逃逸方案；Phase 10 须前置逃逸强化)
 - [ ] **Phase 10: 多轮对话记忆（P8.1）** — sqlite 历史投影喂 agent + 投影消毒 + citation 白名单代码强制 + token 预算/摘要压缩
 - [ ] **Phase 11: 写工具 + 审批门（P8.2）** — Eino Interrupt/Resume HITL + 流内审批卡 + 跨刷新审批态 + 3 行 INSERT-only 审计生命周期 + `writes:` 代码级强制
 - [ ] **Phase 12: 规划层（P8.3）** — DeepAgent（write_todos）+ 计划确认门 + 三层预算门 + 审计可回放的规划轨迹
@@ -304,7 +304,7 @@
 - [x] 09-03-PLAN.md — Wave 2: cmd/spike-history spike-only 二进制（spike_row + runner + main；短历史 A/B 路径；dry-run + 成本守卫 + 注入穿透标记 + 11 flags + long/summarize 显式 stub gate 归属 09-04/09-05）
 - [x] 09-04-PLAN.md — Wave 3: long.go 长会话用例合成器（10 例 × 8/12/15 长度 × seeded shuffle；Plan 09-03 stub gate 替换）
 - [x] 09-05-PLAN.md — Wave 3: summary.go + summary_test.go（computeVerdict 6+ case hermetic + renderSummary + runSummarize；Plan 09-03 stub gate 替换）+ main.go --summarize wire + --baseline-lock flag（4 输出文件：summary.md ≤60 行 / short_history.md / long_history.md / summary.json）
-- [ ] 09-06-PLAN.md — Wave 4: live UAT 端到端（GLM-5.2 + Milvus + BGE-M3）+ 4 SC 静态验证 + human-verify go/no-go 决策签字
+- [x] 09-06-PLAN.md — Wave 4: live UAT 端到端（GLM-5.2 + Milvus + BGE-M3）+ 4 SC 静态验证 + human-verify go/no-go 决策签字（35 例三段跑 + summarize；裁决 NO-GO exit 1；SC-3 零穿透 0/10；cost $0.0481；用户接受 NO-GO 带逃逸方案）
 
 **Wave structure**: W1={09-01, 09-02} → W2={09-03} → W3={09-04, 09-05} → W4={09-06}
 **UI hint**: no
@@ -430,14 +430,14 @@
 | 6. Eval Dashboard & Production Hardening — Code-Side | 3/3 active (+06-03 deferred→999.2) | Complete (code-side) | 2026-08-13 |
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
 | 8. 全量依赖升级 (P8.0) | 5/5 | Complete — live 三门 human-verify approved 2026-08-18（cancel 0ms / tier 5行+0行 / frozen eval gate PASS 0.972，v0.8 基线留档）；ready for verify-work | 2026-08-18 |
-| 9. 历史注入 spike 硬门 (P8.S) | 4/6 | Wave 1+2+3 partial — 09-01..09-04 DONE (75-row golden / 投影骨架 / spike runner / long-history 合成器); 09-05 summarize 报告 + 09-06 live UAT 接力 | 2026-08-18 |
+| 9. 历史注入 spike 硬门 (P8.S) | 6/6 | Complete — live spike 裁决 **NO-GO**（用户 2026-08-18 签字「接受 NO-GO 带逃逸方案」）：SC-3 零穿透 0/10 PASS，refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录裁决 + 逃逸方案）；Phase 10 须前置信任地板强化，memory 发布前重跑硬门 | 2026-08-18 |
 | 10. 多轮对话记忆 (P8.1) | 0/? | Not started — gated by Phase 9 | - |
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
 | 13. 子 agent 扇出 (P8.4) | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-08-18 — Phase 8 COMPLETE (5/5) + Phase 9 Wave 3 partial (09-04 long-history 合成器就位：long.go loadLongHistoryRows + 8/12/15 长度循环 + neutral filler + seeded RNG；Plan 09-03 stub gate 全部移除；history_injection_long.jsonl 10 条 + short 路径零回归；D9-L1/L2/L3 decisions 锁) + Plan 09-05 summary.go + main.go --summarize wire 就位（12 flags 含 --baseline-lock；summary.md ≤60 行；4 输出文件；6+ hermetic gate cases；baseline 不重跑；零产品代码/零新依赖；GEVL-08 SC-1/SC-2 满足）。09-06 live UAT 是 Wave 4 唯一剩余。Prior: Phase 8 COMPLETE 2026-08-18 (08-05 live 三门 human-verify approved 真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%, lock 未动，v0.8 基线留档 D8-07); PLAT-04 + PLAT-05 勾选. Earlier: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
+*Last updated: 2026-08-18 — **Phase 9 COMPLETE (6/6)**：09-06 live spike 端到端（35 例 = 10 恶意 + 15 善意 + 10 长会话，真 GLM-5.2 + Milvus + BGE-M3，seed=42，实测 cost $0.0481 < $5.00 限）→ `--summarize` 裁决 **NO-GO**（exit 1）。SC-3 恶意零穿透 **0/10 PASS**（D9-B1/B2/B3 消毒 + grounding 白名单守住，证据链未污染）；失败 = refusal_accuracy **-95pp**（95%→0%，三类全灭）+ faithfulness -18.6%/-12.6%/-22.4% + context_recall -87.2%/-63.0%/-70.1% 超门 → **Pitfall 1 H2 证实（拒答上下文使拒答率漂移）**。用户签字「接受 NO-GO 带逃逸方案」→ Phase 10（MEM-01..05）前置信任地板强化（拒答判定不依赖历史上下文 / 历史不携带拒答语义 / query-only 拒答分类器候选），memory 发布前重跑 spike 硬门回 <5%/<10pp。reports/ 七文件 git-ignore（planner ruling 3），头条数字转录进 09-06-SUMMARY 留档。Prior: Phase 8 COMPLETE 2026-08-18 (08-05 live 三门 human-verify approved 真 GLM cancel 0ms / Milvus tier-filter 5行+0行零泄漏 / 冻结 eval gate PASS faithfulness 0.972 + refusal_accuracy 95%, lock 未动，v0.8 基线留档 D8-07); PLAT-04 + PLAT-05 勾选. Earlier: 2026-08-17 — Milestone v0.8 roadmap appended (phases 8-13, strict chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 and backlog 999.1/999.2 unchanged).*
 
 ---
 
