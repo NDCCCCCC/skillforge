@@ -285,3 +285,42 @@ func parseAuditTime(raw string) (time.Time, error) {
 	}
 	return time.Parse(time.RFC3339, raw)
 }
+
+// writeAuditMeta is the Phase 10 helper that writes the audit_meta
+// sibling-table row alongside the canonical audit row. Called from
+// writeAuditAndTurn (extended in Plan 02 Task 3) after the audit row
+// is INSERTed and the auto-increment ID is known.
+//
+// Contract (best-effort, matches writeAuditAndTurn's posture):
+//
+//   - nil s     → no-op (degraded mode: the audit row was already
+//                 silently skipped, the meta row follows suit).
+//   - nil meta  → no-op (the caller chose not to write a meta row —
+//                 legitimate on a first-turn / empty-history path
+//                 when no Phase 10 signals exist).
+//   - error     → log + swallow (the response has already streamed;
+//                 failing the request over a meta-write error is
+//                 worse than degraded durability — T-3-AUDIT-WRITE
+//                 accept disposition).
+//
+// The function deliberately does NOT return the error so the call
+// site can fire-and-forget without scattering error-handling. The
+// audit row carries the query_id the meta row needs; if PutAudit
+// failed the call site also swallowed that error, so the meta row
+// cannot be written (query_id=0 fails the FK constraint). The caller
+// pattern is:
+//
+//	id, err := s.Store.PutAudit(ctx, row)
+//	if err == nil {  // audit row exists
+//	    writeAuditMeta(ctx, s.Store, &store.AuditMeta{QueryID: id, ...})
+//	}
+//
+// Returns nothing — observability-only on error.
+func writeAuditMeta(ctx context.Context, s store.Store, meta *store.AuditMeta) {
+	if s == nil || meta == nil {
+		return
+	}
+	if err := s.PutAuditMeta(ctx, *meta); err != nil {
+		log.Printf("[WARN] server: audit_meta write (query_id=%d): %v (response already streamed; non-fatal)", meta.QueryID, err)
+	}
+}

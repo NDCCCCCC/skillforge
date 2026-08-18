@@ -88,6 +88,53 @@ type SessionMessage struct {
 	Ts      time.Time
 }
 
+// AuditMeta is the Phase 10 sibling-table audit row that carries the
+// rewriter / classifier / history-projection signals NOT covered by the
+// canonical audit row. The relationship to AuditRow is 1:1 by query_id
+// (the audit row's auto-increment ID). Both rows are INSERT-only
+// (T-3-AUDIT invariant); a future "backfill metrics" path that UPDATEs
+// the meta row would destroy the trust property this machinery exists
+// to protect.
+//
+// The fields captured here are the Phase 10 trust-floor escape's
+// audit lineage: when the spike runner re-runs an adversarial session
+// against the same seed, it must reproduce the same rewriter output,
+// the same classifier decision, and the same history projection — the
+// AuditMeta row is the single source of truth.
+//
+// Field semantics:
+//
+//   - QueryID            1:1 join key back to AuditRow.ID. NOT auto-
+//                        generated here; the caller wires it after
+//                        PutAudit returns the audit row's ID.
+//   - RewrittenQuery     nullable; empty when no rewrite happened (first
+//                        turn / no-anaphora / rewriter nil-gated).
+//   - ClassifierDecision one of "allow" | "refuse" | "n/a". "n/a" when
+//                        the classifier was nil-gated; the audit row
+//                        itself carries the code-level short-circuit
+//                        refusal reason (no_authorized_source /
+//                        low_retrieval_score).
+//   - ClassifierReason   nullable; one of verdict.RefusalReason* when
+//                        ClassifierDecision="refuse".
+//   - ClassifierConfidence nullable; float64 in [0.0, 1.0].
+//   - HistoryProjectedNTurns post-sanitization message count that
+//                        flowed into the verdict messages prefix (0
+//                        when no history).
+//   - HistoryBudgetTruncated 1 when TruncateToCharBudget dropped at
+//                        least one message, else 0.
+//   - HistoryDroppedCount number of messages dropped by the budget
+//                        window (0 when none).
+type AuditMeta struct {
+	QueryID                 int64
+	RewrittenQuery          string
+	ClassifierDecision      string
+	ClassifierReason        string
+	ClassifierConfidence    *float64
+	HistoryProjectedNTurns  int
+	HistoryBudgetTruncated  int
+	HistoryDroppedCount     int
+}
+
 // AuditFilter is the parameter bag for QueryAudit. Every field is
 // optional; a zero-value AuditFilter returns the most-recent rows up to
 // Limit (default 100). Every field is applied as a parameterized `?`
@@ -157,6 +204,19 @@ type Store interface {
 	// this as "eval CLI ran before the chat path wrote the row" — a
 	// sequencing issue, surfaced loudly).
 	UpdateAuditMetrics(ctx context.Context, id int64, faithfulness, contextPrecision, answerRelevance, contextRecall *float64) error
+
+	// PutAuditMeta appends the Phase 10 sibling-table audit row that
+	// carries the rewriter / classifier / history-projection signals
+	// alongside the canonical audit row. INSERT-only (T-3-AUDIT
+	// invariant); the audit_meta table is the singular write surface,
+	// no UPDATE / DELETE path exists. The meta row's lifecycle is tied
+	// to the audit row via FOREIGN KEY (query_id) REFERENCES
+	// audit(id) ON DELETE CASCADE — deleting the audit row drops the
+	// meta row along with it. Returns an error when the referenced
+	// query_id does not exist (the caller treats this as a sequencing
+	// bug — PutAudit must have returned the ID before PutAuditMeta is
+	// called).
+	PutAuditMeta(ctx context.Context, meta AuditMeta) error
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

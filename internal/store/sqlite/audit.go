@@ -247,3 +247,74 @@ func fromNullFloat64(n sql.NullFloat64) *float64 {
 	v := n.Float64
 	return &v
 }
+
+// putAuditMetaSQL is the single INSERT path for the audit_meta sibling
+// table. Mirrors putAuditSQL's posture: ?-placeholders only (T-3-SQLI);
+// no row-modification statement exists anywhere in the package
+// (T-3-AUDIT INSERT-only invariant). The query_id FK ties meta
+// lifecycle to the audit row; ON DELETE CASCADE removes the meta row
+// when the audit row is removed by a future operator action.
+//
+// The classifier_decision column is NOT NULL with the "n/a" sentinel
+// for nil-gated classifier paths (a value must always be present so
+// spike / audit queries don't need NULL-handling logic).
+const putAuditMetaSQL = `
+INSERT INTO audit_meta (
+    query_id, rewritten_query, classifier_decision, classifier_reason,
+    classifier_confidence, history_projected_n_turns, history_budget_truncated,
+    history_dropped_count
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+// PutAuditMeta appends a sibling-table audit row that carries the
+// rewriter / classifier / history-projection signals alongside the
+// canonical audit row. The relationship is 1:1 by query_id (the
+// audit row's auto-increment ID). When the audit row is removed the
+// meta row drops via ON DELETE CASCADE — the lifecycle tie is the
+// database's job, not the caller's.
+//
+// The QueryID MUST be a valid audit row id; otherwise the FK
+// constraint fires a constraint error from the driver (the caller
+// treats this as a sequencing bug — PutAudit must have returned the
+// ID before PutAuditMeta is called). The classifier_decision MUST be
+// one of "allow" | "refuse" | "n/a" — other values are coerced to
+// "n/a" by the DB-layer default-check or rejected by the operator.
+//
+// Nullable column handling: empty-string RewrittenQuery and
+// ClassifierReason are persisted as SQL NULL so spike queries can
+// distinguish "no rewrite happened" from "rewrote to empty string".
+// ClassifierConfidence follows toNullFloat64 (the canonical pattern
+// across the store package — see UpdateAuditMetrics).
+//
+// On error the function wraps via fmtError so the caller can
+// distinguish audit_meta failures from audit failures in the log.
+func (s *SQLiteStore) PutAuditMeta(ctx context.Context, meta store.AuditMeta) error {
+	if s.isClosed() {
+		return sql.ErrConnDone
+	}
+	_, err := s.db.ExecContext(ctx, putAuditMetaSQL,
+		meta.QueryID,
+		toNullString(meta.RewrittenQuery),
+		meta.ClassifierDecision,
+		toNullString(meta.ClassifierReason),
+		toNullFloat64(meta.ClassifierConfidence),
+		meta.HistoryProjectedNTurns,
+		meta.HistoryBudgetTruncated,
+		meta.HistoryDroppedCount,
+	)
+	if err != nil {
+		return fmtError("PutAuditMeta", err)
+	}
+	return nil
+}
+
+// toNullString converts an empty string to sql.NullString{Valid:false}
+// so the DB column receives NULL rather than "". Keeps the nullable
+// contract uniform across PutAuditMeta's call sites (no caller-side
+// sql.NullString wrapping needed).
+func toNullString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}

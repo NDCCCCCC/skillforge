@@ -18,13 +18,19 @@ package sqlite
 
 import "context"
 
-// schemaSQL creates the three tables the store owns. CREATE TABLE IF NOT
+// schemaSQL creates the tables the store owns. CREATE TABLE IF NOT
 // EXISTS makes migrate() idempotent — safe to call on every New().
 //
 // audit (T-3-AUDIT anti-tampering): INSERT + SELECT paths only — there
 // is NO row-modification path for audit rows (the eval sidecar owns the
 // one-shot metrics backfill, the only sanctioned exception).
 // The four Ragas metric columns are NULL until the sidecar backfills them.
+//
+// audit_meta (Plan 10-02): sibling-table INSERT-only audit row that
+// carries the rewriter / classifier / history-projection signals
+// alongside the canonical audit row. 1:1 join via query_id (FK to
+// audit.id) + ON DELETE CASCADE. The columns are documented in the
+// AuditMeta godoc (internal/store/store.go).
 //
 // session_turn: the UNIQUE(session_id, role, ts) constraint is the
 // AppendTurn idempotency mechanism — a replayed (sessionID, user.Ts,
@@ -59,6 +65,19 @@ CREATE INDEX IF NOT EXISTS idx_audit_session_id ON audit(session_id);
 CREATE INDEX IF NOT EXISTS idx_audit_skill_id   ON audit(skill_id);
 CREATE INDEX IF NOT EXISTS idx_audit_refusal    ON audit(refusal_reason);
 CREATE INDEX IF NOT EXISTS idx_audit_ts         ON audit(ts);
+
+CREATE TABLE IF NOT EXISTS audit_meta (
+    query_id                 INTEGER PRIMARY KEY,
+    rewritten_query          TEXT,
+    classifier_decision      TEXT    NOT NULL,
+    classifier_reason        TEXT,
+    classifier_confidence    REAL,
+    history_projected_n_turns INTEGER NOT NULL DEFAULT 0,
+    history_budget_truncated  INTEGER NOT NULL DEFAULT 0,
+    history_dropped_count     INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (query_id) REFERENCES audit(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_audit_meta_decision ON audit_meta(classifier_decision);
 
 CREATE TABLE IF NOT EXISTS session_turn (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
