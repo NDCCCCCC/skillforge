@@ -245,8 +245,11 @@ describe('SessionDrawer', () => {
     expect(closed).toBe(true);
   });
 
-  it('renders nothing when open={false}', () => {
+  // B9 — the drawer no longer gates on open: it lives inside the
+  // always-mounted .session-panel-wrap so the exit slide paints real
+  // content. Visibility/focus are the wrap's job (data-open + inert).
+  it('keeps content mounted when open={false} (B9 overlay contract)', () => {
     renderDrawer(false);
-    expect(screen.queryByTestId('session-drawer')).toBeNull();
+    expect(screen.getByTestId('session-drawer')).toBeInTheDocument();
   });
 });

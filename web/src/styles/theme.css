@@ -161,6 +161,13 @@
   /* ===== Layout dimensions ===== */
   --topbar-height: 56px;
   --statusbar-height: 26px;
+  /* Chat column max widths — Open Design B8: reading-measure study puts
+     the comfortable line length at 45-75 chars (~768-840px on the 15-16px
+     base font with 1.6-1.75 line-height). Matches Claude.ai / Gemini /
+     ChatGPT visual density; keeps the chat centered when both sidebars
+     collapse instead of stretching to viewport width. */
+  --chat-col-max-width: 840px;
+  --chat-composer-max-width: 768px;
 
   /* ===== Transitions ===== */
   --transition-fast: 120ms;
@@ -289,9 +296,11 @@ body,
   padding: var(--space-6);
 }
 
-/* Resize handles between panels (per sketch-findings
-   layout-three-panel.md). The handle is a 4px-wide hit area; the
-   visible 1px line turns primary on hover/drag. */
+/* Resize handles — B9: rendered INSIDE their panel wrap and pinned to
+   its inner edge via the `.xxx-panel-wrap > .resize-handle` rules in
+   the chat-layout section below (absolute, 8px hit area). The visible
+   1px line turns primary on hover/drag; the in-wrap rules re-center it
+   with left:50% + translateX. */
 .resize-handle {
   position: relative;
   width: 4px;
@@ -308,7 +317,10 @@ body,
   bottom: 0;
   left: 2px;
   width: 1px;
-  background-color: var(--color-border-muted);
+  /* Seamless canvas: no resting boundary line — the affordance only
+     fades in on hover/drag (the hover rule below paints it
+     primary). */
+  background-color: transparent;
   transition: background-color var(--transition-fast);
 }
 .resize-handle:hover::before,
@@ -342,11 +354,11 @@ body[data-dragging="true"] * {
    - "Transparency bar": pulsing activity dots on working surfaces
 */
 
-/* Chat messages container — subtle backdrop lift */
+/* Chat messages container — seamless: no backdrop lift, the chat
+   column and the overlay panels share the app background as one
+   canvas (user ask: 融为一体，不要有边界). */
 .chat-messages-modern {
-  background: linear-gradient(180deg,
-    var(--color-message-area) 0%,
-    var(--color-bg) 100%);
+  background: transparent;
 }
 
 /* ---------- User message bubble (right-aligned card) ---------- */
@@ -907,6 +919,13 @@ body[data-dragging="true"] * {
 .composer-modern {
   padding: var(--space-3) var(--space-4) var(--space-4);
   background: transparent;
+  /* Open Design B8 — keep the composer visually aligned with the message
+     column. Slightly narrower cap (768px) gives the rounded composer
+     card breathing room on either side rather than abutting the chat-col
+     edge. */
+  max-width: var(--chat-composer-max-width, 768px);
+  margin-inline: auto;
+  width: 100%;
 }
 
 .composer-card {
@@ -1449,15 +1468,29 @@ body[data-dragging="true"] * {
 }
 
 /* ====================================================================
-   Chat-first layout (Open Design redesign B2 — replaces the .app-main
-   5-track grid). chat-body = chat column (flex-1) + optional resize
-   handle + collapsible detail panel. Width transitions use the spring
-   easing except while dragging (inline width must track 1:1).
+   Chat-first layout (Open Design redesign B2 → B9 overlay). chat-body
+   owns ONE in-flow child — the chat column — plus two absolutely
+   positioned overlay panels floating ABOVE the chat. Toggling a panel
+   slides it in/out via transform (GPU-composited, zero layout) so the
+   centered chat column never moves. A "safety cap" max-width keeps the
+   panels from covering the chat column on mid-size viewports; below
+   1280px they degrade to scrim-backed sheets (B7). Width transitions
+   apply to nothing except while dragging (inline width must track 1:1).
    ==================================================================== */
 .chat-body {
   display: flex;
   flex: 1;
   min-height: 0;
+  /* Containing block for the overlay panels (they span this box,
+     top:0 → bottom:0, i.e. exactly between TopBar and StatusBar). */
+  position: relative;
+  /* Clip the closed panels' translated boxes — they'd otherwise count
+     into the DOCUMENT scrollable overflow (visibility:hidden doesn't
+     remove boxes, and transforms are included), spawning scrollbars
+     that shift the centered chat column by half a scrollbar width.
+     `clip` (not `hidden`) avoids creating a scroll container; the
+     panels' shadows point inward so nothing visible is cut. */
+  overflow: clip;
 }
 
 .chat-col {
@@ -1465,14 +1498,51 @@ body[data-dragging="true"] * {
   min-width: 0;
   height: 100%;
   overflow: hidden;
+  /* Open Design B8/B9 — the chat column is the only in-flow child, so
+     it centers against the FULL chat-body width. Sidebar toggles can
+     never shift it: panels are absolute overlays above it, not flex
+     siblings. max-width keeps the reading measure; the app paints
+     empty surface-2 gutters wherever panels don't reach. */
+  max-width: var(--chat-col-max-width, 840px);
+  margin-inline: auto;
+  width: 100%;
 }
 
+/* Right overlay panel — floats above the chat (B9). Open state is the
+   base (transform:none, fully visible); [data-open='false'] slides it
+   off-screen. The visibility transition is DELAYED by the slide
+   duration so the panel stays painted while it exits; the open state
+   omits visibility from transition-property entirely, making it
+   visible again the instant it starts sliding back in. `inert` on the
+   wrap (React) blocks focus/AT during the exit window. */
 .detail-panel-wrap {
-  flex: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
   min-width: 0;
-  height: 100%;
-  border-left: 1px solid var(--color-border);
-  transition: width var(--transition-base) var(--ease-spring);
+  overflow: hidden;
+  /* Seamless canvas (user ask): the panel shares the app background —
+     no border, no shadow, no distinct surface. The panel content's
+     own affordances delineate it; the chat and both panels read as
+     one continuous surface. */
+  background: var(--color-bg);
+  /* Safety cap (user-selected): the panel may never intrude into the
+     centered chat column. Below ~1612px viewports the cap trims the
+     stored/dragged width; at wider viewports it exceeds the 320–520
+     drag clamp and is a no-op. <1280px the media query swaps this for
+     a viewport-relative 92vw cap. */
+  max-width: calc((100vw - var(--chat-col-max-width, 840px)) / 2 - 16px);
+  transition: transform var(--transition-base) var(--ease-spring);
+}
+
+.detail-panel-wrap[data-open='false'] {
+  transform: translateX(100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform var(--transition-base) var(--ease-spring),
+              visibility 0s linear var(--transition-base);
 }
 
 .detail-panel-wrap.no-transition {
@@ -1487,20 +1557,25 @@ body[data-dragging="true"] .detail-panel-wrap {
   padding: 0;
 }
 
-/* TopBar — 56px frosted-glass strip (redesign §4.3) */
+/* TopBar — 56px frosted-glass strip (redesign §4.3). backdrop-filter
+   makes this a stacking context, so its dropdowns (z-10/z-20 inside)
+   would otherwise be trumped by the z-30 overlay panels. Lift the
+   whole bar above them. */
 .topbar {
+  position: relative;
+  z-index: 40;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   background-color: color-mix(in srgb, var(--color-surface) 88%, transparent);
 }
 
 /* ====================================================================
-   Responsive (Open Design redesign B7).
-   <1280px: the detail panel becomes a fixed overlay sheet over the
-   chat column (chat stays full-width underneath) with a scrim that
-   closes it on click. The resize handle is hidden — overlay width is
-   capped by max-width instead of drag (inline width from the store
-   still applies, clamped to 92vw).
+   Responsive (Open Design redesign B7 → B9).
+   The panels are overlays at every size; below 1280px they turn
+   modal-ish: a fixed scrim (z 20, under the panels, under the TopBar)
+   closes them on click, drag-resize is disabled (handle hidden) and
+   the width caps go viewport-relative (92vw/85vw) instead of the
+   chat-column safety cap.
    <768px: full-width phones — user bubbles and the inline verdict
    card drop their max-width caps (SessionPicker is already
    `hidden md:block` in the TopBar; suggested prompts are single
@@ -1515,7 +1590,7 @@ body[data-dragging="true"] .detail-panel-wrap {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 30;
+    z-index: 20;
     background-color: color-mix(in srgb, var(--color-bg) 60%, transparent);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
@@ -1526,15 +1601,8 @@ body[data-dragging="true"] .detail-panel-wrap {
   }
 
   .detail-panel-wrap {
-    position: fixed;
-    top: var(--topbar-height);
-    bottom: var(--statusbar-height);
-    right: 0;
-    z-index: 40;
-    max-width: 92vw; /* inline store width (320–520) applies, capped by viewport */
-    box-shadow: -12px 0 40px var(--color-shadow-card);
-    border-left: 1px solid var(--color-border);
-    transition: transform var(--transition-base) var(--ease-spring);
+    /* inline store width (320–520) applies, capped by viewport */
+    max-width: 92vw;
   }
 }
 
@@ -1550,9 +1618,9 @@ body[data-dragging="true"] .detail-panel-wrap {
 
 /* ====================================================================
    SessionDrawer (session-management phase) — the LEFT session panel,
-   mirroring .detail-panel-wrap's dual form: an INLINE column ≥1280px
-   (chat compresses but stays usable) and a fixed left overlay with a
-   scrim below. Geometry lives HERE; the component renders content
+   mirroring .detail-panel-wrap's overlay form exactly (B9): absolute,
+   left-anchored, slides via transform, safety-capped away from the
+   chat column. Geometry lives HERE; the component renders content
    only. `.sp-scrim` mirrors `.dp-scrim` (display:none by default,
    block under the <1280px media query).
    ==================================================================== */
@@ -1561,31 +1629,73 @@ body[data-dragging="true"] .detail-panel-wrap {
 }
 
 .session-panel-wrap {
-  position: relative;
-  flex: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
   min-width: 0;
   overflow: hidden;
-  border-right: 1px solid var(--color-border);
-  transition: width var(--transition-base) var(--ease-spring);
+  /* Seamless canvas — mirror of .detail-panel-wrap (see its
+     comment). */
+  background: var(--color-bg);
+  /* Safety cap — mirror of .detail-panel-wrap (see its comment). */
+  max-width: calc((100vw - var(--chat-col-max-width, 840px)) / 2 - 16px);
+  transition: transform var(--transition-base) var(--ease-spring);
+}
+
+.session-panel-wrap[data-open='false'] {
+  transform: translateX(-100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform var(--transition-base) var(--ease-spring),
+              visibility 0s linear var(--transition-base);
 }
 
 .session-panel-wrap.no-transition {
   transition: none;
 }
 
-@keyframes session-drawer-in {
-  from {
-    transform: translateX(-100%);
-    opacity: 0.6;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+/* Symmetry fix: the detail side always had this drag override; the
+   session side was missing it, so mid-drag width writes fought the
+   spring transition. */
+body[data-dragging="true"] .session-panel-wrap {
+  transition: none;
 }
 
-.session-drawer {
-  animation: session-drawer-in 200ms var(--ease-spring);
+/* Resize handles live INSIDE their panel wrap, absolutely pinned to
+   the inner edge (session → right edge, detail → left edge). Widened
+   to 8px since the hit area no longer straddles the old flex boundary.
+   The visible 1px line centers via left:50% + translateX. */
+.session-panel-wrap > .resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
+  width: 8px;
+}
+
+.detail-panel-wrap > .resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
+  width: 8px;
+}
+
+.session-panel-wrap > .resize-handle::before,
+.detail-panel-wrap > .resize-handle::before {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.session-panel-wrap > .resize-handle:hover::before,
+.session-panel-wrap > .resize-handle.dragging::before,
+.detail-panel-wrap > .resize-handle:hover::before,
+.detail-panel-wrap > .resize-handle.dragging::before {
+  left: 50%;
 }
 
 @media (max-width: 1279px) {
@@ -1593,22 +1703,14 @@ body[data-dragging="true"] .detail-panel-wrap {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 30;
+    z-index: 20;
     background-color: color-mix(in srgb, var(--color-bg) 60%, transparent);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
   }
 
   .session-panel-wrap {
-    position: fixed;
-    top: var(--topbar-height);
-    bottom: var(--statusbar-height);
-    left: 0;
-    z-index: 40;
     max-width: 85vw;
-    box-shadow: 12px 0 40px var(--color-shadow-card);
-    border-right: 1px solid var(--color-border);
-    transition: transform var(--transition-base) var(--ease-spring);
   }
 }
 

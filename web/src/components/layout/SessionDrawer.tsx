@@ -127,7 +127,12 @@ export default function SessionDrawer({ open, onClose }: SessionDrawerProps) {
     })).filter((g) => g.rows.length > 0);
   }, [sessions, query]);
 
-  if (!open) return null;
+  // B9 — no render gate: the drawer stays mounted (inside the
+  // always-mounted .session-panel-wrap) so the wrap's exit slide
+  // paints real content and the roster keeps its scroll position.
+  // Visibility/positioning/focus-blocking are owned by the wrap's
+  // data-open + inert; `open` still drives the Esc listener above and
+  // the transient-state reset on reopen.
 
   function handleSelect(id: string) {
     if (renamingId === id) return; // editing — don't steal focus/clobber
@@ -173,7 +178,7 @@ export default function SessionDrawer({ open, onClose }: SessionDrawerProps) {
   return (
     <div
       data-testid="session-drawer"
-      className="session-drawer flex h-full min-h-0 flex-col bg-surface"
+      className="session-drawer flex h-full min-h-0 flex-col"
     >
         {/* Header — title + 新建 + close */}
         <div className="flex h-11 flex-none items-center justify-between border-b border-border px-4">

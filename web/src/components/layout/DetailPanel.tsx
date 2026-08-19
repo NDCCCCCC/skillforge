@@ -189,7 +189,7 @@ export default function DetailPanel({
   return (
     <div
       data-testid="detail-panel"
-      className="detail-panel flex h-full min-w-0 flex-col bg-surface"
+      className="detail-panel flex h-full min-w-0 flex-col"
     >
       <div className="dp-head flex h-11 flex-none items-center justify-between border-b border-border px-4">
         <span className="text-sm font-semibold tracking-wide text-text">详情</span>
