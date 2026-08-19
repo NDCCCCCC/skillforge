@@ -33,6 +33,7 @@
 
 import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
+import { Sparkles } from 'lucide-react';
 import DataPolicyPart from './parts/DataPolicyPart';
 import DataSubprogressPart from './parts/DataSubprogressPart';
 import ReasoningPart from './parts/ReasoningPart';
@@ -195,7 +196,15 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
       data-testid="message-bubble"
       data-role="assistant"
     >
-      {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
+      {/* Open Design B4 — 30px Sparkles 方标 anchoring the assistant
+          column; parts live in the body (D-08 reasoning-before-text
+          order is preserved inside .message-assistant-body). */}
+      <div className="assistant-mark" data-testid="assistant-mark" aria-hidden="true">
+        <Sparkles className="h-4 w-4" />
+      </div>
+      <div className="message-assistant-body">
+        {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
+      </div>
     </div>
   );
 }

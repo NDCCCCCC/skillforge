@@ -370,20 +370,203 @@ body[data-dragging="true"] * {
 }
 
 /* ---------- Assistant message (full-width, no chrome) ---------- */
+/* Open Design B4 — row layout: 30px Sparkles 方标 + body column. */
 .message-assistant {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-3);
   margin: var(--space-5) 0;
   padding: 0;
   animation: message-in 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.assistant-mark {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  background: var(--color-primary-dim);
+  color: var(--color-primary);
+  border: 1px solid var(--color-tool-accent-border);
+  box-shadow: 0 0 12px var(--color-glow-faint);
+}
+
+.message-assistant-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .message-assistant-text {
   color: var(--color-text);
   font-size: var(--text-base);
-  line-height: 1.7;
+  line-height: 1.75;
   letter-spacing: 0.005em;
+}
+
+/* ---------- B4: markdown rich answer body ---------- */
+.markdown-body {
+  color: var(--color-text);
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p {
+  margin: 0 0 10px;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 18px 0 8px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+.markdown-body h1 { font-size: 1.25em; }
+.markdown-body h2 { font-size: 1.15em; }
+.markdown-body h3 { font-size: 1.05em; }
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 10px;
+  padding-left: 1.35em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.markdown-body li > p {
+  margin: 0;
+}
+
+.markdown-body blockquote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--color-border-muted);
+  color: var(--color-text-muted);
+}
+
+.markdown-body a {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 14px 0;
+}
+
+.markdown-body table {
+  width: 100%;
+  margin: 0 0 10px;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--color-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.markdown-body p code,
+.markdown-body li code,
+.markdown-body td code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--color-terminal-prompt);
+}
+
+/* ---------- B4: cmd-block — fenced-code terminal card ---------- */
+.cmd-block {
+  margin: 12px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-terminal-bg);
+}
+
+.cmd-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-terminal-bg) 55%, var(--color-surface-2));
+}
+
+.cmd-block-lang {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-terminal-prompt);
+}
+
+.cmd-block-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.cmd-block-copy:hover {
+  color: var(--color-text);
+  background: var(--color-surface-3);
+}
+
+.cmd-block-body {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--color-terminal-fg);
+}
+
+.cmd-block-body code {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
 }
 
 /* ---------- Tool call card (modern elevated card) ---------- */

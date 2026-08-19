@@ -1,12 +1,12 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// TextPart — renders the assistant's main response text. Wraps in <p>
-// with body font + relaxed line height for comfortable reading.
+// TextPart — renders the assistant's main response text.
 //
-// The AI SDK v7 parser upstream (text-start / text-delta / text-end)
-// collapses into a single text part. White-space is preserved so any
-// newlines from the model survive rendering.
+// Open Design redesign B4: the pre-wrap plain-text <p> is replaced by
+// the MarkdownMessage renderer (react-markdown + remark-gfm; fenced
+// code blocks become copyable cmd-blocks). Paragraph typography moves
+// to .markdown-body in theme.css.
 //
 // 260817-i36 (①): optional `verdictStatus` prop. When MessageBubble
 // finds a data-policy Verdict in the same message, the platform Status
@@ -15,8 +15,10 @@
 // Streaming note: data-policy arrives AFTER the text part, so the badge
 // appears only once the verdict lands — acceptable per locked decision.
 // When the prop is absent (no verdict in this message) the output is
-// byte-identical to the pre-260817-i36 renderer.
+// the markdown body alone (byte-identical wrapper to the pre-B4
+// renderer's relative-wrapper shape).
 import type { TextUIPart } from 'ai';
+import MarkdownMessage from '../MarkdownMessage';
 import StatusBadge from '../../common/StatusBadge';
 import type { VerdictStatus } from '../../../types/verdict';
 
@@ -27,12 +29,9 @@ export interface TextPartProps {
 
 export function TextPart({ part, verdictStatus }: TextPartProps) {
   const body = (
-    <p
-      className="message-assistant-text"
-      style={{ whiteSpace: 'pre-wrap' }}
-    >
-      {part.text}
-    </p>
+    <div className="message-assistant-text">
+      <MarkdownMessage text={part.text} />
+    </div>
   );
   if (verdictStatus === undefined) {
     return body;
