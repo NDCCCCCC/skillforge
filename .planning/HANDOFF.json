@@ -1,46 +1,67 @@
 {
   "version": "1.0",
-  "timestamp": "2026-08-19T15:52:20Z",
-  "phase": "10",
-  "phase_name": "10-p8-1",
-  "phase_dir": ".planning/phases/10-p8-1",
-  "plan": 4,
-  "task": 3,
-  "total_tasks": 3,
+  "timestamp": "2026-08-19T16:10:58.568Z",
+  "phase": "11",
+  "phase_name": "写工具 + 审批门（P8.2）",
+  "phase_dir": ".planning/phases/11-p8-2",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
   "status": "paused",
-  "completed_tasks": [
-    {"id": 1, "name": "10-01 BE foundation (verdict renderer + neutral placeholder + budget window + classifier type isolation)", "status": "done", "commit": "a146827+fbb951c+e482527"},
-    {"id": 2, "name": "10-02 BE pipeline injection (query rewriter + refusal classifier + audit_meta + data-decision events + production assembly)", "status": "done", "commit": "be60fca+169bc5e+946c00f+d13c050"},
-    {"id": 3, "name": "10-03 FE restoration (GET /api/session/:id/history + chat-restore + use-skill-auto-switch + HistoryRewriteHint)", "status": "done", "commit": "74fd53e+01cb59b"},
-    {"id": 4, "name": "10-04 --via-pipeline spike route + pre-flight hermetic + Task 2 live 35-case re-run + Task 3 closeout", "status": "done", "commit": "fdbfe0a+0c4becc"},
-    {"id": 5, "name": "Quick task 260819-dsp: remove DataSubprogressPart dead data.state read (pre-existing FE tsc error)", "status": "done", "commit": "c285c55+65d3481"}
+  "completed_phases_this_session": [
+    {"phase": "10-p8-1", "name": "多轮对话记忆（P8.1）", "status": "closed-blocker-notes", "uat": "22 tests = 19 passed / 0 issues / 3 blocked-by-server", "uat_status": "partial (GSD framework rule with documented operator-gate reasons)", "closeout_commit": "11acbbd"}
   ],
-  "remaining_tasks": [
-    {"id": 6, "name": "Phase 10 Plan 04 Task 2: live 35-case --via-pipeline --summarize spike re-run (BLOCKED pending operator .env + Docker Milvus/BGE-M3)", "status": "not_started"}
+  "session_commits": [
+    "eab084e test(10): UAT partial - 18 hermetic pass / 1 minor issue / 3 live-blocked",
+    "c285c55 fix(web): DataSubprogressPart remove dead data.state read",
+    "65d3481 docs(quick-260819): log DataSubprogressPart fix + close UAT Test 22",
+    "c242edd wip: pause Phase 10 verification (19/0/3) + quick 260819",
+    "11acbbd docs(10): close Phase 10 hermetic-gated; advance to Phase 11"
+  ],
+  "remaining_work": [
+    {"phase": "11", "objective": "写工具 + 审批门（P8.2）", "req_ids": ["HITL-01", "HITL-02", "HITL-03", "HITL-04", "HITL-05", "HITL-06", "HITL-07", "HITL-08"], "precondition": "Phase 11 inherits Phase 9/10 trust-floor hardening (D9-V2 escape plan already implemented)", "needs": "/gsd:discuss-phase 11 OR /gsd:plan-phase 11 --skip-research to bootstrap CONTEXT.md/RESEARCH.md/PLAN.md", "research_scope": "Eino ADK interrupt-and-rerun (v0.9.14) + CheckPointStore Delete + expires_at filter + AI SDK v5 chat@7 custom transport resume shape (RF-3) + approval UI integration with RightChat + audit_trail persistence"}
   ],
   "blockers": [
-    {"description": "Live 35-case spike re-run (Phase 10 Plan 04 Task 2) blocked-pending-human since 2026-08-18", "type": "human_action", "workaround": "Operator populates .env (GLM_API_KEY, BGE_M3_URL, MILVUS_ADDRESS) + starts Docker Milvus + BGE-M3, then runs: go run ./cmd/spike-history --via-pipeline --summarize --seed=42 --golden=eval/golden/compliance.jsonl --out=reports/ --cost-limit=5.00"}
+    {
+      "description": "Phase 10 Plan 04 Task 2: live 35-case --via-pipeline --summarize re-run",
+      "type": "human_action",
+      "workaround": "explicitly deferred to v0.8 milestone release gate (NOT Phase 11 prerequisite); not blocking Phase 11 planning",
+      "unblock_command": "populate .env (GLM_API_KEY/BGE_M3_URL/MILVUS_ADDRESS) + start Docker Milvus + BGE-M3 + run: go run ./cmd/spike-history --via-pipeline --summarize --seed=42 --golden=eval/golden/compliance.jsonl --out=reports/ --cost-limit=5.00"
+    },
+    {
+      "description": "Context window at 73% (post-pause)",
+      "type": "infrastructure",
+      "workaround": "this pause-work creates handoff for /clear + fresh session resume",
+      "unblock_command": "/clear then /gsd:resume-work"
+    }
   ],
   "human_actions_pending": [
-    {"action": "Provision live stack (.env + Docker Milvus + BGE-M3) to unblock Phase 10 Plan 04 Task 2", "context": "memory release gate — 4-metric drift <5%, refusal delta <10pp, SC-3 0/10, cost <$5.00/segment", "blocking": true},
-    {"action": "After live stack runs, re-verify Phase 10 UAT Tests 19/20/21 to clear blocked status", "context": "Phase 10 UAT file: .planning/phases/10-p8-1/10-UAT.md", "blocking": false},
-    {"action": "Resolve Phase 7 leftovers (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF, 07-06 publication) — deferred to after v0.8 milestone by user decision 2026-08-17", "context": "out-of-scope for v0.8 phase chain 8→9→10→11→12→13", "blocking": false}
+    {"action": "Decide whether to run Phase 11 with full plan-phase flow (research→plan→checker) or simpler discuss-only path", "context": "Phase 11 is a substantial HITL feature spanning FE+BE; recommend discuss-phase first to capture approval-UI design decisions before committing 4-7 plans", "blocking": false}
   ],
   "decisions": [
-    {"decision": "Phase 9 NO-GO accepted with escape plan (D9-V1/V2/V3)", "rationale": "SC-3 zero-penetration 0/10 PASS but refusal -95pp + faithfulness/context_recall drift > thresholds. Phase 10 must add escape-plan hardening before memory release.", "phase": "9"},
-    {"decision": "Phase 10 ships hermetic-gated; live 35-case re-run is operator responsibility", "rationale": "User 2026-08-18 signed acceptance; hermetic evidence + frozen lock byte-identity (sha256 5cf700f3...) + 349/349 vitest + full BE suite green are sufficient to advance to Phase 11 planning.", "phase": "10"},
-    {"decision": "DataSubprogressPart fix does NOT touch D15 wire-type invariants (added no state field to SubprogressStep)", "rationale": "Steps are append-only per godoc — no live pending state to model on wire or in component. Removing the dead read is minimal and D15-safe.", "phase": "10"}
+    {"decision": "Phase 10 closed-blocker-notes (per user 2026-08-20 sign-off)", "rationale": "UAT 19/0/3 with 3 server-blocked tests documented as operator gates; live re-run is v0.8 milestone responsibility", "phase": "10"},
+    {"decision": "Live 35-case --via-pipeline --summarize re-run is NOT Phase 11 entry prerequisite", "rationale": "GEVL-08 spike hard gate belongs to v0.8 milestone release, not to Phase 11 planning", "phase": "10"},
+    {"decision": "Pause Phase 11 planning before research agent spawn", "rationale": "context window at 73% (post-pause); HITL feature requires 150-300k tokens for full plan-phase chain (research → pattern-map → plan × 4-7 → checker × 1-3 rounds); pause preserves budget for fresh session", "phase": "11"}
   ],
-  "uncommitted_files": [
-    ".claude/",
-    ".planning/debug/chat-column-too-wide.md",
-    ".planning/phases/07-open-source-release/07-REVIEW.md",
-    "du.exe.stackdump",
-    "eval/calibration.json",
-    "grep.exe.stackdump",
-    "screenshots/",
-    "scripts/test"
+  "infrastructure_state": {
+    "git_branch": "master",
+    "git_status": "clean (5 commits ahead of this session's starting baseline)",
+    "working_tree_untracked": [".claude/", ".planning/debug/chat-column-too-wide.md", ".planning/phases/07-open-source-release/07-REVIEW.md", "du.exe.stackdump", "eval/calibration.json", "eval/report.json", "grep.exe.stackdump", "screenshots/", "scripts/test"],
+    "live_stack": "NOT provisioned (.env empty, Docker Milvus+BGE-M3 not running)",
+    "frozen_lock_sha256": "5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded",
+    "frozen_lock_binding_gate": "git diff --quiet eval/frozen/compliance.lock.json (must remain exit 0)"
+  },
+  "toolchain_quirks": [
+    {
+      "issue": "gsd-sdk wrapper not on PATH",
+      "workaround": "use direct invocation: node /c/Users/CPIC/.claude/get-shit-done/bin/gsd-tools.cjs <command> [args] [--cwd /d/code/ClaudeCode/ai-agent]",
+      "example": "node .../gsd-tools.cjs init plan-phase 11 --cwd /d/code/ClaudeCode/ai-agent"
+    },
+    {
+      "issue": "auto_chain_active was true at session start (interrupted chain residue from prior session)",
+      "fix_at_resume": "without --auto or --chain flag in /gsd:plan-phase 11 invocation, the flag will be cleared automatically per plan-phase.md §15"
+    }
   ],
-  "next_action": "Run /gsd:resume-work to continue Phase 10 closeout (live-stack path) OR advance to /gsd:plan-phase 11 (写工具 + 审批门 P8.2). Phase 10 UAT is `partial` with only live-blocked tests outstanding — documented as operator responsibility, not a code regression.",
-  "context_notes": "All GSD state already in STATE.md + 10-UAT.md + quick/260819-dsp-*/. User has been working on Phase 10 since 2026-08-18; explicit acceptance of NO-GO with escape plan signed. Phase 11 (HITL-01..08) is the next unblocked phase and depends only on Phase 10's hermetic-gated memory (the live-stack gate is v0.8 milestone scope, not Phase 11 entry)."
+  "next_action": "/clear then run /gsd:resume-work to restore this handoff; then advance to /gsd:plan-phase 11 (or /gsd:discuss-phase 11 for context-first approach)",
+  "context_notes": "SkillForge v0.8 milestone; Phase 10 just closed with explicit ship hermetic-gated acceptance. Phase 11 is HITL (Human-in-the-Loop) write-tools+approval-gates (REQ HITL-01..08). D9-V2 escape plan (RefusalClassifierInput type-isolated to Query+Chunks, no History) is Phase 11's foundation. SQLite CheckPointStore skeleton ready (D8-03/D8-06); Phase 11 implements Delete + expires_at filter + schema.RegisterName[T](name) registration. data-decision SSE chunk discriminator (D16) wired. The 'fe/be 同 phase 不可拆' constraint from ROADMAP means write tools AND approval UI ship together."
 }
