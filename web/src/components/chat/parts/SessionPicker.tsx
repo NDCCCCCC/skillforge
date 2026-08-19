@@ -103,6 +103,20 @@ export default function SessionPicker() {
               新建会话
             </span>
           </button>
+          {/* Session-management phase — the drawer holds the full roster
+              surface (search/groups/pin/rename); this quick switcher
+              stays a shortcut. */}
+          <button
+            type="button"
+            data-testid="session-picker-open-drawer"
+            onClick={() => {
+              useAppStore.getState().setSessionDrawerOpen(true);
+              setOpen(false);
+            }}
+            className="block w-full border-t border-border px-2 py-1 text-left text-xs text-text-muted hover:bg-surface-3"
+          >
+            查看全部会话
+          </button>
         </div>
       )}
     </div>
