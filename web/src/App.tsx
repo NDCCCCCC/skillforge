@@ -5,7 +5,8 @@
 // 05-03 Task 2 + Plan 05-07 Task 1 + Plan 05-08 Task 1 + Plan 06-04
 // T1 — App composition root.
 // Wires:
-//   - ThreePanel layout (with extracted TopBar / StatusBar in 05-03)
+//   - ChatLayout chat-first shell (Open Design redesign B2; TopBar +
+//     chat column + collapsible DetailPanel + StatusBar)
 //   - useChat + createTransport(env) — chat streaming
 //     (Plan 05-08: per-session Chat instance kept in `chatMapRef`; useChat
 //     receives the Chat instance via the `chat` prop (NOT `id`) so messages
@@ -16,8 +17,8 @@
 //     store.skills from item.manifest.description
 //   - ReloadToast — surfaces success/failure toasts (auto-dismiss 4s
 //     on success; persistent on failure)
-//   - CenterPanel — 5-tab strip (Phase 5: Agent 状态 + 知识图谱)
-//   - RightChat — SkillPicker + ChatInput + MessageBubble per message
+//   - DetailPanel — 5-tab strip (Phase 5: Agent 状态 + 知识图谱)
+//   - ChatColumn — ChatInput + MessageBubble per message
 //   - Plan 06-04 (D6-01 + D-04/D12): route branch — when the store's
 //     `route === 'eval'`, the chat three-panel is replaced by
 //     <EvalDashboard /> (admin mode). The eval route has its OWN
@@ -27,11 +28,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chat, useChat } from '@ai-sdk/react';
 import type { UIMessage } from 'ai';
-import CenterPanel from './components/center/CenterPanel';
+import ChatLayout from './components/layout/ChatLayout';
+import ChatColumn from './components/layout/ChatColumn';
+import DetailPanel from './components/layout/DetailPanel';
 import ReloadToast from './components/layout/ReloadToast';
-import RightChat from './components/layout/RightChat';
-import ThreePanel from './components/layout/ThreePanel';
-import LeftSidebar from './components/layout/LeftSidebar';
 import EvalDashboard from './components/eval/EvalDashboard';
 import { MessageBubble } from './components/chat/MessageBubble';
 import HistoryRewriteHint from './components/chat/HistoryRewriteHint';
@@ -288,20 +288,19 @@ function LiveApp() {
 
   return (
     <>
-      <ThreePanel
-        left={<LeftSidebar />}
-        center={
-          <CenterPanel
-            currentVerdict={currentVerdict}
-            messages={messages}
-            chatStatus={status}
-          />
-        }
-        right={
-          <RightChat
+      <ChatLayout
+        chat={
+          <ChatColumn
             messages={messages}
             status={status}
             onSend={handleSend}
+          />
+        }
+        detail={
+          <DetailPanel
+            currentVerdict={currentVerdict}
+            messages={messages}
+            chatStatus={status}
           />
         }
       />

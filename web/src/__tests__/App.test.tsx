@@ -5,8 +5,10 @@
 //
 // Mounts <App> at the React tree root, simulates a user flow that
 //   1. sends a message in session A
-//   2. creates a new session B (LeftSidebar 新建会话 button)
-//   3. clicks session A back via the LeftSidebar row
+//   2. creates a new session B (store.createSession — the UI entry
+//      moved to the TopBar session picker in the B2 chat-first
+//      redesign; the LeftSidebar button is gone)
+//   3. switches back to session A (store.setActiveSession)
 //   4. asserts session A's previously-streamed bubbles are STILL present
 //
 // This is the test that would have caught the CR-01 bug: the previous
@@ -62,9 +64,9 @@ beforeEach(() => {
 });
 
 describe('App integration (Plan 05-08 CR-01 + D5-IA-03)', () => {
-  it('(1) mounts and shows the initial session in the chat panel', () => {
+  it('(1) mounts and shows the chat-first shell with the initial session', () => {
     render(<App />);
-    expect(screen.getByTestId('left-sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-body')).toBeInTheDocument();
     expect(useAppStore.getState().activeSessionId).toBe('session-init');
   });
 
@@ -97,10 +99,10 @@ describe('App integration (Plan 05-08 CR-01 + D5-IA-03)', () => {
         { timeout: 3000 },
       );
 
-      // Create session B (LeftSidebar 新建会话 button).
-      const newSessionBtn = screen.getByTestId('left-sidebar-new-session');
+      // Create session B (store action — the UI entry point moved to
+      // the TopBar session picker in B2; LeftSidebar is gone).
       await act(async () => {
-        fireEvent.click(newSessionBtn);
+        useAppStore.getState().createSession();
       });
       const newActive = useAppStore.getState().activeSessionId;
       expect(newActive).not.toBe('session-init');
@@ -111,14 +113,9 @@ describe('App integration (Plan 05-08 CR-01 + D5-IA-03)', () => {
         expect(screen.queryByText(/SENTINEL-MESSAGE-A/)).toBeNull();
       });
 
-      // Click session A back via the LeftSidebar row.
-      const sessionRows = screen.getAllByTestId('left-sidebar-session');
-      const sessionARow = sessionRows.find(
-        (r) => r.getAttribute('data-session-id') === 'session-init',
-      );
-      expect(sessionARow).toBeDefined();
+      // Switch back to session A via the store action.
       await act(async () => {
-        fireEvent.click(sessionARow as HTMLElement);
+        useAppStore.getState().setActiveSession('session-init');
       });
       expect(useAppStore.getState().activeSessionId).toBe('session-init');
 

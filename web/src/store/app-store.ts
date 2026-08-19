@@ -141,11 +141,12 @@ export type EvalSubroute = 'dashboard' | 'audit';
 export interface AppState {
   currentSkillId: string | null;
   centerView: CenterView;
-  sidebarLeft: boolean;
-  sidebarRight: boolean;
+  // Open Design redesign (B2) — chat-first layout. The old three-panel
+  // toggles (sidebarLeft/Right + left/rightWidth) are gone; the detail
+  // side panel (former center panel) is the only resizable shell state.
+  detailPanelOpen: boolean;
+  detailPanelWidth: number;
   preferences: { reasoningExpanded: boolean };
-  leftWidth: number;
-  rightWidth: number;
   // Phase 5 (05-03) — wizard + reload + last-routing mirror
   wizardMode: WizardMode;
   skillReloadStatus: Record<string, SkillReloadEntry>;
@@ -186,9 +187,10 @@ export interface AppState {
 export interface AppActions {
   setCenterView(view: CenterView): void;
   setCurrentSkill(id: string | null): void;
-  toggleSidebar(side: 'left' | 'right'): void;
+  setDetailPanelOpen(open: boolean): void;
+  toggleDetailPanel(): void;
+  setDetailPanelWidth(width: number): void;
   setReasoningExpanded(b: boolean): void;
-  setPanelWidth(side: 'left' | 'right', width: number): void;
   // Phase 5 (05-03) — wizard / reload / routing actions
   setWizardMode(mode: WizardMode): void;
   setSkillReloadStatus(skillId: string, entry: SkillReloadEntry): void;
@@ -220,8 +222,8 @@ export interface AppActions {
   setDraft(status: 'idle' | 'pending' | 'verified' | 'refused', text: string): void;
 }
 
-const DEFAULT_LEFT_WIDTH = 260;
-const DEFAULT_RIGHT_WIDTH = 420;
+const DEFAULT_DETAIL_OPEN = false;
+const DEFAULT_DETAIL_WIDTH = 380;
 
 // Plan 05-07 — session id generation. Sessions are UI-local and
 // in-memory (D5-IA-03), so a stable monotonic counter is sufficient
@@ -234,11 +236,9 @@ const INITIAL_SESSION_ID = `session-${sessionCounter++}`;
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
   currentSkillId: null,
   centerView: { kind: 'empty' },
-  sidebarLeft: true,
-  sidebarRight: true,
+  detailPanelOpen: DEFAULT_DETAIL_OPEN,
+  detailPanelWidth: DEFAULT_DETAIL_WIDTH,
   preferences: { reasoningExpanded: false },
-  leftWidth: DEFAULT_LEFT_WIDTH,
-  rightWidth: DEFAULT_RIGHT_WIDTH,
   // Phase 5 defaults
   wizardMode: { active: false, step: 0, totalSteps: 0 },
   skillReloadStatus: {},
@@ -270,18 +270,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   setCenterView: (view) => set({ centerView: view }),
   setCurrentSkill: (id) => set({ currentSkillId: id }),
-  toggleSidebar: (side) =>
-    set((state) => ({
-      sidebarLeft: side === 'left' ? !state.sidebarLeft : state.sidebarLeft,
-      sidebarRight: side === 'right' ? !state.sidebarRight : state.sidebarRight,
-    })),
+  setDetailPanelOpen: (open) => set({ detailPanelOpen: open }),
+  toggleDetailPanel: () => set((state) => ({ detailPanelOpen: !state.detailPanelOpen })),
+  setDetailPanelWidth: (width) => set({ detailPanelWidth: width }),
   setReasoningExpanded: (b) =>
     set((state) => ({ preferences: { ...state.preferences, reasoningExpanded: b } })),
-  setPanelWidth: (side, width) =>
-    set((state) => ({
-      leftWidth: side === 'left' ? width : state.leftWidth,
-      rightWidth: side === 'right' ? width : state.rightWidth,
-    })),
   // Phase 5 actions
   setWizardMode: (mode) => set({ wizardMode: mode }),
   setSkillReloadStatus: (skillId, entry) =>

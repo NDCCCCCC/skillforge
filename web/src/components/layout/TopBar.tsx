@@ -1,17 +1,17 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// TopBar — the 44px topbar of the ThreePanel shell. Phase 4 inlined
-// this inside ThreePanel.tsx; Phase 5 extracts it so the SC-2 skill-
-// manager menu + the SC-3 wizard entry point live in this file.
+// TopBar — the 56px topbar of the chat-first shell (Open Design
+// redesign B2; formerly the 44px three-panel topbar).
 //
-// Composition:
-//   - Brand logo + SkillForge label (Phase 4 inherited)
-//   - SkillManagerMenu trigger (Phase 5 NEW — replaces the Phase-4
-//     chevron stub which is no-op). Opens a Command-driven dropdown
-//     with installed Skills + 全部重载 / 新建 Skill（向导） CTAs.
-//   - Left + right sidebar collapse buttons (Phase 4 inherited).
-import { Hexagon, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
+// B2 composition (minimal migration — full Skill/Session pickers,
+// knowledge + eval + theme entries land in B3):
+//   - Brand logo + SkillForge label
+//   - SkillManagerMenu trigger (installed Skills + 全部重载 / 新建
+//     Skill（向导） CTAs — unchanged from Phase 5)
+//   - Detail-panel toggle (replaces the two three-panel collapse
+//     buttons)
+import { Hexagon, PanelRight, PanelRightClose } from 'lucide-react';
 import { useAppStore } from '../../store/app-store';
 import SkillManagerMenu from './SkillManagerMenu';
 
@@ -21,51 +21,35 @@ export interface TopBarProps {
 }
 
 export default function TopBar({ height }: TopBarProps) {
-  const sidebarLeft = useAppStore((s) => s.sidebarLeft);
-  const sidebarRight = useAppStore((s) => s.sidebarRight);
-  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const detailPanelOpen = useAppStore((s) => s.detailPanelOpen);
+  const toggleDetailPanel = useAppStore((s) => s.toggleDetailPanel);
 
   return (
     <div
-      className="flex items-center justify-between px-3 border-b border-border bg-surface"
+      className="topbar flex items-center justify-between border-b border-border bg-surface px-3"
       style={{ height: height ?? 'var(--topbar-height)' }}
       data-testid="app-topbar"
     >
       <div className="flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-dim">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-dim">
           <Hexagon className="h-4 w-4 text-primary" />
         </div>
-        <div className="text-lg font-semibold text-text">SkillForge</div>
+        <div className="text-lg font-semibold tracking-tight text-text">SkillForge</div>
       </div>
       <div className="flex items-center gap-2">
-        {/* Phase 5 — replaces the Phase-4 chevron stub with the real
-            SkillManagerMenu trigger. The chevron's no-op was tracked
-            as a Phase-4-deferred item per 05-UI-SPEC. */}
         <SkillManagerMenu />
         <button
           type="button"
-          data-testid="collapse-left"
-          onClick={() => toggleSidebar('left')}
-          className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
-          aria-label={sidebarLeft ? 'Collapse left panel' : 'Expand left panel'}
+          data-testid="toggle-detail-panel"
+          onClick={toggleDetailPanel}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          aria-label={detailPanelOpen ? '收起详情面板' : '展开详情面板'}
+          aria-pressed={detailPanelOpen}
         >
-          {sidebarLeft ? (
-            <PanelLeftClose className="h-4 w-4" />
-          ) : (
-            <PanelLeftOpen className="h-4 w-4" />
-          )}
-        </button>
-        <button
-          type="button"
-          data-testid="collapse-right"
-          onClick={() => toggleSidebar('right')}
-          className="inline-flex items-center justify-center h-8 w-8 rounded-md text-text-muted hover:text-text hover:bg-surface-2 transition-colors"
-          aria-label={sidebarRight ? 'Collapse right panel' : 'Expand right panel'}
-        >
-          {sidebarRight ? (
+          {detailPanelOpen ? (
             <PanelRightClose className="h-4 w-4" />
           ) : (
-            <PanelRightOpen className="h-4 w-4" />
+            <PanelRight className="h-4 w-4" />
           )}
         </button>
       </div>

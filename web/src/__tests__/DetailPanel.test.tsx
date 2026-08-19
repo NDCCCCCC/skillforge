@@ -1,23 +1,23 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 04-02 Task 3 — CenterPanel tests.
-//
-// Pins D-02 invariants:
+// Plan 04-02 Task 3 — DetailPanel tests (Open Design redesign B2:
+// formerly CenterPanel). Pins D-02 invariants:
 //   - default tab is `verdict`
-//   - tabs component renders 3 tab buttons with labels
-//     `结论`, `引用原文`, `Skill 定义`
+//   - tabs component renders 5 tab buttons with labels
+//     `结论`, `引用原文`, `Skill 定义`, `Agent 状态`, `知识图谱`
 //   - body switches on centerView.kind:
 //     - `empty` + no currentVerdict → empty-state hero `等待回答结果`
 //     - `verdict` + currentVerdict → <VerdictCard>
 //     - `chunk-source` → <ChunkSourceView> with chunk-verbatim + TierBadge
 //     - `skill-md` → <SkillMdPreview>
-//   - tab clicks do NOT change centerView (read-only; Wave 3 wires
-//     CitationCluster click → setCenterView)
+//   - tab clicks dispatch setCenterView (Phase-5 bidirectional nav)
+//   - B2: the dp-head close button collapses the panel via
+//     setDetailPanelOpen(false)
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import CenterPanel from '../components/center/CenterPanel';
+import DetailPanel from '../components/layout/DetailPanel';
 import { useAppStore } from '../store/app-store';
 import type { Verdict } from '../types/verdict';
 
@@ -39,15 +39,15 @@ beforeEach(() => {
   useAppStore.setState({ centerView: { kind: 'empty' } });
 });
 
-describe('CenterPanel', () => {
+describe('DetailPanel', () => {
   it('renders empty-state hero when centerView.kind === "empty" and no currentVerdict', () => {
-    render(<CenterPanel currentVerdict={null} />);
-    expect(screen.getByTestId('center-panel')).toHaveTextContent('等待回答结果');
+    render(<DetailPanel currentVerdict={null} />);
+    expect(screen.getByTestId('detail-panel')).toHaveTextContent('等待回答结果');
   });
 
   it('renders VerdictCard when centerView.kind === "verdict" and a currentVerdict is provided', () => {
     useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
-    render(<CenterPanel currentVerdict={compliantVerdict} />);
+    render(<DetailPanel currentVerdict={compliantVerdict} />);
     expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
     expect(screen.getByTestId('verdict-card')).toHaveAttribute('data-verdict-status', 'ok');
     expect(screen.getByTestId('verdict-card')).toHaveAttribute(
@@ -67,7 +67,7 @@ describe('CenterPanel', () => {
         effectiveTo: null,
       },
     });
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByTestId('chunk-verbatim')).toBeInTheDocument();
     // Wave 3: ChunkSourceView pulls the verbatim text from the
     // chunks.json fixture via the chunk-lookup helper.
@@ -79,7 +79,7 @@ describe('CenterPanel', () => {
 
   it('renders SkillMdPreview with 7-field SKILL.md content when centerView.kind === "skill-md"', () => {
     useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'simple-qa' } });
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByTestId('skill-md-preview')).toBeInTheDocument();
     // Wave 3: SkillMdPreview renders all 7 fields from skills.json.
     expect(screen.getByTestId('skill-md-preview')).toHaveTextContent('通用问答');
@@ -93,7 +93,7 @@ describe('CenterPanel', () => {
   });
 
   it('renders five tab buttons with the correct Chinese labels', () => {
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     const tablist = screen.getByRole('tablist');
     expect(tablist).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '结论' })).toBeInTheDocument();
@@ -106,7 +106,7 @@ describe('CenterPanel', () => {
 
   it('default tab is `verdict` — clicking the Agent 状态 tab dispatches setCenterView (Phase-5 bidirectional nav)', () => {
     useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
-    render(<CenterPanel currentVerdict={compliantVerdict} />);
+    render(<DetailPanel currentVerdict={compliantVerdict} />);
 
     const verdictTab = screen.getByRole('tab', { name: '结论' });
     expect(verdictTab).toHaveAttribute('aria-selected', 'true');
@@ -119,7 +119,7 @@ describe('CenterPanel', () => {
 
   it('clicking 知识图谱 tab dispatches setCenterView({kind:"knowledge-graph"})', () => {
     useAppStore.setState({ centerView: { kind: 'empty' } });
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     fireEvent.click(screen.getByRole('tab', { name: '知识图谱' }));
     expect(useAppStore.getState().centerView.kind).toBe('knowledge-graph');
   });
@@ -128,7 +128,7 @@ describe('CenterPanel', () => {
     // SkillPicker path: selecting a skill sets kind='skill-md' — the
     // Skill 定义 tab must be the active indicator (not stuck on 结论).
     useAppStore.setState({ centerView: { kind: 'skill-md', skillId: 'simple-qa' } });
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByRole('tab', { name: 'Skill 定义' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: '结论' })).toHaveAttribute('aria-selected', 'false');
 
@@ -145,16 +145,23 @@ describe('CenterPanel', () => {
         effectiveTo: null,
       },
     });
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByRole('tab', { name: '引用原文' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Skill 定义' })).toHaveAttribute('aria-selected', 'false');
   });
 
   it('agent-inspector kind mounts the empty-state placeholder (SC-4)', () => {
     useAppStore.setState({ centerView: { kind: 'agent-inspector' } });
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByTestId('agent-inspector-empty')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Agent 状态' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('B2 — the dp-head close button dispatches setDetailPanelOpen(false)', () => {
+    useAppStore.setState({ centerView: { kind: 'empty' }, detailPanelOpen: true });
+    render(<DetailPanel currentVerdict={null} />);
+    fireEvent.click(screen.getByTestId('detail-panel-close'));
+    expect(useAppStore.getState().detailPanelOpen).toBe(false);
   });
 
   it('knowledge-graph kind mounts the empty-state hero when BE returns an empty corpus (SC-5)', async () => {
@@ -180,7 +187,7 @@ describe('CenterPanel', () => {
     );
 
     useAppStore.setState({ centerView: { kind: 'knowledge-graph' } });
-    render(<CenterPanel currentVerdict={null} />);
+    render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByRole('tab', { name: '知识图谱' })).toHaveAttribute('aria-selected', 'true');
 
     await waitFor(() => {

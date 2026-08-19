@@ -1,20 +1,17 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// RightChat — right chat panel (modernized Phase 4 visual upgrade).
-//
-// Plan 05-07 (D5-IA-01 + D5-IA-02 + D5-IA-04) — the header is now a
-// MINIMAL read-only badge showing the active session name + the
-// current Skill name (with a status dot when a Skill is active).
-//
-// Modernized visuals:
-//   - Header: clean two-line layout with title + skill pill status
+// ChatColumn — the chat-first layout's main column (Open Design
+// redesign B2; formerly RightChat, the 420px right panel of the
+// three-panel layout). The panel header (session + skill badge) moved
+// to the TopBar in B3; this file now owns only the chat surface:
 //   - Empty state: hero with gradient icon, helpful copy, and 3
 //     suggested prompts (each rendered as a hover-lift card)
 //   - Messages scroll area: subtle gradient backdrop
 //   - Auto-stick-to-bottom preserves user's scroll position
+//   - WizardMode replaces the whole column when wizardMode.active
 import { useEffect, useRef } from 'react';
-import { Sparkles, MessageCircle } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
@@ -28,22 +25,16 @@ const SUGGESTED_PROMPTS = [
   { icon: '🏨', text: '出差住宿费超过标准额度时如何审批？' },
 ];
 
-export interface RightChatProps {
+export interface ChatColumnProps {
   messages: UIMessage[];
   status: string;
   onSend: (text: string) => void;
 }
 
-export default function RightChat({ messages, status, onSend }: RightChatProps) {
+export default function ChatColumn({ messages, status, onSend }: ChatColumnProps) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastStuckRef = useRef(true);
   const wizardActive = useAppStore((s) => s.wizardMode.active);
-  const sessions = useAppStore((s) => s.sessions);
-  const activeSessionId = useAppStore((s) => s.activeSessionId);
-  const skills = useAppStore((s) => s.skills);
-  const currentSkillId = useAppStore((s) => s.currentSkillId);
-  const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const currentSkill = skills.find((s) => s.id === currentSkillId);
   const draftStatus = useAppStore((s) => s.draftStatus);
   const draftText = useAppStore((s) => s.draftText);
 
@@ -69,40 +60,10 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
   }
 
   return (
-    <div data-testid="right-chat" className="flex flex-col h-full">
-      <div
-        data-testid="right-chat-badge"
-        className="chat-header-modern"
-      >
-        <MessageCircle
-          className="h-4 w-4"
-          style={{ color: 'var(--color-primary)' }}
-        />
-        <span
-          data-testid="right-chat-badge-session"
-          className="chat-header-title"
-        >
-          {activeSession?.name ?? '新会话'}
-        </span>
-        <span aria-hidden className="chat-header-divider">·</span>
-        <span
-          data-testid="right-chat-badge-skill"
-          className="chat-header-skill"
-        >
-          {currentSkill ? (
-            <>
-              <span className="chat-header-skill-dot" aria-hidden />
-              <span>{currentSkill.name}</span>
-            </>
-          ) : (
-            <span className="chat-header-skill-missing">未选择 Skill</span>
-          )}
-        </span>
-      </div>
-
+    <div data-testid="chat-column" className="flex h-full flex-col">
       {messages.length === 0 ? (
         <div
-          data-testid="right-chat-empty"
+          data-testid="chat-empty"
           className="chat-empty-modern"
         >
           <div className="chat-empty-icon">
@@ -117,7 +78,7 @@ export default function RightChat({ messages, status, onSend }: RightChatProps) 
               <button
                 key={i}
                 type="button"
-                data-testid={`right-chat-suggested-${i}`}
+                data-testid={`chat-suggested-${i}`}
                 onClick={() => onSend(prompt.text)}
                 className="chat-empty-prompt"
               >

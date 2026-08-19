@@ -1108,6 +1108,52 @@ body[data-dragging="true"] * {
 }
 
 /* ====================================================================
+   Chat-first layout (Open Design redesign B2 — replaces the .app-main
+   5-track grid). chat-body = chat column (flex-1) + optional resize
+   handle + collapsible detail panel. Width transitions use the spring
+   easing except while dragging (inline width must track 1:1).
+   ==================================================================== */
+.chat-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.detail-panel-wrap {
+  flex: none;
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid var(--color-border);
+  transition: width var(--transition-base) var(--ease-spring);
+}
+
+.detail-panel-wrap.no-transition {
+  transition: none;
+}
+
+body[data-dragging="true"] .detail-panel-wrap {
+  transition: none;
+}
+
+.detail-panel-body {
+  padding: 0;
+}
+
+/* TopBar — 56px frosted-glass strip (redesign §4.3) */
+.topbar {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background-color: color-mix(in srgb, var(--color-surface) 88%, transparent);
+}
+
+/* ====================================================================
    Light theme — :root[data-theme="light"] mirror (Open Design redesign).
    Every @theme token that paints a surface is re-declared here. This
    block is UNLAYERED, so it wins over Tailwind's @layer theme :root

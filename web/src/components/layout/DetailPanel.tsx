@@ -1,19 +1,19 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// CenterPanel — the center-panel tab strip + body. Phase 4 shipped 3
-// tabs (verdict / chunk-source / skill-md); Phase 5 extends to 5 tabs
-// (adds Agent 状态 + 知识图谱) and LIFTS the D-02 "tabs are display-only"
-// restriction — Phase 5 tabs are clickable and dispatch setCenterView
-// (Phase-4-deferred bidirectional tab nav, resolved per UI-SPEC §Layout).
+// DetailPanel — the chat-first layout's collapsible right side panel
+// (Open Design redesign B2; formerly the three-panel layout's
+// CenterPanel). Phase 4 shipped 3 tabs (verdict / chunk-source /
+// skill-md); Phase 5 extended to 5 tabs (adds Agent 状态 + 知识图谱)
+// and lifted the D-02 "tabs are display-only" restriction — tabs are
+// clickable and dispatch setCenterView.
 //
 // The tab indicator stays bound to `centerView.kind` via the controlled
 // `Tabs` `value` prop so programmatic setCenterView calls (SkillPicker
 // → skill-md, CitationCluster → chunk-source, etc.) keep working
-// alongside user clicks.
-//
-// Empty-state hero per Copywriting Contract: `等待回答结果` +
-// `右侧提出问题，agent 推理与引用会显示在这里。`
+// alongside user clicks. B2 switches the tab strip to the underline
+// variant and adds the dp-head (title + close → setDetailPanelOpen).
+import { X } from 'lucide-react';
 import { FileSearch } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { Tabs } from '../ui/tabs';
@@ -21,12 +21,12 @@ import { useAppStore } from '../../store/app-store';
 import type { CenterView } from '../../store/app-store';
 import type { Tier, Verdict } from '../../types/verdict';
 import AgentInspector from '../inspector/AgentInspector';
-import ChunkSourceView from './ChunkSourceView';
-import DocViewer from './DocViewer';
+import ChunkSourceView from '../center/ChunkSourceView';
+import DocViewer from '../center/DocViewer';
 import KnowledgeGraphBrowser from '../graph/KnowledgeGraphBrowser';
-import RefusalCard from './RefusalCard';
-import SkillMdPreview from './SkillMdPreview';
-import VerdictCard from './VerdictCard';
+import RefusalCard from '../center/RefusalCard';
+import SkillMdPreview from '../center/SkillMdPreview';
+import VerdictCard from '../center/VerdictCard';
 
 const FALLBACK_VERDICT: Verdict = {
   status: 'refused',
@@ -37,8 +37,7 @@ const FALLBACK_VERDICT: Verdict = {
 
 /**
  * Maps the store's `centerView.kind` to the active tab value, so the
- * Tabs indicator follows programmatic `setCenterView` calls. Phase 5
- * adds the two new tab values (Agent 状态, 知识图谱).
+ * Tabs indicator follows programmatic `setCenterView` calls.
  */
 function activeTabValue(kind: CenterView['kind']): string {
   switch (kind) {
@@ -61,20 +60,15 @@ function activeTabValue(kind: CenterView['kind']): string {
 
 /**
  * Maps a tab value (emitted by Tabs.onValueChange on click) to the
- * matching CenterView kind. Phase 5 wires the 4th + 5th tabs through
- * to the agent-inspector + knowledge-graph kinds (their full content
- * ships in 05-05; the empty-state placeholders are mounted now).
+ * matching CenterView kind.
  */
 function tabValueToCenterView(value: string): CenterView | null {
   switch (value) {
     case 'verdict':
       return { kind: 'empty' };
     case 'chunk-source':
-      // Phase 4 had no entry-point into chunk-source from tab click
-      // because chunk-source requires a prior CitationCluster click.
-      // Keep that behavior: a bare tab click without context stays
-      // at the empty verdict tab. The inherited 04-UI-SPEC empty-state
-      // copy is `点击聊天中的引用以查看权威条款原文。`.
+      // chunk-source requires a prior CitationCluster click; a bare tab
+      // click without context stays at the empty verdict tab.
       return null;
     case 'skill-md':
       return { kind: 'skill-md', skillId: 'simple-qa' };
@@ -87,7 +81,7 @@ function tabValueToCenterView(value: string): CenterView | null {
   }
 }
 
-export interface CenterPanelProps {
+export interface DetailPanelProps {
   currentVerdict: Verdict | null;
   /**
    * Plan 05-05 / SC-4 (AGNT-06) — useChat.messages streamed down from
@@ -100,17 +94,16 @@ export interface CenterPanelProps {
   chatStatus?: 'submitted' | 'streaming' | 'ready' | 'error';
 }
 
-export default function CenterPanel({
+export default function DetailPanel({
   currentVerdict,
   messages = [],
   chatStatus = 'ready',
-}: CenterPanelProps) {
+}: DetailPanelProps) {
   const centerView = useAppStore((s) => s.centerView);
   const setCenterView = useAppStore((s) => s.setCenterView);
+  const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
 
-  // Phase 5 — 5 tabs in document order. The horizontal-scroll fallback
-  // for narrow widths is inherited from the .tabs CSS (overflow-x: auto
-  // on the parent tablist). No "more" dropdown (UI-SPEC §Layout).
+  // 5 tabs in document order (Phase 5 set, unchanged in B2).
   const items = [
     { value: 'verdict', label: '结论' },
     { value: 'chunk-source', label: '引用原文' },
@@ -151,7 +144,7 @@ export default function CenterPanel({
             等待回答结果
           </div>
           <p className="mt-2 text-base text-text-muted">
-            右侧提出问题，agent 推理与引用会显示在这里。
+            提问后，agent 的结论与引用会显示在这里。
           </p>
         </div>
       );
@@ -176,7 +169,7 @@ export default function CenterPanel({
         </div>
       );
     }
-    // Doc viewer — full corpus-doc source (left FILES click / graph
+    // Doc viewer — full corpus-doc source (knowledge modal / graph
     // doc-node click entry points).
     if (centerView.kind === 'doc-view') {
       return (
@@ -195,11 +188,30 @@ export default function CenterPanel({
 
   return (
     <div
-      data-testid="center-panel"
-      className="overflow-y-auto border-r border-border bg-bg p-6"
+      data-testid="detail-panel"
+      className="detail-panel flex h-full min-w-0 flex-col bg-surface"
     >
-      <Tabs value={activeTabValue(centerView.kind)} items={items} onValueChange={handleTabChange} />
-      {renderBody()}
+      <div className="dp-head flex h-11 flex-none items-center justify-between border-b border-border px-4">
+        <span className="text-sm font-semibold tracking-wide text-text">详情</span>
+        <button
+          type="button"
+          data-testid="detail-panel-close"
+          onClick={() => setDetailPanelOpen(false)}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          aria-label="收起详情面板"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex-none border-b border-border px-4 pt-2">
+        <Tabs
+          variant="underline"
+          value={activeTabValue(centerView.kind)}
+          items={items}
+          onValueChange={handleTabChange}
+        />
+      </div>
+      <div className="detail-panel-body min-h-0 flex-1 overflow-y-auto">{renderBody()}</div>
     </div>
   );
 }

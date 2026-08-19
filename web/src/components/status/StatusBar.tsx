@@ -38,8 +38,7 @@ export interface StatusBarProps {
 }
 
 export default function StatusBar({ pinnedVersion = false, pinnedSkillName, height }: StatusBarProps) {
-  const sidebarLeft = useAppStore((s) => s.sidebarLeft);
-  const sidebarRight = useAppStore((s) => s.sidebarRight);
+  const detailPanelOpen = useAppStore((s) => s.detailPanelOpen);
   // B1 临时挂点 — B3 TopBar 完整化后由 ThemeToggle 正式接管。
   const { theme, toggleTheme } = useTheme();
 
@@ -51,9 +50,7 @@ export default function StatusBar({ pinnedVersion = false, pinnedSkillName, heig
       data-pinned={String(pinnedVersion)}
     >
       <div className="flex items-center gap-3">
-        <span>{sidebarLeft ? '资料库已展开' : '资料库已折叠'}</span>
-        <span aria-hidden className="text-text-dim">·</span>
-        <span>{sidebarRight ? '对话已展开' : '对话已折叠'}</span>
+        <span>{detailPanelOpen ? '详情面板已展开' : '详情面板已收起'}</span>
       </div>
       <div
         data-testid="statusbar-right"
