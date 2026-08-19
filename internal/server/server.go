@@ -291,5 +291,12 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// turns + the session-bound skill_id so the FE can rebuild the
 	// chat surface via useChat({ initialMessages }) on page load.
 	h.GET("/api/session/:id/history", deps.sessionHistoryHandler)
+	// Session-management phase — the roster surface for the FE
+	// SessionDrawer: list (newest-first, rename override merged),
+	// rename upsert (no existence leak), idempotent delete (audit
+	// trail untouched per T-3-AUDIT).
+	h.GET("/api/sessions", deps.sessionsListHandler)
+	h.PATCH("/api/session/:id", deps.sessionRenameHandler)
+	h.DELETE("/api/session/:id", deps.sessionDeleteHandler)
 	return h
 }
