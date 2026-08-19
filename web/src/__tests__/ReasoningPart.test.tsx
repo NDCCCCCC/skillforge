@@ -53,8 +53,11 @@ describe('ReasoningPart', () => {
     expect(toggle).toHaveTextContent('收起');
   });
 
-  it('renders the body text inside a <pre>', () => {
+  it('renders the body text inside a <pre> once expanded (B5: collapsed = header only)', () => {
     render(<ReasoningPart part={makePart({ text: 'specific reasoning copy' })} />);
+    // Collapsed (B5 default) — the body is not rendered at all.
+    expect(screen.queryByTestId('reasoning-body')).toBeNull();
+    fireEvent.click(screen.getByTestId('reasoning-toggle'));
     const body = screen.getByTestId('reasoning-body');
     expect(body.tagName).toBe('PRE');
     expect(body).toHaveTextContent('specific reasoning copy');

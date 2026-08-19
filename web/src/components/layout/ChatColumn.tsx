@@ -11,7 +11,7 @@
 //   - Auto-stick-to-bottom preserves user's scroll position
 //   - WizardMode replaces the whole column when wizardMode.active
 import { useEffect, useRef } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Briefcase, CalendarDays, Hotel, Sparkles } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
@@ -19,10 +19,12 @@ import DraftStreamChip from '../chat/parts/DraftStreamChip';
 import WizardMode from './WizardMode';
 import { useAppStore } from '../../store/app-store';
 
+// Open Design B5 — emoji sug-card icons are replaced by lucide icons;
+// the suggested-question copy (business examples) is unchanged.
 const SUGGESTED_PROMPTS = [
-  { icon: '📅', text: '年假未休完的部分如何折算或结转？' },
-  { icon: '💼', text: '采购合同 50 万元以下由谁审批？' },
-  { icon: '🏨', text: '出差住宿费超过标准额度时如何审批？' },
+  { icon: CalendarDays, text: '年假未休完的部分如何折算或结转？' },
+  { icon: Briefcase, text: '采购合同 50 万元以下由谁审批？' },
+  { icon: Hotel, text: '出差住宿费超过标准额度时如何审批？' },
 ];
 
 export interface ChatColumnProps {
@@ -66,28 +68,31 @@ export default function ChatColumn({ messages, status, onSend }: ChatColumnProps
           data-testid="chat-empty"
           className="chat-empty-modern"
         >
-          <div className="chat-empty-icon">
+          <div className="chat-empty-icon chat-empty-icon-gradient">
             <Sparkles className="h-6 w-6" />
           </div>
-          <div className="chat-empty-title">开始一次文档问答</div>
+          <div className="chat-empty-title">SkillForge</div>
           <p className="chat-empty-subtitle">
-            选择 Skill，在此处提问。每个回答都附可点击的引用与置信度。
+            用 Skill 定义你的 Agent，提问即获可信回答。
           </p>
           <div className="chat-empty-prompts">
-            {SUGGESTED_PROMPTS.map((prompt, i) => (
-              <button
-                key={i}
-                type="button"
-                data-testid={`chat-suggested-${i}`}
-                onClick={() => onSend(prompt.text)}
-                className="chat-empty-prompt"
-              >
-                <span className="chat-empty-prompt-icon" aria-hidden>
-                  {prompt.icon}
-                </span>
-                <span style={{ flex: 1 }}>{prompt.text}</span>
-              </button>
-            ))}
+            {SUGGESTED_PROMPTS.map((prompt, i) => {
+              const Icon = prompt.icon;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  data-testid={`chat-suggested-${i}`}
+                  onClick={() => onSend(prompt.text)}
+                  className="chat-empty-prompt"
+                >
+                  <span className="chat-empty-prompt-icon" aria-hidden>
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
+                  <span style={{ flex: 1 }}>{prompt.text}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       ) : (

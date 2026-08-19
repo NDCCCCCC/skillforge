@@ -24,8 +24,11 @@
 // chat.go:801-809), the in-card verdict-answer block is suppressed so
 // the conclusion renders only once. Consumers without chat context
 // (CenterPanel) omit the prop and behavior is unchanged.
+import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { useAppStore } from '../../store/app-store';
 import type { Verdict, VerdictStatus } from '../../types/verdict';
+import { STATUS_LABELS } from '../common/StatusBadge';
 import StatusBadge from '../common/StatusBadge';
 import ComplianceStatusBadge from '../common/ComplianceStatusBadge';
 import CitationCluster from './CitationCluster';
@@ -40,6 +43,15 @@ const STATUS_BORDER: Record<VerdictStatus, string> = {
   needs_input: 'border-l-status-needs-info',
   refused: 'border-l-status-unanswered',
   error: 'border-l-status-error',
+};
+
+// Open Design B5 — the chat-stream inline verdict stripe color (same
+// platform-Status mapping as STATUS_BORDER).
+const STATUS_STRIPE: Record<VerdictStatus, string> = {
+  ok: 'var(--color-status-compliant)',
+  needs_input: 'var(--color-status-needs-info)',
+  refused: 'var(--color-status-unanswered)',
+  error: 'var(--color-status-error)',
 };
 
 export interface VerdictCardProps {
@@ -75,6 +87,65 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
   // answer was derived from a factual lookup, not a compliance review.
   const showComplianceBadge =
     !!verdict.compliance_status && verdict.compliance_status !== 'not_applicable';
+
+  // Open Design B5 — chat-stream inline card: a ≤340px compact stripe
+  // (shield + status word + confidence + 详情→) that opens the detail
+  // panel's verdict tab. Clicking dispatches setCenterView verdict +
+  // setDetailPanelOpen(true) — the panel renders the currentVerdict
+  // prop from App's message scan; the verdictId is the nav key.
+  if (inChatStream) {
+    return (
+      <div className="relative">
+        {/* 260817-hck contract kept: an answer NOT already verbatim in
+            the chat body still renders (the stripe never swallows
+            information); a duplicated one stays suppressed. */}
+        {isFactualQuery && !answerDuplicatedInChat && (
+          <div
+            data-testid="verdict-answer"
+            className="mb-1 text-sm text-text leading-relaxed"
+          >
+            {verdict.answer}
+          </div>
+        )}
+        <button
+          type="button"
+          data-testid="verdict-card"
+          data-verdict-status={verdict.status}
+          data-compliance-status={verdict.compliance_status ?? ''}
+          data-review-required={String(verdict.review_required)}
+          onClick={() => {
+            useAppStore.getState().setCenterView({ kind: 'verdict', verdictId: 'chat-latest' });
+            useAppStore.getState().setDetailPanelOpen(true);
+          }}
+          className="verdict-inline my-2"
+          style={{ borderLeftColor: STATUS_STRIPE[verdict.status] }}
+        >
+          <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: STATUS_STRIPE[verdict.status] }} aria-hidden />
+          <span className="verdict-inline-status">{STATUS_LABELS[verdict.status]}</span>
+          <span className="verdict-inline-conf">置信度 {pct}%</span>
+          <span className="verdict-inline-cta">
+            详情
+            <ChevronRight className="h-3 w-3" aria-hidden />
+          </span>
+        </button>
+        {verdict.review_required && (
+          <span
+            data-testid="review-required-badge"
+            className="absolute -top-2 right-3 rounded-full bg-status-needs-info px-2 py-0.5 text-xs font-semibold text-primary-fg"
+          >
+            需人工复核
+          </span>
+        )}
+        <div
+          data-testid="confidence-bar"
+          data-confidence={pct}
+          className="hidden"
+          aria-hidden="true"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative">
       <div
@@ -89,7 +160,7 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            {!inChatStream && <StatusBadge status={verdict.status} />}
+            <StatusBadge status={verdict.status} />
             {showComplianceBadge && (
               <ComplianceStatusBadge status={verdict.compliance_status!} />
             )}
@@ -103,11 +174,9 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
             {verdict.answer}
           </div>
         )}
-        {!inChatStream && (
-          <div className="mt-3 text-xs text-text-muted">
-            {verdict.citations.length} 条引用
-          </div>
-        )}
+        <div className="mt-3 text-xs text-text-muted">
+          {verdict.citations.length} 条引用
+        </div>
         {/* Plan 260815-cos / CONTEXT.md decision D: confidence bar is
             visually hidden. The data-testid + data-confidence attributes
             are retained so existing test assertions / scrapers do not
@@ -127,7 +196,7 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
           需人工复核
         </span>
       )}
-      {!inChatStream && <CitationCluster citations={verdict.citations} />}
+      <CitationCluster citations={verdict.citations} />
     </div>
   );
 }

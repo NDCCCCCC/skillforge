@@ -3,13 +3,16 @@
 
 // ReasoningPart — modernized reasoning card (Phase 4 visual upgrade).
 //
+// Open Design redesign B5: the card defaults to HEADER-ONLY (the amber
+// 推理过程 strip); the chain-of-thought body renders only after the
+// user expands. The old 180px-cap-with-fade-mask collapsed preview is
+// retired — collapsed now hides the body entirely, expanded shows it
+// in full (scrollable if very long).
+//
 // D-08 invariants:
 //   - Renders ABOVE the answer text in DOM order (parent MessageBubble
 //     iterates in array order).
-//   - ALWAYS visible — the card body is height-capped at 180px with a
-//     fade-out mask, so long reasoning chains never push the answer
-//     off-screen.
-//   - One-click toggle to expand/collapse.
+//   - ALWAYS visible (the header never drops) — one-click toggle.
 //
 // Visual identity:
 //   - Warm amber "thinking" surface (not the cyan/blue of tool calls)
@@ -37,11 +40,9 @@ export default function ReasoningPart({ part, streamingAnswer }: ReasoningPartPr
   const bodyRef = useRef<HTMLPreElement>(null);
 
   // Live-streaming auto-stick-to-bottom: when new reasoning text
-  // arrives, scroll the preview to its tail. Only when collapsed
-  // (height-capped) so the user can still manually scroll when fully
-  // expanded.
+  // arrives while expanded, scroll the body to its tail.
   useEffect(() => {
-    if (expanded) return;
+    if (!expanded) return;
     const el = bodyRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
@@ -90,13 +91,15 @@ export default function ReasoningPart({ part, streamingAnswer }: ReasoningPartPr
           <span>{expanded ? '收起' : '展开'}</span>
         </span>
       </div>
-      <pre
-        ref={bodyRef}
-        data-testid="reasoning-body"
-        className="reasoning-card-body"
-      >
-        {part.text}
-      </pre>
+      {expanded && (
+        <pre
+          ref={bodyRef}
+          data-testid="reasoning-body"
+          className="reasoning-card-body"
+        >
+          {part.text}
+        </pre>
+      )}
     </div>
   );
 }

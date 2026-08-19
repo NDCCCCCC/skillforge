@@ -28,10 +28,11 @@
 // it verbatim contains verdict.answer (backend conclusionText embeds the
 // answer verbatim, chat.go:801-809), the in-card verdict-answer block is
 // suppressed so the conclusion renders only once.
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import VerdictCard from '../components/center/VerdictCard';
+import { useAppStore } from '../store/app-store';
 import type { Verdict } from '../types/verdict';
 
 afterEach(cleanup);
@@ -197,15 +198,16 @@ describe('VerdictCard', () => {
     expect(screen.queryByTestId('status-badge')).toBeNull();
     expect(screen.queryByTestId('citation-cluster')).toBeNull();
     expect(screen.queryByText(/条引用/)).toBeNull();
-    // The Compliance-Skill verdict badge survives — it is skill-specific
-    // signal not duplicated anywhere else in the chat stream.
-    expect(screen.getByTestId('compliance-status-badge')).toBeInTheDocument();
+    // Open Design B5 — the chat-stream card is the compact inline
+    // stripe; the ComplianceStatusBadge lives in the detail panel the
+    // stripe opens (one click away), not in the chat stream.
+    expect(screen.queryByTestId('compliance-status-badge')).toBeNull();
   });
 
   it('keeps the review-required badge in chat context (260817-i36)', () => {
     render(<VerdictCard verdict={nonCompliant} chatText="结论：不合规。" />);
     expect(screen.getByTestId('review-required-badge')).toBeInTheDocument();
-    expect(screen.getByTestId('compliance-status-badge')).toBeInTheDocument();
+    expect(screen.queryByTestId('compliance-status-badge')).toBeNull();
     expect(screen.queryByTestId('status-badge')).toBeNull();
     expect(screen.queryByTestId('citation-cluster')).toBeNull();
   });
@@ -242,5 +244,13 @@ describe('VerdictCard', () => {
   it('keeps verdict-answer when chatText is an empty string (260817-hck)', () => {
     render(<VerdictCard verdict={factualQuery} chatText="" />);
     expect(screen.getByTestId('verdict-answer')).toBeInTheDocument();
+  });
+
+  it('chat-stream inline stripe opens the detail panel verdict tab on click (B5)', () => {
+    useAppStore.setState({ centerView: { kind: 'empty' }, detailPanelOpen: false });
+    render(<VerdictCard verdict={nonCompliant} chatText="结论：不合规。" />);
+    fireEvent.click(screen.getByTestId('verdict-card'));
+    expect(useAppStore.getState().centerView).toEqual({ kind: 'verdict', verdictId: 'chat-latest' });
+    expect(useAppStore.getState().detailPanelOpen).toBe(true);
   });
 });

@@ -23,6 +23,7 @@
 // interpolation only; NEVER via dangerouslySetInnerHTML. The candidate
 // name comes from server-rendered `skillName` strings and is treated
 // as text (not HTML).
+import { Waypoints } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import SkillPicker from './SkillPicker';
 import type { DecisionPayload, SkillScore } from '../../../types/wire-types';
@@ -64,6 +65,10 @@ export default function RoutingTracePart({ part, onPickAmbiguous, onDismissAmbig
     return null;
   }
 
+  // Open Design B5 — compact horizontal bar: one glanceable line with
+  // the routed-to skill + its match score; candidate pills follow.
+  const selectedScore = skillScores.find((s) => s.selected);
+
   return (
     <div
       data-testid="routing-trace"
@@ -72,8 +77,13 @@ export default function RoutingTracePart({ part, onPickAmbiguous, onDismissAmbig
       className="routing-trace-modern"
     >
       <div className="routing-trace-modern-header">
-        <span aria-hidden>↳</span>
+        <Waypoints className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
         <span>路由分析</span>
+        {selectedScore && (
+          <span className="routing-trace-modern-summary" data-testid="routing-trace-summary">
+            已路由至 {selectedScore.skillName} · 匹配度 {formatScore(selectedScore.score)}
+          </span>
+        )}
       </div>
       {skillScores.length === 0 ? (
         <div
