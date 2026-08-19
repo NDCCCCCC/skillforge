@@ -4,11 +4,11 @@ milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 11
 current_plan: TBD (4 areas / 16 decisions locked; context ready for plan-phase)
-status: context-gathered
-stopped_at: Phase 11 /gsd:discuss-phase 11 closed (commit fe5b45c; areas 1-4 completed)
-last_updated: "2026-08-20T02:30:00Z"
-last_activity: 2026-08-20 -- Phase 11 CONTEXT gathered (4 areas / 16 decisions locked; COMMIT fe5b45c)
-resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-CONTEXT.md
+status: ui-spec-approved
+stopped_at: Phase 11 UI-SPEC approved (commit TBD; 6/6 dimensions PASS + 1 non-blocking FLAG)
+last_updated: "2026-08-20T03:15:00Z"
+last_activity: 2026-08-20 -- Phase 11 UI-SPEC approved (11-UI-SPEC.md written; ApprovalCard store-derived overlay / ApprovalRulesPanel 5th SessionDrawer section / AuditTimelineTab 6th DetailPanel tab / SkillSwitchGuard pending-disables / cross-refresh resume 3-banner / audit-fail-closed banner; all 12 locked invariants honored: D-04 / D14 / D15 / D11-C2 / D11-C3 / D11-C4 / T-3-AUDIT / D8-04 / D11-A2 / D11-D1 / D11-D3 / first-2-targets / edit-before-approve; gsd-sdk PATH bypass — artifacts + STATE manually committed)
+resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-UI-SPEC.md
 progress:
   total_phases: 13
   completed_phases: 8
@@ -19,7 +19,7 @@ progress:
 
 # State — SkillForge
 
-**Last updated:** 2026-08-20 (**Phase 11 /gsd:discuss-phase 11 COMPLETE** — Default mode, 4 areas × 4 questions = 16 decisions locked; commit `fe5b45c`; CONTEXT.md canonical + DISCUSSION-LOG.md audit; 2 clarifications from user pushback (Q2 research on eino Runner architecture; Q4 reframing after Per-Skill lifecycle pushback); gsd-sdk PATH bypass — artifacts + STATE manually committed). **Resume-file**: `.planning/phases/11-p8-2-write-tools-approval-gate/11-CONTEXT.md`. **Next action**: `/clear` then `/gsd:ui-phase 11` (UI-SPEC for ApprovalCard + Approval Rules sidebar panel) → `/gsd:ai-integration-phase 11` (HITL/RF-3 eval strategy) → `/gsd:plan-phase 11 --chunked` (chunked mode: 1 outline + N per-plan agents, each plan atomic commit).
+**Last updated:** 2026-08-20 (**Phase 11 UI-SPEC APPROVED** — `11-UI-SPEC.md` written, 601 lines, 6/6 quality dimensions PASS + 1 non-blocking Copywriting FLAG; 6 FE surfaces codified — ApprovalCard (store-derived z-25 overlay, 7 visual states, NOT message part) / ApprovalRulesPanel (5th SessionDrawer section, session/skill binary scope radio) / AuditTimelineTab (6th DetailPanel tab, read-only T-3-AUDIT invariant) / SkillSwitchGuard (picker disabled while `approval.pending !== null`) / cross-refresh resume (3-banner variants: active / expired / auto-passed) / audit-fail-closed banner; all 12 locked invariants honored — D-04 / D14 / D15 / D11-C2 / D11-C3 / D11-C4 / T-3-AUDIT / D8-04 / D11-A2 / D11-D1 / D11-D3 / first-2-targets whitelist / edit-before-approve; 38 zh-CN copy elements; zero new shadcn init; gsd-sdk PATH bypass — artifacts + STATE manually committed). **Resume-file**: `.planning/phases/11-p8-2-write-tools-approval-gate/11-UI-SPEC.md`. **Next action**: `/clear` then `/gsd:ai-integration-phase 11` (HITL/RF-3 eval strategy — 5 SC eval, golden set, judge LLM choice) → `/gsd:plan-phase 11 --chunked` (chunked mode: 1 outline + N per-plan agents, each plan atomic commit).
 
 **Prior:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
 
