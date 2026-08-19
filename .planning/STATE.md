@@ -5,7 +5,7 @@ milestone_name: — Harness（可信×行动融合）
 current_phase: 11
 current_plan: TBD (4 areas / 16 decisions locked; context ready for plan-phase)
 status: ai-spec-approved
-stopped_at: Phase 11 AI-SPEC approved (commit TBD; framework PASS + 10 eval dimensions + 5 online guardrails + 10 prod metrics)
+stopped_at: Phase 11 AI-SPEC approved (commit 99a7b7c; framework PASS + 10 eval dimensions + 5 online guardrails + 10 prod metrics)
 last_updated: "2026-08-20T03:30:00Z"
 last_activity: 2026-08-20 -- Phase 11 AI-SPEC approved (11-AI-SPEC.md written, 1190 lines; cloudwego/eino v0.9.14 framework PASS (HITL primitives GA in v0.5.0: tool.StatefulInterrupt + Runner.ResumeWithParams + compose.CheckPointStore); Section 1b domain context — SOC 2 CC7.2 / ISO 27001 A.8.15 / GDPR Art 30 regulatory anchors + 3 expert roles (Senior Compliance Practitioner + Internal Audit Specialist + Security Engineer AppSec); Sections 3/4/4b Go-flavored implementation guidance — 8 HITL pitfalls + trust staircase BeforeAgent(trust floor) → BeforeModel(D10-A1) → Tool+StatefulInterrupt → AfterModel(grounding) + schema.RegisterName[ApprovalDecision] structured output; Section 5 — 10 eval dimensions (5 Critical: audit chain INSERT-only / fail-closed / frozen_args byte-immutability / cross-refresh consistency / tool_call_id idempotency) + 150-case reference dataset (75 inherited + 75 HITL-specific); Section 6 — 5 online guardrails + 5 offline flywheel; Section 7 — Langfuse tracing + 10 metrics + 8 alert thresholds + signal-weighted sampling; gating test = TestFailClosedAudit (P0, no waiver path); gsd-sdk PATH bypass — artifacts + STATE manually committed)
 resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-AI-SPEC.md
