@@ -20,9 +20,16 @@ import { useAppStore } from '../store/app-store';
 
 afterEach(cleanup);
 beforeEach(() => {
+  // B3 — the picker reads the LIVE skill surface (useAppStore.skills),
+  // so tests seed the store directly (no skills.json fixture import).
   useAppStore.setState({
     currentSkillId: null,
     centerView: { kind: 'empty' },
+    skillServiceOffline: false,
+    skills: [
+      { id: 'simple-qa', name: 'simple-qa', description: '简单问答', status: 'ok' },
+      { id: 'calculator', name: 'calculator', description: '计算器', status: 'ok' },
+    ],
   });
 });
 

@@ -1,35 +1,28 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// SkillPicker — FEUI-04 / SYSK-03 skill dropdown. Reads the list of
-// skills from skills.json (Vite JSON import), shows the current skill
-// name as a trigger button, and opens a menu listing every skill on
-// click. Selecting a skill dispatches `setCurrentSkill(id)` and also
-// `setCenterView({ kind: 'skill-md', skillId })` so the center panel
+// SkillPicker — FEUI-04 / SYSK-03 skill dropdown. Open Design redesign
+// B3: the list is the LIVE skill surface (useAppStore.skills — seeded
+// by useSkillReload from GET /api/skills), not the skills.json
+// fixture. Selecting a skill dispatches `setCurrentSkill(id)` and also
+// `setCenterView({ kind: 'skill-md', skillId })` so the detail panel
 // swaps to the SKILL.md preview (D-02).
+//
+// Plan 05-08 (IN-04) — the skill-service-offline banner moved from the
+// deleted LeftSidebar into the dropdown head (loud-failure signal).
 //
 // Plan 05-03 (D5-03) — ambiguity picker mode. When the `scores` prop
 // is provided, the component switches into "ambiguity picker" mode:
-//   - The candidate list is `scores` (NOT the global skills fixture)
+//   - The candidate list is `scores` (NOT the live skill surface)
 //   - Each row shows the cosine score badge
 //   - Heading copy is `检测到歧义，请选择目标 Skill`
 //   - Per-candidate CTA `使用此 Skill` instead of the default select
 //   - A `使用默认 Skill` dismiss button appears at the bottom
-// This keeps the existing Picker reusable for the SC-1 routing trace.
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { useAppStore } from '../../../store/app-store';
-import skillsData from '../../../__fixtures__/skills.json';
 import type { SkillScore } from '../../../types/wire-types';
-
-interface SkillFixtureEntry {
-  id: string;
-  name: string;
-  description: string;
-}
-
-const SKILLS: SkillFixtureEntry[] = skillsData as SkillFixtureEntry[];
 
 export interface SkillPickerProps {
   /**
@@ -47,10 +40,12 @@ export interface SkillPickerProps {
 export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguous }: SkillPickerProps) {
   const ambiguityMode = Boolean(scores && scores.length > 0);
   const currentSkillId = useAppStore((s) => s.currentSkillId);
+  const skills = useAppStore((s) => s.skills);
+  const skillServiceOffline = useAppStore((s) => s.skillServiceOffline);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const current = SKILLS.find((s) => s.id === currentSkillId);
+  const current = skills.find((s) => s.id === currentSkillId);
 
   useEffect(() => {
     if (!open) return;
@@ -65,9 +60,9 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [open]);
 
-  function handleSelect(skill: SkillFixtureEntry) {
-    useAppStore.getState().setCurrentSkill(skill.id);
-    useAppStore.getState().setCenterView({ kind: 'skill-md', skillId: skill.id });
+  function handleSelect(skillId: string) {
+    useAppStore.getState().setCurrentSkill(skillId);
+    useAppStore.getState().setCenterView({ kind: 'skill-md', skillId });
     setOpen(false);
   }
 
@@ -90,17 +85,25 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
         type="button"
         data-testid="skill-picker-trigger"
         onClick={() => setOpen((v) => !v)}
-        className="w-full inline-flex items-center justify-between gap-2 rounded-md bg-surface-2 text-text border border-border px-2 py-1 text-xs font-semibold"
+        className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
       >
-        <span>{triggerLabel}</span>
-        <ChevronDown className="h-3.5 w-3.5" />
+        <span className="truncate">{triggerLabel}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
       </button>
 
       {open && (
         <div
           data-testid="skill-picker-menu"
-          className="absolute z-10 mt-1 w-full rounded-md border border-border bg-surface-2 shadow-lg"
+          className="absolute z-10 mt-1 w-full min-w-56 rounded-md border border-border bg-surface-2 shadow-lg"
         >
+          {skillServiceOffline && !ambiguityMode && (
+            <div
+              data-testid="skill-picker-offline-banner"
+              className="border-b border-border px-2 py-1 text-xs text-status-needs-info"
+            >
+              Skill 服务暂不可达，列表可能不是最新
+            </div>
+          )}
           {ambiguityMode ? (
             <>
               {(scores ?? []).map((s) => (
@@ -110,7 +113,7 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
                   data-skill-id={s.skillId}
                   data-score={s.score.toFixed(2)}
                   className={cn(
-                    'block w-full text-left px-2 py-1 text-xs hover:bg-surface-3',
+                    'block w-full px-2 py-1 text-left text-xs hover:bg-surface-3',
                     s.selected && 'bg-primary-dim',
                   )}
                 >
@@ -141,8 +144,12 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
                 使用默认 Skill
               </button>
             </>
+          ) : skills.length === 0 ? (
+            <div className="px-2 py-1 text-xs text-text-muted">
+              暂无已加载 Skill（可在 Skill 菜单中创建）
+            </div>
           ) : (
-            SKILLS.map((skill) => {
+            skills.map((skill) => {
               const active = skill.id === currentSkillId;
               return (
                 <button
@@ -150,14 +157,16 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
                   type="button"
                   data-testid={active ? 'skill-picker-item-active' : 'skill-picker-item'}
                   data-skill-id={skill.id}
-                  onClick={() => handleSelect(skill)}
+                  onClick={() => handleSelect(skill.id)}
                   className={cn(
-                    'block w-full text-left px-2 py-1 text-xs hover:bg-surface-3',
+                    'block w-full px-2 py-1 text-left text-xs hover:bg-surface-3',
                     active && 'bg-primary-dim',
                   )}
                 >
-                  <div>{skill.name}</div>
-                  <div className="text-text-muted text-xs">{skill.description}</div>
+                  <div className="truncate">{skill.name}</div>
+                  {skill.description && (
+                    <div className="truncate text-xs text-text-muted">{skill.description}</div>
+                  )}
                 </button>
               );
             })

@@ -21,9 +21,7 @@
 // wiring is a 05-04 concern). The component accepts a `pinnedVersion`
 // prop and the App shell passes it in once that plumbing lands. Until
 // then the statusbar always shows the inherited `就绪` idle label.
-import { Moon, Sun } from 'lucide-react';
 import { useAppStore } from '../../store/app-store';
-import { useTheme } from '../../hooks/useTheme';
 
 export interface StatusBarProps {
   /** Optional override for the pinned-version label. When `true`,
@@ -39,8 +37,6 @@ export interface StatusBarProps {
 
 export default function StatusBar({ pinnedVersion = false, pinnedSkillName, height }: StatusBarProps) {
   const detailPanelOpen = useAppStore((s) => s.detailPanelOpen);
-  // B1 临时挂点 — B3 TopBar 完整化后由 ThemeToggle 正式接管。
-  const { theme, toggleTheme } = useTheme();
 
   return (
     <div
@@ -56,16 +52,6 @@ export default function StatusBar({ pinnedVersion = false, pinnedSkillName, heig
         data-testid="statusbar-right"
         className="flex items-center gap-1"
       >
-        <button
-          type="button"
-          data-testid="statusbar-theme-toggle"
-          onClick={toggleTheme}
-          className="inline-flex h-5 w-5 items-center justify-center rounded-md text-text-muted hover:bg-surface-2 hover:text-text"
-          aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'}
-          title={theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'}
-        >
-          {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-        </button>
         {pinnedVersion ? (
           <span data-testid="statusbar-pinned" className="text-text">
             {pinnedSkillName
