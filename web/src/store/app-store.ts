@@ -124,11 +124,52 @@ export interface SkillSummary {
 /** UI-local session metadata (D14 + D5-IA-03). The message stream is
  * owned by useChat, NOT this store — sessions are keyed by id into
  * useChat({id}) so each session retains its in-memory messages until
- * the user refreshes the page. */
+ * the user refreshes the page.
+ *
+ * Session-management phase adds two OPTIONAL fields (still metadata
+ * only — the D14 no-messages invariant is untouched):
+ *   - lastActiveAt: epoch ms of the newest turn (BE roster hydration).
+ *     Absent on locally-created sessions until their first turn syncs;
+ *     consumers group/fallback via `lastActiveAt ?? createdAt`.
+ *   - pinned: user pin (drawer 置顶 group). Persisted as an id list in
+ *     localStorage['sf.session.pins'] — pins must survive a roster
+ *     refresh even though roster rows arrive unpinned from the BE. */
 export interface SessionMeta {
   id: string;
   name: string;
   createdAt: number;
+  lastActiveAt?: number;
+  pinned?: boolean;
+}
+
+/** localStorage key holding the pinned session-id array (JSON).
+ * localStorage access is guarded (SSR / privacy-mode throws are
+ * treated as "no pins stored"). */
+const PINS_STORAGE_KEY = 'sf.session.pins';
+
+/** Read the persisted pin set. Returns a Set for O(1) roster-merge
+ * lookups; an unreadable/corrupt payload degrades to an empty set. */
+export function loadSessionPins(): Set<string> {
+  try {
+    const raw = globalThis.localStorage?.getItem(PINS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+/** Persist the pin id array. Best-effort — a throwing localStorage
+ * (privacy mode) is silently ignored (pins live in memory for the
+ * session). */
+function saveSessionPins(ids: string[]): void {
+  try {
+    globalThis.localStorage?.setItem(PINS_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    /* best-effort */
+  }
 }
 
 /** Plan 06-04 (D6-01) — admin-mode route toggle. The dashboard
@@ -204,6 +245,15 @@ export interface AppActions {
   createSession(): string;
   setActiveSession(id: string): void;
   deleteSession(id: string): void;
+  // Session-management phase — roster hydration (BE GET /api/sessions)
+  // + rename + pin. hydrateSessions REPLACES the local list when the
+  // backend roster is non-empty (mount-time only; a later createSession
+  // appends normally). renameSession is the optimistic FE write — the
+  // caller fires PATCH separately and reverts on failure. Pin state is
+  // mirrored to localStorage['sf.session.pins'] on every toggle.
+  hydrateSessions(list: SessionMeta[]): void;
+  renameSession(id: string, name: string): void;
+  toggleSessionPin(id: string): void;
   // Plan 05-08 (IN-04) — loud-failure flag toggle.
   setSkillServiceOffline(offline: boolean): void;
   // Plan 06-04 — eval dashboard actions (no messages setter).
@@ -320,6 +370,33 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       }
     }
     set({ sessions: remaining, activeSessionId: active });
+  },
+  // Session-management actions — roster hydration / rename / pin.
+  hydrateSessions: (list) => {
+    if (list.length === 0) return; // empty/null roster → keep local state
+    const pins = loadSessionPins();
+    const hydrated = list.map((s) => ({ ...s, pinned: pins.has(s.id) || s.pinned }));
+    set((state) => {
+      // activeSessionId: prefer the newest BE session (roster is
+      // newest-first) unless the current active is itself in the
+      // roster (a mid-session re-hydrate keeps the user's context).
+      const active = hydrated.some((s) => s.id === state.activeSessionId)
+        ? state.activeSessionId
+        : hydrated[0].id;
+      return { sessions: hydrated, activeSessionId: active };
+    });
+  },
+  renameSession: (id, name) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) => (s.id === id ? { ...s, name } : s)),
+    })),
+  toggleSessionPin: (id) => {
+    const state = get();
+    const next = state.sessions.map((s) =>
+      s.id === id ? { ...s, pinned: !s.pinned } : s,
+    );
+    saveSessionPins(next.filter((s) => s.pinned).map((s) => s.id));
+    set({ sessions: next });
   },
   // Plan 05-08 (IN-04) — loud-failure flag toggle. LeftSidebar
   // observes this and renders a banner above the 技能 block.

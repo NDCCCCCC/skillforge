@@ -46,6 +46,7 @@ import {
   historyToUIMessages,
   type SessionHistoryResponse,
 } from './lib/chat-restore';
+import { fetchSessions } from './lib/sessions';
 
 interface AppProps {
   /** Optional seeded messages for tests (skips the live useChat hook). */
@@ -200,6 +201,53 @@ function LiveApp() {
     c.messages = restored;
     appliedSessionsRef.current.add(activeSessionId);
   }, [historySnapshot, activeSessionId]);
+  // Session-management phase — mount-time roster hydration. GET
+  // /api/sessions; a non-empty roster REPLACES the boot-local session
+  // list (activeSessionId flips to the newest BE session, which in
+  // turn refires the history-restore effect above — verdict cards
+  // replay without any extra wiring). An empty roster / failed fetch
+  // keeps the local session-1 posture (mock-dev, fresh install).
+  const hydrateSessions = useAppStore((s) => s.hydrateSessions);
+  const sessions = useAppStore((s) => s.sessions);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSessions().then((roster) => {
+      if (cancelled || !roster || roster.length === 0) return;
+      hydrateSessions(
+        roster.map((r) => ({
+          id: r.id,
+          name: r.title,
+          createdAt: r.last_active_ms,
+          lastActiveAt: r.last_active_ms,
+        })),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only: a later createSession/deleteSession must NOT be
+    // clobbered by a re-fetch (the drawer owns roster mutations after
+    // boot; lastActiveAt staleness is acceptable until the next mount).
+    // hydrateSessions is a stable Zustand action reference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Delete cleanup — when a session id leaves the store roster (the
+  // drawer's deleteSession), drop its Chat instance + restore guards
+  // so the conversation is not just hidden but actually released.
+  // Without this, chatMapRef accumulates orphaned Chat instances for
+  // the page's lifetime (leak) and a re-created same-id session would
+  // resurrect stale applied/restored flags.
+  const knownSessionsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const current = new Set(sessions.map((s) => s.id));
+    for (const id of knownSessionsRef.current) {
+      if (!current.has(id)) {
+        chatMapRef.current.delete(id);
+        appliedSessionsRef.current.delete(id);
+      }
+    }
+    knownSessionsRef.current = current;
+  }, [sessions]);
   const { messages, sendMessage, status } = useChat({ chat });
   const [currentVerdict, setCurrentVerdict] = useState<Verdict | null>(null);
   const lastCreatedSkill = useAppStore((s) => s.lastCreatedSkill);

@@ -272,4 +272,58 @@ describe('RealChatTransport (Plan 260815-j4y)', () => {
     });
     expect(result).toBeNull();
   });
+
+  // Session-management phase — the x-session-id header is what binds a
+  // chat turn to the FE's session partition on the BE (chat.go resolves
+  // the header OR mints a random id). Without it the roster/history
+  // endpoints never see the conversation.
+  it('sends x-session-id from options.chatId on the POST', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      body: textBodyStream(sseFrame({ type: 'start', messageId: 'm1' })),
+    } as unknown as Response));
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    await drain(
+      await transport.sendMessages({
+        trigger: 'submit-message',
+        chatId: 'session-42',
+        messageId: 'm1',
+        messages: [],
+        abortSignal: undefined,
+      }),
+    );
+
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['x-session-id']).toBe('session-42');
+  });
+
+  it('omits x-session-id when chatId is empty (no partition binding)', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      body: textBodyStream(sseFrame({ type: 'start', messageId: 'm1' })),
+    } as unknown as Response));
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    await drain(
+      await transport.sendMessages({
+        trigger: 'submit-message',
+        chatId: '',
+        messageId: 'm1',
+        messages: [],
+        abortSignal: undefined,
+      }),
+    );
+
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['x-session-id']).toBeUndefined();
+  });
 });

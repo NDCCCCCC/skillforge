@@ -75,10 +75,18 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
     // Issue the POST to the backend. The backend (Phase 2 Hertz SSE)
     // responds with `text/event-stream` frames encoded as JSON
     // UIMessageChunk payloads per the AI SDK v5 wire protocol.
+    //
+    // x-session-id (session-management phase): chat.go resolves the
+    // session partition from this header OR mints a random id — without
+    // it the FE's session-N id never reaches the store, so every turn
+    // lands in a throwaway session and /api/session/:id/history +
+    // /api/sessions never see it. options.chatId IS the active session
+    // id (App.tsx creates the Chat with id: activeSessionId).
     const response = await fetchFn(api, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
+        ...(options.chatId ? { 'x-session-id': options.chatId } : {}),
         ...extraHeaders,
       },
       body: JSON.stringify({

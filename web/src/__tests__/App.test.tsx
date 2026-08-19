@@ -226,3 +226,60 @@ describe('App restore (Plan 10-03 MEM-02 / D10-D1 + D10-D2)', () => {
     });
   });
 });
+
+describe('App session hydration (session-management phase)', () => {
+  it('TestApp_HydrateRoster — GET /api/sessions replaces the local roster + activates newest', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/api/sessions')) {
+          return {
+            ok: true,
+            json: async () => ({
+              sessions: [
+                { id: 'sess-beta-0002', title: '最新的会话', last_active_ms: 2_000 },
+                { id: 'sess-alpha-0001', title: '较早的会话', last_active_ms: 1_000 },
+              ],
+            }),
+          } as unknown as Response;
+        }
+        // History fetch for the hydrated active session → empty; the
+        // skill-reload poll → empty array.
+        return {
+          ok: true,
+          json: async () => (url.includes('/history') ? { messages: [], skill_id: '' } : []),
+        } as unknown as Response;
+      }),
+    );
+
+    render(<App />);
+    await waitFor(() => {
+      expect(useAppStore.getState().activeSessionId).toBe('sess-beta-0002');
+    });
+    expect(useAppStore.getState().sessions.map((s) => s.id)).toEqual([
+      'sess-beta-0002',
+      'sess-alpha-0001',
+    ]);
+    expect(useAppStore.getState().sessions[0].lastActiveAt).toBe(2_000);
+  });
+
+  it('TestApp_HydrateEmptyKeepsLocal — empty roster keeps the boot session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => ({
+        ok: true,
+        json: async () => ({ sessions: [] }),
+      }) as unknown as Response,
+    ));
+
+    render(<App />);
+    // Give the hydrate promise a tick to resolve as null-ish/empty —
+    // then the local session must be untouched.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const s = useAppStore.getState();
+    expect(s.activeSessionId).toBe('session-init');
+    expect(s.sessions).toEqual([{ id: 'session-init', name: '会话 1', createdAt: 0 }]);
+  });
+});
