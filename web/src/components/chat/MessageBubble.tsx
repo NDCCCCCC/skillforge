@@ -36,6 +36,7 @@ import type { UIMessage } from 'ai';
 import { Sparkles } from 'lucide-react';
 import DataPolicyPart from './parts/DataPolicyPart';
 import DataSubprogressPart from './parts/DataSubprogressPart';
+import FeedbackRow from './parts/FeedbackRow';
 import ReasoningPart from './parts/ReasoningPart';
 import RoutingTracePart from './parts/RoutingTracePart';
 import { SourceDocumentPart } from './parts/SourceDocumentPart';
@@ -204,6 +205,9 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
       </div>
       <div className="message-assistant-body">
         {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
+        {/* Open Design B6 — per-reply feedback strip (vote locks after
+            the first choice; 创建工单 stays independent). */}
+        <FeedbackRow messageId={message.id} />
       </div>
     </div>
   );

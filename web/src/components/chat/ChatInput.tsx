@@ -347,8 +347,11 @@ export default function ChatInput({
         </button>
       </div>
 
-      <div className="composer-hint">
-        Enter 发送 · Shift+Enter 换行 · / 选择 Skill · 拖放文件附件
+      {/* Open Design B6 — dual hint: Enter affordances left, retrieval
+          scope right. */}
+      <div className="composer-hint" data-testid="composer-hint">
+        <span>Enter 发送 · Shift+Enter 换行 · / 选择 Skill · 拖放文件附件</span>
+        <span>检索范围：当前 Skill 定义的知识层</span>
       </div>
     </div>
   );

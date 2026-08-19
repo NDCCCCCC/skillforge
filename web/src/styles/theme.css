@@ -1044,14 +1044,14 @@ body[data-dragging="true"] * {
 
 .composer-send {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  right: 12px;
+  bottom: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
   background: var(--color-primary);
   color: var(--color-primary-fg);
   transition: all var(--transition-fast) cubic-bezier(0.16, 1, 0.3, 1);
@@ -1075,13 +1075,75 @@ body[data-dragging="true"] * {
   cursor: not-allowed;
 }
 
+/* Open Design B6 — dual hint row: Enter affordances left, retrieval
+   scope right (stacked centered on narrow widths). */
 .composer-hint {
   margin-top: 6px;
   padding: 0 4px;
   font-size: 11px;
   color: var(--color-text-dim);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
   letter-spacing: 0.01em;
+}
+
+/* ---------- B6: per-reply feedback row ---------- */
+.feedback-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border);
+}
+
+.feedback-row-q {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  margin-right: var(--space-1);
+}
+
+.feedback-row-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.feedback-row-btn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-border-muted);
+}
+
+.feedback-row-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.feedback-row-btn-active {
+  background: var(--color-primary-dim);
+  border-color: var(--color-primary);
+  color: var(--color-primary-hover);
+  opacity: 1;
+}
+
+.feedback-row-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 var(--space-1);
+  background: var(--color-border);
 }
 
 .composer-skill-menu {
