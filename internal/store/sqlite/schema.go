@@ -89,6 +89,16 @@ CREATE TABLE IF NOT EXISTS session_turn (
 );
 CREATE INDEX IF NOT EXISTS idx_session_turn_sid ON session_turn(session_id);
 
+-- session_meta (session-management phase): optional per-session metadata
+-- override. A row exists ONLY after a user rename — the authoritative
+-- session roster is derived from session_turn (ListSessions aggregates
+-- turns + LEFT JOINs this table). Deleting a session drops both its
+-- turns and its meta row; audit rows are NEVER touched (T-3-AUDIT).
+CREATE TABLE IF NOT EXISTS session_meta (
+    id    TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS checkpoint (
     id         TEXT PRIMARY KEY,
     session_id TEXT NOT NULL DEFAULT '',

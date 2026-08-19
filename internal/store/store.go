@@ -88,6 +88,24 @@ type SessionMessage struct {
 	Ts      time.Time
 }
 
+// SessionSummary is one roster row for ListSessions (session-management
+// phase). The session roster is DERIVED — sessions exist implicitly as
+// distinct session_id values in session_turn; session_meta contributes
+// only the optional rename override.
+type SessionSummary struct {
+	// ID is the session_id partition key.
+	ID string
+	// DerivedTitle is the first user turn's content truncated to 40
+	// runes — the default display title. Empty when the session has no
+	// user turn (cannot happen via AppendTurn today; defensive).
+	DerivedTitle string
+	// Title is the session_meta rename override; empty string means
+	// "no override — use DerivedTitle".
+	Title string
+	// LastActive is the newest session_turn ts for the session (UTC).
+	LastActive time.Time
+}
+
 // AuditMeta is the Phase 10 sibling-table audit row that carries the
 // rewriter / classifier / history-projection signals NOT covered by the
 // canonical audit row. The relationship to AuditRow is 1:1 by query_id
@@ -105,34 +123,34 @@ type SessionMessage struct {
 // Field semantics:
 //
 //   - QueryID            1:1 join key back to AuditRow.ID. NOT auto-
-//                        generated here; the caller wires it after
-//                        PutAudit returns the audit row's ID.
+//     generated here; the caller wires it after
+//     PutAudit returns the audit row's ID.
 //   - RewrittenQuery     nullable; empty when no rewrite happened (first
-//                        turn / no-anaphora / rewriter nil-gated).
+//     turn / no-anaphora / rewriter nil-gated).
 //   - ClassifierDecision one of "allow" | "refuse" | "n/a". "n/a" when
-//                        the classifier was nil-gated; the audit row
-//                        itself carries the code-level short-circuit
-//                        refusal reason (no_authorized_source /
-//                        low_retrieval_score).
+//     the classifier was nil-gated; the audit row
+//     itself carries the code-level short-circuit
+//     refusal reason (no_authorized_source /
+//     low_retrieval_score).
 //   - ClassifierReason   nullable; one of verdict.RefusalReason* when
-//                        ClassifierDecision="refuse".
+//     ClassifierDecision="refuse".
 //   - ClassifierConfidence nullable; float64 in [0.0, 1.0].
 //   - HistoryProjectedNTurns post-sanitization message count that
-//                        flowed into the verdict messages prefix (0
-//                        when no history).
+//     flowed into the verdict messages prefix (0
+//     when no history).
 //   - HistoryBudgetTruncated 1 when TruncateToCharBudget dropped at
-//                        least one message, else 0.
+//     least one message, else 0.
 //   - HistoryDroppedCount number of messages dropped by the budget
-//                        window (0 when none).
+//     window (0 when none).
 type AuditMeta struct {
-	QueryID                 int64
-	RewrittenQuery          string
-	ClassifierDecision      string
-	ClassifierReason        string
-	ClassifierConfidence    *float64
-	HistoryProjectedNTurns  int
-	HistoryBudgetTruncated  int
-	HistoryDroppedCount     int
+	QueryID                int64
+	RewrittenQuery         string
+	ClassifierDecision     string
+	ClassifierReason       string
+	ClassifierConfidence   *float64
+	HistoryProjectedNTurns int
+	HistoryBudgetTruncated int
+	HistoryDroppedCount    int
 }
 
 // AuditFilter is the parameter bag for QueryAudit. Every field is
@@ -217,6 +235,27 @@ type Store interface {
 	// bug — PutAudit must have returned the ID before PutAuditMeta is
 	// called).
 	PutAuditMeta(ctx context.Context, meta AuditMeta) error
+
+	// ListSessions returns the session roster derived from session_turn
+	// (one row per distinct session_id), newest-activity-first, LEFT
+	// JOINed onto session_meta for the rename override. DerivedTitle is
+	// the first user turn truncated; Title (the override) is empty when
+	// no rename happened — callers prefer Title, falling back to
+	// DerivedTitle. Audit rows are NOT consulted (the immutable trail
+	// stays decoupled from the user-facing roster).
+	ListSessions(ctx context.Context) ([]SessionSummary, error)
+
+	// RenameSession upserts the session_meta title override for
+	// sessionID (INSERT ... ON CONFLICT DO UPDATE). It does not require
+	// existing turns — renaming before any chat is legal and simply
+	// pre-seeds the override.
+	RenameSession(ctx context.Context, sessionID, title string) error
+
+	// DeleteSessionTurns removes sessionID's turns AND its session_meta
+	// row in one transaction (both are user-owned data). Audit rows are
+	// deliberately NOT deleted — T-3-AUDIT's immutable trail survives
+	// user-visible deletion. Idempotent: an unknown sessionID is a no-op.
+	DeleteSessionTurns(ctx context.Context, sessionID string) error
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.
