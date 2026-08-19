@@ -14,7 +14,15 @@
 // Threat model: doc filenames come from the backend and are rendered
 // as text only (no dangerouslySetInnerHTML, no client-side path
 // construction) — the LeftSidebar posture carries over unchanged.
+//
+// B7 fix: the modal renders through createPortal(document.body). It is
+// mounted inside TopBar, and `.topbar` carries backdrop-filter — per
+// the CSS containing-block rules that makes the bar the containing
+// block for its FIXED descendants, so the scrim inset-0 covered only
+// the 56px bar and the card anchored to it instead of the viewport.
+// Portaling out of that subtree restores fixed = viewport.
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import DocViewer from '../center/DocViewer';
@@ -86,7 +94,7 @@ export default function KnowledgeModal({ open, onClose }: KnowledgeModalProps) {
     setOpenTiers((prev) => ({ ...prev, [tier]: !prev[tier] }));
   }
 
-  return (
+  return createPortal(
     <div
       data-testid="knowledge-modal-scrim"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
@@ -190,6 +198,7 @@ export default function KnowledgeModal({ open, onClose }: KnowledgeModalProps) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

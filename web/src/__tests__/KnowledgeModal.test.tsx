@@ -141,6 +141,15 @@ describe('KnowledgeModal', () => {
     expect(screen.queryByTestId('knowledge-modal')).toBeNull();
   });
 
+  it('portals the scrim directly under document.body (backdrop-filter containing-block fix)', () => {
+    // The modal is mounted inside TopBar, whose `.topbar` carries
+    // backdrop-filter — a containing block for FIXED descendants. The
+    // scrim must therefore live OUTSIDE that subtree (parent =
+    // document.body) or inset-0 covers only the 56px bar.
+    renderModal();
+    expect(screen.getByTestId('knowledge-modal-scrim').parentElement).toBe(document.body);
+  });
+
   it('keeps tier headers when the docs fetch fails (non-fatal)', async () => {
     stubKnowledgeFetch(null);
     renderModal();
