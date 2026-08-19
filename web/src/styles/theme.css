@@ -1549,6 +1549,28 @@ body[data-dragging="true"] .detail-panel-wrap {
 }
 
 /* ====================================================================
+   SessionDrawer (session-management phase) — left drawer entrance.
+   The panel geometry lives in the component's Tailwind utilities
+   (fixed left-0, top/bottom = topbar/statusbar vars, z-40); this
+   only owns the slide-in keyframes so the component file stays
+   utility-first.
+   ==================================================================== */
+@keyframes session-drawer-in {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.session-drawer {
+  animation: session-drawer-in 200ms var(--ease-spring);
+}
+
+/* ====================================================================
    Light theme — :root[data-theme="light"] mirror (Open Design redesign).
    Every @theme token that paints a surface is re-declared here. This
    block is UNLAYERED, so it wins over Tailwind's @layer theme :root
