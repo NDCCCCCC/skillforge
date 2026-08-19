@@ -5,8 +5,8 @@ milestone_name: — Harness（可信×行动融合）
 current_phase: 11
 current_plan: TBD (4 areas / 16 decisions locked; context ready for plan-phase)
 status: ui-spec-approved
-stopped_at: Phase 11 UI-SPEC approved (commit TBD; 6/6 dimensions PASS + 1 non-blocking FLAG)
-last_updated: "2026-08-20T03:15:00Z"
+stopped_at: Phase 11 UI-SPEC approved (commit e0a18a8; 6/6 dimensions PASS + 1 non-blocking FLAG)
+last_updated: "2026-08-20T03:16:00Z"
 last_activity: 2026-08-20 -- Phase 11 UI-SPEC approved (11-UI-SPEC.md written; ApprovalCard store-derived overlay / ApprovalRulesPanel 5th SessionDrawer section / AuditTimelineTab 6th DetailPanel tab / SkillSwitchGuard pending-disables / cross-refresh resume 3-banner / audit-fail-closed banner; all 12 locked invariants honored: D-04 / D14 / D15 / D11-C2 / D11-C3 / D11-C4 / T-3-AUDIT / D8-04 / D11-A2 / D11-D1 / D11-D3 / first-2-targets / edit-before-approve; gsd-sdk PATH bypass — artifacts + STATE manually committed)
 resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-UI-SPEC.md
 progress:
