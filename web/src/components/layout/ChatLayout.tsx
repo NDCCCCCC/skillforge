@@ -140,6 +140,15 @@ export default function ChatLayout({ chat, detail }: ChatLayoutProps) {
         </div>
         {detailPanelOpen && (
           <>
+            {/* B7 — scrim under the panel on <1280px viewports where the
+                panel is a fixed overlay (CSS hides it ≥1280). Click to
+                dismiss mirrors the KnowledgeModal scrim contract. */}
+            <div
+              data-testid="dp-scrim"
+              className="dp-scrim"
+              aria-hidden="true"
+              onClick={() => useAppStore.getState().setDetailPanelOpen(false)}
+            />
             <div
               data-testid="dp-resize-handle"
               className="resize-handle"

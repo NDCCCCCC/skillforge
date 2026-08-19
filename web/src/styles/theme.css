@@ -281,32 +281,6 @@ body,
   height: 100vh;
 }
 
-.app-main {
-  display: grid;
-  /* 5 tracks: [left | handle | center | handle | right]. The two 4px
-     handle tracks mirror `.resize-handle` width so the handles own a
-     grid column instead of stealing a panel column via auto-placement
-     (which pushed center→col3 and right→row2). */
-  grid-template-columns: 260px 4px 1fr 4px 420px;
-  transition: grid-template-columns var(--transition-base) cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Reasoning preview — height-capped with fade-out mask so long GLM-5.2
-   reasoning chains don't push the answer off-screen (D-08 anti-bury
-   invariant). Background, left-border, padding, radius per FEUI-02. */
-.reasoning-preview {
-  max-height: 160px;
-  overflow-y: auto;
-  background-color: var(--color-reasoning);
-  border-left: 2px solid var(--color-primary);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  /* Fade-out mask at the bottom edge (12px) so truncation reads
-     visually as a scroll affordance, not a hard cut. */
-  mask-image: linear-gradient(to bottom, black calc(100% - 12px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 12px), transparent 100%);
-}
-
 /* Center panel tab content area — ensures tab bodies have a stable
    minimum height so empty states (chunk-source / SKILL.md tabs) don't
    collapse when only a heading is rendered. */
@@ -1518,6 +1492,60 @@ body[data-dragging="true"] .detail-panel-wrap {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   background-color: color-mix(in srgb, var(--color-surface) 88%, transparent);
+}
+
+/* ====================================================================
+   Responsive (Open Design redesign B7).
+   <1280px: the detail panel becomes a fixed overlay sheet over the
+   chat column (chat stays full-width underneath) with a scrim that
+   closes it on click. The resize handle is hidden — overlay width is
+   capped by max-width instead of drag (inline width from the store
+   still applies, clamped to 92vw).
+   <768px: full-width phones — user bubbles and the inline verdict
+   card drop their max-width caps (SessionPicker is already
+   `hidden md:block` in the TopBar; suggested prompts are single
+   column by default).
+   ==================================================================== */
+.dp-scrim {
+  display: none;
+}
+
+@media (max-width: 1279px) {
+  .dp-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background-color: color-mix(in srgb, var(--color-bg) 60%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .resize-handle {
+    display: none;
+  }
+
+  .detail-panel-wrap {
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: var(--statusbar-height);
+    right: 0;
+    z-index: 40;
+    max-width: 92vw; /* inline store width (320–520) applies, capped by viewport */
+    box-shadow: -12px 0 40px var(--color-shadow-card);
+    border-left: 1px solid var(--color-border);
+    transition: transform var(--transition-base) var(--ease-spring);
+  }
+}
+
+@media (max-width: 767px) {
+  .message-user-card {
+    max-width: 100%;
+  }
+
+  .verdict-inline {
+    max-width: 100%;
+  }
 }
 
 /* ====================================================================

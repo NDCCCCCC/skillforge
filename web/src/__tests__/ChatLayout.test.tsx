@@ -11,7 +11,9 @@
 //      (sf.dp.w out-of-range values are clamped).
 //   4. The stored open flag (sf.dp.open='1') re-opens the panel on
 //      mount.
-import { cleanup, render, screen } from '@testing-library/react';
+//   5. B7 — the <1280px overlay scrim (dp-scrim) mounts only while the
+//      panel is open and clicking it closes the panel.
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import ChatLayout from '../components/layout/ChatLayout';
@@ -36,6 +38,18 @@ describe('ChatLayout (Open Design redesign B2)', () => {
     expect(screen.getByTestId('chat-slot')).toBeInTheDocument();
     expect(screen.queryByTestId('detail-panel-wrap')).toBeNull();
     expect(screen.queryByTestId('dp-resize-handle')).toBeNull();
+    // B7 — the mobile-overlay scrim is NOT mounted while closed either.
+    expect(screen.queryByTestId('dp-scrim')).toBeNull();
+  });
+
+  it('mounts the <1280px overlay scrim while open and closes the panel on click (B7)', () => {
+    useAppStore.setState({ detailPanelOpen: true });
+    render(<ChatLayout chat={<div />} detail={<div data-testid="detail-slot" />} />);
+    const scrim = screen.getByTestId('dp-scrim');
+    expect(scrim).toBeInTheDocument();
+    fireEvent.click(scrim);
+    expect(useAppStore.getState().detailPanelOpen).toBe(false);
+    expect(screen.queryByTestId('detail-panel-wrap')).toBeNull();
   });
 
   it('mounts the detail panel + resize handle when detailPanelOpen=true', () => {
