@@ -18,74 +18,114 @@
 @import "tailwindcss";
 
 @theme {
-  /* ===== Colors (60/30/10 split — denova dark) ===== */
-  --color-bg: #0f1419;               /* Dominant 60% — app background */
-  --color-surface: #1a1f26;          /* Secondary 30% — panels + cards */
-  --color-surface-2: #232932;       /* Hover state, tool-call bg */
-  --color-surface-3: #2a313b;       /* Pressed state, reasoning bg */
-  --color-border: #2d3540;           /* Default borders */
-  --color-border-muted: #1f252e;    /* Resize handle, pre inner border */
+  /* ===== Colors (60/30/10 — enterprise deep-space, Open Design
+     redesign 260819: indigo accent, deeper bg, softer surfaces).
+     Light theme mirrors every token in the :root[data-theme="light"]
+     override block at the bottom of this file. ===== */
+  --color-bg: #0c0e12;               /* Dominant 60% — app background */
+  --color-surface: #14171e;          /* Secondary 30% — panels + cards */
+  --color-surface-2: #1c2029;       /* Hover state, tool-call bg */
+  --color-surface-3: #242833;       /* Pressed state, reasoning bg */
+  --color-border: #242833;           /* Default borders */
+  --color-border-muted: #333a48;    /* Strong line — resize handle, pre inner border */
 
-  /* Accent (10%) — reserved for CTA / focus / streaming dot / etc. */
-  --color-primary: #4a9eff;
-  --color-primary-hover: #6db0ff;
-  --color-primary-dim: #1e3a5f;
+  /* Accent (10%) — indigo, reserved for CTA / focus / streaming dot */
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+  --color-primary-dim: #1e1b4b;
   --color-primary-fg: #ffffff;
 
-  /* Destructive — reserved, unused in P4 */
+  /* Destructive — Button destructive variant + wizard cancel CTA */
   --color-danger: #ef4444;
 
   /* Text scale */
-  --color-text: #e8eaed;
-  --color-text-muted: #8b95a3;
-  --color-text-dim: #5a6473;
+  --color-text: #f0f0f3;
+  --color-text-muted: #7c8494;
+  --color-text-dim: #5b6478;
 
-  /* Status semantic group (separate from accent) */
-  --color-status-compliant: #22c55e;        /* green — ComplianceStatus=compliant */
-  --color-status-needs-info: #f59e0b;       /* yellow — needs_input / review badge */
-  --color-status-non-compliant: #ef4444;    /* red — ComplianceStatus=non_compliant */
+  /* Status semantic group (separate from accent). Per the redesign,
+     unanswered and out-of-scope intentionally share the neutral gray
+     (both are terminal "no answer" states of equal valence; the label
+     text differentiates them). */
+  --color-status-compliant: #34d399;        /* green — ComplianceStatus=compliant */
+  --color-status-needs-info: #fbbf24;       /* yellow — needs_input / review badge */
+  --color-status-non-compliant: #f87171;    /* red — ComplianceStatus=non_compliant */
   --color-status-unanswered: #8b95a3;       /* gray — refused (legacy unanswered) */
-  --color-status-out-of-scope: #5b7a99;     /* blue-gray — out-of-scope (NEW in P4) */
-  /* 260817-vsm: new platform Status=error token (reuses gray for now,
-     distinct from refused visually later if needed). */
+  --color-status-out-of-scope: #8b95a3;     /* gray — out-of-scope (shares unanswered) */
   --color-status-error: #dc2626;            /* deeper red — internal error */
 
-  /* Chat bubble backgrounds — modernized with layered depth */
-  --color-user-bubble: #1e3a5f;
-  --color-user-bubble-end: #1a3a6f;       /* gradient terminus */
-  --color-assistant-bubble: transparent;  /* full-width, no card chrome */
-  --color-message-area: #141a21;          /* slightly lifted from app bg for depth */
+  /* Chat bubble backgrounds — indigo gradient user card */
+  --color-user-bubble: #1e1b4b;
+  --color-user-bubble-end: #312e81;       /* gradient terminus */
+  --color-message-area: #10131a;          /* slightly lifted from app bg for depth */
 
-  /* Tool call cards — distinct "agent activity" surface */
-  --color-tool-bg: #1a2028;
-  --color-tool-border: #2d3540;
-  --color-tool-accent: #06b6d4;           /* cyan — agent at work */
-  --color-tool-accent-dim: rgba(6, 182, 212, 0.12);
+  /* Tool call cards — "agent at work" surface, indigo accent */
+  --color-tool-bg: #171b24;
+  --color-tool-border: #242833;
+  --color-tool-accent: #6366f1;           /* indigo — agent at work */
+  --color-tool-accent-dim: rgba(99, 102, 241, 0.12);
+  --color-tool-accent-glow: rgba(99, 102, 241, 0.5);
+  --color-tool-accent-border: rgba(99, 102, 241, 0.3);
+  --color-tool-body-bg: rgba(5, 7, 12, 0.3);   /* inset I/O block (was raw black) */
 
   /* Reasoning preview — warm amber "thinking" surface */
   --color-reasoning: #2a2317;             /* warm tinted bg */
-  --color-reasoning-border: #f59e0b;      /* amber-500 */
+  --color-reasoning-border: #fbbf24;      /* amber-400 left bar */
   --color-reasoning-accent: #fbbf24;      /* amber-400 */
+  --color-reasoning-tint: rgba(251, 191, 36, 0.05);
+  --color-reasoning-tint-end: rgba(251, 191, 36, 0.015);
+  --color-reasoning-line: rgba(251, 191, 36, 0.2);
+  --color-reasoning-icon-bg: rgba(251, 191, 36, 0.16);
+  --color-reasoning-hover: rgba(251, 191, 36, 0.1);
 
-  /* Citation chips — pill style */
-  --color-citation-bg: rgba(74, 158, 255, 0.12);
-  --color-citation-border: rgba(74, 158, 255, 0.3);
-  --color-citation-text: #93c5fd;
+  /* Citation chips — pill style (indigo translucent) */
+  --color-citation-bg: rgba(99, 102, 241, 0.12);
+  --color-citation-border: rgba(99, 102, 241, 0.3);
+  --color-citation-text: #a5b4fc;
 
   /* Composer — floating card */
-  --color-composer-bg: #1c232c;
-  --color-composer-border: #2d3540;
-  --color-composer-focus: rgba(74, 158, 255, 0.4);
-  --color-composer-shadow: rgba(0, 0, 0, 0.4);
+  --color-composer-bg: #1a1f29;
+  --color-composer-border: #2b3140;
+  --color-composer-focus: rgba(99, 102, 241, 0.4);
+  --color-composer-shadow: rgba(4, 6, 12, 0.4);
 
   /* Activity pulse — used for the "agent is working" status dots */
-  --color-pulse: #4a9eff;
-  --color-pulse-glow: rgba(74, 158, 255, 0.6);
+  --color-pulse: #6366f1;
+  --color-pulse-glow: rgba(99, 102, 241, 0.6);
 
   /* Sub-progress timeline (DataSubprogressPart) */
-  --color-timeline-dot: #4a9eff;
-  --color-timeline-dot-active: #06b6d4;
-  --color-timeline-track: #2d3540;
+  --color-timeline-dot: #6366f1;
+  --color-timeline-dot-active: #818cf8;
+  --color-timeline-track: #242833;
+
+  /* Indigo glow family — chip hover / send button / focus rings.
+     Tokenized (was ~8 raw rgba literals) so the light theme can
+     retint every glow at once. */
+  --color-glow-soft: rgba(99, 102, 241, 0.15);
+  --color-glow: rgba(99, 102, 241, 0.25);
+  --color-glow-strong: rgba(99, 102, 241, 0.35);
+  --color-glow-faint: rgba(99, 102, 241, 0.06);
+
+  /* Routing trace card (RoutingTracePart) */
+  --color-routing-bg: rgba(99, 102, 241, 0.05);
+  --color-routing-border: rgba(99, 102, 241, 0.16);
+
+  /* Neutral elevation shadows (theme-aware via the light mirror) */
+  --color-shadow-card: rgba(4, 6, 12, 0.2);
+  --color-shadow-card-strong: rgba(4, 6, 12, 0.32);
+  --color-shadow-overlay: rgba(4, 6, 12, 0.45);
+
+  /* Status tints — blocked citations, error blocks, draft chips */
+  --color-bad-tint: rgba(248, 113, 113, 0.08);
+  --color-ok-tint: rgba(52, 211, 153, 0.08);
+  --color-ok-border: rgba(52, 211, 153, 0.3);
+  --color-ok-glow: rgba(52, 211, 153, 0.4);
+
+  /* Terminal surface — cmd-block code blocks (markdown answers) */
+  --color-terminal-bg: #0a0c10;
+  --color-terminal-fg: #d2d6e0;
+  --color-terminal-comment: #6b7280;
+  --color-terminal-prompt: #818cf8;
 
   /* ===== Plan 05-06 annotation tokens (SC-6 + SC-7) =====
      Reserved SCOPED palette — these are the ONLY teal/redline surfaces
@@ -95,8 +135,8 @@
      single token. */
   --color-annotation: #2dd4bf;            /* teal-400 — counter-evidence left-border + 历史 tier badge + redline rationale left-border */
   --color-annotation-dim: #134e4a;        /* teal-900 — counter-evidence badge bg / hover */
-  --color-redline-removed: rgba(239, 68, 68, 0.10);   /* red-tinted bg block for 原条款 (D5-14 redline original) */
-  --color-redline-added: rgba(34, 197, 94, 0.10);     /* green-tinted bg block for 建议改写 (D5-14 redline rewrite) */
+  --color-redline-removed: rgba(248, 113, 113, 0.10);   /* red-tinted bg block for 原条款 (D5-14 redline original) */
+  --color-redline-added: rgba(52, 211, 153, 0.10);      /* green-tinted bg block for 建议改写 (D5-14 redline rewrite) */
 
   /* ===== Spacing scale (multiples of 4) ===== */
   --space-1: 4px;
@@ -114,22 +154,25 @@
   --text-lg: 18px;       /* 1.125rem — headings */
   --text-2xl: 24px;      /* 1.5rem — display (down from sketch 1.75rem) */
 
-  /* Font families */
-  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Font families — Plus Jakarta Sans primary (Open Design redesign) */
+  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
 
   /* ===== Layout dimensions ===== */
-  --topbar-height: 44px;
+  --topbar-height: 56px;
   --statusbar-height: 26px;
 
   /* ===== Transitions ===== */
   --transition-fast: 120ms;
-  --transition-base: 200ms;
+  --transition-base: 300ms;
+  /* Spring easing for panel/verdict motion (redesign §3.4) */
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.5, 1);
 
-  /* ===== Radii ===== */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  /* ===== Radii (softer, enterprise-modern) ===== */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-composer: 16px;
   --radius-full: 9999px;
 }
 
@@ -145,6 +188,7 @@ body,
   font-size: var(--text-base);
   font-weight: 400;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -172,7 +216,7 @@ body,
   border-color: var(--color-primary);
   color: var(--color-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.15);
+  box-shadow: 0 2px 8px var(--color-glow-soft);
 }
 
 .citation-chip .tier {
@@ -187,7 +231,7 @@ body,
   align-items: center;
   gap: var(--space-1);
   padding: 4px 10px;
-  background-color: rgba(239, 68, 68, 0.08);
+  background-color: var(--color-bad-tint);
   border: 1px dashed var(--color-status-non-compliant);
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -321,7 +365,7 @@ body[data-dragging="true"] * {
   font-size: var(--text-base);
   line-height: 1.6;
   border-radius: 18px 18px 4px 18px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 2px var(--color-shadow-card);
   word-wrap: break-word;
 }
 
@@ -438,14 +482,14 @@ body[data-dragging="true"] * {
 }
 
 @keyframes tool-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.5); }
-  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(6, 182, 212, 0); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--color-tool-accent-glow); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 6px transparent; }
 }
 
 .tool-card-body {
   margin-top: var(--space-2);
   padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--color-tool-body-bg);
   border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -464,7 +508,7 @@ body[data-dragging="true"] * {
 .tool-card-error {
   margin-top: var(--space-2);
   padding: 8px 10px;
-  background: rgba(239, 68, 68, 0.08);
+  background: var(--color-bad-tint);
   border-left: 2px solid var(--color-status-non-compliant);
   border-radius: 4px;
   font-size: var(--text-xs);
@@ -476,9 +520,9 @@ body[data-dragging="true"] * {
   position: relative;
   margin: var(--space-3) 0;
   background: linear-gradient(180deg,
-    rgba(245, 158, 11, 0.04) 0%,
-    rgba(245, 158, 11, 0.01) 100%);
-  border: 1px solid rgba(245, 158, 11, 0.18);
+    var(--color-reasoning-tint) 0%,
+    var(--color-reasoning-tint-end) 100%);
+  border: 1px solid var(--color-reasoning-line);
   border-left: 3px solid var(--color-reasoning-border);
   border-radius: 10px;
   overflow: hidden;
@@ -495,7 +539,7 @@ body[data-dragging="true"] * {
 }
 
 .reasoning-card-header:hover {
-  background-color: rgba(245, 158, 11, 0.04);
+  background-color: var(--color-reasoning-hover);
 }
 
 .reasoning-card-icon {
@@ -505,7 +549,7 @@ body[data-dragging="true"] * {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: rgba(245, 158, 11, 0.15);
+  background: var(--color-reasoning-icon-bg);
   color: var(--color-reasoning-accent);
   flex-shrink: 0;
 }
@@ -541,7 +585,7 @@ body[data-dragging="true"] * {
 }
 
 .reasoning-card-toggle:hover {
-  background-color: rgba(245, 158, 11, 0.08);
+  background-color: var(--color-reasoning-hover);
   color: var(--color-reasoning-accent);
 }
 
@@ -645,13 +689,13 @@ body[data-dragging="true"] * {
   background: linear-gradient(90deg,
     var(--color-tool-accent-dim) 0%,
     var(--color-tool-bg) 100%);
-  border-color: rgba(6, 182, 212, 0.3);
+  border-color: var(--color-tool-accent-border);
   color: var(--color-text);
 }
 
 .draft-chip-modern[data-status="verified"] {
-  background: rgba(34, 197, 94, 0.08);
-  border-color: rgba(34, 197, 94, 0.3);
+  background: var(--color-ok-tint);
+  border-color: var(--color-ok-border);
   color: var(--color-status-compliant);
 }
 
@@ -689,17 +733,17 @@ body[data-dragging="true"] * {
   position: relative;
   background: var(--color-composer-bg);
   border: 1px solid var(--color-composer-border);
-  border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25),
-              0 1px 3px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-composer);
+  box-shadow: 0 4px 16px var(--color-shadow-card-strong),
+              0 1px 3px var(--color-shadow-card);
   transition: all var(--transition-base) cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
 }
 
 .composer-card:focus-within {
   border-color: var(--color-composer-focus);
-  box-shadow: 0 4px 20px rgba(74, 158, 255, 0.15),
-              0 1px 3px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px var(--color-glow-soft),
+              0 1px 3px var(--color-shadow-card);
 }
 
 .composer-card[data-dragging="true"] {
@@ -757,7 +801,7 @@ body[data-dragging="true"] * {
   margin: 8px 12px 0;
   padding: 4px 10px;
   background: var(--color-primary-dim);
-  border: 1px solid rgba(74, 158, 255, 0.3);
+  border: 1px solid var(--color-citation-border);
   border-radius: 999px;
   font-size: 11px;
   color: var(--color-primary);
@@ -805,13 +849,13 @@ body[data-dragging="true"] * {
   background: var(--color-primary);
   color: var(--color-primary-fg);
   transition: all var(--transition-fast) cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.25);
+  box-shadow: 0 2px 8px var(--color-glow);
 }
 
 .composer-send:hover:not(:disabled) {
   background: var(--color-primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.35);
+  box-shadow: 0 4px 12px var(--color-glow-strong);
 }
 
 .composer-send:active:not(:disabled) {
@@ -843,7 +887,7 @@ body[data-dragging="true"] * {
   background: var(--color-composer-bg);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px var(--color-shadow-overlay);
   overflow: hidden;
   animation: menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -893,7 +937,7 @@ body[data-dragging="true"] * {
   height: 6px;
   border-radius: 50%;
   background: var(--color-status-compliant);
-  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 4px var(--color-ok-glow);
 }
 
 .chat-header-skill-missing {
@@ -921,10 +965,10 @@ body[data-dragging="true"] * {
   border-radius: 18px;
   background: linear-gradient(135deg,
     var(--color-primary-dim) 0%,
-    rgba(74, 158, 255, 0.06) 100%);
+    var(--color-glow-faint) 100%);
   color: var(--color-primary);
   margin-bottom: 20px;
-  box-shadow: 0 4px 16px rgba(74, 158, 255, 0.12);
+  box-shadow: 0 4px 16px var(--color-glow-soft);
 }
 
 .chat-empty-title {
@@ -970,7 +1014,7 @@ body[data-dragging="true"] * {
   border-color: var(--color-primary);
   color: var(--color-text);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px var(--color-shadow-card);
 }
 
 .chat-empty-prompt-icon {
@@ -989,8 +1033,8 @@ body[data-dragging="true"] * {
 .routing-trace-modern {
   margin: var(--space-3) 0;
   padding: 10px 14px;
-  background: rgba(74, 158, 255, 0.04);
-  border: 1px solid rgba(74, 158, 255, 0.15);
+  background: var(--color-routing-bg);
+  border: 1px solid var(--color-routing-border);
   border-left: 3px solid var(--color-primary);
   border-radius: 8px;
   font-size: var(--text-xs);
@@ -1061,4 +1105,104 @@ body[data-dragging="true"] * {
 .reasoning-card-body::-webkit-scrollbar-thumb:hover,
 .tool-card-body::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-dim);
+}
+
+/* ====================================================================
+   Light theme — :root[data-theme="light"] mirror (Open Design redesign).
+   Every @theme token that paints a surface is re-declared here. This
+   block is UNLAYERED, so it wins over Tailwind's @layer theme :root
+   emission; utilities resolve var(--color-*) at use time and pick up
+   these values automatically. Set via <html data-theme="light"> —
+   useTheme (hooks/useTheme.ts) owns the attribute, index.html sets it
+   pre-paint to avoid FOUC.
+   ==================================================================== */
+:root[data-theme="light"] {
+  --color-bg: #f5f6f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2f7;
+  --color-surface-3: #e6e9f2;
+  --color-border: #e3e7ef;
+  --color-border-muted: #d0d6e2;
+
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-dim: #eef2ff;
+  --color-primary-fg: #ffffff;
+
+  --color-danger: #b91c1c;
+
+  --color-text: #14171e;
+  --color-text-muted: #5b6478;
+  --color-text-dim: #8a93a6;
+
+  --color-status-compliant: #059669;
+  --color-status-needs-info: #b45309;
+  --color-status-non-compliant: #b91c1c;
+  --color-status-unanswered: #6b7280;
+  --color-status-out-of-scope: #6b7280;
+  --color-status-error: #b91c1c;
+
+  --color-user-bubble: #eef2ff;
+  --color-user-bubble-end: #c7d2fe;
+  --color-message-area: #f5f6f9;
+
+  --color-tool-bg: #ffffff;
+  --color-tool-border: #e3e7ef;
+  --color-tool-accent: #4f46e5;
+  --color-tool-accent-dim: rgba(79, 70, 229, 0.08);
+  --color-tool-accent-glow: rgba(79, 70, 229, 0.4);
+  --color-tool-accent-border: rgba(79, 70, 229, 0.28);
+  --color-tool-body-bg: rgba(15, 23, 42, 0.05);
+
+  --color-reasoning: #fdf6e9;
+  --color-reasoning-border: #d97706;
+  --color-reasoning-accent: #b45309;
+  --color-reasoning-tint: rgba(180, 83, 9, 0.05);
+  --color-reasoning-tint-end: rgba(180, 83, 9, 0.015);
+  --color-reasoning-line: rgba(180, 83, 9, 0.22);
+  --color-reasoning-icon-bg: rgba(180, 83, 9, 0.12);
+  --color-reasoning-hover: rgba(180, 83, 9, 0.08);
+
+  --color-citation-bg: rgba(79, 70, 229, 0.08);
+  --color-citation-border: rgba(79, 70, 229, 0.28);
+  --color-citation-text: #4338ca;
+
+  --color-composer-bg: #ffffff;
+  --color-composer-border: #d0d6e2;
+  --color-composer-focus: rgba(79, 70, 229, 0.4);
+  --color-composer-shadow: rgba(15, 23, 42, 0.12);
+
+  --color-pulse: #4f46e5;
+  --color-pulse-glow: rgba(79, 70, 229, 0.45);
+
+  --color-timeline-dot: #4f46e5;
+  --color-timeline-dot-active: #4338ca;
+  --color-timeline-track: #d0d6e2;
+
+  --color-glow-soft: rgba(79, 70, 229, 0.14);
+  --color-glow: rgba(79, 70, 229, 0.22);
+  --color-glow-strong: rgba(79, 70, 229, 0.3);
+  --color-glow-faint: rgba(79, 70, 229, 0.05);
+
+  --color-routing-bg: rgba(79, 70, 229, 0.05);
+  --color-routing-border: rgba(79, 70, 229, 0.16);
+
+  --color-shadow-card: rgba(15, 23, 42, 0.08);
+  --color-shadow-card-strong: rgba(15, 23, 42, 0.14);
+  --color-shadow-overlay: rgba(15, 23, 42, 0.2);
+
+  --color-bad-tint: rgba(185, 28, 28, 0.07);
+  --color-ok-tint: rgba(5, 150, 105, 0.08);
+  --color-ok-border: rgba(5, 150, 105, 0.3);
+  --color-ok-glow: rgba(5, 150, 105, 0.35);
+
+  --color-terminal-bg: #eef0f5;
+  --color-terminal-fg: #1f2533;
+  --color-terminal-comment: #6b7280;
+  --color-terminal-prompt: #4338ca;
+
+  --color-annotation: #0d9488;
+  --color-annotation-dim: #ccfbf1;
+  --color-redline-removed: rgba(185, 28, 28, 0.08);
+  --color-redline-added: rgba(5, 150, 105, 0.08);
 }

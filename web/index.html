@@ -8,6 +8,15 @@
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SkillForge — Skill 驱动的文档问答平台</title>
+    <script>
+      // Pre-paint theme attribute (avoids FOUC on light-theme reloads).
+      // Mirrors hooks/useTheme.ts — keep the `sf.theme` key in sync.
+      (function () {
+        var t = 'dark';
+        try { t = localStorage.getItem('sf.theme') === 'light' ? 'light' : 'dark'; } catch (e) {}
+        document.documentElement.dataset.theme = t;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
