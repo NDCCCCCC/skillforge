@@ -2,23 +2,25 @@
 gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
-current_phase: 10
-current_plan: 04
-status: blocked-pending-human
-stopped_at: context exhaustion at 75% (2026-08-19)
-last_updated: "2026-08-19T15:47:38.532Z"
-last_activity: 2026-08-18 -- Phase 10 planning complete
+current_phase: 11
+current_plan: 01
+status: closed-blocker-notes
+stopped_at: phase 10 closeout + advance to phase 11 (2026-08-20)
+last_updated: "2026-08-20T00:00:00Z"
+last_activity: 2026-08-20 -- Phase 10 closeout (hermetic-gated; live re-run → v0.8 milestone)
 progress:
   total_phases: 13
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 50
-  completed_plans: 51
-  percent: 62
+  completed_plans: 52
+  percent: 64
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-18 (**Phase 10 Plan 04 Task 1 shipped** — `--via-pipeline` flag + production chat-path composition in `cmd/spike-history` + hermetic `runner_pipeline_test.go`; all BE suites green, frozen lock byte-identity verified sha256 `5cf700f3...`). **Task 2 live 35-case re-run blocked-pending-human** (execution environment missing `.env` with `GLM_API_KEY` / `BGE_M3_URL` / `MILVUS_ADDRESS` and Docker Milvus + BGE-M3 stack). **Task 3 closeout transcription committed** with explicit blocker notes. Phase 10 remains in `executing-blocked` until operator provides live stack and the 35-case `--via-pipeline --summarize` gate is run.)
+**Last updated:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
+
+**Prior:** 2026-08-18 (**Phase 10 Plan 04 Task 1 shipped** — `--via-pipeline` flag + production chat-path composition in `cmd/spike-history` + hermetic `runner_pipeline_test.go`; all BE suites green, frozen lock byte-identity verified sha256 `5cf700f3...`). **Task 2 live 35-case re-run blocked-pending-human** (execution environment missing `.env` with `GLM_API_KEY` / `BGE_M3_URL` / `MILVUS_ADDRESS` and Docker Milvus + BGE-M3 stack). **Task 3 closeout transcription committed** with explicit blocker notes. Phase 10 remains in `executing-blocked` until operator provides live stack and the 35-case `--via-pipeline --summarize` gate is run.)
 
 **Prior:** 2026-08-18 (**Phase 10 Waves 1-3 complete** — 10-01 BE foundation / 10-02 pipeline injection / 10-03 FE restore; all hermetic green; FE `tsc` retains 1 pre-existing `DataSubprogressPart.tsx:47` error from 10-03.)
 
@@ -49,20 +51,27 @@ progress:
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 09 — trust-floor-spike-p8-s-spike-hard-gate (context gathered 2026-08-18)
+**Current focus:** Phase 11 — 写工具 + 审批门（P8.2, HITL-01..08）；fe/be 同 phase 不可拆
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
-**Phase 9 discuss session (2026-08-18):** A. 恶意注入 = LLM 生成 10 条到 adversarial / 第 N 轮 user / 双层 anchor；B. 投影 = 仅 user+assistant 纯文本 + 仅 user 文本扫 CHUNK id + 硬限 3 轮 + `internal/history/projection.go` 接口骨架 + 正负例 fixture；C. 善意追问 = 三小类 15 条 + 独立子集 baseline + 每条公开；D. 短+长双门 + 中立填充 + 独立长会话副报告 + 与短同门（<5% / <10%）。Claude discretion 兜底 no-go 逃逸方案。产出 = 报告 + 消毒骨架 + go/no-go 决策。Next action: `/gsd:plan-phase 9`。
+**Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
+**Phase 11 prerequisites inherited from Phase 9/10:**
+- D9-V2 escape plan already implemented (RefusalClassifierInput type-isolated to Query + Chunks, no History — Plan 10-01 Task 3; Plan 10-02 Task 1+3)
+- sqlite CheckPointStore skeleton ready (D8-03; Phase 11 implements Delete + expires_at filter; `schema.RegisterName[T](name)` registered; `composed.CheckPointStore` — D8-06)
+- `data-decision` SSE chunk discriminator wired (D16; HITL-04 verdict parse uses Phase 4 wire types)
+- Next action: `/gsd:plan-phase 11`
 
 ---
 
 ## Current Position
 
-Phase: 09 (trust-floor-spike-p8-s-spike-hard-gate) — COMPLETE (6/6 plans; verdict NO-GO accepted with escape plan)
-Plan: 6 of 6
-Status: Ready to execute
-Last activity: 2026-08-18 -- Phase 10 planning complete
-Stopped At: context exhaustion at 75% (2026-08-19)
+Phase: 11 (p8-2 写工具 + 审批门, HITL-01..08) — planning pending
+Plan: 1 of (TBD)
+Status: closed-blocker-notes (Phase 10); ready for plan-phase 11
+Last activity: 2026-08-20 -- Phase 10 hermetic-gated closeout (UAT 19/0/3)
+Stopped At: phase boundary (Phase 10 → Phase 11 transition)
 Resume File: None
+
+**Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
 
 **Milestone v0.8 phase map (from ROADMAP.md):**
 
