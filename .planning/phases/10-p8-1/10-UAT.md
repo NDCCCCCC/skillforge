@@ -3,7 +3,7 @@ status: partial
 phase: 10-p8-1
 source: 10-01-SUMMARY.md, 10-02-SUMMARY.md, 10-03-SUMMARY.md, 10-04-SUMMARY.md
 started: 2026-08-18T23:31:00Z
-updated: 2026-08-18T23:31:00Z
+updated: 2026-08-19T00:00:00Z
 ---
 
 ## Current Test
@@ -234,43 +234,22 @@ reason: |
 ### 22. FE pre-existing `tsc --noEmit` error in DataSubprogressPart.tsx
 expected: |
   `npx tsc --noEmit` exits 0 (no errors).
-result: issue
-reported: |
-  `src/components/chat/parts/DataSubprogressPart.tsx(47,26): error
-  TS2339: Property 'state' does not exist on type 'SubprogressStep'.`
-  Pre-existing since end of Plan 10-03; documented in 10-04 SUMMARY as
-  out-of-scope (would require adding a `state` field to the wire type,
-  touching D15 invariants).
-severity: minor
-note: |
-  10-04 SUMMARY deviation log: "Fixing it would require adding a state
-  field to the SubprogressStep wire type, which touches D15 invariants
-  and is out of scope for Plan 10-04." Status: known + deferred.
+result: pass
+verified_by: |
+  Quick task 260819-dsp (commit c285c55) removed the dead `data.state`
+  read in DataSubprogressPart.tsx (steps are append-only per godoc —
+  no live pending state to model). `npx tsc --noEmit` now exits 0;
+  `npx vitest run` 349/349 still pass. No D15 wire-type change.
 
 ## Summary
 
 total: 22
-passed: 18
-issues: 1
+passed: 19
+issues: 0
 pending: 0
 skipped: 0
 blocked: 3
 
 ## Gaps
 
-- truth: "FE `npx tsc --noEmit` exits 0 (no errors)"
-  status: failed
-  reason: |
-    User reported: DataSubprogressPart.tsx(47,26): Property 'state' does
-    not exist on type 'SubprogressStep'. Pre-existing since end of Plan
-    10-03; documented in 10-04 SUMMARY deviation log as out-of-scope
-    (touches D15 wire-type invariants).
-  severity: minor
-  test: 22
-  artifacts:
-    - path: "web/src/components/chat/parts/DataSubprogressPart.tsx"
-      issue: "data.state reference does not exist on SubprogressStep"
-  missing:
-    - "Either add `state` field to SubprogressStep wire type OR
-       remove the data.state reference in DataSubprogressPart.tsx:47"
-  debug_session: ""
+[none — all in-scope tests resolved]
