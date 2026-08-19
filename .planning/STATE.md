@@ -3,22 +3,25 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 11
-current_plan: 01
-status: closed-blocker-notes
-stopped_at: phase 10 closeout + advance to phase 11 (2026-08-20)
-last_updated: "2026-08-20T00:00:00Z"
-last_activity: 2026-08-20 -- Phase 10 closeout (hermetic-gated; live re-run → v0.8 milestone)
+current_plan: TBD (4 areas / 16 decisions locked; context ready for plan-phase)
+status: context-gathered
+stopped_at: Phase 11 /gsd:discuss-phase 11 closed (commit fe5b45c; areas 1-4 completed)
+last_updated: "2026-08-20T02:30:00Z"
+last_activity: 2026-08-20 -- Phase 11 CONTEXT gathered (4 areas / 16 decisions locked; COMMIT fe5b45c)
+resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-CONTEXT.md
 progress:
   total_phases: 13
-  completed_phases: 9
+  completed_phases: 8
   total_plans: 50
-  completed_plans: 52
-  percent: 64
+  completed_plans: 51
+  percent: 62
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
+**Last updated:** 2026-08-20 (**Phase 11 /gsd:discuss-phase 11 COMPLETE** — Default mode, 4 areas × 4 questions = 16 decisions locked; commit `fe5b45c`; CONTEXT.md canonical + DISCUSSION-LOG.md audit; 2 clarifications from user pushback (Q2 research on eino Runner architecture; Q4 reframing after Per-Skill lifecycle pushback); gsd-sdk PATH bypass — artifacts + STATE manually committed). **Resume-file**: `.planning/phases/11-p8-2-write-tools-approval-gate/11-CONTEXT.md`. **Next action**: `/clear` then `/gsd:ui-phase 11` (UI-SPEC for ApprovalCard + Approval Rules sidebar panel) → `/gsd:ai-integration-phase 11` (HITL/RF-3 eval strategy) → `/gsd:plan-phase 11 --chunked` (chunked mode: 1 outline + N per-plan agents, each plan atomic commit).
+
+**Prior:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
 
 **Prior:** 2026-08-18 (**Phase 10 Plan 04 Task 1 shipped** — `--via-pipeline` flag + production chat-path composition in `cmd/spike-history` + hermetic `runner_pipeline_test.go`; all BE suites green, frozen lock byte-identity verified sha256 `5cf700f3...`). **Task 2 live 35-case re-run blocked-pending-human** (execution environment missing `.env` with `GLM_API_KEY` / `BGE_M3_URL` / `MILVUS_ADDRESS` and Docker Milvus + BGE-M3 stack). **Task 3 closeout transcription committed** with explicit blocker notes. Phase 10 remains in `executing-blocked` until operator provides live stack and the 35-case `--via-pipeline --summarize` gate is run.)
 
@@ -31,11 +34,12 @@ progress:
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 10
-**Current Plan:** 04
-**Previous phase:** 7 (open-source-release) — 07-06 deferred to after v0.8 milestone by user decision 2026-08-17
+**Current Phase:** 11
+**Current Plan:** TBD (context-gathered, ready for plan-phase)
+**Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
+**Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
-**Next action:** Operator populates `.env` (GLM_API_KEY, BGE_M3_URL, MILVUS_ADDRESS) and starts Docker Milvus + BGE-M3; then run `go run ./cmd/spike-history --via-pipeline --summarize --seed=42 --golden=eval/golden/compliance.jsonl --out=reports/ --cost-limit=5.00` and record results in 10-04-SUMMARY.md.
+**Next action:** Run `/gsd:ui-phase 11` → `/gsd:ai-integration-phase 11` → `/gsd:plan-phase 11 --chunked` to consume CONTEXT.md + UI-SPEC + AI-SPEC into executable plan(s). Plan-phase will spawn gsd-phase-researcher (RF-3 main spike + cheap CheckPointStore interface compile-check) → gsd-planner (chunked: per-plan agents with atomic commits) → gsd-plan-checker (verifies 5 SC + 8 HITL requirements coverage).
 
 ---
 
@@ -55,6 +59,7 @@ progress:
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**
+
 - D9-V2 escape plan already implemented (RefusalClassifierInput type-isolated to Query + Chunks, no History — Plan 10-01 Task 3; Plan 10-02 Task 1+3)
 - sqlite CheckPointStore skeleton ready (D8-03; Phase 11 implements Delete + expires_at filter; `schema.RegisterName[T](name)` registered; `composed.CheckPointStore` — D8-06)
 - `data-decision` SSE chunk discriminator wired (D16; HITL-04 verdict parse uses Phase 4 wire types)
@@ -68,7 +73,7 @@ Phase: 11 (p8-2 写工具 + 审批门, HITL-01..08) — planning pending
 Plan: 1 of (TBD)
 Status: closed-blocker-notes (Phase 10); ready for plan-phase 11
 Last activity: 2026-08-20 -- Phase 10 hermetic-gated closeout (UAT 19/0/3)
-Stopped At: phase boundary (Phase 10 → Phase 11 transition)
+Stopped At: context exhaustion at 77% (2026-08-19)
 Resume File: None
 
 **Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
