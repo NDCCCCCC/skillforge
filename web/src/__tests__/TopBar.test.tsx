@@ -34,7 +34,7 @@ beforeEach(() => {
       { id: 'session-2', name: '会话 2', createdAt: 2 },
     ],
     activeSessionId: 'session-init',
-    sessionDrawerOpen: false,
+    sessionPanelOpen: false,
     route: 'chat',
     evalSubroute: 'dashboard',
     skillServiceOffline: false,
@@ -57,19 +57,17 @@ describe('TopBar', () => {
     expect(screen.getByTestId('knowledge-modal')).toBeInTheDocument();
   });
 
-  // Session-management phase — the always-visible drawer entry (the
+  // Session-management phase — the always-visible panel toggle (the
   // SessionPicker dropdown is hidden below md; this button is the
-  // mobile session surface).
-  it('opens the SessionDrawer from the 会话列表 button', () => {
+  // mobile session surface). The panel itself is mounted by
+  // ChatLayout; the TopBar owns only the toggle.
+  it('toggles the session panel flag from the 会话列表 button', () => {
     render(<TopBar />);
-    expect(screen.queryByTestId('session-drawer')).toBeNull();
+    expect(useAppStore.getState().sessionPanelOpen).toBe(false);
     fireEvent.click(screen.getByTestId('topbar-sessions'));
-    expect(screen.getByTestId('session-drawer')).toBeInTheDocument();
-    // Store flag mirrors the open state (sibling entry points share it).
-    expect(useAppStore.getState().sessionDrawerOpen).toBe(true);
-    // The drawer ports under document.body — the portal escapes the
-    // .topbar backdrop-filter containing block.
-    expect(screen.getByTestId('session-drawer').parentElement).toBe(document.body);
+    expect(useAppStore.getState().sessionPanelOpen).toBe(true);
+    fireEvent.click(screen.getByTestId('topbar-sessions'));
+    expect(useAppStore.getState().sessionPanelOpen).toBe(false);
   });
 
   it('the Eval button hops to /eval with route + dashboard subroute', () => {

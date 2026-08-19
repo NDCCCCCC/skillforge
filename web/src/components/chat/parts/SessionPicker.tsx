@@ -110,7 +110,7 @@ export default function SessionPicker() {
             type="button"
             data-testid="session-picker-open-drawer"
             onClick={() => {
-              useAppStore.getState().setSessionDrawerOpen(true);
+              useAppStore.getState().setSessionPanelOpen(true);
               setOpen(false);
             }}
             className="block w-full border-t border-border px-2 py-1 text-left text-xs text-text-muted hover:bg-surface-3"

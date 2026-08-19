@@ -202,10 +202,14 @@ export interface AppState {
   skills: SkillSummary[];
   sessions: SessionMeta[];
   activeSessionId: string;
-  // Session-management phase — SessionDrawer open flag. Store-owned
-  // (not TopBar-local) so both entry points dispatch it: the TopBar
-  // MessagesSquare button and the SessionPicker foot's 查看全部会话.
-  sessionDrawerOpen: boolean;
+  // Session-management phase — the LEFT session panel, mirroring the
+  // right DetailPanel's inline-panel pattern: open = inline column
+  // (≥1280px, chat compresses but stays usable) / fixed overlay
+  // (<1280px, scrim dismiss). Store-owned so both entry points (TopBar
+  // MessagesSquare button + SessionPicker foot) dispatch it.
+  sessionPanelOpen: boolean;
+  /** Inline panel width in px (clamped 220–360 by ChatLayout). */
+  sessionPanelWidth: number;
   // Plan 05-08 (IN-04) — loud-failure signal. Flipped true by
   // useSkillReload after 3 consecutive non-OK /api/skills responses.
   // LeftSidebar renders a banner above the 技能 block when true.
@@ -258,8 +262,9 @@ export interface AppActions {
   hydrateSessions(list: SessionMeta[]): void;
   renameSession(id: string, name: string): void;
   toggleSessionPin(id: string): void;
-  /** SessionDrawer open/close (store-owned so sibling entry points share it). */
-  setSessionDrawerOpen(open: boolean): void;
+  /** Session panel open/close (store-owned so sibling entry points share it). */
+  setSessionPanelOpen(open: boolean): void;
+  setSessionPanelWidth(width: number): void;
   // Plan 05-08 (IN-04) — loud-failure flag toggle.
   setSkillServiceOffline(offline: boolean): void;
   // Plan 06-04 — eval dashboard actions (no messages setter).
@@ -305,7 +310,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   skills: [],
   sessions: [{ id: INITIAL_SESSION_ID, name: '会话 1', createdAt: Date.now() }],
   activeSessionId: INITIAL_SESSION_ID,
-  sessionDrawerOpen: false,
+  sessionPanelOpen: false,
+  sessionPanelWidth: 280,
   // Plan 05-08 (IN-04) — loud-failure flag. Default false; flipped
   // true by useSkillReload after 3 consecutive non-OK /api/skills
   // responses. Reset to false on the first OK response.
@@ -405,7 +411,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     saveSessionPins(next.filter((s) => s.pinned).map((s) => s.id));
     set({ sessions: next });
   },
-  setSessionDrawerOpen: (open) => set({ sessionDrawerOpen: open }),
+  setSessionPanelOpen: (open) => set({ sessionPanelOpen: open }),
+  setSessionPanelWidth: (width) => set({ sessionPanelWidth: width }),
   // Plan 05-08 (IN-04) — loud-failure flag toggle. LeftSidebar
   // observes this and renders a banner above the 技能 block.
   setSkillServiceOffline: (offline) => set({ skillServiceOffline: offline }),

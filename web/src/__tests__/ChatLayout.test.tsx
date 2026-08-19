@@ -22,12 +22,22 @@ import { useAppStore } from '../store/app-store';
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
-  useAppStore.setState({ detailPanelOpen: false, detailPanelWidth: 380 });
+  useAppStore.setState({
+    detailPanelOpen: false,
+    detailPanelWidth: 380,
+    sessionPanelOpen: false,
+    sessionPanelWidth: 280,
+  });
 });
 
 beforeEach(() => {
   window.localStorage.clear();
-  useAppStore.setState({ detailPanelOpen: false, detailPanelWidth: 380 });
+  useAppStore.setState({
+    detailPanelOpen: false,
+    detailPanelWidth: 380,
+    sessionPanelOpen: false,
+    sessionPanelWidth: 280,
+  });
 });
 
 describe('ChatLayout (Open Design redesign B2)', () => {
@@ -80,5 +90,45 @@ describe('ChatLayout (Open Design redesign B2)', () => {
     expect(screen.getByTestId('app-topbar')).toBeInTheDocument();
     expect(screen.getByTestId('app-statusbar')).toBeInTheDocument();
     expect(screen.getByTestId('chat-body')).toBeInTheDocument();
+  });
+
+  // Session-management phase — the LEFT session panel mirrors the
+  // detail-panel contract: inline wrap + resize handle while open,
+  // none while closed, sp-scrim dismiss, sf.sp.* hydration.
+  it('mounts the session panel + handle when sessionPanelOpen=true and the roster renders', () => {
+    useAppStore.setState({
+      sessionPanelOpen: true,
+      sessions: [{ id: 'sess-live-00001', name: '现场会话', createdAt: 1 }],
+    });
+    render(<ChatLayout chat={<div />} detail={<div />} />);
+    expect(screen.getByTestId('session-panel-wrap')).toBeInTheDocument();
+    expect(screen.getByTestId('sp-resize-handle')).toBeInTheDocument();
+    expect(screen.getByTestId('session-drawer')).toBeInTheDocument();
+    expect(screen.getByText('现场会话')).toBeInTheDocument();
+    // The chat column stays mounted alongside — inline, not replaced.
+    expect(screen.getByTestId('chat-col')).toBeInTheDocument();
+  });
+
+  it('hides the session panel + scrim by default and the sp-scrim closes on click', () => {
+    useAppStore.setState({ sessionPanelOpen: true });
+    render(<ChatLayout chat={<div />} detail={<div />} />);
+    fireEvent.click(screen.getByTestId('sp-scrim'));
+    expect(useAppStore.getState().sessionPanelOpen).toBe(false);
+    expect(screen.queryByTestId('session-panel-wrap')).toBeNull();
+  });
+
+  it('clamps an out-of-range stored session width (sf.sp.w) into 220–360 on hydration', () => {
+    window.localStorage.setItem('sf.sp.w', '999');
+    render(<ChatLayout chat={<div />} detail={<div />} />);
+    // Hydration clamps the STORE value; the LS write-back only happens
+    // on a drag mouseup (same contract as sf.dp.w).
+    expect(useAppStore.getState().sessionPanelWidth).toBe(360);
+  });
+
+  it('re-opens the session panel when sf.sp.open === "1"', () => {
+    window.localStorage.setItem('sf.sp.open', '1');
+    render(<ChatLayout chat={<div />} detail={<div />} />);
+    expect(useAppStore.getState().sessionPanelOpen).toBe(true);
+    expect(screen.getByTestId('session-panel-wrap')).toBeInTheDocument();
   });
 });

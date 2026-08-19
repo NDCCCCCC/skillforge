@@ -1,8 +1,15 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// SessionDrawer — session-management phase. The left drawer that
-// replaces the old "管理全部" placeholder toast:
+// SessionDrawer — session-management phase. The left session panel's
+// CONTENT (header / search / grouped roster). Positioning is owned by
+// ChatLayout's `.session-panel-wrap` — the same inline-panel pattern
+// as the right DetailPanel: ≥1280px the panel is an inline column
+// (chat compresses but stays fully usable); <1280px the CSS flips it
+// to a fixed overlay with a scrim. This component renders the inner
+// flex column only, so it works in both forms.
+//
+// Surfaces:
 //   - Roster from the Zustand store (hydrated from GET /api/sessions on
 //     App mount; locally-created sessions append normally)
 //   - Front-end search (name contains, case-insensitive)
@@ -13,15 +20,9 @@
 //     delete (store roster removal + DELETE; the store falls the
 //     active session back when the deleted one was active)
 //
-// Positioning: createPortal(document.body) — the drawer is mounted
-// inside TopBar whose `.topbar` carries backdrop-filter (a containing
-// block for FIXED descendants, the KnowledgeModal B7 lesson). The
-// panel is a LEFT overlay: fixed, top = --topbar-height,
-// bottom = --statusbar-height, width min(320px, 85vw), z-40 over a
-// z-30 scrim. Row actions are ALWAYS visible on touch (opacity-100)
-// and hover-revealed on md+ (md:opacity-0 md:group-hover:opacity-100).
+// Row actions are ALWAYS visible on touch (opacity-100) and
+// hover-revealed on md+ (md:opacity-0 md:group-hover:opacity-100).
 import { useEffect, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Pencil, Pin, PinOff, Plus, Search, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore, type SessionMeta } from '../../store/app-store';
@@ -169,21 +170,11 @@ export default function SessionDrawer({ open, onClose }: SessionDrawerProps) {
     void deleteSessionAPI(id);
   }
 
-  return createPortal(
-    <>
-      <div
-        data-testid="session-drawer-scrim"
-        aria-hidden="true"
-        className="fixed inset-0 z-30 bg-black/40"
-        onClick={onClose}
-      />
-      <aside
-        data-testid="session-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label="会话列表"
-        className="session-drawer fixed bottom-[var(--statusbar-height)] left-0 top-[var(--topbar-height)] z-40 flex w-[min(320px,85vw)] flex-col border-r border-border bg-surface shadow-2xl"
-      >
+  return (
+    <div
+      data-testid="session-drawer"
+      className="session-drawer flex h-full min-h-0 flex-col bg-surface"
+    >
         {/* Header — title + 新建 + close */}
         <div className="flex h-11 flex-none items-center justify-between border-b border-border px-4">
           <span className="text-sm font-semibold tracking-wide text-text">会话</span>
@@ -326,8 +317,6 @@ export default function SessionDrawer({ open, onClose }: SessionDrawerProps) {
             </div>
           ))}
         </div>
-      </aside>
-    </>,
-    document.body,
+    </div>
   );
 }

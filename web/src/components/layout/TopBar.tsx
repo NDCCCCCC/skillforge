@@ -18,7 +18,6 @@ import { useAppStore } from '../../store/app-store';
 import SkillManagerMenu from './SkillManagerMenu';
 import ThemeToggle from './ThemeToggle';
 import KnowledgeModal from './KnowledgeModal';
-import SessionDrawer from './SessionDrawer';
 import SkillPicker from '../chat/parts/SkillPicker';
 import SessionPicker from '../chat/parts/SessionPicker';
 
@@ -30,8 +29,8 @@ export interface TopBarProps {
 export default function TopBar({ height }: TopBarProps) {
   const detailPanelOpen = useAppStore((s) => s.detailPanelOpen);
   const toggleDetailPanel = useAppStore((s) => s.toggleDetailPanel);
-  const sessionDrawerOpen = useAppStore((s) => s.sessionDrawerOpen);
-  const setSessionDrawerOpen = useAppStore((s) => s.setSessionDrawerOpen);
+  const sessionPanelOpen = useAppStore((s) => s.sessionPanelOpen);
+  const setSessionPanelOpen = useAppStore((s) => s.setSessionPanelOpen);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
 
   // LeftSidebar's eval hop: real navigation when we're outside /eval,
@@ -70,13 +69,14 @@ export default function TopBar({ height }: TopBarProps) {
       </div>
       <div className="flex flex-none items-center gap-1">
         <SkillManagerMenu />
-        {/* Session drawer entry — ALWAYS visible (the SessionPicker
+        {/* Session panel entry — ALWAYS visible (the SessionPicker
             dropdown is hidden below md; without this button mobile
             has no session surface at all). */}
         <button
           type="button"
           data-testid="topbar-sessions"
-          onClick={() => setSessionDrawerOpen(true)}
+          onClick={() => setSessionPanelOpen(!sessionPanelOpen)}
+          aria-pressed={sessionPanelOpen}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
           aria-label="会话列表"
           title="会话列表"
@@ -120,7 +120,6 @@ export default function TopBar({ height }: TopBarProps) {
         <ThemeToggle />
       </div>
       <KnowledgeModal open={knowledgeOpen} onClose={() => setKnowledgeOpen(false)} />
-      <SessionDrawer open={sessionDrawerOpen} onClose={() => setSessionDrawerOpen(false)} />
     </div>
   );
 }

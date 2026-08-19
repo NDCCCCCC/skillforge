@@ -1549,12 +1549,30 @@ body[data-dragging="true"] .detail-panel-wrap {
 }
 
 /* ====================================================================
-   SessionDrawer (session-management phase) — left drawer entrance.
-   The panel geometry lives in the component's Tailwind utilities
-   (fixed left-0, top/bottom = topbar/statusbar vars, z-40); this
-   only owns the slide-in keyframes so the component file stays
-   utility-first.
+   SessionDrawer (session-management phase) — the LEFT session panel,
+   mirroring .detail-panel-wrap's dual form: an INLINE column ≥1280px
+   (chat compresses but stays usable) and a fixed left overlay with a
+   scrim below. Geometry lives HERE; the component renders content
+   only. `.sp-scrim` mirrors `.dp-scrim` (display:none by default,
+   block under the <1280px media query).
    ==================================================================== */
+.sp-scrim {
+  display: none;
+}
+
+.session-panel-wrap {
+  position: relative;
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border);
+  transition: width var(--transition-base) var(--ease-spring);
+}
+
+.session-panel-wrap.no-transition {
+  transition: none;
+}
+
 @keyframes session-drawer-in {
   from {
     transform: translateX(-100%);
@@ -1568,6 +1586,30 @@ body[data-dragging="true"] .detail-panel-wrap {
 
 .session-drawer {
   animation: session-drawer-in 200ms var(--ease-spring);
+}
+
+@media (max-width: 1279px) {
+  .sp-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background-color: color-mix(in srgb, var(--color-bg) 60%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .session-panel-wrap {
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: var(--statusbar-height);
+    left: 0;
+    z-index: 40;
+    max-width: 85vw;
+    box-shadow: 12px 0 40px var(--color-shadow-card);
+    border-right: 1px solid var(--color-border);
+    transition: transform var(--transition-base) var(--ease-spring);
+  }
 }
 
 /* ====================================================================

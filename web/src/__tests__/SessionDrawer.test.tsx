@@ -90,10 +90,10 @@ afterEach(() => {
 });
 
 describe('SessionDrawer', () => {
-  it('portals directly under document.body (backdrop-filter containing-block fix)', () => {
+  it('renders the panel content (positioning is owned by ChatLayout wrapper)', () => {
     renderDrawer();
-    expect(screen.getByTestId('session-drawer').parentElement).toBe(document.body);
-    expect(screen.getByTestId('session-drawer-scrim').parentElement).toBe(document.body);
+    expect(screen.getByTestId('session-drawer')).toBeInTheDocument();
+    expect(screen.getByTestId('session-drawer-search')).toBeInTheDocument();
   });
 
   it('renders time groups with the seeded rows', () => {
@@ -234,7 +234,7 @@ describe('SessionDrawer', () => {
     expect(closed).toBe(true);
   });
 
-  it('closes via the × button, the Esc key, and the scrim click', () => {
+  it('closes via the × button and the Esc key (scrim is ChatLayout-owned)', () => {
     let closed = false;
     render(<SessionDrawer open onClose={() => { closed = true; }} />);
     fireEvent.click(screen.getByTestId('session-drawer-close'));
@@ -243,15 +243,10 @@ describe('SessionDrawer', () => {
     closed = false;
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(closed).toBe(true);
-
-    closed = false;
-    fireEvent.click(screen.getByTestId('session-drawer-scrim'));
-    expect(closed).toBe(true);
   });
 
   it('renders nothing when open={false}', () => {
     renderDrawer(false);
     expect(screen.queryByTestId('session-drawer')).toBeNull();
-    expect(screen.queryByTestId('session-drawer-scrim')).toBeNull();
   });
 });
