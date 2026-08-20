@@ -19,6 +19,8 @@ package skill
 import (
 	"fmt"
 	"strings"
+
+	"github.com/skillforge/skillforge/internal/agent/hitl"
 )
 
 // MinProhibitions is the lower bound on guardrails.prohibitions length.
@@ -119,5 +121,37 @@ func Validate(m *Manifest) error {
 			*m.Temperature,
 		)
 	}
+	// 8. writes — every target must be a KnownTarget (D11-B3 shared source of
+	// truth: same AllowedWriteTargets list as internal/agent/hitl/registry.go).
+	// An unknown target is REJECTED at load time so the Skill author sees the
+	// error at startup, not at first agent run. Empty [] (read-only) is allowed.
+	// Phase 12 plan_approve is added to AllowedWriteTargets and automatically
+	// accepted here WITHOUT any change to this function (D11-B3 "一处改动全场同步").
+	known := hitl.KnownTargets()
+	for _, w := range m.Writes {
+		if !containsString(known, w) {
+			return fmt.Errorf(
+				"writes contains unknown target %q (known targets: %v); "+
+					"the target must appear in hitl.AllowedWriteTargets — "+
+					"do NOT add it here, update internal/agent/hitl/registry.go instead (D11-B3 shared source)",
+				w, known,
+			)
+		}
+	}
 	return nil
+}
+
+// containsString is an unexported helper local to the skill package.
+// The hitl package has its own `Contains()` (exported, post-Task 6);
+// we cannot reuse it without flipping the import direction (skill
+// cannot import hitl's unexported helper directly). Keeping the
+// package-internal copy here costs ~5 lines and avoids a cyclic
+// dependency risk if hitl ever needed the helper.
+func containsString(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }
