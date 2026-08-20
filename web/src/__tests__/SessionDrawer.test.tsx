@@ -252,4 +252,15 @@ describe('SessionDrawer', () => {
     renderDrawer(false);
     expect(screen.getByTestId('session-drawer')).toBeInTheDocument();
   });
+
+  // Plan 12-07 Task 3 — the 6th section (PlanRulesPanel) is mounted at
+  // the foot of the drawer, below the Phase 11 ApprovalRulesPanel. Both
+  // panels share the D11-D2 approval_rules table but split by target.
+  it('renders 6 sections: the Plan 12-07 PlanRulesPanel below Phase 11 ApprovalRulesPanel', () => {
+    renderDrawer();
+    // Phase 11 ApprovalRulesPanel — 5th section.
+    expect(screen.getByTestId('approval-rules-panel')).toBeInTheDocument();
+    // Plan 12-07 PlanRulesPanel — 6th section.
+    expect(screen.getByTestId('plan-rules-panel')).toBeInTheDocument();
+  });
 });

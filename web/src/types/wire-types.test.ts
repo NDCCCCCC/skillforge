@@ -16,10 +16,13 @@
 
 import type { UIMessageChunk } from 'ai';
 import { describe, expect, it } from 'vitest';
-import type {
-  PlanTodo,
-  PlanTracePayload,
-  SkillForgeChunk,
+import {
+  DecisionForcedStop,
+  DecisionPlanApproved,
+  DecisionPlanDenied,
+  type PlanTodo,
+  type PlanTracePayload,
+  type SkillForgeChunk,
 } from './wire-types';
 
 describe('wire-types (Plan 12-06 Task 1)', () => {
@@ -63,5 +66,26 @@ describe('wire-types (Plan 12-06 Task 1)', () => {
     expect(payload.ts).toBe(1700000000000);
     expect(payload.todos[0].id).toBe('todo-1');
     expect(payload.todos[0].status).toBe('in_progress');
+  });
+
+  // Plan 12-07 Task 3 (D15 lockstep with 12-05 + 12-04 BE) — the three
+  // DecisionPayload.Decision string extensions are exported as named
+  // constants. These constants are the FE-side mirror of internal/wire
+  // chunk.go's DecisionForcedStop (12-05) + planDecisionEventApproved /
+  // planDecisionEventDenied (12-04).
+  it('TestDecisionEnumExtensionsForcedStop', () => {
+    expect(DecisionForcedStop).toBe('forced_stop');
+    // Type-narrow: DecisionPayload.Decision accepts the literal.
+    const d: 'forced_stop' = DecisionForcedStop;
+    expect(d).toBe('forced_stop');
+  });
+
+  it('TestDecisionEnumExtensionsPlanApprovedDenied', () => {
+    expect(DecisionPlanApproved).toBe('plan-approved');
+    expect(DecisionPlanDenied).toBe('plan-denied');
+    const a: 'plan-approved' = DecisionPlanApproved;
+    const n: 'plan-denied' = DecisionPlanDenied;
+    expect(a).toBe('plan-approved');
+    expect(n).toBe('plan-denied');
   });
 });

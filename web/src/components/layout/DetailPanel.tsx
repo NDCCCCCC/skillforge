@@ -25,6 +25,7 @@ import AuditTimelineTab from '../AuditTimelineTab';
 import ChunkSourceView from '../center/ChunkSourceView';
 import DocViewer from '../center/DocViewer';
 import KnowledgeGraphBrowser from '../graph/KnowledgeGraphBrowser';
+import PlanReplayView from '../PlanReplayView';
 import RefusalCard from '../center/RefusalCard';
 import SkillMdPreview from '../center/SkillMdPreview';
 import VerdictCard from '../center/VerdictCard';
@@ -54,6 +55,8 @@ function activeTabValue(kind: CenterView['kind']): string {
       return 'agent-inspector';
     case 'knowledge-graph':
       return 'knowledge-graph';
+    case 'plan-replay':
+      return 'plan-replay';
     case 'empty':
     case 'verdict':
     default:
@@ -81,6 +84,8 @@ function tabValueToCenterView(value: string): CenterView | null {
       return { kind: 'agent-inspector' };
     case 'knowledge-graph':
       return { kind: 'knowledge-graph' };
+    case 'plan-replay':
+      return { kind: 'plan-replay' };
     default:
       return null;
   }
@@ -107,12 +112,18 @@ export default function DetailPanel({
   const centerView = useAppStore((s) => s.centerView);
   const setCenterView = useAppStore((s) => s.setCenterView);
   const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
+  // Plan 12-07 — PlanReplayView needs a runId. Prefer the plan slice's
+  // currentRunId (the run that emitted data-plan-trace last); fall back
+  // to the active session id (chatId === runId for v1).
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
 
-  // 6 tabs in document order (Plan 11-07: 审计轨迹 slots between
-  // 结论 and 引用原文 per UI-SPEC §Position 3).
+  // 7 tabs in document order (Plan 11-07: 审计轨迹 slots between
+  // 结论 and 引用原文 per UI-SPEC §Position 3; Plan 12-07: 规划轨迹
+  // sits between 审计轨迹 and 引用原文 per PLAN-05 logical flow).
   const items = [
     { value: 'verdict', label: '结论' },
     { value: 'audit-timeline', label: '审计轨迹' },
+    { value: 'plan-replay', label: '规划轨迹' },
     { value: 'chunk-source', label: '引用原文' },
     { value: 'skill-md', label: 'Skill 定义' },
     { value: 'agent-inspector', label: 'Agent 状态' },
@@ -146,6 +157,19 @@ export default function DetailPanel({
       return (
         <div className="center-panel-tab-content">
           <KnowledgeGraphBrowser />
+        </div>
+      );
+    }
+    // Plan 12-07 — PLAN-05 规划轨迹回放 tab body. Reads runId from
+    // the plan slice (the most-recent data-plan-trace runId — the same
+    // identity that owns the live PlanTracePart). If no run has emitted
+    // a trace yet, falls back to activeSessionId (chatId === runId for
+    // the v1 single-session-per-run model).
+    if (centerView.kind === 'plan-replay') {
+      const activeRunId = useAppStore.getState().plan.currentRunId ?? activeSessionId;
+      return (
+        <div className="center-panel-tab-content">
+          <PlanReplayView runId={activeRunId} />
         </div>
       );
     }

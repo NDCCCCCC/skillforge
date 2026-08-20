@@ -28,6 +28,7 @@ import { cn } from '../../lib/cn';
 import { useAppStore, type SessionMeta } from '../../store/app-store';
 import { deleteSession as deleteSessionAPI, renameSession as renameSessionAPI } from '../../lib/sessions';
 import ApprovalRulesPanel from '../ApprovalRulesPanel';
+import PlanRulesPanel from '../PlanRulesPanel';
 
 export interface SessionDrawerProps {
   open: boolean;
@@ -331,6 +332,15 @@ export default function SessionDrawer({ open, onClose }: SessionDrawerProps) {
             The panel owns its own fetch / empty / error / revoke
             states — mounted unconditionally. */}
         <ApprovalRulesPanel />
+
+        {/* Plan 12-07 — D11-D2 single-table reuse. The 6th section
+            renders plan_approve-specific approval rules; the BE endpoint
+            is shared with Phase 11 ApprovalRulesPanel above (D11-D2
+            approval_rules is a single table spanning all HITL targets).
+            The FE filter (target='plan_approve') splits responsibility:
+            // ApprovalRulesPanel owns memory:facts / review_report; this
+            // panel owns plan_approve. */}
+        <PlanRulesPanel />
     </div>
   );
 }

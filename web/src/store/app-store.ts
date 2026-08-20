@@ -269,7 +269,12 @@ export type CenterView =
   | { kind: 'knowledge-graph' }
   // Plan 11-07 — HITL-04 audit timeline tab (DetailPanel 6th tab
   // 审计轨迹, between 结论 and 引用原文 per UI-SPEC §Position 3).
-  | { kind: 'audit-timeline' };
+  | { kind: 'audit-timeline' }
+  // Plan 12-07 — PLAN-05 规划轨迹回放 tab (DetailPanel 7th tab,
+  // between 审计轨迹 and 引用原文 per logical flow: audit → plan →
+  // source). The PlanReplayView fetches GET /api/run/:id/plan
+  // (D14 — NEVER reads from the plan slice or useChat.messages).
+  | { kind: 'plan-replay' };
 
 /** SC-2 reload toast payload. Keyed by skillId in `skillReloadStatus`. */
 export interface SkillReloadEntry {

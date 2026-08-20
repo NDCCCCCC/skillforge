@@ -190,6 +190,95 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
       return true;
     }
 
+    // Plan 12-07 Task 3 (P12-L3 + 12-04 BE + 12-05 BE) — extend the
+    // data-decision `decision` STRING enum with 3 new values:
+    //   forced_stop        → update plan slice to 'forced_stop'
+    //                        (12-05 BE: budget gate triggered)
+    //   plan-approved      → approval slice markApproved +
+    //                        plan slice markPlanStatus('complete')
+    //                        (12-04 BE: plan_api planApproveHandler
+    //                        emitted decision='plan-approved')
+    //   plan-denied        → approval slice markDenied +
+    //                        plan slice markPlanStatus('forced_stop')
+    //                        (12-04 BE: deny path)
+    // All three ride the EXISTING data-decision chunk — D15 lockstep
+    // (no new wire types, only enum extension; D-04 transport-swap
+    // byte-identity preserved because the pre-existing decision
+    // strings still flow through unchanged).
+    case 'forced_stop': {
+      const runId = asStr(data.runId) || asStr(data.toolCallId);
+      if (!runId) return false;
+      useAppStore.getState().plan.markPlanStatus(runId, 'forced_stop');
+      return true;
+    }
+
+    case 'plan-approved': {
+      const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
+      const runId = asStr(data.runId);
+      if (!approvalId) return false;
+      // approval slice — synthesize the terminal approval row so the
+      // plan-approval UI overlay collapses into the 已批准 state.
+      const prev = approval.pending;
+      const terminal: TerminalApproval = {
+        approvalId,
+        status: 'approved',
+        frozenArgs: prev?.frozenArgs ?? asObj(data.frozenArgs),
+        reason: asStr(data.reason),
+        createdAt: prev?.createdAt ?? Date.now(),
+        resolvedAt: Date.now(),
+      };
+      approval.resolvePending(approvalId, terminal);
+      approval.appendHistory({
+        approvalId,
+        status: 'approved',
+        target: prev?.target ?? asStr(data.target) ?? 'plan_approve',
+        toolName: prev?.toolName ?? 'plan_approve',
+        frozenArgs: terminal.frozenArgs,
+        createdAt: terminal.createdAt,
+        resolvedAt: terminal.resolvedAt,
+        reason: terminal.reason,
+        skillVersion: prev?.skillVersion ?? '',
+        promptHash: prev?.promptHash ?? '',
+      });
+      // plan slice — mark the run's plan complete.
+      if (runId) {
+        useAppStore.getState().plan.markPlanStatus(runId, 'complete');
+      }
+      return true;
+    }
+
+    case 'plan-denied': {
+      const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
+      const runId = asStr(data.runId);
+      if (!approvalId) return false;
+      const prev = approval.pending;
+      const terminal: TerminalApproval = {
+        approvalId,
+        status: 'denied',
+        frozenArgs: prev?.frozenArgs ?? asObj(data.frozenArgs),
+        reason: asStr(data.reason),
+        createdAt: prev?.createdAt ?? Date.now(),
+        resolvedAt: Date.now(),
+      };
+      approval.resolvePending(approvalId, terminal);
+      approval.appendHistory({
+        approvalId,
+        status: 'denied',
+        target: prev?.target ?? asStr(data.target) ?? 'plan_approve',
+        toolName: prev?.toolName ?? 'plan_approve',
+        frozenArgs: terminal.frozenArgs,
+        createdAt: terminal.createdAt,
+        resolvedAt: terminal.resolvedAt,
+        reason: terminal.reason,
+        skillVersion: prev?.skillVersion ?? '',
+        promptHash: prev?.promptHash ?? '',
+      });
+      if (runId) {
+        useAppStore.getState().plan.markPlanStatus(runId, 'forced_stop');
+      }
+      return true;
+    }
+
     default:
       return false;
   }

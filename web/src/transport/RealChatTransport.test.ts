@@ -691,3 +691,194 @@ describe('RealChatTransport — plan-trace dispatch (Plan 12-06)', () => {
     expect(slice.currentRunId).toBe('run-swap');
   });
 });
+
+// ----------------------------------------------------------------------------
+// Plan 12-07 Task 3 — data-decision enum extension (D16 overload pattern;
+// D15 lockstep with 12-04 BE plan_api.go + 12-05 BE budget gate). The
+// decision string widens by 3 values (forced_stop / plan-approved /
+// plan-denied); the data-decision discriminator is unchanged.
+// ----------------------------------------------------------------------------
+
+describe('RealChatTransport — plan-decision dispatch (Plan 12-07)', () => {
+  beforeEach(() => {
+    globalThis.localStorage.clear();
+    useAppStore.setState((s) => ({
+      approval: { ...s.approval, pending: null, terminal: null, history: [], resumeBanner: null },
+      plan: { ...s.plan, planByRunId: {}, currentRunId: null },
+    }));
+  });
+
+  it('TestForcedStopDataDecisionRouting', async () => {
+    // Seed a plan so the slice has a row to markPlanStatus against.
+    useAppStore.getState().plan.setPlan('run-fs', [
+      { id: 't-1', content: 'x', status: 'pending' },
+    ], 1700000000000);
+
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-fs',
+          data: { step: 0, decision: 'forced_stop', runId: 'run-fs' },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+    const chunks = await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'run-fs',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    // Plan slice marked forced_stop; data-decision chunk NOT enqueued.
+    const slice = useAppStore.getState().plan;
+    expect(slice.planByRunId['run-fs']?.status).toBe('forced_stop');
+    expect(chunks.filter((c) => c.type === 'data-decision')).toHaveLength(0);
+  });
+
+  it('TestPlanApprovedDataDecisionRouting', async () => {
+    // Seed a pending plan approval so resolvePending + appendHistory have a row.
+    const pending = {
+      approvalId: 'apr-plan-1',
+      toolName: 'plan_approve',
+      target: 'plan_approve',
+      frozenArgs: { plan: { title: 'P' } },
+      reason: 'want to execute',
+      createdAt: Date.now(),
+      expiresAt: null,
+      skillVersion: 'v1',
+      promptHash: 'ph',
+      sessionId: 'sess-1',
+      skillId: 'simple-qa',
+      status: 'pending' as const,
+    };
+    useAppStore.getState().approval.setPending(pending);
+    useAppStore.getState().plan.setPlan('run-pa', [
+      { id: 't-1', content: 'x', status: 'pending' },
+    ], 1700000000001);
+
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-pa',
+          data: {
+            step: 0,
+            decision: 'plan-approved',
+            approvalId: 'apr-plan-1',
+            toolCallId: 'apr-plan-1',
+            runId: 'run-pa',
+          },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+    const chunks = await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'run-pa',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    // Approval slice: pending cleared, terminal='approved', history has one row.
+    const ap = useAppStore.getState().approval;
+    expect(ap.pending).toBeNull();
+    expect(ap.terminal?.status).toBe('approved');
+    expect(ap.terminal?.approvalId).toBe('apr-plan-1');
+    expect(ap.history.map((h) => h.status)).toEqual(['approved']);
+
+    // Plan slice: marked 'complete'.
+    expect(useAppStore.getState().plan.planByRunId['run-pa']?.status).toBe('complete');
+
+    // data-decision chunk NOT enqueued (D-04 + D15 — only pre-existing
+    // decisions still flow through to useChat).
+    expect(chunks.filter((c) => c.type === 'data-decision')).toHaveLength(0);
+  });
+
+  it('TestPlanDeniedDataDecisionRouting', async () => {
+    useAppStore.getState().approval.setPending({
+      approvalId: 'apr-plan-2',
+      toolName: 'plan_approve',
+      target: 'plan_approve',
+      frozenArgs: { plan: { title: 'Q' } },
+      reason: 'want to execute',
+      createdAt: Date.now(),
+      expiresAt: null,
+      skillVersion: 'v1',
+      promptHash: 'ph',
+      sessionId: 'sess-2',
+      skillId: 'simple-qa',
+      status: 'pending',
+    });
+    useAppStore.getState().plan.setPlan('run-pd', [
+      { id: 't-1', content: 'y', status: 'pending' },
+    ], 1700000000002);
+
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-pd',
+          data: {
+            step: 0,
+            decision: 'plan-denied',
+            approvalId: 'apr-plan-2',
+            toolCallId: 'apr-plan-2',
+            runId: 'run-pd',
+            reason: 'too risky',
+          },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+    await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'run-pd',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    const ap = useAppStore.getState().approval;
+    expect(ap.pending).toBeNull();
+    expect(ap.terminal?.status).toBe('denied');
+    expect(ap.terminal?.reason).toBe('too risky');
+    expect(useAppStore.getState().plan.planByRunId['run-pd']?.status).toBe('forced_stop');
+  });
+});

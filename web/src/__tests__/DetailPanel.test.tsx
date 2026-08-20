@@ -194,4 +194,43 @@ describe('DetailPanel', () => {
       expect(screen.getByTestId('knowledge-graph-empty')).toBeInTheDocument();
     });
   });
+
+  // Plan 12-07 Task 3 — 规划轨迹 tab between 审计轨迹 + 引用原文.
+  it('renders seven tab buttons including 规划轨迹 (Plan 12-07)', () => {
+    render(<DetailPanel currentVerdict={null} />);
+    // The new 规划轨迹 tab exists alongside the prior 6.
+    expect(screen.getByRole('tab', { name: '规划轨迹' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '审计轨迹' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '引用原文' })).toBeInTheDocument();
+  });
+
+  it('clicking 规划轨迹 tab dispatches setCenterView({kind:"plan-replay"}) and renders PlanReplayView', async () => {
+    // Stub the BE /api/run/:id/plan endpoint with an empty payload so
+    // PlanReplayView renders the empty state.
+    useAppStore.setState({
+      centerView: { kind: 'empty' },
+      activeSessionId: 'run-tab-test',
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/run/run-tab-test/plan')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ runId: 'run-tab-test', todos: [], generatedAt: 0, count: 0 }),
+        } as Response;
+      }
+      return { ok: false, status: 404 } as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DetailPanel currentVerdict={null} />);
+    fireEvent.click(screen.getByRole('tab', { name: '规划轨迹' }));
+    expect(useAppStore.getState().centerView.kind).toBe('plan-replay');
+
+    // PlanReplayView's empty state surfaces (the BE returned 0 todos).
+    await waitFor(() => {
+      expect(screen.getByTestId('plan-replay-empty')).toBeInTheDocument();
+    });
+  });
 });

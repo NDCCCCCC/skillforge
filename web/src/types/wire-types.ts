@@ -52,6 +52,30 @@ import type { FinishReason, UIMessageChunk } from 'ai';
 import type { Refusal, SubprogressStep, Verdict } from './verdict';
 
 // ----------------------------------------------------------------------------
+// Decision enum constants — Plan 12-05 + 12-07 BE-side string values
+// ----------------------------------------------------------------------------
+
+// Plan 12-05 BE (P12-L3) — forced_stop is the budget-gate trigger
+// emitted by internal/runtime/trust_stage.go when max_iter / token /
+// loop layers trip (D11-C3 fail-closed + audit-first row written
+// BEFORE the data-decision chunk). Mirrored on the TS side so the FE
+// RealChatTransport dispatches plan.markPlanStatus(runId, 'forced_stop')
+// on receipt. The discriminator (kebab-case data-decision) is unchanged
+// (D15 invariant); only the decision STRING enum widens.
+export const DecisionForcedStop = 'forced_stop' as const;
+
+// Plan 12-07 BE (12-04 plan_api.go planApproveHandler) — plan-approved
+// fires on the SSE stream after the plan approval POST succeeds
+// (audit row written, Runner.ResumeWithParams drained, decision emitted).
+// The TS side dispatches approval.markApproved + plan.markPlanStatus.
+export const DecisionPlanApproved = 'plan-approved' as const;
+
+// Plan 12-07 BE (12-04 plan_api.go planApproveHandler deny path) —
+// plan-denied fires when the operator denies the plan (reason required,
+// HITL-02 contract; >= 3 chars enforced client + server).
+export const DecisionPlanDenied = 'plan-denied' as const;
+
+// ----------------------------------------------------------------------------
 // DecisionPayload — mirror of internal/wire/chunk.go DecisionPayload
 // ----------------------------------------------------------------------------
 
@@ -131,7 +155,17 @@ export interface DecisionPayload {
     | 'interrupted'
     | 'tool-resumed'
     | 'tool-denied'
-    | 'rule-matched';
+    | 'rule-matched'
+    // Plan 12-05 + 12-07 — forced_stop + plan-approved + plan-denied
+    // string extensions. forced_stop was added in 12-05 BE (P12-L3
+    // budget gate trigger); 12-07 adds plan-approved + plan-denied
+    // (12-04 plan_api.go planApproveHandler). The discriminator
+    // (kebab-case data-decision) is unchanged — only the decision
+    // STRING enum widens by 3 literals. D16 overload pattern + D15
+    // lockstep with internal/wire/chunk.go DecisionPayload.
+    | 'forced_stop'
+    | 'plan-approved'
+    | 'plan-denied';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */
