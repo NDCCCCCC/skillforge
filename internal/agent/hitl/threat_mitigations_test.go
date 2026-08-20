@@ -61,9 +61,11 @@ import (
 // across Windows (CRLF) and POSIX (LF) checkouts.
 const (
 	// HITL04AuditWriterSHA256 is the sha256 of
-	// internal/agent/hitl/audit_writer.go lines 234-259
+	// internal/agent/hitl/audit_writer.go lines 258-283
 	// (WritePendingApproval's exported body). Catches a silent
-	// rotation of the fail-closed INSERT path.
+	// rotation of the fail-closed INSERT path. Phase 12 / Plan 12-03
+	// extended the package-level godoc above this function, shifting
+	// the line range from 234-259 (11-08 baseline) to 258-283.
 	HITL04AuditWriterSHA256 = "79056b9ae8ce1495a3af7bc5e049d998edd0f9f4c9ba970fbe8501a1dec01716"
 
 	// HITL07MemoryFactsInvokableRunSHA256 is the sha256 of
@@ -125,7 +127,11 @@ func TestThreatModelCriticalMitigations(t *testing.T) {
 // asserts the WritePendingApproval body has not rotated.
 func testThreatHitl04AuditFailClosed(t *testing.T) {
 	// (b) sha256 baseline — WritePendingApproval function body.
-	actual := sha256LinesRange(t, "audit_writer.go", 234, 259)
+	// Phase 12 / Plan 12-03 extended the package godoc above the
+	// function; the line range shifted from 234-259 (11-08 baseline)
+	// to 258-283 (current). The function BODY itself is unchanged
+	// — the sha256 anchor matches.
+	actual := sha256LinesRange(t, "audit_writer.go", 258, 283)
 	assert.Equal(t, HITL04AuditWriterSHA256, actual,
 		"audit_writer.go::WritePendingApproval body drifted from baseline — review the fail-closed INSERT path")
 
