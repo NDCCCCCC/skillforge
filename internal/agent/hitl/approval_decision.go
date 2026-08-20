@@ -217,3 +217,29 @@ func keysSorted(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// ApplyFrozenArgs returns the args the Tool should execute on Pass 2:
+//
+//   - data.FrozenArgs when non-empty (HITL-07 edit-before-approve —
+//     the operator rewrote the ApprovalCard preview before approving).
+//   - otherwise json.RawMessage(storedArgs) — the original LLM-emitted
+//     args stored at interrupt time.
+//
+// The returned bytes are the EXECUTED side of the 3-way byte-equality
+// assertion (assertFrozenArgsEqual); they are passed to sha256 via
+// ComputeFrozenArgsHash verbatim, never re-marshaled.
+func ApplyFrozenArgs(data *ApprovalDecision, storedArgs string) json.RawMessage {
+	if data != nil && len(data.FrozenArgs) > 0 {
+		return data.FrozenArgs
+	}
+	return json.RawMessage(storedArgs)
+}
+
+// assertFrozenArgsEqual wraps frozen_args.go's assertThreeWayByteEqual
+// under the naming the Pass-2 call sites read most naturally. Kept as
+// a thin wrapper so the 3-way assertion lives in exactly one place
+// (frozen_args.go) while the ApprovalDecision-adjacent call sites read
+// against this file's vocabulary.
+func assertFrozenArgsEqual(previewBytes, auditFrozen, executedBytes []byte) error {
+	return assertThreeWayByteEqual(previewBytes, auditFrozen, executedBytes)
+}
