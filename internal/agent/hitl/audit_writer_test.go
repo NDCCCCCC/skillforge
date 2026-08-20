@@ -263,6 +263,113 @@ func TestAuditWriterPreconditions(t *testing.T) {
 	require.Error(t, err, "a zero Skill snapshot breaks the D11-C2 expire check")
 }
 
+// TestAuditPlanApproveTargetDiscriminator — Plan 12-03 / D11-B3
+// invariant: plan_approve audit rows share the action='action_pending_approval'
+// discriminator with every other HITL target; the per-target
+// discriminator is the audit row's `target` column. InsertPendingApproval
+// + MarkApproved with Target="plan_approve" produces 2 rows whose
+// action="action_pending_approval" / "action_approved" both carry
+// target="plan_approve" (the timeline-tab filter key).
+func TestAuditPlanApproveTargetDiscriminator(t *testing.T) {
+	s := newTestStore(t)
+	w := hitl.NewAuditWriter(s)
+	snap := testSnapshot(t, "v1")
+	ctx := context.Background()
+
+	pendingID, err := w.WritePendingApproval(ctx,
+		"sess-plan", "user-1", snap, "tc-plan-1",
+		hitl.PlanApproveTarget,
+		[]byte(`{"planId":"plan-discriminator","steps":[{"id":"s1","content":"x","status":"pending"}]}`),
+		"agent reason",
+	)
+	require.NoError(t, err)
+	require.Greater(t, pendingID, int64(0))
+
+	approvedID, err := w.MarkApproved(ctx,
+		"sess-plan", "user-1", snap, "tc-plan-1", "tc-plan-1",
+		hitl.PlanApproveTarget,
+		[]byte(`{"planId":"plan-discriminator","steps":[{"id":"s1","content":"x","status":"pending"}]}`),
+		"operator reason",
+	)
+	require.NoError(t, err)
+	require.Greater(t, approvedID, int64(0))
+	assert.NotEqual(t, pendingID, approvedID,
+		"the approved row is a NEW row, not an UPDATE of the pending row (T-3-AUDIT)")
+
+	rows, err := s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-plan", Limit: 100})
+	require.NoError(t, err)
+	require.Len(t, rows, 2,
+		"the session-scoped query must return the 2-row chain (pending + approved) for plan_approve")
+
+	// Action enum is uniform across HITL targets — the discriminator
+	// is the target column, NOT a per-target action value.
+	var pendingRow, approvedRow *store.AuditRow
+	for i := range rows {
+		switch rows[i].Action {
+		case "action_pending_approval":
+			pendingRow = &rows[i]
+		case "action_approved":
+			approvedRow = &rows[i]
+		}
+		assert.Equal(t, hitl.PlanApproveTarget, rows[i].Query,
+			"every plan_approve audit row must carry target=\"plan_approve\"")
+	}
+	require.NotNil(t, pendingRow, "the pending row must exist")
+	require.NotNil(t, approvedRow, "the approved row must exist")
+	assert.Equal(t, "tc-plan-1", pendingRow.ToolCallID,
+		"D11-C4 single identity on the pending row")
+	assert.Equal(t, "tc-plan-1", pendingRow.ApprovalID,
+		"approval_id == tool_call_id (D11-C4)")
+	assert.Equal(t, "tc-plan-1", approvedRow.ToolCallID)
+	assert.Equal(t, "tc-plan-1", approvedRow.ApprovalID)
+}
+
+// TestAuditPlanApproveFullLifecycle — Plan 12-03 / HITL-04 mirror:
+// the plan_approve audit chain is the same 2-row (pending → approved/
+// rejected) shape as every other HITL target. This test exercises
+// the full lifecycle with Target="plan_approve" + verifies the
+// approval_id invariant holds across both rows.
+func TestAuditPlanApproveFullLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	w := hitl.NewAuditWriter(s)
+	snap := testSnapshot(t, "v1")
+	ctx := context.Background()
+	frozen := []byte(`{"planId":"plan-lifecycle","steps":[{"id":"s1","content":"x","status":"pending"},{"id":"s2","content":"y","status":"pending"}]}`)
+
+	// Pass 1: InsertPendingApproval with target="plan_approve".
+	pendingID, err := w.WritePendingApproval(ctx,
+		"sess-lifecycle", "user-1", snap, "tc-lifecycle-1",
+		hitl.PlanApproveTarget, frozen, "agent reason")
+	require.NoError(t, err)
+	require.Greater(t, pendingID, int64(0))
+
+	// Pass 2: MarkApproved completes the 2-row chain.
+	approvedID, err := w.MarkApproved(ctx,
+		"sess-lifecycle", "user-1", snap, "tc-lifecycle-1", "tc-lifecycle-1",
+		hitl.PlanApproveTarget, frozen, "operator reason")
+	require.NoError(t, err)
+	require.Greater(t, approvedID, int64(0))
+	assert.NotEqual(t, pendingID, approvedID,
+		"approved row is a NEW row, not an UPDATE of pending (T-3-AUDIT INSERT-only)")
+
+	// D11-C4 identity invariant across both rows.
+	rows, err := s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-lifecycle", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	for _, r := range rows {
+		assert.Equal(t, r.ToolCallID, r.ApprovalID,
+			"approval_id == tool_call_id must hold for plan_approve rows (D11-C4)")
+		assert.Equal(t, hitl.PlanApproveTarget, r.Query,
+			"target column must carry the plan_approve discriminator")
+		assert.Equal(t, frozen, r.FrozenArgs,
+			"frozen_args must byte-equal across pending + approved (HITL-07)")
+		assert.Equal(t, snap.Version, r.SkillVersion,
+			"D11-C2 skill_version snapshot stamped on plan_approve audit rows")
+		assert.Equal(t, snap.PromptHash, r.PromptHash,
+			"D11-C2 prompt_hash snapshot stamped on plan_approve audit rows")
+	}
+}
+
 // hexSum is the sha256 rule-key helper (D11-D1).
 func hexSum(b []byte) string {
 	sum := sha256.Sum256(b)

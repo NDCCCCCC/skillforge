@@ -54,6 +54,30 @@ import (
 // Dependency posture (D18 interface-first): this file consumes the
 // store.Store INTERFACE only. It never imports internal/store/sqlite,
 // so a Postgres backend drops in without touching the writer.
+//
+// PLAN-12-03 / Phase 12 plan_approve audit rows:
+//
+//	plan_approve audit rows use the SAME action='action_pending_approval'
+//	as every other HITL target (memory:facts, review_report). The
+//	discriminator is the audit row's `target` column (= "plan_approve")
+//	— the AuditTimelineTab (12-07) filters by target for plan rows.
+//
+//	WHY this design (vs. a per-target enum value):
+//	  1. No migration. Adding an enum value would require an ALTER on
+//	     audit.action or a discriminator convention; reusing the
+//	     existing action keeps the table schema frozen.
+//	  2. Uniform 3-row lifecycle. The pending → approved/rejected chain
+//	     is identical across all HITL Tools (HITL-04 contract); the
+//	     plan_approve Tool's audit chain looks the same as memory:facts
+//	     from the table's perspective.
+//	  3. The target column is already indexed (idx_audit_target) — the
+//	     timeline filter is O(matched) not O(table).
+//
+//	The AuditWriterHook interface is target-agnostic on purpose: the
+//	plan_approve Tool passes ApprovalInfo{Target: "plan_approve"} and
+//	the same INSERT path stamps the row with action='action_pending_approval'
+//	+ the target column carrying the discriminator. Zero interface
+//	extension. Zero migration.
 
 // AuditWriter is the single entry point for HITL-04 audit INSERTs. Each
 // of its four methods writes exactly ONE row of the lifecycle:

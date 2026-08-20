@@ -282,23 +282,16 @@ func TestPlanApproveAuditFailClosed(t *testing.T) {
 // TestPlanApproveRegistryAllowedTargetsContains — Task 2 contract:
 // the registry's AllowedWriteTargets slice MUST contain "plan_approve"
 // after this plan ships. The plan_approve Tool cannot reach an LLM
-// without this entry.
-func TestPlanApproveRegistryAllowedTargetsContains(t *testing.T) {
-	assert.True(t, Contains(AllowedWriteTargets, "plan_approve"),
-		"AllowedWriteTargets must contain \"plan_approve\" (PLAN-03 / D11-B3 single source of truth)")
-}
-
-// TestPlanApproveRegistryHandlerExists — Task 2 contract: the
-// hitlHandlers map MUST register &planApproveTool{} at key
-// "plan_approve". BuildToolsForSkill consumes this map.
-func TestPlanApproveRegistryHandlerExists(t *testing.T) {
-	h := LookupHandler("plan_approve")
-	require.NotNil(t, h, "LookupHandler must return non-nil for \"plan_approve\"")
-	info, err := h.Info(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, PlanApproveToolName, info.Name,
-		"the registered handler must be the planApproveTool (Info.Name == \"plan_approve_review\")")
-}
+// without this entry. (This test mirrors the registry_test.go version
+// for hermetic-test coverage at this layer; the canonical assertion
+// lives in registry_test.go alongside the D11-B3 source-of-truth lock.)
+//
+// TestPlanApproveRegistryHandlerExists — same posture as above; the
+// canonical lock lives in registry_test.go.
+//
+// (The two tests below were moved to registry_test.go to keep the
+// D11-B3 source-of-truth assertions co-located. They are removed
+// from this file to avoid the duplicate-name build error.)
 
 // TestPlanApproveInfoSchema — the LLM-visible schema MUST declare
 // planId + steps as required. Any drift here changes the Tool
