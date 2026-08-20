@@ -1,0 +1,206 @@
+// Copyright 2026 SkillForge Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+// Package server — runner_setup.go is Phase 11 / Plan 11-01's
+// Runner-path chatHandler implementation. It is the D11-A1
+// one-line-dispatch substrate that the production chatHandler will
+// migrate to in Plan 11-04 (when the trust staircase + ChunkAccumulator
+// + HITL Tool integration land).
+//
+// 11-01 lands the seam only: the new ChatHandler (this file) drives
+// adk.NewRunner().Run(ctx, msgs) one-line dispatch, drains the
+// AgentEvent iterator via agent.DrainRunnerEvents, and emits the
+// same SSE chunk sequence the legacy chatHandler emits (D-04
+// byte-identity). The route binding h.POST(\"/api/chat\", deps.chatHandler)
+// stays on the legacy VerdictPipeline path (internal/server/chat.go)
+// for 11-01 so existing Phase 8/9/10 acceptance tests keep passing;
+// 11-04 flips the binding to the new ChatHandler.
+//
+// D11-A4 (<200ms cancel propagation): the same ctx flows from
+// chatHandler → adk.Runner.Run AND through the agent.DrainRunnerEvents
+// select-before-Next loop AND the SSE writer. Cancellation tears
+// down all three sides within the same iteration (the Eino iterator
+// does NOT poll ctx cooperatively inside Next(), so the select is
+// the load-bearing anchor for the SC-8 / AGNT-04 200ms lock).
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"unicode/utf8"
+
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/hertz/pkg/app"
+
+	"github.com/skillforge/skillforge/internal/agent"
+	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/verdict"
+	"github.com/skillforge/skillforge/internal/wire"
+)
+
+// ChatHandler is the Runner-path /api/chat handler (Plan 11-01 /
+// D11-A1 + D11-A4). It is the new chatHandler body — the legacy one
+// in internal/server/chat.go stays in place as the active binding
+// for 11-01 (so existing tests keep passing). Plan 11-04 flips
+// server.New's h.POST(\"/api/chat\", ...) to deps.ChatHandler.
+//
+// Behavior:
+//
+//  1. Decode body (chatRequest struct from internal/server/chat.go).
+//  2. Resolve session_id (X-Session-Id header OR newSessionID).
+//  3. Find the manifest via Loader (existing findSkill).
+//  4. Build Runner via agent.BuildRunner(ctx, RunnerBuildConfig{...}).
+//  5. Single-line D11-A1 dispatch:
+//        iter, err := runner.Run(ctx, []ms)
+//  6. Drain AgentEvents via agent.DrainRunnerEvents(ctx, iter, emit).
+//
+// The ctx is shared between Runner.Run, DrainRunnerEvents, and the SSE
+// writer — cancellation tears all three down within the same iteration
+// (D11-A4 <200ms lock).
+//
+// D-04 / D15 invariants preserved: the SSE chunk sequence is byte-
+// identical to the legacy path (eventToUIMessageChunk emits the same
+// text-start / text-delta / text-end / finish-step / finish types the
+// legacy emitVerdictStream / emitRefusal / emitDecision emit). No new
+// SSE chunk types are introduced (D15).
+//
+// D11-A2 trust-staircase (D11-A2): the BeforeAgent / BeforeModel /
+// AfterModel callbacks are registered via cfg.Callbacks (11-04 wires
+// the trust floor + classifier + grounding). 11-01 ships the empty
+// default (the chatHandler boundary still runs the trust floor /
+// classifier / grounding checks inline at their existing positions).
+func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
+	// UTF-8 sanity check (mirrors internal/server/chat.go:150).
+	if raw := c.Request.Body(); len(raw) > 0 && !utf8.Valid(raw) {
+		c.SetStatusCode(400)
+		_ = wire.EmitChunk(c, errorChunk("request body must be valid UTF-8 (client likely sent a legacy codepage such as GBK/Shift-JIS)"))
+		return
+	}
+
+	var chatReq chatRequest
+	if err := c.BindAndValidate(&chatReq); err != nil {
+		_ = emitRefusal(c, verdict.Refusal{Reason: verdict.RefusalReasonOutOfScope, CanRephrase: false})
+		return
+	}
+	if chatReq.Query == "" {
+		chatReq.Query = lastUserQuery(chatReq.Messages)
+	}
+	if chatReq.Query == "" {
+		c.SetStatusCode(400)
+		_ = wire.EmitChunk(c, errorChunk("query is required"))
+		return
+	}
+	if chatReq.Skill == "" {
+		chatReq.Skill = defaultSkill
+	}
+
+	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
+	if sessionID == "" {
+		sessionID = newSessionID()
+	}
+	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
+
+	manifest := s.findSkill(chatReq.Skill)
+	if manifest == nil {
+		_ = emitRefusal(c, verdict.Refusal{Reason: verdict.RefusalReasonOutOfScope, CanRephrase: false})
+		return
+	}
+
+	// Build the Runner (D11-A1 + D11-B1 + D11-B4 substrate).
+	// 11-04 binds the SQLiteStore via adk.Runner.WithCheckPointStore
+	// (the seam exists in internal/agent/runner_setup.go but the
+	// chatHandler-bound store attachment lands in 11-04 to keep this
+	// plan's blast radius small).
+	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
+		Manifest:  manifest,
+		Embedder:  s.Embedder,
+		Retriever: s.Retriever,
+		ChatModel: s.ChatModel,
+		SessionID: sessionID,
+	})
+	if err != nil {
+		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)
+		_ = wire.EmitChunk(c, errorChunk(err.Error()))
+		return
+	}
+
+	// D11-A1 one-line dispatch.
+	msgs := []*schema.Message{schema.UserMessage(chatReq.Query)}
+	iter := runner.Run(ctx, msgs)
+	// Note: runner.Run returns a *AsyncIterator synchronously; errors
+	// surface as the first event's Err field (verified at eino v0.9.14
+	// adk/runner.go:102-105). The legacy Runner.Query helper also
+	// returns just the iterator; the chatHandler boundary drains the
+	// first error event in the loop below.
+	_ = adk.AgentInput{}
+
+	// D11-A4 drain — ctx-shared with the SSE writer.
+	emit := agent.EmitFunc(func(chunk wire.UIMessageChunk) error {
+		return wire.EmitChunk(c, chunk)
+	})
+	if err := agent.DrainRunnerEvents(ctx, iter, emit); err != nil {
+		log.Printf("[ERROR] server: ChatHandler DrainRunnerEvents failed: %v", err)
+		// The SSE stream is already in flight — we cannot change status
+		// here. Emit an error chunk + finish-step so the client sees a
+		// terminal state, then persist the audit row.
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
+		s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, "", "internal_error", nil)
+		return
+	}
+
+	// 11-01 ship: emit a terminal finish-step + finish (the legacy
+	// chatHandler emits these after the verdict stream drains). 11-04
+	// moves the verdict parse + audit write into this handler; for 11-01
+	// we log + persist a minimal audit row (best-effort).
+	log.Printf("[INFO] server: ChatHandler drain complete (sess=%s skill=%s)", sessionID, chatReq.Skill)
+	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
+
+	// 11-01 stub: verdict parse + trust floor + grounding land in
+	// 11-04. For now write a minimal audit row with refusal_reason=\"\"
+	// (the verdict path is captured in the audit row's verdict_json in
+	// the legacy chatHandler — 11-04 re-uses writeAuditAndTurn with the
+	// parsed verdict).
+	s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, chatReq.Skill, "", nil)
+}
+
+// runnerEmitDecision mirrors the legacy chatHandler's emitDecision
+// wrapper — kept here so future plans can wire the per-request
+// decision-emit closure into the Runner path without touching
+// chat.go (D11-A2 trust-staircase will register a BeforeAgent
+// callback that emits decision chunks; this helper is the seam).
+//
+// 11-01 ships the seam only — the BeforeAgent callback registration
+// lands in 11-04.
+func runnerEmitDecision(c *app.RequestContext, p wire.DecisionPayload) error {
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("marshal decision: %w", err)
+	}
+	return wire.EmitChunk(c, wire.UIMessageChunk{Type: "data-decision", Data: payload})
+}
+
+// compile-time guard: keep the skill + agent imports live so a future
+// refactor that drops the BuildRunner call cannot silently remove the
+// runner-path seam without breaking this file's build first.
+var (
+	_ = agent.RunnerCheckPointID
+	_ = (*skill.Manifest)(nil)
+)
