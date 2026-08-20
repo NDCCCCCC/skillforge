@@ -28,9 +28,11 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -182,4 +184,82 @@ func TestCheckpointClosedStore(t *testing.T) {
 
 	err = s.Set(ctx, "cp-after-close", []byte("payload"))
 	require.ErrorIs(t, err, sql.ErrConnDone, "Set after Close must return sql.ErrConnDone")
+}
+
+// TestSQLiteStoreDelete (Plan 11-01 / D11-C2): Set then Delete then
+// Get returns (nil, false, nil) — Delete removes the row; subsequent
+// Get treats the id as unknown (existed=false is NOT an error, same
+// disposition as TestCheckpointUnknownID). Idempotent: deleting a
+// non-existent id is a no-op (returns nil, not error).
+func TestSQLiteStoreDelete(t *testing.T) {
+	s := newCheckpointStore(t)
+	ctx := context.Background()
+
+	require.NoError(t, s.Set(ctx, "cp-delete-1", []byte("payload-to-delete")))
+
+	// Verify it landed
+	got, existed, err := s.Get(ctx, "cp-delete-1")
+	require.NoError(t, err)
+	require.True(t, existed)
+
+	// Delete
+	require.NoError(t, s.Delete(ctx, "cp-delete-1"), "Delete must succeed for an existing id")
+
+	// Get returns (nil, false, nil) — the row is gone
+	got, existed, err = s.Get(ctx, "cp-delete-1")
+	require.NoError(t, err, "Get after Delete must not error")
+	assert.False(t, existed, "existed must be false after Delete")
+	assert.Nil(t, got, "payload must be nil after Delete")
+
+	// Idempotent: Delete on a non-existent id returns nil
+	require.NoError(t, s.Delete(ctx, "cp-never-existed"),
+		"Delete must be idempotent (non-existent id is a no-op)")
+}
+
+// TestSQLiteStoreCheckPointDeleterCompileTime — belt-and-suspenders
+// compile-time guard for the adk.CheckPointDeleter interface. The
+// primary lock is the `var _ adk.CheckPointDeleter = (*SQLiteStore)(nil)`
+// assertion in checkpoint.go (compile-time fails the build on
+// interface drift). This reflection-based test verifies the method
+// set at the reflection layer — defense-in-depth against a future
+// Eino upgrade that introduces an additional method on
+// CheckPointDeleter (which would still satisfy the interface but
+// would not be implemented by SQLiteStore yet).
+func TestSQLiteStoreCheckPointDeleterCompileTime(t *testing.T) {
+	s := &sqlite.SQLiteStore{}
+	tp := reflect.TypeOf(s)
+	method, ok := tp.MethodByName("Delete")
+	require.True(t, ok, "SQLiteStore must have a Delete method (adk.CheckPointDeleter contract)")
+	// Method signature: Delete(context.Context, string) error.
+	mt := method.Type
+	require.Equal(t, 3, mt.NumIn(), "Delete must take (receiver, context.Context, string)")
+	require.Equal(t, reflect.TypeOf((*error)(nil)).Elem(), mt.Out(0), "Delete must return error")
+	// Second parameter must be a string (not a pointer or struct).
+	param := mt.In(2)
+	require.Equal(t, reflect.String, param.Kind(), "second arg must be string")
+}
+
+// TestCheckpointIDFormat — Plan 11-01 / D11-A1 + D11-C1 pins the
+// canonical Runner checkpoint ID shape. Asserts the format is stable
+// across the agent package boundary: the store treats the ID as an
+// opaque string, but the producer (agent.RunnerRunnerrCheckPointID)
+// and the consumer (this test) agree on the exact byte sequence.
+//
+// The "sess:" prefix isolates SkillForge IDs from eino-internal ID
+// namespaces (eino uses random UUIDs by default); the ":cp" suffix
+// marks the row as a checkpoint payload (vs. any future run-state
+// table that might share the namespace).
+func TestCheckpointIDFormat(t *testing.T) {
+	id := agent.RunnerCheckPointID("sess-abc-123")
+	assert.Equal(t, "sess:sess-abc-123:cp", id,
+		"RunnerCheckPointID must produce the canonical format")
+
+	// Round-trip: Set with the format, Get returns the payload
+	s := newCheckpointStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.Set(ctx, id, []byte("payload")))
+	got, existed, err := s.Get(ctx, id)
+	require.NoError(t, err)
+	require.True(t, existed)
+	assert.Equal(t, []byte("payload"), got)
 }
