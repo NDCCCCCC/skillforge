@@ -263,3 +263,53 @@ func TestCheckpointIDFormat(t *testing.T) {
 	require.True(t, existed)
 	assert.Equal(t, []byte("payload"), got)
 }
+
+// TestCheckpointDeleteExpired — D11-C2 expire path.
+// SetCheckpointWithSnapshot persists (id, payload, skill_version,
+// prompt_hash); GetCheckpointByVersionFilter returns the payload ONLY
+// when both snapshot columns match the live Skill. On mismatch the
+// resume path Deletes the row (the 11-01 Delete method) and reports
+// state="expired" instead of resuming against a drifted Skill. The
+// audit row is NEVER deleted (T-3-AUDIT).
+func TestCheckpointDeleteExpired(t *testing.T) {
+	s := newCheckpointStore(t)
+	ctx := context.Background()
+
+	payload := []byte("checkpoint-payload-bytes")
+	require.NoError(t, s.SetCheckpointWithSnapshot(ctx, "cp-expire", payload, "v1", "ph-v1"))
+
+	// Matching snapshot → the row is returned.
+	got, existed, err := s.GetCheckpointByVersionFilter(ctx, "cp-expire", "v1", "ph-v1")
+	require.NoError(t, err)
+	require.True(t, existed)
+	assert.Equal(t, payload, got)
+
+	// Skill version bumped → expired.
+	_, existed, err = s.GetCheckpointByVersionFilter(ctx, "cp-expire", "v2", "ph-v1")
+	require.NoError(t, err, "a version mismatch is NOT an error — it is the expire state")
+	assert.False(t, existed, "version mismatch must return existed=false")
+
+	// prompt_hash changed → expired.
+	_, existed, err = s.GetCheckpointByVersionFilter(ctx, "cp-expire", "v1", "ph-v2")
+	require.NoError(t, err)
+	assert.False(t, existed, "prompt_hash mismatch must return existed=false")
+
+	// The expire path itself: the caller Deletes the stale row.
+	require.NoError(t, s.Delete(ctx, "cp-expire"), "Delete on an expired checkpoint must succeed")
+
+	got, existed, err = s.GetCheckpointByVersionFilter(ctx, "cp-expire", "v1", "ph-v1")
+	require.NoError(t, err)
+	assert.False(t, existed)
+	assert.Nil(t, got)
+
+	// The snapshot upsert tracks the newest interrupt: a re-Set with a
+	// new snapshot replaces both payload and snapshot columns.
+	require.NoError(t, s.SetCheckpointWithSnapshot(ctx, "cp-expire", []byte("second"), "v2", "ph-v2"))
+	_, existed, err = s.GetCheckpointByVersionFilter(ctx, "cp-expire", "v1", "ph-v1")
+	require.NoError(t, err)
+	assert.False(t, existed, "the stale snapshot must no longer match after the upsert")
+	got, existed, err = s.GetCheckpointByVersionFilter(ctx, "cp-expire", "v2", "ph-v2")
+	require.NoError(t, err)
+	require.True(t, existed)
+	assert.Equal(t, []byte("second"), got)
+}
