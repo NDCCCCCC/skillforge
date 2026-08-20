@@ -2,24 +2,24 @@
 gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
-current_phase: 11
-current_plan: 8 plans in 5 waves (W1..W5); VERIFICATION PASSED; ready for execute-phase
-status: planned
-stopped_at: Phase 11 plan-phase complete (8 plans written, gsd-plan-checker VERIFICATION PASSED after 2 revision iterations; coverage gate 8/8 HITL reqs + 16/16 D11 decisions)
-last_updated: "2026-08-20T10:35:00Z"
-last_activity: 2026-08-20 -- Phase 11 plan-phase complete via `/gsd:plan-phase 11 --chunked` (gsd-sdk PATH bypass; 8 plans in 5 waves: W1=11-01 foundation / W2=11-02⟂11-03 / W3=11-04⟂11-05 / W4=11-06⟂11-07 / W5=11-08 acceptance gate; coverage 8/8 HITL reqs + 16/16 D11 decisions; verification PASSED after 2 revision iterations — fixed 11-07/11-06 cross-plan contract + 11-08 string-grep + 11-06 stale Note J; 60923+78323+83116+70161+58194+89519+90550+70446 = 601230 bytes plan content; final commit 73beefa; mvp vertical slices — FE+BE HITL same phase NOT split)
-resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-PLAN-OUTLINE.md
+current_phase: 13
+current_plan: 13-02 merge pure function + 10× byte-identity contract; COMPLETE
+status: in-progress
+stopped_at: Phase 13 / Plan 13-02 COMPLETE 2026-08-21 (2 tasks / 2 commits: 7c9652b Task 1 merge.go + 5d75e6d Task 2 merge_test.go; 28 hermetic runtime tests green; FAN-03 SC-3 byte-identity contract test 10× stable; FAN-03 SC-4 conservative partial-failure regression locks in place; pure function verified — no audit / no SSE / no map iteration / no time.Now)
+last_updated: "2026-08-21T00:00:00Z"
+last_activity: 2026-08-21 -- Phase 13 Plan 13-02 SHIPPED via `/gsd:execute-phase 13 --wave 2` (sequential executor; 13-03 is the parallel sibling in Wave 2 — see resume file). 28 hermetic runtime tests pass; `go build ./...` + `go vet ./...` exit 0; 10× byte-identity contract test stable across 10 consecutive runs. Prior: Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit 0484bca: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary).
+resume_file: .planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md
 progress:
   total_phases: 13
   completed_phases: 8
-  total_plans: 58
-  completed_plans: 51
-  percent: 62
+  total_plans: 60
+  completed_plans: 53
+  percent: 64
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-20 (**Phase 11 PLANNED — 8 plans in 5 waves, VERIFICATION PASSED** — `11-PLAN-OUTLINE.md` + 8 `11-NN-PLAN.md` written via `/gsd:plan-phase 11 --chunked` (gsd-sdk PATH bypass); W1: 11-01 BE Runner-ization foundation; W2: 11-02 BE HITL Tool infra (memory:facts) ⟂ 11-03 BE Audit+Checkpoint fail-closed; W3: 11-04 BE Approval endpoint (review_report) ⟂ 11-05 BE Edit-before-approve + approval_rules; W4: 11-06 FE ApprovalCard+Edit ⟂ 11-07 FE Rules panel+AuditTimelineTab+cross-refresh; W5: 11-08 E2E acceptance gate (autonomous:false); coverage gate: 8/8 HITL reqs + 16/16 D11 decisions honored; verification PASSED after 2 revision iterations (fixed 11-07↔11-06 cross-plan data contract + 11-08 string-grep→functional+sha256-baseline + 11-06 stale Note J); FE+BE HITL same phase per project rules; mvp vertical slices — UI→API→DB per plan, NOT horizontal layers; 601230 bytes plan content total; final commit `73beefa`; gsd-sdk PATH bypass — artifacts + STATE manually committed). **Resume-file**: `.planning/phases/11-p8-2-write-tools-approval-gate/11-PLAN-OUTLINE.md`. **Next action**: `/clear` then `/gsd:execute-phase 11` (Wave 1 first → Wave 2 parallel → Wave 3 parallel → Wave 4 parallel → Wave 5 operator-runs `make verify-phase-11`).
+**Last updated:** 2026-08-21 (**Phase 13 Plan 13-02 SHIPPED** — `mergeSubAgentResults` pure function in `internal/runtime/merge.go` + 10× byte-identity contract test + conservative partial-failure merge; 2 atomic commits `7c9652b` + `5d75e6d`; 28 hermetic runtime tests green; FAN-03 SC-3 (determinism) + SC-4 (conservative partial-failure) regression locks in place; pure function verified — no audit / no SSE / no map iteration / no time.Now; 13-02 SUMMARY.md committed; ROADMAP + STATE updated). **Prior**: Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit `0484bca`: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary). **Phase 11 ACCEPTANCE GATE PASS 2026-08-20** (8/8 plans — 11-01..11-08). **Next action**: continue Wave 2 — `/gsd:execute-phase 13` for 13-03 (per-sub-agent grounding via shared ChunkAccumulator + errgroup fan-out + audit RunPath/Transfer columns + D16 overload) OR run 13-03 in parallel with this executor if Wave 2 was launched in parallel. Resume file: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`.
 
 **Prior:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
 
@@ -69,12 +69,12 @@ progress:
 
 ## Current Position
 
-Phase: 11 (p8-2 写工具 + 审批门, HITL-01..08) — planning pending
-Plan: 1 of (TBD)
-Status: closed-blocker-notes (Phase 10); ready for plan-phase 11
-Last activity: 2026-08-20 -- Phase 10 hermetic-gated closeout (UAT 19/0/3)
-Stopped At: context exhaustion at 77% (2026-08-19)
-Resume File: None
+Phase: 13 (p8-4 子 agent 扇出, FAN-01..04) — in progress (2/5 plans complete)
+Plan: 13-02 COMPLETE (merge pure function + 10× byte-identity contract); next = 13-03 (per-sub-agent grounding + audit RunPath/Transfer + D16 overload)
+Status: in-progress (Phase 13 Wave 2)
+Last activity: 2026-08-21 -- Phase 13 Plan 13-02 shipped (commits `7c9652b` Task 1 + `5d75e6d` Task 2; merge.go + merge_test.go; 28 hermetic tests green)
+Stopped At: Phase 13 Plan 13-02 summary committed
+Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 
 **Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
 
@@ -257,6 +257,7 @@ Resume File: None
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P04 | 12m | 2 tasks | 3 files |
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P05 | 20m | 2 tasks | 3 files |
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P06 | ~75m | 2 tasks (T2 = human-verify gate) | 3 files committed + 7 git-ignored reports |
+| Phase 13-p8-4-sub-agent-fan-out P02 | ~25m | 2 tasks | 4 files (1 created merge.go + 1 created merge_test.go + 2 modified orchestrator.go/orchestrator_test.go) |
 
 ## Session Continuity
 
@@ -267,6 +268,8 @@ Resume File: None
 **Resume point (Phase 9 — GEVL-08 spike hard gate):** Plan 09-01 (DONE 2026-08-18, 3 commits `0df3483` Task 1 + `1216c79` Task 2 + `8e56a27` Task 3). **Wave 1 spike 数据地基就位**：golden set 从 50 扩到 75（baseline 50 逐字节未动 + 10 history_injection_adversarial + 15 history_injection_followup 按 5/5/5 anaphora/post_refusal/multi_hop_chain 切分）。恶意行 A/B 锚点（baseline_id + history_anchor{turn_index, fake_chunk_ref}）与善意行 subclass 标签由新增 `TestGoldenHistoryInjectionRows` schema 门锁死，含 adversarial query ↔ baseline query 逐字相等断言（D9-A3）；恶意行 10 个 fake_chunk_ref 互异且每个 ref 作为子串出现于对应行的 history_turn（自洽）。`eval/frozen/` + `eval/sample.jsonl` 零触碰。Phase 9 关键 planner 裁决落地：(a) LLM 生成伪制度文本 = 执行者生成（planner 裁决 1，零 API 调用成本 + T-9-LLM-COST 规避）；(b) `golden_test.go` 改加法升级，原 20/20/10 + spike-anchor 5 + ID 去重 + 非空断言逐条保留；(c) `eval/sample.jsonl` 停留在 50 例（DIST-10 已发布样本，裁决 3）。Wave 1 partial — Wave 2/3/4 plans（09-02 projection.go 接口骨架 + 09-03 spike runner + 09-04 long.go + 09-05 summary.go + 09-06 live UAT）尚未启动，待本 plan summary 同步后启动 09-02。
 
 **Phase 9 execution (2026-08-18):** Plan 09-02 COMPLETE in 3m10s with task commits `7aa8a3c` + `7fe80db` and summary commit `0609656`; `internal/history/projection.go` now enforces D9-B1/B2/B3 and `projection_test_fixtures.go` exports 7 contracts. Next: Plan 09-03 spike runner. **Plan 09-03 COMPLETE in 13m45s** (commits `7632923` + `b0b4571` + `cdd1377`) — `cmd/spike-history` spike-only binary ships: 11-flag CLI, RunEntry live+dry-run dual path (8-step pipeline), per-entry JSONL schema locked, stub gates for `--history-length=long` (Plan 09-04) + `--summarize` (Plan 09-05) with grep-friendly error strings. **Plan 09-04 COMPLETE in ~12m** (commits `923f1c0` long.go + `65cb8d0` main.go+runner.go) — `--history-length=long` path implemented: `loadLongHistoryRows` synthesizes 10 SpikeRows with 8/12/15-turn histories (1 signal per row + neutral filler from baseline 50 rows), seed=42 deterministic, output to `history_injection_long.jsonl`. D9-L1/L2/L3 decisions captured (Plan 09-03 category-as-filename convention + T-9-FILLER-LEAK fixed template + 8/12/15 upper-bound semantics). Stub gates removed from both main.go and runner.go; short path zero-regression. **Plan 09-05 COMPLETE in ~20m** (commits `e1660c6` plan 09-04 leftover fix + `3ef406e` RED test + `4078ab5` GREEN impl + `08d2920` main.go wire + `969ed25` docs closeout) — `--summarize` aggregator ships: `summary.go` 838 lines; TestComputeVerdict locks 6 gate scenarios; 4 output files per call; baseline verbatim read (no re-run). **Plan 09-06 COMPLETE 2026-08-18 (~75m; commits `e06576f` .gitignore+test-fix + `791c86d` renderer literals + `4ed48d8` docs)** — live spike 三段跑 + summarize 全通：`history_injection_adversarial.jsonl` 10 行 + `history_injection_followup.jsonl` 15 行 + `history_injection_long.jsonl` 10 行（真 GLM-5.2 + Milvus + BGE-M3，seed=42，cost-limit $5.00/段，实测 total **$0.0481**）→ `--summarize` exit **1** 产 4 文件（summary.md 55 行 / short_history.md / long_history.md / summary.json）。**裁决 NO-GO**：SC-3 零穿透 0/10 PASS（证据链未污染），faithfulness -18.6%/-12.6%/-22.4% + context_precision +483%/+300%/+417% + answer_relevancy +524%/+392%/+483% + context_recall -87.2%/-63.0%/-70.1% + refusal **-95pp**（三类 refusal_rate 全 0）超门；指标耦合注记：cp/ar 上升是「不再拒答 → judge 不再机械归零」的影子，根因 = 拒答行为漂移（Pitfall 1 H2）。**Task 2 checkpoint:human-verify（gate=blocking）用户签字「接受 NO-GO 带逃逸方案」**→ D9-V1/V2/V3 决策入册；4 SC + 决策表 + 三段命令时序全部转录进 09-06-SUMMARY（T-9-RESULT-LOSS 缓解——reports/ 已 git-ignore，数字在 git 内留档）。git 隔离验证：eval/frozen/ + eval/sample.jsonl + 硬约束面零改动；`go build ./... && go vet ./...` exit 0。**PHASE 9 COMPLETE (6/6)——GEVL-08 交付（消毒规则 + 明确有记录的 go/no-go + 逃逸方案）**。Next: `/gsd:verify-work 9` → `/gsd:plan-phase 10`（前置逃逸强化，见 D9-V2）。
+
+**Resume point (Phase 13 — Fan-out P8.4):** Plan 13-01 (DONE 2026-08-21, commit `0484bca`): FanOutOrchestrator foundation (`internal/runtime/orchestrator.go` adk.Agent + skeleton Run) + tier-closure sub-agent builder (`internal/runtime/sub_agent_builder.go` — `intersectTiers` + read-only enforcement `subManifest.Writes = []string{}`) + LRU accumulator (`internal/runtime/fanout_runtime.go` — `SharedChunkAccumulatorMaxEntries=20` + per-sub-agent budget constants 5/20000/3/30) + `cmd/spike-fanout` 5-scenario hermetic binary (match / empty-intersection / sub-empty-reads / parent-empty-tiers / canonical); 16 hermetic runtime tests pass, FAN-02 SC-2 load-time error contract verified. **Plan 13-02 (DONE 2026-08-21, commits `7c9652b` Task 1 + `5d75e6d` Task 2)**: `mergeSubAgentResults` pure function + 10× byte-identity contract test + conservative partial-failure merge + citation dedup first-wins + min-confidence aggregation (D2-13 threshold 0.89). 28 hermetic runtime tests green. **Phase 13 Wave 2 NEXT**: Plan 13-03 (per-sub-agent grounding via shared `*ChunkAccumulator` + errgroup fan-out with `SetLimit(4)` + audit RunPath/Transfer columns + D16 overload on `data-decision.decision`). **Phase 13 Wave 3**: Plan 13-04 (STRIDE-13 threat model + hermetic gate — `TestNoNewParallelAgentUsage` source-grep guard + frozen eval re-lock). **Phase 13 Wave 4**: Plan 13-05 (acceptance gate + live fan-out UAT).
 
 **Resume point (legacy):** Plan 03-06 (Go-native trust evaluator) is COMPLETE — 3/3 tasks, 5 commits (`52dab7e` D6 reversal docs + `d4f96fc` Task 1 + `a77be40` Task 2 + `f7979af` Task 3 A+B + `247dfd8` Task 3 C-H). D6 reversed 2026-08-12: evaluator is now Go-native (internal/eval + cmd/eval); faithfulness ports Ragas v0.1.21 prompts VERBATIM (Apache-2.0, eval/NOTICE); other 3 metrics use Go-authored judge prompts. 50-case synthetic golden set shipped (GEVL-05: 20/20/10 + 5 spike-anchors). D2-15 calibration vehicle emits `recommended_threshold` to `eval/calibration.json` — manual ops swap of the literal 0.3 in `internal/server/pipeline.go:43`. **Phase 3 COMPLETE (6/6 plans)** — GEVL-04 + GEVL-05 marked complete. Next: Plan 05-01 (Phase 5 skill-platform) or Phase 6 CI gate wiring (eval/report.json → GEVL-07 promotion gate). **Phase 4 TS-drift debt CLOSED 2026-08-12 via Plan 04-04** — `cd web && npx tsc --noEmit` exits 0 (21 → 0 errors), vitest 84/84, build 411.12 KB / 120.47 KB gzip. See `.planning/phases/04-streaming-trust-ui/04-04-SUMMARY.md`.
 
