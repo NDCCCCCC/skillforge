@@ -1,0 +1,31 @@
+{
+  "version": "v0.8-deep-frozen-v2",
+  "createdAt": "2026-08-20",
+  "phase": "12-p8-3-planning-layer",
+  "schema_version": "v1",
+  "model_ver": "glm-5.2",
+  "prompt_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "seed": 42,
+  "eval_set_version": "deep-2026-08-20-v1",
+  "skill_name": "deep",
+  "agent_archetype": "deep",
+  "max_iterations": 10,
+  "budget_layer_frozen": true,
+  "case_count": 50,
+  "category_counts": {
+    "multi-hop": 25,
+    "plan-style": 15,
+    "refusal-required": 10
+  },
+  "metrics": {
+    "faithfulness": null,
+    "refusal_accuracy": null,
+    "budget_triggered_count": null,
+    "plan_todo_completeness": null
+  },
+  "rf5_parse_rate_without_structured_output": null,
+  "rf5_parse_rate_with_structured_output": null,
+  "rf5_p12l10_verdict": null,
+  "lock_sha256": null,
+  "_operator_action_required": "Operator-runs-live Stage 10 of scripts/verify-phase-12.sh: GLM_API_KEY + MILVUS_ADDRESS + BGE_M3_URL required to populate metrics + rf5_* fields + lock_sha256. See eval/frozen/README.md §RF-5 spike protocol."
+}
