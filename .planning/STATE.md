@@ -3,23 +3,23 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 11
-current_plan: TBD (4 areas / 16 decisions locked; context ready for plan-phase)
-status: ai-spec-approved
-stopped_at: Phase 11 AI-SPEC approved (commit 99a7b7c; framework PASS + 10 eval dimensions + 5 online guardrails + 10 prod metrics)
-last_updated: "2026-08-20T03:30:00Z"
-last_activity: 2026-08-20 -- Phase 11 AI-SPEC approved (11-AI-SPEC.md written, 1190 lines; cloudwego/eino v0.9.14 framework PASS (HITL primitives GA in v0.5.0: tool.StatefulInterrupt + Runner.ResumeWithParams + compose.CheckPointStore); Section 1b domain context — SOC 2 CC7.2 / ISO 27001 A.8.15 / GDPR Art 30 regulatory anchors + 3 expert roles (Senior Compliance Practitioner + Internal Audit Specialist + Security Engineer AppSec); Sections 3/4/4b Go-flavored implementation guidance — 8 HITL pitfalls + trust staircase BeforeAgent(trust floor) → BeforeModel(D10-A1) → Tool+StatefulInterrupt → AfterModel(grounding) + schema.RegisterName[ApprovalDecision] structured output; Section 5 — 10 eval dimensions (5 Critical: audit chain INSERT-only / fail-closed / frozen_args byte-immutability / cross-refresh consistency / tool_call_id idempotency) + 150-case reference dataset (75 inherited + 75 HITL-specific); Section 6 — 5 online guardrails + 5 offline flywheel; Section 7 — Langfuse tracing + 10 metrics + 8 alert thresholds + signal-weighted sampling; gating test = TestFailClosedAudit (P0, no waiver path); gsd-sdk PATH bypass — artifacts + STATE manually committed)
-resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-AI-SPEC.md
+current_plan: 8 plans in 5 waves (W1..W5); VERIFICATION PASSED; ready for execute-phase
+status: planned
+stopped_at: Phase 11 plan-phase complete (8 plans written, gsd-plan-checker VERIFICATION PASSED after 2 revision iterations; coverage gate 8/8 HITL reqs + 16/16 D11 decisions)
+last_updated: "2026-08-20T10:35:00Z"
+last_activity: 2026-08-20 -- Phase 11 plan-phase complete via `/gsd:plan-phase 11 --chunked` (gsd-sdk PATH bypass; 8 plans in 5 waves: W1=11-01 foundation / W2=11-02⟂11-03 / W3=11-04⟂11-05 / W4=11-06⟂11-07 / W5=11-08 acceptance gate; coverage 8/8 HITL reqs + 16/16 D11 decisions; verification PASSED after 2 revision iterations — fixed 11-07/11-06 cross-plan contract + 11-08 string-grep + 11-06 stale Note J; 60923+78323+83116+70161+58194+89519+90550+70446 = 601230 bytes plan content; final commit 73beefa; mvp vertical slices — FE+BE HITL same phase NOT split)
+resume_file: .planning/phases/11-p8-2-write-tools-approval-gate/11-PLAN-OUTLINE.md
 progress:
   total_phases: 13
   completed_phases: 8
-  total_plans: 50
+  total_plans: 58
   completed_plans: 51
   percent: 62
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-20 (**Phase 11 AI-SPEC APPROVED** — `11-AI-SPEC.md` written, 1190 lines; cloudwego/eino v0.9.14 framework PASS (HITL primitives GA in v0.5.0: `tool.StatefulInterrupt` + `Runner.ResumeWithParams` + `compose.CheckPointStore`); 7 framework alternatives considered & rejected (Hand-rolled / LangGraph Python / Claude Agent SDK / OpenAI Agents SDK / CrewAI / LlamaIndex / Eino v0.10.0-alpha.x); Section 1b — enterprise compliance/legal/HR/IT multi-vertical, Stakes Critical, regulatory anchors SOC 2 CC7.2 + ISO 27001 A.8.15 + GDPR Art 30 + China 网络安全法 第21条, 3 expert roles (Senior Compliance Practitioner + Internal Audit Specialist + Security Engineer AppSec); Sections 3/4/4b — Go-flavored implementation guidance with 8 HITL pitfalls + trust staircase (BeforeAgent trust floor → BeforeModel D10-A1 classifier → HITL Tool+StatefulInterrupt → AfterModel grounding) + `schema.RegisterName[ApprovalDecision]` typed round-trip; Section 5 — 10 eval dimensions (5 Critical: audit chain INSERT-only / fail-closed / frozen_args byte-immutability / cross-refresh consistency / tool_call_id idempotency) + 150-case reference dataset (75 inherited compliance.jsonl + 75 new hitl.jsonl) + 3-step CI pipeline (hermetic + spike-history + hitl_run); Section 6 — 5 online guardrails + 5 offline flywheel; Section 7 — Langfuse tracing + 10 prod metrics + 8 alert thresholds + signal-weighted sampling; gating invariant = `TestFailClosedAudit` (P0, no waiver path); gsd-sdk PATH bypass — artifacts + STATE manually committed). **Resume-file**: `.planning/phases/11-p8-2-write-tools-approval-gate/11-AI-SPEC.md`. **Next action**: `/clear` then `/gsd:plan-phase 11 --chunked` (chunked mode: 1 outline + N per-plan agents with atomic commits; AI-SPEC + UI-SPEC + CONTEXT.md consumed as planning inputs).
+**Last updated:** 2026-08-20 (**Phase 11 PLANNED — 8 plans in 5 waves, VERIFICATION PASSED** — `11-PLAN-OUTLINE.md` + 8 `11-NN-PLAN.md` written via `/gsd:plan-phase 11 --chunked` (gsd-sdk PATH bypass); W1: 11-01 BE Runner-ization foundation; W2: 11-02 BE HITL Tool infra (memory:facts) ⟂ 11-03 BE Audit+Checkpoint fail-closed; W3: 11-04 BE Approval endpoint (review_report) ⟂ 11-05 BE Edit-before-approve + approval_rules; W4: 11-06 FE ApprovalCard+Edit ⟂ 11-07 FE Rules panel+AuditTimelineTab+cross-refresh; W5: 11-08 E2E acceptance gate (autonomous:false); coverage gate: 8/8 HITL reqs + 16/16 D11 decisions honored; verification PASSED after 2 revision iterations (fixed 11-07↔11-06 cross-plan data contract + 11-08 string-grep→functional+sha256-baseline + 11-06 stale Note J); FE+BE HITL same phase per project rules; mvp vertical slices — UI→API→DB per plan, NOT horizontal layers; 601230 bytes plan content total; final commit `73beefa`; gsd-sdk PATH bypass — artifacts + STATE manually committed). **Resume-file**: `.planning/phases/11-p8-2-write-tools-approval-gate/11-PLAN-OUTLINE.md`. **Next action**: `/clear` then `/gsd:execute-phase 11` (Wave 1 first → Wave 2 parallel → Wave 3 parallel → Wave 4 parallel → Wave 5 operator-runs `make verify-phase-11`).
 
 **Prior:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
 

@@ -353,7 +353,22 @@
 
 **Pitfalls addressed:** Pitfall 3（审批门破坏审计完整性 — write-ahead pending 行 + fail-closed），Pitfall 4（持久 checkpoint + GET resume 刷新恢复），Pitfall 6（checkpoint 绑定版本/prompt_hash 拒过期 resume），Pitfall 10（FE 审批状态机：审批态派生自 message parts，永不入 Zustand；D-04 transport-swap fixtures 覆盖 approve/deny 回路）；`TestCancelPropagationMidTool` <200ms 在 Runner 迁移后重新锁定
 **Research flags:** RF-3 — ai@7 custom transport resume 形状（独立端点 + transport 分支 vs 合成 user message）；RF-2 — 升级后 CheckPointStore 接口精确形状（廉价 compile-check）
-**Plans**: TBD
+**Plans**: 8 plans in 5 waves (MVP vertical slices — FE+BE HITL same phase NOT split)
+- **Wave 1** *(no deps)*: 11-01 — BE Runner-ization foundation (chatHandler→adk.NewRunner().Run; pipeline.go→5 files; trust staircase; <200ms cancel)
+- **Wave 2** *(blocked on Wave 1 completion)*: 11-02 BE HITL Tool infra (memory:facts) ⟂ 11-03 BE Audit 3-row lifecycle + Checkpoint fail-closed
+- **Wave 3** *(blocked on Wave 2 completion)*: 11-04 BE Approval Dual endpoint + review_report ⟂ 11-05 BE Edit-before-approve + approval_rules
+- **Wave 4** *(blocked on Wave 3 completion)*: 11-06 FE ApprovalCard+Edit ⟂ 11-07 FE Rules panel+AuditTimelineTab+cross-refresh
+- **Wave 5** *(blocked on Wave 4 completion)*: 11-08 E2E + hermetic gates + frozen eval re-lock (acceptance gate, autonomous:false)
+
+**Cross-cutting constraints:**
+- D-04 transport-swap byte-identical (no new SSE chunk types — preserved across 11-01/11-04/11-06/11-08)
+- D15 wire-type compile alarm (UIMessageChunk union unchanged — preserved across 11-06/11-08)
+- D8-04 TestNoLegacyInterruptAPI WalkDir extended in 11-01 + 11-08 final guard
+- D8-06 SC-5 stub TestInterruptResumeRoundTrip Runner-path upgrade in 11-01
+- D11-A4 <200ms cancel propagation preserved through Runner migration (11-01 + 11-04)
+- D14 Zustand no-messages — approval slice independent (11-06 only touches approval slice, never messages)
+- T-3-AUDIT INSERT-only — approval_rules DELETE in same tx as action_rule_revoked INSERT (11-05)
+
 **UI hint**: yes（流内审批卡 ApprovalPart + 过期/待决状态 UI）
 
 ### Phase 12: 规划层（P8.3 — DeepAgent + write_todos + 可回放）
