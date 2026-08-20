@@ -49,6 +49,14 @@
 // create two sources of truth that drift (Pitfall 7 in RESEARCH.md).
 // The `/eval` route has its own (non-SSE) transport (D-04/D12) so the
 // chat SSE wire is untouched.
+//
+// Plan 11-06 — Phase 11 HITL approval-gate slice (`approval`).
+// INVARIANT (D14): the slice lives on its own branch of the store,
+// independent of the useChat stream — the pending / terminal /
+// resumeBanner state below never touches the chat stream. The
+// ApprovalCard overlay + the SSE transport dispatch read/write this
+// branch exclusively; POST /api/session/:id/approval/:approvalId is
+// the only mutation channel besides the SSE data-decision dispatch.
 
 import { create } from 'zustand';
 import type { Tier } from '../types/verdict';
@@ -59,6 +67,126 @@ import type {
   FrozenSetInfo,
   IndexRun,
 } from '../types/eval';
+
+// ----------------------------------------------------------------------------
+// Plan 11-06 — HITL approval-gate types (HITL-01/02/07 + D11-B4 + D11-C4)
+// ----------------------------------------------------------------------------
+
+/** The 6 ApprovalCard visual states (11-UI-SPEC §ApprovalCard). */
+export type ApprovalStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'expired'
+  | 'auto-passed'
+  | 'failed';
+
+/** D11-D3 binary scope — no global option. */
+export type ApprovalScope = 'session' | 'skill';
+
+export type JsonObject = Record<string, unknown>;
+
+/** Live interrupt card state. approvalId === tool_call_id (D11-C4
+ * single identity across the card, the audit chain, and the POST
+ * route). */
+export interface PendingApproval {
+  approvalId: string;
+  /** Registered handler name (e.g. "memory_facts_write"). */
+  toolName: string;
+  /** Write target allowlist entry ("memory:facts" | "review_report"). */
+  target: string;
+  /** Snapshot taken at interrupt time (byte-identity anchor). */
+  frozenArgs: JsonObject;
+  /** Agent's reason; falls back to 未提供具体说明 at render. */
+  reason: string;
+  /** epoch ms. */
+  createdAt: number;
+  expiresAt: number | null;
+  skillVersion: string;
+  promptHash: string;
+  sessionId: string;
+  skillId: string;
+  /** Locked — a pending row is always 'pending'. */
+  status: 'pending';
+}
+
+/** Terminal card state (approved / denied / expired / auto-passed /
+ * failed — one of the 5 terminal visual states). */
+export interface TerminalApproval {
+  approvalId: string;
+  status: 'approved' | 'denied' | 'expired' | 'auto-passed' | 'failed';
+  frozenArgs: JsonObject;
+  /** denied: user reason; failed: failure message; else ''. */
+  reason: string;
+  createdAt: number;
+  resolvedAt: number;
+  /** true when an approve-and-remember rule matched (HITL-08). */
+  auto_passed?: boolean;
+}
+
+/** One resolved entry — the live in-session feed the 11-07
+ * AuditTimelineTab merges with its server-paged rows. Bounded to 200
+ * entries (ring buffer). */
+export interface HistoryApproval {
+  approvalId: string;
+  status: ApprovalStatus;
+  target: string;
+  toolName: string;
+  frozenArgs: JsonObject;
+  createdAt: number;
+  resolvedAt: number;
+  reason: string;
+  skillVersion: string;
+  promptHash: string;
+}
+
+/** Cross-refresh resume toast (3s auto-dismiss owned by the UI). */
+export interface ResumeBanner {
+  approvalId: string;
+  status: 'pending' | 'auto-passed' | 'expired';
+  createdAt: number;
+}
+
+/** TS mirror of the BE GET /api/session/:id/approval row
+ * (internal/server/approval_api.go pendingApproval — snake_case JSON
+ * tags are the wire ground truth). `created_at` arrives as RFC3339
+ * (Go time.Time). `rule_id` is the 11-05 base64url-JSON PK (optional). */
+export interface PendingApprovalRow {
+  approval_id: string;
+  tool_name: string;
+  target: string;
+  frozen_args: JsonObject;
+  reason?: string;
+  created_at: string;
+  state: 'active' | 'expired' | 'auto_passed';
+  skill_version: string;
+  prompt_hash: string;
+  rule_id?: string;
+}
+
+/** The approval branch of the store. D14: independent of the chat
+ * stream — no chat content crosses into this branch. */
+export interface ApprovalSlice {
+  pending: PendingApproval | null;
+  terminal: TerminalApproval | null;
+  history: HistoryApproval[];
+  resumeBanner: ResumeBanner | null;
+
+  setPending: (approval: PendingApproval) => void;
+  resolvePending: (approvalId: string, terminal: TerminalApproval) => void;
+  clearPending: () => void;
+  clearTerminal: () => void;
+  appendHistory: (entry: HistoryApproval) => void;
+  setResumeBanner: (banner: ResumeBanner | null) => void;
+  dismissResumeBanner: () => void;
+  /** Hydrate from GET /api/session/:id/approval (cross-refresh
+   * resume). Accepts the BE snake_case row (or null); ctx carries the
+   * caller-known sessionId / skillId the BE row omits. */
+  hydrateFromGet: (
+    row: PendingApprovalRow | null,
+    ctx?: { sessionId?: string; skillId?: string },
+  ) => void;
+}
 
 /** Discriminated union for the center panel's active view (D-02). */
 export type CenterView =
@@ -231,6 +359,10 @@ export interface AppState {
   // onDraftUpdate callback writes here as it parses SSE chunks.
   draftStatus: 'idle' | 'pending' | 'verified' | 'refused';
   draftText: string;
+  // Plan 11-06 — HITL approval-gate slice (D14: own branch,
+  // independent of the chat stream; SkillPicker's D11-B4 disabled
+  // state reads approval.pending !== null in 11-07).
+  approval: ApprovalSlice;
 }
 
 export interface AppActions {
@@ -330,6 +462,103 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // Plan 260815-cos — draft channel defaults (no chip rendered).
   draftStatus: 'idle',
   draftText: '',
+  // Plan 11-06 — HITL approval-gate slice. All mutations funnel
+  // through these actions; resolvePending is guarded against stale
+  // SSE events (approvalId must match the live pending row).
+  approval: {
+    pending: null,
+    terminal: null,
+    history: [],
+    resumeBanner: null,
+
+    setPending: (approval) =>
+      set((state) => ({
+        approval: { ...state.approval, pending: approval, terminal: null },
+      })),
+
+    resolvePending: (approvalId, terminal) =>
+      set((state) => {
+        // Guard: only resolve when the live pending row matches —
+        // a stale SSE event (out-of-order delivery) is a no-op.
+        if (!state.approval.pending || state.approval.pending.approvalId !== approvalId) {
+          return state;
+        }
+        return {
+          approval: { ...state.approval, pending: null, terminal },
+        };
+      }),
+
+    clearPending: () =>
+      set((state) => ({ approval: { ...state.approval, pending: null } })),
+
+    clearTerminal: () =>
+      set((state) => ({ approval: { ...state.approval, terminal: null } })),
+
+    appendHistory: (entry) =>
+      set((state) => ({
+        approval: {
+          ...state.approval,
+          // Bounded ring buffer — the 11-07 AuditTimelineTab owns the
+          // server-paged feed; this is just the live in-session tail.
+          history: [...state.approval.history, entry].slice(-200),
+        },
+      })),
+
+    setResumeBanner: (banner) =>
+      set((state) => ({ approval: { ...state.approval, resumeBanner: banner } })),
+
+    dismissResumeBanner: () =>
+      set((state) => ({ approval: { ...state.approval, resumeBanner: null } })),
+
+    hydrateFromGet: (row, ctx) =>
+      set((state) => {
+        if (row === null) return state;
+        if (row.state === 'expired') {
+          return {
+            approval: {
+              ...state.approval,
+              terminal: {
+                approvalId: row.approval_id,
+                status: 'expired',
+                frozenArgs: row.frozen_args,
+                reason: 'Skill 或 prompt 已变更，无法恢复',
+                createdAt: Date.parse(row.created_at) || Date.now(),
+                resolvedAt: Date.now(),
+              },
+              resumeBanner: {
+                approvalId: row.approval_id,
+                status: 'expired',
+                createdAt: Date.now(),
+              },
+            },
+          };
+        }
+        return {
+          approval: {
+            ...state.approval,
+            pending: {
+              approvalId: row.approval_id,
+              toolName: row.tool_name,
+              target: row.target,
+              frozenArgs: row.frozen_args,
+              reason: row.reason || '未提供具体说明',
+              createdAt: Date.parse(row.created_at) || Date.now(),
+              expiresAt: null,
+              skillVersion: row.skill_version,
+              promptHash: row.prompt_hash,
+              sessionId: ctx?.sessionId ?? '',
+              skillId: ctx?.skillId ?? '',
+              status: 'pending',
+            },
+            resumeBanner: {
+              approvalId: row.approval_id,
+              status: 'pending',
+              createdAt: Date.now(),
+            },
+          },
+        };
+      }),
+  },
 
   setCenterView: (view) => set({ centerView: view }),
   setCurrentSkill: (id) => set({ currentSkillId: id }),
