@@ -151,13 +151,14 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		cfg.MaxHops = DefaultMaxHops
 	}
 
-	// D11-B1 per-turn Tool whitelist — the 11-02 seam. For Skills
-	// with writes:[] this returns an empty slice (the LLM never
-	// sees a write Tool schema). 11-01 ships the stub; 11-02
-	// replaces it with the real hitl.BuildToolsForSkill.
-	tools, err := hitlBuildToolsForSkillStub(ctx, cfg.Manifest)
+	// D11-B1 per-turn Tool whitelist. For Skills with writes:[] this
+	// returns an empty slice (the LLM never sees a write Tool
+	// schema). The function lives in this same package (agent) to
+	// break the skill<->hitl import cycle — see hitl_tools.go's
+	// file-level comment for the architectural rationale.
+	tools, err := BuildToolsForSkill(ctx, cfg.Manifest)
 	if err != nil {
-		return nil, fmt.Errorf("agent.BuildRunner: hitlBuildToolsForSkillStub: %w", err)
+		return nil, fmt.Errorf("agent.BuildRunner: BuildToolsForSkill: %w", err)
 	}
 
 	// Always include the read-only retrieve Tool (it is not a write
@@ -188,24 +189,4 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		Agent:           agent,
 		EnableStreaming: true,
 	}), nil
-}
-
-// hitlBuildToolsForSkillStub is the 11-02 seam. In 11-01 it returns an
-// empty slice (no HITL Tools ship yet) — the chatHandler boundary
-// still drives the trust floor / classifier / grounding checks
-// inline at their existing positions.
-//
-// 11-02 replaces this function with hitl.BuildToolsForSkill(ctx,
-// manifest) — the canonical Tool whitelist recomputation that takes
-// manifest.Writes + AllowedWriteTargets and returns the intersection
-// (D11-B1 pure-function contract). For Skills with writes:[] the
-// returned slice is empty (the LLM never sees a write Tool schema).
-//
-// The stub keeps the BuildRunner signature stable across 11-01 → 11-02
-// so the chatHandler does not need to be re-wired.
-func hitlBuildToolsForSkillStub(ctx context.Context, m *skill.Manifest) ([]tool.BaseTool, error) {
-	_ = ctx
-	_ = m
-	// 11-01: empty (HITL Tools ship 11-02).
-	return nil, nil
 }
