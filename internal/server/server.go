@@ -39,6 +39,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 
 	"github.com/skillforge/skillforge/internal/agent"
+	"github.com/skillforge/skillforge/internal/agent/hitl"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -236,6 +237,23 @@ type Deps struct {
 	// test (TestRefusalClassifierInput_NoHistoryField) and the GG-A1-1
 	// CI grep gate.
 	RefusalClassifier *classifier.RefusalClassifier
+
+	// AuditWriter is the Phase 11 / Plan 11-03 fail-closed HITL audit
+	// write path (D11-C3). The approval endpoint (Plan 11-04,
+	// approval_api.go) consumes it for MarkApproved / MarkRejected.
+	// New() initializes it from Store when nil; tests may inject a
+	// writer with a deterministic clock via SetNow.
+	AuditWriter *hitl.AuditWriter
+
+	// ActiveManifest is the Phase 11 approval-gate Skill context: the
+	// manifest the approval endpoint's D11-C2 expire-check compares
+	// each pending row's (skill_version, prompt_hash) snapshot against
+	// (HITL-03 cross-refresh survival). Production wires it alongside
+	// the chat path's Skill selection; nil → the approval endpoints
+	// answer 404 (defensive misconfiguration) and the GET renders
+	// every pending row as state="expired" (fail-closed: freshness
+	// cannot be proven).
+	ActiveManifest *skill.Manifest
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
@@ -298,5 +316,18 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/sessions", deps.sessionsListHandler)
 	h.PATCH("/api/session/:id", deps.sessionRenameHandler)
 	h.DELETE("/api/session/:id", deps.sessionDeleteHandler)
+	// Phase 11 Plan 04 (HITL-01/02/03 + D11-C1 dual endpoint + D11-C2
+	// expire-check): the operator approval gate. GET lists the
+	// session's pending approvals with derived state; POST resolves
+	// one via AuditWriter + Runner.ResumeWithParams; GET audit is the
+	// AuditTimelineTab (FE 11-07) data source.
+	h.GET("/api/session/:id/approval", deps.approvalGetHandler)
+	h.POST("/api/session/:id/approval/:approvalId", deps.approvalPostHandler)
+	h.GET("/api/session/:id/audit", deps.auditListHandler)
+	// Initialize the fail-closed HITL audit writer from the store when
+	// the caller did not inject one (D11-C3 single write path).
+	if deps.AuditWriter == nil && deps.Store != nil {
+		deps.AuditWriter = hitl.NewAuditWriter(deps.Store)
+	}
 	return h
 }

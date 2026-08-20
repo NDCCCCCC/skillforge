@@ -110,6 +110,17 @@ type RunnerBuildConfig struct {
 	// construct a Runner without a DB — see the BuildRunner doc.
 	RuleMatcher hitl.RuleMatcher
 
+	// CheckPointStore is the 11-04 / D11-C1 checkpoint persistence
+	// binding. eino v0.9.14 exposes NO adk.Runner.WithCheckPointStore
+	// setter — the store can only be attached via
+	// adk.RunnerConfig.CheckPointStore at construction time, so it
+	// travels through this config. nil → the Runner runs without
+	// checkpoint persistence (unit-test posture; ResumeWithParams on
+	// such a Runner fails fast with "store is nil"). The approval
+	// endpoint (internal/server/approval_api.go) passes the session
+	// store so the resume path can load the interrupt checkpoint.
+	CheckPointStore adk.CheckPointStore
+
 	// Handlers is the D11-A2 trust staircase (eino v0.9 Handler
 	// interface slice, NOT the legacy callbacks.Handler). Reserved
 	// for 11-04 wiring; 11-01 passes nil (the chatHandler boundary
@@ -208,5 +219,6 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 	return adk.NewRunner(ctx, adk.RunnerConfig{
 		Agent:           agent,
 		EnableStreaming: true,
+		CheckPointStore: cfg.CheckPointStore,
 	}), nil
 }
