@@ -37,6 +37,7 @@ import { MessageBubble } from './components/chat/MessageBubble';
 import HistoryRewriteHint from './components/chat/HistoryRewriteHint';
 import { useSkillReload } from './hooks/useSkillReload';
 import { useSkillAutoSwitch } from './hooks/use-skill-auto-switch';
+import { useResumeBanner } from './hooks/use-resume-banner';
 import { isVerdict } from './types/verdict';
 import type { Verdict } from './types/verdict';
 import { createTransport } from './transport';
@@ -112,6 +113,10 @@ function LiveApp() {
   // messages field in the Zustand store — per-session Chat instances
   // hold messages in their internal state).
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  // Plan 11-07 (HITL-03) — cross-refresh resume: parallel GET
+  // /approval + /approval-rules + /history on mount + session change;
+  // pending/expired/auto_passed hydrate store.approval (+ 3s banner).
+  useResumeBanner(activeSessionId);
   const chatMapRef = useRef<Map<string, Chat<UIMessage>>>(new Map());
   // Plan 10-03 (D10-D1 + MEM-02) — fetch the prior session's history
   // on mount and inject the transformed messages into the per-session
