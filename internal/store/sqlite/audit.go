@@ -368,6 +368,48 @@ func toNullString(s string) sql.NullString {
 //
 // All values are `?` placeholders (T-3-SQLI).
 
+// Action enum constants (Phase 11 + Phase 12 expansion). The audit
+// action column is TEXT — the values are STRING literals persisted
+// verbatim, NOT a typed enum. Storing them as named constants here is
+// for cross-package readability (the chat path / server layer /
+// audit_writer seam import these so the row comparison stays
+// syntactic instead of a typo-prone literal comparison).
+//
+// Phase 11 (D11-C3 / HITL-04 lifecycle) owns:
+//
+//	ActionPendingApproval  → ActionApproved | ActionRejected
+//	ActionRuleRevoked      (D11-D2)
+//
+// Phase 12 / Plan 12-02 adds the plan_todo cross-reference enum
+// values:
+//
+//	ActionPlanTodoUpsert   (parallel to a plan_todos INSERT)
+//	ActionPlanTodoComplete (parallel to a plan_todos INSERT with op='complete')
+//
+// The plan_todos table is the PRIMARY substrate (P12-L5 separate
+// table rationale); these audit.action enum values are the SECONDARY
+// cross-reference that AuditTimelineTab (12-07) joins on to render
+// "wrote todo" events alongside approval/rejection events in the
+// timeline. The audit_writer hooks (12-02/12-03) emit these rows
+// in lockstep with the plan_todos INSERT.
+//
+// No DDL change — the audit.action column is already TEXT. Adding
+// new string values is a pure catalog extension; old rows keep
+// their prior values; old consumers (chat path) are unaffected.
+const (
+	ActionPendingApproval string = "action_pending_approval"
+	ActionApproved        string = "action_approved"
+	ActionRejected        string = "action_rejected"
+	ActionRuleCreated     string = "action_rule_created"
+	ActionRuleRevoked     string = "action_rule_revoked"
+	// Phase 12 / Plan 12-02 — plan_todos cross-reference for
+	// AuditTimelineTab (12-07). Mirrors the plan_todos.op enum
+	// (PlanTodoOpUpsert / PlanTodoOpComplete) but lives in the
+	// audit.action namespace because the FE joins on action.
+	ActionPlanTodoUpsert   string = "action_plan_todo_upsert"
+	ActionPlanTodoComplete string = "action_plan_todo_complete"
+)
+
 const putPendingApprovalSQL = `
 INSERT INTO audit (
     ts, session_id, user_id, skill_id, action,

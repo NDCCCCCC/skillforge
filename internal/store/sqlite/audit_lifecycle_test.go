@@ -119,3 +119,109 @@ func TestConcurrentApproveDenyIdempotency(t *testing.T) {
 	})
 	require.NoError(t, err, "the unique index is scoped to action_pending_approval only")
 }
+
+// TestAuditPlanTodoActionEnum — Plan 12-02 Task 3: the new audit
+// action enum values action_plan_todo_upsert + action_plan_todo_complete
+// MUST be accepted by audit INSERT (no enum-validator rejects them).
+// The audit.action column is TEXT — adding new string values is a
+// pure catalog extension (no DDL change), but a defensive consumer
+// could reject unknown values; this test pins that the store layer
+// is permissive (the audit_writer seam in 12-02/12-03 emits these
+// rows in lockstep with the plan_todos INSERT).
+func TestAuditPlanTodoActionEnum(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := sqlite.New(ctx, sqlite.Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	// Both new enum values must round-trip through PutAudit.
+	row := store.AuditRow{
+		Timestamp:   time.Now().UTC(),
+		SessionID:   "sess-plan-todo",
+		SkillID:     "compliance",
+		Query:       "audit-plan-todo-enum-test",
+		PromptHash:  "p-hash",
+		ModelVersion: "test",
+		VerdictJSON: "{}",
+		Action:      sqlite.ActionPlanTodoUpsert,
+	}
+	id1, err := s.PutAudit(ctx, row)
+	require.NoError(t, err, "action_plan_todo_upsert must be accepted by PutAudit")
+	require.Greater(t, id1, int64(0))
+
+	row.Action = sqlite.ActionPlanTodoComplete
+	id2, err := s.PutAudit(ctx, row)
+	require.NoError(t, err, "action_plan_todo_complete must be accepted by PutAudit")
+	require.Greater(t, id2, int64(0))
+
+	// Both rows must surface via QueryAudit — proving the values
+	// are PERSISTED, not silently coerced to "" (the empty-string
+	// default for unknown actions).
+	rows, err := s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-plan-todo"})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, sqlite.ActionPlanTodoUpsert, rows[0].Action,
+		"action_plan_todo_upsert must round-trip verbatim via QueryAudit")
+	assert.Equal(t, sqlite.ActionPlanTodoComplete, rows[1].Action,
+		"action_plan_todo_complete must round-trip verbatim via QueryAudit")
+}
+
+// TestAuditPlanTodoActionFilterable — Plan 12-02 Task 3: the audit
+// Action column filter on QueryAudit must discriminate between
+// plan_todo enum values. The 12-07 AuditTimelineTab joins on this
+// filter to render "wrote todo" events alongside the existing
+// approval/rejection events. T-3-SQLI: the filter is ?-parameterized,
+// not fmt.Sprintf'd.
+func TestAuditPlanTodoActionFilterable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := sqlite.New(ctx, sqlite.Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	base := time.Now().UTC()
+	row := func(action string) store.AuditRow {
+		return store.AuditRow{
+			Timestamp:   base,
+			SessionID:   "sess-filter",
+			SkillID:     "compliance",
+			Query:       "audit-plan-todo-filter-test",
+			PromptHash:  "p-hash",
+			ModelVersion: "test",
+			VerdictJSON: "{}",
+			Action:      action,
+		}
+	}
+	_, err = s.PutAudit(ctx, row(sqlite.ActionPendingApproval))
+	require.NoError(t, err)
+	_, err = s.PutAudit(ctx, row(sqlite.ActionPlanTodoUpsert))
+	require.NoError(t, err)
+	_, err = s.PutAudit(ctx, row(sqlite.ActionPlanTodoComplete))
+	require.NoError(t, err)
+
+	// Filter on action_plan_todo_upsert — must return only the 1
+	// matching row (NOT the pending_approval or complete rows).
+	upsertRows, err := s.QueryAudit(ctx, store.AuditFilter{
+		SessionID: "sess-filter",
+		Action:    sqlite.ActionPlanTodoUpsert,
+	})
+	require.NoError(t, err)
+	require.Len(t, upsertRows, 1,
+		"action_plan_todo_upsert filter must return exactly 1 row (T-3-SQLI parameterized filter)")
+	assert.Equal(t, sqlite.ActionPlanTodoUpsert, upsertRows[0].Action)
+
+	// Filter on action_plan_todo_complete — must return exactly 1 row.
+	completeRows, err := s.QueryAudit(ctx, store.AuditFilter{
+		SessionID: "sess-filter",
+		Action:    sqlite.ActionPlanTodoComplete,
+	})
+	require.NoError(t, err)
+	require.Len(t, completeRows, 1)
+	assert.Equal(t, sqlite.ActionPlanTodoComplete, completeRows[0].Action)
+
+	// No filter — must return all 3 rows.
+	all, err := s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-filter"})
+	require.NoError(t, err)
+	assert.Len(t, all, 3, "unfiltered QueryAudit must surface all 3 rows")
+}
