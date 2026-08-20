@@ -23,7 +23,7 @@
 //     (ApplyTrustFloor + ApplyGrounding + ApplyCritique) consumed by
 //     internal/runtime.ApplyTrustStage.
 //   - internal/runtime owns: archetype dispatch + ApplyTrustStage exit
-//     + MaxIteration hard cap (P12-L2).
+//   - MaxIteration hard cap (P12-L2).
 //
 // This file declares the DispatchConfig + DispatchAgent entry point
 // and the AgentArchetype enum. DeepAgent-specific construction lives
@@ -41,6 +41,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 
+	agentcallbacks "github.com/skillforge/skillforge/internal/agent/callbacks"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -91,6 +92,15 @@ const ArchetypeDeep AgentArchetype = "deep"
 // (the interface Compose.ToolsNodeConfig.Tools consumes) so callers
 // can pass InvokableTool (the BuildToolsForSkill return shape) —
 // InvokableTool embeds BaseTool so the slice is assignable.
+//
+// BudgetStore + BudgetEmitter are the Phase 12 / Plan 12-05 wiring
+// seams consumed ONLY by the deep archetype (BuildDeepAgent →
+// NewBudgetCallbacks → agentcallbacks.NewBudgetCallback): the audit
+// INSERT target for action_budget_triggered rows + the per-Run SSE
+// emitter for the data-decision{decision:"forced_stop"} chunk. Both
+// may be nil (tests / no-SSE path) — the gate still fires; only the
+// durable row / live-stream surface is suppressed. The chat archetype
+// ignores them.
 type DispatchConfig struct {
 	Manifest    *skill.Manifest
 	ChatModel   model.ToolCallingChatModel
@@ -99,6 +109,9 @@ type DispatchConfig struct {
 	SessionID   string
 	Tools       []tool.BaseTool
 	Instruction string // per-archetype system prompt (caller-supplied)
+
+	BudgetStore   agentcallbacks.BudgetAuditStore // 12-05 — deep-archetype budget audit INSERT target
+	BudgetEmitter agentcallbacks.BudgetEmitter    // 12-05 — deep-archetype forced_stop SSE emitter
 }
 
 // Archetype returns the archetype enum for cfg. Empty Agent field or

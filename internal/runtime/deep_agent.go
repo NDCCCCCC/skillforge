@@ -53,12 +53,15 @@ import (
 // reuses cfg.Tools as-is (the caller pre-computed them with the
 // retrieve Tool appended).
 //
-// The P12-L2 hard cap (`const maxIter = 10`) is the literal that
-// TestMaxIterationHardCap source-greps for. DO NOT parameterize this
-// value via a config knob — the source-grep lock is the whole point:
-// the only way to raise the cap is an explicit code change + an
-// updated test assertion. Operator drift on a config-driven knob was
-// the failure mode Phase 12 ships to prevent.
+// The P12-L2 hard cap is the INLINE literal `MaxIteration: 10` in the
+// deep.New call below — the exact string
+// TestMaxIterationHardCap_Literal10 source-greps for. DO NOT
+// parameterize this value via a config knob and DO NOT hoist it to a
+// const (the grep must bind to the CALL SITE, not a declaration): the
+// source-grep lock is the whole point. The only way to raise the cap
+// is an explicit code change + an updated test assertion. Operator
+// drift on a config-driven knob was the failure mode Phase 12 ships
+// to prevent.
 func BuildDeepAgent(ctx context.Context, cfg DispatchConfig) (adk.ResumableAgent, error) {
 	if cfg.ChatModel == nil {
 		return nil, errors.New("runtime.BuildDeepAgent: ChatModel is required")
@@ -70,13 +73,6 @@ func BuildDeepAgent(ctx context.Context, cfg DispatchConfig) (adk.ResumableAgent
 		return nil, errors.New("runtime.BuildDeepAgent: SessionID is required")
 	}
 
-	// P12-L2 — MaxIteration hardcoded 10 (Pitfall 8 cost explosion).
-	// DO NOT accept config override; DO NOT lower this without
-	// explicit user decision. The literal value `10` is the
-	// source-grep lock — see TestMaxIterationHardCap in
-	// deep_agent_test.go.
-	const maxIter = 10
-
 	instruction := cfg.Instruction
 	if instruction == "" {
 		// Fallback for callers that did not pre-render the deep
@@ -87,15 +83,28 @@ func BuildDeepAgent(ctx context.Context, cfg DispatchConfig) (adk.ResumableAgent
 	}
 
 	agent, err := deep.New(ctx, &deep.Config{
-		Name:                  "skillforge-deep-" + cfg.SessionID,
-		Description:           fmt.Sprintf("SkillForge DeepAgent for skill %q (session %s)", cfg.Manifest.Name, cfg.SessionID),
-		ChatModel:             cfg.ChatModel,
-		Instruction:           instruction,
-		ToolsConfig:           adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: cfg.Tools}},
-		MaxIteration:          maxIter,           // P12-L2 — HARD CAP; budget gate in 12-05 wraps this further
-		WithoutWriteTodos:     true,              // Option C — custom write_todos Tool in 12-02
-		WithoutGeneralSubAgent: true,             // Phase 13 territory; harden now against sub-agent injection
-		Handlers:              NewBudgetCallbacks(BudgetConfig{SessionID: cfg.SessionID}), // 12-05 expands
+		Name:        "skillforge-deep-" + cfg.SessionID,
+		Description: fmt.Sprintf("SkillForge DeepAgent for skill %q (session %s)", cfg.Manifest.Name, cfg.SessionID),
+		ChatModel:   cfg.ChatModel,
+		Instruction: instruction,
+		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: cfg.Tools}},
+
+		// P12-L2 — HARD CAP literal; kept in its own alignment group so
+		// gofmt cannot pad it away: TestMaxIterationHardCap_Literal10
+		// greps for this exact call-site text. DO NOT parameterize.
+		MaxIteration: 10,
+
+		WithoutWriteTodos:      true, // Option C — custom write_todos Tool in 12-02
+		WithoutGeneralSubAgent: true, // Phase 13 territory; harden now against sub-agent injection
+		// 12-05: the 3-layer budget gate (max_iter dual-enforcement +
+		// token accumulator + fnv64a loop detector, P12-L9). Store +
+		// Emitter flow from DispatchConfig; nil keeps the gate armed
+		// with the durable/live surfaces suppressed (tests / no-SSE).
+		Handlers: NewBudgetCallbacks(BudgetConfig{
+			SessionID: cfg.SessionID,
+			Store:     cfg.BudgetStore,
+			Emitter:   cfg.BudgetEmitter,
+		}),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("runtime.BuildDeepAgent: deep.New: %w", err)
