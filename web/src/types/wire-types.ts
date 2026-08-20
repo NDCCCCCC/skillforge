@@ -115,7 +115,17 @@ export interface DecisionPayload {
     | 'history_projected'
     | 'history_budget_truncated'
     | 'history_query_rewritten'
-    | 'history_classifier_refused';
+    | 'history_classifier_refused'
+    // Plan 11-06 — Phase 11 HITL approval-gate events (D15 string-enum
+    // extension; zero new wire types, mirrors the Go side which keeps
+    // DecisionPayload.Decision a plain string). approval_api.go emits
+    // tool-resumed / tool-denied on the POST-approval stream; the
+    // runner emits interrupted when a write tool hits the approval
+    // gate and rule-matched when a remember rule auto-passes.
+    | 'interrupted'
+    | 'tool-resumed'
+    | 'tool-denied'
+    | 'rule-matched';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */

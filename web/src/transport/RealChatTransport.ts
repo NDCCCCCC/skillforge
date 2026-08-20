@@ -34,8 +34,161 @@ import {
   type DraftUpdateHandler,
   type MockChatTransportDraftOptions,
 } from './MockChatTransport';
+import { useAppStore } from '../store/app-store';
+import type { JsonObject, TerminalApproval } from '../store/app-store';
 
 export type { DraftStatus, DraftUpdate, DraftUpdateHandler, MockChatTransportDraftOptions };
+
+// ----------------------------------------------------------------------------
+// Plan 11-06 Task 3 — HITL approval-gate dispatch (D-04 + D15 preserved)
+// ----------------------------------------------------------------------------
+//
+// The data-decision chunk's `decision` STRING union gained 4 values in
+// Phase 11 ({interrupted, tool-resumed, tool-denied, rule-matched}).
+// Those 4 are intercepted here and dispatched to the store's approval
+// branch — they are NEVER enqueued to useChat (the gate UI derives
+// from the store, D14; no new chunk types are introduced, D15; the
+// existing mock↔Default byte-identity is untouched because every
+// pre-existing decision string still flows through unchanged, D-04).
+//
+// Field casing on the wire: the BE emits DecisionPayload with
+// camelCase tags (toolCallId, query); the interrupted payload adds
+// approval fields (approvalId / toolName / target / frozenArgs / …).
+// Every read below is defensive — a malformed payload degrades to
+// empty fields instead of crashing the stream.
+
+function asStr(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
+
+function asNum(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function asObj(v: unknown): JsonObject {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+    ? (v as JsonObject)
+    : {};
+}
+
+/** Dispatch one of the 4 Phase 11 decision strings to the store's
+ * approval branch. Returns true when the chunk was handled (caller
+ * skips the enqueue); false for every pre-existing decision string
+ * (caller enqueues verbatim — D-04 byte-identity). */
+function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
+  const decision = asStr(data.decision);
+  const approval = useAppStore.getState().approval;
+
+  switch (decision) {
+    case 'interrupted': {
+      // HITL-01 — the agent invoked a write tool; the runner parked on
+      // the interrupt. Surface the pending card from the store.
+      const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
+      if (!approvalId) return false; // malformed — drop to the stream
+      approval.setPending({
+        approvalId,
+        toolName: asStr(data.toolName),
+        target: asStr(data.target) || asStr(data.query),
+        frozenArgs: asObj(data.frozenArgs),
+        reason: asStr(data.reason) || '未提供具体说明',
+        createdAt: asNum(data.createdAt) ?? Date.now(),
+        expiresAt: asNum(data.expiresAt),
+        skillVersion: asStr(data.skillVersion),
+        promptHash: asStr(data.promptHash),
+        sessionId: asStr(data.sessionId),
+        skillId: asStr(data.skillId),
+        status: 'pending',
+      });
+      return true;
+    }
+
+    case 'tool-resumed': {
+      // HITL-02 — operator approved; the runner resumed the tool.
+      const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
+      if (!approvalId) return false;
+      // Capture the pending row BEFORE resolvePending clears it.
+      const prev = approval.pending;
+      const autoPassed = data.auto_passed === true;
+      const terminal: TerminalApproval = {
+        approvalId,
+        status: autoPassed ? 'auto-passed' : 'approved',
+        frozenArgs: Object.keys(asObj(data.frozenArgs)).length > 0
+          ? asObj(data.frozenArgs)
+          : (prev?.frozenArgs ?? {}),
+        reason: asStr(data.reason),
+        createdAt: prev?.createdAt ?? Date.now(),
+        resolvedAt: Date.now(),
+        auto_passed: autoPassed,
+      };
+      approval.resolvePending(approvalId, terminal);
+      approval.appendHistory({
+        approvalId,
+        status: terminal.status,
+        target: prev?.target ?? asStr(data.query),
+        toolName: prev?.toolName ?? '',
+        frozenArgs: terminal.frozenArgs,
+        createdAt: terminal.createdAt,
+        resolvedAt: terminal.resolvedAt,
+        reason: terminal.reason,
+        skillVersion: prev?.skillVersion ?? '',
+        promptHash: prev?.promptHash ?? '',
+      });
+      return true;
+    }
+
+    case 'tool-denied': {
+      // HITL-02 — operator denied; the runner force-stopped the tool.
+      const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
+      if (!approvalId) return false;
+      const prev = approval.pending;
+      const terminal: TerminalApproval = {
+        approvalId,
+        status: 'denied',
+        frozenArgs: prev?.frozenArgs ?? {},
+        reason: asStr(data.reason),
+        createdAt: prev?.createdAt ?? Date.now(),
+        resolvedAt: Date.now(),
+      };
+      approval.resolvePending(approvalId, terminal);
+      approval.appendHistory({
+        approvalId,
+        status: 'denied',
+        target: prev?.target ?? asStr(data.query),
+        toolName: prev?.toolName ?? '',
+        frozenArgs: terminal.frozenArgs,
+        createdAt: terminal.createdAt,
+        resolvedAt: terminal.resolvedAt,
+        reason: terminal.reason,
+        skillVersion: prev?.skillVersion ?? '',
+        promptHash: prev?.promptHash ?? '',
+      });
+      return true;
+    }
+
+    case 'rule-matched': {
+      // HITL-08 — an approve-and-remember rule auto-passed. No card UI
+      // (the user never saw a pending card); history-only record.
+      const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
+      approval.appendHistory({
+        approvalId,
+        status: 'auto-passed',
+        target: asStr(data.target) || asStr(data.query),
+        toolName: asStr(data.toolName),
+        frozenArgs: asObj(data.frozenArgs),
+        createdAt: Date.now(),
+        resolvedAt: Date.now(),
+        reason: '记忆规则命中',
+        skillVersion: asStr(data.skillVersion),
+        promptHash: asStr(data.promptHash),
+      });
+      return true;
+    }
+
+    default:
+      return false;
+  }
+}
+
 
 /** Options accepted by RealChatTransport. */
 export interface RealChatTransportOptions {
@@ -201,6 +354,21 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
                     emitDraft('verified', draftBuffer);
                   } else if (typeof data.reason === 'string') {
                     emitDraft('refused', '');
+                  }
+                }
+              }
+
+              // Plan 11-06 — HITL approval-gate decisions. Only the 4
+              // Phase 11 decision strings are intercepted (dispatched
+              // to the store, never enqueued — the gate UI derives from
+              // the store, D14). Every pre-existing decision string
+              // (route / retrieve / counter_evidence / history_* / …)
+              // falls through to the verbatim enqueue below (D-04).
+              if (wireChunk.type === 'data-decision') {
+                const data = (chunk as { data?: Record<string, unknown> }).data;
+                if (data && typeof data === 'object') {
+                  if (dispatchApprovalDecision(data)) {
+                    continue;
                   }
                 }
               }
