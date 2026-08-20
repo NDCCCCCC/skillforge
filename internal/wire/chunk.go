@@ -189,6 +189,53 @@ type SubprogressStep struct {
 	Count int    `json:"count,omitempty"`
 }
 
+// PlanTodo is one row of the DeepAgent planning trace. Phase 12 / Plan
+// 12-02 — write_todos audit Tool substrate. Mirrors
+// github.com/cloudwego/eino/adk/prebuilt/deep.TODO shape field-for-field
+// but is SkillForge-owned (P12-L7): we do not import the upstream type
+// because (a) the audit row stores SkillForge-owned JSON in the
+// plan_todos table and (b) eino's deep.TODO struct is currently
+// registered with schema.RegisterName ("_eino_adk_prebuilt_deep_todo")
+// — pulling it across the wire boundary would couple SkillForge to the
+// upstream JSON wire name. Status enum: "pending" | "in_progress" |
+// "completed" (matches the eino upstream jsonschema tag enum). Add
+// fields here AND on the FE mirror (web/src/types/wire-types.ts) under
+// the D15 lockstep invariant when a future Phase needs them; never
+// repurpose existing values.
+type PlanTodo struct {
+	ID         string `json:"id"`
+	Content    string `json:"content"`
+	ActiveForm string `json:"activeForm,omitempty"`
+	Status     string `json:"status"`
+}
+
+// PlanTracePayload is the JSON payload carried by data-plan-trace SSE
+// chunks (Phase 12 / Plan 12-02 — PLAN-02 live todo stream substrate +
+// PLAN-05 replay-query substrate). The internal/agent/deep_audit.go
+// writeTodosAuditedTool emits one data-plan-trace chunk on every Tool
+// call so the React UI can render the live planning trace as the
+// DeepAgent iterates (PLAN-02 BE substrate). The TS mirror lives at
+// web/src/types/wire-types.ts (12-06 ships the FE side) and is gated by
+// the D15 compile-time drift alarm AssertAssignable<SkillForgeChunk,
+// UIMessageChunk>.
+//
+// Field semantics:
+//   - RunID: the per-session DeepAgent run identity; matches the
+//     audit_row.session_id + the replay query (QueryPlanTodos) input.
+//     Used by the FE to scope the rendered trace to one conversation.
+//   - Todos: the full current todo snapshot — replaces the prior
+//     snapshot in the FE state. The trace is idempotent: each chunk
+//     carries the FULL post-write list, not a delta. AI SDK v5 buffers
+//     data-* chunks until the message ends; the FE must mirror the
+//     post-write snapshot in its own state on each chunk.
+//   - Ts: epoch-seconds when write_todos was invoked. The FE renders
+//     this next to the todo list as the trace timestamp.
+type PlanTracePayload struct {
+	RunID string     `json:"runId"`
+	Todos []PlanTodo `json:"todos"`
+	Ts    int64      `json:"ts"`
+}
+
 // Phase 10 (Plan 10-02) — history-aware pipeline data-decision
 // extensions (D10-B4 / D10-C3). The pipeline emits one data-decision
 // chunk per history-relevant event so the FE can render a
@@ -277,6 +324,17 @@ const (
 // consume draft-* frames; the FE transport (MockChatTransport) keeps
 // them in a separate buffer so the chip's status state machine can
 // render 🟡 待校验 → ✅ 已验证 on grounding pass.
+//
+// Phase 12 / Plan 12-02 adds `data-plan-trace` (P12-L6 — new
+// discriminator, NOT an overload of data-decision). It carries the
+// DeepAgent write_todos snapshot on every Tool call so the React UI
+// can render the live planning trace (PLAN-02 BE substrate) + serve
+// the 12-04 replay endpoint + 12-07 replay UI (PLAN-05 BE substrate).
+// The TS mirror lives at web/src/types/wire-types.ts; 12-06 ships
+// the matching SkillForgeChunk variant in lockstep (D15 paired-commit
+// invariant). snake_case variant `data_plan_trace` MUST stay rejected
+// (T-1-11 silent-drop regression guard, parallel to the data_decision
+// rejection in TestDecisionChunkType).
 var ValidTypes = map[string]bool{
 	"text-start":            true,
 	"text-delta":            true,
@@ -296,6 +354,7 @@ var ValidTypes = map[string]bool{
 	"data-decision":         true,
 	"data-redline":          true,
 	"data-subprogress":      true,
+	"data-plan-trace":       true,
 	// `finish` is the message-level terminator in AI SDK v5's
 	// uiMessageChunkSchema (distinct from finish-step / finish-message).
 	// VerdictPipeline emits it as the final chunk; the whitelist gate

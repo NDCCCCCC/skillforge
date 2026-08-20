@@ -118,10 +118,17 @@ func TestDecisionChunkType(t *testing.T) {
 // streaming channel that the DraftStreamChip listens to (FE renders 🟡
 // 待校验 → ✅ 已验证 on grounding pass). Same T-1-11 rule applies
 // (snake_case variants stay rejected).
+//
+// Phase 12 / Plan 12-02 extends to 23 types — adds `data-plan-trace`
+// (P12-L6 new discriminator, NOT an overload of data-decision). It
+// carries the DeepAgent write_todos snapshot on every Tool call so
+// the React UI can render the live planning trace (PLAN-02 BE
+// substrate). The TS mirror ships in 12-06 under the D15 lockstep
+// invariant — this count bump is the BE half of the paired commit.
 func TestValidTypes_Twenty(t *testing.T) {
-	const expected = 22
+	const expected = 23
 	assert.Equal(t, expected, len(ValidTypes),
-		"ValidTypes must hold exactly %d entries (20 through data-subprogress, +2 for text-delta-draft + text-delta-draft-end per 260815-cos)", expected)
+		"ValidTypes must hold exactly %d entries (22 from 260815-cos, +1 for data-plan-trace per Plan 12-02)", expected)
 	assert.True(t, ValidTypes["data-redline"],
 		"data-redline MUST be registered (18th wire type, D5-14)")
 	assert.True(t, ValidTypes["finish"],
@@ -132,6 +139,8 @@ func TestValidTypes_Twenty(t *testing.T) {
 		"text-delta-draft MUST be registered (21st wire type, draft streaming channel / 260815-cos)")
 	assert.True(t, ValidTypes["text-delta-draft-end"],
 		"text-delta-draft-end MUST be registered (22nd wire type, draft streaming end marker / 260815-cos)")
+	assert.True(t, ValidTypes["data-plan-trace"],
+		"data-plan-trace MUST be registered (23rd wire type, PLAN-02 live todo stream substrate, P12-L6 / Plan 12-02)")
 	// Snake-case variant rejected — T-1-11 mitigation.
 	assert.False(t, ValidTypes["data_redline"],
 		"snake_case data_redline MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
@@ -141,6 +150,8 @@ func TestValidTypes_Twenty(t *testing.T) {
 		"snake_case text_delta_draft MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
 	assert.False(t, ValidTypes["text_delta_draft_end"],
 		"snake_case text_delta_draft_end MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
+	assert.False(t, ValidTypes["data_plan_trace"],
+		"snake_case data_plan_trace MUST NOT be in ValidTypes (T-1-11 silent-drop regression; Plan 12-02)")
 }
 
 // TestSubprogressStepRoundTrip — quick plan 260815-0xb Task 1: the
@@ -267,4 +278,117 @@ func TestDecisionPayload_NonRouteOmitsRoutingFields(t *testing.T) {
 		"non-routing decision MUST omit selected (omitempty required): %s", s)
 	assert.False(t, strings.Contains(s, `"ambiguous"`),
 		"non-routing decision MUST omit ambiguous (omitempty required): %s", s)
+}
+
+// TestValidTypesContainsDataPlanTrace — Plan 12-02 Task 1: the
+// `data-plan-trace` discriminator MUST be registered in ValidTypes so
+// EmitChunk accepts it (T-1-11 mitigation preserved — the same shape
+// as TestDecisionChunkType#valid). Phase 12's DeepAgent
+// writeTodosAuditedTool emits one of these chunks per write_todos
+// call (PLAN-02 BE substrate). The TS mirror ships in 12-06 under the
+// D15 lockstep invariant.
+//
+// RED phase: FAILS before the GREEN commit because
+// `data-plan-trace` is not yet in ValidTypes. The GREEN commit
+// registers the 23rd type per TestValidTypes_Twenty.
+func TestValidTypesContainsDataPlanTrace(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		c := UIMessageChunk{Type: "data-plan-trace"}
+		assert.True(t, c.IsValidType(),
+			"data-plan-trace must be registered in ValidTypes so EmitChunk accepts it (PLAN-02 live todo stream substrate)")
+	})
+
+	t.Run("snake_case_rejected", func(t *testing.T) {
+		c := UIMessageChunk{Type: "data_plan_trace"}
+		assert.False(t, c.IsValidType(),
+			"snake_case data_plan_trace MUST be rejected — the AI SDK v5 parser silently drops it (T-1-11)")
+	})
+}
+
+// TestPlanTracePayloadRoundTrip — Plan 12-02 Task 1: the wire.PlanTracePayload
+// payload mirrors the FE SkillForgeChunk.data-plan-trace variant
+// (web/src/types/wire-types.ts) field-for-field. Every writeTodosAuditedTool
+// call (PLAN-02 + PLAN-05 substrate) round-trips its runId / todos / ts
+// so the React UI can render the live planning trace AND the
+// QueryPlanTodos replay reconstruction can rebuild the same view from
+// the audit table.
+//
+// RED phase: FAILS before the change because wire.PlanTracePayload does
+// not exist yet.
+func TestPlanTracePayloadRoundTrip(t *testing.T) {
+	payload := PlanTracePayload{
+		RunID: "r1",
+		Todos: []PlanTodo{
+			{ID: "t1", Content: "step 1", Status: "pending"},
+			{ID: "t2", Content: "step 2", ActiveForm: "doing step 2", Status: "in_progress"},
+			{ID: "t3", Content: "step 3", Status: "completed"},
+		},
+		Ts: 1234567890,
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	var got PlanTracePayload
+	require.NoError(t, json.Unmarshal(raw, &got))
+
+	assert.Equal(t, "r1", got.RunID,
+		"runId must round-trip (FE scopes the rendered trace to one conversation)")
+	require.Len(t, got.Todos, 3,
+		"todos slice must round-trip with all 3 entries intact (PLAN-02 live todo stream substrate)")
+	assert.Equal(t, "t1", got.Todos[0].ID)
+	assert.Equal(t, "step 1", got.Todos[0].Content)
+	assert.Equal(t, "pending", got.Todos[0].Status)
+	assert.Equal(t, "t2", got.Todos[1].ID)
+	assert.Equal(t, "doing step 2", got.Todos[1].ActiveForm,
+		"activeForm (omitempty) must round-trip when present — FE renders the active step indicator")
+	assert.Equal(t, "in_progress", got.Todos[1].Status)
+	assert.Equal(t, "t3", got.Todos[2].ID)
+	assert.Equal(t, "completed", got.Todos[2].Status)
+	assert.Equal(t, int64(1234567890), got.Ts,
+		"ts (epoch-seconds) must round-trip (FE renders the trace timestamp)")
+
+	// ActiveForm omitempty: a todo without activeForm must NOT bloat the
+	// wire with "activeForm":"".
+	lean, err := json.Marshal(PlanTodo{ID: "t1", Content: "step 1", Status: "pending"})
+	require.NoError(t, err)
+	assert.Equal(t, `{"id":"t1","content":"step 1","status":"pending"}`, string(lean),
+		"omitempty required on activeForm so non-active todos stay minimal")
+}
+
+// TestDataPlanTraceChunkDispatch — Plan 12-02 Task 1: assert that a
+// UIMessageChunk with Type="data-plan-trace" can be classified via
+// ValidTypes[chunk.Type] AND that the Data field round-trips a
+// PlanTracePayload JSON body. Mirrors TestDecisionChunkType#round_trip
+// for the data-decision discriminator.
+//
+// RED phase: FAILS before the change because the type isn't registered
+// and the payload type doesn't exist.
+func TestDataPlanTraceChunkDispatch(t *testing.T) {
+	payload := PlanTracePayload{
+		RunID: "sess-trace-1",
+		Todos: []PlanTodo{{ID: "t1", Content: "collect policy clauses", Status: "in_progress"}},
+		Ts:    1700000000,
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	c := UIMessageChunk{Type: "data-plan-trace", Data: raw}
+	assert.True(t, c.IsValidType(),
+		"data-plan-trace chunk must be accepted (ValidTypes entry exists)")
+
+	out, err := json.Marshal(c)
+	require.NoError(t, err)
+
+	var got struct {
+		Type string          `json:"type"`
+		Data PlanTracePayload `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &got))
+	assert.Equal(t, "data-plan-trace", got.Type,
+		"marshalled type discriminator must be exactly data-plan-trace (P12-L6 + D15 lockstep)")
+	assert.Equal(t, "sess-trace-1", got.Data.RunID,
+		"data.runId must round-trip (FE scopes the trace by runId)")
+	require.Len(t, got.Data.Todos, 1,
+		"data.todos must round-trip with all entries (PLAN-02 live trace)")
+	assert.Equal(t, "collect policy clauses", got.Data.Todos[0].Content)
 }
