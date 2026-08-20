@@ -119,6 +119,26 @@ CREATE TABLE IF NOT EXISTS checkpoint (
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     expires_at    TEXT
 );
+
+-- approval_rules (Plan 11-05 / HITL-08 / D11-D2): the independent
+-- approve-and-remember rule table. PK is the full rule key
+-- (target, args_hash, skill_id, scope_session_id) per D11-D1/D11-D2.
+-- D11-D3 binary scope: a session-scope rule has scope_session_id set to
+-- the originating session; a skill-scope rule has scope_session_id = ''
+-- with skill_id set to the Skill identity. There is NO global scope.
+-- Revoke DELETEs the row here and INSERTs an action_rule_revoked audit
+-- row in the same transaction (D11-D4 + T-3-AUDIT INSERT-only).
+CREATE TABLE IF NOT EXISTS approval_rules (
+    target            TEXT NOT NULL,
+    args_hash         TEXT NOT NULL,
+    skill_id          TEXT NOT NULL,
+    scope_session_id  TEXT NOT NULL DEFAULT '',
+    created_at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    last_used_at      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (target, args_hash, skill_id, scope_session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_approval_rules_scope_session ON approval_rules(scope_session_id);
+CREATE INDEX IF NOT EXISTS idx_approval_rules_skill ON approval_rules(skill_id);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
