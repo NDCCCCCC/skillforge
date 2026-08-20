@@ -461,14 +461,21 @@ func reportCancelMeasure(t *testing.T, label string, elapsed []time.Duration) {
 		cancelMeasureBudget, len(elapsed))
 }
 
-// TestNoLegacyInterruptAPI scans the Phase 11 directories for legacy or
-// misplaced interrupt API usages.
+// TestNoLegacyInterruptAPI scans the Phase 11 + Phase 13 directories
+// for legacy or misplaced interrupt API usages.
 //
 // tool.StatefulInterrupt() is allowed ONLY in the real HITL Tool files
 // (internal/agent/hitl/*), which ship in 11-02 and use the current eino
 // v0.9.14 API. The audit_writer.go file in particular must NOT contain
 // StatefulInterrupt(); its job is the sync INSERT before the interrupt
 // is reached (D11-C3).
+//
+// Phase 13 / P13-L8: NEW root internal/runtime (specifically the
+// FanOutOrchestrator + sub-agent builder code) MUST NOT use
+// StatefulInterrupt — sub-agents return compressed results, no HITL
+// inside sub-agents (FAN-01 SC-1). The WalkDir extension is the
+// regression lock: any future sub-agent code that adds an interrupt
+// path gets caught here.
 //
 // Deprecated Runner.Query( / Runner.Resume( forms are banned outright:
 // the Runner path uses runner.Run() and (when needed) the v0.9.14
@@ -479,6 +486,9 @@ func TestNoLegacyInterruptAPI(t *testing.T) {
 		"internal/agent/callbacks",
 		"internal/agent/tools",
 		"internal/agent/hitl",
+		// Phase 13 / P13-L8: sub-agents and FanOutOrchestrator must NOT
+		// invoke interrupts (FAN-01 SC-1 — compressed results only).
+		"internal/runtime",
 	}
 
 	var hits []string

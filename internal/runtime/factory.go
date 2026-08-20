@@ -66,6 +66,11 @@ const ArchetypeChat AgentArchetype = "chat"
 // the hood.
 const ArchetypeDeep AgentArchetype = "deep"
 
+// ArchetypeOrchestrator is declared in orchestrator.go (Phase 13 /
+// P13-L1) — the third archetype in the dispatch surface. Kept here
+// as a forward reference comment so the dispatch table at the
+// bottom of this file is the canonical read of all three archetypes.
+
 // DispatchConfig is the per-session construction envelope passed to
 // DispatchAgent. Mirrors the surface area of agent.RunnerBuildConfig
 // without inheriting its server-only fields (RuleMatcher,
@@ -116,7 +121,8 @@ type DispatchConfig struct {
 
 // Archetype returns the archetype enum for cfg. Empty Agent field or
 // "chat" returns ArchetypeChat (the Phase 11 default path); "deep"
-// returns ArchetypeDeep. Other values return empty AgentArchetype —
+// returns ArchetypeDeep; "orchestrator" returns ArchetypeOrchestrator
+// (Phase 13 / P13-L1). Other values return empty AgentArchetype —
 // callers should treat empty as "rejected by Validate" (manifest
 // validator guards against unknown agent types at SKILL.md load time,
 // but the dispatch layer is defense-in-depth).
@@ -129,6 +135,8 @@ func (c DispatchConfig) Archetype() AgentArchetype {
 		return ArchetypeChat
 	case "deep":
 		return ArchetypeDeep
+	case "orchestrator":
+		return ArchetypeOrchestrator
 	default:
 		return AgentArchetype("")
 	}
@@ -136,8 +144,8 @@ func (c DispatchConfig) Archetype() AgentArchetype {
 
 // DispatchAgent is the P12-L1 pure dispatcher. It maps cfg.Manifest.Agent
 // to the per-archetype constructor (chat → ChatModelAgent; deep →
-// DeepAgent) and returns the constructed adk.Agent ready to hand to
-// adk.NewRunner.
+// DeepAgent; orchestrator → FanOutOrchestrator) and returns the
+// constructed adk.Agent ready to hand to adk.NewRunner.
 //
 // Architectural contract:
 //
@@ -147,12 +155,23 @@ func (c DispatchConfig) Archetype() AgentArchetype {
 //   - deep path → buildDeepAgent → BuildDeepAgent (deep_agent.go —
 //     P12-L2 MaxIteration: 10 hardcoded, WithoutWriteTodos: true,
 //     WithoutGeneralSubAgent: true).
+//   - orchestrator path → buildOrchestrator → NewOrchestrator
+//     (orchestrator.go — Phase 13 / P13-L1; 5-step pipeline with
+//     sub-agent tier-closure; adk.NewParallelAgent REJECTED per
+//     P13-L8).
 //   - unknown values → error with substring "unknown agent type".
 //
 // The dispatcher is PURE: no audit write, no SSE emit, no checkpoint
 // write — those happen at the chatHandler boundary AFTER the runner
 // is constructed. The dispatch is the single funnel all archetypes
-// pass through; that funnel is the test-as-gate anchor for P12-L1.
+// pass through; that funnel is the test-as-gate anchor for P12-L1 +
+// P13-L1.
+//
+// The orchestrator archetype requires the BuildSubAgent factory +
+// the merge function (FAN-03 invariant). These are wired via package
+// singletons (BuildSubAgent + mergeSubAgentResults) — see
+// buildOrchestrator below. 13-03 widens this seam for production
+// wiring (audit store + emitter injection).
 func DispatchAgent(ctx context.Context, cfg DispatchConfig) (adk.Agent, error) {
 	if cfg.Manifest == nil {
 		return nil, errors.New("runtime.DispatchAgent: Manifest is required")
@@ -173,8 +192,10 @@ func DispatchAgent(ctx context.Context, cfg DispatchConfig) (adk.Agent, error) {
 		return buildChatModelAgent(ctx, cfg)
 	case "deep":
 		return buildDeepAgent(ctx, cfg)
+	case "orchestrator":
+		return buildOrchestrator(ctx, cfg)
 	default:
-		return nil, fmt.Errorf("runtime.DispatchAgent: unknown agent type %q (valid: chat, deep)", cfg.Manifest.Agent)
+		return nil, fmt.Errorf("runtime.DispatchAgent: unknown agent type %q (valid: chat, deep, orchestrator)", cfg.Manifest.Agent)
 	}
 }
 
@@ -220,4 +241,45 @@ func buildDeepAgent(ctx context.Context, cfg DispatchConfig) (adk.Agent, error) 
 		return nil, fmt.Errorf("runtime.buildDeepAgent: %w", err)
 	}
 	return deepAgent, nil
+}
+
+// buildOrchestrator is the Phase 13 / P13-L1 orchestrator archetype
+// entry point. Delegates to NewOrchestrator (orchestrator.go) with
+// the BuildSubAgent factory + merge function (FAN-03 invariant).
+//
+// 13-01 ships the dispatch path with the package-level factory +
+// merge singletons wired inline; 13-03 widens this seam for
+// production injection (audit store + emitter).
+func buildOrchestrator(ctx context.Context, cfg DispatchConfig) (adk.Agent, error) {
+	orch, err := NewOrchestrator(ctx, cfg, defaultSubAgentFactory{}, defaultSubAgentMerge)
+	if err != nil {
+		return nil, fmt.Errorf("runtime.buildOrchestrator: %w", err)
+	}
+	return orch, nil
+}
+
+// defaultSubAgentFactory is the package-level SubAgentFactory singleton
+// wired into DispatchAgent for the orchestrator archetype. 13-01
+// ships a stub that delegates to BuildSubAgent (the real implementation
+// lands in 13-01 Task 3 / sub_agent_builder.go); 13-03 may widen this
+// seam for production injection (audit store + emitter per-call).
+type defaultSubAgentFactory struct{}
+
+// BuildSubAgent satisfies runtime.SubAgentFactory. Delegates to the
+// package-level BuildSubAgent function defined in sub_agent_builder.go.
+// 13-01 ships this delegation; the tier-closure + read-only invariant
+// lives in sub_agent_builder.go.
+func (defaultSubAgentFactory) BuildSubAgent(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error) {
+	return BuildSubAgent(ctx, cfg)
+}
+
+// defaultSubAgentMerge is the package-level SubAgentMergeFunc singleton.
+// 13-01 ships a passthrough that returns an empty MergedVerdict; 13-02
+// replaces it with the production merge function (FAN-03 10× byte-
+// identity contract). Returning an empty verdict here keeps the
+// orchestrator's Run skeleton from panicking when 13-03's 5-step
+// pipeline hands results to the merge function.
+func defaultSubAgentMerge(results []SubAgentResult) MergedVerdict {
+	_ = results
+	return MergedVerdict{}
 }

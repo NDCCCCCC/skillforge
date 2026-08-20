@@ -65,7 +65,7 @@ func Validate(m *Manifest) error {
 	//    existing Phase 11 Skills do not need a manifest migration.
 	if !validAgentTypes[m.Agent] {
 		return fmt.Errorf(
-			"agent type %q is not supported (SKILL_SCHEMA field 2; valid: chat, deep, ChatModelAgent, ReActAgent, SequentialAgent, ParallelAgent, LoopAgent, ConditionalAgent)",
+			"agent type %q is not supported (SKILL_SCHEMA field 2; valid: chat, deep, orchestrator, ChatModelAgent, ReActAgent, SequentialAgent, ParallelAgent, LoopAgent, ConditionalAgent)",
 			m.Agent,
 		)
 	}

@@ -140,6 +140,7 @@ func TestArchetypeAccessor(t *testing.T) {
 		{"chat", ArchetypeChat},
 		{"", ArchetypeChat},
 		{"deep", ArchetypeDeep},
+		{"orchestrator", ArchetypeOrchestrator},
 		{"bogus", AgentArchetype("")},
 	}
 	for _, tc := range cases {
@@ -151,6 +152,28 @@ func TestArchetypeAccessor(t *testing.T) {
 	// nil manifest → empty (defensive).
 	if (DispatchConfig{}).Archetype() != AgentArchetype("") {
 		t.Errorf("nil-manifest Archetype() should be empty")
+	}
+}
+
+// TestDispatchAgent_Orchestrator — Phase 13 / P13-L1: Manifest.Agent
+// == "orchestrator" routes through buildOrchestrator → NewOrchestrator
+// and returns a *FanOutOrchestrator (single-vertex, NOT ResumableAgent
+// in 13-01).
+func TestDispatchAgent_Orchestrator(t *testing.T) {
+	manifest := &skill.Manifest{Name: "compliance", Agent: "orchestrator"}
+	a, err := DispatchAgent(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-orch",
+	})
+	if err != nil {
+		t.Fatalf("DispatchAgent(orchestrator): %v", err)
+	}
+	if a == nil {
+		t.Fatalf("DispatchAgent(orchestrator) returned nil")
+	}
+	if _, ok := a.(*FanOutOrchestrator); !ok {
+		t.Fatalf("DispatchAgent(orchestrator) returned %T, want *FanOutOrchestrator", a)
 	}
 }
 

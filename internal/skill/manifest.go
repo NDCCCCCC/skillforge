@@ -143,6 +143,15 @@ func (m *Manifest) SetDescriptionVec(v []float32) {
 // (P12-L2 MaxIteration: 10 hardcoded; WithoutGeneralSubAgent: true;
 // WithoutWriteTodos: true).
 //
+// "orchestrator" enables the FanOutOrchestrator archetype (Phase 13 /
+// P8.4 — sub-agent fan-out with structural tier-closure). Dispatched
+// by runtime.DispatchAgent to runtime.NewOrchestrator. The orchestrator
+// constructs sub-agents per-Run via runtime.BuildSubAgent (P13-L2 +
+// FAN-02); sub-agents are read-only by structural design
+// (subManifest.Writes = [] — P13-L4). Orchestrator Skill manifests MUST
+// declare non-empty Reads (orchestrator itself may declare writes:[],
+// since the orchestrator fans out to read-only sub-agents).
+//
 // The whitelist is a hard filter (D11-B3 pattern): unknown agent
 // types are rejected at Validate() so the Skill author sees the
 // error at startup, not at first agent run. The runtime dispatch
@@ -150,8 +159,9 @@ func (m *Manifest) SetDescriptionVec(v []float32) {
 // returns "unknown agent type" if Validate somehow let it through.
 var validAgentTypes = map[string]bool{
 	// Phase 12 archetype names (canonical).
-	"chat":            true,
-	"deep":            true,
+	"chat":         true,
+	"deep":         true,
+	"orchestrator": true, // Phase 13 / P8.4 — FanOutOrchestrator (per-Run sub-agent fan-out)
 	// Phase 11 Eino ADK names (alias form — kept for backwards
 	// compatibility with Skills written before 12-01).
 	"ChatModelAgent":   true,
