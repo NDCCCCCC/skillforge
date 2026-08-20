@@ -288,7 +288,10 @@ type Deps struct {
 // GET /api/eval/reports (SC-1 eval dashboard data),
 // GET /api/eval/reports/:ts (SC-1 single eval report),
 // GET /api/eval/frozen (D6-13 frozen-set metadata),
-// GET /api/audit (SC-3 audit query + retention projection).
+// GET /api/audit (SC-3 audit query + retention projection),
+// GET /api/run/:id/plan (Phase 12 PLAN-05 plan replay),
+// POST /api/run/:id/plan/:approvalId/approve (Phase 12 PLAN-03 plan
+// confirm endpoint).
 func New(addr string, deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(addr))
 	h.POST("/api/chat", deps.chatHandler)
@@ -324,6 +327,14 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/session/:id/approval", deps.approvalGetHandler)
 	h.POST("/api/session/:id/approval/:approvalId", deps.approvalPostHandler)
 	h.GET("/api/session/:id/audit", deps.auditListHandler)
+	// Phase 12 Plan 04 (PLAN-05 BE replay + PLAN-03 BE confirm
+	// endpoint) — the run-keyed planning surface. GET returns the
+	// run's plan_todos rows in ts-ASC latest-snapshot order (the FE
+	// PlanReplayView 12-07 data source); POST resolves a pending
+	// plan_approve approval (mirrors the Phase 11 approval POST with
+	// target=plan_approve, D11-C2 expire-check included).
+	h.GET("/api/run/:id/plan", deps.planGetHandler)
+	h.POST("/api/run/:id/plan/:approvalId/approve", deps.planApproveHandler)
 	// Initialize the fail-closed HITL audit writer from the store when
 	// the caller did not inject one (D11-C3 single write path).
 	if deps.AuditWriter == nil && deps.Store != nil {
