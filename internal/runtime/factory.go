@@ -152,7 +152,11 @@ func DispatchAgent(ctx context.Context, cfg DispatchConfig) (adk.Agent, error) {
 	}
 
 	switch cfg.Manifest.Agent {
-	case "", "chat":
+	case "", "chat", "ChatModelAgent":
+		// Phase 11 legacy alias — "ChatModelAgent" was the original
+		// Eino ADK constructor name. SKILL.md frontmatter that has
+		// not migrated to the short form ("chat") still works. The
+		// dispatch layer maps all three to the same chat archetype.
 		return buildChatModelAgent(ctx, cfg)
 	case "deep":
 		return buildDeepAgent(ctx, cfg)

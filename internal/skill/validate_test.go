@@ -115,9 +115,10 @@ func TestValidate_FewerThan3Prohibitions_PSKILL2(t *testing.T) {
 }
 
 func TestValidate_UnknownAgent_PSKILL_SchemaField2(t *testing.T) {
-	// Test 6 — SKILL_SCHEMA field 2: agent must be a known Eino ADK
-	// agent type. A typo like "ChatModleAgent" would otherwise silently
-	// bind to a no-op at runtime.
+	// Test 6 — SKILL_SCHEMA field 2: agent must be a known runtime
+	// archetype (Phase 12: chat / deep) or a Phase 11 Eino ADK
+	// alias (ChatModelAgent / etc.). A typo like "FooAgent" would
+	// otherwise silently bind to a no-op at runtime.
 	m := validManifest()
 	m.Agent = "FooAgent"
 	err := Validate(m)
@@ -125,6 +126,61 @@ func TestValidate_UnknownAgent_PSKILL_SchemaField2(t *testing.T) {
 	assert.Contains(t, err.Error(), "agent")
 	assert.Contains(t, err.Error(), "ChatModelAgent",
 		"error should name at least one valid alternative so the typo is easy to spot")
+}
+
+// TestValidate_DeepAgent_P12Archetype is the Phase 12 / Plan 12-01
+// regression lock for the "deep" archetype whitelist addition. A
+// Skill declaring `agent: deep` MUST validate so the loader accepts
+// the file at startup; the runtime.DispatchAgent layer routes the
+// construction to runtime.BuildDeepAgent (P12-L2 MaxIteration: 10).
+//
+// Pre-Phase-12 this would have failed because the validAgentTypes
+// whitelist only contained Eino ADK type names. The Phase 12 plan
+// adds "deep" (the canonical Phase 12 archetype name) and "chat"
+// (the canonical Phase 12 archetype name that maps to the legacy
+// ChatModelAgent path). The Phase 11 Eino ADK names remain valid
+// as alias forms for backwards compatibility.
+func TestValidate_DeepAgent_P12Archetype(t *testing.T) {
+	// Case 1: canonical Phase 12 short name "deep".
+	m := validManifest()
+	m.Agent = "deep"
+	require.NoError(t, Validate(m),
+		"manifest with agent=deep MUST validate (Phase 12 / Plan 12-01 adds 'deep' to the validAgentTypes whitelist so the DeepAgent archetype is accepted at load time)")
+
+	// Case 2: canonical Phase 12 short name "chat".
+	m = validManifest()
+	m.Agent = "chat"
+	require.NoError(t, Validate(m),
+		"manifest with agent=chat MUST validate (Phase 12 archetype name; maps to the Phase 11 ChatModelAgent path)")
+
+	// Case 3: legacy Phase 11 Eino ADK type still validates.
+	m = validManifest()
+	m.Agent = "ChatModelAgent"
+	require.NoError(t, Validate(m),
+		"manifest with agent=ChatModelAgent MUST still validate (Phase 11 alias form preserved for backwards compat with Skills written before 12-01)")
+
+	// Case 4: empty Agent is still rejected (default-deny posture).
+	m = validManifest()
+	m.Agent = ""
+	require.Error(t, Validate(m),
+		"empty agent MUST be rejected (no implicit default; matches the existing 'unknown agent type' check)")
+}
+
+// TestValidate_RejectsUnknownAgent is the Phase 12 / Plan 12-01
+// negative-path regression lock. A Skill declaring an unknown agent
+// type MUST fail Validate() so the loader surfaces the error at
+// startup (D11-B3 fail-closed posture). The runtime.DispatchAgent
+// layer's switch-default branch is the defense-in-depth; the
+// manifest validator is the primary gate.
+func TestValidate_RejectsUnknownAgent(t *testing.T) {
+	m := validManifest()
+	m.Agent = "bogus"
+	err := Validate(m)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "agent",
+		"error MUST name the failing field")
+	assert.Contains(t, err.Error(), "agent type",
+		"error MUST mention 'agent type' so the message matches the runtime.DispatchAgent switch-default error string")
 }
 
 func TestValidate_TemperatureOutOfRange_SYSK08(t *testing.T) {

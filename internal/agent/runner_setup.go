@@ -15,23 +15,32 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package agent — runner_setup.go is Phase 11 / Plan 11-01's
-// BuildRunner construction site. It is the D11-A1 + D11-B1 + D11-B4
-// substrate: chatHandler drives a single adk.NewRunner().Run(ctx, msgs)
-// one-line dispatch; per-session Agent singleton; per-turn Tool
-// whitelist re-pure-computed.
+// BuildRunner construction site, extended in Phase 12 / Plan 12-01 to
+// delegate agent construction to internal/runtime.DispatchAgent. It
+// is the D11-A1 + D11-B1 + D11-B4 + P12-L1 substrate: chatHandler
+// drives a single adk.NewRunner().Run(ctx, msgs) one-line dispatch;
+// per-session Agent singleton; per-turn Tool whitelist re-pure-
+// computed; archetype dispatch funnels through runtime.
 //
-// Architectural boundary (D11-A2 — HITL ships 11-02):
+// Architectural boundary (D11-A2 — HITL ships 11-02; P12-L1 —
+// runtime substrate ships 12-01):
 //
 //   - 11-01 lands the empty HITL Tool seam. The Tool whitelist for
 //     Skills with writes:[] is empty (the LLM never sees a write Tool
 //     schema for them).
 //   - 11-02 lands the real HITL Tools (memory:facts, review_report)
 //     and replaces hitlBuildToolsForSkillStub with hitl.BuildToolsForSkill.
+//   - 12-01 lifts the adk.NewChatModelAgent call site into
+//     internal/runtime.DispatchAgent. The chat archetype is the
+//     Phase 11 default; the deep archetype ships via
+//     runtime.BuildDeepAgent (P12-L2 MaxIteration: 10 hard cap).
 //   - NO legacy interrupt API is introduced here. D8-04 invariant
-//     holds: the only call sites for tool.StatefulInterrupt in
-//     11-01 are inside 11-02's hitl/ files (which DO NOT yet exist
-//     at 11-01 ship time — TestNoLegacyInterruptAPI passes by
-//     absence of the banned identifiers in the new dirs).
+//     holds: the only call sites for tool.StatefulInterrupt are
+//     inside 11-02's hitl/ files. Phase 12's runtime package does
+//     NOT call StatefulInterrupt (12-01 ships the substrate; 12-03
+//     ships plan_approve which DOES introduce a new HITL call site
+//     — TestNoLegacyInterruptAPI is extended to scan runtime/ +
+//     agent/plan/ in 12-03).
 //
 // eino v0.9.14 API note: the v0.9 ChatModelAgentConfig uses the
 // `model.BaseModel[M]` Model field (not the v0.7 `ToolCallingChatModel`).
@@ -49,22 +58,14 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/compose"
 
 	"github.com/skillforge/skillforge/internal/agent/hitl"
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/runtime"
 	"github.com/skillforge/skillforge/internal/skill"
 )
-
-// composeToolsNodeConfig is the local helper that builds a
-// compose.ToolsNodeConfig from a []tool.BaseTool. Extracted so the
-// BuildRunner body reads cleanly without an inline anonymous struct.
-func composeToolsNodeConfig(tools []tool.BaseTool) compose.ToolsNodeConfig {
-	return compose.ToolsNodeConfig{Tools: tools}
-}
 
 // RunnerCheckPointID is the canonical format for per-session Runner
 // checkpoint IDs. Exported so internal/store/sqlite/checkpoint_test.go
@@ -201,23 +202,34 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 
 	sysPrompt := SystemPrompt(cfg.Manifest)
 
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
-		Name:        "skillforge-session-" + cfg.SessionID,
-		Description: "SkillForge compliance-review ChatModelAgent (Plan 11-01 Runner)",
+	// P12-L1: archetype dispatch funnels through runtime.DispatchAgent.
+	// The chat archetype (Phase 11 default; manifest.Agent empty or
+	// "chat") constructs the same adk.NewChatModelAgent as before —
+	// just lifted into the runtime package. The deep archetype
+	// (Phase 12; manifest.Agent "deep") routes through
+	// runtime.BuildDeepAgent (P12-L2 MaxIteration: 10 hard cap +
+	// WithoutGeneralSubAgent: true).
+	//
+	// D11-B1 / D11-B4 / D11-C4 invariants are preserved: BuildToolsForSkill
+	// is called here, the Tools slice is pre-computed and passed via
+	// DispatchConfig.Tools, and the per-session identity (SessionID) is
+	// propagated unchanged. The dispatch itself does NOT re-compute
+	// tools (no drift risk).
+	dispatchedAgent, err := runtime.DispatchAgent(ctx, runtime.DispatchConfig{
+		Manifest:    cfg.Manifest,
+		ChatModel:   cfg.ChatModel,
+		Embedder:    cfg.Embedder,
+		Retriever:   cfg.Retriever,
+		SessionID:   cfg.SessionID,
+		Tools:       tools,
 		Instruction: sysPrompt,
-		Model:       cfg.ChatModel,
-		ToolsConfig: adk.ToolsConfig{
-			ToolsNodeConfig: composeToolsNodeConfig(tools),
-		},
-		// Handlers: 11-04 wires the D11-A2 trust staircase; 11-01
-		// leaves the field at its empty default.
 	})
 	if err != nil {
-		return nil, fmt.Errorf("agent.BuildRunner: NewChatModelAgent: %w", err)
+		return nil, fmt.Errorf("agent.BuildRunner: runtime.DispatchAgent: %w", err)
 	}
 
 	return adk.NewRunner(ctx, adk.RunnerConfig{
-		Agent:           agent,
+		Agent:           dispatchedAgent,
 		EnableStreaming: true,
 		CheckPointStore: cfg.CheckPointStore,
 	}), nil

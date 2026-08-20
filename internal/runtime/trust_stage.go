@@ -38,6 +38,15 @@
 // chatHandler boundary as the unified exit. This 12-01 ship is the
 // foundation: the function exists, compiles, and is unit-tested in
 // isolation; 12-02 replaces the legacy wiring.
+//
+// Import-cycle resolution: trust_stage.go does NOT import
+// internal/agent. The trust floor logic that lives in
+// internal/agent/trust_floor.go (ApplyTrustFloor) is reproduced
+// inline here as a pure 3-line check; the grounding + critique
+// stages call into internal/verdict (which is the genuine library
+// layer) directly. The duplication is small and intentional — the
+// alternative (importing internal/agent) would create a cycle since
+// internal/agent now imports internal/runtime for the dispatch site.
 package runtime
 
 import (
@@ -46,7 +55,6 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
@@ -103,11 +111,10 @@ type TrustStageOutput struct {
 //
 // Sequence:
 //
-//  1. ApplyTrustFloor (D3-01 / D-09 / KNOW-04) — refuses if the
-//     accumulator recorded zero chunks. The function reads from
-//     in.Chunks (NOT in.History, per D9-V2) so a Skill's past
-//     refusal in the History does not pollute the current
-//     classification.
+//  1. ApplyTrustFloor (D3-01 / D-09 / KNOW-04) — refuses if no chunks
+//     were retrieved. The check inspects only in.Chunks (NOT
+//     in.History, per D9-V2) so a Skill's past refusal in the
+//     History does not pollute the current classification.
 //  2. ApplyGrounding (D2-01) — verifies every citation's Span
 //     literally appears in its ChunkID's chunk text (after Normalize).
 //     On failure, downgrades Verdict.ReviewRequired=true +
@@ -144,19 +151,19 @@ func ApplyTrustStage(ctx context.Context, in *TrustStageInput) (*TrustStageOutpu
 	if in.Output == nil {
 		return nil, errors.New("runtime.ApplyTrustStage: Output is required")
 	}
-
-	// The accumulator is reconstructed here for the ApplyTrustFloor
-	// contract. The legacy internal/agent.Run method holds the
-	// accumulator across the full Run lifetime; Plan 12-02 will
-	// replace that with the chatHandler-owned accumulator passed
-	// in via TrustStageInput. For 12-01 the in-place rebuild keeps
-	// the function self-contained + unit-testable in isolation.
-	acc := buildAccumulatorFromChunks(in.Chunks)
+	_ = ctx // reserved for 12-02's ChatModel-driven critique LLM call
 
 	// 1. Trust floor — refuses on zero chunks (D3-01 / D-09 /
-	//    KNOW-04). Reads from acc only; in.History is NOT consulted
-	//    (D9-V2).
-	if refusal := agent.ApplyTrustFloor(acc, in.Output.Content, in.Manifest.ResolvedTiers()); refusal != nil {
+	//    KNOW-04). Inspects only in.Chunks (D9-V2). in.History is
+	//    NOT consulted. The suggestion string is the rule-based
+	//    one-shot (D2-14) — same heuristic the legacy
+	//    internal/agent.Run path uses.
+	if len(in.Chunks) == 0 {
+		refusal := &verdict.Refusal{
+			Reason:                    verdict.RefusalReasonNoAuthorizedSource,
+			CanRephrase:               true,
+			SuggestedAlternativeQuery: ruleBasedSuggestion(in.Output.Content, in.Manifest.ResolvedTiers()),
+		}
 		return &TrustStageOutput{
 			Verdict:       nil,
 			Refusal:       refusal,
@@ -177,10 +184,18 @@ func ApplyTrustStage(ctx context.Context, in *TrustStageInput) (*TrustStageOutpu
 	// proper verdict-parser delegation.
 	v := verdictFromOutput(in.Output)
 
+	// Build the chunksByID map for the GroundingChecker. Same key
+	// shape as internal/agent.ChunkAccumulator.ChunksByID() — the
+	// decimal chunk ID → chunk text.
+	chunksByID := make(map[string]string, len(in.Chunks))
+	for _, ch := range in.Chunks {
+		chunksByID[chunkKey(ch.ID)] = ch.Content
+	}
+
 	// 2. Grounding (D2-01) — verify every citation's Span literally
 	//    appears in its ChunkID's chunk text. Downgrades on
 	//    failure (ConfidenceFloor cap + Status=needs_input).
-	v = verdict.GroundingChecker(v, acc.ChunksByID())
+	v = verdict.GroundingChecker(v, chunksByID)
 
 	// 3. Critique (D3-04) — additive strictness only. May set
 	//    ReviewRequired=true; cannot raise Confidence, cannot flip
@@ -193,11 +208,10 @@ func ApplyTrustStage(ctx context.Context, in *TrustStageInput) (*TrustStageOutpu
 	//    the final step.
 	//
 	//    For 12-01 the multiHop signal is derived from the
-	//    accumulator's call count; critique is skipped when single-
-	//    hop + outside the uncertain band + status != "needs_input"
-	//    (D3-05 gating). Single-hop + inside the band or multi-hop
-	//    would need the LLM call that 12-02 adds.
-	multiHop := acc.HasMultipleRetrieveCalls()
+	//    chunk count (>1 retrieve call); critique is skipped when
+	//    single-hop + outside the uncertain band + status !=
+	//    "needs_input" (D3-05 gating).
+	multiHop := len(in.Chunks) > 1
 	v = maybeCritiqueStub(v, multiHop)
 
 	return &TrustStageOutput{
@@ -207,19 +221,56 @@ func ApplyTrustStage(ctx context.Context, in *TrustStageInput) (*TrustStageOutpu
 	}, nil
 }
 
-// buildAccumulatorFromChunks wraps in.Chunks into a fresh
-// ChunkAccumulator for the trust floor + grounding check.
-// Equivalent to a single Add() batch — callCount = 1, dedup by
-// chunk ID.
+// chunkKey renders a retriever.Hit.ID (int64) as the canonical map
+// key for the chunksByID lookup. Decimal string format (same as
+// internal/agent.chunkKey).
+func chunkKey(id int64) string {
+	return decimalFormat(id)
+}
+
+// decimalFormat is a strconv-free int64-to-decimal helper kept here
+// to avoid importing strconv for one call site. Tested via the
+// chunksByID lookup in the GroundingChecker path.
+func decimalFormat(n int64) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
+}
+
+// ruleBasedSuggestion produces a rephrased query suggestion for the
+// refusal path. Logic-equivalent to internal/agent.ruleBasedSuggestion;
+// copied here to avoid the agent→runtime import cycle. The
+// suggestion appends the first resolved tier keyword to the original
+// query so a follow-up retrieve has a stronger tier signal.
 //
-// The accumulator is consumed once (Add) then closed (MarkClosed)
-// so the floor's TierMatched() read is the canonical post-EOF read
-// (no TOCTOU race against a callback that might fire late).
-func buildAccumulatorFromChunks(chunks []retriever.Hit) *agent.ChunkAccumulator {
-	acc := agent.NewChunkAccumulator()
-	acc.Add(chunks)
-	acc.MarkClosed()
-	return acc
+// When the tier list is empty (default-deny skill — should not happen
+// at runtime because the loader rejects empty reads, but defensive),
+// the suggestion is the original query with a generic "制度" suffix.
+func ruleBasedSuggestion(originalQuery string, resolvedTiers []string) string {
+	q := originalQuery
+	if q == "" {
+		q = "相关制度"
+	}
+	if len(resolvedTiers) == 0 {
+		return q + " 制度"
+	}
+	return q + " " + resolvedTiers[0]
 }
 
 // verdictFromOutput is the 12-01 stub for the chatHandler's verdict

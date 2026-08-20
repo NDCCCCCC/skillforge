@@ -14,6 +14,30 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// Package verdict — grounding.go provides the ApplyGrounding /
+// Normalize / ApplyDowngrade / GroundingChecker pure functions used
+// by runtime.ApplyTrustStage (Phase 12 / Plan 12-01).
+//
+// These functions are LIBRARY-ONLY post-Phase 12. The chatHandler
+// boundary routes trust verification through
+// runtime.ApplyTrustStage; direct callers should NOT invoke the
+// individual primitives from production code paths. They remain
+// exported for unit tests + edge-case composition (e.g. the
+// integration contract test grounding_test.go exercises them in
+// isolation).
+//
+// Phase 11 architectural note: this package has been the source of
+// truth for Verdict, ValidStatuses, and the grounding downgrade
+// pipeline since Phase 2. The Phase 12 hoisting moves the entry
+// point (ApplyTrustStage) to internal/runtime; the underlying
+// functions stay here because they are pure and free of side
+// effects (no audit, no SSE, no checkpoint mutation).
+//
+// ApplyTrustFloor (Phase 11 / internal/agent/trust_floor.go) lives
+// in the agent package because it closes over the ChunkAccumulator
+// state. The trust floor's logic is reproduced inline inside
+// runtime.ApplyTrustStage to break the import cycle (agent → runtime
+// → agent would otherwise be a cycle).
 package verdict
 
 import (

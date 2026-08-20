@@ -125,11 +125,35 @@ func (m *Manifest) SetDescriptionVec(v []float32) {
 	m.DescriptionVec = v
 }
 
-// validAgentTypes is the whitelist of Eino ADK agent type strings accepted
-// in the `agent:` field. Source: .planning/SKILL_SCHEMA.md field 2 +
-// eino/adk package surface (chatmodel.go:212, reactagent.go, sequential.go,
-// parallel.go, loop.go, conditional.go).
+// validAgentTypes is the whitelist of agent-type strings accepted in
+// the `agent:` field. Source: .planning/SKILL_SCHEMA.md field 2 +
+// runtime archetype names (Phase 12 dispatch table).
+//
+// The Phase 11 list mirrors the Eino ADK package surface
+// (chatmodel.go, reactagent.go, sequential.go, parallel.go, loop.go,
+// conditional.go). Phase 12 / Plan 12-01 collapses the runtime surface
+// to two archetypes — "chat" and "deep" — and routes through
+// internal/runtime.DispatchAgent. The Eino ADK agent type names
+// ("ChatModelAgent" / "ReActAgent" / etc.) are retained as alias
+// values so existing Phase 11 Skills with `agent: ChatModelAgent`
+// keep validating without a manifest migration.
+//
+// "deep" enables the DeepAgent archetype (Phase 12 / Plan 12-01) —
+// dispatched by runtime.DispatchAgent to runtime.BuildDeepAgent
+// (P12-L2 MaxIteration: 10 hardcoded; WithoutGeneralSubAgent: true;
+// WithoutWriteTodos: true).
+//
+// The whitelist is a hard filter (D11-B3 pattern): unknown agent
+// types are rejected at Validate() so the Skill author sees the
+// error at startup, not at first agent run. The runtime dispatch
+// layer is defense-in-depth — it re-checks the agent type and
+// returns "unknown agent type" if Validate somehow let it through.
 var validAgentTypes = map[string]bool{
+	// Phase 12 archetype names (canonical).
+	"chat":            true,
+	"deep":            true,
+	// Phase 11 Eino ADK names (alias form — kept for backwards
+	// compatibility with Skills written before 12-01).
 	"ChatModelAgent":   true,
 	"ReActAgent":       true,
 	"SequentialAgent":  true,

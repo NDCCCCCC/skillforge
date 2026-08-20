@@ -57,10 +57,15 @@ func Validate(m *Manifest) error {
 			"description is required and must be non-empty (SKILL_SCHEMA field 1)",
 		)
 	}
-	// 2. agent — must be one of the 6 Eino ADK agent types
+	// 2. agent — must be one of the runtime archetypes (Phase 12) or
+	//    the legacy Eino ADK agent type names (Phase 11 alias form).
+	//    The dispatch layer (runtime.DispatchAgent) routes on the
+	//    short names "chat" / "deep" (or empty defaults to chat);
+	//    the Eino ADK names are accepted at validation time so
+	//    existing Phase 11 Skills do not need a manifest migration.
 	if !validAgentTypes[m.Agent] {
 		return fmt.Errorf(
-			"agent %q is not a supported Eino ADK type (SKILL_SCHEMA field 2; valid: ChatModelAgent, ReActAgent, SequentialAgent, ParallelAgent, LoopAgent, ConditionalAgent)",
+			"agent type %q is not supported (SKILL_SCHEMA field 2; valid: chat, deep, ChatModelAgent, ReActAgent, SequentialAgent, ParallelAgent, LoopAgent, ConditionalAgent)",
 			m.Agent,
 		)
 	}
