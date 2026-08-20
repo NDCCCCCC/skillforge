@@ -288,4 +288,62 @@ Resume File: None
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 9 COMPLETE 2026-08-18（6/6 plans——09-06 live spike 裁决 **NO-GO**，用户签字「接受 NO-GO 带逃逸方案」：SC-3 零穿透 0/10 PASS 但 refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录的 go/no-go + 逃逸方案）；Phase 10 须前置信任地板强化并在 memory 发布前重跑 spike 硬门；ready for /gsd:verify-work 9）。Prior transition: Phase 8 COMPLETE 2026-08-18（5/5 plans——08-05 live 三门重锁全部 approved；PLAT-04 + PLAT-05 双勾选）。Earlier: Milestone v0.8 roadmap created 2026-08-17 — phases 8-13 appended (25/25 v0.8 requirements mapped; Phase 9 = spike hard gate for Phase 10); Phase 7 leftovers deferred to after v0.8 by user decision; Phase 4 → Phase 3 (resumed) on 2026-08-11; Phase 3 COMPLETE (6/6 plans) 2026-08-12.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 11 ACCEPTANCE GATE PASS 2026-08-20 (8/8 plans — 11-01 Runner-ization / 11-02 HITL Tool infra / 11-03 audit fail-closed / 11-04 approval endpoints / 11-05 approval rules / 11-06 FE ApprovalCard / 11-07 FE Rules panel / 11-08 acceptance gate; all 11 verification stages green; HITL-01..08 all verified end-to-end). Prior transition: Phase 9 COMPLETE 2026-08-18（6/6 plans——09-06 live spike 裁决 **NO-GO**，用户签字「接受 NO-GO 带逃逸方案」：SC-3 零穿透 0/10 PASS 但 refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录的 go/no-go + 逃逸方案）；Phase 10 须前置信任地板强化并在 memory 发布前重跑 spike 硬门；ready for /gsd:verify-work 9）。Earlier: Milestone v0.8 roadmap created 2026-08-17 — phases 8-13 appended (25/25 v0.8 requirements mapped; Phase 9 = spike hard gate for Phase 10); Phase 7 leftovers deferred to after v0.8 by user decision; Phase 4 → Phase 3 (resumed) on 2026-08-11; Phase 3 COMPLETE (6/6 plans) 2026-08-12.*
+
+---
+
+## Phase 11 — Write Tools + Approval Gate (P8.2 — HITL-01..08) — Acceptance Sign-Off
+
+**Status**: Complete (Acceptance Gate PASS — executor-side 11/11 stages green)
+
+**Plans completed**: 8/8 (11-01..11-08)
+
+**Acceptance gate run command**: `bash scripts/verify-phase-11.sh` (or `make verify-phase-11` where make available)
+
+**Acceptance gate log**: `/tmp/verify-phase-11_<YYYY-MM-DD>.log` (operator redirect; executor ran all 11 stages green on 2026-08-20)
+
+**Frozen baseline lock sha256**: `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded` (Phase 8 pin — UNCHANGED; byte-identity verified at gate time)
+
+**HITL frozen baseline sha256**: `6e91881f4aafeffb843e996c89ff1c27ef22eb18fac94eceff9184f938481d08` (NEW — `eval/frozen/hitl.lock.json` locks 75-case HITL golden set)
+
+**Threat-model sha256**: `b0d0f95bcdd211b7807cacf7d27d434a85ca7415048823a1e80e251f1a30b3f6` (`docs/threat-model/STRIDE-11.md` — 4 Critical + 4 High threats)
+
+**Sign-off line**: `Operator signature: ___   Date: 2026-08-20`
+
+**Compliance attestation** (8 HITL requirement IDs each with verifying test):
+
+| Requirement | Verifying Test(s) |
+|-------------|-------------------|
+| HITL-01 (stream approval card) | TestApprovalCardRendering + TestTransportSwapWithApprovalCard (11-06) + TestE2EApprovalFlow (11-08) |
+| HITL-02 (approve/deny once + structured binding) | TestApprovalDecisionValidate (11-02) + TestApprovalCardDenyRequiresReason (11-06) + TestE2EApprovalFlow (11-08) |
+| HITL-03 (cross-refresh state survival) | TestExpiredCheckpointUIState (11-04) + TestApprovalCardResumeBanner (11-07) + TestInterruptResumeRoundTrip (11-01) |
+| HITL-04 (3-row audit + frozen snapshot + fail-closed + idempotency) | TestFailClosedAudit + TestAuditChainThreeRowLifecycle + TestApprovalArgsByteEquality + TestConcurrentApproveDenyIdempotency + TestApprovalIDIdentityInvariant (11-03) |
+| HITL-05 (writes: code-level enforcement) | TestToolWhitelistMatchesSkillWrites + TestPromptInjectionResistance (11-02) + TestThreatModelCriticalMitigations T-HITL-05 (11-08) |
+| HITL-06 (memory:facts + review_report write tools) | TestMemoryFactsToolFirstPassInterrupts (11-02) + TestReviewReportToolFirstPassInterrupts (11-04) + TestE2EApprovalFlow (11-08) |
+| HITL-07 (edit-before-approve) | TestFrozenArgsThreeWayByteEquality (11-05) + TestApprovalCardEditBeforeApprove (11-06) + TestThreatModelCriticalMitigations T-HITL-07 (11-08) |
+| HITL-08 (approve-and-remember rules) | TestApprovalRulesScope + TestApprovalRulesRevoke + TestRuleAutoPass (11-05) + TestApprovalRulesPanelEmptyState + TestApprovalRulesPanelRevoke (11-07) + TestThreatModelCriticalMitigations T-HITL-08 (11-08) |
+
+**8 Plan SUMMARY references**:
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-01-SUMMARY.md` — Runner-ization foundation (6 commits, all gates green)
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-02-SUMMARY.md` — HITL Tool infra (10 commits, 11 checks green)
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-03-SUMMARY.md` — audit fail-closed (6 commits, 9 checks green)
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-04-SUMMARY.md` — approval endpoints (6 commits, all checks green)
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-05-SUMMARY.md` — approval rules (9 commits, all checks green)
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-06-SUMMARY.md` — FE ApprovalCard (8 commits, 372/372 vitest, tsc 0 errors)
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-07-SUMMARY.md` — FE Rules panel (7 commits, 372/372 vitest, tsc 0 errors)
+- `.planning/phases/11-p8-2-write-tools-approval-gate/11-08-SUMMARY.md` — acceptance gate (8 commits, 11/11 stages green)
+
+**Gate stages executed (all PASS)**:
+1. Hermetic Go suite (store + hitl + agent): PASS
+2. Approval API endpoints (11-04 + 11-05): PASS
+3. WalkDir legacy interrupt guard: PASS
+4. Cancel propagation <200ms lock: PASS
+5. STRIDE-11 critical mitigations: PASS
+6. Hermetic E2E smoke cmd/spike-hitl: PASS
+7. Vitest UI tests (11-06 + 11-07): PASS
+8. D-04 transport-swap: SKIP (dir absent; covered by Stage 2)
+9. D-15 wire-type: SKIP (dir absent; covered by Stage 2)
+10. Frozen eval baseline re-lock: PASS ([FROZEN-RELOCK-PASS])
+11. Frozen lock byte-identity: PASS
+
+**Next action**: Operator manually commits the acceptance batch via `gsd-sdk query commit` (or `git commit`) with the files listed in 11-08-PLAN.md Task 8; then Phase 11 is formally closed.
