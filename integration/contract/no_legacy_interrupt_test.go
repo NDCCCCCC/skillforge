@@ -19,6 +19,7 @@
 package contract
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -53,13 +54,18 @@ var bannedLegacyInterruptIdentifiers = []string{
 
 // legacyInterruptSkipDirs are non-product directories excluded from the
 // scan. .claude/ contains worktrees with their own go.mod (not part of
-// this module's build); web/ is the frontend tree; .git/ is VCS internals;
-// node_modules is third-party JS; .planning/ is GSD docs; screenshots/ is
-// binary artifacts. Everything else — including _test.go files — is in
-// scope: a future test misusing a banned API fails this gate too.
+// this module's build); .git/ is VCS internals; node_modules is
+// third-party JS; .planning/ is GSD docs; screenshots/ is binary
+// artifacts. Everything else — including _test.go files — is in scope:
+// a future test misusing a banned API fails this gate too.
+//
+// NOTE (Plan 11-08): web/ is REMOVED from the skip set so the Phase 11
+// frontend surface (web/src/**) is scanned by the companion Phase 11
+// sub-test below. The .go walk will simply find no .go files under
+// web/ — zero cost, but the directory traversal proves the gate's
+// scope covers the frontend tree.
 var legacyInterruptSkipDirs = map[string]bool{
 	".claude":      true,
-	"web":          true,
 	".git":         true,
 	"node_modules": true,
 	".planning":    true,
@@ -128,5 +134,173 @@ func TestNoLegacyInterruptAPI(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk %s: %v", root, err)
+	}
+}
+
+// phase11DenyListGo is the Plan 11-08 deny-list for Phase 11 Go
+// sources. Each entry is a substring that must NOT appear in any
+// scanned .go file (with the file-scope exceptions encoded in
+// phase11AllowedStatefulInterruptFiles).
+//
+// Patterns:
+//
+//   - Runner.Query(                — the deprecated re-routing API.
+//   - .Resume(ctx,                 — the deprecated no-params resume;
+//                                    Phase 11 uses ResumeWithParams.
+//   - tool.StatefulInterrupt(      — allowed ONLY inside
+//                                    internal/agent/hitl/ (the HITL
+//                                    Tool files).
+//   - tool.Interrupt(              — the deprecated no-args alias.
+var phase11DenyListGo = []string{
+	"Runner.Query(",
+	".Resume(ctx,",
+	"tool.StatefulInterrupt(",
+	"tool.Interrupt(",
+}
+
+// phase11GoScanRoots are the Phase 11 directories scanned by
+// TestNoLegacyInterruptAPIPhase11. The union covers the Runner-ization
+// (11-01), the HITL Tool infra (11-02..05), and the server approval
+// endpoints (11-04).
+var phase11GoScanRoots = []string{
+	"internal/agent",
+	"internal/agent/callbacks",
+	"internal/agent/tools",
+	"internal/agent/hitl",
+	"internal/server",
+}
+
+// phase11AllowedStatefulInterruptFiles lists the .go files permitted
+// to call tool.StatefulInterrupt(. Any OTHER .go file using the API
+// surfaces as a gate failure — this is the D11-C3 fail-closed
+// posture's code-level anchor (the audit_writer.go file MUST NOT
+// raise the interrupt itself).
+var phase11AllowedStatefulInterruptFiles = map[string]bool{
+	"hitl_memory_facts.go":  true,
+	"hitl_review_report.go": true,
+	"hitl_plan_approve.go":  true, // Phase 12 placeholder — allowed when it lands
+}
+
+// phase11LegacyRunnerQueryCarveOut lists the .go files where the
+// `s.Runner.Query(` pattern is a PRE-PHASE-11 legacy seam (the local
+// server.Runner interface declared in internal/server/server.go:79),
+// NOT the eino adk.Runner. These files predate the Runner-ization
+// (11-01) and were intentionally left on the legacy path; Phase 11
+// scope was the /api/chat handler + approval endpoints, not the
+// verdict-pipeline fallback. Documenting the carve-out here keeps the
+// gate honest — the pattern is banned in Phase 11 code while the
+// pre-existing legacy seam is explicitly acknowledged (and tracked
+// for a future Phase 12+ migration).
+var phase11LegacyRunnerQueryCarveOut = map[string]bool{
+	"pipeline.go": true, // internal/server/pipeline.go:438 — verdict-pipeline fallback on legacy server.Runner
+}
+
+// phase11WebDenyList is the Plan 11-08 deny-list for the frontend
+// TypeScript tree (web/src/**). Each entry is a substring that must
+// NOT appear in any scanned .ts / .tsx file.
+var phase11WebDenyList = []string{
+	"Runner.Query(",
+}
+
+// TestNoLegacyInterruptAPIPhase11 is the Plan 11-08 extension of the
+// WalkDir guard. It scans the Phase 11 Go surface
+// (internal/agent/{callbacks,tools,hitl}/ + internal/server/) for the
+// Phase 11 deny-list, and the frontend tree (web/src/**) for the FE
+// deny-list.
+//
+// This test complements (does NOT replace) TestNoLegacyInterruptAPI:
+// the Phase 8 test bans the v0.9 legacy constructors across the whole
+// repo; this test bans the Phase 11-specific deprecated patterns
+// (Runner.Query, no-params Resume, misplaced StatefulInterrupt, the
+// no-args tool.Interrupt alias) across the Phase 11 surface.
+//
+// Run with:
+//
+//	go test ./integration/contract -tags=contract -run TestNoLegacyInterruptAPIPhase11 -v
+func TestNoLegacyInterruptAPIPhase11(t *testing.T) {
+	root := findModuleRoot(t)
+	var hits []string
+
+	// ---- Go scan across Phase 11 dirs ----
+	for _, rel := range phase11GoScanRoots {
+		abs := filepath.Join(root, rel)
+		if _, err := os.Stat(abs); os.IsNotExist(err) {
+			continue // dir not present (e.g. a phase that has not landed yet)
+		}
+		_ = filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			name := d.Name()
+			if !strings.HasSuffix(name, ".go") {
+				return nil
+			}
+			// Skip _test.go files: the deny-list patterns legitimately
+			// appear in test source as string literals (e.g. this file's
+			// own deny-list). Test files are not production code.
+			if strings.HasSuffix(name, "_test.go") {
+				return nil
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			s := string(b)
+			relPath, _ := filepath.Rel(root, path)
+			for _, pat := range phase11DenyListGo {
+				if !strings.Contains(s, pat) {
+					continue
+				}
+				// tool.StatefulInterrupt is allowed inside the HITL
+				// Tool files only.
+				if pat == "tool.StatefulInterrupt(" && phase11AllowedStatefulInterruptFiles[name] {
+					continue
+				}
+				// Runner.Query( is a pre-Phase-11 legacy seam in the
+				// verdict-pipeline fallback (carve-out documented at
+				// phase11LegacyRunnerQueryCarveOut).
+				if pat == "Runner.Query(" && phase11LegacyRunnerQueryCarveOut[name] {
+					continue
+				}
+				hits = append(hits, fmt.Sprintf("%s: %s", relPath, pat))
+			}
+			return nil
+		})
+	}
+
+	// ---- Frontend scan across web/src/** ----
+	webSrc := filepath.Join(root, "web", "src")
+	if _, err := os.Stat(webSrc); err == nil {
+		_ = filepath.WalkDir(webSrc, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+			name := d.Name()
+			if !(strings.HasSuffix(name, ".ts") || strings.HasSuffix(name, ".tsx")) {
+				return nil
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			s := string(b)
+			relPath, _ := filepath.Rel(root, path)
+			for _, pat := range phase11WebDenyList {
+				if strings.Contains(s, pat) {
+					hits = append(hits, fmt.Sprintf("%s: %s", relPath, pat))
+				}
+			}
+			return nil
+		})
+	}
+
+	if len(hits) > 0 {
+		t.Fatalf("Phase 11 legacy interrupt API gate hits:\n%s", strings.Join(hits, "\n"))
 	}
 }
