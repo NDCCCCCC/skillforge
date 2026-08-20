@@ -71,11 +71,118 @@ type AuditRow struct {
 	RefusalReason string
 	// ChunkIDs is a CSV of cited chunk IDs (e.g. "c1,c2,c3").
 	ChunkIDs string
+	// Action is the Phase 11 HITL-04 lifecycle enum. One of
+	// "action_pending_approval" | "action_approved" | "action_rejected" |
+	// "action_rule_created" | "action_rule_revoked", or the empty string
+	// for every verdict row written by the chat path (and for rows that
+	// pre-date the column). The lifecycle rows are written exclusively by
+	// InsertPendingApproval / MarkApproved / MarkRejected /
+	// MarkRuleRevoked — each writes ONE new row, never an UPDATE.
+	Action string
+	// SkillVersion is the D11-C2 snapshot of the active Skill's version
+	// at the moment the row was written. Paired with PromptHash it forms
+	// the resume expire-check: a checkpoint whose snapshot no longer
+	// matches the live Skill is expired rather than silently resumed.
+	SkillVersion string
+	// FrozenArgs is the byte-identical snapshot of the LLM-emitted
+	// tool-call JSON arguments (HITL-04 byte-identity invariant: "批的 A
+	// 不会执行成 B"). NULL for verdict rows.
+	FrozenArgs []byte
+	// ToolCallID is the eino tool-call identity of the approval. It is
+	// the SAME value as ApprovalID (D11-C4 single identity) and is
+	// constrained by the idx_audit_pending_tcid partial unique index for
+	// action_pending_approval rows.
+	ToolCallID string
+	// ApprovalID == ToolCallID (D11-C4). Kept as a distinct column so the
+	// approve/deny HTTP route can key on the operator-facing name without
+	// leaking the eino-internal vocabulary into the API.
+	ApprovalID string
+	// ScopeSessionID binds an approve-and-remember rule to a session
+	// (D11-D2 rule scope). Empty for verdict rows.
+	ScopeSessionID string
 	// The four Ragas metrics — NULL until the eval sidecar backfills.
 	Faithfulness     *float64
 	ContextPrecision *float64
 	AnswerRelevance  *float64
 	ContextRecall    *float64
+}
+
+// PendingApprovalRow is the audit row written synchronously BEFORE the
+// HITL Tool reaches tool.StatefulInterrupt (D11-C3 fail-closed). It is
+// the FIRST row of the HITL-04 3-row lifecycle.
+//
+// FrozenArgs is the byte-identical snapshot of the LLM-emitted tool-call
+// JSON args — the anchor of the "批的 A 不会执行成 B" invariant.
+// ToolCallID == ApprovalID (D11-C4); the partial unique index on
+// audit(tool_call_id) WHERE action='action_pending_approval' makes a
+// duplicate pending INSERT fail, which is exactly the cross-device
+// double-approve moat.
+type PendingApprovalRow struct {
+	Timestamp     time.Time
+	SessionID     string
+	UserID        string
+	SkillID       string
+	Query         string
+	PromptHash    string
+	SkillVersion  string // D11-C2 snapshot
+	ModelVersion  string
+	VerdictJSON   string
+	RefusalReason string // empty for pending
+	ChunkIDs      string
+	FrozenArgs    []byte // HITL-04 byte snapshot
+	ToolCallID    string // D11-C4 == ApprovalID (PK UNIQUE for pending)
+	ApprovalID    string // D11-C4 == ToolCallID
+	// ScopeSessionID binds the row to the session an approve-and-remember
+	// rule would be scoped to (D11-D2).
+	ScopeSessionID string
+}
+
+// ApprovalResolutionRow is the SECOND row of the HITL-04 lifecycle
+// (action_approved | action_rejected). RefusalReason carries the
+// operator's explanation — REQUIRED on the reject path (HITL-02).
+//
+// FrozenArgs may differ from the pending row's bytes when the operator
+// used edit-before-approve (HITL-07); when no edit happened the two are
+// byte-identical, which is what TestApprovalArgsByteEquality locks.
+type ApprovalResolutionRow struct {
+	Timestamp      time.Time
+	SessionID      string
+	UserID         string
+	SkillID        string
+	Query          string
+	PromptHash     string
+	SkillVersion   string
+	ModelVersion   string
+	VerdictJSON    string
+	RefusalReason  string // operator reason (required when reject)
+	ChunkIDs       string
+	FrozenArgs     []byte
+	ToolCallID     string // == the pending row's tool_call_id (D11-C4)
+	ApprovalID     string // == the pending row's approval_id
+	ScopeSessionID string
+}
+
+// RuleRevokeRow is the audit row written when an approve-and-remember
+// rule is DELETEd (D11-D2). The rule row itself is removed from the
+// approval_rules table; the audit chain only ever grows (T-3-AUDIT).
+// FrozenArgs captures the rule key (target + args hash + skill_id +
+// scope_session_id) as bytes so the revoke is reconstructible.
+type RuleRevokeRow struct {
+	Timestamp      time.Time
+	SessionID      string
+	UserID         string
+	SkillID        string
+	Query          string
+	PromptHash     string
+	SkillVersion   string
+	ModelVersion   string
+	VerdictJSON    string
+	RefusalReason  string // operator reason for the revoke
+	ChunkIDs       string
+	FrozenArgs     []byte
+	ToolCallID     string
+	ApprovalID     string
+	ScopeSessionID string
 }
 
 // SessionMessage is one turn-half (user OR assistant) of a conversation
@@ -256,6 +363,46 @@ type Store interface {
 	// deliberately NOT deleted — T-3-AUDIT's immutable trail survives
 	// user-visible deletion. Idempotent: an unknown sessionID is a no-op.
 	DeleteSessionTurns(ctx context.Context, sessionID string) error
+
+	// InsertPendingApproval writes the FIRST row of the HITL-04 audit
+	// lifecycle (action_pending_approval). Called synchronously by the
+	// HITL audit writer BEFORE the Tool interrupts (D11-C3 fail-closed):
+	// on error the Tool must return the error, so no interrupt is
+	// signalled, no checkpoint is written, and no write executes.
+	//
+	// A UNIQUE constraint error means a pending row for the same
+	// tool_call_id already exists (D11-C4 cross-device race). The error
+	// is returned, never swallowed — the caller decides whether that is
+	// benign (a second POST for an already-pending approval).
+	InsertPendingApproval(ctx context.Context, row PendingApprovalRow) (int64, error)
+
+	// MarkApproved / MarkRejected write the SECOND row of the lifecycle.
+	// Both are INSERTs — the pending row is never mutated (T-3-AUDIT).
+	MarkApproved(ctx context.Context, row ApprovalResolutionRow) (int64, error)
+	MarkRejected(ctx context.Context, row ApprovalResolutionRow) (int64, error)
+
+	// MarkRuleRevoked records the revoke of an approve-and-remember rule
+	// (D11-D2). The rule row is deleted from its own table; the audit
+	// chain records the revoke as a new row.
+	MarkRuleRevoked(ctx context.Context, row RuleRevokeRow) (int64, error)
+
+	// SetCheckpointWithSnapshot persists a checkpoint together with the
+	// D11-C2 (skill_version, prompt_hash) snapshot. The Runner owns the
+	// plain Set path; this is the snapshot-carrying facade the HITL
+	// resume machinery writes through.
+	SetCheckpointWithSnapshot(ctx context.Context, id string, payload []byte, skillVersion, promptHash string) error
+
+	// GetCheckpointByVersionFilter returns the checkpoint payload ONLY
+	// when the stored snapshot matches (skillVersion, promptHash). A
+	// mismatch returns (nil, false, nil) — the D11-C2 expire state; the
+	// caller then Deletes the row and reports state="expired" rather than
+	// silently resuming against a drifted Skill.
+	GetCheckpointByVersionFilter(ctx context.Context, id, skillVersion, promptHash string) ([]byte, bool, error)
+
+	// Delete removes the checkpoint stored under id (the D11-C2 expire
+	// path; also the adk.CheckPointDeleter contract). Idempotent: an
+	// unknown id is a no-op. Audit rows are NEVER deleted (T-3-AUDIT).
+	Delete(ctx context.Context, id string) error
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

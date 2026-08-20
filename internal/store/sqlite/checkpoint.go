@@ -124,3 +124,70 @@ func (s *SQLiteStore) Delete(ctx context.Context, checkPointID string) error {
 	}
 	return nil
 }
+
+// setCheckpointWithSnapshotSQL persists the checkpoint payload PLUS the
+// D11-C2 dual-table snapshot (skill_version + prompt_hash). The ON
+// CONFLICT arm mirrors setCheckpointSQL so a re-interrupted run
+// replaces its own row — including its snapshot, which must track the
+// Skill that produced the newest interrupt.
+const setCheckpointWithSnapshotSQL = `
+INSERT INTO checkpoint (id, payload, skill_version, prompt_hash)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    payload       = excluded.payload,
+    skill_version = excluded.skill_version,
+    prompt_hash   = excluded.prompt_hash
+`
+
+// SetCheckpointWithSnapshot writes a checkpoint row carrying the D11-C2
+// version snapshot. It is the snapshot-aware sibling of Set: the Runner
+// owns the plain CheckPointStore.Set path (Pitfall 3 — user code never
+// calls Set directly), while the HITL resume machinery writes through
+// this method so the expire check has something to compare against.
+//
+// All four values are `?` placeholders (T-3-SQLI).
+func (s *SQLiteStore) SetCheckpointWithSnapshot(ctx context.Context, id string, payload []byte, skillVersion, promptHash string) error {
+	if s.isClosed() {
+		return sql.ErrConnDone
+	}
+	if _, err := s.db.ExecContext(ctx, setCheckpointWithSnapshotSQL, id, payload, skillVersion, promptHash); err != nil {
+		return fmtError("CheckpointSetSnapshot", err)
+	}
+	return nil
+}
+
+// getCheckpointByVersionFilterSQL is the D11-C2 expire-check read: the
+// row is returned ONLY when both snapshot columns match the caller's
+// live values. A Skill hot-reload (version bump) or a prompt edit
+// (hash change) makes the predicate fail, which the caller reads as
+// "expired".
+const getCheckpointByVersionFilterSQL = `
+SELECT payload, skill_version, prompt_hash FROM checkpoint
+WHERE id = ? AND skill_version = ? AND prompt_hash = ?
+`
+
+// GetCheckpointByVersionFilter returns the checkpoint payload only when
+// the stored (skill_version, prompt_hash) snapshot matches the caller's.
+// A mismatch — or a missing row — returns (nil, false, nil): existed is
+// a tri-state answer, NOT an error, exactly as in Get.
+//
+// The D11-C2 contract for the caller: on existed=false the resume path
+// Deletes the checkpoint row and reports state="expired" to the FE
+// instead of resuming against a drifted Skill. The audit row is NOT
+// deleted (T-3-AUDIT INSERT-only).
+func (s *SQLiteStore) GetCheckpointByVersionFilter(ctx context.Context, id, skillVersion, promptHash string) ([]byte, bool, error) {
+	if s.isClosed() {
+		return nil, false, sql.ErrConnDone
+	}
+	var (
+		payload []byte
+		sv, ph  string
+	)
+	if err := s.db.QueryRowContext(ctx, getCheckpointByVersionFilterSQL, id, skillVersion, promptHash).Scan(&payload, &sv, &ph); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		return nil, false, fmtError("CheckpointGetByVersion", err)
+	}
+	return payload, true, nil
+}

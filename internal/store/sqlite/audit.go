@@ -32,13 +32,23 @@ const putAuditSQL = `
 INSERT INTO audit (
     ts, session_id, user_id, skill_id, query, prompt_hash,
     model_version, verdict_json, refusal_reason, chunk_ids,
+    action, skill_version, frozen_args, tool_call_id, approval_id,
+    scope_session_id,
     faithfulness, context_precision, answer_relevance, context_recall
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // PutAudit appends an immutable audit row. GEVL-03: the row MUST exist
 // before the response ends — synchronous write, SQLite WAL keeps this
 // sub-ms. Returns the assigned auto-increment ID (>0).
+//
+// The Phase 11 HITL lifecycle columns (Action / SkillVersion /
+// FrozenArgs / ToolCallID / ApprovalID / ScopeSessionID) are additive:
+// a verdict row written by the chat path leaves them zero-valued, which
+// persists as the empty string (NULL for frozen_args). The
+// idx_audit_pending_tcid partial unique index only constrains rows with
+// action='action_pending_approval', so a stream of verdict rows carrying
+// action=(empty string) never collides.
 func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, error) {
 	if s.isClosed() {
 		return 0, sql.ErrConnDone
@@ -54,6 +64,12 @@ func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, 
 		row.VerdictJSON,
 		row.RefusalReason,
 		row.ChunkIDs,
+		row.Action,
+		row.SkillVersion,
+		row.FrozenArgs,
+		row.ToolCallID,
+		row.ApprovalID,
+		row.ScopeSessionID,
 		toNullFloat64(row.Faithfulness),
 		toNullFloat64(row.ContextPrecision),
 		toNullFloat64(row.AnswerRelevance),
@@ -74,6 +90,8 @@ func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, 
 const queryAuditCols = `
     id, ts, session_id, user_id, skill_id, query, prompt_hash,
     model_version, verdict_json, refusal_reason, chunk_ids,
+    action, skill_version, frozen_args, tool_call_id, approval_id,
+    scope_session_id,
     faithfulness, context_precision, answer_relevance, context_recall
 `
 
@@ -158,6 +176,8 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 			&r.ID, &r.Timestamp, &r.SessionID, &r.UserID, &r.SkillID,
 			&r.Query, &r.PromptHash, &r.ModelVersion, &r.VerdictJSON,
 			&r.RefusalReason, &r.ChunkIDs,
+			&r.Action, &r.SkillVersion, &r.FrozenArgs, &r.ToolCallID,
+			&r.ApprovalID, &r.ScopeSessionID,
 			&faith, &ctxPrec, &ansRel, &ctxRecall,
 		); err != nil {
 			return nil, fmtError("QueryAudit.Scan", err)
@@ -317,4 +337,164 @@ func toNullString(s string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: s, Valid: true}
+}
+
+// ---------------------------------------------------------------------
+// HITL-04 audit lifecycle (INSERT-only, 3-row chain)
+// ---------------------------------------------------------------------
+//
+// The canonical order is:
+//
+//	InsertPendingApproval → MarkApproved | MarkRejected
+//	MarkRuleRevoked (D11-D2 rule revoke; a chain of its own)
+//
+// Every stage writes a NEW row — there is no UPDATE / DELETE path for
+// audit rows (T-3-AUDIT; UpdateAuditMetrics stays the single sanctioned
+// exception, owned by the eval sidecar). The pending row carries the
+// frozen_args byte snapshot plus the tool_call_id identity that the
+// idx_audit_pending_tcid partial unique index constrains (D11-C4).
+//
+// D11-C3 fail-closed is the CALLER's posture — see
+// internal/agent/hitl/audit_writer.go. These methods simply return the
+// driver error; they never retry and never swallow.
+//
+// All values are `?` placeholders (T-3-SQLI).
+
+const putPendingApprovalSQL = `
+INSERT INTO audit (
+    ts, session_id, user_id, skill_id, action,
+    query, prompt_hash, skill_version, model_version,
+    verdict_json, refusal_reason, chunk_ids,
+    frozen_args, tool_call_id, approval_id, scope_session_id
+) VALUES (?, ?, ?, ?, 'action_pending_approval', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+const putApprovedSQL = `
+INSERT INTO audit (
+    ts, session_id, user_id, skill_id, action,
+    query, prompt_hash, skill_version, model_version,
+    verdict_json, refusal_reason, chunk_ids,
+    frozen_args, tool_call_id, approval_id, scope_session_id
+) VALUES (?, ?, ?, ?, 'action_approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+const putRejectedSQL = `
+INSERT INTO audit (
+    ts, session_id, user_id, skill_id, action,
+    query, prompt_hash, skill_version, model_version,
+    verdict_json, refusal_reason, chunk_ids,
+    frozen_args, tool_call_id, approval_id, scope_session_id
+) VALUES (?, ?, ?, ?, 'action_rejected', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+const putRuleRevokedSQL = `
+INSERT INTO audit (
+    ts, session_id, user_id, skill_id, action,
+    query, prompt_hash, skill_version, model_version,
+    verdict_json, refusal_reason, chunk_ids,
+    frozen_args, tool_call_id, approval_id, scope_session_id
+) VALUES (?, ?, ?, ?, 'action_rule_revoked', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+// InsertPendingApproval writes the FIRST row of the HITL-04 lifecycle
+// (action_pending_approval). It is called SYNCHRONOUSLY by
+// internal/agent/hitl/audit_writer.go BEFORE the HITL Tool reaches
+// tool.StatefulInterrupt (D11-C3 fail-closed).
+//
+// row.ToolCallID is the D11-C4 identity (== row.ApprovalID). The
+// partial unique index idx_audit_pending_tcid rejects a second pending
+// row for the same tool_call_id with a UNIQUE constraint error — that
+// error IS the cross-device idempotency signal, so it is returned to
+// the caller rather than swallowed.
+func (s *SQLiteStore) InsertPendingApproval(ctx context.Context, row store.PendingApprovalRow) (int64, error) {
+	if s.isClosed() {
+		return 0, sql.ErrConnDone
+	}
+	res, err := s.db.ExecContext(ctx, putPendingApprovalSQL,
+		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
+		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
+		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+	)
+	if err != nil {
+		return 0, fmtError("InsertPendingApproval", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmtError("InsertPendingApproval.LastInsertId", err)
+	}
+	return id, nil
+}
+
+// MarkApproved writes the SECOND row of the HITL-04 lifecycle
+// (action_approved), after the operator approves via the dual endpoint
+// (11-04). row.FrozenArgs is the possibly-edited bytes (HITL-07); it is
+// byte-identical to the pending row's frozen_args when no edit was
+// performed.
+func (s *SQLiteStore) MarkApproved(ctx context.Context, row store.ApprovalResolutionRow) (int64, error) {
+	if s.isClosed() {
+		return 0, sql.ErrConnDone
+	}
+	res, err := s.db.ExecContext(ctx, putApprovedSQL,
+		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
+		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
+		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+	)
+	if err != nil {
+		return 0, fmtError("MarkApproved", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmtError("MarkApproved.LastInsertId", err)
+	}
+	return id, nil
+}
+
+// MarkRejected mirrors MarkApproved with action='action_rejected'.
+// row.RefusalReason carries the operator's reason, which is REQUIRED
+// per HITL-02 / D11-B2 — validated at the HTTP boundary (11-04) and by
+// the audit writer, not here.
+func (s *SQLiteStore) MarkRejected(ctx context.Context, row store.ApprovalResolutionRow) (int64, error) {
+	if s.isClosed() {
+		return 0, sql.ErrConnDone
+	}
+	res, err := s.db.ExecContext(ctx, putRejectedSQL,
+		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
+		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
+		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+	)
+	if err != nil {
+		return 0, fmtError("MarkRejected", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmtError("MarkRejected.LastInsertId", err)
+	}
+	return id, nil
+}
+
+// MarkRuleRevoked writes an action_rule_revoked row when an
+// approve-and-remember rule is DELETEd (D11-D2). The rule row itself
+// lives in the approval_rules table (11-05) and IS deleted there; the
+// audit chain only ever grows (T-3-AUDIT INSERT-only).
+func (s *SQLiteStore) MarkRuleRevoked(ctx context.Context, row store.RuleRevokeRow) (int64, error) {
+	if s.isClosed() {
+		return 0, sql.ErrConnDone
+	}
+	res, err := s.db.ExecContext(ctx, putRuleRevokedSQL,
+		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
+		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
+		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+	)
+	if err != nil {
+		return 0, fmtError("MarkRuleRevoked", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmtError("MarkRuleRevoked.LastInsertId", err)
+	}
+	return id, nil
 }
