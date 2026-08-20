@@ -114,10 +114,14 @@ type ConflictChunk struct {
 //
 // Field semantics:
 //   - Step:         1-indexed hop number (1 or 2 for max_hops=2).
-//   - Decision:     one of "retrieve" | "answer" | "refuse" |
-//     "forced_stop" | "route" | "counter_evidence".
-//     The latter two were added in Plan 05-01 (D5-04) for
-//     the skill-router observability surface.
+//   - Decision:     string enum. The canonical catalog is enumerated in
+//     types.go (12-05) and currently includes "retrieve" | "answer" |
+//     "refuse" | "forced_stop" | "route" | "counter_evidence" +
+//     the Phase 10 history_* values + the Phase 11 tool-resumed |
+//     tool-denied values. P12-L3 lock: extending the catalog is
+//     ADDITIVE — never repurpose an existing value. The discriminated-
+//     union discriminator (kebab-case `type`) is UNCHANGED by 12-05:
+//     forced_stop rides the existing one, D16 overload pattern.
 //   - ToolCallID:   links the decision to a specific tool invocation
 //     (empty when Eino does not expose the id at OnStart).
 //   - Query:        the (possibly refined) query for a retrieve decision.
@@ -142,7 +146,7 @@ type ConflictChunk struct {
 //     state copy.
 type DecisionPayload struct {
 	Step           int             `json:"step"`     // 1-indexed hop number (1 or 2 for max_hops=2)
-	Decision       string          `json:"decision"` // "retrieve" | "answer" | "refuse" | "forced_stop" | "route" | "counter_evidence"
+	Decision       string          `json:"decision"` // wire.DecisionForcedStop (12-05) and the catalog in types.go — extend ADDITIVELY; never repurpose an existing value
 	ToolCallID     string          `json:"toolCallId,omitempty"`
 	Query          string          `json:"query,omitempty"`
 	Confidence     float64         `json:"confidence,omitempty"`

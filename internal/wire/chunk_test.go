@@ -380,7 +380,7 @@ func TestDataPlanTraceChunkDispatch(t *testing.T) {
 	require.NoError(t, err)
 
 	var got struct {
-		Type string          `json:"type"`
+		Type string           `json:"type"`
 		Data PlanTracePayload `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(out, &got))
@@ -391,4 +391,83 @@ func TestDataPlanTraceChunkDispatch(t *testing.T) {
 	require.Len(t, got.Data.Todos, 1,
 		"data.todos must round-trip with all entries (PLAN-02 live trace)")
 	assert.Equal(t, "collect policy clauses", got.Data.Todos[0].Content)
+}
+
+// ---------------------------------------------------------------------
+// Plan 12-05 Task 4 — P12-L3 forced_stop extension + ValidTypes
+// invariants.
+// ---------------------------------------------------------------------
+
+// TestForcedStopDataDecisionRouting — Plan 12-05 Task 4: forced_stop
+// rides the EXISTING data-decision discriminator (D16 overload); the
+// DecisionPayload.Decision string field accepts the new value
+// byte-identical through JSON. The reason rides the Query field per
+// the Phase 10 D10-C3 transparency convention (no new Reason field —
+// keeping the wire union untouched avoids churning the FE D15 mirror
+// for a parsing-shape that already works).
+//
+// Mirrors TestDecisionChunkType#round_trip with the budget-gate
+// payload shape. The chunk Type discriminator is unchanged.
+func TestForcedStopDataDecisionRouting(t *testing.T) {
+	const reason = "PLAN-04 budget exhausted: token (used 2000 > budget 1500)"
+
+	payload := DecisionPayload{
+		Step:     0, // budget gates are Step=0 (operator events, not agent hops)
+		Decision: DecisionForcedStop,
+		Query:    reason,
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	// The chunk uses the EXISTING discriminator (P12-L3 lock — D15 wire
+	// union is untouched).
+	c := UIMessageChunk{Type: "data-decision", Data: raw}
+	require.True(t, c.IsValidType(),
+		"forced_stop MUST ride the existing discriminator — the chunk type is unchanged (P12-L3 lock)")
+
+	out, err := json.Marshal(c)
+	require.NoError(t, err)
+
+	var got struct {
+		Type string          `json:"type"`
+		Data DecisionPayload `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(out, &got))
+	assert.Equal(t, "data-decision", got.Type,
+		"the type discriminator MUST stay data-decision — forced_stop is a new VALUE in the Decision string enum, not a new chunk type")
+	assert.Equal(t, DecisionForcedStop, got.Data.Decision,
+		"decision field MUST equal wire.DecisionForcedStop (12-05)")
+	assert.Equal(t, reason, got.Data.Query,
+		"reason MUST round-trip via the Query field (Phase 10 D10-C3 transparency convention)")
+	assert.Equal(t, 0, got.Data.Step,
+		"budget-gate forced_stop is a Step=0 operator event, not a numbered agent hop")
+
+	// The constant is the literal "forced_stop" — locks the wire
+	// contract value (changing it would break the FE parser silently).
+	assert.Equal(t, "forced_stop", DecisionForcedStop,
+		"wire.DecisionForcedStop MUST be the literal \"forced_stop\" — the wire-contract value")
+}
+
+// TestValidTypesUnchangedAfterBudgetGate — Plan 12-05 Task 4: the
+// P12-L3 invariant. The 3-layer budget gate adds a new VALUE in the
+// DecisionPayload.Decision string enum but does NOT add a new wire
+// chunk discriminator. The ValidTypes count MUST stay at the
+// Plan 12-02 baseline (23 — see TestValidTypes_Twenty); the BE half
+// of the D15 lockstep invariant.
+//
+// The duplicate count assertion guards against accidental additions
+// to ValidTypes in a future phase. Adding a new discriminator
+// silently would break the D15 TS mirror (AssertAssignable fails to
+// compile) AND this test would catch the drift at the BE level first.
+func TestValidTypesUnchangedAfterBudgetGate(t *testing.T) {
+	assert.Equal(t, len(ValidTypes), 23,
+		"ValidTypes MUST stay at 23 entries after the 12-05 budget gate (P12-L3 / D15 lockstep); forced_stop is a new VALUE in the Decision string enum, NOT a new chunk type")
+	assert.True(t, ValidTypes["data-decision"],
+		"data-decision MUST remain in ValidTypes (forced_stop rides it, P12-L3)")
+	// Budget-trigger chunks would have used a hypothetical new
+	// discriminator like `data-budget` — assert it does NOT exist.
+	assert.False(t, ValidTypes["data-budget"],
+		"snake_case / kebab-case variants of a hypothetical new discriminator MUST NOT exist (P12-L3 lock)")
+	assert.False(t, ValidTypes["data_budget"],
+		"snake_case data_budget MUST NOT be in ValidTypes — would have been the rejected counterpart of a hypothetical new discriminator (P12-L3 / T-1-11)")
 }
