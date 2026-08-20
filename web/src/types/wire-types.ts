@@ -1,6 +1,12 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Plan 12-06 Task 1 — extend wire-types.ts with PlanTracePayload + PlanTodo
+// + `data-plan-trace` discriminator. D15 lockstep paired commit with
+// 12-02 BE (internal/wire/chunk.go: PlanTracePayload + ValidTypes
+// ["data-plan-trace"]). The constant string "data-plan-trace" is the
+// lock — if BE adds it without TS mirror, D15 alarm fails; vice versa.
+//
 // Plan 04-01 Task 1 — TypeScript mirror of internal/wire/chunk.go.
 //
 // THIS FILE IS THE COMPILE-TIME DRIFT ALARM for the wire contract.
@@ -169,6 +175,44 @@ export interface RedlinePayload {
 }
 
 // ----------------------------------------------------------------------------
+// PlanTodo + PlanTracePayload — mirror of internal/wire/chunk.go
+// (Plan 12-02 BACKEND half; FE mirror lives here for D15 lockstep)
+// ----------------------------------------------------------------------------
+
+// Plan 12-02 / 12-06 — TS mirror of the Go wire.PlanTodo struct.
+// Mirrors eino/adk/prebuilt/deep.TODO field-for-field but is
+// SkillForge-owned (P12-L7). Status enum matches eino upstream
+// jsonschema tag enum: "pending" | "in_progress" | "completed".
+export interface PlanTodo {
+  /** Stable todo id (UUID-shaped; matches audit row PK). */
+  id: string;
+  /** Human-readable description of the step the agent plans to do. */
+  content: string;
+  /** Optional present-tense verb form rendered when status==='in_progress'. */
+  activeForm?: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
+// Plan 12-02 / 12-06 — TS mirror of the Go wire.PlanTracePayload struct.
+// Carried inside a `data-plan-trace` chunk's `.data` field. The
+// internal/agent/deep_audit.go writeTodosAuditedTool emits one of these
+// per Tool call so the React UI can render the live planning trace
+// (PLAN-02 BE substrate). Field semantics 1:1 with the Go struct.
+//
+//   - RunID: scopes the trace to one conversation (FE mirrors it as
+//     the plan slice's planByRunId key).
+//   - Todos: the FULL post-write snapshot, not a delta. The trace is
+//     idempotent — each chunk replaces the prior snapshot. AI SDK v5
+//     buffers data-* chunks until message ends; the FE mirrors the
+//     post-write snapshot on each chunk (PLAN-02 SC-2).
+//   - Ts: epoch millis when write_todos was invoked.
+export interface PlanTracePayload {
+  runId: string;
+  todos: PlanTodo[];
+  ts: number;
+}
+
+// ----------------------------------------------------------------------------
 // SkillForgeChunk — the union emitted on the wire
 // ----------------------------------------------------------------------------
 
@@ -210,6 +254,12 @@ export type SkillForgeChunk =
   // Custom data parts (Pitfall 2 — payload on .data)
   | { type: 'data-policy'; id?: string; data: Verdict | Refusal }
   | { type: 'data-subprogress'; id?: string; data: SubprogressStep }
+  // Plan 12-02 / 12-06 — live planning trace (PLAN-02 SC-2). Paired
+  // commit with BE internal/wire/chunk.go ValidTypes["data-plan-trace"]
+  // (D15 lockstep invariant). The FE plan slice stores the post-write
+  // snapshot keyed by runId; PlanTracePart renders it. Idempotent —
+  // each chunk carries the FULL current todo list.
+  | { type: 'data-plan-trace'; id?: string; data: PlanTracePayload }
   // Plan 03-01 — agent per-hop decisions (ARAG-01 / SC-1 observability).
   // Strict refinement of AI SDK v5 DataUIMessageChunk — assignability
   // holds so the D15 drift alarm stays green.
