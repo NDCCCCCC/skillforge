@@ -80,7 +80,14 @@ import (
 // Skill-A's HITL Tool cannot leak into Skill-B's session even via
 // Runner cross-reuse, AND a future Skill hot-reload invalidates the
 // Tools automatically.
-func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest) ([]tool.BaseTool, error) {
+//
+// 11-05 EXTENSION (HITL-08 / D11-D1): the signature carries the
+// per-session context (sessionID, skillID, ruleMatcher) so each
+// whitelisted HITL Tool is bound to the CURRENT session + Skill + rule
+// store via WithContext. A nil ruleMatcher degrades to
+// hitl.NoopRuleMatcher (no auto-pass — every write interrupts; the
+// fail-closed direction).
+func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, skillID string, ruleMatcher hitl.RuleMatcher) ([]tool.BaseTool, error) {
 	if manifest == nil {
 		return nil, errors.New("agent.BuildToolsForSkill: manifest is nil")
 	}
@@ -134,6 +141,15 @@ func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest) ([]tool.Bas
 			continue
 		}
 		seenNames[info.Name] = true
+
+		// 11-05: bind the per-session context (sessionID + skillID +
+		// ruleMatcher) so the Tool's Pass-1 D11-D1 rule lookup and
+		// Pass-2 audit rows are scoped to THIS session + Skill. nil
+		// ruleMatcher → the Tool's own NoopRuleMatcher default
+		// (fail-closed toward human review).
+		if mft, ok := h.(*hitl.MemoryFactsTool); ok {
+			mft.WithContext(sessionID, skillID, ruleMatcher)
+		}
 		pairs = append(pairs, pair{name: info.Name, t: h})
 	}
 

@@ -52,6 +52,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 
+	"github.com/skillforge/skillforge/internal/agent/hitl"
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -99,6 +100,15 @@ type RunnerBuildConfig struct {
 	MaxHops   int    // 0 → DefaultMaxHops (2)
 	SkillID   string // for HITL registry target whitelist
 	SessionID string // for checkPointID
+
+	// RuleMatcher is the 11-05 / HITL-08 approve-and-remember lookup
+	// injected into each whitelisted HITL Tool (D11-D1). Production
+	// wires hitl.NewSqlRuleMatcher(store) at the server boundary;
+	// nil degrades to hitl.NoopRuleMatcher (every write interrupts —
+	// the fail-closed direction). Kept as an INTERFACE field (not a
+	// store dependency) so BuildRunner stays pure and unit tests can
+	// construct a Runner without a DB — see the BuildRunner doc.
+	RuleMatcher hitl.RuleMatcher
 
 	// Handlers is the D11-A2 trust staircase (eino v0.9 Handler
 	// interface slice, NOT the legacy callbacks.Handler). Reserved
@@ -156,7 +166,17 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 	// schema). The function lives in this same package (agent) to
 	// break the skill<->hitl import cycle — see hitl_tools.go's
 	// file-level comment for the architectural rationale.
-	tools, err := BuildToolsForSkill(ctx, cfg.Manifest)
+	//
+	// 11-05: the per-session context (SessionID, SkillID, RuleMatcher)
+	// travels with the whitelist computation so each HITL Tool's
+	// D11-D1 rule lookup is scoped to THIS session + Skill. nil
+	// RuleMatcher → NoopRuleMatcher (fail-closed: every write
+	// interrupts).
+	ruleMatcher := cfg.RuleMatcher
+	if ruleMatcher == nil {
+		ruleMatcher = hitl.NoopRuleMatcher{}
+	}
+	tools, err := BuildToolsForSkill(ctx, cfg.Manifest, cfg.SessionID, cfg.SkillID, ruleMatcher)
 	if err != nil {
 		return nil, fmt.Errorf("agent.BuildRunner: BuildToolsForSkill: %w", err)
 	}

@@ -31,7 +31,7 @@ import (
 // return a non-nil error so the build_runner caller can surface the
 // issue at startup (before any chat invocation).
 func TestBuildToolsForSkill_NilManifest(t *testing.T) {
-	tools, err := BuildToolsForSkill(context.Background(), nil)
+	tools, err := BuildToolsForSkill(context.Background(), nil, "", "", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "manifest is nil")
 	assert.Nil(t, tools)
@@ -70,7 +70,7 @@ func TestBuildToolsForSkill_TableDriven(t *testing.T) {
 				Agent:       "ChatModelAgent",
 				Writes:      tc.writes,
 			}
-			got, err := BuildToolsForSkill(context.Background(), m)
+			got, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil)
 			require.NoError(t, err)
 			assert.Len(t, got, tc.want,
 				"writes=%v must yield %d Tools", tc.writes, tc.want)
@@ -100,12 +100,12 @@ func TestPromptInjectionResistance(t *testing.T) {
 		Writes:      []string{"memory:facts"},
 	}
 
-	readOnlyTools, err := BuildToolsForSkill(context.Background(), readOnly)
+	readOnlyTools, err := BuildToolsForSkill(context.Background(), readOnly, "sess-test", "test-skill", nil)
 	require.NoError(t, err)
 	assert.Empty(t, readOnlyTools,
 		"read-only Skill MUST see 0 Tools (HITL-05 structural defense)")
 
-	writeyTools, err := BuildToolsForSkill(context.Background(), writey)
+	writeyTools, err := BuildToolsForSkill(context.Background(), writey, "sess-test", "test-skill", nil)
 	require.NoError(t, err)
 	require.Len(t, writeyTools, 1,
 		"simple-qa with writes:[memory:facts] must see exactly 1 Tool")
@@ -132,9 +132,9 @@ func TestBuildToolsForSkill_DeterministicOrder(t *testing.T) {
 		Agent:       "ChatModelAgent",
 		Writes:      []string{"memory:facts"},
 	}
-	first, err := BuildToolsForSkill(context.Background(), m)
+	first, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil)
 	require.NoError(t, err)
-	second, err := BuildToolsForSkill(context.Background(), m)
+	second, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil)
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	require.Len(t, second, 1)
