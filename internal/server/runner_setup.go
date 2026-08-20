@@ -67,7 +67,7 @@ import (
 //  3. Find the manifest via Loader (existing findSkill).
 //  4. Build Runner via agent.BuildRunner(ctx, RunnerBuildConfig{...}).
 //  5. Single-line D11-A1 dispatch:
-//        iter, err := runner.Run(ctx, []ms)
+//     iter, err := runner.Run(ctx, []ms)
 //  6. Drain AgentEvents via agent.DrainRunnerEvents(ctx, iter, emit).
 //
 // The ctx is shared between Runner.Run, DrainRunnerEvents, and the SSE

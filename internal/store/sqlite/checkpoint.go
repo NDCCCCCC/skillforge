@@ -37,8 +37,8 @@ import (
 // checkPointID) and returns state=\"expired\" to the FE).
 var (
 	_ compose.CheckPointStore = (*SQLiteStore)(nil)
-	_ adk.CheckPointStore    = (*SQLiteStore)(nil)
-	_ adk.CheckPointDeleter  = (*SQLiteStore)(nil)
+	_ adk.CheckPointStore     = (*SQLiteStore)(nil)
+	_ adk.CheckPointDeleter   = (*SQLiteStore)(nil)
 )
 
 // getCheckpointSQL reads one checkpoint payload by id. expires_at is
