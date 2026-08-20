@@ -27,6 +27,7 @@ import { Pencil, Pin, PinOff, Plus, Search, Trash2, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore, type SessionMeta } from '../../store/app-store';
 import { deleteSession as deleteSessionAPI, renameSession as renameSessionAPI } from '../../lib/sessions';
+import ApprovalRulesPanel from '../ApprovalRulesPanel';
 
 export interface SessionDrawerProps {
   open: boolean;
@@ -322,6 +323,14 @@ export default function SessionDrawer({ open, onClose }: SessionDrawerProps) {
             </div>
           ))}
         </div>
+
+        {/* Plan 11-07 — D11-D4 HITL-08 审批规则 section. The conceptual
+            "LeftSidebar 5th section" lands at the foot of this session
+            panel (the old LeftSidebar was removed in the Open Design
+            redesign; this drawer is the surviving left-side surface).
+            The panel owns its own fetch / empty / error / revoke
+            states — mounted unconditionally. */}
+        <ApprovalRulesPanel />
     </div>
   );
 }

@@ -214,7 +214,10 @@ export type CenterView =
   | { kind: 'doc-view'; tier: Tier; file: string }
   // Phase 5 — SC-4 inspector + SC-5 graph browser
   | { kind: 'agent-inspector' }
-  | { kind: 'knowledge-graph' };
+  | { kind: 'knowledge-graph' }
+  // Plan 11-07 — HITL-04 audit timeline tab (DetailPanel 6th tab
+  // 审计轨迹, between 结论 and 引用原文 per UI-SPEC §Position 3).
+  | { kind: 'audit-timeline' };
 
 /** SC-2 reload toast payload. Keyed by skillId in `skillReloadStatus`. */
 export interface SkillReloadEntry {

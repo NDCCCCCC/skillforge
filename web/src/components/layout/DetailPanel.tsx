@@ -21,6 +21,7 @@ import { useAppStore } from '../../store/app-store';
 import type { CenterView } from '../../store/app-store';
 import type { Tier, Verdict } from '../../types/verdict';
 import AgentInspector from '../inspector/AgentInspector';
+import AuditTimelineTab from '../AuditTimelineTab';
 import ChunkSourceView from '../center/ChunkSourceView';
 import DocViewer from '../center/DocViewer';
 import KnowledgeGraphBrowser from '../graph/KnowledgeGraphBrowser';
@@ -41,6 +42,8 @@ const FALLBACK_VERDICT: Verdict = {
  */
 function activeTabValue(kind: CenterView['kind']): string {
   switch (kind) {
+    case 'audit-timeline':
+      return 'audit-timeline';
     case 'chunk-source':
     // doc-view shares the 引用原文 tab (both are source-text views).
     case 'doc-view':
@@ -72,6 +75,8 @@ function tabValueToCenterView(value: string): CenterView | null {
       return null;
     case 'skill-md':
       return { kind: 'skill-md', skillId: 'simple-qa' };
+    case 'audit-timeline':
+      return { kind: 'audit-timeline' };
     case 'agent-inspector':
       return { kind: 'agent-inspector' };
     case 'knowledge-graph':
@@ -103,9 +108,11 @@ export default function DetailPanel({
   const setCenterView = useAppStore((s) => s.setCenterView);
   const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
 
-  // 5 tabs in document order (Phase 5 set, unchanged in B2).
+  // 6 tabs in document order (Plan 11-07: 审计轨迹 slots between
+  // 结论 and 引用原文 per UI-SPEC §Position 3).
   const items = [
     { value: 'verdict', label: '结论' },
+    { value: 'audit-timeline', label: '审计轨迹' },
     { value: 'chunk-source', label: '引用原文' },
     { value: 'skill-md', label: 'Skill 定义' },
     { value: 'agent-inspector', label: 'Agent 状态' },
@@ -118,6 +125,14 @@ export default function DetailPanel({
   }
 
   function renderBody() {
+    // Plan 11-07 — HITL-04 audit timeline tab body (read-only).
+    if (centerView.kind === 'audit-timeline') {
+      return (
+        <div className="center-panel-tab-content">
+          <AuditTimelineTab />
+        </div>
+      );
+    }
     // Tab-4: Agent inspector (SC-4).
     if (centerView.kind === 'agent-inspector') {
       return (
