@@ -19,7 +19,7 @@
 //   - Per-candidate CTA `使用此 Skill` instead of the default select
 //   - A `使用默认 Skill` dismiss button appears at the bottom
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Lock } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { useAppStore } from '../../../store/app-store';
 import type { SkillScore } from '../../../types/wire-types';
@@ -42,14 +42,28 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
   const currentSkillId = useAppStore((s) => s.currentSkillId);
   const skills = useAppStore((s) => s.skills);
   const skillServiceOffline = useAppStore((s) => s.skillServiceOffline);
+  // Plan 11-07 / D11-B4 (SkillSwitchGuard) — a pending HITL approval
+  // freezes skill switching: the trigger renders aria-disabled + a lock
+  // icon + the 有审批进行中 tooltip and swallows clicks until the
+  // operator resolves the card. Optional chaining keeps the selector
+  // safe even before the approval slice hydrates.
+  const approvalPending = useAppStore((s) => Boolean(s.approval?.pending));
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const current = skills.find((s) => s.id === currentSkillId);
+  const disabledByPendingApproval = approvalPending;
 
   useEffect(() => {
     if (!open) return;
     function onMouseDown(e: MouseEvent) {
+      // Pending HITL flipped mid-open → close on the next outside
+      // click (the guard does NOT auto-close an already-open menu, but
+      // it must not let the menu linger once switching is frozen).
+      if (disabledByPendingApproval) {
+        setOpen(false);
+        return;
+      }
       const target = e.target as Node | null;
       if (!target || !ref.current) return;
       if (!ref.current.contains(target)) {
@@ -58,7 +72,7 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
     }
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
-  }, [open]);
+  }, [open, disabledByPendingApproval]);
 
   function handleSelect(skillId: string) {
     useAppStore.getState().setCurrentSkill(skillId);
@@ -84,11 +98,26 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
       <button
         type="button"
         data-testid="skill-picker-trigger"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
+        data-disabled-by-pending-approval={disabledByPendingApproval || undefined}
+        aria-disabled={disabledByPendingApproval || undefined}
+        tabIndex={disabledByPendingApproval ? -1 : undefined}
+        onClick={() => {
+          // D11-B4 — swallow the toggle while an approval is pending.
+          if (disabledByPendingApproval) return;
+          setOpen((v) => !v);
+        }}
+        className={cn(
+          'inline-flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text transition-opacity duration-[120ms]',
+          disabledByPendingApproval && 'cursor-not-allowed opacity-50',
+        )}
+        title={disabledByPendingApproval ? '有审批进行中，请先处理后再切换' : undefined}
       >
         <span className="truncate">{triggerLabel}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+        {disabledByPendingApproval ? (
+          <Lock className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+        )}
       </button>
 
       {open && (
