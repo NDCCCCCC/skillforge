@@ -73,11 +73,13 @@ blocked_by: third-party
 reason: Backend not running; audit events come from live agent runs.
 
 ### 12. PlanRulesPanel — LeftSidebar 6th section displays plan rules
-result: skipped
-reason: |
-  LeftSidebar in current UI does not show a dedicated 6th section for plan rules. The SessionDrawer (left side panel) only contains 5 sections: Skill 管理 / 会话列表 / 知识库 / 评估. PlanRulesPanel.tsx exists but is not yet wired into the visible sidebar.
-  This may be a Phase 12 12-07 integration gap — file exists, but no visible UI surface.
-verified_by: chrome-devtools snapshot — no "审批规则 (规划)" / "PlanRules" entry visible in sidebar.
+result: pass
+verified_by: chrome-devtools snapshot — SessionDrawer (opened via 会话列表 toolbar button) renders 计划审批规则 heading (uid=7_423) at the foot of the drawer, after Phase 11 审批规则 heading (uid=7_421). Both display "无法加载..." error UX when backend unreachable.
+notes: |
+  PlanRulesPanel IS wired into SessionDrawer.tsx at line 343 (Phase 12 12-07 commit landed it).
+  It only becomes visible after user opens the SessionDrawer (toolbar button 会话列表).
+  Without backend the panel shows correct error UX — "无法加载 plan_approve 规则。".
+  Original UAT gap_12_uat_plan_rules_panel_visible is closed: component IS wired and renders.
 
 ### 13. CenterPanel tab — 规划轨迹 tab appears
 result: pass
@@ -94,12 +96,12 @@ reason: |
 ## Summary
 
 total: 14
-passed: 2
+passed: 3
 issues: 0
 pending: 0
-skipped: 1
+skipped: 0
 blocked: 11
 
 ## Gaps
 
-- gap_12_uat_plan_rules_panel_visible: PlanRulesPanel.tsx exists (created in 12-07) but not wired into the LeftSidebar / SessionDrawer as a 6th visible section. Operator should consider wiring or document as deferred.
+[none — all 14 tests categorized; 11 blocked-pending-live-LLM; 3 PASS verified via chrome-devtools + hermetic gate]
