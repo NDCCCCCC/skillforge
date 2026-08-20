@@ -98,45 +98,16 @@ type SubAgentEmitter interface {
 }
 
 // SubAgentMergeFunc is the merge pure function signature (FAN-03
-// contract). 13-02 supplies the production merge.go implementation.
-// The orchestrator holds a func-typed reference so 13-01 can declare
-// the seam without an import cycle.
+// contract). 13-02 supplies the production merge.go implementation
+// in merge.go. The orchestrator holds a func-typed reference so 13-01
+// can declare the seam without an import cycle.
 type SubAgentMergeFunc func(results []SubAgentResult) MergedVerdict
 
-// SubAgentResult is the per-sub-agent envelope consumed by the merge
-// function. JSON tag order is structural — the FAN-03 byte-identity
-// contract test (TestMergeSubAgentResultsByteIdentity) depends on
-// stable JSON marshaling.
-type SubAgentResult struct {
-	ID         string             `json:"id"`
-	Status     string             `json:"status"` // ok | refused | faulted
-	SubQuery   string             `json:"sub_query"`
-	Verdict    *MergedVerdict     `json:"verdict,omitempty"`
-	Refusal    *MergedVerdict     `json:"refusal,omitempty"`
-	Confidence float64            `json:"confidence"`
-	Citations  []MergedCitation   `json:"citations,omitempty"`
-}
-
-// MergedCitation is the per-citation envelope inside SubAgentResult +
-// the final MergedVerdict. Stays in this package to avoid a
-// downstream import on internal/verdict for the orchestrator seam.
-type MergedCitation struct {
-	ChunkID string `json:"chunk_id"`
-	Span    string `json:"span"`
-}
-
-// MergedVerdict is the post-merge envelope the orchestrator emits
-// after the 5-step pipeline. Status is one of: "ok" | "refused" |
-// "faulted" | "needs_input" — the conservative partial-failure merge
-// (D2-14) sets status="needs_input" + confidence=0 when ANY sub-agent
-// returned refused/faulted.
-type MergedVerdict struct {
-	Status         string           `json:"status"`
-	Confidence     float64          `json:"confidence"`
-	Citations      []MergedCitation `json:"citations,omitempty"`
-	ReviewRequired bool             `json:"review_required"`
-	SubResults     []SubAgentResult `json:"sub_results,omitempty"`
-}
+// (SubAgentResult + MergedVerdict types live in merge.go — moved from
+// this file in 13-02 so the merge pure function owns the type
+// definitions alongside the byte-identity contract test. The merge
+// types reuse verdict.Verdict / verdict.Refusal / verdict.Citation
+// per FAN-04 reuse — NOT new types.)
 
 // FanOutOrchestrator is the per-Run orchestrator instance. Mirrors
 // the *chatmodel.TypedChatModelAgent[*schema.Message] surface area
