@@ -19,6 +19,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 
 	"github.com/skillforge/skillforge/internal/store"
@@ -28,14 +29,19 @@ import (
 // deliberately no row-modification statement anywhere in this package —
 // the schema is INSERT + SELECT only (T-3-AUDIT anti-tampering). Every
 // value is a `?` placeholder; the row never touches fmt.Sprintf.
+//
+// Phase 12 / Plan 12-05: budget_layer column added for the PLAN-04
+// 3-layer budget gate (internal/agent/callbacks/budget.go). Populated
+// ONLY for action_budget_triggered rows; empty string for every other
+// row (verdict, HITL-04 lifecycle, plan_todo cross-reference).
 const putAuditSQL = `
 INSERT INTO audit (
     ts, session_id, user_id, skill_id, query, prompt_hash,
     model_version, verdict_json, refusal_reason, chunk_ids,
     action, skill_version, frozen_args, tool_call_id, approval_id,
-    scope_session_id,
+    scope_session_id, budget_layer,
     faithfulness, context_precision, answer_relevance, context_recall
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // PutAudit appends an immutable audit row. GEVL-03: the row MUST exist
@@ -49,9 +55,22 @@ INSERT INTO audit (
 // idx_audit_pending_tcid partial unique index only constrains rows with
 // action='action_pending_approval', so a stream of verdict rows carrying
 // action=(empty string) never collides.
+//
+// Phase 12 / Plan 12-05: rows with action="action_budget_triggered" MUST
+// carry a BudgetLayer value in BudgetLayerNames (T-12-05-6 spoofing
+// guard). Empty BudgetLayer on a non-budget row is the canonical state
+// (the column is nullable; only budget events populate it).
 func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, error) {
 	if s.isClosed() {
 		return 0, sql.ErrConnDone
+	}
+	if row.Action == ActionBudgetTriggered && !BudgetLayerNames[row.BudgetLayer] {
+		// T-12-05-6 spoofing guard — reject unknown budget_layer values.
+		// The audit table is the durable record of what happened; an
+		// invalid layer value would let an adversary understate or
+		// misrepresent the budget event (e.g. "loop" mis-recorded as
+		// "denied" to skip the loop anomaly detector).
+		return 0, ErrInvalidBudgetLayer
 	}
 	res, err := s.db.ExecContext(ctx, putAuditSQL,
 		row.Timestamp.UTC(),
@@ -70,6 +89,7 @@ func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, 
 		row.ToolCallID,
 		row.ApprovalID,
 		row.ScopeSessionID,
+		row.BudgetLayer, // 12-05: empty for non-budget rows; validator rejects unknown layer values
 		toNullFloat64(row.Faithfulness),
 		toNullFloat64(row.ContextPrecision),
 		toNullFloat64(row.AnswerRelevance),
@@ -91,7 +111,7 @@ const queryAuditCols = `
     id, ts, session_id, user_id, skill_id, query, prompt_hash,
     model_version, verdict_json, refusal_reason, chunk_ids,
     action, skill_version, frozen_args, tool_call_id, approval_id,
-    scope_session_id,
+    scope_session_id, budget_layer,
     faithfulness, context_precision, answer_relevance, context_recall
 `
 
@@ -185,7 +205,7 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 			&r.Query, &r.PromptHash, &r.ModelVersion, &r.VerdictJSON,
 			&r.RefusalReason, &r.ChunkIDs,
 			&r.Action, &r.SkillVersion, &r.FrozenArgs, &r.ToolCallID,
-			&r.ApprovalID, &r.ScopeSessionID,
+			&r.ApprovalID, &r.ScopeSessionID, &r.BudgetLayer,
 			&faith, &ctxPrec, &ansRel, &ctxRecall,
 		); err != nil {
 			return nil, fmtError("QueryAudit.Scan", err)
@@ -402,13 +422,45 @@ const (
 	ActionRejected        string = "action_rejected"
 	ActionRuleCreated     string = "action_rule_created"
 	ActionRuleRevoked     string = "action_rule_revoked"
-	// Phase 12 / Plan 12-02 — plan_todos cross-reference for
-	// AuditTimelineTab (12-07). Mirrors the plan_todos.op enum
-	// (PlanTodoOpUpsert / PlanTodoOpComplete) but lives in the
-	// audit.action namespace because the FE joins on action.
+	// Phase 12 / Plan 12-02 — plan_todos cross-reference
 	ActionPlanTodoUpsert   string = "action_plan_todo_upsert"
 	ActionPlanTodoComplete string = "action_plan_todo_complete"
+
+	// Phase 12 / Plan 12-05 — PLAN-04 budget gate audit. Fires when the
+	// 3-layer budget middleware (internal/agent/callbacks/budget.go)
+	// trips a MaxIteration | Token | Loop threshold. Carries a non-empty
+	// BudgetLayer value (one of the keys in BudgetLayerNames below).
+	// INSERT-only (T-3-AUDIT); queryable via AuditFilter.Action.
+	ActionBudgetTriggered string = "action_budget_triggered"
 )
+
+// BudgetLayerNames is the whitelist of valid BudgetLayer values for
+// action_budget_triggered rows (Phase 12 / Plan 12-05). The middleware
+// (internal/agent/callbacks/budget.go) populates this column with one
+// of these three keys; the PutAudit path rejects any other value as a
+// T-12-05-6 spoofing guard (the audit row is a durable record — a
+// fabricated layer string would let an adversary understate what happened).
+//
+// T-12-05-6 mitigation posture:
+//   - whitelist keys: max_iter | token | loop
+//   - any other value → PutAudit returns an error (no row written)
+//   - empty string is the canonical "non-budget row" value — verdict
+//     rows, HITL-04 lifecycle rows, and plan_todo cross-reference
+//     rows leave BudgetLayer = ""
+var BudgetLayerNames = map[string]bool{
+	"max_iter": true,
+	"token":    true,
+	"loop":     true,
+}
+
+// ErrInvalidBudgetLayer is the sentinel error PutAudit surfaces when
+// row.Action == ActionBudgetTriggered but row.BudgetLayer is NOT in
+// BudgetLayerNames. The caller (audit_writer seam + the budget
+// middleware) treats this as a fail-closed signal: the row is NOT
+// written, the budget gate proceeds without the audit (the SSE emit
+// is suppressed on the same condition — see D11-C3 audit-first
+// posture mirrored in budget.go's BeforeModel hook).
+var ErrInvalidBudgetLayer = errors.New("sqlite.PutAudit: action_budget_triggered requires non-empty budget_layer in BudgetLayerNames (max_iter|token|loop)")
 
 const putPendingApprovalSQL = `
 INSERT INTO audit (

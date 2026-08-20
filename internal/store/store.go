@@ -100,6 +100,18 @@ type AuditRow struct {
 	// ScopeSessionID binds an approve-and-remember rule to a session
 	// (D11-D2 rule scope). Empty for verdict rows.
 	ScopeSessionID string
+	// BudgetLayer is the Phase 12 / Plan 12-05 PLAN-04 budget event
+	// discriminator. Populated ONLY for action_budget_triggered rows;
+	// one of "max_iter" | "token" | "loop" (whitelist enforced by the
+	// sqlite package's BudgetLayerNames validator). Empty string for
+	// every other row — verdict rows, HITL-04 lifecycle rows, and the
+	// plan_todo cross-reference rows from 12-02 leave this column NULL.
+	// Mirrors HITL-04 fail-closed posture: budget events are INSERT-only,
+	// queryable via AuditFilter.Action="action_budget_triggered" +
+	// a per-layer scan (the column is a single TEXT column, not a JOINed
+	// table, because the audit row count grows by ~3 rows per trigger and
+	// a JOIN would be heavier than a WHERE filter on a nullable TEXT).
+	BudgetLayer string
 	// The four Ragas metrics — NULL until the eval sidecar backfills.
 	Faithfulness     *float64
 	ContextPrecision *float64

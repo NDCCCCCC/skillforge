@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS audit (
     tool_call_id     TEXT    NOT NULL DEFAULT '',
     approval_id      TEXT    NOT NULL DEFAULT '',
     scope_session_id TEXT    NOT NULL DEFAULT '',
+    budget_layer     TEXT    NOT NULL DEFAULT '',
     faithfulness     REAL,
     context_precision REAL,
     answer_relevance  REAL,
@@ -196,6 +197,14 @@ const (
 	alterAuditAddApprovalIDSQL     = "ALTER TABLE audit ADD COLUMN approval_id TEXT NOT NULL DEFAULT ''"
 	alterAuditAddScopeSessionIDSQL = "ALTER TABLE audit ADD COLUMN scope_session_id TEXT NOT NULL DEFAULT ''"
 
+	// Phase 12 / Plan 12-05 — PLAN-04 budget event discriminator column.
+	// Nullable TEXT (NOT NULL DEFAULT ''); populated ONLY for
+	// action_budget_triggered rows. Idempotent migration via the same
+	// PRAGMA table_info() gate as the existing audit columns — running
+	// this on a fresh DB is a no-op because schemaSQL already created
+	// the column.
+	alterAuditAddBudgetLayerSQL = "ALTER TABLE audit ADD COLUMN budget_layer TEXT NOT NULL DEFAULT ''"
+
 	alterCheckpointAddSkillVersionSQL = "ALTER TABLE checkpoint ADD COLUMN skill_version TEXT NOT NULL DEFAULT ''"
 	alterCheckpointAddPromptHashSQL   = "ALTER TABLE checkpoint ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT ''"
 )
@@ -228,6 +237,8 @@ var auditLifecycleColumns = []struct{ column, stmt string }{
 	{"tool_call_id", alterAuditAddToolCallIDSQL},
 	{"approval_id", alterAuditAddApprovalIDSQL},
 	{"scope_session_id", alterAuditAddScopeSessionIDSQL},
+	// Phase 12 / Plan 12-05 — budget event discriminator column.
+	{"budget_layer", alterAuditAddBudgetLayerSQL},
 }
 
 var checkpointSnapshotColumns = []struct{ column, stmt string }{
