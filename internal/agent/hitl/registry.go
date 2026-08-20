@@ -42,8 +42,9 @@ import (
 //
 //  3. PHASE 12 plan_approve add-point — appending "plan_approve" to
 //     this slice AND registering &planApproveTool{} in hitlHandlers
-//     is the only change required to add a new write target. NO
-//     other file in the codebase needs touching.
+//     (Plan 12-03 / PLAN-03 / D11-B3) is the only change required to
+//     add a new write target. NO other file in the codebase needs
+//     touching.
 //
 // Order matters: each Skill's writes:[] is filtered against this
 // slice in iteration order, and the resulting tool whitelist is
@@ -60,9 +61,15 @@ import (
 //	green without rewriting the canonical compliance/calculator
 //	fixtures. Phase 12 may prune this entry when calculator moves out
 //	of the validate-only demo state.
+//
+// PHASE 12 add (Plan 12-03 / PLAN-03): "plan_approve" is the third
+// production write target — the DeepAgent plan confirmation gate.
+// Skills with `writes: ["plan_approve"]` (or `writes: ["*"]`) get
+// the plan_approve_review Tool in their LLM-visible whitelist.
 var AllowedWriteTargets = []string{
 	"memory:facts",  // 11-02: first write target (HITL-06)
 	"review_report", // 11-04: second write target — handler nil until 11-04
+	"plan_approve",  // 12-03: third write target — DeepAgent plan confirmation gate (PLAN-03)
 	"skill_state",   // deprecated placeholder for calculator (D7-10); no handler
 }
 
@@ -89,6 +96,7 @@ var AllowedWriteTargets = []string{
 var hitlHandlers = map[string]tool.InvokableTool{
 	"memory:facts":  &MemoryFactsTool{},  // 11-02 — this file's companion hitl_memory_facts.go (exported in 11-05 for BuildToolsForSkill's WithContext injection)
 	"review_report": &reviewReportTool{}, // 11-04 — hitl_review_report.go (HITL-06 second write target)
+	"plan_approve":  &planApproveTool{},  // 12-03 — hitl_plan_approve.go (PLAN-03 DeepAgent plan confirmation gate)
 	"skill_state":   nil,                 // deprecated placeholder (D7-10 calculator). nil handler = BuildToolsForSkill silently skips.
 }
 

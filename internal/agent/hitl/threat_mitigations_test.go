@@ -191,8 +191,10 @@ func testThreatHitl05WritesEnforcement(t *testing.T) {
 		"external_api must NOT be in AllowedWriteTargets")
 
 	// The pure-function source-of-truth: AllowedWriteTargets is the
-	// ONLY file containing the allowed-write list (D11-B3).
-	assert.ElementsMatch(t, []string{"memory:facts", "review_report", "skill_state"},
+	// ONLY file containing the allowed-write list (D11-B3). Phase 12 /
+	// Plan 12-03 adds "plan_approve" — the DeepAgent plan confirmation
+	// gate — between review_report and skill_state.
+	assert.ElementsMatch(t, []string{"memory:facts", "review_report", "plan_approve", "skill_state"},
 		AllowedWriteTargets,
 		"AllowedWriteTargets drifted from the D11-B3 source-of-truth")
 }

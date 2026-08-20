@@ -18,6 +18,7 @@ package hitl
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"encoding/json"
 	"testing"
@@ -38,11 +39,14 @@ func TestAllowedTargetsSubset(t *testing.T) {
 
 	// Sorted lexicographically. Failure here signals that the
 	// validator's error messages will drift across calls (operator
-	// sees a different order on each reload).
-	assert.Equal(t, []string{"memory:facts", "review_report", "skill_state"}, got,
+	// sees a different order on each reload). Phase 12 / Plan 12-03
+	// adds "plan_approve" between "memory:facts" and "review_report"
+	// after sorting (the slice order is independent of the
+	// defensive-copy sort).
+	assert.Equal(t, []string{"memory:facts", "plan_approve", "review_report", "skill_state"}, got,
 		"KnownTargets must be sorted lexicographically (registry contract). "+
 			"`skill_state` is the D7-10 calculator placeholder and intentionally "+
-			"co-lives with the 11-02 + 11-04 write targets.")
+			"co-lives with the 11-02 + 11-04 + 12-03 write targets.")
 
 	// Defensive-copy contract: callers MUST NOT mutate the
 	// underlying slice. Mutate the returned copy, re-call, assert
@@ -53,6 +57,33 @@ func TestAllowedTargetsSubset(t *testing.T) {
 		"KnownTargets must return a defensive copy — caller mutation must not reach the source")
 	assert.Equal(t, "memory:facts", again[0],
 		"KnownTargets re-call must yield the original (untampered) head")
+}
+
+// TestPlanApproveRegistryAllowedTargetsContains — Plan 12-03
+// D11-B3 single-source-of-truth lock. The registry's
+// AllowedWriteTargets slice MUST contain "plan_approve" after this
+// plan ships. Without this entry, BuildToolsForSkill silently
+// drops the plan_approve write from Skills that declare it — the
+// PLAN-03 plan confirmation gate would be unreachable from any
+// Skill.
+func TestPlanApproveRegistryAllowedTargetsContains(t *testing.T) {
+	assert.True(t, Contains(AllowedWriteTargets, "plan_approve"),
+		"AllowedWriteTargets must contain \"plan_approve\" (PLAN-03 / D11-B3 single source of truth)")
+}
+
+// TestPlanApproveRegistryHandlerExists — Plan 12-03 / D11-B3:
+// hitlHandlers["plan_approve"] MUST register &planApproveTool{}.
+// BuildToolsForSkill consumes this map to construct the LLM-visible
+// Tool whitelist per turn.
+func TestPlanApproveRegistryHandlerExists(t *testing.T) {
+	h := LookupHandler("plan_approve")
+	require.NotNil(t, h, "LookupHandler must return non-nil for \"plan_approve\" (D11-B3 wiring)")
+	info, err := h.Info(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, PlanApproveToolName, info.Name,
+		"the registered handler must be the planApproveTool (Info.Name == \"plan_approve_review\")")
+	require.NotNil(t, info.ParamsOneOf,
+		"planApproveTool.Info() must include ParamsOneOf (LLM-visible schema)")
 }
 
 // TestApprovalDecisionRoundTrip — D11-B2 dual registration. The
