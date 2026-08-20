@@ -139,6 +139,39 @@ CREATE TABLE IF NOT EXISTS approval_rules (
 );
 CREATE INDEX IF NOT EXISTS idx_approval_rules_scope_session ON approval_rules(scope_session_id);
 CREATE INDEX IF NOT EXISTS idx_approval_rules_skill ON approval_rules(skill_id);
+
+-- plan_todos (Phase 12 / Plan 12-02 / P12-L5 / P12-L4): the SEPARATE
+-- INSERT-only audit table that backs the DeepAgent write_todos Tool
+-- (internal/agent/deep_audit.go::writeTodosAuditedTool). This table is
+-- INTENTIONALLY DISTINCT from audit.action — replay-query is the hot
+-- path per PlanReplayView render (12-07), and a dedicated table keeps
+-- the SELECT lean (no WHERE filter, no audit row JOINs).
+--
+-- Schema rationale:
+--   - PRIMARY KEY (run_id, todo_id): idempotent upserts (re-writing
+--     the same todo updates content + status + ts via INSERT OR
+--     REPLACE semantics, last-write-wins for replay consistency).
+--   - op: 'upsert' | 'complete' discriminator — replay reconstructs
+--     todo state transitions from this column (a 'complete' row
+--     records a "this todo was finished" timestamp; future phases
+--     may query the gap between upsert and complete).
+--   - active_form: optional plan_todos schema field (mirrors eino's
+--     deep.TODO.ActiveForm; FE renders the active step indicator).
+--   - ts: epoch-seconds; index-less ORDER BY ts ASC keeps the replay
+--     scan cheap for typical run sizes (<200 todos per run).
+--   - NO ALTER on existing tables — additive migration; existing data
+--     is untouched (P12-L5: separate table, not extension).
+CREATE TABLE IF NOT EXISTS plan_todos (
+    run_id      TEXT NOT NULL,
+    todo_id     TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    active_form TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL,
+    ts          INTEGER NOT NULL,
+    op          TEXT NOT NULL,
+    PRIMARY KEY (run_id, todo_id)
+);
+CREATE INDEX IF NOT EXISTS idx_plan_todos_run_id_ts ON plan_todos(run_id, ts);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
