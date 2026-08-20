@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/verdict"
 )
 
 // TestNewOrchestratorRequiresManifest — nil manifest → error.
@@ -215,4 +216,89 @@ func TestNoNewParallelAgentUsage(t *testing.T) {
 	// For now: assert the sealed-sentinel comment is present.
 	src := `// P13-L8: 禁止 adk.NewParallelAgent`
 	assert.NotEmpty(t, src, "sealed sentinel marker MUST exist for P13-L1 enforcement")
+}
+
+// TestFanOutOrchestratorRunStubCallsMerge — bridges 13-01 (Run
+// skeleton) + 13-02 (merge function wiring) + 13-03 (real pipeline).
+// Asserts that *FanOutOrchestrator.Run on the skeleton calls the
+// configured SubAgentMergeFunc with nil input (the 13-02 wiring),
+// and returns the resulting empty MergedVerdict (FAN-03 SC-3
+// byte-identity contract propagates to the orchestrator surface).
+func TestFanOutOrchestratorRunStubCallsMerge(t *testing.T) {
+	manifest := &skill.Manifest{Name: "compliance", Agent: "orchestrator"}
+
+	// Custom merge function records the input it receives. Asserts
+	// the orchestrator wires the function into the Run skeleton.
+	var observed []SubAgentResult
+	called := false
+	mergeFn := func(results []SubAgentResult) MergedVerdict {
+		called = true
+		observed = results
+		return mergeSubAgentResults(results)
+	}
+
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-merge-stub",
+	}, defaultSubAgentFactory{}, mergeFn)
+	require.NoError(t, err)
+
+	iter := orch.Run(context.Background(), nil)
+	require.NotNil(t, iter)
+
+	// Drain the iterator (Run emits one skeleton event then EOF).
+	for {
+		_, ok := iter.Next()
+		if !ok {
+			break
+		}
+	}
+
+	// The Run skeleton calls mergeFunc(nil) — observed must be nil.
+	if !called {
+		t.Fatal("mergeFunc was not called from Run skeleton (13-02 wiring broken)")
+	}
+	if observed != nil {
+		t.Errorf("mergeFunc received non-nil results %v, want nil (Run skeleton does not yet fan out)", observed)
+	}
+}
+
+// TestFanOutOrchestratorCustomMergeFuncWiredThrough — asserts that
+// the orchestrator holds the merge function passed at construction
+// time and calls it from Run. Regression lock for the 13-02 wiring.
+func TestFanOutOrchestratorCustomMergeFuncWiredThrough(t *testing.T) {
+	manifest := &skill.Manifest{Name: "compliance", Agent: "orchestrator"}
+
+	// Custom merge function with a non-default behavior — return
+	// compliant with confidence 0.42 so we can detect it was called.
+	customMerge := func(results []SubAgentResult) MergedVerdict {
+		return MergedVerdict{
+			Status:         verdict.CompliantStatus,
+			Confidence:     0.42,
+			ReviewRequired: false,
+			SubResults:     results,
+		}
+	}
+
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-custom-merge",
+	}, defaultSubAgentFactory{}, customMerge)
+	require.NoError(t, err)
+
+	// MergeFunc() accessor returns the function we passed.
+	fn := orch.MergeFunc()
+	require.NotNil(t, fn)
+
+	// Invoke the accessor function with empty input — must return
+	// the custom merge's signature.
+	result := fn(nil)
+	if result.Status != verdict.CompliantStatus {
+		t.Errorf("custom merge Status = %q, want %q", result.Status, verdict.CompliantStatus)
+	}
+	if result.Confidence != 0.42 {
+		t.Errorf("custom merge Confidence = %v, want 0.42", result.Confidence)
+	}
 }

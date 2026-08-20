@@ -202,7 +202,9 @@ func (o *FanOutOrchestrator) Description(_ context.Context) string {
 // Run is the orchestrator's entry point — the 5-step pipeline.
 // 13-01 ships a SKELETON: Step 1 (Classify) + Step 2 (Build) are
 // stubs that return an empty MergedVerdict so the dispatch path
-// compiles. 13-03 fills the actual LLM-driven classifier call,
+// compiles. 13-02 wires the merge function (Step 4) into the stub
+// so the orchestrator's Run invokes mergeSubAgentResults at the
+// seam. 13-03 fills the actual LLM-driven classifier call,
 // errgroup fan-out, and per-sub-agent ApplyTrustStage grounding.
 //
 // The Run signature MUST satisfy adk.Agent — TypedAgent[*schema.Message].Run
@@ -214,10 +216,21 @@ func (o *FanOutOrchestrator) Description(_ context.Context) string {
 // eino Runner's iterator sees EOF after the skeleton. A goroutine
 // runs the emit-then-close sequence so Run returns immediately (the
 // eino Runner does NOT block on the orchestrator's completion).
+//
+// 13-02 wiring: the goroutine calls mergeSubAgentResults(nil) so
+// the merge pure function is exercised on every Run call. The
+// merged verdict is discarded (the skeleton does not consume it);
+// 13-03 replaces this with the real 5-step pipeline where the
+// merged verdict feeds Step 5 (ApplyTrustStage).
 func (o *FanOutOrchestrator) Run(ctx context.Context, input *adk.AgentInput, opts ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
 
 	go func() {
+		// 13-02 stub: call the merge function with an empty result
+		// slice so the seam is exercised on every Run. 13-03 wires
+		// the real per-sub-agent results here.
+		_ = o.mergeFunc(nil)
+
 		// 13-01 skeleton contract: emit ONE event carrying the
 		// placeholder text (so the eino Runner sees a non-zero
 		// completion). The real pipeline emits SSE chunks
@@ -246,7 +259,7 @@ func (o *FanOutOrchestrator) Run(ctx context.Context, input *adk.AgentInput, opt
 	//   for _, sub := range subs { go o.runSubAgent(ctx, sub, ...) }
 	//   merged := o.mergeFunc(results)
 	//   verdict := o.applyTrustStage(ctx, merged)
-	// For 13-01 we just emit one skeleton event.
+	// For 13-02 we just call mergeFunc(nil) so the seam is wired.
 	_ = ctx
 	_ = input
 	_ = opts
