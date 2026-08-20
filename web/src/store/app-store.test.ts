@@ -9,8 +9,9 @@
 // global — cleared per test to isolate the sf.session.pins mirror.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadSessionPins, useAppStore, type PlanTodo, type SessionMeta } from './app-store';
+import { loadSessionPins, useAppStore, type SessionMeta } from './app-store';
 import type { PendingApproval, TerminalApproval } from './app-store';
+import type { PlanTodo } from '../types/wire-types';
 
 beforeEach(() => {
   globalThis.localStorage.clear();

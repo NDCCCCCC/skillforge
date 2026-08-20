@@ -1,6 +1,14 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Plan 12-06 Task 4 — extends ChatColumn with PlanTracePart (PLAN-02
+// SC-2). The component reads the plan slice's currentRunId (set by the
+// RealChatTransport on every data-plan-trace chunk) and renders the
+// live todo list above the messages area. D14 invariant: PlanTracePart
+// is the AUTHORITATIVE surface for plan state — it never reads from
+// useChat.messages for plan (the synthetic write_todos fallback in
+// PlanTracePart is a defensive layer only).
+//
 // ChatColumn — the chat-first layout's main column (Open Design
 // redesign B2; formerly RightChat, the 420px right panel of the
 // three-panel layout). The panel header (session + skill badge) moved
@@ -18,6 +26,7 @@ import ChatInput from '../chat/ChatInput';
 import DraftStreamChip from '../chat/parts/DraftStreamChip';
 import WizardMode from './WizardMode';
 import { ApprovalCard } from '../ApprovalCard';
+import { PlanTracePart } from '../PlanTracePart';
 import { useAppStore } from '../../store/app-store';
 
 // Open Design B5 — emoji sug-card icons are replaced by lucide icons;
@@ -41,6 +50,10 @@ export default function ChatColumn({ messages, status, onSend }: ChatColumnProps
   const draftStatus = useAppStore((s) => s.draftStatus);
   const draftText = useAppStore((s) => s.draftText);
   const activeSessionId = useAppStore((s) => s.activeSessionId);
+  // Plan 12-06 Task 4 — current runId for the plan slice. The
+  // RealChatTransport writes this on every data-plan-trace chunk.
+  // PlanTracePart uses it as the lookup key into planByRunId.
+  const planCurrentRunId = useAppStore((s) => s.plan.currentRunId);
 
   useEffect(() => {
     if (wizardActive) return;
@@ -69,6 +82,13 @@ export default function ChatColumn({ messages, status, onSend }: ChatColumnProps
           renders null until store.approval.pending/terminal is set;
           floats above the streaming chat at the interrupt position. */}
       <ApprovalCard sessionId={activeSessionId} />
+      {/* Plan 12-06 — live planning-trace chip. Inline above the
+          messages scroll when the SSE stream has emitted a
+          data-plan-trace for the current run (PLAN-02 SC-2). Collapses
+          to a one-line summary after the run completes. Reads
+          exclusively from the plan slice (D14-extension); the synthetic
+          write_todos fallback in PlanTracePart is defensive only. */}
+      {planCurrentRunId && <PlanTracePart runId={planCurrentRunId} />}
       {messages.length === 0 ? (
         <div
           data-testid="chat-empty"

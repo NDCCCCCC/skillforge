@@ -1,6 +1,11 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Plan 12-06 Task 4 — extends the RealChatTransport SSE parser to
+// dispatch `data-plan-trace` chunks to the plan slice (runId from the
+// payload). Also routes synthetic write_todos tool-call parts as a
+// Pitfall 6 fallback (authoritative state remains the plan slice).
+//
 // Plan 260815-j4y Task 2 (GREEN) — RealChatTransport.
 //
 // Wraps the AI SDK v7 DefaultChatTransport for the prod (env='prod')
@@ -36,6 +41,7 @@ import {
 } from './MockChatTransport';
 import { useAppStore } from '../store/app-store';
 import type { JsonObject, TerminalApproval } from '../store/app-store';
+import type { PlanTodo } from '../types/wire-types';
 
 export type { DraftStatus, DraftUpdate, DraftUpdateHandler, MockChatTransportDraftOptions };
 
@@ -270,6 +276,9 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
       async start(controller) {
         let draftBuffer = '';
         let draftStatus: DraftStatus = 'pending';
+        // Capture the chatId (== session id, == runId for v1) so the
+        // synthetic fallback below can scope its plan slice write.
+        const activeChatId = options.chatId ?? '';
 
         const emitDraft = (next: DraftStatus, text: string) => {
           draftStatus = next;
@@ -373,6 +382,29 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
                 }
               }
 
+              // Plan 12-06 — live planning-trace dispatch (PLAN-02
+              // SC-2). The data-plan-trace chunk carries the FULL
+              // post-write todo snapshot for one runId (12-02 BE side:
+              // writeTodosAuditedTool emits this). Route to the plan
+              // slice via setPlan; the synthetic fallback path below
+              // handles the write_todos tool-call parts if the AI SDK
+              // v5 parser buffers data-* chunks until message end
+              // (Pitfall 6). Authoritative state stays in the plan
+              // slice (D14) — the chunk is NEVER enqueued to useChat.
+              if (wireChunk.type === 'data-plan-trace') {
+                const data = (chunk as { data?: { runId?: unknown; todos?: unknown; ts?: unknown } }).data;
+                if (data && typeof data === 'object') {
+                  const runId = typeof data.runId === 'string' ? data.runId : '';
+                  const todos = Array.isArray(data.todos) ? (data.todos as PlanTodo[]) : [];
+                  const ts = typeof data.ts === 'number' ? data.ts : Date.now();
+                  if (runId && todos.length > 0) {
+                    const planState = useAppStore.getState().plan;
+                    planState.setPlan(runId, todos, ts);
+                    continue;
+                  }
+                }
+              }
+
               // Plan 260815-k8d — text-end is the terminal signal for the
               // conclusion text stream. The draft channel's own
               // text-delta-draft-end was intercepted above (continue),
@@ -382,6 +414,43 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
               // "✅ 已验证" forever after every successful verdict.
               if (wireChunk.type === 'text-end') {
                 emitDraft('idle', '');
+              }
+
+              // Plan 12-06 — synthetic write_todos tool-call fallback
+              // (Pitfall 6). When AI SDK v5 buffers data-* chunks, the
+              // authoritative path silently delays; the AI SDK's
+              // tool-call lifecycle surface (tool-input-available +
+              // tool-output-available) IS rendered live. We mirror the
+              // write_todos output to the plan slice as a fallback so
+              // PlanTracePart has fresh data even if the data-plan-
+              // trace chunk is buffered. The chunk is NOT consumed —
+              // it still flows to useChat as the synthetic path
+              // requires (useChat.messages.parts is consulted).
+              if (wireChunk.type === 'tool-output-available') {
+                const tOut = chunk as { toolCallId?: string; output?: unknown };
+                if (tOut.output && typeof tOut.output === 'object') {
+                  const out = tOut.output as { toolName?: unknown; output?: unknown };
+                  // The tool-call part's input/output are nested under
+                  // generic `output` of the dispatcher; in our wire,
+                  // the runner emits the write_todos snapshot in the
+                  // `output` field. Best-effort extract.
+                  const payload = out.output as { todos?: unknown } | undefined;
+                  if (
+                    out &&
+                    typeof out.toolName === 'string' &&
+                    out.toolName === 'write_todos' &&
+                    payload &&
+                    Array.isArray(payload.todos)
+                  ) {
+                    const todos = payload.todos as PlanTodo[];
+                    if (todos.length > 0) {
+                      const runId = `${activeChatId || 'unknown'}-synthetic`;
+                      useAppStore
+                        .getState()
+                        .plan.setPlan(runId, todos, Date.now());
+                    }
+                  }
+                }
               }
 
               controller.enqueue(chunk);

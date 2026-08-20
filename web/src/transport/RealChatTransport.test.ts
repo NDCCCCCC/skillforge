@@ -528,3 +528,166 @@ describe('RealChatTransport — approval-gate dispatch (Plan 11-06)', () => {
     expect(approval.terminal).toBeNull();
   });
 });
+
+// ----------------------------------------------------------------------------
+// Plan 12-06 Task 4 — data-plan-trace dispatch + synthetic write_todos
+// fallback (Pitfall 6). Authoritative state lives in the plan slice
+// (D14-extension); useChat never sees the data-plan-trace chunk.
+// ----------------------------------------------------------------------------
+
+describe('RealChatTransport — plan-trace dispatch (Plan 12-06)', () => {
+  beforeEach(() => {
+    globalThis.localStorage.clear();
+    useAppStore.setState((s) => ({
+      plan: { ...s.plan, planByRunId: {}, currentRunId: null },
+    }));
+  });
+
+  it('TestDataPlanTraceChunkRouting', async () => {
+    const todos = [
+      { id: 't-1', content: '审核', status: 'pending' },
+      { id: 't-2', content: '验证', status: 'in_progress' },
+    ];
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'data-plan-trace',
+          id: 'plan-1',
+          data: { runId: 'run-abc', todos, ts: 1700000000000 },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    const chunks = await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'chat-1',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    // Plan slice received the trace.
+    const planSlice = useAppStore.getState().plan;
+    expect(planSlice.planByRunId['run-abc']).toBeDefined();
+    expect(planSlice.planByRunId['run-abc'].todos).toHaveLength(2);
+    expect(planSlice.planByRunId['run-abc'].todos[0].status).toBe('pending');
+    expect(planSlice.planByRunId['run-abc'].todos[1].status).toBe('in_progress');
+    expect(planSlice.planByRunId['run-abc'].generatedAt).toBe(1700000000000);
+    expect(planSlice.planByRunId['run-abc'].status).toBe('streaming');
+    expect(planSlice.currentRunId).toBe('run-abc');
+
+    // D14 invariant: data-plan-trace is NOT routed to useChat (the chip
+    // surfaces only what arrives via the plan slice, not via messages).
+    expect(chunks.filter((c) => c.type === 'data-plan-trace')).toHaveLength(0);
+  });
+
+  it('TestSyntheticWriteTodosToolCallRouting', async () => {
+    const todos = [
+      { id: 't-1', content: '合成', status: 'completed' },
+    ];
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'tool-input-available',
+          toolCallId: 'tc-1',
+          toolName: 'write_todos',
+          input: { todos },
+        }),
+        sseFrame({
+          type: 'tool-output-available',
+          toolCallId: 'tc-1',
+          output: { toolName: 'write_todos', output: { todos } },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'chat-synth-1',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    // The synthetic tool-output routes to the plan slice under the
+    // "<chatId>-synthetic" runId convention.
+    const syntheticRunId = 'chat-synth-1-synthetic';
+    const planSlice = useAppStore.getState().plan;
+    expect(planSlice.planByRunId[syntheticRunId]).toBeDefined();
+    expect(planSlice.planByRunId[syntheticRunId].todos).toHaveLength(1);
+    expect(planSlice.planByRunId[syntheticRunId].todos[0].status).toBe('completed');
+  });
+
+  it('TestTransportSwapWithPlanTracePart', async () => {
+    // D-04 invariant: data-plan-trace routing must be transport-agnostic.
+    // The runtime path (RealChatTransport) and the test path
+    // (MockChatTransport) must both reach the same plan slice state for
+    // identical payloads. We test the runtime side here (MockChatTransport
+    // parity is asserted by the transport-swap.test.tsx suite).
+    const todos = [{ id: 't-1', content: '验证传输', status: 'in_progress' }];
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'data-plan-trace',
+          id: 'plan-1',
+          data: { runId: 'run-swap', todos, ts: 1700000000001 },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    const chunks = await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'chat-swap',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    // UseChat sees the byte-identical stream EXCEPT for the dispatched
+    // data-plan-trace chunk (consumed by the transport, never enqueued).
+    expect(chunks.map((c) => c.type)).toEqual(['start', 'finish']);
+
+    // The plan slice was mutated identically to what a MockChatTransport
+    // consumer would observe for the same data-plan-trace payload.
+    const slice = useAppStore.getState().plan;
+    expect(slice.planByRunId['run-swap']).toBeDefined();
+    expect(slice.planByRunId['run-swap'].todos[0].content).toBe('验证传输');
+    expect(slice.currentRunId).toBe('run-swap');
+  });
+});

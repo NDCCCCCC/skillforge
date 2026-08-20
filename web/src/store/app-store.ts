@@ -218,10 +218,14 @@ export interface PlanState {
 
 export interface PlanSlice {
   planByRunId: Record<string, PlanState>;
+  /** The most-recently-seen runId from the data-plan-trace wire. UI
+   * reads this when it needs to render the "active" plan (PlanTracePart
+   * consumers). Null when no run has emitted a trace in this session. */
+  currentRunId: string | null;
 
   /** Replace the todo snapshot for a runId. Called on every data-plan-trace
    * chunk. The trace is idempotent (each chunk carries the FULL post-write
-   * snapshot), so we just replace in-place. */
+   * snapshot), so we just replace in-place. Also bumps `currentRunId`. */
   setPlan: (runId: string, todos: PlanTodo[], ts: number) => void;
 
   /** Transition a plan to a terminal state (complete | forced_stop). */
@@ -229,6 +233,11 @@ export interface PlanSlice {
 
   /** Drop one run's plan (called when a session/run is closed). */
   clearPlan: (runId: string) => void;
+
+  /** Manually set the active runId — used by the transport when it
+   * first sees a runId so the UI has a target before any data-plan-trace
+   * chunk arrives. */
+  setCurrentRunId: (runId: string | null) => void;
 }
 
 /** Discriminated union for the center panel's active view (D-02). */
@@ -660,6 +669,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // refresh restores the last live plan.
   plan: {
     planByRunId: loadPersistedPlan(),
+    currentRunId: null,
 
     setPlan: (runId, todos, ts) =>
       set((state) => {
@@ -672,7 +682,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           },
         };
         savePersistedPlan(next);
-        return { plan: { ...state.plan, planByRunId: next } };
+        return {
+          plan: {
+            ...state.plan,
+            planByRunId: next,
+            currentRunId: runId,
+          },
+        };
       }),
 
     markPlanStatus: (runId, status) =>
@@ -691,8 +707,17 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       set((state) => {
         const { [runId]: _drop, ...rest } = state.plan.planByRunId;
         savePersistedPlan(rest);
-        return { plan: { ...state.plan, planByRunId: rest } };
+        const currentRunId =
+          state.plan.currentRunId === runId ? null : state.plan.currentRunId;
+        return {
+          plan: { ...state.plan, planByRunId: rest, currentRunId },
+        };
       }),
+
+    setCurrentRunId: (runId) =>
+      set((state) => ({
+        plan: { ...state.plan, currentRunId: runId },
+      })),
   },
 
   setCenterView: (view) => set({ centerView: view }),
