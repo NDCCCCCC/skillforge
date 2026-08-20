@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -233,3 +234,71 @@ func TestMemFactsArgsParse(t *testing.T) {
 // value MUST satisfy tool.InvokableTool so the eino
 // compose.ToolsNodeConfig accepts it. Compile-time check.
 var _ tool.InvokableTool = (*MemoryFactsTool)(nil)
+
+// fakeRuleMatcher is the 11-05 RuleMatcher test double. The fn hook
+// decides match/no-match; on match it returns a fully-populated
+// sqlite.ApprovalRule mirroring what SqlRuleMatcher surfaces.
+type fakeRuleMatcher struct {
+	fn func(target, argsHash, skillID, sessionID string) bool
+}
+
+func (m fakeRuleMatcher) Match(_ context.Context, target, argsHash, skillID, sessionID string) (*sqlite.ApprovalRule, bool) {
+	if m.fn == nil {
+		return nil, false
+	}
+	if m.fn(target, argsHash, skillID, sessionID) {
+		return &sqlite.ApprovalRule{
+			Target:         target,
+			ArgsHash:       argsHash,
+			SkillID:        skillID,
+			ScopeSessionID: sessionID,
+		}, true
+	}
+	return nil, false
+}
+
+// TestRuleAutoPass — D11-D1 / HITL-08 auto-pass path. When the rule
+// matcher reports a match, Pass 1 MUST:
+//
+//  1. call ruleMatcher.Match with (target, sha256(args), skillID, sessionID),
+//  2. SKIP tool.StatefulInterrupt (no interrupt error is returned),
+//  3. execute the write directly and return the structured OK string.
+//
+// The auto-pass audit row (MarkAutoPassedRule) goes through the
+// noopAuditWriter here (audit: nil); the store-level audit row shape
+// is locked by TestApprovalRulesRevoke and the writer's own tests.
+func TestRuleAutoPass(t *testing.T) {
+	matched := false
+	fakeMatcher := fakeRuleMatcher{fn: func(_, _, _, _ string) bool { matched = true; return true }}
+
+	h := &MemoryFactsTool{
+		audit:       nil,
+		ruleMatcher: fakeMatcher,
+		sessionID:   "sess-auto",
+		skillID:     "compliance",
+	}
+
+	args := `{"key":"employee_count","value":"150","tier":"权威"}`
+	ctx := context.Background()
+
+	result, err := h.InvokableRun(ctx, args)
+	require.NoError(t, err, "rule-matched Pass 1 executes directly — no interrupt error")
+	assert.Contains(t, result, "memory_facts_write OK")
+	assert.Contains(t, result, "employee_count")
+	assert.True(t, matched, "rule matcher MUST have been called")
+}
+
+// TestRuleAutoPassNilMatcherFallsBackToInterrupt — the fail-closed
+// direction: a nil ruleMatcher behaves as NoopRuleMatcher (no match),
+// so the Tool takes the normal interrupt path rather than silently
+// executing.
+func TestRuleAutoPassNilMatcherFallsBackToInterrupt(t *testing.T) {
+	h := &MemoryFactsTool{sessionID: "sess-nil", skillID: "compliance"}
+	out, err := h.InvokableRun(context.Background(), `{"key":"k","value":"v"}`)
+	assert.Empty(t, out)
+	require.Error(t, err, "nil matcher must fall back to the interrupt path")
+	errMsg := strings.ToLower(err.Error())
+	assert.True(t,
+		strings.Contains(errMsg, "interrupt") || strings.Contains(errMsg, "approval"),
+		"fallback path must surface the interrupt signal; got %q", err.Error())
+}
