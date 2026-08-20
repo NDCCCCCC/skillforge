@@ -31,6 +31,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UIMessageChunk } from 'ai';
 import { RealChatTransport, type DraftUpdate } from './RealChatTransport';
+import { useAppStore } from '../store/app-store';
+import type { PendingApproval } from '../store/app-store';
 
 /** Loose wire-shape accepted by the SSE serializer — drafts included. */
 type WireChunk = Record<string, unknown> & { type: string };
@@ -325,5 +327,204 @@ describe('RealChatTransport (Plan 260815-j4y)', () => {
     const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
     const headers = init.headers as Record<string, string>;
     expect(headers['x-session-id']).toBeUndefined();
+  });
+});
+
+// ----------------------------------------------------------------------------
+// Plan 11-06 Task 5 — HITL approval-gate dispatch + D-04/D15 invariants
+// ----------------------------------------------------------------------------
+
+describe('RealChatTransport — approval-gate dispatch (Plan 11-06)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useAppStore.setState((s) => ({
+      approval: { ...s.approval, pending: null, terminal: null, history: [], resumeBanner: null },
+    }));
+  });
+
+  it('TestTransportSwapWithApprovalCard', async () => {
+    // D-04 invariant, Phase 11 form: the approval-gate UI derives from
+    // the store — the transport NEVER imports or renders it. Static
+    // source check first (defense against accidental imports).
+    const fs = await import('node:fs');
+    const transportSource = fs.readFileSync('src/transport/RealChatTransport.ts', 'utf-8');
+    expect(transportSource).not.toMatch(/ApprovalCard/);
+
+    // Functional: an SSE stream carrying the 4 new decision strings
+    // dispatches to the store's approval branch; those chunks are NOT
+    // enqueued to useChat. A pre-existing decision string (route)
+    // flows through verbatim — the mock↔Default byte-identity for
+    // existing decisions is untouched.
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-route',
+          data: { step: 1, decision: 'route', selected: 'simple-qa' },
+        }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-int',
+          data: {
+            step: 0,
+            decision: 'interrupted',
+            approvalId: 'apr-sse-1',
+            toolName: 'memory_facts_write',
+            target: 'memory:facts',
+            frozenArgs: { fact: 'sse interrupt' },
+            reason: 'agent wants to write',
+            skillVersion: 'v1',
+            promptHash: 'ph-sse',
+            sessionId: 'sess-sse',
+            skillId: 'simple-qa',
+          },
+        }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-res',
+          data: { step: 0, decision: 'tool-resumed', toolCallId: 'apr-sse-1' },
+        }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-rule',
+          data: {
+            step: 0,
+            decision: 'rule-matched',
+            approvalId: 'apr-sse-2',
+            target: 'memory:facts',
+            toolName: 'memory_facts_write',
+            frozenArgs: { fact: 'auto' },
+            skillVersion: 'v1',
+            promptHash: 'ph-sse',
+          },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    const chunks = await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'sess-sse',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    // (a) interrupted → pending was set… then tool-resumed resolved it.
+    const approval = useAppStore.getState().approval;
+    expect(approval.pending).toBeNull();
+    expect(approval.terminal?.status).toBe('approved');
+    expect(approval.terminal?.approvalId).toBe('apr-sse-1');
+    // (b) history captured both the resolution and the rule auto-pass.
+    expect(approval.history.map((h) => h.status)).toEqual(['approved', 'auto-passed']);
+    expect(approval.history[1].reason).toBe('记忆规则命中');
+
+    // (c) The 4 HITL data-decision chunks never reached useChat; the
+    // pre-existing route decision DID (D-04 byte-identity preserved).
+    const decisionChunks = chunks.filter((c) => c.type === 'data-decision');
+    expect(decisionChunks.length).toBe(1);
+    expect((decisionChunks[0] as { id?: string }).id).toBe('dec-route');
+    expect(chunks.map((c) => c.type)).toEqual(['start', 'data-decision', 'finish']);
+  });
+
+  it('TestWireTypeCompilation', async () => {
+    // D15 invariant: NO new SSE chunk types — only the data-decision
+    // decision STRING union extended. Static source assertions.
+    const fs = await import('node:fs');
+    const transportSource = fs.readFileSync('src/transport/RealChatTransport.ts', 'utf-8');
+    const wireTypesSource = fs.readFileSync('src/types/wire-types.ts', 'utf-8');
+
+    // 2a) No `type: 'data-*'` literals beyond data-decision anywhere in
+    // the transport (zero is expected — the dispatch compares via
+    // wireChunk.type === 'data-decision', never constructs chunks).
+    const dataTypeMatches = transportSource.match(/type:\s*'data-[a-z-]+'/g) || [];
+    const uniqueDataTypes = new Set(
+      dataTypeMatches.map((m) => m.replace(/^type:\s*'/, '').replace(/'$/, '')),
+    );
+    expect([...uniqueDataTypes].filter((t) => t !== 'data-decision')).toEqual([]);
+
+    // 2b) The wire-types decision union carries the 4 new values.
+    for (const d of ['interrupted', 'tool-resumed', 'tool-denied', 'rule-matched']) {
+      expect(wireTypesSource).toContain(`'${d}'`);
+    }
+
+    // 2c) The pre-existing decision strings are still present
+    // (additive extension — no breaking change).
+    for (const d of ['retrieve', 'answer', 'refuse', 'forced_stop', 'route', 'counter_evidence']) {
+      expect(wireTypesSource).toContain(`'${d}'`);
+    }
+
+    // 2d) The transport source handles exactly the 4 new strings.
+    for (const d of ['interrupted', 'tool-resumed', 'tool-denied', 'rule-matched']) {
+      expect(transportSource).toContain(`'${d}'`);
+    }
+
+    // 2e) tsc --noEmit (run in the Task 7 gate) covers the compile-time
+    // half of D15 — the SkillForgeChunk union still satisfies
+    // AssertAssignable<SkillForgeChunk, UIMessageChunk>.
+  });
+
+  it('resolvePending via SSE is a no-op for a stale approvalId (race safety)', async () => {
+    // Seed a pending row; a tool-denied event for a DIFFERENT id must
+    // not clear it (the store guard is the defense).
+    const pending: PendingApproval = {
+      approvalId: 'apr-live',
+      toolName: 'memory_facts_write',
+      target: 'memory:facts',
+      frozenArgs: { fact: 'live' },
+      reason: 'live',
+      createdAt: Date.now(),
+      expiresAt: null,
+      skillVersion: 'v1',
+      promptHash: 'ph-live',
+      sessionId: 'sess-live',
+      skillId: 'simple-qa',
+      status: 'pending',
+    };
+    useAppStore.getState().approval.setPending(pending);
+
+    const fetchMock = vi.fn(async () => {
+      const body = [
+        sseFrame({ type: 'start', messageId: 'msg-1' }),
+        sseFrame({
+          type: 'data-decision',
+          id: 'dec-stale',
+          data: { step: 0, decision: 'tool-denied', toolCallId: 'apr-STALE', reason: 'stale event' },
+        }),
+        sseFrame({ type: 'finish', finishReason: 'stop' }),
+      ].join('');
+      return new Response(textBodyStream(body), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+    await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'sess-live',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    const approval = useAppStore.getState().approval;
+    expect(approval.pending?.approvalId).toBe('apr-live');
+    expect(approval.terminal).toBeNull();
   });
 });
