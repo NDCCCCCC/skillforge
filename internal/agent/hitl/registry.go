@@ -87,9 +87,9 @@ var AllowedWriteTargets = []string{
 //   - DO NOT add a sync.RWMutex — the registry is process-wide
 //     constant after init; reads are lock-free.
 var hitlHandlers = map[string]tool.InvokableTool{
-	"memory:facts":  &MemoryFactsTool{}, // 11-02 — this file's companion hitl_memory_facts.go (exported in 11-05 for BuildToolsForSkill's WithContext injection)
-	"review_report": nil,                // 11-04: hitl_review_report.go registers &reviewReportTool{} here. nil is intentional — BuildToolsForSkill filters nil entries before exposing the Tool schema to the LLM.
-	"skill_state":   nil,                // deprecated placeholder (D7-10 calculator). nil handler = BuildToolsForSkill silently skips.
+	"memory:facts":  &MemoryFactsTool{},  // 11-02 — this file's companion hitl_memory_facts.go (exported in 11-05 for BuildToolsForSkill's WithContext injection)
+	"review_report": &reviewReportTool{}, // 11-04 — hitl_review_report.go (HITL-06 second write target)
+	"skill_state":   nil,                 // deprecated placeholder (D7-10 calculator). nil handler = BuildToolsForSkill silently skips.
 }
 
 // KnownTargets returns a sorted copy of AllowedWriteTargets.
