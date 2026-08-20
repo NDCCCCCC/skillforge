@@ -136,7 +136,7 @@ describe('ApprovalCard (Plan 11-06)', () => {
     fireEvent.click(screen.getByTestId('approve-once'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('/api/session/sess-1/approval/apr-test-1');
     const body = firstFetchBody(fetchMock);
     expect(body).toMatchObject({ decision: 'approve', frozen_args: { fact: 'edited-value' } });
