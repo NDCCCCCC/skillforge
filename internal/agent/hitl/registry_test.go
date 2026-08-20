@@ -39,8 +39,10 @@ func TestAllowedTargetsSubset(t *testing.T) {
 	// Sorted lexicographically. Failure here signals that the
 	// validator's error messages will drift across calls (operator
 	// sees a different order on each reload).
-	assert.Equal(t, []string{"memory:facts", "review_report"}, got,
-		"KnownTargets must be sorted lexicographically (registry contract)")
+	assert.Equal(t, []string{"memory:facts", "review_report", "skill_state"}, got,
+		"KnownTargets must be sorted lexicographically (registry contract). "+
+			"`skill_state` is the D7-10 calculator placeholder and intentionally "+
+			"co-lives with the 11-02 + 11-04 write targets.")
 
 	// Defensive-copy contract: callers MUST NOT mutate the
 	// underlying slice. Mutate the returned copy, re-call, assert

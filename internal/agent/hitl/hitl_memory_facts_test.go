@@ -31,12 +31,12 @@ import (
 // TestMemoryFactsToolFirstPassInterrupts — Pass 1 of the
 // StatefulInterrupt contract. A context WITHOUT prior interrupt
 // state (wasInterrupted == false) must:
-//   1. successfully call the audit-writer hook (the noop writer in
-//      11-02; the real writer in 11-03) with an ApprovalInfo that
-//      matches the requested args,
-//   2. return an error that wraps or implements the eino
-//      InterruptSignal — operators can extract the interrupt ID
-//      and ApprovalInfo from the signal's data attribute.
+//  1. successfully call the audit-writer hook (the noop writer in
+//     11-02; the real writer in 11-03) with an ApprovalInfo that
+//     matches the requested args,
+//  2. return an error that wraps or implements the eino
+//     InterruptSignal — operators can extract the interrupt ID
+//     and ApprovalInfo from the signal's data attribute.
 //
 // We assert the audit hook via a sentinel error (the test
 // substitutes its own auditWriterHook that fails the call). The

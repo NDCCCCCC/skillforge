@@ -49,7 +49,7 @@ func TestBuildToolsForSkill_NilManifest(t *testing.T) {
 //  4. ["review_report"]    → 0 Tools (handler nil until 11-04)
 //  5. ["external_api"]     → 0 Tools (unknown target, silent skip)
 //  6. ["memory:facts",
-//      "external_api"]    → 1 Tool (intersection + unknown skipped)
+//     "external_api"]    → 1 Tool (intersection + unknown skipped)
 func TestBuildToolsForSkill_TableDriven(t *testing.T) {
 	cases := []struct {
 		name   string

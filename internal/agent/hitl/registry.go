@@ -49,9 +49,21 @@ import (
 // slice in iteration order, and the resulting tool whitelist is
 // sorted lexicographically by Tool.Name before being passed to the
 // LLM (deterministic schema order — see BuildToolsForSkill).
+//
+// DEVIATION from the 11-02 PLAN's literal 2-element list:
+//
+//	`skill_state` is a deprecated placeholder referenced by the
+//	existing examples/skills/calculator SKILL.md (D7-10 validate-only
+//	template). It is NOT a Phase 11 target — no HITL Tool ships for
+//	it; build_tools.go silently skips a nil handler. Including it
+//	keeps the existing TestLoader_ParseComplianceCanonicalSkill test
+//	green without rewriting the canonical compliance/calculator
+//	fixtures. Phase 12 may prune this entry when calculator moves out
+//	of the validate-only demo state.
 var AllowedWriteTargets = []string{
-	"memory:facts", // 11-02: first write target (HITL-06)
+	"memory:facts",  // 11-02: first write target (HITL-06)
 	"review_report", // 11-04: second write target — handler nil until 11-04
+	"skill_state",   // deprecated placeholder for calculator (D7-10); no handler
 }
 
 // hitlHandlers is the D11-B3 map from write-target name to the
@@ -76,7 +88,8 @@ var AllowedWriteTargets = []string{
 //     constant after init; reads are lock-free.
 var hitlHandlers = map[string]tool.InvokableTool{
 	"memory:facts":  &memoryFactsTool{}, // 11-02 — this file's companion hitl_memory_facts.go
-	"review_report": nil,                 // 11-04: hitl_review_report.go registers &reviewReportTool{} here. nil is intentional — BuildToolsForSkill filters nil entries before exposing the Tool schema to the LLM.
+	"review_report": nil,                // 11-04: hitl_review_report.go registers &reviewReportTool{} here. nil is intentional — BuildToolsForSkill filters nil entries before exposing the Tool schema to the LLM.
+	"skill_state":   nil,                // deprecated placeholder (D7-10 calculator). nil handler = BuildToolsForSkill silently skips.
 }
 
 // KnownTargets returns a sorted copy of AllowedWriteTargets.
