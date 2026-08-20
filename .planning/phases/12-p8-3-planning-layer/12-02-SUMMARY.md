@@ -224,3 +224,21 @@ None — all plan deliverables shipped as specified. The session-value integrati
 Wave 2 second plan (12-03) running in parallel — `internal/agent/hitl/registry.go` + `audit_writer.go` + `hitl_plan_approve.go` for the plan_approve HITL Tool. Wave 3 starts after both complete.
 
 12-04 will wire `internal/server/plan_api.go` (GET /api/run/:id/plan consumes `QueryPlanTodos`). 12-06 ships the TS mirror (`web/src/types/wire-types.ts::SkillForgeChunk.data-plan-trace`) + the Hertz-backed SSE emitter implementation.
+
+---
+
+## Self-Check: PASSED
+
+- SUMMARY.md exists at `.planning/phases/12-p8-3-planning-layer/12-02-SUMMARY.md` (226 lines)
+- All 5 commit hashes verified via `git log --all | grep`:
+  - `f1c73f3` — Task 1 (data-plan-trace wire type)
+  - `6877179` — Task 2 (plan_todos table)
+  - `8a0517f` — Task 3 (audit action enum extension)
+  - `44f1479` — Task 4 (writeTodosAuditedTool + factory)
+  - `71f21e1` — docs(SUMMARY.md)
+- All 10 files touched match the plan's `files_modified` list
+- 23 new hermetic tests + 1 count assertion bump pass
+- All 9 phase-level verification checks GREEN
+- No new dependencies added to go.mod
+- D8-04 WalkDir scan finds zero `tool.StatefulInterrupt(` calls in deep_audit.go
+- No files outside the touched list modified
