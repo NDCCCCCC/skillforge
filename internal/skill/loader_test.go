@@ -387,3 +387,57 @@ func findRepoRoot(t *testing.T) (string, error) {
 	}
 	return "", errors.New("go.mod not found within 12 levels of test CWD")
 }
+
+// TestValidateUnknownWriteTarget — D11-B3 enforcement boundary.
+// The Skill manifest validator (step 8, Plan 11-02 Task 5) MUST
+// reject any write target that is NOT in hitl.AllowedWriteTargets.
+// An unknown target is a HARD error at load time — author sees it
+// at startup, not at first chat invocation.
+func TestValidateUnknownWriteTarget(t *testing.T) {
+	m := &Manifest{
+		Description: "test skill",
+		Agent:       "ChatModelAgent",
+		Reads:       []string{"authority"},
+		Writes:      []string{"external_api"}, // unknown — not in AllowedWriteTargets
+		Steps:       "1. Read tier\n2. Compose",
+		Guardrails: Guardrails{
+			Prohibitions:           []string{"a", "b", "c"},
+			RequiredRefusalPhrases: []string{"no_auth"},
+			TierLimits:             map[string][]string{"权威": {"read-only"}},
+		},
+		Temperature: ptrFloat32(0.0),
+	}
+	err := Validate(m)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown target "external_api"`)
+	// Error message must point the Skill author at the source of
+	// truth — the registry, not validate.go. Phase 12's
+	// plan_approve add-point touches ONLY the registry; an author
+	// who adds a new target name to the registry will not have to
+	// revisit validate.go.
+	assert.Contains(t, err.Error(), "AllowedWriteTargets")
+}
+
+// TestValidateAcceptsKnownTargets — D11-B3 contract: every target
+// in hitl.AllowedWriteTargets is accepted (no false negatives).
+// Together with TestValidateUnknownWriteTarget this brackets the
+// step-8 unknown-target check.
+func TestValidateAcceptsKnownTargets(t *testing.T) {
+	m := &Manifest{
+		Description: "test skill",
+		Agent:       "ChatModelAgent",
+		Reads:       []string{"authority"},
+		Writes:      []string{"memory:facts", "review_report"},
+		Steps:       "1. Read tier\n2. Compose",
+		Guardrails: Guardrails{
+			Prohibitions:           []string{"a", "b", "c"},
+			RequiredRefusalPhrases: []string{"no_auth"},
+			TierLimits:             map[string][]string{"权威": {"read-only"}},
+		},
+		Temperature: ptrFloat32(0.0),
+	}
+	require.NoError(t, Validate(m),
+		"every target in AllowedWriteTargets must validate cleanly")
+}
+
+func ptrFloat32(v float32) *float32 { return &v }

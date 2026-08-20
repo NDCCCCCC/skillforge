@@ -74,6 +74,14 @@ var legacyInterruptSkipDirs = map[string]bool{
 // The gate file itself (no_legacy_interrupt_test.go) is skipped: its ban
 // list necessarily contains the banned literals.
 //
+// Scope note (Plan 11-02): the new `internal/agent/hitl/` directory is
+// NOT in legacyInterruptSkipDirs, so it is scanned automatically by this
+// WalkDir. The new hitl files (approval_decision.go, registry.go,
+// hitl_memory_facts.go) use the address-based tool.StatefulInterrupt +
+// tool.GetResumeContext API exclusively; running this test with `-count=1`
+// confirms zero hits across the four roots: internal/agent/,
+// internal/agent/callbacks/, internal/agent/tools/, internal/agent/hitl/.
+//
 // Negative proof protocol (gate must prove it bites): temporarily drop a
 // .go file containing e.g. a comment with "compose.NewInterruptAndRerunErr"
 // anywhere inside the scan scope → this test FAILs naming that file:line →
