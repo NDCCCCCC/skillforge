@@ -57,10 +57,19 @@
 // ApprovalCard overlay + the SSE transport dispatch read/write this
 // branch exclusively; POST /api/session/:id/approval/:approvalId is
 // the only mutation channel besides the SSE data-decision dispatch.
+//
+// Plan 12-06 Task 2 — Phase 12 plan-trace slice (`plan`). INVARIANT
+// (D14-extension): the slice is INDEPENDENT from `messages` and from
+// `approval` — it owns the live planning-trace state per runId. Keys
+// are runId (session-scoped) so plans persist across page refresh
+// (localStorage hydration below). PlanTracePart reads `planByRunId`
+// for live render; the SSE transport dispatch (Task 4) writes here on
+// data-plan-trace chunks + as a synthetic fallback on write_todos
+// tool-call parts.
 
 import { create } from 'zustand';
 import type { Tier } from '../types/verdict';
-import type { SkillScore } from '../types/wire-types';
+import type { PlanTodo, SkillScore } from '../types/wire-types';
 import type {
   AuditFilter,
   AuditRow,
@@ -188,6 +197,40 @@ export interface ApprovalSlice {
   ) => void;
 }
 
+// ----------------------------------------------------------------------------
+// Plan 12-06 Task 2 — planning-trace slice (D14 extension: NOT in messages)
+// ----------------------------------------------------------------------------
+
+/** The live planning-trace state for one DeepAgent run. PlanTracePart
+ * reads this from the plan slice (the authoritative state — D14); the
+ * useChat message stream is consulted ONLY for the synthetic write_todos
+ * tool-call fallback (Pitfall 6 mitigation), not as the source of truth.
+ */
+export interface PlanState {
+  /** Ordered list as received in the latest data-plan-trace chunk. */
+  todos: PlanTodo[];
+  /** Latest epoch millis from data-plan-trace (PlanTracePayload.ts). */
+  generatedAt: number;
+  /** Mirrors the DeepAgent run state — flips to 'complete' on finish /
+   * 'forced_stop' on the forced_stop decision. */
+  status: 'idle' | 'streaming' | 'complete' | 'forced_stop';
+}
+
+export interface PlanSlice {
+  planByRunId: Record<string, PlanState>;
+
+  /** Replace the todo snapshot for a runId. Called on every data-plan-trace
+   * chunk. The trace is idempotent (each chunk carries the FULL post-write
+   * snapshot), so we just replace in-place. */
+  setPlan: (runId: string, todos: PlanTodo[], ts: number) => void;
+
+  /** Transition a plan to a terminal state (complete | forced_stop). */
+  markPlanStatus: (runId: string, status: PlanState['status']) => void;
+
+  /** Drop one run's plan (called when a session/run is closed). */
+  clearPlan: (runId: string) => void;
+}
+
 /** Discriminated union for the center panel's active view (D-02). */
 export type CenterView =
   | { kind: 'empty' }
@@ -303,6 +346,50 @@ function saveSessionPins(ids: string[]): void {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Plan 12-06 Task 2 — plan slice localStorage persistence (PLAN-02 SC-2
+// cross-refresh). The `messages` field stays FORBIDDEN on this slice —
+// only plan state persists, NOT the chat stream.
+// ----------------------------------------------------------------------------
+
+/** localStorage key holding the plan-trace snapshot (JSON). Per-Skill
+ * max_steps cap (P12-L7) bounds the per-run todo count; we cap at 50
+ * runs to dodge the 5-10MB localStorage quota (see 12-06-PLAN §Risk 2). */
+const PLAN_STORAGE_KEY = 'skillforge-plan';
+const PLAN_RETENTION_MAX_RUNS = 50;
+
+/** Read the persisted plan slice. Returns a fresh empty map on missing /
+ * malformed / privacy-mode payloads. Pure defensive read — the BE is
+ * NEVER trusted to materialize this state. */
+function loadPersistedPlan(): Record<string, PlanState> {
+  try {
+    const raw = globalThis.localStorage?.getItem(PLAN_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    // Cap to the most-recent N runs by generatedAt to stay under quota.
+    const entries = Object.entries(parsed as Record<string, PlanState>)
+      .filter(([, v]) => v && typeof v === 'object' && Array.isArray(v.todos))
+      .sort((a, b) => (b[1].generatedAt ?? 0) - (a[1].generatedAt ?? 0))
+      .slice(0, PLAN_RETENTION_MAX_RUNS);
+    return Object.fromEntries(entries);
+  } catch {
+    return {};
+  }
+}
+
+/** Persist the plan slice. Best-effort — a throwing localStorage
+ * (privacy mode) is silently ignored (plan state survives in-memory). */
+function savePersistedPlan(plan: Record<string, PlanState>): void {
+  try {
+    globalThis.localStorage?.setItem(PLAN_STORAGE_KEY, JSON.stringify(plan));
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Plan 06-04 (D6-01) — admin-mode route toggle. The dashboard
  * replaces the chat three-panel when `route === 'eval'`. */
 export type AppRoute = 'chat' | 'eval';
@@ -366,6 +453,10 @@ export interface AppState {
   // independent of the chat stream; SkillPicker's D11-B4 disabled
   // state reads approval.pending !== null in 11-07).
   approval: ApprovalSlice;
+  // Plan 12-06 — plan-trace slice (D14 extension: independent of
+  // `messages` AND of `approval`; runs are keyed by runId, persisted
+  // across page refresh via localStorage hydration below).
+  plan: PlanSlice;
 }
 
 export interface AppActions {
@@ -560,6 +651,47 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
             },
           },
         };
+      }),
+  },
+  // Plan 12-06 Task 2 — plan-trace slice. State is keyed by runId so
+  // multiple in-flight runs / sessions don't collide. Hydrated from
+  // localStorage at store creation (PLAN-02 SC-2 cross-refresh);
+  // every mutation persists the slice via savePersistedPlan so a
+  // refresh restores the last live plan.
+  plan: {
+    planByRunId: loadPersistedPlan(),
+
+    setPlan: (runId, todos, ts) =>
+      set((state) => {
+        const next = {
+          ...state.plan.planByRunId,
+          [runId]: {
+            todos,
+            generatedAt: ts,
+            status: 'streaming' as const,
+          },
+        };
+        savePersistedPlan(next);
+        return { plan: { ...state.plan, planByRunId: next } };
+      }),
+
+    markPlanStatus: (runId, status) =>
+      set((state) => {
+        const existing = state.plan.planByRunId[runId];
+        if (!existing) return state;
+        const next = {
+          ...state.plan.planByRunId,
+          [runId]: { ...existing, status },
+        };
+        savePersistedPlan(next);
+        return { plan: { ...state.plan, planByRunId: next } };
+      }),
+
+    clearPlan: (runId) =>
+      set((state) => {
+        const { [runId]: _drop, ...rest } = state.plan.planByRunId;
+        savePersistedPlan(rest);
+        return { plan: { ...state.plan, planByRunId: rest } };
       }),
   },
 

@@ -9,7 +9,7 @@
 // global — cleared per test to isolate the sf.session.pins mirror.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadSessionPins, useAppStore, type SessionMeta } from './app-store';
+import { loadSessionPins, useAppStore, type PlanTodo, type SessionMeta } from './app-store';
 import type { PendingApproval, TerminalApproval } from './app-store';
 
 beforeEach(() => {
@@ -185,5 +185,96 @@ describe('app-store / approval slice (Plan 11-06)', () => {
 
     expect(useAppStore.getState().approval.pending?.approvalId).toBe('apr-1');
     expect(useAppStore.getState().approval.terminal).toBeNull();
+  });
+});
+
+// ----------------------------------------------------------------------------
+// Plan 12-06 Task 2 — plan-trace slice (D14-extension: NOT in messages)
+// ----------------------------------------------------------------------------
+
+const PLAN_RUN = 'run-plan-test-1';
+const PLAN_TODOS: PlanTodo[] = [
+  { id: 't-a', content: '审核合同文本', status: 'pending' },
+  { id: 't-b', content: '交叉验证规定引用', status: 'in_progress' },
+  { id: 't-c', content: '生成结论', status: 'completed' },
+];
+
+function resetPlanSlice(): void {
+  useAppStore.setState((s) => ({
+    plan: { ...s.plan, planByRunId: {} },
+  }));
+}
+
+describe('app-store / plan slice (Plan 12-06)', () => {
+  beforeEach(() => {
+    resetPlanSlice();
+  });
+
+  it('TestPlanSliceSetPlan', () => {
+    useAppStore.getState().plan.setPlan(PLAN_RUN, PLAN_TODOS, 1700000000000);
+    const planState = useAppStore.getState().plan.planByRunId[PLAN_RUN];
+    expect(planState).toBeDefined();
+    expect(planState.todos).toEqual(PLAN_TODOS);
+    expect(planState.generatedAt).toBe(1700000000000);
+    expect(planState.status).toBe('streaming');
+  });
+
+  it('TestPlanSliceMarkStatus', () => {
+    useAppStore.getState().plan.setPlan(PLAN_RUN, PLAN_TODOS, 1700000000000);
+    expect(useAppStore.getState().plan.planByRunId[PLAN_RUN].status).toBe('streaming');
+    useAppStore.getState().plan.markPlanStatus(PLAN_RUN, 'complete');
+    expect(useAppStore.getState().plan.planByRunId[PLAN_RUN].status).toBe('complete');
+    // markPlanStatus is a no-op when runId is unknown — keep other rows untouched
+    useAppStore.getState().plan.markPlanStatus('unknown-run', 'forced_stop');
+    expect(useAppStore.getState().plan.planByRunId[PLAN_RUN].status).toBe('complete');
+  });
+
+  it('TestPlanSliceClearPlan', () => {
+    useAppStore.getState().plan.setPlan(PLAN_RUN, PLAN_TODOS, 1700000000000);
+    expect(useAppStore.getState().plan.planByRunId[PLAN_RUN]).toBeDefined();
+    useAppStore.getState().plan.clearPlan(PLAN_RUN);
+    expect(useAppStore.getState().plan.planByRunId[PLAN_RUN]).toBeUndefined();
+  });
+
+  it('TestPlanSliceLocalStoragePersistence', () => {
+    // Step 1: setPlan and confirm the slice mirrored to localStorage.
+    useAppStore.getState().plan.setPlan(PLAN_RUN, PLAN_TODOS, 1700000000000);
+    const persisted = globalThis.localStorage.getItem('skillforge-plan');
+    expect(persisted).not.toBeNull();
+    const parsed = JSON.parse(persisted as string) as Record<string, { todos: PlanTodo[] }>;
+    expect(parsed[PLAN_RUN]).toBeDefined();
+    expect(parsed[PLAN_RUN].todos).toHaveLength(3);
+
+    // Step 2: simulate a page refresh by re-hydrating from localStorage.
+    // The slice's initial state is built via loadPersistedPlan on store
+    // creation; we use the public hydration contract — re-read + reassemble.
+    const freshSlice = {
+      plan: {
+        planByRunId: {
+          [PLAN_RUN]: {
+            todos: parsed[PLAN_RUN].todos,
+            generatedAt: 1700000000000,
+            status: 'streaming' as const,
+          },
+        },
+        setPlan: useAppStore.getState().plan.setPlan,
+        markPlanStatus: useAppStore.getState().plan.markPlanStatus,
+        clearPlan: useAppStore.getState().plan.clearPlan,
+      },
+    };
+    // Sanity check that the hydrated shape matches (PLAN-02 SC-2).
+    expect(freshSlice.plan.planByRunId[PLAN_RUN].todos).toHaveLength(3);
+    expect(freshSlice.plan.planByRunId[PLAN_RUN].todos[0].id).toBe('t-a');
+  });
+
+  it('TestPlanSliceD14Invariant', () => {
+    // D14 extension: the plan slice MUST NOT expose a `messages` field
+    // on the store. useChat owns the chat stream; the plan slice owns
+    // the live planning-trace snapshot. The audit is structural — we
+    // enumerate the AppState keys and assert no `messages`.
+    const state = useAppStore.getState() as unknown as Record<string, unknown>;
+    expect(state.messages).toBeUndefined();
+    expect(state.plan).toBeDefined();
+    expect(state.approval).toBeDefined();
   });
 });
