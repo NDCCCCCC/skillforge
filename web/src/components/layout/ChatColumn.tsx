@@ -17,6 +17,7 @@ import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
 import DraftStreamChip from '../chat/parts/DraftStreamChip';
 import WizardMode from './WizardMode';
+import { ApprovalCard } from '../ApprovalCard';
 import { useAppStore } from '../../store/app-store';
 
 // Open Design B5 — emoji sug-card icons are replaced by lucide icons;
@@ -39,6 +40,7 @@ export default function ChatColumn({ messages, status, onSend }: ChatColumnProps
   const wizardActive = useAppStore((s) => s.wizardMode.active);
   const draftStatus = useAppStore((s) => s.draftStatus);
   const draftText = useAppStore((s) => s.draftText);
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
 
   useEffect(() => {
     if (wizardActive) return;
@@ -62,7 +64,11 @@ export default function ChatColumn({ messages, status, onSend }: ChatColumnProps
   }
 
   return (
-    <div data-testid="chat-column" className="flex h-full flex-col">
+    <div data-testid="chat-column" className="relative flex h-full flex-col">
+      {/* Plan 11-06 — HITL approval-gate overlay. Store-derived (D14):
+          renders null until store.approval.pending/terminal is set;
+          floats above the streaming chat at the interrupt position. */}
+      <ApprovalCard sessionId={activeSessionId} />
       {messages.length === 0 ? (
         <div
           data-testid="chat-empty"
