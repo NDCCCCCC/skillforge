@@ -168,6 +168,7 @@ var phase11GoScanRoots = []string{
 	"internal/agent/tools",
 	"internal/agent/hitl",
 	"internal/server",
+	"internal/runtime",
 }
 
 // phase11AllowedStatefulInterruptFiles lists the .go files permitted
