@@ -409,6 +409,49 @@ func (w *AuditWriter) MarkRuleRevoked(
 	})
 }
 
+// MarkAutoPassedRule inserts an action_approved audit row when the
+// HITL Tool executed a write directly because an approve-and-remember
+// rule matched (D11-D1 auto-pass path — HITL-08). There is NO pending
+// row on this path: the rule match happens BEFORE
+// tool.StatefulInterrupt, so no interrupt ever occurred (T-3-AUDIT
+// INSERT-only invariant preserved — the auto-pass chain is a single
+// row, not the 3-row operator chain).
+//
+// RefusalReason = "auto_passed_rule" (LITERAL) is the flag that
+// distinguishes a rule-matched execution from an operator-approved one
+// in audit queries. SkillID / PromptHash / SkillVersion are left empty:
+// the auto-pass row's identity is (tool_call_id, target, frozen_args)
+// plus the scope_session_id, mirroring the rule key; the Skill snapshot
+// belongs to the operator-interrupt chain.
+func (w *AuditWriter) MarkAutoPassedRule(
+	ctx context.Context,
+	sessionID, userID string,
+	toolCallID, target string,
+	frozenArgs []byte,
+) (int64, error) {
+	if toolCallID == "" {
+		return 0, errors.New("hitl: MarkAutoPassedRule: toolCallID required (D11-C4 single identity)")
+	}
+	row := store.ApprovalResolutionRow{
+		Timestamp:      w.clock(),
+		SessionID:      sessionID,
+		UserID:         userID,
+		SkillID:        "",
+		Query:          target,
+		PromptHash:     "",
+		SkillVersion:   "",
+		ModelVersion:   "",
+		VerdictJSON:    "",
+		RefusalReason:  "auto_passed_rule", // LITERAL: D11-D1 auto-pass flag
+		ChunkIDs:       "",
+		FrozenArgs:     frozenArgs,
+		ToolCallID:     toolCallID,
+		ApprovalID:     toolCallID, // D11-C4: one identity, two columns
+		ScopeSessionID: sessionID,
+	}
+	return w.store.MarkApproved(ctx, row)
+}
+
 // clock returns the writer's timestamp, tolerating a zero-value
 // AuditWriter (a caller that built the struct literally rather than
 // through NewAuditWriter).
