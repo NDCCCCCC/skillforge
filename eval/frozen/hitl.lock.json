@@ -1,0 +1,32 @@
+{
+  "schema_version": "v1",
+  "created_at": "2026-08-20",
+  "locked_by": "Phase 11 acceptance gate (11-08)",
+  "golden_sha256": "b638b9808ee081f755a79b991ebdc14fcb57c697b8047df16c6933d14ca8e572",
+  "model_ver": "hitl-frozen-v1",
+  "prompt_hash": "079ad908727f10e1c9fa25d759d95e49dfa753a411edc3c9713477e7e9c80c35",
+  "case_count": 75,
+  "category_counts": {
+    "should-interrupt": 20,
+    "should-NOT-interrupt": 10,
+    "frozen_args_mutation": 8,
+    "edit-before-approve": 8,
+    "remember_session": 5,
+    "remember_skill": 5,
+    "revoke_rule": 4,
+    "expired_checkpoint": 8,
+    "fail_closed_audit": 7
+  },
+  "gate_thresholds": {
+    "interrupts_required_count": 20,
+    "auto_pass_required_count": 10,
+    "auto_pass_max_count": 12,
+    "frozen_args_byte_equality_pass_rate": 1.0,
+    "edit_before_approve_args_flow_rate": 1.0,
+    "session_scope_leak_failures_max": 0,
+    "skill_scope_version_mismatch_interrupt_rate": 1.0,
+    "revoke_audit_row_insert_rate": 1.0,
+    "expired_state_422_rate": 1.0,
+    "fail_closed_no_checkpoint_rate": 1.0
+  }
+}
