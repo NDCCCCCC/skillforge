@@ -349,3 +349,175 @@ func TestSpikeDeepVerdictParseRateMeasurement(t *testing.T) {
 		t.Fatalf("RF-5 lock: direct_rate=%.3f < 0.70 (P12-L10 escalation floor) — verdict-suffix fallback + forced_stop required. Full summary: %+v", sum.DirectRate, sum)
 	}
 }
+
+// TestSpikeDeepVerdictParseRateReportsStructuredOutputImprovement — live
+// test (Plan 12-08 Task 2; operator-gated). Asserts the structured-
+// output fallback (12-04 Task 3's ExtractVerdictJSONWithStructuredOutput)
+// raises the total parse rate above the P12-L10 90% floor: the
+// structured-output final step is MANDATORY only if direct_rate is
+// in the [70%, 90%) band — if direct_rate >= 90%, the fallback is
+// OPTIONAL. The test enforces that when the fallback IS enabled,
+// total_rate MUST be >= 90% (the fallback closes the gap; if it does
+// not, the fallback wiring is broken).
+//
+// Skipped when GLM_API_KEY + BGE_M3_URL + MILVUS_ADDRESS are missing.
+// Mirrors the 12-04 SKELETON pattern from
+// TestSpikeDeepVerdictParseRateMeasurement.
+func TestSpikeDeepVerdictParseRateReportsStructuredOutputImprovement(t *testing.T) {
+	if os.Getenv("GLM_API_KEY") == "" {
+		t.Skip("RF-5 live spike requires GLM_API_KEY (operator gate; P12-L10 — 12-08 acceptance gate reports the actual rate)")
+	}
+	if os.Getenv("BGE_M3_URL") == "" {
+		t.Skip("RF-5 live spike requires BGE_M3_URL (operator gate)")
+	}
+	if os.Getenv("MILVUS_ADDRESS") == "" {
+		t.Skip("RF-5 live spike requires MILVUS_ADDRESS (operator gate)")
+	}
+
+	bin := buildSpikeDeepBinary(t, t.TempDir())
+	out := filepath.Join(t.TempDir(), "rf5-structured.jsonl")
+	env := []string{
+		"GLM_API_KEY=" + os.Getenv("GLM_API_KEY"),
+		"BGE_M3_URL=" + os.Getenv("BGE_M3_URL"),
+		"MILVUS_ADDRESS=" + os.Getenv("MILVUS_ADDRESS"),
+	}
+	exit, stdout, stderr := runSpikeDeep(t, bin, env,
+		"parse-rate", "--golden=eval/golden/deep.jsonl", "--output="+out, "--cost-limit=10.00")
+	if exit != 0 {
+		t.Fatalf("live parse-rate exit %d; stderr=%s stdout=%s", exit, stderr, stdout)
+	}
+
+	// Parse the summary row (last line) — total_rate is the parse
+	// rate WITH structured-output fallback enabled.
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output %q: %v", out, err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("output JSONL has %d lines, want at least 2 (cases + summary)", len(lines))
+	}
+	var sum parseRateRow
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &sum); err != nil {
+		t.Fatalf("unmarshal summary row: %v", err)
+	}
+	if sum.Type != "summary" {
+		t.Fatalf("last row type = %q, want summary", sum.Type)
+	}
+	// The structured-output fallback MUST close the gap: total_rate
+	// (direct + structured rescue) MUST be >= 90%. If the fallback
+	// wiring is broken, this assertion fires.
+	if sum.TotalRate < 0.90 {
+		t.Fatalf("RF-5 lock: total_rate=%.3f < 0.90 with structured-output enabled (P12-L10 90%% floor) — fallback wiring broken. Full summary: %+v", sum.TotalRate, sum)
+	}
+	// Sanity check: total_rate >= direct_rate (the fallback can only
+	// improve, never regress).
+	if sum.TotalRate < sum.DirectRate {
+		t.Fatalf("RF-5 invariant: total_rate=%.3f < direct_rate=%.3f (fallback must not regress)", sum.TotalRate, sum.DirectRate)
+	}
+}
+
+// TestSpikeDeepParseRateOutputJSONLSchema — schema-locks the JSONL
+// output shape so a refactor of parseRateRow (e.g. renaming
+// direct_parse / structured_rescue / parse_failed) breaks the test.
+// The schema mirrors the actual parseRateRow struct fields; the
+// plan's "case_id / parse_success_* / total_tokens / latency_ms"
+// naming is the semantic INTENT — the implementation's encoding
+// (id / direct_parse / structured_rescue / parse_failed) is the
+// canonical wire format the JSONL consumers parse.
+//
+// The test runs in two modes:
+//   - Hermetic (always): asserts the JSONL schema by marshalling a
+//     probe parseRateRow + round-tripping it through json.Unmarshal;
+//     this catches field-name + JSON-tag drift without requiring a
+//     live spike run.
+//   - Live (operator-gated): when GLM_API_KEY + BGE_M3_URL +
+//     MILVUS_ADDRESS are set, runs the spike and verifies the first
+//     case row's JSON carries every documented field.
+func TestSpikeDeepParseRateOutputJSONLSchema(t *testing.T) {
+	// Schema-locking probe: marshal a fully-populated parseRateRow
+	// + assert every documented field is present in the JSON output.
+	probe := parseRateRow{
+		Type:             "case",
+		TS:               "2026-08-20T00:00:00Z",
+		ID:               "deep-probe",
+		Category:         "multi-hop",
+		DirectParse:      true,
+		StructuredRescue: false,
+		ParseFailed:      false,
+		ModelVer:         "glm-5.2",
+		PromptHash:       "deadbeef",
+		Seed:             42,
+		MaxIterations:    10,
+		ModelCalls:       1,
+		CostUSD:          0.001,
+		FinalExcerpt:     "probe",
+	}
+	probeBytes, err := json.Marshal(probe)
+	if err != nil {
+		t.Fatalf("marshal probe parseRateRow: %v", err)
+	}
+	var roundTrip map[string]any
+	if err := json.Unmarshal(probeBytes, &roundTrip); err != nil {
+		t.Fatalf("unmarshal probe: %v", err)
+	}
+	// Documented schema fields (the canonical wire format).
+	for _, key := range []string{
+		"type", "id", "category",
+		"direct_parse", "structured_rescue", "parse_failed",
+		"model_ver", "prompt_hash", "seed", "max_iterations",
+		"model_calls", "cost_usd",
+	} {
+		if _, ok := roundTrip[key]; !ok {
+			t.Errorf("parseRateRow JSON schema missing required field %q (got keys: %v)", key, mapKeys(roundTrip))
+		}
+	}
+
+	// Optional: live spike check (operator-gated). Skips when env is
+	// missing; the hermetic probe above is the primary gate.
+	if os.Getenv("GLM_API_KEY") == "" ||
+		os.Getenv("BGE_M3_URL") == "" ||
+		os.Getenv("MILVUS_ADDRESS") == "" {
+		t.Log("SKIP live spike schema check; hermetic probe passed")
+		return
+	}
+	bin := buildSpikeDeepBinary(t, t.TempDir())
+	out := filepath.Join(t.TempDir(), "rf5-schema.jsonl")
+	env := []string{
+		"GLM_API_KEY=" + os.Getenv("GLM_API_KEY"),
+		"BGE_M3_URL=" + os.Getenv("BGE_M3_URL"),
+		"MILVUS_ADDRESS=" + os.Getenv("MILVUS_ADDRESS"),
+	}
+	exit, _, stderr := runSpikeDeep(t, bin, env,
+		"parse-rate", "--golden=eval/golden/deep.jsonl", "--output="+out, "--cost-limit=10.00")
+	if exit != 0 {
+		t.Fatalf("live parse-rate exit %d; stderr=%s", exit, stderr)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output %q: %v", out, err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("output JSONL has %d lines, want at least 2 (cases + summary)", len(lines))
+	}
+	var firstCase parseRateRow
+	if err := json.Unmarshal([]byte(lines[0]), &firstCase); err != nil {
+		t.Fatalf("unmarshal first case row: %v", err)
+	}
+	if firstCase.Type != "case" {
+		t.Errorf("first row type = %q, want case", firstCase.Type)
+	}
+	if firstCase.ID == "" {
+		t.Errorf("first case row missing id")
+	}
+}
+
+// mapKeys is a small helper for the schema-probe error message.
+func mapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
