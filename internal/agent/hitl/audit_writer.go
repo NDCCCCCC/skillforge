@@ -70,7 +70,7 @@ type AuditWriter struct {
 	now func() time.Time
 
 	// sessionID / userID / snapshot are the ambient identity used by the
-	// InsertPendingApproval seam (the narrow interface memoryFactsTool
+	// InsertPendingApproval seam (the narrow interface MemoryFactsTool
 	// consumes, which carries no Skill context of its own). They are
 	// optional: the explicit WritePendingApproval / MarkApproved /
 	// MarkRejected / MarkRuleRevoked methods take everything they need as
@@ -141,7 +141,7 @@ func (s SkillSnapshot) IsZero() bool {
 // Compile-time check that *AuditWriter satisfies the seam declared by
 // 11-02 in hitl_memory_facts.go. The Tool consumes the narrow
 // auditWriterHook interface; this assertion is what makes 11-03's writer
-// droppable into memoryFactsTool.audit without a shim.
+// droppable into MemoryFactsTool.audit without a shim.
 var _ auditWriterHook = (*AuditWriter)(nil)
 
 // NewAuditWriter constructs the writer with the default clock.
@@ -154,7 +154,7 @@ func NewAuditWriter(s store.Store) *AuditWriter {
 func (w *AuditWriter) SetNow(now func() time.Time) { w.now = now }
 
 // WithIdentity binds the ambient session / user / Skill identity used by
-// the InsertPendingApproval seam (the interface memoryFactsTool calls).
+// the InsertPendingApproval seam (the interface MemoryFactsTool calls).
 // The Runner wiring (11-04) calls this once per turn, before handing the
 // writer to BuildToolsForSkill. Returns the receiver so the call can be
 // chained onto NewAuditWriter.
@@ -166,7 +166,7 @@ func (w *AuditWriter) WithIdentity(sessionID, userID string, snap SkillSnapshot)
 }
 
 // InsertPendingApproval satisfies the auditWriterHook seam that 11-02's
-// memoryFactsTool consumes. It is a thin adapter over
+// MemoryFactsTool consumes. It is a thin adapter over
 // WritePendingApproval: the Tool knows its ApprovalInfo but not the
 // session / Skill identity, so the ambient values bound by WithIdentity
 // fill the gap.

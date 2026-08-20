@@ -48,7 +48,7 @@ func TestMemoryFactsToolFirstPassInterrupts(t *testing.T) {
 	called := 0
 	var capturedInfo *ApprovalInfo
 
-	h := &memoryFactsTool{
+	h := &MemoryFactsTool{
 		audit: &spyAuditWriter{
 			onInsert: func(_ context.Context, _ string, info *ApprovalInfo) error {
 				called++
@@ -123,7 +123,7 @@ func TestMemoryFactsToolRejectsDenyWithoutReason(t *testing.T) {
 // Properties orderedmap (eino@v0.9.14 typed the Properties as
 // *orderedmap.OrderedMap which is not a vanilla map[string]any).
 func TestMemoryFactsToolInfoSchema(t *testing.T) {
-	h := &memoryFactsTool{}
+	h := &MemoryFactsTool{}
 	info, err := h.Info(context.Background())
 	require.NoError(t, err)
 
@@ -151,6 +151,20 @@ func (s *spyAuditWriter) InsertPendingApproval(ctx context.Context, approvalID s
 		return s.onInsert(ctx, approvalID, info)
 	}
 	return nil
+}
+
+// The 11-05 auditWriterHook extension methods — the spy only cares
+// about InsertPendingApproval, so these are inert stubs.
+func (s *spyAuditWriter) MarkApproved(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
+	return 0, nil
+}
+
+func (s *spyAuditWriter) MarkRejected(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
+	return 0, nil
+}
+
+func (s *spyAuditWriter) MarkAutoPassedRule(_ context.Context, _, _ string, _, _ string, _ []byte) (int64, error) {
+	return 0, nil
 }
 
 // TestNewApprovalID — sanity check on the crypto/rand fallback.
@@ -189,7 +203,7 @@ func hexDecodeString(s string) ([]byte, error) {
 }
 
 // TestNoopAuditWriter — the no-op writer returns nil for every
-// call. Used as the default when memoryFactsTool.audit is nil.
+// call. Used as the default when MemoryFactsTool.audit is nil.
 func TestNoopAuditWriter(t *testing.T) {
 	w := noopAuditWriter{}
 	err := w.InsertPendingApproval(context.Background(), "any-id", &ApprovalInfo{
@@ -215,7 +229,7 @@ func TestMemFactsArgsParse(t *testing.T) {
 	assert.Equal(t, "权威", parsed.Tier)
 }
 
-// invokableTool is the type assertion sentinel: a memoryFactsTool
+// invokableTool is the type assertion sentinel: a MemoryFactsTool
 // value MUST satisfy tool.InvokableTool so the eino
 // compose.ToolsNodeConfig accepts it. Compile-time check.
-var _ tool.InvokableTool = (*memoryFactsTool)(nil)
+var _ tool.InvokableTool = (*MemoryFactsTool)(nil)

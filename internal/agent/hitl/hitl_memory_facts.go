@@ -89,56 +89,118 @@ type ApprovalInfo struct {
 	PromptHash string `json:"prompt_hash"`
 }
 
-// auditWriterHook is the forward-compat seam that 11-03's audit_writer.go
-// satisfies. The interface declaration lives here (not in audit_writer)
-// because memoryFactsTool is the CONSUMER; 11-03's plan produces an
-// implementation that fits this shape.
+// auditWriterHook is the seam the AuditWriter (11-03) satisfies. The
+// interface declaration lives here (not in audit_writer) because
+// MemoryFactsTool is the CONSUMER.
 //
-// Contract: InsertPendingApproval persists the ApprovalInfo row to
-// the audit table BEFORE the tool returns from Pass 1 (D11-C3
-// fail-closed: if the insert fails, the tool returns an error
-// rather than triggering an interrupt — the user can re-invoke the
-// tool after the audit store recovers).
+// Contract:
 //
-// The interface is intentionally unexported (auditWriterHook) because
-// no other package consumes it yet; 11-03 will export it (as
-// AuditWriter) when it lands.
+//   - InsertPendingApproval persists the ApprovalInfo row to the audit
+//     table BEFORE the tool returns from Pass 1 (D11-C3 fail-closed).
+//   - MarkApproved / MarkRejected write the SECOND lifecycle row on
+//     Pass 2 (their signatures mirror AuditWriter's — the snap
+//     SkillSnapshot travels with the call so the Tool-side seam and
+//     the server-side approval endpoint share ONE method shape).
+//   - MarkAutoPassedRule writes the single-row auto-pass audit record
+//     when a D11-D1 rule match skips the interrupt (11-05 / HITL-08).
 type auditWriterHook interface {
 	InsertPendingApproval(ctx context.Context, approvalID string, info *ApprovalInfo) error
+	MarkApproved(ctx context.Context, sessionID, userID string, snap SkillSnapshot, toolCallID, approvalID, target string, frozenArgs []byte, reason string) (int64, error)
+	MarkRejected(ctx context.Context, sessionID, userID string, snap SkillSnapshot, toolCallID, approvalID, target string, frozenArgs []byte, reason string) (int64, error)
+	MarkAutoPassedRule(ctx context.Context, sessionID, userID string, toolCallID, target string, frozenArgs []byte) (int64, error)
 }
 
-// noopAuditWriter is the 11-02 default when memoryFactsTool.audit is
-// nil. 11-03 wires the real &audit_writer.AuditWriter{} via
-// internal/agent/runner_setup.go::BuildRunner (replacing the noop
-// with the production writer). Until then, the audit chain is
-// structurally incomplete — accepted deviation per the Phase 11
-// CONTEXT (T-11-02-B5).
+// noopAuditWriter is the default when MemoryFactsTool.audit is nil
+// (tests + degraded construction). Every method is a success no-op;
+// the production runner_setup wires the real AuditWriter.
 type noopAuditWriter struct{}
 
 // InsertPendingApproval satisfies auditWriterHook by returning nil.
-// Used when memoryFactsTool.audit == nil (the 11-02 default).
 func (noopAuditWriter) InsertPendingApproval(_ context.Context, _ string, _ *ApprovalInfo) error {
 	return nil
 }
 
-// memoryFactsTool is the HITL-06 first write target. The Tool is
-// stateless beyond the `audit` field — every other piece of state
+// MarkApproved satisfies auditWriterHook by returning (0, nil).
+func (noopAuditWriter) MarkApproved(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
+	return 0, nil
+}
+
+// MarkRejected satisfies auditWriterHook by returning (0, nil).
+func (noopAuditWriter) MarkRejected(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
+	return 0, nil
+}
+
+// MarkAutoPassedRule satisfies auditWriterHook by returning (0, nil).
+func (noopAuditWriter) MarkAutoPassedRule(_ context.Context, _, _ string, _, _ string, _ []byte) (int64, error) {
+	return 0, nil
+}
+
+// MemoryFactsTool is the HITL-06 first write target. The Tool is
+// stateless beyond its wiring fields — every other piece of state
 // (the interrupt JSON, the ApprovalDecision) lives in the eino
 // Runner's checkpoint, not on the Tool instance.
-type memoryFactsTool struct {
-	// audit may be nil; nil-safe via auditOrDefault(). 11-03 wires
-	// the real AuditWriter here.
+//
+// EXPORTED (11-05): agent.BuildToolsForSkill type-asserts
+// *hitl.MemoryFactsTool across the package boundary to inject the
+// per-session context via WithContext.
+type MemoryFactsTool struct {
+	// audit may be nil; nil-safe via auditOrDefault(). The production
+	// wiring (runner_setup) injects the real AuditWriter.
 	audit auditWriterHook
+
+	// ruleMatcher is the D11-D1 approve-and-remember lookup. nil-safe
+	// (defaults to NoopRuleMatcher) so a zero-value Tool always falls
+	// back to the interrupt path — fail-closed toward human review.
+	ruleMatcher RuleMatcher
+
+	// sessionID / skillID are the per-session identity injected by
+	// BuildToolsForSkill via WithContext at Agent construction time
+	// (D11-B1 per-turn whitelist recompute carries the session context
+	// with it — Skill-A's rules never leak into Skill-B's session).
+	sessionID string
+	skillID   string
+}
+
+// WithContext binds the per-session identity + rule matcher. Called
+// once per BuildToolsForSkill whitelist computation (per Runner
+// construction) — the Tool instances in hitlHandlers are shared, so
+// the LAST WithContext wins; BuildToolsForSkill is always called from
+// the single-threaded Agent-construction path (D11-B4 per-session
+// Runner singleton), never concurrently.
+func (t *MemoryFactsTool) WithContext(sessionID, skillID string, ruleMatcher RuleMatcher) {
+	t.sessionID = sessionID
+	t.skillID = skillID
+	t.ruleMatcher = ruleMatcher
 }
 
 // auditOrDefault returns the configured audit writer, or a noop if
-// nil. Keeps the call site readable (no `if h.audit != nil { ... }`
+// nil. Keeps the call site readable (no `if t.audit != nil { ... }`
 // boilerplate at every InvokableRun call).
-func (h *memoryFactsTool) auditOrDefault() auditWriterHook {
-	if h.audit == nil {
+func (t *MemoryFactsTool) auditOrDefault() auditWriterHook {
+	if t.audit == nil {
 		return noopAuditWriter{}
 	}
-	return h.audit
+	return t.audit
+}
+
+// ruleMatcherOrDefault returns the configured rule matcher, or the
+// NoopRuleMatcher when nil — a nil matcher MUST behave as "no rule
+// matched" so the Tool falls back to the interrupt path (fail-closed
+// toward human review, never toward silent execution).
+func (t *MemoryFactsTool) ruleMatcherOrDefault() RuleMatcher {
+	if t.ruleMatcher == nil {
+		return NoopRuleMatcher{}
+	}
+	return t.ruleMatcher
+}
+
+// snapshot returns the D11-C2 Skill snapshot derived from the bound
+// skillID. Version + PromptHash are populated by the AuditWriter's
+// ambient identity (WithIdentity) on the InsertPendingApproval seam;
+// the resolution rows (MarkApproved / MarkRejected) carry what the
+// Tool knows — the Skill identity.
+func (t *MemoryFactsTool) snapshot() SkillSnapshot {
+	return SkillSnapshot{SkillID: t.skillID}
 }
 
 // Info returns the LLM-visible tool schema. Params are declared via
@@ -150,7 +212,7 @@ func (h *memoryFactsTool) auditOrDefault() auditWriterHook {
 // tier defaults to "权威" when omitted (matches the ComplianceSkill
 // canonical behavior; the JSON-schema `default` is informational —
 // the InvokableRun enforces the default at parse time).
-func (h *memoryFactsTool) Info(_ context.Context) (*schema.ToolInfo, error) {
+func (t *MemoryFactsTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: MemoryFactsToolName,
 		Desc: "Persist an authoritative fact into the memory:facts corpus (long-lived retrieval). " +
@@ -185,25 +247,48 @@ type memFactsArgs struct {
 	Tier  string `json:"tier,omitempty"`
 }
 
-// InvokableRun is the two-pass HITL Tool body. Pass 1 (no prior
-// interrupt on this address) inserts the audit row via the seam,
-// then interrupts with the stored args. Pass 2 (resumed after
-// operator decision) validates the ApprovalDecision and either
-// executes the write or returns a deny message.
+// InvokableRun is the two-pass HITL Tool body.
 //
-// Quoting the canonical pattern from
-// internal/store/sqlite/checkpoint_resume_test.go:140-174 (the
-// writeApprovalTool example).
-func (h *memoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
+// Pass 1 (no prior interrupt on this address): D11-D1 rule-match
+// check FIRST — a matched approve-and-remember rule skips the
+// interrupt entirely (MarkAutoPassedRule audit row + direct execute).
+// No match → InsertPendingApproval (D11-C3 fail-closed) +
+// tool.StatefulInterrupt.
+//
+// Pass 2 (resumed after operator decision): ApplyFrozenArgs picks the
+// executed bytes (data.FrozenArgs when the operator edited, else the
+// stored args), assertFrozenArgsEqual enforces the HITL-07 3-way
+// byte-identity invariant, then MarkApproved + execute (or
+// MarkRejected + deny message).
+func (t *MemoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
 	wasInterrupted, hasState, storedArgs := tool.GetInterruptState[string](ctx)
 	if !wasInterrupted {
-		// Pass 1 — first execution. The audit row MUST be persisted
-		// BEFORE the interrupt (D11-C3 fail-closed: a SQL error
-		// surfaces to the operator, not as a silent lost interrupt).
+		// Pass 1 — first execution.
 		approvalID := compose.GetToolCallID(ctx)
 		if approvalID == "" {
 			approvalID = newApprovalID()
 		}
+
+		// D11-D1 auto-pass (HITL-08): if an approve-and-remember rule
+		// matches (target, sha256(args), skillID, sessionID), skip the
+		// interrupt — audit the auto-pass and execute directly. The
+		// argsHash is computed from the VERBATIM args bytes, never
+		// re-marshaled (HITL-07 byte-identity anchor shared with the
+		// rule key).
+		argsHash := ComputeFrozenArgsHash([]byte(args))
+		if _, matched := t.ruleMatcherOrDefault().Match(ctx, MemoryFactsTarget, argsHash, t.skillID, t.sessionID); matched {
+			userID := userIDFromCtx(ctx)
+			if _, err := t.auditOrDefault().MarkAutoPassedRule(ctx, t.sessionID, userID, approvalID, MemoryFactsTarget, []byte(args)); err != nil {
+				// Fail-closed, same posture as the pending-row insert:
+				// an audit failure aborts the write.
+				return "", fmt.Errorf("memory_facts_write: MarkAutoPassedRule failed (fail-closed): %w", err)
+			}
+			return t.executeMemoryFactsWrite(ctx, []byte(args))
+		}
+
+		// No rule matched — the audit row MUST be persisted BEFORE the
+		// interrupt (D11-C3 fail-closed: a SQL error surfaces to the
+		// operator, not as a silent lost interrupt).
 		info := &ApprovalInfo{
 			ToolName:        MemoryFactsToolName,
 			ArgumentsInJSON: args,
@@ -213,18 +298,10 @@ func (h *memoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 			SkillVersion:    "",
 			PromptHash:      "",
 		}
-		if err := h.auditOrDefault().InsertPendingApproval(ctx, approvalID, info); err != nil {
-			// D11-C3 fail-closed: audit write failure → return error
-			// BEFORE interrupt. The operator (not the LLM) decides
-			// how to retry.
+		if err := t.auditOrDefault().InsertPendingApproval(ctx, approvalID, info); err != nil {
 			return "", fmt.Errorf("memory_facts_write: audit INSERT failed (fail-closed): %w", err)
 		}
 
-		// D11-D1 + D11-A2: approve-and-remember rule match is deferred
-		// to 11-05 (approval_rules table). 11-02 always interrupts;
-		// 11-05 inserts the rule check BEFORE this StatefulInterrupt
-		// so an auto-approving rule never reaches the interrupt path.
-		//
 		// hasState at this point is always false (first pass), but
 		// the underscore explicitly documents that the stored-args
 		// path is the Pass 2 contract — see below.
@@ -236,8 +313,8 @@ func (h *memoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 	//   - not the resume target → leaf contract preservation
 	//     (adk/runner.go:137-147).
 	//   - is target + no data → framework glitch (reject).
-	//   - is target + data → Validate the decision, then approve
-	//     or deny.
+	//   - is target + data → Validate the decision, assert the HITL-07
+	//     3-way byte equality, then approve or deny.
 	isTarget, hasData, data := tool.GetResumeContext[*ApprovalDecision](ctx)
 	if !isTarget {
 		return "", tool.StatefulInterrupt(ctx, &ApprovalInfo{
@@ -254,21 +331,47 @@ func (h *memoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 	if err := data.Validate(); err != nil {
 		return "", fmt.Errorf("memory_facts_write: invalid ApprovalDecision: %w", err)
 	}
+
+	// HITL-07 edit-before-approve: data.FrozenArgs (possibly edited by
+	// the operator) wins over the Pass-1 storedArgs when non-empty.
+	writeArgs := ApplyFrozenArgs(data, storedArgs)
+
+	// HITL-07 3-way byte-identity: the ApprovalCard preview bytes, the
+	// audit frozen_args bytes, and the about-to-be-executed bytes must
+	// agree. On the resume path the framework re-invokes the Tool with
+	// the original args, so `args` anchors the preview + audit sides;
+	// writeArgs is the executed side. Drift → ErrFrozenArgsDrift
+	// (wrapped) — the operator must re-review, the write NEVER
+	// executes against drifted bytes.
+	previewBytes := []byte(args)
+	auditFrozen := []byte(args)
+	if err := assertFrozenArgsEqual(previewBytes, auditFrozen, []byte(writeArgs)); err != nil {
+		return "", fmt.Errorf("memory_facts_write: %w", err)
+	}
+
+	userID := userIDFromCtx(ctx)
 	if data.Decision == "deny" {
-		// D11-C3: the audit_writer (11-03) marks the row as Rejected
-		// here. The Tool returns the deny reason so the chatHandler
-		// can include it in the chat-visible response.
+		if _, err := t.auditOrDefault().MarkRejected(ctx, t.sessionID, userID, t.snapshot(), data.ApprovalID, data.ApprovalID, MemoryFactsTarget, []byte(writeArgs), data.Reason); err != nil {
+			return "", fmt.Errorf("memory_facts_write: MarkRejected failed: %w", err)
+		}
 		return fmt.Sprintf("user denied: %s", data.Reason), nil
 	}
 
-	// Approve path. HITL-07 edit-before-approve uses data.FrozenArgs
-	// if non-empty (operator rewrote the args); else fall back to
-	// Pass-1 storedArgs (the byte-equality invariant for unchanged
-	// approvals).
-	writeArgs := data.FrozenArgs
-	if len(writeArgs) == 0 {
-		writeArgs = json.RawMessage(storedArgs)
+	// Approve path.
+	if _, err := t.auditOrDefault().MarkApproved(ctx, t.sessionID, userID, t.snapshot(), data.ApprovalID, data.ApprovalID, MemoryFactsTarget, []byte(writeArgs), data.Reason); err != nil {
+		return "", fmt.Errorf("memory_facts_write: MarkApproved failed: %w", err)
 	}
+	return t.executeMemoryFactsWrite(ctx, []byte(writeArgs))
+}
+
+// executeMemoryFactsWrite performs the actual write side of the Tool.
+// 11-05 keeps the 11-02 no-op success message (the real memory:facts
+// INSERT ships in Phase 12 with the memory store's Persist). The
+// success string is structured ("memory_facts_write OK: tier=X key=Y
+// value=Z") so the chatHandler can render the verdict deterministically.
+// The tier default ("权威") is enforced here so BOTH the Pass-1
+// auto-pass path and the Pass-2 approve path share one behavior.
+func (t *MemoryFactsTool) executeMemoryFactsWrite(_ context.Context, writeArgs []byte) (string, error) {
 	var parsed memFactsArgs
 	if err := json.Unmarshal(writeArgs, &parsed); err != nil {
 		return "", fmt.Errorf("memory_facts_write: parse args: %w", err)
@@ -276,16 +379,26 @@ func (h *memoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 	if parsed.Tier == "" {
 		parsed.Tier = "权威"
 	}
-
-	// 11-02 ships a no-op success message. The real memory:facts
-	// INSERT ships in 12+ (the audit_writer's MarkApproved followed
-	// by the memory store's Persist). The success string is
-	// structured ("memory_facts_write OK: tier=X key=Y value=Z") so
-	// the chatHandler can render the verdict deterministically.
 	return fmt.Sprintf(
 		"memory_facts_write OK: tier=%s key=%s value=%s",
 		parsed.Tier, parsed.Key, parsed.Value,
 	), nil
+}
+
+// userIDFromCtx extracts the operator identity from the request ctx.
+// 11-05 reads the "user_id" ctx value (set by the chatHandler
+// boundary); Phase 12 wires real auth. Absent → "" (the audit row's
+// user_id column tolerates empty).
+func userIDFromCtx(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v := ctx.Value("user_id"); v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // newApprovalID returns a 16-byte crypto/rand hex string (32 chars).
