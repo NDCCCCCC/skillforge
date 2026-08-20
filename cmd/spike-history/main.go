@@ -52,6 +52,17 @@
 //	                  (history.Project + rewrite + classifier + multi-turn
 //	                   messages prefix). Legacy direct path is the default
 //	                   for Phase 9 row-level reproducibility.
+//	--frozen          Phase 11 acceptance-gate mode: re-run the spike
+//	                  against eval/frozen/compliance.lock.json, compute
+//	                  metric drift vs the Phase 8 baselines (compiled
+//	                  into frozen.go), and emit reports/spike_<date>.json
+//	                  + reports/frozen_lock_<date>.sha256. Exits 0 with
+//	                  [FROZEN-RELOCK-PASS] on pass, 1 with
+//	                  [FROZEN-RELOCK-FAIL] on drift.
+//	--archive         Ship-evidence bundle (requires --frozen=true).
+//	                  Additionally writes reports/metrics_diff_<date>.json
+//	                  so the operator's audit trail carries the per-metric
+//	                  drift table. This is the Phase 11 sign-off artifact.
 //
 // Per the planner's stub-error discipline (Planner Ruling 2 + 3),
 // --history-length=long and --summarize exit with a grep-friendly
@@ -135,7 +146,32 @@ func main() {
 		"path to the Phase 8 frozen compliance.lock.json (used by --summarize to reference baseline model_ver + prompt_hash)")
 	viaPipeline := flag.Bool("via-pipeline", false, "route RunEntry through the production chat path (history.Project + rewrite + classifier + multi-turn messages prefix)")
 	dryRun := flag.Bool("dry-run", defaultDryRun, "run with all externals stubbed (no API keys / no Milvus / no BGE-M3)")
+	frozen := flag.Bool("frozen", false, "Phase 11 acceptance gate: re-run against eval/frozen/compliance.lock.json + emit drift report; [FROZEN-RELOCK-PASS] on success")
+	archive := flag.Bool("archive", false, "Phase 11 ship-evidence bundle (requires --frozen=true): additionally writes reports/metrics_diff_<date>.json")
 	flag.Parse()
+
+	// --archive requires --frozen (the metrics-diff report is a
+	// frozen-gate artifact; archiving without the gate would write a
+	// meaningless diff against an unset baseline).
+	if *archive && !*frozen {
+		log.Fatalf("[FAIL] cmd/spike-history: --archive requires --frozen=true")
+	}
+
+	// --frozen forces dry-run + memory retriever so the acceptance
+	// gate is hermetic on a developer laptop. The gate's purpose is
+	// reproducible metric-drift detection, NOT live-LLM re-validation
+	// (live re-validation is the quarterly judge-drift sanity check
+	// per D6-14 cadence).
+	if *frozen {
+		*dryRun = true
+		if err := os.Setenv("ANTHROPIC_API_KEY", "mock"); err != nil {
+			log.Fatalf("[FAIL] cmd/spike-history: set ANTHROPIC_API_KEY=mock: %v", err)
+		}
+		if err := os.Setenv("RETRIEVER_BACKEND", "memory"); err != nil {
+			log.Fatalf("[FAIL] cmd/spike-history: set RETRIEVER_BACKEND=memory: %v", err)
+		}
+		log.Printf("[INFO] cmd/spike-history: --frozen active — forcing --dry-run + RETRIEVER_BACKEND=memory (hermetic)")
+	}
 
 	// Honour --seed across the package (used by future Plan 09-04 long
 	// history noise fill). Plan 09-03 records --seed into the JSONL via
@@ -271,6 +307,7 @@ func main() {
 
 	// ---- 5. Main loop ----
 	cost := &costState{LimitUSD: *costLimit}
+	results := make([]*SpikeResult, 0, len(rows))
 	for i, row := range rows {
 		if cost.Exceeded() {
 			log.Printf("[WARN] cmd/spike-history: cost limit $%.2f exceeded after %d/%d rows — stopping (existing JSONL preserved)",
@@ -290,6 +327,7 @@ func main() {
 		if err := writeResult(*outDir, row.Category, res); err != nil {
 			log.Fatalf("[FAIL] cmd/spike-history: write row %s: %v", row.ID, err)
 		}
+		results = append(results, res)
 		log.Printf("[OK] cmd/spike-history: %d/%d %s [%s] faith=%.3f arel=%.3f cprec=%.3f crecall=%.3f refused=%t grounded=%t inj=%t cost=$%.4f",
 			i+1, len(rows), row.ID, row.Category,
 			res.Metrics["faithfulness"], res.Metrics["answer_relevancy"],
@@ -298,6 +336,28 @@ func main() {
 	}
 	log.Printf("[OK] cmd/spike-history: wrote %d rows to %s (cost=$%.4f)", len(rows), *outDir, cost.TotalUSD)
 	_ = time.Now() // keep time import for header time-stamping later
+
+	// ---- 6. Frozen acceptance gate (Plan 11-08 Task 1) ----
+	// Runs AFTER the main loop so the per-row JSONL is already on
+	// disk. The gate aggregates the in-memory results, computes drift
+	// vs the Phase 8 baseline constants, and emits the ship-evidence
+	// bundle. Exit code is the operator's pass/fail signal.
+	if *frozen {
+		report, err := runFrozenGate(*baselineLock, rows, results, *archive, *dryRun)
+		if err != nil {
+			log.Fatalf("[FROZEN-LOCK-MISMATCH] cmd/spike-history: %v", err)
+		}
+		if err := writeFrozenReports(*outDir, report, *archive); err != nil {
+			log.Fatalf("[FROZEN-RELOCK-FAIL] cmd/spike-history: write reports: %v", err)
+		}
+		if !report.Pass {
+			for _, line := range report.DriftedMetrics {
+				log.Printf("[FROZEN-RELOCK-FAIL] drifted: %s", line)
+			}
+			log.Fatalf("[FROZEN-RELOCK-FAIL] cmd/spike-history: %d metric(s) drifted beyond tolerance", len(report.DriftedMetrics))
+		}
+		log.Printf("[FROZEN-RELOCK-PASS] cmd/spike-history: %d cases, lock_sha256=%s, drift within tolerance", report.CaseCount, report.LockSHA256)
+	}
 }
 
 // buildEmbedder mirrors cmd/server's BGE-M3 construction. Required
