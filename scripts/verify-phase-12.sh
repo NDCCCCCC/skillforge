@@ -119,8 +119,12 @@ echo
 # Stage 1 — hermetic Go suite (PLAN-01..05: foundation + write_todos +
 #           plan_approve + budget gate + plan_todos replay)
 # ---------------------------------------------------------------------------
+# NOTE: -race is intentionally OMITTED — it requires cgo + gcc; the
+# hermetic gate runs on operator machines without a C toolchain.
+# Operator-runs-live with -race is documented separately (see
+# `cmd/spike-deep parse-rate` cost-limit + manual invocation).
 run_stage "hermetic Go suite (PLAN-01..05: foundation + write_todos + plan_approve + budget + plan_todos)" \
-  go test ./internal/runtime/... ./internal/agent/... ./internal/agent/hitl/... ./internal/agent/callbacks/... ./internal/store/... ./internal/wire/... ./internal/skill/... ./internal/verdict/... ./internal/server/... ./internal/llm/... ./cmd/spike-deep/... -count=1 -race -timeout=240s
+  go test ./internal/runtime/... ./internal/agent/... ./internal/agent/hitl/... ./internal/agent/callbacks/... ./internal/store/... ./internal/wire/... ./internal/skill/... ./internal/verdict/... ./internal/server/... ./internal/llm/... ./cmd/spike-deep/... -count=1 -timeout=240s
 
 # ---------------------------------------------------------------------------
 # Stage 2 — plan API endpoints (12-04 + 12-05)

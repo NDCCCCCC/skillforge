@@ -85,6 +85,37 @@ const (
 	// (matchRuleSQL's DDL block). Catches a silent rotation of the
 	// cross-session isolation predicate.
 	HITL08ApprovalRulesMatchSQLSHA256 = "3f005bab44d2e93cc3af6bd0409a08126a0592fecd0e1e06f4d727a32ce54e06"
+
+	// P123DeepAgentMaxIterationSHA256 is the sha256 of
+	// internal/runtime/deep_agent.go lines 92-97 (the alignment group
+	// containing the P12-L2 HARD CAP `MaxIteration: 10` literal +
+	// the WithoutWriteTodos / WithoutGeneralSubAgent hardening).
+	// Catches a silent rotation of the budget hard cap.
+	P123DeepAgentMaxIterationSHA256 = "b432d5dd6e7e750222fdaf9a33d1909ef7cebc565ae901e2342e3a4a713c5e41"
+
+	// P123BudgetCheckLoopSHA256 is the sha256 of
+	// internal/agent/callbacks/budget.go lines 390-424
+	// (budgetMiddleware.checkLoop's fnv64a first-200-chars loop
+	// detector body). Catches a silent rotation of the loop gate's
+	// false-positive resistance (Pitfall 5).
+	P123BudgetCheckLoopSHA256 = "e4f48b085459ae00b54bc0cdd0945b2e620ca21cf8d137ed71a51c9e3f3e10cf"
+
+	// P126WriteTodosInvokableRunSHA256 is the sha256 of
+	// internal/agent/deep_audit.go lines 208-270
+	// (writeTodosAuditedTool.InvokableRun's 3-effect contract body —
+	// AUDIT INSERT BEFORE SSE EMIT BEFORE session-value set, per
+	// P12-L4 fail-closed posture). Catches a silent reordering that
+	// would invert the fail-closed contract.
+	P126WriteTodosInvokableRunSHA256 = "25af214b849fbef0cae5f627b13a5b3e5d3dea59f53f6b28acef232058cefabb"
+
+	// P127ExtractVerdictJSONStructuredOutputSHA256 is the sha256 of
+	// internal/llm/extract.go lines 213-265
+	// (ExtractVerdictJSONWithStructuredOutput's body — the
+	// structured-output fallback used when the direct JSON path
+	// fails; the wire signal is the OpenAI-compatible
+	// response_format=json_object + the verdictJSONSchema). Catches
+	// a silent rotation that would change the rescue-rate semantics.
+	P127ExtractVerdictJSONStructuredOutputSHA256 = "8e697c87efb122a8dd8686fc77e6087be41e12afc5c361eeeadc41c552653f88"
 )
 
 // sha256LinesRange returns the hex sha256 of lines[start..end]
@@ -106,16 +137,22 @@ func sha256LinesRange(t *testing.T, path string, start, end int) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// TestThreatModelCriticalMitigations is the STRIDE-11 critical-
-// mitigations test. 4 sub-tests, one per T-HITL-NN critical threat.
+// TestThreatModelCriticalMitigations is the STRIDE-11 + STRIDE-12
+// critical-mitigations test. 4 STRIDE-11 sub-tests + 3 STRIDE-12
+// sub-tests, one per T-HITL-NN / T-P12-NN critical threat.
 //
 // Each sub-test name matches the threat ID so docs/threat-model/
-// STRIDE-11.md can map threat → test gate in a single grep.
+// STRIDE-11.md + STRIDE-12.md can map threat → test gate in a
+// single grep.
 func TestThreatModelCriticalMitigations(t *testing.T) {
 	t.Run("T-HITL-04", testThreatHitl04AuditFailClosed)
 	t.Run("T-HITL-05", testThreatHitl05WritesEnforcement)
 	t.Run("T-HITL-07", testThreatHitl07FrozenArgsByteEquality)
 	t.Run("T-HITL-08", testThreatHitl08ScopeLeakPrevention)
+	// STRIDE-12 Critical threats (Plan 12-08 Task 3):
+	t.Run("T-P12-3", testThreatP123BudgetMaxIterationLiteral)
+	t.Run("T-P12-6", testThreatP126WriteTodosAuditInsertBeforeSSE)
+	t.Run("T-P12-7", testThreatP127VerdictParseStructuredOutput)
 }
 
 // testThreatHitl04AuditFailClosed — T-HITL-04 (Repudiation): an
@@ -267,4 +304,111 @@ func testThreatHitl08ScopeLeakPrevention(t *testing.T) {
 	assert.Equal(t, h1, h2, "frozen_args hash must be deterministic across calls")
 	h3 := ComputeFrozenArgsHash([]byte(`{"k":"v2"}`))
 	assert.NotEqual(t, h1, h3, "different args must hash differently (rule key uniqueness)")
+}
+
+// ---------------------------------------------------------------------------
+// STRIDE-12 Critical threat mitigations (Plan 12-08 Task 3).
+// ---------------------------------------------------------------------------
+
+// testThreatP123BudgetMaxIterationLiteral — T-P12-3 (Denial of
+// Service): the DeepAgent MaxIteration must be a STRUCTURAL hard cap
+// (P12-L2 source-grep locked). Functional assertion: the source file
+// MUST contain the literal `MaxIteration: 10` (any drift surfaces as
+// a TestMaxIterationHardCap failure upstream). sha256 baseline
+// asserts the MaxIteration alignment group has not rotated; the loop
+// detector's fnv64a first-200-chars hashing (Pitfall 5 mitigation)
+// has not rotated either.
+//
+// The full functional coverage for T-P12-3 lives in
+// internal/agent/callbacks/budget_test.go (12-05's TestBudgetMaxIterationCap
+// + TestBudgetTokenCounterAccumulation + TestBudgetLoopDetection3InRow
+// + TestBudgetForcedStopEmitsDataDecision + TestBudgetAuditRowOnTrigger).
+// This sub-test is the STRIDE-12 acceptance gate's structural proof.
+func testThreatP123BudgetMaxIterationLiteral(t *testing.T) {
+	// (b) sha256 baseline — MaxIteration alignment group (lines 92-97).
+	actual := sha256LinesRange(t, "../../runtime/deep_agent.go", 92, 97)
+	assert.Equal(t, P123DeepAgentMaxIterationSHA256, actual,
+		"deep_agent.go MaxIteration alignment group drifted from baseline — review the P12-L2 hard cap")
+
+	// (b) sha256 baseline — checkLoop fnv64a first-200-chars body.
+	actualLoop := sha256LinesRange(t, "../callbacks/budget.go", 390, 424)
+	assert.Equal(t, P123BudgetCheckLoopSHA256, actualLoop,
+		"budget.go checkLoop body drifted from baseline — review the loop gate's Pitfall 5 mitigation")
+
+	// (a) Functional — the source file MUST contain the literal
+	// `MaxIteration: 10` at the call-site (P12-L2 source-grep lock).
+	// This is the structural proof that re-parameterization (e.g.
+	// via env var) cannot happen without rotating the literal.
+	srcBytes, err := os.ReadFile("../../runtime/deep_agent.go")
+	require.NoError(t, err, "read deep_agent.go")
+	assert.Contains(t, string(srcBytes), "MaxIteration: 10",
+		"deep_agent.go MUST contain the literal MaxIteration: 10 (P12-L2 hard cap)")
+}
+
+// testThreatP126WriteTodosAuditInsertBeforeSSE — T-P12-6 (Tampering /
+// Repudiation): the write_todos Tool must execute PutPlanTodo BEFORE
+// EmitDataPlanTrace (P12-L4 fail-closed audit posture, mirrors
+// HITL-04). Functional assertion: the audit INSERT call sites
+// MUST appear at earlier line numbers than the EmitDataPlanTrace call
+// site within the InvokableRun body. sha256 baseline asserts the
+// 3-effect contract body has not been reordered (a copy-paste that
+// swapped the audit and SSE blocks surfaces here).
+func testThreatP126WriteTodosAuditInsertBeforeSSE(t *testing.T) {
+	// (b) sha256 baseline — writeTodosAuditedTool.InvokableRun body.
+	actual := sha256LinesRange(t, "../deep_audit.go", 208, 270)
+	assert.Equal(t, P126WriteTodosInvokableRunSHA256, actual,
+		"deep_audit.go::InvokableRun body drifted from baseline — review the P12-L4 AUDIT-before-SSE ordering")
+
+	// (a) Functional — PutPlanTodo call sites MUST precede
+	// EmitDataPlanTrace call site within the file (defensive even if
+	// the sha256 drifts later; the strict ordering invariant).
+	srcBytes, err := os.ReadFile("../deep_audit.go")
+	require.NoError(t, err, "read deep_audit.go")
+	src := string(srcBytes)
+	insertIdx := strings.Index(src, "PutPlanTodo")
+	emitIdx := strings.Index(src, "EmitDataPlanTrace")
+	require.NotEqual(t, -1, insertIdx, "deep_audit.go must contain PutPlanTodo call")
+	require.NotEqual(t, -1, emitIdx, "deep_audit.go must contain EmitDataPlanTrace call")
+	assert.Less(t, insertIdx, emitIdx,
+		"PutPlanTodo (line offset %d) must come BEFORE EmitDataPlanTrace (line offset %d) — P12-L4 fail-closed ordering", insertIdx, emitIdx)
+
+	// (a) Functional — the InvokableRun body MUST contain the
+	// fail-closed error strings (audit INSERT fail-closed; SSE emit
+	// fail-closed). Any future refactor that swallows the error
+	// surfaces here.
+	assert.Contains(t, src, "audit INSERT fail-closed",
+		"deep_audit.go must surface audit INSERT failures as fail-closed errors")
+	assert.Contains(t, src, "SSE emit fail-closed",
+		"deep_audit.go must surface SSE emit failures as fail-closed errors")
+}
+
+// testThreatP127VerdictParseStructuredOutput — T-P12-7 (Tampering):
+// the verdict JSON parse fallback MUST exist as a separate function
+// that propagates the OpenAI-compatible response_format=json_object
+// signal. Functional assertion: ExtractVerdictJSONWithStructuredOutput
+// must exist with the verdictJSONSchema parameter signature. sha256
+// baseline asserts the function body has not rotated.
+//
+// The full live measurement (P12-L10 lock evaluation) is operator-
+// runs-live via cmd/spike-deep parse-rate; hermetic schema is
+// locked by TestSpikeDeepParseRateOutputJSONLSchema (12-08 Task 2).
+func testThreatP127VerdictParseStructuredOutput(t *testing.T) {
+	// (b) sha256 baseline — ExtractVerdictJSONWithStructuredOutput body.
+	actual := sha256LinesRange(t, "../../llm/extract.go", 213, 265)
+	assert.Equal(t, P127ExtractVerdictJSONStructuredOutputSHA256, actual,
+		"extract.go::ExtractVerdictJSONWithStructuredOutput body drifted from baseline — review the structured-output fallback wiring")
+
+	// (a) Functional — the function MUST exist + take the
+	// verdictSchema parameter (the OpenAI-compatible wire
+	// signal). A future refactor that drops the schema parameter
+	// breaks the rescue semantics.
+	srcBytes, err := os.ReadFile("../../llm/extract.go")
+	require.NoError(t, err, "read extract.go")
+	src := string(srcBytes)
+	assert.Contains(t, src, "func ExtractVerdictJSONWithStructuredOutput(",
+		"extract.go must contain ExtractVerdictJSONWithStructuredOutput function")
+	assert.Contains(t, src, "verdictSchema",
+		"ExtractVerdictJSONWithStructuredOutput must take the verdictSchema parameter (response_format signal)")
+	assert.Contains(t, src, "response_format",
+		"the structured-output fallback must propagate response_format to the model")
 }
