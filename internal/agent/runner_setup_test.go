@@ -24,6 +24,9 @@ package agent_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -138,5 +141,63 @@ func TestCancelPropagationMidToolRunner(t *testing.T) {
 			"D11-A4: cancel did not propagate within 200ms (elapsed=%v)", elapsed)
 	case <-time.After(2 * time.Second):
 		t.Fatal("D11-A4 FAIL: drain did not return within 2s of cancel")
+	}
+}
+
+// TestNoLegacyInterruptAPI scans the Phase 11 directories for legacy or
+// misplaced interrupt API usages.
+//
+// tool.StatefulInterrupt() is allowed ONLY in the real HITL Tool files
+// (internal/agent/hitl/*), which ship in 11-02 and use the current eino
+// v0.9.14 API. The audit_writer.go file in particular must NOT contain
+// StatefulInterrupt(); its job is the sync INSERT before the interrupt
+// is reached (D11-C3).
+//
+// Deprecated Runner.Query( / Runner.Resume( forms are banned outright:
+// the Runner path uses runner.Run() and (when needed) the v0.9.14
+// ResumeWithParams flow.
+func TestNoLegacyInterruptAPI(t *testing.T) {
+	roots := []string{
+		"internal/agent",
+		"internal/agent/callbacks",
+		"internal/agent/tools",
+		"internal/agent/hitl",
+	}
+
+	var hits []string
+	for _, root := range roots {
+		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			if strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			s := string(b)
+			if strings.Contains(s, "tool.StatefulInterrupt(") {
+				// 11-02's HITL Tools legitimately use the current
+				// StatefulInterrupt API; audit_writer.go does not.
+				if !(strings.Contains(path, "hitl_memory_facts.go") ||
+					strings.Contains(path, "hitl_review_report.go") ||
+					strings.Contains(path, "hitl_plan_approve.go")) {
+					hits = append(hits, path+": tool.StatefulInterrupt(")
+				}
+			}
+			if strings.Contains(s, "Runner.Query(") || strings.Contains(s, "Runner.Resume(") {
+				hits = append(hits, path+": legacy Runner.Query/Resume usage")
+			}
+			return nil
+		})
+	}
+
+	if len(hits) > 0 {
+		t.Fatalf("legacy or misplaced interrupt API found:\n%s", strings.Join(hits, "\n"))
 	}
 }
