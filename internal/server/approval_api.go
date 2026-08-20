@@ -345,6 +345,18 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
+	// Idempotency (T-11-04-06) FIRST: the audit chain is INSERT-only,
+	// so the pending row never disappears — "already resolved" is
+	// detectable ONLY by the presence of a resolution row. A second
+	// POST for a resolved approval returns 200 already_resolved
+	// rather than re-executing the write.
+	if s.approvalAlreadyResolved(ctx, sessionID, approvalID) {
+		c.JSON(http.StatusOK, map[string]string{
+			"state": "already_resolved",
+		})
+		return
+	}
+
 	// Pending-row lookup (T-3-SQLI ?-parameterized). Wrong session →
 	// no rows → 404 (the cross-session authorization moat,
 	// T-11-04-02).
@@ -362,15 +374,6 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	if len(pending) == 0 {
-		// Idempotency (T-11-04-06): a second POST for an already
-		// resolved approval returns 200 already_resolved rather than
-		// 404 — the operator's UI retries must not look like attacks.
-		if s.approvalAlreadyResolved(ctx, sessionID, approvalID) {
-			c.JSON(http.StatusOK, map[string]string{
-				"state": "already_resolved",
-			})
-			return
-		}
 		c.JSON(http.StatusNotFound, map[string]string{
 			"error": "no pending approval for this session",
 		})
