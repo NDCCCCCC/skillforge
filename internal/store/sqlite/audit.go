@@ -124,6 +124,14 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 		clauses = append(clauses, "session_id = ?")
 		args = append(args, filter.SessionID)
 	}
+	if filter.Action != "" {
+		clauses = append(clauses, "action = ?")
+		args = append(args, filter.Action)
+	}
+	if filter.ToolCallID != "" {
+		clauses = append(clauses, "tool_call_id = ?")
+		args = append(args, filter.ToolCallID)
+	}
 	if !filter.Since.IsZero() {
 		clauses = append(clauses, "ts >= ?")
 		args = append(args, filter.Since.UTC())

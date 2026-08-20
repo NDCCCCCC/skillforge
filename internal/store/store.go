@@ -272,6 +272,17 @@ type AuditFilter struct {
 	// SessionID filters by the session partition (useful for "show the
 	// full audit trail of one conversation").
 	SessionID string
+	// Action filters by the Phase 11 HITL lifecycle enum
+	// ("action_pending_approval" | "action_approved" |
+	// "action_rejected" | "action_rule_revoked"). Empty = no action
+	// filter. Added by Plan 11-04 for the approval dual endpoint and
+	// the audit-timeline endpoint; applied as a parameterized `?`
+	// placeholder like every other field (T-3-SQLI).
+	Action string
+	// ToolCallID filters by the D11-C4 approval identity (==
+	// ApprovalID). Used by the approval endpoint's pending-row lookup
+	// and idempotency probe. Empty = no filter.
+	ToolCallID string
 	// Since / Until bound the Timestamp range. A zero time.Time (the
 	// default value) means "no bound on this side".
 	Since time.Time
