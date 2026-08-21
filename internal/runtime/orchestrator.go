@@ -302,22 +302,33 @@ func (o *FanOutOrchestrator) Run(ctx context.Context, input *adk.AgentInput, opt
 		// Defensive: empty sub-plan collapses to an empty merged verdict.
 		if len(subs) == 0 {
 			merged := o.mergeFunc(nil)
-			verdict := o.applyTrustStageToMerged(ctx, merged)
+			// No sub-agents ran — no shared accumulator hits. Pass nil
+			// and let the trust-floor short-circuit on empty Chunks
+			// (single-vertex fallback is supposed to refuse by default).
+			verdict := o.applyTrustStageToMerged(ctx, merged, nil)
 			gen.Send(o.eventFromVerdict(verdict))
 			return
 		}
 
 		// Step 2 + 3: Build + Fan-out (manual errgroup with
 		// SetLimit(SubAgentFanoutLimit) — P13-L1, NOT adk.NewParallelAgent).
-		results := o.fanOut(ctx, subs, input)
+		// fanOut returns the shared accumulator so Step 5 can ground
+		// the merged verdict against the UNION of per-sub-agent
+		// retrievals (P13-L9 — FAN-04 SC-4 final pass).
+		results, acc := o.fanOut(ctx, subs, input)
 
 		// Step 4: Merge (pure function — FAN-03 SC-3 byte-identity).
 		merged := o.mergeFunc(results)
 		// Fill the RunPath for audit + replay.
 		merged.RunPath = o.runID
 
-		// Step 5: Apply Trust Stage on the merged verdict.
-		verdict := o.applyTrustStageToMerged(ctx, merged)
+		// Step 5: Apply Trust Stage on the merged verdict — feed the
+		// accumulator's union hits so the trust floor at
+		// len(Chunks)==0 does NOT refuse the merged verdict (the
+		// first live run aborted with all-OK sub-agents conservatively
+		// downgraded because the merged-grounding pass was getting
+		// Chunks: nil).
+		verdict := o.applyTrustStageToMerged(ctx, merged, acc)
 
 		gen.Send(o.eventFromVerdict(verdict))
 	}()
@@ -412,7 +423,7 @@ func extractFirstUserText(in *adk.AgentInput) string {
 // Returns the slice of per-sub-agent SubAgentResult envelopes, one per
 // sub-query plan (in plan order). Failed sub-agents retain their slot
 // with Status=faulted + FaultedReason populated.
-func (o *FanOutOrchestrator) fanOut(ctx context.Context, subs []subQueryPlan, input *adk.AgentInput) []SubAgentResult {
+func (o *FanOutOrchestrator) fanOut(ctx context.Context, subs []subQueryPlan, input *adk.AgentInput) ([]SubAgentResult, *SharedChunkAccumulator) {
 	results := make([]SubAgentResult, len(subs))
 
 	// Shared accumulator across parent + sub-agents (P13-L9).
@@ -447,7 +458,7 @@ func (o *FanOutOrchestrator) fanOut(ctx context.Context, subs []subQueryPlan, in
 	}
 
 	wg.Wait()
-	return results
+	return results, acc
 }
 
 // runSubAgent is the per-sub-agent goroutine body. It does:
@@ -676,17 +687,27 @@ func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.
 // the function returns a Refusal envelope (the conservative posture
 // — D2-14 + P13-L5). If grounding passes, the merged verdict is
 // returned unchanged.
-func (o *FanOutOrchestrator) applyTrustStageToMerged(ctx context.Context, merged MergedVerdict) *TrustStageOutput {
+func (o *FanOutOrchestrator) applyTrustStageToMerged(ctx context.Context, merged MergedVerdict, acc *SharedChunkAccumulator) *TrustStageOutput {
 	// Build a synthetic output carrying the merged verdict's JSON
 	// content for ApplyTrustStage.
 	out := &schema.Message{
 		Role:    schema.Assistant,
 		Content: merged.Status,
 	}
+	// FAN-04 SC-4 final pass: feed the accumulator's UNION hits
+	// (parent + sub-agents) to the trust floor — without this the
+	// trust floor refuses the merged verdict on len(Chunks)==0 and
+	// the conservative merge path downgrades everything to
+	// needs_input (the "downgraded even when sub-agents were OK"
+	// outage in the 13-05 first live run).
+	var chunks []retriever.Hit
+	if acc != nil {
+		chunks = acc.Hits()
+	}
 	tsOut, err := ApplyTrustStage(ctx, &TrustStageInput{
 		Manifest: o.parentManifest,
 		Output:   out,
-		Chunks:   nil,
+		Chunks:   chunks,
 		History:  nil,
 	})
 	if err != nil {
