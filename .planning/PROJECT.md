@@ -2,7 +2,7 @@
 
 ## What This Is
 
-SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 agent 工程能力。技术栈为 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端）。核心创新是"**Skill 驱动**"：企业通过编写或更新 Skill 文件（`SKILL.md`）让同一个 agent 内核适配不同业务需求，无需改代码。内置"企业合规/制度审查"Skill 作为样板间，开源发布，用于建个人技术品牌。
+SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 agent 工程能力。技术栈为 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端）。核心创新是"**Skill 驱动**"：企业通过编写或更新 Skill 文件（`SKILL.md`）让同一个 agent 内核适配不同业务需求，无需改代码。**v1.0 起增加「数据维度」**：业务敏感数据导入即脱敏（不保存原始数据），通过聚合 KPI 函数接口为 agent 提供数据支撑；合规（脱敏、审计、拒答）作为基线约束贯穿所有能力。
 
 ## Core Value
 
@@ -107,19 +107,31 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 | **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
 
-## Current Milestone: v0.8 Harness — 可信×行动融合
+## Current Milestone: v1.0 业务数据支撑（Business Data Support）
 
-**Goal:** 把 SkillForge 从「可信问答内核」升级为「可信行动 harness」——每一步行动可审计、可拒答、可回放。
+**Goal:** 把 SkillForge 从「可信问答 harness」升级为「IT 部门的数据支撑平台」——敏感数据导入即脱敏、KPI 聚合接口、聊天内数据问答 + 定时更新的静态报告门户；合规审计全程基线化。
 
-**Target features:**
-- 前置：✅ 全量依赖升级（Phase 8 完成 2026-08-18：eino v0.9.14 + eino-ext openai v0.1.13 联动，summarization 中间件与 ADK HITL 解锁；hertz/milvus/sqlite pin 有意保持稳定，前端依赖升级仍挂 `todos/pending/upgrade-deps-latest.md`）
-- 前置：✅ spike 验证历史注入对 trust floor 拒答率的影响（Phase 9 完成 2026-08-18，**NO-GO 已签字接受带逃逸方案**：拒答 95%→0% 崩塌 + faithfulness -18.6%，SC-3 恶意零穿透 0/10 守住；产出 `cmd/spike-history` spike runner + `internal/history` 消毒骨架 + reports/ A/B 报告。**Phase 10 必须前置 trust-floor default-deny 强化**（D9-V2 逃逸方案），且 09-REVIEW 4 个 Critical 工具链 bug 需在 Phase 10 重门控前修复）
-- 多轮对话记忆：sqlite session history 喂进 agent（修复 chat.go 单轮限制）+ 摘要压缩
-- 写操作 + 审批门：Eino ADK Interrupt/Resume HITL + 审计行，「可信×行动」首次正面验证
-- 规划层：DeepAgent（`adk/prebuilt/deep` + write_todos），规划轨迹可回放
-- 子 agent 扇出：multi-hop 并行化，子 agent 继承 tier 知识边界
+**Target features (7 块):**
 
-**Key context:** 开源发布（Phase 07-06）用户决定延后至本里程碑之后（2026-08-17）；可信税原则——每个 harness 维度都嫁接可信机制（审批门 / 审计行 / tier 继承 / 可回放）。定位与 Eino 能力事实清单见 `.planning/notes/harness-roadmap-decision.md`。
+| # | 能力 | 形态 |
+|---|---|---|
+| 1 | 数据导入管线 + 导入即脱敏 | CSV/SQL/API 导入；L1 哈希 + L2 桶化；**只持久化脱敏数据**；原始文件即弃 |
+| 2 | KPI 聚合接口 | 数据人员预定义 KPI 函数；agent 只能调函数**永不写 SQL**；`reads: ["data:aggregated_only"]` 通道声明 + 平台层守卫 |
+| 3 | KPI 仪表盘 Skill | 聊天内数据问答（数字 + 迷你趋势 + 数据引用进审计），无新路由页面 |
+| 4 | 业务月报 Skill | 聊天触发（DeepAgent 计划 + 多 KPI 调用 + 组装报告）；可发布为静态页 |
+| 5 | 静态报告门户 + 定时更新 | 报告 = 模板 + KPI 数据绑定 + cron 计划；调度器定时重渲染发布；版本留存可追溯（每次重渲染进审计+KPI 快照） |
+| 6 | 管理台（admin 静态页） | 数据导入管理 + KPI 函数定义 + Skill 管理入口——延续 `/eval` admin 模式 |
+| 7 | 生产化增强 | fan-out LLM classifier（真拆分多跳）+ D8-07 eval 指标抬升 + 平台级隐藏系统提示词层（Skill 不可覆盖的下限，代码级 trust 机制兜底）|
+
+**横切基础设施：** 调度器（页面定时重渲染 + 数据 TTL 清理共用）；审计行 INSERT-only 永不删（合规基线）；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）。
+
+**Key decisions:**
+- **合规定位 = 基线，不是 feature 方向**（用户角色：金融 IT 部门，非合规专员）。合规月报 Skill 出局，业务支撑 Skill 优先
+- **定时页面更新**从 v1.1 提前进 v1.0（业务硬需求：月报 + KPI 仪表板要按口径自动重算）
+- **外部授权通道（DATA-04/05/10..14、个体识别 + TTL token + 持续挂起审批）→ v1.1**，v1.0 仅聚合通道
+- **Phase 10 live 35-case 重跑**保持 operator gate（BLOCKED-ENV，从 v0.8 ledger 转入 v1.0 ledger，不阻塞关闭）
+- **数据引用 = 新引用类型**：函数名+参数+时间窗+结果快照，区别于文档 chunk 引用；同样进审计可回放
+- Phase 编号从 **14** 延续；研究先行（4 并行 researcher：Stack / Features / Architecture / Pitfalls）
 
 ## Evolution
 

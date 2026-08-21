@@ -1,21 +1,30 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.8
-milestone_name: — Harness（可信×行动融合）
-current_phase: 13
-current_plan: 13-06 COMPLETE — v0.8 milestone wrap shipped (completion report + Operator Gates Ledger + README DIST-09 fill + terminal flip). v0.8 CLOSED: tag DEFERRED by operator 2026-08-21 ("跳过 tag"); carries into v1.0 ledger.
-status: complete
-stopped_at: v0.8 milestone CLOSED 2026-08-21 (operator decision: tag DEFERRED — "跳过 tag"; no git remote configured, push gate merged into Phase 7 publication governance row 7). Phase 13 COMPLETE 6/6 + UAT 20/20 PASS (72390a3); phases 8-13 all hermetically green; 3 frozen locks byte-identical (compliance 5cf700f3… + hitl 6e91881f… + fanout af3020fd…). Operator Gates Ledger in .planning/v0.8-MILESTONE-COMPLETION.md — 3 CLOSED / 3 OPEN / 1 DEFERRED (v0.8.0 tag, carries to v1.0). Next: /gsd:new-milestone (v1.0).
-last_updated: "2026-08-21T13:59:43Z"
-last_activity: 2026-08-21 -- Plan 13-06 SHIPPED (v0.8 milestone wrap). Created .planning/v0.8-MILESTONE-COMPLETION.md (25/25 requirement attestation, 7-row Operator Gates Ledger, 3 locks + deep.lock substrate, deviations, test-suite state, v1.0 next path); reconciled stale REQUIREMENTS.md traceability (MEM/HITL/PLAN/FAN + DIST-09); filled README `## Eval Results` from `go run ./scripts/eval_snapshot` verbatim (DIST-09 closed, zero hand-typed numbers); STATE terminal flip. Zero code changes. Prior: 13-05 live fan-out UAT operator-signed (e02525f + 67d6180).
-resume_file: .planning/v0.8-MILESTONE-COMPLETION.md
+milestone: v1.0
+milestone_name: 业务数据支撑（Business Data Support）
+current_phase: none
+current_plan: defining requirements
+status: planning
+stopped_at: v1.0 milestone started 2026-08-21 (defining requirements → 4 parallel researchers → requirements → roadmap). v0.8 terminal: phase 13 COMPLETE 6/6 + UAT 20/20 PASS at 72390a3; v0.8 milestone CLOSED with tag DEFERRED (ee48be5); 3 frozen locks byte-identical (compliance 5cf700f3… / hitl 6e91881f… / fanout af3020fd…); 1 open gate carries into v1.0 ledger (Phase 10 live 35-case BLOCKED-ENV).
+last_updated: "2026-08-21T14:10:00Z"
+last_activity: 2026-08-21 -- v1.0 milestone scope locked (7 capability blocks: data pipeline + KPI aggregation + KPI Skill + monthly report Skill + static report portal + admin console + productionization). Seed `finance-data-skills` partially adopted (aggregation channel + 2 business-support Skills; external authorization → v1.1; compliance is baseline not direction per user role: IT data-support not compliance specialist). Pending: 4 parallel researchers (Stack / Features / Architecture / Pitfalls).
+resume_file: .planning/PROJECT.md
 progress:
-  total_phases: 13
-  completed_phases: 9
-  total_plans: 61
-  completed_plans: 56
-  percent: 92   # basis = PLANS (56/61). The legacy 65% mixed phase- and plan-count bases; pinned to plans here.
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0   # planning phase — milestones reset
 ---
+
+# State — SkillForge
+
+## Current Position
+
+Phase: Not started (defining requirements)
+Plan: —
+Status: planning
+Last activity: 2026-08-21 — Milestone v1.0 业务数据支撑 started
 
 # State — SkillForge
 
