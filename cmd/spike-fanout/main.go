@@ -999,6 +999,8 @@ func newGLMChatModel(ctx context.Context) (model.ToolCallingChatModel, error) {
 }
 
 // newBGEEmbedder constructs the BGE-M3 embedder. Requires BGE_M3_URL.
+// BGE_M3_TLS_SKIP_VERIFY (opt-in, mirrors cmd/server:138 wiring) disables
+// TLS cert verification for internal-network self-signed HTTPS endpoints.
 func newBGEEmbedder() (embedder.Embedder, error) {
 	url := os.Getenv("BGE_M3_URL")
 	if url == "" {
@@ -1010,7 +1012,11 @@ func newBGEEmbedder() (embedder.Embedder, error) {
 	if err != nil || to <= 0 {
 		to = 60 * time.Second
 	}
-	return bge.New(bge.Config{URL: url, Model: modelName, Timeout: to}), nil
+	tlsSkip := strings.EqualFold(os.Getenv("BGE_M3_TLS_SKIP_VERIFY"), "true")
+	if tlsSkip {
+		fmt.Fprintf(os.Stderr, "[WARN] spike-fanout: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)\n", url)
+	}
+	return bge.New(bge.Config{URL: url, Model: modelName, Timeout: to, InsecureSkipVerify: tlsSkip}), nil
 }
 
 // newMilvusRetriever constructs the Milvus retriever (tier-filtered).
