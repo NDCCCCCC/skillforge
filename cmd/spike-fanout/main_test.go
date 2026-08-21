@@ -211,6 +211,24 @@ func TestLiveModeRunsWithoutNetwork(t *testing.T) {
 // Golden loader + merged-verdict parser + gate verification
 // ----------------------------------------------------------------------------
 
+// TestLoadFanoutConfigResolvesExample — the --sub-skill-config default
+// target must resolve through the real skill.Loader and carry the
+// orchestrator archetype + non-empty ResolvedTiers (operator-prep gap
+// closed hermetically: the example Skill ships in this repo, so the
+// operator's live command runs without any manual file creation).
+func TestLoadFanoutConfigResolvesExample(t *testing.T) {
+	m, err := loadFanoutConfig("../../examples/skills/compliance-orchestrator/SKILL.md")
+	if err != nil {
+		t.Fatalf("loadFanoutConfig: %v", err)
+	}
+	if m.Agent != "orchestrator" {
+		t.Fatalf("example agent = %q, want orchestrator", m.Agent)
+	}
+	if len(m.ResolvedTiers()) == 0 {
+		t.Fatal("example orchestrator Skill must resolve non-empty tiers (sub-skill intersection source)")
+	}
+}
+
 // TestLoadFanoutGolden — JSONL parsing with blank-line tolerance and
 // required-field enforcement.
 func TestLoadFanoutGolden(t *testing.T) {

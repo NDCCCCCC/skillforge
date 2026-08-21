@@ -38,7 +38,7 @@ import (
 // first validation error. A nil error here means every template in
 // examples/skills/ passes the schema gate.
 //
-// Three templates MUST be present (D7-10):
+// Four templates MUST be present (D7-10 originals + the Phase 13 addition):
 //   - compliance  — verbatim copy of skills/compliance/SKILL.md (the only
 //     runnable Skill; the canonical 7-field example).
 //   - simple-qa   — a minimal RAG Skill (ChatModelAgent, reads authority/**).
@@ -47,6 +47,12 @@ import (
 //     default-deny invariant (P-SKILL-3). The runtime does not yet
 //     execute pure-tool Skills (D7-10); the template exists to show
 //     Skill-format diversity and to prove the validator stays unchanged.
+//   - compliance-orchestrator — Phase 13 / Plan 13-05's `agent:
+//     orchestrator` parent Skill (reads authority+historical, writes []).
+//     It is the --sub-skill-config target of the 20-case fan-out UAT
+//     (eval/golden/fanout.jsonl) and proves the SAME 7-field validator
+//     accepts the third archetype without schema changes — the
+//     Skill-driven platform thesis extended by file, not by code.
 //
 // Path note: this test file lives at internal/skill/examples_validate_test.go,
 // so the relative path "../../examples/skills" resolves from the package
@@ -62,13 +68,13 @@ func TestExamplesValidate(t *testing.T) {
 			"a validation error here means a published example is non-conformant",
 	)
 
-	// Exactly three templates ship under examples/skills/ (D7-10):
-	// compliance, simple-qa, calculator. Asserting the count catches both
+	// Exactly four templates ship under examples/skills/ (D7-10's three +
+	// Phase 13's compliance-orchestrator). Asserting the count catches both
 	// accidental deletions (regression) and accidentally-shipping typos
 	// (e.g., a scratch file matching SKILL.md).
 	require.Len(t,
-		manifests, 3,
-		"examples/skills/ MUST contain exactly 3 Skill templates (compliance, simple-qa, calculator); "+
+		manifests, 4,
+		"examples/skills/ MUST contain exactly 4 Skill templates (compliance, simple-qa, calculator, compliance-orchestrator); "+
 			"got %d manifests — check for stray SKILL.md files or a missing template",
 		len(manifests),
 	)
@@ -80,7 +86,7 @@ func TestExamplesValidate(t *testing.T) {
 	for _, m := range manifests {
 		names[m.Name] = true
 	}
-	for _, want := range []string{"compliance", "simple-qa", "calculator"} {
+	for _, want := range []string{"compliance", "simple-qa", "calculator", "compliance-orchestrator"} {
 		assert.True(t,
 			names[want],
 			"expected examples/skills/%s/SKILL.md to be scanned; got names %v",
