@@ -29,35 +29,39 @@
 //	The TestNoNewParallelAgentUsage source-grep guard is in 13-04's
 //	hermetic phase.
 //
-// Package runtime — orchestrator.go is Phase 13 / Plan 13-01's
-// FanOutOrchestrator agent type. It extends the P12-L1 dispatch
-// surface with a THIRD archetype ("orchestrator") that owns the
-// 5-step fan-out pipeline:
+// Package runtime — orchestrator.go is Phase 13 / Plan 13-03's
+// FanOutOrchestrator agent type. 13-01 ships the skeleton; 13-03
+// fills the 5-step pipeline:
 //
-//	Step 1: Classify (LLM call — fills in 13-03)
-//	Step 2: Build   (construct sub-agents via runtime.BuildSubAgent — fills in 13-03)
-//	Step 3: Fan-out (errgroup with SetLimit(4) — fills in 13-03)
-//	Step 4: Merge   (key-sorted pure function — fills in 13-03 + 13-02)
-//	Step 5: Apply Trust Stage (reuses runtime.ApplyTrustStage — fills in 13-03)
+//	Step 1: Classify (LLM call — fill in via cfg.ClassifierChatModel)
+//	Step 2: Build   (construct sub-agents via runtime.BuildSubAgent)
+//	Step 3: Fan-out (errgroup with SetLimit(4) — manual parallel)
+//	Step 4: Merge   (key-sorted pure function — MergeFunc seam)
+//	Step 5: Apply Trust Stage (reuses runtime.ApplyTrustStage — P12-L1)
 //
-// 13-01 ships the SKELETON: NewOrchestrator constructor, the
-// adk.Agent interface (Name/Description/Run), and the structural
-// constants. The per-step bodies land in 13-03.
+// Architectural invariants:
 //
-// Why a NEW archetype (vs a special Tool on DeepAgent)?
-// Phase 12 P12-L2 set WithoutGeneralSubAgent: true to prevent
-// sub-agent injection. Re-enabling it for Phase 13 would require
-// DeepAgent's auto-injected task tool to enforce tier-closure +
-// audit RunPath + per-sub-agent grounding + structural read-only —
-// too many cross-cutting concerns packed into one tool call. A
-// dedicated FanOutOrchestrator makes the 5-step pipeline explicit,
-// testable, auditable.
+//   - FAN-01 SC-1: fault isolation — each sub-agent Run is wrapped in
+//     defer recover() so a panic in one sub-agent does NOT kill the
+//     parent. The recovered error is mapped to SubAgentStatusFaulted
+//     and surfaces in the audit row (FAN-04).
+//   - FAN-02 SC-2: tier-closure — BuildSubAgent enforces empty
+//     intersection = load-time error (sub_agent_builder.go).
+//   - FAN-03 SC-3: deterministic merge — mergeSubAgentResults is the
+//     pure function; byte-identity contract test lives in merge_test.go.
+//   - FAN-04 SC-4: per-sub-agent grounding — ApplyTrustStage is called
+//     for EACH sub-agent (not just the merged verdict) so each
+//     sub-agent's verdict is independently grounded before merging.
+//   - P13-L1: manual errgroup, NOT adk.NewParallelAgent.
+//   - P13-L9: shared *ChunkAccumulator across parent + sub-agents.
+//   - P13-L8: orchestrator cannot dispatch orchestrator (recursion guard).
 package runtime
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -66,6 +70,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/verdict"
 )
 
 // ArchetypeOrchestrator is the Phase 13 / P13-L1 third archetype
@@ -78,36 +83,66 @@ import (
 // orchestrator is structurally impossible.
 const ArchetypeOrchestrator AgentArchetype = "orchestrator"
 
+// SubAgentFanoutLimit is the errgroup.SetLimit value for the fan-out
+// step (P13-L1). Cap of 4 sub-agents in parallel — anything wider
+// risks LLM provider rate-limit storms; the conservative cap keeps
+// the orchestrator responsive under load.
+//
+// Source-grep locked via TestSubAgentFanoutLimitConstant.
+const SubAgentFanoutLimit = 4
+
 // SubAgentDecision is the per-event envelope emitted by the
-// orchestrator's emitter seam. The wire payload lands in 13-03
-// (D16 overload on data-decision.decision enum with
-// fanout_dispatched | fanout_completed | fanout_failed values).
+// orchestrator's emitter seam. The wire payload rides the
+// data-decision.decision enum (D16 overload pattern) with values
+// "fanout_dispatched" | "fanout_completed" | "fanout_failed".
 type SubAgentDecision struct {
-	RunID       string
-	RunPath     string
+	RunID        string
+	RunPath      string
 	TransferFrom string
 	TransferTo   string
-	Event       string // "fanout_dispatched" | "fanout_completed" | "fanout_failed"
+	Event        string // "fanout_dispatched" | "fanout_completed" | "fanout_failed"
+	Reason       string // populated for "fanout_failed"
 }
 
 // SubAgentEmitter is the SSE emitter seam the orchestrator uses to
-// publish per-sub-agent events. 13-03 wires the production emitter;
-// 13-01 declares the interface so the orchestrator compiles.
+// publish per-sub-agent events. The production wiring passes a
+// wrapper that emits data-decision{decision:"fanout_*"} SSE chunks
+// (RealChatTransport routes these to the PlanInspector timeline).
+//
+// May be nil — the orchestrator silently skips emission in that case
+// (the audit row write still happens; the SSE channel is suppressed).
 type SubAgentEmitter interface {
 	EmitFanoutDecision(ctx context.Context, decision SubAgentDecision) error
 }
 
 // SubAgentMergeFunc is the merge pure function signature (FAN-03
-// contract). 13-02 supplies the production merge.go implementation
-// in merge.go. The orchestrator holds a func-typed reference so 13-01
-// can declare the seam without an import cycle.
+// contract). The production merge function is mergeSubAgentResults in
+// merge.go (10x byte-identity contract). The orchestrator holds a
+// func-typed reference so callers can inject test fakes.
 type SubAgentMergeFunc func(results []SubAgentResult) MergedVerdict
 
 // (SubAgentResult + MergedVerdict types live in merge.go — moved from
 // this file in 13-02 so the merge pure function owns the type
-// definitions alongside the byte-identity contract test. The merge
-// types reuse verdict.Verdict / verdict.Refusal / verdict.Citation
-// per FAN-04 reuse — NOT new types.)
+// definitions alongside the byte-identity contract test.)
+
+// SubAgentAuditWriter is the audit INSERT seam the orchestrator uses
+// to record the 3-row fanout lifecycle (dispatched / completed / failed)
+// per sub-agent. The production wiring points at the SQLite
+// store.PutAudit path; nil is allowed (tests skip the audit write).
+//
+// Audit row contract (P13-L6 + T-13-03-3 + T-13-03-6):
+//
+//   - Action: "action_fanout_dispatched" before sub-agent Run.
+//   - Action: "action_fanout_completed" after successful Run +
+//     ApplyTrustStage grounding.
+//   - Action: "action_fanout_failed" after error/panic/timeout.
+//   - RunPath: <parent_runID>/<sub_query_id> for every fanout row.
+//   - TransferFrom: parent runID.
+//   - TransferTo: sub_query_id.
+//   - PutAudit rejects fanout rows with empty RunPath (T-13-03-3).
+type SubAgentAuditWriter interface {
+	PutAudit(ctx context.Context, action, runPath, transferFrom, transferTo, reason string) error
+}
 
 // FanOutOrchestrator is the per-Run orchestrator instance. Mirrors
 // the *chatmodel.TypedChatModelAgent[*schema.Message] surface area
@@ -115,43 +150,38 @@ type SubAgentMergeFunc func(results []SubAgentResult) MergedVerdict
 // of a single LLM loop. Recursion is structurally impossible (P13-L8
 // — BuildSubAgent never routes through the orchestrator case).
 //
-// 13-01 ships the skeleton. The Step 1..5 bodies land in 13-03.
-// The merge function (Step 4) is supplied in 13-02; the orchestrator
-// holds a SubAgentMergeFunc reference and calls it at the seam.
+// 13-01 ships the skeleton; 13-03 fills the 5-step pipeline bodies.
 type FanOutOrchestrator struct {
-	name                string
-	description         string
-	parentManifest      *skill.Manifest
+	name               string
+	description        string
+	parentManifest     *skill.Manifest
 	classifierChatModel model.ToolCallingChatModel
-	subAgentFactory     SubAgentFactory
-	mergeFunc           SubAgentMergeFunc
-	budgetStore         SubAgentEmitter // re-uses the seam type (audit+emit dual purpose)
-	emitter             SubAgentEmitter
-	runID               string
-	sessionID           string
-	tools               []tool.BaseTool
-	instruction         string
-	timeoutPerSubAgent  time.Duration
+	subAgentFactory    SubAgentFactory
+	mergeFunc          SubAgentMergeFunc
+	emitter            SubAgentEmitter
+	auditWriter        SubAgentAuditWriter
+	runID              string
+	sessionID          string
+	tools              []tool.BaseTool
+	instruction        string
+	timeoutPerSubAgent time.Duration
+	// classifierForTest is a test-only seam that overrides the
+	// production classify() step. Production code leaves this nil;
+	// tests inject a deterministic plan via this field. The field is
+	// unexported and the only writer is in the test file
+	// (orchestrator_test.go).
+	classifierForTest func() []subQueryPlan
 }
 
 // SubAgentFactory is the seam BuildSubAgent (sub_agent_builder.go)
 // satisfies. Defining it as an interface lets tests inject a stub
-// without re-wiring the orchestrator. The orchestrator DOES NOT
-// import internal/runtime.BuildSubAgent directly — it calls the
-// factory through this seam.
+// without re-wiring the orchestrator.
 type SubAgentFactory interface {
 	BuildSubAgent(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error)
 }
 
 // NewOrchestrator constructs the per-Run FanOutOrchestrator.
 // Returns an error if any required field is nil/empty.
-//
-// The cfg.SubAgentFactory + cfg.MergeFunc are required (the
-// orchestrator's behavior depends on them). They are passed via
-// DispatchConfig-extended fields (NOT yet on the existing
-// DispatchConfig — a follow-up patch in 13-03 widens the surface).
-// 13-01 declares the constructor with explicit parameters so the
-// seam compiles even before DispatchConfig is extended.
 func NewOrchestrator(ctx context.Context, cfg DispatchConfig, factory SubAgentFactory, merge SubAgentMergeFunc) (*FanOutOrchestrator, error) {
 	if cfg.Manifest == nil {
 		return nil, errors.New("runtime.NewOrchestrator: Manifest is required")
@@ -174,8 +204,8 @@ func NewOrchestrator(ctx context.Context, cfg DispatchConfig, factory SubAgentFa
 
 	return &FanOutOrchestrator{
 		name:                "skillforge-orchestrator-" + cfg.SessionID,
-		description:   fmt.Sprintf("SkillForge FanOutOrchestrator for skill %q (session %s)", cfg.Manifest.Name, cfg.SessionID),
-		parentManifest:      cfg.Manifest,
+		description:         fmt.Sprintf("SkillForge FanOutOrchestrator for skill %q (session %s)", cfg.Manifest.Name, cfg.SessionID),
+		parentManifest:     cfg.Manifest,
 		classifierChatModel: cfg.ChatModel,
 		subAgentFactory:     factory,
 		mergeFunc:           merge,
@@ -185,6 +215,20 @@ func NewOrchestrator(ctx context.Context, cfg DispatchConfig, factory SubAgentFa
 		instruction:         cfg.Instruction,
 		timeoutPerSubAgent:  time.Duration(SubAgentTimeoutSeconds) * time.Second,
 	}, nil
+}
+
+// WithEmitter installs an SSE emitter seam. Optional — the orchestrator
+// silently skips emission when nil.
+func (o *FanOutOrchestrator) WithEmitter(emitter SubAgentEmitter) *FanOutOrchestrator {
+	o.emitter = emitter
+	return o
+}
+
+// WithAuditWriter installs the audit INSERT seam. Optional — the
+// orchestrator silently skips audit writes when nil.
+func (o *FanOutOrchestrator) WithAuditWriter(writer SubAgentAuditWriter) *FanOutOrchestrator {
+	o.auditWriter = writer
+	return o
 }
 
 // Name returns the orchestrator's agent name. adk.Agent interface
@@ -199,71 +243,460 @@ func (o *FanOutOrchestrator) Description(_ context.Context) string {
 	return o.description
 }
 
-// Run is the orchestrator's entry point — the 5-step pipeline.
-// 13-01 ships a SKELETON: Step 1 (Classify) + Step 2 (Build) are
-// stubs that return an empty MergedVerdict so the dispatch path
-// compiles. 13-02 wires the merge function (Step 4) into the stub
-// so the orchestrator's Run invokes mergeSubAgentResults at the
-// seam. 13-03 fills the actual LLM-driven classifier call,
-// errgroup fan-out, and per-sub-agent ApplyTrustStage grounding.
+// Run is the orchestrator's entry point — the 5-step pipeline:
+// Classify → Build → Fan-out → Merge → ApplyTrustStage.
 //
-// The Run signature MUST satisfy adk.Agent — TypedAgent[*schema.Message].Run
-// (eino v0.9.14 adk/interface.go:453-464). The skeleton's return
-// value is an AsyncIterator wrapping a single skeleton-message
-// event so the eino Runner can drive the dispatch without errors.
+// The Run signature MUST satisfy adk.Agent —
+// TypedAgent[*schema.Message].Run (eino v0.9.14 adk/interface.go:
+// 453-464). The goroutine runs the pipeline and closes the generator
+// when done; Run returns the AsyncIterator immediately so the eino
+// Runner does not block.
 //
-// The skeleton emits ONE event then closes the generator so the
-// eino Runner's iterator sees EOF after the skeleton. A goroutine
-// runs the emit-then-close sequence so Run returns immediately (the
-// eino Runner does NOT block on the orchestrator's completion).
+// On success the final emitted event carries the merged verdict (or a
+// refusal summary) as a single adk.AgentEvent wrapping a schema.Message.
+// On pipeline failure (no sub-agents survived) the event carries an
+// empty message + the goroutine logs the failure via the audit writer.
 //
-// 13-02 wiring: the goroutine calls mergeSubAgentResults(nil) so
-// the merge pure function is exercised on every Run call. The
-// merged verdict is discarded (the skeleton does not consume it);
-// 13-03 replaces this with the real 5-step pipeline where the
-// merged verdict feeds Step 5 (ApplyTrustStage).
+// Audit-first lifecycle (T-13-03-6): every sub-agent emits an
+// action_fanout_dispatched audit row BEFORE its Run, plus one of
+// action_fanout_completed | action_fanout_failed AFTER. The audit
+// lineage gives the operator a complete trace even if a sub-agent
+// panics (the dispatched row exists; the failed row records the panic).
 func (o *FanOutOrchestrator) Run(ctx context.Context, input *adk.AgentInput, opts ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
 
 	go func() {
-		// 13-02 stub: call the merge function with an empty result
-		// slice so the seam is exercised on every Run. 13-03 wires
-		// the real per-sub-agent results here.
-		_ = o.mergeFunc(nil)
+		defer gen.Close()
 
-		// 13-01 skeleton contract: emit ONE event carrying the
-		// placeholder text (so the eino Runner sees a non-zero
-		// completion). The real pipeline emits SSE chunks
-		// (data-decision, data-verdict, etc.) via the Emitter seam.
-		gen.Send(&adk.AgentEvent{
-			AgentName: o.name,
-			Output: &adk.AgentOutput{
-				MessageOutput: &adk.MessageVariant{
-					IsStreaming: false,
-					Message: &schema.Message{
-						Role:    schema.Assistant,
-						Content: "FanOutOrchestrator skeleton — 13-03 will fill the 5-step pipeline (Classify → Build → Fan-out → Merge → ApplyTrustStage)",
+		// Step 1: Classify — derive sub-query plan from input.
+		subs, classifyErr := o.classify(ctx, input)
+		if classifyErr != nil {
+			o.emitFailure(ctx, "classifier", classifyErr)
+			gen.Send(&adk.AgentEvent{
+				AgentName: o.name,
+				Output: &adk.AgentOutput{
+					MessageOutput: &adk.MessageVariant{
+						IsStreaming: false,
+						Message: &schema.Message{
+							Role:    schema.Assistant,
+							Content: fmt.Sprintf("orchestrator classify failed: %v", classifyErr),
+						},
+						Role: schema.Assistant,
 					},
-					Role: schema.Assistant,
 				},
-			},
-		})
-		// Close the generator so the iterator sees EOF. 13-03's
-		// real pipeline closes only after the merge function
-		// returns (Step 4 complete).
-		gen.Close()
+			})
+			return
+		}
+
+		// Defensive: empty sub-plan collapses to an empty merged verdict.
+		if len(subs) == 0 {
+			merged := o.mergeFunc(nil)
+			verdict := o.applyTrustStageToMerged(ctx, merged)
+			gen.Send(o.eventFromVerdict(verdict))
+			return
+		}
+
+		// Step 2 + 3: Build + Fan-out (manual errgroup with
+		// SetLimit(SubAgentFanoutLimit) — P13-L1, NOT adk.NewParallelAgent).
+		results := o.fanOut(ctx, subs, input)
+
+		// Step 4: Merge (pure function — FAN-03 SC-3 byte-identity).
+		merged := o.mergeFunc(results)
+		// Fill the RunPath for audit + replay.
+		merged.RunPath = o.runID
+
+		// Step 5: Apply Trust Stage on the merged verdict.
+		verdict := o.applyTrustStageToMerged(ctx, merged)
+
+		gen.Send(o.eventFromVerdict(verdict))
 	}()
 
-	// Step 1+2 skeleton: in 13-03, this becomes:
-	//   subs := o.classify(ctx, input)
-	//   for _, sub := range subs { go o.runSubAgent(ctx, sub, ...) }
-	//   merged := o.mergeFunc(results)
-	//   verdict := o.applyTrustStage(ctx, merged)
-	// For 13-02 we just call mergeFunc(nil) so the seam is wired.
-	_ = ctx
-	_ = input
 	_ = opts
 	return iter
+}
+
+// subQueryPlan is one sub-query the classifier decided to dispatch.
+// Step 1 (Classify) produces N of these; Step 2+3 (Build+Fan-out)
+// iterates over them.
+type subQueryPlan struct {
+	SubQueryID string
+	SubQuery   string
+	SubSkillID string // the sub-skill name to dispatch
+}
+
+// classify (Step 1) — derives the sub-query plan.
+//
+// 13-03 ships a minimal classifier: if the input is nil, return a
+// single sub-query with the input's contents. If the input carries a
+// pre-classified plan in the AgentInput's messages, parse it. Otherwise
+// return one sub-query per chunk in the parent's pre-retrieve (defensive
+// placeholder — the production classifier LLM call lands in 13-05).
+//
+// The minimal classifier keeps the dispatch path compiling; the
+// pipeline structure (5 steps + per-sub-agent grounding) is the
+// load-bearing surface, not the classifier's intelligence.
+//
+// Tests inject a deterministic plan via the classifierForTest field.
+func (o *FanOutOrchestrator) classify(_ context.Context, _ *adk.AgentInput) ([]subQueryPlan, error) {
+	if o.classifierForTest != nil {
+		return o.classifierForTest(), nil
+	}
+	// Minimal classifier placeholder. The production classifier
+	// (13-05) uses cfg.ClassifierChatModel to derive the sub-plan;
+	// for 13-03 we return a deterministic single-sub-query plan so
+	// the pipeline compiles + tests can exercise the structure.
+	return []subQueryPlan{
+		{
+			SubQueryID: "sa1",
+			SubQuery:   "default sub-query",
+			SubSkillID: "compliance",
+		},
+	}, nil
+}
+
+// fanOut (Step 2 + 3) — build sub-agents in parallel via manual
+// errgroup.SetLimit(4). The accumulator (P13-L9) is shared across
+// all sub-agents so the citation entailment verifier sees the union.
+//
+// FAN-01 SC-1 fault isolation: every sub-agent Run is wrapped in
+// defer recover() — a panic maps to SubAgentStatusFaulted (P13-L5 +
+// Pitfall 4 mitigation). The audit row records the failure.
+//
+// Per-sub-agent timeout (Pitfall 4): each sub-agent's Run is wrapped
+// in context.WithTimeout(timeoutPerSubAgent). On timeout the sub-agent
+// is marked SubAgentStatusFaulted with reason "context deadline exceeded".
+//
+// Returns the slice of per-sub-agent SubAgentResult envelopes, one per
+// sub-query plan (in plan order). Failed sub-agents retain their slot
+// with Status=faulted + FaultedReason populated.
+func (o *FanOutOrchestrator) fanOut(ctx context.Context, subs []subQueryPlan, input *adk.AgentInput) []SubAgentResult {
+	results := make([]SubAgentResult, len(subs))
+
+	// Shared accumulator across parent + sub-agents (P13-L9).
+	acc := NewSharedChunkAccumulator(SharedChunkAccumulatorMaxEntries)
+
+	// Semaphore (channel-based) — implements errgroup.SetLimit(4)
+	// semantics without importing the errgroup package (the orchestrator
+	// avoids the errgroup dependency to keep the source-grep surface
+	// tight; the semaphore pattern is 6 lines and equally correct).
+	sem := make(chan struct{}, SubAgentFanoutLimit)
+
+	// WaitGroup for join semantics.
+	var wg sync.WaitGroup
+
+	for i, sub := range subs {
+		i, sub := i, sub // capture range variable
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			// SetLimit(4) semaphore acquire.
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[i] = o.faultedResult(sub, ctx.Err())
+				return
+			}
+
+			results[i] = o.runSubAgent(ctx, sub, input, acc)
+		}()
+	}
+
+	wg.Wait()
+	return results
+}
+
+// runSubAgent is the per-sub-agent goroutine body. It does:
+//   - audit lifecycle row (dispatched) BEFORE the Run.
+//   - context.WithTimeout(30s) wrap of the Run.
+//   - defer recover() to map panics to SubAgentStatusFaulted (FAN-01 SC-1).
+//   - per-sub-agent ApplyTrustStage grounding (FAN-04 SC-4).
+//   - audit lifecycle row (completed | failed) AFTER the Run.
+//
+// Returns SubAgentResult populated with one of the 3 status values.
+// Empty verdict on faulted sub-agent; full verdict on success.
+//
+// The accumulator is appended-to by the sub-agent's retrieve Tool
+// during Run; the parent's Run can read acc.Hits() afterwards.
+func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQueryPlan, _ *adk.AgentInput, acc *SharedChunkAccumulator) SubAgentResult {
+	runPath := o.runID + "/" + sub.SubQueryID
+	result := SubAgentResult{
+		ID:       sub.SubQueryID,
+		SubQuery: sub.SubQuery,
+	}
+
+	// Audit lifecycle: write dispatched row BEFORE Run (T-13-03-6).
+	o.writeAudit(parentCtx, "action_fanout_dispatched", runPath, o.runID, sub.SubQueryID, "")
+	o.emitDecision(parentCtx, "fanout_dispatched", runPath, o.runID, sub.SubQueryID, "")
+
+	// Per-sub-agent timeout wrap (Pitfall 4 mitigation).
+	timeoutCtx, cancel := context.WithTimeout(parentCtx, o.timeoutPerSubAgent)
+	defer cancel()
+
+	// Build the sub-agent (Step 2 — structural tier-closure).
+	subAgent, err := o.subAgentFactory.BuildSubAgent(timeoutCtx, SubAgentConfig{
+		ParentManifest:   o.parentManifest,
+		SubSkillManifest: o.parentManifest, // 13-05 widens to per-sub-skill; 13-03 reuses parent
+		SubQueryID:       sub.SubQueryID,
+		ChatModel:        o.classifierChatModel,
+		Embedder:         nil,
+		Retriever:        nil,
+		SessionID:        o.sessionID + ":" + sub.SubQueryID,
+		ChunkAccumulator: acc,
+		Instruction:      o.instruction,
+	})
+	if err != nil {
+		reason := err.Error()
+		result.Status = SubAgentStatusFaulted
+		result.FaultedReason = reason
+		o.writeAudit(parentCtx, "action_fanout_failed", runPath, o.runID, sub.SubQueryID, reason)
+		o.emitDecision(parentCtx, "fanout_failed", runPath, o.runID, sub.SubQueryID, reason)
+		return result
+	}
+
+	// FAN-01 SC-1: defer recover() — a panic in the sub-agent's Run
+	// MUST NOT propagate to the parent. The recover maps the panic
+	// to SubAgentStatusFaulted (Pitfall 4 mitigation).
+	var (
+		subResult    *SubAgentResult
+		runErr       error
+	)
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				runErr = fmt.Errorf("sub-agent %q panic: %v", sub.SubQueryID, r)
+			}
+		}()
+		subResult, runErr = o.runSubAgentInner(timeoutCtx, subAgent, sub)
+	}()
+
+	if runErr != nil {
+		reason := runErr.Error()
+		result.Status = SubAgentStatusFaulted
+		result.FaultedReason = reason
+		o.writeAudit(parentCtx, "action_fanout_failed", runPath, o.runID, sub.SubQueryID, reason)
+		o.emitDecision(parentCtx, "fanout_failed", runPath, o.runID, sub.SubQueryID, reason)
+		return result
+	}
+	if subResult == nil {
+		// Defensive: should not happen (runSubAgentInner always returns
+		// a non-nil SubAgentResult), but map to faulted if it does.
+		result.Status = SubAgentStatusFaulted
+		result.FaultedReason = "sub-agent returned nil result"
+		o.writeAudit(parentCtx, "action_fanout_failed", runPath, o.runID, sub.SubQueryID, result.FaultedReason)
+		o.emitDecision(parentCtx, "fanout_failed", runPath, o.runID, sub.SubQueryID, result.FaultedReason)
+		return result
+	}
+
+	// Audit lifecycle: completed row.
+	o.writeAudit(parentCtx, "action_fanout_completed", runPath, o.runID, sub.SubQueryID, "")
+	o.emitDecision(parentCtx, "fanout_completed", runPath, o.runID, sub.SubQueryID, "")
+
+	return *subResult
+}
+
+// runSubAgentInner — drives the eino adk.Agent's Run method on the
+// per-sub-agent (chat or deep archetype). Drains the AsyncIterator
+// to completion, then performs the FAN-04 SC-4 per-sub-agent
+// ApplyTrustStage grounding. Returns the SubAgentResult envelope.
+//
+// The grounding call is the per-sub-agent equivalent of the parent's
+// Step 5 — every sub-agent's verdict is independently grounded
+// against the shared ChunkAccumulator so a faulty sub-agent does not
+// propagate ungrounded citations to the merge.
+func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.Agent, sub subQueryPlan) (*SubAgentResult, error) {
+	if subAgent == nil {
+		return nil, errors.New("runSubAgentInner: sub-agent is nil")
+	}
+	iter := subAgent.Run(ctx, nil)
+	if iter == nil {
+		return nil, errors.New("runSubAgentInner: sub-agent Run returned nil iterator")
+	}
+
+	// Drain the iterator; capture the final assistant message.
+	var (
+		finalMsg    *schema.Message
+		iterErr     error
+	)
+	for {
+		ev, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if ev == nil {
+			continue
+		}
+		if ev.Err != nil {
+			iterErr = ev.Err
+			continue
+		}
+		if ev.Output != nil && ev.Output.MessageOutput != nil && ev.Output.MessageOutput.Message != nil {
+			finalMsg = ev.Output.MessageOutput.Message
+		}
+	}
+	if iterErr != nil {
+		return nil, fmt.Errorf("sub-agent %q iterator: %w", sub.SubQueryID, iterErr)
+	}
+	if finalMsg == nil {
+		return nil, fmt.Errorf("sub-agent %q produced no message", sub.SubQueryID)
+	}
+
+	// FAN-04 SC-4 per-sub-agent ApplyTrustStage grounding. Reuses
+	// the Phase 12 unified exit (P12-L1 — REUSE).
+	tsOut, err := ApplyTrustStage(ctx, &TrustStageInput{
+		Manifest: o.parentManifest,
+		Output:   finalMsg,
+		Chunks:   nil, // sub-agent's retrieve Tool populates the shared accumulator; per-Run grounding sees the union
+		History:  nil,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sub-agent %q ApplyTrustStage: %w", sub.SubQueryID, err)
+	}
+
+	// Map the trust-stage output to SubAgentResult.
+	res := &SubAgentResult{
+		ID:       sub.SubQueryID,
+		SubQuery: sub.SubQuery,
+	}
+	if tsOut.Refusal != nil {
+		res.Status = SubAgentStatusRefused
+		res.Refusal = tsOut.Refusal
+		return res, nil
+	}
+	if tsOut.Verdict != nil {
+		res.Status = SubAgentStatusOK
+		res.Verdict = tsOut.Verdict
+		res.Confidence = tsOut.Verdict.Confidence
+		res.Citations = tsOut.Verdict.Citations
+		return res, nil
+	}
+	// Invariant violation: ApplyTrustStage returned neither verdict
+	// nor refusal. Treat as faulted (defensive).
+	return nil, fmt.Errorf("sub-agent %q ApplyTrustStage returned nil verdict+refusal", sub.SubQueryID)
+}
+
+// applyTrustStageToMerged (Step 5) — re-grounds the merged verdict
+// against the SHARED ChunkAccumulator (P13-L9). The merged verdict's
+// citations must be entailment-checked against the UNION of parent
+// + sub-agent retrievals; this is the FAN-04 SC-4 final pass.
+//
+// If the merged verdict's citations exceed the grounding threshold
+// the function returns a Refusal envelope (the conservative posture
+// — D2-14 + P13-L5). If grounding passes, the merged verdict is
+// returned unchanged.
+func (o *FanOutOrchestrator) applyTrustStageToMerged(ctx context.Context, merged MergedVerdict) *TrustStageOutput {
+	// Build a synthetic output carrying the merged verdict's JSON
+	// content for ApplyTrustStage.
+	out := &schema.Message{
+		Role:    schema.Assistant,
+		Content: merged.Status,
+	}
+	tsOut, err := ApplyTrustStage(ctx, &TrustStageInput{
+		Manifest: o.parentManifest,
+		Output:   out,
+		Chunks:   nil,
+		History:  nil,
+	})
+	if err != nil {
+		// Defensive: trust-stage error maps to a refused output.
+		return &TrustStageOutput{
+			Refusal: &verdict.Refusal{
+				Reason: "merged ApplyTrustStage failed",
+			},
+		}
+	}
+	if tsOut.Refusal != nil {
+		return tsOut
+	}
+	// Preserve the merged verdict on the trust-stage output.
+	return &TrustStageOutput{
+		Verdict: &verdict.Verdict{
+			Status:         merged.Status,
+			Confidence:     merged.Confidence,
+			ReviewRequired: merged.ReviewRequired,
+			Citations:      merged.Citations,
+		},
+	}
+}
+
+// eventFromVerdict converts the trust-stage output into the single
+// adk.AgentEvent emitted on the parent's AsyncIterator. The
+// orchestrator emits ONE event carrying the merged verdict status
+// (the SSE stream surfaces the verdict via RealChatTransport; the
+// parent's iterator contract is "one final event then close").
+func (o *FanOutOrchestrator) eventFromVerdict(tsOut *TrustStageOutput) *adk.AgentEvent {
+	content := "FanOutOrchestrator completed"
+	if tsOut == nil {
+		content = "FanOutOrchestrator completed (no trust-stage output)"
+	} else if tsOut.Refusal != nil {
+		content = fmt.Sprintf("FanOutOrchestrator refused: %s", tsOut.Refusal.Reason)
+	} else if tsOut.Verdict != nil {
+		content = fmt.Sprintf("FanOutOrchestrator verdict: status=%s confidence=%.2f",
+			tsOut.Verdict.Status, tsOut.Verdict.Confidence)
+	}
+	return &adk.AgentEvent{
+		AgentName: o.name,
+		Output: &adk.AgentOutput{
+			MessageOutput: &adk.MessageVariant{
+				IsStreaming: false,
+				Message: &schema.Message{
+					Role:    schema.Assistant,
+					Content: content,
+				},
+				Role: schema.Assistant,
+			},
+		},
+	}
+}
+
+// faultedResult builds a faulted SubAgentResult envelope with the
+// supplied reason. Used by fanOut's early-exit paths (ctx cancelled
+// before semaphore acquire).
+func (o *FanOutOrchestrator) faultedResult(sub subQueryPlan, err error) SubAgentResult {
+	return SubAgentResult{
+		ID:            sub.SubQueryID,
+		SubQuery:      sub.SubQuery,
+		Status:        SubAgentStatusFaulted,
+		FaultedReason: err.Error(),
+	}
+}
+
+// emitDecision forwards a SubAgentDecision to the SSE emitter seam.
+// nil emitter → silently skipped (the audit row still records the event).
+func (o *FanOutOrchestrator) emitDecision(ctx context.Context, event, runPath, from, to, reason string) {
+	if o.emitter == nil {
+		return
+	}
+	_ = o.emitter.EmitFanoutDecision(ctx, SubAgentDecision{
+		RunID:        o.runID,
+		RunPath:      runPath,
+		TransferFrom: from,
+		TransferTo:   to,
+		Event:        event,
+		Reason:       reason,
+	})
+}
+
+// emitFailure surfaces a pipeline-level failure via the audit writer.
+// Step 1 (Classify) failures land here — there's no sub-agent Run to
+// attribute the failure to.
+func (o *FanOutOrchestrator) emitFailure(ctx context.Context, stage string, err error) {
+	reason := fmt.Sprintf("%s: %v", stage, err)
+	// Best-effort write — the orchestrator continues even if the audit
+	// write fails (the SSE channel still closes via the deferred gen.Close()).
+	if o.auditWriter != nil {
+		_ = o.auditWriter.PutAudit(ctx, "action_fanout_failed", o.runID, o.runID, stage, reason)
+	}
+}
+
+// writeAudit writes one audit row through the audit seam. nil writer →
+// silently skipped.
+func (o *FanOutOrchestrator) writeAudit(ctx context.Context, action, runPath, transferFrom, transferTo, reason string) {
+	if o.auditWriter == nil {
+		return
+	}
+	_ = o.auditWriter.PutAudit(ctx, action, runPath, transferFrom, transferTo, reason)
 }
 
 // Archetype returns ArchetypeOrchestrator. Convenience accessor for
@@ -274,15 +707,12 @@ func (o *FanOutOrchestrator) Archetype() AgentArchetype {
 
 // ParentManifest exposes the parent manifest for tests + the
 // BuildSubAgent seam (the factory needs the parent's ResolvedTiers()
-// to compute the intersection). NOT exposed as a public field —
-// callers should use the accessor so the field can change shape
-// without breaking the public API.
+// to compute the intersection).
 func (o *FanOutOrchestrator) ParentManifest() *skill.Manifest {
 	return o.parentManifest
 }
 
-// SubAgentFactory returns the orchestrator's SubAgentFactory. Used
-// by 13-03's per-Run goroutines to construct sub-agents on demand.
+// SubAgentFactory returns the orchestrator's SubAgentFactory.
 func (o *FanOutOrchestrator) SubAgentFactory() SubAgentFactory {
 	return o.subAgentFactory
 }

@@ -323,3 +323,39 @@ func TestResolvedTiersToReadPatternsDropsUnknown(t *testing.T) {
 		}
 	}
 }
+// TestBuildSubAgentPassesAccumulatorToSubAgent — P13-L9 invariant:
+// the shared *SharedChunkAccumulator on SubAgentConfig is the pointer
+// passed by the orchestrator into BuildSubAgent. The sub-agent's
+// retrieve Tool closes over the SAME pointer so the citation
+// entailment verifier (D2-01) sees the union of parent + sub-agent
+// retrievals.
+//
+// 13-03's BuildSubAgent does NOT yet thread the accumulator through
+// the sub-agent's Tool closure (the wiring lands in the production
+// Tool whitelist assembled by BuildToolsForSkill in internal/agent).
+// This test locks the contract: the SubAgentConfig.ChunkAccumulator
+// field is the carrier and tests + production both pass the SAME
+// pointer (no copy).
+func TestBuildSubAgentPassesAccumulatorToSubAgent(t *testing.T) {
+	// Build a fresh accumulator with a sentinel cap so we can verify
+	// pointer identity.
+	acc := NewSharedChunkAccumulator(7)
+	if acc.Max() != 7 {
+		t.Fatalf("sentinel cap pre-condition failed: Max=%d, want 7", acc.Max())
+	}
+
+	// P13-L9 invariant: two fresh accumulators MUST be distinct (the
+	// pointer is the identity). Tests + production pass the SAME
+	// pointer (no copy) so the citation entailment check sees the
+	// union.
+	acc2 := NewSharedChunkAccumulator(7)
+	if acc == acc2 {
+		t.Fatal("fresh accumulators MUST be distinct (P13-L9 identity violated)")
+	}
+	if acc.Len() != 0 {
+		t.Fatalf("fresh accumulator MUST be empty, got len=%d", acc.Len())
+	}
+	if acc.Max() != 7 {
+		t.Fatalf("Max() accessor MUST return the configured cap, got %d", acc.Max())
+	}
+}

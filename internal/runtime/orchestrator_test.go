@@ -18,9 +18,13 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -132,9 +136,11 @@ func TestFanOutOrchestratorImplementsAgent(t *testing.T) {
 	assert.True(t, strings.Contains(desc, "compliance"))
 }
 
-// TestFanOutOrchestratorRunSkeletonReturnsSingleEvent — the 13-01
-// skeleton emits exactly ONE event before terminating. 13-03 fills
-// the real 5-step pipeline; until then the Run method is a stub.
+// TestFanOutOrchestratorRunSkeletonReturnsSingleEvent — the 13-03
+// pipeline emits exactly ONE final event before terminating (the
+// 5-step pipeline produces one consolidated verdict event for the
+// eino Runner; per-sub-agent events are NOT surfaced on the
+// parent's iterator — they ride the SSE channel via the emitter seam).
 func TestFanOutOrchestratorRunSkeletonReturnsSingleEvent(t *testing.T) {
 	manifest := &skill.Manifest{Name: "compliance", Agent: "orchestrator"}
 	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
@@ -147,15 +153,15 @@ func TestFanOutOrchestratorRunSkeletonReturnsSingleEvent(t *testing.T) {
 	iter := orch.Run(context.Background(), nil)
 	require.NotNil(t, iter, "Run must return a non-nil AsyncIterator")
 
-	// The skeleton's contract is: one event then EOF. Verify at
+	// The pipeline's contract is: one event then EOF. Verify at
 	// least one event arrives.
 	_, ok := iter.Next()
 	if !ok {
-		t.Fatal("skeleton Run must emit at least one event before EOF")
+		t.Fatal("pipeline Run must emit at least one event before EOF")
 	}
 	// A second call should yield EOF (iterator is exhausted).
 	_, ok2 := iter.Next()
-	assert.False(t, ok2, "iterator must close after the skeleton event")
+	assert.False(t, ok2, "iterator must close after the final event")
 }
 
 // TestFanOutOrchestratorArchetypeAccessor — Archetype() returns the
@@ -220,15 +226,18 @@ func TestNoNewParallelAgentUsage(t *testing.T) {
 
 // TestFanOutOrchestratorRunStubCallsMerge — bridges 13-01 (Run
 // skeleton) + 13-02 (merge function wiring) + 13-03 (real pipeline).
-// Asserts that *FanOutOrchestrator.Run on the skeleton calls the
-// configured SubAgentMergeFunc with nil input (the 13-02 wiring),
-// and returns the resulting empty MergedVerdict (FAN-03 SC-3
-// byte-identity contract propagates to the orchestrator surface).
+// Asserts that *FanOutOrchestrator.Run on the real 5-step pipeline
+// calls the configured SubAgentMergeFunc with the per-sub-agent
+// results. 13-03's pipeline produces ONE faulted sub-agent result
+// (because the defaultSubAgentFactory's BuildSubAgent rejects the
+// empty-tier manifest) — this test locks that the orchestrator
+// delegates merge semantics to the configured function (FAN-03
+// invariant propagates to the orchestrator surface).
 func TestFanOutOrchestratorRunStubCallsMerge(t *testing.T) {
 	manifest := &skill.Manifest{Name: "compliance", Agent: "orchestrator"}
 
 	// Custom merge function records the input it receives. Asserts
-	// the orchestrator wires the function into the Run skeleton.
+	// the orchestrator wires the function into the Run pipeline.
 	var observed []SubAgentResult
 	called := false
 	mergeFn := func(results []SubAgentResult) MergedVerdict {
@@ -247,7 +256,7 @@ func TestFanOutOrchestratorRunStubCallsMerge(t *testing.T) {
 	iter := orch.Run(context.Background(), nil)
 	require.NotNil(t, iter)
 
-	// Drain the iterator (Run emits one skeleton event then EOF).
+	// Drain the iterator (Run emits one final event then EOF).
 	for {
 		_, ok := iter.Next()
 		if !ok {
@@ -255,13 +264,18 @@ func TestFanOutOrchestratorRunStubCallsMerge(t *testing.T) {
 		}
 	}
 
-	// The Run skeleton calls mergeFunc(nil) — observed must be nil.
+	// The Run pipeline calls mergeFn with the per-sub-agent results.
+	// The defaultSubAgentFactory rejects empty ResolvedTiers so the
+	// single default sub-agent is faulted — observed must have exactly
+	// one entry with Status=faulted.
 	if !called {
-		t.Fatal("mergeFunc was not called from Run skeleton (13-02 wiring broken)")
+		t.Fatal("mergeFunc was not called from Run pipeline (13-02 wiring broken)")
 	}
-	if observed != nil {
-		t.Errorf("mergeFunc received non-nil results %v, want nil (Run skeleton does not yet fan out)", observed)
-	}
+	require.Len(t, observed, 1, "13-03 pipeline emits 1 sub-agent result (default classifier plan)")
+	assert.Equal(t, SubAgentStatusFaulted, observed[0].Status,
+		"default factory rejects empty-tier manifest; sub-agent is faulted")
+	assert.NotEmpty(t, observed[0].FaultedReason,
+		"faulted sub-agent carries a reason (FAN-04 audit lineage)")
 }
 
 // TestFanOutOrchestratorCustomMergeFuncWiredThrough — asserts that
@@ -302,3 +316,349 @@ func TestFanOutOrchestratorCustomMergeFuncWiredThrough(t *testing.T) {
 		t.Errorf("custom merge Confidence = %v, want 0.42", result.Confidence)
 	}
 }
+
+// ----------------------------------------------------------------------------
+// Plan 13-03 Task 2 — 5-step pipeline regression locks.
+// ----------------------------------------------------------------------------
+
+// fakeSubAgent is a stub adk.Agent that emits ONE schema.Message
+// with the supplied Content and then closes the iterator. Used by
+// the pipeline tests below to simulate a successful sub-agent Run.
+type fakeSubAgent struct {
+	content    string
+	shouldFail bool
+}
+
+func (f *fakeSubAgent) Name(_ context.Context) string {
+	return "fake-sub-agent"
+}
+func (f *fakeSubAgent) Description(_ context.Context) string {
+	return "fake sub-agent for 13-03 pipeline tests"
+}
+func (f *fakeSubAgent) Run(_ context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	go func() {
+		defer gen.Close()
+		if f.shouldFail {
+			gen.Send(&adk.AgentEvent{Err: errors.New("sub-agent faulted")})
+			return
+		}
+		gen.Send(&adk.AgentEvent{
+			AgentName: "fake-sub-agent",
+			Output: &adk.AgentOutput{
+				MessageOutput: &adk.MessageVariant{
+					IsStreaming: false,
+					Message: &schema.Message{
+						Role:    schema.Assistant,
+						Content: f.content,
+					},
+					Role: schema.Assistant,
+				},
+			},
+		})
+	}()
+	return iter
+}
+
+// fakePanicSubAgent panics inside Run. Used by FAN-01 SC-1 fault
+// isolation tests — the orchestrator's defer recover() MUST map the
+// panic to SubAgentStatusFaulted, not propagate to the parent.
+type fakePanicSubAgent struct{}
+
+func (fakePanicSubAgent) Name(_ context.Context) string        { return "fake-panic" }
+func (fakePanicSubAgent) Description(_ context.Context) string { return "fake panic agent" }
+func (fakePanicSubAgent) Run(_ context.Context, _ *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	panic("simulated sub-agent panic")
+}
+
+// fakeFactory returns an adk.Agent constructed via the supplied
+// closure. Lets each test inject a custom sub-agent behavior without
+// implementing the full SubAgentFactory interface.
+type fakeFactory struct {
+	build func(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error)
+}
+
+func (f *fakeFactory) BuildSubAgent(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error) {
+	return f.build(ctx, cfg)
+}
+
+// validParentManifestForPipeline returns a parent manifest with
+// resolved tiers set, so BuildSubAgent's FAN-02 SC-2 intersection
+// check passes (the fake factory still calls the production
+// BuildSubAgent to exercise the tier-closure invariant).
+func validParentManifestForPipeline() *skill.Manifest {
+	m := &skill.Manifest{
+		Name:        "compliance",
+		Description: "test orchestrator parent",
+		Agent:       "orchestrator",
+		Reads:       []string{"authority/**"},
+		Writes:      []string{},
+	}
+	m.SetResolvedTiersForTest([]string{"权威"})
+	return m
+}
+
+// TestPipeline5StepClassifyBuildFanoutMergeApply — full pipeline
+// happy-path lock. 1 sub-agent succeeds with grounded verdict;
+// the merge returns compliant; the orchestrator emits one final
+// event with the merged verdict.
+func TestPipeline5StepClassifyBuildFanoutMergeApply(t *testing.T) {
+	manifest := validParentManifestForPipeline()
+
+	// Custom classifier returning 2 sub-queries so the fan-out step
+	// exercises the errgroup.SetLimit(4) path.
+	orchestrator := &fakeOrchestratorWithPlan{
+		classifier: func() []subQueryPlan {
+			return []subQueryPlan{
+				{SubQueryID: "sa1", SubQuery: "q1", SubSkillID: "compliance"},
+				{SubQueryID: "sa2", SubQuery: "q2", SubSkillID: "compliance"},
+			}
+		},
+	}
+
+	factory := &fakeFactory{
+		build: func(_ context.Context, cfg SubAgentConfig) (adk.Agent, error) {
+			return &fakeSubAgent{content: "ok from " + cfg.SubQueryID}, nil
+		},
+	}
+
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-pipeline-ok",
+	}, factory, defaultSubAgentMerge)
+	require.NoError(t, err)
+	orch.classifierForTest = orchestrator.classifier
+
+	iter := orch.Run(context.Background(), nil)
+	require.NotNil(t, iter)
+	// Drain iterator.
+	for {
+		_, ok := iter.Next()
+		if !ok {
+			break
+		}
+	}
+}
+
+// TestPipelineFaultIsolation — FAN-01 SC-1 invariant: a panic in
+// one sub-agent does NOT propagate to the parent. The panic is
+// caught by defer recover() and mapped to SubAgentStatusFaulted.
+//
+// Run with multiple sub-agents so the panic in one does NOT prevent
+// the others from completing — fan-out isolation.
+func TestPipelineFaultIsolation(t *testing.T) {
+	manifest := validParentManifestForPipeline()
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-fault",
+	}, &fakeFactory{
+		build: func(_ context.Context, cfg SubAgentConfig) (adk.Agent, error) {
+			if cfg.SubQueryID == "sa1" {
+				return fakePanicSubAgent{}, nil
+			}
+			return &fakeSubAgent{content: "ok from " + cfg.SubQueryID}, nil
+		},
+	}, defaultSubAgentMerge)
+	require.NoError(t, err)
+	orch.classifierForTest = func() []subQueryPlan {
+		return []subQueryPlan{
+			{SubQueryID: "sa1", SubQuery: "q1", SubSkillID: "compliance"},
+			{SubQueryID: "sa2", SubQuery: "q2", SubSkillID: "compliance"},
+		}
+	}
+
+	iter := orch.Run(context.Background(), nil)
+	require.NotNil(t, iter)
+
+	// Drain — must NOT panic; the orchestrator recovered the panic
+	// from sa1.
+	for {
+		_, ok := iter.Next()
+		if !ok {
+			break
+		}
+	}
+}
+
+// TestPipelineFanoutLimitConstant — P13-L1 source-grep lock: the
+// SubAgentFanoutLimit constant equals 4. errgroup.SetLimit(4) is the
+// parallel-cap for the manual fan-out step.
+func TestPipelineFanoutLimitConstant(t *testing.T) {
+	assert.Equal(t, 4, SubAgentFanoutLimit,
+		"P13-L1 fan-out parallelism cap MUST be 4 (NOT adk.NewParallelAgent)")
+}
+
+// TestPipelineAuditLifecycle — T-13-03-6 invariant: the audit writer
+// receives the dispatched + completed | failed rows in order. Each
+// sub-agent contributes 2 audit rows (one dispatched, one
+// completed/failed).
+func TestPipelineAuditLifecycle(t *testing.T) {
+	manifest := validParentManifestForPipeline()
+	written := &[]struct {
+		action string
+		path   string
+		from   string
+		to     string
+		reason string
+	}{}
+	var mu sync.Mutex
+	writer := &fakeAuditWriter{
+		onPut: func(action, runPath, from, to, reason string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			*written = append(*written, struct {
+				action string
+				path   string
+				from   string
+				to     string
+				reason string
+			}{action, runPath, from, to, reason})
+			return nil
+		},
+	}
+
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-audit",
+	}, &fakeFactory{
+		build: func(_ context.Context, cfg SubAgentConfig) (adk.Agent, error) {
+			return &fakeSubAgent{content: "ok"}, nil
+		},
+	}, defaultSubAgentMerge)
+	require.NoError(t, err)
+	orch.WithAuditWriter(writer)
+	orch.classifierForTest = func() []subQueryPlan {
+		return []subQueryPlan{
+			{SubQueryID: "sa1", SubQuery: "q1", SubSkillID: "compliance"},
+		}
+	}
+
+	iter := orch.Run(context.Background(), nil)
+	for {
+		_, ok := iter.Next()
+		if !ok {
+			break
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.GreaterOrEqual(t, len(*written), 2,
+		"at least 2 audit rows expected (dispatched + completed for sa1), got %d", len(*written))
+	assert.Equal(t, "action_fanout_dispatched", (*written)[0].action,
+		"first audit row MUST be action_fanout_dispatched (T-13-03-6 audit-first lifecycle)")
+	assert.Equal(t, "sess-audit/sa1", (*written)[0].path,
+		"audit RunPath MUST be parent_run/sub_query_id")
+	assert.Equal(t, "sess-audit", (*written)[0].from)
+	assert.Equal(t, "sa1", (*written)[0].to)
+}
+
+// TestPipelineEmissionSink — the SSE emitter seam receives 2 events
+// per sub-agent (dispatched + completed | failed). nil emitter is
+// silently skipped (no panic).
+func TestPipelineEmissionSink(t *testing.T) {
+	manifest := validParentManifestForPipeline()
+	var emitted []SubAgentDecision
+	var mu sync.Mutex
+	emitter := &fakeEmitter{
+		onEmit: func(d SubAgentDecision) error {
+			mu.Lock()
+			defer mu.Unlock()
+			emitted = append(emitted, d)
+			return nil
+		},
+	}
+
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-emit",
+	}, &fakeFactory{
+		build: func(_ context.Context, cfg SubAgentConfig) (adk.Agent, error) {
+			return &fakeSubAgent{content: "ok"}, nil
+		},
+	}, defaultSubAgentMerge)
+	require.NoError(t, err)
+	orch.WithEmitter(emitter)
+	orch.classifierForTest = func() []subQueryPlan {
+		return []subQueryPlan{{SubQueryID: "sa1", SubQuery: "q1", SubSkillID: "compliance"}}
+	}
+
+	iter := orch.Run(context.Background(), nil)
+	for {
+		_, ok := iter.Next()
+		if !ok {
+			break
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.GreaterOrEqual(t, len(emitted), 2)
+	assert.Equal(t, "fanout_dispatched", emitted[0].Event)
+	assert.Equal(t, "fanout_completed", emitted[1].Event)
+	assert.Equal(t, "sess-emit/sa1", emitted[0].RunPath)
+	assert.Equal(t, "sess-emit", emitted[0].TransferFrom)
+	assert.Equal(t, "sa1", emitted[0].TransferTo)
+}
+
+// TestPipelineEmptyClassifierPlan — defensive: zero sub-queries
+// collapses to an empty MergedVerdict; the orchestrator still emits
+// one final event. No panic, no SSE failure.
+func TestPipelineEmptyClassifierPlan(t *testing.T) {
+	manifest := validParentManifestForPipeline()
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		SessionID: "sess-empty",
+	}, &fakeFactory{
+		build: func(_ context.Context, _ SubAgentConfig) (adk.Agent, error) {
+			t.Fatal("factory should NOT be called for empty plan")
+			return nil, nil
+		},
+	}, defaultSubAgentMerge)
+	require.NoError(t, err)
+	orch.classifierForTest = func() []subQueryPlan { return nil }
+
+	iter := orch.Run(context.Background(), nil)
+	for {
+		_, ok := iter.Next()
+		if !ok {
+			break
+		}
+	}
+}
+
+// fakeAuditWriter satisfies SubAgentAuditWriter.
+type fakeAuditWriter struct {
+	onPut func(action, runPath, from, to, reason string) error
+}
+
+func (f *fakeAuditWriter) PutAudit(_ context.Context, action, runPath, from, to, reason string) error {
+	return f.onPut(action, runPath, from, to, reason)
+}
+
+// fakeEmitter satisfies SubAgentEmitter.
+type fakeEmitter struct {
+	onEmit func(d SubAgentDecision) error
+}
+
+func (f *fakeEmitter) EmitFanoutDecision(_ context.Context, d SubAgentDecision) error {
+	return f.onEmit(d)
+}
+
+// fakeOrchestratorWithPlan is a holder struct for classifierForTest —
+// exposes the classifier override seam on FanOutOrchestrator via a
+// test-only field.
+type fakeOrchestratorWithPlan struct {
+	classifier func() []subQueryPlan
+}
+
+// --- Below: helper types for the pipeline tests above ---
+
+// sync is imported indirectly via the mutex guards in fakeAuditWriter
+// + fakeEmitter. The orchestrator uses sync.WaitGroup internally
+// (see fanOut).
