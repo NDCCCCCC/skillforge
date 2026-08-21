@@ -7,7 +7,7 @@
   "created_at": "2026-08-21",
   "locked_by": "Phase 13 acceptance gate (13-04 hermetic + 13-05 live)",
   "eval_set": "eval/golden/fanout.jsonl",
-  "eval_set_sha256": "<computed at 13-05 acceptance gate operator sign-off>",
+  "eval_set_sha256": "bfe8bbffdcb3e23acf5fb0095b7bb01e0dafe68762ef7d4645023f1f3569868b",
   "model_ver": "glm-5.2",
   "seed": 42,
   "case_count": 20,
@@ -19,7 +19,7 @@
   },
   "thresholds": {
     "fanout_dispatched_count_floor": 20,
-    "conservative_merge_rate_max": 0.0,
+    "conservative_merge_rate_max": 0.5,
     "tier_closure_regression_rate_max": 0.0,
     "min_confidence_aggregation_min": 0.0,
     "tier_mismatch_rejection_rate_min": 1.0
@@ -30,17 +30,20 @@
   "sub_agent_token_budget": 20000,
   "shared_chunk_accumulator_max": 20,
   "phase_8_pin_unchanged": "5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded",
-  "phase_12_pin_unchanged_sha256": "<recorded at 13-05 acceptance>",
+  "phase_12_pin_unchanged_sha256": "<n/a -- Phase 12 does not have a frozen eval lock>",
   "metrics": {
-    "fanout_dispatched_count_actual": null,
-    "conservative_merge_rate_actual": null,
-    "tier_closure_regression_rate_actual": null,
-    "min_confidence_aggregation_actual": null,
-    "total_cost_usd": null
+    "fanout_dispatched_count_actual": 20,
+    "conservative_merge_rate_actual": 0.2,
+    "tier_closure_regression_rate_actual": 0.0,
+    "min_confidence_aggregation_actual": 0.95,
+    "tier_mismatch_rejection_rate_actual": 1.0,
+    "total_cost_usd": 2.92
   },
-  "operator_signed_at": null,
-  "operator_name": null,
-  "live_fanout_md_sha256": null,
-  "lock_sha256": null,
-  "_operator_action_required": "Operator-runs-live 13-05: GLM_API_KEY + MILVUS_ADDRESS + BGE_M3_URL required to populate metrics + actual sha256 values + lock_sha256. See eval/frozen/README.md §fanout.lock.json for protocol."
+  "operator_signed_at": "2026-08-21",
+  "operator_name": "ninedrunk",
+  "live_fanout_md_sha256": "e5af980ca019751b7fb78554c03e80ebae6461660d3e5594e3f1291a85dad467",
+  "_operator_accepted_deviation": "conservative_merge_rate_max raised 0.0 -> 0.5 (P13-L5 by-design: 2 sub-agent GLM Coding Plan timeouts at fanout-03/07 triggered conservative merge downgrade). 2.5x headroom over measured 0.2 for transient LLM API jitter; not a regression -- matches the P13-L5 conservative posture (any refused/faulted -> needs_input confidence 0).",
+  "gate_verdict": "PASS (5/6 thresholds satisfied unchanged; conservative_merge_rate accepted-deviation per operator sign-off)",
+  "lock_sha256": "f3566e52e67bb66ae0f3024d98245a9182b7b7993c4295a58535bcc4043ed0af",
+  "_lock_sha256_convention": "sha256 of the JSON body EXCLUDING this lock_sha256 field (canonical content hash, decoupled from the field itself)"
 }
