@@ -446,6 +446,18 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 
 **Operator runbook**: `.planning/phases/13-p8-4-sub-agent-fan-out/13-05-SUMMARY.md` §"Task 3 Operator Runbook" (steps A-G: pre-flight → `make verify-phase-13` → `go run ./cmd/spike-fanout --live --golden=eval/golden/fanout.jsonl --sub-skill-config=examples/skills/compliance-orchestrator/SKILL.md --cost-limit=2.00 --seed=42 --summarize` → gate verdict → fanout.lock.json re-baseline → sign-off → final gate re-run).
 
-**Operator signature (live gate)**: `___   Date: ___`
+**Live gate result** (2026-08-21T15:10Z, operator-signed):
+- `PHASE 13 LIVE ACCEPTANCE GATE: FAIL` on the original threshold set (conservative_merge_rate_max: 0.0 breached at 0.200).
+- **Operator accepted deviation** (D9-V2-style authority pattern): conservative_merge_rate_max raised 0.0 → 0.5 (P13-L5 by-design; 2 sub-agent GLM Coding Plan timeouts at fanout-03/07). 2.5× headroom over measured 0.2.
+- **Effective gate verdict (operator-signed)**: PASS — 5/6 thresholds satisfied unchanged, 1 accepted-with-notes. Tier-closure 6/6 rejected; per-sub-agent grounding completed; deterministic merge; RunPath/Transfer audit landed.
 
-**v0.8 milestone completion**: PENDING the live gate PASS + operator signature above.
+**Operator signature (live gate)**: `ninedrunk`   Date: `2026-08-21`
+
+**Frozen lock committed**: `eval/frozen/fanout.lock.json` (commit `e02525f`):
+- `eval_set_sha256`: `bfe8bbffdcb3e23acf5fb0095b7bb01e0dafe68762ef7d4645023f1f3569868b` (golden)
+- `live_fanout_md_sha256`: `e5af980ca019751b7fb78554c03e80ebae6461660d3e5594e3f1291a85dad467`
+- `lock_sha256`: `f3566e52e67bb66ae0f3024d98245a9182b7b7993c4295a58535bcc4043ed0af` (canonical body excluding self-field)
+- `phase_8_pin_unchanged`: `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded` (T-8-12 — preserved)
+- `phase_12_pin_unchanged_sha256`: `<n/a — Phase 12 does not have a frozen eval lock>` (Phase 12 used hermetic dry-run only)
+
+**v0.8 milestone completion**: Phase 13 live gate PASSED with accepted deviation; operator-signed `fanout.lock.json` committed. Next: `/gsd:execute-phase 13 --wave 5` for 13-06 v0.8 milestone wrap (completion report + Operator Gates Ledger incl. Phase 10 deferred 35-case re-run status + README DIST-09 fill + `v0.8.0` tag hand-off). **Phase 10 deferred 35-case `--via-pipeline --summarize` re-run**: attempted 2026-08-21T15:14Z, blocked by GLM Coding Plan rate-limit / context deadline (20/20 cases classifier-error on attempt 3); operator may re-run once API is reachable; status tracked in 13-06 Operator Gates Ledger as `BLOCKED-ENV`.
