@@ -89,22 +89,22 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Financial Data Layer (DATA)
 
-> Added 2026-08-10 via /gsd:explore (finance compliance data architecture). Map to Phase 5+ (architecture integration TBD).
+> Added 2026-08-10 via /gsd:explore (finance compliance data architecture). **v1.0 归并（2026-08-21）**: DATA-01/02/03/07/08/09/12 激活进 v1.0 milestone（映射由 v1.0 路线图定义）；DATA-04/05/06/10/11/13/14 延后 v1.1（外部授权通道全套，PROJECT.md v1.0 决策）。
 
-- [ ] **DATA-01**: System provides a data import pipeline for data personnel to ingest CSV / SQL dump / API data with tier + schema metadata
-- [ ] **DATA-02**: System enforces mandatory desensitization at import time (L1 PII hashing + L2 bucketing) — raw L1/L2/L3 data does NOT persist in SkillForge for aggregation-tier Skills
-- [ ] **DATA-03**: System exposes aggregation API (predefined KPI functions) — agent invokes KPI functions, never SELECTs raw data
-- [ ] **DATA-04**: System supports external authorized channel for individual-identification Skills — raw data stays in user's enterprise data warehouse, agent calls via read-only DB user / proxy with TTL token
-- [ ] **DATA-05**: External authorized channel enforces field-level second-layer desensitization (e.g., display only last-4 of account number) plus pre-authorization by data personnel
-- [ ] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp
-- [ ] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized`
-- [ ] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer
-- [ ] **DATA-09**: Aggregation channel: agent can ONLY invoke predefined KPI functions / views — no SQL, no new KPI definition (NL2SQL safety layer 1)
-- [ ] **DATA-10**: Individual channel: agent queries go through predefined views (not raw tables) — DB user restricted (read-only, limited schema, field-level view masking) (NL2SQL safety layer 2)
-- [ ] **DATA-11**: Agent must generate SQL preview (NL2SQL output) BEFORE entering approval flow for individual-identification Skills (NL2SQL safety layer 3 — data officer audits the actual query intent)
-- [ ] **DATA-12**: Rejection must include structured reason `{reason_code, human_explanation}` (compliance audit requirement)
-- [ ] **DATA-13**: Approval timeout = 持续挂起 (no auto-reject, no auto-timeout) — each query must be explicitly approved or rejected by data officer
-- [ ] **DATA-14**: Every approval creates audit row: `{query_id, user_id, business_reason, sql_preview, approve_or_reject_result, data_officer_id, ttl_token_id, timestamp, chunk_ids_returned}`
+- [ ] **DATA-01**: System provides a data import pipeline for data personnel to ingest CSV (incl. GBK/GB18030 + BOM decode) / SQL dump / API data with tier + schema metadata — v1.0
+- [ ] **DATA-02**: System enforces mandatory desensitization at import time (L1 PII hashing with pre-hash normalization + L2 bucketing) — raw L1/L2/L3 data does NOT persist in SkillForge for aggregation-tier Skills — v1.0
+- [ ] **DATA-03**: System exposes aggregation API (predefined KPI functions) — agent invokes KPI functions, never SELECTs raw data — v1.0
+- [ ] **DATA-04**: System supports external authorized channel for individual-identification Skills — raw data stays in user's enterprise data warehouse, agent calls via read-only DB user / proxy with TTL token **→ v1.1**
+- [ ] **DATA-05**: External authorized channel enforces field-level second-layer desensitization (e.g., display only last-4 of account number) plus pre-authorization by data personnel **→ v1.1**
+- [ ] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp **→ v1.1**
+- [ ] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized` — v1.0 仅实现 `data:aggregated_only`（external 模式 → v1.1）
+- [ ] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer — v1.0
+- [ ] **DATA-09**: Aggregation channel: agent can ONLY invoke predefined KPI functions / views — no SQL, no new KPI definition (NL2SQL safety layer 1) — v1.0
+- [ ] **DATA-10**: Individual channel: agent queries go through predefined views (not raw tables) — DB user restricted (read-only, limited schema, field-level view masking) (NL2SQL safety layer 2) **→ v1.1**
+- [ ] **DATA-11**: Agent must generate SQL preview (NL2SQL output) BEFORE entering approval flow for individual-identification Skills (NL2SQL safety layer 3 — data officer audits the actual query intent) **→ v1.1**
+- [ ] **DATA-12**: Rejection must include structured reason `{reason_code, human_explanation}` (compliance audit requirement; v1.0 具体化为 `no_matching_kpi` 等 reason code) — v1.0
+- [ ] **DATA-13**: Approval timeout = 持续挂起 (no auto-reject, no auto-timeout) — each query must be explicitly approved or rejected by data officer **→ v1.1**
+- [ ] **DATA-14**: Every approval creates audit row: `{query_id, user_id, business_reason, sql_preview, approve_or_reject_result, data_officer_id, ttl_token_id, timestamp, chunk_ids_returned}` **→ v1.1**
 
 ## v0.8 Requirements (Harness Milestone — 可信×行动融合)
 
@@ -150,6 +150,77 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **FAN-03**: 合并确定性（key 排序纯函数，契约测试 10× 一致）+ 保守部分失败合并（任一子 agent 拒答 → 合并结论最多「需补充」，绝不肯定）
 - [x] **FAN-04**: per-sub-agent 合并前 grounding（复用 D2-01 逐字引用验证护城河）；扇出事件（RunPath/Transfer）写入审计
 
+## v1.0 Requirements (业务数据支撑 Milestone — Business Data Support)
+
+> Added 2026-08-21 via /gsd:new-milestone. Research: `.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS,SUMMARY}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计）。
+> 贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**（区别于文档 chunk 引用）。
+> 既有 DATA 需求归并：DATA-01/02/03/07(仅 aggregated_only)/08/09/12 激活（定义见上方 Financial Data Layer 节）；DATA-04/05/06/10/11/13/14 → v1.1。
+> 栈决策（2026-08-21）：go-duckdb v2.4.3（CGO）+ sqlite 驱动 CGO 化（modernc → mattn v1.14.50）——见 STACK-VERIFICATION.md §1/§2.7。
+
+### 数据导入与脱敏 (DATA — new items)
+
+- [ ] **DATA-15**: 数据人员可进行两阶段导入——预览（前 100 行 + 拟脱敏效果 + 拟 tier，可调整字段桶边界）→ 确认提交
+- [ ] **DATA-16**: 幂等重导入——内容哈希 + (dataset, period) 去重，同批刷新重跑安全
+- [ ] **DATA-17**: 每导入批次产生 INSERT-only 审计行证明 raw 已弃 `{batch_id, raw_size_bytes, desensitized_row_count, discard_ts, dataset}`
+- [ ] **DATA-18**: 数据集 TTL 到期清理——先 DETACH 后删文件（Windows 文件锁）；只作用于脱敏数据集文件，审计行与 KPI 快照永不删
+
+### KPI 注册表 (KPI)
+
+- [ ] **KPI-01**: KPI 注册表由数据人员以受控文件/代码定义，运行时与 agent 不可增改；admin UI 只读展示（签名 + 最后调用时间）
+- [ ] **KPI-02**: 每次 KPI 调用产生数据引用 `{func, args, as_of, result_snapshot}` 冻结进审计行——上游数据清理后仍可完整回放
+
+### KPI 仪表盘 Skill (DASH)
+
+- [ ] **DASH-01**: 用户可在聊天中提问数字问题（如「2026-Q2 逾期率是多少」），KPI Skill 经函数调用作答
+- [ ] **DASH-02**: 每个数字带完整出处——数值 + KPI 定义 + 计算时间窗 + as_of 时间戳 + 数据引用（hover 显示通道名 `data:aggregated_only`）
+- [ ] **DASH-03**: 答案内嵌迷你趋势图（sparkline），每个数据点继承同一引用契约、独立可审计
+- [ ] **DASH-04**: 用户可点击数字下钻（「看月度趋势」）——下钻 = 更多 KPI 调用，永不进入原始行
+- [ ] **DASH-05**: 多 KPI 组合答案（「收入 + 客数 + 同比」）由 Skill steps 编排，各自独立引用
+
+### 业务月报 Skill (RPT)
+
+- [ ] **RPT-01**: 用户可在聊天中触发月报生成（「出 2026-08 月报」），DeepAgent 计划清单先行可见
+- [ ] **RPT-02**: 计划确认门复用（PLAN-03 模式）——执行前用户批准将调用的 KPI 集与报告结构
+- [ ] **RPT-03**: 报告模板 = Skill 一部分（steps 声明 KPI 顺序 + 叙事槽位）；LLM 填槽不自由发挥
+- [ ] **RPT-04**: 报告发布 `report:publish` 是写工具，走 HITL 审批门（HITL-01..08 模式），产出静态页
+- [ ] **RPT-05**: 用户可带修改重生成（「重做，更突出 Q2 风险」）——新一轮 DeepAgent run
+
+### 静态报告门户 + 定时更新 (PORT)
+
+- [ ] **PORT-01**: `/reports` 门户列出全部已发布报告，按 Skill / 周期 / 运行筛选，显示最后成功时间
+- [ ] **PORT-02**: cron 计划 = Skill manifest 字段（`report_schedule`），加载期校验语法；改计划 = 改 Skill（热重载生效）
+- [ ] **PORT-03**: 每次定时重渲染产生审计行 + 全量 KPI 快照 `{run_id, skill, cron_expr, fired_at, kpi_snapshots[], output_url, status}`
+- [ ] **PORT-04**: 版本留存——每次重渲染新增 run 目录永不覆盖，历史报告可追溯
+- [ ] **PORT-05**: 用户/管理员可手动触发「立即重渲染」（复用 DeepAgent 运行路径）
+- [ ] **PORT-06**: 漂移检测——本次与上次重渲染 KPI 差异超阈值（默认 ±5%，per-KPI 可配）时报告带 drift 徽标
+- [ ] **PORT-07**: 并发运行守卫——同 (skill, period) 重渲染重叠时第二次跳过并记审计行
+
+### 管理台 (ADM)
+
+- [ ] **ADM-01**: `/admin` 路由复用 `/eval` 模式 + `X-Admin-Token` 常量时间门，不新增认证模型
+- [ ] **ADM-02**: 导入批次列表视图（状态 + 预览行数 + 已弃 raw 体积）
+- [ ] **ADM-03**: KPI 定义列表（函数签名 + 最后调用时间），UI 只读不可编辑
+- [ ] **ADM-04**: Skill 管理视图（热重载状态 + 最后 eval 结果 + Skill 变更审计行）
+- [ ] **ADM-05**: 定时任务列表（last-run 状态 + next-fire 时间）
+- [ ] **ADM-06**: 全部 admin 动作产生审计行（`actor_type: admin`）
+
+### 生产化 — Fan-out 分类器 (FAN)
+
+- [ ] **FAN-05**: LLM fan-out 分类器替换 Phase 13 确定性占位——结构化输出 `{should_fan_out, num_subtasks, task_boundaries[]}`，决策进审计，分类器 Skill 感知（description + query）
+- [ ] **FAN-06**: 冻结 eval 集断言 fan-out 率稳定性（`expected_fan_out` per case），防分类器漂移
+
+### 生产化 — Eval 抬升 (GEVL)
+
+- [ ] **GEVL-09**: 新指标「KPI 调用准确率」（agent 为 query 选对 KPI？）——50 例 KPI golden set；数值相等用程序判定（非 LLM judge）
+- [ ] **GEVL-10**: faithfulness 扩展到数据引用——答案中的数字必须与所引 KPI 快照一致（引用出处完整性）
+- [ ] **GEVL-11**: eval 门阻塞调度——KPI 指标回退的 Skill 被阻止 cron 重渲染（eval gate ↔ 调度器联动）
+
+### 生产化 — 平台级信任地板 (PLAT)
+
+- [ ] **PLAT-09**: 平台级隐藏系统提示词——代码级固定、prepend 于 Skill prompt、Skill 不可见不可覆盖、热重载存活；数据维度铁律内建（永不写 SQL 只调注册 KPI 函数等）
+- [ ] **PLAT-10**: 审计行携带 platform_prompt 版本；admin 可预览 Skill + 平台合成后的有效 prompt
+- [ ] **PLAT-11**: `platform-floor.jsonl` 冻结集断言平台层不变量（诱导写 raw SQL → 拒答）
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -190,6 +261,16 @@ Explicitly excluded. Documented to prevent scope creep.
 | Native mobile app | Web + PWA 足够，不做原生 |
 | Self-hosted LLM training infrastructure | Out of core value; rely on OpenAI-compatible APIs |
 | Height.app-style "AI wrapper" pattern | Closed 2025.9; prove proprietary value via Skill schema + eval |
+| NL2SQL 任何形态（含 LLM 生成 SQL + guard model） | DATA-09 铁律——一次误判即泄漏；v1.1 仅外部授权通道带 DATA-10..14 全套防护（v1.0 决策，FEATURES.md 反功能表） |
+| 去哈希 / 再识别能力（解 L1 哈希） | 击穿脱敏护城河（GDPR/个保法/PCI-DSS 审计红旗）；需要原始数据时从源头重导 |
+| LLM 自动分类列敏感级（L1/L2/L3） | 非确定性策略分类 = 审计灾难；导入时由数据人员静态声明 |
+| 拖拽式 KPI 构建器 / 仪表盘布局编辑器 / 聊天内 Skill 编辑器 | KPI 定义与布局属代码纪律，走 PR + eval 门（Skill = 唯一定制面） |
+| 报告 PDF 生成 | 引 headless browser/typst 依赖 + 排版漂移；Markdown + 图表满足 v1.0 |
+| 邮件 / Slack / webhook 推送报告 | 交付基础设施是独立产品（PLAT-07 v2）；静态页 URL 替代 |
+| 实时流式聚合（live tail） | 与 as_of 快照纪律 / 审计可复现性冲突 |
+| 预测 / forecast KPI | ML 范围外（PROJECT.md 既有排除） |
+| per-user 个性化报告 / 自定义仪表盘视图 | 配置漂移（"谁的报告是对的？"）；Skill 即定制 |
+| 管理台 RBAC / 多用户管理 | 单 admin token 是 v1.0 姿态（SCALE-01 → v2） |
 
 ## Traceability
 
@@ -253,20 +334,20 @@ Which phases cover which requirements.
 | CMPL-06 | Phase 5 | Complete |
 | CMPL-07 | Phase 5 | Complete |
 | CMPL-08 | Phase 5 | Complete |
-| DATA-01 | Phase 5 | Pending |
-| DATA-02 | Phase 5 | Pending |
-| DATA-03 | Phase 5 | Pending |
-| DATA-04 | Phase 5 | Pending |
-| DATA-05 | Phase 5 | Pending |
-| DATA-06 | Phase 5 | Pending |
-| DATA-07 | Phase 5 | Pending |
-| DATA-08 | Phase 5 | Pending |
-| DATA-09 | Phase 5 | Pending |
-| DATA-10 | Phase 5 | Pending |
-| DATA-11 | Phase 5 | Pending |
-| DATA-12 | Phase 5 | Pending |
-| DATA-13 | Phase 5 | Pending |
-| DATA-14 | Phase 5 | Pending |
+| DATA-01 | v1.0 roadmap (pending) | Pending |
+| DATA-02 | v1.0 roadmap (pending) | Pending |
+| DATA-03 | v1.0 roadmap (pending) | Pending |
+| DATA-04 | — | Deferred v1.1（外部授权通道） |
+| DATA-05 | — | Deferred v1.1（外部授权通道） |
+| DATA-06 | — | Deferred v1.1（外部授权通道） |
+| DATA-07 | v1.0 roadmap (pending) | Pending（仅 aggregated_only 模式） |
+| DATA-08 | v1.0 roadmap (pending) | Pending |
+| DATA-09 | v1.0 roadmap (pending) | Pending |
+| DATA-10 | — | Deferred v1.1（外部授权通道） |
+| DATA-11 | — | Deferred v1.1（外部授权通道） |
+| DATA-12 | v1.0 roadmap (pending) | Pending |
+| DATA-13 | — | Deferred v1.1（外部授权通道） |
+| DATA-14 | — | Deferred v1.1（外部授权通道） |
 | PLAT-04 | Phase 8 | Complete |
 | PLAT-05 | Phase 8 | Complete |
 | GEVL-08 | Phase 9 | Complete |
@@ -296,10 +377,12 @@ Which phases cover which requirements.
 **Coverage:**
 
 - v1 requirements: 70 total (was 55; +8 DATA +1 SYSK-08 +6 DATA-09..14 added via /gsd:explore 2026-08-10/11)
-- v1 mapped to phases: 70
+- v1 mapped to phases: 70（其中 DATA 7 条 2026-08-21 起转入 v1.0 milestone 池；DATA 7 条延 v1.1）
 - v0.8 requirements: 25 total (added 2026-08-17 via /gsd:new-milestone)
 - v0.8 mapped to phases: 25 (phases 8-13)
-- Unmapped: 0 ✓
+- v1.0 requirements: 44 total (added 2026-08-21 via /gsd:new-milestone；7 条激活 DATA + 37 条新 ID：DATA-15..18 / KPI-01..02 / DASH-01..05 / RPT-01..05 / PORT-01..07 / ADM-01..06 / FAN-05..06 / GEVL-09..11 / PLAT-09..11)
+- v1.0 mapped to phases: 0（roadmap 生成时由 gsd-roadmapper 回填）
+- Unmapped (within active milestones): 44 → 待 v1.0 roadmap
 
 **Phase distribution:**
 
@@ -323,4 +406,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-08-17 — v0.8 milestone requirements (25) mapped to phases 8-13; traceability + distribution updated*
+*Last updated: 2026-08-21 — v1.0 milestone requirements (44) added; DATA-01..14 归并（7 激活 / 7 延 v1.1）；Out of Scope 扩充（NL2SQL / 去哈希 / 拖拽构建器 / PDF / 推送 / RBAC 等）*
