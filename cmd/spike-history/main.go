@@ -264,9 +264,16 @@ func main() {
 			log.Printf("[INFO] cmd/spike-history: via-pipeline ACTIVE (rewriter + classifier wired)")
 		}
 		// buildStore is unused in the spike runner (spike never writes
-		// audit / session) but the helper is mirrored for completeness
-		// so Phase 10+ can adopt it without a re-derivation.
-		_ = buildStore(ctx)
+		// audit / session) — REMOVED in 13-05 follow-up: the dead call
+		// triggered migrate on the production skillforge.db DSN, which
+		// now contains the Phase 13 ADD COLUMN (run_path/transfer_from/
+		// transfer_to) — but the spike's sqlite.New call predates those
+		// ALTERs and cannot reconcile them. The buildStore helper stays
+		// (mirrored from cmd/eval:583-594 for completeness); only the
+		// throwaway invocation is removed. Phase 10+ adoption path
+		// must point the DSN at a dedicated spike-{runid}.db instead
+		// (mirrors cmd/spike-fanout's reports/spike-fanout.db pattern).
+		// _ = buildStore(ctx) -- intentionally not called
 	}
 
 	// ---- 4. Load + filter rows ----
