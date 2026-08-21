@@ -440,7 +440,18 @@
 
 **Pitfalls addressed:** Pitfall 17（平台提示词 lockstep——skill.md 修改系统提示词时平台地板静默丢失；地板版本进审计行使其可检测）
 **Research flag:** STACK-VERIFICATION §1（gcc 环境三方案，推荐 MSYS2）+ §2.1（ATTACH 会话不持久 / Close() 刷 WAL / Windows 文件锁 DETACH）——全部为已验证事实，plan 期只需落到代码
-**Plans**: TBD
+**Plans**: 8 plans in 7 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates；重锁排地板文案冻结之后）
+
+Plans:
+- [ ] 14-01-PLAN.md — 平台地板核心：常量+ComposePlatformPrompt 唯一出口+双路径收敛（D14-A4 上提）+4 测试锁+WalkDir 禁令门
+- [ ] 14-02-PLAN.md — audit platform_floor_version 加列（5 INSERT 同步）+ admin 预览端点（X-Admin-Token 复用）
+- [ ] 14-03-PLAN.md — gcc 就位+mattn v1.14.50 替换 modernc+DSN pragma（busy_timeout=5000）+TestSqliteMattnZeroRegression
+- [ ] 14-04-PLAN.md — platform-floor.jsonl 20 例×6 攻击面+hermetic 正则判定+第 4 冻结锁落锁
+- [ ] 14-05-PLAN.md — go-duckdb v2.4.3 引入+NewConnector boot-queries+WAL 刷盘+Appender ≥10 万行/s+50 并发读门
+- [ ] 14-06-PLAN.md — 懒 ATTACH LRU（fanout 形态复刻）+staging 原子改名+sqlite datasets 注册表
+- [ ] 14-07-PLAN.md — compliance/hitl 锁重锁（prompt_hash 涟漪治理）+verify-phase-14.sh 9 段门+STRIDE-14
+- [ ] 14-08-PLAN.md — Dockerfile CGO 翻转+Docker 构建 checkpoint+live judge 20 例 checkpoint（双 operator gate）
+
 **UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
 
 ### Phase 15: 数据导入管线 + 导入即脱敏（P10.1）
