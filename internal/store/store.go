@@ -117,6 +117,48 @@ type AuditRow struct {
 	ContextPrecision *float64
 	AnswerRelevance  *float64
 	ContextRecall    *float64
+	// RunPath is the Phase 13 / Plan 13-03 P13-L6 audit substrate.
+	// Slash-separated agent path (parent_run/sub_query_id) populated
+	// ONLY for action_fanout_dispatched | action_fanout_completed |
+	// action_fanout_failed rows. Empty for every other row (verdict,
+	// HITL-04 lifecycle, plan_todo cross-reference, budget). The
+	// QueryFanoutByRunPath helper (internal/store/sqlite/fanout_events.go)
+	// uses RunPath LIKE 'parent_run/%' for the trace query.
+	RunPath string
+	// TransferFrom is the sub-agent invocation source. Populated for
+	// fanout rows to identify the parent run ID (the "transfer source"
+	// in agent-path semantics). Empty for non-fanout rows.
+	TransferFrom string
+	// TransferTo is the sub-agent invocation target. Populated for
+	// fanout rows to identify the sub_query_id (the "transfer
+	// destination" in agent-path semantics). Empty for non-fanout rows.
+	TransferTo string
+}
+
+// FanoutEvent is one row of the Phase 13 / Plan 13-03 FAN-04 SC-4
+// audit trace. Captures the lifecycle of a single sub-agent's Run
+// (dispatched → completed | failed). Mirrors the sqlite package's
+// FanoutEvent struct field-for-field; promoted to the shared store
+// package so the Store interface can reference it.
+//
+// Field semantics:
+//   - ID:      audit row auto-increment ID (for stable ordering when
+//              multiple events share the same ts).
+//   - Ts:      wall-clock time the audit row was written (UTC).
+//   - Action:  one of the 3 action_fanout_* enum values.
+//   - RunPath: slash-separated agent path (parent_run/sub_query_id).
+//   - TransferFrom: parent run ID (the "transfer source").
+//   - TransferTo:   sub_query_id (the "transfer destination").
+//   - Reason: populated for action_fanout_failed rows; empty for
+//              dispatched + completed.
+type FanoutEvent struct {
+	ID           int64
+	Ts           time.Time
+	Action       string
+	RunPath      string
+	TransferFrom string
+	TransferTo   string
+	Reason       string
 }
 
 // PendingApprovalRow is the audit row written synchronously BEFORE the
@@ -426,6 +468,23 @@ type Store interface {
 	// path; also the adk.CheckPointDeleter contract). Idempotent: an
 	// unknown id is a no-op. Audit rows are NEVER deleted (T-3-AUDIT).
 	Delete(ctx context.Context, id string) error
+
+	// QueryFanoutByRunPath returns the Phase 13 / Plan 13-03 FAN-04
+	// SC-4 audit trace reconstruction: the ordered list of fanout
+	// lifecycle events for the supplied runPathPrefix. Filters on
+	// action LIKE 'action_fanout_%' AND run_path LIKE <prefix>.
+	// Returns empty slice for no matches; sql.ErrConnDone on closed
+	// store; error on empty runPathPrefix.
+	//
+	// Read-only — does NOT write any audit rows. The audit table is the
+	// source of truth (P13-L6 — additive ALTER COLUMN migration).
+	QueryFanoutByRunPath(ctx context.Context, runPathPrefix string) ([]FanoutEvent, error)
+
+	// ListFanoutEvents returns fanout lifecycle events for sessionID,
+	// newest-first, up to limit rows. limit <= 0 defaults to 100.
+	// Used by the AgentInspector timeline (Phase 5 SC-4) to render the
+	// fanout trace alongside the existing decision timeline.
+	ListFanoutEvents(ctx context.Context, sessionID string, limit int) ([]FanoutEvent, error)
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

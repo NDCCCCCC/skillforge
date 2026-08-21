@@ -448,6 +448,105 @@ func TestForcedStopDataDecisionRouting(t *testing.T) {
 		"wire.DecisionForcedStop MUST be the literal \"forced_stop\" — the wire-contract value")
 }
 
+// TestDataDecisionFanoutEnum — Phase 13 / Plan 13-03 Task 1: the
+// `data-decision` discriminator's `decision` STRING enum extends by
+// 3 values (fanout_dispatched | fanout_completed | fanout_failed).
+// D16 overload pattern (no new wire chunk types — P13-L7 invariant).
+//
+// The new fields RunPath / TransferFrom / TransferTo on DecisionPayload
+// round-trip byte-identical through JSON. The chunk Type stays
+// data-decision (P13-L7 / D-04 transport-swap preserved). The D15
+// lockstep invariant is exercised via the matching TS mirror update
+// in web/src/types/wire-types.ts (npx tsc --noEmit exits 0).
+//
+// RED before this commit: the DecisionPayload struct does not have
+// RunPath / TransferFrom / TransferTo fields; the test fails to
+// compile.
+func TestDataDecisionFanoutEnum(t *testing.T) {
+	cases := []struct {
+		name        string
+		decision    string
+		runPath     string
+		transferFrom string
+		transferTo  string
+	}{
+		{"fanout_dispatched", "fanout_dispatched", "parent/sa1", "parent", "sa1"},
+		{"fanout_completed", "fanout_completed", "parent/sa2", "parent", "sa2"},
+		{"fanout_failed", "fanout_failed", "parent/sa3", "parent", "sa3"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := DecisionPayload{
+				Step:         0, // fanout events are operator events, not numbered agent hops
+				Decision:     tc.decision,
+				RunPath:      tc.runPath,
+				TransferFrom: tc.transferFrom,
+				TransferTo:   tc.transferTo,
+				Query:        "fanout lifecycle event",
+			}
+			raw, err := json.Marshal(payload)
+			require.NoError(t, err)
+
+			// The chunk uses the EXISTING discriminator (P13-L7 lock —
+			// D15 wire union is untouched).
+			c := UIMessageChunk{Type: "data-decision", Data: raw}
+			require.True(t, c.IsValidType(),
+				"fanout_* MUST ride the existing discriminator — the chunk type is unchanged (P13-L7 lock)")
+
+			out, err := json.Marshal(c)
+			require.NoError(t, err)
+
+			var got struct {
+				Type string          `json:"type"`
+				Data DecisionPayload `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(out, &got))
+			assert.Equal(t, "data-decision", got.Type,
+				"the type discriminator MUST stay data-decision — fanout_* are new VALUES in the Decision string enum, not new chunk types")
+			assert.Equal(t, tc.decision, got.Data.Decision,
+				"decision field MUST equal wire.DecisionFanout* (P13-L7)")
+			assert.Equal(t, tc.runPath, got.Data.RunPath,
+				"runPath field MUST round-trip (P13-L7 audit RunPath substrate)")
+			assert.Equal(t, tc.transferFrom, got.Data.TransferFrom,
+				"transferFrom field MUST round-trip (P13-L7 audit TransferFrom substrate)")
+			assert.Equal(t, tc.transferTo, got.Data.TransferTo,
+				"transferTo field MUST round-trip (P13-L7 audit TransferTo substrate)")
+		})
+	}
+
+	// The catalog constants are the literal strings — locks the wire
+	// contract value (changing any would break the FE parser silently).
+	assert.Equal(t, "fanout_dispatched", DecisionFanoutDispatched,
+		"wire.DecisionFanoutDispatched MUST be the literal \"fanout_dispatched\"")
+	assert.Equal(t, "fanout_completed", DecisionFanoutCompleted,
+		"wire.DecisionFanoutCompleted MUST be the literal \"fanout_completed\"")
+	assert.Equal(t, "fanout_failed", DecisionFanoutFailed,
+		"wire.DecisionFanoutFailed MUST be the literal \"fanout_failed\"")
+}
+
+// TestValidTypesUnchangedAfterFanout — Phase 13 / Plan 13-03 Task 1:
+// the FAN-01 SC-1 sub-agent lifecycle adds 3 new VALUES in the
+// DecisionPayload.Decision string enum (fanout_dispatched,
+// fanout_completed, fanout_failed) but does NOT add a new wire chunk
+// discriminator. The ValidTypes count MUST stay at the Plan 12-05
+// baseline (23 entries); the BE half of the D15 lockstep invariant.
+//
+// The duplicate count assertion guards against accidental additions
+// to ValidTypes in a future phase. Adding a new discriminator
+// silently would break the D15 TS mirror (AssertAssignable fails to
+// compile) AND this test would catch the drift at the BE level first.
+func TestValidTypesUnchangedAfterFanout(t *testing.T) {
+	assert.Equal(t, 23, len(ValidTypes),
+		"ValidTypes MUST stay at 23 entries after the 13-03 fanout overload (P13-L7 / D15 lockstep); fanout_* are new VALUES in the Decision string enum, NOT new chunk types")
+	assert.True(t, ValidTypes["data-decision"],
+		"data-decision MUST remain in ValidTypes (fanout_* rides it, P13-L7)")
+	// Hypothetical new discriminator like 'data-fanout' must NOT exist.
+	assert.False(t, ValidTypes["data-fanout"],
+		"kebab-case variants of a hypothetical new discriminator MUST NOT exist (P13-L7 lock)")
+	assert.False(t, ValidTypes["data_fanout"],
+		"snake_case data_fanout MUST NOT be in ValidTypes — would have been the rejected counterpart of a hypothetical new discriminator (P13-L7 / T-1-11)")
+}
+
 // TestValidTypesUnchangedAfterBudgetGate — Plan 12-05 Task 4: the
 // P12-L3 invariant. The 3-layer budget gate adds a new VALUE in the
 // DecisionPayload.Decision string enum but does NOT add a new wire

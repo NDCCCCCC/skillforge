@@ -34,14 +34,22 @@ import (
 // 3-layer budget gate (internal/agent/callbacks/budget.go). Populated
 // ONLY for action_budget_triggered rows; empty string for every other
 // row (verdict, HITL-04 lifecycle, plan_todo cross-reference).
+//
+// Phase 13 / Plan 13-03: 3 new columns added for the FAN-04 SC-4 audit
+// RunPath/Transfer substrate (action_fanout_dispatched /
+// action_fanout_completed / action_fanout_failed). run_path is the
+// slash-separated agent path (parent_run/sub_query_id); transfer_from
+// and transfer_to are the transfer endpoints. NULL for every non-fanout
+// row (additive migration — T-13-03-7).
 const putAuditSQL = `
 INSERT INTO audit (
     ts, session_id, user_id, skill_id, query, prompt_hash,
     model_version, verdict_json, refusal_reason, chunk_ids,
     action, skill_version, frozen_args, tool_call_id, approval_id,
     scope_session_id, budget_layer,
-    faithfulness, context_precision, answer_relevance, context_recall
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    faithfulness, context_precision, answer_relevance, context_recall,
+    run_path, transfer_from, transfer_to
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // PutAudit appends an immutable audit row. GEVL-03: the row MUST exist
@@ -51,26 +59,31 @@ INSERT INTO audit (
 // The Phase 11 HITL lifecycle columns (Action / SkillVersion /
 // FrozenArgs / ToolCallID / ApprovalID / ScopeSessionID) are additive:
 // a verdict row written by the chat path leaves them zero-valued, which
-// persists as the empty string (NULL for frozen_args). The
-// idx_audit_pending_tcid partial unique index only constrains rows with
-// action='action_pending_approval', so a stream of verdict rows carrying
-// action=(empty string) never collides.
+// persists as the empty string (NULL for frozen_args).
 //
 // Phase 12 / Plan 12-05: rows with action="action_budget_triggered" MUST
 // carry a BudgetLayer value in BudgetLayerNames (T-12-05-6 spoofing
-// guard). Empty BudgetLayer on a non-budget row is the canonical state
-// (the column is nullable; only budget events populate it).
+// guard).
+//
+// Phase 13 / Plan 13-03: rows with action="action_fanout_*" MUST carry
+// RunPath (P13-L6 audit RunPath substrate). The TransferFrom +
+// TransferTo are optional but typically populated for fanout rows.
+// NULL values on non-fanout rows are the canonical state (additive
+// migration — T-13-03-7).
 func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, error) {
 	if s.isClosed() {
 		return 0, sql.ErrConnDone
 	}
 	if row.Action == ActionBudgetTriggered && !BudgetLayerNames[row.BudgetLayer] {
 		// T-12-05-6 spoofing guard — reject unknown budget_layer values.
-		// The audit table is the durable record of what happened; an
-		// invalid layer value would let an adversary understate or
-		// misrepresent the budget event (e.g. "loop" mis-recorded as
-		// "denied" to skip the loop anomaly detector).
 		return 0, ErrInvalidBudgetLayer
+	}
+	if isFanoutAction(row.Action) && row.RunPath == "" {
+		// T-13-03-3 mitigation — fanout rows must carry the audit
+		// RunPath. Empty RunPath on a fanout row would let the operator
+		// fabricate a missing trace by spoofing the action enum without
+		// the lineage data.
+		return 0, ErrInvalidFanoutRunPath
 	}
 	res, err := s.db.ExecContext(ctx, putAuditSQL,
 		row.Timestamp.UTC(),
@@ -89,11 +102,14 @@ func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, 
 		row.ToolCallID,
 		row.ApprovalID,
 		row.ScopeSessionID,
-		row.BudgetLayer, // 12-05: empty for non-budget rows; validator rejects unknown layer values
+		row.BudgetLayer,
 		toNullFloat64(row.Faithfulness),
 		toNullFloat64(row.ContextPrecision),
 		toNullFloat64(row.AnswerRelevance),
 		toNullFloat64(row.ContextRecall),
+		toNullString(row.RunPath),
+		toNullString(row.TransferFrom),
+		toNullString(row.TransferTo),
 	)
 	if err != nil {
 		return 0, fmtError("PutAudit", err)
@@ -105,6 +121,16 @@ func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, 
 	return id, nil
 }
 
+// isFanoutAction returns true when action is one of the 3 fanout
+// lifecycle enum values (P13-L6 audit substrate).
+func isFanoutAction(action string) bool {
+	switch action {
+	case ActionFanoutDispatched, ActionFanoutCompleted, ActionFanoutFailed:
+		return true
+	}
+	return false
+}
+
 // queryAuditCols enumerates the SELECT column list once so PutAudit and
 // QueryAudit can't drift on column order.
 const queryAuditCols = `
@@ -112,7 +138,8 @@ const queryAuditCols = `
     model_version, verdict_json, refusal_reason, chunk_ids,
     action, skill_version, frozen_args, tool_call_id, approval_id,
     scope_session_id, budget_layer,
-    faithfulness, context_precision, answer_relevance, context_recall
+    faithfulness, context_precision, answer_relevance, context_recall,
+    run_path, transfer_from, transfer_to
 `
 
 // QueryAudit returns rows matching filter, newest-first. The WHERE
@@ -194,11 +221,14 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 	var out []store.AuditRow
 	for rows.Next() {
 		var (
-			r         store.AuditRow
-			faith     sql.NullFloat64
-			ctxPrec   sql.NullFloat64
-			ansRel    sql.NullFloat64
-			ctxRecall sql.NullFloat64
+			r           store.AuditRow
+			faith       sql.NullFloat64
+			ctxPrec     sql.NullFloat64
+			ansRel      sql.NullFloat64
+			ctxRecall   sql.NullFloat64
+			runPath     sql.NullString
+			transferFrom sql.NullString
+			transferTo   sql.NullString
 		)
 		if err := rows.Scan(
 			&r.ID, &r.Timestamp, &r.SessionID, &r.UserID, &r.SkillID,
@@ -207,6 +237,7 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 			&r.Action, &r.SkillVersion, &r.FrozenArgs, &r.ToolCallID,
 			&r.ApprovalID, &r.ScopeSessionID, &r.BudgetLayer,
 			&faith, &ctxPrec, &ansRel, &ctxRecall,
+			&runPath, &transferFrom, &transferTo,
 		); err != nil {
 			return nil, fmtError("QueryAudit.Scan", err)
 		}
@@ -214,6 +245,9 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 		r.ContextPrecision = fromNullFloat64(ctxPrec)
 		r.AnswerRelevance = fromNullFloat64(ansRel)
 		r.ContextRecall = fromNullFloat64(ctxRecall)
+		r.RunPath = runPath.String
+		r.TransferFrom = transferFrom.String
+		r.TransferTo = transferTo.String
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -432,7 +466,37 @@ const (
 	// BudgetLayer value (one of the keys in BudgetLayerNames below).
 	// INSERT-only (T-3-AUDIT); queryable via AuditFilter.Action.
 	ActionBudgetTriggered string = "action_budget_triggered"
+
+	// Phase 13 / Plan 13-03 — FAN-01 SC-1 sub-agent lifecycle audit.
+	// The Phase 13 orchestrator (internal/runtime/orchestrator.go)
+	// emits these 3 rows per sub-agent per Run:
+	//
+	//   - ActionFanoutDispatched fires BEFORE the sub-agent's Run
+	//     method is invoked (T-13-03-6 audit-first lifecycle posture;
+	//     the operator can see the sub-agent was scheduled even if
+	//     it panics before completion).
+	//   - ActionFanoutCompleted fires AFTER the sub-agent's Run
+	//     returns successfully AND per-sub-agent ApplyTrustStage
+	//     grounded the verdict.
+	//   - ActionFanoutFailed fires when the sub-agent's Run returns
+	//     an error, panics, or times out (Pitfall 4 mitigation).
+	//
+	// Each row carries RunPath / TransferFrom / TransferTo populated
+	// (T-13-03-3 mitigation — PutAudit rejects fanout rows with empty
+	// RunPath). QueryFanoutByRunPath (fanout_events.go) reconstructs
+	// the full sub-agent trace via RunPath LIKE 'parent_run/%'.
+	ActionFanoutDispatched string = "action_fanout_dispatched"
+	ActionFanoutCompleted  string = "action_fanout_completed"
+	ActionFanoutFailed     string = "action_fanout_failed"
 )
+
+// ErrInvalidFanoutRunPath is the sentinel error PutAudit surfaces when
+// row.Action is one of the 3 fanout lifecycle enum values but
+// row.RunPath is empty. The caller (the orchestrator's runSubAgent
+// goroutine) treats this as a fail-closed signal: the row is NOT
+// written, and the sub-agent Run is faulted with the same reason
+// (T-13-03-3 + T-13-03-6 audit lineage guarantee).
+var ErrInvalidFanoutRunPath = errors.New("sqlite.PutAudit: action_fanout_* requires non-empty RunPath (P13-L6 audit substrate)")
 
 // BudgetLayerNames is the whitelist of valid BudgetLayer values for
 // action_budget_triggered rows (Phase 12 / Plan 12-05). The middleware

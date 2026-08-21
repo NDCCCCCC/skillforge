@@ -75,6 +75,22 @@ export const DecisionPlanApproved = 'plan-approved' as const;
 // HITL-02 contract; >= 3 chars enforced client + server).
 export const DecisionPlanDenied = 'plan-denied' as const;
 
+// Plan 13-03 BE (P13-L6 fanout audit substrate) — fanout_dispatched
+// fires on the SSE stream immediately BEFORE each sub-agent's Run
+// method is invoked (T-13-03-6 audit-first lifecycle). The TS side
+// surfaces it for the PlanInspector timeline (FAN-04 SC-4).
+export const DecisionFanoutDispatched = 'fanout_dispatched' as const;
+
+// Plan 13-03 BE — fanout_completed fires on the SSE stream AFTER each
+// sub-agent's Run returns successfully AND per-sub-agent
+// ApplyTrustStage grounded the verdict (FAN-04 SC-4 grounding proof).
+export const DecisionFanoutCompleted = 'fanout_completed' as const;
+
+// Plan 13-03 BE — fanout_failed fires when the sub-agent's Run
+// returns an error, panics, or times out (Pitfall 4 mitigation). The
+// Reason field on the payload carries the sub-agent's error message.
+export const DecisionFanoutFailed = 'fanout_failed' as const;
+
 // ----------------------------------------------------------------------------
 // DecisionPayload — mirror of internal/wire/chunk.go DecisionPayload
 // ----------------------------------------------------------------------------
@@ -165,7 +181,19 @@ export interface DecisionPayload {
     // lockstep with internal/wire/chunk.go DecisionPayload.
     | 'forced_stop'
     | 'plan-approved'
-    | 'plan-denied';
+    | 'plan-denied'
+    // Plan 13-03 — FAN-04 SC-4 fanout audit substrate string extensions.
+    // The 3 fanout_* enum values mirror the audit.action enum
+    // (ActionFanoutDispatched | ActionFanoutCompleted | ActionFanoutFailed).
+    // The discriminator (kebab-case data-decision) is unchanged; only
+    // the decision STRING enum widens by 3 literals. D16 overload
+    // pattern + D15 lockstep with internal/wire/chunk.go DecisionPayload.
+    // RealChatTransport (web/src/transport/) routes these to the
+    // PlanInspector timeline so the operator sees the sub-agent
+    // trace alongside the parent decision trace.
+    | 'fanout_dispatched'
+    | 'fanout_completed'
+    | 'fanout_failed';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */
@@ -178,6 +206,12 @@ export interface DecisionPayload {
   selected?: string;
   /** D5-04 — true when the top-2 score gap is below the router threshold. */
   ambiguous?: boolean;
+  /** Plan 13-03 / P13-L7 — populated only on `fanout_*` decisions. */
+  runPath?: string;
+  /** Plan 13-03 / P13-L7 — populated only on `fanout_*` decisions. */
+  transferFrom?: string;
+  /** Plan 13-03 / P13-L7 — populated only on `fanout_*` decisions. */
+  transferTo?: string;
   /** Plan 05-06 / D5-13 — populated only on `counter_evidence` decisions.
    *  Carries the 历史-tier annotation rows (NEVER part of the verdict's grounding). */
   conflictChunks?: ConflictChunk[];

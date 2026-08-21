@@ -118,10 +118,20 @@ type ConflictChunk struct {
 //     types.go (12-05) and currently includes "retrieve" | "answer" |
 //     "refuse" | "forced_stop" | "route" | "counter_evidence" +
 //     the Phase 10 history_* values + the Phase 11 tool-resumed |
-//     tool-denied values. P12-L3 lock: extending the catalog is
+//     tool-denied values + the Phase 12 plan-approved | plan-denied
+//     values + the Phase 13 fanout_dispatched | fanout_completed |
+//     fanout_failed values. P12-L3 lock: extending the catalog is
 //     ADDITIVE — never repurpose an existing value. The discriminated-
-//     union discriminator (kebab-case `type`) is UNCHANGED by 12-05:
-//     forced_stop rides the existing one, D16 overload pattern.
+//     union discriminator (kebab-case `type`) is UNCHANGED by 12-05 /
+//     13-03: fanout_* rides the existing one, D16 overload pattern.
+//   - RunPath:      P13-L7 D16 overload — populated on
+//     fanout_dispatched | fanout_completed | fanout_failed. Slash-
+//     separated agent-path (runID/subQueryID); the FE timeline uses
+//     this to render the sub-agent's path in the audit timeline.
+//   - TransferFrom: P13-L7 D16 overload — populated on fanout_* events;
+//     sub-agent invocation source (parent run ID).
+//   - TransferTo:   P13-L7 D16 overload — populated on fanout_* events;
+//     sub-agent invocation target (sub_query_id).
 //   - ToolCallID:   links the decision to a specific tool invocation
 //     (empty when Eino does not expose the id at OnStart).
 //   - Query:        the (possibly refined) query for a retrieve decision.
@@ -147,6 +157,9 @@ type ConflictChunk struct {
 type DecisionPayload struct {
 	Step           int             `json:"step"`     // 1-indexed hop number (1 or 2 for max_hops=2)
 	Decision       string          `json:"decision"` // wire.DecisionForcedStop (12-05) and the catalog in types.go — extend ADDITIVELY; never repurpose an existing value
+	RunPath        string          `json:"runPath,omitempty"`     // P13-L7 — fanout_* events only; slash-separated agent path
+	TransferFrom   string          `json:"transferFrom,omitempty"` // P13-L7 — fanout_* events only; parent run ID
+	TransferTo     string          `json:"transferTo,omitempty"`   // P13-L7 — fanout_* events only; sub_query_id
 	ToolCallID     string          `json:"toolCallId,omitempty"`
 	Query          string          `json:"query,omitempty"`
 	Confidence     float64         `json:"confidence,omitempty"`

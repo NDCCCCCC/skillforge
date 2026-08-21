@@ -74,4 +74,38 @@ const (
 	// row). Conservative by contract: the gate fires BEFORE the run
 	// reaches exhaustion, never after.
 	DecisionForcedStop = "forced_stop"
+
+	// Phase 13 / Plan 13-03 — FAN-01 SC-1 sub-agent lifecycle events
+	// (D16 overload on the data-decision discriminator; no new wire
+	// chunk types — P13-L7 invariant). The orchestrator emits one
+	// data-decision chunk per sub-agent per phase:
+	//
+	//   - DecisionFanoutDispatched fires BEFORE the sub-agent's Run
+	//     method is invoked. The audit row is written first
+	//     (action_fanout_dispatched, INSERT-only per T-3-AUDIT); the
+	//     SSE chunk follows. The chunk's RunPath/TransferFrom/TransferTo
+	//     fields carry the slash-separated path that the FE agent
+	//     inspector displays inline (D14 invariant — existing UI
+	//     timeline, no new components).
+	//   - DecisionFanoutCompleted fires AFTER the sub-agent's Run
+	//     returns successfully AND per-sub-agent ApplyTrustStage
+	//     grounded the verdict. The chunk carries the sub-agent's
+	//     final verdict (ComplianceStatus, Confidence, Citations) so
+	//     the timeline can render the per-sub-agent summary inline.
+	//   - DecisionFanoutFailed fires when the sub-agent's Run returns
+	//     an error, panics, or times out (Pitfall 4 mitigation —
+	//     context.WithTimeout(30s) fires → Status: faulted). The
+	//     merger (internal/runtime/merge.go) treats faulted as
+	//     refusal-equivalent per P13-L5 (D2-14 conservative partial-
+	//     failure posture).
+	//
+	// The discriminator (kebab-case data-decision) is unchanged. The
+	// DecisionPayload.Decision string enum widens by 3 literals — same
+	// D16 overload pattern as Phase 12 12-05 (forced_stop) and 12-07
+	// (plan-approved / plan-denied). The TS mirror at
+	// web/src/types/wire-types.ts adds the matching 3 string literals
+	// under D15 lockstep.
+	DecisionFanoutDispatched = "fanout_dispatched"
+	DecisionFanoutCompleted  = "fanout_completed"
+	DecisionFanoutFailed     = "fanout_failed"
 )

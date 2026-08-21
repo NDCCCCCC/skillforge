@@ -70,12 +70,27 @@ CREATE TABLE IF NOT EXISTS audit (
     faithfulness     REAL,
     context_precision REAL,
     answer_relevance  REAL,
-    context_recall    REAL
+    context_recall    REAL,
+    -- Phase 13 / Plan 13-03 — P13-L6 audit RunPath/Transfer columns
+    -- (FAN-04 SC-4 audit substrate). The 3 nullable TEXT columns are
+    -- populated for action_fanout_dispatched | action_fanout_completed
+    -- | action_fanout_failed rows to identify the slash-separated
+    -- agent-path (run_path = parent_run/sub_query_id) + the transfer
+    -- endpoints (transfer_from = parent_run, transfer_to = sub_query_id).
+    -- Pre-existing rows have NULL in these columns (additive migration
+    -- preserves history — T-13-03-7 mitigation).
+    run_path         TEXT,
+    transfer_from    TEXT,
+    transfer_to      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_session_id ON audit(session_id);
 CREATE INDEX IF NOT EXISTS idx_audit_skill_id   ON audit(skill_id);
 CREATE INDEX IF NOT EXISTS idx_audit_refusal    ON audit(refusal_reason);
 CREATE INDEX IF NOT EXISTS idx_audit_ts         ON audit(ts);
+-- Phase 13 / Plan 13-03 — P13-L6 fanout trace reconstruction index.
+-- QueryFanoutByRunPath uses LIKE 'parent_run/%' for the trace query;
+-- the index keeps the prefix scan O(log N) instead of full table scan.
+CREATE INDEX IF NOT EXISTS idx_audit_run_path   ON audit(run_path);
 
 CREATE TABLE IF NOT EXISTS audit_meta (
     query_id                 INTEGER PRIMARY KEY,
@@ -205,6 +220,14 @@ const (
 	// the column.
 	alterAuditAddBudgetLayerSQL = "ALTER TABLE audit ADD COLUMN budget_layer TEXT NOT NULL DEFAULT ''"
 
+	// Phase 13 / Plan 13-03 — P13-L6 audit RunPath/Transfer columns.
+	// Nullable TEXT (NULL-allowed, no DEFAULT) — populated for the
+	// action_fanout_* lifecycle rows. Pre-existing rows have NULL in
+	// these columns (additive migration — T-13-03-7 mitigation).
+	alterAuditAddRunPathSQL      = "ALTER TABLE audit ADD COLUMN run_path TEXT"
+	alterAuditAddTransferFromSQL = "ALTER TABLE audit ADD COLUMN transfer_from TEXT"
+	alterAuditAddTransferToSQL   = "ALTER TABLE audit ADD COLUMN transfer_to TEXT"
+
 	alterCheckpointAddSkillVersionSQL = "ALTER TABLE checkpoint ADD COLUMN skill_version TEXT NOT NULL DEFAULT ''"
 	alterCheckpointAddPromptHashSQL   = "ALTER TABLE checkpoint ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT ''"
 )
@@ -239,6 +262,10 @@ var auditLifecycleColumns = []struct{ column, stmt string }{
 	{"scope_session_id", alterAuditAddScopeSessionIDSQL},
 	// Phase 12 / Plan 12-05 — budget event discriminator column.
 	{"budget_layer", alterAuditAddBudgetLayerSQL},
+	// Phase 13 / Plan 13-03 — P13-L6 audit RunPath/Transfer columns.
+	{"run_path", alterAuditAddRunPathSQL},
+	{"transfer_from", alterAuditAddTransferFromSQL},
+	{"transfer_to", alterAuditAddTransferToSQL},
 }
 
 var checkpointSnapshotColumns = []struct{ column, stmt string }{
