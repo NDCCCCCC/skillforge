@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 13
-current_plan: 13-03 FanOutOrchestrator 5-step pipeline + audit RunPath/Transfer + D16 overload; COMPLETE
+current_plan: 13-05 executor tasks COMPLETE (commits 74682ed + bdcded7 + e38abe1: dual-mode spike-fanout + 20-case golden set + compliance-orchestrator example Skill); Task 3 live UAT = OPERATOR GATE (runbook in 13-05-SUMMARY.md) → 13-06 v0.8 wrap
 status: in-progress
-stopped_at: Phase 13 / Plan 13-03 COMPLETE 2026-08-21 (3 tasks / 4 commits: 488c98e audit substrate + D16 fanout enum overload + TS lockstep; 789640f 5-step pipeline Classify→Build→Fanout→Merge→ApplyTrustStage; 5b76923 RealChatTransport routes fanout_* decisions to dispatch seam; 958b76e docs SUMMARY). FAN-01 SC-1 fault isolation (defer recover + 30s timeout); FAN-04 SC-4 per-sub-agent ApplyTrustStage + shared ChunkAccumulator; D16 overload data-decision.decision enum (fanout_dispatched/completed/failed); D15 lockstep TS mirror; ADD COLUMN audit DDL (run_path/transfer_from/transfer_to) additive. Wave 2 complete (13-02 + 13-03); 13-04 + 13-05 pending.
-last_updated: "2026-08-21T08:15:00Z"
+stopped_at: Phase 13 / 13-05 executor batch COMPLETE 2026-08-21 (Tasks 1-2 hermetic green: 10 spike-fanout tests PASS + runtime/skill suites PASS; eval/frozen/ byte-identical — compliance 5cf700f3… + fanout 2fca4ee2…). Task 3 (live 20-case UAT + fanout.lock.json sign-off + STATE close-out signature) awaiting operator: GLM_API_KEY + MILVUS_ADDRESS + BGE_M3_URL + Docker Milvus/BGE-M3 stack. Then 13-06 v0.8 milestone wrap.
+last_updated: "2026-08-21T04:25:00Z"
 last_activity: 2026-08-21 -- Phase 13 Plan 13-03 SHIPPED via `/gsd:execute-phase 13 --wave 2` (sequential after 13-02; 13-03 depends_on 13-02 + 13-01). 4 atomic commits land full pipeline + D16 + audit + D15 TS mirror; `go build ./...` + `go vet ./...` + `npx tsc --noEmit` exit 0. Prior: Phase 13 Plan 13-02 SHIPPED 2026-08-21 (commits 7c9652b + 5d75e6d: merge pure function + 10× byte-identity contract); Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit 0484bca: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary).
 resume_file: .planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md
 progress:
@@ -19,7 +19,7 @@ progress:
 
 # State — SkillForge
 
-**Last updated:** 2026-08-21 (**Phase 13 Wave 2 COMPLETE** — `13-02 merge pure function` + `13-03 FanOutOrchestrator 5-step pipeline + audit RunPath/Transfer + D16 overload` both SHIPPED; 7 atomic commits total since 13-01: 7c9652b / 5d75e6d / bd1fcb4 (13-02) + 488c98e / 789640f / 5b76923 / 958b76e (13-03); all hermetic gates green; FAN-01 SC-1 fault isolation (defer recover + 30s timeout); FAN-03 SC-3 byte-identity + SC-4 conservative partial-failure; FAN-04 SC-4 per-sub-agent ApplyTrustStage + shared ChunkAccumulator + D15 lockstep TS mirror + ADD COLUMN audit DDL). **Wave 2 of 4 complete** — 13-04 (hermetic gate + STRIDE-13 + frozen eval) + 13-05 (live fan-out 20-case UAT + v0.8 milestone re-baseline) pending. **Next action**: `/clear` then `/gsd:execute-phase 13 --wave 3` to execute 13-04. Resume file: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`.
+**Last updated:** 2026-08-21 (**Phase 13 Wave 3 COMPLETE + Wave 4 operator-gated + Wave 5 planned** — 13-04 hermetic acceptance gate SHIPPED 9/9 PASS at 2026-08-21T01:42:38Z, commit `7133feb`: `scripts/verify-phase-13.sh` 9-stage gate + `docs/threat-model/STRIDE-13.md` 8-threat register + `eval/frozen/fanout.lock.json` v0.8 placeholder + WalkDir 8 roots + Makefile target; pause-work handoff `9663b15` (HANDOFF.json + .continue-here). Prior Wave 2: 13-02 + 13-03 SHIPPED (7 commits); Wave 1: 13-01 SHIPPED (`0484bca`). **Wave 4 (13-05 live 20-case fan-out UAT) is operator-gated pending** — requires `.env` (GLM_API_KEY + BGE_M3_URL + MILVUS_ADDRESS) + Docker Milvus + BGE-M3 stack; operator then populates `fanout.lock.json` metrics + `eval_set_sha256` + sign-off and re-runs gate Stage 7. **Wave 5 (13-06 v0.8 milestone wrap) PLANNED 2026-08-21** — completion report + Operator Gates Ledger (incl. Phase 10 deferred 35-case `--via-pipeline` re-run) + README DIST-09 fill from existing `eval/report.json` (hermetic, no live stack) + STATE terminal flip + operator `v0.8.0` tag hand-off; see `13-06-PLAN.md`. **Next action**: operator runs Plan 13-05 live UAT → then `/gsd:execute-phase 13 --wave 5` for 13-06 wrap. Resume file: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`.)
 
 **Prior:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
 
@@ -69,11 +69,11 @@ progress:
 
 ## Current Position
 
-Phase: 13 (p8-4 子 agent 扇出, FAN-01..04) — in progress (2/5 plans complete)
-Plan: 13-02 COMPLETE (merge pure function + 10× byte-identity contract); next = 13-03 (per-sub-agent grounding + audit RunPath/Transfer + D16 overload)
-Status: in-progress (Phase 13 Wave 2)
-Last activity: 2026-08-21 -- Phase 13 Plan 13-02 shipped (commits `7c9652b` Task 1 + `5d75e6d` Task 2; merge.go + merge_test.go; 28 hermetic tests green)
-Stopped At: Phase 13 Plan 13-02 summary committed
+Phase: 13 (p8-4 子 agent 扇出, FAN-01..04) — in progress (13-05 executor tasks done, live gate operator-pending; 13-06 wrap planned)
+Plan: 13-05 executor batch COMPLETE (Tasks 1-2: dual-mode `cmd/spike-fanout` 7-flag matrix + `eval/golden/fanout.jsonl` 20-case set + `examples/skills/compliance-orchestrator/SKILL.md`; commits `74682ed`/`bdcded7`/`e38abe1`); Task 3 live UAT = OPERATOR GATE (runbook: 13-05-SUMMARY.md steps A-G) → 13-06 (v0.8 milestone wrap, planned)
+Status: in-progress (Phase 13 Wave 4 operator gate — executor side delivered)
+Last activity: 2026-08-21 -- 13-05 Tasks 1-2 shipped hermetically (2 Rule-1 runtime fixes: defaultSubAgentMerge delegation + P13-L8 structural recursion guard); all suites green; frozen locks byte-identical
+Stopped At: Task 3 awaiting operator live stack (GLM_API_KEY + MILVUS_ADDRESS + BGE_M3_URL)
 Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 
 **Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
@@ -432,3 +432,20 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 6. `internal/agent/runner_setup_test.go` (UNTOUCHED — second WalkDir copy preserved; integration/contract is the canonical Phase 12 pattern)
 7. `Makefile` (modified — added `verify-phase-12` + `verify-phase-13` targets)
 8. `.planning/STATE.md` (this closeout block)
+
+## Phase 13 — Plan 13-05 Executor Batch COMPLETE (2026-08-21) — Live Gate = OPERATOR PENDING
+
+**Status**: Tasks 1-2 COMPLETE (hermetic, all tests green); Task 3 (live UAT + `fanout.lock.json` sign-off + operator signature below) = **OPERATOR GATE — NOT YET RUN**
+
+**Executor commits**:
+1. `74682ed` fix(13-05) — 2 Rule-1 unblocks: `defaultSubAgentMerge` → delegates to `mergeSubAgentResults` (FAN-03 at the DispatchAgent surface); `BuildSubAgent` structural P13-L8 recursion guard (orchestrator-agent sub-manifests rewritten to chat leaf at construction)
+2. `bdcded7` feat(13-05) — Task 1: dual-mode `cmd/spike-fanout` (7-flag matrix `--live/--scenario/--golden/--sub-skill-config/--cost-limit/--seed/--summarize`; `runLiveSpike` env fail-fast + pre-flight cost abort; `verifyFanoutGate` reading `eval/frozen/fanout.lock.json` thresholds; 4-file summarize renderer `reports/live_fanout.md|multi_hop.md|mismatch.md|fanout_summary.json`; 10 tests incl. `TestLiveModeParityWithHermetic` byte-identity + `TestLiveModeRunsWithoutNetwork` skip-without-key)
+3. `e38abe1` test(13-05) — Task 2: `eval/golden/fanout.jsonl` 20 cases (8 multi_hop / 6 tier_mismatch / 4 partial_failure / 2 single_vertex) + `examples/skills/compliance-orchestrator/SKILL.md` (`agent: orchestrator`; operator-prep gap closed hermetically per dispatch) + `TestExamplesValidate` 3→4 templates (original assertions intact)
+
+**Verification (hermetic)**: `go build ./...` + `go vet ./...` exit 0; `go test ./cmd/spike-fanout/... ./internal/runtime/... ./internal/skill/...` PASS (no `-race` — Phase 12 Windows cgo precedent); `git diff --quiet eval/frozen/` clean (compliance `5cf700f3…` UNCHANGED — T-8-12 preserved; fanout placeholder `2fca4ee2…` UNCHANGED — operator fills at Task 3 step E).
+
+**Operator runbook**: `.planning/phases/13-p8-4-sub-agent-fan-out/13-05-SUMMARY.md` §"Task 3 Operator Runbook" (steps A-G: pre-flight → `make verify-phase-13` → `go run ./cmd/spike-fanout --live --golden=eval/golden/fanout.jsonl --sub-skill-config=examples/skills/compliance-orchestrator/SKILL.md --cost-limit=2.00 --seed=42 --summarize` → gate verdict → fanout.lock.json re-baseline → sign-off → final gate re-run).
+
+**Operator signature (live gate)**: `___   Date: ___`
+
+**v0.8 milestone completion**: PENDING the live gate PASS + operator signature above.
