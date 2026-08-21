@@ -279,6 +279,31 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
       return true;
     }
 
+    // Plan 13-03 (P13-L7 / D16 overload) — FAN-04 SC-4 audit timeline
+    // substrate. The 3 fanout_* decision strings ride the EXISTING
+    // data-decision discriminator (no new wire chunk types — D16
+    // overload pattern). They surface the sub-agent trace (dispatched
+    // → completed | failed) for the PlanInspector timeline.
+    //
+    // 13-03 ships the dispatch seam; the visual timeline component
+    // lands in 13-05 (the audit timeline reuses the existing
+    // dispatchApprovalDecision branch's store-side wiring). For now,
+    // the chunks are intercepted here and the fields are reserved
+    // for the 13-05 timeline component that reads them off the
+    // dispatch seam.
+    case 'fanout_dispatched':
+    case 'fanout_completed':
+    case 'fanout_failed': {
+      const runPath = asStr(data.runPath);
+      const transferFrom = asStr(data.transferFrom);
+      const transferTo = asStr(data.transferTo);
+      const reason = asStr(data.reason);
+      // Fields are reserved for the 13-05 timeline component that
+      // reads them off the dispatch seam.
+      void runPath; void transferFrom; void transferTo; void reason;
+      return true;
+    }
+
     default:
       return false;
   }
