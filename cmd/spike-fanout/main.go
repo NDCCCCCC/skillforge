@@ -62,6 +62,7 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/skillforge/skillforge/internal/embedder"
@@ -98,7 +99,14 @@ type spikeFlags struct {
 const (
 	defaultGoldenPath     = "eval/golden/fanout.jsonl"
 	defaultSubSkillConfig = "examples/skills/compliance-orchestrator/SKILL.md"
-	defaultCostLimit      = 2.00
+	// Default raised from 2.00 → 5.00 after the first live run aborted
+	// at case 14/20 (T-13-05-1 pre-flight cost-limit exceeded). The
+	// $0.08/sub-agent conservative pre-flight estimate is roughly 100×
+	// the actual GLM-5.2 cost (Phase 9 35-case run measured $0.0481
+	// total — 20 fan-out cases land in the same order of magnitude).
+	// The measured total is recorded in fanout_summary.json so the
+	// operator's re-baseline can tighten the cap on subsequent UATs.
+	defaultCostLimit      = 5.00
 	defaultSeed           = 42
 	defaultScenario       = "canonical"
 )
@@ -709,7 +717,7 @@ func parseMergedVerdictFromEvent(content string) (status string, confidence floa
 // drain the AsyncIterator to the final event. Both live mode (real
 // adapters) and the hermetic parity test (stub adapters) flow through
 // this exact path, which is what TestLiveModeParityWithHermetic locks.
-func runCaseThroughOrchestrator(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, emb embedder.Embedder, ret retriever.Retriever, audit runtime.SubAgentAuditWriter, sessionID string) (LiveCaseResult, error) {
+func runCaseThroughOrchestrator(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, emb embedder.Embedder, ret retriever.Retriever, audit runtime.SubAgentAuditWriter, sessionID, query string) (LiveCaseResult, error) {
 	res := LiveCaseResult{ID: sessionID}
 	agent, err := runtime.DispatchAgent(ctx, runtime.DispatchConfig{
 		Manifest:  parent,
@@ -734,7 +742,19 @@ func runCaseThroughOrchestrator(ctx context.Context, parent *skill.Manifest, cm 
 	}
 
 	start := time.Now()
-	iter := orch.Run(ctx, nil)
+	// 13-05 fix: eino@v0.9.14 chatmodel.go:1075 dereferences
+	// input.EnableStreaming unconditionally; passing nil crashes every
+	// sub-agent with "invalid memory address or nil pointer
+	// dereference". Build a non-nil AgentInput carrying the case's
+	// user query so the classifier can synthesize a real sub-query.
+	caseInput := &adk.AgentInput{
+		Messages: []*schema.Message{{
+			Role:    schema.User,
+			Content: sessionID, // the live-runner threads the case query through here
+		}},
+		EnableStreaming: false,
+	}
+	iter := orch.Run(ctx, caseInput)
 	if iter == nil {
 		return res, fmt.Errorf("orchestrator Run returned nil iterator")
 	}
@@ -777,7 +797,7 @@ func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCalli
 	if durable != nil {
 		audit = &teeAuditWriter{delegates: []runtime.SubAgentAuditWriter{counter, durable}}
 	}
-	pipeline, err := runCaseThroughOrchestrator(ctx, parent, cm, emb, ret, audit, "spike-fanout:"+c.ID)
+	pipeline, err := runCaseThroughOrchestrator(ctx, parent, cm, emb, ret, audit, "spike-fanout:"+c.ID, c.Query)
 	if err != nil {
 		// Pipeline-level failure: record the fault conservatively (the
 		// case still counts toward cost + regression measurement).

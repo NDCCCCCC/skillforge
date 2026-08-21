@@ -88,6 +88,16 @@ const SubAgentTimeoutSeconds = 30
 // Source-grep locked via TestSharedChunkAccumulatorLRUCap.
 const SharedChunkAccumulatorMaxEntries = 20
 
+// SubAgentRetrieveTopK is the per-sub-agent retrieval topK the
+// orchestrator uses during FAN-04 SC-4 per-sub-agent grounding. The
+// orchestrator re-issues the search directly (see runSubAgentInner)
+// using the sub-skill's resolved tier slice so the trust floor
+// sees real chunks instead of nil — without this the trust floor
+// (D3-01 — D9-V2 — zero chunks → refusal) refuses every sub-agent
+// verdict and the merge conservatively downgrades everything to
+// needs_input.
+const SubAgentRetrieveTopK = 5
+
 // SubAgentBudgetConfig is the per-sub-agent budget scope (P13-L3).
 // Zero values fall back to the package constants via Resolve().
 //

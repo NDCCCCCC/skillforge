@@ -132,7 +132,7 @@ func TestLiveModeParityWithHermetic(t *testing.T) {
 
 	run := func() LiveCaseResult {
 		counter := &countingAuditWriter{}
-		res, err := runCaseThroughOrchestrator(ctx, parent, &stubChatModel{}, nil, nil, counter, "parity-sess")
+		res, err := runCaseThroughOrchestrator(ctx, parent, &stubChatModel{}, nil, nil, counter, "parity-sess", "parity query")
 		if err != nil {
 			t.Fatalf("runCaseThroughOrchestrator: %v", err)
 		}

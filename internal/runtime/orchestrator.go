@@ -61,6 +61,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -329,9 +330,10 @@ func (o *FanOutOrchestrator) Run(ctx context.Context, input *adk.AgentInput, opt
 // Step 1 (Classify) produces N of these; Step 2+3 (Build+Fan-out)
 // iterates over them.
 type subQueryPlan struct {
-	SubQueryID string
-	SubQuery   string
-	SubSkillID string // the sub-skill name to dispatch
+	SubQueryID   string
+	SubQuery     string
+	SubSkillID   string   // the sub-skill name to dispatch
+	SubSkillTiers []string // resolved tier slice from the sub-skill manifest (carried for FAN-04 SC-4 per-sub-agent grounding retrieval)
 }
 
 // classify (Step 1) — derives the sub-query plan.
@@ -347,7 +349,7 @@ type subQueryPlan struct {
 // load-bearing surface, not the classifier's intelligence.
 //
 // Tests inject a deterministic plan via the classifierForTest field.
-func (o *FanOutOrchestrator) classify(_ context.Context, _ *adk.AgentInput) ([]subQueryPlan, error) {
+func (o *FanOutOrchestrator) classify(_ context.Context, input *adk.AgentInput) ([]subQueryPlan, error) {
 	if o.classifierForTest != nil {
 		return o.classifierForTest(), nil
 	}
@@ -355,13 +357,44 @@ func (o *FanOutOrchestrator) classify(_ context.Context, _ *adk.AgentInput) ([]s
 	// (13-05) uses cfg.ClassifierChatModel to derive the sub-plan;
 	// for 13-03 we return a deterministic single-sub-query plan so
 	// the pipeline compiles + tests can exercise the structure.
+	//
+	// The sub-query text falls back to a synthesis of any user message
+	// in the AgentInput — otherwise the sub-agent receives a hardcoded
+	// "default sub-query" and cannot ground its verdict. The
+	// ResolvedTiers of the parent (or empty for the fanout-12
+	// parent-empty-tiers contract case) carry through so per-sub-agent
+	// grounding retrieval uses the parent's authorized slice.
+	parentTiers := o.parentManifest.ResolvedTiers()
+	parentQuery := extractFirstUserText(input)
+	if parentQuery == "" {
+		parentQuery = "default sub-query"
+	}
 	return []subQueryPlan{
 		{
-			SubQueryID: "sa1",
-			SubQuery:   "default sub-query",
-			SubSkillID: "compliance",
+			SubQueryID:   "sa1",
+			SubQuery:     parentQuery,
+			SubSkillID:   o.parentManifest.Name,
+			SubSkillTiers: parentTiers,
 		},
 	}, nil
+}
+
+// extractFirstUserText returns the Content of the first User-role
+// Message in in.Messages, trimmed. Empty if the input is nil or has
+// no user messages.
+func extractFirstUserText(in *adk.AgentInput) string {
+	if in == nil {
+		return ""
+	}
+	for _, m := range in.Messages {
+		if m == nil {
+			continue
+		}
+		if m.Role == schema.User {
+			return strings.TrimSpace(m.Content)
+		}
+	}
+	return ""
 }
 
 // fanOut (Step 2 + 3) — build sub-agents in parallel via manual
@@ -478,7 +511,7 @@ func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQuery
 				runErr = fmt.Errorf("sub-agent %q panic: %v", sub.SubQueryID, r)
 			}
 		}()
-		subResult, runErr = o.runSubAgentInner(timeoutCtx, subAgent, sub)
+		subResult, runErr = o.runSubAgentInner(timeoutCtx, subAgent, sub, acc)
 	}()
 
 	if runErr != nil {
@@ -515,7 +548,7 @@ func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQuery
 // Step 5 — every sub-agent's verdict is independently grounded
 // against the shared ChunkAccumulator so a faulty sub-agent does not
 // propagate ungrounded citations to the merge.
-func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.Agent, sub subQueryPlan) (*SubAgentResult, error) {
+func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.Agent, sub subQueryPlan, acc *SharedChunkAccumulator) (*SubAgentResult, error) {
 	if subAgent == nil {
 		return nil, errors.New("runSubAgentInner: sub-agent is nil")
 	}
@@ -552,12 +585,46 @@ func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.
 		return nil, fmt.Errorf("sub-agent %q produced no message", sub.SubQueryID)
 	}
 
-	// FAN-04 SC-4 per-sub-agent ApplyTrustStage grounding. Reuses
-	// the Phase 12 unified exit (P12-L1 — REUSE).
+	// FAN-04 SC-4 per-sub-agent grounding — retrieve THEN apply
+	// TrustStage. The sub-agent's retrieve Tool writes hits into the
+	// shared accumulator on its own ReAct loop, but the chat-archetype
+	// path currently has no Tool wiring (buildChatModelAgent receives
+	// cfg.Tools == nil from the orchestrator's build path), so the
+	// accumulator stays empty and the trust-floor at len(Chunks)==0
+	// would refuse every sub-agent verdict. To keep the live UAT
+	// functioning WITHOUT requiring a full Tool-whitelist wiring
+	// refactor (which is a separate 13-05 follow-up), the orchestrator
+	// re-issues the retrieval HERE using the sub-skill's ResolvedTiers
+	// (the intersection the BuildSubAgent constructor baked into the
+	// subManifest) and the sub-query as the search query. Hits are
+	// added to the shared accumulator so the merged grounding pass
+	// (applyTrustStageToMerged) also sees the union (P13-L9).
+	var hits []retriever.Hit
+	if o.subRetriever != nil && o.subEmbedder != nil {
+		vec, embErr := o.subEmbedder.Embed(ctx, sub.SubQuery)
+		if embErr == nil {
+			now := time.Now().Unix()
+			// The sub-skill's resolved tier slice (closed-over by
+			// BuildSubAgent at construction time, P13-L2). An empty
+			// slice here (e.g. the fanout-12 parent-empty-tiers
+			// regression case) is allowed — Retriever.Search returns
+			// zero hits when tiers is empty, the trust floor then
+			// refuses the verdict, and the conservative merge
+			// downgrades. The verifier math self-heals.
+			subTiers := sub.SubSkillTiers
+			retrievedHits, retErr := o.subRetriever.Search(ctx, vec, subTiers, SubAgentRetrieveTopK, now)
+			if retErr == nil {
+				hits = retrievedHits
+				for _, h := range hits {
+					acc.Add(h)
+				}
+			}
+		}
+	}
 	tsOut, err := ApplyTrustStage(ctx, &TrustStageInput{
 		Manifest: o.parentManifest,
 		Output:   finalMsg,
-		Chunks:   nil, // sub-agent's retrieve Tool populates the shared accumulator; per-Run grounding sees the union
+		Chunks:   hits,
 		History:  nil,
 	})
 	if err != nil {
