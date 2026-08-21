@@ -141,6 +141,23 @@ func BuildSubAgent(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error) {
 	// → no HITL Tools in the sub-agent's whitelist.
 	subManifest.Writes = []string{}
 
+	// P13-L8 structural recursion guard. The 13-01 comment above
+	// assumed "the orchestrator ALWAYS passes a sub-skill whose Agent
+	// is NOT orchestrator" — but 13-03's runSubAgent passes the PARENT
+	// manifest as the sub-skill placeholder (orchestrator.go: "13-05
+	// widens to per-sub-skill; 13-03 reuses parent"), whose Agent IS
+	// "orchestrator". Without this rewrite the constructed sub-agent
+	// dispatches to buildOrchestrator again → unbounded
+	// orchestrator-of-orchestrator nesting at Run time (only bounded
+	// by the 30s per-sub-agent timeout). Rewriting the field HERE
+	// makes the guard STRUCTURAL: no caller can smuggle a recursive
+	// orchestrator past construction, regardless of what manifest it
+	// passes. Test lock: TestBuildSubAgentStructuralRecursionGuard
+	// (sub_agent_builder_test.go, 13-05 Rule-1 deviation).
+	if subManifest.Agent == string(ArchetypeOrchestrator) {
+		subManifest.Agent = string(ArchetypeChat)
+	}
+
 	// Construct the sub-agent via the Phase 12 unified dispatcher.
 	// The dispatcher routes by cfg.Manifest.Agent — sub-skills
 	// declared as "chat" or "deep" route to buildChatModelAgent /

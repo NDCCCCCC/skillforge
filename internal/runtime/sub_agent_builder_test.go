@@ -359,3 +359,63 @@ func TestBuildSubAgentPassesAccumulatorToSubAgent(t *testing.T) {
 		t.Fatalf("Max() accessor MUST return the configured cap, got %d", acc.Max())
 	}
 }
+
+// TestBuildSubAgentStructuralRecursionGuard — 13-05 Rule-1 regression
+// lock (P13-L8). 13-03's runSubAgent passes the PARENT manifest as the
+// sub-skill placeholder, whose Agent field is "orchestrator". Before
+// the guard, the constructed sub-agent dispatched to buildOrchestrator
+// again — unbounded orchestrator-of-orchestrator nesting at Run time
+// (bounded only by the 30s per-sub-agent timeout). The guard rewrites
+// the clone's Agent to the chat archetype at construction so the
+// recursion is structurally impossible regardless of the caller.
+//
+// Observable proxy for "the sub-agent is a leaf": the constructed
+// agent's Name. The chat archetype names itself
+// "skillforge-session-<id>"; the orchestrator archetype names itself
+// "skillforge-orchestrator-<id>".
+func TestBuildSubAgentStructuralRecursionGuard(t *testing.T) {
+	parent := validParentManifest()
+	// Sub-skill that IS an orchestrator manifest (the 13-03
+	// parent-as-sub placeholder shape). Matching tiers so the only
+	// rejection path left is the recursion guard.
+	sub := validSubManifest("sub-recursive", []string{"authority/**"}, []string{"权威"})
+	sub.Agent = "orchestrator"
+
+	agent, err := BuildSubAgent(context.Background(), SubAgentConfig{
+		ParentManifest:   parent,
+		SubSkillManifest: sub,
+		SubQueryID:       "sa1",
+		ChatModel:        stubChatModel{},
+		Embedder:         stubEmbedder{},
+		Retriever:        stubRetriever{},
+		SessionID:        "sess-recursion-guard",
+	})
+	if err != nil {
+		t.Fatalf("BuildSubAgent with orchestrator-agent sub-skill must succeed (rewritten to chat), got %v", err)
+	}
+	if agent == nil {
+		t.Fatal("BuildSubAgent returned nil agent")
+	}
+	name := agent.Name(context.Background())
+	if strings.Contains(name, "orchestrator") {
+		t.Fatalf("P13-L8 violated: sub-agent Name=%q is an orchestrator (orchestrator-of-orchestrator recursion)", name)
+	}
+
+	// Control: a chat sub-skill keeps the chat archetype untouched.
+	leaf := validSubManifest("sub-leaf", []string{"authority/**"}, []string{"权威"})
+	leafAgent, err := BuildSubAgent(context.Background(), SubAgentConfig{
+		ParentManifest:   parent,
+		SubSkillManifest: leaf,
+		SubQueryID:       "sa1",
+		ChatModel:        stubChatModel{},
+		Embedder:         stubEmbedder{},
+		Retriever:        stubRetriever{},
+		SessionID:        "sess-recursion-control",
+	})
+	if err != nil {
+		t.Fatalf("control chat sub-skill must succeed, got %v", err)
+	}
+	if leafName := leafAgent.Name(context.Background()); strings.Contains(leafName, "orchestrator") {
+		t.Fatalf("control sub-agent Name=%q unexpectedly routed to orchestrator", leafName)
+	}
+}

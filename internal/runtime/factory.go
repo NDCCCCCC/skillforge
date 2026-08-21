@@ -274,12 +274,16 @@ func (defaultSubAgentFactory) BuildSubAgent(ctx context.Context, cfg SubAgentCon
 }
 
 // defaultSubAgentMerge is the package-level SubAgentMergeFunc singleton.
-// 13-01 ships a passthrough that returns an empty MergedVerdict; 13-02
-// replaces it with the production merge function (FAN-03 10× byte-
-// identity contract). Returning an empty verdict here keeps the
-// orchestrator's Run skeleton from panicking when 13-03's 5-step
-// pipeline hands results to the merge function.
+// 13-01 shipped a passthrough returning an empty MergedVerdict; 13-02
+// landed the production pure function but this call site was never
+// re-pointed at it — every orchestrator dispatched via DispatchAgent
+// (the only construction funnel available outside the runtime package,
+// e.g. cmd/spike-fanout's 13-05 live wiring) produced empty merged
+// verdicts, breaking FAN-03 at the dispatch surface. 13-05 (Rule-1
+// deviation, Task 1) fixed the delegation: the singleton now forwards
+// to mergeSubAgentResults so the FAN-03 10× byte-identity contract
+// covers the DispatchAgent path too. Test lock:
+// TestDefaultSubAgentMergeDelegatesToProduction (factory_test.go).
 func defaultSubAgentMerge(results []SubAgentResult) MergedVerdict {
-	_ = results
-	return MergedVerdict{}
+	return mergeSubAgentResults(results)
 }
