@@ -134,13 +134,13 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to write your own Skill — the
 
 ## Eval Results
 
-> **Placeholder** — this section is populated by Plan 07-05 with a real frozen-run snapshot. The numbers below are intentionally empty until that plan runs `cmd/eval --frozen=compliance` against a live stack (Milvus + BGE-M3 + GLM). Do not treat the table as measured yet.
+This snapshot is the **frozen v0.8 compliance baseline** (Phase 8 pin — `eval/frozen/compliance.lock.json`, sha256 `5cf700f3…`). Every figure below is rendered verbatim by `go run ./scripts/eval_snapshot` from `eval/report.json` + the lock; none are hand-typed. Regenerating the lock is tampering (T-8-12) — it pins the model, prompt hash, and seed so the run is byte-identically reproducible.
 
-Frozen run on **_TBD (Plan 07-05)_** · `eval_set_version: compliance-2026-08-13-v1` · `model_ver: glm-5.2` · `prompt_hash: bd59cbe0…`
+Frozen run on **2026-08-21** · `eval_set_version: compliance-2026-08-13-v1` · `model_ver: glm-5.2` · `prompt_hash: 58ffea08…`
 
 | Skill | Faithfulness | Context Precision | Refusal Accuracy | Cases |
 |-------|-------------|-------------------|------------------|-------|
-| compliance | _TBD_ | _TBD_ | _TBD_ | 50 (20 adversarial / 20 refusal-required / 10 multi-hop) |
+| compliance | 97% | 10% | 95% (19/20) | 50 (20 adversarial / 20 refusal-required / 10 multi-hop) |
 
 **Reproduce:** `go run ./cmd/eval --frozen=compliance`
 
