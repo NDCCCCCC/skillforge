@@ -1,20 +1,19 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: 业务数据支撑（Business Data Support）
-current_phase: 14
-current_plan: none (ready for /gsd:plan-phase 14)
-status: planning
-stopped_at: Phase 14 context gathered (16 decisions, 4 areas; commit 1b02b41). Next: /gsd:plan-phase 14. HARD operator gate before Phase 14 execution: MSYS2 gcc install (`! winget install MSYS2.MSYS2` then `pacman -S mingw-w64-ucrt-x86_64-gcc`, PATH += C:\msys64\ucrt64\bin).
-last_updated: "2026-08-22T00:30:00Z"
-last_activity: 2026-08-22 -- /gsd:discuss-phase 14 complete (default mode, 4 areas x 4 questions = 16 decisions): floor 7 iron rules CN + head/tail prepend + trust-clause lift; semver audit column + prompt_hash covers composed prompt + bump full-rerun; frozen set 20 cases x 6 attack surfaces regex+judge, platform-floor.lock.json 4th lock this phase (data.lock -> 5th, Phase 20 SC-5 wording adjust pending); DuckDB per-dataset file + sqlite registry + lazy ATTACH LRU + staging atomic rename. ROADMAP Phase 20 SC-5 minor wording adjustment noted for plan-phase. Earlier 2026-08-21: v1.0 roadmap created inline (7 phases 14-20, 44/44 mapped, commit 5d3d60d) + STACK-VERIFICATION 2.8 write-capacity assessment (no bottleneck at provincial-insurer internal scale; busy_timeout gap -> mandatory) + todos archived (0da616a).
-resume_file: .planning/phases/14-p10-0-cgo-trust-floor/14-CONTEXT.md
+milestone_name: — 业务数据支撑（Business Data Support）
+current_phase: 11
+current_plan: TBD (context-gathered, ready for plan-phase)
+status: executing
+stopped_at: context exhaustion at 75% (2026-08-21)
+last_updated: "2026-08-21T17:29:43.265Z"
+last_activity: 2026-08-21 -- Phase 14 planning complete
 progress:
-  total_phases: 7
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0   # roadmap done, no plans yet
+  total_phases: 20
+  completed_phases: 11
+  total_plans: 80
+  completed_plans: 73
+  percent: 55
 ---
 
 # State — SkillForge
@@ -23,8 +22,8 @@ progress:
 
 Phase: 14 — CGO 地基 + 平台信任地板（P10.0）— context gathered, ready for planning
 Plan: — (run `/gsd:plan-phase 14` next)
-Status: planning
-Last activity: 2026-08-22 — /gsd:discuss-phase 14 complete (16 decisions, commit 1b02b41); operator gate: MSYS2 gcc before Phase 14 build work
+Status: Ready to execute
+Last activity: 2026-08-21 -- Phase 14 planning complete
 
 # State — SkillForge
 
@@ -82,8 +81,8 @@ Phase: 13 (p8-4 子 agent 扇出, FAN-01..04) — in progress (13-05 executor ta
 Plan: 13-05 executor batch COMPLETE (Tasks 1-2: dual-mode `cmd/spike-fanout` 7-flag matrix + `eval/golden/fanout.jsonl` 20-case set + `examples/skills/compliance-orchestrator/SKILL.md`; commits `74682ed`/`bdcded7`/`e38abe1`); Task 3 live UAT = OPERATOR GATE (runbook: 13-05-SUMMARY.md steps A-G) → 13-06 (v0.8 milestone wrap, planned)
 Status: in-progress (Phase 13 Wave 4 operator gate — executor side delivered)
 Last activity: 2026-08-21 -- 13-05 Tasks 1-2 shipped hermetically (2 Rule-1 runtime fixes: defaultSubAgentMerge delegation + P13-L8 structural recursion guard); all suites green; frozen locks byte-identical
-Stopped At: Task 3 awaiting operator live stack (GLM_API_KEY + MILVUS_ADDRESS + BGE_M3_URL)
-Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
+Stopped At: context exhaustion at 75% (2026-08-21)
+Resume File: None
 
 **Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
 
@@ -182,7 +181,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 
 ### Phase 10 Plan 04 — Task 2 live re-run
 
-- **Status:** blocked-pending-human
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-18
 - **Reason:** Execution environment lacks the live stack required for the 35-case GLM/Milvus/BGE-M3 re-run. No `.env` file is present; `GLM_API_KEY`, `BGE_M3_URL`, and `MILVUS_ADDRESS` are not set; Docker Milvus + BGE-M3 endpoints are not confirmed reachable.
 - **Unblock action:** Operator populates `.env` and starts the Docker stack, then runs:
@@ -336,6 +335,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 | HITL-08 (approve-and-remember rules) | TestApprovalRulesScope + TestApprovalRulesRevoke + TestRuleAutoPass (11-05) + TestApprovalRulesPanelEmptyState + TestApprovalRulesPanelRevoke (11-07) + TestThreatModelCriticalMitigations T-HITL-08 (11-08) |
 
 **8 Plan SUMMARY references**:
+
 - `.planning/phases/11-p8-2-write-tools-approval-gate/11-01-SUMMARY.md` — Runner-ization foundation (6 commits, all gates green)
 - `.planning/phases/11-p8-2-write-tools-approval-gate/11-02-SUMMARY.md` — HITL Tool infra (10 commits, 11 checks green)
 - `.planning/phases/11-p8-2-write-tools-approval-gate/11-03-SUMMARY.md` — audit fail-closed (6 commits, 9 checks green)
@@ -346,6 +346,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 - `.planning/phases/11-p8-2-write-tools-approval-gate/11-08-SUMMARY.md` — acceptance gate (8 commits, 11/11 stages green)
 
 **Gate stages executed (all PASS)**:
+
 1. Hermetic Go suite (store + hitl + agent): PASS
 2. Approval API endpoints (11-04 + 11-05): PASS
 3. WalkDir legacy interrupt guard: PASS
@@ -408,6 +409,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 | P13-L9 (per-sub-agent grounding + shared ChunkAccumulator) | runtime.ApplyTrustStage reused + LRU cap 20 | Stage 02 + Stage 09 PASS |
 
 **Gate stages executed (all PASS, 9/9)**:
+
 1. go build + vet: PASS
 2. hermetic Go test suite (FAN-01..04; -race omitted per Phase 12 precedent): PASS
 3. WalkDir legacy interrupt guard (D8-04 extended; 8 roots incl. orchestrator + sub_agent_builder + merge + fanout_events): PASS
@@ -421,6 +423,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 **Plan SUMMARY reference**: `.planning/phases/13-p8-4-sub-agent-fan-out/13-04-SUMMARY.md`
 
 **8 STRIDE-13 threats attested** (T-P13-1..T-P13-8; all Critical/High — see `docs/threat-model/STRIDE-13.md` for full register + mitigation mapping):
+
 - T-P13-1 (EoP — tier intersection mismatch) → BuildSubAgent load-time + classifier-side two-layer defense
 - T-P13-2 (EoP — HITL whitelist leak) → `subManifest.Writes = []string{}` structural
 - T-P13-3 (DoS — fault propagation) → `defer recover()` + `context.WithTimeout(30s)` + errgroup `SetLimit(4)`
@@ -433,6 +436,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 **Next action**: Operator manually commits the 13-04 batch atomically (8 files listed below); then runs Plan 13-05 live UAT to populate `fanout.lock.json` `metrics.*` + `eval_set_sha256` + `lock_sha256`. Phase 13 v0.8 milestone re-baseline closes at 13-05 operator sign-off.
 
 **13-04 atomic commit files (8 total)**:
+
 1. `scripts/verify-phase-13.sh` (new — 9-stage hermetic gate)
 2. `docs/threat-model/STRIDE-13.md` (new — 8-threat register + acceptance criteria)
 3. `eval/frozen/fanout.lock.json` (new — Phase 13 v0.8 placeholder; operator fills 13-05)
@@ -447,6 +451,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 **Status**: Tasks 1-2 COMPLETE (hermetic, all tests green); Task 3 (live UAT + `fanout.lock.json` sign-off + operator signature below) = **OPERATOR GATE — NOT YET RUN**
 
 **Executor commits**:
+
 1. `74682ed` fix(13-05) — 2 Rule-1 unblocks: `defaultSubAgentMerge` → delegates to `mergeSubAgentResults` (FAN-03 at the DispatchAgent surface); `BuildSubAgent` structural P13-L8 recursion guard (orchestrator-agent sub-manifests rewritten to chat leaf at construction)
 2. `bdcded7` feat(13-05) — Task 1: dual-mode `cmd/spike-fanout` (7-flag matrix `--live/--scenario/--golden/--sub-skill-config/--cost-limit/--seed/--summarize`; `runLiveSpike` env fail-fast + pre-flight cost abort; `verifyFanoutGate` reading `eval/frozen/fanout.lock.json` thresholds; 4-file summarize renderer `reports/live_fanout.md|multi_hop.md|mismatch.md|fanout_summary.json`; 10 tests incl. `TestLiveModeParityWithHermetic` byte-identity + `TestLiveModeRunsWithoutNetwork` skip-without-key)
 3. `e38abe1` test(13-05) — Task 2: `eval/golden/fanout.jsonl` 20 cases (8 multi_hop / 6 tier_mismatch / 4 partial_failure / 2 single_vertex) + `examples/skills/compliance-orchestrator/SKILL.md` (`agent: orchestrator`; operator-prep gap closed hermetically per dispatch) + `TestExamplesValidate` 3→4 templates (original assertions intact)
@@ -456,12 +461,14 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 **Operator runbook**: `.planning/phases/13-p8-4-sub-agent-fan-out/13-05-SUMMARY.md` §"Task 3 Operator Runbook" (steps A-G: pre-flight → `make verify-phase-13` → `go run ./cmd/spike-fanout --live --golden=eval/golden/fanout.jsonl --sub-skill-config=examples/skills/compliance-orchestrator/SKILL.md --cost-limit=2.00 --seed=42 --summarize` → gate verdict → fanout.lock.json re-baseline → sign-off → final gate re-run).
 
 **Live gate result** (2026-08-21T15:10Z, operator-signed):
+
 - `PHASE 13 LIVE ACCEPTANCE GATE: FAIL` on the original threshold set (conservative_merge_rate_max: 0.0 breached at 0.200).- **Operator accepted deviation** (D9-V2-style authority pattern): conservative_merge_rate_max raised 0.0 → 0.5 (P13-L5 by-design; 2 sub-agent GLM Coding Plan timeouts at fanout-03/07). 2.5× headroom over measured 0.2.
 - **Effective gate verdict (operator-signed)**: PASS — 5/6 thresholds satisfied unchanged, 1 accepted-with-notes. Tier-closure 6/6 rejected; per-sub-agent grounding completed; deterministic merge; RunPath/Transfer audit landed.
 
 **Operator signature (live gate)**: `ninedrunk`   Date: `2026-08-21`
 
 **Frozen lock committed**: `eval/frozen/fanout.lock.json` (commit `e02525f`):
+
 - `eval_set_sha256`: `bfe8bbffdcb3e23acf5fb0095b7bb01e0dafe68762ef7d4645023f1f3569868b` (golden)
 - `live_fanout_md_sha256`: `e5af980ca019751b7fb78554c03e80ebae6461660d3e5594e3f1291a85dad467`
 - `lock_sha256`: `f3566e52e67bb66ae0f3024d98245a9182b7b7993c4295a58535bcc4043ed0af` (canonical body excluding self-field)
@@ -496,6 +503,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 **Phases:** 8 / 9 / 10 / 11 / 12 / 13 — all six hermetically green. Phase 13 COMPLETE 6/6 (13-01..13-06).
 
 **Frozen locks (3 gated pins, byte-identical through 13-06):**
+
 - `eval/frozen/compliance.lock.json` — `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded` (Phase 8 pin, T-8-12 UNCHANGED)
 - `eval/frozen/hitl.lock.json` — `6e91881f4aafeffb843e996c89ff1c27ef22eb18fac94eceff9184f938481d08` (Phase 11)
 - `eval/frozen/fanout.lock.json` — `af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252` (Phase 13, operator-signed)

@@ -366,6 +366,7 @@
 **Pitfalls addressed:** Pitfall 3（审批门破坏审计完整性 — write-ahead pending 行 + fail-closed），Pitfall 4（持久 checkpoint + GET resume 刷新恢复），Pitfall 6（checkpoint 绑定版本/prompt_hash 拒过期 resume），Pitfall 10（FE 审批状态机：审批态派生自 message parts，永不入 Zustand；D-04 transport-swap fixtures 覆盖 approve/deny 回路）；`TestCancelPropagationMidTool` <200ms 在 Runner 迁移后重新锁定
 **Research flags:** RF-3 — ai@7 custom transport resume 形状（独立端点 + transport 分支 vs 合成 user message）；RF-2 — 升级后 CheckPointStore 接口精确形状（廉价 compile-check）
 **Plans**: 8 plans in 5 waves (MVP vertical slices — FE+BE HITL same phase NOT split)
+
 - **Wave 1** *(no deps)*: 11-01 — BE Runner-ization foundation (chatHandler→adk.NewRunner().Run; pipeline.go→5 files; trust staircase; <200ms cancel)
 - **Wave 2** *(blocked on Wave 1 completion)*: 11-02 BE HITL Tool infra (memory:facts) ⟂ 11-03 BE Audit 3-row lifecycle + Checkpoint fail-closed
 - **Wave 3** *(blocked on Wave 2 completion)*: 11-04 BE Approval Dual endpoint + review_report ⟂ 11-05 BE Edit-before-approve + approval_rules
@@ -373,6 +374,7 @@
 - **Wave 5** *(blocked on Wave 4 completion)*: 11-08 E2E + hermetic gates + frozen eval re-lock (acceptance gate, autonomous:false)
 
 **Cross-cutting constraints:**
+
 - D-04 transport-swap byte-identical (no new SSE chunk types — preserved across 11-01/11-04/11-06/11-08)
 - D15 wire-type compile alarm (UIMessageChunk union unchanged — preserved across 11-06/11-08)
 - D8-04 TestNoLegacyInterruptAPI WalkDir extended in 11-01 + 11-08 final guard
@@ -443,13 +445,33 @@
 **Plans**: 8 plans in 7 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates；重锁排地板文案冻结之后）
 
 Plans:
+**Wave 1**
+
 - [ ] 14-01-PLAN.md — 平台地板核心：常量+ComposePlatformPrompt 唯一出口+双路径收敛（D14-A4 上提）+4 测试锁+WalkDir 禁令门
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 14-02-PLAN.md — audit platform_floor_version 加列（5 INSERT 同步）+ admin 预览端点（X-Admin-Token 复用）
-- [ ] 14-03-PLAN.md — gcc 就位+mattn v1.14.50 替换 modernc+DSN pragma（busy_timeout=5000）+TestSqliteMattnZeroRegression
 - [ ] 14-04-PLAN.md — platform-floor.jsonl 20 例×6 攻击面+hermetic 正则判定+第 4 冻结锁落锁
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 14-03-PLAN.md — gcc 就位+mattn v1.14.50 替换 modernc+DSN pragma（busy_timeout=5000）+TestSqliteMattnZeroRegression
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 14-05-PLAN.md — go-duckdb v2.4.3 引入+NewConnector boot-queries+WAL 刷盘+Appender ≥10 万行/s+50 并发读门
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 14-06-PLAN.md — 懒 ATTACH LRU（fanout 形态复刻）+staging 原子改名+sqlite datasets 注册表
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 14-07-PLAN.md — compliance/hitl 锁重锁（prompt_hash 涟漪治理）+verify-phase-14.sh 9 段门+STRIDE-14
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 14-08-PLAN.md — Dockerfile CGO 翻转+Docker 构建 checkpoint+live judge 20 例 checkpoint（双 operator gate）
 
 **UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
