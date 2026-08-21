@@ -210,3 +210,48 @@ No new network endpoints, auth paths, or SSE chunk types (D15/D16 preserved — 
 ## Next Action
 
 Operator runs the Task 3 runbook (steps A–G above) with the live stack, then signs the STATE.md Phase 13 closeout. After operator sign-off: Plan 13-06 (v0.8 milestone wrap).
+
+---
+
+## Live Gate Closeout — Task 3 (operator-executed 2026-08-21)
+
+**Status:** COMPLETE — `PHASE 13 LIVE ACCEPTANCE GATE` run against the live stack by operator `ninedrunk` on 2026-08-21T15:10Z.
+
+**Effective verdict:** **PASS (accepted-with-notes)** — 5/6 lock thresholds satisfied unchanged; 1 threshold re-baselined with explicit operator authority (D9-V2-style pattern).
+
+### Measured metrics (from `eval/frozen/fanout.lock.json` `metrics.*`, commit `e02525f`)
+
+| Metric | Threshold | Measured | Verdict |
+|--------|-----------|----------|---------|
+| `fanout_dispatched_count` | floor >= 20 | **20** | PASS |
+| `conservative_merge_rate` (spurious) | max 0.0 -> **0.5 (re-baselined)** | **0.200** | ACCEPTED-WITH-NOTES |
+| `tier_closure_regression_rate` | max 0.0 | **0.0** | PASS |
+| `min_confidence_aggregation` | min >= 0.0 | **0.95** | PASS |
+| `tier_mismatch_rejection_rate` | min 1.0 (6/6) | **1.0** | PASS |
+| `total_cost_usd` | advisory cap $2.00 (`--cost-limit`) | **$2.92** | OVER ADVISORY CAP — noted, not a lock threshold |
+
+### Accepted deviation (operator sign-off)
+
+`conservative_merge_rate_max` raised **0.0 -> 0.5**. Root cause: 2 sub-agent GLM Coding Plan timeouts at cases `fanout-03` / `fanout-07` triggered the P13-L5 conservative downgrade — i.e. the by-design fail-safe fired on transient LLM API jitter, not on a logic regression. The re-baselined ceiling carries 2.5x headroom over the measured 0.200. Verbatim rationale is stored in the lock at `_operator_accepted_deviation`.
+
+Secondary note: measured `total_cost_usd` **$2.92** exceeded the plan runbook advisory `--cost-limit=2.00`. The cost cap is a pre-flight abort advisory, NOT one of the 5 `thresholds.*` gate fields, so it does not alter the gate verdict; it is recorded here and in the v0.8 Operator Gates Ledger for transparency.
+
+### Frozen artifact sha256s
+
+| Artifact | sha256 |
+|----------|--------|
+| `eval/golden/fanout.jsonl` (`eval_set_sha256`) | `bfe8bbffdcb3e23acf5fb0095b7bb01e0dafe68762ef7d4645023f1f3569868b` |
+| `reports/live_fanout.md` (`live_fanout_md_sha256`) | `e5af980ca019751b7fb78554c03e80ebae6461660d3e5594e3f1291a85dad467` |
+| `fanout.lock.json` canonical body (`lock_sha256`) | `f3566e52e67bb66ae0f3024d98245a9182b7b7993c4295a58535bcc4043ed0af` |
+| `eval/frozen/fanout.lock.json` file sha256 (post-sign) | `af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252` |
+| `eval/frozen/compliance.lock.json` (Phase 8 pin, T-8-12) | `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded` (UNCHANGED) |
+
+### Operator sign-off
+
+**Operator signature:** `ninedrunk`   **Date:** `2026-08-21`
+
+Sign-off commits: `e02525f` (fanout.lock.json measured metrics + operator signature) + `67d6180` (STATE.md Phase 13 closeout sign-off block).
+
+FAN-01..04 attested live: tier-closure 6/6 rejections, per-sub-agent grounding completed, deterministic merge held, RunPath/Transfer audit rows landed.
+
+**Phase 13 status:** COMPLETE (5/5 plans through 13-05). Next: Plan 13-06 v0.8 milestone wrap.

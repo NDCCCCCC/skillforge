@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 13
-current_plan: 13-05 executor tasks COMPLETE (commits 74682ed + bdcded7 + e38abe1: dual-mode spike-fanout + 20-case golden set + compliance-orchestrator example Skill); Task 3 live UAT = OPERATOR GATE (runbook in 13-05-SUMMARY.md) → 13-06 v0.8 wrap
+current_plan: 13-05 COMPLETE (executor commits 74682ed + bdcded7 + e38abe1; live UAT operator-signed 2026-08-21 — commits e02525f fanout.lock.json + 67d6180 STATE sign-off) → 13-06 v0.8 wrap IN PROGRESS
 status: in-progress
-stopped_at: Phase 13 / 13-05 executor batch COMPLETE 2026-08-21 (Tasks 1-2 hermetic green: 10 spike-fanout tests PASS + runtime/skill suites PASS; eval/frozen/ byte-identical — compliance 5cf700f3… + fanout 2fca4ee2…). Task 3 (live 20-case UAT + fanout.lock.json sign-off + STATE close-out signature) awaiting operator: GLM_API_KEY + MILVUS_ADDRESS + BGE_M3_URL + Docker Milvus/BGE-M3 stack. Then 13-06 v0.8 milestone wrap.
-last_updated: "2026-08-21T04:25:00Z"
+stopped_at: Phase 13 / 13-05 COMPLETE 2026-08-21 — live 20-case fan-out UAT operator-signed (ninedrunk): PHASE 13 LIVE ACCEPTANCE GATE effective verdict PASS (5/6 thresholds unchanged; conservative_merge_rate_max re-baselined 0.0→0.5 ACCEPTED-WITH-NOTES, measured 0.200; measured cost $2.92 over the $2.00 advisory pre-flight cap — advisory only, not a lock threshold). fanout.lock.json file sha256 af3020fd…; compliance 5cf700f3… + hitl 6e91881f… byte-identical. Now running 13-06 v0.8 milestone wrap.
+last_updated: "2026-08-21T16:00:00Z"
 last_activity: 2026-08-21 -- Phase 13 Plan 13-03 SHIPPED via `/gsd:execute-phase 13 --wave 2` (sequential after 13-02; 13-03 depends_on 13-02 + 13-01). 4 atomic commits land full pipeline + D16 + audit + D15 TS mirror; `go build ./...` + `go vet ./...` + `npx tsc --noEmit` exit 0. Prior: Phase 13 Plan 13-02 SHIPPED 2026-08-21 (commits 7c9652b + 5d75e6d: merge pure function + 10× byte-identity contract); Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit 0484bca: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary).
 resume_file: .planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 60
-  completed_plans: 54
+  completed_plans: 55
   percent: 65
 ---
 
@@ -447,8 +447,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 **Operator runbook**: `.planning/phases/13-p8-4-sub-agent-fan-out/13-05-SUMMARY.md` §"Task 3 Operator Runbook" (steps A-G: pre-flight → `make verify-phase-13` → `go run ./cmd/spike-fanout --live --golden=eval/golden/fanout.jsonl --sub-skill-config=examples/skills/compliance-orchestrator/SKILL.md --cost-limit=2.00 --seed=42 --summarize` → gate verdict → fanout.lock.json re-baseline → sign-off → final gate re-run).
 
 **Live gate result** (2026-08-21T15:10Z, operator-signed):
-- `PHASE 13 LIVE ACCEPTANCE GATE: FAIL` on the original threshold set (conservative_merge_rate_max: 0.0 breached at 0.200).
-- **Operator accepted deviation** (D9-V2-style authority pattern): conservative_merge_rate_max raised 0.0 → 0.5 (P13-L5 by-design; 2 sub-agent GLM Coding Plan timeouts at fanout-03/07). 2.5× headroom over measured 0.2.
+- `PHASE 13 LIVE ACCEPTANCE GATE: FAIL` on the original threshold set (conservative_merge_rate_max: 0.0 breached at 0.200).- **Operator accepted deviation** (D9-V2-style authority pattern): conservative_merge_rate_max raised 0.0 → 0.5 (P13-L5 by-design; 2 sub-agent GLM Coding Plan timeouts at fanout-03/07). 2.5× headroom over measured 0.2.
 - **Effective gate verdict (operator-signed)**: PASS — 5/6 thresholds satisfied unchanged, 1 accepted-with-notes. Tier-closure 6/6 rejected; per-sub-agent grounding completed; deterministic merge; RunPath/Transfer audit landed.
 
 **Operator signature (live gate)**: `ninedrunk`   Date: `2026-08-21`
@@ -461,3 +460,18 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 - `phase_12_pin_unchanged_sha256`: `<n/a — Phase 12 does not have a frozen eval lock>` (Phase 12 used hermetic dry-run only)
 
 **v0.8 milestone completion**: Phase 13 live gate PASSED with accepted deviation; operator-signed `fanout.lock.json` committed. Next: `/gsd:execute-phase 13 --wave 5` for 13-06 v0.8 milestone wrap (completion report + Operator Gates Ledger incl. Phase 10 deferred 35-case re-run status + README DIST-09 fill + `v0.8.0` tag hand-off). **Phase 10 deferred 35-case `--via-pipeline --summarize` re-run**: attempted 2026-08-21T15:14Z, blocked by GLM Coding Plan rate-limit / context deadline (20/20 cases classifier-error on attempt 3); operator may re-run once API is reachable; status tracked in 13-06 Operator Gates Ledger as `BLOCKED-ENV`.
+
+### 13-05 measured live metrics (13-06 Task 1 capture)
+
+| Metric | Threshold | Measured | Verdict |
+|--------|-----------|----------|---------|
+| `fanout_dispatched_count` | floor >= 20 | 20 | PASS |
+| `conservative_merge_rate` (spurious) | max 0.0 -> 0.5 re-baselined | 0.200 | ACCEPTED-WITH-NOTES |
+| `tier_closure_regression_rate` | max 0.0 | 0.0 | PASS |
+| `min_confidence_aggregation` | min >= 0.0 | 0.95 | PASS |
+| `tier_mismatch_rejection_rate` | min 1.0 (6/6) | 1.0 | PASS |
+| `total_cost_usd` | $2.00 advisory pre-flight cap (not a lock threshold) | $2.92 | OVER ADVISORY CAP — noted |
+
+**`eval/frozen/fanout.lock.json` file sha256 (post-sign):** `af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252` (distinct from the canonical-body `lock_sha256` f3566e52… and from the `eval_set_sha256` bfe8bbff…).
+
+**13-05 status:** COMPLETE. Full closeout: `.planning/phases/13-p8-4-sub-agent-fan-out/13-05-SUMMARY.md` §"Live Gate Closeout". Phase 13 = 5/5 plans through 13-05; 13-06 (v0.8 wrap) in progress.
