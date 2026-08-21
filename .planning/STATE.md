@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 13
-current_plan: 13-05 COMPLETE (executor commits 74682ed + bdcded7 + e38abe1; live UAT operator-signed 2026-08-21 — commits e02525f fanout.lock.json + 67d6180 STATE sign-off) → 13-06 v0.8 wrap IN PROGRESS
-status: in-progress
-stopped_at: Phase 13 / 13-05 COMPLETE 2026-08-21 — live 20-case fan-out UAT operator-signed (ninedrunk): PHASE 13 LIVE ACCEPTANCE GATE effective verdict PASS (5/6 thresholds unchanged; conservative_merge_rate_max re-baselined 0.0→0.5 ACCEPTED-WITH-NOTES, measured 0.200; measured cost $2.92 over the $2.00 advisory pre-flight cap — advisory only, not a lock threshold). fanout.lock.json file sha256 af3020fd…; compliance 5cf700f3… + hitl 6e91881f… byte-identical. Now running 13-06 v0.8 milestone wrap.
-last_updated: "2026-08-21T16:00:00Z"
-last_activity: 2026-08-21 -- Phase 13 Plan 13-03 SHIPPED via `/gsd:execute-phase 13 --wave 2` (sequential after 13-02; 13-03 depends_on 13-02 + 13-01). 4 atomic commits land full pipeline + D16 + audit + D15 TS mirror; `go build ./...` + `go vet ./...` + `npx tsc --noEmit` exit 0. Prior: Phase 13 Plan 13-02 SHIPPED 2026-08-21 (commits 7c9652b + 5d75e6d: merge pure function + 10× byte-identity contract); Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit 0484bca: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary).
-resume_file: .planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md
+current_plan: 13-06 COMPLETE — v0.8 milestone wrap shipped (completion report + Operator Gates Ledger + README DIST-09 fill + terminal flip). Awaiting operator v0.8.0 tag.
+status: complete-pending-tag
+stopped_at: v0.8 milestone CLOSED (pending tag) 2026-08-21. Phase 13 COMPLETE 6/6; phases 8-13 all hermetically green; 3 frozen locks byte-identical (compliance 5cf700f3… + hitl 6e91881f… + fanout af3020fd…). Operator Gates Ledger in .planning/v0.8-MILESTONE-COMPLETION.md — 3 CLOSED / 4 OPEN (Phase 10 live 35-case re-run BLOCKED-ENV; git push origin master; v0.8.0 tag; Phase 7 demo-GIF + docker-build). Executor never tags — operator runs the tag/push block in §Recommended Next Path.
+last_updated: "2026-08-21T16:40:00Z"
+last_activity: 2026-08-21 -- Plan 13-06 SHIPPED (v0.8 milestone wrap). Created .planning/v0.8-MILESTONE-COMPLETION.md (25/25 requirement attestation, 7-row Operator Gates Ledger, 3 locks + deep.lock substrate, deviations, test-suite state, v1.0 next path); reconciled stale REQUIREMENTS.md traceability (MEM/HITL/PLAN/FAN + DIST-09); filled README `## Eval Results` from `go run ./scripts/eval_snapshot` verbatim (DIST-09 closed, zero hand-typed numbers); STATE terminal flip. Zero code changes. Prior: 13-05 live fan-out UAT operator-signed (e02525f + 67d6180).
+resume_file: .planning/v0.8-MILESTONE-COMPLETION.md
 progress:
   total_phases: 13
-  completed_phases: 8
-  total_plans: 60
-  completed_plans: 55
-  percent: 65
+  completed_phases: 9
+  total_plans: 61
+  completed_plans: 56
+  percent: 92   # basis = PLANS (56/61). The legacy 65% mixed phase- and plan-count bases; pinned to plans here.
 ---
 
 # State — SkillForge
@@ -475,3 +475,50 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 **`eval/frozen/fanout.lock.json` file sha256 (post-sign):** `af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252` (distinct from the canonical-body `lock_sha256` f3566e52… and from the `eval_set_sha256` bfe8bbff…).
 
 **13-05 status:** COMPLETE. Full closeout: `.planning/phases/13-p8-4-sub-agent-fan-out/13-05-SUMMARY.md` §"Live Gate Closeout". Phase 13 = 5/5 plans through 13-05; 13-06 (v0.8 wrap) in progress.
+
+---
+
+## v0.8 MILESTONE CLOSED (pending tag) — Plan 13-06, 2026-08-21
+
+**Milestone:** v0.8 — Harness（可信×行动融合）. **Status:** `complete-pending-tag`.
+
+**Completion report:** `.planning/v0.8-MILESTONE-COMPLETION.md` — the single artifact that carries the milestone evidence spine (25/25 requirement attestation with 0 unmapped / 0 orphaned; phase status 8-13; frozen locks; Operator Gates Ledger; deviations; test-suite state; v1.0 next path).
+
+**Phases:** 8 / 9 / 10 / 11 / 12 / 13 — all six hermetically green. Phase 13 COMPLETE 6/6 (13-01..13-06).
+
+**Frozen locks (3 gated pins, byte-identical through 13-06):**
+- `eval/frozen/compliance.lock.json` — `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded` (Phase 8 pin, T-8-12 UNCHANGED)
+- `eval/frozen/hitl.lock.json` — `6e91881f4aafeffb843e996c89ff1c27ef22eb18fac94eceff9184f938481d08` (Phase 11)
+- `eval/frozen/fanout.lock.json` — `af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252` (Phase 13, operator-signed)
+- *(substrate, not a live-gated pin)* `eval/frozen/deep.lock.json` — `f3958dcd4930ac09e03c824f781df9c6eb04b691770cab4d512e11fba3c3c482` (Phase 12 hermetic dry-run)
+
+**Operator Gates Ledger — 3 CLOSED / 4 OPEN:**
+
+| # | Gate | Status |
+|---|------|--------|
+| 1 | Phase 10 live 35-case `--via-pipeline --summarize` re-run | **OPEN (BLOCKED-ENV)** — GLM rate-limit 2026-08-21 |
+| 2 | Phase 13 live 20-case fan-out UAT | **CLOSED** (accepted-with-notes, D13-V1) |
+| 3 | Phase 8 live three-gate re-lock | **CLOSED** |
+| 4 | Phase 9 live spike hard gate | **CLOSED** (verdict NO-GO, accepted with escape plan) |
+| 5 | `git push origin master` | **OPEN** — operator-only |
+| 6 | `v0.8.0` annotated tag + push | **OPEN** — operator-only (T-13-06-3: executor never tags) |
+| 7 | Phase 7 publication governance | **OPEN (partial)** — DIST-09 eval-numbers half CLOSED by 13-06; demo GIF + docker-build outstanding |
+
+**DIST-09 closed:** README `## Eval Results` now carries the verbatim `go run ./scripts/eval_snapshot` block (faithfulness 97% / context_precision 10% / refusal_accuracy 95% 19/20 / 50 cases, `prompt_hash 58ffea08…`). Zero hand-typed numbers.
+
+**13-06 commits:** `9c1781a` (T1 13-05 closeout capture) + `77d6a6d` (T2 completion report + REQUIREMENTS reconciliation) + `b79f297` (T3 README DIST-09) + this terminal flip. Zero code changes — `go build ./... && go vet ./...` exit 0.
+
+**Operator next (executor MUST NOT run these):**
+
+```bash
+# optional — closes ledger row 1
+go run ./cmd/spike-history --via-pipeline --summarize --seed=42 \
+  --golden=eval/golden/compliance.jsonl --out=reports/ --cost-limit=5.00
+
+# rows 5 + 6
+git push origin master
+git tag -a v0.8.0 -m "SkillForge v0.8 — Harness (可信×行动融合): 6 phases, 3 frozen locks, hermetic+live gated"
+git push origin v0.8.0
+```
+
+After tagging: flip `status: complete-pending-tag` → `complete` here and in `v0.8-MILESTONE-COMPLETION.md` frontmatter, and mark ledger rows 5/6 CLOSED with the tag hash. Then: `/gsd:verify-work 13` (optional) → `/gsd:new-milestone` (v1.0).
