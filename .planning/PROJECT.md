@@ -129,6 +129,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 - **合规定位 = 基线，不是 feature 方向**（用户角色：金融 IT 部门，非合规专员）。合规月报 Skill 出局，业务支撑 Skill 优先
 - **定时页面更新**从 v1.1 提前进 v1.0（业务硬需求：月报 + KPI 仪表板要按口径自动重算）
 - **外部授权通道（DATA-04/05/10..14、个体识别 + TTL token + 持续挂起审批）→ v1.1**，v1.0 仅聚合通道
+- **sqlite 驱动 CGO 化**（2026-08-21 用户决策）：`modernc.org/sqlite` → `mattn/go-sqlite3` v1.14.50（捆绑 SQLite 3.53.4）——go-duckdb 已引入 CGO 前置，边际成本零，审计写路径换真 SQLite 性能；Dockerfile `CGO_ENABLED` 翻转与 duckdb 合并处理（迁移点见 STACK-VERIFICATION.md §2.7）
 - **Phase 10 live 35-case 重跑**保持 operator gate（BLOCKED-ENV，从 v0.8 ledger 转入 v1.0 ledger，不阻塞关闭）
 - **数据引用 = 新引用类型**：函数名+参数+时间窗+结果快照，区别于文档 chunk 引用；同样进审计可回放
 - Phase 编号从 **14** 延续；研究先行（4 并行 researcher：Stack / Features / Architecture / Pitfalls）

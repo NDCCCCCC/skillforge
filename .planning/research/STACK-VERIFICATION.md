@@ -99,6 +99,19 @@
 
 ---
 
+### 2.7 后续决策：sqlite 驱动 CGO 化（modernc.org/sqlite → mattn/go-sqlite3）
+
+**2026-08-21 用户决策**：既定引入 CGO（go-duckdb，§1），OLTP sqlite 驱动同步换成 CGO 版本换取性能。
+
+- **版本**: `github.com/mattn/go-sqlite3` **v1.14.50**（goproxy.cn 实测最新；捆绑 SQLite amalgamation **3.53.4**——比 modernc v1.56.0 跟踪更直接）
+- **动机**: 审计 INSERT 路径 ~1.5-2× 性能 + 链接真正的 SQLite 消除 C→Go 转译（modernc）的行为怪癖；CGO 前置已由 go-duckdb 引入，**边际成本为零**（同一 MSYS2 gcc、同一 Dockerfile 翻转）
+- **迁移点（带入 Phase spec）**:
+  1. driver name `sqlite`（modernc）→ `sqlite3`（mattn）；`internal/store/sqlite` import 与 `sql.Open` 参数替换
+  2. DSN pragma 语法差异：modernc `?_pragma=busy_timeout(5000)` → mattn `?_busy_timeout=5000&_journal_mode=WAL`（schema.go 与 store DSN 逐处核对）
+  3. **Dockerfile.backend `CGO_ENABLED=0` → `1`**：build 阶段加 build-base（alpine: gcc + musl-dev），运行镜像保留 libc——该改动本来就被 go-duckdb 要求，两项合并一次完成
+  4. Windows 本机：同一 MSYS2 gcc 前置（与 go-duckdb 共用，无新增）
+  5. 无 gcc 机器上全量构建进一步不可用——与 go-duckdb 同口径，已被接受
+
 ## 3. 实现级风险（必须带入 Phase spec，非选型问题）
 
 ### 3.1 中文 CSV 编码（GBK/GB18030 + BOM）— 导入管线硬前提
