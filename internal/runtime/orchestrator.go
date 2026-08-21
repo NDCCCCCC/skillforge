@@ -69,6 +69,8 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 
+	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
 )
@@ -160,6 +162,12 @@ type FanOutOrchestrator struct {
 	mergeFunc          SubAgentMergeFunc
 	emitter            SubAgentEmitter
 	auditWriter        SubAgentAuditWriter
+	// subEmbedder + subRetriever carry the caller's live retrieval
+	// stack into every sub-agent (13-05 live wiring): the sub-agent's
+	// retrieve Tool closes over these. Nil in hermetic tests — the
+	// stub factory seam then supplies its own adapters.
+	subEmbedder        embedder.Embedder
+	subRetriever       retriever.Retriever
 	runID              string
 	sessionID          string
 	tools              []tool.BaseTool
@@ -209,6 +217,8 @@ func NewOrchestrator(ctx context.Context, cfg DispatchConfig, factory SubAgentFa
 		classifierChatModel: cfg.ChatModel,
 		subAgentFactory:     factory,
 		mergeFunc:           merge,
+		subEmbedder:         cfg.Embedder,
+		subRetriever:        cfg.Retriever,
 		runID:               cfg.SessionID,
 		sessionID:           cfg.SessionID,
 		tools:               cfg.Tools,
@@ -440,8 +450,8 @@ func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQuery
 		SubSkillManifest: o.parentManifest, // 13-05 widens to per-sub-skill; 13-03 reuses parent
 		SubQueryID:       sub.SubQueryID,
 		ChatModel:        o.classifierChatModel,
-		Embedder:         nil,
-		Retriever:        nil,
+		Embedder:         o.subEmbedder,
+		Retriever:        o.subRetriever,
 		SessionID:        o.sessionID + ":" + sub.SubQueryID,
 		ChunkAccumulator: acc,
 		Instruction:      o.instruction,

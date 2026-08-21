@@ -28,6 +28,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
 )
@@ -662,3 +664,52 @@ type fakeOrchestratorWithPlan struct {
 // sync is imported indirectly via the mutex guards in fakeAuditWriter
 // + fakeEmitter. The orchestrator uses sync.WaitGroup internally
 // (see fanOut).
+// TestOrchestratorPropagatesLiveAdapters — 13-05 live-wiring regression
+// lock: DispatchConfig.Embedder/Retriever must reach the SubAgentConfig
+// the factory sees on EVERY sub-agent construction. A nil regression
+// here re-introduces the all-sub-agents-faulted live outage the first
+// 13-05 run hit (sub-agent retrieve Tool with nil adapters → every
+// case completed=0 failed=1).
+func TestOrchestratorPropagatesLiveAdapters(t *testing.T) {
+	manifest := validParentManifestForPipeline()
+	wantEmb := stubEmbedder{}
+	wantRet := stubRetriever{}
+
+	var (
+		gotEmb embedder.Embedder
+		gotRet retriever.Retriever
+	)
+	factory := &fakeFactory{
+		build: func(_ context.Context, cfg SubAgentConfig) (adk.Agent, error) {
+			gotEmb = cfg.Embedder
+			gotRet = cfg.Retriever
+			return &fakeSubAgent{content: "ok"}, nil
+		},
+	}
+
+	orch, err := NewOrchestrator(context.Background(), DispatchConfig{
+		Manifest:  manifest,
+		ChatModel: stubChatModel{},
+		Embedder:  wantEmb,
+		Retriever: wantRet,
+		SessionID: "sess-adapters",
+	}, factory, defaultSubAgentMerge)
+	require.NoError(t, err)
+	orch.classifierForTest = func() []subQueryPlan {
+		return []subQueryPlan{{SubQueryID: "sa1", SubQuery: "q1", SubSkillID: "compliance"}}
+	}
+
+	iter := orch.Run(context.Background(), nil)
+	require.NotNil(t, iter)
+	for {
+		_, ok := iter.Next()
+		if !ok {
+			break
+		}
+	}
+
+	// Run() joins its sub-agent goroutines before returning, so the
+	// factory's writes are visible here without extra synchronization.
+	assert.Equal(t, embedder.Embedder(wantEmb), gotEmb, "DispatchConfig.Embedder must propagate to SubAgentConfig.Embedder")
+	assert.Equal(t, retriever.Retriever(wantRet), gotRet, "DispatchConfig.Retriever must propagate to SubAgentConfig.Retriever")
+}

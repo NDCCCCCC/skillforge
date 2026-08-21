@@ -396,6 +396,11 @@ type GoldenCase struct {
 	Scenario                     string           `json:"scenario"` // multi_hop | tier_mismatch | partial_failure | single_vertex
 	ParentSkill                  string           `json:"parent_skill"`
 	SubSkills                    []GoldenSubSkill `json:"sub_skills"`
+	// ParentReads overrides the per-case parent tier surface for the
+	// FAN-02 SC-2 load-time validation (fanout-12: parent with EMPTY
+	// resolved tiers must be rejected). nil = use the shared live
+	// parent manifest (loadFanoutConfig).
+	ParentReads                  []string         `json:"parent_reads,omitempty"`
 	Query                        string           `json:"query"`
 	ExpectedDispatchedCountFloor int              `json:"expected_dispatched_count_floor"`
 	ExpectedConservativeMerge    bool             `json:"expected_conservative_merge"`
@@ -419,6 +424,7 @@ type LiveCaseResult struct {
 	ConservativeMerge    bool    `json:"conservative_merge"`
 	TierMismatchRejected bool    `json:"tier_mismatch_rejected"`
 	RejectedReason       string  `json:"rejected_reason,omitempty"`
+	FailReason           string  `json:"fail_reason,omitempty"` // first sub-agent FaultedReason (operator diagnostics)
 	CostUSD              float64 `json:"cost_usd"`
 	DurationMS           int64   `json:"duration_ms"`
 	FinalEvent           string  `json:"final_event"`
@@ -644,8 +650,19 @@ func validateSubSkillTiers(ctx context.Context, parent *skill.Manifest, cm model
 		if err != nil {
 			return true, fmt.Sprintf("sub_skill %q: %v", s.Name, err)
 		}
+		// Per-case parent override (fanout-12: parent with EMPTY
+		// resolved tiers → BuildSubAgent rejects "parent has empty
+		// ResolvedTiers()"). nil ParentReads keeps the shared live
+		// parent — the normal path for 19 of 20 cases.
+		caseParent := parent
+		if c.ParentReads != nil {
+			caseParent = makeSub("case-parent", c.ParentReads, nil)
+			if tiers, terr := skill.ResolveTiers(c.ParentReads); terr == nil && len(tiers) > 0 {
+				caseParent.SetResolvedTiersForTest(tiers)
+			}
+		}
 		_, err = runtime.BuildSubAgent(ctx, runtime.SubAgentConfig{
-			ParentManifest:   parent,
+			ParentManifest:   caseParent,
 			SubSkillManifest: sub,
 			SubQueryID:       s.Name,
 			ChatModel:        cm,
@@ -692,11 +709,17 @@ func parseMergedVerdictFromEvent(content string) (status string, confidence floa
 // drain the AsyncIterator to the final event. Both live mode (real
 // adapters) and the hermetic parity test (stub adapters) flow through
 // this exact path, which is what TestLiveModeParityWithHermetic locks.
-func runCaseThroughOrchestrator(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, audit runtime.SubAgentAuditWriter, sessionID string) (LiveCaseResult, error) {
+func runCaseThroughOrchestrator(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, emb embedder.Embedder, ret retriever.Retriever, audit runtime.SubAgentAuditWriter, sessionID string) (LiveCaseResult, error) {
 	res := LiveCaseResult{ID: sessionID}
 	agent, err := runtime.DispatchAgent(ctx, runtime.DispatchConfig{
 		Manifest:  parent,
 		ChatModel: cm,
+		// Live retrieval stack (13-05 wiring fix): the orchestrator
+		// carries these into every sub-agent's retrieve Tool via
+		// FanOutOrchestrator.subEmbedder/subRetriever. Hermetic mode
+		// passes nils — the stub factory seam covers the Tools.
+		Embedder:  emb,
+		Retriever: ret,
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -737,7 +760,7 @@ func runCaseThroughOrchestrator(ctx context.Context, parent *skill.Manifest, cm 
 // runLiveCase executes ONE golden case end-to-end: the load-time
 // tier-closure validation (FAN-02 SC-2) plus the orchestrator Run
 // (FAN-01/03/04 pipeline) with audit-row metering.
-func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, c GoldenCase) LiveCaseResult {
+func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, emb embedder.Embedder, ret retriever.Retriever, durable runtime.SubAgentAuditWriter, c GoldenCase) LiveCaseResult {
 	res := LiveCaseResult{
 		ID:       c.ID,
 		Scenario: c.Scenario,
@@ -747,8 +770,14 @@ func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCalli
 	// FAN-02 SC-2 load-time validation (structural — no LLM call).
 	res.TierMismatchRejected, res.RejectedReason = validateSubSkillTiers(ctx, parent, cm, c)
 
+	// Tee the audit stream: in-memory counter (gate metrics) + the
+	// durable SQLite store (RunPath/Transfer traceback, P13-L6).
 	counter := &countingAuditWriter{}
-	pipeline, err := runCaseThroughOrchestrator(ctx, parent, cm, counter, "spike-fanout:"+c.ID)
+	var audit runtime.SubAgentAuditWriter = counter
+	if durable != nil {
+		audit = &teeAuditWriter{delegates: []runtime.SubAgentAuditWriter{counter, durable}}
+	}
+	pipeline, err := runCaseThroughOrchestrator(ctx, parent, cm, emb, ret, audit, "spike-fanout:"+c.ID)
 	if err != nil {
 		// Pipeline-level failure: record the fault conservatively (the
 		// case still counts toward cost + regression measurement).
@@ -758,6 +787,7 @@ func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCalli
 		res.MergedStatus = verdict.DowngradeStatus
 		res.ConservativeMerge = true
 		res.FinalEvent = fmt.Sprintf("pipeline error: %v", err)
+		res.FailReason = counter.failReason
 		return res
 	}
 	res.DispatchedCount = counter.dispatched
@@ -768,6 +798,7 @@ func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCalli
 	res.ConservativeMerge = pipeline.ConservativeMerge
 	res.FinalEvent = pipeline.FinalEvent
 	res.DurationMS = pipeline.DurationMS
+	res.FailReason = counter.failReason
 	return res
 }
 
@@ -1106,7 +1137,10 @@ func runLiveSpike(f *spikeFlags) error {
 		return fmt.Errorf("audit store: %w", err)
 	}
 	defer auditStore.Close()
-	_ = ret // retriever is consumed by the production sub-agent Tool whitelist (13-03 seam)
+	// Durable audit seam (P13-L6 RunPath/Transfer traceback): the
+	// orchestrator's lifecycle rows tee into the dedicated
+	// reports/spike-fanout.db alongside the in-memory gate counter.
+	durable := &sqliteAuditWriter{store: auditStore, sessionID: "spike-fanout"}
 
 	var (
 		totalCost float64
@@ -1117,12 +1151,18 @@ func runLiveSpike(f *spikeFlags) error {
 			return fmt.Errorf("cost-limit $%.2f exceeded at case %d/%d (total so far $%.4f) — T-13-05-1 abort BEFORE overspend",
 				f.costLimit, i+1, len(golden), totalCost)
 		}
-		res := runLiveCase(ctx, parentManifest, chatModel, c)
+		res := runLiveCase(ctx, parentManifest, chatModel, emb, ret, durable, c)
 		totalCost += res.CostUSD
 		results = append(results, res)
-		fmt.Fprintf(os.Stderr, "[spike-fanout] %d/%d %s [%s] dispatched=%d completed=%d failed=%d merged=%s conservative=%t rejected=%t cost=$%.4f\n",
-			i+1, len(golden), res.ID, res.Scenario, res.DispatchedCount, res.CompletedCount, res.FailedCount,
-			res.MergedStatus, res.ConservativeMerge, res.TierMismatchRejected, res.CostUSD)
+		if res.FailReason != "" {
+			fmt.Fprintf(os.Stderr, "[spike-fanout] %d/%d %s [%s] dispatched=%d completed=%d failed=%d merged=%s conservative=%t rejected=%t cost=$%.4f fail_reason=%q\n",
+				i+1, len(golden), res.ID, res.Scenario, res.DispatchedCount, res.CompletedCount, res.FailedCount,
+				res.MergedStatus, res.ConservativeMerge, res.TierMismatchRejected, res.CostUSD, res.FailReason)
+		} else {
+			fmt.Fprintf(os.Stderr, "[spike-fanout] %d/%d %s [%s] dispatched=%d completed=%d failed=%d merged=%s conservative=%t rejected=%t cost=$%.4f\n",
+				i+1, len(golden), res.ID, res.Scenario, res.DispatchedCount, res.CompletedCount, res.FailedCount,
+				res.MergedStatus, res.ConservativeMerge, res.TierMismatchRejected, res.CostUSD)
+		}
 	}
 	fmt.Fprintf(os.Stderr, "[spike-fanout] live run complete: %d cases, total cost $%.4f (limit $%.2f)\n", len(results), totalCost, f.costLimit)
 

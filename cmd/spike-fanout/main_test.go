@@ -132,7 +132,7 @@ func TestLiveModeParityWithHermetic(t *testing.T) {
 
 	run := func() LiveCaseResult {
 		counter := &countingAuditWriter{}
-		res, err := runCaseThroughOrchestrator(ctx, parent, &stubChatModel{}, counter, "parity-sess")
+		res, err := runCaseThroughOrchestrator(ctx, parent, &stubChatModel{}, nil, nil, counter, "parity-sess")
 		if err != nil {
 			t.Fatalf("runCaseThroughOrchestrator: %v", err)
 		}
@@ -198,7 +198,7 @@ func TestLiveModeRunsWithoutNetwork(t *testing.T) {
 		t.Fatalf("load golden: %v", err)
 	}
 	parent := makeParent([]string{"权威", "历史"}, "compliance-orchestrator")
-	res := runLiveCase(ctx, parent, cm, golden[0])
+	res := runLiveCase(ctx, parent, cm, nil, nil, nil, golden[0])
 	if res.ID != golden[0].ID {
 		t.Fatalf("case id mismatch: %q != %q", res.ID, golden[0].ID)
 	}
@@ -334,6 +334,22 @@ func TestValidateSubSkillTiers(t *testing.T) {
 	}
 	if rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, dup); !rejected || !strings.Contains(reason, "duplicate sub_query id") {
 		t.Errorf("duplicate sub_query id must reject with the Tool-validator reason, got rejected=%v reason=%q", rejected, reason)
+	}
+
+	// Parent-empty-tiers contract (fanout-12): ParentReads=[] synthesizes
+	// a per-case parent with ZERO resolved tiers → BuildSubAgent rejects
+	// "parent has empty ResolvedTiers()". Without the per-case override
+	// the shared live parent HAS tiers, so this case could never reject
+	// and tier_mismatch_rejection_rate would cap at 5/6 < the 1.0 gate.
+	emptyParent := GoldenCase{
+		ID:          "fanout-parent-empty",
+		Scenario:    "tier_mismatch",
+		ParentReads: []string{},
+		SubSkills:   []GoldenSubSkill{{Name: "s1", Reads: []string{"authority/**"}}},
+	}
+	rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, emptyParent)
+	if !rejected || !strings.Contains(reason, "empty ResolvedTiers()") {
+		t.Errorf("parent-empty-tiers case must reject with the ResolvedTiers reason, got rejected=%v reason=%q", rejected, reason)
 	}
 }
 
