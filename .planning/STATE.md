@@ -350,3 +350,85 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 11. Frozen lock byte-identity: PASS
 
 **Next action**: Operator manually commits the acceptance batch via `gsd-sdk query commit` (or `git commit`) with the files listed in 11-08-PLAN.md Task 8; then Phase 11 is formally closed.
+
+## Phase 13 — Sub-agent Fan-out (P8.4 — tier 继承) — Plan 13-04 Hermetic Gate Sign-Off
+
+**Status**: Plan 13-04 COMPLETE (Hermetic Gate 9/9 PASS; live UAT deferred to Plan 13-05 operator-gated)
+
+**Plans completed**: 4/5 in this wave structure (13-01 DONE + 13-02 DONE + 13-03 DONE + 13-04 DONE); 13-05 pending operator-driven live UAT (v0.8 milestone re-baseline)
+
+**Acceptance gate run command**: `bash scripts/verify-phase-13.sh` (or `make verify-phase-13`)
+
+**Acceptance gate log**: `/tmp/verify-phase-13_<YYYY-MM-DD>.log` (operator redirect; 13-04 ran all 9 stages green on 2026-08-21)
+
+**Frozen baseline lock sha256 (Phase 8 pin — UNCHANGED)**: `5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded` (`eval/frozen/compliance.lock.json` — T-8-12 regression lock verified)
+
+**Frozen baseline lock sha256 (Phase 13 v0.8 milestone re-baseline — placeholder)**: `2fca4ee25c11f57a17e3628bdd759d6618d9508eebb12b135f5294630da1b4ee` (`eval/frozen/fanout.lock.json` — operator runs Plan 13-05 to populate `metrics.*` + actual `eval_set_sha256` + `lock_sha256`)
+
+**Threat-model sha256**: `db0b3dc92e5bfc174239dd1fb556cd953e60b08d263117fd30bbb8bb8d0fd548` (`docs/threat-model/STRIDE-13.md` — 8 threats T-P13-1..T-P13-8; all Critical/High)
+
+**Hermetic gate script sha256**: `eefc4df0b1cf3d88f6743e56c89b25cda1bf763bb5d6dfa71d3282713da5e8cb` (`scripts/verify-phase-13.sh` — 9-stage gate; -race omitted per Phase 12 cgo env precedent)
+
+**WalkDir test sha256**: `b9b0677ea8ca4ad2145eaabcade20a5361ae77856a92951527259a1422a55dc8` (`integration/contract/no_legacy_interrupt_test.go` — `phase11GoScanRoots` extended from 6 to 8 entries)
+
+**Makefile sha256**: `9f6babe29dc744775336b47d2d371e1a33229d86172a906593947f1a2e4e6678` (added `verify-phase-13` target)
+
+**Sign-off line**: `Operator signature: ___   Date: 2026-08-21`
+
+**Compliance attestation** (4 FAN requirement IDs each with verifying test + gate stage):
+
+| Requirement | Verifying Test(s) + Gate Stage |
+|-------------|-------------------------------|
+| FAN-01 (orchestrator parallel fan-out + fault isolation + conservative merge) | `TestFanOutOrchestratorFaultIsolation` + `TestFanOutOrchestratorSubAgentTimeout` + `TestMergeConservativePartialFailure` (13-02 + 13-03) — Stage 02 PASS |
+| FAN-02 (sub-agent tier-closure structural inheritance) | `TestSubAgentTierInheritance` + `TestSubAgentCannotExpandTierBoundary` + `TestSubAgentRetrieveToolClosesOverSubManifest` + `TestSubAgentIsReadOnly` + `TestSubAgentToolWhitelistExcludesHITL` (13-01) — Stage 02 PASS + Stage 03 WalkDir 8 roots PASS |
+| FAN-03 (deterministic 10× byte-identity merge) | `TestMergeSubAgentResultsByteIdentity` (10× contract) + `TestMergeSubAgentOrderIndependent` (13-02) — Stage 02 PASS |
+| FAN-04 (per-sub-agent grounding via ApplyTrustStage + shared ChunkAccumulator + audit RunPath/Transfer) | `TestFanOutOrchestratorAppliesTrustStagePerSubAgent` + `TestSharedChunkAccumulatorLRUCap` + `TestSharedChunkAccumulatorDedup` + `TestSharedChunkAccumulatorHitsOrder` (13-01 + 13-03) — Stage 02 PASS + Stage 09 PASS |
+
+**P13-L1..L9 lock attestations**:
+
+| Lock | Mitigation | Gate Stage |
+|------|-----------|------------|
+| P13-L1 (adk.NewParallelAgent banned) | Sealed sentinel + source-grep | Stage 04 PASS |
+| P13-L2 (tier-closure structural) | BuildSubAgent constructor | Stage 02 + Stage 03 PASS |
+| P13-L3 (sub-agent budget cap MaxIteration=5 + TokenBudget=20000) | Hardcoded literals + source-grep | Stage 08 PASS |
+| P13-L4 (subManifest.Writes=[] + merge sort.SliceStable) | Constructor zero + 10× byte-identity | Stage 02 PASS |
+| P13-L5 (conservative partial-failure merge) | any refused/faulted → needs_input confidence 0 | Stage 02 PASS |
+| P13-L6 (audit RunPath/Transfer columns ADD COLUMN DDL) | 3 nullable TEXT columns; no migration break | Stage 02 PASS (audit package tests) |
+| P13-L7 (D16 data-decision.decision overload) | 3 new enum values; NO new SSE chunk type | Stage 05 D-04 byte-identity + Stage 06 D15 tsc PASS |
+| P13-L8 (sub-agent scope: ONE layer only) | WithoutGeneralSubAgent already in P12 BuildDeepAgent; orchestrator does NOT invoke sub-orchestrators | Stage 02 PASS |
+| P13-L9 (per-sub-agent grounding + shared ChunkAccumulator) | runtime.ApplyTrustStage reused + LRU cap 20 | Stage 02 + Stage 09 PASS |
+
+**Gate stages executed (all PASS, 9/9)**:
+1. go build + vet: PASS
+2. hermetic Go test suite (FAN-01..04; -race omitted per Phase 12 precedent): PASS
+3. WalkDir legacy interrupt guard (D8-04 extended; 8 roots incl. orchestrator + sub_agent_builder + merge + fanout_events): PASS
+4. adk.NewParallelAgent ban source-grep (P13-L1 sealed sentinel): PASS
+5. D-04 transport-swap byte-identity (mock ↔ Default; data-decision fanout_* enum extended): PASS
+6. D15 wire-type compile alarm (npx tsc --noEmit; data-decision fanout_* enum lockstep): PASS
+7. frozen eval byte-identity (compliance.lock.json + fanout.lock.json sha256): PASS
+8. sub-agent budget half-of-parent (P13-L3 source-grep; MaxIteration=5 + TokenBudget=20000): PASS
+9. SharedChunkAccumulator LRU cap (P13-L9; Pitfall 6 — 20-chunk cap + dedup + oldest-first order): PASS
+
+**Plan SUMMARY reference**: `.planning/phases/13-p8-4-sub-agent-fan-out/13-04-SUMMARY.md`
+
+**8 STRIDE-13 threats attested** (T-P13-1..T-P13-8; all Critical/High — see `docs/threat-model/STRIDE-13.md` for full register + mitigation mapping):
+- T-P13-1 (EoP — tier intersection mismatch) → BuildSubAgent load-time + classifier-side two-layer defense
+- T-P13-2 (EoP — HITL whitelist leak) → `subManifest.Writes = []string{}` structural
+- T-P13-3 (DoS — fault propagation) → `defer recover()` + `context.WithTimeout(30s)` + errgroup `SetLimit(4)`
+- T-P13-4 (Repudiation — merge non-determinism) → PURE function + `sort.SliceStable` + 10× byte-identity contract
+- T-P13-5 (DoS — classifier cost explosion) → sub-agent budget cap + pre-fanout budget check
+- T-P13-6 (DoS — shared accumulator growth) → LRU cap 20 + dedup + oldest-first
+- T-P13-7 (Tampering — manifest wiring typo) → SubAgentConfig type-safe struct
+- T-P13-8 (Tampering — adk.NewParallelAgent accidental use) → sealed sentinel + source-grep
+
+**Next action**: Operator manually commits the 13-04 batch atomically (8 files listed below); then runs Plan 13-05 live UAT to populate `fanout.lock.json` `metrics.*` + `eval_set_sha256` + `lock_sha256`. Phase 13 v0.8 milestone re-baseline closes at 13-05 operator sign-off.
+
+**13-04 atomic commit files (8 total)**:
+1. `scripts/verify-phase-13.sh` (new — 9-stage hermetic gate)
+2. `docs/threat-model/STRIDE-13.md` (new — 8-threat register + acceptance criteria)
+3. `eval/frozen/fanout.lock.json` (new — Phase 13 v0.8 placeholder; operator fills 13-05)
+4. `eval/frozen/README.md` (modified — added fanout.lock.json row + 4-lock verification + §fanout.lock.json)
+5. `integration/contract/no_legacy_interrupt_test.go` (modified — phase11GoScanRoots extended 6→8 roots)
+6. `internal/agent/runner_setup_test.go` (UNTOUCHED — second WalkDir copy preserved; integration/contract is the canonical Phase 12 pattern)
+7. `Makefile` (modified — added `verify-phase-12` + `verify-phase-13` targets)
+8. `.planning/STATE.md` (this closeout block)

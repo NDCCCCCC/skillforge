@@ -13,6 +13,7 @@ milestone close.
 | `compliance.lock.json` | Phase 8 (SC-5) | Compliance golden set lock — model_ver + prompt_hash + seed for the 75-case `eval/golden/compliance.jsonl` |
 | `hitl.lock.json` | Phase 11 (11-08) | HITL golden set lock — 75-case `eval/golden/hitl.jsonl` sha256 + per-category counts + acceptance-gate thresholds |
 | `deep.lock.json` | **Phase 12 (12-08)** | **Deep agentic planning layer lock** — 50-case `eval/golden/deep.jsonl` + v0.8 milestone metrics (faithfulness + refusal_accuracy + budget_triggered_count + plan_todo_completeness) + RF-5 parse rate + P12-L10 verdict |
+| `fanout.lock.json` | **Phase 13 (13-04 / 13-05)** | **Sub-agent fan-out (P8.4 — tier 继承) lock** — 20-case `eval/golden/fanout.jsonl` + per-scenario counts (8 multi-hop + 6 tier-mismatch + 4 partial-failure + 2 single-vertex) + gate thresholds (fanout_dispatched_count_floor + conservative_merge_rate_max + tier_closure_regression_rate_max) + sub-agent budget frozen (MaxIteration=5 + TokenBudget=20000) + shared accumulator cap (20) |
 
 ## Byte-Identity Verification
 
@@ -21,6 +22,15 @@ ALL THREE locks are present + readable:
 
 ```bash
 sha256sum eval/frozen/compliance.lock.json eval/frozen/hitl.lock.json eval/frozen/deep.lock.json
+```
+
+Phase 13 adds a FOURTH lock file (`fanout.lock.json`). The Phase 13
+acceptance gate (`scripts/verify-phase-13.sh` Stage 7) verifies BOTH
+`compliance.lock.json` (Phase 8 pin — UNCHANGED; T-8-12) AND
+`fanout.lock.json` (Phase 13 v0.8 milestone re-baseline). Use:
+
+```bash
+sha256sum eval/frozen/compliance.lock.json eval/frozen/fanout.lock.json
 ```
 
 The expected sha256 values are recorded in `.planning/STATE.md` at
@@ -261,3 +271,109 @@ The parse rate is recorded in `eval/frozen/deep.lock.json` fields:
 - **Phase 12 pin (`deep.lock.json`)**: rebaselined at Phase 12
   acceptance sign-off (12-08) + any subsequent behavior change
   (Phase 13 sub-agent fan-out, Phase 14 advanced verification, etc.).
+- **Phase 13 pin (`fanout.lock.json`)**: rebaselined at Phase 13
+  acceptance sign-off (13-05 live UAT operator-gated). The Phase 13
+  13-04 hermetic gate ships a placeholder with null `eval_set_sha256`
+  + null metrics; 13-05 fills the actual values after operator runs
+  the live stack and signs off. T-13-04-1 + T-P13 invariant: a drift
+  between on-disk sha256 and the recorded pin surfaces as a hard
+  FAIL in `scripts/verify-phase-13.sh` Stage 7.
+
+## fanout.lock.json (Phase 13 v0.8 milestone re-baseline)
+
+Locked by `scripts/verify-phase-13.sh` Stage 7 (hermetic sha256 check) +
+`cmd/spike-fanout --live --golden=eval/golden/fanout.jsonl --summarize`
+(Phase 13 / Plan 13-05 — operator-gated live UAT).
+
+### Schema (v1, Phase 13 introduction; mirrors `deep.lock.json` pattern)
+
+```json
+{
+  "lock_id": "fanout-2026-08-21",
+  "model_version": "v0.8",
+  "phase": 13,
+  "eval_set": "eval/golden/fanout.jsonl",
+  "eval_set_sha256": "<sha256 of fanout.jsonl bytes — recorded at 13-05 lock time>",
+  "case_count": 20,
+  "category_counts": {
+    "multi_hop": 8,
+    "tier_mismatch_rejection": 6,
+    "partial_failure_conservative_merge": 4,
+    "single_vertex_fallback": 2
+  },
+  "thresholds": {
+    "fanout_dispatched_count_floor": 20,
+    "conservative_merge_rate_max": 0.0,
+    "tier_closure_regression_rate_max": 0.0,
+    "tier_mismatch_rejection_rate_min": 1.0
+  },
+  "agent_archetype": "orchestrator",
+  "sub_agent_budget_frozen": true,
+  "sub_agent_max_iteration": 5,
+  "sub_agent_token_budget": 20000,
+  "shared_chunk_accumulator_max": 20,
+  "phase_8_pin_unchanged": "5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded",
+  "metrics": { "...": "<operator-measured at lock time>" },
+  "operator_signed_at": "<2026-08-21>",
+  "operator_name": "<operator name>",
+  "live_fanout_md_sha256": "<sha256 of reports/live_fanout.md>",
+  "lock_sha256": "<recorded at lock time — must match git-tracked file>"
+}
+```
+
+### What is locked
+
+The v0.8 milestone fan-out behavior delta from Phase 13:
+
+1. **Tier-closure structural inheritance** (P13-L2) — verified by
+   `TestSubAgentTierInheritance` + `TestSubAgentCannotExpandTierBoundary`.
+2. **Deterministic 10× byte-identity merge** (P13-L4) — verified by
+   `TestMergeSubAgentResultsByteIdentity`.
+3. **Conservative partial-failure merge** (P13-L5) — verified by
+   `TestMergeConservativePartialFailure`.
+4. **Per-sub-agent grounding via ApplyTrustStage** (P13-L9) — verified
+   by `TestFanOutOrchestratorAppliesTrustStagePerSubAgent` +
+   `TestSharedChunkAccumulatorLRUCap`.
+5. **D16 data-decision overload** (P13-L7) — verified by
+   `TestDataDecisionFanoutEnum` (D15 lockstep) +
+   `TestTransportSwapWithFanoutChunks` (D-04 byte-identity).
+
+### **`compliance.lock.json` (Phase 8 pin) is UNCHANGED** — T-8-12
+regression lock: re-generating the Phase 8 pin = tampering baseline.
+Phase 13 ADDS `fanout.lock.json` as a NEW v0.8 milestone baseline; it
+does NOT modify `compliance.lock.json`. The Phase 13 acceptance gate
+Stage 7 verifies BOTH sha256 values — neither can drift without
+operator detection.
+
+### Byte-identity verification
+
+```bash
+sha256sum eval/frozen/compliance.lock.json eval/frozen/fanout.lock.json
+# Compare to the values recorded in .planning/STATE.md after Phase 13
+# acceptance (Phase 8 pin: 5cf700f3…; Phase 13 pin: <recorded at 13-05>).
+```
+
+A silent edit to either lock file (without re-running the spike and
+operator sign-off) surfaces as a sha256 drift → the acceptance gate
+exits 1.
+
+### Reproduce command (operator-runs-live, Plan 13-05)
+
+```bash
+GLM_API_KEY=$GLM_API_KEY \
+  MILVUS_ADDRESS=$MILVUS_ADDRESS \
+  BGE_M3_URL=$BGE_M3_URL \
+  go run ./cmd/spike-fanout --live \
+    --golden=eval/golden/fanout.jsonl \
+    --sub-skill-config=examples/skills/compliance-orchestrator/SKILL.md \
+    --cost-limit=2.00 \
+    --seed=42 \
+    --summarize
+```
+
+After running, the operator populates `metrics.*` fields + actual
+`eval_set_sha256` + `operator_signed_at` + `operator_name` +
+`live_fanout_md_sha256` in `fanout.lock.json`, computes `lock_sha256`
+(file with null `lock_sha256` placeholder first; replace then
+re-verify), and commits the lock. The Phase 13 acceptance gate
+Stage 7 then verifies the new sha256 against the recorded value.

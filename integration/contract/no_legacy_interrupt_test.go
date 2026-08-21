@@ -158,10 +158,16 @@ var phase11DenyListGo = []string{
 	"tool.Interrupt(",
 }
 
-// phase11GoScanRoots are the Phase 11 directories scanned by
-// TestNoLegacyInterruptAPIPhase11. The union covers the Runner-ization
-// (11-01), the HITL Tool infra (11-02..05), and the server approval
-// endpoints (11-04).
+// phase11GoScanRoots are the Phase 11 + Phase 12 + Phase 13 directories
+// scanned by TestNoLegacyInterruptAPIPhase11. The union covers:
+//
+//	Phase 11 (11-01..05): Runner-ization + HITL Tool infra + server approval
+//	Phase 12 (12-01..05): internal/runtime (deep_agent.go) + plan_todos
+//	Phase 13 (13-01..03): internal/runtime (orchestrator + sub_agent_builder
+//	  + merge + fanout_runtime) + internal/store/sqlite (audit + fanout_events)
+//	  + internal/wire (chunk.go D16 overload)
+//
+// Phase 12 union: 6 roots. Phase 13 union: 8 roots.
 var phase11GoScanRoots = []string{
 	"internal/agent",
 	"internal/agent/callbacks",
@@ -169,6 +175,17 @@ var phase11GoScanRoots = []string{
 	"internal/agent/hitl",
 	"internal/server",
 	"internal/runtime",
+	// Phase 13 / P13-L6 / P13-L7: audit + fanout_events + wire chunks
+	// MUST NOT introduce legacy interrupt paths. The sub-agent audit
+	// writer (ActionFanoutDispatched / ActionFanoutCompleted /
+	// ActionFanoutFailed enums) uses the Phase 11 audit_writer.go
+	// pattern — sync INSERT before any future interrupt, but
+	// FanOutOrchestrator is fire-and-forget (no interrupts in 13-01).
+	"internal/store/sqlite",
+	// Phase 13 / P13-L7: D16 overload extends data-decision discriminator
+	// with fanout_dispatched | fanout_completed | fanout_failed. The wire
+	// package MUST stay interrupt-free (server-emit-only SSE invariant).
+	"internal/wire",
 }
 
 // phase11AllowedStatefulInterruptFiles lists the .go files permitted

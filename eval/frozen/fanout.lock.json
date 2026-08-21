@@ -1,0 +1,46 @@
+{
+  "lock_id": "fanout-2026-08-21",
+  "model_version": "v0.8",
+  "phase": 13,
+  "phase_slug": "13-p8-4-sub-agent-fan-out",
+  "schema_version": "v1",
+  "created_at": "2026-08-21",
+  "locked_by": "Phase 13 acceptance gate (13-04 hermetic + 13-05 live)",
+  "eval_set": "eval/golden/fanout.jsonl",
+  "eval_set_sha256": "<computed at 13-05 acceptance gate operator sign-off>",
+  "model_ver": "glm-5.2",
+  "seed": 42,
+  "case_count": 20,
+  "category_counts": {
+    "multi_hop": 8,
+    "tier_mismatch_rejection": 6,
+    "partial_failure_conservative_merge": 4,
+    "single_vertex_fallback": 2
+  },
+  "thresholds": {
+    "fanout_dispatched_count_floor": 20,
+    "conservative_merge_rate_max": 0.0,
+    "tier_closure_regression_rate_max": 0.0,
+    "min_confidence_aggregation_min": 0.0,
+    "tier_mismatch_rejection_rate_min": 1.0
+  },
+  "agent_archetype": "orchestrator",
+  "sub_agent_budget_frozen": true,
+  "sub_agent_max_iteration": 5,
+  "sub_agent_token_budget": 20000,
+  "shared_chunk_accumulator_max": 20,
+  "phase_8_pin_unchanged": "5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded",
+  "phase_12_pin_unchanged_sha256": "<recorded at 13-05 acceptance>",
+  "metrics": {
+    "fanout_dispatched_count_actual": null,
+    "conservative_merge_rate_actual": null,
+    "tier_closure_regression_rate_actual": null,
+    "min_confidence_aggregation_actual": null,
+    "total_cost_usd": null
+  },
+  "operator_signed_at": null,
+  "operator_name": null,
+  "live_fanout_md_sha256": null,
+  "lock_sha256": null,
+  "_operator_action_required": "Operator-runs-live 13-05: GLM_API_KEY + MILVUS_ADDRESS + BGE_M3_URL required to populate metrics + actual sha256 values + lock_sha256. See eval/frozen/README.md §fanout.lock.json for protocol."
+}
