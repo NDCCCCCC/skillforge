@@ -39,7 +39,7 @@
 - [ ] **Phase 10: 多轮对话记忆（P8.1）** — sqlite 历史投影喂 agent + 投影消毒 + citation 白名单代码强制 + token 预算/摘要压缩
 - [ ] **Phase 11: 写工具 + 审批门（P8.2）** — Eino Interrupt/Resume HITL + 流内审批卡 + 跨刷新审批态 + 3 行 INSERT-only 审计生命周期 + `writes:` 代码级强制
 - [ ] **Phase 12: 规划层（P8.3）** — DeepAgent（write_todos）+ 计划确认门 + 三层预算门 + 审计可回放的规划轨迹
-- [ ] **Phase 13: 子 agent 扇出（P8.4）** — 一层并行多跳扇出 + tier 构造期闭包继承 + 确定性/保守合并 + 子 agent 独立 grounding (in progress — 13-01 + 13-02 complete 2026-08-21; 13-03..13-05 pending)
+- [/] **Phase 13: 子 agent 扇出（P8.4）** — 一层并行多跳扇出 + tier 构造期闭包继承 + 确定性/保守合并 + 子 agent 独立 grounding (in progress — Wave 2 complete 2026-08-21: 13-01 foundation + 13-02 merge pure function + 13-03 5-step pipeline + audit + D16; 13-04 + 13-05 pending)
 
 ---
 
@@ -458,10 +458,10 @@
 | 10. 多轮对话记忆 (P8.1) | 3/4 (10-01..10-03 complete; 10-04 Task 1 shipped, Task 2 blocked-pending-human) | In Progress — live 35-case re-run pending operator stack (GLM_API_KEY / BGE_M3_URL / MILVUS_ADDRESS + Docker Milvus/BGE-M3) | 2026-08-18 (Task 1 + closeout transcription)
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
-| 13. 子 agent 扇出 (P8.4) | 2/5 (13-01 FanOutOrchestrator foundation + tier-closure + LRU + spike binary; 13-02 merge pure function + conservative partial-failure + 10× byte-identity contract) | In Progress | 2026-08-21 (13-02 merge hermetic gate green) |
+| 13. 子 agent 扇出 (P8.4) | 3/5 (13-01 FanOutOrchestrator foundation + tier-closure + LRU + spike binary; 13-02 merge pure function + conservative partial-failure + 10× byte-identity contract; 13-03 5-step pipeline + audit RunPath/Transfer + D16 overload + D15 TS lockstep) | In Progress | 2026-08-21 (Wave 2 complete: 13-02 + 13-03 hermetic gates green) |
 
 ---
-*Last updated: 2026-08-21 — **Phase 13 Plan 13-02 shipped** (`mergeSubAgentResults` pure function + 10× byte-identity contract test + conservative partial-failure merge; 28 hermetic tests green; FAN-03 SC-3 + SC-4 regression locks in place). Phase 13 in progress (2/5 plans complete: 13-01 FanOutOrchestrator foundation + 13-02 merge pure function). Prior: Phase 11 ACCEPTANCE GATE PASS 2026-08-20 (8/8 plans — 11-01..11-08). Earlier: Phase 10 hermetic-gated closeout 2026-08-20 (UAT 19/0/3, user-accepted `closed/blocked-with-notes`); Phase 9 COMPLETE 2026-08-18 (live spike 裁决 NO-GO accepted with escape plan); Phase 8 COMPLETE 2026-08-18 (eino v0.9.14 + eino-ext v0.1.13 lockstep).*
+*Last updated: 2026-08-21 — **Phase 13 Wave 2 COMPLETE** (13-02 merge pure function + 13-03 5-step pipeline + audit RunPath/Transfer + D16 overload + D15 TS lockstep; all hermetic gates green; 7 atomic commits since 13-01; FAN-01 SC-1 fault isolation + FAN-03 SC-3 byte-identity + SC-4 conservative partial-failure + FAN-04 SC-4 per-sub-agent ApplyTrustStage regression locks in place). Phase 13 in progress (3/5 plans complete: 13-01 foundation + 13-02 merge + 13-03 pipeline; 13-04 hermetic gate + STRIDE-13 + frozen eval + 13-05 live UAT + v0.8 milestone re-baseline pending). Prior: Phase 11 ACCEPTANCE GATE PASS 2026-08-20 (8/8 plans — 11-01..11-08). Earlier: Phase 10 hermetic-gated closeout 2026-08-20 (UAT 19/0/3, user-accepted `closed/blocked-with-notes`); Phase 9 COMPLETE 2026-08-18 (live spike 裁决 NO-GO accepted with escape plan); Phase 8 COMPLETE 2026-08-18 (eino v0.9.14 + eino-ext v0.1.13 lockstep).*
 
 ---
 

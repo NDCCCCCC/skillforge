@@ -3,23 +3,23 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 13
-current_plan: 13-02 merge pure function + 10× byte-identity contract; COMPLETE
+current_plan: 13-03 FanOutOrchestrator 5-step pipeline + audit RunPath/Transfer + D16 overload; COMPLETE
 status: in-progress
-stopped_at: Phase 13 / Plan 13-02 COMPLETE 2026-08-21 (2 tasks / 2 commits: 7c9652b Task 1 merge.go + 5d75e6d Task 2 merge_test.go; 28 hermetic runtime tests green; FAN-03 SC-3 byte-identity contract test 10× stable; FAN-03 SC-4 conservative partial-failure regression locks in place; pure function verified — no audit / no SSE / no map iteration / no time.Now)
-last_updated: "2026-08-21T00:00:00Z"
-last_activity: 2026-08-21 -- Phase 13 Plan 13-02 SHIPPED via `/gsd:execute-phase 13 --wave 2` (sequential executor; 13-03 is the parallel sibling in Wave 2 — see resume file). 28 hermetic runtime tests pass; `go build ./...` + `go vet ./...` exit 0; 10× byte-identity contract test stable across 10 consecutive runs. Prior: Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit 0484bca: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary).
+stopped_at: Phase 13 / Plan 13-03 COMPLETE 2026-08-21 (3 tasks / 4 commits: 488c98e audit substrate + D16 fanout enum overload + TS lockstep; 789640f 5-step pipeline Classify→Build→Fanout→Merge→ApplyTrustStage; 5b76923 RealChatTransport routes fanout_* decisions to dispatch seam; 958b76e docs SUMMARY). FAN-01 SC-1 fault isolation (defer recover + 30s timeout); FAN-04 SC-4 per-sub-agent ApplyTrustStage + shared ChunkAccumulator; D16 overload data-decision.decision enum (fanout_dispatched/completed/failed); D15 lockstep TS mirror; ADD COLUMN audit DDL (run_path/transfer_from/transfer_to) additive. Wave 2 complete (13-02 + 13-03); 13-04 + 13-05 pending.
+last_updated: "2026-08-21T08:15:00Z"
+last_activity: 2026-08-21 -- Phase 13 Plan 13-03 SHIPPED via `/gsd:execute-phase 13 --wave 2` (sequential after 13-02; 13-03 depends_on 13-02 + 13-01). 4 atomic commits land full pipeline + D16 + audit + D15 TS mirror; `go build ./...` + `go vet ./...` + `npx tsc --noEmit` exit 0. Prior: Phase 13 Plan 13-02 SHIPPED 2026-08-21 (commits 7c9652b + 5d75e6d: merge pure function + 10× byte-identity contract); Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit 0484bca: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary).
 resume_file: .planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 60
-  completed_plans: 53
-  percent: 64
+  completed_plans: 54
+  percent: 65
 ---
 
 # State — SkillForge
 
-**Last updated:** 2026-08-21 (**Phase 13 Plan 13-02 SHIPPED** — `mergeSubAgentResults` pure function in `internal/runtime/merge.go` + 10× byte-identity contract test + conservative partial-failure merge; 2 atomic commits `7c9652b` + `5d75e6d`; 28 hermetic runtime tests green; FAN-03 SC-3 (determinism) + SC-4 (conservative partial-failure) regression locks in place; pure function verified — no audit / no SSE / no map iteration / no time.Now; 13-02 SUMMARY.md committed; ROADMAP + STATE updated). **Prior**: Phase 13 Plan 13-01 SHIPPED 2026-08-21 (commit `0484bca`: FanOutOrchestrator foundation + tier-closure + LRU accumulator + spike binary). **Phase 11 ACCEPTANCE GATE PASS 2026-08-20** (8/8 plans — 11-01..11-08). **Next action**: continue Wave 2 — `/gsd:execute-phase 13` for 13-03 (per-sub-agent grounding via shared ChunkAccumulator + errgroup fan-out + audit RunPath/Transfer columns + D16 overload) OR run 13-03 in parallel with this executor if Wave 2 was launched in parallel. Resume file: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`.
+**Last updated:** 2026-08-21 (**Phase 13 Wave 2 COMPLETE** — `13-02 merge pure function` + `13-03 FanOutOrchestrator 5-step pipeline + audit RunPath/Transfer + D16 overload` both SHIPPED; 7 atomic commits total since 13-01: 7c9652b / 5d75e6d / bd1fcb4 (13-02) + 488c98e / 789640f / 5b76923 / 958b76e (13-03); all hermetic gates green; FAN-01 SC-1 fault isolation (defer recover + 30s timeout); FAN-03 SC-3 byte-identity + SC-4 conservative partial-failure; FAN-04 SC-4 per-sub-agent ApplyTrustStage + shared ChunkAccumulator + D15 lockstep TS mirror + ADD COLUMN audit DDL). **Wave 2 of 4 complete** — 13-04 (hermetic gate + STRIDE-13 + frozen eval) + 13-05 (live fan-out 20-case UAT + v0.8 milestone re-baseline) pending. **Next action**: `/clear` then `/gsd:execute-phase 13 --wave 3` to execute 13-04. Resume file: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`.
 
 **Prior:** 2026-08-20 (**Phase 10 CLOSED hermetic-gated** — UAT `10-UAT.md` 22 tests = 19 passed / 0 issues / 3 blocked-by-server; STATUS `partial` per GSD framework rules with explicit operator-gate reasons documented in tests 19/20/21; user 2026-08-20 signed acceptance of `closed/blocked-with-notes` closeout; **live 35-case `--via-pipeline --summarize` re-run is the v0.8 milestone responsibility, NOT a Phase 11 entry prerequisite**; Phase 11 planning independent of operator-actionable gates.)
 
