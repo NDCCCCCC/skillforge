@@ -462,7 +462,7 @@ func (o *FanOutOrchestrator) fanOut(ctx context.Context, subs []subQueryPlan, in
 //
 // The accumulator is appended-to by the sub-agent's retrieve Tool
 // during Run; the parent's Run can read acc.Hits() afterwards.
-func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQueryPlan, _ *adk.AgentInput, acc *SharedChunkAccumulator) SubAgentResult {
+func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQueryPlan, input *adk.AgentInput, acc *SharedChunkAccumulator) SubAgentResult {
 	runPath := o.runID + "/" + sub.SubQueryID
 	result := SubAgentResult{
 		ID:       sub.SubQueryID,
@@ -511,7 +511,7 @@ func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQuery
 				runErr = fmt.Errorf("sub-agent %q panic: %v", sub.SubQueryID, r)
 			}
 		}()
-		subResult, runErr = o.runSubAgentInner(timeoutCtx, subAgent, sub, acc)
+		subResult, runErr = o.runSubAgentInner(timeoutCtx, subAgent, sub, acc, input)
 	}()
 
 	if runErr != nil {
@@ -548,11 +548,25 @@ func (o *FanOutOrchestrator) runSubAgent(parentCtx context.Context, sub subQuery
 // Step 5 — every sub-agent's verdict is independently grounded
 // against the shared ChunkAccumulator so a faulty sub-agent does not
 // propagate ungrounded citations to the merge.
-func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.Agent, sub subQueryPlan, acc *SharedChunkAccumulator) (*SubAgentResult, error) {
+func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.Agent, sub subQueryPlan, acc *SharedChunkAccumulator, input *adk.AgentInput) (*SubAgentResult, error) {
 	if subAgent == nil {
 		return nil, errors.New("runSubAgentInner: sub-agent is nil")
 	}
-	iter := subAgent.Run(ctx, nil)
+	// eino v0.9.14 chatmodel.go:1075 panics on nil AgentInput. Always
+	// pass a non-nil input — fall back to a synthesized one carrying
+	// the sub-query when the parent input is nil (test-only path or
+	// defensive path; the production wiring always supplies one).
+	subInput := input
+	if subInput == nil {
+		subInput = &adk.AgentInput{
+			Messages: []*schema.Message{{
+				Role:    schema.User,
+				Content: sub.SubQuery,
+			}},
+			EnableStreaming: false,
+		}
+	}
+	iter := subAgent.Run(ctx, subInput)
 	if iter == nil {
 		return nil, errors.New("runSubAgentInner: sub-agent Run returned nil iterator")
 	}
