@@ -73,7 +73,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DIST-06**: Pre-bundled sample compliance docs (works without API key for retrieval)
 - [x] **DIST-07**: `CONTRIBUTING.md` with "how to write a Skill", "add a tool", "add a knowledge tier"
 - [x] **DIST-08**: `examples/` folder with 2-3 Skill templates (compliance, simple QA, calculator)
-- [ ] **DIST-09**: Published eval results in README (faithfulness %, citation precision %, refusal accuracy %)
+- [x] **DIST-09**: Published eval results in README (faithfulness %, citation precision %, refusal accuracy %)
 - [x] **DIST-10**: Eval set sample included in repo
 
 ### Compliance Demo Skill (CMPL)
@@ -118,37 +118,37 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Multi-turn Memory (MEM)
 
-- [ ] **MEM-01**: 用户可进行追问指代（「那第二条呢」「依据是什么」），agent 结合会话历史正确解析并作答
-- [ ] **MEM-02**: 会话历史跨页面刷新存活并喂给 agent（server 层 `internal/history` 投影 sqlite session → `[]schema.Message`）
-- [ ] **MEM-03**: citation 白名单代码强制——citation 只能引用**本轮** Run 检索到的 chunk；历史/摘要/resume 注入文本物理上不能成为证据
-- [ ] **MEM-04**: 历史投影消毒——投影时剥离 `[CHUNK id]` 标记，verdict JSON 经 `conclusionText`/`refusalText` 确定性渲染为纯文本
-- [ ] **MEM-05**: 长会话 token 预算 + 摘要压缩（先哑预算，summarization 中间件在 Runner 迁移后启用；project→then→summarize 顺序）
+- [x] **MEM-01**: 用户可进行追问指代（「那第二条呢」「依据是什么」），agent 结合会话历史正确解析并作答
+- [x] **MEM-02**: 会话历史跨页面刷新存活并喂给 agent（server 层 `internal/history` 投影 sqlite session → `[]schema.Message`）
+- [x] **MEM-03**: citation 白名单代码强制——citation 只能引用**本轮** Run 检索到的 chunk；历史/摘要/resume 注入文本物理上不能成为证据
+- [x] **MEM-04**: 历史投影消毒——投影时剥离 `[CHUNK id]` 标记，verdict JSON 经 `conclusionText`/`refusalText` 确定性渲染为纯文本
+- [x] **MEM-05**: 长会话 token 预算 + 摘要压缩（先哑预算，summarization 中间件在 Runner 迁移后启用；project→then→summarize 顺序）
 
 ### Write Tools + Approval Gate (HITL)
 
-- [ ] **HITL-01**: agent 调用写工具前中断（Eino Interrupt），流内呈现内联审批卡（what / tool / 完整参数快照 / why），SSE 流干净关闭
-- [ ] **HITL-02**: 用户可批准一次 / 拒绝（拒绝必填理由）；审批绑定结构化工具调用（name+args），永不绑定原始字符串
-- [ ] **HITL-03**: 审批态跨刷新/重启存活（sqlite checkpoint + GET resume 端点恢复）；checkpoint 绑定 skill 版本 + prompt_hash，过期 checkpoint 有显式 UI 态
-- [ ] **HITL-04**: 每个审批决策产生 INSERT-only 审计三行生命周期（`action_pending_approval` → `action_approved` / `action_rejected`）；写路径审计 **fail-closed**（与读路径 swallow 相反的显式 Key Decision）；interrupt 时冻结参数快照进 pending 行（批的 A 不会执行成 B）；tool_call_id 幂等键
-- [ ] **HITL-05**: `writes:` frontmatter 代码级强制——agent 无法调用其 Skill 未声明的写工具
-- [ ] **HITL-06**: 首批两个写工具落地：memory:facts 写入 + 审查报告生成
-- [ ] **HITL-07**: 用户可在批准前修改工具参数（edit-before-approve，LangGraph edit 决策）
-- [ ] **HITL-08**: 用户可「批准并记住」（approve-and-remember），规则按会话/Skill 级作用域存储，可查看可撤销
+- [x] **HITL-01**: agent 调用写工具前中断（Eino Interrupt），流内呈现内联审批卡（what / tool / 完整参数快照 / why），SSE 流干净关闭
+- [x] **HITL-02**: 用户可批准一次 / 拒绝（拒绝必填理由）；审批绑定结构化工具调用（name+args），永不绑定原始字符串
+- [x] **HITL-03**: 审批态跨刷新/重启存活（sqlite checkpoint + GET resume 端点恢复）；checkpoint 绑定 skill 版本 + prompt_hash，过期 checkpoint 有显式 UI 态
+- [x] **HITL-04**: 每个审批决策产生 INSERT-only 审计三行生命周期（`action_pending_approval` → `action_approved` / `action_rejected`）；写路径审计 **fail-closed**（与读路径 swallow 相反的显式 Key Decision）；interrupt 时冻结参数快照进 pending 行（批的 A 不会执行成 B）；tool_call_id 幂等键
+- [x] **HITL-05**: `writes:` frontmatter 代码级强制——agent 无法调用其 Skill 未声明的写工具
+- [x] **HITL-06**: 首批两个写工具落地：memory:facts 写入 + 审查报告生成
+- [x] **HITL-07**: 用户可在批准前修改工具参数（edit-before-approve，LangGraph edit 决策）
+- [x] **HITL-08**: 用户可「批准并记住」（approve-and-remember），规则按会话/Skill 级作用域存储，可查看可撤销
 
 ### Planning Layer (PLAN)
 
-- [ ] **PLAN-01**: SKILL.md `agent: deep` 启用 DeepAgent archetype（`adk/prebuilt/deep` + write_todos），经 `internal/runtime` 工厂按 `Manifest.Agent` 分发；所有 archetype 统一经 `ApplyTrustStage`（floor→grounding→critique）出口
-- [ ] **PLAN-02**: 用户可看到实时计划清单流式更新（todo pending/in_progress/completed），计划随会话持久化
-- [ ] **PLAN-03**: 计划确认门——DeepAgent 执行前用户批准计划（复用 HITL 审批机制，Gemini 模式）
-- [ ] **PLAN-04**: 三层预算门——MaxIteration ≤10 + run 级 token 预算 + 回路检测；触发即保守收尾（forced_stop），预算事件进审计
-- [ ] **PLAN-05**: 可回放规划轨迹——write_todos 审计行可完整重建某次运行的计划演变，UI 可回放
+- [x] **PLAN-01**: SKILL.md `agent: deep` 启用 DeepAgent archetype（`adk/prebuilt/deep` + write_todos），经 `internal/runtime` 工厂按 `Manifest.Agent` 分发；所有 archetype 统一经 `ApplyTrustStage`（floor→grounding→critique）出口
+- [x] **PLAN-02**: 用户可看到实时计划清单流式更新（todo pending/in_progress/completed），计划随会话持久化
+- [x] **PLAN-03**: 计划确认门——DeepAgent 执行前用户批准计划（复用 HITL 审批机制，Gemini 模式）
+- [x] **PLAN-04**: 三层预算门——MaxIteration ≤10 + run 级 token 预算 + 回路检测；触发即保守收尾（forced_stop），预算事件进审计
+- [x] **PLAN-05**: 可回放规划轨迹——write_todos 审计行可完整重建某次运行的计划演变，UI 可回放
 
 ### Sub-agent Fan-out (FAN)
 
-- [ ] **FAN-01**: orchestrator 可将多跳检索扇出为并行子 agent（一层为限，禁止递归扇出），子 agent 返回压缩结果、故障隔离
-- [ ] **FAN-02**: tier 边界构造期闭包继承——子 agent 的 retrieve 工具闭包自父 manifest 的 `ResolvedTiers()`，结构性无法扩权；交集为空 = 加载期校验错误
-- [ ] **FAN-03**: 合并确定性（key 排序纯函数，契约测试 10× 一致）+ 保守部分失败合并（任一子 agent 拒答 → 合并结论最多「需补充」，绝不肯定）
-- [ ] **FAN-04**: per-sub-agent 合并前 grounding（复用 D2-01 逐字引用验证护城河）；扇出事件（RunPath/Transfer）写入审计
+- [x] **FAN-01**: orchestrator 可将多跳检索扇出为并行子 agent（一层为限，禁止递归扇出），子 agent 返回压缩结果、故障隔离
+- [x] **FAN-02**: tier 边界构造期闭包继承——子 agent 的 retrieve 工具闭包自父 manifest 的 `ResolvedTiers()`，结构性无法扩权；交集为空 = 加载期校验错误
+- [x] **FAN-03**: 合并确定性（key 排序纯函数，契约测试 10× 一致）+ 保守部分失败合并（任一子 agent 拒答 → 合并结论最多「需补充」，绝不肯定）
+- [x] **FAN-04**: per-sub-agent 合并前 grounding（复用 D2-01 逐字引用验证护城河）；扇出事件（RunPath/Transfer）写入审计
 
 ## v2 Requirements
 
@@ -243,7 +243,7 @@ Which phases cover which requirements.
 | DIST-06 | Phase 7 | Complete |
 | DIST-07 | Phase 7 | Complete |
 | DIST-08 | Phase 7 | Complete |
-| DIST-09 | Phase 7 | Pending |
+| DIST-09 | Phase 7 | Complete (Phase 7 leftover closed by 13-06 Task 3 via scripts/eval_snapshot) |
 | DIST-10 | Phase 7 | Complete |
 | CMPL-01 | Phase 2 | Pending |
 | CMPL-02 | Phase 2 | Pending |
@@ -270,28 +270,28 @@ Which phases cover which requirements.
 | PLAT-04 | Phase 8 | Complete |
 | PLAT-05 | Phase 8 | Complete |
 | GEVL-08 | Phase 9 | Complete |
-| MEM-01 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
-| MEM-02 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
-| MEM-03 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
-| MEM-04 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
-| MEM-05 | Phase 10 | In Progress (10-04 Task 1 shipped; live gate pending operator stack) |
-| HITL-01 | Phase 11 | Pending |
-| HITL-02 | Phase 11 | Pending |
-| HITL-03 | Phase 11 | Pending |
-| HITL-04 | Phase 11 | Pending |
-| HITL-05 | Phase 11 | Pending |
-| HITL-06 | Phase 11 | Pending |
-| HITL-07 | Phase 11 | Pending |
-| HITL-08 | Phase 11 | Pending |
-| PLAN-01 | Phase 12 | Pending |
-| PLAN-02 | Phase 12 | Pending |
-| PLAN-03 | Phase 12 | Pending |
-| PLAN-04 | Phase 12 | Pending |
-| PLAN-05 | Phase 12 | Pending |
-| FAN-01 | Phase 13 | Pending |
-| FAN-02 | Phase 13 | Pending |
-| FAN-03 | Phase 13 | Pending |
-| FAN-04 | Phase 13 | Pending |
+| MEM-01 | Phase 10 | Complete (Phase 10; live 35-case re-run = v0.8 ledger row 1, OPEN) |
+| MEM-02 | Phase 10 | Complete (Phase 10; live 35-case re-run = v0.8 ledger row 1, OPEN) |
+| MEM-03 | Phase 10 | Complete (Phase 10; live 35-case re-run = v0.8 ledger row 1, OPEN) |
+| MEM-04 | Phase 10 | Complete (Phase 10; live 35-case re-run = v0.8 ledger row 1, OPEN) |
+| MEM-05 | Phase 10 | Complete (Phase 10; live 35-case re-run = v0.8 ledger row 1, OPEN) |
+| HITL-01 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| HITL-02 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| HITL-03 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| HITL-04 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| HITL-05 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| HITL-06 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| HITL-07 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| HITL-08 | Phase 11 | Complete (Phase 11 gate PASS 11/11, 2026-08-20) |
+| PLAN-01 | Phase 12 | Complete (Phase 12 gate PASS 11/11) |
+| PLAN-02 | Phase 12 | Complete (Phase 12 gate PASS 11/11) |
+| PLAN-03 | Phase 12 | Complete (Phase 12 gate PASS 11/11) |
+| PLAN-04 | Phase 12 | Complete (Phase 12 gate PASS 11/11) |
+| PLAN-05 | Phase 12 | Complete (Phase 12 gate PASS 11/11) |
+| FAN-01 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
+| FAN-02 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
+| FAN-03 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
+| FAN-04 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
 
 **Coverage:**
 
