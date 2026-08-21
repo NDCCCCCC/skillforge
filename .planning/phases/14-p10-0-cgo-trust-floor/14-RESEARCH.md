@@ -412,18 +412,21 @@ db, err := sql.Open("sqlite3", dsnWithPragmas(cfg.DSN))  // driver name: sqlite 
 | A4 | hitl/compliance 锁 live 指标重跑可延期（hermetic pin 重锁先行；live 归 operator gate，同 Phase 13 Wave 4 先例） | Runtime State | 中——若 plan-checker 要求 live 全绿才关 phase，则 Phase 14 尾部出现 operator gate；建议沿用既有 blocked-with-notes 模式 |
 | A5 | 地板文案英文 Skill 环境（examples/skills/simple-qa 等）不受中文地板破坏（GLM 中文最强 + 混排可行） | D14-A2 已锁方向，具体混排效果未实证 | 低——live 冻结集重跑（D14-B4）即实证点；若 simple-qa 行为劣化，属 bump 纪律覆盖范围 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **platform-floor.lock.json 的「第 4 冻结锁」计数口径**
    - What we know: eval/frozen/ 目录现有 **4 个** .lock.json（compliance/hitl/deep/fanout——deep 是 Phase 12 加的，CONTEXT 三锁叙述未计）；platform-floor 将是目录内第 5 个文件。
    - What's unclear: 文档叙事（README/决策记录）按 CONTEXT「第 4 锁」还是按物理文件数「第 5 锁」编号。
    - Recommendation: 尊重 CONTEXT 决策内容（platform-floor 本 phase 锁 / data.lock Phase 20），编号表述统一为「决策序第 4 锁（目录内第 5 个 .lock.json）」，README 计数按文件实数。
+   - **RESOLVED (2026-08-22): adopted by 14-04** — 该口径原样写入 14-04 must_haves truths（「决策序第 4 冻结锁 / 目录内第 5 个 .lock.json」）与 lock_id "platform-floor-v1" 落锁任务。
 2. **admin 预览端点的路由与响应细节（discretion 项）**
    - What we know: X-Admin-Token 模式现成；CONTEXT 建议返回合成全文 + 版本 + hash。
    - Recommendation: `GET /api/admin/platform-prompt?skill={id}`，响应 `{floor_version, skill_id, composed_prompt, prompt_hash}`；404（skill 不存在）/403（token 错）对齐 audit.go 语义；测试复刻 TestAdminToken_* 形态。
+   - **RESOLVED (2026-08-22): adopted by 14-02** — 路由、四字段响应、403/404 语义、TestPlatformPromptPreview 复刻 TestAdminToken_* 四面全部落在 14-02 Task 2。
 3. **D14-A4 上提后 chat 模板剩什么**
    - What we know: `systemInstructionsTemplate` 的规则 1/2（分类/needs_input）是 persona/领域条款留下；规则 3/4（引用/拒答）上提。但输出 JSON schema 段是 Skill 层还是平台层（deep 路径刻意不带 JSON 强制——Pitfall 2/RF-5）？
    - Recommendation: 输出格式条款留 Skill 模板层（两 archetype 本就分叉且合理）；只有**信任语义**（引用白名单、无 grounding 拒答）上提。planner 定夺。
+   - **RESOLVED (2026-08-22): adopted by 14-01** — 14-01 Task 1 明确「prompts.go 保留规则 1/2 与 JSON schema 输出段（输出格式条款留 Skill 模板层），仅规则 3/4 信任条款上提为平台地板」。
 
 ## Environment Availability
 
