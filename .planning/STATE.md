@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v0.8
 milestone_name: — Harness（可信×行动融合）
 current_phase: 13
-current_plan: 13-06 COMPLETE — v0.8 milestone wrap shipped (completion report + Operator Gates Ledger + README DIST-09 fill + terminal flip). Awaiting operator v0.8.0 tag.
-status: complete-pending-tag
-stopped_at: v0.8 milestone CLOSED (pending tag) 2026-08-21. Phase 13 COMPLETE 6/6; phases 8-13 all hermetically green; 3 frozen locks byte-identical (compliance 5cf700f3… + hitl 6e91881f… + fanout af3020fd…). Operator Gates Ledger in .planning/v0.8-MILESTONE-COMPLETION.md — 3 CLOSED / 4 OPEN (Phase 10 live 35-case re-run BLOCKED-ENV; git push origin master; v0.8.0 tag; Phase 7 demo-GIF + docker-build). Executor never tags — operator runs the tag/push block in §Recommended Next Path.
-last_updated: "2026-08-21T16:40:00Z"
+current_plan: 13-06 COMPLETE — v0.8 milestone wrap shipped (completion report + Operator Gates Ledger + README DIST-09 fill + terminal flip). v0.8 CLOSED: tag DEFERRED by operator 2026-08-21 ("跳过 tag"); carries into v1.0 ledger.
+status: complete
+stopped_at: v0.8 milestone CLOSED 2026-08-21 (operator decision: tag DEFERRED — "跳过 tag"; no git remote configured, push gate merged into Phase 7 publication governance row 7). Phase 13 COMPLETE 6/6 + UAT 20/20 PASS (72390a3); phases 8-13 all hermetically green; 3 frozen locks byte-identical (compliance 5cf700f3… + hitl 6e91881f… + fanout af3020fd…). Operator Gates Ledger in .planning/v0.8-MILESTONE-COMPLETION.md — 3 CLOSED / 3 OPEN / 1 DEFERRED (v0.8.0 tag, carries to v1.0). Next: /gsd:new-milestone (v1.0).
+last_updated: "2026-08-21T13:59:43Z"
 last_activity: 2026-08-21 -- Plan 13-06 SHIPPED (v0.8 milestone wrap). Created .planning/v0.8-MILESTONE-COMPLETION.md (25/25 requirement attestation, 7-row Operator Gates Ledger, 3 locks + deep.lock substrate, deviations, test-suite state, v1.0 next path); reconciled stale REQUIREMENTS.md traceability (MEM/HITL/PLAN/FAN + DIST-09); filled README `## Eval Results` from `go run ./scripts/eval_snapshot` verbatim (DIST-09 closed, zero hand-typed numbers); STATE terminal flip. Zero code changes. Prior: 13-05 live fan-out UAT operator-signed (e02525f + 67d6180).
 resume_file: .planning/v0.8-MILESTONE-COMPLETION.md
 progress:
@@ -478,9 +478,9 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 
 ---
 
-## v0.8 MILESTONE CLOSED (pending tag) — Plan 13-06, 2026-08-21
+## v0.8 MILESTONE CLOSED — Plan 13-06, 2026-08-21 (tag deferred by operator)
 
-**Milestone:** v0.8 — Harness（可信×行动融合）. **Status:** `complete-pending-tag`.
+**Milestone:** v0.8 — Harness（可信×行动融合）. **Status:** `complete` — flipped 2026-08-21T13:59Z by operator decision "跳过 tag" (the same accepted-with-notes authority as Phase 10 closeout / D13-V1). The `v0.8.0` tag remains unwritten and is carried into the v1.0 ledger.
 
 **Completion report:** `.planning/v0.8-MILESTONE-COMPLETION.md` — the single artifact that carries the milestone evidence spine (25/25 requirement attestation with 0 unmapped / 0 orphaned; phase status 8-13; frozen locks; Operator Gates Ledger; deviations; test-suite state; v1.0 next path).
 
@@ -492,7 +492,7 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 - `eval/frozen/fanout.lock.json` — `af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252` (Phase 13, operator-signed)
 - *(substrate, not a live-gated pin)* `eval/frozen/deep.lock.json` — `f3958dcd4930ac09e03c824f781df9c6eb04b691770cab4d512e11fba3c3c482` (Phase 12 hermetic dry-run)
 
-**Operator Gates Ledger — 3 CLOSED / 4 OPEN:**
+**Operator Gates Ledger — 3 CLOSED / 3 OPEN / 1 DEFERRED (post-flip 2026-08-21T13:59Z):**
 
 | # | Gate | Status |
 |---|------|--------|
@@ -500,25 +500,14 @@ Resume File: `.planning/phases/13-p8-4-sub-agent-fan-out/13-PLAN-OUTLINE.md`
 | 2 | Phase 13 live 20-case fan-out UAT | **CLOSED** (accepted-with-notes, D13-V1) |
 | 3 | Phase 8 live three-gate re-lock | **CLOSED** |
 | 4 | Phase 9 live spike hard gate | **CLOSED** (verdict NO-GO, accepted with escape plan) |
-| 5 | `git push origin master` | **OPEN** — operator-only |
-| 6 | `v0.8.0` annotated tag + push | **OPEN** — operator-only (T-13-06-3: executor never tags) |
-| 7 | Phase 7 publication governance | **OPEN (partial)** — DIST-09 eval-numbers half CLOSED by 13-06; demo GIF + docker-build outstanding |
+| 5 | `git push origin master` | **MERGED into row 7** — `git remote -v` shows NO remote configured 2026-08-21T13:59Z; the public push is structurally part of 07-06 publication governance |
+| 6 | `v0.8.0` annotated tag | **DEFERRED (operator decision 2026-08-21 "跳过 tag")** — carries into v1.0 ledger; tag is local-only, may be written at any time |
+| 7 | Phase 7 publication governance | **OPEN (partial)** — DIST-09 eval-numbers half CLOSED by 13-06; demo GIF + docker-build + public remote push outstanding |
 
 **DIST-09 closed:** README `## Eval Results` now carries the verbatim `go run ./scripts/eval_snapshot` block (faithfulness 97% / context_precision 10% / refusal_accuracy 95% 19/20 / 50 cases, `prompt_hash 58ffea08…`). Zero hand-typed numbers.
 
 **13-06 commits:** `9c1781a` (T1 13-05 closeout capture) + `77d6a6d` (T2 completion report + REQUIREMENTS reconciliation) + `b79f297` (T3 README DIST-09) + this terminal flip. Zero code changes — `go build ./... && go vet ./...` exit 0.
 
-**Operator next (executor MUST NOT run these):**
+**Terminal flip record (2026-08-21T13:59Z):** operator chose "跳过 tag" — status flipped `complete-pending-tag` → `complete` in both this file and `v0.8-MILESTONE-COMPLETION.md` frontmatter WITHOUT a tag hash (ledger row 6 DEFERRED, not CLOSED — no artifact exists). Verified at flip time: `git remote -v` empty (row 5 merged into row 7), `git tag -l "v0.8*"` empty. The tag may be written retroactively at any commit (`git tag -a v0.8.0 <sha>`); until then v1.0's ledger carries row 6.
 
-```bash
-# optional — closes ledger row 1
-go run ./cmd/spike-history --via-pipeline --summarize --seed=42 \
-  --golden=eval/golden/compliance.jsonl --out=reports/ --cost-limit=5.00
-
-# rows 5 + 6
-git push origin master
-git tag -a v0.8.0 -m "SkillForge v0.8 — Harness (可信×行动融合): 6 phases, 3 frozen locks, hermetic+live gated"
-git push origin v0.8.0
-```
-
-After tagging: flip `status: complete-pending-tag` → `complete` here and in `v0.8-MILESTONE-COMPLETION.md` frontmatter, and mark ledger rows 5/6 CLOSED with the tag hash. Then: `/gsd:verify-work 13` (optional) → `/gsd:new-milestone` (v1.0).
+**Next: `/gsd:new-milestone` (v1.0).** Pre-seeded backlog to re-triage: Phase 999.1 分层分块器 · Phase 999.2 Eval CI · Phase 7 leftovers (demo GIF / docker-build / public remote) · D8-07 non-gate eval metrics · fan-out LLM classifier (13-03 placeholder) · v0.8.0 tag (this ledger row 6).
