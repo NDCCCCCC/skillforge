@@ -41,6 +41,18 @@
 - [ ] **Phase 12: 规划层（P8.3）** — DeepAgent（write_todos）+ 计划确认门 + 三层预算门 + 审计可回放的规划轨迹
 - [x] **Phase 13: 子 agent 扇出（P8.4）** — 一层并行多跳扇出 + tier 构造期闭包继承 + 确定性/保守合并 + 子 agent 独立 grounding (complete 2026-08-21 — 6/6 plans: 13-01 foundation; 13-02 merge pure function; 13-03 5-step pipeline + audit + D16; 13-04 hermetic gate 9/9 + STRIDE-13 + fanout.lock.json; 13-05 live 20-case fan-out UAT PASS (5/6 thresholds, conservative_merge_rate accepted-with-notes D13-V1); 13-06 v0.8 milestone wrap + completion report + README DIST-09; v0.8.0 tag = operator gate)
 
+### Milestone v1.0 — 业务数据支撑（Business Data Support）(phases 14-20)
+
+贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**。依赖主线严格线性：14 → 15 → 16 → 17 → 18 → 19；20（管理台）收尾聚合全链数据面。研究依据：`.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计 2026-08-21；PITFALLS.md 文内 P14..P20 为研究期占位编号，已映射到下方 Phase 14..20）。
+
+- [ ] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）
+- [ ] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）
+- [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
+- [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
+- [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
+- [ ] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度
+- [ ] **Phase 20: 管理台（P10.6）** — /admin（复用 /eval + X-Admin-Token）四视图：导入批次 / KPI 只读 / Skill 管理 / 定时任务；admin 动作全审计；里程碑收尾（第 4 冻结锁决策 + wrap）
+
 ---
 
 ## Phase Details — Milestone v0.7.7
@@ -410,6 +422,143 @@
 
 ---
 
+## Phase Details — Milestone v1.0
+
+### Phase 14: CGO 地基 + 平台信任地板（P10.0）
+
+**Goal:** 把 CGO 工具链（MSYS2 gcc + go-duckdb + mattn/go-sqlite3）钉进本机与 Docker 双构建环境，并把平台级隐藏系统提示词地板从数据维度 day-1 内建——后续所有数据能力生长在「可构建的地基 + 不可绕过的信任地板」之上。
+**Mode:** foundation
+**Depends on:** Phase 13（v0.8 里程碑结束态；v0.8.0 tag 为 operator gate，不阻塞本 phase）
+**Requirements:** PLAT-09, PLAT-10, PLAT-11
+**Success Criteria** (what must be TRUE):
+
+  1. 双环境构建绿：本机（MSYS2 `mingw-w64-ucrt-x86_64-gcc` 就位）与 Docker（Dockerfile CGO_ENABLED=0→1 + build-base）`go build ./... && go vet ./...` 全绿——go-duckdb v2.4.3 与 mattn/go-sqlite3 v1.14.50 同时静态链接成功（STACK-VERIFICATION §1/§2.7 的 gcc 阻塞项清除）
+  2. sqlite 驱动替换零回归：modernc → mattn 全量 store 套件绿（audit / checkpoint / session 幂等 + SQLi 存活测试），DSN pragma 语义对齐（`?_busy_timeout=5000&_journal_mode=WAL`）
+  3. DuckDB 连接模式 spike 验证：`NewConnector` boot-queries（每次会话重 ATTACH READ_ONLY + `autoinstall/autoload_known_extensions=false` 封装为 hermetic 常量）多连接并发读 + 导入单写往返通过；持久库 `Close()` WAL 刷盘语义实证（`db.SetMaxIdleConns(0)`）；**写入容量微基准门**：Appender 批量 ≥10 万行/s + 50 并发读不阻塞写（STACK-VERIFICATION §2.8 容量评估的可执行化）
+  4. 平台信任地板生效：平台提示词代码级 prepend、Skill prompt 无法遮蔽、热重载存活；审计行携带 platform_prompt 版本；admin 预览合成有效 prompt 端点（PLAT-09/10）
+  5. platform-floor.jsonl 冻结集断言通过：诱导「写 raw SQL / 越通道查询」→ 拒答（PLAT-11）
+
+**Pitfalls addressed:** Pitfall 17（平台提示词 lockstep——skill.md 修改系统提示词时平台地板静默丢失；地板版本进审计行使其可检测）
+**Research flag:** STACK-VERIFICATION §1（gcc 环境三方案，推荐 MSYS2）+ §2.1（ATTACH 会话不持久 / Close() 刷 WAL / Windows 文件锁 DETACH）——全部为已验证事实，plan 期只需落到代码
+**Plans**: TBD
+**UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
+
+### Phase 15: 数据导入管线 + 导入即脱敏（P10.1）
+
+**Goal:** 数据人员可把 CSV / SQL dump / API 三通道数据经两阶段（预览→确认提交）导入为脱敏数据集——L1 HMAC + L2 桶化在导入时一次完成，原始文件导入即弃且可审计证明（「导入即脱敏，原始文件即弃」）。
+**Mode:** mvp
+**Depends on:** Phase 14（DuckDB connector 模式 + CGO 构建链就位）
+**Requirements:** DATA-01, DATA-02, DATA-15, DATA-16, DATA-17
+**Success Criteria** (what must be TRUE):
+
+  1. 三通道导入可用：CSV（UTF-8 / UTF-8-BOM / GBK / GB18030 自动检测解码——`x/text/simplifiedchinese.GB18030`）、SQL dump（sqlite 方言 copy-table）、API push（multipart 流式）；附 tier + schema 元数据（DATA-01）；**DuckDB 写入一律 Appender/批量路径，禁止逐行 INSERT 循环**（STACK-VERIFICATION §2.8：月批千万行级逐行 = 小时级、批量 = 分钟级）
+  2. 导入即脱敏实证：L1 HMAC（站点盐+数据集盐+字段域分离；哈希前规范化 NFC/trim/手机号 +86 归一——同名同形态恒同哈希，保证 join 能力）+ L2 桶化（声明式规则，缺规则 fail-closed 拒绝导入）；库内无可恢复原始值；原始文件导入后即弃 + 批次审计行 `{batch_id, raw_size_bytes, desensitized_row_count, discard_ts}`（DATA-02/17）
+  3. 两阶段导入：预览前 100 行 + 拟脱敏效果 + 拟 tier + 桶边界可调 → 确认提交才落库（DATA-15）
+  4. 幂等重导入：同 (dataset, period) 内容哈希去重，重复提交安全无副作用（DATA-16）
+  5. 聚合 join 防再识别：k_min 最小聚合行数配置生效（导入侧配置面；再识别断言在 Phase 17 eval 完成）
+
+**Pitfalls addressed:** Pitfall 13（raw 文件生命周期——GC 定时器不是安全边界，须导入即弃+审计证明）、Pitfall 21（脱敏规则漂移——规则注册表 + fail-closed，规则缺失拒绝导入而非放行）、Pitfall 11（聚合 join 再识别——k_min 配置面在此铺，断言在 Phase 17）
+**Research flag:** ARCHITECTURE.md Q1（数据层 package 布局）+ Q7（分类器位置）；STACK-VERIFICATION §3.1（GBK/BOM 解码）+ §3.2（HMAC 规范化）——规范化的具体形态（NFC/trim/全角空格/手机号）plan 期定稿
+**Plans**: TBD
+**UI hint**: no（API 层；导入管理 UI 在 Phase 20 admin）
+
+### Phase 16: KPI 聚合通道（P10.2）
+
+**Goal:** agent 与原始数据之间只存在一条受控通道——数据人员用受控文件定义 KPI（注册期预编译），运行时 agent 只能按名调用、引擎层无 SQL 生成面；每次调用的数据引用（函数名+参数+时间窗+结果快照）冻结进审计行。
+**Mode:** mvp
+**Depends on:** Phase 15（导入产出的脱敏数据集是 KPI 的查询对象）
+**Requirements:** DATA-03, DATA-07, DATA-08, DATA-09, DATA-12, KPI-01, KPI-02
+**Success Criteria** (what must be TRUE):
+
+  1. KPI 注册表：数据人员受控文件定义 + 注册期预编译（语法错误加载期失败）；运行时与 agent 无任何新增 KPI 的路径——无注册后门；admin 只读（KPI-01）
+  2. `reads: ["data:aggregated_only"]` manifest 通道模式 + 加载期通道守卫（工具注册交叉验证，镜像既有 `writes:` 执法；跨通道违规 = 加载期拒绝而非运行时行为）（DATA-07/08）
+  3. agent 只能按名调用 KPI：引擎层无 SQL 生成面（agent 永不写 SQL 为结构性保证，非 prompt 约束）；无匹配 KPI → 结构化拒答 `{reason_code: no_matching_kpi, human_explanation}` 而非幻觉编数（DATA-03/09/12）
+  4. 数据引用审计：`{func, args, as_of, result_snapshot}` 冻结进审计行；数据清理后凭审计行可回放当时答案（KPI-02——「KPI 快照冻结在审计行」不变量的落地）
+  5. KPI 差分防再识别：细粒度参数组合白名单（差分成本门；再识别差分测试进 Phase 17 eval 基建）
+
+**Pitfalls addressed:** Pitfall 14（KPI 注册后门——agent 运行时注册 KPI 绕过审批；注册表为代码/文件级，运行时不可变）、Pitfall 12（跨 skill 通道违规——`data:` 通道加入加载期守卫，镜像 writes: 执法）、Pitfall 22（KPI 差分再识别——两快照差分还原小群体；参数白名单 + 差分成本门）
+**Research flag:** ARCHITECTURE.md Q2（KPI 工具接口形态：eino ToolFunc 签名 + 参数 schema）；FEATURES.md Cap 2 的「KPI 定义 DSL」形态在 plan 期定稿
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 17: KPI 仪表盘 Skill（P10.3）
+
+**Goal:** 业务人员在聊天里问「上月贷款余额多少」得到带完整出处的数字——数值 + KPI 定义 + 计算时间窗 + as_of + 数据引用（hover 显示通道名）；sparkline 趋势内嵌，下钻永不触达原始行。KPI eval 双指标（调用准确率/引用一致性）+ 再识别断言进冻结集。
+**Mode:** mvp
+**Depends on:** Phase 16（KPI 通道就绪才有可引用的数字）
+**Requirements:** DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, GEVL-09, GEVL-10
+**Success Criteria** (what must be TRUE):
+
+  1. 聊天数字问答端到端：自然语言数字问题 → KPI 函数调用 → 答案含数值 + KPI 定义 + 计算时间窗 + as_of + 数据引用；每个数字可溯源（DASH-01/02）
+  2. sparkline 迷你趋势内嵌消息，每个点独立数据引用可审计；下钻 = 更多 KPI 调用，永不触达原始行（DASH-03/04）；多 KPI 组合回答各数字独立引用（DASH-05）
+  3. GEVL-09 KPI 调用准确率：50 例 golden set（query → 期望 KPI 函数+参数），数值相等程序判定（非 LLM 判分）
+  4. GEVL-10 引用一致性：答案中的数字与所引 KPI 快照逐个一致（faithfulness 的数据维度扩展）
+  5. 再识别 eval 断言：聚合 join（Pitfall 11 场景）+ KPI 差分（Pitfall 22 场景）测试用例进冻结集，防线回归可检测
+
+**Pitfalls addressed:** Pitfall 11（聚合 join 再识别——eval 断言收口）、Pitfall 22（KPI 差分再识别——eval 断言收口）、Pitfall 19（eval 审计漂移——每 phase 贡献 data-eval golden，此处建立首块）
+**Research flag:** FEATURES.md Cap 3（sparkline 渲染形态：纯 SVG vs 轻量库）plan 期定；GEVL-09 golden set 的 50 例构造来源（合成数据 vs 真实 schema 脱敏）plan 期定
+**Plans**: TBD
+**UI hint**: yes（聊天内 sparkline + 引用 hover——AI SDK data part / source 机制复用 Phase 4 模式）
+
+### Phase 18: 业务月报 Skill（P10.4）
+
+**Goal:** 聊天触发月报生成：DeepAgent 计划清单先行可见 → 执行前计划确认门 → 模板驱动（模板 = Skill steps，KPI 顺序 + 类型化叙事槽位，LLM 填槽不自由发挥）→ fan-out 并行取数 → HITL 审批后发布静态页。
+**Mode:** mvp
+**Depends on:** Phase 17（月报的数据全部来自 KPI 通道；复用 Phase 12 DeepAgent 计划 + Phase 11 审批门）
+**Requirements:** RPT-01, RPT-02, RPT-03, RPT-04, RPT-05, FAN-05, FAN-06
+**Success Criteria** (what must be TRUE):
+
+  1. 聊天触发月报：DeepAgent 计划清单先行可见（write_todos 复用）；执行前计划确认门（Phase 12 机制复用）（RPT-01/02）
+  2. 模板 = Skill steps：KPI 顺序 + 类型化叙事槽位（LLM 填槽不自由发挥）；fan-out 并行取数——LLM 分类器结构化输出 `{should_fan_out, num_subtasks, task_boundaries}`，决策 + 理由进审计行（RPT-03 + FAN-05）
+  3. report:publish 走 HITL 审批门（Phase 11 机制复用；冻结参数快照 + 审计生命周期），产出静态页；模板渲染沙箱：绑定→goldmark 转义→bluemonday 消毒（管线顺序不可换），KPI 值服务端格式化防 markdown 表格注入（RPT-04）
+  4. 带修改重生成：修改意见进入新一轮 DeepAgent run（非原地补丁）；版本留存不覆盖（RPT-05）
+  5. FAN-06 冻结集 fan-out 率断言：per-case expected_fan_out 进冻结集，分类器漂移可检测
+
+**Pitfalls addressed:** Pitfall 15（模板注入/报告 RCE——模板 = 数据不是代码；渲染沙箱管线绑定→goldmark→bluemonday；LLM 只填槽）
+**Research flag:** ARCHITECTURE.md Q3（renderer 进程模型：进程内 vs 隔离渲染器——v1 倾向进程内+消毒管线，plan 期定）；FAN-05 分类器 GLM 实测漂移率
+**Plans**: TBD
+**UI hint**: yes（计划清单 + 审批卡 + 报告预览——Phase 11/12 组件复用）
+
+### Phase 19: 静态报告门户 + 调度器（P10.5）
+
+**Goal:** /reports 门户集中已发布报告（按 Skill/周期/run 筛选）；report_schedule 成为 manifest 字段，共享调度器自动重渲染月报并做 TTL 清理——每次运行有审计行 + 全量 KPI 快照 + 版本留存永不覆盖；eval 门阻塞指标回退的 Skill 调度。
+**Mode:** mvp
+**Depends on:** Phase 18（重渲染的是 Phase 18 产出的报告形态）
+**Requirements:** PORT-01, PORT-02, PORT-03, PORT-04, PORT-05, PORT-06, PORT-07, DATA-18, GEVL-11
+**Success Criteria** (what must be TRUE):
+
+  1. /reports 门户：列表按 Skill / 周期 / run 筛选 + 最后成功时间 + 失败状态徽标（PORT-01）
+  2. report_schedule = manifest 字段（加载期 cron 语法校验 + 热重载生效）；共享调度器两类 job——cron 重渲染 + TTL 清理（robfig/cron/v3 `WithChain(Recover, SkipIfStillRunning)` + `Stop()` 优雅关停）；TTL 清理只作用于脱敏数据集（DETACH → 删除，Windows 文件锁；审计/快照永不删）（PORT-02 + DATA-18）
+  3. 重渲染纪律：每次运行审计行 + 全量 KPI 快照 `{run_id, cron_expr, fired_at, snapshots, output_url, status}`；快照绑定 + 输出原子改名（写临时名 → 快照行落库 → rename）防 TOCTOU；版本留存永不覆盖（PORT-03/04）
+  4. 手动重渲染 + drift 检测（默认 ±5% per-KPI 可配 → drift 徽标）+ 并发守卫（同 (skill, period) 重叠运行跳过并记审计）（PORT-05/06/07）
+  5. eval 门阻塞调度：Skill 指标回退（含 Phase 17 KPI 准确率）时该 Skill 的 cron 重渲染被阻止；as_of 陈旧窗徽标（数据超 X 天未更新标黄）
+
+**Pitfalls addressed:** Pitfall 16（cron TOCTOU——重渲染进行中数据被清/被改；快照绑定 + 原子改名）、Pitfall 23（陈旧数据窗口——报表自动重渲染把过期数据包装成新鲜；as_of 徽标 + drift 检测）
+**Research flag:** ARCHITECTURE.md Q4（调度器嵌入形态：进程内共享 cron 实例 vs 独立 worker——v1 倾向进程内）；robfig/cron API 已全部源码验证（STACK-VERIFICATION §2.2）
+**Plans**: TBD
+**UI hint**: yes（/reports 路由——复用 /eval 模式，无登录面）
+
+### Phase 20: 管理台（P10.6）
+
+**Goal:** /admin 管理台四视图把全链数据面聚合为只读可见——导入批次 / KPI 定义 / Skill 管理 / 定时任务；admin 动作全审计。v1.0 里程碑在此收尾（第 4 冻结锁决策 + wrap）。
+**Mode:** mvp
+**Depends on:** Phase 19（全部数据面就绪后 ADM 视图才有内容可聚合；硬依赖 15-19 全部）
+**Requirements:** ADM-01, ADM-02, ADM-03, ADM-04, ADM-05, ADM-06
+**Success Criteria** (what must be TRUE):
+
+  1. /admin 路由 + X-Admin-Token 常量时间比较门（复用 /eval 模式，无新认证模型）（ADM-01）
+  2. 四视图齐：导入批次（状态/行数/raw 体积/审计行）+ KPI 定义只读（签名/最后调用时间）+ Skill 管理（热重载状态/最后 eval 结果/变更审计行）+ 定时任务（last-run/next-fire/最近 drift 状态）（ADM-02..05）
+  3. admin 动作全审计：actor_type: admin 标记；读时 redaction 沿用 Phase 6 机制（ADM-06）
+  4. 真源纪律：KPI 定义 UI 不可编辑 + 调度只读（文件是唯一真源；UI 永不成为第二编辑入口）；审计体量增长监控面就位（**注意：审计行 INSERT-only 永不删是锁定不变量——只做增长监控，归档策略决策留里程碑收尾**）
+  5. v1.0 收尾：data.lock.json 第 4 冻结锁决策（含再识别 eval 断言集）+ 里程碑 wrap（completion report + operator gates ledger）
+
+**Pitfalls addressed:** Pitfall 20（审计体量爆炸——增长监控面在此交付；压缩/归档与「永不删」不变量的冲突留 wrap 决策）、Pitfall 18（第 4 冻结锁——data.lock.json 的收录范围在此定稿）
+**Research flag:** ARCHITECTURE.md Q5（admin 路由形态）+ Q6（分类器位置收口）；无新外部依赖
+**Plans**: TBD
+**UI hint**: yes（/admin 四视图——复用 /eval dashboard 视觉模式）
+
+---
+
 ## Coverage
 
 ### Milestone v0.7.7 (v1 requirements)
@@ -437,8 +586,21 @@
 | 13 - 子 agent 扇出 (P8.4) | FAN-01..04 | 4 |
 | **Total** | **25 of 25 v0.8 requirements mapped** | **25** |
 
-**Unmapped:** 0 ✓ (v1 + v0.8)
-**Orphaned groups:** None.
+### Milestone v1.0 (业务数据支撑 requirements)
+
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| 14 - CGO 地基 + 平台信任地板 (P10.0) | PLAT-09, PLAT-10, PLAT-11 | 3 |
+| 15 - 数据导入管线 + 导入即脱敏 (P10.1) | DATA-01, DATA-02, DATA-15, DATA-16, DATA-17 | 5 |
+| 16 - KPI 聚合通道 (P10.2) | DATA-03, DATA-07, DATA-08, DATA-09, DATA-12, KPI-01, KPI-02 | 7 |
+| 17 - KPI 仪表盘 Skill (P10.3) | DASH-01..05; GEVL-09, GEVL-10 | 7 |
+| 18 - 业务月报 Skill (P10.4) | RPT-01..05; FAN-05, FAN-06 | 7 |
+| 19 - 静态报告门户 + 调度器 (P10.5) | PORT-01..07; DATA-18; GEVL-11 | 9 |
+| 20 - 管理台 (P10.6) | ADM-01..06 | 6 |
+| **Total** | **44 of 44 v1.0 requirements mapped** | **44** |
+
+**Unmapped:** 0 ✓ (v1 + v0.8 + v1.0)
+**Orphaned groups:** None.（DATA-04/05/06/10/11/13/14 已明确延 v1.1，见 REQUIREMENTS.md 分流标记，不计入 unmapped）
 
 ---
 
@@ -459,9 +621,16 @@
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
+| 14. CGO 地基 + 平台信任地板 (P10.0) | 0 (not planned) | Not started | - |
+| 15. 数据导入管线 + 导入即脱敏 (P10.1) | 0 (not planned) | Not started | - |
+| 16. KPI 聚合通道 (P10.2) | 0 (not planned) | Not started | - |
+| 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
+| 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |
+| 19. 静态报告门户 + 调度器 (P10.5) | 0 (not planned) | Not started | - |
+| 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-21 — **Phase 13 COMPLETE 6/6 + v0.8 milestone wrap SHIPPED** (Wave 5: 13-06 — `.planning/v0.8-MILESTONE-COMPLETION.md` 195 lines (25/25 requirement IDs attested, 3 frozen locks + Phase 12 deep.lock.json substrate, Operator Gates Ledger with 4 OPEN gates); README.md Eval Results filled hermetically from `go run ./scripts/eval_snapshot` (DIST-09 closed); REQUIREMENTS.md reconciled (v0.7.7 SYSK-08 orphan class recurrence caught + fixed); STATE.md flipped to `complete-pending-tag`; stale HANDOFF.json + 2 .continue-here.md consumed; commits 9c1781a + 77d6a6d + b79f297 + 2f1e9e3 + cc12d4a. **9/9 hermetic gate stages PASS**; all 3 frozen locks byte-identical (compliance 5cf700f3… / hitl 6e91881f… / fanout e02525f…); `go build ./... && go vet ./...` exit 0. **Operator gate pending**: (1) optional Phase 10 35-case `--via-pipeline --summarize` re-run; (2) `git push origin master`; (3) `git tag -a v0.8.0 -m "SkillForge v0.8 — Harness（可信×行动融合）"` + push. Earlier 2026-08-21: 13-05 live UAT shipped (commits e02525f + 67d6180, operator sign-off; conservative_merge_rate_max raised 0.0→0.5 per D13-V1 accepted-with-notes); Wave 3 hermetic gate 9/9 PASS (13-04, commit 7133feb); Wave 2 13-02 + 13-03 5-step pipeline + D16 + audit (7 atomic commits); Wave 1 13-01 foundation. Prior: Phase 11 ACCEPTANCE GATE PASS 2026-08-20 (8/8 plans — 11-01..11-08); Phase 10 hermetic-gated closeout 2026-08-20 (UAT 19/0/3, user-accepted `closed/blocked-with-notes`); Phase 9 COMPLETE 2026-08-18 (live spike 裁决 NO-GO accepted with escape plan); Phase 8 COMPLETE 2026-08-18 (eino v0.9.14 + eino-ext v0.1.13 lockstep).*
+*Last updated: 2026-08-21 — **v1.0 roadmap created（业务数据支撑，phases 14-20，44/44 requirements mapped）**；research 完成（STACK-VERIFICATION.md 对抗式依赖审计：go-duckdb v2.4.3 / robfig-cron v3.0.1 / goldmark v1.8.5 / bluemonday v1.0.27 全部通过 + sqlite 驱动 CGO 化决策 mattn v1.14.50）；REQUIREMENTS.md v1.0 段 44 条就位；STATE.md 重置指向 Phase 14。主线：14 CGO 地基+平台信任地板 → 15 导入+脱敏 → 16 KPI 通道 → 17 KPI 仪表盘 → 18 月报 Skill → 19 门户+调度器 → 20 管理台+收尾。**硬前置 operator gate：MSYS2 gcc 安装（`! winget install MSYS2.MSYS2` 后 `pacman -S mingw-w64-ucrt-x86_64-gcc`，PATH 加 `C:\msys64\ucrt64\bin`）——Phase 14 开工前提**。Prior 2026-08-21: Phase 13 COMPLETE 6/6 + v0.8 milestone wrap SHIPPED（13-06 completion report + README DIST-09；operator gates pending: v0.8.0 tag / push origin / Phase 10 35-case re-run）。Prior: Phase 11 PASS 2026-08-20 (8/8); Phase 10 hermetic closeout 2026-08-20; Phase 9 COMPLETE 2026-08-18 (NO-GO accepted with escape plan); Phase 8 COMPLETE 2026-08-18.*
 
 ---
 

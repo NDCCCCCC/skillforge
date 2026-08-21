@@ -112,6 +112,35 @@
   4. Windows 本机：同一 MSYS2 gcc 前置（与 go-duckdb 共用，无新增）
   5. 无 gcc 机器上全量构建进一步不可用——与 go-duckdb 同口径，已被接受
 
+### 2.8 写入瓶颈容量评估（省级保险公司内部使用）— 2026-08-21 用户追问
+
+**结论：不构成瓶颈——在省级分公司内部使用规模下，SQLite 与 DuckDB 写路径各有 2-3 个数量级的余量。真正的约束是 4 条部署/spec 纪律（下），不是引擎吞吐。**
+
+**规模假设**（省级保险公司内部工具，非全省核心业务系统）：潜在用户 100-500（省分公司各部门 + 中心支公司业务骨干）；峰值并发会话 10-50；日问答 2k-20k 次。
+
+**SQLite 侧（audit / checkpoint / session / approval）**：
+- 写入模式：每次问答 5-20 条单行 INSERT（消息、工具调用、引用、KPI 快照、审批、fanout 事件），同步路径。峰值持续 ~17 行/s（50 并发 × 10 行 / 30s turn），瞬时突发 100-200 行/s
+- WAL 模式单行 INSERT（SSD、synchronous=FULL）实测量级 1k-5k 行/s → **余量约 50-100×**
+- **当前代码实证的两个缺口**（`internal/store/sqlite/sqlite.go` + `cmd/server/main.go:463`）：
+  1. 生产 DSN 是裸文件名（`skillforge.db`），**busy_timeout 未设置（默认 0）**——MaxOpenConns=4 下两路并发写撞车会立即返回 `SQLITE_BUSY` 而非等待。§2.7 迁移点 2 的 `?_busy_timeout=5000` 从「顺手对齐」升级为**必需项**（dev 规模至今没暴露只因写少且快）
+  2. `synchronous` pragma 未设置（默认 FULL）。WAL 的标准配对是 NORMAL（仅在 checkpoint fsync；断电最多丢最后若干已提交事务、库不损坏）。审计完整性要求高，FULL 保留也完全扛得住上述量级——Phase 14 明确记录取舍即可，不构成阻塞
+- **年增长上界**：20k 问答/天 × 15 行 × 250 工作日 ≈ 7,500 万行/年 ≈ 35-75GB/年（现实更接近 1-3 千万行/年）。INSERT-only 锁定不变量下只增不减——这是**存储/备份问题**（Pitfall 20 → Phase 20 增长监控 + wrap 归档决策），不是吞吐问题；索引查询在亿级单表仍正常
+
+**DuckDB 侧（导入写入 + KPI 读）**：
+- 导入：省级业务数据月批 100 万-5000 万行。**逐行 INSERT ~1-5 万行/s = 数小时（不可接受）；Appender/批量 ~10 万-100 万行/s = 1-10 分钟（可接受）**——Phase 15 spec 必须钉死 Appender/批量路径，禁止逐行 INSERT 循环
+- KPI 读：50 并发只读连接（READ_ONLY ATTACH）单进程多线程是 DuckDB OLAP 主场；列存 + zone map 下聚合查询亚秒-秒级，与本里程碑写瓶颈无关
+- 单写者模型（导入单写队列）与 SQLite 文件锁、DuckDB 单进程写锁天然一致；部署边界 = **单后端实例**（Docker Compose 模型内，无水平扩副本共用文件的可能——本来也不是 v1 形态）
+
+**部署纪律（4 条，带入 Phase 14/15 spec）**：
+1. SQLite/DuckDB 文件**必须本地盘或本地 Docker 卷**——WAL 在 NFS/SMB 上不工作（企业内「放共享盘」是常见坑，部署文档必须写）
+2. busy_timeout=5000 + journal_mode=WAL 进 DSN（§2.7 迁移点 2，升级为必需）
+3. DuckDB 导入一律 Appender/批量（Phase 15 SC 写死）
+4. 审计体量增长监控 + 备份策略（`VACUUM INTO` 热备）——Phase 20 SC-4 + 里程碑 wrap
+
+**容量边界声明**：全省几万坐席实时查询（客服生产系统量级）超出 v1 单机文件模型——那是数仓/服务化场景，非本里程碑目标；v1 定位省分公司级内部数据支撑工具，边界与部署模型一致。
+
+**落进 roadmap 的强化**：Phase 14 SC-3 追加「并发读写 + 写入吞吐微基准门」；Phase 15 SC-1 追加「Appender 批量路径」。
+
 ## 3. 实现级风险（必须带入 Phase spec，非选型问题）
 
 ### 3.1 中文 CSV 编码（GBK/GB18030 + BOM）— 导入管线硬前提

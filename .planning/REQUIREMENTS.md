@@ -334,18 +334,18 @@ Which phases cover which requirements.
 | CMPL-06 | Phase 5 | Complete |
 | CMPL-07 | Phase 5 | Complete |
 | CMPL-08 | Phase 5 | Complete |
-| DATA-01 | v1.0 roadmap (pending) | Pending |
-| DATA-02 | v1.0 roadmap (pending) | Pending |
-| DATA-03 | v1.0 roadmap (pending) | Pending |
+| DATA-01 | Phase 15 | Pending |
+| DATA-02 | Phase 15 | Pending |
+| DATA-03 | Phase 16 | Pending |
 | DATA-04 | — | Deferred v1.1（外部授权通道） |
 | DATA-05 | — | Deferred v1.1（外部授权通道） |
 | DATA-06 | — | Deferred v1.1（外部授权通道） |
-| DATA-07 | v1.0 roadmap (pending) | Pending（仅 aggregated_only 模式） |
-| DATA-08 | v1.0 roadmap (pending) | Pending |
-| DATA-09 | v1.0 roadmap (pending) | Pending |
+| DATA-07 | Phase 16 | Pending（仅 aggregated_only 模式） |
+| DATA-08 | Phase 16 | Pending |
+| DATA-09 | Phase 16 | Pending |
 | DATA-10 | — | Deferred v1.1（外部授权通道） |
 | DATA-11 | — | Deferred v1.1（外部授权通道） |
-| DATA-12 | v1.0 roadmap (pending) | Pending |
+| DATA-12 | Phase 16 | Pending |
 | DATA-13 | — | Deferred v1.1（外部授权通道） |
 | DATA-14 | — | Deferred v1.1（外部授权通道） |
 | PLAT-04 | Phase 8 | Complete |
@@ -373,6 +373,43 @@ Which phases cover which requirements.
 | FAN-02 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
 | FAN-03 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
 | FAN-04 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
+| PLAT-09 | Phase 14 | Pending |
+| PLAT-10 | Phase 14 | Pending |
+| PLAT-11 | Phase 14 | Pending |
+| DATA-15 | Phase 15 | Pending |
+| DATA-16 | Phase 15 | Pending |
+| DATA-17 | Phase 15 | Pending |
+| KPI-01 | Phase 16 | Pending |
+| KPI-02 | Phase 16 | Pending |
+| DASH-01 | Phase 17 | Pending |
+| DASH-02 | Phase 17 | Pending |
+| DASH-03 | Phase 17 | Pending |
+| DASH-04 | Phase 17 | Pending |
+| DASH-05 | Phase 17 | Pending |
+| GEVL-09 | Phase 17 | Pending |
+| GEVL-10 | Phase 17 | Pending |
+| RPT-01 | Phase 18 | Pending |
+| RPT-02 | Phase 18 | Pending |
+| RPT-03 | Phase 18 | Pending |
+| RPT-04 | Phase 18 | Pending |
+| RPT-05 | Phase 18 | Pending |
+| FAN-05 | Phase 18 | Pending |
+| FAN-06 | Phase 18 | Pending |
+| PORT-01 | Phase 19 | Pending |
+| PORT-02 | Phase 19 | Pending |
+| PORT-03 | Phase 19 | Pending |
+| PORT-04 | Phase 19 | Pending |
+| PORT-05 | Phase 19 | Pending |
+| PORT-06 | Phase 19 | Pending |
+| PORT-07 | Phase 19 | Pending |
+| DATA-18 | Phase 19 | Pending |
+| GEVL-11 | Phase 19 | Pending |
+| ADM-01 | Phase 20 | Pending |
+| ADM-02 | Phase 20 | Pending |
+| ADM-03 | Phase 20 | Pending |
+| ADM-04 | Phase 20 | Pending |
+| ADM-05 | Phase 20 | Pending |
+| ADM-06 | Phase 20 | Pending |
 
 **Coverage:**
 
@@ -381,8 +418,8 @@ Which phases cover which requirements.
 - v0.8 requirements: 25 total (added 2026-08-17 via /gsd:new-milestone)
 - v0.8 mapped to phases: 25 (phases 8-13)
 - v1.0 requirements: 44 total (added 2026-08-21 via /gsd:new-milestone；7 条激活 DATA + 37 条新 ID：DATA-15..18 / KPI-01..02 / DASH-01..05 / RPT-01..05 / PORT-01..07 / ADM-01..06 / FAN-05..06 / GEVL-09..11 / PLAT-09..11)
-- v1.0 mapped to phases: 0（roadmap 生成时由 gsd-roadmapper 回填）
-- Unmapped (within active milestones): 44 → 待 v1.0 roadmap
+- v1.0 mapped to phases: 44 (phases 14-20; inline roadmap 2026-08-21)
+- Unmapped (within active milestones): 0 ✓
 
 **Phase distribution:**
 
@@ -403,7 +440,15 @@ Which phases cover which requirements.
 | Phase 12 (规划层 P8.3) | 5 | PLAN-01..05 |
 | Phase 13 (子 agent 扇出 P8.4) | 4 | FAN-01..04 |
 | **v0.8 Total** | **25** | |
+| Phase 14 (CGO 地基 + 平台信任地板 P10.0) | 3 | PLAT-09..11 |
+| Phase 15 (数据导入管线 + 导入即脱敏 P10.1) | 5 | DATA-01, DATA-02, DATA-15..17 |
+| Phase 16 (KPI 聚合通道 P10.2) | 7 | DATA-03, DATA-07..09, DATA-12, KPI-01, KPI-02 |
+| Phase 17 (KPI 仪表盘 Skill P10.3) | 7 | DASH-01..05, GEVL-09, GEVL-10 |
+| Phase 18 (业务月报 Skill P10.4) | 7 | RPT-01..05, FAN-05, FAN-06 |
+| Phase 19 (静态报告门户 + 调度器 P10.5) | 9 | PORT-01..07, DATA-18, GEVL-11 |
+| Phase 20 (管理台 P10.6) | 6 | ADM-01..06 |
+| **v1.0 Total** | **44** | |
 
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-08-21 — v1.0 milestone requirements (44) added; DATA-01..14 归并（7 激活 / 7 延 v1.1）；Out of Scope 扩充（NL2SQL / 去哈希 / 拖拽构建器 / PDF / 推送 / RBAC 等）*
+*Last updated: 2026-08-21 — v1.0 milestone requirements (44) added + mapped to phases 14-20（inline roadmap）; DATA-01..14 归并（7 激活 / 7 延 v1.1）；Out of Scope 扩充（NL2SQL / 去哈希 / 拖拽构建器 / PDF / 推送 / RBAC 等）*
