@@ -4,26 +4,26 @@ milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
 current_plan: 1
-status: executing
+status: verifying
 stopped_at: context exhaustion at 75% (2026-08-21)
-last_updated: "2026-08-22T09:20:37.610Z"
-last_activity: 2026-08-22
+last_updated: "2026-08-22T19:52:00Z"
+last_activity: 2026-08-23
 progress:
   total_phases: 20
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 80
-  completed_plans: 79
-  percent: 55
+  completed_plans: 82
+  percent: 60
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING
-Plan: 7 of 8 (Plan 03 COMPLETE 2026-08-22; Plan 04 COMPLETE 2026-08-22; next Plan 14-05 go-duckdb dependency)
-Status: Ready to execute
-Last activity: 2026-08-22
+Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING (UAT gap closure)
+Plan: 9 of 10 (Plan 09 gap-closure COMPLETE 2026-08-23 — legacy-DB migrate blocker FIXED: idx_audit_run_path now created after the ALTER loop; hermetic regression lock TestMigrateLegacyAuditUpgradePath; UAT Test 2 issue→pass + Test 6 blocked→pass, live re-verified on the real 115-row skillforge.db; commits dd81dd2 + e1c1a12; 11-stage phase gate re-run PASS, frozen locks untouched. Next: Plan 14-10 floor 1.1.0 re-anchor for UAT Test 4)
+Status: gap closure 1/2 — 14-10 pending
+Last activity: 2026-08-23
 
 # State — SkillForge
 
@@ -147,6 +147,9 @@ Resume File: None
 | D14-B3 | prompt_hash 覆盖合成全文（Phase 14 / Plan 14-01） | reprohash.PromptHash 第三参数从 Skill prompt 升级为 ComposePlatformPrompt 合成全文；digest 序 skillName → renderedPromptBody → modelVersion 不动（reprohash.go 零 diff）；TestPromptHashCoversFloor 双向断言 PASS；eval/frozen/compliance.lock.json prompt_hash 已重锁 58ffea08... → ca333fbadbfa30eb...（D14-B4 重锁链首段，hitl/fanout/platform-floor 归 14-04）。 |
 | D14-B4 | 地板文字任何改动 = 全量重跑纪律（Phase 14 / Plan 14-01） | semver 强制递增（PATCH 标点 / MINOR 新条款 / MAJOR 删 D14-A1 条目）+ compliance/hitl/fanout/platform-floor 四个冻结集全部重跑 + audit 可见变更；平台地板是每轮都发的产品级承诺，风险不对称。仅 14-01 即触发 compliance.lock.json 第一次重锁（其余三个归 14-04）。 |
 | D14-C1 | CGO sqlite 驱动切换 + DSN pragma 纪律（Phase 14 / Plan 14-03） | modernc.org/sqlite → mattn/go-sqlite3 v1.14.50；busy_timeout/WAL/foreign_keys 必须进 DSN 参数而非 post-open PRAGMA；任何 in-memory DSN 默认 MaxOpenConns=1 以避免 shared-cache 死锁；Makefile check-cgo 门必须在 go build 前通过。 |
+| D14-E1 | 索引-after-ALTER 顺序契约泛化（Phase 14 / Plan 14-09） | 任何引用可迁移列的 CREATE INDEX 必须以独立 const 在 migrate() 的 ALTER 循环之后 ExecContext，绝不内联进 schemaSQL（D11-C4 先例第二次适用——idx_audit_run_path 内联导致旧库启动即死 no such column: run_path，UAT Test 2 blocker）。回归锁 TestMigrateLegacyAuditUpgradePath 用文件级临时库构造 21 列旧表（hermetic :memory: 盲区永久补上）。 |
+| D14-E2 | live 复验 skill 字面量 = "compliance"（Phase 14 / Plan 14-09） | findSkill（chat.go:660，Phase-2 简化）只接受字面量 "compliance"，不认 manifest 真名 simple-qa——线上契约即该字面量（107/115 旧 audit 行为证）。UAT Test 2 face C + Test 6 chat 用 "compliance" 复验通过；未修（越 plan 范围、动 chat 路由语义），记 deferred-items.md 归 SYSK-05。 |
+| D14-E3 | Test 6 live 断言按 id 水位线划界（Phase 14 / Plan 14-09） | 断言 id > pre-chat max 的新行全部 platform_floor_version='1.0.0' + 旧行计数不变，而非计划原文的末 3 行全等（旧行 ALTER 后合法为 ''）。 |
 
 ---
 
@@ -189,7 +192,7 @@ Resume File: None
 
 ### Phase 10 Plan 04 — Task 2 live re-run
 
-- **Status:** Ready to execute
+- **Status:** Phase complete — ready for verification
 - **Blocked since:** 2026-08-18
 - **Reason:** Execution environment lacks the live stack required for the 35-case GLM/Milvus/BGE-M3 re-run. No `.env` file is present; `GLM_API_KEY`, `BGE_M3_URL`, and `MILVUS_ADDRESS` are not set; Docker Milvus + BGE-M3 endpoints are not confirmed reachable.
 - **Unblock action:** Operator populates `.env` and starts the Docker stack, then runs:
@@ -276,6 +279,7 @@ Resume File: None
 | Phase 13-p8-4-sub-agent-fan-out P02 | ~25m | 2 tasks | 4 files (1 created merge.go + 1 created merge_test.go + 2 modified orchestrator.go/orchestrator_test.go) |
 | Phase 14-p10-0-cgo-trust-floor P01 | ~25m | 3 tasks (T1 TDD + T2 TDD + T3 structural gate) | 7 files (4 created: platformfloor/platform_floor{,_test}.go + agent/platform_floor_test.go + contract/platform_floor_bypass_test.go; 3 modified: agent/{prompts,agent,platform_floor}.go + runtime/deep_agent.go + agent/hitl/threat_mitigations_test.go + eval/frozen/compliance.lock.json) |
 | Phase 14-p10-0-cgo-trust-floor P02 | 15m | 2 TDD tasks (audit floor-version column + admin prompt preview) | 14 files (3 created: store/sqlite/audit_test.go + server/platform_prompt{,_test}.go; 11 modified: store/{store,sqlite/{audit,approval_rules}}, agent/hitl/{audit_writer,audit_writer_test,threat_mitigations_test}, server/{chat,approval_api,approval_api_test,server}, cmd/spike-hitl/main.go) |
+| Phase 14-p10-0-cgo-trust-floor P09 | ~17m | 2 tasks (T1 TDD RED dd81dd2 + GREEN e1c1a12: idx_audit_run_path after ALTER loop + 3 legacy-upgrade regression tests; T2 live re-verify 0 code commits — UAT Test 2 issue→pass + Test 6 blocked→pass on real 115-row legacy skillforge.db) | 2 code files (1 created migrate_legacy_test.go 166 lines + 1 modified schema.go) + 11-stage phase gate re-run PASS |
 
 ## Session Continuity
 

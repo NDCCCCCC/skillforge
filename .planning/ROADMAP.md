@@ -45,7 +45,7 @@
 
 贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**。依赖主线严格线性：14 → 15 → 16 → 17 → 18 → 19；20（管理台）收尾聚合全链数据面。研究依据：`.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计 2026-08-21；PITFALLS.md 文内 P14..P20 为研究期占位编号，已映射到下方 Phase 14..20）。
 
-- [ ] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(in progress — 4/8 plans complete: 14-01 platform-floor composition, 14-02 audit floor version + admin preview, 14-03 CGO sqlite switch + DSN pragma + TestSqliteMattnZeroRegression, 14-04 frozen eval set + hermetic judge; next 14-05 go-duckdb connector)
+- [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-22 — 8/8 core plans; UAT 2026-08-23 gap closure: 14-09 legacy-DB migrate blocker fixed + UAT Test 2/6 live pass，14-10 floor 1.1.0 re-anchor pending)
 - [ ] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）
 - [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
@@ -442,7 +442,7 @@
 
 **Pitfalls addressed:** Pitfall 17（平台提示词 lockstep——skill.md 修改系统提示词时平台地板静默丢失；地板版本进审计行使其可检测）
 **Research flag:** STACK-VERIFICATION §1（gcc 环境三方案，推荐 MSYS2）+ §2.1（ATTACH 会话不持久 / Close() 刷 WAL / Windows 文件锁 DETACH）——全部为已验证事实，plan 期只需落到代码
-**Plans**: 8 plans in 7 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates；重锁排地板文案冻结之后）
+**Plans**: 10 plans in 8 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates → W8 UAT gap closure；重锁排地板文案冻结之后）
 
 Plans:
 **Wave 1**
@@ -468,11 +468,16 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 14-07-PLAN.md — compliance/hitl 锁重锁（prompt_hash 涟漪治理）+verify-phase-14.sh 9 段门+STRIDE-14
+- [x] 14-07-PLAN.md — compliance/hitl 锁重锁（prompt_hash 涟漪治理）+verify-phase-14.sh 9 段门+STRIDE-14
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 14-08-PLAN.md — Dockerfile CGO 翻转+Docker 构建 checkpoint+live judge 20 例 checkpoint（双 operator gate）
+- [x] 14-08-PLAN.md — Dockerfile CGO 翻转+Docker 构建 checkpoint+live judge 20 例 checkpoint（双 operator gate）
+
+**Wave 8** *(UAT 2026-08-23 gap closure — added post-verify)*
+
+- [x] 14-09-PLAN.md — 旧库迁移 blocker 修复（idx_audit_run_path 移到 ALTER 循环之后）+ 文件级旧库升级回归锁 + UAT Test 2/6 真机复验 pass
+- [ ] 14-10-PLAN.md — floor 1.1.0 re-anchor（UAT Test 4 live 复跑 19/20 → 长对话稀释锚定强化 + 重锁）
 
 **UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
 
@@ -663,7 +668,7 @@ Plans:
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-22 — Phase 14 Plan 03 complete (mattn/go-sqlite3 v1.14.50 + DSN _busy_timeout=5000/_journal_mode=WAL/_foreign_keys=1 + Makefile check-cgo gate + TestSqliteMattnZeroRegression); 14-01..14-04 in tree; next Wave 4 (14-05 go-duckdb connector). Prior: 2026-08-22 — Phase 14 Plan 02 complete (PLAT-10 audit floor version + admin prompt preview).*
+*Last updated: 2026-08-23 — Phase 14 Plan 14-09 (UAT gap closure) complete: idx_audit_run_path moved after the ALTER loop in migrate() (legacy pre-Phase-12 skillforge.db boots again) + TestMigrateLegacyAuditUpgradePath regression lock; UAT Test 2 issue→pass + Test 6 blocked→pass (live re-verified on the real 115-row DB); 11-stage phase gate re-run PASS, frozen locks untouched. Next: 14-10 floor 1.1.0 re-anchor. Prior: 2026-08-22 — Phase 14 core 8/8 complete.*
 
 ---
 
@@ -673,7 +678,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 6/8 plans executed
+**Plans:** 8/8 plans complete
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 

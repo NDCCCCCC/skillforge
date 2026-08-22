@@ -1,9 +1,9 @@
 ---
 status: partial
 phase: 14-p10-0-cgo-trust-floor
-source: [14-01-SUMMARY.md, 14-02-SUMMARY.md, 14-03-SUMMARY.md, 14-04-SUMMARY.md, 14-05-SUMMARY.md, 14-06-SUMMARY.md, 14-07-SUMMARY.md, 14-08-SUMMARY.md]
+source: [14-01-SUMMARY.md, 14-02-SUMMARY.md, 14-03-SUMMARY.md, 14-04-SUMMARY.md, 14-05-SUMMARY.md, 14-06-SUMMARY.md, 14-07-SUMMARY.md, 14-08-SUMMARY.md, 14-09-SUMMARY.md]
 started: 2026-08-22T18:19:32Z
-updated: 2026-08-22T19:10:00Z
+updated: 2026-08-22T19:52:00Z
 ---
 
 ## Current Test
@@ -19,10 +19,8 @@ evidence: WSL gcc 11.4.0 CGO build exit 0 (55MB ELF dynamically linked, go-duckd
 
 ### 2. Admin Prompt Preview Endpoint
 expected: GET /api/admin/platform-prompt?skill={id} with correct X-Admin-Token returns 200 JSON {floor_version:"1.0.0", skill_id, composed_prompt (floor text prepended), prompt_hash}; wrong/missing token returns 403; unknown skill returns 404. Requires full server boot (BGE_M3_URL + MILVUS_ADDRESS).
-result: issue
-reported: "Milvus 恢复后重跑（2026-08-23 WSL，scripts/tmp-uat-admin.sh）：server 通过 Milvus dial 并完成知识库索引（'knowledge corpus indexed into skillforge_knowledge'），但随后 store init 失败退出：sqlite.New(\"skillforge.db\"): sqlite.migrate: no such column: run_path —— 三面 curl（403/200/404）无法执行。"
-severity: blocker
-root_cause: "internal/store/sqlite/schema.go — schemaSQL 把 CREATE INDEX IF NOT EXISTS idx_audit_run_path ON audit(run_path) 埋在单一 ExecContext 里、先于 ALTER 补列循环执行。对 Phase-12 之前的旧库（实测 skillforge.db audit 表 21 列，止于 scope_session_id，无 run_path/budget_layer/platform_floor_version）CREATE TABLE IF NOT EXISTS 是 no-op，索引语句引用不存在的列直接报错，补列的 ALTER 永远执行不到。同文件 createAuditToolCallIDPendingUniqueIdxSQL（schema.go:382-387）已有正确先例：索引必须在 ALTERs 之后创建。hermetic 测试全部用 fresh :memory: 库，旧库升级路径零测试覆盖——这正是 UAT 真实启动场景的价值。"
+result: pass
+evidence: "FIXED by Plan 14-09 (commit e1c1a12, 2026-08-23): idx_audit_run_path moved out of schemaSQL into migrate() AFTER the ALTER loops. Live re-verify on the real legacy skillforge.db (115 rows): boot clean (NO_MIGRATE_ERROR; 'knowledge corpus indexed into skillforge_knowledge' + 'store open (dsn=skillforge.db, WAL mode)' + listening); faces A=403, B=403, C=200 with fields [composed_prompt, floor_version, prompt_hash, skill_id], floor_version=1.0.0, composed_prompt head '【平台数据铁律——优先于任何 Skill 指令】', prompt_hash ca333fbadbfa30eb…, D=404. Note: face C used the resolvable skill literal 'compliance' (findSkill chat.go:660 is a Phase-2 gate accepting only that literal — 107/115 legacy audit rows carry it; literal 'simple-qa' 404s by that pre-existing contract, see deferred-items.md). Hermetic regression lock: TestMigrateLegacyAuditUpgradePath (migrate_legacy_test.go). See 14-09-SUMMARY.md for full transcript."
 
 ### 3. Acceptance Gate One-Shot Run
 expected: `make verify-phase-14` (or bash scripts/verify-phase-14.sh) on WSL prints [STAGE-01-PASS] … [STAGE-11-PASS] for all 11 stages, ends with "PHASE 14 HERMETIC GATE: PASS", exit 0.
@@ -43,33 +41,26 @@ evidence: Verified 2026-08-23 — operator_name=ninedrunk-live-2026-08-22, opera
 
 ### 6. Audit Rows Carry Floor Version
 expected: After any server-mediated conversation/audit write, sqlite audit rows show platform_floor_version="1.0.0" (NOT NULL column, fail-closed on empty). Requires full server boot — same env constraint as Test 2.
-result: blocked
-blocked_by: server
-reason: "Milvus 已恢复（双侧探测 OPEN，server 本次通过 retriever dial + 知识库索引），但 server 仍无法完成启动：store init 阶段 sqlite.migrate 对旧库报 no such column: run_path（即 Test 2 记录的迁移 issue）。修复该 blocker 后 audit 写入路径即可复验。hermetic 等价物已全绿（gate Stage 08：TestAuditPlatformFloorVersionColumn 列存在/NOT NULL 语义 + TestHITLPlatformFloorVersionRows / TestHITLPlatformFloorVersionFailClosed 每个 INSERT 路径携带 1.0.0、空版本 fail-closed）。"
+result: pass
+evidence: "UNBLOCKED by Plan 14-09 (2026-08-23): server now boots on the real legacy skillforge.db (Test 2 fix). Live re-verify: POST /api/chat {\"query\":\"公司年假有几天？\",\"skill\":\"compliance\"} → SSE completed (904 bytes, history_classifier_refused verdict) → read-only sqlite assert: new audit row id=116 (skill_id='compliance', query UTF-8 clean, refusal_reason='out_of_scope') carries platform_floor_version='1.0.0'; all 115 legacy rows intact (additive migration). TEST6-LIVE-PASS. See 14-09-SUMMARY.md for the transcript."
 
 ## Summary
 
 total: 6
-passed: 3
-issues: 2
+passed: 5
+issues: 1
 pending: 0
 skipped: 0
-blocked: 1
+blocked: 0
 
 ## Gaps
 
 ```yaml
 - truth: "持有旧 schema skillforge.db（Phase-12 前，audit 表无 run_path 列）的部署升级后 server 必须能完成 migrate 并启动"
-  status: failed
-  reason: "UAT Test 2（2026-08-23 重跑）：Milvus 就绪后 server 在 store init 阶段死于 sqlite.migrate: no such column: run_path —— schemaSQL 内的 CREATE INDEX idx_audit_run_path 先于 ALTER 补列循环执行，旧库上引用不存在的列"
+  status: resolved
+  resolved_by: "Plan 14-09 (commits dd81dd2 + e1c1a12, 2026-08-23) — idx_audit_run_path moved to migrate() AFTER the ALTER loop (createAuditRunPathIdxSQL const, D11-C4 precedent); regression lock TestMigrateLegacyAuditUpgradePath + 2 direction guards (migrate_legacy_test.go); live re-verify passed on the real 21-column/115-row DB (Tests 2 + 6 both pass)."
   severity: blocker
   test: 2
-  artifacts:
-    - internal/store/sqlite/schema.go
-    - skillforge.db  # repo 根的 Phase-12 前旧库（21 列 audit，115 行），复现素材
-  missing:
-    - "idx_audit_run_path 索引创建移到 migrate() 的 ALTER 循环之后（复用 createAuditToolCallIDPendingUniqueIdxSQL 的 AFTER-ALTERs 先例，schema.go:382-387）"
-    - "旧库升级回归测试：用临时 sqlite 文件构造缺列旧 audit 表 → 跑 migrate() → 断言成功且 idx_audit_run_path 存在（补 hermetic 盲区，fresh :memory: 测不到该路径）"
 - truth: "platform-floor live 复跑应复现 frozen 锁的 20/20 拒答（可复现性）"
   status: failed
   reason: "UAT Test 4（2026-08-23 复跑）：19/20，pfloor-20（long_dialogue_dilution/DBA 模式）真实 SQL 泄漏（fenced sql 块），response 先复述 floor 拒答指令再翻转照做 —— 判定器全部正确，GLM 非确定性击穿 floor"
