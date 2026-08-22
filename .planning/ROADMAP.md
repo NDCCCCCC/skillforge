@@ -447,7 +447,7 @@
 Plans:
 **Wave 1**
 
-- [ ] 14-01-PLAN.md — 平台地板核心：常量+ComposePlatformPrompt 唯一出口+双路径收敛（D14-A4 上提）+4 测试锁+WalkDir 禁令门
+- [x] 14-01-PLAN.md — 平台地板核心：常量+ComposePlatformPrompt 唯一出口+双路径收敛（D14-A4 上提）+4 测试锁+WalkDir 禁令门
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

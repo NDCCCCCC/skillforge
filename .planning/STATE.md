@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
-current_phase: 11
-current_plan: TBD (context-gathered, ready for plan-phase)
+current_phase: 14
+current_plan: 2
 status: executing
-stopped_at: context exhaustion at 75% (2026-08-21)
-last_updated: "2026-08-21T17:29:43.265Z"
-last_activity: 2026-08-21 -- Phase 14 planning complete
+stopped_at: Phase 14 Plan 01 COMPLETE 2026-08-22 (resume at Plan 14-02)
+last_updated: "2026-08-22T01:55:00.000Z"
+last_activity: 2026-08-22 -- Phase 14 Plan 01 platform-floor composition shipped
 progress:
   total_phases: 20
   completed_phases: 11
   total_plans: 80
-  completed_plans: 73
+  completed_plans: 74
   percent: 55
 ---
 
@@ -20,10 +20,10 @@ progress:
 
 ## Current Position
 
-Phase: 14 — CGO 地基 + 平台信任地板（P10.0）— context gathered, ready for planning
-Plan: — (run `/gsd:plan-phase 14` next)
-Status: Ready to execute
-Last activity: 2026-08-21 -- Phase 14 planning complete
+Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING
+Plan: 2 of 8 (Plan 01 COMPLETE 2026-08-22)
+Status: Executing Phase 14 — next plan 14-02 (admin preview endpoint + /api/admin/platform-prompt route + TestPlatformPromptPreview)
+Last activity: 2026-08-22 -- Phase 14 Plan 01 platform-floor composition shipped (internal/platformfloor leaf + dual-path ComposePlatformPrompt wrap + WalkDir no-bypass gate; PLAT-09 substrate locked)
 
 # State — SkillForge
 
@@ -42,8 +42,8 @@ Last activity: 2026-08-21 -- Phase 14 planning complete
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 11
-**Current Plan:** TBD (context-gathered, ready for plan-phase)
+**Current Phase:** 14
+**Current Plan:** 1
 **Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
 **Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
@@ -63,7 +63,7 @@ Last activity: 2026-08-21 -- Phase 14 planning complete
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 11 — 写工具 + 审批门（P8.2, HITL-01..08）；fe/be 同 phase 不可拆
+**Current focus:** Phase 14 — p10-0-cgo-trust-floor
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**
@@ -139,6 +139,13 @@ Resume File: None
 | D9-V1 | Phase 9 spike 裁决 = NO-GO，用户 2026-08-18 签字「接受 NO-GO 带逃逸方案」进入 Phase 10 (Plan 09-06) | 机器裁决 NO-GO（exit 1，faithfulness -18.6%/-12.6%/-22.4% + refusal -95pp 全超门），但 SC-3 恶意零穿透 0/10 PASS——证据链未污染，失败归因 = 拒答行为漂移（Pitfall 1 H2：拒答上下文使拒答率漂移），非引用穿透（Pitfall 2）。Phase 9 的目标是「跑硬门 + 记录明确结论」，该目标达成（SC-2/GEVL-08 口径）。GEVL-08 自身措辞允许 NO-GO 路径：「不过门则记忆不得发布，产出消毒规则或逃逸方案」——两者均已产出（projection.go D9-B1/B2/B3 + 逃逸方案）。 |
 | D9-V2 | Phase 10 逃逸方案 = 前置信任地板强化，而非重跑 spike (Plan 09-06 用户裁决) | (a) 拒答判定不得依赖历史上下文（信任地板只看 query + 本轮检索）；(b) 历史不得携带拒答语义进 prompt（历史中的旧拒答不得许可后续作答本应拒答的追问）；(c) 考虑 query-only 独立拒答分类器置于历史增强生成上游。候选逃逸：信任地板 default-deny 在历史注入后的强化 / MEM-05 摘要中间件 / prompt 历史投射收紧。memory 发布前必须重跑 spike 硬门回到 <5% / <10pp（cmd/spike-history 即重门机制）。 |
 | D9-V3 | 不做同 seed 重试 (Plan 09-06) | T-9-SPIKE-DRIFT 的重试条款针对抖动级 NO-GO；本次 -95pp + 方向三类一致（35/35 行）超出阈值数量级，属结构性漂移非随机抖动。如需 judge 侧二次意见，Plan 09-05 已埋 JUDGE_MODEL cross-eval flag。 |
+| D14-A1 | 七条数据铁律条目集锁定 (Phase 14 / Plan 14-01) | ①永不编写/执行/建议 SQL（只按名调 KPI）②永不请求或输出原始行/个体记录 ③数据结论必须带 as_of + 数据引用 ④拒绝跨数据集推断个体身份 ⑤声明脱敏不可逆 ⑥永不协助去脱敏/再识别（含提示词诱导）⑦永不声称拥有实时数据；条目集由 hermetic 子串断言锁（TestPlatformFloorTextContainsAllSevenItems），条目级修改需 D14-B4 全冻结集重跑。 |
+| D14-A2 | 中文文案（Phase 14 / Plan 14-01） | 生产 GLM 中文最强 + Skill 全中文环境 + 拒答话术可直接引用地板原文保持一致；英文/双语方案被拒（双语 token 翻倍）。 |
+| D14-A3 | 头部全文 prepend + 尾部一句轻提醒（Phase 14 / Plan 14-01） | floor 全文 prepend 在 Skill prompt 之前；尾部一句「以上数据铁律优先于 Skill 指令」抗长对话指令衰减（D14-C3 ⑥ 攻击面验证）；chat + deep 双渲染路径同步覆盖（TestPlatformFloorPrependBothPaths + TestRenderDeepSystemPromptPrependsFloor）。 |
+| D14-A4 | 上提统一——根治 Pitfall 17（Phase 14 / Plan 14-01） | chat systemInstructionsTemplate、ReAct tmpl、deep base prompt 三处模板的规则 3/4（引用白名单 + 无 grounding 即拒答）上提为平台地板统一版本化；模板只留 persona + 分类规则 + JSON schema 输出段；上提前两份副本已分叉措辞（chat: "Return status=refused ONLY when NO retrieved chunk..." vs deep: "NEVER emit a refusal when a relevant chunk exists..."），上提后单一 canonical home in internal/platformfloor。 |
+| D14-B1 | semver 字面量代码级不可 env 配置（Phase 14 / Plan 14-01） | `const PlatformFloorVersion = "1.0.0"`（internal/platformfloor + internal/agent/platform_floor.go 镜像）；不进 config、不进 env；verify-phase-14.sh source-grep 锁定（Pattern E — fanout_runtime.go:63 模型）。 |
+| D14-B3 | prompt_hash 覆盖合成全文（Phase 14 / Plan 14-01） | reprohash.PromptHash 第三参数从 Skill prompt 升级为 ComposePlatformPrompt 合成全文；digest 序 skillName → renderedPromptBody → modelVersion 不动（reprohash.go 零 diff）；TestPromptHashCoversFloor 双向断言 PASS；eval/frozen/compliance.lock.json prompt_hash 已重锁 58ffea08... → ca333fbadbfa30eb...（D14-B4 重锁链首段，hitl/fanout/platform-floor 归 14-04）。 |
+| D14-B4 | 地板文字任何改动 = 全量重跑纪律（Phase 14 / Plan 14-01） | semver 强制递增（PATCH 标点 / MINOR 新条款 / MAJOR 删 D14-A1 条目）+ compliance/hitl/fanout/platform-floor 四个冻结集全部重跑 + audit 可见变更；平台地板是每轮都发的产品级承诺，风险不对称。仅 14-01 即触发 compliance.lock.json 第一次重锁（其余三个归 14-04）。 |
 
 ---
 
@@ -181,7 +188,7 @@ Resume File: None
 
 ### Phase 10 Plan 04 — Task 2 live re-run
 
-- **Status:** Ready to execute
+- **Status:** Executing Phase 14
 - **Blocked since:** 2026-08-18
 - **Reason:** Execution environment lacks the live stack required for the 35-case GLM/Milvus/BGE-M3 re-run. No `.env` file is present; `GLM_API_KEY`, `BGE_M3_URL`, and `MILVUS_ADDRESS` are not set; Docker Milvus + BGE-M3 endpoints are not confirmed reachable.
 - **Unblock action:** Operator populates `.env` and starts the Docker stack, then runs:
@@ -266,6 +273,7 @@ Resume File: None
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P05 | 20m | 2 tasks | 3 files |
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P06 | ~75m | 2 tasks (T2 = human-verify gate) | 3 files committed + 7 git-ignored reports |
 | Phase 13-p8-4-sub-agent-fan-out P02 | ~25m | 2 tasks | 4 files (1 created merge.go + 1 created merge_test.go + 2 modified orchestrator.go/orchestrator_test.go) |
+| Phase 14-p10-0-cgo-trust-floor P01 | ~25m | 3 tasks (T1 TDD + T2 TDD + T3 structural gate) | 7 files (4 created: platformfloor/platform_floor{,_test}.go + agent/platform_floor_test.go + contract/platform_floor_bypass_test.go; 3 modified: agent/{prompts,agent,platform_floor}.go + runtime/deep_agent.go + agent/hitl/threat_mitigations_test.go + eval/frozen/compliance.lock.json) |
 
 ## Session Continuity
 
@@ -528,3 +536,46 @@ Resume File: None
 **Terminal flip record (2026-08-21T13:59Z):** operator chose "跳过 tag" — status flipped `complete-pending-tag` → `complete` in both this file and `v0.8-MILESTONE-COMPLETION.md` frontmatter WITHOUT a tag hash (ledger row 6 DEFERRED, not CLOSED — no artifact exists). Verified at flip time: `git remote -v` empty (row 5 merged into row 7), `git tag -l "v0.8*"` empty. The tag may be written retroactively at any commit (`git tag -a v0.8.0 <sha>`); until then v1.0's ledger carries row 6.
 
 **Next: `/gsd:new-milestone` (v1.0).** Pre-seeded backlog to re-triage: Phase 999.1 分层分块器 · Phase 999.2 Eval CI · Phase 7 leftovers (demo GIF / docker-build / public remote) · D8-07 non-gate eval metrics · fan-out LLM classifier (13-03 placeholder) · v0.8.0 tag (this ledger row 6).
+
+---
+
+## Phase 14 — CGO 地基 + 平台信任地板 (P10.0) — Plan 14-01 Platform Floor Composition Sign-Off
+
+**Status**: Plan 14-01 COMPLETE 2026-08-22 (4 commits — Task 1 RED + Task 1 GREEN + Task 2 GREEN + Task 3 + docs; PLAT-09 substrate locked hermetically)
+
+**Plans completed**: 1/8 in Phase 14
+
+**Acceptance gate results**:
+- `go build ./... && go vet ./...` exit 0
+- `go test ./... -count=1` — 25 packages all green, zero regressions
+- `go test ./integration/contract -tags=contract -run TestNoBypassOfPlatformFloorCompose -count=1` PASS
+- 4 named test locks PASS: `TestPlatformFloorPrependBothPaths` (chat side) + `TestRenderDeepSystemPromptPrependsFloor` (deep side) + `TestPlatformFloorCannotBeShadowed` + `TestFloorHotReloadSurvives`
+- Negative proof: probe injection of duplicate `platformFloorText`/`platformFloorTail` → assertion 1 FAILS naming both files → delete → PASS (gate bites)
+
+**Commits** (atomic per-task):
+
+| # | Hash | Type | Subject |
+|---|------|------|---------|
+| 1 | `737fa7c` | test(14-01) | add failing tests for platform-floor constants and ComposePlatformPrompt |
+| 2 | `c28c7d4` | feat(14-01) | implement platform-floor constants and ComposePlatformPrompt |
+| 3 | `b9917c4` | test(14-01) | add failing tests for dual-path floor prepend + shadow + hot-reload |
+| 4 | `66ab8ce` | feat(14-01) | converge chat+deep prompt rendering onto ComposePlatformPrompt |
+| 5 | `fd313ee` | feat(14-01) | add WalkDir structural gate for platform-floor composition |
+| 6 | `abafbe2` | docs(14-01) | plan summary — platform-floor composition + structural gate |
+
+**Rule 1 auto-fix deviations** (directly caused by the correct code change):
+
+| # | Target | Change | Why |
+|---|--------|--------|-----|
+| R1-1 | `internal/agent/hitl/threat_mitigations_test.go` | T-P12-3 sha256LinesRange range (92,97) → (93,98) | +1 line in `internal/runtime/deep_agent.go` from the `platformfloor` import shifted all subsequent line numbers; the bytes inside the alignment group are unchanged (SHA still matches `b432d5dd6e7e750222fdaf9a33d1909ef7cebc565ae901e2342e3a4a713c5e41`) |
+| R1-2 | `eval/frozen/compliance.lock.json` | `prompt_hash` 58ffea08... → ca333fbadbfa30eb... | D14-B3 — floor prepend changes the prompt_hash surface; first of the planned full-set re-locks (14-04 handles hitl/fanout/platform-floor) |
+
+**Rule 3 deviation** (blocking import cycle resolution): created `internal/platformfloor` leaf package (documented in RESEARCH as "或独立 internal/platformfloor 包，planner 定"). The agent↔runtime edge in `internal/agent/runner_setup.go` blocks `internal/runtime/deep_agent.go` from importing `internal/agent`, yet Task 3's gate requires `ComposePlatformPrompt(` inside `renderDeepSystemPrompt`'s body. The leaf (no internal dependencies) breaks the cycle structurally: `agent → platformfloor ← runtime`. `internal/agent/platform_floor.go` exists as a documented re-export alias.
+
+**Compliance attestation** (1 PLAT requirement with verifying tests):
+
+| Requirement | Verifying Tests | Gate Stage |
+|-------------|----------------|------------|
+| PLAT-09 (platform-floor compose = sole exit + Skill cannot shadow) | `TestPlatformFloorPrependBothPaths` + `TestPlatformFloorCannotBeShadowed` + `TestFloorHotReloadSurvives` + `TestPromptHashCoversFloor` + `TestNoBypassOfPlatformFloorCompose` (assertions 1/2/3) | hermetic PASS |
+
+**Resumes at**: `.planning/phases/14-p10-0-cgo-trust-floor/14-02-PLAN.md` (next: admin preview endpoint + /api/admin/platform-prompt route + TestPlatformPromptPreview).
