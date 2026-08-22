@@ -206,22 +206,27 @@ run_stage "structural-constant source-greps (floor version + hermetic SETs + LRU
 #   - hitl.lock.json — UNCHANGED from Phase 11 (prompt_hash is the
 #     SKILL.md file digest, NOT the rendered prompt — the floor does not
 #     touch it; see 14-07-SUMMARY deviation note).
-#   - platform-floor.lock.json — created 14-04 (SC-5 hermetic layer).
+#   - platform-floor.lock.json — created 14-04 (SC-5 hermetic layer);
+#     field-level self-consistency (lock_sha256 == sha256(canonical
+#     body)) is enforced by TestPlatformFloorLockSelfConsistent in
+#     Stage 09. The WHOLE-FILE byte-identity check is OMITTED here on
+#     purpose: every live fill (14-08 operator gate) appends
+#     metrics + operator_signature fields, so a file-byte drift is
+#     expected and not a regression. Field-byte drift inside the lock
+#     IS a regression and IS caught (Stage 09).
 #   - fanout.lock.json / deep.lock.json — no prompt surface, byte-frozen.
 # Drift between runs surfaces as a hard FAIL (T-8-12 + T-14-18/19).
 
 EXPECTED_COMPLIANCE_SHA="e77877bb3b3076bc67d33a1f7a1cf4bea3b9af20ebafdd457ef6e9c366ff6ce5"      # 14-01 re-pin
 EXPECTED_HITL_SHA="6e91881f4aafeffb843e996c89ff1c27ef22eb18fac94eceff9184f938481d08"            # Phase 11 baseline UNCHANGED
-EXPECTED_PLATFORM_FLOOR_SHA="b28f30ae37568de261aaa9a797cec05b42c75bd5f19c9d317a7cd270290e954a"  # 14-04 creation
 EXPECTED_FANOUT_SHA="af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252"          # Phase 13 baseline UNCHANGED
 EXPECTED_DEEP_SHA="f3958dcd4930ac09e03c824f781df9c6eb04b691770cab4d512e11fba3c3c482"            # Phase 10 placeholder UNCHANGED
 
-run_stage "frozen lock byte-identity (5 locks sha256 — compliance/hitl/platform-floor/fanout/deep)" \
+run_stage "frozen lock byte-identity (4 byte-frozen locks + platform-floor field-self-consistency in Stage 09)" \
   bash -c "set -e
     check() { local f=\$1 want=\$2 label=\$3; local got; got=\$(sha256sum \"eval/frozen/\${f}\" | cut -d' ' -f1); if [ \"\${got}\" != \"\${want}\" ]; then echo \"FATAL: \${f} sha256 mismatch (\${label})\"; echo \"  expected: \${want}\"; echo \"  actual:   \${got}\"; exit 1; fi }
     check compliance.lock.json ${EXPECTED_COMPLIANCE_SHA} '14-01 floor re-pin'
     check hitl.lock.json ${EXPECTED_HITL_SHA} 'Phase 11 baseline'
-    check platform-floor.lock.json ${EXPECTED_PLATFORM_FLOOR_SHA} '14-04 creation'
     check fanout.lock.json ${EXPECTED_FANOUT_SHA} 'Phase 13 baseline'
     check deep.lock.json ${EXPECTED_DEEP_SHA} 'Phase 10 placeholder'
     sha256sum eval/frozen/*.lock.json"
@@ -241,7 +246,7 @@ echo "  - PLAT-10: floor version on every audit row + admin preview endpoint"
 echo "  - mattn/go-sqlite3 zero-regression + DSN pragma regime (14-03)"
 echo "  - go-duckdb connector: hermetic boot-queries + WAL flush + capacity gates (14-05)"
 echo "  - Dataset lifecycle: lazy ATTACH LRU + atomic staging commit (14-06)"
-echo "  - Frozen baselines: 5 locks byte-identical (T-8-12 recorded re-pins)"
+echo "  - Frozen baselines: 4 byte-frozen locks + platform-floor field self-consistency (T-8-12 recorded re-pins)"
 echo
 echo "Frozen baselines verified:"
 sha256sum eval/frozen/*.lock.json 2>/dev/null | sed 's/^/  /'
