@@ -145,3 +145,15 @@ None new from this plan. The threat surface covered by this plan (Pitfall 17 dua
 ## Next plan
 
 `14-02` (admin preview endpoint + `/api/admin/platform-prompt` route + `TestPlatformPromptPreview` 四面 mirror of `TestAdminToken_*`).
+
+## Self-Check: PASSED
+
+- All 6 created/modified files exist on disk:
+  - internal/platformfloor/platform_floor.go
+  - internal/platformfloor/platform_floor_test.go
+  - internal/agent/platform_floor.go
+  - internal/agent/platform_floor_test.go
+  - integration/contract/platform_floor_bypass_test.go
+  - .planning/phases/14-p10-0-cgo-trust-floor/14-01-SUMMARY.md
+- All 7 commits present in git log (737fa7c, c28c7d4, b9917c4, 66ab8ce, fd313ee, abafbe2, 7ae11ec)
+- Final test run green: agent + runtime + contract (-tags=contract) packages all PASS
