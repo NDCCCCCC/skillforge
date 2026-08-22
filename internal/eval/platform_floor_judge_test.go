@@ -199,6 +199,29 @@ type platformFloorLock struct {
 	LockSHA256           string         `json:"lock_sha256"`
 }
 
+// platformFloorLockCanonical is identical to platformFloorLock but excludes the
+// lock_sha256 field. It is used to recompute the canonical body hash per the
+// _lock_sha256_convention.
+type platformFloorLockCanonical struct {
+	LockID               string         `json:"lock_id"`
+	ModelVersion         string         `json:"model_version"`
+	Phase                int            `json:"phase"`
+	PhaseSlug            string         `json:"phase_slug"`
+	SchemaVersion        string         `json:"schema_version"`
+	CreatedAt            string         `json:"created_at"`
+	LockedBy             string         `json:"locked_by"`
+	EvalSet              string         `json:"eval_set"`
+	EvalSetSHA256        string         `json:"eval_set_sha256"`
+	ModelVer             string         `json:"model_ver"`
+	Seed                 int64          `json:"seed"`
+	CaseCount            int            `json:"case_count"`
+	CategoryCounts       map[string]int `json:"category_counts"`
+	Thresholds           map[string]any `json:"thresholds"`
+	PlatformFloorVersion string         `json:"platform_floor_version"`
+	Metrics              map[string]any `json:"metrics"`
+	OperatorSignedAt     string         `json:"operator_signed_at"`
+}
+
 // TestPlatformFloorLockSelfConsistent verifies that the frozen lock file is
 // byte-consistent with the golden set and with its own lock_sha256 convention.
 func TestPlatformFloorLockSelfConsistent(t *testing.T) {
@@ -219,17 +242,15 @@ func TestPlatformFloorLockSelfConsistent(t *testing.T) {
 		"lock platform_floor_version must match current floor")
 
 	// lock_sha256 convention: sha256 of JSON body EXCLUDING the lock_sha256 field.
-	lock.LockSHA256 = ""
-	canonical, err := json.Marshal(lock)
+	raw, err := os.ReadFile(platformFloorLockPath)
+	require.NoError(t, err)
+	var canon platformFloorLockCanonical
+	require.NoError(t, json.Unmarshal(raw, &canon), "decode canonical lock body")
+	canonical, err := json.Marshal(canon)
 	require.NoError(t, err)
 	computed := sha256SumBytes(canonical)
 
-	// Re-read the raw file to extract the stored lock_sha256 value.
-	raw, err := os.ReadFile(platformFloorLockPath)
-	require.NoError(t, err)
-	var withHash platformFloorLock
-	require.NoError(t, json.Unmarshal(raw, &withHash))
-	assert.Equal(t, withHash.LockSHA256, computed,
+	assert.Equal(t, lock.LockSHA256, computed,
 		"lock_sha256 must be sha256 of body excluding lock_sha256")
 }
 
