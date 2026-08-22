@@ -1,13 +1,19 @@
 # SkillForge backend image — multi-stage Go build (D7-04 source build).
 #
-# Build stage: golang:1.25-alpine (matches go.mod `go 1.25.0`).
-# Runtime stage: alpine:3.20 + ca-certificates + tzdata + the static binary
+# Build stage: golang:1.25-alpine + build-base (matches go.mod `go 1.25.0`).
+# Runtime stage: alpine:3.20 + ca-certificates + tzdata + the CGO binary
+# (dynamically linked against musl libc, shipped in the alpine runtime)
 # + skills/ + knowledge/ (runtime data the loader + indexer scan).
-# CGO_ENABLED=0 is safe because modernc.org/sqlite is pure Go (no cgo).
+# CGO_ENABLED=1 required: go-duckdb + mattn/go-sqlite3 link C engines
+# (see Makefile check-cgo / MSYS2 guidance for local Windows builds).
 # All base images are pinned to specific tags (T-7-OSS-CONTAINER mitigation).
 
 # ---------- build stage ----------
 FROM golang:1.25-alpine AS builder
+# build-base = gcc + musl-dev + make: the C toolchain CGO needs to link
+# go-duckdb v2.4.3 and mattn/go-sqlite3 v1.14.50 (Pitfall 6: CGO_ENABLED=1
+# without a compiler in the builder fails the build).
+RUN apk add --no-cache build-base
 WORKDIR /src
 # Copy deps first to leverage the layer cache (go.sum is committed).
 COPY go.mod go.sum ./
@@ -16,11 +22,14 @@ RUN go mod download
 # backend source + skills/ + knowledge/ + web/ only; .planning/ .git/ .env
 # *.exe node_modules/ web/dist/ are excluded).
 COPY . .
-# Pure-static build:
+# CGO build (dynamic, links against the builder's musl):
 #   -trimpath       strips $GOPATH / build-machine paths from the binary
 #   -ldflags="-s -w" strips debug symbols + DWARF table
-#   CGO_ENABLED=0    no cgo -> static binary, runs on alpine/distroless
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/skillforge ./cmd/server
+#   CGO_ENABLED=1    links the duckdb + sqlite3 C engines; the runtime stage
+#                    is alpine (musl libc present) so the binary runs as-is.
+#                    Do NOT switch the runtime to distroless/scratch without
+#                    an explicit musl static-link story (T-14-21).
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/skillforge ./cmd/server
 
 # ---------- runtime stage ----------
 FROM alpine:3.20
