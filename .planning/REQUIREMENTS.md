@@ -217,7 +217,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 生产化 — 平台级信任地板 (PLAT)
 
-- [ ] **PLAT-09**: 平台级隐藏系统提示词——代码级固定、prepend 于 Skill prompt、Skill 不可见不可覆盖、热重载存活；数据维度铁律内建（永不写 SQL 只调注册 KPI 函数等）
+- [x] **PLAT-09**: 平台级隐藏系统提示词——代码级固定、prepend 于 Skill prompt、Skill 不可见不可覆盖、热重载存活；数据维度铁律内建（永不写 SQL 只调注册 KPI 函数等）
 - [x] **PLAT-10**: 审计行携带 platform_prompt 版本；admin 可预览 Skill + 平台合成后的有效 prompt
 - [x] **PLAT-11**: `platform-floor.jsonl` 冻结集断言平台层不变量（诱导写 raw SQL → 拒答）
 
@@ -373,7 +373,7 @@ Which phases cover which requirements.
 | FAN-02 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
 | FAN-03 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
 | FAN-04 | Phase 13 | Complete (Phase 13 gate PASS 9/9 hermetic + live UAT operator-signed 2026-08-21) |
-| PLAT-09 | Phase 14 | Pending |
+| PLAT-09 | Phase 14 | Complete (14-01 + 14-10 SUMMARY; single ComposePlatformPrompt exit + unshadowable + hot-reload survives + WalkDir no-bypass; 1.1.0 anti-dilution re-anchor live-verified 20/20) |
 | PLAT-10 | Phase 14 | Complete (14-02 SUMMARY; audit platform_floor_version column + all 5 INSERT paths + admin preview endpoint) |
 | PLAT-11 | Phase 14 | Complete (14-04 SUMMARY; 20-case frozen set + JudgeHermetic + platform-floor.lock.json) |
 | DATA-15 | Phase 15 | Pending |

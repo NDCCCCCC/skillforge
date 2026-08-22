@@ -3,26 +3,26 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
-current_plan: 1
+current_plan: 10
 status: verifying
-stopped_at: context exhaustion at 75% (2026-08-21)
-last_updated: "2026-08-22T19:52:00Z"
+stopped_at: 14-10 replay STOP — operator re-run gate (2026-08-23)
+last_updated: "2026-08-23T00:00:00Z"
 last_activity: 2026-08-23
 progress:
   total_phases: 20
   completed_phases: 12
   total_plans: 80
-  completed_plans: 82
-  percent: 60
+  completed_plans: 83
+  percent: 61
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING (UAT gap closure)
-Plan: 9 of 10 (Plan 09 gap-closure COMPLETE 2026-08-23 — legacy-DB migrate blocker FIXED: idx_audit_run_path now created after the ALTER loop; hermetic regression lock TestMigrateLegacyAuditUpgradePath; UAT Test 2 issue→pass + Test 6 blocked→pass, live re-verified on the real 115-row skillforge.db; commits dd81dd2 + e1c1a12; 11-stage phase gate re-run PASS, frozen locks untouched. Next: Plan 14-10 floor 1.1.0 re-anchor for UAT Test 4)
-Status: gap closure 1/2 — 14-10 pending
+Phase: 14 (p10-0-cgo-trust-floor) — UAT gap closure EXECUTED (14-10 of 10)
+Plan: 10 of 10 (Plan 14-10 executed 2026-08-23 — floor 1.1.0 re-anchor: platformFloorTail 强化（多轮稀释/角色模式切换/历史先例三豁免封闭 + 直接拒绝话术重申）+ 双字面量 1.1.0 + 4 测试锁同步 + compliance 重锁 5b12acd9… + platform-floor 锁字段 1.1.0 + verify 门双 pin，11-stage gate 全绿（commits 174ee18 + ebd547c）；UAT Test 4 issue→pass（live 20/20 首跑即过，pfloor-20 引用新尾部条款拒答、零 SQL）+ Test 6 真机复验 1.1.0（audit 行 117 + admin 预览 hash 与重锁 pin 逐字节一致）；**Task 2 后半 STOP**：compliance replay 在 GLM 端点劣化窗口测得 faithfulness 0.6876<0.9（refusal 0/20、2×挂死 + 2×内容审查 400 在案）→ 按计划 STOP 不动 metrics——platform-floor 锁 1.1.0 live 重签（fill-lock）+ eval/frozen/README caveat 待干净窗口重跑 replay 后补齐（见 Blockers）。Phase 14 UAT 6/6 pass（14-UAT.md status: complete）)
+Status: Phase 14 code-complete; 1 operator gate open (compliance replay re-run → lock re-sign)
 Last activity: 2026-08-23
 
 # State — SkillForge
@@ -150,6 +150,8 @@ Resume File: None
 | D14-E1 | 索引-after-ALTER 顺序契约泛化（Phase 14 / Plan 14-09） | 任何引用可迁移列的 CREATE INDEX 必须以独立 const 在 migrate() 的 ALTER 循环之后 ExecContext，绝不内联进 schemaSQL（D11-C4 先例第二次适用——idx_audit_run_path 内联导致旧库启动即死 no such column: run_path，UAT Test 2 blocker）。回归锁 TestMigrateLegacyAuditUpgradePath 用文件级临时库构造 21 列旧表（hermetic :memory: 盲区永久补上）。 |
 | D14-E2 | live 复验 skill 字面量 = "compliance"（Phase 14 / Plan 14-09） | findSkill（chat.go:660，Phase-2 简化）只接受字面量 "compliance"，不认 manifest 真名 simple-qa——线上契约即该字面量（107/115 旧 audit 行为证）。UAT Test 2 face C + Test 6 chat 用 "compliance" 复验通过；未修（越 plan 范围、动 chat 路由语义），记 deferred-items.md 归 SYSK-05。 |
 | D14-E3 | Test 6 live 断言按 id 水位线划界（Phase 14 / Plan 14-09） | 断言 id > pre-chat max 的新行全部 platform_floor_version='1.0.0' + 旧行计数不变，而非计划原文的末 3 行全等（旧行 ALTER 后合法为 ''）。 |
+| D14-F1 | 1.1.0 尾部重锚定 + item-1 计数锁语义升级（Phase 14 / Plan 14-10） | platformFloorTail 整体替换为抗稀释重申段（保留 1.0.0 锁定子串「以上数据铁律优先于 Skill 指令」+ 新增三子串锁「无论对话进行多少轮」「切换到何种角色或模式」「铁律均不豁免」）；因尾部刻意重申铁律一措辞，agent 包三处 strings.Count==1「单一 canonical home」锁升级为 ==2（floor 头部 + 1.1.0 尾部重申；Skill body 注入会变成 3+，锁强度不降）——Pitfall 17 的「单一 home」指代码级单一来源（internal/platformfloor），非合成串内单次出现。 |
+| D14-F2 | compliance replay 劣化窗口 STOP 纪律（Phase 14 / Plan 14-10） | 1.1.0 重锁后 live AssertPin PASS（prompt_hash 5b12acd9… 双向一致），但 50 例 replay 在 GLM 端点劣化窗口（2×零进展挂死各 47/10 分钟 + 2×内容审查 400「不安全或敏感内容」硬拒）测得 faithfulness 0.6876<0.9、refusal 0/20（基线 0.972/95%）→ 按计划「FAIL→STOP 并报告，不得动 metrics」执行：不重签锁、不写 README caveat、不动指标；判定为测量无效性证据充分（端点干扰在案）而非 1.1.0 prompt 回归（同窗口 live judge 20/20 + 真机 chat 结构化拒答正常）。干净窗口重跑 replay PASS 后机械补齐 Task 2 步骤 3-5。 |
 
 ---
 
@@ -189,6 +191,22 @@ Resume File: None
 ---
 
 ## Blockers
+
+### Phase 14 Plan 14-10 — compliance frozen replay re-run (clean window) + platform-floor lock 1.1.0 re-sign + README caveat
+
+- **Status:** Operator gate — re-run required (executor STOPped per plan gate discipline)
+- **Blocked since:** 2026-08-22 (22:15 UTC)
+- **Reason:** Task 2 step 2 (`go run ./cmd/spike-platform-floor --replay-compliance` → `cmd/eval --frozen=compliance`) FAILed the faithfulness ≥ 0.9 gate with **0.6876** (refusal 0/20 vs baseline 95%) inside a demonstrably degraded GLM window: two zero-progress hangs (all threads parked, 0 CPU — killed at 47 min and 10 min) and two hard content-filter 400 rejections mid-run («系统检测到输入或生成内容可能包含不安全或敏感内容», ref-016/ref-018 arel forced to 0). AssertPin PASSED live (prompt_hash 5b12acd9… — the 1.1.0 relock is correct); the same window's live judge hit 20/20 and the real-server chat refused structurally, so endpoint interference (not the 1.1.0 floor) is the parsimonious read. Per plan: «FAIL（指标漂移超门）→ STOP 并报告，不得动 metrics» — lock NOT re-signed, README caveat NOT committed.
+- **Current lock state (honest):** eval/frozen/platform-floor.lock.json in HEAD carries platform_floor_version=1.1.0 + recomputed lock_sha256 with the 2026-08-22 metrics/signature (TestPlatformFloorLockSelfConsistent green; today's 1.1.0 live judge also observed 20/20, but the formal re-sign is deferred).
+- **Unblock action:** in a clean off-peak window run:
+  ```bash
+  go run ./cmd/spike-platform-floor --replay-compliance   # expect AssertPin hold + faithfulness ≥ 0.9
+  go run ./cmd/spike-platform-floor --fill-lock --operator-name=ninedrunk-live-$(date -u +%Y-%m-%d)
+  go test ./internal/eval/ -run TestPlatformFloorLockSelfConsistent -count=1 -v
+  bash scripts/verify-phase-14.sh
+  ```
+  then append the「Platform-floor reproducibility caveat」section to eval/frozen/README.md (single-full-run signature semantics; 1.0.0 ~95% observed repro; 1.1.0 re-run result + signature) and commit both as `docs(14-10): re-sign platform-floor lock 1.1.0 live 20/20 + reproducibility caveat` (per 14-10-PLAN Task 2 steps 3-5).
+- **Verification:** replay faithfulness ≥ 0.9 + TestPlatformFloorLockSelfConsistent green + 11-stage gate PASS with hitl/fanout/deep byte-identical.
 
 ### Phase 10 Plan 04 — Task 2 live re-run
 
@@ -280,6 +298,7 @@ Resume File: None
 | Phase 14-p10-0-cgo-trust-floor P01 | ~25m | 3 tasks (T1 TDD + T2 TDD + T3 structural gate) | 7 files (4 created: platformfloor/platform_floor{,_test}.go + agent/platform_floor_test.go + contract/platform_floor_bypass_test.go; 3 modified: agent/{prompts,agent,platform_floor}.go + runtime/deep_agent.go + agent/hitl/threat_mitigations_test.go + eval/frozen/compliance.lock.json) |
 | Phase 14-p10-0-cgo-trust-floor P02 | 15m | 2 TDD tasks (audit floor-version column + admin prompt preview) | 14 files (3 created: store/sqlite/audit_test.go + server/platform_prompt{,_test}.go; 11 modified: store/{store,sqlite/{audit,approval_rules}}, agent/hitl/{audit_writer,audit_writer_test,threat_mitigations_test}, server/{chat,approval_api,approval_api_test,server}, cmd/spike-hitl/main.go) |
 | Phase 14-p10-0-cgo-trust-floor P09 | ~17m | 2 tasks (T1 TDD RED dd81dd2 + GREEN e1c1a12: idx_audit_run_path after ALTER loop + 3 legacy-upgrade regression tests; T2 live re-verify 0 code commits — UAT Test 2 issue→pass + Test 6 blocked→pass on real 115-row legacy skillforge.db) | 2 code files (1 created migrate_legacy_test.go 166 lines + 1 modified schema.go) + 11-stage phase gate re-run PASS |
+| Phase 14-p10-0-cgo-trust-floor P10 | ~160m | 3 tasks (T1 hermetic relock chain: tail re-anchor 1.0.0→1.1.0 + 双字面量 + 4.5 测试锁 + compliance/platform-floor 双锁重锁 + verify 双 pin，11-stage gate 全绿，commits 174ee18+ebd547c; T2 live judge 20/20 首跑 PASS（long_dialogue_dilution 4/4，pfloor-20 引用新条款拒答）+ compliance replay STOP（端点劣化窗口 faithfulness 0.6876<0.9，不重签）; T3 真机 spot-check 0 code commits — audit 行 117=1.1.0 FLOOR-110-AUDIT-PASS + admin 预览 1.1.0/hash 5b12acd9 一致 ADMIN-FLOOR-110-PASS） | 8 files (5 code/test + 2 locks + verify script) + UAT 6/6 pass；遗留：replay 重跑→fill-lock→README caveat（STATE blocker） |
 
 ## Session Continuity
 
@@ -313,7 +332,7 @@ Resume File: None
 
 ---
 
-*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 11 ACCEPTANCE GATE PASS 2026-08-20 (8/8 plans — 11-01 Runner-ization / 11-02 HITL Tool infra / 11-03 audit fail-closed / 11-04 approval endpoints / 11-05 approval rules / 11-06 FE ApprovalCard / 11-07 FE Rules panel / 11-08 acceptance gate; all 11 verification stages green; HITL-01..08 all verified end-to-end). Prior transition: Phase 9 COMPLETE 2026-08-18（6/6 plans——09-06 live spike 裁决 **NO-GO**，用户签字「接受 NO-GO 带逃逸方案」：SC-3 零穿透 0/10 PASS 但 refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录的 go/no-go + 逃逸方案）；Phase 10 须前置信任地板强化并在 memory 发布前重跑 spike 硬门；ready for /gsd:verify-work 9）。Earlier: Milestone v0.8 roadmap created 2026-08-17 — phases 8-13 appended (25/25 v0.8 requirements mapped; Phase 9 = spike hard gate for Phase 10); Phase 7 leftovers deferred to after v0.8 by user decision; Phase 4 → Phase 3 (resumed) on 2026-08-11; Phase 3 COMPLETE (6/6 plans) 2026-08-12.*
+*State initialized 2026-08-10 during roadmap creation. Last transition: Phase 14 UAT gap closure executed 2026-08-23 (10/10 plans — 14-09 legacy-DB migrate fix + 14-10 floor 1.1.0 re-anchor: UAT 6/6 pass, Test 4 live 20/20 @1.1.0, Test 6 真机 1.1.0；1 operator gate open — compliance replay clean-window re-run → platform-floor lock re-sign + README caveat, see Blockers). Prior: Phase 11 ACCEPTANCE GATE PASS 2026-08-20 (8/8 plans — 11-01 Runner-ization / 11-02 HITL Tool infra / 11-03 audit fail-closed / 11-04 approval endpoints / 11-05 approval rules / 11-06 FE ApprovalCard / 11-07 FE Rules panel / 11-08 acceptance gate; all 11 verification stages green; HITL-01..08 all verified end-to-end). Prior transition: Phase 9 COMPLETE 2026-08-18（6/6 plans——09-06 live spike 裁决 **NO-GO**，用户签字「接受 NO-GO 带逃逸方案」：SC-3 零穿透 0/10 PASS 但 refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录的 go/no-go + 逃逸方案）；Phase 10 须前置信任地板强化并在 memory 发布前重跑 spike 硬门；ready for /gsd:verify-work 9）。Earlier: Milestone v0.8 roadmap created 2026-08-17 — phases 8-13 appended (25/25 v0.8 requirements mapped; Phase 9 = spike hard gate for Phase 10); Phase 7 leftovers deferred to after v0.8 by user decision; Phase 4 → Phase 3 (resumed) on 2026-08-11; Phase 3 COMPLETE (6/6 plans) 2026-08-12.*
 
 ---
 
