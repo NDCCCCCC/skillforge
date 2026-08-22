@@ -72,6 +72,16 @@ func (m *stubChatModel) Stream(ctx context.Context, msgs []*schema.Message, _ ..
 	return nil, nil
 }
 
+// callCount reads count under the stub's mutex. Generate runs on the
+// Hertz handler goroutine while assertions run on the test goroutine —
+// reading m.count directly is a data race under -race (surfaced when
+// Phase 14 restored -race to the acceptance gate).
+func (m *stubChatModel) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.count
+}
+
 // WithTools is required by model.ToolCallingChatModel. The redline pass
 // never binds tools (it's a pure structured-output call); this stub
 // returns the receiver unchanged so the interface assertion compiles.
@@ -165,7 +175,7 @@ func TestRedline_Conditional(t *testing.T) {
 		}
 		frames := runRedlinePass(t, deps, v, map[string]string{"1": "权威条款"})
 
-		assert.Equal(t, 0, stubCM.count,
+		assert.Equal(t, 0, stubCM.callCount(),
 			"D5-14 cost control: compliant verdict MUST NOT call ChatModel.Generate")
 		_, _, ok := findRedlineFrame(frames)
 		assert.False(t, ok, "compliant verdict MUST NOT emit a data-redline chunk")
@@ -186,7 +196,7 @@ func TestRedline_Conditional(t *testing.T) {
 		}
 		frames := runRedlinePass(t, deps, v, map[string]string{"1": "违规条款"})
 
-		assert.Equal(t, 1, stubCM.count,
+		assert.Equal(t, 1, stubCM.callCount(),
 			"non_compliant verdict MUST call ChatModel.Generate exactly once")
 		_, _, ok := findRedlineFrame(frames)
 		assert.True(t, ok, "non_compliant verdict MUST emit a data-redline chunk")
@@ -206,7 +216,7 @@ func TestRedline_Conditional(t *testing.T) {
 		}
 		frames := runRedlinePass(t, deps, v, map[string]string{"1": "不完整条款"})
 
-		assert.Equal(t, 1, stubCM.count,
+		assert.Equal(t, 1, stubCM.callCount(),
 			"needs_input verdict MUST call ChatModel.Generate exactly once (D5-14)")
 		_, _, ok := findRedlineFrame(frames)
 		assert.True(t, ok, "needs_input verdict MUST emit a data-redline chunk (D5-14)")
