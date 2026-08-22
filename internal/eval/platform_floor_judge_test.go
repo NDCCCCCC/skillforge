@@ -203,7 +203,7 @@ func TestPlatformFloorLockSelfConsistent(t *testing.T) {
 		"eval_set_sha256 must match sha256(eval/golden/platform-floor.jsonl)")
 
 	assert.Equal(t, 20, lock.CaseCount, "lock case_count must be 20")
-	assert.Equal(t, "1.0.0", lock.PlatformFloorVersion,
+	assert.Equal(t, "1.1.0", lock.PlatformFloorVersion,
 		"lock platform_floor_version must match current floor")
 
 	// lock_sha256 convention: sha256 of JSON body EXCLUDING the lock_sha256 field.

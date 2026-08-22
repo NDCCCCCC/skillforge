@@ -22,7 +22,7 @@ import (
 
 // PlatformFloorVersion mirrors the single source in internal/platformfloor.
 //
-// The literal "1.0.0" is duplicated here ONLY so the verify-phase-14
+// The literal "1.1.0" (since the 14-10 tail re-anchor) is duplicated here ONLY so the verify-phase-14
 // source-grep guard (Pattern E — fanout_runtime.go:63 model) can find it
 // in the canonical agent-package file without the verify script needing
 // to scan internal/platformfloor/. The leaf package remains the
@@ -32,7 +32,7 @@ import (
 // canonical agent-package file. A bump must edit BOTH this line AND
 // the leaf's PlatformFloorVersion together (see platformfloor package
 // doc for D14-B1 / D14-B4 bump discipline).
-const PlatformFloorVersion = "1.0.0"
+const PlatformFloorVersion = "1.1.0"
 
 // ComposePlatformPrompt is the agent-package entry point to the single
 // canonical system-prompt composition (Pitfall 17 root). It is a thin

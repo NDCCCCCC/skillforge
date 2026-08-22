@@ -32,8 +32,8 @@ import (
 // resolve to the same semver; the agent literal exists for source-grep
 // visibility — see internal/agent/platform_floor.go godoc).
 func TestPlatformFloorVersionLocked(t *testing.T) {
-	if PlatformFloorVersion != "1.0.0" {
-		t.Fatalf("agent.PlatformFloorVersion = %q, want \"1.0.0\" (D14-B1 initial lock)", PlatformFloorVersion)
+	if PlatformFloorVersion != "1.1.0" {
+		t.Fatalf("agent.PlatformFloorVersion = %q, want \"1.1.0\" (D14-B1; 1.1.0 = 14-10 tail re-anchor)", PlatformFloorVersion)
 	}
 	if PlatformFloorVersion != platformfloor.PlatformFloorVersion {
 		t.Fatalf("agent.PlatformFloorVersion (%q) != platformfloor.PlatformFloorVersion (%q) — re-export drift",
@@ -356,12 +356,15 @@ temperature: 0.0
 		t.Fatalf("shadow SKILL.md moved/deleted the floor tail\n got suffix: %q",
 			rendered[max(0, len(rendered)-200):])
 	}
-	// (c) The D14-A1 substring count is exactly 1 — the floor is the
-	// single canonical home (Pitfall 17). The shadow body cannot
-	// duplicate it (no injection channel), and the static Skill
-	// template doesn't carry the items.
-	if got := strings.Count(rendered, "永不编写、执行或建议 SQL"); got != 1 {
-		t.Errorf("D14-A1 item 1 substring count = %d, want 1 (floor must be the single canonical home)", got)
+	// (c) The D14-A1 item-1 substring count is exactly 2 — once in the
+	// floor header (D14-A1 item 1) and once in the 1.1.0 tail's
+	// deliberate restatement (14-10 re-anchor closes the pfloor-20
+	// dilution escape hatch). The floor remains the single canonical
+	// CODE-LEVEL home (Pitfall 17): the shadow body cannot duplicate it
+	// (no injection channel — a Skill-body leak would count 3+), and
+	// the static Skill template doesn't carry the items.
+	if got := strings.Count(rendered, "永不编写、执行或建议 SQL"); got != 2 {
+		t.Errorf("D14-A1 item 1 substring count = %d, want 2 (floor header + 1.1.0 tail restatement; Skill body must add none)", got)
 	}
 	// (d) The shadow phrases DO NOT appear in the rendered prompt at
 	// all — the Skill body is structurally isolated from the system
@@ -391,8 +394,9 @@ temperature: 0.0
 //   - Both v1 and v2 renders carry the floor header + tail.
 //   - Both renders are byte-identical (the system prompt does not
 //     depend on Skill body content).
-//   - The seven-item substring count is exactly 1 on both renders
-//     (no duplication from the Skill body).
+//   - The item-1 substring count is exactly 2 on both renders (floor
+//     header + the 1.1.0 tail's restatement — no duplication from the
+//     Skill body; a Skill-body copy would make it 3).
 //
 // We exercise the Loader's Scan re-run path (the same code path
 // triggered by fsnotify CREATE/CHMOD/REMOVE events in production;
@@ -449,8 +453,8 @@ temperature: 0.0
 	if !strings.HasSuffix(r1, tail) {
 		t.Errorf("v1 render missing floor tail\n got suffix: %q", r1[max(0, len(r1)-200):])
 	}
-	if got := strings.Count(r1, "永不编写、执行或建议 SQL"); got != 1 {
-		t.Errorf("v1 D14-A1 item 1 count = %d, want 1", got)
+	if got := strings.Count(r1, "永不编写、执行或建议 SQL"); got != 2 {
+		t.Errorf("v1 D14-A1 item 1 count = %d, want 2 (floor header + 1.1.0 tail restatement)", got)
 	}
 
 	// v2: reload with a totally different body (simulating an editor
@@ -474,8 +478,8 @@ temperature: 0.0
 	if !strings.HasSuffix(r2, tail) {
 		t.Errorf("v2 render missing floor tail after reload\n got suffix: %q", r2[max(0, len(r2)-200):])
 	}
-	if got := strings.Count(r2, "永不编写、执行或建议 SQL"); got != 1 {
-		t.Errorf("v2 D14-A1 item 1 count = %d, want 1 (floor is single canonical home; Skill body cannot duplicate)", got)
+	if got := strings.Count(r2, "永不编写、执行或建议 SQL"); got != 2 {
+		t.Errorf("v2 D14-A1 item 1 count = %d, want 2 (floor header + 1.1.0 tail restatement; Skill body cannot add a third)", got)
 	}
 	// The v2 body contains a shadow phrase; assert it does NOT reach
 	// the system prompt (same structural-isolation lock as the shadow
