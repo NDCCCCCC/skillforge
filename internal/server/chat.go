@@ -510,15 +510,16 @@ func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query 
 		chunkIDs = strings.Join(ids, ",")
 	}
 	row := store.AuditRow{
-		Timestamp:     time.Now().UTC(),
-		SessionID:     sessionID,
-		SkillID:       skillID,
-		Query:         query,
-		PromptHash:    computePromptHash(skillNameForHash, modelVersion, s.renderedPromptBody(skillNameForHash)),
-		ModelVersion:  modelVersion,
-		VerdictJSON:   verdictJSON,
-		RefusalReason: refusalReason,
-		ChunkIDs:      chunkIDs,
+		Timestamp:            time.Now().UTC(),
+		SessionID:            sessionID,
+		SkillID:              skillID,
+		Query:                query,
+		PromptHash:           computePromptHash(skillNameForHash, modelVersion, s.renderedPromptBody(skillNameForHash)),
+		ModelVersion:         modelVersion,
+		VerdictJSON:          verdictJSON,
+		RefusalReason:        refusalReason,
+		ChunkIDs:             chunkIDs,
+		PlatformFloorVersion: agent.PlatformFloorVersion,
 	}
 	id, err := s.Store.PutAudit(ctx, row)
 	if err != nil {

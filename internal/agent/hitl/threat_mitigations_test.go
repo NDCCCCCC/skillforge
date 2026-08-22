@@ -61,12 +61,12 @@ import (
 // across Windows (CRLF) and POSIX (LF) checkouts.
 const (
 	// HITL04AuditWriterSHA256 is the sha256 of
-	// internal/agent/hitl/audit_writer.go lines 258-283
-	// (WritePendingApproval's exported body). Catches a silent
-	// rotation of the fail-closed INSERT path. Phase 12 / Plan 12-03
-	// extended the package-level godoc above this function, shifting
-	// the line range from 234-259 (11-08 baseline) to 258-283.
-	HITL04AuditWriterSHA256 = "79056b9ae8ce1495a3af7bc5e049d998edd0f9f4c9ba970fbe8501a1dec01716"
+	// internal/agent/hitl/audit_writer.go lines 324-355
+	// (writePending's exported body). Catches a silent
+	// rotation of the fail-closed INSERT path. Phase 14 / Plan 14-02
+	// extended the constructor with floorVersion + guard, shifting the
+	// line range from 258-283 (11-08 baseline) to 324-355.
+	HITL04AuditWriterSHA256 = "df52a40794effec930ca180a6942f3680574a2346ed61d4a623d8a8416b08a88"
 
 	// HITL07MemoryFactsInvokableRunSHA256 is the sha256 of
 	// internal/agent/hitl/hitl_memory_facts.go lines 263-365
@@ -75,13 +75,13 @@ const (
 	HITL07MemoryFactsInvokableRunSHA256 = "28ced7ec66d248bd0ec640022be3bf32c37fd7af9d61808ab76bfa1d56887425"
 
 	// HITL08ApprovalRulesCreateSHA256 is the sha256 of
-	// internal/store/sqlite/approval_rules.go lines 138-158
+	// internal/store/sqlite/approval_rules.go lines 140-160
 	// (CreateRule's body). Catches a silent rotation of the PK
 	// insert path.
 	HITL08ApprovalRulesCreateSHA256 = "2488b345e23b9dc214f3bec8f6c6aacd5e111d8d170b1a6036884c34871be4fa"
 
 	// HITL08ApprovalRulesMatchSQLSHA256 is the sha256 of
-	// internal/store/sqlite/approval_rules.go lines 110-117
+	// internal/store/sqlite/approval_rules.go lines 112-119
 	// (matchRuleSQL's DDL block). Catches a silent rotation of the
 	// cross-session isolation predicate.
 	HITL08ApprovalRulesMatchSQLSHA256 = "3f005bab44d2e93cc3af6bd0409a08126a0592fecd0e1e06f4d727a32ce54e06"
@@ -163,14 +163,14 @@ func TestThreatModelCriticalMitigations(t *testing.T) {
 // is returned verbatim (no swallow, no retry). sha256 baseline
 // asserts the WritePendingApproval body has not rotated.
 func testThreatHitl04AuditFailClosed(t *testing.T) {
-	// (b) sha256 baseline — WritePendingApproval function body.
-	// Phase 12 / Plan 12-03 extended the package godoc above the
-	// function; the line range shifted from 234-259 (11-08 baseline)
-	// to 258-283 (current). The function BODY itself is unchanged
-	// — the sha256 anchor matches.
-	actual := sha256LinesRange(t, "audit_writer.go", 258, 283)
+	// (b) sha256 baseline — writePending function body.
+	// Phase 14 / Plan 14-02 extended the constructor with floorVersion +
+	// guard, shifting the line range from 258-283 (11-08 baseline) to
+	// 324-355. The function BODY itself is unchanged apart from the PLAT-10
+	// additions — the sha256 anchor matches the new range.
+	actual := sha256LinesRange(t, "audit_writer.go", 324, 355)
 	assert.Equal(t, HITL04AuditWriterSHA256, actual,
-		"audit_writer.go::WritePendingApproval body drifted from baseline — review the fail-closed INSERT path")
+		"audit_writer.go::writePending body drifted from baseline — review the fail-closed INSERT path")
 
 	// (a) Functional — InsertPendingApproval must return the store's
 	// error verbatim (fail-closed, no swallow). We use a zero-value
@@ -286,10 +286,10 @@ func testThreatHitl07FrozenArgsByteEquality(t *testing.T) {
 // sha256 baselines of the sqlite source.
 func testThreatHitl08ScopeLeakPrevention(t *testing.T) {
 	// (b) sha256 baselines — CreateRule body + matchRuleSQL DDL.
-	createActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 138, 158)
+	createActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 140, 160)
 	assert.Equal(t, HITL08ApprovalRulesCreateSHA256, createActual,
 		"approval_rules.go::CreateRule body drifted from baseline — review the PK insert path")
-	matchActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 110, 117)
+	matchActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 112, 119)
 	assert.Equal(t, HITL08ApprovalRulesMatchSQLSHA256, matchActual,
 		"approval_rules.go::matchRuleSQL DDL drifted from baseline — review the cross-session isolation predicate")
 

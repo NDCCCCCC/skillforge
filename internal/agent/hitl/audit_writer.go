@@ -175,16 +175,27 @@ func (s SkillSnapshot) IsZero() bool {
 var _ auditWriterHook = (*AuditWriter)(nil)
 
 // NewAuditWriter constructs the writer with the default clock.
+// floorVersion is the PLAT-10 PlatformFloorVersion semver stamped on
+// every HITL audit row; an empty value makes every write fail-closed.
 func NewAuditWriter(s store.Store, floorVersion string) *AuditWriter {
 	return &AuditWriter{store: s, floorVersion: floorVersion, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // ErrMissingFloorVersion is the fail-closed sentinel returned by every
 // HITL write method when the writer was constructed with an empty
-// floorVersion. An empty value would create a new audit row that
+// PlatformFloorVersion. An empty value would create a new audit row that
 // masquerades as "pre-floor era" and falsifies the drift window
 // (T-14-06b mitigation).
-var ErrMissingFloorVersion = errors.New("hitl: AuditWriter floorVersion required (PLAT-10)")
+var ErrMissingFloorVersion = errors.New("hitl: AuditWriter PlatformFloorVersion required (PLAT-10)")
+
+// guardFloorVersion fail-closes the writer when no PlatformFloorVersion
+// was injected. Every write method calls this before building the row.
+func (w *AuditWriter) guardFloorVersion() error {
+	if w.floorVersion == "" {
+		return ErrMissingFloorVersion
+	}
+	return nil
+}
 
 // SetNow injects a deterministic clock for hermetic tests. Production
 // callers do not invoke this method.
@@ -311,6 +322,9 @@ type pendingArgs struct {
 }
 
 func (w *AuditWriter) writePending(ctx context.Context, a pendingArgs) (int64, error) {
+	if err := w.guardFloorVersion(); err != nil {
+		return 0, err
+	}
 	row := store.PendingApprovalRow{
 		Timestamp:    w.clock(),
 		SessionID:    a.sessionID,
@@ -322,14 +336,15 @@ func (w *AuditWriter) writePending(ctx context.Context, a pendingArgs) (int64, e
 		// ModelVersion / VerdictJSON / ChunkIDs belong to the verdict
 		// row that server.writeAuditAndTurn writes; an approval row has
 		// no model output yet.
-		ModelVersion:   "",
-		VerdictJSON:    "",
-		RefusalReason:  "",
-		ChunkIDs:       "",
-		FrozenArgs:     a.frozenArgs,
-		ToolCallID:     a.toolCallID,
-		ApprovalID:     a.toolCallID, // D11-C4: one identity, two columns
-		ScopeSessionID: a.sessionID,
+		ModelVersion:         "",
+		VerdictJSON:          "",
+		RefusalReason:        "",
+		ChunkIDs:             "",
+		FrozenArgs:           a.frozenArgs,
+		ToolCallID:           a.toolCallID,
+		ApprovalID:           a.toolCallID, // D11-C4: one identity, two columns
+		ScopeSessionID:       a.sessionID,
+		PlatformFloorVersion: w.floorVersion,
 	}
 	// D11-C3: returned IMMEDIATELY — no retry, no swallow, no fallback.
 	id, err := w.store.InsertPendingApproval(ctx, row)
@@ -353,25 +368,29 @@ func (w *AuditWriter) MarkApproved(
 	frozenArgs []byte,
 	reason string,
 ) (int64, error) {
+	if err := w.guardFloorVersion(); err != nil {
+		return 0, err
+	}
 	if snap.IsZero() {
 		return 0, errors.New("hitl: MarkApproved: skill snapshot required (D11-C2)")
 	}
 	return w.store.MarkApproved(ctx, store.ApprovalResolutionRow{
-		Timestamp:      w.clock(),
-		SessionID:      sessionID,
-		UserID:         userID,
-		SkillID:        snap.SkillID,
-		Query:          target,
-		PromptHash:     snap.PromptHash,
-		SkillVersion:   snap.Version,
-		ModelVersion:   "",
-		VerdictJSON:    "",
-		RefusalReason:  reason,
-		ChunkIDs:       "",
-		FrozenArgs:     frozenArgs,
-		ToolCallID:     toolCallID,
-		ApprovalID:     approvalID,
-		ScopeSessionID: sessionID,
+		Timestamp:            w.clock(),
+		SessionID:            sessionID,
+		UserID:               userID,
+		SkillID:              snap.SkillID,
+		Query:                target,
+		PromptHash:           snap.PromptHash,
+		SkillVersion:         snap.Version,
+		ModelVersion:         "",
+		VerdictJSON:          "",
+		RefusalReason:        reason,
+		ChunkIDs:             "",
+		FrozenArgs:           frozenArgs,
+		ToolCallID:           toolCallID,
+		ApprovalID:           approvalID,
+		ScopeSessionID:       sessionID,
+		PlatformFloorVersion: w.floorVersion,
 	})
 }
 
@@ -393,22 +412,26 @@ func (w *AuditWriter) MarkRejected(
 	if reason == "" {
 		return 0, errors.New("hitl: MarkRejected: reason required (HITL-02)")
 	}
+	if err := w.guardFloorVersion(); err != nil {
+		return 0, err
+	}
 	return w.store.MarkRejected(ctx, store.ApprovalResolutionRow{
-		Timestamp:      w.clock(),
-		SessionID:      sessionID,
-		UserID:         userID,
-		SkillID:        snap.SkillID,
-		Query:          target,
-		PromptHash:     snap.PromptHash,
-		SkillVersion:   snap.Version,
-		ModelVersion:   "",
-		VerdictJSON:    "",
-		RefusalReason:  reason,
-		ChunkIDs:       "",
-		FrozenArgs:     frozenArgs,
-		ToolCallID:     toolCallID,
-		ApprovalID:     approvalID,
-		ScopeSessionID: sessionID,
+		Timestamp:            w.clock(),
+		SessionID:            sessionID,
+		UserID:               userID,
+		SkillID:              snap.SkillID,
+		Query:                target,
+		PromptHash:           snap.PromptHash,
+		SkillVersion:         snap.Version,
+		ModelVersion:         "",
+		VerdictJSON:          "",
+		RefusalReason:        reason,
+		ChunkIDs:             "",
+		FrozenArgs:           frozenArgs,
+		ToolCallID:           toolCallID,
+		ApprovalID:           approvalID,
+		ScopeSessionID:       sessionID,
+		PlatformFloorVersion: w.floorVersion,
 	})
 }
 
@@ -424,25 +447,29 @@ func (w *AuditWriter) MarkRuleRevoked(
 	frozenArgs []byte,
 	reason string,
 ) (int64, error) {
+	if err := w.guardFloorVersion(); err != nil {
+		return 0, err
+	}
 	if snap.IsZero() {
 		return 0, errors.New("hitl: MarkRuleRevoked: skill snapshot required (D11-C2)")
 	}
 	return w.store.MarkRuleRevoked(ctx, store.RuleRevokeRow{
-		Timestamp:      w.clock(),
-		SessionID:      sessionID,
-		UserID:         userID,
-		SkillID:        snap.SkillID,
-		Query:          target,
-		PromptHash:     snap.PromptHash,
-		SkillVersion:   snap.Version,
-		ModelVersion:   "",
-		VerdictJSON:    "",
-		RefusalReason:  reason,
-		ChunkIDs:       "",
-		FrozenArgs:     frozenArgs,
-		ToolCallID:     toolCallID,
-		ApprovalID:     toolCallID, // D11-C4
-		ScopeSessionID: sessionID,
+		Timestamp:            w.clock(),
+		SessionID:            sessionID,
+		UserID:               userID,
+		SkillID:              snap.SkillID,
+		Query:                target,
+		PromptHash:           snap.PromptHash,
+		SkillVersion:         snap.Version,
+		ModelVersion:         "",
+		VerdictJSON:          "",
+		RefusalReason:        reason,
+		ChunkIDs:             "",
+		FrozenArgs:           frozenArgs,
+		ToolCallID:           toolCallID,
+		ApprovalID:           toolCallID, // D11-C4
+		ScopeSessionID:       sessionID,
+		PlatformFloorVersion: w.floorVersion,
 	})
 }
 
@@ -466,25 +493,29 @@ func (w *AuditWriter) MarkAutoPassedRule(
 	toolCallID, target string,
 	frozenArgs []byte,
 ) (int64, error) {
+	if err := w.guardFloorVersion(); err != nil {
+		return 0, err
+	}
 	if toolCallID == "" {
 		return 0, errors.New("hitl: MarkAutoPassedRule: toolCallID required (D11-C4 single identity)")
 	}
 	row := store.ApprovalResolutionRow{
-		Timestamp:      w.clock(),
-		SessionID:      sessionID,
-		UserID:         userID,
-		SkillID:        "",
-		Query:          target,
-		PromptHash:     "",
-		SkillVersion:   "",
-		ModelVersion:   "",
-		VerdictJSON:    "",
-		RefusalReason:  "auto_passed_rule", // LITERAL: D11-D1 auto-pass flag
-		ChunkIDs:       "",
-		FrozenArgs:     frozenArgs,
-		ToolCallID:     toolCallID,
-		ApprovalID:     toolCallID, // D11-C4: one identity, two columns
-		ScopeSessionID: sessionID,
+		Timestamp:            w.clock(),
+		SessionID:            sessionID,
+		UserID:               userID,
+		SkillID:              "",
+		Query:                target,
+		PromptHash:           "",
+		SkillVersion:         "",
+		ModelVersion:         "",
+		VerdictJSON:          "",
+		RefusalReason:        "auto_passed_rule", // LITERAL: D11-D1 auto-pass flag
+		ChunkIDs:             "",
+		FrozenArgs:           frozenArgs,
+		ToolCallID:           toolCallID,
+		ApprovalID:           toolCallID, // D11-C4: one identity, two columns
+		ScopeSessionID:       sessionID,
+		PlatformFloorVersion: w.floorVersion,
 	}
 	return w.store.MarkApproved(ctx, row)
 }

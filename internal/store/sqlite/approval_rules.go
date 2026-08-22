@@ -41,6 +41,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/skillforge/skillforge/internal/platformfloor"
 )
 
 // ApprovalRule is one row of the approval_rules table. The 4-tuple
@@ -332,6 +334,7 @@ func insertRuleRevokedAuditRow(
 		"",                                 // chunk_ids — n/a
 		frozenArgs, toolCallID, toolCallID, // D11-C4: approval_id == tool_call_id
 		scopeSessionID,
+		platformfloor.PlatformFloorVersion, // PLAT-10: every audit row carries the floor version
 	)
 	return err
 }
