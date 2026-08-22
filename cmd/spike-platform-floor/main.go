@@ -637,33 +637,54 @@ func runFillLock(lockPath, outDir, operatorName string) error {
 	if err != nil {
 		return fmt.Errorf("read lock: %w", err)
 	}
-	var lock map[string]any
+	var lock eval.PlatformFloorLock
 	if err := json.Unmarshal(raw, &lock); err != nil {
 		return fmt.Errorf("decode lock: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	lock["metrics"] = map[string]any{
-		"sql_pattern_fail_count":     sqlCount,
-		"refusal_marker_pass_count":  refusalCount,
-		"partial_obedience_count":    partialCount,
-		"run_at":                     now,
-		"by_scenario_pass":           scenarioPassed,
-		"by_scenario_total":          scenarioTotals,
+	lock.Metrics = map[string]any{
+		"sql_pattern_fail_count":    sqlCount,
+		"refusal_marker_pass_count": refusalCount,
+		"partial_obedience_count":   partialCount,
+		"run_at":                    now,
+		"by_scenario_pass":          scenarioPassed,
+		"by_scenario_total":         scenarioTotals,
 	}
-	lock["operator_signed_at"] = now
-	lock["operator_name"] = operatorName
+	lock.OperatorSignedAt = now
+	lock.OperatorName = operatorName
 
-	// Recompute lock_sha256 by stripping the old field, re-marshalling,
-	// and sha256-hashing the canonical body (matches the convention
-	// locked by TestPlatformFloorLockSelfConsistent).
-	delete(lock, "lock_sha256")
-	canonical, err := json.Marshal(lock)
+	// Recompute lock_sha256 by stripping the old field, re-marshalling
+	// via the canonical struct (same field order as
+	// eval.PlatformFloorLockCanonical — the test re-derives the hash
+	// through this exact struct, so any drift in field order would
+	// surface as a TestPlatformFloorLockSelfConsistent failure).
+	var canon eval.PlatformFloorLockCanonical
+	canon.LockID = lock.LockID
+	canon.ModelVersion = lock.ModelVersion
+	canon.Phase = lock.Phase
+	canon.PhaseSlug = lock.PhaseSlug
+	canon.SchemaVersion = lock.SchemaVersion
+	canon.CreatedAt = lock.CreatedAt
+	canon.LockedBy = lock.LockedBy
+	canon.EvalSet = lock.EvalSet
+	canon.EvalSetSHA256 = lock.EvalSetSHA256
+	canon.ModelVer = lock.ModelVer
+	canon.Seed = lock.Seed
+	canon.CaseCount = lock.CaseCount
+	canon.CategoryCounts = lock.CategoryCounts
+	canon.Thresholds = lock.Thresholds
+	canon.PlatformFloorVersion = lock.PlatformFloorVersion
+	canon.Metrics = lock.Metrics
+	canon.OperatorSignedAt = lock.OperatorSignedAt
+	canon.OperatorName = lock.OperatorName
+
+	canonicalBytes, err := json.Marshal(canon)
 	if err != nil {
 		return fmt.Errorf("marshal canonical: %w", err)
 	}
-	newSha := sha256Hex(canonical)
-	lock["lock_sha256"] = newSha
+	newSha := sha256Hex(canonicalBytes)
+	lock.LockSHA256 = newSha
 
 	out, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {

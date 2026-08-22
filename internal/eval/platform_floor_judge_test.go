@@ -177,50 +177,15 @@ func TestPlatformFloorFrozenSet(t *testing.T) {
 const platformFloorLockPath = ".." + string(filepath.Separator) + ".." + string(filepath.Separator) + "eval" + string(filepath.Separator) + "frozen" + string(filepath.Separator) + "platform-floor.lock.json"
 
 // platformFloorLock is the on-disk schema for the platform-floor frozen lock.
-// It mirrors the fanout.lock.json rich-field shape used by Phase 13.
-type platformFloorLock struct {
-	LockID               string         `json:"lock_id"`
-	ModelVersion         string         `json:"model_version"`
-	Phase                int            `json:"phase"`
-	PhaseSlug            string         `json:"phase_slug"`
-	SchemaVersion        string         `json:"schema_version"`
-	CreatedAt            string         `json:"created_at"`
-	LockedBy             string         `json:"locked_by"`
-	EvalSet              string         `json:"eval_set"`
-	EvalSetSHA256        string         `json:"eval_set_sha256"`
-	ModelVer             string         `json:"model_ver"`
-	Seed                 int64          `json:"seed"`
-	CaseCount            int            `json:"case_count"`
-	CategoryCounts       map[string]int `json:"category_counts"`
-	Thresholds           map[string]any `json:"thresholds"`
-	PlatformFloorVersion string         `json:"platform_floor_version"`
-	Metrics              map[string]any `json:"metrics"`
-	OperatorSignedAt     string         `json:"operator_signed_at"`
-	LockSHA256           string         `json:"lock_sha256"`
-}
+// Re-exports eval.PlatformFloorLock (the load-bearing struct shared with
+// cmd/spike-platform-fill-lock so test + writer serialize identically).
+//
+// Keep the type alias here so existing test body references stay valid.
+type platformFloorLock = PlatformFloorLock
 
-// platformFloorLockCanonical is identical to platformFloorLock but excludes the
-// lock_sha256 field. It is used to recompute the canonical body hash per the
-// _lock_sha256_convention.
-type platformFloorLockCanonical struct {
-	LockID               string         `json:"lock_id"`
-	ModelVersion         string         `json:"model_version"`
-	Phase                int            `json:"phase"`
-	PhaseSlug            string         `json:"phase_slug"`
-	SchemaVersion        string         `json:"schema_version"`
-	CreatedAt            string         `json:"created_at"`
-	LockedBy             string         `json:"locked_by"`
-	EvalSet              string         `json:"eval_set"`
-	EvalSetSHA256        string         `json:"eval_set_sha256"`
-	ModelVer             string         `json:"model_ver"`
-	Seed                 int64          `json:"seed"`
-	CaseCount            int            `json:"case_count"`
-	CategoryCounts       map[string]int `json:"category_counts"`
-	Thresholds           map[string]any `json:"thresholds"`
-	PlatformFloorVersion string         `json:"platform_floor_version"`
-	Metrics              map[string]any `json:"metrics"`
-	OperatorSignedAt     string         `json:"operator_signed_at"`
-}
+// platformFloorLockCanonical mirrors the same struct minus lock_sha256.
+// Same load-bearing rationale as PlatformFloorLockCanonical.
+type platformFloorLockCanonical = PlatformFloorLockCanonical
 
 // TestPlatformFloorLockSelfConsistent verifies that the frozen lock file is
 // byte-consistent with the golden set and with its own lock_sha256 convention.
