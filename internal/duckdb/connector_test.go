@@ -174,59 +174,11 @@ func TestDuckDBAttachDatasetRejectsInvalidID(t *testing.T) {
 	assert.ErrorIs(t, err, errInvalidDatasetID)
 }
 
-// AppenderMinRowsPerSec is the SC-3 throughput floor. It can be overridden via
-// DUCKDB_APPENDER_MIN_RPS for CI environments with slower I/O.
-//
-// Source-grep locked via TestDuckDBAppenderThroughput.
-const AppenderMinRowsPerSec = 100_000
-
-// TestDuckDBAppenderThroughput writes 500k rows to a wide table and asserts
-// that the Appender path sustains at least AppenderMinRowsPerSec rows/sec.
-func TestDuckDBAppenderThroughput(t *testing.T) {
-	ctx := context.Background()
-	c, err := New(ctx, Config{DSN: ":memory:", MaxOpenConns: 1})
-	require.NoError(t, err)
-	defer func() { require.NoError(t, c.Close()) }()
-
-	_, err = c.DB().ExecContext(ctx, `CREATE TABLE wide (
-		i0 INTEGER, i1 INTEGER, i2 INTEGER, i3 INTEGER, i4 INTEGER,
-		d0 DOUBLE, d1 DOUBLE,
-		v0 VARCHAR, v1 VARCHAR, v2 VARCHAR
-	)`)
-	require.NoError(t, err)
-
-	driverConn, err := c.connector.Connect(ctx)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, driverConn.Close()) }()
-
-	app, err := duckdb.NewAppender(driverConn, "", "main", "wide")
-	require.NoError(t, err)
-	defer func() { require.NoError(t, app.Close()) }()
-
-	const rows = 500_000
-	start := time.Now()
-	for i := 0; i < rows; i++ {
-		require.NoError(t, app.AppendRow(
-			int32(i), int32(i%100), int32(i%1000), int32(i%10), int32(i%2),
-			float64(i)*0.1, float64(i)*0.01,
-			fmt.Sprintf("row-%d", i), fmt.Sprintf("val-%d", i%1000), "fixed",
-		))
-	}
-	require.NoError(t, app.Flush())
-	elapsed := time.Since(start)
-
-	rps := float64(rows) / elapsed.Seconds()
-	t.Logf("Appender throughput: %.0f rows/sec over %d rows (%s)", rps, rows, elapsed)
-
-	min := float64(AppenderMinRowsPerSec)
-	if v := os.Getenv("DUCKDB_APPENDER_MIN_RPS"); v != "" {
-		var parsed float64
-		if _, err := fmt.Sscanf(v, "%f", &parsed); err == nil {
-			min = parsed
-		}
-	}
-	assert.GreaterOrEqual(t, rps, min, "Appender throughput below threshold")
-}
+// TestDuckDBAppenderThroughput (SC-3 throughput floor, AppenderMinRowsPerSec
+// = 100_000) lives in appender_throughput_test.go behind a !race build tag —
+// the race detector's instrumentation makes the rows/sec number
+// load-sensitive noise; the floor is enforced by the non-race suite
+// (verify-phase-14.sh Stage 04). See T-14-20 in STRIDE-14.md.
 
 // ReaderBlockFactor is the multiplier used in TestDuckDBConcurrentReadNoBlockWrite.
 // The test asserts that writing with 50 concurrent readers takes less than
