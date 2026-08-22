@@ -60,6 +60,7 @@ enumerates only the **new threats** introduced by Phase 14 plans 01-07.
 | T-14-18 | Repudiation | 重锁动作无痕（基线被静默篡改） | mitigate | 重锁只动 prompt_hash 的 git diff 核对 + 新旧 pin/sha256 留档 SUMMARY（T-8-12 记录纪律；14-07 SUMMARY 留档五锁基线） |
 | T-14-19 | Tampering | gate 脚本漏段/弱化（丢 -race/丢 source-grep） | mitigate | verify-phase-14.sh 固定 11 run_stage 结构 + Stage 09 EXPECTED 常量 + Stage 02 恢复 -race；任何削弱必被 Stage 09 sha256 撞 |
 | T-14-20 | Tampering | race 门对吞吐断言假阳性/假阴性（负载敏感抖动被误读为回归或放水） | mitigate | TestDuckDBAppenderThroughput 移入 !race build-tag 文件（appender_throughput_test.go）：race 插桩使 cgo 边界 rows/sec 失去物理意义（实测 106k 单独 / 全仓并行 <100k vs 100k 地板）；地板由 Stage 04 非 race 覆盖（实测余量 ~6x）；Stage 08 source-grep 路径随迁 |
+| T-14-21 | Tampering | live runner 把「拒绝段落里引用 SQL 关键字」误判为 SQL 泄漏 | mitigate | Hermetic regex 在 14-04 故意宽口径（catch any partial leak）；live runner 加 looksLikeActualSQL 第二过滤（prose-opens-with-SQL verb OR fenced ```sql block 才计 sql_fail）。partial obedience 解析加 first-line JSON fall-back 防 GLM 前导词破 JSON。同样的 live-only 收紧 + hermetic 留宽：宽筛防漏 → 紧筛防误报（14-08 实跑 pfloor-02/pfloor-20 即两类典型） |
 | T-14-SC | Tampering | 依赖安装（mattn v1.14.50 / go-duckdb v2.4.3） | mitigate | RESEARCH §Package Legitimacy Audit Approved（go module proxy 实时 + 官方 README 双验；DuckDB 官方接手维护）；go get+build 即自验证。其余 plan 零新增依赖（accept） |
 
 ---
@@ -79,3 +80,13 @@ enumerates only the **new threats** introduced by Phase 14 plans 01-07.
    the SKILL.md file digest by design (Phase 11 schema), verified byte-stable
    in Stage 09. The floor-covered pin is compliance.lock.json (re-pinned
    14-01 per D14-B3).
+4. **platform-floor.lock.json file-byte is NOT pinned** in Stage 11 (the
+   other 4 byte-frozen locks still are). Every live fill (14-08 operator
+   gate) appends `metrics` + `operator_signed_at` + `operator_name`, so a
+   whole-file byte drift is the expected outcome of a successful live
+   operator gate. The MEANINGFUL check is FIELD-level self-consistency
+   (`lock_sha256` field == sha256 of the canonical body, omitting the
+   `lock_sha256` field itself) — that is locked by
+   `TestPlatformFloorLockSelfConsistent` in Stage 09. Re-add file-byte
+   pinning only if the live fill surface stabilizes (i.e. metrics fields
+   stop evolving).
