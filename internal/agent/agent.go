@@ -725,6 +725,20 @@ func RenderSystemPrompt(m *skill.Manifest) string {
 // DATA block). The T-2-21 prompt-injection mitigation ("DATA, not
 // instructions") is the load-bearing part. Migration target: share via
 // prompt.go (single source with pipeline.go).
+//
+// Phase 14 (Plan 14-01) wraps the Skill template with ComposePlatformPrompt
+// (D14-A4 — trust-clause lift). The Skill body now carries ONLY persona
+// + classification rules + JSON schema output contract; the citation-
+// whitelist + refusal-on-no-grounding + no-embedded-instructions
+// semantics have moved to the platform floor (single canonical home in
+// internal/platformfloor). This is the Pitfall 17 root fix for the
+// ReAct-agent path: prior to 14-01 this template carried its own copy
+// of rules 3/4 (citation + refusal), and the chat path
+// (prompts.go systemInstructionsTemplate) carried a slightly-different
+// wording of the same clauses. After 14-01 both paths share the single
+// platform-floor text via ComposePlatformPrompt; a Skill body change or
+// a reload cannot lose the floor (D14-A4 lift guarantees the trust
+// clauses live OUTSIDE the Skill template).
 func systemPrompt(m *skill.Manifest) string {
 	// No %s slots. The original pipeline template's two slots were for
 	// tier-keyword hints and refusal-phrase hints; Phase 3 inlines them
@@ -754,8 +768,6 @@ Output ONLY a JSON object with this exact schema:
 NO other text. ONLY the JSON object. Follow these decision rules strictly:
 
 1. Classify the query FIRST. Factual lookup ("X 是多少 / 谁审批 / 有几天 / 多久", e.g. "年假有几天？"): status="ok", answer = the direct answer extracted from the cited chunk (a SHORT factual sentence, not a rephrasing of the citation span), compliance_status="not_applicable". Compliance review ("X 合规吗 / 是否违反", e.g. "差旅住宿费超过 500 元合规吗？"): omit answer, compliance_status="compliant"|"non_compliant", status="ok".
-2. When the cited policy is conditional (depends on an amount threshold, approval level, or context not present in the chunks): status="needs_input" WITH a citation to the governing clause — this is the CORRECT response for a conditional case, not "refused".
-3. For any "ok" or "needs_input" verdict you MUST cite at least 1 chunk with a verbatim span. The citations field MUST be an array (use [] when empty — never omit the field).
-4. Return status="refused" ONLY when no retrieved chunk addresses the query's topic at all, or the query asks for personal/PII information. Then: confidence=0.0, citations=[], review_required=true. If retrieve_compliance_chunks returns 0 chunks, set status="refused", confidence=0.0, citations=[], review_required=true. Never emit "error" yourself — it is reserved for the system.`
-	return tmpl
+2. When the cited policy is conditional (depends on an amount threshold, approval level, or context not present in the chunks): status="needs_input" WITH a citation to the governing clause — this is the CORRECT response for a conditional case, not "refused".`
+	return ComposePlatformPrompt(tmpl)
 }

@@ -325,8 +325,14 @@ func testThreatHitl08ScopeLeakPrevention(t *testing.T) {
 // + TestBudgetForcedStopEmitsDataDecision + TestBudgetAuditRowOnTrigger).
 // This sub-test is the STRIDE-12 acceptance gate's structural proof.
 func testThreatP123BudgetMaxIterationLiteral(t *testing.T) {
-	// (b) sha256 baseline — MaxIteration alignment group (lines 92-97).
-	actual := sha256LinesRange(t, "../../runtime/deep_agent.go", 92, 97)
+	// (b) sha256 baseline — MaxIteration alignment group.
+	// The range was 92-97 pre-Phase-14; the platformfloor import added
+	// in Plan 14-01 shifted all subsequent lines by +1, so the
+	// byte-identical block now sits at lines 93-98. The P123… constant
+	// was computed against the same bytes (the SHA matches the pre-
+	// Phase-14 hash exactly: b432d5dd6e7e750222fdaf9a33d1909ef7cebc565ae901e2342e3a4a713c5e41),
+	// so the only edit needed is the range itself.
+	actual := sha256LinesRange(t, "../../runtime/deep_agent.go", 93, 98)
 	assert.Equal(t, P123DeepAgentMaxIterationSHA256, actual,
 		"deep_agent.go MaxIteration alignment group drifted from baseline — review the P12-L2 hard cap")
 
