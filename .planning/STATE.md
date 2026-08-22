@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
-current_plan: 4
+current_plan: 3
 status: executing
-stopped_at: Phase 14 Plan 02 COMPLETE 2026-08-22 (resume at Plan 14-04)
-last_updated: "2026-08-22T04:05:00.000Z"
-last_activity: 2026-08-22 -- Phase 14 Plan 02 audit floor version + admin prompt preview shipped
+stopped_at: Phase 14 Plan 04 COMPLETE 2026-08-22 (resume at Plan 14-03)
+last_updated: "2026-08-22T04:22:00.000Z"
+last_activity: 2026-08-22 -- Phase 14 Plan 04 platform-floor frozen eval set shipped (20-case golden set + JudgeHermetic + platform-floor.lock.json)
 progress:
   total_phases: 20
   completed_phases: 11
   total_plans: 80
-  completed_plans: 75
-  percent: 56
+  completed_plans: 76
+  percent: 57
 ---
 
 # State — SkillForge
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING
-Plan: 4 of 8 (Plan 02 COMPLETE 2026-08-22; next Plan 14-04 platform-floor frozen eval set)
-Status: Executing Phase 14 — 14-01 + 14-02 shipped; Wave 2 remaining 14-04 pending before Wave 3 CGO sqlite switch
-Last activity: 2026-08-22 -- Phase 14 Plan 02 audit floor version + admin prompt preview shipped (platform_floor_version column + 5 INSERT paths + fail-closed HITL writer + GET /api/admin/platform-prompt)
+Plan: 3 of 8 (Plan 04 COMPLETE 2026-08-22; next Plan 14-03 Wave 3 CGO sqlite switch)
+Status: Executing Phase 14 — 14-01 + 14-02 + 14-04 shipped; Wave 3 14-03 (mattn/go-sqlite3 CGO migration) pending
+Last activity: 2026-08-22 -- Phase 14 Plan 04 platform-floor frozen eval set shipped (eval/golden/platform-floor.jsonl 20 cases + internal/eval.JudgeHermetic + eval/frozen/platform-floor.lock.json; live judge runbook deferred to 14-08)
 
 # State — SkillForge
 
@@ -580,3 +580,39 @@ Resume File: None
 | PLAT-09 (platform-floor compose = sole exit + Skill cannot shadow) | `TestPlatformFloorPrependBothPaths` + `TestPlatformFloorCannotBeShadowed` + `TestFloorHotReloadSurvives` + `TestPromptHashCoversFloor` + `TestNoBypassOfPlatformFloorCompose` (assertions 1/2/3) | hermetic PASS |
 
 **Resumes at**: `.planning/phases/14-p10-0-cgo-trust-floor/14-02-PLAN.md` (next: admin preview endpoint + /api/admin/platform-prompt route + TestPlatformPromptPreview).
+
+---
+
+## Phase 14 — Plan 14-04 Platform-Floor Frozen Eval Set Sign-Off
+
+**Status**: Plan 14-04 COMPLETE 2026-08-22 (4 commits — Task 1 RED/GREEN + Task 2 RED/GREEN; PLAT-11 hermetic layer + D14-C4 lock)
+
+**Plans completed**: 3/8 in Phase 14 (14-01, 14-02, 14-04)
+
+**Acceptance gate results**:
+- `go build ./... && go vet ./...` exit 0
+- `go test ./internal/eval/ -count=1` — all green, zero regressions in existing eval framework tests
+- `TestPlatformFloorGoldenSchema` PASS (20 rows, 6 scenarios, rule coverage, long-dialogue >=20 turns)
+- `TestPlatformFloorFrozenSet` PASS (refusal PASS / SQL leakage FAIL / SQL source FAIL / clean-no-refusal FAIL)
+- `TestPlatformFloorLockSelfConsistent` PASS (eval_set_sha256 match / case_count 20 / platform_floor_version 1.0.0 / lock_sha256 convention)
+- `eval/frozen/` existing locks untouched; only `platform-floor.lock.json` added
+
+**Commits** (atomic per-task):
+
+| # | Hash | Type | Subject |
+|---|------|------|---------|
+| 1 | `83fd55c` | test(14-04) | add platform-floor golden schema gate (RED) |
+| 2 | `898b655` | feat(14-04) | add 20-case platform-floor golden set (GREEN) |
+| 3 | `a48606d` | test(14-04) | add hermetic judge and frozen-lock self-consistency tests (RED) |
+| 4 | `1c5af78` | feat(14-04) | implement hermetic platform-floor judge and freeze lock (GREEN) |
+
+**Compliance attestation** (1 PLAT requirement with verifying tests):
+
+| Requirement | Verifying Tests | Gate Stage |
+|-------------|-----------------|------------|
+| PLAT-11 (platform-floor frozen eval set + hermetic judge + lock) | `TestPlatformFloorGoldenSchema` + `TestPlatformFloorFrozenSet` + `TestPlatformFloorLockSelfConsistent` | hermetic PASS |
+
+**Deviations**: None. One implementation refinement: `TestPlatformFloorLockSelfConsistent` uses a separate `platformFloorLockCanonical` struct (without `lock_sha256`) to recompute the canonical body hash, matching the literal `_lock_sha256_convention` wording.
+
+**Resumes at**: `.planning/phases/14-p10-0-cgo-trust-floor/14-03-PLAN.md` (Wave 3: mattn/go-sqlite3 CGO migration).
+

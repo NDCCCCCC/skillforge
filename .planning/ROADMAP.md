@@ -45,7 +45,7 @@
 
 贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**。依赖主线严格线性：14 → 15 → 16 → 17 → 18 → 19；20（管理台）收尾聚合全链数据面。研究依据：`.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计 2026-08-21；PITFALLS.md 文内 P14..P20 为研究期占位编号，已映射到下方 Phase 14..20）。
 
-- [ ] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）
+- [ ] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(in progress — 3/8 plans complete: 14-01 platform-floor composition, 14-02 audit floor version + admin preview, 14-04 frozen eval set + hermetic judge; next 14-03 CGO sqlite switch)
 - [ ] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）
 - [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
@@ -673,7 +673,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 1/8 plans executed
+**Plans:** 2/8 plans executed
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 
