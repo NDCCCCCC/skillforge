@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
-current_plan: 2
+current_plan: 4
 status: executing
-stopped_at: Phase 14 Plan 01 COMPLETE 2026-08-22 (resume at Plan 14-02)
-last_updated: "2026-08-22T01:55:00.000Z"
-last_activity: 2026-08-22 -- Phase 14 Plan 01 platform-floor composition shipped
+stopped_at: Phase 14 Plan 02 COMPLETE 2026-08-22 (resume at Plan 14-04)
+last_updated: "2026-08-22T04:05:00.000Z"
+last_activity: 2026-08-22 -- Phase 14 Plan 02 audit floor version + admin prompt preview shipped
 progress:
   total_phases: 20
   completed_phases: 11
   total_plans: 80
-  completed_plans: 74
-  percent: 55
+  completed_plans: 75
+  percent: 56
 ---
 
 # State — SkillForge
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING
-Plan: 2 of 8 (Plan 01 COMPLETE 2026-08-22)
-Status: Executing Phase 14 — next plan 14-02 (admin preview endpoint + /api/admin/platform-prompt route + TestPlatformPromptPreview)
-Last activity: 2026-08-22 -- Phase 14 Plan 01 platform-floor composition shipped (internal/platformfloor leaf + dual-path ComposePlatformPrompt wrap + WalkDir no-bypass gate; PLAT-09 substrate locked)
+Plan: 4 of 8 (Plan 02 COMPLETE 2026-08-22; next Plan 14-04 platform-floor frozen eval set)
+Status: Executing Phase 14 — 14-01 + 14-02 shipped; Wave 2 remaining 14-04 pending before Wave 3 CGO sqlite switch
+Last activity: 2026-08-22 -- Phase 14 Plan 02 audit floor version + admin prompt preview shipped (platform_floor_version column + 5 INSERT paths + fail-closed HITL writer + GET /api/admin/platform-prompt)
 
 # State — SkillForge
 
@@ -274,6 +274,7 @@ Resume File: None
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P06 | ~75m | 2 tasks (T2 = human-verify gate) | 3 files committed + 7 git-ignored reports |
 | Phase 13-p8-4-sub-agent-fan-out P02 | ~25m | 2 tasks | 4 files (1 created merge.go + 1 created merge_test.go + 2 modified orchestrator.go/orchestrator_test.go) |
 | Phase 14-p10-0-cgo-trust-floor P01 | ~25m | 3 tasks (T1 TDD + T2 TDD + T3 structural gate) | 7 files (4 created: platformfloor/platform_floor{,_test}.go + agent/platform_floor_test.go + contract/platform_floor_bypass_test.go; 3 modified: agent/{prompts,agent,platform_floor}.go + runtime/deep_agent.go + agent/hitl/threat_mitigations_test.go + eval/frozen/compliance.lock.json) |
+| Phase 14-p10-0-cgo-trust-floor P02 | 15m | 2 TDD tasks (audit floor-version column + admin prompt preview) | 14 files (3 created: store/sqlite/audit_test.go + server/platform_prompt{,_test}.go; 11 modified: store/{store,sqlite/{audit,approval_rules}}, agent/hitl/{audit_writer,audit_writer_test,threat_mitigations_test}, server/{chat,approval_api,approval_api_test,server}, cmd/spike-hitl/main.go) |
 
 ## Session Continuity
 

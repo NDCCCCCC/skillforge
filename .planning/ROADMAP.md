@@ -451,7 +451,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 14-02-PLAN.md — audit platform_floor_version 加列（5 INSERT 同步）+ admin 预览端点（X-Admin-Token 复用）
+- [x] 14-02-PLAN.md — audit platform_floor_version 加列（5 INSERT 同步）+ admin 预览端点（X-Admin-Token 复用）
 - [ ] 14-04-PLAN.md — platform-floor.jsonl 20 例×6 攻击面+hermetic 正则判定+第 4 冻结锁落锁
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -654,7 +654,7 @@ Plans:
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
-| 14. CGO 地基 + 平台信任地板 (P10.0) | 0 (not planned) | Not started | - |
+| 14. CGO 地基 + 平台信任地板 (P10.0) | 2/8 (14-01 platform-floor core + 14-02 audit/admin preview) | In Progress — Wave 2 complete; Wave 3 (mattn sqlite CGO switch) pending | 2026-08-22 (14-02) |
 | 15. 数据导入管线 + 导入即脱敏 (P10.1) | 0 (not planned) | Not started | - |
 | 16. KPI 聚合通道 (P10.2) | 0 (not planned) | Not started | - |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
@@ -663,7 +663,7 @@ Plans:
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-21 — **v1.0 roadmap created（业务数据支撑，phases 14-20，44/44 requirements mapped）**；research 完成（STACK-VERIFICATION.md 对抗式依赖审计：go-duckdb v2.4.3 / robfig-cron v3.0.1 / goldmark v1.8.5 / bluemonday v1.0.27 全部通过 + sqlite 驱动 CGO 化决策 mattn v1.14.50）；REQUIREMENTS.md v1.0 段 44 条就位；STATE.md 重置指向 Phase 14。主线：14 CGO 地基+平台信任地板 → 15 导入+脱敏 → 16 KPI 通道 → 17 KPI 仪表盘 → 18 月报 Skill → 19 门户+调度器 → 20 管理台+收尾。**硬前置 operator gate：MSYS2 gcc 安装（`! winget install MSYS2.MSYS2` 后 `pacman -S mingw-w64-ucrt-x86_64-gcc`，PATH 加 `C:\msys64\ucrt64\bin`）——Phase 14 开工前提**。Prior 2026-08-21: Phase 13 COMPLETE 6/6 + v0.8 milestone wrap SHIPPED（13-06 completion report + README DIST-09；operator gates pending: v0.8.0 tag / push origin / Phase 10 35-case re-run）。Prior: Phase 11 PASS 2026-08-20 (8/8); Phase 10 hermetic closeout 2026-08-20; Phase 9 COMPLETE 2026-08-18 (NO-GO accepted with escape plan); Phase 8 COMPLETE 2026-08-18.*
+*Last updated: 2026-08-22 — Phase 14 Plan 02 complete (PLAT-10 audit floor version + admin prompt preview); 14-01..14-02 in tree; Wave 3 (mattn sqlite CGO switch) next. Prior: 2026-08-21 — v1.0 roadmap created（业务数据支撑，phases 14-20，44/44 requirements mapped）...*
 
 ---
 
@@ -673,7 +673,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 6/6 plans complete
+**Plans:** 1/8 plans executed
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 
