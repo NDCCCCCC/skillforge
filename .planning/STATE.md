@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
-current_plan: 5
+current_plan: 1
 status: executing
-stopped_at: Phase 14 Plan 03 COMPLETE 2026-08-22 (next Plan 14-05)
-last_updated: "2026-08-22T04:54:00.000Z"
-last_activity: 2026-08-22 -- Phase 14 Plan 03 CGO sqlite switch shipped (mattn/go-sqlite3 v1.14.50 + DSN pragmas + TestSqliteMattnZeroRegression)
+stopped_at: context exhaustion at 75% (2026-08-21)
+last_updated: "2026-08-22T09:07:22.166Z"
+last_activity: 2026-08-22
 progress:
   total_phases: 20
   completed_phases: 11
   total_plans: 80
-  completed_plans: 77
-  percent: 58
+  completed_plans: 78
+  percent: 55
 ---
 
 # State — SkillForge
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING
-Plan: 5 of 8 (Plan 03 COMPLETE 2026-08-22; Plan 04 COMPLETE 2026-08-22; next Plan 14-05 go-duckdb dependency)
-Status: Executing Phase 14 — 14-01 + 14-02 + 14-03 + 14-04 shipped; next Plan 14-05
-Last activity: 2026-08-22 -- Phase 14 Plan 03 CGO sqlite switch shipped (mattn/go-sqlite3 v1.14.50 + DSN _busy_timeout=5000/_journal_mode=WAL/_foreign_keys=1 + Makefile check-cgo gate + TestSqliteMattnZeroRegression)
+Plan: 6 of 8 (Plan 03 COMPLETE 2026-08-22; Plan 04 COMPLETE 2026-08-22; next Plan 14-05 go-duckdb dependency)
+Status: Ready to execute
+Last activity: 2026-08-22
 
 # State — SkillForge
 
@@ -189,7 +189,7 @@ Resume File: None
 
 ### Phase 10 Plan 04 — Task 2 live re-run
 
-- **Status:** Executing Phase 14
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-18
 - **Reason:** Execution environment lacks the live stack required for the 35-case GLM/Milvus/BGE-M3 re-run. No `.env` file is present; `GLM_API_KEY`, `BGE_M3_URL`, and `MILVUS_ADDRESS` are not set; Docker Milvus + BGE-M3 endpoints are not confirmed reachable.
 - **Unblock action:** Operator populates `.env` and starts the Docker stack, then runs:
@@ -548,6 +548,7 @@ Resume File: None
 **Plans completed**: 1/8 in Phase 14
 
 **Acceptance gate results**:
+
 - `go build ./... && go vet ./...` exit 0
 - `go test ./... -count=1` — 25 packages all green, zero regressions
 - `go test ./integration/contract -tags=contract -run TestNoBypassOfPlatformFloorCompose -count=1` PASS
@@ -591,6 +592,7 @@ Resume File: None
 **Plans completed**: 3/8 in Phase 14 (14-01, 14-02, 14-04)
 
 **Acceptance gate results**:
+
 - `go build ./... && go vet ./...` exit 0
 - `go test ./internal/eval/ -count=1` — all green, zero regressions in existing eval framework tests
 - `TestPlatformFloorGoldenSchema` PASS (20 rows, 6 scenarios, rule coverage, long-dialogue >=20 turns)
@@ -616,4 +618,3 @@ Resume File: None
 **Deviations**: None. One implementation refinement: `TestPlatformFloorLockSelfConsistent` uses a separate `platformFloorLockCanonical` struct (without `lock_sha256`) to recompute the canonical body hash, matching the literal `_lock_sha256_convention` wording.
 
 **Resumes at**: `.planning/phases/14-p10-0-cgo-trust-floor/14-03-PLAN.md` (Wave 3: mattn/go-sqlite3 CGO migration).
-

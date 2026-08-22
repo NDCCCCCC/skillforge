@@ -460,7 +460,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 14-05-PLAN.md — go-duckdb v2.4.3 引入+NewConnector boot-queries+WAL 刷盘+Appender ≥10 万行/s+50 并发读门
+- [x] 14-05-PLAN.md — go-duckdb v2.4.3 引入+NewConnector boot-queries+WAL 刷盘+Appender ≥10 万行/s+50 并发读门
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -673,7 +673,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 3/8 plans executed
+**Plans:** 5/8 plans executed
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 
