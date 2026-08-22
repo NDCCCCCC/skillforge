@@ -152,3 +152,10 @@ None beyond the plan's existing `msys2-gcc` service, which was already present o
 ---
 *Phase: 14-p10-0-cgo-trust-floor*
 *Completed: 2026-08-22*
+
+## Self-Check: PASSED
+
+- [x] `14-03-SUMMARY.md` created at `.planning/phases/14-p10-0-cgo-trust-floor/14-03-SUMMARY.md`
+- [x] All commits (`3c97666`, `0b12c9a`, `9f303d5`) exist in `git log`
+- [x] Created file `internal/store/sqlite/mattn_zero_regression_test.go` exists
+- [x] `go build ./... && go vet ./... && go test ./... -count=1` all PASS under MSYS2 bash with CGO enabled
