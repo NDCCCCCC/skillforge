@@ -19,6 +19,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 
+	"github.com/skillforge/skillforge/internal/platformfloor"
 	"github.com/skillforge/skillforge/internal/skill"
 )
 
@@ -160,4 +161,99 @@ func TestBuildDeepAgent_InstructionOverride(t *testing.T) {
 	// We can't peek at the prompt directly, but the construction
 	// succeeded with the override; the lock is at the Instruction
 	// field mapping.
+}
+
+// longestCommonPrefix and longestCommonSuffix are byte-level prefix/
+// suffix helpers shared with the platform-floor tests. Inlined here
+// rather than exported to keep the helper local to the runtime test
+// surface (avoids an internal/testutil package for two trivial funcs).
+func longestCommonPrefix(a, b string) string {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return a[:i]
+}
+
+func longestCommonSuffix(a, b string) string {
+	la, lb := len(a), len(b)
+	n := la
+	if lb < n {
+		n = lb
+	}
+	i := 0
+	for i < n && a[la-1-i] == b[lb-1-i] {
+		i++
+	}
+	return a[la-i:]
+}
+
+// TestRenderDeepSystemPromptPrependsFloor is the deep-architecture
+// mirror of internal/agent's TestPlatformFloorPrependBothPaths (Plan
+// 14-01 Task 2 Test 4 deep side). It locks the D14-A4 invariant that
+// the deep archetype's rendered system prompt carries the platform
+// floor at BOTH ends.
+//
+// Why package runtime (not agent): renderDeepSystemPrompt is unexported
+// in internal/runtime, so the assertion must live in the same package.
+// The agent-package chat-side mirror (TestPlatformFloorPrependBothPaths)
+// imports this through its structural lock; together they pin the
+// dual-path invariant.
+//
+// Why not via BuildRunner: runner_setup.go (in internal/agent) renders
+// the chat prompt and passes it via DispatchConfig.Instruction, which
+// short-circuits the fallback renderDeepSystemPrompt inside
+// BuildDeepAgent. The fallback is what runs when a caller does NOT
+// pre-render (tests / future spike binaries). Both paths are
+// structurally equivalent (the prefix+base concatenation logic lives
+// inside renderDeepSystemPrompt itself); locking the fallback path
+// covers both because the prefix+base layout is the only place the
+// floor can be (or fail to be) injected for the deep archetype.
+func TestRenderDeepSystemPromptPrependsFloor(t *testing.T) {
+	// Derive floor header/tail from two distinct sentinels using the
+	// leaf ComposePlatformPrompt (same technique as the agent-side
+	// TestComposePlatformPromptShape / TestPlatformFloorPrependBothPaths).
+	const (
+		sentinelA = "\x02DEEP_SENTINEL_A\x02"
+		sentinelB = "\x03DEEP_SENTINEL_B\x03"
+	)
+	composedA := platformfloor.ComposePlatformPrompt(sentinelA)
+	composedB := platformfloor.ComposePlatformPrompt(sentinelB)
+	header := longestCommonPrefix(composedA, composedB)
+	tail := longestCommonSuffix(composedA, composedB)
+	if header == "" || tail == "" {
+		t.Fatalf("could not derive floor header/tail from sentinels (collision or empty floor?)")
+	}
+
+	m := &skill.Manifest{Name: "compliance", Description: "compliance review", Agent: "deep", Writes: []string{}}
+	rendered := renderDeepSystemPrompt(m)
+
+	if !strings.HasPrefix(rendered, header) {
+		t.Fatalf("renderDeepSystemPrompt (deep path) must start with the platform floor header\n got prefix: %q\nwant header (first 200): %q",
+			rendered[:min(len(rendered), 200)], header[:min(len(header), 200)])
+	}
+	if !strings.HasSuffix(rendered, tail) {
+		t.Fatalf("renderDeepSystemPrompt (deep path) must end with the platform floor tail\n got suffix: %q\nwant tail (last 200):    %q",
+			rendered[max(0, len(rendered)-200):], tail[max(0, len(tail)-200):])
+	}
+
+	// The deep prompt's middle band must contain the deep-specific
+	// prefix (telling the model about write_todos / plan_approve /
+	// MaxIteration=10) and the deep base body — confirming the deep
+	// prefix+base body still lives in the middle after floor wrapping.
+	middleStart := len(header)
+	middleEnd := len(rendered) - len(tail)
+	middle := rendered[middleStart:middleEnd]
+	if !strings.Contains(middle, "SkillForge DeepAgent") {
+		t.Errorf("renderDeepSystemPrompt middle must contain the deep-archetype prefix (SkillForge DeepAgent marker); got middle prefix=%q",
+			middle[:min(len(middle), 200)])
+	}
+	if !strings.Contains(middle, "compliance auditor") {
+		t.Errorf("renderDeepSystemPrompt middle must contain the deep base body (auditor persona); got middle=%q",
+			middle)
+	}
 }
