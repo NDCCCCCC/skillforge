@@ -307,6 +307,10 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/eval/reports/:ts", deps.evalReportHandler)
 	h.GET("/api/eval/frozen", deps.evalFrozenHandler)
 	h.GET("/api/audit", deps.auditHandler)
+	// Phase 14 Plan 02 (PLAT-10 / D14-B2) — admin preview of the effective
+	// system prompt for a Skill. Returns floor_version, skill_id,
+	// composed_prompt, and prompt_hash (same hash that audit rows carry).
+	h.GET("/api/admin/platform-prompt", deps.platformPromptHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
 	// turns + the session-bound skill_id so the FE can rebuild the

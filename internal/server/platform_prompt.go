@@ -14,6 +14,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// Plan 14-02 / PLAT-10 — the admin preview endpoint for the effective
+// system prompt. It exposes exactly what the chat path would send to the
+// model for a given Skill: the composed prompt body, the platform-floor
+// version, and the reproducible prompt_hash that audit rows carry.
+//
+// Trust model:
+//   - The endpoint is admin-only via the same X-Admin-Token gate as
+//     GET /api/audit (T-6-TOKEN: crypto/subtle.ConstantTimeCompare).
+//   - No user input reaches DDL or SQL; skill lookup is the same
+//     Loader-based path used by chat.go.
+//   - The prompt_hash is computed with the SAME inputs as the audit row
+//     so the preview is byte-identical to what a query would persist.
 package server
 
 import (
@@ -21,13 +33,45 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
+	"github.com/skillforge/skillforge/internal/agent"
 )
 
-// platformPromptHandler is a RED stub for the PLAT-10 admin preview
-// endpoint. It will be replaced by the real implementation in the next
-// commit.
+// platformPromptHandler implements GET /api/admin/platform-prompt?skill={id}.
+//
+// Response envelope (200):
+//
+//	{
+//	  "floor_version":   "1.0.0",
+//	  "skill_id":        "compliance",
+//	  "composed_prompt": "...",
+//	  "prompt_hash":     "sha256-hex"
+//	}
+//
+// Errors: 403 (admin token missing/wrong), 404 (skill not found).
 func (s *Deps) platformPromptHandler(ctx context.Context, c *app.RequestContext) {
-	c.JSON(http.StatusNotImplemented, map[string]string{
-		"error": "platform prompt preview not yet implemented",
+	if !isAdminRequest(c) {
+		c.JSON(http.StatusForbidden, map[string]string{
+			"error": "admin token required",
+		})
+		return
+	}
+
+	skillID := string(c.Query("skill"))
+	m := s.findSkill(skillID)
+	if m == nil {
+		c.JSON(http.StatusNotFound, map[string]string{
+			"error": "skill not found",
+		})
+		return
+	}
+
+	const modelVersion = "glm-5.2"
+	composed := agent.RenderSystemPrompt(m)
+	c.JSON(http.StatusOK, map[string]string{
+		"floor_version":   agent.PlatformFloorVersion,
+		"skill_id":        skillID,
+		"composed_prompt": composed,
+		"prompt_hash":     computePromptHash(skillID, modelVersion, composed),
 	})
 }
