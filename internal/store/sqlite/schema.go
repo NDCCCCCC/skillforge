@@ -87,10 +87,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_session_id ON audit(session_id);
 CREATE INDEX IF NOT EXISTS idx_audit_skill_id   ON audit(skill_id);
 CREATE INDEX IF NOT EXISTS idx_audit_refusal    ON audit(refusal_reason);
 CREATE INDEX IF NOT EXISTS idx_audit_ts         ON audit(ts);
--- Phase 13 / Plan 13-03 — P13-L6 fanout trace reconstruction index.
--- QueryFanoutByRunPath uses LIKE 'parent_run/%' for the trace query;
--- the index keeps the prefix scan O(log N) instead of full table scan.
-CREATE INDEX IF NOT EXISTS idx_audit_run_path   ON audit(run_path);
 
 CREATE TABLE IF NOT EXISTS audit_meta (
     query_id                 INTEGER PRIMARY KEY,
@@ -283,6 +279,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_pending_tcid
 ON audit(tool_call_id) WHERE action = 'action_pending_approval'
 `
 
+// createAuditRunPathIdxSQL is the Phase 13 / Plan 13-03 P13-L6 fanout
+// trace reconstruction index. QueryFanoutByRunPath uses LIKE
+// 'parent_run/%' for the trace query; the index keeps the prefix scan
+// O(log N) instead of a full table scan.
+//
+// Executed in migrate() AFTER the audit ALTERs — same ordering contract
+// as createAuditToolCallIDPendingUniqueIdxSQL (UAT 14-09: on a legacy
+// DB the run_path column is added by an ALTER, so an index created
+// before the ALTER loop dies with "no such column: run_path").
+//
+// CREATE INDEX IF NOT EXISTS is idempotent at the SQLite level; no
+// PRAGMA gating needed.
+const createAuditRunPathIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_audit_run_path ON audit(run_path)
+`
+
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
 // repeating the same gate eight times.
@@ -384,6 +396,13 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	// references it.
 	if _, err := s.db.ExecContext(ctx, createAuditToolCallIDPendingUniqueIdxSQL); err != nil {
 		return fmtError("migrate.audit.tcid_unique", err)
+	}
+
+	// P13-L6 fanout trace index. Created AFTER the ALTERs so a migrated
+	// (pre-Phase-12 legacy) DB has the run_path column by the time the
+	// index references it (UAT 14-09 blocker).
+	if _, err := s.db.ExecContext(ctx, createAuditRunPathIdxSQL); err != nil {
+		return fmtError("migrate.audit.run_path_idx", err)
 	}
 	return nil
 }
