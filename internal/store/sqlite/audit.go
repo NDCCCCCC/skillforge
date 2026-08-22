@@ -48,8 +48,8 @@ INSERT INTO audit (
     action, skill_version, frozen_args, tool_call_id, approval_id,
     scope_session_id, budget_layer,
     faithfulness, context_precision, answer_relevance, context_recall,
-    run_path, transfer_from, transfer_to
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    run_path, transfer_from, transfer_to, platform_floor_version
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // PutAudit appends an immutable audit row. GEVL-03: the row MUST exist
@@ -110,6 +110,7 @@ func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, 
 		toNullString(row.RunPath),
 		toNullString(row.TransferFrom),
 		toNullString(row.TransferTo),
+		row.PlatformFloorVersion,
 	)
 	if err != nil {
 		return 0, fmtError("PutAudit", err)
@@ -139,7 +140,7 @@ const queryAuditCols = `
     action, skill_version, frozen_args, tool_call_id, approval_id,
     scope_session_id, budget_layer,
     faithfulness, context_precision, answer_relevance, context_recall,
-    run_path, transfer_from, transfer_to
+    run_path, transfer_from, transfer_to, platform_floor_version
 `
 
 // QueryAudit returns rows matching filter, newest-first. The WHERE
@@ -237,7 +238,7 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 			&r.Action, &r.SkillVersion, &r.FrozenArgs, &r.ToolCallID,
 			&r.ApprovalID, &r.ScopeSessionID, &r.BudgetLayer,
 			&faith, &ctxPrec, &ansRel, &ctxRecall,
-			&runPath, &transferFrom, &transferTo,
+			&runPath, &transferFrom, &transferTo, &r.PlatformFloorVersion,
 		); err != nil {
 			return nil, fmtError("QueryAudit.Scan", err)
 		}
@@ -531,8 +532,8 @@ INSERT INTO audit (
     ts, session_id, user_id, skill_id, action,
     query, prompt_hash, skill_version, model_version,
     verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id
-) VALUES (?, ?, ?, ?, 'action_pending_approval', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
+) VALUES (?, ?, ?, ?, 'action_pending_approval', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 const putApprovedSQL = `
@@ -540,8 +541,8 @@ INSERT INTO audit (
     ts, session_id, user_id, skill_id, action,
     query, prompt_hash, skill_version, model_version,
     verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id
-) VALUES (?, ?, ?, ?, 'action_approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
+) VALUES (?, ?, ?, ?, 'action_approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 const putRejectedSQL = `
@@ -549,8 +550,8 @@ INSERT INTO audit (
     ts, session_id, user_id, skill_id, action,
     query, prompt_hash, skill_version, model_version,
     verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id
-) VALUES (?, ?, ?, ?, 'action_rejected', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
+) VALUES (?, ?, ?, ?, 'action_rejected', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 const putRuleRevokedSQL = `
@@ -558,8 +559,8 @@ INSERT INTO audit (
     ts, session_id, user_id, skill_id, action,
     query, prompt_hash, skill_version, model_version,
     verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id
-) VALUES (?, ?, ?, ?, 'action_rule_revoked', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
+) VALUES (?, ?, ?, ?, 'action_rule_revoked', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // InsertPendingApproval writes the FIRST row of the HITL-04 lifecycle
@@ -581,6 +582,7 @@ func (s *SQLiteStore) InsertPendingApproval(ctx context.Context, row store.Pendi
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+		row.PlatformFloorVersion,
 	)
 	if err != nil {
 		return 0, fmtError("InsertPendingApproval", err)
@@ -606,6 +608,7 @@ func (s *SQLiteStore) MarkApproved(ctx context.Context, row store.ApprovalResolu
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+		row.PlatformFloorVersion,
 	)
 	if err != nil {
 		return 0, fmtError("MarkApproved", err)
@@ -630,6 +633,7 @@ func (s *SQLiteStore) MarkRejected(ctx context.Context, row store.ApprovalResolu
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+		row.PlatformFloorVersion,
 	)
 	if err != nil {
 		return 0, fmtError("MarkRejected", err)
@@ -654,6 +658,7 @@ func (s *SQLiteStore) MarkRuleRevoked(ctx context.Context, row store.RuleRevokeR
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+		row.PlatformFloorVersion,
 	)
 	if err != nil {
 		return 0, fmtError("MarkRuleRevoked", err)

@@ -269,7 +269,7 @@ func interruptSession(t *testing.T, ctx context.Context, s *sqlite.SQLiteStore, 
 // uses in production).
 func seedPendingApproval(t *testing.T, ctx context.Context, s *sqlite.SQLiteStore, sessionID string, snap hitl.SkillSnapshot, toolCallID, target string, frozenArgs []byte) {
 	t.Helper()
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	_, err := w.WritePendingApproval(ctx, sessionID, "", snap, toolCallID, target, frozenArgs, "")
 	require.NoError(t, err, "seed pending approval row")
 }
@@ -585,7 +585,7 @@ func TestAuditListHandler(t *testing.T) {
 	sessionID := "sess-audit-001"
 
 	snap := hitl.SkillSnapshot{SkillID: "compliance", Version: "v1", PromptHash: "ph1"}
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	_, err := w.WritePendingApproval(ctx, sessionID, "", snap, "tc-000001", "memory:facts", []byte(`{"key":"k"}`), "")
 	require.NoError(t, err)
 	_, err = w.MarkApproved(ctx, sessionID, "", snap, "tc-000001", "tc-000001", "memory:facts", []byte(`{"key":"k"}`), "ok")

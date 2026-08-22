@@ -338,7 +338,7 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// Initialize the fail-closed HITL audit writer from the store when
 	// the caller did not inject one (D11-C3 single write path).
 	if deps.AuditWriter == nil && deps.Store != nil {
-		deps.AuditWriter = hitl.NewAuditWriter(deps.Store)
+		deps.AuditWriter = hitl.NewAuditWriter(deps.Store, agent.PlatformFloorVersion)
 	}
 	return h
 }

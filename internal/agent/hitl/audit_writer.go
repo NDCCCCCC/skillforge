@@ -89,6 +89,12 @@ import (
 type AuditWriter struct {
 	store store.Store
 
+	// floorVersion is the PLAT-10 platform-floor semver that every HITL
+	// audit row MUST carry. It is injected at construction so this package
+	// never imports internal/agent (the agent→hitl edge already exists;
+	// reversing it would create an import cycle).
+	floorVersion string
+
 	// now is the clock. Production uses time.Now().UTC(); hermetic tests
 	// inject a fixed clock via SetNow so ts values are deterministic.
 	now func() time.Time
@@ -169,9 +175,16 @@ func (s SkillSnapshot) IsZero() bool {
 var _ auditWriterHook = (*AuditWriter)(nil)
 
 // NewAuditWriter constructs the writer with the default clock.
-func NewAuditWriter(s store.Store) *AuditWriter {
-	return &AuditWriter{store: s, now: func() time.Time { return time.Now().UTC() }}
+func NewAuditWriter(s store.Store, floorVersion string) *AuditWriter {
+	return &AuditWriter{store: s, floorVersion: floorVersion, now: func() time.Time { return time.Now().UTC() }}
 }
+
+// ErrMissingFloorVersion is the fail-closed sentinel returned by every
+// HITL write method when the writer was constructed with an empty
+// floorVersion. An empty value would create a new audit row that
+// masquerades as "pre-floor era" and falsifies the drift window
+// (T-14-06b mitigation).
+var ErrMissingFloorVersion = errors.New("hitl: AuditWriter floorVersion required (PLAT-10)")
 
 // SetNow injects a deterministic clock for hermetic tests. Production
 // callers do not invoke this method.

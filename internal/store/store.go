@@ -133,6 +133,13 @@ type AuditRow struct {
 	// fanout rows to identify the sub_query_id (the "transfer
 	// destination" in agent-path semantics). Empty for non-fanout rows.
 	TransferTo string
+	// PlatformFloorVersion is the PLAT-10 platform-floor semver that
+	// wrote this row. Empty string means "pre-floor era" (the DDL
+	// DEFAULT '' carries this semantic). Every INSERT path — chat
+	// verdict, HITL lifecycle, budget, fanout — populates it so a SQL
+	// `SELECT DISTINCT platform_floor_version FROM audit` reveals the
+	// drift window.
+	PlatformFloorVersion string
 }
 
 // FanoutEvent is one row of the Phase 13 / Plan 13-03 FAN-04 SC-4
@@ -189,6 +196,10 @@ type PendingApprovalRow struct {
 	// ScopeSessionID binds the row to the session an approve-and-remember
 	// rule would be scoped to (D11-D2).
 	ScopeSessionID string
+	// PlatformFloorVersion is the PLAT-10 platform-floor semver that
+	// wrote this row. HITL rows MUST carry a non-empty value
+	// (ErrMissingFloorVersion fail-closed).
+	PlatformFloorVersion string
 }
 
 // ApprovalResolutionRow is the SECOND row of the HITL-04 lifecycle
@@ -214,6 +225,10 @@ type ApprovalResolutionRow struct {
 	ToolCallID     string // == the pending row's tool_call_id (D11-C4)
 	ApprovalID     string // == the pending row's approval_id
 	ScopeSessionID string
+	// PlatformFloorVersion is the PLAT-10 platform-floor semver that
+	// wrote this row. HITL rows MUST carry a non-empty value
+	// (ErrMissingFloorVersion fail-closed).
+	PlatformFloorVersion string
 }
 
 // RuleRevokeRow is the audit row written when an approve-and-remember
@@ -237,6 +252,10 @@ type RuleRevokeRow struct {
 	ToolCallID     string
 	ApprovalID     string
 	ScopeSessionID string
+	// PlatformFloorVersion is the PLAT-10 platform-floor semver that
+	// wrote this row. HITL rows MUST carry a non-empty value
+	// (ErrMissingFloorVersion fail-closed).
+	PlatformFloorVersion string
 }
 
 // SessionMessage is one turn-half (user OR assistant) of a conversation

@@ -349,7 +349,7 @@ func step1Interrupt(ctx context.Context, s *sqlite.SQLiteStore, manifest *skill.
 // through the fail-closed writer (the SAME code path the production
 // approval endpoint uses when it seeds a row).
 func step2SeedPending(ctx context.Context, s *sqlite.SQLiteStore, sessionID string, snap hitl.SkillSnapshot) error {
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	_, err := w.WritePendingApproval(ctx, sessionID, "", snap, smokeToolCallID, "memory:facts", []byte(smokeToolArgs), "")
 	if err != nil {
 		return fmt.Errorf("WritePendingApproval: %w", err)
@@ -404,7 +404,7 @@ func step4QueryPending(ctx context.Context, s *sqlite.SQLiteStore, sessionID str
 // (internal/server/approval_api.go), which writes the resolution row
 // synchronously so an audit failure aborts the resume.
 func step5ApproveResume(ctx context.Context, s *sqlite.SQLiteStore, manifest *skill.Manifest, sessionID string, snap hitl.SkillSnapshot, interruptID string) error {
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	if _, err := w.MarkApproved(ctx, sessionID, "", snap, smokeToolCallID, smokeToolCallID, "memory:facts", []byte(smokeToolArgs), "smoke-test approve"); err != nil {
 		return fmt.Errorf("MarkApproved: %w", err)
 	}

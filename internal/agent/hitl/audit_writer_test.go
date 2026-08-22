@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/agent/hitl"
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
@@ -78,7 +79,7 @@ func TestFailClosedAudit(t *testing.T) {
 	s := newTestStore(t)
 	require.NoError(t, s.Close(), "close the store FIRST so every INSERT fails")
 
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	snap := testSnapshot(t, "v1")
 
 	id, err := w.WritePendingApproval(context.Background(),
@@ -108,7 +109,7 @@ func TestFailClosedAudit(t *testing.T) {
 // SEPARATE row. No stage ever mutates an earlier row (T-3-AUDIT).
 func TestAuditChainThreeRowLifecycle(t *testing.T) {
 	s := newTestStore(t)
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	snap := testSnapshot(t, "v1")
 	frozen := []byte(`{"key":"audit-chain"}`)
 	ctx := context.Background()
@@ -172,7 +173,7 @@ func TestAuditChainThreeRowLifecycle(t *testing.T) {
 // in-flight mutation must be visible as a hash change.
 func TestApprovalArgsByteEquality(t *testing.T) {
 	s := newTestStore(t)
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	snap := testSnapshot(t, "v1")
 	ctx := context.Background()
 
@@ -214,7 +215,7 @@ func TestApprovalArgsByteEquality(t *testing.T) {
 // holds across every lifecycle method the writer exposes.
 func TestApprovalIDIdentityInvariant(t *testing.T) {
 	s := newTestStore(t)
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	snap := testSnapshot(t, "v1")
 	ctx := context.Background()
 	frozen := []byte(`{"x":1}`)
@@ -251,7 +252,7 @@ func TestApprovalIDIdentityInvariant(t *testing.T) {
 // that could not support the D11-C2 expire check or the D11-C4 identity.
 func TestAuditWriterPreconditions(t *testing.T) {
 	s := newTestStore(t)
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	ctx := context.Background()
 
 	_, err := w.WritePendingApproval(ctx, "sess", "user", testSnapshot(t, "v1"),
@@ -272,7 +273,7 @@ func TestAuditWriterPreconditions(t *testing.T) {
 // target="plan_approve" (the timeline-tab filter key).
 func TestAuditPlanApproveTargetDiscriminator(t *testing.T) {
 	s := newTestStore(t)
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	snap := testSnapshot(t, "v1")
 	ctx := context.Background()
 
@@ -331,7 +332,7 @@ func TestAuditPlanApproveTargetDiscriminator(t *testing.T) {
 // approval_id invariant holds across both rows.
 func TestAuditPlanApproveFullLifecycle(t *testing.T) {
 	s := newTestStore(t)
-	w := hitl.NewAuditWriter(s)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
 	snap := testSnapshot(t, "v1")
 	ctx := context.Background()
 	frozen := []byte(`{"planId":"plan-lifecycle","steps":[{"id":"s1","content":"x","status":"pending"},{"id":"s2","content":"y","status":"pending"}]}`)
@@ -374,4 +375,96 @@ func TestAuditPlanApproveFullLifecycle(t *testing.T) {
 func hexSum(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// TestHITLPlatformFloorVersionRows — PLAT-10 D14-B2: the five HITL
+// audit INSERT sites (pending / approved / rejected / rule-revoked /
+// auto-passed-rule) all stamp platform_floor_version on the audit row.
+// The value is injected via NewAuditWriter so the hitl package never
+// imports internal/agent (import-cycle avoidance).
+func TestHITLPlatformFloorVersionRows(t *testing.T) {
+	s := newTestStore(t)
+	w := hitl.NewAuditWriter(s, agent.PlatformFloorVersion)
+	snap := testSnapshot(t, "v1")
+	ctx := context.Background()
+	frozen := []byte(`{"key":"floor-test"}`)
+
+	pendingID, err := w.WritePendingApproval(ctx,
+		"sess-floor", "user-1", snap, "tc-floor-1", "memory:facts", frozen, "agent reason")
+	require.NoError(t, err)
+	require.Greater(t, pendingID, int64(0))
+
+	approvedID, err := w.MarkApproved(ctx,
+		"sess-floor", "user-1", snap, "tc-floor-1", "tc-floor-1", "memory:facts", frozen, "operator reason")
+	require.NoError(t, err)
+	require.Greater(t, approvedID, int64(0))
+
+	rejectedID, err := w.MarkRejected(ctx,
+		"sess-floor", "user-1", snap, "tc-floor-2", "tc-floor-2", "memory:facts", frozen, "operator reject reason")
+	require.NoError(t, err)
+	require.Greater(t, rejectedID, int64(0))
+
+	revokedID, err := w.MarkRuleRevoked(ctx,
+		"sess-floor", "user-1", snap, "tc-floor-3", "memory:facts", frozen, "operator revoke reason")
+	require.NoError(t, err)
+	require.Greater(t, revokedID, int64(0))
+
+	autoPassID, err := w.MarkAutoPassedRule(ctx,
+		"sess-floor", "user-1", "tc-floor-4", "memory:facts", frozen)
+	require.NoError(t, err)
+	require.Greater(t, autoPassID, int64(0))
+
+	rows, err := s.QueryAudit(ctx, store.AuditFilter{SessionID: "sess-floor", Limit: 50})
+	require.NoError(t, err)
+	require.Len(t, rows, 5, "pending + approved + rejected + revoked + auto-pass = 5 rows")
+
+	for _, r := range rows {
+		assert.Equal(t, agent.PlatformFloorVersion, r.PlatformFloorVersion,
+			"every HITL row must carry the platform floor version (action=%s)", r.Action)
+	}
+
+	// The auto-pass row intentionally leaves SkillID/PromptHash empty,
+	// but platform_floor_version is still mandatory.
+	for _, r := range rows {
+		if r.Action == "action_approved" && r.RefusalReason == "auto_passed_rule" {
+			assert.Empty(t, r.SkillID, "auto-pass row keeps SkillID empty")
+			assert.Equal(t, agent.PlatformFloorVersion, r.PlatformFloorVersion,
+				"auto-pass row still carries platform_floor_version")
+		}
+	}
+}
+
+// TestHITLPlatformFloorVersionFailClosed — an empty floorVersion
+// refuses to write any audit row, preventing new rows from forging a
+// pre-floor drift window.
+func TestHITLPlatformFloorVersionFailClosed(t *testing.T) {
+	s := newTestStore(t)
+	w := hitl.NewAuditWriter(s, "")
+	snap := testSnapshot(t, "v1")
+	ctx := context.Background()
+
+	_, err := w.WritePendingApproval(ctx,
+		"sess", "user", snap, "tc-1", "memory:facts", []byte(`{}`), "r")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, hitl.ErrMissingFloorVersion)
+
+	_, err = w.MarkApproved(ctx,
+		"sess", "user", snap, "tc-2", "tc-2", "memory:facts", []byte(`{}`), "r")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, hitl.ErrMissingFloorVersion)
+
+	_, err = w.MarkRejected(ctx,
+		"sess", "user", snap, "tc-3", "tc-3", "memory:facts", []byte(`{}`), "r")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, hitl.ErrMissingFloorVersion)
+
+	_, err = w.MarkRuleRevoked(ctx,
+		"sess", "user", snap, "tc-4", "memory:facts", []byte(`{}`), "r")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, hitl.ErrMissingFloorVersion)
+
+	_, err = w.MarkAutoPassedRule(ctx,
+		"sess", "user", "tc-5", "memory:facts", []byte(`{}`))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, hitl.ErrMissingFloorVersion)
 }

@@ -179,7 +179,10 @@ func testThreatHitl04AuditFailClosed(t *testing.T) {
 	// WritePendingApproval with an empty toolCallID — the function's
 	// own guard returns an error BEFORE reaching the store, which
 	// proves the fail-closed posture fires on invalid input.
-	w := NewAuditWriter(nil)
+	// This test is in package hitl (not hitl_test) so it cannot import
+	// internal/agent without creating an import cycle. Pass the literal
+	// floor version directly — the only requirement is a non-empty value.
+	w := NewAuditWriter(nil, "1.0.0")
 	_, err := w.WritePendingApproval(context.Background(), "sess-1", "user-1",
 		SkillSnapshot{SkillID: "s", Version: "v", PromptHash: "ph"},
 		"", // empty toolCallID → must error (D11-C4)

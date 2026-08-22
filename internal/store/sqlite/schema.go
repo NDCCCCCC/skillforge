@@ -228,6 +228,11 @@ const (
 	alterAuditAddTransferFromSQL = "ALTER TABLE audit ADD COLUMN transfer_from TEXT"
 	alterAuditAddTransferToSQL   = "ALTER TABLE audit ADD COLUMN transfer_to TEXT"
 
+	// Phase 14 / Plan 14-02 — PLAT-10 platform-floor version column.
+	// NOT NULL DEFAULT '' mirrors the budget_layer precedent; empty
+	// string denotes pre-floor era rows.
+	alterAuditAddPlatformFloorVersionSQL = "ALTER TABLE audit ADD COLUMN platform_floor_version TEXT NOT NULL DEFAULT ''"
+
 	alterCheckpointAddSkillVersionSQL = "ALTER TABLE checkpoint ADD COLUMN skill_version TEXT NOT NULL DEFAULT ''"
 	alterCheckpointAddPromptHashSQL   = "ALTER TABLE checkpoint ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT ''"
 )
@@ -266,6 +271,8 @@ var auditLifecycleColumns = []struct{ column, stmt string }{
 	{"run_path", alterAuditAddRunPathSQL},
 	{"transfer_from", alterAuditAddTransferFromSQL},
 	{"transfer_to", alterAuditAddTransferToSQL},
+	// Phase 14 / Plan 14-02 — PLAT-10 platform-floor version column.
+	{"platform_floor_version", alterAuditAddPlatformFloorVersionSQL},
 }
 
 var checkpointSnapshotColumns = []struct{ column, stmt string }{

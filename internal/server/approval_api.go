@@ -165,7 +165,7 @@ func (s *Deps) auditWriterOrDefault() *hitl.AuditWriter {
 	if s.AuditWriter != nil {
 		return s.AuditWriter
 	}
-	return hitl.NewAuditWriter(s.Store)
+	return hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion)
 }
 
 // approvalGetHandler implements GET /api/session/:id/approval
