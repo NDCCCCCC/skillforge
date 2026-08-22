@@ -45,7 +45,7 @@
 
 贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**。依赖主线严格线性：14 → 15 → 16 → 17 → 18 → 19；20（管理台）收尾聚合全链数据面。研究依据：`.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计 2026-08-21；PITFALLS.md 文内 P14..P20 为研究期占位编号，已映射到下方 Phase 14..20）。
 
-- [ ] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(in progress — 3/8 plans complete: 14-01 platform-floor composition, 14-02 audit floor version + admin preview, 14-04 frozen eval set + hermetic judge; next 14-03 CGO sqlite switch)
+- [ ] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(in progress — 4/8 plans complete: 14-01 platform-floor composition, 14-02 audit floor version + admin preview, 14-03 CGO sqlite switch + DSN pragma + TestSqliteMattnZeroRegression, 14-04 frozen eval set + hermetic judge; next 14-05 go-duckdb connector)
 - [ ] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）
 - [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
@@ -452,11 +452,11 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 14-02-PLAN.md — audit platform_floor_version 加列（5 INSERT 同步）+ admin 预览端点（X-Admin-Token 复用）
-- [ ] 14-04-PLAN.md — platform-floor.jsonl 20 例×6 攻击面+hermetic 正则判定+第 4 冻结锁落锁
+- [x] 14-04-PLAN.md — platform-floor.jsonl 20 例×6 攻击面+hermetic 正则判定+第 4 冻结锁落锁
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 14-03-PLAN.md — gcc 就位+mattn v1.14.50 替换 modernc+DSN pragma（busy_timeout=5000）+TestSqliteMattnZeroRegression
+- [x] 14-03-PLAN.md — gcc 就位+mattn v1.14.50 替换 modernc+DSN pragma（busy_timeout=5000）+TestSqliteMattnZeroRegression
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -654,7 +654,7 @@ Plans:
 | 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
-| 14. CGO 地基 + 平台信任地板 (P10.0) | 2/8 (14-01 platform-floor core + 14-02 audit/admin preview) | In Progress — Wave 2 complete; Wave 3 (mattn sqlite CGO switch) pending | 2026-08-22 (14-02) |
+| 14. CGO 地基 + 平台信任地板 (P10.0) | 4/8 (14-01 platform-floor core + 14-02 audit/admin preview + 14-03 CGO sqlite switch + 14-04 frozen eval set + hermetic judge) | In Progress — Wave 3 complete; next Wave 4 (14-05 go-duckdb connector) | 2026-08-22 (14-03) |
 | 15. 数据导入管线 + 导入即脱敏 (P10.1) | 0 (not planned) | Not started | - |
 | 16. KPI 聚合通道 (P10.2) | 0 (not planned) | Not started | - |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
@@ -663,7 +663,7 @@ Plans:
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-22 — Phase 14 Plan 02 complete (PLAT-10 audit floor version + admin prompt preview); 14-01..14-02 in tree; Wave 3 (mattn sqlite CGO switch) next. Prior: 2026-08-21 — v1.0 roadmap created（业务数据支撑，phases 14-20，44/44 requirements mapped）...*
+*Last updated: 2026-08-22 — Phase 14 Plan 03 complete (mattn/go-sqlite3 v1.14.50 + DSN _busy_timeout=5000/_journal_mode=WAL/_foreign_keys=1 + Makefile check-cgo gate + TestSqliteMattnZeroRegression); 14-01..14-04 in tree; next Wave 4 (14-05 go-duckdb connector). Prior: 2026-08-22 — Phase 14 Plan 02 complete (PLAT-10 audit floor version + admin prompt preview).*
 
 ---
 
@@ -673,7 +673,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 2/8 plans executed
+**Plans:** 3/8 plans executed
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 

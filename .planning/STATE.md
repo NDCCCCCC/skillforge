@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
-current_plan: 3
+current_plan: 5
 status: executing
-stopped_at: Phase 14 Plan 04 COMPLETE 2026-08-22 (resume at Plan 14-03)
-last_updated: "2026-08-22T04:22:00.000Z"
-last_activity: 2026-08-22 -- Phase 14 Plan 04 platform-floor frozen eval set shipped (20-case golden set + JudgeHermetic + platform-floor.lock.json)
+stopped_at: Phase 14 Plan 03 COMPLETE 2026-08-22 (next Plan 14-05)
+last_updated: "2026-08-22T04:54:00.000Z"
+last_activity: 2026-08-22 -- Phase 14 Plan 03 CGO sqlite switch shipped (mattn/go-sqlite3 v1.14.50 + DSN pragmas + TestSqliteMattnZeroRegression)
 progress:
   total_phases: 20
   completed_phases: 11
   total_plans: 80
-  completed_plans: 76
-  percent: 57
+  completed_plans: 77
+  percent: 58
 ---
 
 # State — SkillForge
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 14 (p10-0-cgo-trust-floor) — EXECUTING
-Plan: 3 of 8 (Plan 04 COMPLETE 2026-08-22; next Plan 14-03 Wave 3 CGO sqlite switch)
-Status: Executing Phase 14 — 14-01 + 14-02 + 14-04 shipped; Wave 3 14-03 (mattn/go-sqlite3 CGO migration) pending
-Last activity: 2026-08-22 -- Phase 14 Plan 04 platform-floor frozen eval set shipped (eval/golden/platform-floor.jsonl 20 cases + internal/eval.JudgeHermetic + eval/frozen/platform-floor.lock.json; live judge runbook deferred to 14-08)
+Plan: 5 of 8 (Plan 03 COMPLETE 2026-08-22; Plan 04 COMPLETE 2026-08-22; next Plan 14-05 go-duckdb dependency)
+Status: Executing Phase 14 — 14-01 + 14-02 + 14-03 + 14-04 shipped; next Plan 14-05
+Last activity: 2026-08-22 -- Phase 14 Plan 03 CGO sqlite switch shipped (mattn/go-sqlite3 v1.14.50 + DSN _busy_timeout=5000/_journal_mode=WAL/_foreign_keys=1 + Makefile check-cgo gate + TestSqliteMattnZeroRegression)
 
 # State — SkillForge
 
@@ -146,6 +146,7 @@ Resume File: None
 | D14-B1 | semver 字面量代码级不可 env 配置（Phase 14 / Plan 14-01） | `const PlatformFloorVersion = "1.0.0"`（internal/platformfloor + internal/agent/platform_floor.go 镜像）；不进 config、不进 env；verify-phase-14.sh source-grep 锁定（Pattern E — fanout_runtime.go:63 模型）。 |
 | D14-B3 | prompt_hash 覆盖合成全文（Phase 14 / Plan 14-01） | reprohash.PromptHash 第三参数从 Skill prompt 升级为 ComposePlatformPrompt 合成全文；digest 序 skillName → renderedPromptBody → modelVersion 不动（reprohash.go 零 diff）；TestPromptHashCoversFloor 双向断言 PASS；eval/frozen/compliance.lock.json prompt_hash 已重锁 58ffea08... → ca333fbadbfa30eb...（D14-B4 重锁链首段，hitl/fanout/platform-floor 归 14-04）。 |
 | D14-B4 | 地板文字任何改动 = 全量重跑纪律（Phase 14 / Plan 14-01） | semver 强制递增（PATCH 标点 / MINOR 新条款 / MAJOR 删 D14-A1 条目）+ compliance/hitl/fanout/platform-floor 四个冻结集全部重跑 + audit 可见变更；平台地板是每轮都发的产品级承诺，风险不对称。仅 14-01 即触发 compliance.lock.json 第一次重锁（其余三个归 14-04）。 |
+| D14-C1 | CGO sqlite 驱动切换 + DSN pragma 纪律（Phase 14 / Plan 14-03） | modernc.org/sqlite → mattn/go-sqlite3 v1.14.50；busy_timeout/WAL/foreign_keys 必须进 DSN 参数而非 post-open PRAGMA；任何 in-memory DSN 默认 MaxOpenConns=1 以避免 shared-cache 死锁；Makefile check-cgo 门必须在 go build 前通过。 |
 
 ---
 
