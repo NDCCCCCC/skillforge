@@ -258,6 +258,31 @@ type RuleRevokeRow struct {
 	PlatformFloorVersion string
 }
 
+// DatasetRow is one registered analytic dataset (Phase 14 / D14-D2). The
+// registry lives in the SAME sqlite database as audit/checkpoint; the
+// dataset payload itself is a .duckdb file under data/datasets/ whose
+// on-disk name derives from Name (see internal/duckdb.CommitStagedDataset —
+// FilePath is written by that commit path, never hand-edited).
+type DatasetRow struct {
+	// Name is the dataset identifier — the same allowlist grammar the
+	// duckdb ATTACH layer enforces (^[A-Za-z0-9_-]{1,64}$).
+	Name string
+	// Tier is the trust tier the dataset is exposed under (Skill `reads`
+	// vocabulary: "权威" / "历史" / "个人").
+	Tier string
+	// SchemaJSON is the table/column descriptor JSON for admin surfaces.
+	SchemaJSON string
+	// FilePath is the on-disk .duckdb location (under data/datasets/).
+	FilePath string
+	// ContentSHA256 is the content hash for integrity + TOCTOU checks
+	// (Phase 19 pattern).
+	ContentSHA256 string
+	// BatchID is the import batch that produced this row.
+	BatchID string
+	// CreatedAt is the registration time (UTC).
+	CreatedAt time.Time
+}
+
 // SessionMessage is one turn-half (user OR assistant) of a conversation
 // history. AppendTurn writes a (user, assistant) pair atomically.
 type SessionMessage struct {
@@ -504,6 +529,15 @@ type Store interface {
 	// Used by the AgentInspector timeline (Phase 5 SC-4) to render the
 	// fanout trace alongside the existing decision timeline.
 	ListFanoutEvents(ctx context.Context, sessionID string, limit int) ([]FanoutEvent, error)
+
+	// PutDataset upserts one dataset registry row (INSERT OR REPLACE by
+	// name — idempotent, Phase 14 / D14-D2). Called by the staging commit
+	// path (internal/duckdb.CommitStagedDataset) after the atomic rename.
+	PutDataset(ctx context.Context, row DatasetRow) error
+
+	// ListDatasets returns every registered dataset row, ordered by name.
+	// Empty (non-nil) slice when the registry is empty.
+	ListDatasets(ctx context.Context) ([]DatasetRow, error)
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

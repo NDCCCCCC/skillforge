@@ -1,0 +1,179 @@
+// Copyright 2026 SkillForge Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package duckdb
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/skillforge/skillforge/internal/store"
+)
+
+// Directory conventions for the data-support track (D14-D4, fixed in this
+// phase; Phase 15's import pipeline consumes them directly). Both live under
+// data/ on the SAME volume — the same-volume guarantee is what makes
+// os.Rename atomic (POSIX rename(2); Windows MoveFileExW). The data/ tree is
+// git-ignored (runtime state, never committed).
+const (
+	// DefaultStagingDir holds in-flight import batches. A file here is a
+	// batch that has NOT been committed; a crash may leave orphans here
+	// and that is by design — cleanup only ever touches staging.
+	DefaultStagingDir = "data/staging"
+	// DefaultDatasetsDir holds committed datasets. An invariant, not an
+	// aspiration: every file here is complete and registered.
+	DefaultDatasetsDir = "data/datasets"
+)
+
+// ErrDatasetExists is returned when a commit targets a dataset id whose
+// final file already exists (replay of an already-committed batch, or an
+// id collision). The commit is rejected WITHOUT side effects — the existing
+// dataset is untouched (T-14-15).
+var ErrDatasetExists = errors.New("duckdb: dataset already committed")
+
+// DatasetRegistry is the narrow write+read seam the staging commit path
+// needs from the sqlite store (interface isolation: staging depends on the
+// two dataset operations, not the whole store.Store). The production
+// implementation is *sqlite.SQLiteStore via PutDataset/ListDatasets.
+type DatasetRegistry interface {
+	PutDataset(ctx context.Context, row store.DatasetRow) error
+}
+
+// CommitOptions parameterizes CommitStagedDataset.
+type CommitOptions struct {
+	// StagingPath is the completed staging file (under DefaultStagingDir).
+	// Required.
+	StagingPath string
+	// DatasetID is the validated dataset identifier; the final file name
+	// is {DatasetsDir}/{DatasetID}.duckdb. Required; must satisfy
+	// ValidateDatasetID and equal Row.Name.
+	DatasetID string
+	// Row is the registry row written after the rename. Required;
+	// Row.Name must equal DatasetID (the registry and the file name are
+	// one identity).
+	Row store.DatasetRow
+	// Registry is the dataset registry (sqlite store). Required.
+	Registry DatasetRegistry
+	// DatasetsDir overrides DefaultDatasetsDir (tests use a temp dir;
+	// empty falls back to the default).
+	DatasetsDir string
+	// LRU optionally supplies the lazy-ATTACH registry: when the dataset
+	// id is currently ATTACHed, it is DETACHed FIRST so the engine drops
+	// its file handle — on Windows the rename would otherwise fail on a
+	// locked source/target (T-14-17). May be nil.
+	LRU *AttachLRU
+}
+
+// CommitStagedDataset promotes a completed staging file into a committed
+// dataset (D14-D4): atomic same-volume rename + registry row write with one
+// commit semantic.
+//
+// Semantics:
+//   - DatasetsDir is created if missing (MkdirAll — idempotent).
+//   - An existing target file aborts with ErrDatasetExists BEFORE any
+//     mutation (replay/id-collision guard; the existing dataset stays
+//     byte-identical).
+//   - A missing staging file aborts with a descriptive error — datasets/
+//     and the registry gain nothing (no half-state, T-14-15).
+//   - On ANY failure the staging file is removed (best-effort) so staging
+//     never accumulates dead batches; on success the staging file is gone
+//     by definition (it was renamed).
+//   - If the registry write fails AFTER the rename, the rename is
+//     compensated (file moved back to its staging path, best-effort). This
+//     is an approximate transaction — the filesystem has no rollback; a
+//     compensation failure returns an aggregate error for operator triage.
+//
+// Callers MUST NOT os.Remove a dataset file without a prior Detach — the
+// engine holds a handle while a dataset is ATTACHed (Windows lock boundary,
+// Pitfall 4).
+func CommitStagedDataset(ctx context.Context, opts CommitOptions) error {
+	if opts.Registry == nil {
+		return fmtError("CommitStagedDataset", errors.New("registry is required"))
+	}
+	if err := ValidateDatasetID(opts.DatasetID); err != nil {
+		return err
+	}
+	if opts.Row.Name != opts.DatasetID {
+		return fmtError("CommitStagedDataset", fmt.Errorf(
+			"row name %q does not match dataset id %q — the registry row and file name are one identity",
+			opts.Row.Name, opts.DatasetID))
+	}
+
+	datasetsDir := opts.DatasetsDir
+	if datasetsDir == "" {
+		datasetsDir = DefaultDatasetsDir
+	}
+	target := filepath.Join(datasetsDir, opts.DatasetID+".duckdb")
+
+	// Release the engine-side handle first if this id is ATTACHed
+	// (idempotent — a no-op when not attached).
+	if opts.LRU != nil {
+		if err := opts.LRU.Detach(ctx, opts.DatasetID); err != nil {
+			return fmtError("CommitStagedDataset", fmt.Errorf("pre-commit detach: %w", err))
+		}
+	}
+
+	// Replay / id-collision guard: the target existing means this id was
+	// already committed (or is being committed concurrently) — reject
+	// without touching anything.
+	if _, err := os.Stat(target); err == nil {
+		return fmt.Errorf("%w: %s", ErrDatasetExists, target)
+	}
+	if _, err := os.Stat(opts.StagingPath); err != nil {
+		return fmtError("CommitStagedDataset", fmt.Errorf(
+			"staging file %s missing — the batch did not complete: %w",
+			opts.StagingPath, err))
+	}
+	if err := os.MkdirAll(datasetsDir, 0o755); err != nil {
+		return fmtError("CommitStagedDataset", err)
+	}
+
+	// Failure cleanup: a commit that does not reach "renamed" removes its
+	// staging residue. On success the defer is skipped (renamed=true).
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(opts.StagingPath)
+		}
+	}()
+
+	// Same-volume atomic rename (staging/ and datasets/ both live under
+	// data/). No two-phase copy + marker dance — the OS rename IS the
+	// atomicity boundary (RESEARCH Don't Hand-Roll).
+	if err := os.Rename(opts.StagingPath, target); err != nil {
+		return fmtError("CommitStagedDataset", fmt.Errorf("atomic rename %s -> %s: %w",
+			opts.StagingPath, target, err))
+	}
+	renamed = true
+
+	if err := opts.Registry.PutDataset(ctx, opts.Row); err != nil {
+		// Compensate: move the file back so datasets/ keeps its "complete
+		// AND registered" invariant. Best-effort — a compensation failure
+		// is an operator-visible aggregate error.
+		if rbErr := os.Rename(target, opts.StagingPath); rbErr != nil {
+			return fmtError("CommitStagedDataset", fmt.Errorf(
+				"registry write failed (%v) AND rollback rename failed (%v) — dataset %s is on disk but UNREGISTERED; triage manually",
+				err, rbErr, target))
+		}
+		// renamed stays true — the restored staging file is a COMPLETE
+		// batch, not residue: keep it so the caller can retry the commit.
+		return fmtError("CommitStagedDataset", fmt.Errorf("registry write failed (rolled back; staging preserved for retry): %w", err))
+	}
+	return nil
+}

@@ -23,3 +23,6 @@ skillforge.db-wal
 
 # Phase 9 spike reports (一次性产物，不入 git 历史)
 reports/
+
+# Data-support runtime state (D14-D4): staging batches + committed datasets
+data/

@@ -188,6 +188,34 @@ CREATE TABLE IF NOT EXISTS plan_todos (
     PRIMARY KEY (run_id, todo_id)
 );
 CREATE INDEX IF NOT EXISTS idx_plan_todos_run_id_ts ON plan_todos(run_id, ts);
+
+-- datasets (Phase 14 / Plan 14-06 / D14-D2): the dataset registry for the
+-- data-support track (DuckDB analytic datasets). Metadata lives in the SAME
+-- sqlite database as audit/checkpoint so registration participates in OLTP
+-- transaction semantics (D14-D2: DuckDB central catalog was rejected because
+-- cross-engine transactional consistency cannot be guaranteed).
+--
+-- Schema rationale:
+--   - PRIMARY KEY (name): one registry row per dataset; the import pipeline
+--     commits via INSERT OR REPLACE (PutDataset) so replays are idempotent.
+--   - tier: the trust tier the dataset is exposed under ("权威"/"历史"/"个人")
+--     — same vocabulary as the Skill reads field.
+--   - schema_json: table/column descriptor JSON for admin/preview surfaces.
+--   - file_path: on-disk location under data/datasets/ (the .duckdb file the
+--     lazy ATTACH layer mounts; written by CommitStagedDataset).
+--   - content_sha256: content hash for integrity checks + TOCTOU detection
+--     (Phase 19 pattern).
+--   - batch_id: the import batch that produced the row — replay detection
+--     and audit trail.
+CREATE TABLE IF NOT EXISTS datasets (
+    name           TEXT PRIMARY KEY,
+    tier           TEXT NOT NULL,
+    schema_json    TEXT NOT NULL,
+    file_path      TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    batch_id       TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
