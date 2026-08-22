@@ -190,7 +190,7 @@ run_stage "frozen-set hermetic judges (platform-floor golden + schema + lock sel
 
 run_stage "structural-constant source-greps (floor version + hermetic SETs + LRU cap + appender floor)" \
   bash -c "set -e
-    grep -q 'PlatformFloorVersion.*=.*\"1\.0\.0\"' internal/platformfloor/platform_floor.go || { echo 'FATAL: PlatformFloorVersion semver literal missing'; exit 1; }
+    grep -q 'PlatformFloorVersion.*=.*\"1\.1\.0\"' internal/platformfloor/platform_floor.go || { echo 'FATAL: PlatformFloorVersion semver literal missing'; exit 1; }
     grep -q 'autoinstall_known_extensions=false' internal/duckdb/connector.go || { echo 'FATAL: bootHermetic autoinstall SET missing'; exit 1; }
     grep -q 'autoload_known_extensions=false' internal/duckdb/connector.go || { echo 'FATAL: bootHermetic autoload SET missing'; exit 1; }
     grep -q 'MaxAttachedDatasets = 8' internal/duckdb/attach_lru.go || { echo 'FATAL: MaxAttachedDatasets literal missing'; exit 1; }
@@ -202,7 +202,9 @@ run_stage "structural-constant source-greps (floor version + hermetic SETs + LRU
 # ---------------------------------------------------------------------------
 # Baselines pinned at Phase 14 close (14-07, 2026-08-22):
 #   - compliance.lock.json — re-pinned by 14-01 (58ffea08… → ca333fba…,
-#     D14-B3 floor-into-hash planned re-lock; T-8-12 recorded action).
+#     D14-B3 floor-into-hash planned re-lock; T-8-12 recorded action),
+#     then again by 14-10 (ca333fba… → 5b12acd9…, floor 1.0.0 → 1.1.0
+#     tail re-anchor; same T-8-12 discipline).
 #   - hitl.lock.json — UNCHANGED from Phase 11 (prompt_hash is the
 #     SKILL.md file digest, NOT the rendered prompt — the floor does not
 #     touch it; see 14-07-SUMMARY deviation note).
@@ -217,7 +219,7 @@ run_stage "structural-constant source-greps (floor version + hermetic SETs + LRU
 #   - fanout.lock.json / deep.lock.json — no prompt surface, byte-frozen.
 # Drift between runs surfaces as a hard FAIL (T-8-12 + T-14-18/19).
 
-EXPECTED_COMPLIANCE_SHA="e77877bb3b3076bc67d33a1f7a1cf4bea3b9af20ebafdd457ef6e9c366ff6ce5"      # 14-01 re-pin
+EXPECTED_COMPLIANCE_SHA="1dc6f148fe3debd0b572872d87126242362905b26ae1097b983ed8754277bbdc"      # 14-01 re-pin → 14-10 floor-1.1.0 re-pin
 EXPECTED_HITL_SHA="6e91881f4aafeffb843e996c89ff1c27ef22eb18fac94eceff9184f938481d08"            # Phase 11 baseline UNCHANGED
 EXPECTED_FANOUT_SHA="af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252"          # Phase 13 baseline UNCHANGED
 EXPECTED_DEEP_SHA="f3958dcd4930ac09e03c824f781df9c6eb04b691770cab4d512e11fba3c3c482"            # Phase 10 placeholder UNCHANGED
