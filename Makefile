@@ -6,7 +6,21 @@
 # gate). Run `make` or `make verify-phase-11` to execute the gate;
 # the banner at the end is the operator's pass/fail signal.
 
-.PHONY: verify-phase-11 verify-phase-12 verify-phase-13 test-unit test-frontend build clean
+.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 test-unit test-frontend build clean
+
+# check-cgo fails fast with an actionable message when gcc is missing.
+# mattn/go-sqlite3 and go-duckdb both require CGO; install MSYS2 UCRT64 gcc
+# on Windows, then add C:\msys64\ucrt64\bin to PATH.
+check-cgo:
+	@if command -v gcc >/dev/null 2>&1; then \
+		gcc --version | head -n 1; \
+	else \
+		echo "[check-cgo] ERROR: gcc not found on PATH." >&2; \
+		echo "  Windows: install MSYS2, then run:" >&2; \
+		echo "    C:\\msys64\\usr\\bin\\pacman.exe -S --noconfirm mingw-w64-ucrt-x86_64-gcc" >&2; \
+		echo "  Then add C:\\msys64\\ucrt64\\bin to your PATH before building." >&2; \
+		exit 1; \
+	fi
 
 # verify-phase-11 is the Phase 11 acceptance gate (Plan 11-08 Task 6).
 # Invokes scripts/verify-phase-11.sh; exits 0 with the PASS banner on

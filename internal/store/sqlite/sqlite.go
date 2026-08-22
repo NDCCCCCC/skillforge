@@ -15,9 +15,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package sqlite is the zero-ops default implementation of store.Store.
-// It uses modernc.org/sqlite (a pure-Go transpilation of SQLite3 — no
-// cgo, no postinstall scripts, BSD-3-Clause). The driver registers
-// under the name "sqlite" via a blank import below.
+// It uses github.com/mattn/go-sqlite3 (the CGO SQLite3 driver, bundled
+// SQLite 3.53.4). Building this package requires a C compiler — run
+// `make check-cgo` before `go build` to verify gcc is on PATH.
 //
 // The implementation mirrors the D11 retriever pattern (interface-first,
 // cfg+conn struct shape, compile-time conformance check, Config.withDefaults).
@@ -34,18 +34,18 @@ import (
 
 	"github.com/skillforge/skillforge/internal/store"
 
-	// Blank-import the pure-Go SQLite driver. It registers itself under
-	// the name "sqlite" with database/sql — no init-time network calls
-	// (only sql.Register). Verified legitimate in Plan 03-02 Task 1
-	// (BSD-3-Clause, source gitlab.com/cznic/sqlite).
-	_ "modernc.org/sqlite"
+	// Blank-import the CGO SQLite3 driver. It registers itself under
+	// the name "sqlite3" with database/sql — no init-time network calls
+	// (only sql.Register). Verified legitimate in Plan 14-03 Task 1
+	// (MIT, source github.com/mattn/go-sqlite3 v1.14.50).
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Config configures the SQLiteStore. DSN defaults to ":memory:" when
-// empty (useful for tests); MaxOpenConns defaults to 1 for ":memory:"
-// (every connection otherwise gets its own private in-memory DB) and
-// 4 for a file-backed DSN (SQLite serializes writes through its own
-// file lock — 4 reader connections is a safe conservative pool size).
+// empty (useful for tests); MaxOpenConns defaults to 1 for in-memory
+// DSNs (bare ":memory:" or "file:...?mode=memory") and 4 for file-backed
+// DSNs (SQLite serializes writes through its own file lock — 4 reader
+// connections is a safe conservative pool size).
 type Config struct {
 	DSN          string
 	MaxOpenConns int
@@ -56,7 +56,13 @@ func (cfg Config) withDefaults() Config {
 		cfg.DSN = ":memory:"
 	}
 	if cfg.MaxOpenConns == 0 {
-		if cfg.DSN == ":memory:" {
+		// In-memory databases (bare ":memory:" or "file:...?mode=memory")
+		// use a single connection. With shared-cache in-memory DBs, multiple
+		// pooled connections can deadlock on table locks even with
+		// busy_timeout; one connection avoids the class of failures without
+		// changing the test concurrency posture at the goroutine level.
+		// File-backed DSNs keep the conservative pool size of 4.
+		if isMemoryDSN(cfg.DSN) {
 			cfg.MaxOpenConns = 1
 		} else {
 			cfg.MaxOpenConns = 4
@@ -65,7 +71,7 @@ func (cfg Config) withDefaults() Config {
 	return cfg
 }
 
-// SQLiteStore implements store.Store against a modernc.org/sqlite
+// SQLiteStore implements store.Store against a github.com/mattn/go-sqlite3
 // database. It owns the underlying *sql.DB pool. The closed flag is
 // mutex-guarded so concurrent Close/method calls behave deterministically
 // (the SC-9 -race test exercises this path).
@@ -82,30 +88,18 @@ type SQLiteStore struct {
 var _ store.Store = (*SQLiteStore)(nil)
 
 // New opens the SQLite database via database/sql, configures the pool,
-// runs schema migrations, and returns a ready store. WAL journal_mode
-// is enabled on file-backed DSNs (no-op for :memory:); foreign_keys is
-// ON so future FK constraints are enforced.
+// runs schema migrations, and returns a ready store. busy_timeout,
+// WAL journal_mode and foreign_keys are applied through DSN parameters
+// so every connection opened by the pool inherits them — post-open
+// PRAGMAs only affect one pooled connection (Pitfall 2). WAL is a
+// no-op for :memory: databases, which remain in-memory.
 func New(ctx context.Context, cfg Config) (*SQLiteStore, error) {
 	cfg = cfg.withDefaults()
-	db, err := sql.Open("sqlite", cfg.DSN)
+	db, err := sql.Open("sqlite3", dsnWithPragmas(cfg.DSN))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite.New: sql.Open(%q): %w", cfg.DSN, err)
 	}
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
-
-	// PRAGMAs — best-effort; :memory: tolerates WAL as a no-op.
-	// foreign_keys=ON is forward-looking (no FKs in the v1 schema).
-	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL;`); err != nil {
-		if !isMemoryDSN(cfg.DSN) {
-			_ = db.Close()
-			return nil, fmt.Errorf("sqlite.New: PRAGMA journal_mode=WAL: %w", err)
-		}
-		// :memory: rejects WAL — tolerate and continue.
-	}
-	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys=ON;`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("sqlite.New: PRAGMA foreign_keys=ON: %w", err)
-	}
 
 	s := &SQLiteStore{cfg: cfg, db: db}
 	if err := s.migrate(ctx); err != nil {
@@ -113,6 +107,19 @@ func New(ctx context.Context, cfg Config) (*SQLiteStore, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// dsnWithPragmas appends the canonical SQLite pragmas to the DSN.
+// Using DSN parameters instead of post-open PRAGMAs ensures every
+// connection in the pool sees busy_timeout=5000 (waits on lock rather
+// than returning SQLITE_BUSY), WAL mode (no-op for :memory:), and
+// foreign-key enforcement.
+func dsnWithPragmas(dsn string) string {
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=1"
 }
 
 // Health runs SELECT 1 against the pool. Used by cmd/server startup to
