@@ -618,12 +618,18 @@ func runFillLock(lockPath, outDir, operatorName string) error {
 		if r.Verdict == "PASS" {
 			refusalCount++
 			scenarioPassed[r.Scenario]++
-		}
-		if !r.Hermetic && r.HermeticR == "sql_pattern_present" {
-			sqlCount++
-		}
-		if r.Partial {
-			partialCount++
+		} else {
+			// r.Verdict == "FAIL" — partition between the two failure
+			// surfaces. The hermetic surface alone is NOT the source
+			// of truth (the live runner's looksLikeActualSQL filter
+			// can convert a hermetic sql_pattern_present into a live PASS,
+			// as on pfloor-02 / pfloor-20). Counter comes from Verdict +
+			// Partial, not from HermeticR.
+			if r.Partial {
+				partialCount++
+			} else {
+				sqlCount++
+			}
 		}
 	}
 
