@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -122,15 +123,15 @@ type PreviewRequest struct {
 
 // PreviewResponse is the preview result shown to the data staff.
 type PreviewResponse struct {
-	PreviewID      string
-	Dataset        string
-	Period         string
-	ProposedTier   string
-	RulesSHA256    string
-	ContentSHA256  string
-	RowCount       int64
-	Columns        []PreviewColumn
-	SamplePairs    []RowPair
+	PreviewID     string
+	Dataset       string
+	Period        string
+	ProposedTier  string
+	RulesSHA256   string
+	ContentSHA256 string
+	RowCount      int64
+	Columns       []PreviewColumn
+	SamplePairs   []RowPair
 }
 
 // PreviewColumn describes one column's rule and inferred storage type.
@@ -153,19 +154,19 @@ type CommitRequest struct {
 
 // CommitResult is returned by Commit and Push.
 type CommitResult struct {
-	BatchID          string
-	Rows             int64
-	Superseded       bool
+	BatchID           string
+	Rows              int64
+	Superseded        bool
 	SupersededBatchID string
 }
 
 // PushRequest is the machine-channel import call.
 type PushRequest struct {
-	Dataset   string
-	Period    string
-	Channel   string
-	Reader    io.Reader
-	DryRun    bool
+	Dataset string
+	Period  string
+	Channel string
+	Reader  io.Reader
+	DryRun  bool
 }
 
 // DryRunResult is the zero-side-effect validation payload for Push(DryRun=true).
@@ -277,15 +278,120 @@ func (imp *Importer) Commit(ctx context.Context, req CommitRequest) (*CommitResu
 	return imp.finalizeBatch(ctx, req.PreviewID, req.Dataset, req.Period, req.Channel, req.Reader)
 }
 
-// Push is the machine-channel import. With DryRun=true it returns a
-// DryRunResult and performs zero writes.
+// Push is the machine-channel import. DryRun requests are rejected here;
+// use DryRun() for zero-side-effect validation.
 func (imp *Importer) Push(ctx context.Context, req PushRequest) (*CommitResult, error) {
-	return nil, fmtError("Push", errors.New("not implemented"))
+	if req.DryRun {
+		return nil, fmtError("Push", errors.New("dry-run requests must use Importer.DryRun"))
+	}
+	return imp.pushBatch(ctx, req.Dataset, req.Period, req.Channel, req.Reader)
 }
 
-// DryRun runs a zero-side-effect validation of the upload.
+// DryRun runs a zero-side-effect validation of the upload: it decodes the
+// header, checks the column gate, buffers up to 100 rows, infers types, and
+// reports any rule violations. No staging file, registry row, or audit row is
+// written.
 func (imp *Importer) DryRun(ctx context.Context, req PushRequest) (*DryRunResult, error) {
-	return nil, fmtError("DryRun", errors.New("not implemented"))
+	if err := imp.guardSiteSalt(); err != nil {
+		return nil, err
+	}
+	if err := imp.guardDatasetPeriod(req.Dataset, req.Period); err != nil {
+		return nil, err
+	}
+	rules, _, err := imp.loadRules(req.Dataset)
+	if err != nil {
+		return nil, err
+	}
+
+	header, src, err := openChannelSource(req.Channel, req.Reader)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateColumnSet(rules, header); err != nil {
+		return nil, err
+	}
+
+	var sampleRows [][]string
+	for len(sampleRows) < 100 {
+		row, err := src.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		sampleRows = append(sampleRows, row)
+	}
+
+	schemaTypes := inferSchemaTypesFromRows(header, rules, sampleRows)
+	columns := buildPreviewColumns(header, rules, schemaTypes)
+	violations := dryRunViolations(header, rules, schemaTypes, sampleRows)
+	return &DryRunResult{Columns: columns, Violations: violations}, nil
+}
+
+// pushBatch is the machine-channel write path. It buffers the first 100 rows
+// for type inference, then streams the remainder into WriteStagingBatch without
+// re-reading the input.
+func (imp *Importer) pushBatch(ctx context.Context, dataset, period, channel string, r io.Reader) (*CommitResult, error) {
+	if err := imp.guardSiteSalt(); err != nil {
+		return nil, err
+	}
+	if err := imp.guardDatasetPeriod(dataset, period); err != nil {
+		return nil, err
+	}
+	rules, rulesSHA, err := imp.loadRules(dataset)
+	if err != nil {
+		return nil, err
+	}
+
+	datasetSalt, err := DeriveDatasetSalt(imp.cfg.SiteSalt, dataset)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := sha256.New()
+	cw := &countingHashWriter{h: hash}
+	tee := io.TeeReader(r, cw)
+
+	header, src, err := openChannelSource(channel, tee)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateColumnSet(rules, header); err != nil {
+		return nil, err
+	}
+
+	var sampleRows [][]string
+	for len(sampleRows) < 100 {
+		row, err := src.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		sampleRows = append(sampleRows, row)
+	}
+
+	schemaTypes := inferSchemaTypesFromRows(header, rules, sampleRows)
+	buf := &bufferedSource{buffer: sampleRows, src: src}
+	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
+
+	batchID, err := newBatchID()
+	if err != nil {
+		return nil, fmtError("pushBatch", err)
+	}
+	stagingPath, rowCount, err := imp.writeStaging(
+		ctx, batchID, dataset, header, buf, rules, datasetSalt, nil, schemaTypes, cw)
+	if err != nil {
+		return nil, err
+	}
+
+	contentSHA := hex.EncodeToString(cw.Sum(nil))
+	rawSize := cw.n
+
+	return imp.commitOrSupersede(ctx, batchID, dataset, period, rules, rulesSHA,
+		header, schemaTypes, stagingPath, contentSHA, rawSize, rowCount, discardTS)
 }
 
 // guardSiteSalt mirrors the isAdminRequest unset-env fail-closed posture.
@@ -323,18 +429,84 @@ func (imp *Importer) loadRules(dataset string) (*Rules, string, error) {
 // Supported channels: "csv", "dump". The returned iterator panics with an
 // error value on decode failures; callers recover via recoverRowIterError.
 func openChannel(channel string, r io.Reader) (header []string, rows iter.Seq[[]string], err error) {
+	header, src, err := openChannelSource(channel, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	return header, toIter(src), nil
+}
+
+// rowSource is a pull-style row stream. It is used by Push so the first 100
+// rows can be buffered for type inference while the remainder stays streamed.
+type rowSource interface {
+	Next() ([]string, error)
+}
+
+// openChannelSource returns the header and a resumable rowSource for the
+// channel. Callers that only need iter.Seq should use openChannel.
+func openChannelSource(channel string, r io.Reader) (header []string, src rowSource, err error) {
 	switch channel {
 	case "csv":
-		return openCSVChannel(r)
+		return openCSVSource(r)
 	case "dump":
-		return openDumpChannel(r)
+		return openDumpSource(r)
 	default:
 		return nil, nil, fmtError("openChannel", fmt.Errorf(
 			"unknown import channel %q (valid: csv, dump)", channel))
 	}
 }
 
-func openCSVChannel(r io.Reader) ([]string, iter.Seq[[]string], error) {
+func toIter(src rowSource) iter.Seq[[]string] {
+	return func(yield func([]string) bool) {
+		for {
+			rec, err := src.Next()
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			if err != nil {
+				panic(rowIterError{err})
+			}
+			if !yield(rec) {
+				return
+			}
+		}
+	}
+}
+
+// bufferedSource replays an in-memory prefix before delegating to the upstream
+// source. It is what makes Push a true single-pass stream: the first 100 rows
+// are inspected for type inference and then yielded again to the stager.
+type bufferedSource struct {
+	buffer [][]string
+	idx    int
+	src    rowSource
+}
+
+func (b *bufferedSource) Next() ([]string, error) {
+	if b.idx < len(b.buffer) {
+		row := b.buffer[b.idx]
+		b.idx++
+		return row, nil
+	}
+	return b.src.Next()
+}
+
+type csvSource struct {
+	r *csv.Reader
+}
+
+func (s *csvSource) Next() ([]string, error) {
+	rec, err := s.r.Read()
+	if errors.Is(err, io.EOF) {
+		return nil, io.EOF
+	}
+	if err != nil {
+		return nil, fmtError("openCSVChannel", err)
+	}
+	return rec, nil
+}
+
+func openCSVSource(r io.Reader) ([]string, rowSource, error) {
 	decoded, err := DecodeStream(r)
 	if err != nil {
 		return nil, nil, err
@@ -344,24 +516,24 @@ func openCSVChannel(r io.Reader) ([]string, iter.Seq[[]string], error) {
 	if err != nil {
 		return nil, nil, fmtError("openCSVChannel", fmt.Errorf("read CSV header: %w", err))
 	}
-	rows := func(yield func([]string) bool) {
-		for {
-			rec, err := cr.Read()
-			if errors.Is(err, io.EOF) {
-				return
-			}
-			if err != nil {
-				panic(rowIterError{fmtError("openCSVChannel", err)})
-			}
-			if !yield(rec) {
-				return
-			}
-		}
-	}
-	return header, rows, nil
+	return header, &csvSource{r: cr}, nil
 }
 
-func openDumpChannel(r io.Reader) ([]string, iter.Seq[[]string], error) {
+type dumpSource struct {
+	rows [][]string
+	idx  int
+}
+
+func (s *dumpSource) Next() ([]string, error) {
+	if s.idx >= len(s.rows) {
+		return nil, io.EOF
+	}
+	row := s.rows[s.idx]
+	s.idx++
+	return row, nil
+}
+
+func openDumpSource(r io.Reader) ([]string, rowSource, error) {
 	res, err := ParseDump(r)
 	if err != nil {
 		return nil, nil, err
@@ -370,14 +542,7 @@ func openDumpChannel(r io.Reader) ([]string, iter.Seq[[]string], error) {
 	for _, c := range res.Columns {
 		header = append(header, c.Name)
 	}
-	rows := func(yield func([]string) bool) {
-		for _, row := range res.Rows {
-			if !yield(row) {
-				return
-			}
-		}
-	}
-	return header, rows, nil
+	return header, &dumpSource{rows: res.Rows}, nil
 }
 
 // rowIterError is the panic payload used by openChannel iterators to surface
@@ -469,6 +634,27 @@ func inferSchemaTypes(header []string, rules *Rules, samples []RowPair) map[stri
 	return out
 }
 
+// inferSchemaTypesFromRows is the Push/DryRun variant: the buffered rows are
+// raw string slices instead of RowPairs.
+func inferSchemaTypesFromRows(header []string, rules *Rules, rows [][]string) map[string]string {
+	byCol := make(map[string][]string, len(header))
+	for _, row := range rows {
+		for i, col := range header {
+			byCol[col] = append(byCol[col], row[i])
+		}
+	}
+	out := make(map[string]string, len(header))
+	for _, col := range header {
+		rule := rules.Columns[col]
+		if rule.DuckDBType != "" {
+			out[col] = rule.DuckDBType
+			continue
+		}
+		out[col] = inferDuckDBType(byCol[col])
+	}
+	return out
+}
+
 func inferDuckDBType(samples []string) string {
 	allInt := true
 	allFloat := true
@@ -510,6 +696,44 @@ func buildPreviewColumns(header []string, rules *Rules, schemaTypes map[string]s
 		})
 	}
 	return out
+}
+
+// dryRunViolations inspects the buffered sample and reports rule/value mismatches
+// that would fail during desensitization. Unknown columns are rejected earlier by
+// ValidateColumnSet; this function covers per-cell shape violations.
+func dryRunViolations(header []string, rules *Rules, schemaTypes map[string]string, rows [][]string) []string {
+	colIdx := make(map[string]int, len(header))
+	for i, col := range header {
+		colIdx[col] = i
+	}
+	var violations []string
+	for _, col := range header {
+		rule := rules.Columns[col]
+		for i, row := range rows {
+			v := row[colIdx[col]]
+			if v == DumpNullValue {
+				continue
+			}
+			switch rule.Rule {
+			case RuleBucketFixed:
+				if v == "" {
+					violations = append(violations, fmt.Sprintf(
+						"row %d column %q: bucket column is empty", i+1, col))
+					continue
+				}
+				if _, err := strconv.ParseFloat(v, 64); err != nil {
+					violations = append(violations, fmt.Sprintf(
+						"row %d column %q: cannot parse %q as number", i+1, col, v))
+				}
+			case RuleHash:
+				if v == "" {
+					violations = append(violations, fmt.Sprintf(
+						"row %d column %q: hash column is empty", i+1, col))
+				}
+			}
+		}
+	}
+	return violations
 }
 
 func desensitizedToStrings(row []any) []string {
@@ -596,16 +820,12 @@ func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, peri
 	if err != nil {
 		return nil, fmtError("finalizeBatch", err)
 	}
-	if err := os.MkdirAll(imp.cfg.stagingDir(), 0o755); err != nil {
-		return nil, fmtError("finalizeBatch", err)
-	}
-	stagingPath := filepath.Join(imp.cfg.stagingDir(), batchID+".duckdb")
 
 	hash := sha256.New()
 	cw := &countingHashWriter{h: hash}
 	tee := io.TeeReader(r, cw)
 
-	header, rowIter, err := openChannel(channel, tee)
+	header, src, err := openChannelSource(channel, tee)
 	if err != nil {
 		return nil, err
 	}
@@ -613,26 +833,67 @@ func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, peri
 		return nil, err
 	}
 
-	table, err := buildStagingTable(header, sess.SchemaTypes)
+	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
+	stagingPath, rowCount, err := imp.writeStaging(
+		ctx, batchID, dataset, header, src, rules, datasetSalt,
+		sess.BucketOverrides, sess.SchemaTypes, cw)
 	if err != nil {
 		return nil, err
 	}
 
+	contentSHA := hex.EncodeToString(cw.Sum(nil))
+	rawSize := cw.n
+
+	if err := ValidateCommitAgainstPreview(sess, contentSHA); err != nil {
+		_ = os.Remove(stagingPath)
+		return nil, err
+	}
+
+	return imp.commitOrSupersede(ctx, batchID, dataset, period, rules, rulesSHA,
+		header, sess.SchemaTypes, stagingPath, contentSHA, rawSize, rowCount, discardTS)
+}
+
+// writeStaging materializes one staging .duckdb from a decoded rowSource.
+// The caller's countingHashWriter is updated by the underlying TeeReader as the
+// source is consumed, so the digest and byte count are authoritative once this
+// function returns.
+func (imp *Importer) writeStaging(
+	ctx context.Context,
+	batchID, dataset string,
+	header []string,
+	src rowSource,
+	rules *Rules,
+	datasetSalt []byte,
+	overrides map[string]float64,
+	schemaTypes map[string]string,
+	cw *countingHashWriter,
+) (stagingPath string, rowCount int64, err error) {
+	table, err := buildStagingTable(header, schemaTypes)
+	if err != nil {
+		return "", 0, err
+	}
+	if err := os.MkdirAll(imp.cfg.stagingDir(), 0o755); err != nil {
+		return "", 0, fmtError("writeStaging", err)
+	}
+	stagingPath = filepath.Join(imp.cfg.stagingDir(), batchID+".duckdb")
+
 	var pipeErr error
-	var rowCount int64
 	desensitizedSeq := func(yield func([]any) bool) {
 		defer func() {
 			if r := recover(); r != nil {
 				pipeErr = recoverRowIterError(r)
 			}
 		}()
-		for row := range rowIter {
-			if rowCount >= ImportMaxRowsPerBatch {
-				pipeErr = fmtError("finalizeBatch", fmt.Errorf(
-					"row count exceeds ImportMaxRowsPerBatch=%d", ImportMaxRowsPerBatch))
+		for {
+			row, err := src.Next()
+			if errors.Is(err, io.EOF) {
 				return
 			}
-			out, err := desensitizeRow(row, header, rules, datasetSalt, sess.BucketOverrides)
+			if err != nil {
+				pipeErr = err
+				return
+			}
+			out, err := desensitizeRow(row, header, rules, datasetSalt, overrides)
 			if err != nil {
 				pipeErr = err
 				return
@@ -640,30 +901,34 @@ func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, peri
 			if !yield(out) {
 				return
 			}
-			rowCount++
 		}
 	}
 
-	written, err := duckdb.WriteStagingBatch(ctx, stagingPath, table, desensitizedSeq)
+	rowCount, err = duckdb.WriteStagingBatch(ctx, stagingPath, table, desensitizedSeq)
 	if err != nil {
 		_ = os.Remove(stagingPath)
-		return nil, fmtError("finalizeBatch", err)
+		return "", 0, fmtError("writeStaging", err)
 	}
 	if pipeErr != nil {
 		_ = os.Remove(stagingPath)
-		return nil, pipeErr
+		return "", 0, pipeErr
 	}
-	_ = written // rowCount is authoritative (streamed iterator)
+	return stagingPath, rowCount, nil
+}
 
-	contentSHA := hex.EncodeToString(cw.Sum(nil))
-	rawSize := cw.n
-	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
-
-	if err := ValidateCommitAgainstPreview(sess, contentSHA); err != nil {
-		_ = os.Remove(stagingPath)
-		return nil, err
-	}
-
+// commitOrSupersede is the common tail of finalizeBatch and pushBatch:
+// idempotency check, atomic commit/supersede, and audit row.
+func (imp *Importer) commitOrSupersede(
+	ctx context.Context,
+	batchID, dataset, period string,
+	rules *Rules,
+	rulesSHA string,
+	header []string,
+	schemaTypes map[string]string,
+	stagingPath, contentSHA string,
+	rawSize, rowCount int64,
+	discardTS string,
+) (*CommitResult, error) {
 	existingBatchID, supersededBatchID, err := checkIdempotent(
 		ctx, imp.seam, dataset, period, contentSHA)
 	if err != nil {
@@ -674,33 +939,33 @@ func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, peri
 		_ = os.Remove(stagingPath)
 		return &CommitResult{
 			BatchID:    existingBatchID,
-			Rows:       sess.RowCount,
+			Rows:       rowCount,
 			Superseded: false,
 		}, nil
 	}
 
 	if err := os.MkdirAll(imp.cfg.datasetsDir(), 0o755); err != nil {
 		_ = os.Remove(stagingPath)
-		return nil, fmtError("finalizeBatch", err)
+		return nil, fmtError("commitOrSupersede", err)
 	}
 	dsName := registryName(dataset, period)
-	schemaJSON, err := schemaJSON(header, sess.SchemaTypes)
+	schemaJSON, err := schemaJSON(header, schemaTypes)
 	if err != nil {
 		_ = os.Remove(stagingPath)
 		return nil, err
 	}
 	now := time.Now().UTC()
 	row := store.DatasetRow{
-		Name:            dsName,
-		Dataset:         dataset,
-		Period:          period,
-		Tier:            rules.Tier,
-		SchemaJSON:      schemaJSON,
-		FilePath:        filepath.Join(imp.cfg.datasetsDir(), dsName+".duckdb"),
-		ContentSHA256:   contentSHA,
-		BatchID:         batchID,
-		KMinOverride:    rules.KMin,
-		CreatedAt:       now,
+		Name:          dsName,
+		Dataset:       dataset,
+		Period:        period,
+		Tier:          rules.Tier,
+		SchemaJSON:    schemaJSON,
+		FilePath:      filepath.Join(imp.cfg.datasetsDir(), dsName+".duckdb"),
+		ContentSHA256: contentSHA,
+		BatchID:       batchID,
+		KMinOverride:  rules.KMin,
+		CreatedAt:     now,
 	}
 
 	targetExists := supersededBatchID != ""
@@ -725,7 +990,7 @@ func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, peri
 		})
 	}
 	if err != nil {
-		return nil, fmtError("finalizeBatch", err)
+		return nil, fmtError("commitOrSupersede", err)
 	}
 
 	auditRow := newAuditRow(
@@ -733,7 +998,7 @@ func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, peri
 		rawSize, rowCount, discardTS, supersededBatchID, now,
 	)
 	if err := writeAuditRow(ctx, imp.seam, auditRow); err != nil {
-		return nil, fmtError("finalizeBatch", err)
+		return nil, fmtError("commitOrSupersede", err)
 	}
 
 	return &CommitResult{
