@@ -126,7 +126,7 @@ func AttachDataset(execer driver.ExecerContext, id, path string) error {
 		return err
 	}
 	clean := filepath.Clean(path)
-	q := fmt.Sprintf("ATTACH '%s' AS ds_%s (READ_ONLY)", clean, id)
+	q := fmt.Sprintf("ATTACH '%s' AS \"ds_%s\" (READ_ONLY)", clean, id)
 	_, err := execer.ExecContext(context.Background(), q, nil)
 	if err != nil {
 		return fmtError("AttachDataset", err)

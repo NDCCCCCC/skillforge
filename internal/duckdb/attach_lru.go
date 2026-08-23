@@ -152,7 +152,7 @@ func (l *AttachLRU) Detach(ctx context.Context, id string) error {
 // execDetachLocked issues the DETACH for an already-validated id. Callers
 // hold l.mu.
 func (l *AttachLRU) execDetachLocked(ctx context.Context, id string) error {
-	q := fmt.Sprintf("DETACH ds_%s", id)
+	q := fmt.Sprintf("DETACH \"ds_%s\"", id)
 	if _, err := l.exec.ExecContext(ctx, q, nil); err != nil {
 		return fmtError("Detach", fmt.Errorf("ds_%s: %w", id, err))
 	}

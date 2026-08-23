@@ -251,13 +251,22 @@ func TestSupersedeAtomicSwap(t *testing.T) {
 			LRU:         nil,
 		}))
 
+		// Override the backup name generator so we can pre-create the
+		// destination path and force step 1 (target -> backup) to fail.
+		origNameGen := supersedeBackupName
+		supersedeBackupName = func(datasetID string) string {
+			return ".superseded-" + datasetID + "-fixed.duckdb"
+		}
+		defer func() { supersedeBackupName = origNameGen }()
+
 		newStaging := filepath.Join(stagingDir, "new.duckdb")
 		writeDataFile(t, ctx, newStaging, []int64{10, 11, 12})
 
-		// Pre-create the backup path as a directory so os.Rename(target, backup)
-		// cannot succeed.
-		backupPath := filepath.Join(backupDir, fmt.Sprintf(".superseded-%s-%d.duckdb", datasetID, time.Now().UnixNano()))
+		// Pre-create the backup path as a non-empty directory so
+		// os.Rename(target, backup) cannot succeed.
+		backupPath := filepath.Join(backupDir, supersedeBackupName(datasetID))
 		require.NoError(t, os.MkdirAll(backupPath, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(backupPath, "blocker"), []byte("x"), 0o644))
 
 		err := SupersedeStagedDataset(ctx, SupersedeOptions{
 			StagingPath: newStaging,
