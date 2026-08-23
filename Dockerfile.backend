@@ -1,9 +1,10 @@
 # SkillForge backend image — multi-stage Go build (D7-04 source build).
 #
 # Build stage: golang:1.25-alpine + build-base (matches go.mod `go 1.25.0`).
-# Runtime stage: alpine:3.20 + ca-certificates + tzdata + the CGO binary
-# (dynamically linked against musl libc, shipped in the alpine runtime)
-# + skills/ + knowledge/ (runtime data the loader + indexer scan).
+# Runtime stage: alpine:3.20 + ca-certificates + tzdata + libstdc++ + libgcc
+# + the CGO binary (dynamically linked against musl libc, shipped in the
+# alpine runtime) + skills/ + knowledge/ (runtime data the loader + indexer
+# scan).
 # CGO_ENABLED=1 required: go-duckdb + mattn/go-sqlite3 link C engines
 # (see Makefile check-cgo / MSYS2 guidance for local Windows builds).
 # All base images are pinned to specific tags (T-7-OSS-CONTAINER mitigation).
@@ -35,7 +36,12 @@ RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/skillfo
 FROM alpine:3.20
 # ca-certificates: the backend dials GLM (https) + the embedding endpoint (https).
 # tzdata: audit timestamps render in the local zone regardless of container UTC.
-RUN apk add --no-cache ca-certificates tzdata
+# libstdc++/libgcc: go-duckdb v2.4.3's C++ engine is dynamically linked
+# against libstdc++.so.6 (libgcc rides along). The builder's build-base
+# provides these ONLY on the build side — a runtime image without them
+# dies at docker-run load time with "not found" before any Go code runs
+# (CR-01, 14-11 Gap 2).
+RUN apk add --no-cache ca-certificates tzdata libstdc++ libgcc
 WORKDIR /app
 COPY --from=builder /out/skillforge /app/skillforge
 # Runtime data — the Phase 2 cmd/server/main.go hardcodes these relative
