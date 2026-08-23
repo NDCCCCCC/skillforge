@@ -6,7 +6,7 @@
 # gate). Run `make` or `make verify-phase-11` to execute the gate;
 # the banner at the end is the operator's pass/fail signal.
 
-.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 test-unit test-frontend build clean
+.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 test-unit test-frontend build clean
 
 # check-cgo fails fast with an actionable message when gcc is missing.
 # mattn/go-sqlite3 and go-duckdb both require CGO; install MSYS2 UCRT64 gcc
@@ -51,6 +51,14 @@ verify-phase-13:
 # documented in the script header and NOT invoked by this target.
 verify-phase-14:
 	bash scripts/verify-phase-14.sh
+
+# verify-phase-15 is the Phase 15 HERMETIC gate (Plan 15-07).
+# Invokes scripts/verify-phase-15.sh; exits 0 with the PASS banner on
+# full pass, 1 with [STAGE-NN-FAIL] on any stage failure.
+# NOTE: includes go-duckdb tests — run on Linux/WSL2/Docker (Windows-native
+# gcc cannot link go-duckdb; see 15-07-SUMMARY emutls note).
+verify-phase-15:
+	bash scripts/verify-phase-15.sh
 
 # test-unit runs the full Go test suite for fast iteration.
 test-unit:

@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 15
 current_plan: 7
-status: executing
-stopped_at: Completed 15-06
-last_updated: "2026-08-24T02:55:00Z"
-last_activity: 2026-08-24 -- Phase 15 Plan 06 complete (streaming import HTTP surface: preview/commit/push + DELETE with audit; TestImportStreaming + TestDeleteDatasetAudited green)
+status: completed
+stopped_at: Completed 15-07
+last_updated: "2026-08-24T03:30:00Z"
+last_activity: 2026-08-24 -- Phase 15 Plan 07 complete (structural ban gates + verify-phase-15.sh 10/10 PASS); Phase 15 data-import pipeline fully delivered and hermetically gated
 progress:
   total_phases: 20
-  completed_phases: 12
-  total_plans: 91
-  completed_plans: 91
-  percent: 60
+  completed_phases: 13
+  total_plans: 98
+  completed_plans: 98
+  percent: 65
 ---
 
 # State — SkillForge
@@ -93,12 +93,26 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 ## Current Position
 
-Phase: 13 (p8-4 子 agent 扇出, FAN-01..04) — in progress (13-05 executor tasks done, live gate operator-pending; 13-06 wrap planned)
-Plan: 13-05 executor batch COMPLETE (Tasks 1-2: dual-mode `cmd/spike-fanout` 7-flag matrix + `eval/golden/fanout.jsonl` 20-case set + `examples/skills/compliance-orchestrator/SKILL.md`; commits `74682ed`/`bdcded7`/`e38abe1`); Task 3 live UAT = OPERATOR GATE (runbook: 13-05-SUMMARY.md steps A-G) → 13-06 (v0.8 milestone wrap, planned)
-Status: in-progress (Phase 13 Wave 4 operator gate — executor side delivered)
-Last activity: 2026-08-21 -- 13-05 Tasks 1-2 shipped hermetically (2 Rule-1 runtime fixes: defaultSubAgentMerge delegation + P13-L8 structural recursion guard); all suites green; frozen locks byte-identical
-Stopped At: Phase 15 context gathered
-Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
+Phase: 15 (数据导入管线 + 导入即脱敏，P10.1) — **COMPLETED** 2026-08-24
+Plan: 7 of 7 complete (15-01 → 15-07)
+Status: completed
+Last activity: 2026-08-24 -- Phase 15 Plan 07 shipped hermetically: structural ban gates (`integration/contract/import_gates_test.go`) + `scripts/verify-phase-15.sh` 10/10 PASS in WSL2 Ubuntu-22.04 + `make verify-phase-15` target.
+Stopped At: Phase 15 closeout; post-phase gates (code-review / regression / verifier / roadmap update) are next.
+Resume File: `.planning/phases/15-p10-1/15-07-SUMMARY.md`
+
+**Phase 15 delivery summary:**
+
+- 15-01: `internal/data` desensitization core (normalize / HMAC / L2 bucketing / rules / 4-encoding decode) — DATA-02 locked.
+- 15-02: SQLite additive migration + `import_batches` / `dataset_deletes` INSERT-only audit tables — DATA-17 store layer locked.
+- 15-03: DuckDB supersede 3-step atomic swap + `WriteStagingBatch` Appender helper + composite-name ATTACH quoting — DATA-16 engine locked.
+- 15-04: sqlite `.dump` accept-list parser (never executes SQL) + preview session store + content-hash bridge — DATA-01 dump channel + DATA-15 locked.
+- 15-05: Importer three-channel orchestrator (Preview / Commit / Push / DryRun) + idempotency + supersede chain audit — DATA-15/16/17 library layer locked.
+- 15-06: Hertz streaming HTTP surface (preview/commit/push/delete) with admin-token gates, split body-size policy, and SKILLFORGE_DATA_SALT fail-closed 503 — DATA-01/C3 HTTP layer locked.
+- 15-07: Structural ban gates (multipart pre-parse / row INSERT / row-value logging) + `verify-phase-15.sh` 10-stage hermetic gate + Makefile target — SC-1/D15-B1/B4 structural locks in place.
+
+**Verification:** `bash scripts/verify-phase-15.sh` → **PASS 10/10**; `go test ./... -count=1` and `go test ./... -count=1 -race` both green in WSL2.
+
+**Next action:** Execute post-phase closeout gates (code-review → regression → `gsd-verifier` → final roadmap/STATE sync).
 
 **Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
 
@@ -192,6 +206,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Roadmap Evolution
 
+- 2026-08-24: Phase 15 COMPLETE — Plan 07 (structural ban gates + `verify-phase-15.sh` 10/10 PASS + `make verify-phase-15`) closes the phase. All 7 plans (15-01..15-07) hermetically gated. Post-phase closeout gates (code-review / regression / verifier / roadmap sync) are next.
 - 2026-08-24: Phase 15 Plan 06 (15-06) complete — Hertz streaming import HTTP surface: POST /api/import/preview/commit/push (with dry_run), DELETE /api/import/dataset/:name, per-route body-size guard, admin-token gate, SKILLFORGE_DATA_SALT fail-closed 503, Detach-before-Remove Windows lock ordering, and INSERT-only dataset_deletes audit. TestImportStreaming + TestDeleteDatasetAudited green; full `./internal/server/...` regression passes.
 - 2026-08-24: Phase 15 Plan 05 (15-05) complete — `internal/data/importer.go` three-channel orchestrator (Preview / Commit / Push / DryRun) + `internal/data/batch.go` batch idempotency/supersede/audit helpers + `TestRawNeverOnDisk` library-level raw-leak guard. DATA-01/02/15/16/17 fully locked at the library layer; HTTP handlers remain in 15-06.
 - 2026-08-23: Phase 15 Plan 04 (15-04) complete — `internal/data/dump.go` sqlite .dump three-layer accept-list parser (zero SQL execution) + four 3.53.0 ground-truth fixtures + `internal/data/preview.go` in-memory preview session store with TTL/capacity/deep-copy snapshots + `ValidateCommitAgainstPreview` content-hash bridge (D15-B1). DATA-01 dump channel + DATA-15 two-stage preview/commit base locked.

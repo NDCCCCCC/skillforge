@@ -30,6 +30,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testTempRoot is a package-private temp directory used for the "raw never on
+// disk" assertions.  It isolates the leakage check from other test packages that
+// run concurrently and write to the system temp directory.
+var testTempRoot string
+
+func TestMain(m *testing.M) {
+	// os.TempDir caches its first computed value, so redirect it to a private
+	// directory before any test (or imported package init) calls it.  We create
+	// the directory under the repo root to avoid touching os.TempDir at all
+	// during setup.
+	root, err := os.MkdirTemp(".", "skillforge-data-test-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mkdir data test temp root:", err)
+		os.Exit(1)
+	}
+	testTempRoot, err = filepath.Abs(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "abs data test temp root:", err)
+		os.Exit(1)
+	}
+	_ = os.Setenv("TMPDIR", testTempRoot)
+	_ = os.Setenv("TEMP", testTempRoot)
+	_ = os.Setenv("TMP", testTempRoot)
+
+	code := m.Run()
+	_ = os.RemoveAll(testTempRoot)
+	os.Exit(code)
+}
+
 func TestPreviewFirst100Pairs(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
 		SiteSalt: "test-site-salt-16bytes",
@@ -300,12 +329,9 @@ func TestPushFailClosedUnknownColumn(t *testing.T) {
 func TestRawNeverOnDisk(t *testing.T) {
 	ctx := context.Background()
 
-	// Snapshot os.TempDir() directly (not recursively) so that any file the
-	// pipeline leaks into the system temp is detected. Staging/datasets are
-	// placed under the repo root (not TempDir) so they do not perturb this
-	// snapshot; the temp-root diff is the Hertz-preparse leak guard, while
-	// staging/datasets WalkDir is the library-level guard.
-	tmpRoot := os.TempDir()
+	// Snapshot the package-private temp root (not the system temp directory)
+	// so the leak check is hermetic when other test packages run in parallel.
+	tmpRoot := testTempRoot
 	before := snapshotDirNames(t, tmpRoot)
 
 	root, err := os.MkdirTemp(".", "raw-never-")
@@ -362,7 +388,7 @@ func TestRawNeverOnDisk(t *testing.T) {
 	after := snapshotDirNames(t, tmpRoot)
 	for name := range after {
 		if _, ok := before[name]; !ok {
-			t.Fatalf("os.TempDir() gained a new top-level entry during import: %q", name)
+			t.Fatalf("package temp root gained a new top-level entry during import: %q", name)
 		}
 	}
 }

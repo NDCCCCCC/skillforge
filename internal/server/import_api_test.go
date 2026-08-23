@@ -40,6 +40,31 @@ import (
 
 const testAdminToken = "test-admin-token-15-06"
 
+// testTempRoot isolates temp-file leakage checks from other test packages.
+// Hertz and the standard library use os.TempDir; redirecting it to a private
+// directory before any test runs makes the streaming-import assertions hermetic.
+var testTempRoot string
+
+func TestMain(m *testing.M) {
+	root, err := os.MkdirTemp(".", "skillforge-server-test-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mkdir server test temp root:", err)
+		os.Exit(1)
+	}
+	testTempRoot, err = filepath.Abs(root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "abs server test temp root:", err)
+		os.Exit(1)
+	}
+	_ = os.Setenv("TMPDIR", testTempRoot)
+	_ = os.Setenv("TEMP", testTempRoot)
+	_ = os.Setenv("TMP", testTempRoot)
+
+	code := m.Run()
+	_ = os.RemoveAll(testTempRoot)
+	os.Exit(code)
+}
+
 // testImportEnv wires SKILLFORGE_ADMIN_TOKEN for the duration of one test.
 func testImportEnv(t *testing.T) {
 	t.Helper()
@@ -164,13 +189,13 @@ func invokeImport(t *testing.T, deps *Deps, method, path, token string, body []b
 // TestImportStreaming sends a >16 MB multipart push and asserts:
 //   1. HTTP 200 + batch_id in response.
 //   2. The batch lands in the SQLite import_batches audit table.
-//   3. No new entries appear in os.TempDir() (Hertz did not pre-parse the
-//      multipart form into a temp file).
+//   3. No new entries appear in the package-private temp root (Hertz did not
+//      pre-parse the multipart form into a temp file).
 func TestImportStreaming(t *testing.T) {
 	deps, cleanup := importTestDeps(t)
 	defer cleanup()
 
-	tmpRoot := os.TempDir()
+	tmpRoot := testTempRoot
 	before := snapshotTempNames(t, tmpRoot)
 
 	// Build a CSV large enough to exceed 16 MiB.
@@ -199,11 +224,11 @@ func TestImportStreaming(t *testing.T) {
 	assert.Equal(t, cr.BatchID, latest.BatchID)
 	assert.Equal(t, int64(len(csv)), latest.RawSizeBytes)
 
-	// Verify no new top-level entries in os.TempDir().
+	// Verify no new top-level entries in the package-private temp root.
 	after := snapshotTempNames(t, tmpRoot)
 	for name := range after {
 		if _, ok := before[name]; !ok {
-			t.Fatalf("os.TempDir() gained new top-level entry during streaming import: %q", name)
+			t.Fatalf("package temp root gained new top-level entry during streaming import: %q", name)
 		}
 	}
 }

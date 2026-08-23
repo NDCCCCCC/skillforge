@@ -46,7 +46,7 @@
 贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**。依赖主线严格线性：14 → 15 → 16 → 17 → 18 → 19；20（管理台）收尾聚合全链数据面。研究依据：`.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计 2026-08-21；PITFALLS.md 文内 P14..P20 为研究期占位编号，已映射到下方 Phase 14..20）。
 
 - [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-23 — 12/12 plans: 14-01..14-11 code-complete hermetically; 14-12 landed explicit D14-B4 re-baseline semantics (computeCaseMetrics refused=true → faith=1.0) with RED→GREEN test; authorized compliance replay environment-blocked by BGE-M3 no route to host — no replay run, no falsified numbers, platform-floor.lock.json 1.1.0 formal re-sign remains deferred)
-- [ ] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）
+- [x] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）(completed 2026-08-24 — 7/7 plans: 15-01..15-07 code-complete; verify-phase-15.sh 10/10 PASS in WSL2)
 - [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
 - [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
@@ -526,9 +526,9 @@ Plans:
 
 - [x] 15-06-PLAN.md — 导入/删除 HTTP 端点：Hertz 三选项 + 分路由体量守卫 + multipart 流式 handler + main 装配（TestImportStreaming / TestDeleteDatasetAudited）
 
-**Wave 5** *(unblocked)*
+**Wave 5** *(complete)*
 
-- [ ] 15-07-PLAN.md — 结构性禁令门（禁预解析/禁逐行 INSERT/禁行值日志）+ verify-phase-15.sh + Makefile target
+- [x] 15-07-PLAN.md — 结构性禁令门（禁预解析/禁逐行 INSERT/禁行值日志）+ verify-phase-15.sh + Makefile target — completed 2026-08-24
 
 **UI hint**: no（API 层；导入管理 UI 在 Phase 20 admin）
 
