@@ -1,0 +1,6 @@
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+CREATE TABLE t(a INTEGER PRIMARY KEY, name TEXT, bal REAL, data BLOB, note TEXT);
+INSERT INTO t VALUES(1,'张三''quote',1234.56,x'616263',NULL);
+CREATE INDEX idx_t_name ON t(name);
+COMMIT;
