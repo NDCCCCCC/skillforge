@@ -511,7 +511,7 @@ Plans:
 **Wave 1**
 
 - [x] 15-01-PLAN.md — 脱敏纯函数核心：normalize 三档 profile + HMAC 盐推导链 + L2 定宽桶 + 规则文件 fail-closed 加载 + 四编码流式解码（TestHMACNormalizationJoinability / TestUnknownColumnFailClosed / TestDecode）
-- [ ] 15-02-PLAN.md — 注册表/审计存储面：datasets 三新列 additive 迁移 + import_batches / dataset_deletes INSERT-only 表 + Store 接口扩展（TestBatchAuditRowShape）
+- [x] 15-02-PLAN.md — 注册表/审计存储面：datasets 三新列 additive 迁移 + import_batches / dataset_deletes INSERT-only 表 + Store 接口扩展（TestBatchAuditRowShape）
 - [ ] 15-03-PLAN.md — supersede 原子交换三步备份链 + WriteStagingBatch Appender 写入 helper + 复合名 ATTACH 探针（TestSupersedeAtomicSwap）
 
 **Wave 2** *(blocked on Wave 1 completion)*

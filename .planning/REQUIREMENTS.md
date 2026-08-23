@@ -160,8 +160,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### 数据导入与脱敏 (DATA — new items)
 
 - [ ] **DATA-15**: 数据人员可进行两阶段导入——预览（前 100 行 + 拟脱敏效果 + 拟 tier，可调整字段桶边界）→ 确认提交
-- [ ] **DATA-16**: 幂等重导入——内容哈希 + (dataset, period) 去重，同批刷新重跑安全
-- [ ] **DATA-17**: 每导入批次产生 INSERT-only 审计行证明 raw 已弃 `{batch_id, raw_size_bytes, desensitized_row_count, discard_ts, dataset}`
+- [x] **DATA-16**: 幂等重导入——内容哈希 + (dataset, period) 去重，同批刷新重跑安全
+- [x] **DATA-17**: 每导入批次产生 INSERT-only 审计行证明 raw 已弃 `{batch_id, raw_size_bytes, desensitized_row_count, discard_ts, dataset}`
 - [ ] **DATA-18**: 数据集 TTL 到期清理——先 DETACH 后删文件（Windows 文件锁）；只作用于脱敏数据集文件，审计行与 KPI 快照永不删
 
 ### KPI 注册表 (KPI)
@@ -377,8 +377,8 @@ Which phases cover which requirements.
 | PLAT-10 | Phase 14 | Complete (14-02 SUMMARY; audit platform_floor_version column + all 5 INSERT paths + admin preview endpoint) |
 | PLAT-11 | Phase 14 | Complete (14-04 SUMMARY; 20-case frozen set + JudgeHermetic + platform-floor.lock.json) |
 | DATA-15 | Phase 15 | Pending |
-| DATA-16 | Phase 15 | Pending |
-| DATA-17 | Phase 15 | Pending |
+| DATA-16 | Phase 15 | Complete (15-02 SUMMARY; LatestImportBatch query surface + import_batches (dataset,period) index) |
+| DATA-17 | Phase 15 | Complete (15-02 SUMMARY; INSERT-only import_batches table with batch_id/raw_size_bytes/desensitized_row_count/discard_ts/dataset + TestBatchAuditRowShape) |
 | KPI-01 | Phase 16 | Pending |
 | KPI-02 | Phase 16 | Pending |
 | DASH-01 | Phase 17 | Pending |

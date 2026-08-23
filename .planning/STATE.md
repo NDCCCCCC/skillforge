@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 15
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 15-01
-last_updated: "2026-08-23T16:37:51Z"
-last_activity: 2026-08-23 -- Phase 15 Plan 01 complete
+stopped_at: Completed 15-02
+last_updated: "2026-08-23T17:13:28Z"
+last_activity: 2026-08-23 -- Phase 15 Plan 02 complete
 progress:
   total_phases: 20
   completed_phases: 12
   total_plans: 91
-  completed_plans: 86
+  completed_plans: 87
   percent: 60
 ---
 
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 15 (数据导入管线 + 导入即脱敏（P10.1）) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Executing Phase 15
-Last activity: 2026-08-23 -- Phase 15 Plan 01 complete (data desensitization core pure functions)
+Last activity: 2026-08-23 -- Phase 15 Plan 02 complete (import batch audit + datasets registry store layer)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -173,6 +173,9 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 | D15-01-2 | hash 列 profile 可空（默认链），非空则必须在 KnownProfiles() 内（Phase 15 / Plan 15-01） | normalize.go 显式定义了空 profile 默认链（NFC+TrimSpace）；若规则文件校验强制必填 profile，该默认链对导入管线不可达。空 profile 等价于不声明；声明了就必须是注册名，防规则名幻觉。 |
 | D15-01-3 | 规则校验拒绝无意义字段组合（Phase 15 / Plan 15-01） | hash+width、bucket_fixed+profile、passthrough+profile/width 等组合视为规则文件 typo，fail-closed 拒绝，而非静默忽略字段。避免 YAML 中字段误用导致脱敏行为偏离数据人员意图。 |
 | D15-01-4 | GB18030 解码器包严格替换字符检查（Phase 15 / Plan 15-01） | x/text GB18030 解码器对非法序列静默输出 U+FFFD 而非 error。为满足 T-15-12 fail-closed 契约，decode.go 用 strictDecoderReader 包裹，检测到 U+FFFD 字节序列即硬报错。 |
+| D15-02-1 | import_batches 使用专用表（Phase 15 / Plan 15-02） | 15-RESEARCH Open Q3 采纳选项 A：批次审计用 dedicated `import_batches` 表而非 audit.action 枚举 + frozen_args BLOB，ADM-02 批次视图可 SQL 直查。 |
+| D15-02-2 | DeleteDataset 精确 name 匹配（Phase 15 / Plan 15-02） | 删除路径用 `DELETE FROM datasets WHERE name = ?`，不在 SQL 层做前缀/LIKE（`_` 是 LIKE 通配符）。需要前缀删除的调用方用 ListDatasets + strings.HasPrefix 在 Go 侧过滤。 |
+| D15-02-3 | KMinOverride=0 表示使用全局默认（Phase 15 / Plan 15-02） | datasets 注册表 k_min_override 列 0 = 全局 KMinDefault；旧调用方与预 Phase 15 行不填即为 0，无需每次导入都显式指定 k_min。 |
 
 ---
 
@@ -180,6 +183,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Roadmap Evolution
 
+- 2026-08-23: Phase 15 Plan 02 (15-02) complete — `internal/store/sqlite` additive schema migration + `import_batches`/`dataset_deletes` INSERT-only audit tables + Store interface extension (DATA-16 + DATA-17 store layer). See 15-02-SUMMARY.md.
 - 2026-08-23: Phase 15 Plan 01 (15-01) complete — `internal/data` desensitization core pure functions (normalize/desensitize/rules/decode + fixtures + datarules/loans.yaml). DATA-02 requirement locked; 2/2 deviation rules auto-fixed (gitignore anchor + GB18030 strict replacement-character guard).
 - 2026-08-17: Milestone v0.8 roadmap appended — phases 8-13 (P8.0 dep-upgrade → P8.S spike hard gate → P8.1 memory → P8.2 write-tools+approval → P8.3 planning → P8.4 fan-out), strict dependency chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 + backlog 999.1/999.2 untouched.
 - Phase 6 edited: edited fields: title,goal,sc-2,plan-list (split into code-side 6a complete + 06-03 deferred to new Phase 999.2 backlog; also repaired pre-existing corruption: Phase 4 section carried a stray copy of the 06 plan list — restored real 04-01..04-04 list)
