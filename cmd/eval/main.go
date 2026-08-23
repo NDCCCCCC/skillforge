@@ -730,6 +730,17 @@ func classifyRunOutcome(err error, refusal *verdict.Refusal, v verdict.Verdict) 
 	if refusal != nil {
 		return true, "", refusal.Reason
 	}
+	// 14-11: "refused" is a verdict.ValidStatuses member (validate.go).
+	// Under the 1.1.0 floor tail the model refuses INSIDE the verdict
+	// schema (well-formed JSON, Answer carrying refusal prose); route it
+	// into the same refusal conventions as the two paths above instead
+	// of judging the prose against retrieved chunks. status
+	// "needs_input"/"error" deliberately do NOT enter here — this fix
+	// only adopts the modality ValidStatuses already defines as a
+	// refusal.
+	if v.Status == "refused" {
+		return true, "", "verdict_status_refused"
+	}
 	// Serialize the verdict to an answer string for the judge. The
 	// verdict's Citations carry the load-bearing claims; including the
 	// full JSON lets the judge see status + confidence too.
