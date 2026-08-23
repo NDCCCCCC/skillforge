@@ -22,11 +22,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
 	"iter"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -556,8 +558,219 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// finalizeBatch is shared by Commit and Push. It is a placeholder for the
-// Task 2 implementation.
+// finalizeBatch is the single-pass write path shared by Commit and Push.
+//
+// Invariants:
+//   - The input Reader is consumed exactly once.
+//   - TeeReader→hasher is wrapped around the Reader BEFORE openChannel, so
+//     the digest covers the same raw bytes as Preview.
+//   - ValidateCommitAgainstPreview and checkIdempotent run ONLY after the
+//     WriteStagingBatch stream is exhausted.
 func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, period, channel string, r io.Reader) (*CommitResult, error) {
-	return nil, fmtError("finalizeBatch", errors.New("not implemented"))
+	// Session lookup happens before any stream consumption.
+	sess, ok := imp.sessions.Get(previewID)
+	if !ok {
+		return nil, fmtError("finalizeBatch", errExpiredSession)
+	}
+	if err := imp.guardSiteSalt(); err != nil {
+		return nil, err
+	}
+	if err := imp.guardDatasetPeriod(dataset, period); err != nil {
+		return nil, err
+	}
+	rules, rulesSHA, err := imp.loadRules(dataset)
+	if err != nil {
+		return nil, err
+	}
+	if rulesSHA != sess.RulesSHA256 {
+		return nil, fmtError("finalizeBatch", errors.New(
+			"rule file changed since preview"))
+	}
+
+	datasetSalt, err := DeriveDatasetSalt(imp.cfg.SiteSalt, dataset)
+	if err != nil {
+		return nil, err
+	}
+
+	batchID, err := newBatchID()
+	if err != nil {
+		return nil, fmtError("finalizeBatch", err)
+	}
+	if err := os.MkdirAll(imp.cfg.stagingDir(), 0o755); err != nil {
+		return nil, fmtError("finalizeBatch", err)
+	}
+	stagingPath := filepath.Join(imp.cfg.stagingDir(), batchID+".duckdb")
+
+	hash := sha256.New()
+	cw := &countingHashWriter{h: hash}
+	tee := io.TeeReader(r, cw)
+
+	header, rowIter, err := openChannel(channel, tee)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateColumnSet(rules, header); err != nil {
+		return nil, err
+	}
+
+	table, err := buildStagingTable(header, sess.SchemaTypes)
+	if err != nil {
+		return nil, err
+	}
+
+	var pipeErr error
+	var rowCount int64
+	desensitizedSeq := func(yield func([]any) bool) {
+		defer func() {
+			if r := recover(); r != nil {
+				pipeErr = recoverRowIterError(r)
+			}
+		}()
+		for row := range rowIter {
+			if rowCount >= ImportMaxRowsPerBatch {
+				pipeErr = fmtError("finalizeBatch", fmt.Errorf(
+					"row count exceeds ImportMaxRowsPerBatch=%d", ImportMaxRowsPerBatch))
+				return
+			}
+			out, err := desensitizeRow(row, header, rules, datasetSalt, sess.BucketOverrides)
+			if err != nil {
+				pipeErr = err
+				return
+			}
+			if !yield(out) {
+				return
+			}
+			rowCount++
+		}
+	}
+
+	written, err := duckdb.WriteStagingBatch(ctx, stagingPath, table, desensitizedSeq)
+	if err != nil {
+		_ = os.Remove(stagingPath)
+		return nil, fmtError("finalizeBatch", err)
+	}
+	if pipeErr != nil {
+		_ = os.Remove(stagingPath)
+		return nil, pipeErr
+	}
+	_ = written // rowCount is authoritative (streamed iterator)
+
+	contentSHA := hex.EncodeToString(cw.Sum(nil))
+	rawSize := cw.n
+	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
+
+	if err := ValidateCommitAgainstPreview(sess, contentSHA); err != nil {
+		_ = os.Remove(stagingPath)
+		return nil, err
+	}
+
+	existingBatchID, supersededBatchID, err := checkIdempotent(
+		ctx, imp.seam, dataset, period, contentSHA)
+	if err != nil {
+		_ = os.Remove(stagingPath)
+		return nil, err
+	}
+	if existingBatchID != "" {
+		_ = os.Remove(stagingPath)
+		return &CommitResult{
+			BatchID:    existingBatchID,
+			Rows:       sess.RowCount,
+			Superseded: false,
+		}, nil
+	}
+
+	if err := os.MkdirAll(imp.cfg.datasetsDir(), 0o755); err != nil {
+		_ = os.Remove(stagingPath)
+		return nil, fmtError("finalizeBatch", err)
+	}
+	dsName := registryName(dataset, period)
+	schemaJSON, err := schemaJSON(header, sess.SchemaTypes)
+	if err != nil {
+		_ = os.Remove(stagingPath)
+		return nil, err
+	}
+	now := time.Now().UTC()
+	row := store.DatasetRow{
+		Name:            dsName,
+		Dataset:         dataset,
+		Period:          period,
+		Tier:            rules.Tier,
+		SchemaJSON:      schemaJSON,
+		FilePath:        filepath.Join(imp.cfg.datasetsDir(), dsName+".duckdb"),
+		ContentSHA256:   contentSHA,
+		BatchID:         batchID,
+		KMinOverride:    rules.KMin,
+		CreatedAt:       now,
+	}
+
+	targetExists := supersededBatchID != ""
+	if targetExists {
+		err = duckdb.SupersedeStagedDataset(ctx, duckdb.SupersedeOptions{
+			StagingPath: stagingPath,
+			DatasetID:   dsName,
+			Row:         row,
+			Registry:    imp.seam,
+			DatasetsDir: imp.cfg.datasetsDir(),
+			BackupDir:   imp.cfg.stagingDir(),
+			LRU:         imp.lru,
+		})
+	} else {
+		err = duckdb.CommitStagedDataset(ctx, duckdb.CommitOptions{
+			StagingPath: stagingPath,
+			DatasetID:   dsName,
+			Row:         row,
+			Registry:    imp.seam,
+			DatasetsDir: imp.cfg.datasetsDir(),
+			LRU:         imp.lru,
+		})
+	}
+	if err != nil {
+		return nil, fmtError("finalizeBatch", err)
+	}
+
+	auditRow := newAuditRow(
+		batchID, dataset, period, rules.Tier, contentSHA, rulesSHA,
+		rawSize, rowCount, discardTS, supersededBatchID, now,
+	)
+	if err := writeAuditRow(ctx, imp.seam, auditRow); err != nil {
+		return nil, fmtError("finalizeBatch", err)
+	}
+
+	return &CommitResult{
+		BatchID:           batchID,
+		Rows:              rowCount,
+		Superseded:        targetExists,
+		SupersededBatchID: supersededBatchID,
+	}, nil
+}
+
+// buildStagingTable assembles the DuckDB table spec from the header and the
+// schema types frozen at preview time.
+func buildStagingTable(header []string, schemaTypes map[string]string) (duckdb.StagingTable, error) {
+	cols := make([]duckdb.ColumnSpec, len(header))
+	for i, col := range header {
+		typ, ok := schemaTypes[col]
+		if !ok || typ == "" {
+			return duckdb.StagingTable{}, fmtError("buildStagingTable", fmt.Errorf(
+				"column %q has no frozen schema type", col))
+		}
+		cols[i] = duckdb.ColumnSpec{Name: col, DuckDBType: typ}
+	}
+	return duckdb.StagingTable{Name: "data", Columns: cols}, nil
+}
+
+func schemaJSON(header []string, schemaTypes map[string]string) (string, error) {
+	type col struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	cols := make([]col, len(header))
+	for i, c := range header {
+		cols[i] = col{Name: c, Type: schemaTypes[c]}
+	}
+	b, err := json.Marshal(cols)
+	if err != nil {
+		return "", fmtError("schemaJSON", err)
+	}
+	return string(b), nil
 }

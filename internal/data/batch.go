@@ -18,6 +18,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	"github.com/skillforge/skillforge/internal/store"
 )
@@ -27,18 +28,47 @@ func registryName(dataset, period string) string {
 	return dataset + "__" + period
 }
 
-// newBatchID returns a crypto-random hex batch identifier.
-func newBatchID() string {
-	// Skeleton: deterministic placeholder for RED compile.
-	return "batch-placeholder"
+// newBatchID returns a crypto-random 16-byte hex batch identifier.
+func newBatchID() (string, error) {
+	return randomHex(16)
 }
 
 // checkIdempotent probes the latest batch for (dataset, period).
+//   - latest == nil → ("", "", nil) : first import.
+//   - latest.ContentSHA256 == contentSHA256 → (latest.BatchID, "", nil) : hit.
+//   - otherwise → ("", latest.BatchID, nil) : supersede candidate.
 func checkIdempotent(ctx context.Context, seam ImportStoreSeam, dataset, period, contentSHA256 string) (existingBatchID string, supersededBatchID string, err error) {
-	return "", "", nil
+	latest, err := seam.LatestImportBatch(ctx, dataset, period)
+	if err != nil {
+		return "", "", err
+	}
+	if latest == nil {
+		return "", "", nil
+	}
+	if latest.ContentSHA256 == contentSHA256 {
+		return latest.BatchID, "", nil
+	}
+	return "", latest.BatchID, nil
 }
 
 // writeAuditRow appends one INSERT-only import_batches audit row.
 func writeAuditRow(ctx context.Context, seam ImportStoreSeam, row store.ImportBatchRow) error {
-	return nil
+	return seam.PutImportBatch(ctx, row)
+}
+
+// newAuditRow constructs a fully populated ImportBatchRow for finalizeBatch.
+func newAuditRow(batchID, dataset, period, tier, contentSHA, rulesSHA string, rawSize, rows int64, discardTS, supersedes string, createdAt time.Time) store.ImportBatchRow {
+	return store.ImportBatchRow{
+		BatchID:              batchID,
+		Dataset:              dataset,
+		Period:               period,
+		Tier:                 tier,
+		ContentSHA256:        contentSHA,
+		RulesSHA256:          rulesSHA,
+		RawSizeBytes:         rawSize,
+		DesensitizedRowCount: rows,
+		DiscardTS:            discardTS,
+		SupersedesBatchID:    supersedes,
+		CreatedAt:            createdAt,
+	}
 }

@@ -82,7 +82,12 @@ type oneShotReader struct {
 
 func (o *oneShotReader) Read(p []byte) (int, error) {
 	if o.sawEOF {
-		o.t.Fatal("req.Reader was read again after EOF — single-pass contract violated")
+		// A caller that tries to start a second pass would return data here.
+		n, err := o.r.Read(p)
+		if n > 0 || err != io.EOF {
+			o.t.Fatalf("req.Reader was read again after EOF — single-pass contract violated (n=%d err=%v)", n, err)
+		}
+		return 0, io.EOF
 	}
 	n, err := o.r.Read(p)
 	if err == io.EOF {
