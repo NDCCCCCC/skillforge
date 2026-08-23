@@ -42,6 +42,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -85,6 +86,11 @@ type commitResponse struct {
 type dryRunResponse struct {
 	Columns    []data.PreviewColumn `json:"columns"`
 	Violations []string             `json:"violations"`
+}
+
+// deleteResponse is the JSON envelope for DELETE /api/import/dataset/:name.
+type deleteResponse struct {
+	Deleted []string `json:"deleted"`
 }
 
 // importForm holds the parsed multipart fields for an import request.
@@ -286,8 +292,13 @@ func (s *Deps) importPushHandler(ctx context.Context, c *app.RequestContext) {
 }
 
 // importDeleteHandler implements DELETE /api/import/dataset/:name.
-// Full implementation is in Task 3.
+//
+// The :name parameter is either an exact registry name ("loans__2026-07")
+// or a logical dataset name ("loans"); the latter deletes every period of
+// that dataset. The handler Detaches the dataset from the lazy ATTACH cache
+// BEFORE os.Remove so the delete succeeds on Windows (Pitfall 9).
 func (s *Deps) importDeleteHandler(ctx context.Context, c *app.RequestContext) {
+	start := time.Now()
 	if !isAdminRequest(c) {
 		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
 		return
@@ -296,7 +307,27 @@ func (s *Deps) importDeleteHandler(ctx context.Context, c *app.RequestContext) {
 		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: importDisabledError})
 		return
 	}
-	c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: "not implemented"})
+
+	name := c.Param("name")
+	if name == "" {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "missing dataset name"})
+		return
+	}
+
+	deleted, err := s.Importer.DeleteDataset(ctx, name)
+	if err != nil {
+		if errors.Is(err, data.ErrDatasetNotFound) {
+			c.JSON(http.StatusNotFound, graphResponseError{Error: "dataset not found"})
+			return
+		}
+		log.Printf("[WARN] import delete error: %v", err)
+		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "delete failed — see server logs"})
+		return
+	}
+
+	log.Printf("[OK] import delete: name=%s deleted=%d targets=%v duration=%s",
+		name, len(deleted), deleted, time.Since(start))
+	c.JSON(http.StatusOK, deleteResponse{Deleted: deleted})
 }
 
 // parseImportForm reads the multipart form in streaming fashion. It collects

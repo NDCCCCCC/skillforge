@@ -403,3 +403,134 @@ func TestPushDryRunFlag(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, latest)
 }
+
+// pushDatasetViaHTTP imports a small CSV via POST /api/import/push and returns
+// the committed batch id. It is a test helper for the delete-endpoint suite.
+func pushDatasetViaHTTP(t *testing.T, deps *Deps, dataset, period string, rows int) string {
+	t.Helper()
+	csv := makeCSV(rows)
+	body, ct, n := buildMultipartForm(t, map[string]string{
+		"dataset": dataset,
+		"period":  period,
+		"channel": "csv",
+	}, csv)
+	resp := invokeImport(t, deps, http.MethodPost, "/api/import/push", testAdminToken, body, ct, n)
+	require.Equal(t, http.StatusOK, resp.Code, "body: %s", resp.Body.String())
+	var cr commitResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &cr))
+	require.NotEmpty(t, cr.BatchID)
+	return cr.BatchID
+}
+
+// TestDeleteDatasetAudited proves DELETE after a lazy ATTACH succeeds on
+// Windows (Pitfall 9) and leaves file/registry/dataset_deletes audit in sync.
+func TestDeleteDatasetAudited(t *testing.T) {
+	ctx := context.Background()
+	deps, cleanup := importTestDeps(t)
+	defer cleanup()
+
+	pushDatasetViaHTTP(t, deps, "loans", "2026-07", 2)
+	pushDatasetViaHTTP(t, deps, "loans", "2026-06", 1)
+
+	// Find the target file path in the registry.
+	rows, err := deps.Store.ListDatasets(ctx)
+	require.NoError(t, err)
+	var target string
+	for _, r := range rows {
+		if r.Name == "loans__2026-07" {
+			target = r.FilePath
+			break
+		}
+	}
+	require.NotEmpty(t, target)
+
+	// Trigger a lazy ATTACH via the importer's own LRU — this is the Windows
+	// lock-order regression surface: the file is now held open by the engine.
+	lru := deps.Importer.LRU()
+	require.NotNil(t, lru)
+	_, err = lru.Get(ctx, "loans__2026-07", target)
+	require.NoError(t, err)
+
+	resp := invokeImport(t, deps, http.MethodDelete, "/api/import/dataset/loans__2026-07", testAdminToken, nil, "", 0)
+	require.Equal(t, http.StatusOK, resp.Code, "body: %s", resp.Body.String())
+	var dr deleteResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &dr))
+	assert.Equal(t, []string{"loans__2026-07"}, dr.Deleted)
+
+	// File removed.
+	_, err = os.Stat(target)
+	require.True(t, os.IsNotExist(err), "dataset file must be removed")
+
+	// Registry row removed, sibling period intact.
+	remaining, err := deps.Store.ListDatasets(ctx)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1)
+	assert.Equal(t, "loans__2026-06", remaining[0].Name)
+
+	// dataset_deletes audit row exists.
+	sqlDB := deps.Store.(*sqlite.SQLiteStore).DB()
+	var name, dataset string
+	err = sqlDB.QueryRowContext(ctx,
+		"SELECT name, dataset FROM dataset_deletes WHERE name = ?", "loans__2026-07").
+		Scan(&name, &dataset)
+	require.NoError(t, err)
+	assert.Equal(t, "loans__2026-07", name)
+	assert.Equal(t, "loans", dataset)
+}
+
+// TestDeleteDatasetLogicalAllPeriods deletes by logical dataset name and
+// removes every period while writing one audit row per deleted registry name.
+func TestDeleteDatasetLogicalAllPeriods(t *testing.T) {
+	ctx := context.Background()
+	deps, cleanup := importTestDeps(t)
+	defer cleanup()
+
+	pushDatasetViaHTTP(t, deps, "loans", "2026-07", 1)
+	pushDatasetViaHTTP(t, deps, "loans", "2026-06", 1)
+
+	resp := invokeImport(t, deps, http.MethodDelete, "/api/import/dataset/loans", testAdminToken, nil, "", 0)
+	require.Equal(t, http.StatusOK, resp.Code, "body: %s", resp.Body.String())
+	var dr deleteResponse
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &dr))
+	assert.ElementsMatch(t, []string{"loans__2026-06", "loans__2026-07"}, dr.Deleted)
+
+	remaining, err := deps.Store.ListDatasets(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, remaining)
+
+	sqlDB := deps.Store.(*sqlite.SQLiteStore).DB()
+	var count int
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM dataset_deletes WHERE dataset = ?", "loans").Scan(&count))
+	assert.Equal(t, 2, count)
+}
+
+// TestDeleteDatasetNotFound verifies an unmatched name returns 404.
+func TestDeleteDatasetNotFound(t *testing.T) {
+	deps, cleanup := importTestDeps(t)
+	defer cleanup()
+
+	resp := invokeImport(t, deps, http.MethodDelete, "/api/import/dataset/loans__2026-07", testAdminToken, nil, "", 0)
+	require.Equal(t, http.StatusNotFound, resp.Code)
+}
+
+// TestDeleteDatasetUnauthorized verifies missing/wrong tokens → 403 and no
+// dataset_deletes audit row is written.
+func TestDeleteDatasetUnauthorized(t *testing.T) {
+	ctx := context.Background()
+	deps, cleanup := importTestDeps(t)
+	defer cleanup()
+
+	pushDatasetViaHTTP(t, deps, "loans", "2026-07", 1)
+
+	resp := invokeImport(t, deps, http.MethodDelete, "/api/import/dataset/loans__2026-07", "", nil, "", 0)
+	require.Equal(t, http.StatusForbidden, resp.Code)
+
+	resp = invokeImport(t, deps, http.MethodDelete, "/api/import/dataset/loans__2026-07", "bad-token", nil, "", 0)
+	require.Equal(t, http.StatusForbidden, resp.Code)
+
+	sqlDB := deps.Store.(*sqlite.SQLiteStore).DB()
+	var count int
+	require.NoError(t, sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM dataset_deletes").Scan(&count))
+	assert.Equal(t, 0, count)
+}

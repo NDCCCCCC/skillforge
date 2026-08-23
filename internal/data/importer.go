@@ -91,6 +91,7 @@ type ImportStoreSeam interface {
 	LatestImportBatch(ctx context.Context, dataset, period string) (*store.ImportBatchRow, error)
 	PutDataset(ctx context.Context, row store.DatasetRow) error
 	ListDatasets(ctx context.Context) ([]store.DatasetRow, error)
+	DeleteDataset(ctx context.Context, name string) error
 	PutDatasetDelete(ctx context.Context, row store.DatasetDeleteRow) error
 }
 
