@@ -281,6 +281,62 @@ type DatasetRow struct {
 	BatchID string
 	// CreatedAt is the registration time (UTC).
 	CreatedAt time.Time
+	// Dataset is the logical dataset name (Phase 15 / D15-C2). For the
+	// composite registry name "loans__2026-07" this is "loans". Empty for
+	// pre-Phase-15 rows (DEFAULT '') and old callers that do not set it.
+	Dataset string
+	// Period is the data period, e.g. "2026-07" (Phase 15 / D15-C2). Empty
+	// for pre-Phase-15 rows and old callers that do not set it.
+	Period string
+	// KMinOverride is the per-dataset k-anonymity floor override (Phase 15 /
+	// D15-D3). Zero means "use the global default KMinDefault"; non-zero
+	// overrides the default for this dataset.
+	KMinOverride int
+}
+
+// ImportBatchRow is one INSERT-only audit record for a data-import batch
+// (Phase 15 / Plan 15-02 / DATA-17). It carries the proof that raw data was
+// discarded (DiscardTS), the rule-set hash applied (RulesSHA256, D15-A4),
+// and the supersede chain (SupersedesBatchID, D15-C1).
+type ImportBatchRow struct {
+	// BatchID is the crypto/rand hex identifier of the batch.
+	BatchID string
+	// Dataset is the logical dataset name.
+	Dataset string
+	// Period is the data period, e.g. "2026-07".
+	Period string
+	// Tier is the trust tier the dataset is exposed under.
+	Tier string
+	// ContentSHA256 is the SHA-256 of the raw upload bytes.
+	ContentSHA256 string
+	// RulesSHA256 is the SHA-256 of the rule file bytes used for
+	// desensitization (D15-A4).
+	RulesSHA256 string
+	// RawSizeBytes is the byte length of the raw upload.
+	RawSizeBytes int64
+	// DesensitizedRowCount is the number of rows written to the desensitized
+	// dataset.
+	DesensitizedRowCount int64
+	// DiscardTS is the RFC3339 timestamp when the raw stream was discarded
+	// (DATA-17). Stored as a string to preserve the exact moment.
+	DiscardTS string
+	// SupersedesBatchID is the previous batch ID for this (dataset, period)
+	// key, or empty if this is the first batch (D15-C1).
+	SupersedesBatchID string
+	// CreatedAt is the batch registration time (UTC).
+	CreatedAt time.Time
+}
+
+// DatasetDeleteRow is one INSERT-only audit record for a dataset deletion
+// (Phase 15 / Plan 15-02 / D15-C3). The state-side deletion happens in the
+// delete endpoint; this row records the action.
+type DatasetDeleteRow struct {
+	// Name is the exact registry name that was deleted.
+	Name string
+	// Dataset is the logical dataset name (empty for pre-Phase-15 deletions).
+	Dataset string
+	// DeletedAt is the deletion time (UTC).
+	DeletedAt time.Time
 }
 
 // SessionMessage is one turn-half (user OR assistant) of a conversation
@@ -538,6 +594,31 @@ type Store interface {
 	// ListDatasets returns every registered dataset row, ordered by name.
 	// Empty (non-nil) slice when the registry is empty.
 	ListDatasets(ctx context.Context) ([]DatasetRow, error)
+
+	// DeleteDataset removes the dataset registry row with the exact name.
+	// It is the state-side half of the deletion action; the caller is
+	// responsible for the file removal and the dataset_deletes audit row
+	// (D15-C3). Missing rows are idempotent (no error).
+	DeleteDataset(ctx context.Context, name string) error
+
+	// PutImportBatch appends one INSERT-only import batch audit row
+	// (DATA-17 + D15-A4 + D15-C1). Duplicate batch_id values surface as a
+	// PRIMARY KEY constraint error, never silent replacement.
+	PutImportBatch(ctx context.Context, row ImportBatchRow) error
+
+	// LatestImportBatch returns the newest batch for the (dataset, period)
+	// key, or (nil, nil) when no batch exists (DATA-16 idempotency probe).
+	LatestImportBatch(ctx context.Context, dataset, period string) (*ImportBatchRow, error)
+
+	// ListImportBatches returns every batch audit row for dataset, newest
+	// first. Empty (non-nil) slice when there are none (ADM-02 batch view
+	// substrate).
+	ListImportBatches(ctx context.Context, dataset string) ([]ImportBatchRow, error)
+
+	// PutDatasetDelete appends one INSERT-only dataset deletion audit row
+	// (D15-C3). The state-side deletion is performed separately by the
+	// caller.
+	PutDatasetDelete(ctx context.Context, row DatasetDeleteRow) error
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

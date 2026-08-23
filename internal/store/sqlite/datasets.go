@@ -28,19 +28,28 @@ import (
 // (internal/duckdb.CommitStagedDataset) may replay a batch, and the
 // registry upsert is idempotent by design. Every value is a `?`
 // placeholder — the row never touches fmt.Sprintf (T-3-SQLI / T-14-16).
+//
+// Phase 15 / Plan 15-02: extended with dataset/period/k_min_override
+// additive columns (DEFAULT '' / 0 for old callers).
 const putDatasetSQL = `
 INSERT OR REPLACE INTO datasets (
-    name, tier, schema_json, file_path, content_sha256, batch_id, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?)
+    name, tier, schema_json, file_path, content_sha256, batch_id, created_at,
+    dataset, period, k_min_override
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // listDatasetsSQL returns every registry row ordered by name for stable
 // admin/preview rendering.
 const listDatasetsSQL = `
-SELECT name, tier, schema_json, file_path, content_sha256, batch_id, created_at
+SELECT name, tier, schema_json, file_path, content_sha256, batch_id, created_at,
+       dataset, period, k_min_override
 FROM datasets
 ORDER BY name ASC
 `
+
+// deleteDatasetSQL removes a registry row by exact name match. The `?`
+// placeholder prevents LIKE wildcard injection (T-15-14 mitigation).
+const deleteDatasetSQL = `DELETE FROM datasets WHERE name = ?`
 
 // PutDataset upserts one dataset registry row. Idempotent on name.
 func (s *SQLiteStore) PutDataset(ctx context.Context, row store.DatasetRow) error {
@@ -52,6 +61,9 @@ func (s *SQLiteStore) PutDataset(ctx context.Context, row store.DatasetRow) erro
 		row.ContentSHA256,
 		row.BatchID,
 		row.CreatedAt.UTC().Format(time.RFC3339Nano),
+		row.Dataset,
+		row.Period,
+		row.KMinOverride,
 	)
 	if err != nil {
 		return fmtError("PutDataset", err)
@@ -80,6 +92,9 @@ func (s *SQLiteStore) ListDatasets(ctx context.Context) ([]store.DatasetRow, err
 			&r.ContentSHA256,
 			&r.BatchID,
 			&createdAt,
+			&r.Dataset,
+			&r.Period,
+			&r.KMinOverride,
 		); err != nil {
 			return nil, fmtError("ListDatasets", err)
 		}
@@ -95,3 +110,16 @@ func (s *SQLiteStore) ListDatasets(ctx context.Context) ([]store.DatasetRow, err
 	}
 	return out, nil
 }
+
+// DeleteDataset removes the dataset registry row with the exact name.
+// Prefix deletion is intentionally NOT implemented in SQL (the `_` in LIKE
+// is a wildcard); callers that need prefix semantics must ListDatasets and
+// filter with strings.HasPrefix in Go (15-06 delete endpoint shape).
+func (s *SQLiteStore) DeleteDataset(ctx context.Context, name string) error {
+	_, err := s.db.ExecContext(ctx, deleteDatasetSQL, name)
+	if err != nil {
+		return fmtError("DeleteDataset", err)
+	}
+	return nil
+}
+
