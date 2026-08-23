@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
-current_plan: 10
-status: verifying
-stopped_at: 14-10 replay 2× FAIL — measurement-layer regression, planner decision needed (2026-08-23)
-last_updated: "2026-08-23T01:00:00Z"
+current_plan: 11
+status: Phase 14 code-complete; 1 planner decision open (compliance replay 0.888 STOP — route to 14-10 Addendum Alternative)
+stopped_at: Completed 14-11 PLAN.md — STOP branch with honest metrics recorded (2026-08-23)
+last_updated: "2026-08-23T03:16:08Z"
 last_activity: 2026-08-23
 progress:
   total_phases: 20
@@ -20,10 +20,18 @@ progress:
 
 ## Current Position
 
-Phase: 14 (p10-0-cgo-trust-floor) — UAT gap closure EXECUTED (14-10 of 10)
-Plan: 10 of 10 (Plan 14-10 executed 2026-08-23 — floor 1.1.0 re-anchor: platformFloorTail 强化（多轮稀释/角色模式切换/历史先例三豁免封闭 + 直接拒绝话术重申）+ 双字面量 1.1.0 + 4 测试锁同步 + compliance 重锁 5b12acd9… + platform-floor 锁字段 1.1.0 + verify 门双 pin，11-stage gate 全绿（commits 174ee18 + ebd547c）；UAT Test 4 issue→pass（live 20/20 首跑即过，pfloor-20 引用新尾部条款拒答、零 SQL）+ Test 6 真机复验 1.1.0（audit 行 117 + admin 预览 hash 与重锁 pin 逐字节一致）；**Task 2 后半 STOP**：compliance replay 在 GLM 端点劣化窗口测得 faithfulness 0.6876<0.9（refusal 0/20、2×挂死 + 2×内容审查 400 在案）→ 按计划 STOP 不动 metrics；2026-08-23 operator 授权干净窗口重跑**二次 FAIL**（0.6763<0.9，无挂死、agent.Run 0 错误、refusal 0/20 复现）→ 升级为 measurement-layer 回归（cmd/eval 不识别 verdict status:"refused"；根因五处代码锚点见 14-10-SUMMARY Addendum）——锁重签 + README caveat 冻结至 planner 裁决（见 Blockers）。Phase 14 UAT 6/6 pass（14-UAT.md status: complete）)
-Status: Phase 14 code-complete; 1 planner decision open (compliance replay 2× FAIL — cmd/eval refusal-accounting gap; see Blockers)
+Phase: 14 (p10-0-cgo-trust-floor) — **14-11 gap-closure plan EXECUTED** (3/3 tasks complete; STOP branch valid per plan)
+Plan: 11 of 11 (Plan 14-11 executed 2026-08-23 — measurement-layer fix + static fixes + single authorized replay)
+Status: Phase 14 code-complete; 1 planner decision open (compliance replay 0.888 STOP — see Blockers)
 Last activity: 2026-08-23
+
+**14-11 outcome summary:**
+- **Gap 1 (cmd/eval refusal-accounting defect):** FIXED hermetically. `classifyRunOutcome` extracted and now recognizes `verdict.status == "refused"` as a refusal, routing it into the same frozen conventions as Run-error / structured-refusal paths (`refused=true`, `answer=""`). `TestClassifyRunOutcome` 6-row table-driven regression lock shipped RED→GREEN. verify-phase-14 11/11 PASS and verify-phase-13 9/9 PASS with all frozen locks + golden sets byte-identical.
+- **Gap 2 (Dockerfile runtime libstdc++ libgcc):** FIXED in source; live Docker build+run blocked on this host because Docker is not installed (git-bash + WSL both `command not found`), recorded as `blocked-with-notes` per 14-08 precedent.
+- **Gap 3 (verify-phase-13 stale pin):** FIXED. Stage 7 `EXPECTED_COMPLIANCE_SHA` rippled to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11); stale "Phase 8 pin (UNCHANGED)" narrative replaced with truthful re-lock history.
+- **Live replay (single authorized run):** `cmd/eval --frozen=compliance --archive` completed 50/50 cases (2026-08-23T02:22Z–03:13Z, ~52 min). AssertPin held (`frozen pin holds`, `prompt_hash=5b12acd9…`). Refusal-accounting fix performed as designed: refusal-required 19/20 refused with faithfulness 0.9727. However, overall faithfulness = **0.888** (< 0.9 gate). A mid-run BGE endpoint failure (`no route to host`) affected several multi-hop cases. Per the no-falsify contract, the result is recorded exactly as measured — **no re-sign, no retry, no README caveat**. The 0.83–0.90 result routes to the pre-declared 14-10-SUMMARY Operator-Gate Addendum Alternative (explicit re-baseline of gate semantics) as a pending planner/user decision.
+
+Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor behavior is live and hermetically locked, but the platform-floor.lock.json 1.1.0 formal re-sign is still deferred.
 
 # State — SkillForge
 
@@ -192,16 +200,18 @@ Resume File: None
 
 ## Blockers
 
-### Phase 14 Plan 14-10 — compliance frozen replay: TWO independent FAILs — suspected measurement-layer regression, needs planner decision
+### Phase 14 Plan 14-11 — compliance frozen replay: measurement-layer fix landed; replay STOPped at 0.888; planner decision required on re-baseline Alternative
 
-- **Status:** Escalated (was "operator gate / clean-window re-run") — the authorized clean-window re-run (2026-08-23, off-peak, operator directive) FAILED again; per directive branch 3: no re-sign, no further retries, docs-only commit
-- **Blocked since:** 2026-08-22 (22:15 UTC); escalated 2026-08-23 (~00:45 UTC)
-- **Reason:** Run 1 (degraded window): faithfulness **0.6876** < 0.9, refusal 0/20, 2× hangs + 2× content-filter 400s. Run 2 (clean window 23:28–00:43 UTC, no hangs, agent.Run errors = 0, exactly 1 arel-only content-filter 400 on ref-010): faithfulness **0.6763** < 0.9, refusal 0/20, arel 0.7045 / cprec 0.42 / crecall 0.03. Two independent FAILs with healthy service → NOT endpoint degradation.
-- **Root cause (code-anchored, see 14-10-SUMMARY Operator-Gate Addendum):** cmd/eval's `refused` flag is set ONLY by agent.Run error or the empty-accumulator structured Refusal — it never recognizes a well-formed verdict with `status:"refused"` (cmd/eval/main.go:424-432; agent.go:540 + trust_floor.go:197; milvus/search.go has no score threshold so the accumulator is never empty on refusal cases — maxScore 0.303–0.540 on all 20, identical across runs). The 1.0.0 baseline (0.972 / 95%) was carried by the ERROR path (prose refusals failing verdict-JSON parse → empty answer → vacuous faith 1.0, faithfulness.go:75-78 + REFUSAL-sentinel crecall, metrics.go:189-195). The 1.1.0 tail made the model refuse INSIDE the verdict schema (live judge 20/20 corroborates) → refused=false → refusal prose judged against unrelated chunks → bimodal faith → gate FAIL. The tail did not regress behavior; it unmasked the harness gap.
-- **Current lock state (honest):** eval/frozen/platform-floor.lock.json in HEAD carries platform_floor_version=1.1.0 + recomputed lock_sha256 with the 2026-08-22 metrics/signature (TestPlatformFloorLockSelfConsistent green; the 1.1.0 live judge observed 20/20, but the formal re-sign is deferred).
-- **Unblock action (planner decision required):** choose the measurement-layer fix — minimal candidate: set `refused=true` when `v.Status == "refused"` in cmd/eval scoring (restores sentinel crecall + refusal-answer faith convention); alternative: re-baseline gate semantics. THEN one replay re-run (expect PASS), fill-lock re-sign (`--operator-name=ninedrunk-live-$(date -u +%Y-%m-%d)`), TestPlatformFloorLockSelfConsistent, verify-phase-14.sh, README caveat, commit per 14-10-PLAN Task 2 steps 3-5.
-- **Verification:** replay faithfulness ≥ 0.9 + TestPlatformFloorLockSelfConsistent green + 11-stage gate PASS with hitl/fanout/deep byte-identical.
-- **Evidence:** run-1 archive `eval/reports/2026-08-22T22-14-41Z.json`; run-2 archive `eval/reports/2026-08-23T00-43-30Z.json` + INDEX.json; logs `build/1410-eval-direct.log`, `build/1410-replay4.log`.
+- **Status:** Advanced — the cmd/eval refusal-accounting defect is fixed and verified hermetically; the single authorized replay did NOT pass the 0.9 gate; the blocker now routes to the pre-declared 14-10-SUMMARY Addendum Alternative.
+- **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed).
+- **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` and recognizes `verdict.status == "refused"` as a refusal, routing it into the same frozen conventions as Run-error / structured-refusal paths (`refused=true`, `answer=""`). Verified by `TestClassifyRunOutcome` RED→GREEN and full hermetic gates (verify-phase-14 11/11 PASS, verify-phase-13 9/9 PASS).
+- **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
+- **Live replay result (14-11, single authorized run):** `cmd/eval --frozen=compliance --archive` completed 50/50 cases (2026-08-23T02:22Z–03:13Z, ~52 min). AssertPin held (`frozen pin holds`, `prompt_hash=5b12acd9…`). Overall faithfulness = **0.888** (< 0.9 gate); per-category: adversarial 0.7683, multi-hop 0.9581, refusal-required 0.9727; refusal-required 19/20 refused (fix effect confirmed). Mid-run BGE-M3 endpoint failure (`connect: no route to host`) affected cases `mh-004`, `mh-005`, `mh-008`; the run completed and archived normally.
+- **Root cause (code-anchored):** The 14-10 Addendum root cause is now closed at the code level. The remaining 0.888 number reflects (a) the refusal fix working (refusal category 0.9727) and (b) adversarial-category answers scoring low faithfulness under the current judge-against-retrieved-context semantics.
+- **Unblock action (planner/user decision required):** choose the 14-10-SUMMARY Addendum Alternative — explicitly re-baseline the gate semantics so refusal prose is judged against ground-truth refusal criteria rather than retrieved context — OR accept 0.888 as the new floor reality. No further executor-initiated replays are authorized.
+- **Verification:** replay faithfulness ≥ 0.9 + `TestPlatformFloorLockSelfConsistent` green + 11-stage gate PASS with hitl/fanout/deep byte-identical (deferred until the decision is made and a PASS replay is obtained).
+- **Evidence:** 14-11 replay archive `eval/reports/2026-08-23T03-13-46Z.json` + `eval/reports/INDEX.json`; log `build/1411-replay.log`; SUMMARY `.planning/phases/14-p10-0-cgo-trust-floor/14-11-SUMMARY.md`.
+- **Current lock state (honest):** `eval/frozen/platform-floor.lock.json` in HEAD still carries `platform_floor_version=1.1.0` + recomputed `lock_sha256` with the 2026-08-22 metrics/signature. The 1.1.0 formal re-sign remains deferred per STOP discipline.
 
 ### Phase 10 Plan 04 — Task 2 live re-run
 
@@ -282,12 +292,7 @@ Resume File: None
 - Last plan: 03-06 (Phase 3 Go-native trust evaluator) — commits 52dab7e + d4f96fc + a77be40 + f7979af + 247dfd8. **Phase 3 COMPLETE (6/6 plans)**
 
 ---
-| Phase 08 P03 | 6m | 2 tasks | 4 files |
-| Phase 08 P04 | 5m | 2 tasks | 1 files |
-| Phase 08 P05 | 50m | 3 tasks | 0 files |
-| Phase 09 P02 | 3m10s | 2 tasks | 3 files |
-| Phase 09-trust-floor-spike-p8-s-spike-hard-gate P04 | 12m | 2 tasks | 3 files |
-| Phase 09-trust-floor-spike-p8-s-spike-hard-gate P05 | 20m | 2 tasks | 3 files |
+| 14 | 11 | 76m | 3 tasks / 4 files — gap closure: cmd/eval refusal-accounting fix (classifyRunOutcome RED→GREEN) + Dockerfile libstdc++ libgcc + verify-phase-13 pin lockstep; single compliance replay STOPped at faithfulness 0.888 (<0.9) with BGE infra fault + adversarial drag; no re-sign, no retry, honest numbers routed to 14-10 Addendum Alternative. See 14-11-SUMMARY.md |
 | Phase 09-trust-floor-spike-p8-s-spike-hard-gate P06 | ~75m | 2 tasks (T2 = human-verify gate) | 3 files committed + 7 git-ignored reports |
 | Phase 13-p8-4-sub-agent-fan-out P02 | ~25m | 2 tasks | 4 files (1 created merge.go + 1 created merge_test.go + 2 modified orchestrator.go/orchestrator_test.go) |
 | Phase 14-p10-0-cgo-trust-floor P01 | ~25m | 3 tasks (T1 TDD + T2 TDD + T3 structural gate) | 7 files (4 created: platformfloor/platform_floor{,_test}.go + agent/platform_floor_test.go + contract/platform_floor_bypass_test.go; 3 modified: agent/{prompts,agent,platform_floor}.go + runtime/deep_agent.go + agent/hitl/threat_mitigations_test.go + eval/frozen/compliance.lock.json) |
