@@ -69,5 +69,5 @@ blocked: 0
     - internal/platformfloor/platform_floor.go
     - eval/frozen/compliance.lock.json
     - eval/frozen/platform-floor.lock.json
-  follow_up: "frozen lock 口径 caveat（单次完整跑签名语义 + 1.0.0 期 ~95% 复现率观测 + 1.1.0 结果落档 eval/frozen/README.md）与 platform-floor 锁 1.1.0 live 重签（fill-lock）仍未执行——被 14-10 Task 2 step 2 的 compliance replay STOP 阻塞（GLM 端点劣化窗口 faithfulness 0.6876<0.9；见 STATE blocker）；干净窗口重跑 replay PASS 后按 14-10 PLAN Task 2 步骤 3-5 机械补齐。"
+  follow_up: "frozen lock 口径 caveat（单次完整跑签名语义 + 1.0.0 期 ~95% 复现率观测 + 1.1.0 结果落档 eval/frozen/README.md）与 platform-floor 锁 1.1.0 live 重签（fill-lock）仍未执行——被 compliance replay 连续两次 FAIL 阻塞（劣化窗口 0.6876 + 干净窗口 0.6763，均 <0.9，refusal 0/20 复现）；2026-08-23 根因定位为 cmd/eval 拒答口径缺陷（不识别 verdict status:\"refused\"，1.0.0 基线由 parse-error 路径虚高——见 14-10-SUMMARY Operator-Gate Addendum 与 STATE blocker）；待 planner 裁决测量层修复后按 14-10 PLAN Task 2 步骤 3-5 补齐。"
 ```

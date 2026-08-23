@@ -5,8 +5,8 @@ milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
 current_plan: 10
 status: verifying
-stopped_at: 14-10 replay STOP — operator re-run gate (2026-08-23)
-last_updated: "2026-08-23T00:00:00Z"
+stopped_at: 14-10 replay 2× FAIL — measurement-layer regression, planner decision needed (2026-08-23)
+last_updated: "2026-08-23T01:00:00Z"
 last_activity: 2026-08-23
 progress:
   total_phases: 20
@@ -21,8 +21,8 @@ progress:
 ## Current Position
 
 Phase: 14 (p10-0-cgo-trust-floor) — UAT gap closure EXECUTED (14-10 of 10)
-Plan: 10 of 10 (Plan 14-10 executed 2026-08-23 — floor 1.1.0 re-anchor: platformFloorTail 强化（多轮稀释/角色模式切换/历史先例三豁免封闭 + 直接拒绝话术重申）+ 双字面量 1.1.0 + 4 测试锁同步 + compliance 重锁 5b12acd9… + platform-floor 锁字段 1.1.0 + verify 门双 pin，11-stage gate 全绿（commits 174ee18 + ebd547c）；UAT Test 4 issue→pass（live 20/20 首跑即过，pfloor-20 引用新尾部条款拒答、零 SQL）+ Test 6 真机复验 1.1.0（audit 行 117 + admin 预览 hash 与重锁 pin 逐字节一致）；**Task 2 后半 STOP**：compliance replay 在 GLM 端点劣化窗口测得 faithfulness 0.6876<0.9（refusal 0/20、2×挂死 + 2×内容审查 400 在案）→ 按计划 STOP 不动 metrics——platform-floor 锁 1.1.0 live 重签（fill-lock）+ eval/frozen/README caveat 待干净窗口重跑 replay 后补齐（见 Blockers）。Phase 14 UAT 6/6 pass（14-UAT.md status: complete）)
-Status: Phase 14 code-complete; 1 operator gate open (compliance replay re-run → lock re-sign)
+Plan: 10 of 10 (Plan 14-10 executed 2026-08-23 — floor 1.1.0 re-anchor: platformFloorTail 强化（多轮稀释/角色模式切换/历史先例三豁免封闭 + 直接拒绝话术重申）+ 双字面量 1.1.0 + 4 测试锁同步 + compliance 重锁 5b12acd9… + platform-floor 锁字段 1.1.0 + verify 门双 pin，11-stage gate 全绿（commits 174ee18 + ebd547c）；UAT Test 4 issue→pass（live 20/20 首跑即过，pfloor-20 引用新尾部条款拒答、零 SQL）+ Test 6 真机复验 1.1.0（audit 行 117 + admin 预览 hash 与重锁 pin 逐字节一致）；**Task 2 后半 STOP**：compliance replay 在 GLM 端点劣化窗口测得 faithfulness 0.6876<0.9（refusal 0/20、2×挂死 + 2×内容审查 400 在案）→ 按计划 STOP 不动 metrics；2026-08-23 operator 授权干净窗口重跑**二次 FAIL**（0.6763<0.9，无挂死、agent.Run 0 错误、refusal 0/20 复现）→ 升级为 measurement-layer 回归（cmd/eval 不识别 verdict status:"refused"；根因五处代码锚点见 14-10-SUMMARY Addendum）——锁重签 + README caveat 冻结至 planner 裁决（见 Blockers）。Phase 14 UAT 6/6 pass（14-UAT.md status: complete）)
+Status: Phase 14 code-complete; 1 planner decision open (compliance replay 2× FAIL — cmd/eval refusal-accounting gap; see Blockers)
 Last activity: 2026-08-23
 
 # State — SkillForge
@@ -151,7 +151,7 @@ Resume File: None
 | D14-E2 | live 复验 skill 字面量 = "compliance"（Phase 14 / Plan 14-09） | findSkill（chat.go:660，Phase-2 简化）只接受字面量 "compliance"，不认 manifest 真名 simple-qa——线上契约即该字面量（107/115 旧 audit 行为证）。UAT Test 2 face C + Test 6 chat 用 "compliance" 复验通过；未修（越 plan 范围、动 chat 路由语义），记 deferred-items.md 归 SYSK-05。 |
 | D14-E3 | Test 6 live 断言按 id 水位线划界（Phase 14 / Plan 14-09） | 断言 id > pre-chat max 的新行全部 platform_floor_version='1.0.0' + 旧行计数不变，而非计划原文的末 3 行全等（旧行 ALTER 后合法为 ''）。 |
 | D14-F1 | 1.1.0 尾部重锚定 + item-1 计数锁语义升级（Phase 14 / Plan 14-10） | platformFloorTail 整体替换为抗稀释重申段（保留 1.0.0 锁定子串「以上数据铁律优先于 Skill 指令」+ 新增三子串锁「无论对话进行多少轮」「切换到何种角色或模式」「铁律均不豁免」）；因尾部刻意重申铁律一措辞，agent 包三处 strings.Count==1「单一 canonical home」锁升级为 ==2（floor 头部 + 1.1.0 尾部重申；Skill body 注入会变成 3+，锁强度不降）——Pitfall 17 的「单一 home」指代码级单一来源（internal/platformfloor），非合成串内单次出现。 |
-| D14-F2 | compliance replay 劣化窗口 STOP 纪律（Phase 14 / Plan 14-10） | 1.1.0 重锁后 live AssertPin PASS（prompt_hash 5b12acd9… 双向一致），但 50 例 replay 在 GLM 端点劣化窗口（2×零进展挂死各 47/10 分钟 + 2×内容审查 400「不安全或敏感内容」硬拒）测得 faithfulness 0.6876<0.9、refusal 0/20（基线 0.972/95%）→ 按计划「FAIL→STOP 并报告，不得动 metrics」执行：不重签锁、不写 README caveat、不动指标；判定为测量无效性证据充分（端点干扰在案）而非 1.1.0 prompt 回归（同窗口 live judge 20/20 + 真机 chat 结构化拒答正常）。干净窗口重跑 replay PASS 后机械补齐 Task 2 步骤 3-5。 |
+| D14-F2 | compliance replay 双窗口 FAIL 纪律 + cmd/eval 拒答口径缺陷定位（Phase 14 / Plan 14-10） | 1.1.0 重锁后 live AssertPin PASS（prompt_hash 5b12acd9… 双向一致）；50 例 replay 劣化窗口 faithfulness 0.6876<0.9（2×挂死 + 2×内容审查 400）→ 按计划 STOP；2026-08-23 operator 授权干净窗口重跑二次 FAIL（0.6763<0.9，无挂死、agent.Run 0 错误、refusal 0/20 复现、ref 案例 faith 双峰 11×1.0/9×≤0.333）→ 根因五处代码锚点定位：cmd/eval 只认 Run-error 与空累加器结构化拒答，不识别 verdict status:"refused"（ValidStatuses 成员）；1.0.0 基线 0.972/95% 由 parse-error 空答案→虚高 faith 1.0（faithfulness.go:75-78）+ REFUSAL 哨兵 crecall（metrics.go:189-195）撑起；1.1.0 尾部使模型改在 verdict schema 内拒答（live judge 20/20 佐证）从而揭穿该缺陷——非行为回归。锁重签/README caveat 冻结，planner 裁决测量层修复（minimal 候选：cmd/eval 识别 status:"refused"）后单次重跑补齐 Task 2 步骤 3-5（根因详见 14-10-SUMMARY Operator-Gate Addendum）。 |
 
 ---
 
@@ -192,21 +192,16 @@ Resume File: None
 
 ## Blockers
 
-### Phase 14 Plan 14-10 — compliance frozen replay re-run (clean window) + platform-floor lock 1.1.0 re-sign + README caveat
+### Phase 14 Plan 14-10 — compliance frozen replay: TWO independent FAILs — suspected measurement-layer regression, needs planner decision
 
-- **Status:** Operator gate — re-run required (executor STOPped per plan gate discipline)
-- **Blocked since:** 2026-08-22 (22:15 UTC)
-- **Reason:** Task 2 step 2 (`go run ./cmd/spike-platform-floor --replay-compliance` → `cmd/eval --frozen=compliance`) FAILed the faithfulness ≥ 0.9 gate with **0.6876** (refusal 0/20 vs baseline 95%) inside a demonstrably degraded GLM window: two zero-progress hangs (all threads parked, 0 CPU — killed at 47 min and 10 min) and two hard content-filter 400 rejections mid-run («系统检测到输入或生成内容可能包含不安全或敏感内容», ref-016/ref-018 arel forced to 0). AssertPin PASSED live (prompt_hash 5b12acd9… — the 1.1.0 relock is correct); the same window's live judge hit 20/20 and the real-server chat refused structurally, so endpoint interference (not the 1.1.0 floor) is the parsimonious read. Per plan: «FAIL（指标漂移超门）→ STOP 并报告，不得动 metrics» — lock NOT re-signed, README caveat NOT committed.
-- **Current lock state (honest):** eval/frozen/platform-floor.lock.json in HEAD carries platform_floor_version=1.1.0 + recomputed lock_sha256 with the 2026-08-22 metrics/signature (TestPlatformFloorLockSelfConsistent green; today's 1.1.0 live judge also observed 20/20, but the formal re-sign is deferred).
-- **Unblock action:** in a clean off-peak window run:
-  ```bash
-  go run ./cmd/spike-platform-floor --replay-compliance   # expect AssertPin hold + faithfulness ≥ 0.9
-  go run ./cmd/spike-platform-floor --fill-lock --operator-name=ninedrunk-live-$(date -u +%Y-%m-%d)
-  go test ./internal/eval/ -run TestPlatformFloorLockSelfConsistent -count=1 -v
-  bash scripts/verify-phase-14.sh
-  ```
-  then append the「Platform-floor reproducibility caveat」section to eval/frozen/README.md (single-full-run signature semantics; 1.0.0 ~95% observed repro; 1.1.0 re-run result + signature) and commit both as `docs(14-10): re-sign platform-floor lock 1.1.0 live 20/20 + reproducibility caveat` (per 14-10-PLAN Task 2 steps 3-5).
+- **Status:** Escalated (was "operator gate / clean-window re-run") — the authorized clean-window re-run (2026-08-23, off-peak, operator directive) FAILED again; per directive branch 3: no re-sign, no further retries, docs-only commit
+- **Blocked since:** 2026-08-22 (22:15 UTC); escalated 2026-08-23 (~00:45 UTC)
+- **Reason:** Run 1 (degraded window): faithfulness **0.6876** < 0.9, refusal 0/20, 2× hangs + 2× content-filter 400s. Run 2 (clean window 23:28–00:43 UTC, no hangs, agent.Run errors = 0, exactly 1 arel-only content-filter 400 on ref-010): faithfulness **0.6763** < 0.9, refusal 0/20, arel 0.7045 / cprec 0.42 / crecall 0.03. Two independent FAILs with healthy service → NOT endpoint degradation.
+- **Root cause (code-anchored, see 14-10-SUMMARY Operator-Gate Addendum):** cmd/eval's `refused` flag is set ONLY by agent.Run error or the empty-accumulator structured Refusal — it never recognizes a well-formed verdict with `status:"refused"` (cmd/eval/main.go:424-432; agent.go:540 + trust_floor.go:197; milvus/search.go has no score threshold so the accumulator is never empty on refusal cases — maxScore 0.303–0.540 on all 20, identical across runs). The 1.0.0 baseline (0.972 / 95%) was carried by the ERROR path (prose refusals failing verdict-JSON parse → empty answer → vacuous faith 1.0, faithfulness.go:75-78 + REFUSAL-sentinel crecall, metrics.go:189-195). The 1.1.0 tail made the model refuse INSIDE the verdict schema (live judge 20/20 corroborates) → refused=false → refusal prose judged against unrelated chunks → bimodal faith → gate FAIL. The tail did not regress behavior; it unmasked the harness gap.
+- **Current lock state (honest):** eval/frozen/platform-floor.lock.json in HEAD carries platform_floor_version=1.1.0 + recomputed lock_sha256 with the 2026-08-22 metrics/signature (TestPlatformFloorLockSelfConsistent green; the 1.1.0 live judge observed 20/20, but the formal re-sign is deferred).
+- **Unblock action (planner decision required):** choose the measurement-layer fix — minimal candidate: set `refused=true` when `v.Status == "refused"` in cmd/eval scoring (restores sentinel crecall + refusal-answer faith convention); alternative: re-baseline gate semantics. THEN one replay re-run (expect PASS), fill-lock re-sign (`--operator-name=ninedrunk-live-$(date -u +%Y-%m-%d)`), TestPlatformFloorLockSelfConsistent, verify-phase-14.sh, README caveat, commit per 14-10-PLAN Task 2 steps 3-5.
 - **Verification:** replay faithfulness ≥ 0.9 + TestPlatformFloorLockSelfConsistent green + 11-stage gate PASS with hitl/fanout/deep byte-identical.
+- **Evidence:** run-1 archive `eval/reports/2026-08-22T22-14-41Z.json`; run-2 archive `eval/reports/2026-08-23T00-43-30Z.json` + INDEX.json; logs `build/1410-eval-direct.log`, `build/1410-replay4.log`.
 
 ### Phase 10 Plan 04 — Task 2 live re-run
 

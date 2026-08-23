@@ -45,7 +45,7 @@
 
 贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**。依赖主线严格线性：14 → 15 → 16 → 17 → 18 → 19；20（管理台）收尾聚合全链数据面。研究依据：`.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计 2026-08-21；PITFALLS.md 文内 P14..P20 为研究期占位编号，已映射到下方 Phase 14..20）。
 
-- [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-22 — 8/8 core plans; UAT 2026-08-23 gap closure: 14-09 legacy-DB migrate blocker fixed + UAT Test 2/6 live pass；14-10 floor 1.1.0 re-anchor executed 2026-08-23 — UAT Test 4 live 20/20 PASS @1.1.0 + Test 6 复验 1.1.0，compliance replay 因端点劣化 STOP（faithfulness 0.6876<0.9），锁重签待干净窗口重跑)
+- [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-22 — 8/8 core plans; UAT 2026-08-23 gap closure: 14-09 legacy-DB migrate blocker fixed + UAT Test 2/6 live pass；14-10 floor 1.1.0 re-anchor executed 2026-08-23 — UAT Test 4 live 20/20 PASS @1.1.0 + Test 6 复验 1.1.0，compliance replay 连续两次 FAIL（0.6876/0.6763 <0.9）→ 根因 cmd/eval 拒答口径缺陷，锁重签冻结待 planner 裁决)
 - [ ] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）
 - [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
@@ -477,7 +477,7 @@ Plans:
 **Wave 8** *(UAT 2026-08-23 gap closure — added post-verify)*
 
 - [x] 14-09-PLAN.md — 旧库迁移 blocker 修复（idx_audit_run_path 移到 ALTER 循环之后）+ 文件级旧库升级回归锁 + UAT Test 2/6 真机复验 pass
-- [x] 14-10-PLAN.md — floor 1.1.0 re-anchor（UAT Test 4 live 复跑 19/20 → 长对话稀释锚定强化 + 重锁）(executed 2026-08-23 — Task 1 hermetic 全绿双提交 + UAT Test 4 live 20/20 PASS（pfloor-20 引用 1.1.0 尾部条款拒答）+ Test 6 真机复验 1.1.0；**遗留**：compliance replay 在 GLM 端点劣化窗口（2×挂死 + 2×内容审查 400）跑出 faithfulness 0.6876<0.9 → 按计划 STOP，platform-floor 锁重签（fill-lock）+ README caveat 待干净窗口重跑 replay 后执行——见 14-10-SUMMARY 与 STATE blocker)
+- [x] 14-10-PLAN.md — floor 1.1.0 re-anchor（UAT Test 4 live 复跑 19/20 → 长对话稀释锚定强化 + 重锁）(executed 2026-08-23 — Task 1 hermetic 全绿双提交 + UAT Test 4 live 20/20 PASS（pfloor-20 引用 1.1.0 尾部条款拒答）+ Test 6 真机复验 1.1.0；**遗留**：compliance replay 连续两次 FAIL（劣化窗口 0.6876 + 干净窗口 0.6763，refusal 0/20 复现）→ 2026-08-23 根因定位为 cmd/eval 拒答口径缺陷（不识别 verdict status:"refused"，1.0.0 基线 0.972/95% 由 parse-error 空答案路径虚高），platform-floor 锁重签（fill-lock）+ README caveat 冻结至 planner 裁决测量层修复——见 14-10-SUMMARY Operator-Gate Addendum 与 STATE blocker)
 
 **UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
 
@@ -668,7 +668,7 @@ Plans:
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-23 — Phase 14 Plan 14-10 (UAT gap closure) executed: platformFloorTail re-anchored 1.0.0→1.1.0（多轮稀释/模式切换豁免封闭）+ 双字面量 bump + 4 测试锁同步 + compliance/platform-floor 双锁重锁 + verify 门双 pin，11-stage gate 全绿；UAT Test 4 issue→pass（live 20/20，pfloor-20 DBA 模式击穿场景拒答）+ Test 6 真机复验 1.1.0（audit 行 117 + admin 预览 5b12acd9 hash 与重锁 pin 一致）。遗留 operator gate：compliance replay 在端点劣化窗口 STOP（faithfulness 0.6876<0.9，2×挂死+2×内容审查 400 证据在案）——platform-floor 锁 1.1.0 live 重签 + README reproducibility caveat 待干净窗口重跑 replay 后补签。Prior: 14-09 legacy-DB migrate blocker fixed.*
+*Last updated: 2026-08-23 — Phase 14 Plan 14-10 (UAT gap closure) executed: platformFloorTail re-anchored 1.0.0→1.1.0（多轮稀释/模式切换豁免封闭）+ 双字面量 bump + 4 测试锁同步 + compliance/platform-floor 双锁重锁 + verify 门双 pin，11-stage gate 全绿；UAT Test 4 issue→pass（live 20/20，pfloor-20 DBA 模式击穿场景拒答）+ Test 6 真机复验 1.1.0（audit 行 117 + admin 预览 5b12acd9 hash 与重锁 pin 一致）。遗留（已升级）：compliance replay 连续两次 FAIL（劣化窗口 0.6876 + 授权干净窗口 0.6763，refusal 0/20 复现，无挂死无 agent.Run 错误）→ 根因定位为 cmd/eval 拒答口径缺陷（不识别 verdict status:"refused"；1.0.0 基线 0.972/95% 由 parse-error 空答案→虚高 faith 1.0 路径撑起）——platform-floor 锁 1.1.0 live 重签 + README reproducibility caveat 冻结至 planner 裁决测量层修复（minimal 候选：cmd/eval 识别 status:"refused" 后单次重跑）。Prior: 14-09 legacy-DB migrate blocker fixed.*
 
 ---
 

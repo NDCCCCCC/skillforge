@@ -39,7 +39,7 @@ key-files:
 
 key-decisions:
   - "D14-F1: item-1 substring count pins 1→2 — the 1.1.0 tail deliberately restates iron-rule wording, so the single-canonical-home locks now pin exactly 2 (floor header + tail restatement); a Skill-body leak would count 3+. Pitfall 17's 'single home' is the code-level source (internal/platformfloor), not one occurrence in the composed string."
-  - "D14-F2: compliance replay STOP honored in a demonstrably degraded GLM window (2× zero-progress hangs + 2× content-filter 400 rejections mid-run; faithfulness 0.6876 < 0.9, refusal 0/20) — no metrics touched, lock NOT re-signed, README caveat NOT committed; clean-window re-run is the recorded unblock action."
+  - "D14-F2: compliance replay STOP honored in a demonstrably degraded GLM window (2× zero-progress hangs + 2× content-filter 400 rejections mid-run; faithfulness 0.6876 < 0.9, refusal 0/20) — no metrics touched, lock NOT re-signed, README caveat NOT committed; the authorized clean-window re-run (2026-08-23) then FAILED a second time (0.6763 < 0.9, healthy service) → escalated to a measurement-layer regression: cmd/eval never recognizes verdict status:\"refused\" (the 1.0.0 baseline was carried by the parse-error empty-answer path); re-sign frozen until planner decision (see Operator-Gate Addendum)."
 
 patterns-established:
   - "When a live gate FAILs amid hard infrastructure faults (hangs/4xx filter rejections), record raw output + fault evidence and STOP per plan rather than re-rolling for better numbers; keep the already-proven surfaces (pin identity, live judge, real-server behavior) as separate recorded evidence."
@@ -160,6 +160,46 @@ Parsimonious read (recorded, not adjudicated): endpoint-side degradation corrupt
 
 Current honest lock state in HEAD: platform-floor.lock.json carries platform_floor_version=1.1.0 + recomputed lock_sha256, with the 2026-08-22 (1.0.0-era) metrics/signature; TestPlatformFloorLockSelfConsistent green; today's 1.1.0 live judge independently observed the same 20/20 the metrics record.
 
+## Operator-Gate Addendum — Clean-Window Re-run (2026-08-23): second independent FAIL + root-cause analysis
+
+**Verdict line: `FAITHFULNESS_GATE: FAIL (0.6763 vs 0.9)` — second independent FAIL in a demonstrably healthy window → escalated from "degraded window" to "measurement-layer regression, needs planner decision". No re-sign, no README caveat, no further retries (per operator directive branch 3).**
+
+Run 2 raw numbers (archive `eval/reports/2026-08-23T00:43-30Z.json`, judge=glm-5.2, 50/50 cases completed, window 23:28–00:43 UTC ≈ off-peak 07:28–08:43 local, detached WSL run):
+
+```
+overall: faithfulness 0.6763 (gate ≥0.9; baseline 0.972) | answer_relevance 0.7045 | context_precision 0.42 | context_recall 0.03
+per-category faithfulness: adversarial 0.7693 | multi-hop 0.6210 | refusal-required 0.6110
+refusal_required: 20 cases, refused 0/20 (2nd consecutive run; baseline 95%)
+ref-case faithfulness is BIMODAL: 11× 1.0, 9× ≤0.333 (0, 0, 0, 0.111, 0.125, 0.143, 0.222, 0.286, 0.333)
+```
+
+Service-health evidence (this was NOT a degraded window):
+
+- No hangs: CPU ticks advanced steadily end-to-end (14→124 over the run); the run completed and archived in 75 min.
+- Exactly ONE content-filter 400 — `ref-010 answer_relevancy: … 系统检测到…敏感内容…` (arel judge only, forced arel=0 for that case; cannot touch faithfulness).
+- `agent.Run` errors: **0** in both run 1 and run 2 (grep "scoring as refusal" = 0 hits in `build/1410-eval-direct.log` and `build/1410-replay4.log`).
+- Retrieval deterministic: per-case maxScore identical across both runs; all 20 refusal cases had maxScore 0.303–0.540 (retriever returned hits every time).
+
+### Root-cause analysis (code-anchored — for the planner)
+
+The 1.1.0 tail did **not** regress refusal behavior. It unmasked a **harness measurement gap**: `cmd/eval` never recognizes a well-formed verdict with `status:"refused"` as a refusal. Five code anchors:
+
+1. `cmd/eval/main.go:424-432` — `refused=true` ONLY via (a) `agent.Run` error ("scoring as refusal") or (b) non-nil structured `*verdict.Refusal`. A parsed verdict with `status:"refused"` (a `ValidStatuses` member, `internal/verdict/validate.go`) returns `refusal=nil` → `refused=false`.
+2. `internal/agent/agent.go:540` + `internal/agent/trust_floor.go:197` — the structured Refusal fires ONLY on an **empty ChunkAccumulator**; `preRetrieveOriginalQuery` (agent.go:623) populates the accumulator whenever Milvus returns any hit.
+3. `internal/retriever/milvus/search.go` — no score threshold; top-K returns hits for every query. Both runs: accumulator non-empty on all 20 refusal cases → path (b) unreachable.
+4. `internal/eval/faithfulness.go:75-78` — **empty answer → faithfulness 1.0** ("Refusal answer — nothing to refute").
+5. `internal/eval/metrics.go:189-195` — `context_recall` REFUSAL sentinel → 1.0 only when `refused=true`; `refusal_accuracy` is derived from it (`internal/eval/archive.go`).
+
+Therefore the 1.0.0 baseline (faithfulness 0.972 / refusal 95%, arel 0.1002, cprec 0.10 — D8-07's "judge mechanically zeroes refusal cases; multi-hop all refuse") was carried by the **agent.Run-ERROR path**: on out-of-scope queries the 1.0.0-prompt model emitted prose refusals that FAILED verdict-JSON parse → Run error → `refused=true` + empty answer → vacuous faith 1.0 + sentinel crecall 1.0.
+
+Under 1.1.0 the strengthened tail makes the model refuse **inside the verdict schema** (`status:"refused"`, valid JSON, parse OK — corroborated independently by the live judge 20/20 with reasoning and zero SQL, and by 0 agent.Run errors across both runs) → `refused=false` → refusal prose judged by `Entails` against weakly-related chunks (ref-case cprec ≈ 0) → bimodal faith (11×1.0 / 9×≤0.333) → 0.6763 < 0.9 → gate FAIL + refusal_accuracy 0. Non-gate metrics moved consistently with "answers now well-formed": arel 0.10 → 0.70, cprec 0.10 → 0.42.
+
+**Planner decision needed** (executor did NOT touch code/metrics per STOP discipline):
+
+- Minimal candidate fix: in `cmd/eval` scoring set `refused=true` when `v.Status == "refused"` — restores the REFUSAL-sentinel crecall and the empty/refusal-answer faith convention, then re-run the replay once.
+- Alternative: re-baseline the gate semantics explicitly (refusal prose judged against ground-truth refusal criteria rather than retrieved context).
+- Residual confound, stated honestly: no 1.0.0 control re-run tonight (outside authorized scope) — provider-side drift cannot be formally excluded; but identical deterministic per-case maxScores across both runs plus the coherent arel/cprec/faith shifts make the harness-gap read the parsimonious one.
+
 ## UAT Status Flips
 
 | Test | Before | After | Evidence |
@@ -174,11 +214,11 @@ Phase 14 UAT now 6/6 pass (14-UAT.md status: complete).
 - WSL `/tmp` survived this session (unlike 14-09); no restarts occurred mid-run.
 
 ## User Setup Required
-None — but one **operator gate** is open: the clean-window compliance replay re-run → fill-lock re-sign → README caveat (exact commands in STATE.md Blockers; plan file Task 2 steps 3–5).
+None — but one **planner decision** is open: two independent compliance-replay FAILs (0.6876 / 0.6763 vs gate 0.9) with a code-anchored root cause in the eval harness's refusal accounting (see Operator-Gate Addendum). Re-sign + README caveat remain deferred until the planner resolves the measurement layer; the clean-window re-run authorized 2026-08-23 was executed and FAILED (branch 3 of the operator directive — no further retries).
 
 ## Next Phase Readiness
 - Phase 14 code-complete + UAT 6/6; the 1.1.0 floor is live on both render paths, locked (compliance pin + platform-floor field), and gate-verified (11 stages).
-- Blocker before formal Phase 14 closeout tag: re-run the compliance replay in a clean window and execute the deferred re-sign + caveat (mechanical once the replay passes).
+- Blocker before formal Phase 14 closeout tag: planner decision on the cmd/eval refusal-accounting gap (recognize `verdict.status=="refused"`, or re-baseline gate semantics) → one replay re-run → deferred re-sign + caveat.
 - Phase 15 (data import + de-identification) can start on this foundation; the 1.1.0 tail's SQL/raw-row clauses are exactly the data-surface guarantees Phase 15-17 build on.
 
 ## Self-Check: PASSED
