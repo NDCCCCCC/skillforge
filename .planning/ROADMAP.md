@@ -45,7 +45,7 @@
 
 贯穿性不变量：**审计行 INSERT-only 永不删；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）；数据引用 = 函数名+参数+时间窗+结果快照**。依赖主线严格线性：14 → 15 → 16 → 17 → 18 → 19；20（管理台）收尾聚合全链数据面。研究依据：`.planning/research/{STACK,FEATURES,ARCHITECTURE,PITFALLS}.md` + `STACK-VERIFICATION.md`（对抗式依赖审计 2026-08-21；PITFALLS.md 文内 P14..P20 为研究期占位编号，已映射到下方 Phase 14..20）。
 
-- [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-23 — 11/11 plans: 14-01 floor prepend + 14-04 platform-floor golden lock + 14-07 tier-filter + 14-08 CGO/DuckDB spike + 14-09 legacy DB boot + 14-10 floor 1.1.0 re-anchor + 14-11 gap closure; gaps 2/3 closed hermetically, Gap 1 cmd/eval refusal-accounting fix landed and verified, single compliance replay STOPped at faithfulness 0.888 with BGE infra fault + adversarial drag → no re-sign, no retry, routed to 14-10-SUMMARY Addendum Alternative as pending planner/user decision)
+- [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-23 — 12/12 plans: 14-01..14-11 code-complete hermetically; 14-12 landed explicit D14-B4 re-baseline semantics (computeCaseMetrics refused=true → faith=1.0) with RED→GREEN test; authorized compliance replay environment-blocked by BGE-M3 no route to host — no replay run, no falsified numbers, platform-floor.lock.json 1.1.0 formal re-sign remains deferred)
 - [ ] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）
 - [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
@@ -485,7 +485,7 @@ Plans:
 
 **Wave 11** *(VERIFICATION 2026-08-23 final re-baseline — user decision D14-G2)*
 
-- [ ] 14-12-PLAN.md — re-baseline gate semantics: explicit faithfulness exemption for in-schema refused verdicts (computeCaseMetrics) + hermetic RED→GREEN + single authorized compliance replay + conditional platform-floor.lock.json 1.1.0 re-sign + README caveat
+- [x] 14-12-PLAN.md — re-baseline gate semantics: explicit faithfulness exemption for in-schema refused verdicts (computeCaseMetrics) + hermetic RED→GREEN + single authorized compliance replay (environment-blocked by BGE-M3 no route to host → STOP, no replay run, no falsified numbers; platform-floor.lock.json 1.1.0 re-sign + README caveat remain deferred)
 
 **UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
 
