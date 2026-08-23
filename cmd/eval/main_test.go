@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/eval"
+	"github.com/skillforge/skillforge/internal/verdict"
 )
 
 // TestFlagMatrix_GoldenAndFrozenMutuallyExclusive: naming two different
@@ -138,4 +140,117 @@ func TestShippedGateFileIsValid(t *testing.T) {
 	require.Contains(t, thresholds, "compliance",
 		"examples/skills/compliance/eval-gate.json must exist at the Q2-resolved path (NOT .claude/skills/)")
 	assert.Equal(t, 0.9, thresholds["compliance"])
+}
+
+// TestClassifyRunOutcome locks the outcome modalities of the scoring-path
+// classifier (14-11 Task 1 — Gap 1 in 14-VERIFICATION.md).
+//
+// The load-bearing row is "in-schema refused verdict": under the 1.1.0
+// floor tail the model refuses INSIDE the verdict schema — a well-formed
+// verdict with status:"refused", a verdict.ValidStatuses member. The
+// pre-14-11 scoring path never recognized it, so refusal prose was judged
+// by faithfulness against weakly-related chunks instead of taking the
+// refusal conventions — the root cause of the 14-10 double-window replay
+// FAIL (0.6876 / 0.6763 < 0.9 with refusal 0/20 twice; see
+// 14-10-SUMMARY "Operator-Gate Addendum"). The fix routes it into the
+// SAME frozen conventions as the Run-error / structured-refusal paths:
+// refused=true + answer="" → Faithfulness empty-answer 1.0 +
+// ContextRecall REFUSAL sentinel (refusal_accuracy derivation).
+//
+// Boundary guards: status:"needs_input" / "error" deliberately do NOT
+// enter refusal accounting — only "refused" is semantically a refusal
+// per verdict.ValidStatuses. Priority guard: err != nil wins over an
+// in-schema refused verdict (no double counting).
+func TestClassifyRunOutcome(t *testing.T) {
+	citations := []verdict.Citation{{ChunkID: "7", Span: "数据铁律条款", Tier: "权威"}}
+	refusalProse := "该请求超出平台数据边界：无授权数据源可支撑该查询，无法提供个体记录。"
+
+	refusedVerdict := verdict.Verdict{
+		Status:     "refused",
+		Confidence: 1.0,
+		Citations:  citations,
+		Answer:     refusalProse,
+	}
+	okVerdict := verdict.Verdict{
+		Status:     "ok",
+		Confidence: 0.95,
+		Citations:  citations,
+		Answer:     "年假为 5 天。",
+	}
+	needsInputVerdict := verdict.Verdict{
+		Status:     "needs_input",
+		Confidence: 0.5,
+		Citations:  citations,
+	}
+
+	tests := []struct {
+		name          string
+		err           error
+		refusal       *verdict.Refusal
+		v             verdict.Verdict
+		wantRefused   bool
+		wantAnswer    string // exact expectation ("" for every refusal row)
+		wantAnswerSub string // substring expectation for scored-verdict rows
+		wantReason    string
+	}{
+		{
+			name:        "agent.Run error scores as refusal (existing modality)",
+			err:         errors.New("context deadline exceeded"),
+			v:           refusedVerdict, // v is returned alongside err in reality; err must win
+			wantRefused: true,
+			wantAnswer:  "",
+			wantReason:  "agent_error",
+		},
+		{
+			name:        "structured Refusal scores as refusal (existing modality)",
+			refusal:     &verdict.Refusal{Reason: "no_authorized_source"},
+			v:           okVerdict,
+			wantRefused: true,
+			wantAnswer:  "",
+			wantReason:  "no_authorized_source",
+		},
+		{
+			name:        "in-schema status:refused verdict scores as refusal (RED core — 14-11 fix target)",
+			v:           refusedVerdict,
+			wantRefused: true,
+			wantAnswer:  "",
+			wantReason:  "verdict_status_refused",
+		},
+		{
+			name:          "ok verdict is scored, not refused (boundary guard)",
+			v:             okVerdict,
+			wantRefused:   false,
+			wantAnswerSub: `"status":"ok"`,
+			wantReason:    "",
+		},
+		{
+			name:          "needs_input verdict is scored, not refused (boundary guard)",
+			v:             needsInputVerdict,
+			wantRefused:   false,
+			wantAnswerSub: `"status":"needs_input"`,
+			wantReason:    "",
+		},
+		{
+			name:        "priority guard: err wins over in-schema refused verdict",
+			err:         errors.New("judge transport reset"),
+			v:           refusedVerdict,
+			wantRefused: true,
+			wantAnswer:  "",
+			wantReason:  "agent_error",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			refused, answer, reason := classifyRunOutcome(tc.err, tc.refusal, tc.v)
+			assert.Equal(t, tc.wantRefused, refused, "refused")
+			assert.Equal(t, tc.wantReason, reason, "reason")
+			if tc.wantAnswerSub != "" {
+				assert.False(t, refused, "scored row must not be refused")
+				assert.Contains(t, answer, tc.wantAnswerSub, "answer carries the serialized verdict JSON")
+			} else {
+				assert.Equal(t, tc.wantAnswer, answer, "refusal rows take the frozen empty-answer convention")
+			}
+		})
+	}
 }
