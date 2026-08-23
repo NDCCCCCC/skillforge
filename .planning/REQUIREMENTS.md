@@ -334,7 +334,7 @@ Which phases cover which requirements.
 | CMPL-06 | Phase 5 | Complete |
 | CMPL-07 | Phase 5 | Complete |
 | CMPL-08 | Phase 5 | Complete |
-| DATA-01 | Phase 15 | Complete (15-04 SUMMARY; `internal/data/dump.go` accept-list parser + 3.53.0 fixtures; CSV/push channels remain in 15-05/15-06) |
+| DATA-01 | Phase 15 | Complete (15-04 dump parser + 15-05 Preview/Commit/Push/DryRun orchestrator; CSV/push channels remain in 15-06 for HTTP wiring) |
 | DATA-02 | Phase 15 | Complete |
 | DATA-03 | Phase 16 | Pending |
 | DATA-04 | — | Deferred v1.1（外部授权通道） |

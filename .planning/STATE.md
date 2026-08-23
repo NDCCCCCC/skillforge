@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 15
-current_plan: 5
+current_plan: 6
 status: executing
-stopped_at: Completed 15-04
-last_updated: "2026-08-23T17:33:15Z"
-last_activity: 2026-08-23 -- Phase 15 Plan 04 complete
+stopped_at: Completed 15-05
+last_updated: "2026-08-24T02:06:00Z"
+last_activity: 2026-08-24 -- Phase 15 Plan 05 complete (three-channel import orchestrator + Push/DryRun + TestRawNeverOnDisk)
 progress:
   total_phases: 20
   completed_phases: 12
   total_plans: 91
-  completed_plans: 89
+  completed_plans: 90
   percent: 60
 ---
 
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 15 (数据导入管线 + 导入即脱敏（P10.1）) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Executing Phase 15
-Last activity: 2026-08-23 -- Phase 15 Plan 04 complete (sqlite .dump accept-list parser + preview session store + hash bridge)
+Last activity: 2026-08-24 -- Phase 15 Plan 05 complete (three-channel import orchestrator + Push/DryRun + TestRawNeverOnDisk)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -182,6 +182,9 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 | D15-03-4 | Staging column type allowlist before Appender creation (Phase 15 / Plan 15-03) | go-duckdb's Appender cannot create types like BIT/ANY/INVALID. `WriteStagingBatch` rejects unsupported types up front with `ErrUnsupportedColumnType`, turning a runtime Appender creation error into a clear, early failure (T-15-16). |
 | D15-04-1 | dump.go uses package-level fmtError wrapper and in-band NULL sentinel (Phase 15 / Plan 15-04) | `ParseDump` errors are wrapped with `data.%s: %w` to match the rest of `internal/data`; tests assert on required substrings. SQL NULL is represented by the non-printable sentinel `\x00NULL\x00` to avoid ambiguity with real blank cells. |
 | D15-04-2 | Preview session TTL is a hygiene parameter; the security boundary is the content-hash bridge (Phase 15 / Plan 15-04) | `PreviewSessionTTL` (30 min) limits memory residency only. `ValidateCommitAgainstPreview` closes D15-B1 by requiring the commit request's recomputed SHA256 to equal the previewed file's SHA256; an expired session simply cannot be matched. |
+| D15-05-1 | Push shares the Commit staging/commit tail (Phase 15 / Plan 15-05) | `Importer.Push` buffers the first 100 rows for schema inference, then streams the remainder through the same `writeStaging` + `commitOrSupersede` path used by `Commit`. The preview session and content-hash bridge are the only human-channel differences. |
+| D15-05-2 | DryRun is a first-class zero-write validation method (Phase 15 / Plan 15-05) | `Importer.DryRun` returns `DryRunResult{Columns, Violations}` after header/column/type checks; it writes no staging file, registry row, or audit row. |
+| D15-05-3 | Single-pass reader contract preserved for Push (Phase 15 / Plan 15-05) | `TeeReader→hasher` wraps `req.Reader` before `openChannel`, and `ValidateCommitAgainstPreview`/`checkIdempotent` run only after `WriteStagingBatch` exhausts the stream. `oneShotReader` tests lock this for both Commit and Push. |
 
 ---
 
@@ -189,6 +192,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Roadmap Evolution
 
+- 2026-08-24: Phase 15 Plan 05 (15-05) complete — `internal/data/importer.go` three-channel orchestrator (Preview / Commit / Push / DryRun) + `internal/data/batch.go` batch idempotency/supersede/audit helpers + `TestRawNeverOnDisk` library-level raw-leak guard. DATA-01/02/15/16/17 fully locked at the library layer; HTTP handlers remain in 15-06.
 - 2026-08-23: Phase 15 Plan 04 (15-04) complete — `internal/data/dump.go` sqlite .dump three-layer accept-list parser (zero SQL execution) + four 3.53.0 ground-truth fixtures + `internal/data/preview.go` in-memory preview session store with TTL/capacity/deep-copy snapshots + `ValidateCommitAgainstPreview` content-hash bridge (D15-B1). DATA-01 dump channel + DATA-15 two-stage preview/commit base locked.
 - 2026-08-23: Phase 15 Plan 03 (15-03) complete — `SupersedeStagedDataset` three-step backup-rename-register chain + `WriteStagingBatch` Appender-only bulk write helper + composite-name ATTACH probe (A1 closed). `internal/duckdb/connector.go` and `attach_lru.go` now quote ATTACH/DETACH aliases to support hyphenated dataset ids. DATA-16 engine atomics locked.
 - 2026-08-23: Phase 15 Plan 02 (15-02) complete — `internal/store/sqlite` additive schema migration + `import_batches`/`dataset_deletes` INSERT-only audit tables + Store interface extension (DATA-16 + DATA-17 store layer). See 15-02-SUMMARY.md.
@@ -291,6 +295,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
+| 15 | 05 | 65m | 3 TDD tasks / 5 commits / 5 files — `internal/data/importer.go` Preview/Commit/Push/DryRun orchestrator + `internal/data/batch.go` idempotency/supersede/audit + `TestRawNeverOnDisk` raw-leak guard. DATA-01/02/15/16/17 library layer locked. See 15-05-SUMMARY.md |
 | 15 | 01 | 21m | 3 TDD tasks / 7 commits / 15 files — `internal/data` desensitization core pure functions (normalize/desensitize/rules/decode + 5 encoding fixtures + datarules/loans.yaml + README). DATA-02 locked. See 15-01-SUMMARY.md |
 | 15 | 04 | 9m | 2 TDD tasks / 4 commits / 8 files — `internal/data/dump.go` sqlite .dump accept-list parser + 4 fixtures + `internal/data/preview.go` TTL/capacity session store + hash bridge. DATA-01 + DATA-15 locked. See 15-04-SUMMARY.md |
 | 04 | 1 | 75m | 4 tasks / 38 files — Wave 1 foundation (wire types + mock transport + parts) |
