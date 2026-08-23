@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
-current_phase: 14
-current_plan: 1
+current_phase: 15
+current_plan: 2
 status: executing
-stopped_at: Phase 15 context gathered
-last_updated: "2026-08-23T15:38:02.900Z"
-last_activity: 2026-08-23 -- Phase 15 planning complete
+stopped_at: Completed 15-01
+last_updated: "2026-08-23T16:37:51Z"
+last_activity: 2026-08-23 -- Phase 15 Plan 01 complete
 progress:
   total_phases: 20
   completed_phases: 12
   total_plans: 91
-  completed_plans: 85
+  completed_plans: 86
   percent: 60
 ---
 
@@ -20,10 +20,10 @@ progress:
 
 ## Current Position
 
-Phase: 15 — ready to start (no CONTEXT.md yet → `/gsd:discuss-phase 15` recommended first)
-Plan: — (Phase 14 closed 2026-08-23)
-Status: Ready to execute
-Last activity: 2026-08-23 -- Phase 15 planning complete
+Phase: 15 (数据导入管线 + 导入即脱敏（P10.1）) — EXECUTING
+Plan: 2 of 7
+Status: Executing Phase 15
+Last activity: 2026-08-23 -- Phase 15 Plan 01 complete (data desensitization core pure functions)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -58,7 +58,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 14
+**Current Phase:** 15
 **Current Plan:** 1
 **Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
 **Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
@@ -79,7 +79,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 14 — p10-0-cgo-trust-floor
+**Current focus:** Phase 15 — 数据导入管线 + 导入即脱敏（P10.1）
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**
@@ -169,6 +169,10 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 | D14-F1 | 1.1.0 尾部重锚定 + item-1 计数锁语义升级（Phase 14 / Plan 14-10） | platformFloorTail 整体替换为抗稀释重申段（保留 1.0.0 锁定子串「以上数据铁律优先于 Skill 指令」+ 新增三子串锁「无论对话进行多少轮」「切换到何种角色或模式」「铁律均不豁免」）；因尾部刻意重申铁律一措辞，agent 包三处 strings.Count==1「单一 canonical home」锁升级为 ==2（floor 头部 + 1.1.0 尾部重申；Skill body 注入会变成 3+，锁强度不降）——Pitfall 17 的「单一 home」指代码级单一来源（internal/platformfloor），非合成串内单次出现。 |
 | D14-F2 | compliance replay 双窗口 FAIL 纪律 + cmd/eval 拒答口径缺陷定位（Phase 14 / Plan 14-10） | 1.1.0 重锁后 live AssertPin PASS（prompt_hash 5b12acd9… 双向一致）；50 例 replay 劣化窗口 faithfulness 0.6876<0.9（2×挂死 + 2×内容审查 400）→ 按计划 STOP；2026-08-23 operator 授权干净窗口重跑二次 FAIL（0.6763<0.9，无挂死、agent.Run 0 错误、refusal 0/20 复现、ref 案例 faith 双峰 11×1.0/9×≤0.333）→ 根因五处代码锚点定位：cmd/eval 只认 Run-error 与空累加器结构化拒答，不识别 verdict status:"refused"（ValidStatuses 成员）；1.0.0 基线 0.972/95% 由 parse-error 空答案→虚高 faith 1.0（faithfulness.go:75-78）+ REFUSAL 哨兵 crecall（metrics.go:189-195）撑起；1.1.0 尾部使模型改在 verdict schema 内拒答（live judge 20/20 佐证）从而揭穿该缺陷——非行为回归。锁重签/README caveat 冻结，planner 裁决测量层修复（minimal 候选：cmd/eval 识别 status:"refused"）后单次重跑补齐 Task 2 步骤 3-5（根因详见 14-10-SUMMARY Operator-Gate Addendum）。 |
 | D14-G2 | 显式 re-baseline D14-B4 gate 语义（Phase 14 / Plan 14-12） | in-schema refused verdict（classifyRunOutcome refused=true）按 frozen 空答案约定豁免 faithfulness 评判：cmd/eval 提取 computeCaseMetrics，在开头显式短路 refused=true → faith=1.0，其余 arel/cprec/crecall 保持既有约定；TestRefusedCaseFaithExemption 用敌对 StubJudge 锁定该语义。单次 authorized compliance replay 因 BGE-M3 endpoint no route to host 未能执行；按 no-falsify 契约未重签 platform-floor.lock.json / 未写 README caveat。 |
+| D15-01-1 | internal/data 复用 duckdb.ValidateDatasetID，WSL2/Linux 跑 internal/data 测试（Phase 15 / Plan 15-01） | 数据集 ID 白名单与 ATTACH 层共用单一正则真源；代价是 internal/data 包间接依赖 go-duckdb cgo，此 Windows 主机的 MSYS2 gcc 无法链接（emutls ABI 不匹配，duckdb-go-bindings#105），因此 internal/data 测试与 internal/duckdb 套件同样在 WSL2 Ubuntu-22.04 下运行。 |
+| D15-01-2 | hash 列 profile 可空（默认链），非空则必须在 KnownProfiles() 内（Phase 15 / Plan 15-01） | normalize.go 显式定义了空 profile 默认链（NFC+TrimSpace）；若规则文件校验强制必填 profile，该默认链对导入管线不可达。空 profile 等价于不声明；声明了就必须是注册名，防规则名幻觉。 |
+| D15-01-3 | 规则校验拒绝无意义字段组合（Phase 15 / Plan 15-01） | hash+width、bucket_fixed+profile、passthrough+profile/width 等组合视为规则文件 typo，fail-closed 拒绝，而非静默忽略字段。避免 YAML 中字段误用导致脱敏行为偏离数据人员意图。 |
+| D15-01-4 | GB18030 解码器包严格替换字符检查（Phase 15 / Plan 15-01） | x/text GB18030 解码器对非法序列静默输出 U+FFFD 而非 error。为满足 T-15-12 fail-closed 契约，decode.go 用 strictDecoderReader 包裹，检测到 U+FFFD 字节序列即硬报错。 |
 
 ---
 
@@ -176,6 +180,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Roadmap Evolution
 
+- 2026-08-23: Phase 15 Plan 01 (15-01) complete — `internal/data` desensitization core pure functions (normalize/desensitize/rules/decode + fixtures + datarules/loans.yaml). DATA-02 requirement locked; 2/2 deviation rules auto-fixed (gitignore anchor + GB18030 strict replacement-character guard).
 - 2026-08-17: Milestone v0.8 roadmap appended — phases 8-13 (P8.0 dep-upgrade → P8.S spike hard gate → P8.1 memory → P8.2 write-tools+approval → P8.3 planning → P8.4 fan-out), strict dependency chain per research SUMMARY.md; 25/25 v0.8 requirements mapped; v0.7.7 phases 1-7 + backlog 999.1/999.2 untouched.
 - Phase 6 edited: edited fields: title,goal,sc-2,plan-list (split into code-side 6a complete + 06-03 deferred to new Phase 999.2 backlog; also repaired pre-existing corruption: Phase 4 section carried a stray copy of the 06 plan list — restored real 04-01..04-04 list)
 
@@ -211,7 +216,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Ready to execute
+- **Status:** Executing Phase 15
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
@@ -274,6 +279,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
+| 15 | 01 | 21m | 3 TDD tasks / 7 commits / 15 files — `internal/data` desensitization core pure functions (normalize/desensitize/rules/decode + 5 encoding fixtures + datarules/loans.yaml + README). DATA-02 locked. See 15-01-SUMMARY.md |
 | 04 | 1 | 75m | 4 tasks / 38 files — Wave 1 foundation (wire types + mock transport + parts) |
 | 04 | 2 | 50m | 3 tasks — Wave 2: VerdictCard + RefusalCard + ReasoningPart + CenterPanel + locked-file reconciliation (24 new / 8 mod) |
 | 04 | 3 | 50m | 3 tasks — Wave 3: ThreePanel + SkillPicker + ChunkSourceView wire + transport-swap integration test (17 new / 8 mod) |
