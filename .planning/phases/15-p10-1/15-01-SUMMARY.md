@@ -168,6 +168,15 @@ None — no external service configuration required.
 - Plan 15-02 (datasets/import_batches store layer) can now consume `Rules`, `ColumnRule`, `ValidateColumnSet`, and `DeriveDatasetSalt`.
 - Plan 15-05/15-06 (importer + server API) can wire `DecodeStream`, `L1Hash`, `FixedBucket`, and `LoadRules`.
 
+## Self-Check: PASSED
+
+- [x] Created files exist: `internal/data/{normalize,desensitize,rules,decode}.go`, tests, fixtures, `datarules/{loans.yaml,README.md}`, `15-01-SUMMARY.md`.
+- [x] All task commits exist and are reachable: `163e42b`, `8eed205`, `cd0b01b`, `d8f0fd1`, `6ebf6a7`, `cf6abb3`, `13ca67f`, plus final `84fa5c9`.
+- [x] `go test ./internal/data/... -count=1` green under WSL2 Ubuntu-22.04.
+- [x] `go vet ./internal/data/...` green.
+- [x] Forbidden pattern `sha256.Sum256(append(` absent from `internal/data`.
+- [x] `datarules/loans.yaml` loads via `LoadRules` and its `rules_sha256` is deterministic across loads.
+
 ---
 *Phase: 15-p10-1*
 *Completed: 2026-08-23*
