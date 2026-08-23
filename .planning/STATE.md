@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
-current_phase: 14
-current_plan: 12
-status: Phase 14 code-complete + hermetic re-baseline semantics locked; live replay environment-blocked (BGE-M3 no route to host); platform-floor.lock.json 1.1.0 re-sign deferred
-stopped_at: Completed 14-12 PLAN.md — environment STOP branch; BGE-M3 endpoint unreachable, no replay executed, no falsified numbers (2026-08-23)
-last_updated: "2026-08-23T04:38:25Z"
+current_phase: 15
+current_plan: 1
+status: Phase 14 COMPLETE (12/12 plans, 4 gap-closure rounds) with 2 tracked deferred items — platform-floor.lock.json 1.1.0 re-sign (blocked on BGE-M3 endpoint restore → replay → ≥0.9 re-sign per STATE Blockers) + Docker live verification (host has no Docker). User decision 2026-08-23: close with deferred, advance to Phase 15
+stopped_at: Phase 14 closed 2026-08-23 (user accepted deferred closeout; D14-G2 re-baseline semantics code-locked via computeCaseMetrics + TestRefusedCaseFaithExemption)
+last_updated: "2026-08-23T05:30:00Z"
 last_activity: 2026-08-23
 progress:
   total_phases: 20
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 80
   completed_plans: 83
   percent: 61
@@ -20,10 +20,16 @@ progress:
 
 ## Current Position
 
-Phase: 14 (p10-0-cgo-trust-floor) — **14-11 gap-closure plan EXECUTED** (3/3 tasks complete; STOP branch valid per plan)
-Plan: 11 of 11 (Plan 14-11 executed 2026-08-23 — measurement-layer fix + static fixes + single authorized replay)
-Status: Phase 14 code-complete; 1 planner decision open (compliance replay 0.888 STOP — see Blockers)
+Phase: 15 — ready to start (no CONTEXT.md yet → `/gsd:discuss-phase 15` recommended first)
+Plan: — (Phase 14 closed 2026-08-23)
+Status: Phase 14 COMPLETE (12/12 plans + UAT 6/6 + VERIFICATION gaps resolved-or-deferred per user decision)
 Last activity: 2026-08-23
+
+**Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
+- 12/12 plans executed across 4 gap-closure rounds (14-01..14-08 core + 14-09/14-10 UAT gaps + 14-11 verification gaps + 14-12 re-baseline). UAT 6/6 pass. All hermetic gates green (verify-phase-14 11/11, verify-phase-13 9/9); frozen locks + golden sets byte-identical; regression suite全绿.
+- **Deferred item 1 (STATE Blockers, operator gate):** platform-floor.lock.json 1.1.0 formal re-sign — blocked on BGE-M3 endpoint restore (`10.62.0.123:11434`, no route to host) → one authorized compliance replay (`go run ./cmd/eval --frozen=compliance --archive`) → ≥0.9 executes 14-10-PLAN Task 2 steps 3-5 (fill-lock + README caveat + docs commit). D14-G2 re-baseline semantics already code-locked (computeCaseMetrics refused→faith 1.0, TestRefusedCaseFaithExemption).
+- **Deferred item 2 (blocked-with-notes):** Docker live build+run verification — host has no Docker; static fix shipped (libstdc++ libgcc in Dockerfile.backend:44, correct-by-construction).
+- Code review 14-REVIEW.md: CR-01/CR-02 fixed (14-11); CR-03 (approvalId regex rejects `call_*` underscore IDs → HITL 400) + WR-01..08 + IN-01..04 recorded as quality debt, non-blocking.
 
 **14-11 outcome summary:**
 - **Gap 1 (cmd/eval refusal-accounting defect):** FIXED hermetically. `classifyRunOutcome` extracted and now recognizes `verdict.status == "refused"` as a refusal, routing it into the same frozen conventions as Run-error / structured-refusal paths (`refused=true`, `answer=""`). `TestClassifyRunOutcome` 6-row table-driven regression lock shipped RED→GREEN. verify-phase-14 11/11 PASS and verify-phase-13 9/9 PASS with all frozen locks + golden sets byte-identical.
