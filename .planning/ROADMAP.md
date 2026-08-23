@@ -514,11 +514,11 @@ Plans:
 - [x] 15-02-PLAN.md — 注册表/审计存储面：datasets 三新列 additive 迁移 + import_batches / dataset_deletes INSERT-only 表 + Store 接口扩展（TestBatchAuditRowShape）
 - [x] 15-03-PLAN.md — supersede 原子交换三步备份链 + WriteStagingBatch Appender 写入 helper + 复合名 ATTACH 探针（TestSupersedeAtomicSwap）
 
-**Wave 2** *(blocked on Wave 1 completion)*
+**Wave 2** *(complete)*
 
-- [ ] 15-04-PLAN.md — sqlite .dump 三层文法解析器（永不执行）+ 预览会话 store + 哈希桥接（TestDumpNonInsertStatementRejected / TestPreviewCommitHashBridge）
+- [x] 15-04-PLAN.md — sqlite .dump 三层文法解析器（永不执行）+ 预览会话 store + 哈希桥接（TestDumpNonInsertStatementRejected / TestPreviewCommitHashBridge）
 
-**Wave 3** *(blocked on Wave 2 completion)*
+**Wave 3** *(blocked on Wave 2 completion — now unblocked)*
 
 - [ ] 15-05-PLAN.md — 三通道导入编排：Preview / Commit / Push / DryRun + 幂等 + supersede 链审计 + k_min 注册（TestRawNeverOnDisk / TestIdempotentReimport）
 
@@ -692,7 +692,7 @@ Plans:
 | 12. 规划层 (P8.3) | 0/? | Not started | - |
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
 | 14. CGO 地基 + 平台信任地板 (P10.0) | 4/8 (14-01 platform-floor core + 14-02 audit/admin preview + 14-03 CGO sqlite switch + 14-04 frozen eval set + hermetic judge) | In Progress — Wave 3 complete; next Wave 4 (14-05 go-duckdb connector) | 2026-08-22 (14-03) |
-| 15. 数据导入管线 + 导入即脱敏 (P10.1) | 1/7 (15-01 data desensitization core complete) | In Progress | 2026-08-23 |
+| 15. 数据导入管线 + 导入即脱敏 (P10.1) | 4/7 (15-01..15-04 complete) | In Progress — Wave 2 complete; next Wave 3 (15-05 importer orchestration) | 2026-08-23 |
 | 16. KPI 聚合通道 (P10.2) | 0 (not planned) | Not started | - |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
 | 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |

@@ -91,7 +91,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 > Added 2026-08-10 via /gsd:explore (finance compliance data architecture). **v1.0 归并（2026-08-21）**: DATA-01/02/03/07/08/09/12 激活进 v1.0 milestone（映射由 v1.0 路线图定义）；DATA-04/05/06/10/11/13/14 延后 v1.1（外部授权通道全套，PROJECT.md v1.0 决策）。
 
-- [ ] **DATA-01**: System provides a data import pipeline for data personnel to ingest CSV (incl. GBK/GB18030 + BOM decode) / SQL dump / API data with tier + schema metadata — v1.0
+- [x] **DATA-01**: System provides a data import pipeline for data personnel to ingest CSV (incl. GBK/GB18030 + BOM decode) / SQL dump / API data with tier + schema metadata — v1.0
 - [x] **DATA-02**: System enforces mandatory desensitization at import time (L1 PII hashing with pre-hash normalization + L2 bucketing) — raw L1/L2/L3 data does NOT persist in SkillForge for aggregation-tier Skills — v1.0
 - [ ] **DATA-03**: System exposes aggregation API (predefined KPI functions) — agent invokes KPI functions, never SELECTs raw data — v1.0
 - [ ] **DATA-04**: System supports external authorized channel for individual-identification Skills — raw data stays in user's enterprise data warehouse, agent calls via read-only DB user / proxy with TTL token **→ v1.1**
@@ -159,7 +159,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 数据导入与脱敏 (DATA — new items)
 
-- [ ] **DATA-15**: 数据人员可进行两阶段导入——预览（前 100 行 + 拟脱敏效果 + 拟 tier，可调整字段桶边界）→ 确认提交
+- [x] **DATA-15**: 数据人员可进行两阶段导入——预览（前 100 行 + 拟脱敏效果 + 拟 tier，可调整字段桶边界）→ 确认提交
 - [x] **DATA-16**: 幂等重导入——内容哈希 + (dataset, period) 去重，同批刷新重跑安全
 - [x] **DATA-17**: 每导入批次产生 INSERT-only 审计行证明 raw 已弃 `{batch_id, raw_size_bytes, desensitized_row_count, discard_ts, dataset}`
 - [ ] **DATA-18**: 数据集 TTL 到期清理——先 DETACH 后删文件（Windows 文件锁）；只作用于脱敏数据集文件，审计行与 KPI 快照永不删
@@ -334,7 +334,7 @@ Which phases cover which requirements.
 | CMPL-06 | Phase 5 | Complete |
 | CMPL-07 | Phase 5 | Complete |
 | CMPL-08 | Phase 5 | Complete |
-| DATA-01 | Phase 15 | Pending |
+| DATA-01 | Phase 15 | Complete (15-04 SUMMARY; `internal/data/dump.go` accept-list parser + 3.53.0 fixtures; CSV/push channels remain in 15-05/15-06) |
 | DATA-02 | Phase 15 | Complete |
 | DATA-03 | Phase 16 | Pending |
 | DATA-04 | — | Deferred v1.1（外部授权通道） |
@@ -376,7 +376,7 @@ Which phases cover which requirements.
 | PLAT-09 | Phase 14 | Complete (14-01 + 14-10 SUMMARY; single ComposePlatformPrompt exit + unshadowable + hot-reload survives + WalkDir no-bypass; 1.1.0 anti-dilution re-anchor live-verified 20/20) |
 | PLAT-10 | Phase 14 | Complete (14-02 SUMMARY; audit platform_floor_version column + all 5 INSERT paths + admin preview endpoint) |
 | PLAT-11 | Phase 14 | Complete (14-04 SUMMARY; 20-case frozen set + JudgeHermetic + platform-floor.lock.json) |
-| DATA-15 | Phase 15 | Pending |
+| DATA-15 | Phase 15 | Complete (15-04 SUMMARY; `internal/data/preview.go` in-memory preview session store + `ValidateCommitAgainstPreview` content-hash bridge; HTTP handlers remain in 15-06) |
 | DATA-16 | Phase 15 | Complete (15-02 SUMMARY; LatestImportBatch query surface + import_batches (dataset,period) index) |
 | DATA-17 | Phase 15 | Complete (15-02 SUMMARY; INSERT-only import_batches table with batch_id/raw_size_bytes/desensitized_row_count/discard_ts/dataset + TestBatchAuditRowShape) |
 | KPI-01 | Phase 16 | Pending |

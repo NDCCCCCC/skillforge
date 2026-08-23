@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 15
-current_plan: 4
+current_plan: 5
 status: executing
-stopped_at: Completed 15-03
-last_updated: "2026-08-23T17:16:44Z"
-last_activity: 2026-08-23 -- Phase 15 Plan 03 complete
+stopped_at: Completed 15-04
+last_updated: "2026-08-23T17:33:15Z"
+last_activity: 2026-08-23 -- Phase 15 Plan 04 complete
 progress:
   total_phases: 20
   completed_phases: 12
   total_plans: 91
-  completed_plans: 88
+  completed_plans: 89
   percent: 60
 ---
 
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 15 (数据导入管线 + 导入即脱敏（P10.1）) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Executing Phase 15
-Last activity: 2026-08-23 -- Phase 15 Plan 03 complete (supersede atomics + WriteStagingBatch Appender helper + composite-name ATTACH probe)
+Last activity: 2026-08-23 -- Phase 15 Plan 04 complete (sqlite .dump accept-list parser + preview session store + hash bridge)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -180,6 +180,8 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 | D15-03-2 | Supersede staging file preserved after registry-write rollback (Phase 15 / Plan 15-03) | When `SupersedeStagedDataset` step 3 (`Registry.PutDataset`) fails, the new data is rolled back from target to staging and the old data is restored from backup to target. Staging is preserved so the caller can retry, matching `CommitStagedDataset` retry semantics. |
 | D15-03-3 | WriteStagingBatch rejects existing target tables (Phase 15 / Plan 15-03) | Import batches must write fresh staging files. `WriteStagingBatch` queries `information_schema.tables` before `CREATE TABLE` and returns `ErrTableExists` if the table already exists, preventing accidental staging reuse. |
 | D15-03-4 | Staging column type allowlist before Appender creation (Phase 15 / Plan 15-03) | go-duckdb's Appender cannot create types like BIT/ANY/INVALID. `WriteStagingBatch` rejects unsupported types up front with `ErrUnsupportedColumnType`, turning a runtime Appender creation error into a clear, early failure (T-15-16). |
+| D15-04-1 | dump.go uses package-level fmtError wrapper and in-band NULL sentinel (Phase 15 / Plan 15-04) | `ParseDump` errors are wrapped with `data.%s: %w` to match the rest of `internal/data`; tests assert on required substrings. SQL NULL is represented by the non-printable sentinel `\x00NULL\x00` to avoid ambiguity with real blank cells. |
+| D15-04-2 | Preview session TTL is a hygiene parameter; the security boundary is the content-hash bridge (Phase 15 / Plan 15-04) | `PreviewSessionTTL` (30 min) limits memory residency only. `ValidateCommitAgainstPreview` closes D15-B1 by requiring the commit request's recomputed SHA256 to equal the previewed file's SHA256; an expired session simply cannot be matched. |
 
 ---
 
@@ -187,6 +189,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Roadmap Evolution
 
+- 2026-08-23: Phase 15 Plan 04 (15-04) complete — `internal/data/dump.go` sqlite .dump three-layer accept-list parser (zero SQL execution) + four 3.53.0 ground-truth fixtures + `internal/data/preview.go` in-memory preview session store with TTL/capacity/deep-copy snapshots + `ValidateCommitAgainstPreview` content-hash bridge (D15-B1). DATA-01 dump channel + DATA-15 two-stage preview/commit base locked.
 - 2026-08-23: Phase 15 Plan 03 (15-03) complete — `SupersedeStagedDataset` three-step backup-rename-register chain + `WriteStagingBatch` Appender-only bulk write helper + composite-name ATTACH probe (A1 closed). `internal/duckdb/connector.go` and `attach_lru.go` now quote ATTACH/DETACH aliases to support hyphenated dataset ids. DATA-16 engine atomics locked.
 - 2026-08-23: Phase 15 Plan 02 (15-02) complete — `internal/store/sqlite` additive schema migration + `import_batches`/`dataset_deletes` INSERT-only audit tables + Store interface extension (DATA-16 + DATA-17 store layer). See 15-02-SUMMARY.md.
 - 2026-08-23: Phase 15 Plan 01 (15-01) complete — `internal/data` desensitization core pure functions (normalize/desensitize/rules/decode + fixtures + datarules/loans.yaml). DATA-02 requirement locked; 2/2 deviation rules auto-fixed (gitignore anchor + GB18030 strict replacement-character guard).
@@ -289,6 +292,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
 | 15 | 01 | 21m | 3 TDD tasks / 7 commits / 15 files — `internal/data` desensitization core pure functions (normalize/desensitize/rules/decode + 5 encoding fixtures + datarules/loans.yaml + README). DATA-02 locked. See 15-01-SUMMARY.md |
+| 15 | 04 | 9m | 2 TDD tasks / 4 commits / 8 files — `internal/data/dump.go` sqlite .dump accept-list parser + 4 fixtures + `internal/data/preview.go` TTL/capacity session store + hash bridge. DATA-01 + DATA-15 locked. See 15-04-SUMMARY.md |
 | 04 | 1 | 75m | 4 tasks / 38 files — Wave 1 foundation (wire types + mock transport + parts) |
 | 04 | 2 | 50m | 3 tasks — Wave 2: VerdictCard + RefusalCard + ReasoningPart + CenterPanel + locked-file reconciliation (24 new / 8 mod) |
 | 04 | 3 | 50m | 3 tasks — Wave 3: ThreePanel + SkillPicker + ChunkSourceView wire + transport-swap integration test (17 new / 8 mod) |
