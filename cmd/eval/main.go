@@ -422,22 +422,12 @@ func runEvalPass(ctx context.Context, p evalPass) (eval.Report, []eval.CaseScore
 		// 3b. Run the agent. The agent's retrieve tool does its OWN
 		// embed+search internally; LastRetrieved exposes what it saw.
 		v, refusal, err := p.agent.Run(caseCtx, sessionID, c.Query)
-		refused := false
-		var answer string
-		var contexts []string
 		if err != nil {
 			log.Printf("[WARN] cmd/eval: case %s agent.Run: %v — scoring as refusal", c.ID, err)
-			refused = true
-		} else if refusal != nil {
-			refused = true
-		} else {
-			// Serialize the verdict to an answer string for the judge.
-			// The verdict's Citations carry the load-bearing claims;
-			// including the full JSON lets the judge see status +
-			// confidence too.
-			if b, mErr := json.Marshal(v); mErr == nil {
-				answer = string(b)
-			}
+		}
+		refused, answer, refusalReason := classifyRunOutcome(err, refusal, v)
+		var contexts []string
+		if !refused {
 			// The agent's actual retrieved chunks — primary metric input.
 			for _, ch := range p.agent.LastRetrieved() {
 				contexts = append(contexts, ch.Content)
@@ -481,7 +471,7 @@ func runEvalPass(ctx context.Context, p evalPass) (eval.Report, []eval.CaseScore
 			Case:          c,
 			Answer:        answer,
 			Contexts:      contexts,
-			RefusalReason: refusalReasonStr(refusal, refused),
+			RefusalReason: refusalReason,
 		}
 		results = append(results, eval.SampleToResult(sample, faith, cprec, arel, crecall))
 		scores = append(scores, eval.CaseScore{MaxScore: maxScore, Refused: refused})
@@ -697,16 +687,56 @@ func writeCalibration(path string, r eval.Recommendation) error {
 	return nil
 }
 
-// refusalReasonStr flattens a *verdict.Refusal to its reason code for
-// the Sample. Returns "" for non-refusals.
-func refusalReasonStr(refusal *verdict.Refusal, refused bool) string {
-	if !refused {
-		return ""
+// classifyRunOutcome is the SINGLE exit point for the scoring-path
+// outcome classification of one agent.Run call. It folds the branch chain
+// previously inlined in runEvalPass 3b together with the old
+// refusalReasonStr helper (absorbed here; its only call site was 3e).
+//
+// Background (14-10 double-window replay FAIL — see 14-10-SUMMARY
+// "Operator-Gate Addendum"): under the 1.1.0 floor tail the model refuses
+// INSIDE the verdict schema — a well-formed verdict with
+// status:"refused", a verdict.ValidStatuses member (validate.go) — which
+// the pre-14-11 scoring path never recognized, so refusal prose was
+// judged by faithfulness against weakly-related chunks instead of taking
+// the refusal conventions. The 1.0.0 baseline (0.972 / 95%) was carried
+// by the agent.Run-ERROR path (prose refusals failing verdict-JSON
+// parse → empty answer → vacuous faith 1.0). 14-11 fixes the accounting
+// here; the fix is deliberately minimal — it only routes the in-schema
+// refusal into the SAME frozen conventions the two existing refusal
+// paths take, with no new metrics and no arel/cprec semantics change.
+//
+// Outcome modalities (priority order — err wins, no double counting):
+//   - err != nil      → (true, "", "agent_error")
+//   - refusal != nil  → (true, "", refusal.Reason)
+//   - v.Status=="refused" → (true, "", "verdict_status_refused")  [14-11]
+//   - otherwise       → (false, verdict JSON, "")  (marshal failure
+//     keeps answer="")
+//
+// Downstream conventions for refused=true + answer="" (frozen with the
+// 1.0.0-era baseline; do NOT change unilaterally):
+//   - Faithfulness: empty answer → 1.0 ("Refusal answer — nothing to
+//     refute", internal/eval/faithfulness.go:75-78)
+//   - ContextRecall: REFUSAL sentinel → 1.0 when groundTruth=="REFUSAL"
+//     && refused (internal/eval/metrics.go:189-195); refusal_accuracy is
+//     derived from it in internal/eval/archive.go (RefusalAccuracy)
+//   - answer_relevancy / context_precision keep their existing
+//     conventions (arel judges the empty answer; cprec judges the
+//     retrieved hits) — the 1.0.0 baseline numbers are the product of
+//     exactly this accounting.
+func classifyRunOutcome(err error, refusal *verdict.Refusal, v verdict.Verdict) (refused bool, answer string, reason string) {
+	if err != nil {
+		return true, "", "agent_error"
 	}
 	if refusal != nil {
-		return refusal.Reason
+		return true, "", refusal.Reason
 	}
-	return "agent_error"
+	// Serialize the verdict to an answer string for the judge. The
+	// verdict's Citations carry the load-bearing claims; including the
+	// full JSON lets the judge see status + confidence too.
+	if b, mErr := json.Marshal(v); mErr == nil {
+		answer = string(b)
+	}
+	return false, answer, ""
 }
 
 // round4 rounds to 4 decimal places — enough precision for a trust
