@@ -41,6 +41,15 @@ func invokeServer(t *testing.T, deps *Deps, method, path string, body *ut.Body, 
 	return ut.PerformRequest(h.Engine, method, path, body, headers...)
 }
 
+// invokeServerWithAdminToken is invokeServer with the test admin token
+// attached as X-Admin-Token. Use this for import-endpoint assertions so the
+// isAdminRequest gate does not mask the importer-nil 503 posture.
+func invokeServerWithAdminToken(t *testing.T, deps *Deps, method, path string, body *ut.Body) *ut.ResponseRecorder {
+	t.Helper()
+	h := New(":0", deps)
+	return ut.PerformRequest(h.Engine, method, path, body, ut.Header{Key: "X-Admin-Token", Value: testAdminToken})
+}
+
 // minimalChatDeps returns a Deps whose /api/chat handler can run to
 // completion without real Milvus/BGE/GLM. The canned agent always refuses,
 // which is fine — the tests only care about the guard status codes.
@@ -71,33 +80,34 @@ func minimalChatDeps(t *testing.T) *Deps {
 // when Deps.Importer is nil (fail-closed).
 func TestServerNew(t *testing.T) {
 	deps := minimalChatDeps(t)
+	testImportEnv(t)
 
 	// Import routes exist and are fail-closed when no Importer is wired.
 	t.Run("import preview 503 when importer nil", func(t *testing.T) {
-		resp := invokeServer(t, deps, http.MethodPost, "/api/import/preview", nil)
+		resp := invokeServerWithAdminToken(t, deps, http.MethodPost, "/api/import/preview", nil)
 		assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
 		var body graphResponseError
 		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
 		assert.Contains(t, body.Error, "SKILLFORGE_DATA_SALT")
 	})
 	t.Run("import commit 503 when importer nil", func(t *testing.T) {
-		resp := invokeServer(t, deps, http.MethodPost, "/api/import/commit", nil)
+		resp := invokeServerWithAdminToken(t, deps, http.MethodPost, "/api/import/commit", nil)
 		assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	})
 	t.Run("import push 503 when importer nil", func(t *testing.T) {
-		resp := invokeServer(t, deps, http.MethodPost, "/api/import/push", nil)
+		resp := invokeServerWithAdminToken(t, deps, http.MethodPost, "/api/import/push", nil)
 		assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	})
 	t.Run("import delete 503 when importer nil", func(t *testing.T) {
-		resp := invokeServer(t, deps, http.MethodDelete, "/api/import/dataset/loans__2026-07", nil)
+		resp := invokeServerWithAdminToken(t, deps, http.MethodDelete, "/api/import/dataset/loans__2026-07", nil)
 		assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	})
 
 	// A small non-import request passes the guard (it may be handled or
-	// refused by the chat path, but it must not be 413).
+	// refused by the route, but it must not be 413).
 	smallJSON := []byte(`{"query":"hello","skill":"compliance"}`)
-	resp := invokeServer(t, deps, http.MethodPost, "/api/chat", &ut.Body{Body: bytes.NewReader(smallJSON), Len: len(smallJSON)})
-	assert.NotEqual(t, http.StatusRequestEntityTooLarge, resp.Code, "/api/chat small body must not be rejected by size guard")
+	resp := invokeServer(t, deps, http.MethodGet, "/api/skills", &ut.Body{Body: bytes.NewReader(smallJSON), Len: len(smallJSON)})
+	assert.NotEqual(t, http.StatusRequestEntityTooLarge, resp.Code, "/api/skills small body must not be rejected by size guard")
 }
 
 // TestNonImportBodyLimit verifies the per-route Content-Length guard:
@@ -106,6 +116,7 @@ func TestServerNew(t *testing.T) {
 // governed by the global WithMaxRequestBodySize limit instead).
 func TestNonImportBodyLimit(t *testing.T) {
 	deps := minimalChatDeps(t)
+	testImportEnv(t)
 
 	smallJSON := []byte(`{"query":"hello","skill":"compliance"}`)
 	largeLen := int(NonImportMaxBodyDefault) + 1
@@ -113,7 +124,7 @@ func TestNonImportBodyLimit(t *testing.T) {
 	t.Run("non-import over limit → 413", func(t *testing.T) {
 		// Declare a body larger than the non-import limit but send no bytes.
 		// The guard looks at Content-Length, not the actual body size.
-		resp := invokeServer(t, deps, http.MethodPost, "/api/chat", &ut.Body{Body: bytes.NewReader(nil), Len: largeLen})
+		resp := invokeServer(t, deps, http.MethodGet, "/api/skills", &ut.Body{Body: bytes.NewReader(nil), Len: largeLen})
 		assert.Equal(t, http.StatusRequestEntityTooLarge, resp.Code)
 		var body graphResponseError
 		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
@@ -121,7 +132,7 @@ func TestNonImportBodyLimit(t *testing.T) {
 	})
 
 	t.Run("non-import under limit → not 413", func(t *testing.T) {
-		resp := invokeServer(t, deps, http.MethodPost, "/api/chat", &ut.Body{Body: bytes.NewReader(smallJSON), Len: len(smallJSON)})
+		resp := invokeServer(t, deps, http.MethodGet, "/api/skills", &ut.Body{Body: bytes.NewReader(smallJSON), Len: len(smallJSON)})
 		assert.NotEqual(t, http.StatusRequestEntityTooLarge, resp.Code)
 	})
 
@@ -129,7 +140,7 @@ func TestNonImportBodyLimit(t *testing.T) {
 		// Import routes must not be blocked by the non-import guard even when
 		// the declared Content-Length is huge. The handler (importer nil)
 		// returns 503 before any body processing.
-		resp := invokeServer(t, deps, http.MethodPost, "/api/import/push", &ut.Body{Body: bytes.NewReader(nil), Len: largeLen})
+		resp := invokeServerWithAdminToken(t, deps, http.MethodPost, "/api/import/push", &ut.Body{Body: bytes.NewReader(nil), Len: largeLen})
 		assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
 	})
 }

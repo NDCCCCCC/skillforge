@@ -112,6 +112,10 @@ func NewImporter(cfg ImporterConfig, seam ImportStoreSeam, lru *duckdb.AttachLRU
 	}
 }
 
+// LRU returns the lazy-ATTACH registry for tests that need to prove the
+// Windows lock-order boundary (Pitfall 9). It may be nil.
+func (imp *Importer) LRU() *duckdb.AttachLRU { return imp.lru }
+
 // PreviewRequest is the human-channel preview call.
 type PreviewRequest struct {
 	Dataset         string
@@ -614,7 +618,9 @@ func desensitizeRow(row, header []string, rules *Rules, datasetSalt []byte, over
 }
 
 // inferSchemaTypes returns the DuckDB type for each column. Rule-declared
-// duckdb_type takes precedence; otherwise the first 100 raw samples decide.
+// duckdb_type takes precedence; otherwise the rule kind decides the storage
+// shape (hash → VARCHAR, bucket_fixed → DOUBLE), and only passthrough columns
+// fall back to sampling the raw strings.
 func inferSchemaTypes(header []string, rules *Rules, samples []RowPair) map[string]string {
 	byCol := make(map[string][]string, len(header))
 	for _, pair := range samples {
@@ -622,16 +628,7 @@ func inferSchemaTypes(header []string, rules *Rules, samples []RowPair) map[stri
 			byCol[col] = append(byCol[col], pair.Raw[i])
 		}
 	}
-	out := make(map[string]string, len(header))
-	for _, col := range header {
-		rule := rules.Columns[col]
-		if rule.DuckDBType != "" {
-			out[col] = rule.DuckDBType
-			continue
-		}
-		out[col] = inferDuckDBType(byCol[col])
-	}
-	return out
+	return inferSchemaTypesFromByCol(header, rules, byCol)
 }
 
 // inferSchemaTypesFromRows is the Push/DryRun variant: the buffered rows are
@@ -643,6 +640,10 @@ func inferSchemaTypesFromRows(header []string, rules *Rules, rows [][]string) ma
 			byCol[col] = append(byCol[col], row[i])
 		}
 	}
+	return inferSchemaTypesFromByCol(header, rules, byCol)
+}
+
+func inferSchemaTypesFromByCol(header []string, rules *Rules, byCol map[string][]string) map[string]string {
 	out := make(map[string]string, len(header))
 	for _, col := range header {
 		rule := rules.Columns[col]
@@ -650,7 +651,14 @@ func inferSchemaTypesFromRows(header []string, rules *Rules, rows [][]string) ma
 			out[col] = rule.DuckDBType
 			continue
 		}
-		out[col] = inferDuckDBType(byCol[col])
+		switch rule.Rule {
+		case RuleHash:
+			out[col] = "VARCHAR"
+		case RuleBucketFixed:
+			out[col] = "DOUBLE"
+		default:
+			out[col] = inferDuckDBType(byCol[col])
+		}
 	}
 	return out
 }
