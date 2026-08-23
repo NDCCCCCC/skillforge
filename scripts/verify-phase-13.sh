@@ -172,15 +172,18 @@ run_stage "D15 wire-type compile alarm (npx tsc --noEmit; data-decision fanout_*
 # expected sha256 pins recorded in STATE.md. Drift between runs surfaces
 # as a hard FAIL (T-8-12 + P13 invariant).
 #
-# - compliance.lock.json — Phase 8 pin (UNCHANGED; T-8-12 — re-generating
-#   the Phase 8 pin = tampering baseline).
+# - compliance.lock.json — re-pinned twice as RECORDED T-8-12 actions:
+#   14-01 (D14-B3 floor-into-hash, 5cf700f3… → e77877bb…) and 14-10
+#   (floor 1.1.0 tail re-anchor, prompt_hash ca333fba… → 5b12acd9…).
+#   The current pin is lockstep with verify-phase-14.sh Stage 11
+#   (1dc6f148…). Any OTHER sha = tampering or an unrecorded re-lock.
 # - fanout.lock.json     — Phase 13 v0.8 milestone re-baseline (13-04
 #   placeholder; 13-05 fills actual sha256 after live UAT operator
 #   sign-off).
 
-EXPECTED_COMPLIANCE_SHA="e77877bb3b3076bc67d33a1f7a1cf4bea3b9af20ebafdd457ef6e9c366ff6ce5"  # Phase 14 re-pin (14-01 D14-B3 floor-into-hash; was 5cf700f3… Phase 8 pin). Updated by 14-07 ripple governance — re-lock is a recorded action (T-8-12), see 14-07-SUMMARY.
+EXPECTED_COMPLIANCE_SHA="1dc6f148fe3debd0b572872d87126242362905b26ae1097b983ed8754277bbdc"  # 14-01 re-pin → 14-07 ripple → 14-10 floor-1.1.0 re-pin ripple (lockstep with verify-phase-14.sh Stage 11; T-8-12 recorded re-lock)
 run_stage "frozen eval byte-identity (compliance.lock.json + fanout.lock.json sha256)" \
-  bash -c "set -e; ACTUAL_COMPLIANCE_SHA=\$(sha256sum eval/frozen/compliance.lock.json | cut -d' ' -f1); if [ \"\${ACTUAL_COMPLIANCE_SHA}\" != \"${EXPECTED_COMPLIANCE_SHA}\" ]; then echo \"FATAL: compliance.lock.json sha256 mismatch — file tampered OR Phase 13 unintentionally modified the Phase 8 baseline pin\"; echo \"  expected: ${EXPECTED_COMPLIANCE_SHA}\"; echo \"  actual:   \${ACTUAL_COMPLIANCE_SHA}\"; exit 1; fi; if [ ! -f eval/frozen/fanout.lock.json ]; then echo 'FATAL: fanout.lock.json missing — 13-04 Task 2 should have created it'; exit 1; fi; sha256sum eval/frozen/compliance.lock.json eval/frozen/fanout.lock.json"
+  bash -c "set -e; ACTUAL_COMPLIANCE_SHA=\$(sha256sum eval/frozen/compliance.lock.json | cut -d' ' -f1); if [ \"\${ACTUAL_COMPLIANCE_SHA}\" != \"${EXPECTED_COMPLIANCE_SHA}\" ]; then echo \"FATAL: compliance.lock.json sha256 mismatch — file tampered OR an unrecorded re-lock bypassed T-8-12 (pins move only via recorded re-locks: 14-01 / 14-10, lockstep with verify-phase-14.sh Stage 11)\"; echo \"  expected: ${EXPECTED_COMPLIANCE_SHA}\"; echo \"  actual:   \${ACTUAL_COMPLIANCE_SHA}\"; exit 1; fi; if [ ! -f eval/frozen/fanout.lock.json ]; then echo 'FATAL: fanout.lock.json missing — 13-04 Task 2 should have created it'; exit 1; fi; sha256sum eval/frozen/compliance.lock.json eval/frozen/fanout.lock.json"
 
 # ---------------------------------------------------------------------------
 # Stage 8 — sub-agent budget half-of-parent (P13-L3 source-grep)
