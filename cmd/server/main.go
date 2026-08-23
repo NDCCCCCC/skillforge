@@ -69,6 +69,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -78,6 +79,8 @@ import (
 	"github.com/cloudwego/eino/components/model"
 
 	"github.com/skillforge/skillforge/internal/agent"
+	"github.com/skillforge/skillforge/internal/data"
+	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -122,6 +125,22 @@ func envOr(name, def string) string {
 	return def
 }
 
+// parseBytesEnvOrDefault parses an int64 byte-count env var. Non-numeric or
+// non-positive values log a WARN and fall back to def. This keeps a typo in
+// SKILLFORGE_IMPORT_MAX_BODY_BYTES from making the server unusable.
+func parseBytesEnvOrDefault(name string, def int64) int64 {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n <= 0 {
+		log.Printf("[WARN] cmd/server: %s=%q invalid (expected positive integer bytes); using default %d", name, v, def)
+		return def
+	}
+	return n
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -163,6 +182,17 @@ func main() {
 	// itself. The default (unset) keeps both wrappers active so
 	// production runs the SC-1/SC-2 escape mechanisms.
 	disableHistoryPipeline := strings.EqualFold(os.Getenv("DISABLE_HISTORY_PIPELINE"), "true")
+
+	// Phase 15 — data-import pipeline configuration.
+	// SKILLFORGE_DATA_SALT is the L1 HMAC site salt. Unset → import endpoints
+	// are disabled (503 fail-closed), but the rest of the server starts.
+	// SKILLFORGE_IMPORT_MAX_BODY_BYTES / SKILLFORGE_MAX_BODY_BYTES tune the
+	// import / non-import body limits; parse failures fall back to defaults
+	// with a WARN rather than aborting startup.
+	dataSalt := envOr("SKILLFORGE_DATA_SALT", "")
+	importMaxBody := parseBytesEnvOrDefault("SKILLFORGE_IMPORT_MAX_BODY_BYTES", server.ImportMaxBodyDefault)
+	nonImportMaxBody := parseBytesEnvOrDefault("SKILLFORGE_MAX_BODY_BYTES", server.NonImportMaxBodyDefault)
+	datarulesDir := envOr("SKILLFORGE_DATARULES_DIR", "datarules")
 
 	// 2. Load Skills (SYSK-02 validation at startup).
 	loader := skill.NewLoader("skills/")
@@ -268,6 +298,30 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
 	}
 
+	// 6c-2. Phase 15 — data-import orchestrator. The importer needs a
+	// dedicated DuckDB connection for lazy ATTACH/DETACH of dataset files.
+	// A nil Importer is fine (import endpoints return 503), but a non-empty
+	// SKILLFORGE_DATA_SALT wires the full pipeline.
+	var importer *data.Importer
+	if dataSalt != "" {
+		ddb, err := duckdb.New(ctx, duckdb.Config{DSN: ":memory:", MaxOpenConns: 1})
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: duckdb connector for import: %v", err)
+		}
+		lru, err := duckdb.NewAttachLRU(ddb, 0)
+		if err != nil {
+			_ = ddb.Close()
+			log.Fatalf("[FAIL] cmd/server: attach LRU for import: %v", err)
+		}
+		importer = data.NewImporter(data.ImporterConfig{
+			SiteSalt: dataSalt,
+			RulesDir: datarulesDir,
+		}, st, lru)
+		log.Printf("[OK] cmd/server: import pipeline wired (salt present, rules=%s)", datarulesDir)
+	} else {
+		log.Printf("[WARN] cmd/server: SKILLFORGE_DATA_SALT unset — import endpoints disabled (fail-closed)")
+	}
+
 	// 6d. Skill Registry (Plan 05-01 / §2 hot-reload). The fsnotify-driven
 	// registry is the production source of truth for the GET /api/skills
 	// listing's version + status fields — touching skills/<name>/SKILL.md
@@ -366,6 +420,11 @@ func main() {
 		// "history prefix STILL flows" behavior).
 		Rewriter:          rewriter,
 		RefusalClassifier: refusalClassifier,
+		// Phase 15 — data-import surface. nil Importer means import endpoints
+		// return 503 (SKILLFORGE_DATA_SALT unset fail-closed posture).
+		Importer:            importer,
+		ImportMaxBodyBytes:  importMaxBody,
+		NonImportMaxBodyBytes: nonImportMaxBody,
 	}
 
 	// 8. Hertz server (Pattern 1).
@@ -384,6 +443,10 @@ func main() {
 	log.Printf("     GET  /api/eval/reports        — SC-1 eval dashboard (INDEX.json + per-report fetch)")
 	log.Printf("     GET  /api/eval/frozen         — D6-13 frozen-set metadata (skill + lock)")
 	log.Printf("     GET  /api/audit               — SC-3 audit query (with retention redaction)")
+	log.Printf("     POST /api/import/preview      — Phase 15 import preview (admin + salt required)")
+	log.Printf("     POST /api/import/commit       — Phase 15 import commit (admin + salt required)")
+	log.Printf("     POST /api/import/push         — Phase 15 import push (admin + salt required)")
+	log.Printf("     DELETE /api/import/dataset/:name — Phase 15 dataset delete (admin + salt required)")
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()

@@ -33,13 +33,19 @@ package server
 
 import (
 	"context"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/agent/hitl"
+	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -47,6 +53,17 @@ import (
 	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
+)
+
+// Default body-size limits. Import endpoints need a much larger envelope than
+// chat routes because they carry raw CSV/SQLite-dump payloads; non-import routes
+// keep a tight 8 MiB ceiling so the large import limit cannot be repurposed to
+// flood /api/chat. Source-grep locked (scripts/verify-phase-15.sh Stage 9).
+const (
+	// ImportMaxBodyDefault is 2 GiB (2147483648 bytes).
+	ImportMaxBodyDefault int64 = 2147483648
+	// NonImportMaxBodyDefault is 8 MiB (8388608 bytes).
+	NonImportMaxBodyDefault int64 = 8388608
 )
 
 // Embedder aliases the embedder.Embedder interface (the production
@@ -254,6 +271,19 @@ type Deps struct {
 	// every pending row as state="expired" (fail-closed: freshness
 	// cannot be proven).
 	ActiveManifest *skill.Manifest
+
+	// Importer is the Phase 15 three-channel import orchestrator
+	// (Preview / Commit / Push / DryRun). nil → import endpoints return
+	// 503, mirroring the SKILLFORGE_DATA_SALT unset fail-closed posture.
+	Importer *data.Importer
+	// ImportMaxBodyBytes is the per-request body limit for /api/import/*
+	// routes. Zero falls back to ImportMaxBodyDefault.
+	ImportMaxBodyBytes int64
+	// NonImportMaxBodyBytes is the per-request declared body limit for
+	// non-import routes. Content-Length headers larger than this are
+	// rejected with 413 before the handler runs. Zero falls back to
+	// NonImportMaxBodyDefault.
+	NonImportMaxBodyBytes int64
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
@@ -291,9 +321,50 @@ type Deps struct {
 // GET /api/audit (SC-3 audit query + retention projection),
 // GET /api/run/:id/plan (Phase 12 PLAN-05 plan replay),
 // POST /api/run/:id/plan/:approvalId/approve (Phase 12 PLAN-03 plan
-// confirm endpoint).
+// confirm endpoint),
+// POST /api/import/preview, /api/import/commit, /api/import/push,
+// DELETE /api/import/dataset/:name (Phase 15 data-import surface).
 func New(addr string, deps *Deps) *server.Hertz {
-	h := server.Default(server.WithHostPorts(addr))
+	importMax := deps.ImportMaxBodyBytes
+	if importMax <= 0 {
+		importMax = ImportMaxBodyDefault
+	}
+	nonImportMax := deps.NonImportMaxBodyBytes
+	if nonImportMax <= 0 {
+		nonImportMax = NonImportMaxBodyDefault
+	}
+
+	h := server.Default(
+		server.WithHostPorts(addr),
+		server.WithStreamBody(true),
+		server.WithDisablePreParseMultipartForm(true),
+		// WithMaxRequestBodySize takes an int; ImportMaxBodyDefault fits on
+		// 64-bit platforms and is guarded by the non-import guard below.
+		server.WithMaxRequestBodySize(int(importMax)),
+	)
+
+	// Phase 15: per-route declared body-size guard. The import endpoints need
+	// a 2 GiB envelope, but that ceiling must not be usable to flood /api/chat.
+	// Reject non-import routes that declare Content-Length > nonImportMax with
+	// 413 before any handler runs. Import routes are handled by the global
+	// WithMaxRequestBodySize limit above and never hit this guard.
+	h.Use(func(ctx context.Context, c *app.RequestContext) {
+		path := string(c.Request.URI().Path())
+		if strings.HasPrefix(path, "/api/import/") {
+			c.Next(ctx)
+			return
+		}
+		cl := c.Request.Header.ContentLength()
+		if cl > 0 && int64(cl) > nonImportMax {
+			c.JSON(http.StatusRequestEntityTooLarge, graphResponseError{
+				Error: "request body too large",
+			})
+			c.Abort()
+			return
+		}
+		c.Next(ctx)
+	})
+
 	h.POST("/api/chat", deps.chatHandler)
 	h.GET("/api/skills", deps.listSkillsHandler)
 	h.POST("/api/skills", deps.validateSkillHandler)
@@ -339,10 +410,31 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// target=plan_approve, D11-C2 expire-check included).
 	h.GET("/api/run/:id/plan", deps.planGetHandler)
 	h.POST("/api/run/:id/plan/:approvalId/approve", deps.planApproveHandler)
+	// Phase 15 — data-import surface. Handlers live in import_api.go.
+	h.POST("/api/import/preview", deps.importPreviewHandler)
+	h.POST("/api/import/commit", deps.importCommitHandler)
+	h.POST("/api/import/push", deps.importPushHandler)
+	h.DELETE("/api/import/dataset/:name", deps.importDeleteHandler)
 	// Initialize the fail-closed HITL audit writer from the store when
 	// the caller did not inject one (D11-C3 single write path).
 	if deps.AuditWriter == nil && deps.Store != nil {
 		deps.AuditWriter = hitl.NewAuditWriter(deps.Store, agent.PlatformFloorVersion)
 	}
+	log.Printf("[OK] server: import max body = %s, non-import max body = %s",
+		byteSizeLabel(importMax), byteSizeLabel(nonImportMax))
 	return h
+}
+
+// byteSizeLabel renders a byte count as a human-readable string (e.g. "2 GiB").
+func byteSizeLabel(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return strconv.FormatInt(n/(1<<30), 10) + " GiB"
+	case n >= 1<<20:
+		return strconv.FormatInt(n/(1<<20), 10) + " MiB"
+	case n >= 1<<10:
+		return strconv.FormatInt(n/(1<<10), 10) + " KiB"
+	default:
+		return strconv.FormatInt(n, 10) + " B"
+	}
 }
