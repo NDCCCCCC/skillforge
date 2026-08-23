@@ -88,6 +88,35 @@ VALUES (1, '2026-08-01T10:00:00Z', 'sess-legacy', 'compliance', '旧库行', 'le
 	require.NoError(t, raw.Close(), "raw seeding connection should close cleanly")
 }
 
+// legacyDatasetsDDL is the pre-Phase-15 datasets schema: 7 columns,
+// no dataset/period/k_min_override columns.
+const legacyDatasetsDDL = `
+CREATE TABLE datasets (
+    name           TEXT PRIMARY KEY,
+    tier           TEXT NOT NULL,
+    schema_json    TEXT NOT NULL,
+    file_path      TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    batch_id       TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+)
+`
+
+// seedLegacyDatasetsDB creates a file-backed database holding ONLY the
+// legacy 7-column datasets table plus two pre-existing rows.
+func seedLegacyDatasetsDB(t *testing.T, dsn string) {
+	t.Helper()
+	raw, err := sql.Open("sqlite3", dsn)
+	require.NoError(t, err, "raw sqlite3 open for legacy datasets seeding should succeed")
+	_, err = raw.Exec(legacyDatasetsDDL)
+	require.NoError(t, err, "legacy 7-column datasets DDL should apply")
+	_, err = raw.Exec(`INSERT INTO datasets (name, tier, schema_json, file_path, content_sha256, batch_id, created_at)
+VALUES ('loans__2026-06', '历史', '{"cols":[]}', 'data/datasets/loans__2026-06.duckdb', 'aabbccdd', 'b-old-1', '2026-07-01T00:00:00Z'),
+       ('cards__2026-06', '历史', '{"cols":[]}', 'data/datasets/cards__2026-06.duckdb', '11223344', 'b-old-2', '2026-07-02T00:00:00Z')`)
+	require.NoError(t, err, "legacy datasets rows insert should succeed")
+	require.NoError(t, raw.Close(), "raw seeding connection should close cleanly")
+}
+
 // TestMigrateLegacyAuditUpgradePath locks the UAT Test 2 fix: a
 // deployment holding the pre-Phase-12 audit schema must upgrade via
 // New() — not die at boot — and the migration must be additive (index
@@ -163,4 +192,83 @@ func TestMigrateLegacyIdempotentReopen(t *testing.T) {
 	var count int
 	require.NoError(t, second.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit`).Scan(&count))
 	require.Equal(t, 1, count, "legacy row must still be intact after reopen")
+}
+
+// TestMigrateLegacyDatasetsUpgradePath locks the Phase 15 additive
+// migration for the datasets registry: a deployment holding the pre-Phase-15
+// 7-column datasets schema must upgrade via New(), gaining the three new
+// columns with default values and preserving existing rows (D14-E1 ordering
+// contract + T-15-15 mitigation).
+func TestMigrateLegacyDatasetsUpgradePath(t *testing.T) {
+	ctx := context.Background()
+	dsn := filepath.Join(t.TempDir(), "legacy-datasets-upgrade.db")
+	seedLegacyDatasetsDB(t, dsn)
+
+	s, err := New(ctx, Config{DSN: dsn})
+	require.NoError(t, err, "legacy 7-column datasets DB must migrate via New()")
+	defer func() { _ = s.Close() }()
+
+	// Every Phase 15 column must have been added by the ALTER loop.
+	for _, col := range []string{"dataset", "period", "k_min_override"} {
+		exists, err := s.columnExists(ctx, "datasets", col)
+		require.NoError(t, err, "columnExists(%q) should not error", col)
+		require.True(t, exists, "datasets.%s must be present after legacy migration", col)
+	}
+
+	// The import_batches / dataset_deletes tables and index must exist.
+	for _, table := range []string{"import_batches", "dataset_deletes"} {
+		var tblCount int
+		require.NoError(t,
+			s.db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&tblCount))
+		require.Equal(t, 1, tblCount, "%s table must exist after legacy migration", table)
+	}
+	var idxCount int
+	require.NoError(t,
+		s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_import_batches_dataset_period'`).Scan(&idxCount))
+	require.Equal(t, 1, idxCount, "idx_import_batches_dataset_period must exist after legacy migration")
+
+	// Additive migration: existing rows survive and new columns default correctly.
+	var count int
+	require.NoError(t, s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM datasets`).Scan(&count))
+	require.Equal(t, 2, count, "legacy datasets rows must survive migration")
+
+	var (
+		name           string
+		tier            string
+		contentSHA256  string
+		dataset        string
+		period         string
+		kMinOverride   int
+	)
+	require.NoError(t, s.db.QueryRowContext(ctx,
+		`SELECT name, tier, content_sha256, dataset, period, k_min_override FROM datasets WHERE name = 'loans__2026-06'`).Scan(
+		&name, &tier, &contentSHA256, &dataset, &period, &kMinOverride))
+	assert.Equal(t, "loans__2026-06", name)
+	assert.Equal(t, "历史", tier)
+	assert.Equal(t, "aabbccdd", contentSHA256)
+	assert.Equal(t, "", dataset, "legacy rows get DEFAULT '' for dataset")
+	assert.Equal(t, "", period, "legacy rows get DEFAULT '' for period")
+	assert.Equal(t, 0, kMinOverride, "legacy rows get DEFAULT 0 for k_min_override")
+}
+
+// TestMigrateLegacyDatasetsIdempotentReopen guards the reopen direction
+// for the datasets-migrated legacy DB.
+func TestMigrateLegacyDatasetsIdempotentReopen(t *testing.T) {
+	ctx := context.Background()
+	dsn := filepath.Join(t.TempDir(), "legacy-datasets-reopen.db")
+	seedLegacyDatasetsDB(t, dsn)
+
+	first, err := New(ctx, Config{DSN: dsn})
+	require.NoError(t, err, "first New() on legacy datasets DB must migrate")
+	require.NoError(t, first.Close())
+
+	second, err := New(ctx, Config{DSN: dsn})
+	require.NoError(t, err, "second New() on the migrated datasets DB must succeed")
+	defer func() { _ = second.Close() }()
+
+	var count int
+	require.NoError(t, second.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM datasets`).Scan(&count))
+	require.Equal(t, 2, count, "legacy datasets rows must still be intact after reopen")
 }

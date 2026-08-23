@@ -204,13 +204,53 @@ CREATE INDEX IF NOT EXISTS idx_plan_todos_run_id_ts ON plan_todos(run_id, ts);
 --   - batch_id: the import batch that produced the row — replay detection
 --     and audit trail.
 CREATE TABLE IF NOT EXISTS datasets (
-    name           TEXT PRIMARY KEY,
-    tier           TEXT NOT NULL,
-    schema_json    TEXT NOT NULL,
-    file_path      TEXT NOT NULL,
-    content_sha256 TEXT NOT NULL,
-    batch_id       TEXT NOT NULL,
-    created_at     TEXT NOT NULL
+    name            TEXT PRIMARY KEY,
+    tier            TEXT NOT NULL,
+    schema_json     TEXT NOT NULL,
+    file_path       TEXT NOT NULL,
+    content_sha256  TEXT NOT NULL,
+    batch_id        TEXT NOT NULL,
+    created_at      TEXT NOT NULL,
+    dataset         TEXT NOT NULL DEFAULT '',
+    period          TEXT NOT NULL DEFAULT '',
+    k_min_override  INTEGER NOT NULL DEFAULT 0
+);
+
+-- import_batches (Phase 15 / Plan 15-02 / DATA-17): the SEPARATE
+-- INSERT-only batch-audit table that proves raw data was discarded
+-- (discard_ts) and carries the rule-set hash (rules_sha256) for
+-- reproducibility (D15-A4). The supersedes_batch_id field chains
+-- monthly replacement batches (D15-C1). This table is INTENTIONALLY
+-- DISTINCT from audit.action — batch-audit queries are the hot path
+-- for the admin import view (ADM-02), and a dedicated table keeps the
+-- SELECT lean and SQL-first.
+--
+-- INSERT-only discipline: rows are appended by PutImportBatch; there
+-- is NO UPDATE / DELETE path. Replays of the same batch_id surface as
+-- a PRIMARY KEY constraint error, never silent replacement.
+CREATE TABLE IF NOT EXISTS import_batches (
+    batch_id                TEXT PRIMARY KEY,
+    dataset                 TEXT NOT NULL,
+    period                  TEXT NOT NULL,
+    tier                    TEXT NOT NULL,
+    content_sha256          TEXT NOT NULL,
+    rules_sha256            TEXT NOT NULL,
+    raw_size_bytes          INTEGER NOT NULL,
+    desensitized_row_count  INTEGER NOT NULL,
+    discard_ts              TEXT NOT NULL,
+    supersedes_batch_id     TEXT NOT NULL DEFAULT '',
+    created_at              TEXT NOT NULL
+);
+
+-- dataset_deletes (Phase 15 / Plan 15-02 / D15-C3): INSERT-only audit
+-- of dataset deletion actions. The state-side deletion (datasets row
+-- + file) is performed by the delete endpoint; this table records the
+-- action for compliance replay.
+CREATE TABLE IF NOT EXISTS dataset_deletes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    dataset     TEXT NOT NULL DEFAULT '',
+    deleted_at  TEXT NOT NULL
 );
 `
 
@@ -257,6 +297,14 @@ const (
 	// string denotes pre-floor era rows.
 	alterAuditAddPlatformFloorVersionSQL = "ALTER TABLE audit ADD COLUMN platform_floor_version TEXT NOT NULL DEFAULT ''"
 
+	// Phase 15 / Plan 15-02 — DATA-16 idempotency key + D15-C2 period
+	// + D15-D3 k_min override. NOT NULL DEFAULT '' / 0 keeps the
+	// migration additive for existing datasets rows; the import pipeline
+	// populates the columns on every new/updated row.
+	alterDatasetsAddDatasetSQL        = "ALTER TABLE datasets ADD COLUMN dataset TEXT NOT NULL DEFAULT ''"
+	alterDatasetsAddPeriodSQL         = "ALTER TABLE datasets ADD COLUMN period TEXT NOT NULL DEFAULT ''"
+	alterDatasetsAddKMinOverrideSQL   = "ALTER TABLE datasets ADD COLUMN k_min_override INTEGER NOT NULL DEFAULT 0"
+
 	alterCheckpointAddSkillVersionSQL = "ALTER TABLE checkpoint ADD COLUMN skill_version TEXT NOT NULL DEFAULT ''"
 	alterCheckpointAddPromptHashSQL   = "ALTER TABLE checkpoint ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT ''"
 )
@@ -295,6 +343,15 @@ const createAuditRunPathIdxSQL = `
 CREATE INDEX IF NOT EXISTS idx_audit_run_path ON audit(run_path)
 `
 
+// createImportBatchesDatasetPeriodIdxSQL is the Phase 15 / Plan 15-02
+// DATA-16 idempotency query index (LatestImportBatch). Created AFTER the
+// datasets ALTERs so a migrated DB has the dataset / period columns by
+// the time the index references them (D14-E1 ordering contract, UAT
+// 14-09 blocker precedent).
+const createImportBatchesDatasetPeriodIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_import_batches_dataset_period ON import_batches(dataset, period)
+`
+
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
 // repeating the same gate eight times.
@@ -318,6 +375,16 @@ var auditLifecycleColumns = []struct{ column, stmt string }{
 var checkpointSnapshotColumns = []struct{ column, stmt string }{
 	{"skill_version", alterCheckpointAddSkillVersionSQL},
 	{"prompt_hash", alterCheckpointAddPromptHashSQL},
+}
+
+// datasetImportColumns pairs each Phase 15 additive datasets column with
+// the ALTER that adds it, so migrate() can loop instead of repeating the
+// same PRAGMA gate three times. On a fresh DB these are no-ops because
+// schemaSQL already created the columns.
+var datasetImportColumns = []struct{ column, stmt string }{
+	{"dataset", alterDatasetsAddDatasetSQL},
+	{"period", alterDatasetsAddPeriodSQL},
+	{"k_min_override", alterDatasetsAddKMinOverrideSQL},
 }
 
 // columnExists reports whether the named column is already present in
@@ -391,6 +458,21 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		}
 	}
 
+	// Phase 15 / Plan 15-02 — datasets additive columns for the import
+	// pipeline (DATA-16 idempotency key + period + k_min override).
+	for _, c := range datasetImportColumns {
+		exists, err := s.columnExists(ctx, "datasets", c.column)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, c.stmt); err != nil {
+			return fmtError("migrate.datasets."+c.column, err)
+		}
+	}
+
 	// D11-C4 partial unique index. Created AFTER the ALTERs so a
 	// migrated DB has the tool_call_id column by the time the index
 	// references it.
@@ -403,6 +485,14 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	// index references it (UAT 14-09 blocker).
 	if _, err := s.db.ExecContext(ctx, createAuditRunPathIdxSQL); err != nil {
 		return fmtError("migrate.audit.run_path_idx", err)
+	}
+
+	// Phase 15 / Plan 15-02 — import_batches (dataset, period) index.
+	// Created AFTER the datasets ALTERs so a legacy DB has the columns
+	// referenced by the index. Fresh DBs already have the columns from
+	// schemaSQL and the index from this statement.
+	if _, err := s.db.ExecContext(ctx, createImportBatchesDatasetPeriodIdxSQL); err != nil {
+		return fmtError("migrate.import_batches.dataset_period_idx", err)
 	}
 	return nil
 }

@@ -24,6 +24,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -45,6 +46,126 @@ var expectedAuditMetaCols = []string{
 	"history_projected_n_turns",
 	"history_budget_truncated",
 	"history_dropped_count",
+}
+
+// expectedDatasetsCols is the canonical column list asserted by
+// TestDatasetsDDL. Order matches the schemaSQL CREATE TABLE statement
+// so a future migration that adds / reorders columns fails loudly.
+var expectedDatasetsCols = []string{
+	"name",
+	"tier",
+	"schema_json",
+	"file_path",
+	"content_sha256",
+	"batch_id",
+	"created_at",
+	"dataset",
+	"period",
+	"k_min_override",
+}
+
+// expectedImportBatchesCols is the canonical column list asserted by
+// TestImportBatchesDDL.
+var expectedImportBatchesCols = []string{
+	"batch_id",
+	"dataset",
+	"period",
+	"tier",
+	"content_sha256",
+	"rules_sha256",
+	"raw_size_bytes",
+	"desensitized_row_count",
+	"discard_ts",
+	"supersedes_batch_id",
+	"created_at",
+}
+
+// expectedDatasetDeletesCols is the canonical column list asserted by
+// TestDatasetDeletesDDL.
+var expectedDatasetDeletesCols = []string{
+	"id",
+	"name",
+	"dataset",
+	"deleted_at",
+}
+
+// tableColumns returns the ordered column names from PRAGMA table_info.
+func tableColumns(t *testing.T, s *SQLiteStore, table string) []string {
+	t.Helper()
+	rows, err := s.db.QueryContext(context.Background(), fmt.Sprintf("PRAGMA table_info(%s)", table))
+	require.NoError(t, err, "PRAGMA table_info(%s)", table)
+	defer rows.Close()
+
+	got := []string{}
+	for rows.Next() {
+		var (
+			cid     int
+			name    string
+			ctype   string
+			notnull int
+			dflt    sql.NullString
+			pk      int
+		)
+		require.NoError(t, rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk))
+		got = append(got, name)
+	}
+	require.NoError(t, rows.Err())
+	return got
+}
+
+// TestDatasetsDDL — after migrate(), the datasets table has the 10
+// expected columns including the Phase 15 additive dataset/period/k_min_override.
+func TestDatasetsDDL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	assert.Equal(t, expectedDatasetsCols, tableColumns(t, s, "datasets"),
+		"datasets must have the expected 10 columns in canonical order (Phase 15 Plan 15-02 spec)")
+}
+
+// TestImportBatchesDDL — after migrate(), the import_batches table exists
+// with the 11 expected columns (DATA-17 + D15-A4 + D15-C1).
+func TestImportBatchesDDL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	assert.Equal(t, expectedImportBatchesCols, tableColumns(t, s, "import_batches"),
+		"import_batches must have the expected 11 columns")
+}
+
+// TestDatasetDeletesDDL — after migrate(), the dataset_deletes table exists
+// with the expected columns (D15-C3).
+func TestDatasetDeletesDDL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	assert.Equal(t, expectedDatasetDeletesCols, tableColumns(t, s, "dataset_deletes"),
+		"dataset_deletes must have the expected columns")
+}
+
+// TestImportBatchesIndexExists — after migrate(), the (dataset, period)
+// index exists for the LatestImportBatch query path (DATA-16).
+func TestImportBatchesIndexExists(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	var idxCount int
+	require.NoError(t,
+		s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_import_batches_dataset_period'`).Scan(&idxCount))
+	require.Equal(t, 1, idxCount, "idx_import_batches_dataset_period must exist after migration")
 }
 
 // TestAuditMetaDDL — after migrate(), the audit_meta table exists
