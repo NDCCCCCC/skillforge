@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -26,7 +27,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/eval"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/verdict"
 )
 
@@ -253,4 +256,51 @@ func TestClassifyRunOutcome(t *testing.T) {
 			}
 		})
 	}
+}
+
+// stubEmbedder is a deterministic 3-dimensional embedder for hermetic
+// metric tests. All embeddings are unit vectors so cosine similarity is
+// well-defined and stable across test runs.
+type stubEmbedder struct{}
+
+func (stubEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	_ = text
+	return []float32{1.0, 0.0, 0.0}, nil
+}
+
+func (stubEmbedder) Dimensions() int { return 3 }
+
+// TestRefusedCaseFaithExemption locks the 14-12 re-baseline semantics:
+// an in-schema refused verdict is explicitly exempt from faithfulness
+// judging against retrieved chunks. Refused=true must force
+// faithfulness=1.0 and the REFUSAL sentinel context_recall=1.0 even when
+// the refusal prose and the retrieved chunks are maximally hostile to
+// each other. Refused=false must fall through to the normal Entails
+// judge and score 0.0 when the judge rejects the claim.
+func TestRefusedCaseFaithExemption(t *testing.T) {
+	ctx := context.Background()
+	judge := &eval.StubJudge{
+		DefaultClaims:       []string{"unsupported claim"},
+		DefaultEntails:      false,
+		DefaultAttributable: false,
+		DefaultRelevant:     false,
+	}
+	emb := stubEmbedder{}
+	hits := []retriever.Hit{{Content: "hostile chunk"}}
+	refusalAnswer := "该请求超出平台数据边界"
+	contexts := []string{"hostile context"}
+
+	faith, arel, cprec, crecall := computeCaseMetrics(
+		ctx, "refused-case-a", true, refusalAnswer, "query", "REFUSAL", contexts, hits, judge, emb,
+	)
+	assert.InDelta(t, 1.0, faith, 1e-9, "refused=true must short-circuit faithfulness to 1.0")
+	assert.InDelta(t, 0.0, arel, 1e-9, "refused=true answer_relevance on empty convention")
+	assert.InDelta(t, 0.0, cprec, 1e-9, "refused=true context_precision on hostile chunks")
+	assert.InDelta(t, 1.0, crecall, 1e-9, "refused=true REFUSAL sentinel crecall")
+
+	faith, _, _, crecall = computeCaseMetrics(
+		ctx, "refused-case-b", false, refusalAnswer, "query", "REFUSAL", contexts, hits, judge, emb,
+	)
+	assert.InDelta(t, 0.0, faith, 1e-9, "refused=false must let the hostile judge score 0.0")
+	assert.InDelta(t, 0.0, crecall, 1e-9, "refused=false REFUSAL ground truth scores 0.0")
 }
