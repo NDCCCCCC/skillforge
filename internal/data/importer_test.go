@@ -19,9 +19,13 @@ package data
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/skillforge/skillforge/internal/duckdb"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -168,4 +172,227 @@ func TestPreviewUnknownColumnFailClosed(t *testing.T) {
 	_, err := imp.Preview(context.Background(), req)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "extra_col")
+}
+
+func TestPushCommitDirect(t *testing.T) {
+	ctx := context.Background()
+	imp, db, _, datasetsDir := testImporter(t)
+
+	res, err := imp.Push(ctx, PushRequest{
+		Dataset: "loans",
+		Period:  "2026-07",
+		Channel: "csv",
+		Reader:  &oneShotReader{r: strings.NewReader(csvFileA()), t: t},
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.BatchID)
+	assert.False(t, res.Superseded)
+	assert.Equal(t, int64(2), res.Rows)
+
+	batches, err := db.ListImportBatches(ctx, "loans")
+	require.NoError(t, err)
+	assert.Len(t, batches, 1)
+	assert.Equal(t, res.BatchID, batches[0].BatchID)
+
+	registry, err := db.ListDatasets(ctx)
+	require.NoError(t, err)
+	require.Len(t, registry, 1)
+	assert.Equal(t, "loans__2026-07", registry[0].Name)
+	assert.Equal(t, res.BatchID, registry[0].BatchID)
+
+	assert.Equal(t, int64(2), rowCountInDataset(t, ctx, datasetsDir, "loans__2026-07"))
+}
+
+func TestPushDumpChannel(t *testing.T) {
+	ctx := context.Background()
+	imp, db, _, datasetsDir := testImporter(t)
+
+	dump := strings.Join([]string{
+		"PRAGMA foreign_keys=OFF;",
+		"BEGIN TRANSACTION;",
+		"CREATE TABLE loans (customer_name TEXT, mobile TEXT, cert_no TEXT, balance REAL, overdue_days INTEGER, update_ts TEXT, status TEXT);",
+		"INSERT INTO loans VALUES ('Alice','138-0000-0000','11010119900101A',1250,5,'2026-07-01','active');",
+		"INSERT INTO loans VALUES ('Bob',NULL,'11010119900101B',3500,12,'2026-07-01','inactive');",
+		"COMMIT;",
+	}, "\n")
+
+	res, err := imp.Push(ctx, PushRequest{
+		Dataset: "loans",
+		Period:  "2026-07",
+		Channel: "dump",
+		Reader:  strings.NewReader(dump),
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.BatchID)
+	assert.Equal(t, int64(2), res.Rows)
+
+	batches, err := db.ListImportBatches(ctx, "loans")
+	require.NoError(t, err)
+	assert.Len(t, batches, 1)
+
+	c, err := duckdb.New(ctx, duckdb.Config{
+		DSN:          filepath.Join(datasetsDir, "loans__2026-07.duckdb"),
+		MaxOpenConns: 1,
+	})
+	require.NoError(t, err)
+	defer func() { _ = c.Close() }()
+
+	var count int64
+	require.NoError(t, c.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM data").Scan(&count))
+	assert.Equal(t, int64(2), count)
+
+	var nullMobile int64
+	require.NoError(t, c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM data WHERE mobile IS NULL").Scan(&nullMobile))
+	assert.Equal(t, int64(1), nullMobile, "dump NULL must be stored as SQL NULL, not hashed or a literal")
+}
+
+func TestPushDryRun(t *testing.T) {
+	ctx := context.Background()
+	imp, db, stagingDir, datasetsDir := testImporter(t)
+
+	res, err := imp.DryRun(ctx, PushRequest{
+		Dataset: "loans",
+		Period:  "2026-07",
+		Channel: "csv",
+		Reader:  strings.NewReader(csvFileA()),
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.Columns)
+	assert.Empty(t, res.Violations)
+
+	batches, err := db.ListImportBatches(ctx, "loans")
+	require.NoError(t, err)
+	assert.Empty(t, batches, "DryRun writes no audit rows")
+
+	registry, err := db.ListDatasets(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, registry, "DryRun writes no registry rows")
+
+	assertNoDuckDBInDir(t, stagingDir, "DryRun writes no staging files")
+	assertNoDuckDBInDir(t, datasetsDir, "DryRun writes no dataset files")
+}
+
+func TestPushFailClosedUnknownColumn(t *testing.T) {
+	ctx := context.Background()
+	imp, db, stagingDir, datasetsDir := testImporter(t)
+
+	rows := []string{
+		"customer_name,mobile,cert_no,balance,overdue_days,update_ts,status,extra_col",
+		"张三,138-0000-0000,11010119900101X,1250,5,2026-07-01,active,x",
+	}
+	_, err := imp.Push(ctx, PushRequest{
+		Dataset: "loans",
+		Period:  "2026-07",
+		Channel: "csv",
+		Reader:  strings.NewReader(strings.Join(rows, "\n")),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "extra_col")
+
+	batches, err := db.ListImportBatches(ctx, "loans")
+	require.NoError(t, err)
+	assert.Empty(t, batches)
+	assertNoDuckDBInDir(t, stagingDir, "unknown-column push leaves no staging residue")
+	assertNoDuckDBInDir(t, datasetsDir, "unknown-column push leaves no dataset residue")
+}
+
+func TestRawNeverOnDisk(t *testing.T) {
+	ctx := context.Background()
+
+	// Snapshot os.TempDir() directly (not recursively) so that any file the
+	// pipeline leaks into the system temp is detected. Staging/datasets are
+	// placed under the repo root (not TempDir) so they do not perturb this
+	// snapshot; the temp-root diff is the Hertz-preparse leak guard, while
+	// staging/datasets WalkDir is the library-level guard.
+	tmpRoot := os.TempDir()
+	before := snapshotDirNames(t, tmpRoot)
+
+	root, err := os.MkdirTemp(".", "raw-never-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+
+	stagingDir := filepath.Join(root, "staging")
+	datasetsDir := filepath.Join(root, "datasets")
+	require.NoError(t, os.MkdirAll(stagingDir, 0o755))
+	require.NoError(t, os.MkdirAll(datasetsDir, 0o755))
+
+	db, err := sqlite.New(ctx, sqlite.Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	imp := NewImporter(ImporterConfig{
+		SiteSalt:    "test-site-salt-16bytes",
+		RulesDir:    "../../datarules",
+		StagingDir:  stagingDir,
+		DatasetsDir: datasetsDir,
+	}, db, nil)
+
+	// Human channel: Preview + Commit.
+	previewResp, err := imp.Preview(ctx, PreviewRequest{
+		Dataset: "loans",
+		Period:  "2026-07",
+		Channel: "csv",
+		Reader:  strings.NewReader(csvFileA()),
+	})
+	require.NoError(t, err)
+	_, err = imp.Commit(ctx, CommitRequest{
+		PreviewID: previewResp.PreviewID,
+		Dataset:   "loans",
+		Period:    "2026-07",
+		Channel:   "csv",
+		Reader:    strings.NewReader(csvFileA()),
+	})
+	require.NoError(t, err)
+
+	// Machine channel: Push a different file for the same key.
+	_, err = imp.Push(ctx, PushRequest{
+		Dataset: "loans",
+		Period:  "2026-07",
+		Channel: "csv",
+		Reader:  strings.NewReader(csvFileB()),
+	})
+	require.NoError(t, err)
+
+	// Library-level invariant: only .duckdb files exist, and staging is empty.
+	assertNoRawFilesInDir(t, stagingDir, "staging")
+	assertNoRawFilesInDir(t, datasetsDir, "datasets")
+
+	// System temp invariant: no new top-level entries appeared.
+	after := snapshotDirNames(t, tmpRoot)
+	for name := range after {
+		if _, ok := before[name]; !ok {
+			t.Fatalf("os.TempDir() gained a new top-level entry during import: %q", name)
+		}
+	}
+}
+
+func snapshotDirNames(t *testing.T, dir string) map[string]struct{} {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	out := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		out[e.Name()] = struct{}{}
+	}
+	return out
+}
+
+func assertNoRawFilesInDir(t *testing.T, dir, label string) {
+	t.Helper()
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		ext := strings.ToLower(filepath.Ext(name))
+		if ext == ".csv" || ext == ".sql" || ext == ".dump" {
+			t.Fatalf("%s contains raw file: %s", label, path)
+		}
+		return nil
+	})
+	require.NoError(t, err)
 }
