@@ -508,12 +508,26 @@ Plans:
 **Plans:** 7 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 15-01-PLAN.md — 脱敏纯函数核心：normalize 三档 profile + HMAC 盐推导链 + L2 定宽桶 + 规则文件 fail-closed 加载 + 四编码流式解码（TestHMACNormalizationJoinability / TestUnknownColumnFailClosed / TestDecode）
 - [ ] 15-02-PLAN.md — 注册表/审计存储面：datasets 三新列 additive 迁移 + import_batches / dataset_deletes INSERT-only 表 + Store 接口扩展（TestBatchAuditRowShape）
 - [ ] 15-03-PLAN.md — supersede 原子交换三步备份链 + WriteStagingBatch Appender 写入 helper + 复合名 ATTACH 探针（TestSupersedeAtomicSwap）
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 15-04-PLAN.md — sqlite .dump 三层文法解析器（永不执行）+ 预览会话 store + 哈希桥接（TestDumpNonInsertStatementRejected / TestPreviewCommitHashBridge）
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 15-05-PLAN.md — 三通道导入编排：Preview / Commit / Push / DryRun + 幂等 + supersede 链审计 + k_min 注册（TestRawNeverOnDisk / TestIdempotentReimport）
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 15-06-PLAN.md — 导入/删除 HTTP 端点：Hertz 三选项 + 分路由体量守卫 + multipart 流式 handler + main 装配（TestImportStreaming / TestDeleteDatasetAudited）
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 15-07-PLAN.md — 结构性禁令门（禁预解析/禁逐行 INSERT/禁行值日志）+ verify-phase-15.sh + Makefile target
 
 **UI hint**: no（API 层；导入管理 UI 在 Phase 20 admin）

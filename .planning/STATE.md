@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 14
 current_plan: 1
-status: Advanced — the cmd/eval refusal-accounting defect is fixed, the explicit faithfulness exemption is code-locked with `TestRefusedCaseFaithExemption`, and full hermetic gates are green; the authorized compliance replay could NOT run because the BGE-M3 endpoint is unreachable (`no route to host`). This is an environment STOP, not a semantic FAIL; no metrics were fabricated.
+status: executing
 stopped_at: Phase 15 context gathered
-last_updated: "2026-08-23T11:49:29.744Z"
-last_activity: 2026-08-23
+last_updated: "2026-08-23T15:38:02.900Z"
+last_activity: 2026-08-23 -- Phase 15 planning complete
 progress:
   total_phases: 20
   completed_phases: 12
-  total_plans: 84
+  total_plans: 91
   completed_plans: 85
   percent: 60
 ---
@@ -22,8 +22,8 @@ progress:
 
 Phase: 15 — ready to start (no CONTEXT.md yet → `/gsd:discuss-phase 15` recommended first)
 Plan: — (Phase 14 closed 2026-08-23)
-Status: Phase 14 COMPLETE (12/12 plans + UAT 6/6 + VERIFICATION gaps resolved-or-deferred per user decision)
-Last activity: 2026-08-23
+Status: Ready to execute
+Last activity: 2026-08-23 -- Phase 15 planning complete
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -211,7 +211,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Advanced — the cmd/eval refusal-accounting defect is fixed, the explicit faithfulness exemption is code-locked with `TestRefusedCaseFaithExemption`, and full hermetic gates are green; the authorized compliance replay could NOT run because the BGE-M3 endpoint is unreachable (`no route to host`). This is an environment STOP, not a semantic FAIL; no metrics were fabricated.
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
