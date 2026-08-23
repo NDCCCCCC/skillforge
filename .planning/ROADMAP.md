@@ -505,7 +505,17 @@ Plans:
 
 **Pitfalls addressed:** Pitfall 13（raw 文件生命周期——GC 定时器不是安全边界，须导入即弃+审计证明）、Pitfall 21（脱敏规则漂移——规则注册表 + fail-closed，规则缺失拒绝导入而非放行）、Pitfall 11（聚合 join 再识别——k_min 配置面在此铺，断言在 Phase 17）
 **Research flag:** ARCHITECTURE.md Q1（数据层 package 布局）+ Q7（分类器位置）；STACK-VERIFICATION §3.1（GBK/BOM 解码）+ §3.2（HMAC 规范化）——规范化的具体形态（NFC/trim/全角空格/手机号）plan 期定稿
-**Plans**: TBD
+**Plans:** 7 plans
+
+Plans:
+- [ ] 15-01-PLAN.md — 脱敏纯函数核心：normalize 三档 profile + HMAC 盐推导链 + L2 定宽桶 + 规则文件 fail-closed 加载 + 四编码流式解码（TestHMACNormalizationJoinability / TestUnknownColumnFailClosed / TestDecode）
+- [ ] 15-02-PLAN.md — 注册表/审计存储面：datasets 三新列 additive 迁移 + import_batches / dataset_deletes INSERT-only 表 + Store 接口扩展（TestBatchAuditRowShape）
+- [ ] 15-03-PLAN.md — supersede 原子交换三步备份链 + WriteStagingBatch Appender 写入 helper + 复合名 ATTACH 探针（TestSupersedeAtomicSwap）
+- [ ] 15-04-PLAN.md — sqlite .dump 三层文法解析器（永不执行）+ 预览会话 store + 哈希桥接（TestDumpNonInsertStatementRejected / TestPreviewCommitHashBridge）
+- [ ] 15-05-PLAN.md — 三通道导入编排：Preview / Commit / Push / DryRun + 幂等 + supersede 链审计 + k_min 注册（TestRawNeverOnDisk / TestIdempotentReimport）
+- [ ] 15-06-PLAN.md — 导入/删除 HTTP 端点：Hertz 三选项 + 分路由体量守卫 + multipart 流式 handler + main 装配（TestImportStreaming / TestDeleteDatasetAudited）
+- [ ] 15-07-PLAN.md — 结构性禁令门（禁预解析/禁逐行 INSERT/禁行值日志）+ verify-phase-15.sh + Makefile target
+
 **UI hint**: no（API 层；导入管理 UI 在 Phase 20 admin）
 
 ### Phase 16: KPI 聚合通道（P10.2）
