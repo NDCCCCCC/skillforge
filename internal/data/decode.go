@@ -182,7 +182,7 @@ func (r *strictUTF8Reader) Read(p []byte) (int, error) {
 		}
 		if n > 0 {
 			c := copy(p, r.pend[:n])
-			r.pend = r.pend[n:]
+			r.pend = r.pend[c:]
 			return c, nil
 		}
 		if r.srcEOF {
