@@ -334,7 +334,7 @@ Which phases cover which requirements.
 | CMPL-06 | Phase 5 | Complete |
 | CMPL-07 | Phase 5 | Complete |
 | CMPL-08 | Phase 5 | Complete |
-| DATA-01 | Phase 15 | Complete (15-04 dump parser + 15-05 Preview/Commit/Push/DryRun orchestrator; CSV/push channels remain in 15-06 for HTTP wiring) |
+| DATA-01 | Phase 15 | Complete (15-04 dump parser + 15-05 Preview/Commit/Push/DryRun orchestrator + 15-06 streaming HTTP surface for preview/commit/push) |
 | DATA-02 | Phase 15 | Complete |
 | DATA-03 | Phase 16 | Pending |
 | DATA-04 | — | Deferred v1.1（外部授权通道） |
@@ -376,7 +376,7 @@ Which phases cover which requirements.
 | PLAT-09 | Phase 14 | Complete (14-01 + 14-10 SUMMARY; single ComposePlatformPrompt exit + unshadowable + hot-reload survives + WalkDir no-bypass; 1.1.0 anti-dilution re-anchor live-verified 20/20) |
 | PLAT-10 | Phase 14 | Complete (14-02 SUMMARY; audit platform_floor_version column + all 5 INSERT paths + admin preview endpoint) |
 | PLAT-11 | Phase 14 | Complete (14-04 SUMMARY; 20-case frozen set + JudgeHermetic + platform-floor.lock.json) |
-| DATA-15 | Phase 15 | Complete (15-04 SUMMARY; `internal/data/preview.go` in-memory preview session store + `ValidateCommitAgainstPreview` content-hash bridge; HTTP handlers remain in 15-06) |
+| DATA-15 | Phase 15 | Complete (15-04 preview session store + `ValidateCommitAgainstPreview` content-hash bridge; 15-06 HTTP handlers for preview/commit and hash-mismatch rejection) |
 | DATA-16 | Phase 15 | Complete (15-02 SUMMARY; LatestImportBatch query surface + import_batches (dataset,period) index) |
 | DATA-17 | Phase 15 | Complete (15-02 SUMMARY; INSERT-only import_batches table with batch_id/raw_size_bytes/desensitized_row_count/discard_ts/dataset + TestBatchAuditRowShape) |
 | KPI-01 | Phase 16 | Pending |

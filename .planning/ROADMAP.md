@@ -522,11 +522,11 @@ Plans:
 
 - [x] 15-05-PLAN.md — 三通道导入编排：Preview / Commit / Push / DryRun + 幂等 + supersede 链审计 + k_min 注册（TestRawNeverOnDisk / TestIdempotentReimport）
 
-**Wave 4** *(blocked on Wave 3 completion — now unblocked)*
+**Wave 4** *(complete)*
 
-- [ ] 15-06-PLAN.md — 导入/删除 HTTP 端点：Hertz 三选项 + 分路由体量守卫 + multipart 流式 handler + main 装配（TestImportStreaming / TestDeleteDatasetAudited）
+- [x] 15-06-PLAN.md — 导入/删除 HTTP 端点：Hertz 三选项 + 分路由体量守卫 + multipart 流式 handler + main 装配（TestImportStreaming / TestDeleteDatasetAudited）
 
-**Wave 5** *(blocked on Wave 4 completion)*
+**Wave 5** *(unblocked)*
 
 - [ ] 15-07-PLAN.md — 结构性禁令门（禁预解析/禁逐行 INSERT/禁行值日志）+ verify-phase-15.sh + Makefile target
 

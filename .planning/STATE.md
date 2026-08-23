@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 15
-current_plan: 6
+current_plan: 7
 status: executing
-stopped_at: Completed 15-05
-last_updated: "2026-08-24T02:06:00Z"
-last_activity: 2026-08-24 -- Phase 15 Plan 05 complete (three-channel import orchestrator + Push/DryRun + TestRawNeverOnDisk)
+stopped_at: Completed 15-06
+last_updated: "2026-08-24T02:55:00Z"
+last_activity: 2026-08-24 -- Phase 15 Plan 06 complete (streaming import HTTP surface: preview/commit/push + DELETE with audit; TestImportStreaming + TestDeleteDatasetAudited green)
 progress:
   total_phases: 20
   completed_phases: 12
   total_plans: 91
-  completed_plans: 90
+  completed_plans: 91
   percent: 60
 ---
 
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 15 (数据导入管线 + 导入即脱敏（P10.1）) — EXECUTING
-Plan: 6 of 7
+Plan: 7 of 7
 Status: Executing Phase 15
-Last activity: 2026-08-24 -- Phase 15 Plan 05 complete (three-channel import orchestrator + Push/DryRun + TestRawNeverOnDisk)
+Last activity: 2026-08-24 -- Phase 15 Plan 06 complete (streaming import HTTP surface: preview/commit/push + DELETE with audit; TestImportStreaming + TestDeleteDatasetAudited green)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -192,6 +192,7 @@ Resume File: .planning/phases/15-p10-1/15-CONTEXT.md
 
 ### Roadmap Evolution
 
+- 2026-08-24: Phase 15 Plan 06 (15-06) complete — Hertz streaming import HTTP surface: POST /api/import/preview/commit/push (with dry_run), DELETE /api/import/dataset/:name, per-route body-size guard, admin-token gate, SKILLFORGE_DATA_SALT fail-closed 503, Detach-before-Remove Windows lock ordering, and INSERT-only dataset_deletes audit. TestImportStreaming + TestDeleteDatasetAudited green; full `./internal/server/...` regression passes.
 - 2026-08-24: Phase 15 Plan 05 (15-05) complete — `internal/data/importer.go` three-channel orchestrator (Preview / Commit / Push / DryRun) + `internal/data/batch.go` batch idempotency/supersede/audit helpers + `TestRawNeverOnDisk` library-level raw-leak guard. DATA-01/02/15/16/17 fully locked at the library layer; HTTP handlers remain in 15-06.
 - 2026-08-23: Phase 15 Plan 04 (15-04) complete — `internal/data/dump.go` sqlite .dump three-layer accept-list parser (zero SQL execution) + four 3.53.0 ground-truth fixtures + `internal/data/preview.go` in-memory preview session store with TTL/capacity/deep-copy snapshots + `ValidateCommitAgainstPreview` content-hash bridge (D15-B1). DATA-01 dump channel + DATA-15 two-stage preview/commit base locked.
 - 2026-08-23: Phase 15 Plan 03 (15-03) complete — `SupersedeStagedDataset` three-step backup-rename-register chain + `WriteStagingBatch` Appender-only bulk write helper + composite-name ATTACH probe (A1 closed). `internal/duckdb/connector.go` and `attach_lru.go` now quote ATTACH/DETACH aliases to support hyphenated dataset ids. DATA-16 engine atomics locked.
