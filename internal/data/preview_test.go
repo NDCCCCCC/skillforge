@@ -121,7 +121,7 @@ func TestPreviewSessionCapacityEvict(t *testing.T) {
 	}
 }
 
-func TestPreviewCommitHashBridge(t *testing.T) {
+func TestValidateCommitHashBridge(t *testing.T) {
 	sess := &PreviewSession{
 		PreviewID:     "p1",
 		ContentSHA256: sha256Of("file-A-contents"),
