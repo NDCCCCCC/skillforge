@@ -442,7 +442,7 @@
 
 **Pitfalls addressed:** Pitfall 17（平台提示词 lockstep——skill.md 修改系统提示词时平台地板静默丢失；地板版本进审计行使其可检测）
 **Research flag:** STACK-VERIFICATION §1（gcc 环境三方案，推荐 MSYS2）+ §2.1（ATTACH 会话不持久 / Close() 刷 WAL / Windows 文件锁 DETACH）——全部为已验证事实，plan 期只需落到代码
-**Plans**: 10 plans in 8 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates → W8 UAT gap closure；重锁排地板文案冻结之后）
+**Plans**: 11 plans in 10 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates → W8-W9 UAT gap closure → W10 verification gap closure；重锁排地板文案冻结之后）
 
 Plans:
 **Wave 1**
@@ -478,6 +478,10 @@ Plans:
 
 - [x] 14-09-PLAN.md — 旧库迁移 blocker 修复（idx_audit_run_path 移到 ALTER 循环之后）+ 文件级旧库升级回归锁 + UAT Test 2/6 真机复验 pass
 - [x] 14-10-PLAN.md — floor 1.1.0 re-anchor（UAT Test 4 live 复跑 19/20 → 长对话稀释锚定强化 + 重锁）(executed 2026-08-23 — Task 1 hermetic 全绿双提交 + UAT Test 4 live 20/20 PASS（pfloor-20 引用 1.1.0 尾部条款拒答）+ Test 6 真机复验 1.1.0；**遗留**：compliance replay 连续两次 FAIL（劣化窗口 0.6876 + 干净窗口 0.6763，refusal 0/20 复现）→ 2026-08-23 根因定位为 cmd/eval 拒答口径缺陷（不识别 verdict status:"refused"，1.0.0 基线 0.972/95% 由 parse-error 空答案路径虚高），platform-floor 锁重签（fill-lock）+ README caveat 冻结至 planner 裁决测量层修复——见 14-10-SUMMARY Operator-Gate Addendum 与 STATE blocker)
+
+**Wave 10** *(VERIFICATION 2026-08-23 gap closure — 3 gaps, added post-verify)*
+
+- [ ] 14-11-PLAN.md — 收口 14-VERIFICATION gaps 1-3：cmd/eval 拒答口径修复（classifyRunOutcome 识别 verdict status:"refused"→REFUSAL 哨兵，TDD）+ 单次 compliance replay（PASS→14-10 递延的 fill-lock 1.1.0 重签+README caveat+第 5 锁条目；FAIL→STOP 不重签）+ Dockerfile.backend runtime libstdc++/libgcc + verify-phase-13 pin 涟漪锁步 1dc6f148…
 
 **UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
 
