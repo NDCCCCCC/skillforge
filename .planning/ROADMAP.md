@@ -687,12 +687,12 @@ Plans:
 | 7. Open-Source Release | 5/6 (07-02 2/3 tasks · 07-05 1/3 tasks · 07-06 not started) | In Progress — 2 human-verify checkpoints blocking (07-02 T3 docker-build, 07-05 T2/T3 live stack + GIF) | - |
 | 8. 全量依赖升级 (P8.0) | 5/5 | Complete — live 三门 human-verify approved 2026-08-18（cancel 0ms / tier 5行+0行 / frozen eval gate PASS 0.972，v0.8 基线留档）；ready for verify-work | 2026-08-18 |
 | 9. 历史注入 spike 硬门 (P8.S) | 6/6 | Complete — live spike 裁决 **NO-GO**（用户 2026-08-18 签字「接受 NO-GO 带逃逸方案」）：SC-3 零穿透 0/10 PASS，refusal -95pp + faithfulness/context_recall 漂移超门（Pitfall 1 H2 证实）；GEVL-08 交付（消毒规则 + 有记录裁决 + 逃逸方案）；Phase 10 须前置信任地板强化，memory 发布前重跑硬门 | 2026-08-18 |
-| 10. 多轮对话记忆 (P8.1) | 3/4 (10-01..10-03 complete; 10-04 Task 1 shipped, Task 2 blocked-pending-human) | In Progress — live 35-case re-run pending operator stack (GLM_API_KEY / BGE_M3_URL / MILVUS_ADDRESS + Docker Milvus/BGE-M3) | 2026-08-18 (Task 1 + closeout transcription)
-| 11. 写工具 + 审批门 (P8.2) | 0/? | Not started | - |
-| 12. 规划层 (P8.3) | 0/? | Not started | - |
+| 10. 多轮对话记忆 (P8.1) | 4/4 plans closed (10-04 Task 2 live re-run = operator gate) | Closed blocked-with-notes (user-accepted 2026-08-20) — live 35-case re-run is the v0.8 milestone gate (GEVL-08/N9-V2) | 2026-08-20 |
+| 11. 写工具 + 审批门 (P8.2) | 8/8 (11-01..11-08) | Complete — UAT complete | 2026-08-20 |
+| 12. 规划层 (P8.3) | 8/8 (12-01..12-08) | Complete — UAT partial: hermetic gate verified; 12 live tests blocked-pending-operator (.env + Docker Milvus + BGE-M3) | 2026-08-20 |
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
-| 14. CGO 地基 + 平台信任地板 (P10.0) | 4/8 (14-01 platform-floor core + 14-02 audit/admin preview + 14-03 CGO sqlite switch + 14-04 frozen eval set + hermetic judge) | In Progress — Wave 3 complete; next Wave 4 (14-05 go-duckdb connector) | 2026-08-22 (14-03) |
-| 15. 数据导入管线 + 导入即脱敏 (P10.1) | 4/7 (15-01..15-04 complete) | In Progress — Wave 2 complete; next Wave 3 (15-05 importer orchestration) | 2026-08-23 |
+| 14. CGO 地基 + 平台信任地板 (P10.0) | 12/12 (14-01..14-08 core + 14-09/14-10 UAT gap closure + 14-11/14-12 verification gap closure) | Complete — closed with deferred items 2026-08-23 (BGE replay re-sign + Docker live verify = operator gates; UAT 6/6, gates 11/11 + 9/9) | 2026-08-23 |
+| 15. 数据导入管线 + 导入即脱敏 (P10.1) | 7/7 (15-01..15-07) | Complete — verify-phase-15.sh 10/10 PASS; code review resolved 6/6 (commit c0d7d5a, incl. strictUTF8Reader rune-split root cause); 15-VERIFICATION PASS | 2026-08-24 |
 | 16. KPI 聚合通道 (P10.2) | 0 (not planned) | Not started | - |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
 | 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |
@@ -700,7 +700,7 @@ Plans:
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-23 — Phase 14 Plan 14-11 (verification gap closure) executed: cmd/eval refusal-accounting fix extracted into `classifyRunOutcome` with hermetic RED→GREEN regression lock; Dockerfile.runtime stage installs `libstdc++ libgcc` (go-duckdb CGO dynamic-link dep); verify-phase-13 Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11, Gate 9/9 PASS); single authorized compliance replay completed 50/50 cases but STOPped at faithfulness 0.888 (<0.9) with mid-run BGE endpoint failure + adversarial-category drag; refusal fix effect confirmed (refusal-required 19/20 refused, faith 0.9727). No re-sign, no retry, no falsified evidence — honest result routed to 14-10-SUMMARY Operator-Gate Addendum Alternative (explicit re-baseline of gate semantics) as pending planner/user decision. All hermetic gates green (verify-phase-14 11/11, verify-phase-13 9/9), frozen locks + golden sets byte-identical. Docker live verification blocked-with-notes (Docker not installed on this host). See 14-11-SUMMARY.md.*
+*Last updated: 2026-08-24 — Phase 15 (数据导入管线 + 导入即脱敏, P10.1) CLOSED: 7/7 plans hermetically gated (`verify-phase-15.sh` 10/10 PASS in WSL2 Ubuntu-22.04; full `go test ./... -count=1 -race` green); code review resolved 6/6 findings (commit `c0d7d5a` — CR-01 streaming multipart onFile callback, DATA-17 audit-before-mutation ordering, ImportMaxRowsPerBatch enforcement, all-NULL VARCHAR inference, gate regex sync, plus a root-caused `strictUTF8Reader` multi-byte rune-splitting bug rewritten on `bufio.ReadRune`); 15-VERIFICATION verdict PASS across DATA-01/02/15/16/17. Progress-table rows for phases 10/11/12/14/15 reconciled with recorded closeouts (11 = 8/8 UAT complete; 12 = 8/8 hermetic verified, live tests operator-gated). Deferred operator gates unchanged (Phase 14 BGE replay re-sign; Phase 10 live 35-case re-run). Next: `/gsd-discuss-phase 16` (KPI 聚合通道, P10.2).*
 
 ---
 

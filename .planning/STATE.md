@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
-current_phase: 15
-current_plan: 7
-status: completed
-stopped_at: Completed 15-07
-last_updated: "2026-08-24T03:30:00Z"
-last_activity: 2026-08-24 -- Phase 15 Plan 07 complete (structural ban gates + verify-phase-15.sh 10/10 PASS); Phase 15 data-import pipeline fully delivered and hermetically gated
+current_phase: 16
+current_plan: 0
+status: discussing
+stopped_at: Phase 15 closed; routed to discuss-phase 16
+last_updated: "2026-08-24T13:05:00Z"
+last_activity: 2026-08-24 -- Phase 15 CLOSED (review resolved 6/6 commit c0d7d5a + verification PASS + gate 10/10); ROADMAP rows 10/11/12/14/15 reconciled; STATE advanced to Phase 16
 progress:
   total_phases: 20
   completed_phases: 13
@@ -20,10 +20,10 @@ progress:
 
 ## Current Position
 
-Phase: 15 (数据导入管线 + 导入即脱敏（P10.1）) — EXECUTING
-Plan: 7 of 7
-Status: Executing Phase 15
-Last activity: 2026-08-24 -- Phase 15 Plan 06 complete (streaming import HTTP surface: preview/commit/push + DELETE with audit; TestImportStreaming + TestDeleteDatasetAudited green)
+Phase: 16 (KPI 聚合通道（P10.2）) — DISCUSSING
+Plan: 0 of ? (not planned)
+Status: Discussing Phase 16
+Last activity: 2026-08-24 -- Phase 15 closed hermetically (review resolved, verification PASS, gate 10/10)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -79,7 +79,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 15 — 数据导入管线 + 导入即脱敏（P10.1）
+**Current focus:** Phase 16 — KPI 聚合通道（P10.2）
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**
@@ -93,12 +93,12 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 ## Current Position
 
-Phase: 15 (数据导入管线 + 导入即脱敏，P10.1) — **COMPLETED** 2026-08-24
-Plan: 7 of 7 complete (15-01 → 15-07)
-Status: completed
-Last activity: 2026-08-24 -- Phase 15 Plan 07 shipped hermetically: structural ban gates (`integration/contract/import_gates_test.go`) + `scripts/verify-phase-15.sh` 10/10 PASS in WSL2 Ubuntu-22.04 + `make verify-phase-15` target.
-Stopped At: Phase 15 closeout; post-phase gates (code-review / regression / verifier / roadmap update) are next.
-Resume File: `.planning/phases/15-p10-1/15-07-SUMMARY.md`
+Phase: 16 (KPI 聚合通道，P10.2) — **DISCUSSING** 2026-08-24
+Plan: 0 (phase not yet planned)
+Status: discussing
+Last activity: 2026-08-24 -- Phase 15 CLOSED: code review resolved (6/6 findings fixed, commit `c0d7d5a`, incl. `strictUTF8Reader` rune-split root cause), 15-VERIFICATION verdict PASS (DATA-01/02/15/16/17), `verify-phase-15.sh` 10/10, full `-race` suite green. ROADMAP progress rows for phases 10/11/12/14/15 reconciled with recorded closeouts.
+Stopped At: routed to `/gsd-discuss-phase 16`
+Resume File: `.planning/phases/15-p10-1/15-VERIFICATION.md` (Phase 15 closeout evidence)
 
 **Phase 15 delivery summary:**
 
@@ -112,7 +112,7 @@ Resume File: `.planning/phases/15-p10-1/15-07-SUMMARY.md`
 
 **Verification:** `bash scripts/verify-phase-15.sh` → **PASS 10/10**; `go test ./... -count=1` and `go test ./... -count=1 -race` both green in WSL2.
 
-**Next action:** Execute post-phase closeout gates (code-review → regression → `gsd-verifier` → final roadmap/STATE sync).
+**Next action:** `/gsd-discuss-phase 16` — KPI 聚合通道（P10.2）：KPI 注册表（无注册后门）+ `data:aggregated_only` 通道守卫 + agent 永不写 SQL（结构性保证）+ 数据引用快照冻结进审计行。Phase 15 全部收尾门已完成（review resolved / verification PASS / roadmap + STATE synced）。
 
 **Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
 
@@ -206,6 +206,7 @@ Resume File: `.planning/phases/15-p10-1/15-07-SUMMARY.md`
 
 ### Roadmap Evolution
 
+- 2026-08-24: Phase 15 post-phase gates CLOSED — code review resolved 6/6 findings (commit `c0d7d5a`: CR-01 streaming multipart onFile callback + `strictUTF8Reader` rewritten on `bufio.ReadRune` fixing a latent multi-byte rune-split corruption + DATA-17 audit-before-mutation ordering); 15-VERIFICATION verdict PASS; ROADMAP progress rows 10/11/12/14/15 reconciled with recorded closeouts; STATE advanced to Phase 16 (discussing).
 - 2026-08-24: Phase 15 COMPLETE — Plan 07 (structural ban gates + `verify-phase-15.sh` 10/10 PASS + `make verify-phase-15`) closes the phase. All 7 plans (15-01..15-07) hermetically gated. Post-phase closeout gates (code-review / regression / verifier / roadmap sync) are next.
 - 2026-08-24: Phase 15 Plan 06 (15-06) complete — Hertz streaming import HTTP surface: POST /api/import/preview/commit/push (with dry_run), DELETE /api/import/dataset/:name, per-route body-size guard, admin-token gate, SKILLFORGE_DATA_SALT fail-closed 503, Detach-before-Remove Windows lock ordering, and INSERT-only dataset_deletes audit. TestImportStreaming + TestDeleteDatasetAudited green; full `./internal/server/...` regression passes.
 - 2026-08-24: Phase 15 Plan 05 (15-05) complete — `internal/data/importer.go` three-channel orchestrator (Preview / Commit / Push / DryRun) + `internal/data/batch.go` batch idempotency/supersede/audit helpers + `TestRawNeverOnDisk` library-level raw-leak guard. DATA-01/02/15/16/17 fully locked at the library layer; HTTP handlers remain in 15-06.
