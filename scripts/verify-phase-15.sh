@@ -109,7 +109,7 @@ run_stage "full-repo go test -count=1 -race" \
 # ---------------------------------------------------------------------------
 
 run_stage "sqlite store suite (audit/registry migration locks)" \
-  bash -c "go test ./internal/store/... -run 'TestBatchAuditRowShape|TestImportBatchInsertOnly|TestImportBatches|TestMigrateLegacy' -count=1 -timeout 300s"
+  bash -c "go test ./internal/store/... -run 'TestBatchAuditRowShape|TestImportBatchInsertOnly|TestImportBatchesDDL|TestImportBatchesIndexExists|TestDatasetRowNewColumnsRoundTrip|TestMigrateLegacyAuditUpgradePath|TestMigrateLegacyDatasetsUpgradePath|TestMigrateLegacyIdempotentReopen|TestMigrateFreshFileDBRunPathIdx|TestMigrateLegacyDatasetsIdempotentReopen' -count=1 -timeout 300s"
 
 # ---------------------------------------------------------------------------
 # Stage 05 — duckdb staging + supersede + appender floor (SC-1)

@@ -380,7 +380,6 @@ func (imp *Importer) pushBatch(ctx context.Context, dataset, period, channel str
 
 	schemaTypes := inferSchemaTypesFromRows(header, rules, sampleRows)
 	buf := &bufferedSource{buffer: sampleRows, src: src}
-	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
 
 	batchID, err := newBatchID()
 	if err != nil {
@@ -391,7 +390,13 @@ func (imp *Importer) pushBatch(ctx context.Context, dataset, period, channel str
 	if err != nil {
 		return nil, err
 	}
+	if rowCount > ImportMaxRowsPerBatch {
+		_ = os.Remove(stagingPath)
+		return nil, fmtError("pushBatch", fmt.Errorf(
+			"row count exceeds ImportMaxRowsPerBatch=%d", ImportMaxRowsPerBatch))
+	}
 
+	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
 	contentSHA := hex.EncodeToString(cw.Sum(nil))
 	rawSize := cw.n
 
@@ -667,6 +672,7 @@ func inferSchemaTypesFromByCol(header []string, rules *Rules, byCol map[string][
 func inferDuckDBType(samples []string) string {
 	allInt := true
 	allFloat := true
+	hasConcrete := false
 	for _, s := range samples {
 		if s == DumpNullValue {
 			continue
@@ -676,6 +682,7 @@ func inferDuckDBType(samples []string) string {
 			allFloat = false
 			continue
 		}
+		hasConcrete = true
 		if _, err := strconv.ParseInt(s, 10, 64); err != nil {
 			allInt = false
 		}
@@ -683,10 +690,10 @@ func inferDuckDBType(samples []string) string {
 			allFloat = false
 		}
 	}
-	if allInt && len(samples) > 0 {
+	if allInt && hasConcrete {
 		return "BIGINT"
 	}
-	if allFloat && len(samples) > 0 {
+	if allFloat && hasConcrete {
 		return "DOUBLE"
 	}
 	return "VARCHAR"
@@ -842,14 +849,19 @@ func (imp *Importer) finalizeBatch(ctx context.Context, previewID, dataset, peri
 		return nil, err
 	}
 
-	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
 	stagingPath, rowCount, err := imp.writeStaging(
 		ctx, batchID, dataset, header, src, rules, datasetSalt,
 		sess.BucketOverrides, sess.SchemaTypes, cw)
 	if err != nil {
 		return nil, err
 	}
+	if rowCount > ImportMaxRowsPerBatch {
+		_ = os.Remove(stagingPath)
+		return nil, fmtError("finalizeBatch", fmt.Errorf(
+			"row count exceeds ImportMaxRowsPerBatch=%d", ImportMaxRowsPerBatch))
+	}
 
+	discardTS := time.Now().UTC().Format(time.RFC3339Nano)
 	contentSHA := hex.EncodeToString(cw.Sum(nil))
 	rawSize := cw.n
 
@@ -977,6 +989,18 @@ func (imp *Importer) commitOrSupersede(
 		CreatedAt:     now,
 	}
 
+	// DATA-17 invariant: the audit row is written BEFORE the dataset/registry
+	// mutation. A dangling audit row on mutation failure is acceptable (it is a
+	// proof of attempt); a successful mutation without an audit row is not.
+	auditRow := newAuditRow(
+		batchID, dataset, period, rules.Tier, contentSHA, rulesSHA,
+		rawSize, rowCount, discardTS, supersededBatchID, now,
+	)
+	if err := writeAuditRow(ctx, imp.seam, auditRow); err != nil {
+		_ = os.Remove(stagingPath)
+		return nil, fmtError("commitOrSupersede", err)
+	}
+
 	targetExists := supersededBatchID != ""
 	if targetExists {
 		err = duckdb.SupersedeStagedDataset(ctx, duckdb.SupersedeOptions{
@@ -999,14 +1023,6 @@ func (imp *Importer) commitOrSupersede(
 		})
 	}
 	if err != nil {
-		return nil, fmtError("commitOrSupersede", err)
-	}
-
-	auditRow := newAuditRow(
-		batchID, dataset, period, rules.Tier, contentSHA, rulesSHA,
-		rawSize, rowCount, discardTS, supersededBatchID, now,
-	)
-	if err := writeAuditRow(ctx, imp.seam, auditRow); err != nil {
 		return nil, fmtError("commitOrSupersede", err)
 	}
 

@@ -81,6 +81,16 @@ func (imp *Importer) DeleteDataset(ctx context.Context, name string) ([]string, 
 }
 
 func (imp *Importer) deleteOneDataset(ctx context.Context, row store.DatasetRow, now time.Time) error {
+	// D15-C3: append the delete audit BEFORE filesystem/registry mutation. A
+	// dangling delete audit on removal failure is acceptable; a deletion without
+	// an audit row is not.
+	if err := imp.seam.PutDatasetDelete(ctx, store.DatasetDeleteRow{
+		Name:      row.Name,
+		Dataset:   row.Dataset,
+		DeletedAt: now,
+	}); err != nil {
+		return fmt.Errorf("audit delete %s: %w", row.Name, err)
+	}
 	if imp.lru != nil {
 		if err := imp.lru.Detach(ctx, row.Name); err != nil {
 			return fmt.Errorf("detach %s: %w", row.Name, err)
@@ -92,9 +102,5 @@ func (imp *Importer) deleteOneDataset(ctx context.Context, row store.DatasetRow,
 	if err := imp.seam.DeleteDataset(ctx, row.Name); err != nil {
 		return fmt.Errorf("delete registry row %s: %w", row.Name, err)
 	}
-	return imp.seam.PutDatasetDelete(ctx, store.DatasetDeleteRow{
-		Name:      row.Name,
-		Dataset:   row.Dataset,
-		DeletedAt: now,
-	})
+	return nil
 }

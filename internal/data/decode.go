@@ -157,78 +157,43 @@ func NewCSVReader(r io.Reader) *csv.Reader {
 	return cr
 }
 
-// strictUTF8Reader validates UTF-8 while passing bytes through. It
-// exists because x/text's UTF-8 decoder substitutes U+FFFD instead of
-// erroring; the import pipeline's fail-closed contract (T-15-12)
-// requires a hard error on any illegal or truncated sequence.
-//
-// Chunk-boundary correctness: a rune split across two upstream reads is
-// buffered as an incomplete tail (scanUTF8's incomplete flag) until
-// enough bytes arrive; a tail still incomplete at EOF is an error.
+// strictUTF8Reader validates UTF-8 by reading runes from the underlying
+// bufio.Reader. The standard bufio.Reader.ReadRune already fails-closed on
+// invalid encodings (returns RuneError with size 1). This wrapper re-emits the
+// decoded bytes from a small internal buffer so callers with tiny p slices
+// (e.g. io.ReadAll's 1-byte probing) never see a 0-byte/non-EOF progress
+// stall.
 type strictUTF8Reader struct {
-	src    io.Reader
-	pend   []byte // validated prefix + at most one possibly-incomplete trailing rune
-	srcEOF bool
+	src *bufio.Reader
+	buf []byte // encoded bytes of the next validated rune, not yet consumed
 }
 
-// Read delivers validated bytes, reading (and validating) more from
-// src as needed. Errors are wrapped in the data-package fmtError form.
+// Read fills p with validated UTF-8 bytes from the source stream.
 func (r *strictUTF8Reader) Read(p []byte) (int, error) {
-	for {
-		n, incomplete, invalid := scanUTF8(r.pend)
-		if invalid {
-			return 0, fmtError("DecodeStream", errors.New(
-				"invalid UTF-8 sequence in stream — fail-closed (mixed-encoding input is bad data)"))
-		}
-		if n > 0 {
-			c := copy(p, r.pend[:n])
-			r.pend = r.pend[c:]
-			return c, nil
-		}
-		if r.srcEOF {
-			if incomplete {
-				return 0, fmtError("DecodeStream", errors.New(
-					"truncated UTF-8 sequence at EOF — fail-closed"))
-			}
-			return 0, io.EOF
-		}
-		chunk := make([]byte, 32*1024)
-		m, err := r.src.Read(chunk)
-		if m > 0 {
-			r.pend = append(r.pend, chunk[:m]...)
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				r.srcEOF = true
-				continue // re-scan: the tail is now either invalid, truncated, or empty
-			}
-			return 0, err
-		}
+	if len(p) == 0 {
+		return 0, nil
 	}
+	n := 0
+	for n < len(p) {
+		if len(r.buf) == 0 {
+			rn, size, err := r.src.ReadRune()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return n, err
+				}
+				return n, err
+			}
+			if rn == utf8.RuneError && size == 1 {
+				return n, fmtError("DecodeStream", errors.New(
+					"invalid UTF-8 sequence in stream — fail-closed (mixed-encoding input is bad data)"))
+			}
+			var tmp [utf8.UTFMax]byte
+			r.buf = tmp[:utf8.EncodeRune(tmp[:], rn)]
+		}
+		c := copy(p[n:], r.buf)
+		r.buf = r.buf[c:]
+		n += c
+	}
+	return n, nil
 }
 
-// scanUTF8 walks b and classifies its leading bytes:
-//
-//	n          — length of the maximal prefix of COMPLETE valid runes
-//	incomplete — b[n:] is a rune truncated at the buffer edge (the
-//	             caller must read more before deciding)
-//	invalid    — b[n:] starts a sequence that can never decode, even
-//	             with more bytes (hard fail)
-//
-// The discriminator is utf8.FullRune: it reports false ONLY for a
-// truncated-but-otherwise-valid rune prefix; invalid start bytes count
-// as "full" 1-byte error runes and are caught by the DecodeRune check.
-func scanUTF8(b []byte) (n int, incomplete bool, invalid bool) {
-	i := 0
-	for i < len(b) {
-		r, size := utf8.DecodeRune(b[i:])
-		if r == utf8.RuneError && size == 1 {
-			if !utf8.FullRune(b[i:]) {
-				return i, true, false
-			}
-			return i, false, true
-		}
-		i += size
-	}
-	return i, false, false
-}

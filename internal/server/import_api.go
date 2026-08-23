@@ -39,7 +39,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -93,9 +92,9 @@ type deleteResponse struct {
 	Deleted []string `json:"deleted"`
 }
 
-// importForm holds the parsed multipart fields for an import request.
-// All text fields are collected; the file part is exposed as a streaming
-// io.Reader so the importer can consume it without buffering.
+// importForm holds the parsed multipart text fields for an import request.
+// The file part is never stored here; it is consumed synchronously by the
+// onFile callback passed to parseImportForm.
 type importForm struct {
 	PreviewID       string
 	Dataset         string
@@ -103,7 +102,6 @@ type importForm struct {
 	Channel         string
 	DryRun          bool
 	BucketOverrides map[string]float64
-	File            io.Reader
 }
 
 // importPreviewHandler implements POST /api/import/preview.
@@ -125,45 +123,40 @@ func (s *Deps) importPreviewHandler(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 
-	form, err := parseImportForm(c)
-	if err != nil {
+	if err := parseImportForm(c, func(form *importForm, file io.Reader) error {
+		resp, err := s.Importer.Preview(ctx, data.PreviewRequest{
+			Dataset:         form.Dataset,
+			Period:          form.Period,
+			Channel:         form.Channel,
+			Reader:          file,
+			BucketOverrides: form.BucketOverrides,
+		})
+		if err != nil {
+			mapImportError(c, err)
+			return nil
+		}
+
+		// D15-B4 / Pitfall 8: log only batch-level metadata. SamplePairs and raw
+		// values are deliberately omitted from the log line.
+		cols := columnNames(resp.Columns)
+		log.Printf("[OK] import preview: preview_id=%s dataset=%s period=%s channel=%s rows=%d content_sha256=%s columns=%v duration=%s",
+			resp.PreviewID, resp.Dataset, resp.Period, form.Channel, resp.RowCount, resp.ContentSHA256, cols, time.Since(start))
+
+		c.JSON(http.StatusOK, previewResponse{
+			PreviewID:     resp.PreviewID,
+			Dataset:       resp.Dataset,
+			Period:        resp.Period,
+			ProposedTier:  resp.ProposedTier,
+			RulesSHA256:   resp.RulesSHA256,
+			ContentSHA256: resp.ContentSHA256,
+			RowCount:      resp.RowCount,
+			Columns:       resp.Columns,
+			SamplePairs:   resp.SamplePairs,
+		})
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid form: " + err.Error()})
-		return
 	}
-	if form.File == nil {
-		c.JSON(http.StatusBadRequest, graphResponseError{Error: "missing file part"})
-		return
-	}
-
-	resp, err := s.Importer.Preview(ctx, data.PreviewRequest{
-		Dataset:         form.Dataset,
-		Period:          form.Period,
-		Channel:         form.Channel,
-		Reader:          form.File,
-		BucketOverrides: form.BucketOverrides,
-	})
-	if err != nil {
-		mapImportError(c, err)
-		return
-	}
-
-	// D15-B4 / Pitfall 8: log only batch-level metadata. SamplePairs and raw
-	// values are deliberately omitted from the log line.
-	cols := columnNames(resp.Columns)
-	log.Printf("[OK] import preview: preview_id=%s dataset=%s period=%s channel=%s rows=%d content_sha256=%s columns=%v duration=%s",
-		resp.PreviewID, resp.Dataset, resp.Period, form.Channel, resp.RowCount, resp.ContentSHA256, cols, time.Since(start))
-
-	c.JSON(http.StatusOK, previewResponse{
-		PreviewID:     resp.PreviewID,
-		Dataset:       resp.Dataset,
-		Period:        resp.Period,
-		ProposedTier:  resp.ProposedTier,
-		RulesSHA256:   resp.RulesSHA256,
-		ContentSHA256: resp.ContentSHA256,
-		RowCount:      resp.RowCount,
-		Columns:       resp.Columns,
-		SamplePairs:   resp.SamplePairs,
-	})
 }
 
 // importCommitHandler implements POST /api/import/commit.
@@ -185,37 +178,32 @@ func (s *Deps) importCommitHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	form, err := parseImportForm(c)
-	if err != nil {
+	if err := parseImportForm(c, func(form *importForm, file io.Reader) error {
+		result, err := s.Importer.Commit(ctx, data.CommitRequest{
+			PreviewID: form.PreviewID,
+			Dataset:   form.Dataset,
+			Period:    form.Period,
+			Channel:   form.Channel,
+			Reader:    file,
+		})
+		if err != nil {
+			mapImportError(c, err)
+			return nil
+		}
+
+		log.Printf("[OK] import commit: batch_id=%s dataset=%s period=%s channel=%s rows=%d superseded=%v superseded_batch_id=%s duration=%s",
+			result.BatchID, form.Dataset, form.Period, form.Channel, result.Rows, result.Superseded, result.SupersededBatchID, time.Since(start))
+
+		c.JSON(http.StatusOK, commitResponse{
+			BatchID:           result.BatchID,
+			Rows:              result.Rows,
+			Superseded:        result.Superseded,
+			SupersededBatchID: result.SupersededBatchID,
+		})
+		return nil
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid form: " + err.Error()})
-		return
 	}
-	if form.File == nil {
-		c.JSON(http.StatusBadRequest, graphResponseError{Error: "missing file part"})
-		return
-	}
-
-	result, err := s.Importer.Commit(ctx, data.CommitRequest{
-		PreviewID: form.PreviewID,
-		Dataset:   form.Dataset,
-		Period:    form.Period,
-		Channel:   form.Channel,
-		Reader:    form.File,
-	})
-	if err != nil {
-		mapImportError(c, err)
-		return
-	}
-
-	log.Printf("[OK] import commit: batch_id=%s dataset=%s period=%s channel=%s rows=%d superseded=%v superseded_batch_id=%s duration=%s",
-		result.BatchID, form.Dataset, form.Period, form.Channel, result.Rows, result.Superseded, result.SupersededBatchID, time.Since(start))
-
-	c.JSON(http.StatusOK, commitResponse{
-		BatchID:           result.BatchID,
-		Rows:              result.Rows,
-		Superseded:        result.Superseded,
-		SupersededBatchID: result.SupersededBatchID,
-	})
 }
 
 // importPushHandler implements POST /api/import/push.
@@ -237,58 +225,53 @@ func (s *Deps) importPushHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	form, err := parseImportForm(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid form: " + err.Error()})
-		return
-	}
-	if form.File == nil {
-		c.JSON(http.StatusBadRequest, graphResponseError{Error: "missing file part"})
-		return
-	}
+	if err := parseImportForm(c, func(form *importForm, file io.Reader) error {
+		if form.DryRun {
+			result, err := s.Importer.DryRun(ctx, data.PushRequest{
+				Dataset: form.Dataset,
+				Period:  form.Period,
+				Channel: form.Channel,
+				Reader:  file,
+				DryRun:  true,
+			})
+			if err != nil {
+				mapImportError(c, err)
+				return nil
+			}
+			cols := columnNames(result.Columns)
+			log.Printf("[OK] import push dry_run: dataset=%s period=%s channel=%s columns=%v violations=%d duration=%s",
+				form.Dataset, form.Period, form.Channel, cols, len(result.Violations), time.Since(start))
+			c.JSON(http.StatusOK, dryRunResponse{
+				Columns:    result.Columns,
+				Violations: result.Violations,
+			})
+			return nil
+		}
 
-	if form.DryRun {
-		result, err := s.Importer.DryRun(ctx, data.PushRequest{
+		result, err := s.Importer.Push(ctx, data.PushRequest{
 			Dataset: form.Dataset,
 			Period:  form.Period,
 			Channel: form.Channel,
-			Reader:  form.File,
-			DryRun:  true,
+			Reader:  file,
 		})
 		if err != nil {
 			mapImportError(c, err)
-			return
+			return nil
 		}
-		cols := columnNames(result.Columns)
-		log.Printf("[OK] import push dry_run: dataset=%s period=%s channel=%s columns=%v violations=%d duration=%s",
-			form.Dataset, form.Period, form.Channel, cols, len(result.Violations), time.Since(start))
-		c.JSON(http.StatusOK, dryRunResponse{
-			Columns:    result.Columns,
-			Violations: result.Violations,
+
+		log.Printf("[OK] import push: batch_id=%s dataset=%s period=%s channel=%s rows=%d superseded=%v superseded_batch_id=%s duration=%s",
+			result.BatchID, form.Dataset, form.Period, form.Channel, result.Rows, result.Superseded, result.SupersededBatchID, time.Since(start))
+
+		c.JSON(http.StatusOK, commitResponse{
+			BatchID:           result.BatchID,
+			Rows:              result.Rows,
+			Superseded:        result.Superseded,
+			SupersededBatchID: result.SupersededBatchID,
 		})
-		return
+		return nil
+	}); err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid form: " + err.Error()})
 	}
-
-	result, err := s.Importer.Push(ctx, data.PushRequest{
-		Dataset: form.Dataset,
-		Period:  form.Period,
-		Channel: form.Channel,
-		Reader:  form.File,
-	})
-	if err != nil {
-		mapImportError(c, err)
-		return
-	}
-
-	log.Printf("[OK] import push: batch_id=%s dataset=%s period=%s channel=%s rows=%d superseded=%v superseded_batch_id=%s duration=%s",
-		result.BatchID, form.Dataset, form.Period, form.Channel, result.Rows, result.Superseded, result.SupersededBatchID, time.Since(start))
-
-	c.JSON(http.StatusOK, commitResponse{
-		BatchID:           result.BatchID,
-		Rows:              result.Rows,
-		Superseded:        result.Superseded,
-		SupersededBatchID: result.SupersededBatchID,
-	})
 }
 
 // importDeleteHandler implements DELETE /api/import/dataset/:name.
@@ -330,15 +313,19 @@ func (s *Deps) importDeleteHandler(ctx context.Context, c *app.RequestContext) {
 	c.JSON(http.StatusOK, deleteResponse{Deleted: deleted})
 }
 
-// parseImportForm reads the multipart form in streaming fashion. It collects
-// text parts and returns the file part as an io.Reader without buffering the
-// entire upload in memory or on disk. This function is the reason Hertz must
-// be configured with WithDisablePreParseMultipartForm(true): the standard
-// c.Request.MultipartForm path would spill large parts to os.TempDir().
-func parseImportForm(c *app.RequestContext) (*importForm, error) {
+// parseImportForm reads the multipart form in streaming fashion. Small text
+// fields are collected into an importForm; when the "file" part is reached,
+// onFile is called with the populated form and the live part reader. The
+// caller consumes the part reader inside onFile, keeping the entire upload
+// out of memory and off disk. Any part after "file" is rejected.
+//
+// This function is the reason Hertz must be configured with
+// WithDisablePreParseMultipartForm(true): the standard c.Request.MultipartForm
+// path would spill large parts to os.TempDir().
+func parseImportForm(c *app.RequestContext, onFile func(form *importForm, file io.Reader) error) error {
 	boundary := string(c.Request.Header.MultipartFormBoundary())
 	if boundary == "" {
-		return nil, fmt.Errorf("missing multipart boundary")
+		return fmt.Errorf("missing multipart boundary")
 	}
 
 	form := &importForm{BucketOverrides: nil}
@@ -349,69 +336,65 @@ func parseImportForm(c *app.RequestContext) (*importForm, error) {
 			break
 		}
 		if perr != nil {
-			return nil, fmt.Errorf("read part: %w", perr)
+			return fmt.Errorf("read part: %w", perr)
 		}
 
 		name := part.FormName()
+		// Once the file part is reached, hand it to the callback and return
+		// its result. The callback must consume the part reader before
+		// responding; this keeps the multipart reader active in the request
+		// goroutine and avoids cross-goroutine body-stream reads.
+		if name == "file" {
+			return onFile(form, part)
+		}
+
 		switch name {
 		case "preview_id":
 			v, err := readStringPart(part)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			form.PreviewID = v
 		case "dataset":
 			v, err := readStringPart(part)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			form.Dataset = v
 		case "period":
 			v, err := readStringPart(part)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			form.Period = v
 		case "channel":
 			v, err := readStringPart(part)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			form.Channel = v
 		case "dry_run":
 			v, err := readStringPart(part)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			form.DryRun = strings.EqualFold(v, "true")
 		case "bucket_overrides":
 			v, err := readStringPart(part)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if v != "" {
 				if err := json.Unmarshal([]byte(v), &form.BucketOverrides); err != nil {
-					return nil, fmt.Errorf("invalid bucket_overrides JSON: %w", err)
+					return fmt.Errorf("invalid bucket_overrides JSON: %w", err)
 				}
 			}
-		case "file":
-			// Read the file part into memory. The multipart reader contract
-			// requires a part to be fully consumed before the next NextPart
-			// call; holding the part reader and continuing parsing would
-			// silently discard file content. In-memory buffering keeps the
-			// implementation simple and avoids os.TempDir() leakage while
-			// still using NextPart to stream through the multipart envelope.
-			fileBytes, err := io.ReadAll(part)
-			if err != nil {
-				return nil, fmt.Errorf("read file part: %w", err)
-			}
-			form.File = bytes.NewReader(fileBytes)
 		default:
 			// Drain unknown parts so the multipart reader can advance.
 			_, _ = io.Copy(io.Discard, part)
 		}
 	}
-	return form, nil
+	return fmt.Errorf("missing file part")
 }
 
 func readStringPart(p *multipart.Part) (string, error) {
