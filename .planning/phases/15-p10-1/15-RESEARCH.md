@@ -136,7 +136,7 @@ Phase 15 的地基已由 Phase 14 全部打好：`internal/duckdb/` 三件套（
 ### Alternatives Considered
 
 | Instead of | Could Use | Tradeoff |
-|------------|-----------|----------|
+|------------|-----------|-----------|
 | 手写 .dump accept-list 解析器 | 用 mattn/go-sqlite3 在 :memory: 执行 dump 后 SELECT 读出 | **被 D15-B3 明确拒绝**（「沙箱执行后拷出 = 执行任意 SQL」）。即使加 sqlite authorizer 回调也属于决策禁止面 |
 | 手写 .dump 解析器 | 引 vitess sqlparser 等通用 SQL parser | 重依赖换窄需求；~200 行定向 INSERT-VALUES tokenizer 攻击面更小；违反零新增依赖姿态 |
 | x/text GB18030 单解码器 | chardet 库自动探测编码 | GBK/GB18030/UTF-8 三形态由「utf8.Valid 探测 + GB18030 兜底」覆盖，无需探测库（§3.1 设计） |
@@ -181,7 +181,7 @@ internal/server/import_api.go
   ├─ isAdminRequest (删除端点；导入端点 planner 定是否同样挂门)
   ├─ multipart.NewReader(BodyStream(), MultipartFormBoundary())   ← 流式，raw 不落盘
   │    WithStreamBody + WithDisablePreParseMultipartForm 已在 server.New 开启
-  ▼
+      ▼
 internal/data/importer.go  ──────────── 编排（三通道共用后半段）
   ├─ CSV:   decode.go  剥BOM → utf8探测 → GB18030/NewDecoder/UTF8 → csv.Reader
   ├─ dump:  dump.go    accept-list 解析 (CREATE TABLE + INSERT VALUES；样板句跳过；他句整批拒)
@@ -644,23 +644,31 @@ WHERE dataset = ? AND period = ? ORDER BY created_at DESC LIMIT 1;
 
 **其余全部 claim 已 VERIFIED（module cache/本机实测/repo grep）或 CITED（既有研究文档）。**
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> 2026-08-23 修订（checker research_resolution）：全部六问已由 15-01…15-07 plans 采纳定稿，非未决；逐问决议指针如下。
 
 1. **全局上传上限的具体数值与配置面**
    - What we know: 默认 4MB 必须提高；流模式下预读仅 8KB，内存安全；容量假设月批 100 万-5000 万行（STACK-VERIFICATION §2.8）
    - What's unclear: 上限定多少（512MB？2GB？）、是否 env 可配（`IMPORT_MAX_BODY_BYTES`?）、分路由 Content-Length 守卫的非导入路由阈值
    - Recommendation: env 可配 + 合理默认（如 2GB 导入路由 / 8MB 其余）；planner 定数值，handler 内再加逻辑上限（行数与 raw_size_bytes 双限）
+   - **→ RESOLVED**：15-06 Task 1（SKILLFORGE_IMPORT_MAX_BODY_BYTES 默认 2147483648 / SKILLFORGE_MAX_BODY_BYTES 默认 8388608 + 非导入路由 Content-Length 守卫 413）+ 15-05 Task 1（ImportMaxRowsPerBatch = 50_000_000 行数限——字节/行数双限落地）
 2. **规则文件目录名**
    - What we know: `data/` 全目录 gitignore；D15-A1 要版本化受控文件
    - Recommendation: 仓库根 `datarules/`（CONTEXT 用了「如」，属可调范围）；若用户坚持 data/rules 需 gitignore 例外
+   - **→ RESOLVED**：仓库根 `datarules/`（15-01 Task 2 落 loans.yaml + README；15-07 Stage 09 `git ls-files datarules/` 非空锁——版本化面有门）
 3. **批次审计表形态（选项 A 专用表 vs 选项 B audit 复用）**
    - Recommendation: A（专用 `import_batches` + 可选 audit 联动行）；两者都满足 INSERT-only，A 对 ADM-02 视图友好
+   - **→ RESOLVED**：选项 A——专用 `import_batches` 表（15-02 交付 ImportBatchRow / PutImportBatch / LatestImportBatch + 锁名 TestBatchAuditRowShape；15-05 writeAuditRow 消费）
 4. **staging 表列类型策略**
    - Recommendation: 规则文件可选 `duckdb_type` + 预览期首 100 行推断（INTEGER/DOUBLE/VARCHAR 三档），推断结果冻结进 schema_json 保证幂等重导同型（Pitfall 7）
+   - **→ RESOLVED**：15-01 Task 2 ColumnRule.DuckDBType 可选字段 + 15-05 Task 1 预览期首 100 行推断（BIGINT/DOUBLE/VARCHAR 三档——DuckDB 整型列名定 BIGINT）+ 结果冻结进 PreviewSession 与 schema_json（幂等重导同型）
 5. **dump 容错边界两处定夺**: `CREATE INDEX` 跳过 vs 拒（推荐跳过——实测每个普通表 dump 都含）；`unistr()` 字面量解码 vs 整批拒（v1 推荐拒并结构化提示「导出端含控制字符」，解码留 v1.1）
+   - **→ RESOLVED**：CREATE INDEX 跳过（跳过白名单）+ unistr() v1 整批拒——15-04 Task 1 三层文法（TestDumpControlCaseRealDumpPasses / TestDumpUnistrRejected 锁定）
 6. **导入端点是否也挂 X-Admin-Token**
    - What we know: 删除端点 D15-C3 明确挂；preview/commit/push 的鉴权面 CONTEXT 未锁（「数据人员」角色 v1.0 无用户体系）
    - Recommendation: 三端点同挂 admin token（镜像 /eval 姿态，v1.0 单 token 已是 Out of Scope 表立场）；planner/user 确认
+   - **→ RESOLVED**：preview/commit/push 三端点同挂 isAdminRequest——15-06 Task 2（「Open Q6 采纳」注记 + TestImportEndpointsAdminGated 锁定）
 
 ## Environment Availability
 
