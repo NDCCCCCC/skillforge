@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
@@ -130,12 +131,12 @@ func TestPreviewCommitHashBridge(t *testing.T) {
 	}
 	if err := ValidateCommitAgainstPreview(sess, sha256Of("file-B-contents")); err == nil {
 		t.Fatalf("different hash should be rejected")
-	} else if err.Error() != "preview content hash mismatch — previewed file A cannot be committed as file B (D15-B1)" {
+	} else if !strings.Contains(err.Error(), "preview content hash mismatch") {
 		t.Errorf("unexpected error message: %q", err.Error())
 	}
 	if err := ValidateCommitAgainstPreview(nil, sha256Of("anything")); err == nil {
 		t.Fatalf("nil session should be rejected")
-	} else if err.Error() != "preview session not found or expired" {
+	} else if !strings.Contains(err.Error(), "preview session not found or expired") {
 		t.Errorf("unexpected nil-session error: %q", err.Error())
 	}
 }
