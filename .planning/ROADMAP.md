@@ -442,7 +442,7 @@
 
 **Pitfalls addressed:** Pitfall 17（平台提示词 lockstep——skill.md 修改系统提示词时平台地板静默丢失；地板版本进审计行使其可检测）
 **Research flag:** STACK-VERIFICATION §1（gcc 环境三方案，推荐 MSYS2）+ §2.1（ATTACH 会话不持久 / Close() 刷 WAL / Windows 文件锁 DETACH）——全部为已验证事实，plan 期只需落到代码
-**Plans**: 11 plans in 10 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates → W8-W9 UAT gap closure → W10 verification gap closure；重锁排地板文案冻结之后）
+**Plans**: 12 plans in 11 waves（W1 纯 Go 地板 → W2 审计/admin ∥ 冻结集 → W3-W5 CGO 链 → W6 重锁+验收门 → W7 Docker/live operator gates → W8-W9 UAT gap closure → W10 verification gap closure；重锁排地板文案冻结之后）
 
 Plans:
 **Wave 1**
@@ -481,7 +481,11 @@ Plans:
 
 **Wave 10** *(VERIFICATION 2026-08-23 gap closure — 3 gaps, added post-verify)*
 
-- [ ] 14-11-PLAN.md — 收口 14-VERIFICATION gaps 1-3：cmd/eval 拒答口径修复（classifyRunOutcome 识别 verdict status:"refused"→REFUSAL 哨兵，TDD）+ 单次 compliance replay（PASS→14-10 递延的 fill-lock 1.1.0 重签+README caveat+第 5 锁条目；FAIL→STOP 不重签）+ Dockerfile.backend runtime libstdc++/libgcc + verify-phase-13 pin 涟漪锁步 1dc6f148…
+- [x] 14-11-PLAN.md — 收口 14-VERIFICATION gaps 1-3：cmd/eval 拒答口径修复（classifyRunOutcome 识别 verdict status:"refused"→REFUSAL 哨兵，TDD）+ 单次 compliance replay（PASS→14-10 递延的 fill-lock 1.1.0 重签+README caveat+第 5 锁条目；FAIL→STOP 不重签）+ Dockerfile.backend runtime libstdc++/libgcc + verify-phase-13 pin 涟漪锁步 1dc6f148…
+
+**Wave 11** *(VERIFICATION 2026-08-23 final re-baseline — user decision D14-G2)*
+
+- [ ] 14-12-PLAN.md — re-baseline gate semantics: explicit faithfulness exemption for in-schema refused verdicts (computeCaseMetrics) + hermetic RED→GREEN + single authorized compliance replay + conditional platform-floor.lock.json 1.1.0 re-sign + README caveat
 
 **UI hint**: no（admin 预览端点是 API 面；管理台 UI 在 Phase 20）
 
