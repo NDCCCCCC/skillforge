@@ -24,5 +24,9 @@ skillforge.db-wal
 # Phase 9 spike reports (一次性产物，不入 git 历史)
 reports/
 
-# Data-support runtime state (D14-D4): staging batches + committed datasets
-data/
+# Data-support runtime state (D14-D4): staging batches + committed datasets.
+# ROOT-ANCHORED (Phase 15 / Plan 15-01): the bare `data/` pattern matched at
+# any depth and silently ignored the internal/data import-pipeline package;
+# the runtime state this rule protects is the repo-root data/ tree only
+# (DefaultStagingDir / DefaultDatasetsDir, staging.go:34-42).
+/data/
