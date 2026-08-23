@@ -435,28 +435,10 @@ func runEvalPass(ctx context.Context, p evalPass) (eval.Report, []eval.CaseScore
 		}
 		caseCancel()
 
-		// 3c. Compute the 4 metrics. Errors here are per-case, not
-		// fatal — log and score 0 for the failing metric.
-		faith, err := eval.Faithfulness(ctx, answer, contexts, p.judge)
-		if err != nil {
-			log.Printf("[WARN] cmd/eval: case %s faithfulness: %v — scoring 0", c.ID, err)
-			faith = 0
-		}
-		arel, err := eval.AnswerRelevancy(ctx, c.Query, answer, p.emb, p.judge)
-		if err != nil {
-			log.Printf("[WARN] cmd/eval: case %s answer_relevancy: %v — scoring 0", c.ID, err)
-			arel = 0
-		}
-		cprec, err := eval.ContextPrecision(ctx, c.Query, hits, p.judge)
-		if err != nil {
-			log.Printf("[WARN] cmd/eval: case %s context_precision: %v — scoring 0", c.ID, err)
-			cprec = 0
-		}
-		crecall, err := eval.ContextRecall(ctx, c.GroundTruth, hits, p.judge, refused)
-		if err != nil {
-			log.Printf("[WARN] cmd/eval: case %s context_recall: %v — scoring 0", c.ID, err)
-			crecall = 0
-		}
+		// 3c. Compute the 4 metrics via the explicit exemption helper.
+		// Errors here are per-case, not fatal — log and score 0 for the
+		// failing metric.
+		faith, arel, cprec, crecall := computeCaseMetrics(ctx, c.ID, refused, answer, c.Query, c.GroundTruth, contexts, hits, p.judge, p.emb)
 
 		// 3d. Backfill the audit row if one exists for this session.
 		// Skipped under cross-eval: N judges scoring the same session
@@ -483,6 +465,49 @@ func runEvalPass(ctx context.Context, p evalPass) (eval.Report, []eval.CaseScore
 	report := buildReport(results)
 	report.Skill = p.skill
 	return report, scores
+}
+
+// computeCaseMetrics calculates the four RAG-trust metrics for a single
+// eval case. It is the home of the 14-12 re-baseline semantics: an
+// in-schema refused verdict (refused=true) is explicitly exempt from
+// faithfulness judging against retrieved chunks and instead takes the
+// frozen empty-answer convention (faithfulness=1.0). The other three
+// metrics keep their existing conventions so the 1.0.0-era baseline
+// numbers remain reproducible.
+//
+// The exemption is explicit here rather than implicit via
+// internal/eval/faithfulness.go:75-78, so a future refactor of the
+// Faithfulness metric cannot accidentally route refusal prose back to
+// the chunk judge.
+func computeCaseMetrics(ctx context.Context, caseID string, refused bool, answer, query, groundTruth string, contexts []string, hits []retriever.Hit, judge eval.Judge, emb embedder.Embedder) (faith, arel, cprec, crecall float64) {
+	var err error
+	if refused {
+		// 14-12 re-baseline: refused verdicts are judged against the frozen
+		// empty-answer convention, not against retrieved chunks.
+		faith = 1.0
+	} else {
+		faith, err = eval.Faithfulness(ctx, answer, contexts, judge)
+		if err != nil {
+			log.Printf("[WARN] cmd/eval: case %s faithfulness: %v — scoring 0", caseID, err)
+			faith = 0
+		}
+	}
+	arel, err = eval.AnswerRelevancy(ctx, query, answer, emb, judge)
+	if err != nil {
+		log.Printf("[WARN] cmd/eval: case %s answer_relevancy: %v — scoring 0", caseID, err)
+		arel = 0
+	}
+	cprec, err = eval.ContextPrecision(ctx, query, hits, judge)
+	if err != nil {
+		log.Printf("[WARN] cmd/eval: case %s context_precision: %v — scoring 0", caseID, err)
+		cprec = 0
+	}
+	crecall, err = eval.ContextRecall(ctx, groundTruth, hits, judge, refused)
+	if err != nil {
+		log.Printf("[WARN] cmd/eval: case %s context_recall: %v — scoring 0", caseID, err)
+		crecall = 0
+	}
+	return
 }
 
 // buildEmbedder mirrors cmd/server's BGE-M3 construction. The same env
@@ -723,6 +748,12 @@ func writeCalibration(path string, r eval.Recommendation) error {
 //     conventions (arel judges the empty answer; cprec judges the
 //     retrieved hits) — the 1.0.0 baseline numbers are the product of
 //     exactly this accounting.
+//
+// 14-12 update: the exemption is now explicit in the scoring loop via
+// computeCaseMetrics, which short-circuits faithfulness to 1.0 when
+// refused=true. This makes the re-baseline semantics a code-level
+// contract rather than relying solely on the implicit empty-answer
+// short-circuit in internal/eval/faithfulness.go:75-78.
 func classifyRunOutcome(err error, refusal *verdict.Refusal, v verdict.Verdict) (refused bool, answer string, reason string) {
 	if err != nil {
 		return true, "", "agent_error"
