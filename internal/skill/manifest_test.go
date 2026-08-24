@@ -84,3 +84,78 @@ func TestValidateErrorMessageMentionsOrchestrator(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "orchestrator"),
 		"the unknown-agent-type error MUST list orchestrator in the valid types")
 }
+
+// --- Phase 16 / Plan 16-02 Task 1: reads channel vocabulary + ChannelKind ---
+
+// TestManifestChannel_DataChannel verifies that reads: ["data:aggregated_only"]
+// sets HasDataChannel()=true and Channel()==ChannelKindData.
+func TestManifestChannel_DataChannel(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{ReadDataAggregatedOnly}
+	assert.True(t, m.HasDataChannel(),
+		"reads [data:aggregated_only] MUST set HasDataChannel()=true")
+	assert.Equal(t, ChannelKindData, m.Channel(),
+		"reads [data:aggregated_only] MUST yield Channel()==ChannelKindData")
+}
+
+// TestManifestChannel_TierChannel verifies that tier reads (the existing
+// default) yield HasDataChannel()=false and Channel()==ChannelKindTier.
+func TestManifestChannel_TierChannel(t *testing.T) {
+	m := validManifest()
+	// default manifest has reads: ["authority/**"]
+	assert.False(t, m.HasDataChannel(),
+		"tier reads MUST NOT set HasDataChannel()")
+	assert.Equal(t, ChannelKindTier, m.Channel(),
+		"tier reads MUST yield Channel()==ChannelKindTier")
+}
+
+// TestManifestChannel_EmptyReads verifies that empty reads yields
+// HasDataChannel()=false (the actual rejection of empty reads is
+// Validate's job — Channel() just reports the kind).
+func TestManifestChannel_EmptyReads(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{}
+	assert.False(t, m.HasDataChannel(),
+		"empty reads MUST NOT set HasDataChannel()")
+	assert.Equal(t, ChannelKindTier, m.Channel(),
+		"empty reads defaults to ChannelKindTier (Validate rejects empty reads separately)")
+}
+
+// TestResolveTiers_DataPrefixDefenseInDepth verifies that ResolveTiers
+// rejects "data:" prefixed reads with a defense-in-depth error (the
+// normal path never routes data: values into ResolveTiers — Validate
+// branches before calling it).
+func TestResolveTiers_DataPrefixDefenseInDepth(t *testing.T) {
+	_, err := ResolveTiers([]string{"data:aggregated_only"})
+	require.Error(t, err,
+		"ResolveTiers MUST reject data: prefixed reads (defense-in-depth)")
+	assert.Contains(t, err.Error(), "data:",
+		"error MUST name the data: prefix")
+	assert.Contains(t, err.Error(), "D16-C2",
+		"error MUST cite D16-C2 for traceability")
+}
+
+// TestResolveTiers_ExistingTierBehavior_Unchanged is a regression lock:
+// all existing tier-resolving behavior must remain byte-identical after
+// the data: prefix guard addition.
+func TestResolveTiers_ExistingTierBehavior_Unchanged(t *testing.T) {
+	// Re-run a subset of the existing TestResolveTiers_KnownDirs cases
+	// to prove zero regression.
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"authority", []string{"authority/**"}, []string{"权威"}},
+		{"multi_tier", []string{"authority/**", "historical/**"}, []string{"权威", "历史"}},
+		{"bare_dir", []string{"authority"}, []string{"权威"}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ResolveTiers(tc.in)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

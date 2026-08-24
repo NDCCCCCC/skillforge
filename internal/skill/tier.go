@@ -121,6 +121,20 @@ func ResolveTiers(reads []string) ([]string, error) {
 	if len(reads) == 0 {
 		return nil, nil
 	}
+	// Defense-in-depth guard: data-channel values must never reach
+	// ResolveTiers. Validate() branches before calling ResolveTiers
+	// when HasDataChannel() is true, so this branch should never be
+	// hit in normal flow. It prevents future callers from bypassing
+	// Validate and calling ResolveTiers directly, which would produce
+	// a misleading TierEnum error for "data:" prefixed values (D16-C2).
+	for _, r := range reads {
+		if strings.HasPrefix(r, "data:") {
+			return nil, fmt.Errorf(
+				"reads %q: data channel values are validated by Validate (D16-C2), not ResolveTiers — this is a defense-in-depth guard",
+				r,
+			)
+		}
+	}
 	seen := make(map[string]bool, len(TierEnum))
 	out := make([]string, 0, len(reads))
 	for _, r := range reads {

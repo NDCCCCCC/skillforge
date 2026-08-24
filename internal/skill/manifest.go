@@ -125,6 +125,60 @@ func (m *Manifest) SetDescriptionVec(v []float32) {
 	m.DescriptionVec = v
 }
 
+// ReadDataAggregatedOnly is the v1.0 data-channel reads value (DATA-07).
+// A Skill declaring reads: ["data:aggregated_only"] enters the data channel,
+// which is mutually exclusive with tier reads (D16-C1: two storage systems,
+// two evidence systems — citation whitelist vs data-reference snapshot;
+// mixed-Skill is v1 deferred).
+//
+// This constant is the sole owner of the data:aggregated_only string literal.
+// All channel-kind branching MUST go through HasDataChannel() / Channel()
+// (single source of truth discipline — mirrors the validAgentTypes comment
+// narrative). v1.1 may add data:external:authorized here, but it must NOT
+// appear in any allowlist until explicitly added — unknown data:* values are
+// rejected at Validate (fail-closed, D16-C2).
+const ReadDataAggregatedOnly = "data:aggregated_only"
+
+// ChannelKind distinguishes the two mutually-exclusive read channels a Skill
+// may use (D16-C1). Tier channel reads from Milvus knowledge tiers; data
+// channel reads from DuckDB aggregated KPIs. Mixed-Skill is v1 deferred.
+type ChannelKind int
+
+const (
+	// ChannelKindTier is the default channel: reads resolve to Milvus tier
+	// VARCHAR values via ResolveTiers. The retrieve Tool is attached at
+	// runtime (D16-C3).
+	ChannelKindTier ChannelKind = iota
+	// ChannelKindData is the aggregated-KPI channel: reads contain only
+	// ReadDataAggregatedOnly; ResolveTiers is skipped (no tier semantics).
+	// The kpi_call Tool is attached at runtime (D16-C3).
+	ChannelKindData
+)
+
+// HasDataChannel reports whether this Skill's reads field declares the data
+// channel (reads contains ReadDataAggregatedOnly). This is the single
+// decision point for channel-kind branching — 16-07's BuildRunner tool
+// assembly MUST call HasDataChannel() rather than re-parsing reads strings
+// (single source of truth, mirrors validAgentTypes enforcement narrative).
+func (m *Manifest) HasDataChannel() bool {
+	for _, r := range m.Reads {
+		if r == ReadDataAggregatedOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// Channel returns the ChannelKind for this Skill's reads. Data channel if
+// HasDataChannel() is true; tier channel otherwise (including empty reads,
+// which Validate rejects separately).
+func (m *Manifest) Channel() ChannelKind {
+	if m.HasDataChannel() {
+		return ChannelKindData
+	}
+	return ChannelKindTier
+}
+
 // validAgentTypes is the whitelist of agent-type strings accepted in
 // the `agent:` field. Source: .planning/SKILL_SCHEMA.md field 2 +
 // runtime archetype names (Phase 12 dispatch table).
