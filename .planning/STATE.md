@@ -4,10 +4,10 @@ milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 16
 current_plan: 0
-status: discussing
-stopped_at: Phase 15 closed; routed to discuss-phase 16
-last_updated: "2026-08-24T13:05:00Z"
-last_activity: 2026-08-24 -- Phase 15 CLOSED (review resolved 6/6 commit c0d7d5a + verification PASS + gate 10/10); ROADMAP rows 10/11/12/14/15 reconciled; STATE advanced to Phase 16
+status: planning
+stopped_at: Phase 16 context gathered
+last_updated: "2026-08-24T13:40:00Z"
+last_activity: 2026-08-24 -- Phase 16 context gathered via /gsd-discuss-phase 16 (4 areas × 4 questions = 16 decisions, commit 4200e1c); ready for plan-phase 16
 progress:
   total_phases: 20
   completed_phases: 13
@@ -20,10 +20,10 @@ progress:
 
 ## Current Position
 
-Phase: 16 (KPI 聚合通道（P10.2）) — DISCUSSING
+Phase: 16 (KPI 聚合通道（P10.2）) — CONTEXT GATHERED
 Plan: 0 of ? (not planned)
-Status: Discussing Phase 16
-Last activity: 2026-08-24 -- Phase 15 closed hermetically (review resolved, verification PASS, gate 10/10)
+Status: Ready for planning
+Last activity: 2026-08-24 -- Phase 16 context gathered (16 decisions, commit 4200e1c)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -93,12 +93,12 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 ## Current Position
 
-Phase: 16 (KPI 聚合通道，P10.2) — **DISCUSSING** 2026-08-24
+Phase: 16 (KPI 聚合通道，P10.2) — **CONTEXT GATHERED** 2026-08-24
 Plan: 0 (phase not yet planned)
-Status: discussing
-Last activity: 2026-08-24 -- Phase 15 CLOSED: code review resolved (6/6 findings fixed, commit `c0d7d5a`, incl. `strictUTF8Reader` rune-split root cause), 15-VERIFICATION verdict PASS (DATA-01/02/15/16/17), `verify-phase-15.sh` 10/10, full `-race` suite green. ROADMAP progress rows for phases 10/11/12/14/15 reconciled with recorded closeouts.
-Stopped At: routed to `/gsd-discuss-phase 16`
-Resume File: `.planning/phases/15-p10-1/15-VERIFICATION.md` (Phase 15 closeout evidence)
+Status: ready for planning
+Last activity: 2026-08-24 -- `/gsd-discuss-phase 16` complete: 16 decisions locked (D16-A1..A4 YAML 受控文件/SQL 模板/枚举值域/内存 registry；D16-B1..B4 单一 kpi_call/工具层拒答/结构化快照+data-reference/as_of 系统生成；D16-C1..C4 reads 互斥/加载期交叉验证/双层镜像 D11-B1/平台级共享目录；D16-D1..D4 k_min 行级抑制/枚举即差分白名单/全量快照冻结/独立 kpi_calls 表)，commit 4200e1c.
+Stopped At: Phase 16 context gathered
+Resume File: `.planning/phases/16-p10-2/16-CONTEXT.md`
 
 **Phase 15 delivery summary:**
 
@@ -112,7 +112,7 @@ Resume File: `.planning/phases/15-p10-1/15-VERIFICATION.md` (Phase 15 closeout e
 
 **Verification:** `bash scripts/verify-phase-15.sh` → **PASS 10/10**; `go test ./... -count=1` and `go test ./... -count=1 -race` both green in WSL2.
 
-**Next action:** `/gsd-discuss-phase 16` — KPI 聚合通道（P10.2）：KPI 注册表（无注册后门）+ `data:aggregated_only` 通道守卫 + agent 永不写 SQL（结构性保证）+ 数据引用快照冻结进审计行。Phase 15 全部收尾门已完成（review resolved / verification PASS / roadmap + STATE synced）。
+**Next action:** `/gsd-plan-phase 16` — KPI 聚合通道（P10.2）context 已就绪（16-CONTEXT.md，16 decisions 锁定）；planner 消费 D16-A/B/C/D 决策产出 plans。
 
 **Phase 10 closeout note (2026-08-20):** shipped hermetic-gated (UAT 19/0/3, `git status` clean 3 commits ahead of starting baseline). The 3 blocked tests are operator gates (`.env` populate + Docker Milvus + BGE-M3 startup + live 35-case re-run). User accepted `closed/blocked-with-notes` closeout for Phase 10; the live re-run is **explicitly the v0.8 milestone gate** (GEVL-08/N9-V2), not a Phase 11 entry prerequisite.
 
