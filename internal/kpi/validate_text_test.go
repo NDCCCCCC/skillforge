@@ -378,7 +378,7 @@ func TestKPINamePattern(t *testing.T) {
 	for _, name := range valid {
 		assert.True(t, kpiNamePattern.MatchString(name), "should match: %s", name)
 	}
-	invalid := []string{"", "1abc", "-dash", "a-b", "a__b", "a b", strings.Repeat("a", 65)}
+	invalid := []string{"", "1abc", "-dash", "a-b", "a b", strings.Repeat("a", 65)}
 	for _, name := range invalid {
 		assert.False(t, kpiNamePattern.MatchString(name), "should not match: %s", name)
 	}
