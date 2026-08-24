@@ -167,6 +167,37 @@ type DecisionPayload struct {
 	Selected       string          `json:"selected,omitempty"`       // D5-04 — SkillID chosen on "route"
 	Ambiguous      bool            `json:"ambiguous,omitempty"`      // D5-04 — true when top-2 gap is below threshold
 	ConflictChunks []ConflictChunk `json:"conflictChunks,omitempty"` // Plan 05-06 / D5-13 — populated only on "counter_evidence" decisions
+	DataRef        *DataReference  `json:"dataRef,omitempty"`        // P16 — kpi_reference events only; structured data citation (D16-B3)
+}
+
+// DataReference is the structured data-citation payload for kpi_reference
+// decisions (Phase 16 / D16-B3). When kpi_call produces a snapshot, the
+// decision callback emits a data-decision chunk with DataRef carrying the
+// aggregation metadata. rows body is NOT included here — volume control plus
+// the agent already has the full snapshot from the tool result; FE Phase 17
+// sparkline reads from kpi_calls audit rows (admin read-only surface).
+//
+// Field semantics:
+//   - Func:        KPI function name (registry key, e.g. "loan_overdue_rate_by_region").
+//   - Args:        caller-supplied parameters (already validated against enum/pattern
+//     schema at tool boundary — D16-A3/D2).
+//   - ASOfPeriod:  data-set latest period watermark (from datasets registry,
+//     system-generated — D16-B4; agent cannot forge).
+//   - ASOfTs:      invocation timestamp (RFC3339 — result metadata, not query param).
+//   - RowCount:    total rows in snapshot (including suppressed rows — snapshot
+//     row count is invariant per D16-D1).
+//   - Suppressed:  number of rows where k_min suppression was applied
+//     (value replaced with "suppressed" marker; row retained — D16-D1).
+//   - KMinApplied: the k_min threshold value in effect for this execution
+//     (file k_min > dataset override > KMinDefault=5).
+type DataReference struct {
+	Func        string         `json:"func"`                  // KPI function name (registry key)
+	Args        map[string]any `json:"args,omitempty"`        // caller-supplied parameters (enum/pattern-validated)
+	ASOfPeriod  string         `json:"asOfPeriod"`            // data-set latest period watermark (D16-B4)
+	ASOfTs      string         `json:"asOfTs"`                // invocation timestamp (RFC3339)
+	RowCount    int            `json:"rowCount"`              // total rows in snapshot (including suppressed — D16-D1)
+	Suppressed  int            `json:"suppressed"`            // suppressed row count (D16-D1)
+	KMinApplied int            `json:"kMinApplied"`           // k_min threshold in effect
 }
 
 // SkillScore is one ranked candidate Skill in a DecisionPayload's
@@ -327,11 +358,12 @@ const (
 // (web/src/types/wire-types.ts) already declares this variant, so the
 // D15 drift alarm needs no change.
 //
-// Count: 22 types — text(5: text-start/text-delta/text-end +
+// Count: 23 types — text(5: text-start/text-delta/text-end +
 // text-delta-draft/text-delta-draft-end) + reasoning(3) +
 // tool-input(3) + tool-output(1) + source(2) + data-policy(1) +
 // data-decision(1) + data-redline(1) + data-subprogress(1) +
-// finish(3: finish / finish-step / finish-message) + error(1).
+// data-plan-trace(1) + finish(3: finish / finish-step / finish-message) +
+// error(1).
 //
 // Quick plan 260815-cos adds `text-delta-draft` + `text-delta-draft-end`
 // — the draft streaming channel that carries LLM tokens BEFORE

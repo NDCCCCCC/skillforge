@@ -108,4 +108,17 @@ const (
 	DecisionFanoutDispatched = "fanout_dispatched"
 	DecisionFanoutCompleted  = "fanout_completed"
 	DecisionFanoutFailed     = "fanout_failed"
+
+	// DecisionKPIReference is the Phase 16 / D16-B3 kpi_call data-citation
+	// decision. When kpi_call produces a structured snapshot, the decision
+	// callback emits a data-decision chunk with Decision=kpi_reference and
+	// DataRef carrying the aggregation metadata (func/args/asOf/rowCount/
+	// suppressed/kMinApplied). The data-decision discriminator is unchanged —
+	// this is a new VALUE in the Decision string enum, NOT a new wire chunk
+	// type (D16 overload pattern, same as P13-L7 fanout_*). The TS mirror at
+	// web/src/types/wire-types.ts adds the matching literal under D15 lockstep.
+	// rows body is NOT carried on SSE (volume control + agent already has the
+	// full snapshot from tool result; FE Phase 17 sparkline reads from
+	// kpi_calls audit rows — admin read-only surface).
+	DecisionKPIReference = "kpi_reference"
 )

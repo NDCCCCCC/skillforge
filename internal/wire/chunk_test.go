@@ -570,3 +570,70 @@ func TestValidTypesUnchangedAfterBudgetGate(t *testing.T) {
 	assert.False(t, ValidTypes["data_budget"],
 		"snake_case data_budget MUST NOT be in ValidTypes — would have been the rejected counterpart of a hypothetical new discriminator (P12-L3 / T-1-11)")
 }
+
+// TestDecisionDataRefWire — Phase 16 / Plan 16-04 Task 1: the DecisionPayload
+// additive DataRef field (D16-B3) carries structured data-citation metadata
+// on kpi_reference decisions. The data-decision discriminator is unchanged
+// (D16 overload pattern, same as P13-L7 fanout_*). rows body is NOT carried
+// on SSE (volume control + agent already has the full snapshot from tool
+// result; FE Phase 17 sparkline reads from kpi_calls audit rows). The
+// ValidTypes count MUST stay at 23 (no new wire chunk types).
+func TestDecisionDataRefWire(t *testing.T) {
+	t0 := "2026-07-15T10:30:00Z"
+
+	// 1. Marshal with DataRef present — must contain all expected fields.
+	payload := DecisionPayload{
+		Step:     1,
+		Decision: DecisionKPIReference,
+		DataRef: &DataReference{
+			Func:        "loan_overdue_rate_by_status",
+			Args:        map[string]any{"status": "逾期"},
+			ASOfPeriod:  "2026-07",
+			ASOfTs:      t0,
+			RowCount:    7,
+			Suppressed:  2,
+			KMinApplied: 10,
+		},
+	}
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	s := string(raw)
+	assert.Contains(t, s, `"dataRef"`,
+		"marshal MUST contain dataRef field (D16-B3)")
+	assert.Contains(t, s, `"kpi_reference"`,
+		"decision MUST be kpi_reference (D16-B3)")
+	assert.Contains(t, s, `"asOfPeriod":"2026-07"`,
+		"asOfPeriod field MUST round-trip (D16-B4)")
+	assert.Contains(t, s, `"suppressed":2`,
+		"suppressed count MUST round-trip (D16-D1)")
+
+	// 2. DataRef nil → omitempty — must NOT contain "dataRef" substring.
+	nilPayload := DecisionPayload{
+		Step:     1,
+		Decision: "retrieve",
+		Query:    "差旅费",
+	}
+	nilRaw, err := json.Marshal(nilPayload)
+	require.NoError(t, err)
+	assert.False(t, strings.Contains(string(nilRaw), "dataRef"),
+		"nil DataRef MUST be omitted (omitempty lock — D16-B3)")
+
+	// 3. Unmarshal round-trip — all fields byte-identical.
+	var got DecisionPayload
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t, 1, got.Step)
+	assert.Equal(t, DecisionKPIReference, got.Decision)
+	require.NotNil(t, got.DataRef, "DataRef MUST be non-nil after round-trip")
+	assert.Equal(t, "loan_overdue_rate_by_status", got.DataRef.Func)
+	assert.Equal(t, "2026-07", got.DataRef.ASOfPeriod)
+	assert.Equal(t, t0, got.DataRef.ASOfTs)
+	assert.Equal(t, 7, got.DataRef.RowCount)
+	assert.Equal(t, 2, got.DataRef.Suppressed)
+	assert.Equal(t, 10, got.DataRef.KMinApplied)
+	require.Contains(t, got.DataRef.Args, "status")
+	assert.Equal(t, "逾期", got.DataRef.Args["status"])
+
+	// 4. ValidTypes count MUST stay at 23 (no new chunk type added).
+	assert.Equal(t, 23, len(ValidTypes),
+		"ValidTypes MUST stay at 23 after D16-B3 DataRef addition (data-decision discriminator unchanged — D16 overload pattern)")
+}
