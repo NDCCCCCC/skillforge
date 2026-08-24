@@ -91,6 +91,15 @@ export const DecisionFanoutCompleted = 'fanout_completed' as const;
 // Reason field on the payload carries the sub-agent's error message.
 export const DecisionFanoutFailed = 'fanout_failed' as const;
 
+// Phase 16 / Plan 16-04 — P16/D16-B3 kpi_call data-citation decision.
+// When kpi_call produces a structured snapshot, the decision callback
+// emits a data-decision chunk with Decision=kpi_reference and DataRef
+// carrying the aggregation metadata. The data-decision discriminator is
+// unchanged — this is a new VALUE in the Decision string enum, NOT a new
+// wire chunk type (D16 overload pattern, same as P13-L7 fanout_*).
+// The TS mirror adds the matching literal under D15 lockstep.
+export const DecisionKPIReference = 'kpi_reference' as const;
+
 // ----------------------------------------------------------------------------
 // DecisionPayload — mirror of internal/wire/chunk.go DecisionPayload
 // ----------------------------------------------------------------------------
@@ -138,6 +147,30 @@ export interface ConflictChunk {
   effectiveFrom?: number;
   /** Epoch-seconds effective_to (0 / undefined = perpetual). */
   effectiveTo?: number;
+}
+
+// Phase 16 / Plan 16-04 — P16/D16-B3 structured data-citation payload for
+// kpi_reference decisions. Mirrors internal/wire/chunk.go DataReference
+// field-for-field under D15 lockstep. When kpi_call produces a snapshot,
+// the decision callback emits a data-decision chunk with DataRef carrying
+// the aggregation metadata. rows body is NOT carried on SSE (volume
+// control + agent already has the full snapshot from tool result; FE
+// Phase 17 sparkline reads from kpi_calls audit rows — admin read-only).
+export interface DataReference {
+  /** KPI function name (registry key, e.g. "loan_overdue_rate_by_region"). */
+  func: string;
+  /** Caller-supplied parameters (enum/pattern-validated at tool boundary — D16-A3/D2). */
+  args?: Record<string, unknown>;
+  /** Data-set latest period watermark (system-generated — D16-B4; agent cannot forge). */
+  asOfPeriod: string;
+  /** Invocation timestamp (RFC3339 — result metadata, not query param). */
+  asOfTs: string;
+  /** Total rows in snapshot (including suppressed rows — snapshot row count invariant per D16-D1). */
+  rowCount: number;
+  /** Number of rows where k_min suppression was applied (value replaced with "suppressed" marker — D16-D1). */
+  suppressed: number;
+  /** The k_min threshold value in effect for this execution (file > dataset override > KMinDefault=5). */
+  kMinApplied: number;
 }
 
 export interface DecisionPayload {
@@ -193,7 +226,14 @@ export interface DecisionPayload {
     // trace alongside the parent decision trace.
     | 'fanout_dispatched'
     | 'fanout_completed'
-    | 'fanout_failed';
+    | 'fanout_failed'
+    // Phase 16 / Plan 16-04 — P16/D16-B3 kpi_call data-citation decision.
+    // When kpi_call produces a structured snapshot, the decision callback
+    // emits a data-decision chunk with Decision=kpi_reference. The
+    // discriminator (kebab-case data-decision) is unchanged; only the
+    // decision STRING enum widens. D16 overload pattern + D15 lockstep
+    // with internal/wire/types.go DecisionKPIReference.
+    | 'kpi_reference';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */
@@ -215,6 +255,12 @@ export interface DecisionPayload {
   /** Plan 05-06 / D5-13 — populated only on `counter_evidence` decisions.
    *  Carries the 历史-tier annotation rows (NEVER part of the verdict's grounding). */
   conflictChunks?: ConflictChunk[];
+  /** P16 — populated only on `kpi_reference` decisions. Structured data-citation
+   *  metadata (func/args/asOf/rowCount/suppressed/kMinApplied). Mirrors Go
+   *  json:"dataRef,omitempty" — nil when decision is not kpi_reference.
+   *  rows body NOT carried on SSE (volume control + agent already has full
+   *  snapshot; FE Phase 17 sparkline reads from kpi_calls audit rows). */
+  dataRef?: DataReference;
 }
 
 // ----------------------------------------------------------------------------
