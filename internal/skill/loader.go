@@ -215,12 +215,17 @@ func parseAndValidate(path string) (*Manifest, []string, error) {
 		return nil, nil, fmt.Errorf("validate %s: %w", path, err)
 	}
 	// Pre-compute resolved tiers once — the pipeline does not need
-	// to re-resolve on every request.
-	tiers, err := ResolveTiers(m.Reads)
-	if err != nil {
-		// Validate already rejected unknown dirs, so this is
-		// belt-and-braces; treat as fatal anyway.
-		return nil, nil, fmt.Errorf("resolve tiers for %s: %w", path, err)
+	// to re-resolve on every request. Data-channel Skills skip
+	// ResolveTiers entirely (no tier semantics — D16-C1).
+	var tiers []string
+	if !m.HasDataChannel() {
+		var err error
+		tiers, err = ResolveTiers(m.Reads)
+		if err != nil {
+			// Validate already rejected unknown dirs, so this is
+			// belt-and-braces; treat as fatal anyway.
+			return nil, nil, fmt.Errorf("resolve tiers for %s: %w", path, err)
+		}
 	}
 	return &m, tiers, nil
 }

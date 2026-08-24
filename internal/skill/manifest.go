@@ -36,6 +36,8 @@
 // names.
 package skill
 
+import "strings"
+
 // Manifest is the 7-field SKILL.md v1.0 schema. Field-by-field source of
 // truth: .planning/SKILL_SCHEMA.md. All seven fields are REQUIRED and
 // validated by Validate(*Manifest) (SYSK-02).
@@ -155,14 +157,22 @@ const (
 	ChannelKindData
 )
 
-// HasDataChannel reports whether this Skill's reads field declares the data
-// channel (reads contains ReadDataAggregatedOnly). This is the single
+// HasDataChannel reports whether this Skill's reads field declares a data
+// channel value (any read with the "data:" prefix). This is the single
 // decision point for channel-kind branching — 16-07's BuildRunner tool
 // assembly MUST call HasDataChannel() rather than re-parsing reads strings
 // (single source of truth, mirrors validAgentTypes enforcement narrative).
+//
+// Broad detection (any "data:" prefix) rather than exact-match on
+// ReadDataAggregatedOnly ensures that unknown data:* modes like
+// "data:external:authorized" are routed into the data-channel branch of
+// Validate, where the exact-match check produces the correct "unknown data
+// channel mode" error with the supported-mode hint — rather than falling
+// through to the tier-channel branch and hitting ResolveTiers' defense-in-
+// depth guard (which would produce a confusing TierEnum error).
 func (m *Manifest) HasDataChannel() bool {
 	for _, r := range m.Reads {
-		if r == ReadDataAggregatedOnly {
+		if strings.HasPrefix(r, "data:") {
 			return true
 		}
 	}

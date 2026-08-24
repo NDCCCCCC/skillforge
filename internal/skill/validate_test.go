@@ -18,7 +18,9 @@ package skill
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -212,7 +214,7 @@ func TestValidate_NilWrites_PSKILL_SchemaField4(t *testing.T) {
 }
 
 func TestValidate_UnknownTierInReads_SYSK07_D212(t *testing.T) {
-	// Test 9 — SYSK-07 + D2-12: unknown top-level dir → rejection.
+	// Test 9 — SYSK-07 + D2-12: unknown top-level dir -> rejection.
 	// A typo in the Skill author's reads pattern must NOT silently
 	// resolve to "no tier" (fail-open); it must error so the operator
 	// sees it at startup.
@@ -249,7 +251,7 @@ func TestValidate_EmptySteps_SchemaField5(t *testing.T) {
 
 func TestResolveTiers_KnownDirs(t *testing.T) {
 	// TierEnum must map all four top-level dirs correctly. This pins
-	// the D2-12 ASCII → CN-char mapping against future drift.
+	// the D2-12 ASCII -> CN-char mapping against future drift.
 	cases := []struct {
 		name string
 		in   []string
@@ -306,4 +308,237 @@ func TestResolveTiers_EmptyReturnsNilNoError(t *testing.T) {
 	got, err = ResolveTiers(nil)
 	require.NoError(t, err)
 	assert.Nil(t, got)
+}
+
+// --- Phase 16 / Plan 16-02 Task 2: Channel guard XOR + data+deep rejection ---
+
+// TestChannelGuardXOR enforces D16-C1/C2: data channel and tier channel are
+// mutually exclusive at load time. Table-driven with 7 sub-cases covering
+// both directions of XOR, unknown data modes, deep+data rejection, and the
+// hot-reload window (reloadOne re-runs Validate — Pitfall 6 zero-additional-
+// code coverage).
+func TestChannelGuardXOR(t *testing.T) {
+	temp := float32(0.0)
+
+	cases := []struct {
+		name       string
+		manifest   *Manifest
+		wantErr    bool
+		errSubstrs []string // all must appear in the error message
+	}{
+		{
+			name: "mixed_data_and_tier_rejected",
+			manifest: &Manifest{
+				Description: "mixed data+tier Skill",
+				Agent:       "chat",
+				Reads:       []string{ReadDataAggregatedOnly, "authority/**"},
+				Writes:      []string{},
+				Steps:       "1. Call KPI\n2. Read tier",
+				Guardrails: Guardrails{
+					Prohibitions:           []string{"p1", "p2", "p3"},
+					RequiredRefusalPhrases: []string{"no_data"},
+				},
+				Temperature: &temp,
+			},
+			wantErr: true,
+			errSubstrs: []string{
+				ReadDataAggregatedOnly, // data channel value named
+				"authority/**",         // conflicting tier value named
+				"mutually exclusive",   // XOR keyword
+				"D16-C1",               // decision citation
+			},
+		},
+		{
+			name: "pure_data_channel_passes",
+			manifest: &Manifest{
+				Description: "pure data Skill",
+				Agent:       "chat",
+				Reads:       []string{ReadDataAggregatedOnly},
+				Writes:      []string{},
+				Steps:       "1. Call KPI",
+				Guardrails: Guardrails{
+					Prohibitions:           []string{"p1", "p2", "p3"},
+					RequiredRefusalPhrases: []string{"no_data"},
+				},
+				Temperature: &temp,
+			},
+			wantErr:    false,
+			errSubstrs: nil,
+		},
+		{
+			name: "unknown_data_mode_rejected",
+			manifest: &Manifest{
+				Description: "unknown data mode",
+				Agent:       "chat",
+				Reads:       []string{"data:external:authorized"},
+				Writes:      []string{},
+				Steps:       "1. Call KPI",
+				Guardrails: Guardrails{
+					Prohibitions:           []string{"p1", "p2", "p3"},
+					RequiredRefusalPhrases: []string{"no_data"},
+				},
+				Temperature: &temp,
+			},
+			wantErr: true,
+			errSubstrs: []string{
+				"aggregated_only",           // must name the only supported mode
+				"data:external:authorized",  // must echo the bad value
+			},
+		},
+		{
+			name: "deep_plus_data_rejected",
+			manifest: &Manifest{
+				Description: "deep data Skill",
+				Agent:       "deep",
+				Reads:       []string{ReadDataAggregatedOnly},
+				Writes:      []string{},
+				Steps:       "1. Call KPI",
+				Guardrails: Guardrails{
+					Prohibitions:           []string{"p1", "p2", "p3"},
+					RequiredRefusalPhrases: []string{"no_data"},
+				},
+				Temperature: &temp,
+			},
+			wantErr: true,
+			errSubstrs: []string{
+				"deep",           // must name the conflicting archetype
+				"deep_agent.go",  // must cite the hardcoded-retrieve source
+			},
+		},
+		{
+			name: "reverse_mixed_tier_and_data_rejected",
+			manifest: &Manifest{
+				Description: "reversed tier+data Skill",
+				Agent:       "chat",
+				Reads:       []string{"authority/**", ReadDataAggregatedOnly},
+				Writes:      []string{},
+				Steps:       "1. Read tier\n2. Call KPI",
+				Guardrails: Guardrails{
+					Prohibitions:           []string{"p1", "p2", "p3"},
+					RequiredRefusalPhrases: []string{"no_data"},
+				},
+				Temperature: &temp,
+			},
+			wantErr: true,
+			errSubstrs: []string{
+				ReadDataAggregatedOnly,
+				"authority/**",
+				"mutually exclusive",
+			},
+		},
+		{
+			name: "existing_tier_skill_passes_regression",
+			manifest: &Manifest{
+				Description: "existing compliance Skill",
+				Agent:       "ChatModelAgent",
+				Reads:       []string{"authority/**"},
+				Writes:      []string{},
+				Steps:       "1. Read tier chunks\n2. Compose verdict",
+				Guardrails: Guardrails{
+					Prohibitions:           []string{"p1", "p2", "p3"},
+					RequiredRefusalPhrases: []string{"no_authorized_source"},
+				},
+				Temperature: &temp,
+			},
+			wantErr:    false,
+			errSubstrs: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			err := Validate(tc.manifest)
+			if tc.wantErr {
+				require.Error(t, err, "Validate MUST reject this manifest")
+				for _, sub := range tc.errSubstrs {
+					assert.Contains(t, err.Error(), sub,
+						"error MUST contain %q (D16-C2 conflict-naming discipline)", sub)
+				}
+			} else {
+				require.NoError(t, err, "Validate MUST accept this manifest")
+			}
+		})
+	}
+}
+
+// TestChannelGuardXOR_PureDataChannel_SkipsResolveTiers verifies that a
+// data-channel Skill passes Validate with resolvedTiers left empty (nil),
+// confirming that ResolveTiers is never called for data-channel reads.
+func TestChannelGuardXOR_PureDataChannel_SkipsResolveTiers(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{ReadDataAggregatedOnly}
+	require.NoError(t, Validate(m))
+	assert.Nil(t, m.ResolvedTiers(),
+		"data channel Skill MUST have nil resolvedTiers after Validate (ResolveTiers is skipped)")
+}
+
+// TestChannelGuardXOR_ReloadOne_HotReloadWindow verifies that the channel
+// guard covers the hot-reload path: a Skill file changed to mixed reads
+// after initial load is rejected by reloadOne, and the old valid manifest
+// is retained in the snapshot (D16-C2 / Pitfall 6).
+func TestChannelGuardXOR_ReloadOne_HotReloadWindow(t *testing.T) {
+	tmp := t.TempDir()
+	skillDir := filepath.Join(tmp, "dataskill")
+	writeCustomSkill(t, skillDir, `description: Valid data Skill.
+agent: chat
+reads: ["data:aggregated_only"]
+writes: []
+steps: |
+  1. Call KPI
+guardrails:
+  prohibitions: ["p1", "p2", "p3"]
+  required_refusal_phrases: ["no_data"]
+  tier_limits: {}
+temperature: 0.0
+`)
+
+	emb := &stubEmbedder{dim: 4}
+	r, err := New(tmp, emb)
+	require.NoError(t, err)
+
+	// Confirm initial load succeeded.
+	snap := r.Snapshot()
+	require.Contains(t, snap, "dataskill", "initial load MUST succeed")
+	goodDesc := snap["dataskill"].Manifest.Description
+	goodVersion := snap["dataskill"].Version
+
+	// Capture load errors via the hook.
+	var loadErr atomic.Value // error
+	r.SetLoadErrorHook(func(name string, err error) {
+		loadErr.Store(err)
+	})
+
+	// Overwrite with mixed reads (data+tier) — must be rejected.
+	skillPath := filepath.Join(skillDir, "SKILL.md")
+	writeCustomSkill(t, skillDir, `description: Mixed data+tier Skill.
+agent: chat
+reads: ["data:aggregated_only", "authority/**"]
+writes: []
+steps: |
+  1. Call KPI
+  2. Read tier
+guardrails:
+  prohibitions: ["p1", "p2", "p3"]
+  required_refusal_phrases: ["no_data"]
+  tier_limits: {}
+temperature: 0.0
+`)
+
+	r.Reload(skillPath)
+
+	// Snapshot MUST retain the old valid manifest (keep-old contract).
+	snap = r.Snapshot()
+	require.Contains(t, snap, "dataskill",
+		"reloadOne MUST NOT remove the skill on validation failure")
+	assert.Equal(t, goodDesc, snap["dataskill"].Manifest.Description,
+		"reload rejection MUST keep the old description")
+	assert.Equal(t, goodVersion, snap["dataskill"].Version,
+		"reload rejection MUST NOT bump the version")
+
+	// LoadError hook called with the XOR rejection error.
+	gotErr, _ := loadErr.Load().(error)
+	require.Error(t, gotErr, "LoadError hook MUST be called on reload rejection")
+	assert.Contains(t, gotErr.Error(), "mutually exclusive",
+		"reload error MUST contain XOR keyword from Validate()")
 }

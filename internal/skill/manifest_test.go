@@ -98,6 +98,22 @@ func TestManifestChannel_DataChannel(t *testing.T) {
 		"reads [data:aggregated_only] MUST yield Channel()==ChannelKindData")
 }
 
+// TestManifestChannel_DataChannel_DetectsAnyDataPrefix verifies that
+// HasDataChannel() detects any "data:" prefixed value (not just the exact
+// ReadDataAggregatedOnly constant). This ensures that unknown data:*
+// modes like "data:external:authorized" are routed into the data-channel
+// branch of Validate, where the exact-match check produces the correct
+// "unknown data channel mode" error — rather than falling through to the
+// tier-channel branch and hitting ResolveTiers' defense-in-depth guard.
+func TestManifestChannel_DataChannel_DetectsAnyDataPrefix(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{"data:external:authorized"}
+	assert.True(t, m.HasDataChannel(),
+		"reads [data:external:authorized] MUST set HasDataChannel()=true (broad detection)")
+	assert.Equal(t, ChannelKindData, m.Channel(),
+		"reads [data:external:authorized] MUST yield Channel()==ChannelKindData")
+}
+
 // TestManifestChannel_TierChannel verifies that tier reads (the existing
 // default) yield HasDataChannel()=false and Channel()==ChannelKindTier.
 func TestManifestChannel_TierChannel(t *testing.T) {

@@ -36,10 +36,10 @@ const MinProhibitions = 3
 //
 // Order of checks matters: cheap field-presence checks first (so the
 // operator sees the most basic mistake immediately), then domain-level
-// rules (reads → ResolveTiers, guardrails.prohibitions → length). The first
-// failing check short-circuits — Validate does NOT return a list of all
-// problems at once. Rationale: the loader surfaces errors at startup, the
-// author fixes one, re-runs, sees the next — incremental feedback is
+// rules (reads channel XOR / ResolveTiers, guardrails.prohibitions length).
+// The first failing check short-circuits — Validate does NOT return a list
+// of all problems at once. Rationale: the loader surfaces errors at startup,
+// the author fixes one, re-runs, sees the next — incremental feedback is
 // better than a wall of errors on a first attempt.
 //
 // SYSK-08 enforcement lives in this function via the Temperature pointer
@@ -83,11 +83,57 @@ func Validate(m *Manifest) error {
 			)
 		}
 	}
-	// 3a. reads — every top-level dir must be in TierEnum (SYSK-07 +
-	// D2-12). Delegate to ResolveTiers so there is exactly ONE tier-enum
-	// source of truth in this package.
-	if _, err := ResolveTiers(m.Reads); err != nil {
-		return fmt.Errorf("reads: %w", err)
+	// 3a. reads channel-kind branching (D16-C1/C2 XOR enforcement).
+	// Data channel and tier channel are mutually exclusive — two storage
+	// systems, two evidence systems (citation whitelist vs data-reference
+	// snapshot); mixed-Skill is v1 deferred. The XOR check lives in
+	// Validate() (not Scan) so reloadOne re-runs it on every hot-reload
+	// (Pitfall 6: zero additional code needed to cover the hot-reload
+	// window — parseAndValidate calls Validate).
+	//
+	// Pre-scan: reject any data:-prefixed value that is NOT the known
+	// v1.0 constant. This catches "data:external:authorized" etc. before
+	// they reach ResolveTiers (which would produce a misleading TierEnum
+	// error). HasDataChannel() only matches the exact constant, so unknown
+	// data: values would otherwise fall through to the tier branch.
+	for _, r := range m.Reads {
+		if strings.HasPrefix(r, "data:") && r != ReadDataAggregatedOnly {
+			return fmt.Errorf(
+				"reads %q: unknown data channel mode — v1.0 only supports %q (data:external:authorized and other undefined modes are not in the allowlist; D16-C2 fail-closed)",
+				r, ReadDataAggregatedOnly,
+			)
+		}
+	}
+	if m.HasDataChannel() {
+		// (a) Data channel must be the sole reads entry — no mixing with tiers.
+		if len(m.Reads) > 1 {
+			return fmt.Errorf(
+				"reads declares both data channel and tier reads %v — mutually exclusive (D16-C1: two storage systems / two evidence systems), mixed Skill is v1 deferred; keep only %s or keep only tier reads",
+				m.Reads, ReadDataAggregatedOnly,
+			)
+		}
+		// (b) Deep archetype + data channel is structurally incompatible:
+		// deep's system prompt hardcodes a retrieve tool promise
+		// (internal/runtime/deep_agent.go:171-174), but data channel's
+		// tool set is {kpi_call} — prompt-inject amplification surface.
+		// v1 fail-closed; author must use "chat" archetype instead.
+		if m.Agent == "deep" {
+			return fmt.Errorf(
+				"agent type %q is incompatible with data channel: deep archetype system prompt hardcodes retrieve tool promise (internal/runtime/deep_agent.go:171-174), conflicts with data channel tool set {kpi_call} — v1 fail-closed; use chat instead",
+				m.Agent,
+			)
+		}
+		// (c) Skip ResolveTiers — data channel has no tier semantics.
+		// resolvedTiers stays empty (nil), which the retriever treats as
+		// default-deny via BuildMilvusFilter.
+	} else {
+		// Tier channel: resolve reads patterns into Milvus tier VARCHAR values.
+		// Every top-level dir must be in TierEnum (SYSK-07 + D2-12). Delegate
+		// to ResolveTiers so there is exactly ONE tier-enum source of truth
+		// in this package.
+		if _, err := ResolveTiers(m.Reads); err != nil {
+			return fmt.Errorf("reads: %w", err)
+		}
 	}
 	// 4. writes — must be present (nil = missing); empty [] is the valid
 	// read-only form per SKILL_SCHEMA field 4.
@@ -115,8 +161,8 @@ func Validate(m *Manifest) error {
 	// instead of float32 (Pitfall 4).
 	if m.Temperature == nil {
 		return fmt.Errorf(
-			"temperature is required (SYSK-08 — no implicit default; missing field rejected). " +
-				"Declare an explicit value, e.g. `temperature: 0.0` for compliance/data Skills, " +
+			"temperature is required (SYSK-08 — no implicit default; missing field rejected). "+
+				"Declare an explicit value, e.g. `temperature: 0.0` for compliance/data Skills, "+
 				"`temperature: 0.7+` for creative Skills.",
 		)
 	}
@@ -131,7 +177,7 @@ func Validate(m *Manifest) error {
 	// An unknown target is REJECTED at load time so the Skill author sees the
 	// error at startup, not at first agent run. Empty [] (read-only) is allowed.
 	// Phase 12 plan_approve is added to AllowedWriteTargets and automatically
-	// accepted here WITHOUT any change to this function (D11-B3 "一处改动全场同步").
+	// accepted here WITHOUT any change to this function (D11-B3 "shared source").
 	known := hitl.KnownTargets()
 	for _, w := range m.Writes {
 		if !containsString(known, w) {
