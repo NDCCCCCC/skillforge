@@ -94,8 +94,9 @@ func Validate(m *Manifest) error {
 	// Pre-scan: reject any data:-prefixed value that is NOT the known
 	// v1.0 constant. This catches "data:external:authorized" etc. before
 	// they reach ResolveTiers (which would produce a misleading TierEnum
-	// error). HasDataChannel() only matches the exact constant, so unknown
-	// data: values would otherwise fall through to the tier branch.
+	// error). Although HasDataChannel() now uses prefix detection (any
+	// "data:" value), this pre-scan provides a more specific error message
+	// for unknown data:* modes before the HasDataChannel branch.
 	for _, r := range m.Reads {
 		if strings.HasPrefix(r, "data:") && r != ReadDataAggregatedOnly {
 			return fmt.Errorf(
