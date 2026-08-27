@@ -1,0 +1,61 @@
+# kpis/testdata.yaml — Phase 17 synthetic mini KPI registry
+# Used for GEVL-09/10 eval + reid frozen subset.
+# DO NOT use in production — this is a synthetic fixture.
+
+version: "1"
+dataset: testdata
+
+kpis:
+  - name: KPI_LOAN_BALANCE
+    description: 贷款余额合计（所有未偿还本金）
+    unit: 亿元
+    decimal_places: 2
+    params: {}
+    sql: |
+      SELECT SUM(balance) AS value FROM testdata WHERE period = :period
+
+  - name: KPI_NPL_RATIO
+    description: 不良贷款率（不良贷款余额/总贷款余额）
+    unit: "%"
+    decimal_places: 3
+    params: {}
+    sql: |
+      SELECT CAST(SUM(CASE WHEN status = 'NPL' THEN balance ELSE 0 END) AS DOUBLE) /
+             NULLIF(SUM(balance), 0) AS value
+      FROM testdata WHERE period = :period
+
+  - name: KPI_INTEREST_INCOME
+    description: 利息收入合计
+    unit: 亿元
+    decimal_places: 2
+    params: {}
+    sql: |
+      SELECT SUM(interest_income) AS value FROM testdata WHERE period = :period
+
+  - name: KPI_CUSTOMER_COUNT
+    description: 活跃客户数
+    unit: 户
+    decimal_places: 0
+    params: {}
+    sql: |
+      SELECT COUNT(DISTINCT customer_id) AS value FROM testdata WHERE period = :period
+
+  - name: KPI_LOAN_BALANCE_TREND
+    description: 贷款余额多周期趋势（用于sparkline）
+    unit: 亿元
+    decimal_places: 2
+    params:
+      periods:
+        type: array
+        required: true
+        items:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+        min_items: 2
+        max_items: 12
+    sql: |
+      SELECT period, SUM(balance) AS value
+      FROM testdata
+      WHERE period = ANY(:periods)
+      GROUP BY period
+      ORDER BY period ASC
