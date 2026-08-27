@@ -380,6 +380,22 @@ type KPICallRow struct {
 	Signature string
 }
 
+// KPICallsFilter is the parameter bag for ListKPICalls. Every field is
+// optional; a zero-value filter returns the newest calls across all KPIs
+// up to Limit (default 100). The WHERE clause is assembled ONLY from fixed
+// Go constants — filter column names are code, never user input, and every
+// VALUE rides exclusively in a `?` placeholder (T-16-03-02, T-3-SQLI
+// posture).
+type KPICallsFilter struct {
+	// Func filters by KPI name (the registry key). Empty = no filter.
+	Func string
+	// SessionID filters by the conversation partition. Empty = no filter.
+	SessionID string
+	// Limit caps the number of returned rows (newest-first). Zero defaults
+	// to 100.
+	Limit int
+}
+
 // SessionMessage is one turn-half (user OR assistant) of a conversation
 // history. AppendTurn writes a (user, assistant) pair atomically.
 type SessionMessage struct {
@@ -668,6 +684,19 @@ type Store interface {
 	// LatestKPICallByFunc. Append-only by construction: every call gets a
 	// fresh AUTOINCREMENT id and frozen rows are never rewritten.
 	PutKPICall(ctx context.Context, row KPICallRow) error
+
+	// ListKPICalls returns KPI-call audit rows matching the filter,
+	// newest-first (ORDER BY id DESC). Read-only — the SQL-first query
+	// face for ADM-03 (Phase 20) and the 16-08 replay tooling. Filter
+	// values are `?`-parameterized; zero-value fields are not filtered;
+	// an empty result is a non-nil empty slice.
+	ListKPICalls(ctx context.Context, filter KPICallsFilter) ([]KPICallRow, error)
+
+	// LatestKPICallByFunc returns, per KPI name, the timestamp of its most
+	// recent call — the ADM-03 "last call time" admin view computed as ONE
+	// aggregation over kpi_calls with NO JOIN against the chat audit main
+	// table. Empty map when kpi_calls has no rows.
+	LatestKPICallByFunc(ctx context.Context) (map[string]time.Time, error)
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

@@ -23,6 +23,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -133,4 +134,116 @@ func TestKPICallsDDL(t *testing.T) {
 	var dsCount int
 	require.NoError(t, legacy.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM datasets`).Scan(&dsCount))
 	assert.Equal(t, 2, dsCount, "legacy datasets rows must survive the kpi_calls migration")
+}
+
+// TestKPICallsInsertOnly locks the kpi_calls anti-tampering contract in two
+// segments (T-16-03-01 + T-16-03-02, mirroring the import_batches audit
+// posture):
+//
+//  1. source-grep: the audit file itself must contain no row-mutation or
+//     row-removal statement — a structural lock that survives future edits
+//     better than any behavioral test (a mutation verb cannot sneak in
+//     without tripping this assertion).
+//  2. round-trip: three frozen calls written via PutKPICall read back
+//     field-for-field through the read-only query face — zero-filter list,
+//     per-func filter, per-session filter, combined filter, and the
+//     ADM-03 "last call time" aggregation.
+func TestKPICallsInsertOnly(t *testing.T) {
+	ctx := context.Background()
+
+	// --- Segment 1: source-grep structural lock ---
+	src, err := os.ReadFile("kpi_calls.go")
+	require.NoError(t, err, "kpi_calls.go must be readable from the package dir")
+	source := string(src)
+	assert.NotContains(t, source, "UPDATE ",
+		"kpi_calls.go must contain no row-mutation verb (T-16-03-01)")
+	assert.NotContains(t, source, "DELETE ",
+		"kpi_calls.go must contain no row-removal verb (T-16-03-01)")
+
+	// --- Segment 2: round-trip through the read-only query face ---
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	// Three frozen calls: two share func, two share session. Timestamps
+	// carry sub-second precision to prove RFC3339Nano round-trip fidelity.
+	r1 := fullKPICallRow(time.Date(2026, 8, 27, 10, 0, 1, 500000000, time.UTC))
+	r1.SessionID = "sess-a"
+	r2 := fullKPICallRow(time.Date(2026, 8, 27, 10, 0, 2, 250000000, time.UTC))
+	r2.SessionID = "sess-b"
+	r3 := fullKPICallRow(time.Date(2026, 8, 27, 10, 0, 3, 123456789, time.UTC))
+	r3.SessionID = "sess-b"
+	r3.Func = "approval_rate_by_month"
+	for _, r := range []store.KPICallRow{r1, r2, r3} {
+		require.NoError(t, s.PutKPICall(ctx, r))
+	}
+
+	assertRowsEqual := func(t *testing.T, want store.KPICallRow, got store.KPICallRow) {
+		t.Helper()
+		assert.Equal(t, want.SessionID, got.SessionID)
+		assert.Equal(t, want.SkillID, got.SkillID)
+		assert.Equal(t, want.Func, got.Func)
+		assert.Equal(t, want.ArgsJSON, got.ArgsJSON, "ArgsJSON must round-trip byte-equal")
+		assert.Equal(t, want.ResultSnapshot, got.ResultSnapshot,
+			"ResultSnapshot must round-trip byte-equal (full-freeze D16-D3)")
+		assert.Equal(t, want.ASOfPeriod, got.ASOfPeriod)
+		assert.Equal(t, want.KMinApplied, got.KMinApplied)
+		assert.Equal(t, want.Signature, got.Signature)
+		assert.True(t, want.TS.Equal(got.TS), "TS must round-trip with nanosecond fidelity: want %v got %v", want.TS, got.TS)
+		assert.Greater(t, got.ID, int64(0), "auto-increment ID must be populated on reads")
+	}
+
+	// Zero-value filter: all 3 rows, newest-first by insertion id.
+	all, err := s.ListKPICalls(ctx, store.KPICallsFilter{})
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+	assertRowsEqual(t, r3, all[0])
+	assertRowsEqual(t, r2, all[1])
+	assertRowsEqual(t, r1, all[2])
+
+	// Filter by Func: only that KPI's rows, still newest-first.
+	byFunc, err := s.ListKPICalls(ctx, store.KPICallsFilter{Func: "overdue_by_region"})
+	require.NoError(t, err)
+	require.Len(t, byFunc, 2)
+	assertRowsEqual(t, r2, byFunc[0])
+	assertRowsEqual(t, r1, byFunc[1])
+
+	missing, err := s.ListKPICalls(ctx, store.KPICallsFilter{Func: "no_such_kpi"})
+	require.NoError(t, err)
+	assert.Empty(t, missing)
+
+	// Filter by SessionID.
+	bySession, err := s.ListKPICalls(ctx, store.KPICallsFilter{SessionID: "sess-b"})
+	require.NoError(t, err)
+	require.Len(t, bySession, 2)
+	assertRowsEqual(t, r3, bySession[0])
+	assertRowsEqual(t, r2, bySession[1])
+
+	// Combined filters AND together.
+	combined, err := s.ListKPICalls(ctx, store.KPICallsFilter{
+		Func:      "overdue_by_region",
+		SessionID: "sess-b",
+	})
+	require.NoError(t, err)
+	require.Len(t, combined, 1)
+	assertRowsEqual(t, r2, combined[0])
+
+	// LatestKPICallByFunc: one aggregation over the table returns each
+	// func's most-recent call timestamp (ADM-03 substrate).
+	latest, err := s.LatestKPICallByFunc(ctx)
+	require.NoError(t, err)
+	require.Len(t, latest, 2)
+	assert.True(t, latest["overdue_by_region"].Equal(r2.TS),
+		"overdue_by_region last call = r2 (%v), got %v", r2.TS, latest["overdue_by_region"])
+	assert.True(t, latest["approval_rate_by_month"].Equal(r3.TS),
+		"approval_rate_by_month last call = r3 (%v), got %v", r3.TS, latest["approval_rate_by_month"])
+
+	// Empty table → empty map.
+	fresh, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = fresh.Close() }()
+	emptyLatest, err := fresh.LatestKPICallByFunc(ctx)
+	require.NoError(t, err)
+	assert.NotNil(t, emptyLatest)
+	assert.Empty(t, emptyLatest)
 }

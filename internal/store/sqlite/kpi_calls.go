@@ -24,6 +24,8 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/skillforge/skillforge/internal/store"
@@ -60,4 +62,146 @@ func (s *SQLiteStore) PutKPICall(ctx context.Context, row store.KPICallRow) erro
 		return fmtError("PutKPICall", err)
 	}
 	return nil
+}
+
+// defaultKPICallsListLimit mirrors QueryAudit's LIMIT default.
+const defaultKPICallsListLimit = 100
+
+// listKPICallsBaseSQL selects the full kpi_calls column set. The WHERE
+// clause (if any) is assembled ONLY from the fixed clause constants below
+// — the column names are code, never caller input, and every VALUE rides
+// in a `?` placeholder. No fmt.Sprintf with user input, ever
+// (T-16-03-02; same posture as QueryAudit).
+const listKPICallsBaseSQL = `
+SELECT id, ts, session_id, skill_id, func, args_json,
+       as_of_period, k_min_applied, result_snapshot, signature
+FROM kpi_calls
+`
+
+// kpiCallsClauseFunc / kpiCallsClauseSessionID are the two sanctioned
+// filter clauses — hardcoded constants so strings.Join can never see a
+// caller-controlled string (T-16-03-02).
+const (
+	kpiCallsClauseFunc      = "func = ?"
+	kpiCallsClauseSessionID = "session_id = ?"
+)
+
+// listKPICallsTailSQL orders newest-first by insertion id and caps the
+// result set; the limit value is appended to args, not into SQL text.
+const listKPICallsTailSQL = " ORDER BY id DESC LIMIT ?"
+
+// ListKPICalls returns KPI-call audit rows matching the filter,
+// newest-first. Zero-value filter fields are not filtered; a zero Limit
+// defaults to 100.
+func (s *SQLiteStore) ListKPICalls(ctx context.Context, filter store.KPICallsFilter) ([]store.KPICallRow, error) {
+	if s.isClosed() {
+		return nil, sql.ErrConnDone
+	}
+	var (
+		clauses []string
+		args    []any
+	)
+	if filter.Func != "" {
+		clauses = append(clauses, kpiCallsClauseFunc)
+		args = append(args, filter.Func)
+	}
+	if filter.SessionID != "" {
+		clauses = append(clauses, kpiCallsClauseSessionID)
+		args = append(args, filter.SessionID)
+	}
+
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = defaultKPICallsListLimit
+	}
+
+	q := listKPICallsBaseSQL
+	if len(clauses) > 0 {
+		// strings.Join is safe — the only strings in `clauses` are the
+		// hardcoded parameterized literals above, NEVER user input.
+		q += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	q += listKPICallsTailSQL
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmtError("ListKPICalls", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]store.KPICallRow, 0)
+	for rows.Next() {
+		var r store.KPICallRow
+		var ts string
+		if err := rows.Scan(
+			&r.ID,
+			&ts,
+			&r.SessionID,
+			&r.SkillID,
+			&r.Func,
+			&r.ArgsJSON,
+			&r.ASOfPeriod,
+			&r.KMinApplied,
+			&r.ResultSnapshot,
+			&r.Signature,
+		); err != nil {
+			return nil, fmtError("ListKPICalls", err)
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return nil, fmtError("ListKPICalls", err)
+		}
+		r.TS = parsed.UTC()
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmtError("ListKPICalls", err)
+	}
+	return out, nil
+}
+
+// latestKPICallByFuncSQL implements the ADM-03 "last call time per KPI"
+// view as ONE aggregation over kpi_calls — no JOIN against the chat audit
+// main table.
+//
+// MAX(id), not MAX(ts): AUTOINCREMENT makes id strictly monotonic with
+// insertion order (the table's replay-order guarantee, stated in the DDL
+// comment in schema.go), whereas RFC3339Nano TEXT comparison has a
+// fraction-trim edge — a zero-nanosecond stamp ("…00Z") sorts ABOVE a
+// later same-second fractional stamp ("…00.25Z"), which would misreport
+// the latest call when two invocations land in one wall-clock second.
+const latestKPICallByFuncSQL = `
+SELECT func, ts FROM kpi_calls
+WHERE id IN (SELECT MAX(id) FROM kpi_calls GROUP BY func)
+`
+
+// LatestKPICallByFunc returns, per KPI name, the timestamp of its most
+// recent call. Empty (non-nil) map when kpi_calls has no rows.
+func (s *SQLiteStore) LatestKPICallByFunc(ctx context.Context) (map[string]time.Time, error) {
+	if s.isClosed() {
+		return nil, sql.ErrConnDone
+	}
+	rows, err := s.db.QueryContext(ctx, latestKPICallByFuncSQL)
+	if err != nil {
+		return nil, fmtError("LatestKPICallByFunc", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[string]time.Time)
+	for rows.Next() {
+		var fn, ts string
+		if err := rows.Scan(&fn, &ts); err != nil {
+			return nil, fmtError("LatestKPICallByFunc", err)
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return nil, fmtError("LatestKPICallByFunc", err)
+		}
+		out[fn] = parsed.UTC()
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmtError("LatestKPICallByFunc", err)
+	}
+	return out, nil
 }
