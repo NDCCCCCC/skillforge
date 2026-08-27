@@ -100,12 +100,16 @@ func TestKPIEngineIntegration(t *testing.T) {
 
 	// Sanity: the registry's CompiledKPI for the fixture KPI has
 	// TableRefCount == 1 and PreserveColumns has status + row_count.
+	// Note: PreserveColumns is the GROUP BY dimensions + the CountColumn
+	// (per kmin.Apply D16-D1 contract); select-list value columns like
+	// overdue_rate are SUPPRESSED for small buckets, not preserved.
 	ck, ok := reg.Lookup("loan_overdue_rate_by_status")
 	require.True(t, ok)
 	assert.Equal(t, 1, ck.TableRefCount, "single BASE_TABLE reference, AST count must be 1")
-	assert.Contains(t, ck.PreserveColumns, "status")
-	assert.Contains(t, ck.PreserveColumns, "row_count")
-	assert.Contains(t, ck.PreserveColumns, "overdue_rate", "select-list alias IS preserved")
+	assert.Contains(t, ck.PreserveColumns, "status", "GROUP BY dimension must be preserved")
+	assert.Contains(t, ck.PreserveColumns, "row_count", "CountColumn must be preserved")
+	assert.NotContains(t, ck.PreserveColumns, "overdue_rate",
+		"select-list value columns are SUPPRESSED, not preserved (kmin.Apply D16-D1)")
 
 	// ---- executor ----
 	audit := &captureAudit{}

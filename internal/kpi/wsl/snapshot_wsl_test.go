@@ -223,7 +223,9 @@ func TestSameKPIAcrossSkills(t *testing.T) {
 	require.NotNil(t, outcome1.Snapshot)
 
 	// --- Call 2: SkillB / SessB (same Executor, same Registry)
-	audit.rows = nil
+	// Do NOT clear audit.rows here — the assertion below expects TWO audit
+	// rows, one per call. Clearing between calls would leave only the
+	// second row in the slice.
 	outcome2, err := exec.Call(ctx, kpi.CallRequest{
 		Name:      "loan_overdue_rate_by_status",
 		Params:    map[string]any{"status": "正常"},

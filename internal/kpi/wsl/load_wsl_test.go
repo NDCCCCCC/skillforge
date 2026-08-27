@@ -123,7 +123,10 @@ func TestKPILoadFailClosedLayer2WSL(t *testing.T) {
 	t.Run("SyntaxErrorSQL_Layer2Reject", func(t *testing.T) {
 		// SQL passes Layer 1 (has ds_loans.data + AS row_count + GROUP BY) so
 		// Layer 2 (json_serialize_sql) is the layer that catches the syntax
-		// error.
+		// error. The unbalanced WHERE ( creates a real parse error in
+		// DuckDB; a prior fixture used "ORDER BY TOTALLY_NOT_A_COLUMN" which
+		// is syntactically valid (ORDER BY accepts any expression) and so
+		// did not exercise the failure path.
 		dir := t.TempDir()
 		writeYAML(t, dir, "bad_syntax.yaml", `dataset: loans
 description: syntax error
@@ -131,7 +134,7 @@ k_min: 0
 kpis:
   - name: bad_kpi
     description: deliberately invalid SQL
-    sql: "SELECT status AS status, count(*) AS row_count FROM ds_loans.data GROUP BY status ORDER BY TOTALLY_NOT_A_COLUMN"
+    sql: "SELECT status AS status, count(*) AS row_count FROM ds_loans.data WHERE ( GROUP BY status"
     count_column: row_count
     params: {}
 `)
