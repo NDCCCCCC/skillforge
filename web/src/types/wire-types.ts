@@ -149,6 +149,18 @@ export interface ConflictChunk {
   effectiveTo?: number;
 }
 
+// Phase 17 — D17-B2 sparkline per-point reference
+export interface PointReference {
+  /** 0-based index in sparkline points array */
+  pointIndex: number;
+  /** Period string (e.g. "2026-07") */
+  period: string;
+  /** The numeric value */
+  value: number;
+  /** Non-zero when this point was k_min suppressed */
+  kMinApplied?: number;
+}
+
 // Phase 16 / Plan 16-04 — P16/D16-B3 structured data-citation payload for
 // kpi_reference decisions. Mirrors internal/wire/chunk.go DataReference
 // field-for-field under D15 lockstep. When kpi_call produces a snapshot,
@@ -171,6 +183,8 @@ export interface DataReference {
   suppressed: number;
   /** The k_min threshold value in effect for this execution (file > dataset override > KMinDefault=5). */
   kMinApplied: number;
+  // NEW (D17-B2): multi-point sparkline references
+  references?: PointReference[];
 }
 
 export interface DecisionPayload {
