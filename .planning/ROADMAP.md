@@ -48,6 +48,15 @@
 - [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-23 — 12/12 plans: 14-01..14-11 code-complete hermetically; 14-12 landed explicit D14-B4 re-baseline semantics (computeCaseMetrics refused=true → faith=1.0) with RED→GREEN test; authorized compliance replay environment-blocked by BGE-M3 no route to host — no replay run, no falsified numbers, platform-floor.lock.json 1.1.0 formal re-sign remains deferred)
 - [x] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）(completed 2026-08-24 — 7/7 plans: 15-01..15-07 code-complete; verify-phase-15.sh 10/10 PASS in WSL2)
 - [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
+  - 16-01 KPI skeleton + probe lock (`b5f9173`) — registry + Lexicon
+  - 16-02 reads channel vocabulary + HasDataChannel + ResolveTiers defense-in-depth (`22bb646`)
+  - 16-03 kpi_calls dedicated INSERT-only table (DATA-17 store layer)
+  - 16-04 DecisionKPIReference + DataReference + DataRef field wire (P16/D16-B3)
+  - 16-05 LoadKPIs double-layer pipeline + AST walk (`0b1cd64` / `d8c4522` / `8c3c39b`)
+  - 16-06 kmin + Executor.Call + EngineAdapter + WSL triple lock (`bcaf7ef` / `f2ed890` / `a4fe03c` / `ad3c656` / `829b191`)
+  - **16-07 runtime channel isolation + kpi_call tool + structural SQL ban** (Wave 3 closed 2026-08-27 — `696ca81` TestNoSQLGenerationSurface gate + `c80867b` BuildKPICallTool + `dc69291` channel branch + TestToolsForChannel + agent.go fail-closed guard) — DATA-03/08/09 runtime closed
+  - 16-08 SSE DataRef emission wiring (planned)
+  - 16-09 admin kpi endpoint + audit (planned)
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
 - [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
 - [ ] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度
@@ -706,14 +715,14 @@ Plans:
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
 | 14. CGO 地基 + 平台信任地板 (P10.0) | 12/12 (14-01..14-08 core + 14-09/14-10 UAT gap closure + 14-11/14-12 verification gap closure) | Complete — closed with deferred items 2026-08-23 (BGE replay re-sign + Docker live verify = operator gates; UAT 6/6, gates 11/11 + 9/9) | 2026-08-23 |
 | 15. 数据导入管线 + 导入即脱敏 (P10.1) | 7/7 (15-01..15-07) | Complete — verify-phase-15.sh 10/10 PASS; code review resolved 6/6 (commit c0d7d5a, incl. strictUTF8Reader rune-split root cause); 15-VERIFICATION PASS | 2026-08-24 |
-| 16. KPI 聚合通道 (P10.2) | 0 (not planned) | Not started | - |
+| 16. KPI 聚合通道 (P10.2) | 7/9 (16-01..16-06 closed + 16-07 closed 2026-08-27; 16-08 SSE DataRef wiring + 16-09 admin kpi endpoint planned) | In Progress — Wave 3 leg closed; ready for Wave 4 (16-08) | 2026-08-27 |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
 | 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |
 | 19. 静态报告门户 + 调度器 (P10.5) | 0 (not planned) | Not started | - |
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-24 — Phase 15 (数据导入管线 + 导入即脱敏, P10.1) CLOSED: 7/7 plans hermetically gated (`verify-phase-15.sh` 10/10 PASS in WSL2 Ubuntu-22.04; full `go test ./... -count=1 -race` green); code review resolved 6/6 findings (commit `c0d7d5a` — CR-01 streaming multipart onFile callback, DATA-17 audit-before-mutation ordering, ImportMaxRowsPerBatch enforcement, all-NULL VARCHAR inference, gate regex sync, plus a root-caused `strictUTF8Reader` multi-byte rune-splitting bug rewritten on `bufio.ReadRune`); 15-VERIFICATION verdict PASS across DATA-01/02/15/16/17. Progress-table rows for phases 10/11/12/14/15 reconciled with recorded closeouts (11 = 8/8 UAT complete; 12 = 8/8 hermetic verified, live tests operator-gated). Deferred operator gates unchanged (Phase 14 BGE replay re-sign; Phase 10 live 35-case re-run). Next: `/gsd-discuss-phase 16` (KPI 聚合通道, P10.2).*
+*Last updated: 2026-08-27 — Phase 16 Plan 16-07 (runtime channel isolation + kpi_call tool + structural SQL ban) CLOSED: 3/3 tasks landed in 3 commits (`696ca81` SQL surface WalkDir gate + TestKPINarrowSurface reflect assertion; `c80867b` BuildKPICallTool + 5 hermetic tools locks; `dc69291` runner_setup.go channel branch + TestToolsForChannel 4 sub-tests + agent.go data-channel fail-closed guard). All hermetic tests green (4.95s agent / 0.55s callbacks / 1.26s hitl / 0.65s tools / 0.84s kpi). CGO binaries blocked on D15-01-1 (pre-existing MSYS2 gcc linker limit; unchanged from Phase 14/15). DATA-03/08/09 runtime closed; Wave 4 (16-08 SSE DataRef emission wiring + admin kpi endpoint) ready for execution.*
 
 ---
 

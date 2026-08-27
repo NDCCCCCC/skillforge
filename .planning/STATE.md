@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 16
-current_plan: 6 (COMPLETE — Wave 2 leg closed for kmin + executor + engine adapter + WSL triple lock)
+current_plan: 7 (COMPLETE — runtime channel isolation + kpi_call tool + structural SQL ban)
 status: executing
-stopped_at: context exhaustion at 75% (2026-08-24)
-last_updated: "2026-08-27T06:12:54.980Z"
+stopped_at: —
+last_updated: "2026-08-27T07:30:00.000Z"
 last_activity: 2026-08-27
 progress:
   total_phases: 20
   completed_phases: 13
   total_plans: 100
-  completed_plans: 98
-  percent: 65
+  completed_plans: 99
+  percent: 66
 ---
 
 # State — SkillForge
@@ -21,8 +21,8 @@ progress:
 ## Current Position
 
 Phase: 16 (p10-2) — EXECUTING
-Plan: 7 of 9 (COMPLETE — kmin + executor + engine adapter + WSL triple lock)
-Status: Ready to execute
+Plan: 8 of 9 (Plan 16-07 COMPLETE — runtime channel isolation + kpi_call tool + structural SQL ban)
+Status: Ready to execute Plan 16-08
 Last activity: 2026-08-27
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
@@ -93,12 +93,25 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 ## Current Position
 
-Phase: 16 (KPI 聚合通道，P10.2) — **CONTEXT GATHERED** 2026-08-24
-Plan: 0 (phase not yet planned)
-Status: ready for planning
-Last activity: 2026-08-24 -- `/gsd-discuss-phase 16` complete: 16 decisions locked (D16-A1..A4 YAML 受控文件/SQL 模板/枚举值域/内存 registry；D16-B1..B4 单一 kpi_call/工具层拒答/结构化快照+data-reference/as_of 系统生成；D16-C1..C4 reads 互斥/加载期交叉验证/双层镜像 D11-B1/平台级共享目录；D16-D1..D4 k_min 行级抑制/枚举即差分白名单/全量快照冻结/独立 kpi_calls 表)，commit 4200e1c.
-Stopped At: context exhaustion at 75% (2026-08-24)
-Resume File: None
+Phase: 16 (KPI 聚合通道，P10.2) — **Wave 3 leg closed** (16-07 complete)
+Plan: 8 of 9 (Plan 16-07 COMPLETE — runtime channel isolation + kpi_call tool + structural SQL ban)
+Status: ready for Plan 16-08 execution
+Last activity: 2026-08-27 -- Plan 16-07 executed; 3 commits landed (`696ca81` SQL surface gate, `c80867b` kpi_call tool, `dc69291` channel branch + TestToolsForChannel).
+Next action: `/gsd:execute-phase 16 --wave 4` for Plan 16-08 (SSE DataRef emission wiring — the production DataRefEmitFunc close-out + admin kpi endpoint + data-decision kpi_reference discriminator)
+Resume File: `.planning/phases/16-p10-2/16-07-SUMMARY.md`
+
+**Plan 16-07 delivery summary (Wave 3, 2026-08-27):**
+
+- 16-07-1: `internal/agent/sql_surface_test.go` — TestNoSQLGenerationSurface WalkDir gate (3 roots × 5 SQL-shape regexes + comment stripping) + TestKPINarrowSurface reflect assertion on `*kpi.Executor` method set (commit `696ca81`)
+- 16-07-2: `internal/agent/tools/kpi_tool.go` — BuildKPICallTool (catalog snapshot at construction, Enum, structured refusal pass-through, DataRefEmitFunc); 5 hermetic locks (commit `c80867b`)
+- 16-07-3: `runner_setup.go` BuildRunner channel branch (data → `{kpi_call}`, tier → existing compose; fail-fast on nil KPI deps) + `agent.go` data-channel fail-closed guard + TestToolsForChannel 4 sub-tests (commit `dc69291`)
+
+**Prior decisions / plans:**
+
+- 2026-08-24: `/gsd-discuss-phase 16` complete: 16 decisions locked (D16-A1..A4 YAML 受控文件/SQL 模板/枚举值域/内存 registry；D16-B1..B4 单一 kpi_call/工具层拒答/结构化快照+data-reference/as_of 系统生成；D16-C1..C4 reads 互斥/加载期交叉验证/双层镜像 D11-B1/平台级共享目录；D16-D1..D4 k_min 行级抑制/枚举即差分白名单/全量快照冻结/独立 kpi_calls 表)，commit 4200e1c.
+- 2026-08-24..27: 16-01 through 16-06 executed (KPI registry + loaders + Layer 1+2 validation + kmin + Executor + engine adapter + WSL triple lock) — see `.planning/phases/16-p10-2/` for per-plan SUMMARIES.
+
+**Verification:** all `go test ./internal/agent/...` and `go test ./internal/kpi/` hermetic tests green (4.95s / 0.65s / 1.26s / 1.26s / 0.84s across the 5 packages). CGO binaries (`cmd/server`, `cmd/eval`, `internal/kpi/wsl/`) blocked on D15-01-1 (pre-existing MSYS2 gcc linker limit) — recorded as blocked-with-notes per 14-08 precedent; plan 16-07 is hermetic and unaffected.
 
 **Phase 15 delivery summary:**
 
