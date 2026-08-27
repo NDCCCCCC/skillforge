@@ -366,6 +366,10 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
         messages: options.messages,
         id: options.chatId,
         trigger: options.trigger,
+        // Phase 17 (DASH-01): merge caller-supplied body extensions —
+        // App.handleSend passes { skill } so the backend can resolve the
+        // selected Skill instead of falling back to defaultSkill.
+        ...((options.body as Record<string, unknown> | undefined) ?? {}),
       }),
       signal: options.abortSignal,
     });

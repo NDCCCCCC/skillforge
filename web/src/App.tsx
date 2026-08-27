@@ -324,7 +324,14 @@ function LiveApp() {
   }, [messages]);
 
   function handleSend(text: string) {
-    void sendMessage({ text });
+    // Phase 17 (DASH-01 live-UAT gap closure): the selected Skill must ride
+    // the request body or the backend always resolves defaultSkill
+    // ("compliance") and a data-channel Skill like kpi-dashboard is
+    // unreachable from the UI. sendMessage options.body merges into the
+    // transport's POST body (RealChatTransport reads options.body for the
+    // messages payload; AI SDK v5 forwards extra body fields).
+    const currentSkillId = useAppStore.getState().currentSkillId;
+    void sendMessage({ text }, { body: { skill: currentSkillId ?? undefined } });
   }
 
   // Plan 06-04 (D6-01) — admin-mode route renders the EvalDashboard

@@ -180,6 +180,22 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		req.Skill = defaultSkill
 	}
 
+	// Phase 17 (DASH-01 live-UAT gap closure): data-channel Skills (reads
+	// declares "data:") ride the Runner path — the VerdictPipeline below is
+	// a tier-channel retrieval pipeline with no kpi_call surface, so a
+	// data-channel request would silently degrade into an out_of_scope
+	// refusal. Delegating to (*Deps).ChatHandler (runner_setup.go) hands
+	// the request to BuildRunner's channel branch (D16-C3: data →
+	// {kpi_call}), which also carries the dataRefEmitter wiring (16-08).
+	// The body is buffered by hertz (Request.Body() is a peek, and the
+	// runner handler re-binds), so delegation after BindAndValidate is
+	// safe. Tier-channel requests are unaffected.
+	if m := s.findSkill(req.Skill); m != nil && m.HasDataChannel() {
+		log.Printf("[INFO] server: chatHandler delegating data-channel skill=%s to Runner path", req.Skill)
+		s.runnerChatHandler(ctx, c)
+		return
+	}
+
 	// Phase 3: session_id resolution (AGNT-05 / SC-9). The header is the
 	// client's claim; if absent the server generates a fresh crypto/rand
 	// ID (T-3-SESSIONID — 32 hex chars = 128 bits of entropy, ASVS V6).
@@ -651,23 +667,37 @@ func (s *Deps) renderedPromptBody(skillName string) string {
 // nil if the Skill is not loaded (unknown name, or Loader was not
 // initialized for tests).
 //
-// Phase 2 simplification: there is exactly ONE Skill (compliance).
-// Phase 5 introduces a Name field on Manifest and a real map lookup
-// (SYSK-05 routing). For now, the function matches name == "compliance"
-// against the first loaded Skill, returning nil for any other name.
-// Tests that bypass the Loader pass manifests directly to
-// VerdictPipeline so this lookup is never exercised in the unit suite.
+// Phase 17 widening (live-UAT gap closure, D14-E2 first step): exact
+// Manifest.Name lookup runs FIRST (Manifest.Name is the directory
+// basename — loader.go:143), so data-channel Skills like kpi-dashboard
+// are addressable by their real name. The Phase-2 literal gate
+// (name == "compliance" → first loaded Skill) is preserved as the
+// fallback because the deployment Skill dir ships simple-qa under the
+// historical "compliance" chat contract (D14-E2); full SYSK-05 map
+// routing stays deferred as recorded.
 func (s *Deps) findSkill(name string) *skill.Manifest {
 	if s.Loader == nil {
 		return nil
 	}
+	for _, m := range s.Loader.Skills() {
+		if m.Name == name {
+			return m
+		}
+	}
 	if name != defaultSkill {
-		// Phase 2 supports only "compliance"; unknown names are out of scope.
+		// Not found by exact name and not the legacy alias — out of scope.
 		return nil
 	}
 	for _, m := range s.Loader.Skills() {
-		// The first loaded Skill is the compliance Skill (the only one
-		// that ships in Phase 2).
+		// Legacy Phase-2 fallback: "compliance" resolves to the first
+		// TIER-channel Skill (the deployment dir's simple-qa). Data-channel
+		// Skills must be skipped here — the legacy alias feeds the
+		// VerdictPipeline, which has no kpi_call surface; a data-channel
+		// manifest would route the request down the wrong path (and flip
+		// the D-04 transport-swap frame contract on the compliance tests).
+		if m.HasDataChannel() {
+			continue
+		}
 		return m
 	}
 	return nil
