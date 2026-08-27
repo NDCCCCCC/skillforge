@@ -26,6 +26,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	template "github.com/cloudwego/eino/utils/callbacks"
 
+	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/llm"
 )
 
@@ -33,10 +34,31 @@ import (
 // payload uses these as the Decision field's enum values. Emitted by
 // newDecisionCallback based on which Eino callback fired:
 //
-//   - **retrieve** — Tool OnStart fired (the agent invoked
-//     retrieve_compliance_chunks on this hop).
+//   - **retrieve** — Tool OnStart fired for a KNOWLEDGE-tier tool (the
+//     agent invoked retrieve_compliance_chunks on this hop).
 //   - **answer**   — ChatModel OnEnd fired with a message that has no
 //     tool calls (the model produced a final answer).
+//
+// Two-channel dispatch (Phase 16 / D16-B3 / Pitfall 5). Since 16-07 the
+// Tool set is channel-dependent: a tier-channel Skill sees retrieve, a
+// data-channel Skill sees exactly {kpi_call}. The retrieve decision is
+// therefore NOT a universal "a tool started" signal any more — labelling
+// a kpi_call hop as retrieve would poison the SSE timeline and every
+// observability surface derived from it. So toolHandler.OnStart branches
+// on the tool name: for agenttools.KPICallToolName it increments the hop
+// counter but emits NOTHING. The kpi_reference decision (carrying the
+// DataRef data-citation payload) is emitted by the kpi_call closure
+// itself once a Snapshot exists (agenttools.DataRefEmitFunc, wired at
+// the server boundary in 16-08). The two paths are mutually exclusive by
+// construction: exactly one decision per KPI hop, never two, never the
+// wrong one.
+//
+// Why the DataRef cannot ride THIS callback layer: DecisionEmitFunc is a
+// 5-scalar signature (step, decision, toolCallID, query, confidence) — it
+// structurally cannot carry a *wire.DataReference. Widening it would
+// couple internal/agent to internal/wire (the decoupling documented on
+// DecisionRecord below), so the data-reference leg emits through its own
+// closure instead.
 //
 // The fourth constant, forced_stop, is emitted by the Run method itself
 // when MaxStep is hit (the react loop bails before ChatModel OnEnd can
@@ -136,8 +158,18 @@ func newDecisionCallback(emit DecisionEmitFunc) (callbacks.Handler, *stepCounter
 	}
 
 	toolHandler := &template.ToolCallbackHandler{
-		OnStart: func(ctx context.Context, _ *callbacks.RunInfo, input *tool.CallbackInput) context.Context {
+		OnStart: func(ctx context.Context, info *callbacks.RunInfo, input *tool.CallbackInput) context.Context {
+			// The hop counter advances for EVERY tool invocation
+			// (kpi_call included) — the step number is the shared
+			// timeline coordinate both decision legs reference.
 			sc.inc()
+			// Pitfall 5 dispatch: kpi_call is NOT a retrieve. Its
+			// kpi_reference decision (with DataRef) is emitted by the
+			// tool closure after the Snapshot exists — emitting a
+			// retrieve here would double-label the same hop.
+			if isKPICallTool(info, input) {
+				return ctx
+			}
 			query := ""
 			if input != nil {
 				query = tryParseQuery(input.ArgumentsInJSON)
@@ -152,6 +184,46 @@ func newDecisionCallback(emit DecisionEmitFunc) (callbacks.Handler, *stepCounter
 			Tool(toolHandler).
 			Handler(),
 		sc
+}
+
+// isKPICallTool decides whether the Tool OnStart callback that is firing
+// belongs to the kpi_call Tool (agenttools.KPICallToolName). Two-level
+// strategy, in order:
+//
+//	Level 1 (authoritative) — callbacks.RunInfo.Name. eino sets it to the
+//	  tool name when it dispatches a tool-call task
+//	  (eino@v0.9.14/compose/tool_node.go:896-899 and :935-939 build
+//	  &callbacks.RunInfo{Name: task.name, ...} for both the invoke and
+//	  the stream paths), so a non-empty Name IS the tool identity.
+//
+//	Level 2 (shape probe) — when RunInfo is nil or carries an empty Name
+//	  (a hand-rolled callback dispatch, or a future eino change), fall
+//	  back to the argument SHAPE: kpi_call's arguments are exactly
+//	  {"name": <string>, "params": {...}} (agenttools.kpiCallArgs) while
+//	  retrieve's are {"query": <string>}. A JSON object carrying a
+//	  non-empty string "name" AND a "params" key is treated as kpi_call.
+//
+// Undecidable input (no RunInfo, unparseable / foreign arguments) is
+// conservatively treated as NOT kpi_call, which preserves the Phase 3
+// behavior (emit retrieve). The conservative direction is deliberate: an
+// extra retrieve decision on an unknown tool is a cosmetic timeline
+// artifact, whereas silently dropping decisions for every tool would
+// blank the observability surface.
+func isKPICallTool(info *callbacks.RunInfo, input *tool.CallbackInput) bool {
+	if info != nil && info.Name != "" {
+		return info.Name == agenttools.KPICallToolName
+	}
+	if input == nil || input.ArgumentsInJSON == "" {
+		return false
+	}
+	var probed struct {
+		Name   string          `json:"name"`
+		Params json.RawMessage `json:"params"`
+	}
+	if err := json.Unmarshal([]byte(input.ArgumentsInJSON), &probed); err != nil {
+		return false
+	}
+	return probed.Name != "" && len(probed.Params) > 0
 }
 
 // tryParseConfidence makes a best-effort attempt to extract a confidence
