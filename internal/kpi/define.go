@@ -24,6 +24,7 @@ package kpi
 const (
 	ParamTypeString = "string" // pattern-constrained free text (e.g. period: '^2[0-9]{3}-(0[1-9]|1[0-2])$')
 	ParamTypeEnum   = "enum"   // explicit value allowlist (e.g. status: [正常, 逾期])
+	ParamTypeArray  = "array"  // NEW (D17-B3): periods:[] multi-period KPI
 )
 
 // KPIFile is the in-memory form of a kpis/{dataset}.yaml file.
@@ -97,8 +98,9 @@ type KPIDef struct {
 // Exactly one of enum (Values) or pattern (Pattern) applies; specifying
 // both is fail-closed rejected (D16-A3 mutual exclusivity).
 type ParamSpec struct {
-	// Type is the parameter type: ParamTypeString or ParamTypeEnum.
-	// Vocabulary default-deny: any other value is rejected at load time.
+	// Type is the parameter type: ParamTypeString, ParamTypeEnum, or
+	// ParamTypeArray (D17-B3). Vocabulary default-deny: any other value
+	// is rejected at load time.
 	Type string `yaml:"type"`
 
 	// Values is the enum value allowlist. Required and non-empty when
@@ -116,4 +118,19 @@ type ParamSpec struct {
 	// false = optional; if omitted the placeholder condition is typically
 	// guarded by SQL like "(:param IS NULL OR col = :param)".
 	Required bool `yaml:"required"`
+
+	// Items declares constraints for ParamTypeArray parameters (D17-B3).
+	Items *ParamSpecItems `yaml:"items,omitempty"`
+}
+
+// ParamSpecItems declares constraints for array-type parameters (D17-B3).
+type ParamSpecItems struct {
+	// Type is the item element type; must be "string" for periods arrays.
+	Type string `yaml:"type"`
+	// Pattern is the regex each element must match (e.g. "^\d{4}-(0[1-9]|1[0-2])$").
+	Pattern string `yaml:"pattern"`
+	// MinItems is the minimum array length (0 = no minimum).
+	MinItems int `yaml:"minItems"`
+	// MaxItems is the maximum array length (0 = no maximum).
+	MaxItems int `yaml:"maxItems"`
 }

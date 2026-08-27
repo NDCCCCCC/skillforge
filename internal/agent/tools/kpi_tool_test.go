@@ -135,6 +135,10 @@ func (m toolStubMeta) LatestDatasetVersion(context.Context, string) (kpi.Dataset
 	return m.version, m.err
 }
 
+func (m toolStubMeta) Periods(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
 // toolStubEngine is a QueryEngine stub that replays canned rows and
 // records the last request (so tests can assert on what the executor
 // passed in).

@@ -286,3 +286,23 @@ func (m wsMeta) LatestDatasetVersion(_ context.Context, dataset string) (kpi.Dat
 		KMinOverride: best.KMinOverride,
 	}, nil
 }
+
+func (m wsMeta) Periods(_ context.Context, dataset string) ([]string, error) {
+	rows, err := m.store.ListDatasets(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	var periods []string
+	seen := make(map[string]bool)
+	for _, r := range rows {
+		if r.Dataset != dataset {
+			continue
+		}
+		if !seen[r.Period] {
+			periods = append(periods, r.Period)
+			seen[r.Period] = true
+		}
+	}
+	sort.Strings(periods)
+	return periods, nil
+}

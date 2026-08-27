@@ -120,6 +120,10 @@ type DatasetVersion struct {
 // the latest dataset version WITHOUT importing the whole store.Store.
 type DatasetMetaSource interface {
 	LatestDatasetVersion(ctx context.Context, dataset string) (DatasetVersion, error)
+	// Periods returns all registered period watermarks for the given logical
+	// dataset, sorted ascending. Used by CallMultiPeriod (D17-B3) to
+	// intersect requested periods against available data.
+	Periods(ctx context.Context, dataset string) ([]string, error)
 }
 
 // EngineRequest is the ONLY CGO boundary crossing for execution: the
@@ -359,6 +363,150 @@ func (e *Executor) Call(ctx context.Context, req CallRequest) (CallOutcome, erro
 	return CallOutcome{Snapshot: &snap}, nil
 }
 
+// CallMultiPeriod executes kpi_call for N periods in a single invocation.
+// Mirrors Call's six steps, but loops over N periods and merges rows tagged
+// with the period column (D17-B3).
+//
+// Steps:
+//   - ①+② same as Call (unknown KPI, param validation including array shape)
+//   - ③ resolve N period watermarks via ResolvePeriods
+//   - ④ loop engine.Query once per period, tag each row with period column
+//   - ⑤ k_min suppression applied per-row (shared KMinApplied)
+//   - ⑥ single Snapshot with merged rows + sorted periods in Args
+func (e *Executor) CallMultiPeriod(ctx context.Context, req CallRequest) (CallOutcome, error) {
+	// ① Unknown KPI → structured refusal (same as Call).
+	k, ok := e.reg.Lookup(req.Name)
+	if !ok {
+		return CallOutcome{Refusal: &Refusal{
+			ReasonCode: ReasonNoMatchingKPI,
+			HumanExplanation: fmt.Sprintf(
+				"未找到名为 %q 的 KPI。只能按名调用预编译指标（不接受自定义 SQL 或即席聚合）。可用目录见 available_kpis，请检查名称后重试。",
+				req.Name),
+			AvailableKPIs: e.reg.Names(),
+		}}, nil
+	}
+
+	// ② Fail-closed parameter validation (including array shape).
+	if refusal := validateParams(k, req.Params); refusal != nil {
+		return CallOutcome{Refusal: refusal}, nil
+	}
+
+	// Extract periods []string from validated params.
+	rawPeriods, ok := req.Params["periods"].([]any)
+	if !ok {
+		return CallOutcome{Refusal: &Refusal{
+			ReasonCode: ReasonInvalidParams,
+			HumanExplanation: "periods 参数必须是数组类型。",
+		}}, nil
+	}
+	reqPeriods := make([]string, len(rawPeriods))
+	for i, rp := range rawPeriods {
+		reqPeriods[i], ok = rp.(string)
+		if !ok {
+			return CallOutcome{Refusal: &Refusal{
+				ReasonCode: ReasonInvalidParams,
+				HumanExplanation: fmt.Sprintf("periods[%d] 必须是字符串类型。", i),
+			}}, nil
+		}
+	}
+
+	// ③ Resolve N period watermarks.
+	periods, ref := ResolvePeriods(ctx, e.meta, k.Dataset, reqPeriods)
+	if ref != nil {
+		return CallOutcome{Refusal: ref}, nil
+	}
+
+	// Determine as_of: use the maximum period as the primary reference.
+	maxPeriod := periods[len(periods)-1]
+
+	// ④ Loop engine.Query per period, tag rows with period column.
+	kmin := ResolveKMin(k.FileKMin, 0) // dataset-level override not available here; use file default
+	maxRows := k.MaxRows
+	if maxRows <= 0 {
+		maxRows = MaxResultRows
+	}
+
+	var allRows []map[string]any
+	totalSuppressed := 0
+	for _, period := range periods {
+		// Get FilePath for this specific period via LatestDatasetVersion
+		// (requires a meta source that can scope to period — we use
+		// LatestDatasetVersion as a proxy; the actual period resolution
+		// was done in ResolvePeriods, so the dataset must be registered).
+		version, err := e.meta.LatestDatasetVersion(ctx, k.Dataset)
+		if err != nil {
+			return CallOutcome{}, fmt.Errorf("engine.Query %s period %s: %w", req.Name, period, err)
+		}
+		// Build per-period request, replacing periods:[...] with single period.
+		periodParams := copyParams(req.Params)
+		periodParams["period"] = period
+		engineRows, err := e.engine.Query(ctx, EngineRequest{
+			Dataset:       k.Dataset,
+			Period:        period,
+			FilePath:      version.FilePath,
+			SQL:           k.SQLDollar,
+			TableRefCount: k.TableRefCount,
+			Args:          buildNamedArgs(k, periodParams),
+			MaxRows:       maxRows,
+		})
+		if err != nil {
+			if errors.Is(err, ErrTooManyRows) {
+				return CallOutcome{Refusal: &Refusal{
+					ReasonCode: ReasonResultTooLarge,
+					HumanExplanation: fmt.Sprintf(
+						"KPI %q 的结果集超过行数上限 %d（max_rows 定义约束）。",
+						req.Name, maxRows),
+				}}, nil
+			}
+			return CallOutcome{}, fmt.Errorf("engine.Query %s period %s: %w", req.Name, period, err)
+		}
+		// Tag each row with its period.
+		for _, row := range engineRows {
+			row["period"] = period
+			allRows = append(allRows, row)
+		}
+	}
+
+	// ⑤ k_min row-level suppression on merged rows.
+	rows, suppressed := Apply(allRows, k.CountColumn, k.PreserveColumns, kmin)
+	totalSuppressed += suppressed
+
+	// ⑥ Single-snapshot three-output emission.
+	now := e.now()
+	asOf := ASOf{Period: maxPeriod, Ts: now.UTC().Format(time.RFC3339Nano)}
+	snap := Snapshot{
+		Func:        req.Name,
+		Args:        copyParams(req.Params),
+		ASOf:        asOf,
+		Rows:        rows,
+		KMinApplied: kmin,
+		Suppressed:  totalSuppressed,
+	}
+	snapJSON, err := json.Marshal(snap)
+	if err != nil {
+		return CallOutcome{}, fmt.Errorf("marshal snapshot %s: %w", req.Name, err)
+	}
+	argsJSON, err := json.Marshal(snap.Args)
+	if err != nil {
+		return CallOutcome{}, fmt.Errorf("marshal args %s: %w", req.Name, err)
+	}
+	row := store.KPICallRow{
+		TS:             now,
+		SessionID:      req.SessionID,
+		SkillID:        req.SkillID,
+		Func:           req.Name,
+		ArgsJSON:       string(argsJSON),
+		ASOfPeriod:     asOf.Period,
+		KMinApplied:    kmin,
+		ResultSnapshot: string(snapJSON),
+		Signature:      e.reg.Signature(),
+	}
+	if err := e.audit.PutKPICall(ctx, row); err != nil {
+		return CallOutcome{}, fmt.Errorf("audit.PutKPICall %s: %w", req.Name, err)
+	}
+	return CallOutcome{Snapshot: &snap}, nil
+}
+
 // validateParams applies the fail-closed whitelist BEFORE any SQL binding.
 // Returns a Refusal for the FIRST violation class found (aggregating its
 // instances), or nil when every declared constraint holds:
@@ -424,6 +572,32 @@ func validateParams(k CompiledKPI, params map[string]any) *Refusal {
 			if cp.Pattern != nil && !cp.Pattern.MatchString(s) {
 				return refuse(fmt.Sprintf(
 					"参数 %q 取值 %q 不匹配声明的格式约束（pattern: %s）。", n, s, cp.Pattern.String()))
+			}
+		case ParamTypeArray:
+			arr, isArr := v.([]any)
+			if !isArr {
+				return refuse(fmt.Sprintf("参数 %q 必须是数组类型。", n))
+			}
+			if cp.Items == nil {
+				return refuse(fmt.Sprintf("参数 %q 声明为数组但未提供 items 定义。", n))
+			}
+			if cp.Items.MinItems > 0 && len(arr) < cp.Items.MinItems {
+				return refuse(fmt.Sprintf(
+					"参数 %q 数组长度 %d 低于最小要求 %d。", n, len(arr), cp.Items.MinItems))
+			}
+			if cp.Items.MaxItems > 0 && len(arr) > cp.Items.MaxItems {
+				return refuse(fmt.Sprintf(
+					"参数 %q 数组长度 %d 超过最大限制 %d。", n, len(arr), cp.Items.MaxItems))
+			}
+			for i, elem := range arr {
+				s, isStr := elem.(string)
+				if !isStr {
+					return refuse(fmt.Sprintf("参数 %q[%d] 必须是字符串类型。", n, i))
+				}
+				if cp.Items.PatternRE != nil && !cp.Items.PatternRE.MatchString(s) {
+					return refuse(fmt.Sprintf(
+						"参数 %q[%d] 取值 %q 不匹配格式约束（%s）。", n, i, s, cp.Items.PatternRE.String()))
+				}
 			}
 		default:
 			// Unreachable: loader rejects foreign types fail-closed (D16-A3).

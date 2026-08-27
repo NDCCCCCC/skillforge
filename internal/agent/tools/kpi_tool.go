@@ -227,12 +227,26 @@ func BuildKPICallTool(exec *kpi.Executor, reg *kpi.Registry, sessionID, skillID 
 			}, nil
 		}
 
-		outcome, err := exec.Call(ctx, kpi.CallRequest{
-			Name:      name,
-			Params:    args.Params,
-			SessionID: sessionID,
-			SkillID:   skillID,
-		})
+		// D17-B3: detect periods:[] — dispatch to CallMultiPeriod when
+		// more than one period is requested (single-period calls reuse Call).
+		rawPeriods, hasPeriods := args.Params["periods"].([]any)
+		var outcome kpi.CallOutcome
+		var err error
+		if hasPeriods && len(rawPeriods) > 1 {
+			outcome, err = exec.CallMultiPeriod(ctx, kpi.CallRequest{
+				Name:      name,
+				Params:    args.Params,
+				SessionID: sessionID,
+				SkillID:   skillID,
+			})
+		} else {
+			outcome, err = exec.Call(ctx, kpi.CallRequest{
+				Name:      name,
+				Params:    args.Params,
+				SessionID: sessionID,
+				SkillID:   skillID,
+			})
+		}
 		if err != nil {
 			// Infrastructure failure (engine crash, audit write
 			// fault). Per D16-B2 / DATA-12: Go errors are reserved
@@ -258,6 +272,7 @@ func BuildKPICallTool(exec *kpi.Executor, reg *kpi.Registry, sessionID, skillID 
 				RowCount:    len(snap.Rows),
 				Suppressed:  snap.Suppressed,
 				KMinApplied: snap.KMinApplied,
+				References:  buildPointReferences(snap.Rows), // D17-B2: per-point sparkline references
 			}
 			emit(ref)
 		}
@@ -310,6 +325,28 @@ func renderCatalog(entries []kpi.CatalogEntry) string {
 		return strings.Join(truncated, "\n") + "\n" + hint
 	}
 	return strings.Join(lines, "\n")
+}
+
+// buildPointReferences converts snap.Rows to per-point references for sparkline.
+// Each row has a `period` column tagged at executor step ④ in CallMultiPeriod.
+// D17-B2.
+func buildPointReferences(rows []map[string]any) []wire.PointReference {
+	out := make([]wire.PointReference, 0, len(rows))
+	for i, row := range rows {
+		p := wire.PointReference{PointIndex: i}
+		if period, ok := row["period"].(string); ok {
+			p.Period = period
+		}
+		// Last non-period, non-row_count column = the value
+		for k, v := range row {
+			if k != "period" && k != "row_count" {
+				p.Value = v
+				break
+			}
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // kpiCallResponseForTest is a compile-time anchor for the JSON wire

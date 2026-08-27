@@ -75,6 +75,10 @@ func (m stubMeta) LatestDatasetVersion(context.Context, string) (DatasetVersion,
 	return m.version, m.err
 }
 
+func (m stubMeta) Periods(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+
 // stubEngine records the last EngineRequest and replays canned rows/errors.
 type stubEngine struct {
 	rows    []map[string]any

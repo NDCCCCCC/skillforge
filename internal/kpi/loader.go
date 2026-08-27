@@ -367,6 +367,21 @@ func compileKPI(ctx context.Context, file *KPIFile, kpi *KPIDef, ser SQLSerializ
 				}
 				cp.Pattern = re
 			}
+		case ParamTypeArray:
+			cp.Items = &CompiledParamItems{}
+			if ps.Items != nil {
+				cp.Items.Type = ps.Items.Type
+				cp.Items.MinItems = ps.Items.MinItems
+				cp.Items.MaxItems = ps.Items.MaxItems
+				if ps.Items.Pattern != "" {
+					re, err := regexp.Compile(ps.Items.Pattern)
+					if err != nil {
+						return CompiledKPI{}, fmt.Errorf(
+							"params.%s: items.pattern %q compile failed: %w", name, ps.Items.Pattern, err)
+					}
+					cp.Items.PatternRE = re
+				}
+			}
 		}
 		compiledParams[name] = cp
 	}

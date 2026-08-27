@@ -134,7 +134,7 @@ type CompiledKPI struct {
 
 // CompiledParam is the compiled form of ParamSpec for executor consumption.
 type CompiledParam struct {
-	// Type is the parameter type: ParamTypeString or ParamTypeEnum.
+	// Type is the parameter type: ParamTypeString, ParamTypeEnum, or ParamTypeArray.
 	Type string
 
 	// Required controls whether the parameter must be provided at call time.
@@ -146,6 +146,21 @@ type CompiledParam struct {
 	// Pattern is the compiled regex constraint (non-nil when Type==ParamTypeString
 	// and Pattern was declared).
 	Pattern *regexp.Regexp
+
+	// Items holds the compiled constraints for ParamTypeArray (D17-B3).
+	Items *CompiledParamItems
+}
+
+// CompiledParamItems holds the compiled form of ParamSpecItems (D17-B3).
+type CompiledParamItems struct {
+	// Type is the element type (must be "string" for periods arrays).
+	Type string
+	// Pattern is the compiled regex each element must match.
+	PatternRE *regexp.Regexp
+	// MinItems is the minimum array length.
+	MinItems int
+	// MaxItems is the maximum array length.
+	MaxItems int
 }
 
 // CatalogEntry is a summary record for the kpi_call tool catalog (D16-B1).
@@ -186,6 +201,8 @@ func paramsSummary(params map[string]CompiledParam) string {
 			} else {
 				desc = fmt.Sprintf("%s:string", n)
 			}
+		case ParamTypeArray:
+			desc = fmt.Sprintf("%s:array(%d)", n, p.Items.MaxItems)
 		default:
 			desc = fmt.Sprintf("%s:%s", n, p.Type)
 		}
