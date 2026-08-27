@@ -214,6 +214,21 @@ func NewAgent(ctx context.Context, cfg AgentConfig) (*Agent, error) {
 	if cfg.ChatModel == nil {
 		return nil, errors.New("agent: AgentConfig.ChatModel is required")
 	}
+	// 16-07 / D16-C3 fail-closed (experimental path). The
+	// USE_AGENT_PATH experiment in this file (cmd/server/main.go
+	// gates the opt-in) is wired only for tier-channel Skills in
+	// v1. A data-channel Skill hitting this path is a config bug
+	// — kpi_call cannot be added here without a parallel
+	// implementation of the channel branch in
+	// agent.go (would re-introduce the "two assembly sites drift"
+	// class of bug — see PATTERNS 修正 1). Fail-closed: reject
+	// early with a clear message so the operator sees the problem
+	// at startup, not at first Run.
+	if cfg.Manifest.HasDataChannel() {
+		return nil, errors.New(
+			"agent: experimental agent path supports tier-channel Skills only in v1 " +
+				"(data channel rides BuildRunner; see runner_setup.go BuildRunner)")
+	}
 	if cfg.MaxHops <= 0 {
 		// Apply the production default rather than rejecting zero — this
 		// mirrors how internal/server/pipeline.go treats MaxHops. Tests

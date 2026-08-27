@@ -16,14 +16,17 @@
 
 // Package agent — runner_setup.go is Phase 11 / Plan 11-01's
 // BuildRunner construction site, extended in Phase 12 / Plan 12-01 to
-// delegate agent construction to internal/runtime.DispatchAgent. It
-// is the D11-A1 + D11-B1 + D11-B4 + P12-L1 substrate: chatHandler
-// drives a single adk.NewRunner().Run(ctx, msgs) one-line dispatch;
-// per-session Agent singleton; per-turn Tool whitelist re-pure-
-// computed; archetype dispatch funnels through runtime.
+// delegate agent construction to internal/runtime.DispatchAgent, and
+// in Phase 16 / Plan 16-07 to add the data-channel Tool-assembly branch
+// (D16-C3 runtime layer). It is the D11-A1 + D11-B1 + D11-B4 +
+// D16-C3 + P12-L1 substrate: chatHandler drives a single
+// adk.NewRunner().Run(ctx, msgs) one-line dispatch; per-session Agent
+// singleton; per-turn Tool whitelist re-pure-computed; archetype
+// dispatch funnels through runtime; channel-kind dispatch funnels
+// through skill.Manifest.HasDataChannel().
 //
 // Architectural boundary (D11-A2 — HITL ships 11-02; P12-L1 —
-// runtime substrate ships 12-01):
+// runtime substrate ships 12-01; D16-C3 — channel branch ships 16-07):
 //
 //   - 11-01 lands the empty HITL Tool seam. The Tool whitelist for
 //     Skills with writes:[] is empty (the LLM never sees a write Tool
@@ -34,6 +37,12 @@
 //     internal/runtime.DispatchAgent. The chat archetype is the
 //     Phase 11 default; the deep archetype ships via
 //     runtime.BuildDeepAgent (P12-L2 MaxIteration: 10 hard cap).
+//   - 16-07 lands the channel branch: data-channel Skills (Manifest
+//     with reads starting "data:") see exactly {kpi_call}; tier-channel
+//     Skills keep the existing retrieve + HITL tool composition.
+//     The fail-closed assembly guard rejects data-channel Skills with
+//     nil KPIExecutor/KPIRegistry so server misconfiguration crashes
+//     at boot, never half-runs.
 //   - NO legacy interrupt API is introduced here. D8-04 invariant
 //     holds: the only call sites for tool.StatefulInterrupt are
 //     inside 11-02's hitl/ files. Phase 12's runtime package does
@@ -58,10 +67,12 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/components/tool"
 
 	"github.com/skillforge/skillforge/internal/agent/hitl"
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/runtime"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -128,6 +139,26 @@ type RunnerBuildConfig struct {
 	// still runs the trust floor / classifier / grounding checks
 	// inline at their existing positions).
 	Handlers []any
+
+	// KPIExecutor is the Phase 16 / D16-C3 data-channel dependency.
+	// When the manifest declares a data-channel reads (HasDataChannel
+	// == true), the Tool set is {kpi_call}; this Executor is the
+	// ONLY call target. nil + data-channel Skill triggers fail-fast
+	// at BuildRunner time (the assembly is fail-closed — never
+	// silently half-run). nil + tier-channel Skill is ignored
+	// (the data-channel branch is not entered).
+	KPIExecutor *kpi.Executor
+
+	// KPIRegistry is the data-channel catalog backing kpi_call. Same
+	// fail-closed contract as KPIExecutor above.
+	KPIRegistry *kpi.Registry
+
+	// DataRefEmit is the per-Runner SSE data-reference part emission
+	// hook for the data channel (16-08 server wiring will pass a
+	// closure matching runnerEmitDecision). The kpi_call tool invokes
+	// this hook after producing a Snapshot; nil disables emission
+	// (hermetic test mode + the no-SSE pipeline path).
+	DataRefEmit agenttools.DataRefEmitFunc
 }
 
 // BuildRunner constructs the per-session ChatModelAgent + adk.Runner.
@@ -173,34 +204,69 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		cfg.MaxHops = DefaultMaxHops
 	}
 
-	// D11-B1 per-turn Tool whitelist. For Skills with writes:[] this
-	// returns an empty slice (the LLM never sees a write Tool
-	// schema). The function lives in this same package (agent) to
-	// break the skill<->hitl import cycle — see hitl_tools.go's
-	// file-level comment for the architectural rationale.
-	//
-	// 11-05: the per-session context (SessionID, SkillID, RuleMatcher)
-	// travels with the whitelist computation so each HITL Tool's
-	// D11-D1 rule lookup is scoped to THIS session + Skill. nil
-	// RuleMatcher → NoopRuleMatcher (fail-closed: every write
-	// interrupts).
-	ruleMatcher := cfg.RuleMatcher
-	if ruleMatcher == nil {
-		ruleMatcher = hitl.NoopRuleMatcher{}
+	// D16-C3 fail-closed assembly: a data-channel Skill reaches kpi_call
+	// which needs both an Executor and a Registry. If either is nil,
+	// the server has misconfigured the assembly — fail-fast at
+	// BuildRunner time so the failure surfaces in the operator's
+	// startup log instead of in a half-running Skill mid-Run.
+	if cfg.Manifest.HasDataChannel() {
+		if cfg.KPIExecutor == nil || cfg.KPIRegistry == nil {
+			return nil, errors.New(
+				"agent.BuildRunner: data-channel Skill requires KPIExecutor+KPIRegistry " +
+					"(fail-closed assembly — D16-C3); server 未装配 KPI 管线时 data Skill 不可运行")
+		}
 	}
-	tools, err := BuildToolsForSkill(ctx, cfg.Manifest, cfg.SessionID, cfg.SkillID, ruleMatcher)
-	if err != nil {
-		return nil, fmt.Errorf("agent.BuildRunner: BuildToolsForSkill: %w", err)
-	}
-
-	// Always include the read-only retrieve Tool (it is not a write
-	// Tool and is not gated by the writes: frontmatter). The Tool
-	// closes over the manifest's resolved tier slice (KNOW-03 — the
-	// LLM cannot override tiers via Tool arguments).
-	retrieveTool := agenttools.BuildRetrieveTool(cfg.Embedder, cfg.Retriever, cfg.Manifest)
-	tools = append(tools, retrieveTool)
 
 	sysPrompt := SystemPrompt(cfg.Manifest)
+
+	// Channel-kind dispatch (D16-C3 runtime layer). The data-channel
+	// branch is structurally disjoint from the tier-channel branch:
+	// a Skill's reads field determines the LLM-visible Tool set, and
+	// a Skill CANNOT bridge across channels at runtime (cross-channel
+	// reads is v1 deferred per D16-C1). This is the second of the two
+	// defense layers — loading-time XOR (16-02 / D16-C2) prevents
+	// mixed-reads Skill files from validating, and this branch
+	// prevents mixed-channel Tools from being instantiated even if a
+	// future loader regression slipped one through.
+	//
+	// data-channel Skills see ZERO knowledge tools and ZERO write
+	// tools — the LLM-visible list is exactly {kpi_call}, regardless
+	// of how the LLM is prompted (D16-C3; mirrors hitl_tools.go:31-36
+	// "read-only Skills see ZERO write Tool schemas" discipline with
+	// a channel-specific narration).
+	var tools []tool.BaseTool
+	if cfg.Manifest.HasDataChannel() {
+		// data-channel: ONLY kpi_call. Skip BuildToolsForSkill (the
+		// HITL whitelist is irrelevant — data-channel Skills have
+		// writes:[] in v1 and the load-time XOR excludes data:* +
+		// tier-mixed reads) and skip retrieve (no tier channel here).
+		kpiCallTool := agenttools.BuildKPICallTool(
+			cfg.KPIExecutor, cfg.KPIRegistry,
+			cfg.SessionID, cfg.SkillID,
+			cfg.DataRefEmit,
+		)
+		tools = []tool.BaseTool{kpiCallTool}
+	} else {
+		// tier-channel: existing two-segment composition (HITL
+		// whitelist + retrieve). D11-B1 invariant preserved: writes:[] Skills
+		// still see zero HITL tools; tier-mapped chunks reach via retrieve.
+		ruleMatcher := cfg.RuleMatcher
+		if ruleMatcher == nil {
+			ruleMatcher = hitl.NoopRuleMatcher{}
+		}
+		hits, err := BuildToolsForSkill(ctx, cfg.Manifest, cfg.SessionID, cfg.SkillID, ruleMatcher)
+		if err != nil {
+			return nil, fmt.Errorf("agent.BuildRunner: BuildToolsForSkill: %w", err)
+		}
+
+		// Always include the read-only retrieve Tool (it is not a write
+		// Tool and is not gated by the writes: frontmatter). The Tool
+		// closes over the manifest's resolved tier slice (KNOW-03 — the
+		// LLM cannot override tiers via Tool arguments).
+		retrieveTool := agenttools.BuildRetrieveTool(cfg.Embedder, cfg.Retriever, cfg.Manifest)
+		hits = append(hits, retrieveTool)
+		tools = hits
+	}
 
 	// P12-L1: archetype dispatch funnels through runtime.DispatchAgent.
 	// The chat archetype (Phase 11 default; manifest.Agent empty or
