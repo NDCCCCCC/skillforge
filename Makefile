@@ -6,7 +6,7 @@
 # gate). Run `make` or `make verify-phase-11` to execute the gate;
 # the banner at the end is the operator's pass/fail signal.
 
-.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 test-unit test-frontend build clean
+.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 test-unit test-frontend build clean
 
 # check-cgo fails fast with an actionable message when gcc is missing.
 # mattn/go-sqlite3 and go-duckdb both require CGO; install MSYS2 UCRT64 gcc
@@ -59,6 +59,15 @@ verify-phase-14:
 # gcc cannot link go-duckdb; see 15-07-SUMMARY emutls note).
 verify-phase-15:
 	bash scripts/verify-phase-15.sh
+
+# verify-phase-16 is the Phase 16 acceptance gate (Plan 16-09).
+# Invokes scripts/verify-phase-16.sh; exits 0 with the PASS banner on
+# full pass on a Linux/WSL2 host. Windows-host runs report
+# [STAGE-NN-BLOCKED-WITH-NOTES] for the WSL triple-lock + cmd/server link
+# (D15-01-1 emutls ABI); all other stages PASS hermetically. See the
+# script header for the operator-WSL leg commands.
+verify-phase-16:
+	bash scripts/verify-phase-16.sh
 
 # test-unit runs the full Go test suite for fast iteration.
 test-unit:
