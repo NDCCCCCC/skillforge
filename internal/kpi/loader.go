@@ -230,10 +230,16 @@ func LoadKPIs(ctx context.Context, dir string, ser SQLSerializer, datasets Datas
 		}
 	}
 
-	// ② Layer 2: ValidateSQLAST for each KPI
+	// ② Layer 2: ValidateSQLAST for each KPI (on the REWRITTEN form).
+	// DuckDB's parser requires $param named placeholders, not :param — the
+	// canonical user form is :param (see validate_text.go:42), so the rewrite
+	// must happen BEFORE we hand the SQL to DuckDB. Calling ValidateSQLAST
+	// on the pre-rewrite form triggers "syntax error at or near ':'" and
+	// the AST walk is dead in production.
 	for _, r := range results {
 		for _, kpi := range r.file.KPIs {
-			refs, err := ValidateSQLAST(ctx, ser, kpi.SQL, r.file.Dataset)
+			sqlDollar := paramRewritePattern.ReplaceAllString(kpi.SQL, `$$$1`)
+			refs, err := ValidateSQLAST(ctx, ser, sqlDollar, r.file.Dataset)
 			if err != nil {
 				return nil, "", fmtError("LoadKPIs", fmt.Errorf(
 					"validate SQL for %s in %s: %w", kpi.Name, filepath.Base(r.path), err))
@@ -272,21 +278,23 @@ func LoadKPIs(ctx context.Context, dir string, ser SQLSerializer, datasets Datas
 }
 
 // compileKPI converts a KPIDef into its compiled form, performing:
-//  1. ValidateSQLAST (Layer 2) to get table ref count
-//  2. :param → $param rewrite (Pitfall 3)
-//  3. Rewritten placeholder coverage re-check (Pitfall 3 double confirmation)
-//  4. GROUP BY column extraction for PreserveColumns (v1 dialect: simple identifiers only)
-//  5. Parameter compilation (enum sets sorted, patterns compiled)
+//  1. :param → $param rewrite (Pitfall 3) — must precede Layer 2 walk
+//     because DuckDB's parser rejects :param in favor of $param.
+//  2. ValidateSQLAST (Layer 2) on the REWRITTEN form to get table ref count.
+//  3. Rewritten placeholder coverage re-check (Pitfall 3 double confirmation).
+//  4. GROUP BY column extraction for PreserveColumns (v1 dialect: simple identifiers only).
+//  5. Parameter compilation (enum sets sorted, patterns compiled).
 func compileKPI(ctx context.Context, file *KPIFile, kpi *KPIDef, ser SQLSerializer) (CompiledKPI, error) {
-	// Layer 2: AST walk to get table reference count
-	refs, err := ValidateSQLAST(ctx, ser, kpi.SQL, file.Dataset)
+	// :param → $param rewrite (Pitfall 3) — must precede Layer 2 walk.
+	sqlDollar := paramRewritePattern.ReplaceAllString(kpi.SQL, `$$$1`)
+
+	// Layer 2: AST walk on the REWRITTEN form to get table reference count.
+	// DuckDB's parser requires $param named placeholders, not :param.
+	refs, err := ValidateSQLAST(ctx, ser, sqlDollar, file.Dataset)
 	if err != nil {
 		return CompiledKPI{}, err
 	}
 	tableRefCount := len(refs)
-
-	// :param → $param rewrite (Pitfall 3)
-	sqlDollar := paramRewritePattern.ReplaceAllString(kpi.SQL, `$$$1`)
 
 	// Double-check: rewrite preserved all placeholders (Pitfall 3 double confirmation)
 	rewrittenPlaceholders := extractDollarParams(sqlDollar)
