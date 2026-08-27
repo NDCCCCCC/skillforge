@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 17
 current_plan: Not started
-status: planning
-last_updated: "2026-08-27T08:23:40.683Z"
-last_activity: 2026-08-27
+status: executing
+last_updated: "2026-08-27T12:50:49.253Z"
+last_activity: 2026-08-27 -- Phase 17 planning complete
 progress:
   total_phases: 20
   completed_phases: 12
-  total_plans: 78
+  total_plans: 86
   completed_plans: 100
   percent: 60
 ---
@@ -21,8 +21,8 @@ progress:
 
 Phase: 16 (p10-2) — EXECUTING (Wave 5 closed; Phase 16 closeout deferred)
 Plan: 9 of 9 (Plan 16-09 COMPLETE — verify-phase-16.sh 11-stage acceptance gate)
-Status: Ready for Phase 16 closeout reviews (post-phase gates)
-Last activity: 2026-08-27
+Status: Ready to execute
+Last activity: 2026-08-27 -- Phase 17 planning complete
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -279,7 +279,7 @@ Resume File: `.planning/phases/16-p10-2/16-09-SUMMARY.md`
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Ready to plan
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
