@@ -555,8 +555,8 @@ Plans:
 - [x] 16-02-PLAN.md — Wave 1（并行）: reads 通道词表 + XOR 互斥（进 Validate 本体覆盖热重载）+ deep+data 拒绝 + TestChannelGuardXOR（DATA-07/08）
 - [x] 16-03-PLAN.md — Wave 1（并行）: kpi_calls dedicated INSERT-only 审计表（DDL+写路径+只读查询面+结构锁）（KPI-02）
 - [x] 16-04-PLAN.md — Wave 1（并行）: wire data-reference part（DecisionKPIReference+DataRef additive+TS 镜像 lockstep，ValidTypes 23 不破）（DATA-03）
-- [ ] 16-05-PLAN.md — Wave 2: validate_sql.go AST 走查（探针 fixture 驱动）+ LoadKPIs 双层管线 + bootstrap 窗口 + :param→$param 受控重写（DATA-09）
-- [ ] 16-06-PLAN.md — Wave 2（并行）: kmin.go 行级抑制 + executor.go Call 六步 + as_of 系统生成 + 引擎适配器 + WSL 三锁（快照冻结/跨 Skill 一致/引擎集成）（DATA-03/12, KPI-02）
+- [/] 16-05-PLAN.md — Wave 2: validate_sql.go AST 走查（探针 fixture 驱动）+ LoadKPIs 双层管线 + bootstrap 窗口 + :param→$param 受控重写（DATA-09） — partially WIP (loader/registry files staged but uncommitted; executor resumed after WIP per resume_state)
+- [x] 16-06-PLAN.md — Wave 2（并行）: kmin.go 行级抑制 + executor.go Call 六步 + as_of 系统生成 + 引擎适配器 + WSL 三锁（快照冻结/跨 Skill 一致/引擎集成）（DATA-03/12, KPI-02） — completed 2026-08-27; WSL execution env-blocked on D15-01-1 (recorded per 14-08 precedent; Go compile locked)
 - [ ] 16-07-PLAN.md — Wave 3: TestNoSQLGenerationSurface 结构禁令 + kpi_call 工具（目录快照+Enum）+ BuildRunner 通道分支 + TestToolsForChannel（DATA-03/08/09）
 - [ ] 16-08-PLAN.md — Wave 4: callbacks 工具名分流 + DataRef SSE 发射 wiring + main.go KPI 管线装配 + GET /api/admin/kpis 只读端点（KPI-01, DATA-03）
 - [ ] 16-09-PLAN.md — Wave 5: verify-phase-16.sh 十段 gate + Makefile target + verify-phase-15 前相回归（全 7 REQ 证据面）

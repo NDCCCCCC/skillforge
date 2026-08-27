@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 16
-current_plan: 1
+current_plan: 6
 status: executing
-stopped_at: context exhaustion at 75% (2026-08-24)
-last_updated: "2026-08-27T05:20:00Z"
-last_activity: 2026-08-27 -- Plan 16-03 complete (kpi_calls INSERT-only store layer, commits b29090f/1a9e08e/0a76d7e)
+stopped_at: 16-06 COMPLETE 2026-08-27
+last_updated: "2026-08-27T06:00:00.000Z"
+last_activity: 2026-08-27 -- 16-06 SUMMARY committed (5 commits net); WSL execution env-blocked on D15-01-1
 progress:
   total_phases: 20
   completed_phases: 13
   total_plans: 100
-  completed_plans: 95
-  percent: 65
+  completed_plans: 97
+  percent: 66
 ---
 
 # State — SkillForge
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 16 (p10-2) — EXECUTING
-Plan: 1 of 9
-Status: Executing Phase 16
-Last activity: 2026-08-27 -- Phase 16 execution started
+Plan: 6 of 9 (COMPLETE — kmin + executor + engine adapter + WSL triple lock)
+Status: Executing Phase 16 Wave 2
+Last activity: 2026-08-27 -- 16-06 SUMMARY committed (5 commits net: bcaf7ef kmin, f2ed890 executor, ad3c656 attach_lru getLocked, a4fe03c kpi_engine, 829b191 WSL triple lock); WSL execution env-blocked on D15-01-1 (recorded per 14-08 precedent)
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -59,7 +59,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 **Mode:** mvp (vertical slices)
 
 **Current Phase:** 16
-**Current Plan:** 1
+**Current Plan:** 6 (COMPLETE — Wave 2 leg closed for kmin + executor + engine adapter + WSL triple lock)
 **Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
 **Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
