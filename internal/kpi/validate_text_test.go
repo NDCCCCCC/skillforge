@@ -291,6 +291,85 @@ func TestValidateKPIFile_ParamTypeUnknown(t *testing.T) {
 	assert.Contains(t, err.Error(), "boolean")
 }
 
+func TestValidateKPIFile_ParamTypeArrayValid(t *testing.T) {
+	// D17-B3: periods[] multi-period KPI param passes Layer 1.
+	m := validKPIFile()
+	m.KPIs[0].Params["status"] = ParamSpec{
+		Type:     ParamTypeArray,
+		Required: true,
+		Items: &ParamSpecItems{
+			Type:     ParamTypeString,
+			Pattern:  `^\d{4}-(0[1-9]|1[0-2])$`,
+			MinItems: 2,
+			MaxItems: 12,
+		},
+	}
+	err := ValidateKPIFile(m)
+	assert.NoError(t, err, "valid array param should pass")
+}
+
+func TestValidateKPIFile_ParamTypeArrayMissingItems(t *testing.T) {
+	m := validKPIFile()
+	m.KPIs[0].Params["status"] = ParamSpec{Type: ParamTypeArray}
+	err := ValidateKPIFile(m)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "array type requires items")
+}
+
+func TestValidateKPIFile_ParamTypeArrayBadItemsType(t *testing.T) {
+	m := validKPIFile()
+	m.KPIs[0].Params["status"] = ParamSpec{
+		Type:  ParamTypeArray,
+		Items: &ParamSpecItems{Type: "number"},
+	}
+	err := ValidateKPIFile(m)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "items.type")
+	assert.Contains(t, err.Error(), "number")
+}
+
+func TestValidateKPIFile_ParamTypeArrayBadItemsPattern(t *testing.T) {
+	m := validKPIFile()
+	m.KPIs[0].Params["status"] = ParamSpec{
+		Type: ParamTypeArray,
+		Items: &ParamSpecItems{
+			Type:    ParamTypeString,
+			Pattern: "[invalid regex",
+		},
+	}
+	err := ValidateKPIFile(m)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "items.pattern")
+	assert.Contains(t, err.Error(), "does not compile")
+}
+
+func TestValidateKPIFile_ParamTypeArrayWithValues(t *testing.T) {
+	m := validKPIFile()
+	m.KPIs[0].Params["status"] = ParamSpec{
+		Type:   ParamTypeArray,
+		Values: []string{"should_not_be_here"},
+		Items:  &ParamSpecItems{Type: ParamTypeString},
+	}
+	err := ValidateKPIFile(m)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "array type must not declare values")
+}
+
+func TestValidateKPIFile_ParamTypeArrayInvertedBounds(t *testing.T) {
+	m := validKPIFile()
+	m.KPIs[0].Params["status"] = ParamSpec{
+		Type: ParamTypeArray,
+		Items: &ParamSpecItems{
+			Type:     ParamTypeString,
+			MinItems: 12,
+			MaxItems: 2,
+		},
+	}
+	err := ValidateKPIFile(m)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "minItems (12) must be <= items.maxItems (2)")
+}
+
 func TestValidateKPIFile_NoGroupByNoAggFunc(t *testing.T) {
 	m := validKPIFile()
 	m.KPIs[0].SQL = "SELECT status AS status, balance AS balance FROM ds_loans.data WHERE (:status IS NULL OR status = :status)"

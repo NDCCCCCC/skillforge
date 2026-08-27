@@ -69,6 +69,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -374,6 +375,21 @@ func main() {
 	log.Printf("[OK] cmd/server: KPI pipeline wired (kpis=%s, registry=%d entries, signature=%s)",
 		kpisDir, len(kpiRegistry.Names()), shortSignature(kpiSignature))
 
+	// 6c-4. Phase 17 DASH-01: cross-validate data-channel Skill routing
+	// tables against the KPI registry at boot. Tier-channel Skills are
+	// skipped inside ValidateAgainstKPI (HasDataChannel()==false → no
+	// routing table to check); only Skills declaring a "data:" read
+	// (e.g. kpi-dashboard) are cross-checked, so their fenced YAML routes
+	// can never reference a KPI name that kpi.LoadKPIs did not compile.
+	// Fail-closed (D16-08-D posture): a controlled-file inconsistency is
+	// fatal AT STARTUP — the operator must fix the SKILL.md or the kpis/
+	// directory, never discover a no_matching_kpi refusal shaped like a
+	// silent routing hole at first request time.
+	if err := loader.ValidateAgainstKPI(kpiRegistry); err != nil {
+		log.Fatalf("[FATAL] cmd/server: skill/KPI routing validation failed: %v (fix the SKILL.md routing table or the kpis/ directory — every routed KPI must exist in the registry)", err)
+	}
+	log.Printf("[OK] cmd/server: skill/KPI routing cross-validation passed (%d skill(s) checked)", len(loader.Skills()))
+
 	// 6d. Skill Registry (Plan 05-01 / §2 hot-reload). The fsnotify-driven
 	// registry is the production source of truth for the GET /api/skills
 	// listing's version + status fields — touching skills/<name>/SKILL.md
@@ -675,6 +691,30 @@ func (m storeDatasetMeta) LatestDatasetVersion(ctx context.Context, dataset stri
 		FilePath:     best.FilePath,
 		KMinOverride: best.KMinOverride,
 	}, nil
+}
+
+// Periods returns every registered period watermark for the logical dataset,
+// sorted ascending — the kpi.DatasetMetaSource.Periods seam that
+// ResolvePeriods uses to intersect a CallMultiPeriod request (D17-B3) against
+// available data. Same ListDatasets scan as LatestDatasetVersion: the
+// registry table is bounded, so no new store SQL is introduced. Empty/blank
+// Period rows are skipped (pre-Phase-15 rows cannot back a period watermark).
+func (m storeDatasetMeta) Periods(ctx context.Context, dataset string) ([]string, error) {
+	rows, err := m.st.ListDatasets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(rows))
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r.Dataset != dataset || r.Period == "" || seen[r.Period] {
+			continue
+		}
+		seen[r.Period] = true
+		out = append(out, r.Period)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // shortSignature renders the KPI registry content-hash for the startup log:

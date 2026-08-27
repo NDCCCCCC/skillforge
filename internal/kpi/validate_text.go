@@ -58,8 +58,10 @@ var aggFuncPattern = regexp.MustCompile(`(?i)\b(sum|count|min|max|avg)\s*\(`)
 //  4. Table reference form: SQL contains at least one "ds_{Dataset}.data" literal
 //  5. CountColumn: non-empty and appears as "AS {CountColumn}" in SQL
 //  6. Placeholder ↔ params bidirectional 1:1 (full diff, not first-error)
-//  7. Per ParamSpec: Type ∈ {string, enum}; enum→Values non-empty, no dupes;
-//     string+Pattern→regexp.Compile success; enum and Pattern mutually exclusive
+//  7. Per ParamSpec: Type ∈ {string, enum, array}; enum→Values non-empty, no dupes;
+//     string+Pattern→regexp.Compile success; enum and Pattern mutually exclusive;
+//     array→Items required (element type string, items.pattern compiles, sane
+//     length bounds — D17-B3)
 //  8. Aggregation heuristic: SQL contains GROUP BY or an aggregate function
 //  9. KMin >= 0; MaxRows >= 0
 //
@@ -268,6 +270,49 @@ func validateKPIDef(file *KPIFile, kpi *KPIDef, idx int) error {
 				return fmtError("ValidateKPIFile", fmt.Errorf(
 					"%s: params.%s: enum values contain duplicates: %v (fail-closed: duplicate values are a declaration error)",
 					prefix, name, dupes))
+			}
+		case ParamTypeArray:
+			// D17-B3 multi-period arrays (e.g. periods:[] for sparklines).
+			// Element constraints belong in items — the param-level
+			// values/pattern fields are string/enum vocabulary and must not
+			// appear on an array param (mirrors the enum+pattern mutual
+			// exclusivity discipline above).
+			if len(ps.Values) > 0 {
+				return fmtError("ValidateKPIFile", fmt.Errorf(
+					"%s: params.%s: array type must not declare values (element constraints belong in items — D17-B3)",
+					prefix, name))
+			}
+			if ps.Pattern != "" {
+				return fmtError("ValidateKPIFile", fmt.Errorf(
+					"%s: params.%s: array type must not declare pattern (element constraints belong in items — D17-B3)",
+					prefix, name))
+			}
+			if ps.Items == nil {
+				return fmtError("ValidateKPIFile", fmt.Errorf(
+					"%s: params.%s: array type requires items (element type / pattern / length bounds — D17-B3)",
+					prefix, name))
+			}
+			if ps.Items.Type != ParamTypeString {
+				return fmtError("ValidateKPIFile", fmt.Errorf(
+					"%s: params.%s: items.type %q is not supported (v1 array elements are %q only — periods arrays, D17-B3)",
+					prefix, name, ps.Items.Type, ParamTypeString))
+			}
+			if ps.Items.Pattern != "" {
+				if _, err := regexp.Compile(ps.Items.Pattern); err != nil {
+					return fmtError("ValidateKPIFile", fmt.Errorf(
+						"%s: params.%s: items.pattern %q does not compile: %v (fail-closed: a bad regex cannot enforce the element-value constraint at call time)",
+						prefix, name, ps.Items.Pattern, err))
+				}
+			}
+			if ps.Items.MinItems < 0 || ps.Items.MaxItems < 0 {
+				return fmtError("ValidateKPIFile", fmt.Errorf(
+					"%s: params.%s: items.minItems / items.maxItems must be >= 0 (got min=%d max=%d)",
+					prefix, name, ps.Items.MinItems, ps.Items.MaxItems))
+			}
+			if ps.Items.MaxItems > 0 && ps.Items.MinItems > ps.Items.MaxItems {
+				return fmtError("ValidateKPIFile", fmt.Errorf(
+					"%s: params.%s: items.minItems (%d) must be <= items.maxItems (%d) (fail-closed: inverted bounds are a declaration error)",
+					prefix, name, ps.Items.MinItems, ps.Items.MaxItems))
 			}
 		default:
 			return fmtError("ValidateKPIFile", fmt.Errorf(

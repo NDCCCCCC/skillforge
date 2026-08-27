@@ -66,8 +66,9 @@ func writeYAML(t *testing.T, dir, filename, content string) string {
 // through the production DuckDBSQLSerializer against a real :memory:
 // DuckDB engine. Three branches are locked:
 //
-//  1. Valid corpus (kpis/loans.yaml from the repo): LoadKPIs succeeds and
-//     returns 2 compiled KPIs with $param form and TableRefCount populated.
+//  1. Valid corpus (kpis/*.yaml from the repo: loans + testdata): LoadKPIs
+//     succeeds and returns 7 compiled KPIs with $param form and TableRefCount
+//     populated.
 //  2. Syntax-error SQL: LoadKPIs is rejected at Layer 2 (json_serialize_sql
 //     envelope error:true → Rule 1 fail-closed).
 //  3. INSERT SQL: LoadKPIs is rejected. Layer 1 may catch it first (no
@@ -86,7 +87,7 @@ func TestKPILoadFailClosedLayer2WSL(t *testing.T) {
 	lister := emptyDatasetLister{}
 
 	t.Run("ValidRealCorpus", func(t *testing.T) {
-		// Locate the repo's kpis/loans.yaml. From internal/kpi/wsl/ we go up
+		// Locate the repo's kpis/ corpus. From internal/kpi/wsl/ we go up
 		// three levels to reach the repo root.
 		repoRoot := "../../../"
 		kpisDir := filepath.Join(repoRoot, "kpis")
@@ -99,9 +100,17 @@ func TestKPILoadFailClosedLayer2WSL(t *testing.T) {
 		require.NotNil(t, reg)
 
 		names := reg.Names()
-		assert.Equal(t, 2, len(names), "kpis/loans.yaml should compile 2 KPIs")
+		assert.Equal(t, 7, len(names), "kpis/ corpus should compile 7 KPIs (2 loans + 5 testdata)")
 		assert.Contains(t, names, "loan_overdue_rate_by_status")
 		assert.Contains(t, names, "loan_balance_bucket_distribution")
+		// Phase 17: the kpi-dashboard skill's routing table routes to these
+		// names in kpis/testdata.yaml — cmd/server's boot-time
+		// ValidateAgainstKPI cross-check depends on this corpus carrying them.
+		assert.Contains(t, names, "KPI_LOAN_BALANCE")
+		assert.Contains(t, names, "KPI_NPL_RATIO")
+		assert.Contains(t, names, "KPI_INTEREST_INCOME")
+		assert.Contains(t, names, "KPI_CUSTOMER_COUNT")
+		assert.Contains(t, names, "KPI_LOAN_BALANCE_TREND")
 		assert.NotEmpty(t, sig, "registry signature must be non-empty")
 
 		// Layer 2 compilation artifacts (16-05 acceptance: $param form +
