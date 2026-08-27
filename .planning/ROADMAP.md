@@ -55,8 +55,8 @@
   - 16-05 LoadKPIs double-layer pipeline + AST walk (`0b1cd64` / `d8c4522` / `8c3c39b`)
   - 16-06 kmin + Executor.Call + EngineAdapter + WSL triple lock (`bcaf7ef` / `f2ed890` / `a4fe03c` / `ad3c656` / `829b191`)
   - **16-07 runtime channel isolation + kpi_call tool + structural SQL ban** (Wave 3 closed 2026-08-27 — `696ca81` TestNoSQLGenerationSurface gate + `c80867b` BuildKPICallTool + `dc69291` channel branch + TestToolsForChannel + agent.go fail-closed guard) — DATA-03/08/09 runtime closed
-  - 16-08 SSE DataRef emission wiring (planned)
-  - 16-09 admin kpi endpoint + audit (planned)
+  - **16-08 SSE DataRef emission wiring + KPI 管线装配 + admin 只读端点** (Wave 4 closed 2026-08-27 — `0cc1ad3` callbacks 工具名分流 + `1f1aed4` main.go KPI 装配 + server DataRefEmit wiring + `c94e39d` GET /api/admin/kpis) — KPI-01 admin 只读面 + D16-B3 发射闭环
+  - 16-09 verify-phase-16 十段 gate (planned)
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
 - [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
 - [ ] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度
@@ -566,8 +566,8 @@ Plans:
 - [x] 16-04-PLAN.md — Wave 1（并行）: wire data-reference part（DecisionKPIReference+DataRef additive+TS 镜像 lockstep，ValidTypes 23 不破）（DATA-03）
 - [/] 16-05-PLAN.md — Wave 2: validate_sql.go AST 走查（探针 fixture 驱动）+ LoadKPIs 双层管线 + bootstrap 窗口 + :param→$param 受控重写（DATA-09） — partially WIP (loader/registry files staged but uncommitted; executor resumed after WIP per resume_state)
 - [x] 16-06-PLAN.md — Wave 2（并行）: kmin.go 行级抑制 + executor.go Call 六步 + as_of 系统生成 + 引擎适配器 + WSL 三锁（快照冻结/跨 Skill 一致/引擎集成）（DATA-03/12, KPI-02） — completed 2026-08-27; WSL execution env-blocked on D15-01-1 (recorded per 14-08 precedent; Go compile locked)
-- [ ] 16-07-PLAN.md — Wave 3: TestNoSQLGenerationSurface 结构禁令 + kpi_call 工具（目录快照+Enum）+ BuildRunner 通道分支 + TestToolsForChannel（DATA-03/08/09）
-- [ ] 16-08-PLAN.md — Wave 4: callbacks 工具名分流 + DataRef SSE 发射 wiring + main.go KPI 管线装配 + GET /api/admin/kpis 只读端点（KPI-01, DATA-03）
+- [x] 16-07-PLAN.md — Wave 3: TestNoSQLGenerationSurface 结构禁令 + kpi_call 工具（目录快照+Enum）+ BuildRunner 通道分支 + TestToolsForChannel（DATA-03/08/09）
+- [x] 16-08-PLAN.md — Wave 4: callbacks 工具名分流 + DataRef SSE 发射 wiring + main.go KPI 管线装配 + GET /api/admin/kpis 只读端点（KPI-01, DATA-03） — completed 2026-08-27; `go build ./...` + server 套件 WSL 全绿；`internal/kpi/wsl` 2 例失败为 16-06 遗留（已对 dc69291 基线复核）
 - [ ] 16-09-PLAN.md — Wave 5: verify-phase-16.sh 十段 gate + Makefile target + verify-phase-15 前相回归（全 7 REQ 证据面）
 
 **Wave structure**: W1={16-01, 16-02, 16-03, 16-04 并行} → W2={16-05, 16-06 并行} → W3={16-07} → W4={16-08} → W5={16-09}
@@ -715,14 +715,14 @@ Plans:
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
 | 14. CGO 地基 + 平台信任地板 (P10.0) | 12/12 (14-01..14-08 core + 14-09/14-10 UAT gap closure + 14-11/14-12 verification gap closure) | Complete — closed with deferred items 2026-08-23 (BGE replay re-sign + Docker live verify = operator gates; UAT 6/6, gates 11/11 + 9/9) | 2026-08-23 |
 | 15. 数据导入管线 + 导入即脱敏 (P10.1) | 7/7 (15-01..15-07) | Complete — verify-phase-15.sh 10/10 PASS; code review resolved 6/6 (commit c0d7d5a, incl. strictUTF8Reader rune-split root cause); 15-VERIFICATION PASS | 2026-08-24 |
-| 16. KPI 聚合通道 (P10.2) | 7/9 (16-01..16-06 closed + 16-07 closed 2026-08-27; 16-08 SSE DataRef wiring + 16-09 admin kpi endpoint planned) | In Progress — Wave 3 leg closed; ready for Wave 4 (16-08) | 2026-08-27 |
+| 16. KPI 聚合通道 (P10.2) | 8/9 (16-01..16-08 closed; 16-09 verify-phase-16 gate planned) | In Progress — Wave 4 leg closed; ready for Wave 5 (16-09) | 2026-08-27 |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
 | 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |
 | 19. 静态报告门户 + 调度器 (P10.5) | 0 (not planned) | Not started | - |
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-27 — Phase 16 Plan 16-07 (runtime channel isolation + kpi_call tool + structural SQL ban) CLOSED: 3/3 tasks landed in 3 commits (`696ca81` SQL surface WalkDir gate + TestKPINarrowSurface reflect assertion; `c80867b` BuildKPICallTool + 5 hermetic tools locks; `dc69291` runner_setup.go channel branch + TestToolsForChannel 4 sub-tests + agent.go data-channel fail-closed guard). All hermetic tests green (4.95s agent / 0.55s callbacks / 1.26s hitl / 0.65s tools / 0.84s kpi). CGO binaries blocked on D15-01-1 (pre-existing MSYS2 gcc linker limit; unchanged from Phase 14/15). DATA-03/08/09 runtime closed; Wave 4 (16-08 SSE DataRef emission wiring + admin kpi endpoint) ready for execution.*
+*Last updated: 2026-08-27 — Phase 16 Plan 16-08 (SSE DataRef emission wiring + KPI 管线装配 + admin 只读端点) CLOSED: 3/3 tasks in 3 commits (`0cc1ad3` callbacks.go 工具名分流 + TestCallbackToolDispatch 四面; `1f1aed4` cmd/server KPI 装配段（SKILLFORGE_KPIS_DIR + LoadKPIs fail-closed + Executor + 两个 store 适配器）+ server DataRefEmit wiring + Deps KPI 字段; `c94e39d` GET /api/admin/kpis 只读端点 + TestAdminKPIs 四面含 GET-only 结构锁). WSL 验证：`go build ./...` exit 0、`go vet` 干净、`internal/server/...` 全绿（12.75s）。遗留：`internal/kpi/wsl` 2 例失败（fixture↔validator 覆盖检查漂移 + lexicon 64 字符边界），已对 16-07 基线 dc69291 复核确认为预存在，归 16-09 gate 前修。KPI-01 admin 只读面 + D16-B3 发射闭环 + 全链路装配达成；Wave 5 (16-09 verify-phase-16 十段 gate) ready.*
 
 ---
 

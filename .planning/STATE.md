@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 16
-current_plan: 7 (COMPLETE — runtime channel isolation + kpi_call tool + structural SQL ban)
+current_plan: 8 (COMPLETE — KPI pipeline assembly + SSE data-reference emission + admin read-only endpoint)
 status: executing
 stopped_at: —
-last_updated: "2026-08-27T07:30:00.000Z"
+last_updated: "2026-08-27T15:20:00.000Z"
 last_activity: 2026-08-27
 progress:
   total_phases: 20
   completed_phases: 13
   total_plans: 100
-  completed_plans: 99
-  percent: 66
+  completed_plans: 100
+  percent: 67
 ---
 
 # State — SkillForge
@@ -93,14 +93,24 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 ## Current Position
 
-Phase: 16 (KPI 聚合通道，P10.2) — **Wave 3 leg closed** (16-07 complete)
-Plan: 8 of 9 (Plan 16-07 COMPLETE — runtime channel isolation + kpi_call tool + structural SQL ban)
-Status: ready for Plan 16-08 execution
-Last activity: 2026-08-27 -- Plan 16-07 executed; 3 commits landed (`696ca81` SQL surface gate, `c80867b` kpi_call tool, `dc69291` channel branch + TestToolsForChannel).
-Next action: `/gsd:execute-phase 16 --wave 4` for Plan 16-08 (SSE DataRef emission wiring — the production DataRefEmitFunc close-out + admin kpi endpoint + data-decision kpi_reference discriminator)
-Resume File: `.planning/phases/16-p10-2/16-07-SUMMARY.md`
+Phase: 16 (KPI 聚合通道，P10.2) — **Wave 4 leg closed** (16-08 complete)
+Plan: 9 of 9 (Plan 16-08 COMPLETE — KPI pipeline assembly + SSE data-reference emission + admin read-only endpoint)
+Status: ready for Plan 16-09 execution (verify-phase-16 十段 gate)
+Last activity: 2026-08-27 -- Plan 16-08 executed; 3 commits landed (`0cc1ad3` callbacks tool-name dispatch, `1f1aed4` main.go KPI assembly + server DataRefEmit wiring, `c94e39d` GET /api/admin/kpis).
+Next action: `/gsd:execute-phase 16 --wave 5` for Plan 16-09 (verify-phase-16.sh ten-stage gate) — fix the two inherited `internal/kpi/wsl` failures before the gate signs.
+Resume File: `.planning/phases/16-p10-2/16-08-SUMMARY.md`
 
-**Plan 16-07 delivery summary (Wave 3, 2026-08-27):**
+**Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
+
+- 16-08-1: `internal/agent/callbacks.go` Tool OnStart dispatches on tool identity — kpi_call advances the hop counter but emits ZERO decisions (its `kpi_reference` + DataRef leg rides the tool closure); two-level identity (RunInfo.Name authoritative per eino `compose/tool_node.go:896`, kpiCallArgs shape probe fallback, conservative default = emit retrieve). `TestCallbackToolDispatch` 4 sub-tests (commit `0cc1ad3`).
+- 16-08-2: `cmd/server/main.go` assembly section 6c-3 — `SKILLFORGE_KPIS_DIR` (default `kpis`, in git) + dedicated `:memory:` DuckDB connector + AttachLRU + `NewDuckDBSQLSerializer` + `LoadKPIs` (failure = `log.Fatalf`, empty dir = the one legal degraded state) + `NewExecutor` over the sqlite store as AuditSink + `storeDatasetLister` / `storeDatasetMeta` adapters. Wired UNCONDITIONALLY (KPI reads desensitized data and never re-derives a hash, so `SKILLFORGE_DATA_SALT` does not gate it). `internal/server`: `Deps.KPIExecutor` / `Deps.KPIRegistry` + `ChatHandler` injects them plus a per-request `dataRefEmitter(c)` closure publishing `wire.DecisionKPIReference` + DataRef through the existing `data-decision` envelope (commit `1f1aed4`).
+- 16-08-3: `internal/server/kpi_admin.go` GET /api/admin/kpis — admin token gate (403) + nil registry 503 fail-closed + audit-read failure 500 + 200 `{signature, kpis[], latest_calls{}}`. Retrieval-only by structure: `TestAdminKPIs/retrieval_only` greps zero mutation verbs in the handler file and asserts the route table binds the path exactly once, as GET (commit `c94e39d`).
+
+**Verification (16-08):** Windows hermetic `go test ./internal/agent/... -count=1` green (4 packages); WSL `go build ./...` exit 0, `go vet ./internal/server/ ./cmd/server/` clean, `go test ./internal/server/... -count=1` green (12.75s + classifier + rewrite); `TestAdminKPIs` 4/4; `grep -cE "POST|PUT|DELETE|PATCH" internal/server/kpi_admin.go` == 0.
+
+**Inherited failure carried into 16-09 (NOT from 16-08):** `internal/kpi/wsl` fails `TestKPIEngineIntegration` (fixture trips the D16-A2 bidirectional `:param`↔`params` coverage check — "params has SQL missing: [status]") and `TestNameLexiconParity/kpi_vs_duckdb_lexicon_agreement` (64-char identifier cap disagreement). Confirmed pre-existing by re-running the package with `internal/kpi` + `internal/agent` at the 16-07 baseline `dc69291` — same FAIL. Both hermetic-fixable; they belong to the 16-06 WSL triple lock and must close before verify-phase-16 signs.
+
+**Prior — Plan 16-07 delivery summary (Wave 3, 2026-08-27):**
 
 - 16-07-1: `internal/agent/sql_surface_test.go` — TestNoSQLGenerationSurface WalkDir gate (3 roots × 5 SQL-shape regexes + comment stripping) + TestKPINarrowSurface reflect assertion on `*kpi.Executor` method set (commit `696ca81`)
 - 16-07-2: `internal/agent/tools/kpi_tool.go` — BuildKPICallTool (catalog snapshot at construction, Enum, structured refusal pass-through, DataRefEmitFunc); 5 hermetic locks (commit `c80867b`)
@@ -214,6 +224,12 @@ Resume File: `.planning/phases/16-p10-2/16-07-SUMMARY.md`
 | D15-05-3 | Single-pass reader contract preserved for Push (Phase 15 / Plan 15-05) | `TeeReader→hasher` wraps `req.Reader` before `openChannel`, and `ValidateCommitAgainstPreview`/`checkIdempotent` run only after `WriteStagingBatch` exhausts the stream. `oneShotReader` tests lock this for both Commit and Push. |
 | D16-03-A | kpi_calls 专用 INSERT-only 表落地（Phase 16 / Plan 16-03，KPI-02/D16-D4） | import_batches 整文件复刻换列集：PutKPICall 单写路径 + kpi_calls.go 零行变异/行移除动词 source-grep 结构锁（TestKPICallsInsertOnly）；10 列 additive DDL + 三索引独立 const 走 migrate() 尾部（D14-E1 形态纪律）；大 JSON 快照物理隔离于 chat 审计主表（T-16-03-03），ADM-03 直查无 JOIN。 |
 | D16-03-B | LatestKPICallByFunc 取 MAX(id) 而非计划原文 MAX(ts)（Plan 16-03 Rule 1 修复） | RFC3339Nano 裁剪尾随小数零：零纳秒戳 "...00Z" 文本排序反而高于同秒更晚的 "...00.25Z"，MAX(ts) 在同秒双调用时错报；AUTOINCREMENT id 与插入序（即回放序）严格单调且仍是一条 GROUP BY 聚合。伴生修正：List/Latest 接口签名顺延至其实现提交（var _ store.Store 一致性检查要求每个提交可编译）。 |
+| D16-08-A | callbacks 工具分流两级判定 + 保守默认（Phase 16 / Plan 16-08） | Level 1 `callbacks.RunInfo.Name` 为权威（实测 eino v0.9.14 `compose/tool_node.go:896-899` + `:935-939` 两条路径都塞 `Name: task.name`）；Level 2 无名 RunInfo 时按 `kpiCallArgs` 形状探测（`name` 非空 + 存在 `params`）；两级都不可判定时**发 retrieve**（Phase 3 现状）——未知工具多一条 retrieve 只是时间线瑕疵，而对所有工具静默不发会让可观测面整体变白。kpi_call 分支只 inc 计数不发决策，`kpi_reference` + DataRef 由工具闭包发射，二者构造性互斥。 |
+| D16-08-B | data-reference part 的 `DecisionPayload.Step` 取 0（Phase 16 / Plan 16-08） | hop 计数器是 internal/agent 的未导出 per-Run `stepCounter`，server 边界（emitter 闭包构造处）无缝可取；FE 按 decision **种类**（kpi_reference → 数据引用 chip）消费而非按 hop 序号。诚实的 0 无代价，编造序号则是在近审计流里撒小谎。将来若需真 hop 号，正解是把它穿进 `DataRefEmitFunc` 签名，而非在 server 侧反推。 |
+| D16-08-C | KPI 管线装配不受 SKILLFORGE_DATA_SALT 门控（Phase 16 / Plan 16-08） | 盐是**写**侧（导入脱敏）的 L1 HMAC 站点秘密；KPI 只**读**已脱敏数据集且从不再派生哈希。用盐门控分析能力会让一个完全合法的只读部署失去指标。装配段就地注释该差异与理由，与 importer 段形态其余部分保持镜像。 |
+| D16-08-D | LoadKPIs 失败 = log.Fatalf；空目录是唯一合法降级态（Phase 16 / Plan 16-08） | 与 Skill Scan（main.go:201）同姿态：受控文件是承重结构（D16-A1），坏 .yaml 就不该起服务，否则 agent 静默丢指标。零定义加载空 registry 且 `[OK]` 行明示 `signature=(empty registry — no KPI definitions loaded)`。 |
+| D16-08-E | admin KPI 端点只读是结构性而非约定性 + 审计读失败报 500（Phase 16 / Plan 16-08 / KPI-01 / Pitfall 14） | 定义只在启动时从受控文件加载，任何 HTTP 变更面就是该设计要防的注册后门；锁 = TestAdminKPIs 双 source-grep（handler 文件零变更动词 + 路由表恰好一次且为 GET）。`latest_calls` 空 map 会被运维读成"从未调用"，故真读失败返 500 而非空 map（nil Store 仍返空 map——与本包 degraded 约定一致）。 |
+| D16-08-F | storeDatasetMeta 在 Go 侧取最新而不新增 store 方法（Phase 16 / Plan 16-08 Rule 1 简化） | 计划原文设想 `ORDER BY created_at DESC LIMIT 1` 形态的新 store 查询；但 `ListDatasets` 已返回适配器所需全部字段（Dataset/Period/FilePath/KMinOverride/CreatedAt），为一张有界注册表加方法+SQL+测试超出本 plan 爆炸半径。适配器按逻辑 dataset 过滤取 `max(CreatedAt)`——与该 SQL 同一行。零行 → Period 空 → executor 转 dataset_not_available 拒答，绝不编造 as_of。 |
 
 ---
 
@@ -367,6 +383,7 @@ Resume File: `.planning/phases/16-p10-2/16-07-SUMMARY.md`
 | Phase 14-p10-0-cgo-trust-floor P09 | ~17m | 2 tasks (T1 TDD RED dd81dd2 + GREEN e1c1a12: idx_audit_run_path after ALTER loop + 3 legacy-upgrade regression tests; T2 live re-verify 0 code commits — UAT Test 2 issue→pass + Test 6 blocked→pass on real 115-row legacy skillforge.db) | 2 code files (1 created migrate_legacy_test.go 166 lines + 1 modified schema.go) + 11-stage phase gate re-run PASS |
 | Phase 14-p10-0-cgo-trust-floor P10 | ~160m | 3 tasks (T1 hermetic relock chain: tail re-anchor 1.0.0→1.1.0 + 双字面量 + 4.5 测试锁 + compliance/platform-floor 双锁重锁 + verify 双 pin，11-stage gate 全绿，commits 174ee18+ebd547c; T2 live judge 20/20 首跑 PASS（long_dialogue_dilution 4/4，pfloor-20 引用新条款拒答）+ compliance replay STOP（端点劣化窗口 faithfulness 0.6876<0.9，不重签）; T3 真机 spot-check 0 code commits — audit 行 117=1.1.0 FLOOR-110-AUDIT-PASS + admin 预览 1.1.0/hash 5b12acd9 一致 ADMIN-FLOOR-110-PASS） | 8 files (5 code/test + 2 locks + verify script) + UAT 6/6 pass；遗留：replay 重跑→fill-lock→README caveat（STATE blocker） |
 | Phase 16 P05 | 25min | 2 tasks | 9 files |
+| Phase 16 P08 | ~35min | 3 tasks | 7 files (2 new: server/kpi_admin.go + agent/callbacks_test.go; 1 new test: server/kpi_admin_test.go; 4 modified: agent/callbacks.go + server/runner_setup.go + server/server.go + cmd/server/main.go) |
 
 ## Session Continuity
 
