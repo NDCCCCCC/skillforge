@@ -4,8 +4,8 @@
 // DataReferenceChip — inline number hover wrapper for KPI data-reference.
 //
 // DASH-01 / DASH-02 per UI-SPEC:
-//   - N>1 points (sparkline mode): renders Sparkline + DrillChip inline
-//     (Sparkline is built in 17-01; stubbed here until then)
+//   - N>1 points (sparkline mode): renders Sparkline inline (pure SVG,
+//     zero chart deps — 17-01)
 //   - 0 or 1 point (single-value mode): renders inline span with CSS hover popup
 //
 // Phase 17 D17-B4: single-value and sparkline-point hover share the same
@@ -14,6 +14,7 @@
 // §Registry Safety: "zero new shadcn blocks — reuse existing tooltip badge").
 import type { DataReference } from '@/types/wire-types';
 import { DataReferencePopup } from './DataReferencePopup';
+import { Sparkline } from './Sparkline';
 
 interface DataReferenceChipProps {
   dataRef: DataReference;
@@ -24,19 +25,25 @@ export function DataReferenceChip({ dataRef }: DataReferenceChipProps) {
   const hasSparkline = refs.length > 1;
 
   if (hasSparkline) {
-    // TODO(17-01): Sparkline component will be created in Plan 17-01.
-    // This branch activates once Sparkline.tsx exists.
+    // Sparkline mode (N>1 points): pure SVG multi-period trend, one
+    // hoverable circle per references[] entry (17-01 component, DASH-03).
     return (
       <span
         className="kpi-sparkline-wrapper inline-flex flex-col gap-1"
         data-testid="kpi-sparkline-ref"
       >
-        <span
-          data-testid="sparkline-placeholder"
-          className="text-xs text-[var(--color-text-muted)]"
-        >
-          [{refs.length} 点趋势]
-        </span>
+        <Sparkline
+          points={refs.map((r, i) => ({
+            index: i,
+            period: r.period,
+            value: Number(r.value),
+          }))}
+          onPointHover={(i) => {
+            // Point-level tooltip shares the same DataReferencePopup
+            // copy as the single-value mode (D17-B4); the hover popup
+            // is driven by the chat-message-level pointRef wiring.
+          }}
+        />
       </span>
     );
   }

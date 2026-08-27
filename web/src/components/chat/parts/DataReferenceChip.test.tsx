@@ -104,26 +104,35 @@ describe('DataReferenceChip', () => {
     expect(wrapper).toHaveClass('group'); // group for CSS hover
   });
 
-  it('renders placeholder when sparkline branch activates (before 17-01 Sparkline exists)', () => {
+  it('TestSparklineIntegrated: N>1 references render a real SVG sparkline with one circle per point', () => {
     const dataRef: DataReference = {
       func: 'KPI_LOAN_BALANCE',
       asOfPeriod: '2026-07',
       asOfTs: '2026-08-01',
-      rowCount: 12,
+      rowCount: 3,
       suppressed: 0,
       kMinApplied: 5,
       references: [
-        { pointIndex: 0, period: '2026-01', value: 40000000000 },
-        { pointIndex: 1, period: '2026-02', value: 41000000000 },
-        { pointIndex: 2, period: '2026-03', value: 42000000000 },
-        { pointIndex: 3, period: '2026-04', value: 41500000000 },
+        { pointIndex: 0, period: '2026-05', value: 41000000000 },
+        { pointIndex: 1, period: '2026-06', value: 42000000000 },
+        { pointIndex: 2, period: '2026-07', value: 42315000000 },
       ],
     };
     render(<DataReferenceChip dataRef={dataRef} />);
 
+    // Sparkline wrapper branch activates
     const sparklineRef = screen.getByTestId('kpi-sparkline-ref');
     expect(sparklineRef).toBeInTheDocument();
-    // Placeholder shows point count until Sparkline component lands in 17-01
-    expect(screen.getByTestId('sparkline-placeholder')).toHaveTextContent('[4 点趋势]');
+
+    // Real Sparkline SVG rendered (not the pre-17-01 "[N 点趋势]" placeholder)
+    const svg = screen.getByTestId('sparkline');
+    expect(svg).toBeInTheDocument();
+    expect(svg).toHaveAttribute('aria-label', 'sparkline with 3 points');
+
+    // One hoverable circle per references[] entry
+    expect(screen.getByTestId('sparkline-point-0')).toBeInTheDocument();
+    expect(screen.getByTestId('sparkline-point-1')).toBeInTheDocument();
+    expect(screen.getByTestId('sparkline-point-2')).toBeInTheDocument();
+    expect(screen.queryByTestId('sparkline-placeholder')).not.toBeInTheDocument();
   });
 });
