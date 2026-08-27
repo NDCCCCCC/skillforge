@@ -589,7 +589,16 @@ Plans:
 
 **Pitfalls addressed:** Pitfall 11（聚合 join 再识别——eval 断言收口）、Pitfall 22（KPI 差分再识别——eval 断言收口）、Pitfall 19（eval 审计漂移——每 phase 贡献 data-eval golden，此处建立首块）
 **Research flag:** FEATURES.md Cap 3（sparkline 渲染形态：纯 SVG vs 轻量库）plan 期定；GEVL-09 golden set 的 50 例构造来源（合成数据 vs 真实 schema 脱敏）plan 期定
-**Plans**: TBD
+**Plans**: 8 plans
+**Plan list**:
+- [ ] 17-01-PLAN.md — Wave 1: Wire types (PointReference + DataReference.References) + Sparkline pure SVG
+- [ ] 17-02-PLAN.md — Wave 1: DataReferencePopup + DataReferenceChip + MessageBubble kpi_reference branch
+- [ ] 17-03-PLAN.md — Wave 1: DrillChip + pendingDraft app-store + ChatInput prefill
+- [ ] 17-04-PLAN.md — Wave 1: Multi-period KPI executor (ParamTypeArray + ResolvePeriods + CallMultiPeriod)
+- [ ] 17-05-PLAN.md — Wave 2: kpi-dashboard SKILL.md + ValidateAgainstKPI loader method
+- [ ] 17-06-PLAN.md — Wave 2: GEVL-09/10 eval (JudgeKPIReferenceConsistency + 50-case golden + kpi.lock.json)
+- [ ] 17-07-PLAN.md — Wave 3: reid.jsonl + structural tests + verify-phase-17.sh gate
+- [ ] 17-08-PLAN.md — Wave 3: Data fixtures (kpis/testdata.yaml + testdata.duckdb)
 **UI hint**: yes（聊天内 sparkline + 引用 hover——AI SDK data part / source 机制复用 Phase 4 模式）
 
 ### Phase 18: 业务月报 Skill（P10.4）
