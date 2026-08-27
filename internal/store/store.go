@@ -339,6 +339,47 @@ type DatasetDeleteRow struct {
 	DeletedAt time.Time
 }
 
+// KPICallRow is one INSERT-only audit record of a single KPI invocation
+// (Phase 16 / Plan 16-03 / KPI-02 / D16-D4). It freezes the FULL answer the
+// agent saw — {func, args, as_of, result_snapshot, k_min_applied} plus the
+// ts/session/skill context — into the dedicated kpi_calls table, so that
+// even after the upstream DuckDB dataset is superseded or cleaned the exact
+// call-time result stays replayable from this row alone. Written exclusively
+// through PutKPICall; no mutation or removal path exists (T-3-AUDIT +
+// T-16-03-01). The large ResultSnapshot JSON deliberately does NOT enter the
+// chat audit main table (T-16-03-03 physical isolation).
+type KPICallRow struct {
+	// ID is the assigned auto-increment ID (>0); insertion order IS replay
+	// order. Populated on reads; ignored by PutKPICall.
+	ID int64
+	// TS is the call moment (UTC) — the same instant the executor stamps
+	// into its as_of payload.
+	TS time.Time
+	// SessionID ties the call to the conversation partition (the audit
+	// table's same-named column precedent).
+	SessionID string
+	// SkillID identifies the Skill whose agent invoked the KPI.
+	SkillID string
+	// Func is the invoked KPI name — KPI-02's literal func field and the
+	// kpi registry key (e.g. "overdue_by_region").
+	Func string
+	// ArgsJSON snapshots the ACTUAL arguments used, including which optional
+	// parameters were passed vs defaulted — replay never invents defaults.
+	ArgsJSON string
+	// ASOfPeriod records as_of.period — the datasets-registry period
+	// watermark the answer was computed from.
+	ASOfPeriod string
+	// KMinApplied is the effective k-anonymity floor for THIS call — the
+	// final value of the file > dataset-override > global-default chain.
+	KMinApplied int
+	// ResultSnapshot is the complete result-set JSON — every row INCLUDING
+	// suppressed-marker rows, never truncated (D16-D3 full-freeze).
+	ResultSnapshot string
+	// Signature is the registry definition hash (D16-A4) proving WHICH
+	// definition version produced the snapshot on replay.
+	Signature string
+}
+
 // SessionMessage is one turn-half (user OR assistant) of a conversation
 // history. AppendTurn writes a (user, assistant) pair atomically.
 type SessionMessage struct {
@@ -619,6 +660,14 @@ type Store interface {
 	// (D15-C3). The state-side deletion is performed separately by the
 	// caller.
 	PutDatasetDelete(ctx context.Context, row DatasetDeleteRow) error
+
+	// PutKPICall appends one INSERT-only KPI-call audit row (KPI-02 /
+	// D16-D4) — the ONLY write path into kpi_calls. Consumed by the 16-06
+	// executor's AuditSink (the audit leg of its three output legs); the
+	// ADM-03 admin view (Phase 20) reads the table via ListKPICalls /
+	// LatestKPICallByFunc. Append-only by construction: every call gets a
+	// fresh AUTOINCREMENT id and frozen rows are never rewritten.
+	PutKPICall(ctx context.Context, row KPICallRow) error
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

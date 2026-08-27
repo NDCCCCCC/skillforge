@@ -252,6 +252,48 @@ CREATE TABLE IF NOT EXISTS dataset_deletes (
     dataset     TEXT NOT NULL DEFAULT '',
     deleted_at  TEXT NOT NULL
 );
+
+-- kpi_calls (Phase 16 / Plan 16-03 / KPI-02 / D16-D4): the SEPARATE
+-- INSERT-only audit table that freezes EVERY KPI invocation as ONE full
+-- row — {func, args, as_of, result_snapshot, k_min_applied, ts,
+-- session/skill} — so that even after the upstream DuckDB dataset is
+-- superseded or cleaned (dataset_deletes), the exact call-time answer
+-- stays replayable from this row alone. This is the storage-layer half
+-- of KPI-02; the replay BEHAVIOR itself lives in the 16-06 executor.
+--
+-- Schema rationale:
+--   - SEPARATE INSERT-only KPI-call audit: the large result_snapshot
+--     JSON deliberately does NOT enter the chat audit main table
+--     (T-16-03-03 — keeping multi-KB snapshots out shrinks the main
+--     table's exposure surface and keeps its queries lean).
+--   - ADM-03 SQL-first admin reads (Phase 20): "calls of one func" /
+--     "calls of one session" are indexed column lookups, and the
+--     "last call time per func" view is ONE GROUP BY over this table —
+--     no JOIN against the chat audit main table.
+--   - id AUTOINCREMENT mirrors dataset_deletes: insertion order IS
+--     replay order; ORDER BY id DESC returns newest-first.
+--   - signature NOT NULL DEFAULT '': the registry definition hash
+--     (D16-A4) recorded so a replay can prove WHICH definition version
+--     produced the snapshot. Empty denotes rows written before the
+--     executor started stamping it (defensive default; the executor
+--     always sets it).
+--
+-- INSERT-only discipline: rows are appended by PutKPICall; there is NO
+-- mutation or removal path anywhere in kpi_calls.go (source-grep
+-- structural lock in kpi_calls_test.go, mirroring the import_batches
+-- anti-tampering posture).
+CREATE TABLE IF NOT EXISTS kpi_calls (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts              TEXT    NOT NULL,
+    session_id      TEXT    NOT NULL,
+    skill_id        TEXT    NOT NULL,
+    func            TEXT    NOT NULL,
+    args_json       TEXT    NOT NULL,
+    as_of_period    TEXT    NOT NULL,
+    k_min_applied   INTEGER NOT NULL,
+    result_snapshot TEXT    NOT NULL,
+    signature       TEXT    NOT NULL DEFAULT ''
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
@@ -351,6 +393,31 @@ CREATE INDEX IF NOT EXISTS idx_audit_run_path ON audit(run_path)
 const createImportBatchesDatasetPeriodIdxSQL = `
 CREATE INDEX IF NOT EXISTS idx_import_batches_dataset_period ON import_batches(dataset, period)
 `
+
+// kpi_calls admin read-path indexes (Phase 16 / Plan 16-03 / ADM-03).
+// Three independent consts executed at the TAIL of migrate() — the same
+// shape discipline as idx_import_batches_dataset_period. The brand-new
+// kpi_calls table has no ALTER dependency (additive CREATE TABLE IF NOT
+// EXISTS in schemaSQL is enough), but every post-schemaSQL index stays
+// in the migrate()-tail convention so the D14-E1 ordering contract has
+// exactly one shape to remember.
+//
+//   - idx_kpi_calls_func:       "calls of one KPI" list reads.
+//   - idx_kpi_calls_session_id: per-conversation KPI audit trail.
+//   - idx_kpi_calls_ts:         time-window scans for the admin view.
+const (
+	createKPICallsFuncIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_kpi_calls_func ON kpi_calls(func)
+`
+
+	createKPICallsSessionIDIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_kpi_calls_session_id ON kpi_calls(session_id)
+`
+
+	createKPICallsTsIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_kpi_calls_ts ON kpi_calls(ts)
+`
+)
 
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
@@ -493,6 +560,20 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	// schemaSQL and the index from this statement.
 	if _, err := s.db.ExecContext(ctx, createImportBatchesDatasetPeriodIdxSQL); err != nil {
 		return fmtError("migrate.import_batches.dataset_period_idx", err)
+	}
+
+	// Phase 16 / Plan 16-03 — kpi_calls admin read-path indexes (func /
+	// session_id / ts). Executed AFTER the ALTER loops per the D14-E1
+	// ordering posture; kpi_calls itself is brand-new (additive, no
+	// ALTER dependency) but keeps the same migrate()-tail convention.
+	if _, err := s.db.ExecContext(ctx, createKPICallsFuncIdxSQL); err != nil {
+		return fmtError("migrate.kpi_calls.func_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createKPICallsSessionIDIdxSQL); err != nil {
+		return fmtError("migrate.kpi_calls.session_id_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createKPICallsTsIdxSQL); err != nil {
+		return fmtError("migrate.kpi_calls.ts_idx", err)
 	}
 	return nil
 }
