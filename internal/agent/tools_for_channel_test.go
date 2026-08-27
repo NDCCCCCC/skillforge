@@ -212,6 +212,10 @@ func (m kpiStubMeta) Periods(context.Context, string) ([]string, error) {
 	return nil, nil
 }
 
+func (m kpiStubMeta) VersionForPeriod(context.Context, string, string) (kpi.DatasetVersion, error) {
+	return m.version, m.err
+}
+
 // agentChannelTools is a small helper that mirrors the channel-branch
 // assembly of BuildRunner and returns the resulting Tool slice. We
 // can't easily extract the Tools from a constructed *adk.Runner

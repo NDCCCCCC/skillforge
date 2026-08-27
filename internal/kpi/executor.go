@@ -124,6 +124,13 @@ type DatasetMetaSource interface {
 	// dataset, sorted ascending. Used by CallMultiPeriod (D17-B3) to
 	// intersect requested periods against available data.
 	Periods(ctx context.Context, dataset string) ([]string, error)
+	// VersionForPeriod resolves the registered composite row for ONE exact
+	// period (Phase 17 live-UAT fix): each period backs its own .duckdb
+	// file (D14-D2/D15-C2), so CallMultiPeriod must ATTACH the file the
+	// requested period actually registered — reusing LatestDatasetVersion's
+	// FilePath for a different alias makes DuckDB reject the attach with a
+	// unique-file-handle conflict (one physical file, two aliases).
+	VersionForPeriod(ctx context.Context, dataset, period string) (DatasetVersion, error)
 }
 
 // EngineRequest is the ONLY CGO boundary crossing for execution: the
@@ -429,13 +436,20 @@ func (e *Executor) CallMultiPeriod(ctx context.Context, req CallRequest) (CallOu
 	var allRows []map[string]any
 	totalSuppressed := 0
 	for _, period := range periods {
-		// Get FilePath for this specific period via LatestDatasetVersion
-		// (requires a meta source that can scope to period — we use
-		// LatestDatasetVersion as a proxy; the actual period resolution
-		// was done in ResolvePeriods, so the dataset must be registered).
-		version, err := e.meta.LatestDatasetVersion(ctx, k.Dataset)
+		// Per-period version resolution (Phase 17 live-UAT fix): every
+		// period is its own composite row + .duckdb file, so the FilePath
+		// must come from the row this period registered. Reusing the
+		// latest version's file under a different ds_{dataset}__{period}
+		// alias trips DuckDB's unique-file-handle guard.
+		version, err := e.meta.VersionForPeriod(ctx, k.Dataset, period)
 		if err != nil {
 			return CallOutcome{}, fmt.Errorf("engine.Query %s period %s: %w", req.Name, period, err)
+		}
+		if version.Period == "" {
+			return CallOutcome{Refusal: &Refusal{
+				ReasonCode:       ReasonDatasetNotAvailable,
+				HumanExplanation: "数据集 " + k.Dataset + " 在周期 " + period + " 无已注册版本",
+			}}, nil
 		}
 		// Build per-period request, replacing periods:[...] with single period.
 		periodParams := copyParams(req.Params)

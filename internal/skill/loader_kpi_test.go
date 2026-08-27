@@ -19,6 +19,8 @@ package skill
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"testing"
 
@@ -133,9 +135,15 @@ func TestValidateAgainstKPI(t *testing.T) {
 	assert.Contains(t, err.Error(), "kpi-dashboard")
 
 	// Skip contract: tier-channel-only Skills (no "data:" read) have no
-	// routing table to validate — simple-qa (skills/, reads authority/**)
-	// passes even against an empty registry.
-	tierLoader := NewLoader("../../skills")
+	// routing table to validate. Built hermetically in a TempDir — the
+	// deployed skills/ dir now also carries kpi-dashboard (data channel),
+	// so scanning it would defeat the tier-only intent of this leg.
+	tierDir := t.TempDir()
+	tierSkill := filepath.Join(tierDir, "tier-only", "SKILL.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(tierSkill), 0o755))
+	require.NoError(t, os.WriteFile(tierSkill, []byte(
+		"---\ndescription: tier-only skill\nagent: ChatModelAgent\nreads:\n  - authority/**\nwrites: []\nsteps: |\n  1. answer\nguardrails:\n  prohibitions:\n    - \"Never fabricate citations\"\n    - \"Never answer without retrieved grounding\"\n    - \"Never leak other-tier content\"\ntemperature: 0.0\n---\n"), 0o644))
+	tierLoader := NewLoader(tierDir)
 	_, err = tierLoader.Scan()
 	require.NoError(t, err)
 	require.NoError(t, tierLoader.ValidateAgainstKPI(emptyReg),

@@ -306,3 +306,25 @@ func (m wsMeta) Periods(_ context.Context, dataset string) ([]string, error) {
 	sort.Strings(periods)
 	return periods, nil
 }
+
+// VersionForPeriod resolves the composite row for ONE exact period — the
+// CallMultiPeriod per-period ATTACH seam (Phase 17 live-UAT fix). The WSL
+// fixture registers one row per (dataset, period), so exact-match is the
+// same bounded ListDatasets scan.
+func (m wsMeta) VersionForPeriod(_ context.Context, dataset, period string) (kpi.DatasetVersion, error) {
+	rows, err := m.store.ListDatasets(context.Background())
+	if err != nil {
+		return kpi.DatasetVersion{}, err
+	}
+	for i := range rows {
+		r := rows[i]
+		if r.Dataset == dataset && r.Period == period {
+			return kpi.DatasetVersion{
+				Period:       r.Period,
+				FilePath:     r.FilePath,
+				KMinOverride: r.KMinOverride,
+			}, nil
+		}
+	}
+	return kpi.DatasetVersion{}, nil
+}

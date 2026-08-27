@@ -27,6 +27,12 @@ steps: |
   3. 自然语言答：数值 + KPI 定义 + 时间窗 + as_of（必须出现）+ 数据来源 `data:aggregated_only`
   4. 多 KPI 答案：每个数字独立 hover；可下钻「看月度趋势」
 
+  ## period 参数构造规则（重要）
+  - period 必须是 `YYYY-MM` 格式的**具体月份**（如 `2026-07`），绝不传「上月」「本月」等相对词。
+  - 相对表达按数据的最新已注册周期换算：「上月」= 最新周期的上一个月，「本月/最新」= 最新周期本身。
+  - 若拒答提示周期不可用（dataset_not_available / invalid_params），从拒答信息中取可用周期重试一次；仍失败则如实告知用户可用周期范围。
+  - 多周期趋势用 `periods` 数组参数（升序列出各月），如 `periods: ["2026-01","2026-02",...]`。
+
 guardrails:
   prohibitions:
     - "Never SELECT raw rows or attempt SQL"

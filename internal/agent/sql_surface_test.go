@@ -333,7 +333,14 @@ func TestKPINarrowSurface(t *testing.T) {
 	// matching one of the forbidden SQL verbs is a structural
 	// regression that the gate must catch.
 	allowed := map[string]bool{
-		"Call": true, // the only SQL entry point
+		"Call": true, // the only single-period SQL entry point
+		// CallMultiPeriod — D17-B3 deliberate decision (FEATURES Cap 3):
+		// multi-period sparkline queries ride the SAME narrow seam shape
+		// (pre-validated $param SQL template + named args, one engine.Query
+		// per period). It adds no SQL surface — the deny-list verbs below
+		// still apply, and the agent-visible tool still funnels every call
+		// through kpi_tool's catalog Enum.
+		"CallMultiPeriod": true,
 	}
 	for got := range methodNames {
 		if !allowed[got] {

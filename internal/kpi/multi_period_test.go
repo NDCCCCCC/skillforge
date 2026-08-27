@@ -37,6 +37,10 @@ func (s *stubMetaSource) Periods(ctx context.Context, dataset string) ([]string,
 	return s.periodsFn(ctx, dataset)
 }
 
+func (s *stubMetaSource) VersionForPeriod(ctx context.Context, dataset, period string) (DatasetVersion, error) {
+	return DatasetVersion{Period: period, FilePath: "data/datasets/" + dataset + "__" + period + ".duckdb"}, nil
+}
+
 func TestResolvePeriods_AllExist(t *testing.T) {
 	meta := &stubMetaSource{
 		periodsFn: func(ctx context.Context, dataset string) ([]string, error) {

@@ -37,7 +37,10 @@ export function DataReferencePopup({ dataRef, pointRef }: DataReferencePopupProp
   const displayValue = pointRef
     ? Number(pointRef.value).toLocaleString()
     : Number(dataRef.asOfPeriod ?? 0).toLocaleString();
-  const period = pointRef?.period ?? dataRef.asOfPeriod ?? '—';
+  // Phase 17 live-UAT fix: single-value snapshots carry an empty period
+  // string (single-period KPI SQL has no period output column), so fall
+  // through on empty — ?? alone treats '' as present.
+  const period = pointRef?.period || dataRef.asOfPeriod || '—';
   const pointInfo =
     pointRef && dataRef.references
       ? `（点 ${pointRef.pointIndex + 1} / ${dataRef.references.length}）`

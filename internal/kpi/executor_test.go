@@ -79,6 +79,10 @@ func (m stubMeta) Periods(context.Context, string) ([]string, error) {
 	return nil, nil
 }
 
+func (m stubMeta) VersionForPeriod(context.Context, string, string) (DatasetVersion, error) {
+	return m.version, m.err
+}
+
 // stubEngine records the last EngineRequest and replays canned rows/errors.
 type stubEngine struct {
 	rows    []map[string]any

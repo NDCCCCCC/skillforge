@@ -234,11 +234,13 @@ func main() {
 	}
 	r, backendLabel := buildRetriever(ctx, backend, emb)
 
-	// 5. GLM-5.2 ChatModel (Coding Plan endpoint per Pitfall 6).
+	// 5. GLM ChatModel (Coding Plan endpoint per Pitfall 6). Phase 17
+	// live-UAT: GLM_MODEL selects the model (user decision 2026-08-27:
+	// glm-5.3-flash default) instead of the historical hardcoded "glm-5.2".
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: glmBase,
 		APIKey:  glmKey,
-		Model:   "glm-5.2",
+		Model:   envOr("GLM_MODEL", "glm-5.3-flash"),
 	})
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: GLM chat model init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
@@ -536,6 +538,16 @@ func main() {
 // log line (e.g. "milvus(10.x.x.x:19530)" / "mongo(10.x.x.x:27017)").
 func buildRetriever(ctx context.Context, backend string, emb *bge.BGE) (retriever.Retriever, string) {
 	switch backend {
+	case "none":
+		// Phase 17 live-UAT gap closure: safe degraded backend for
+		// deployments (and dev hosts) where no retrieval backend is
+		// reachable. Search returns zero hits, which the grounding floor
+		// turns into a no_authorized_source refusal — D-09 default-deny
+		// holds by construction. Data-channel Skills are unaffected:
+		// BuildRunner's XOR guard (D16-C1) never wires retrieve into a
+		// reads:data Skill, so kpi_call flows are fully operational here.
+		log.Printf("[WARN] cmd/server: RETRIEVER_BACKEND=none — tier-channel retrieval disabled (all tier queries refuse with no_authorized_source); data-channel Skills unaffected")
+		return noopRetriever{}, "none(degraded default-deny)"
 	case "mongo":
 		mURI := envRequired("MONGO_URI")
 		mc, err := mongo.New(ctx, mongo.Config{
@@ -717,6 +729,41 @@ func (m storeDatasetMeta) Periods(ctx context.Context, dataset string) ([]string
 	return out, nil
 }
 
+// VersionForPeriod resolves the composite registry row for ONE exact period
+// (Phase 17 live-UAT fix for CallMultiPeriod): each period backs its own
+// .duckdb file (D14-D2/D15-C2), so the per-period engine ATTACH must point
+// at the file the requested period actually registered. Among duplicate
+// rows for the same (dataset, period) the newest CreatedAt wins — same
+// tie-break as LatestDatasetVersion. An unregistered period returns an
+// empty Period, which the executor turns into a dataset_not_available
+// refusal.
+func (m storeDatasetMeta) VersionForPeriod(ctx context.Context, dataset, period string) (kpi.DatasetVersion, error) {
+	rows, err := m.st.ListDatasets(ctx)
+	if err != nil {
+		return kpi.DatasetVersion{}, err
+	}
+	var (
+		best  store.DatasetRow
+		found bool
+	)
+	for _, r := range rows {
+		if r.Dataset != dataset || r.Period != period {
+			continue
+		}
+		if !found || r.CreatedAt.After(best.CreatedAt) {
+			best, found = r, true
+		}
+	}
+	if !found {
+		return kpi.DatasetVersion{}, nil
+	}
+	return kpi.DatasetVersion{
+		Period:       best.Period,
+		FilePath:     best.FilePath,
+		KMinOverride: best.KMinOverride,
+	}, nil
+}
+
 // shortSignature renders the KPI registry content-hash for the startup log:
 // the first 12 hex chars, or an explicit bootstrap marker when the registry
 // loaded zero definitions (empty kpis/ directory — the one legal degraded
@@ -756,3 +803,34 @@ func (r *prodRunner) CallCount() int {
 	defer r.mu.Unlock()
 	return r.count
 }
+
+// noopRetriever is the RETRIEVER_BACKEND=none degraded backend (Phase 17
+// live-UAT gap closure). Every read returns zero results so the grounding
+// floor refuses tier-channel queries with no_authorized_source (D-09
+// default-deny by construction); writes are no-ops. Data-channel Skills
+// never touch this type — BuildRunner's XOR guard wires {kpi_call} only.
+type noopRetriever struct{}
+
+func (noopRetriever) Health(ctx context.Context) error {
+	return fmt.Errorf("retrieval disabled (RETRIEVER_BACKEND=none)")
+}
+
+func (noopRetriever) Search(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]retriever.Hit, error) {
+	return nil, nil
+}
+
+func (noopRetriever) Ensure(ctx context.Context) error { return nil }
+
+func (noopRetriever) Insert(ctx context.Context, docs []retriever.Document) error {
+	return fmt.Errorf("retrieval disabled (RETRIEVER_BACKEND=none)")
+}
+
+func (noopRetriever) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, error) {
+	return nil, nil
+}
+
+func (noopRetriever) GetChunk(ctx context.Context, id int64) (retriever.ChunkContent, error) {
+	return retriever.ChunkContent{}, fmt.Errorf("retrieval disabled (RETRIEVER_BACKEND=none)")
+}
+
+func (noopRetriever) Disconnect() error { return nil }
