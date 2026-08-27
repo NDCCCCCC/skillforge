@@ -47,7 +47,7 @@
 
 - [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-23 — 12/12 plans: 14-01..14-11 code-complete hermetically; 14-12 landed explicit D14-B4 re-baseline semantics (computeCaseMetrics refused=true → faith=1.0) with RED→GREEN test; authorized compliance replay environment-blocked by BGE-M3 no route to host — no replay run, no falsified numbers, platform-floor.lock.json 1.1.0 formal re-sign remains deferred)
 - [x] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）(completed 2026-08-24 — 7/7 plans: 15-01..15-07 code-complete; verify-phase-15.sh 10/10 PASS in WSL2)
-- [ ] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计
+- [x] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计 (completed 2026-08-27)
   - 16-01 KPI skeleton + probe lock (`b5f9173`) — registry + Lexicon
   - 16-02 reads channel vocabulary + HasDataChannel + ResolveTiers defense-in-depth (`22bb646`)
   - 16-03 kpi_calls dedicated INSERT-only table (DATA-17 store layer)
@@ -568,7 +568,7 @@ Plans:
 - [x] 16-06-PLAN.md — Wave 2（并行）: kmin.go 行级抑制 + executor.go Call 六步 + as_of 系统生成 + 引擎适配器 + WSL 三锁（快照冻结/跨 Skill 一致/引擎集成）（DATA-03/12, KPI-02） — completed 2026-08-27; WSL execution env-blocked on D15-01-1 (recorded per 14-08 precedent; Go compile locked)
 - [x] 16-07-PLAN.md — Wave 3: TestNoSQLGenerationSurface 结构禁令 + kpi_call 工具（目录快照+Enum）+ BuildRunner 通道分支 + TestToolsForChannel（DATA-03/08/09）
 - [x] 16-08-PLAN.md — Wave 4: callbacks 工具名分流 + DataRef SSE 发射 wiring + main.go KPI 管线装配 + GET /api/admin/kpis 只读端点（KPI-01, DATA-03） — completed 2026-08-27; `go build ./...` + server 套件 WSL 全绿；`internal/kpi/wsl` 2 例失败为 16-06 遗留（已对 dc69291 基线复核）
-- [ ] 16-09-PLAN.md — Wave 5: verify-phase-16.sh 十段 gate + Makefile target + verify-phase-15 前相回归（全 7 REQ 证据面）
+- [x] 16-09-PLAN.md — Wave 5: verify-phase-16.sh 十段 gate + Makefile target + verify-phase-15 前相回归（全 7 REQ 证据面）
 
 **Wave structure**: W1={16-01, 16-02, 16-03, 16-04 并行} → W2={16-05, 16-06 并行} → W3={16-07} → W4={16-08} → W5={16-09}
 **UI hint**: no
@@ -732,7 +732,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 6/9 plans executed
+**Plans:** 8/0 plans complete
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 

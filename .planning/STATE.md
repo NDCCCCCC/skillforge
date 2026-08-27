@@ -2,18 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
-current_phase: 16
-current_plan: 9 (COMPLETE — verify-phase-16.sh 11-stage acceptance gate + Makefile target)
-status: phase-closeout
-stopped_at: —
-last_updated: "2026-08-27T16:00:00.000Z"
+current_phase: 17
+current_plan: Not started
+status: planning
+last_updated: "2026-08-27T08:23:40.683Z"
 last_activity: 2026-08-27
 progress:
   total_phases: 20
-  completed_phases: 13
-  total_plans: 100
+  completed_phases: 12
+  total_plans: 78
   completed_plans: 100
-  percent: 67
+  percent: 60
 ---
 
 # State — SkillForge
@@ -58,8 +57,8 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 16
-**Current Plan:** 6 (COMPLETE — Wave 2 leg closed for kmin + executor + engine adapter + WSL triple lock)
+**Current Phase:** 17
+**Current Plan:** Not started
 **Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
 **Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
@@ -280,7 +279,7 @@ Resume File: `.planning/phases/16-p10-2/16-09-SUMMARY.md`
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Ready to execute
+- **Status:** Ready to plan
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
