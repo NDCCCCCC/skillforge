@@ -95,7 +95,15 @@ func NewAttachLRU(c *Connector, max int) (*AttachLRU, error) {
 func (l *AttachLRU) Get(ctx context.Context, id, path string) (hit bool, err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.getLocked(ctx, id, path)
+}
 
+// getLocked is the locking-free core of Get. It lets SAME-PACKAGE callers
+// that need an ATOMIC multi-step operation against the dedicated session —
+// the kpi_engine adapter pairs "ensure attached" with the query itself so a
+// concurrent LRU eviction cannot DETACH the alias mid-query (session-scoped
+// catalog discipline) — compose steps under their own l.mu acquisition.
+func (l *AttachLRU) getLocked(ctx context.Context, id, path string) (hit bool, err error) {
 	if elem, ok := l.byID[id]; ok {
 		l.ll.MoveToFront(elem) // idempotent re-touch
 		return true, nil
