@@ -224,9 +224,17 @@ func TestNameLexiconParity(t *testing.T) {
 			{"loans;DROP", false, false, "metacharacter"},
 			{"loans\x00null", false, false, "NUL byte"},
 
-			// Length boundary.
+			// Length boundary. The kpi regex ^[A-Za-z][A-Za-z0-9_]{0,63}$
+			// (max 64 chars) and the duckdb regex ^[A-Za-z0-9_-]{1,64}$
+			// (max 64 chars) both reject a 65-char input.
 			{
-				in:     "a234567890123456789012345678901234567890123456789012345678901234", // 65 chars
+				in:     "a234567890123456789012345678901234567890123456789012345678901234", // 64 chars (max accepted)
+				kpiOK:  true,
+				dsOK:   true,
+				reason: "64 chars at the cap — both sides accept",
+			},
+			{
+				in:     "a2345678901234567890123456789012345678901234567890123456789012345", // 65 chars over the cap
 				kpiOK:  false,
 				dsOK:   false,
 				reason: "65 chars over the 64 cap on both sides",
