@@ -28,20 +28,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeSerializer implements SQLSerializer for hermetic testing.
-// It returns a pre-recorded JSON string (from probe fixtures or inline).
-type fakeSerializer struct {
-	json string // raw JSON to return
-	err  error  // Go error to return (infra failure)
-}
-
-func (f *fakeSerializer) SerializeSQL(_ context.Context, _ string) (string, error) {
-	if f.err != nil {
-		return "", f.err
-	}
-	return f.json, nil
-}
-
 // loadProbeFixture loads a probe-N.json fixture from the wsl/testdata directory.
 func loadProbeFixture(t *testing.T, n int) string {
 	t.Helper()

@@ -17,6 +17,7 @@
 package kpi
 
 import (
+	"context"
 	"os"
 	"reflect"
 	"sort"
@@ -67,15 +68,15 @@ k_min: 0
 kpis:
   - name: kpi_a
     description: A
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT x AS x, count(*) AS row_count FROM ds_loans.data GROUP BY x"
     count_column: row_count
   - name: kpi_b
     description: B
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT y AS y, count(*) AS row_count FROM ds_loans.data GROUP BY y"
     count_column: row_count
 `)
 
-	reg, _, err := LoadKPIs(dir)
+	reg, _, err := LoadKPIs(context.Background(), dir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 
 	cat1 := reg.Catalog()
@@ -99,11 +100,11 @@ k_min: 0
 kpis:
   - name: kpi_a
     description: A
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT x AS x, count(*) AS row_count FROM ds_loans.data GROUP BY x"
     count_column: row_count
 `)
 
-	reg, _, err := LoadKPIs(dir)
+	reg, _, err := LoadKPIs(context.Background(), dir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 
 	names1 := reg.Names()
@@ -127,15 +128,15 @@ k_min: 0
 kpis:
   - name: z_kpi
     description: Z
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT x AS x, count(*) AS row_count FROM ds_loans.data GROUP BY x"
     count_column: row_count
   - name: a_kpi
     description: A
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT y AS y, count(*) AS row_count FROM ds_loans.data GROUP BY y"
     count_column: row_count
 `)
 
-	reg, _, err := LoadKPIs(dir)
+	reg, _, err := LoadKPIs(context.Background(), dir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 
 	cat := reg.Catalog()
@@ -153,15 +154,15 @@ k_min: 0
 kpis:
   - name: z_kpi
     description: Z
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT x AS x, count(*) AS row_count FROM ds_loans.data GROUP BY x"
     count_column: row_count
   - name: a_kpi
     description: A
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT y AS y, count(*) AS row_count FROM ds_loans.data GROUP BY y"
     count_column: row_count
 `)
 
-	reg, _, err := LoadKPIs(dir)
+	reg, _, err := LoadKPIs(context.Background(), dir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 
 	names := reg.Names()
@@ -190,7 +191,7 @@ kpis:
         required: true
 `)
 
-	reg, _, err := LoadKPIs(dir)
+	reg, _, err := LoadKPIs(context.Background(), dir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 
 	cat := reg.Catalog()
@@ -205,7 +206,7 @@ kpis:
 func TestRegistryEmptyCatalogAndNames(t *testing.T) {
 	dir := t.TempDir() // empty directory
 
-	reg, _, err := LoadKPIs(dir)
+	reg, _, err := LoadKPIs(context.Background(), dir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 
 	cat := reg.Catalog()
@@ -226,7 +227,7 @@ func TestRegistryRealLoansYAML(t *testing.T) {
 		t.Skip("kpis/ directory not found (running from unexpected working directory)")
 	}
 
-	reg, sig, err := LoadKPIs(kpisDir)
+	reg, sig, err := LoadKPIs(context.Background(), kpisDir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 	require.NotNil(t, reg)
 
@@ -246,11 +247,11 @@ k_min: 0
 kpis:
   - name: test_kpi
     description: test
-    sql: "SELECT count(*) AS row_count FROM ds_loans.data GROUP BY 1"
+    sql: "SELECT x AS x, count(*) AS row_count FROM ds_loans.data GROUP BY x"
     count_column: row_count
 `)
 
-	reg, _, err := LoadKPIs(dir)
+	reg, _, err := LoadKPIs(context.Background(), dir, fakeSerializer{}, emptyLister{})
 	require.NoError(t, err)
 
 	kpi, ok := reg.Lookup("test_kpi")

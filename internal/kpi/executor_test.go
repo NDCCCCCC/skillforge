@@ -38,9 +38,22 @@ import (
 const testASTEnvelope = `{"error":false,"error_type":"","error_message":"","statements":[{"node":{"type":"SELECT_NODE","from_table":{"type":"BASE_TABLE","schema_name":"ds_loans","table_name":"data"},"select_list":[]}}]}`
 
 // fakeSerializer stands in for the CGO DuckDB serializer (hermetic).
-type fakeSerializer struct{}
+// Returns either a configured JSON envelope (json field) or a Go error
+// (err field — for infra-failure simulation). If both are unset, returns
+// the canonical testASTEnvelope (preserves the original `fakeSerializer{}`
+// usage pattern in loadTestRegistry).
+type fakeSerializer struct {
+	json string // raw JSON to return (overrides testASTEnvelope when set)
+	err  error  // Go error to return (infra failure)
+}
 
-func (fakeSerializer) SerializeSQL(_ context.Context, _ string) (string, error) {
+func (f fakeSerializer) SerializeSQL(_ context.Context, _ string) (string, error) {
+	if f.err != nil {
+		return "", f.err
+	}
+	if f.json != "" {
+		return f.json, nil
+	}
 	return testASTEnvelope, nil
 }
 
