@@ -395,6 +395,13 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// system prompt for a Skill. Returns floor_version, skill_id,
 	// composed_prompt, and prompt_hash (same hash that audit rows carry).
 	h.GET("/api/admin/platform-prompt", deps.platformPromptHandler)
+	// Phase 16 Plan 08 (KPI-01) — admin read-only view of the KPI
+	// aggregation channel: registry catalog + content signature +
+	// last-invocation timestamps from the kpi_calls audit table. The KPI
+	// definitions are controlled files loaded once at startup, so this
+	// surface is retrieval-only by design (a mutation route here would be
+	// a registration backdoor — see kpi_admin.go godoc).
+	h.GET("/api/admin/kpis", deps.kpiAdminHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
 	// turns + the session-bound skill_id so the FE can rebuild the
