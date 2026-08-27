@@ -108,6 +108,26 @@ type CompiledKPI struct {
 	// MaxRows is the per-KPI result set size limit (0 = use package default).
 	MaxRows int
 
+	// SQLDollar is an alias for SQLRaw (the $param form). Both fields contain
+	// the same content; SQLDollar is the canonical field name for 16-06 executor
+	// consumption, SQLRaw is retained for backward compatibility with 16-01 tests.
+	// The $param form is the ONLY form stored in the registry — the original
+	// :param form is never stored (D16-A2: rewrite happens after all validation).
+	SQLDollar string
+
+	// TableRefCount is the number of valid table references found by AST walk
+	// (ValidateSQLAST Rule 4). For single-dataset KPIs this is typically 1;
+	// subqueries referencing the same dataset may increase it. The executor
+	// (16-06) uses this for compound alias replacement count verification.
+	TableRefCount int
+
+	// PreserveColumns lists the GROUP BY dimension column identifiers + the
+	// CountColumn, used by kmin.Apply (16-06) to determine which columns to
+	// preserve when suppressing small-bucket rows. Extracted from GROUP BY
+	// clause via regex (v1 KPI dialect limitation: GROUP BY expressions
+	// beyond simple identifiers are fail-closed rejected).
+	PreserveColumns []string
+
 	// Params is the compiled parameter map (name → CompiledParam).
 	Params map[string]CompiledParam
 }
