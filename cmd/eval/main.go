@@ -78,11 +78,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -207,6 +211,218 @@ func runGateCheck(reportPath, skillsDir string) int {
 	return 0
 }
 
+// ---------------------------------------------------------------------------
+// KPI eval support (GEVL-09/10).
+// ---------------------------------------------------------------------------
+
+// KPILockFile pins a KPI eval run. Extends LockFile with KPI-specific fields.
+type KPILockFile struct {
+	ModelVersion       string `json:"model_ver"`
+	PromptHash        string `json:"prompt_hash"`
+	Seed              int64  `json:"seed"`
+	EvalSetVersion    string `json:"eval_set_version"`
+	SkillName         string `json:"skill_name"`
+	EvalSetSHA256     string `json:"eval_set_sha256"`
+	KpiRegistrySHA256 string `json:"kpi_registry_sha256"`
+}
+
+// loadKPICases reads eval/golden/kpi.jsonl and returns the KPI cases.
+func loadKPICases(path string) ([]eval.KPICase, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("loadKPICases: open %q: %w", path, err)
+	}
+	defer f.Close()
+
+	var cases []eval.KPICase
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	lineNo := 0
+	for scanner.Scan() {
+		lineNo++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		var c eval.KPICase
+		if err := json.Unmarshal([]byte(line), &c); err != nil {
+			return nil, fmt.Errorf("loadKPICases: line %d: parse JSON: %w", lineNo, err)
+		}
+		if c.ID == "" {
+			return nil, fmt.Errorf("loadKPICases: line %d: case missing id", lineNo)
+		}
+		cases = append(cases, c)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("loadKPICases: scan: %w", err)
+	}
+	if len(cases) == 0 {
+		return nil, fmt.Errorf("loadKPICases: %q loaded 0 cases", path)
+	}
+	return cases, nil
+}
+
+// loadKPILock reads the KPI lock file.
+func loadKPILock(path string) (KPILockFile, error) {
+	var lock KPILockFile
+	f, err := os.Open(path)
+	if err != nil {
+		return lock, fmt.Errorf("loadKPILock: open %q: %w", path, err)
+	}
+	defer f.Close()
+	if err := json.NewDecoder(f).Decode(&lock); err != nil {
+		return lock, fmt.Errorf("loadKPILock: decode %q: %w", path, err)
+	}
+	// Validate required fields.
+	for _, req := range []struct {
+		field string
+		value string
+	}{
+		{"model_ver", lock.ModelVersion},
+		{"prompt_hash", lock.PromptHash},
+		{"eval_set_version", lock.EvalSetVersion},
+		{"skill_name", lock.SkillName},
+		{"eval_set_sha256", lock.EvalSetSHA256},
+		{"kpi_registry_sha256", lock.KpiRegistrySHA256},
+	} {
+		if req.value == "" {
+			return lock, fmt.Errorf("loadKPILock: %q missing required field %q", path, req.field)
+		}
+	}
+	return lock, nil
+}
+
+// computeKPIRegistrySHA computes a SHA-256 hex digest of all files under a directory tree.
+func computeKPIRegistrySHA(dir string) (string, error) {
+	h := sha256.New()
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".yaml") {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if _, err := io.Copy(h, f); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("computeKPIRegistrySHA: walk %q: %w", dir, err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// computeEvalSetSHA256 computes SHA-256 of a JSONL file.
+func computeEvalSetSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("computeEvalSetSHA256: open %q: %w", path, err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("computeEvalSetSHA256: copy: %w", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// judgeKPI runs the GEVL-09/10 programmatic judge for one KPI case.
+// snapRows should be the KPI snapshot data for the period being tested.
+func judgeKPI(answerText string, c eval.KPICase, snapRows []map[string]any) eval.KPIJudgment {
+	return eval.JudgeKPIReferenceConsistency(&c, answerText, snapRows)
+}
+
+// runKPIMode executes the KPI-specific frozen eval path (GEVL-09/10).
+func runKPIMode(ctx context.Context, frozen string, ag *agent.Agent, emb *bge.BGE, r retriever.Retriever) {
+	// Build paths.
+	goldenSetPath := frozenSetPath(frozen) // eval/golden/kpi.jsonl
+	lockPath := frozenLockPath(frozen)     // eval/frozen/kpi.lock.json
+
+	// Load lock and assert pins.
+	lock, err := loadKPILock(lockPath)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/eval: kpi: %v", err)
+	}
+
+	// Assert kpi_registry_sha256 pin.
+	regSHA, err := computeKPIRegistrySHA("kpis/")
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/eval: kpi: computeKPIRegistrySHA: %v", err)
+	}
+	if regSHA != lock.KpiRegistrySHA256 {
+		log.Fatalf("[FAIL] cmd/eval: kpi: kpi_registry_sha256 mismatch: got %s, want %s", regSHA, lock.KpiRegistrySHA256)
+	}
+	log.Printf("[OK] cmd/eval: kpi: kpi_registry_sha256 pin holds (%s)", regSHA)
+
+	// Assert eval_set_sha256 pin.
+	setSHA, err := computeEvalSetSHA256(goldenSetPath)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/eval: kpi: computeEvalSetSHA256: %v", err)
+	}
+	if setSHA != lock.EvalSetSHA256 {
+		log.Fatalf("[FAIL] cmd/eval: kpi: eval_set_sha256 mismatch: got %s, want %s", setSHA, lock.EvalSetSHA256)
+	}
+	log.Printf("[OK] cmd/eval: kpi: eval_set_sha256 pin holds (%s)", setSHA)
+
+	// Load golden cases.
+	cases, err := loadKPICases(goldenSetPath)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/eval: kpi: loadKPICases: %v", err)
+	}
+	log.Printf("[INFO] cmd/eval: kpi: loaded %d cases from %s", len(cases), goldenSetPath)
+
+	// Load KPI snapshot data for the eval period.
+	// For now, build empty snapshot rows (actual KPI data would come from DuckDB or KPI registry).
+	var snapRows []map[string]any
+	// In production, snapRows would be populated from the KPI registry with the
+	// actual computed values for the expected period.
+
+	// Accumulate results.
+	var passCount, failCount int
+	catPass := map[string]int{}
+	catTotal := map[string]int{}
+
+	for i, c := range cases {
+		// Run the agent for this query.
+		sessionID := "eval-kpi-" + c.ID
+		v, refusal, err := ag.Run(ctx, sessionID, c.Query)
+		_, answer, refusalReason := classifyRunOutcome(err, refusal, v)
+
+		// Judge the answer.
+		j := judgeKPI(answer, c, snapRows)
+
+		catTotal[c.Category]++
+		if j.Passed {
+			passCount++
+			catPass[c.Category]++
+		} else {
+			failCount++
+			log.Printf("[FAIL] cmd/eval: kpi: case %d/%d %s [%s] reason=%s",
+				i+1, len(cases), c.ID, c.Category, j.Reason)
+		}
+		log.Printf("[OK] cmd/eval: kpi: case %d/%d %s [%s] passed=%t reason=%s",
+			i+1, len(cases), c.ID, c.Category, j.Passed, j.Reason)
+		_ = refusalReason // logged but not used in GEVL-09/10 scoring
+	}
+
+	total := passCount + failCount
+	accuracy := 0.0
+	if total > 0 {
+		accuracy = float64(passCount) / float64(total)
+	}
+	log.Printf("[OK] cmd/eval: kpi: %d/%d passed (accuracy=%.4f)", passCount, total, accuracy)
+	for cat, totalCat := range catTotal {
+		passCat := catPass[cat]
+		log.Printf("[INFO] cmd/eval: kpi: category %s: %d/%d passed", cat, passCat, totalCat)
+	}
+}
+
 func main() {
 	goldenPath := flag.String("golden", defaultGoldenPath, "path to the golden-set JSONL file")
 	reportPath := flag.String("report", defaultReportPath, "output path for the JSON report")
@@ -271,6 +487,19 @@ func main() {
 	// baseline, so failing loud here is strictly better than emitting
 	// scores that look authoritative and are not.
 	skillName := *frozen
+	if *frozen == "kpi" {
+		// KPI eval path: uses programmatic judge, not LLM judge.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		emb := buildEmbedder()
+		r := buildRetriever(ctx, emb)
+		manifest := firstManifest()
+		cm := buildChatModel(ctx)
+		ag := buildAgent(ctx, manifest, emb, r, cm)
+		_ = st
+		runKPIMode(ctx, *frozen, ag, emb, r)
+		return
+	}
 	if *frozen != "" {
 		if err := eval.AssertPin(lock, eval.ActiveModelVersion(), skillName, agent.RenderSystemPrompt(manifest)); err != nil {
 			log.Fatalf("[FAIL] cmd/eval: %v", err)

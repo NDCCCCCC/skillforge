@@ -1,0 +1,39 @@
+{
+  "lock_id": "kpi-v1",
+  "model_ver": "glm-5.2",
+  "prompt_hash": "<fill: sha256 of rendered kpi-dashboard system prompt, run: go run ./cmd/eval --frozen=kpi --dry-run to populate>",
+  "seed": 42,
+  "eval_set_version": "kpi-2026-08-27-v1",
+  "skill_name": "kpi-dashboard",
+  "eval_set_sha256": "F19910673B5FA16491B68779A9BA237255CF899B6199E7F27C9572EC341AC453",
+  "kpi_registry_sha256": "62C395B8FE457F1C6A2F6DEEB2896CAB5D063AC3A5C2B3A7AB177027E5D391C9",
+  "created_at": "2026-08-27",
+  "locked_by": "Phase 17 acceptance gate (17-09 hermetic)",
+  "phase": 17,
+  "phase_slug": "17-p10-3-kpi-dashboard-skill",
+  "schema_version": "v1",
+  "case_count": 50,
+  "category_counts": {
+    "factual_loans": 20,
+    "factual_customers": 10,
+    "multi_kpi_combination": 10,
+    "ambiguous_with_confidence_note": 5,
+    "drill_down_to_multi_period": 5
+  },
+  "thresholds": {
+    "kpi_call_accuracy_min": 0.9,
+    "value_match_tolerance": 0.005,
+    "as_of_required": true,
+    "channel_required": true
+  },
+  "metrics": {
+    "by_category_pass": {},
+    "by_category_total": {},
+    "kpi_call_accuracy": null,
+    "refusal_accuracy": null,
+    "run_at": null
+  },
+  "operator_signed_at": null,
+  "operator_name": null,
+  "lock_sha256": "<fill: sha256 of this file excluding this field, run: go run ./cmd/eval --frozen=kpi --dry-run to populate>"
+}
