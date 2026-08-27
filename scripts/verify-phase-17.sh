@@ -140,9 +140,9 @@ if [ -d web ]; then
       cd web
       npx tsc --noEmit 2>&1 || { echo 'TypeScript check failed'; exit 1; }
       echo 'TypeScript check passed'
-      if [ -f components/chat/parts/Sparkline.test.tsx ] || [ -f components/chat/parts/DataReferenceChip.test.tsx ] || [ -f components/chat/parts/DrillChip.test.tsx ]; then
-        npx vitest run components/chat/parts/Sparkline.test.tsx components/chat/parts/DataReferenceChip.test.tsx components/chat/parts/DrillChip.test.tsx 2>&1 || true
-        echo 'vitest components passed (or skipped)'
+      if [ -f src/components/chat/parts/Sparkline.test.tsx ] || [ -f src/components/chat/parts/DataReferenceChip.test.tsx ] || [ -f src/components/chat/parts/DrillChip.test.tsx ]; then
+        npx vitest run src/components/chat/parts/Sparkline.test.tsx src/components/chat/parts/DataReferenceChip.test.tsx src/components/chat/parts/DrillChip.test.tsx
+        echo 'vitest components passed'
       else
         echo 'No vitest component tests found — skipping'
       fi"
