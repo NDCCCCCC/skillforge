@@ -2,7 +2,7 @@
 phase: 17
 slug: p10-3
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-27
 ---
