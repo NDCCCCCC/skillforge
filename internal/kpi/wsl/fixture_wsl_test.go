@@ -193,7 +193,13 @@ func sha256Hex(s string) string {
 
 // writeLoansKPIYAML writes the loans-shaped KPI fixture file into dir.
 // status is declared optional so nil-binding can be exercised; the WHERE
-// clause uses the ($status IS NULL OR status = $status) pattern.
+// clause uses the (:status IS NULL OR status = :status) pattern.
+//
+// The SQL uses the CANONICAL user form (colon placeholders, :status).
+// The validator rewrites :status to $status for DuckDB before Layer 2
+// AST walk (see internal/kpi/validate_text.go paramPlaceholderPattern +
+// loader.go :param -> $param rewrite). The fixture must mirror the
+// canon — the production kpis/loans.yaml uses the colon form.
 func writeLoansKPIYAML(t *testing.T, dir string, requiredStatus bool) {
 	t.Helper()
 	required := "false"
@@ -211,7 +217,7 @@ kpis:
              count(*) AS row_count,
              round(100.0 * sum(CASE WHEN overdue_days > 0 THEN 1 ELSE 0 END) / count(*), 2) AS overdue_rate
       FROM ds_loans.data
-      WHERE ($status IS NULL OR status = $status)
+      WHERE (:status IS NULL OR status = :status)
       GROUP BY status
     count_column: row_count
     max_rows: 1000
