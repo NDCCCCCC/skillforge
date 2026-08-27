@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/skillforge/skillforge/internal/kpi"
 	"gopkg.in/yaml.v3"
 )
 
@@ -154,6 +155,69 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 	l.cached = out
 	l.mu.Unlock()
 	return out, nil
+}
+
+// ValidateAgainstKPI cross-checks every skill's fenced YAML routing table
+// (inside steps:) against kpi.Registry.Names(). Called at server boot
+// AFTER LoadKPIs and AFTER Loader.Scan (D16-C2 hermetic pattern).
+// Failure = log.Fatalf (mirrors D16-08-D LoadKPIs failure mode).
+func (l *Loader) ValidateAgainstKPI(reg *kpi.Registry) error {
+	manifests := l.Skills()
+	for _, m := range manifests {
+		if !m.HasDataChannel() {
+			continue
+		}
+		routes, err := parseRoutingTable(m.Steps)
+		if err != nil {
+			return fmt.Errorf("skill %q: parsing routing table: %w", m.Name, err)
+		}
+		if len(routes) == 0 {
+			continue
+		}
+		for _, route := range routes {
+			if _, ok := reg.Lookup(route.KPI); !ok {
+				return fmt.Errorf("skill %q references unknown KPI %q in routing table", m.Name, route.KPI)
+			}
+		}
+	}
+	return nil
+}
+
+// parseRoutingTable extracts the fenced YAML block from steps and returns route entries.
+func parseRoutingTable(steps string) ([]routeEntry, error) {
+	start := strings.Index(steps, "```yaml")
+	if start == -1 {
+		return nil, nil
+	}
+	// Search for closing ``` in the original string, starting after the opening marker.
+	afterOpen := start + 7 // skip past "```yaml"
+	end := strings.Index(steps[afterOpen:], "```")
+	if end == -1 {
+		return nil, fmt.Errorf("unclosed fenced yaml block")
+	}
+	yamlContent := steps[afterOpen : afterOpen+end]
+	var doc struct {
+		Routes map[string][]struct {
+			Triggers []string `yaml:"triggers"`
+			KPI     string    `yaml:"kpi"`
+		} `yaml:"routes"`
+	}
+	if err := yaml.Unmarshal([]byte(yamlContent), &doc); err != nil {
+		return nil, fmt.Errorf("yaml parse error: %w", err)
+	}
+	var entries []routeEntry
+	for group, routes := range doc.Routes {
+		for _, r := range routes {
+			entries = append(entries, routeEntry{Group: group, KPI: r.KPI, Triggers: r.Triggers})
+		}
+	}
+	return entries, nil
+}
+
+type routeEntry struct {
+	Group    string
+	KPI      string
+	Triggers []string
 }
 
 // parseAndValidate reads a single SKILL.md file, runs the V12 symlink
