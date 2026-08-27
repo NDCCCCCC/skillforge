@@ -383,6 +383,87 @@ func itoa(n int) string {
 	return string(buf[i:])
 }
 
+// TestDrillDownNeverReachesRaw verifies the kpi-dashboard Skill has ZERO
+// SQL-generation surface in its reachable code paths. Drill-down chip
+// interaction must only ever invoke the kpi_call tool, never raw data.
+// This is the Phase 17 structural lock (Plan 17-07 Task 2) mirroring
+// the compliance skill's TestNoSQLGenerationSurface.
+//
+// The kpi-dashboard skill path is checked as an additional scan root
+// beyond the three core agent-reachable roots.
+func TestDrillDownNeverReachesRaw(t *testing.T) {
+	root := findModuleRoot(t)
+
+	type hit struct {
+		path string
+		line int
+		kw   string
+	}
+	var hits []hit
+
+	// Additional scan root: kpi-dashboard SKILL.md reachable packages.
+	extraRoot := filepath.Join(root, "examples", "skills", "kpi-dashboard")
+
+	walkErr := filepath.WalkDir(extraRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if sqlSurfaceSkipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".go") {
+			return nil
+		}
+		if strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		stripped := stripGoComments(string(content))
+		relPath, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			relPath = path
+		}
+		for i, line := range strings.Split(stripped, "\n") {
+			for _, pat := range sqlSurfaceForbidden {
+				if pat.re.MatchString(line) {
+					hits = append(hits, hit{
+						path: relPath,
+						line: i + 1,
+						kw:   pat.keyword,
+					})
+				}
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		t.Fatalf("walk %s: %v", extraRoot, walkErr)
+	}
+
+	if len(hits) > 0 {
+		var b strings.Builder
+		b.WriteString("kpi-dashboard skill SQL surface gate hits:\n")
+		for _, h := range hits {
+			b.WriteString("  ")
+			b.WriteString(h.path)
+			b.WriteString(":")
+			b.WriteString(itoa(h.line))
+			b.WriteString("  contains forbidden keyword ")
+			b.WriteString(h.kw)
+			b.WriteString("\n")
+		}
+		t.Fatalf("%s", b.String())
+	}
+}
+
 // findModuleRoot walks up from this test file's package directory
 // until it finds go.mod. Mirrors the helper in
 // integration/contract/contract_test.go:497-515 — kept local rather

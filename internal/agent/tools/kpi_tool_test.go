@@ -101,6 +101,23 @@ kpis:
       ORDER BY balance_bucket
     count_column: row_count
     params: {}
+  - name: multi_period_balance
+    description: 多周期贷款余额（用于sparkline测试）
+    sql: |
+      SELECT period AS period,
+             count(*) AS row_count,
+             sum(balance) AS balance
+      FROM ds_loans.data
+      WHERE period = :period
+      GROUP BY period
+    count_column: row_count
+    preserve_columns: [period]
+    max_rows: 1000
+    params:
+      period:
+        type: string
+        pattern: "^[0-9]{4}-[0-9]{2}$"
+        required: true
 `
 
 // toolFakeASTEnvelope is the canonical json_serialize_sql response for
@@ -533,4 +550,69 @@ func stripCommentsForScan(src string) string {
 		b.WriteByte(c)
 	}
 	return b.String()
+}
+
+// TestDataReferenceArrayPart verifies that when the KPI executor returns
+// multiple rows (multi-period call), the emitted DataReference carries a
+// References slice with one PointReference per row. This locks the D17-B2
+// array field contract: references[] length == snapshot rows length,
+// each PointReference has correct PointIndex, Period, and Value
+// (Phase 17 / Plan 17-07 Task 2).
+//
+// The test uses multi_period_balance KPI (preserve_columns: [period],
+// count_column: row_count) with stub rows that survive k_min=5 suppression.
+// Each stub row has row_count=10 so k_min passes, period is preserved via
+// preserve_columns, and balance is the extracted value column.
+func TestDataReferenceArrayPart(t *testing.T) {
+	fix := newToolFixture(t)
+
+	// Stub engine returns 3 rows with period + row_count (>= k_min=5) so
+	// k_min suppression passes, and balance as the value column.
+	fix.engine.rows = []map[string]any{
+		{"period": "2026-05", "row_count": int64(10), "balance": float64(42315000000)},
+		{"period": "2026-06", "row_count": int64(10), "balance": float64(42100000000)},
+		{"period": "2026-07", "row_count": int64(10), "balance": float64(41950000000)},
+	}
+
+	exec := newExecutorFromFixture(t, fix)
+
+	var captured wire.DataReference
+	var emitMu sync.Mutex
+	emit := func(ref wire.DataReference) {
+		emitMu.Lock()
+		defer emitMu.Unlock()
+		captured = ref
+	}
+
+	tl := agenttools.BuildKPICallTool(exec, fix.registry, "sess-test", "skill-test", emit)
+	require.NotNil(t, tl)
+
+	// Use the multi_period_balance KPI which has preserve_columns: [period].
+	raw, err := tl.InvokableRun(context.Background(),
+		`{"name":"multi_period_balance","params":{"period":"2026-05"}}`)
+	require.NoError(t, err, "multi-period KPI call must succeed")
+	require.NotEmpty(t, raw)
+
+	resp := unmarshalKpiResponse(t, raw)
+	require.Equal(t, "snapshot", resp.Kind, "successful call must produce snapshot")
+	require.NotNil(t, resp.Snapshot)
+	require.Len(t, resp.Snapshot.Rows, 3,
+		"snapshot must have 3 rows (one per period)")
+
+	emitMu.Lock()
+	defer emitMu.Unlock()
+
+	require.NotNil(t, &captured,
+		"emit must fire on successful snapshot")
+	require.Len(t, captured.References, 3,
+		"DataReference.References must have one entry per period row")
+
+	for i, ref := range captured.References {
+		assert.Equal(t, i, ref.PointIndex,
+			"PointReference[%d].PointIndex must equal array position", i)
+		assert.NotEmpty(t, ref.Period,
+			"PointReference[%d].Period must be non-empty", i)
+		assert.NotNil(t, ref.Value,
+			"PointReference[%d].Value must be non-nil", i)
+	}
 }

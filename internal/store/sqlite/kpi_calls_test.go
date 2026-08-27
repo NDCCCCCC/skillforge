@@ -23,6 +23,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -246,4 +247,99 @@ func TestKPICallsInsertOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, emptyLatest)
 	assert.Empty(t, emptyLatest)
+}
+
+// ---------------------------------------------------------------------------
+// Test helpers for multi-period KPI integration tests (Phase 17 / Plan 17-07)
+// ---------------------------------------------------------------------------
+
+// testStoreForKPI is a shared test helper that creates a temp-file-backed
+// SQLite store so that multiple helper calls (InsertKPICall, CountKPICalls,
+// LoadKPICall) share the same persistent database.
+func testStoreForKPI(t *testing.T) (*SQLiteStore, func()) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "kpi-calls-test.db")
+	s, err := New(context.Background(), Config{DSN: dbPath})
+	require.NoError(t, err)
+	cleanup := func() { _ = s.Close() }
+	return s, cleanup
+}
+
+// InsertKPICall is a test-helper that inserts one kpi_call row into a
+// shared temp-file store and returns the auto-assigned ID.
+func InsertKPICall(t *testing.T, s *SQLiteStore, argsJSON, resultSnapshot string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	ts := time.Date(2026, 8, 27, 14, 0, 0, 0, time.UTC)
+	row := store.KPICallRow{
+		TS:             ts,
+		SessionID:      "sess-multi-period",
+		SkillID:        "kpi-dashboard",
+		Func:           "loan_balance",
+		ArgsJSON:       argsJSON,
+		ASOfPeriod:     "2026-08",
+		KMinApplied:    5,
+		ResultSnapshot: resultSnapshot,
+		Signature:      "p17-multi-period",
+	}
+	err := s.PutKPICall(ctx, row)
+	require.NoError(t, err)
+
+	rows, err := s.ListKPICalls(ctx, store.KPICallsFilter{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	return rows[0].ID
+}
+
+// CountKPICalls returns the total number of kpi_calls rows in the given store.
+func CountKPICalls(t *testing.T, s *SQLiteStore) int {
+	t.Helper()
+	ctx := context.Background()
+	all, err := s.ListKPICalls(ctx, store.KPICallsFilter{Limit: 10000})
+	require.NoError(t, err)
+	return len(all)
+}
+
+// LoadKPICall loads a single kpi_calls row by ID from the given store.
+func LoadKPICall(t *testing.T, s *SQLiteStore, id int64) store.KPICallRow {
+	t.Helper()
+	ctx := context.Background()
+	all, err := s.ListKPICalls(ctx, store.KPICallsFilter{Limit: 100})
+	require.NoError(t, err)
+	for _, r := range all {
+		if r.ID == id {
+			return r
+		}
+	}
+	t.Fatalf("LoadKPICall: row with ID %d not found", id)
+	return store.KPICallRow{}
+}
+
+// TestMultiPeriodKPIPeriodsArray verifies that a KPI call with a periods
+// array argument produces one audit row whose result_snapshot contains
+// exactly N result rows (one per period). This locks the multi-period
+// call → N-row snapshot → 1 kpi_calls audit row invariant
+// (Phase 17 / Plan 17-07 Task 2).
+func TestMultiPeriodKPIPeriodsArray(t *testing.T) {
+	s, cleanup := testStoreForKPI(t)
+	defer cleanup()
+
+	// Insert a kpi_call with periods:["2026-05","2026-06","2026-07"].
+	args := `{"periods":["2026-05","2026-06","2026-07"]}`
+	result := `{"rows":[{"period":"2026-05","balance":42315000000},{"period":"2026-06","balance":42100000000},{"period":"2026-07","balance":41950000000}],"as_of":"2026-08-01T00:00:00Z"}`
+	callID := InsertKPICall(t, s, args, result)
+
+	// Verify audit row count: exactly 1.
+	count := CountKPICalls(t, s)
+	assert.Equal(t, 1, count)
+
+	// Verify snapshot contains 3 rows.
+	snap := LoadKPICall(t, s, callID)
+	var snapData struct {
+		Rows []map[string]any `json:"rows"`
+	}
+	err := json.Unmarshal([]byte(snap.ResultSnapshot), &snapData)
+	require.NoError(t, err)
+	assert.Len(t, snapData.Rows, 3)
 }
