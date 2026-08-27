@@ -49,6 +49,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/agent"
+	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
@@ -127,12 +128,20 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 	// (the seam exists in internal/agent/runner_setup.go but the
 	// chatHandler-bound store attachment lands in 11-04 to keep this
 	// plan's blast radius small).
+	//
+	// Phase 16 / Plan 16-08: the data-channel dependencies ride along.
+	// KPIExecutor + KPIRegistry are nil unless cmd/server wired the KPI
+	// pipeline; BuildRunner is fail-closed for data-channel Skills when
+	// they are nil (D16-C3), and tier-channel Skills ignore them.
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
-		Manifest:  manifest,
-		Embedder:  s.Embedder,
-		Retriever: s.Retriever,
-		ChatModel: s.ChatModel,
-		SessionID: sessionID,
+		Manifest:    manifest,
+		Embedder:    s.Embedder,
+		Retriever:   s.Retriever,
+		ChatModel:   s.ChatModel,
+		SessionID:   sessionID,
+		KPIExecutor: s.KPIExecutor,
+		KPIRegistry: s.KPIRegistry,
+		DataRefEmit: s.dataRefEmitter(c),
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)
@@ -179,6 +188,37 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 	// the legacy chatHandler — 11-04 re-uses writeAuditAndTurn with the
 	// parsed verdict).
 	s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, chatReq.Skill, "", nil)
+}
+
+// dataRefEmitter builds the per-request SSE data-reference emitter for
+// the data channel (Phase 16 / Plan 16-08 / D16-B3). The returned closure
+// is handed to agent.RunnerBuildConfig.DataRefEmit; the kpi_call Tool
+// invokes it exactly once per successful Snapshot, and the payload rides
+// the SAME data-decision envelope every other decision uses (D16 overload
+// pattern — no new SSE chunk type, so the D15 wire-type alarm and the
+// D-04 transport-swap contract stay untouched).
+//
+// Step is 0 by design: the hop counter lives inside internal/agent's
+// per-Run stepCounter (callbacks.go) and is not observable from the
+// server boundary, and the FE consumes data-reference parts by decision
+// KIND (kpi_reference → data-citation chip), not by hop ordinal. Emitting
+// a fabricated step number would be worse than an honest zero.
+//
+// Emission failures are logged, never propagated: the SSE stream is
+// already in flight and a dropped citation chip must not abort the answer
+// (the authoritative copy of the same data lives in the kpi_calls audit
+// row — KPI-02).
+func (s *Deps) dataRefEmitter(c *app.RequestContext) agenttools.DataRefEmitFunc {
+	return func(ref wire.DataReference) {
+		payload := ref
+		if err := runnerEmitDecision(c, wire.DecisionPayload{
+			Step:     0,
+			Decision: wire.DecisionKPIReference,
+			DataRef:  &payload,
+		}); err != nil {
+			log.Printf("[WARN] server: emit kpi_reference data-decision failed (func=%s): %v", ref.Func, err)
+		}
+	}
 }
 
 // runnerEmitDecision mirrors the legacy chatHandler's emitDecision

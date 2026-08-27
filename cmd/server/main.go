@@ -83,6 +83,7 @@ import (
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
@@ -193,6 +194,12 @@ func main() {
 	importMaxBody := parseBytesEnvOrDefault("SKILLFORGE_IMPORT_MAX_BODY_BYTES", server.ImportMaxBodyDefault)
 	nonImportMaxBody := parseBytesEnvOrDefault("SKILLFORGE_MAX_BODY_BYTES", server.NonImportMaxBodyDefault)
 	datarulesDir := envOr("SKILLFORGE_DATARULES_DIR", "datarules")
+	// Phase 16 — KPI aggregation channel (D16-A1). SKILLFORGE_KPIS_DIR is the
+	// directory of controlled KPI definition files (*.yaml) that is the ONLY
+	// source of callable aggregations. The directory lives INSIDE git (.gitignore
+	// only excludes data/ — the KPI definitions are reviewable, diffable,
+	// versioned artifacts, unlike the datasets they read).
+	kpisDir := envOr("SKILLFORGE_KPIS_DIR", "kpis")
 
 	// 2. Load Skills (SYSK-02 validation at startup).
 	loader := skill.NewLoader("skills/")
@@ -322,6 +329,51 @@ func main() {
 		log.Printf("[WARN] cmd/server: SKILLFORGE_DATA_SALT unset — import endpoints disabled (fail-closed)")
 	}
 
+	// 6c-3. Phase 16 — KPI aggregation pipeline (D16-A1 / D16-C3 / KPI-01).
+	// Mirrors the importer assembly above (dedicated in-memory DuckDB
+	// connector + AttachLRU + fail-closed posture) with ONE deliberate
+	// difference: the KPI pipeline is wired UNCONDITIONALLY, regardless of
+	// SKILLFORGE_DATA_SALT. Rationale — the salt is the L1 HMAC site secret
+	// for the WRITE side (import desensitization); KPI calls only READ
+	// already-desensitized datasets and never re-derive a hash, so gating
+	// them on the salt would disable analytics on a perfectly valid
+	// read-only deployment.
+	//
+	// Fail-closed posture (same as Skill Scan above): a malformed KPI file
+	// is fatal. The KPI definitions are controlled files and the ONLY source
+	// of callable aggregations (D16-A1) — booting with a half-loaded
+	// registry would mean the agent silently loses indicators. An EMPTY (or
+	// absent) kpis/ directory is the single legal degraded state: the
+	// registry loads empty, the log says so, and data-channel Skills simply
+	// have nothing to call.
+	//
+	// Windows/WSL note: cmd/server has been a CGO build since the Phase 15
+	// importer assembly (go-duckdb). MSYS2 gcc on Windows can link sqlite
+	// but NOT duckdb (D15-01-1), so running the server locally on Windows
+	// is a WSL/Docker activity. This is pre-existing Phase 15 status quo,
+	// NOT a constraint introduced by the KPI pipeline.
+	kpiConn, err := duckdb.New(ctx, duckdb.Config{DSN: ":memory:", MaxOpenConns: 1})
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: duckdb connector for KPI pipeline: %v", err)
+	}
+	kpiLRU, err := duckdb.NewAttachLRU(kpiConn, 0)
+	if err != nil {
+		_ = kpiConn.Close()
+		log.Fatalf("[FAIL] cmd/server: attach LRU for KPI pipeline: %v", err)
+	}
+	// Layer 2 validation (json_serialize_sql AST walk) runs over this same
+	// :memory: connection at load time — the serializer never touches a
+	// dataset file, it only asks DuckDB to parse the statement.
+	kpiRegistry, kpiSignature, err := kpi.LoadKPIs(ctx, kpisDir,
+		duckdb.NewDuckDBSQLSerializer(kpiConn), storeDatasetLister{st: st})
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: KPI load from %s: %v (fix the .yaml or remove it from the directory — controlled files are load-bearing, D16-A1)", kpisDir, err)
+	}
+	kpiExecutor := kpi.NewExecutor(kpiRegistry, storeDatasetMeta{st: st},
+		duckdb.NewEngineAdapter(kpiLRU), st, time.Now)
+	log.Printf("[OK] cmd/server: KPI pipeline wired (kpis=%s, registry=%d entries, signature=%s)",
+		kpisDir, len(kpiRegistry.Names()), shortSignature(kpiSignature))
+
 	// 6d. Skill Registry (Plan 05-01 / §2 hot-reload). The fsnotify-driven
 	// registry is the production source of truth for the GET /api/skills
 	// listing's version + status fields — touching skills/<name>/SKILL.md
@@ -355,7 +407,7 @@ func main() {
 	// STILL flows in that mode (the B2 nil-gate fix) — the regression
 	// surface is the rewriter + classifier layers, NOT the projection.
 	var (
-		rewriter         *rewrite.QueryRewriter
+		rewriter          *rewrite.QueryRewriter
 		refusalClassifier *classifier.RefusalClassifier
 	)
 	if disableHistoryPipeline {
@@ -422,9 +474,15 @@ func main() {
 		RefusalClassifier: refusalClassifier,
 		// Phase 15 — data-import surface. nil Importer means import endpoints
 		// return 503 (SKILLFORGE_DATA_SALT unset fail-closed posture).
-		Importer:            importer,
-		ImportMaxBodyBytes:  importMaxBody,
+		Importer:              importer,
+		ImportMaxBodyBytes:    importMaxBody,
 		NonImportMaxBodyBytes: nonImportMaxBody,
+		// Phase 16 — KPI aggregation channel. Both fields are always
+		// non-nil here (6c-3 is unconditional); a data-channel Skill
+		// reaches kpi_call through them and GET /api/admin/kpis reads
+		// the registry catalog + kpi_calls audit rows.
+		KPIExecutor: kpiExecutor,
+		KPIRegistry: kpiRegistry,
 	}
 
 	// 8. Hertz server (Pattern 1).
@@ -447,6 +505,7 @@ func main() {
 	log.Printf("     POST /api/import/commit       — Phase 15 import commit (admin + salt required)")
 	log.Printf("     POST /api/import/push         — Phase 15 import push (admin + salt required)")
 	log.Printf("     DELETE /api/import/dataset/:name — Phase 15 dataset delete (admin + salt required)")
+	log.Printf("     GET  /api/admin/kpis          — Phase 16 KPI catalog (admin, read-only)")
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()
@@ -547,6 +606,90 @@ func firstManifest(loader *skill.Loader) *skill.Manifest {
 	}
 	log.Fatalf("[FAIL] cmd/server: zero Skills loaded — cannot construct agent (the agent requires a manifest with resolved tiers; check skills/ directory)")
 	return nil
+}
+
+// storeDatasetLister adapts store.Store to kpi.DatasetLister: the loader
+// only needs the set of LOGICAL dataset names (e.g. "loans"), while the
+// registry rows are composite ("loans__2026-07"). Pre-Phase-15 rows carry
+// an empty Dataset column and are skipped — they cannot back a KPI file's
+// dataset declaration anyway (D16-A2 requires a registered logical name).
+//
+// Interface isolation (kpi/executor.go:39-51): internal/kpi must NOT import
+// internal/store's full surface, so the adapter lives here in the assembly.
+type storeDatasetLister struct {
+	st store.Store
+}
+
+func (l storeDatasetLister) ListDatasets(ctx context.Context) ([]string, error) {
+	rows, err := l.st.ListDatasets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(rows))
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r.Dataset == "" || seen[r.Dataset] {
+			continue
+		}
+		seen[r.Dataset] = true
+		out = append(out, r.Dataset)
+	}
+	return out, nil
+}
+
+// storeDatasetMeta adapts store.Store to kpi.DatasetMetaSource: the as_of
+// period watermark (D16-B4) is the NEWEST registered row for the logical
+// dataset. "Newest" is decided by CreatedAt (the registry's registration
+// instant) — the same ordering an `ORDER BY created_at DESC LIMIT 1` query
+// would produce, computed in Go over ListDatasets so no new store method
+// (and no new SQL) is introduced for a bounded registry table.
+//
+// A dataset with zero rows returns an empty Period, which the executor
+// turns into a dataset_not_available refusal (never a fabricated as_of).
+type storeDatasetMeta struct {
+	st store.Store
+}
+
+func (m storeDatasetMeta) LatestDatasetVersion(ctx context.Context, dataset string) (kpi.DatasetVersion, error) {
+	rows, err := m.st.ListDatasets(ctx)
+	if err != nil {
+		return kpi.DatasetVersion{}, err
+	}
+	var (
+		best  store.DatasetRow
+		found bool
+	)
+	for _, r := range rows {
+		if r.Dataset != dataset {
+			continue
+		}
+		if !found || r.CreatedAt.After(best.CreatedAt) {
+			best, found = r, true
+		}
+	}
+	if !found {
+		return kpi.DatasetVersion{}, nil
+	}
+	return kpi.DatasetVersion{
+		Period:       best.Period,
+		FilePath:     best.FilePath,
+		KMinOverride: best.KMinOverride,
+	}, nil
+}
+
+// shortSignature renders the KPI registry content-hash for the startup log:
+// the first 12 hex chars, or an explicit bootstrap marker when the registry
+// loaded zero definitions (empty kpis/ directory — the one legal degraded
+// state).
+func shortSignature(sig kpi.Signature) string {
+	s := string(sig)
+	if s == "" {
+		return "(empty registry — no KPI definitions loaded)"
+	}
+	if len(s) > 12 {
+		return s[:12]
+	}
+	return s
 }
 
 // prodRunner wraps adk.Runner for the Runner seam. Each Query call

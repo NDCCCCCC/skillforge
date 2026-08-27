@@ -48,6 +48,7 @@ import (
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/server/classifier"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
@@ -284,6 +285,18 @@ type Deps struct {
 	// rejected with 413 before the handler runs. Zero falls back to
 	// NonImportMaxBodyDefault.
 	NonImportMaxBodyBytes int64
+
+	// KPIExecutor is the Phase 16 KPI execution seam (D16-C3). It rides
+	// into agent.BuildRunner so a data-channel Skill's kpi_call Tool has
+	// a call target. nil → data-channel Skills fail closed at
+	// BuildRunner (never half-run) and GET /api/admin/kpis answers 503,
+	// mirroring the SKILLFORGE_DATA_SALT unset posture.
+	KPIExecutor *kpi.Executor
+	// KPIRegistry is the immutable KPI catalog compiled at startup
+	// (D16-A4). Backs both the kpi_call Tool description and the
+	// read-only GET /api/admin/kpis surface. Same nil contract as
+	// KPIExecutor above.
+	KPIRegistry *kpi.Registry
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
