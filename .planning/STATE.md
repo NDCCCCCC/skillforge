@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 16
-current_plan: 6
+current_plan: 6 (COMPLETE — Wave 2 leg closed for kmin + executor + engine adapter + WSL triple lock)
 status: executing
-stopped_at: 16-06 COMPLETE 2026-08-27
-last_updated: "2026-08-27T06:00:00.000Z"
-last_activity: 2026-08-27 -- 16-06 SUMMARY committed (5 commits net); WSL execution env-blocked on D15-01-1
+stopped_at: context exhaustion at 75% (2026-08-24)
+last_updated: "2026-08-27T06:12:54.980Z"
+last_activity: 2026-08-27
 progress:
   total_phases: 20
   completed_phases: 13
   total_plans: 100
-  completed_plans: 97
-  percent: 66
+  completed_plans: 98
+  percent: 65
 ---
 
 # State — SkillForge
@@ -21,9 +21,9 @@ progress:
 ## Current Position
 
 Phase: 16 (p10-2) — EXECUTING
-Plan: 6 of 9 (COMPLETE — kmin + executor + engine adapter + WSL triple lock)
-Status: Executing Phase 16 Wave 2
-Last activity: 2026-08-27 -- 16-06 SUMMARY committed (5 commits net: bcaf7ef kmin, f2ed890 executor, ad3c656 attach_lru getLocked, a4fe03c kpi_engine, 829b191 WSL triple lock); WSL execution env-blocked on D15-01-1 (recorded per 14-08 precedent)
+Plan: 7 of 9 (COMPLETE — kmin + executor + engine adapter + WSL triple lock)
+Status: Ready to execute
+Last activity: 2026-08-27
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -251,7 +251,7 @@ Resume File: None
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Executing Phase 16
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
@@ -353,6 +353,7 @@ Resume File: None
 | Phase 14-p10-0-cgo-trust-floor P02 | 15m | 2 TDD tasks (audit floor-version column + admin prompt preview) | 14 files (3 created: store/sqlite/audit_test.go + server/platform_prompt{,_test}.go; 11 modified: store/{store,sqlite/{audit,approval_rules}}, agent/hitl/{audit_writer,audit_writer_test,threat_mitigations_test}, server/{chat,approval_api,approval_api_test,server}, cmd/spike-hitl/main.go) |
 | Phase 14-p10-0-cgo-trust-floor P09 | ~17m | 2 tasks (T1 TDD RED dd81dd2 + GREEN e1c1a12: idx_audit_run_path after ALTER loop + 3 legacy-upgrade regression tests; T2 live re-verify 0 code commits — UAT Test 2 issue→pass + Test 6 blocked→pass on real 115-row legacy skillforge.db) | 2 code files (1 created migrate_legacy_test.go 166 lines + 1 modified schema.go) + 11-stage phase gate re-run PASS |
 | Phase 14-p10-0-cgo-trust-floor P10 | ~160m | 3 tasks (T1 hermetic relock chain: tail re-anchor 1.0.0→1.1.0 + 双字面量 + 4.5 测试锁 + compliance/platform-floor 双锁重锁 + verify 双 pin，11-stage gate 全绿，commits 174ee18+ebd547c; T2 live judge 20/20 首跑 PASS（long_dialogue_dilution 4/4，pfloor-20 引用新条款拒答）+ compliance replay STOP（端点劣化窗口 faithfulness 0.6876<0.9，不重签）; T3 真机 spot-check 0 code commits — audit 行 117=1.1.0 FLOOR-110-AUDIT-PASS + admin 预览 1.1.0/hash 5b12acd9 一致 ADMIN-FLOOR-110-PASS） | 8 files (5 code/test + 2 locks + verify script) + UAT 6/6 pass；遗留：replay 重跑→fill-lock→README caveat（STATE blocker） |
+| Phase 16 P05 | 25min | 2 tasks | 9 files |
 
 ## Session Continuity
 

@@ -99,7 +99,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp **→ v1.1**
 - [ ] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized` — v1.0 仅实现 `data:aggregated_only`（external 模式 → v1.1）
 - [ ] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer — v1.0
-- [ ] **DATA-09**: Aggregation channel: agent can ONLY invoke predefined KPI functions / views — no SQL, no new KPI definition (NL2SQL safety layer 1) — v1.0
+- [x] **DATA-09**: Aggregation channel: agent can ONLY invoke predefined KPI functions / views — no SQL, no new KPI definition (NL2SQL safety layer 1) — v1.0
 - [ ] **DATA-10**: Individual channel: agent queries go through predefined views (not raw tables) — DB user restricted (read-only, limited schema, field-level view masking) (NL2SQL safety layer 2) **→ v1.1**
 - [ ] **DATA-11**: Agent must generate SQL preview (NL2SQL output) BEFORE entering approval flow for individual-identification Skills (NL2SQL safety layer 3 — data officer audits the actual query intent) **→ v1.1**
 - [ ] **DATA-12**: Rejection must include structured reason `{reason_code, human_explanation}` (compliance audit requirement; v1.0 具体化为 `no_matching_kpi` 等 reason code) — v1.0
@@ -342,7 +342,7 @@ Which phases cover which requirements.
 | DATA-06 | — | Deferred v1.1（外部授权通道） |
 | DATA-07 | Phase 16 | Pending（仅 aggregated_only 模式） |
 | DATA-08 | Phase 16 | Pending |
-| DATA-09 | Phase 16 | Pending |
+| DATA-09 | Phase 16 | Complete |
 | DATA-10 | — | Deferred v1.1（外部授权通道） |
 | DATA-11 | — | Deferred v1.1（外部授权通道） |
 | DATA-12 | Phase 16 | Pending |
