@@ -65,6 +65,10 @@ requirements: [KPI-02]
 - **Files modified:** internal/store/sqlite/kpi_calls.go
 - **Commit:** 1a9e08e
 
+### Shared-state note (not a code deviation)
+
+STATE.md / ROADMAP.md 在本会话启动时已带未提交 WIP（orchestrator 的 Phase 16 execution-started 状态转换）。dbf8609 元数据提交在添加本计划的 decisions/progress 行时一并捕获了这些先前未提交但合法且自洽的状态推进（Plan: 1 of 9 EXECUTING 等），使共享状态树一致化；未触碰任何 internal/kpi WIP 或其他代码文件。
+
 ## Out-of-Scope Discoveries (recorded in deferred-items.md)
 
 1. `internal/kpi/kmin.go:124/:127` 引用未定义的 jsonNumber / errNonNumericCount —— 并行 16-05/16-06 会话未提交 WIP 所有权，本计划按指示未触碰；当前仓内零包 import internal/kpi，不影响任何已提交消费者。
