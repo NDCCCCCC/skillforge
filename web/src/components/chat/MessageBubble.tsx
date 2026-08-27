@@ -51,6 +51,7 @@ import RedlineCard from '../verdict/RedlineCard';
 // bubble when the history-pipeline rewriter fired.
 import HistoryRewriteHint from './HistoryRewriteHint';
 import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
+import { DataReferenceChip } from './parts/DataReferenceChip';
 import { isVerdict, type VerdictStatus } from '../../types/verdict';
 
 function renderPart(
@@ -99,10 +100,13 @@ function renderPart(
     case 'step-start':
       return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
     case 'data-decision': {
-      const dp = (part as { data?: { decision?: string; conflictChunks?: ConflictChunk[] } }).data;
+      const dp = (part as { data?: { decision?: string; conflictChunks?: ConflictChunk[]; dataRef?: import('../../types/wire-types').DataReference } }).data;
       const decision = dp?.decision;
       if (decision === 'counter_evidence') {
         return <CounterEvidenceCard key={i} conflictChunks={dp?.conflictChunks} />;
+      }
+      if (decision === 'kpi_reference' && dp?.dataRef) {
+        return <DataReferenceChip key={i} dataRef={dp.dataRef} />;
       }
       if (decision !== 'route') return null;
       return (
