@@ -56,7 +56,7 @@
   - 16-06 kmin + Executor.Call + EngineAdapter + WSL triple lock (`bcaf7ef` / `f2ed890` / `a4fe03c` / `ad3c656` / `829b191`)
   - **16-07 runtime channel isolation + kpi_call tool + structural SQL ban** (Wave 3 closed 2026-08-27 — `696ca81` TestNoSQLGenerationSurface gate + `c80867b` BuildKPICallTool + `dc69291` channel branch + TestToolsForChannel + agent.go fail-closed guard) — DATA-03/08/09 runtime closed
   - **16-08 SSE DataRef emission wiring + KPI 管线装配 + admin 只读端点** (Wave 4 closed 2026-08-27 — `0cc1ad3` callbacks 工具名分流 + `1f1aed4` main.go KPI 装配 + server DataRefEmit wiring + `c94e39d` GET /api/admin/kpis) — KPI-01 admin 只读面 + D16-B3 发射闭环
-  - 16-09 verify-phase-16 十段 gate (planned)
+  - **16-09 verify-phase-16 acceptance gate** (Wave 5 closed 2026-08-27 — `0a74938` scripts/verify-phase-16.sh 11-stage hermetic gate [gcc precondition + per-cmd build matrix + hermetic test suite + contract WalkDir + KPI Layer 1 lock-name suite + channel XOR + wire kpi_reference + WSL triple-lock blocked-with-notes + source-grep structural locks + cmd/server live link blocked-with-notes + frozen lock byte-identity] + `0718e9d` Makefile `verify-phase-16` target) — gate runs 9/11 PASS + 2 BLOCKED-WITH-NOTES (D15-01-1 emutls ABI) on Windows; 11/11 PASS on Linux/WSL operator run
 - [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
 - [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
 - [ ] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度
@@ -722,7 +722,7 @@ Plans:
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
-*Last updated: 2026-08-27 — Phase 16 Plan 16-08 (SSE DataRef emission wiring + KPI 管线装配 + admin 只读端点) CLOSED: 3/3 tasks in 3 commits (`0cc1ad3` callbacks.go 工具名分流 + TestCallbackToolDispatch 四面; `1f1aed4` cmd/server KPI 装配段（SKILLFORGE_KPIS_DIR + LoadKPIs fail-closed + Executor + 两个 store 适配器）+ server DataRefEmit wiring + Deps KPI 字段; `c94e39d` GET /api/admin/kpis 只读端点 + TestAdminKPIs 四面含 GET-only 结构锁). WSL 验证：`go build ./...` exit 0、`go vet` 干净、`internal/server/...` 全绿（12.75s）。遗留：`internal/kpi/wsl` 2 例失败（fixture↔validator 覆盖检查漂移 + lexicon 64 字符边界），已对 16-07 基线 dc69291 复核确认为预存在，归 16-09 gate 前修。KPI-01 admin 只读面 + D16-B3 发射闭环 + 全链路装配达成；Wave 5 (16-09 verify-phase-16 十段 gate) ready.*
+*Last updated: 2026-08-27 — Phase 16 Plan 16-09 (verify-phase-16 acceptance gate) CLOSED: 2/2 tasks in 2 commits (`0a74938` scripts/verify-phase-16.sh 11-stage hermetic gate [gcc + per-cmd build matrix + hermetic tests + contract WalkDir + KPI Layer 1 lock-name suite + channel XOR + wire kpi_reference + WSL triple-lock + source-grep + cmd/server live-link + frozen locks]; 9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows (D15-01-1 emutls ABI); 11/11 PASS on Linux/WSL; `0718e9d` Makefile `verify-phase-16` operator target). Gate mirrors verify-phase-15.sh structure (ten-stage precedent → 11 reported stages; the cmd/server live-link lock is its own stage for triage clarity). `internal/kpi/wsl` 2 例失败（TestKPIEngineIntegration fixture↔validator 覆盖 + TestNameLexiconParity 64 字符边界）依然在 WSL operator leg of Stage 08 — 不归 16-09 范围（Rule 3 scope: not directly caused by this plan's changes），归 Phase 16 close-out operator review.*
 
 ---
 

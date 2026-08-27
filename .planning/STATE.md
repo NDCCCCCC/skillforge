@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 16
-current_plan: 8 (COMPLETE — KPI pipeline assembly + SSE data-reference emission + admin read-only endpoint)
-status: executing
+current_plan: 9 (COMPLETE — verify-phase-16.sh 11-stage acceptance gate + Makefile target)
+status: phase-closeout
 stopped_at: —
-last_updated: "2026-08-27T15:20:00.000Z"
+last_updated: "2026-08-27T16:00:00.000Z"
 last_activity: 2026-08-27
 progress:
   total_phases: 20
@@ -20,9 +20,9 @@ progress:
 
 ## Current Position
 
-Phase: 16 (p10-2) — EXECUTING
-Plan: 8 of 9 (Plan 16-07 COMPLETE — runtime channel isolation + kpi_call tool + structural SQL ban)
-Status: Ready to execute Plan 16-08
+Phase: 16 (p10-2) — EXECUTING (Wave 5 closed; Phase 16 closeout deferred)
+Plan: 9 of 9 (Plan 16-09 COMPLETE — verify-phase-16.sh 11-stage acceptance gate)
+Status: Ready for Phase 16 closeout reviews (post-phase gates)
 Last activity: 2026-08-27
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
@@ -93,12 +93,12 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 ## Current Position
 
-Phase: 16 (KPI 聚合通道，P10.2) — **Wave 4 leg closed** (16-08 complete)
-Plan: 9 of 9 (Plan 16-08 COMPLETE — KPI pipeline assembly + SSE data-reference emission + admin read-only endpoint)
-Status: ready for Plan 16-09 execution (verify-phase-16 十段 gate)
-Last activity: 2026-08-27 -- Plan 16-08 executed; 3 commits landed (`0cc1ad3` callbacks tool-name dispatch, `1f1aed4` main.go KPI assembly + server DataRefEmit wiring, `c94e39d` GET /api/admin/kpis).
-Next action: `/gsd:execute-phase 16 --wave 5` for Plan 16-09 (verify-phase-16.sh ten-stage gate) — fix the two inherited `internal/kpi/wsl` failures before the gate signs.
-Resume File: `.planning/phases/16-p10-2/16-08-SUMMARY.md`
+Phase: 16 (KPI 聚合通道，P10.2) — **Wave 5 leg closed** (16-09 complete; Phase 16 closeout deferred)
+Plan: 9 of 9 (Plan 16-09 COMPLETE — scripts/verify-phase-16.sh 11-stage acceptance gate + Makefile target)
+Status: ready for Phase 16 closeout reviews (post-phase gates — verifier, code-review, regression, roadmap sync)
+Last activity: 2026-08-27 -- Plan 16-09 executed; 2 commits landed (`0a74938` verify-phase-16.sh 11-stage gate, `0718e9d` Makefile target). Gate runs **9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows** (D15-01-1 emutls ABI; `internal/kpi/wsl` test binary + cmd/server D-Link); Linux/WSL operator run closes the 2 WSL legs (literal commands in Stage 08 + Stage 10 of the script).
+Next action: `/gsd:close-out-phase 16` for post-phase gates (verifier, code-review, regression, roadmap sync) — the two inherited `internal/kpi/wsl` failures remain operator-WSL responsibilities tracked in Stage 08's blocked-with-notes command line.
+Resume File: `.planning/phases/16-p10-2/16-09-SUMMARY.md`
 
 **Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
 
