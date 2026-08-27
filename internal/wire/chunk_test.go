@@ -571,6 +571,53 @@ func TestValidTypesUnchangedAfterBudgetGate(t *testing.T) {
 		"snake_case data_budget MUST NOT be in ValidTypes — would have been the rejected counterpart of a hypothetical new discriminator (P12-L3 / T-1-11)")
 }
 
+// TestDecisionDataRefWireReferences — Phase 17 / Plan 17-01 Task 1: the
+// DataReference.References []PointReference field (D17-B2) carries per-point
+// sparkline metadata. Serializing a DataReference with References populated,
+// deserializing, and asserting PointIndex/Period/Value round-trips correctly.
+// ValidTypes count MUST stay at 23 (field addition, not union variant).
+func TestDecisionDataRefWireReferences(t *testing.T) {
+	refs := []PointReference{
+		{PointIndex: 0, Period: "2026-05", Value: float64(4231)},
+		{PointIndex: 1, Period: "2026-06", Value: float64(4198)},
+		{PointIndex: 2, Period: "2026-07", Value: float64(4150)},
+	}
+	dr := DataReference{
+		Func:        "loan_overdue_rate",
+		Args:        map[string]any{"status": "逾期"},
+		ASOfPeriod:  "2026-07",
+		ASOfTs:      "2026-07-15T10:30:00Z",
+		RowCount:    3,
+		Suppressed:  0,
+		KMinApplied: 5,
+		References:  refs,
+	}
+	raw, err := json.Marshal(dr)
+	require.NoError(t, err)
+	s := string(raw)
+	assert.Contains(t, s, `"references"`, "marshal MUST contain references field (D17-B2)")
+	assert.Contains(t, s, `"pointIndex"`, "marshal MUST contain pointIndex field")
+	assert.Contains(t, s, `"period"`, "marshal MUST contain period field")
+	assert.Contains(t, s, `"value"`, "marshal MUST contain value field")
+	assert.Contains(t, s, `"2026-05"`, "first period MUST round-trip")
+	assert.Contains(t, s, `"2026-07"`, "last period MUST round-trip")
+
+	// Unmarshal round-trip.
+	var got DataReference
+	require.NoError(t, json.Unmarshal(raw, &got))
+	require.Len(t, got.References, 3, "References slice MUST have 3 entries after round-trip")
+	assert.Equal(t, 0, got.References[0].PointIndex)
+	assert.Equal(t, "2026-05", got.References[0].Period)
+	assert.Equal(t, float64(4231), got.References[0].Value)
+	assert.Equal(t, 2, got.References[2].PointIndex)
+	assert.Equal(t, "2026-07", got.References[2].Period)
+	assert.Equal(t, float64(4150), got.References[2].Value)
+
+	// ValidTypes count unchanged (field addition, not union variant).
+	assert.Equal(t, 23, len(ValidTypes),
+		"ValidTypes MUST stay at 23 after D17-B2 References addition (field, not variant)")
+}
+
 // TestDecisionDataRefWire — Phase 16 / Plan 16-04 Task 1: the DecisionPayload
 // additive DataRef field (D16-B3) carries structured data-citation metadata
 // on kpi_reference decisions. The data-decision discriminator is unchanged

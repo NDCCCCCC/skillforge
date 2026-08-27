@@ -170,6 +170,19 @@ type DecisionPayload struct {
 	DataRef        *DataReference  `json:"dataRef,omitempty"`        // P16 — kpi_reference events only; structured data citation (D16-B3)
 }
 
+// PointReference is one data point in a sparkline (D17-B2). Attached to
+// DataReference.References[] when kpi_call returns N period rows.
+type PointReference struct {
+	// PointIndex is the 0-based position in the sparkline points array.
+	PointIndex int `json:"pointIndex"`
+	// Period is the period string for this point (e.g. "2026-07").
+	Period string `json:"period"`
+	// Value is the numeric value for this point (formattable).
+	Value any `json:"value"`
+	// KMinApplied is non-zero when this specific point was suppressed.
+	KMinApplied int `json:"kMinApplied,omitempty"`
+}
+
 // DataReference is the structured data-citation payload for kpi_reference
 // decisions (Phase 16 / D16-B3). When kpi_call produces a snapshot, the
 // decision callback emits a data-decision chunk with DataRef carrying the
@@ -198,6 +211,8 @@ type DataReference struct {
 	RowCount    int            `json:"rowCount"`              // total rows in snapshot (including suppressed — D16-D1)
 	Suppressed  int            `json:"suppressed"`            // suppressed row count (D16-D1)
 	KMinApplied int            `json:"kMinApplied"`           // k_min threshold in effect
+	// NEW (D17-B2): multi-point array — N=1 for single-period calls.
+	References  []PointReference `json:"references,omitempty"`
 }
 
 // SkillScore is one ranked candidate Skill in a DecisionPayload's
