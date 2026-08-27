@@ -463,6 +463,9 @@ export interface AppState {
   // onDraftUpdate callback writes here as it parses SSE chunks.
   draftStatus: 'idle' | 'pending' | 'verified' | 'refused';
   draftText: string;
+  // Phase 17 D17-C1: drill-down chip prefill. One-shot signal consumed
+  // by ChatInput's useEffect (pendingDraft → setText → clear).
+  pendingDraft: string;
   // Plan 11-06 — HITL approval-gate slice (D14: own branch,
   // independent of the chat stream; SkillPicker's D11-B4 disabled
   // state reads approval.pending !== null in 11-07).
@@ -521,6 +524,8 @@ export interface AppActions {
   // subscribes to render the DraftStreamChip. Setting status='idle'
   // clears the chip entirely.
   setDraft(status: 'idle' | 'pending' | 'verified' | 'refused', text: string): void;
+  // Phase 17 D17-C1: drill-down chip prefill action.
+  setPendingDraft(text: string): void;
 }
 
 const DEFAULT_DETAIL_OPEN = false;
@@ -570,6 +575,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // Plan 260815-cos — draft channel defaults (no chip rendered).
   draftStatus: 'idle',
   draftText: '',
+  // Phase 17 D17-C1: pendingDraft defaults to empty string.
+  pendingDraft: '',
   // Plan 11-06 — HITL approval-gate slice. All mutations funnel
   // through these actions; resolvePending is guarded against stale
   // SSE events (approvalId must match the live pending row).
@@ -823,4 +830,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setEvalStatus: (s) => set({ evalStatus: s }),
   // Plan 260815-cos — draft channel writer.
   setDraft: (status, text) => set({ draftStatus: status, draftText: text }),
+  // Phase 17 D17-C1: drill-chip prefill writer.
+  setPendingDraft: (text) => set({ pendingDraft: text }),
 }));

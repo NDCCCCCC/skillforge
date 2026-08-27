@@ -128,11 +128,26 @@ export default function ChatInput({
     if (stale) useAppStore.getState().setCurrentSkill(null);
   }, [currentSkillId, skills]);
 
+  // Phase 17 D17-C1: drill-chip prefill — read from app-store.pendingDraft
+  const pendingDraft = useAppStore((s) => s.pendingDraft);
+  const setPendingDraft = useAppStore((s) => s.setPendingDraft);
+
+  useEffect(() => {
+    if (pendingDraft && !text) {
+      setText(pendingDraft);
+      setPendingDraft(''); // consume one-shot
+    }
+  }, [pendingDraft, text, setPendingDraft]);
+
   function handleSend() {
     const trimmed = text.trim();
     if (!trimmed) return;
     onSend(trimmed);
     setText('');
+    // Phase 17: ensure pendingDraft is cleared on send
+    if (pendingDraft) {
+      setPendingDraft('');
+    }
   }
 
   function selectSkill(id: string) {
