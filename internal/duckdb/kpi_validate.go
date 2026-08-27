@@ -31,6 +31,7 @@ package duckdb
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // DuckDBSQLSerializer implements kpi.SQLSerializer using a live DuckDB connection.
@@ -49,15 +50,32 @@ func NewDuckDBSQLSerializer(conn *Connector) *DuckDBSQLSerializer {
 }
 
 // SerializeSQL calls json_serialize_sql on the DuckDB engine and returns the
-// raw JSON string. The statement parameter is bound via prepared statement
-// parameterization (not string concatenation — no injection risk).
+// raw JSON string.
 //
-// The result is CAST to VARCHAR because json_serialize_sql returns a native
-// DuckDB STRUCT/JSON type that go-duckdb cannot Scan into a string directly.
+// Binding shape: DuckDB's json_serialize_sql requires a VARCHAR literal as
+// its first argument — it does NOT accept a prepared-statement parameter
+// binding (returns "Invalid type Error: json_serialize_sql first argument
+// must be a VARCHAR"). The 16-01 probe validated the literal form; the
+// production code shipped a parameterized form, so the Layer 2 AST walk
+// was dead code and cmd/server could not boot with kpis/loans.yaml.
+// Fix: interpolate the statement as a single-quoted literal with strict
+// `'` → `''` escape.
+//
+// Why this is safe in the validation-only path:
+//   - The statement comes from a KPI YAML file authored by the data team
+//     (no agent / user / network input at this stage).
+//   - KPI SQL for v1 uses simple SELECT + named placeholders; embedded
+//     single quotes are exceedingly rare in regulated reporting queries.
+//   - The downstream ValidateSQLAST walker re-parses the returned AST and
+//     would reject any syntactically malformed input regardless.
+//   - The result is CAST to VARCHAR because json_serialize_sql returns a
+//     native DuckDB STRUCT/JSON type that go-duckdb cannot Scan into a
+//     string directly.
 func (s *DuckDBSQLSerializer) SerializeSQL(ctx context.Context, statement string) (string, error) {
+	escaped := strings.ReplaceAll(statement, "'", "''")
 	var out string
 	err := s.conn.DB().QueryRowContext(ctx,
-		"SELECT CAST(json_serialize_sql(?) AS VARCHAR)", statement).Scan(&out)
+		"SELECT CAST(json_serialize_sql('"+escaped+"') AS VARCHAR)").Scan(&out)
 	if err != nil {
 		return "", fmtError("SerializeSQL", fmt.Errorf("json_serialize_sql query failed: %w", err))
 	}
