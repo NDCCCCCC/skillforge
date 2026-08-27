@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 16
-current_plan: 0
-status: planning
-stopped_at: Phase 16 context gathered
-last_updated: "2026-08-24T13:40:00Z"
-last_activity: 2026-08-24 -- Phase 16 context gathered via /gsd-discuss-phase 16 (4 areas × 4 questions = 16 decisions, commit 4200e1c); ready for plan-phase 16
+current_plan: 1
+status: executing
+stopped_at: context exhaustion at 75% (2026-08-24)
+last_updated: "2026-08-27T05:20:00Z"
+last_activity: 2026-08-27 -- Plan 16-03 complete (kpi_calls INSERT-only store layer, commits b29090f/1a9e08e/0a76d7e)
 progress:
   total_phases: 20
   completed_phases: 13
-  total_plans: 98
-  completed_plans: 98
+  total_plans: 100
+  completed_plans: 95
   percent: 65
 ---
 
@@ -20,10 +20,10 @@ progress:
 
 ## Current Position
 
-Phase: 16 (KPI 聚合通道（P10.2）) — CONTEXT GATHERED
-Plan: 0 of ? (not planned)
-Status: Ready for planning
-Last activity: 2026-08-24 -- Phase 16 context gathered (16 decisions, commit 4200e1c)
+Phase: 16 (p10-2) — EXECUTING
+Plan: 1 of 9
+Status: Executing Phase 16
+Last activity: 2026-08-27 -- Phase 16 execution started
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -58,7 +58,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 15
+**Current Phase:** 16
 **Current Plan:** 1
 **Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
 **Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
@@ -79,7 +79,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 16 — KPI 聚合通道（P10.2）
+**Current focus:** Phase 16 — p10-2
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**
@@ -97,8 +97,8 @@ Phase: 16 (KPI 聚合通道，P10.2) — **CONTEXT GATHERED** 2026-08-24
 Plan: 0 (phase not yet planned)
 Status: ready for planning
 Last activity: 2026-08-24 -- `/gsd-discuss-phase 16` complete: 16 decisions locked (D16-A1..A4 YAML 受控文件/SQL 模板/枚举值域/内存 registry；D16-B1..B4 单一 kpi_call/工具层拒答/结构化快照+data-reference/as_of 系统生成；D16-C1..C4 reads 互斥/加载期交叉验证/双层镜像 D11-B1/平台级共享目录；D16-D1..D4 k_min 行级抑制/枚举即差分白名单/全量快照冻结/独立 kpi_calls 表)，commit 4200e1c.
-Stopped At: Phase 16 context gathered
-Resume File: `.planning/phases/16-p10-2/16-CONTEXT.md`
+Stopped At: context exhaustion at 75% (2026-08-24)
+Resume File: None
 
 **Phase 15 delivery summary:**
 
@@ -199,6 +199,8 @@ Resume File: `.planning/phases/16-p10-2/16-CONTEXT.md`
 | D15-05-1 | Push shares the Commit staging/commit tail (Phase 15 / Plan 15-05) | `Importer.Push` buffers the first 100 rows for schema inference, then streams the remainder through the same `writeStaging` + `commitOrSupersede` path used by `Commit`. The preview session and content-hash bridge are the only human-channel differences. |
 | D15-05-2 | DryRun is a first-class zero-write validation method (Phase 15 / Plan 15-05) | `Importer.DryRun` returns `DryRunResult{Columns, Violations}` after header/column/type checks; it writes no staging file, registry row, or audit row. |
 | D15-05-3 | Single-pass reader contract preserved for Push (Phase 15 / Plan 15-05) | `TeeReader→hasher` wraps `req.Reader` before `openChannel`, and `ValidateCommitAgainstPreview`/`checkIdempotent` run only after `WriteStagingBatch` exhausts the stream. `oneShotReader` tests lock this for both Commit and Push. |
+| D16-03-A | kpi_calls 专用 INSERT-only 表落地（Phase 16 / Plan 16-03，KPI-02/D16-D4） | import_batches 整文件复刻换列集：PutKPICall 单写路径 + kpi_calls.go 零行变异/行移除动词 source-grep 结构锁（TestKPICallsInsertOnly）；10 列 additive DDL + 三索引独立 const 走 migrate() 尾部（D14-E1 形态纪律）；大 JSON 快照物理隔离于 chat 审计主表（T-16-03-03），ADM-03 直查无 JOIN。 |
+| D16-03-B | LatestKPICallByFunc 取 MAX(id) 而非计划原文 MAX(ts)（Plan 16-03 Rule 1 修复） | RFC3339Nano 裁剪尾随小数零：零纳秒戳 "...00Z" 文本排序反而高于同秒更晚的 "...00.25Z"，MAX(ts) 在同秒双调用时错报；AUTOINCREMENT id 与插入序（即回放序）严格单调且仍是一条 GROUP BY 聚合。伴生修正：List/Latest 接口签名顺延至其实现提交（var _ store.Store 一致性检查要求每个提交可编译）。 |
 
 ---
 
@@ -249,7 +251,7 @@ Resume File: `.planning/phases/16-p10-2/16-CONTEXT.md`
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Executing Phase 15
+- **Status:** Executing Phase 16
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).

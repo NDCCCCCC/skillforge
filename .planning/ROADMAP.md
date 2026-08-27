@@ -547,8 +547,21 @@ Plans:
   5. KPI 差分防再识别：细粒度参数组合白名单（差分成本门；再识别差分测试进 Phase 17 eval 基建）
 
 **Pitfalls addressed:** Pitfall 14（KPI 注册后门——agent 运行时注册 KPI 绕过审批；注册表为代码/文件级，运行时不可变）、Pitfall 12（跨 skill 通道违规——`data:` 通道加入加载期守卫，镜像 writes: 执法）、Pitfall 22（KPI 差分再识别——两快照差分还原小群体；参数白名单 + 差分成本门）
-**Research flag:** ARCHITECTURE.md Q2（KPI 工具接口形态：eino ToolFunc 签名 + 参数 schema）；FEATURES.md Cap 2 的「KPI 定义 DSL」形态在 plan 期定稿
-**Plans**: TBD
+**Research flag:** ARCHITECTURE.md Q2（KPI 工具接口形态：eino ToolFunc 签名 + 参数 schema）；FEATURES.md Cap 2 的「KPI 定义 DSL」形态在 plan 期定稿（16-CONTEXT 已定稿：YAML + SQL 模板 + 枚举值域）
+**Plans**: 9 plans
+**Plan list**:
+
+- [x] 16-01-PLAN.md — Wave 1: internal/kpi CGO-free 地基 + json_serialize_sql WSL 探针（lock A1/A2/A3）+ define/validate_text Layer 1 + loader(L1)/不可变 registry + kpis/loans.yaml（KPI-01/DATA-09）
+- [x] 16-02-PLAN.md — Wave 1（并行）: reads 通道词表 + XOR 互斥（进 Validate 本体覆盖热重载）+ deep+data 拒绝 + TestChannelGuardXOR（DATA-07/08）
+- [x] 16-03-PLAN.md — Wave 1（并行）: kpi_calls dedicated INSERT-only 审计表（DDL+写路径+只读查询面+结构锁）（KPI-02）
+- [x] 16-04-PLAN.md — Wave 1（并行）: wire data-reference part（DecisionKPIReference+DataRef additive+TS 镜像 lockstep，ValidTypes 23 不破）（DATA-03）
+- [ ] 16-05-PLAN.md — Wave 2: validate_sql.go AST 走查（探针 fixture 驱动）+ LoadKPIs 双层管线 + bootstrap 窗口 + :param→$param 受控重写（DATA-09）
+- [ ] 16-06-PLAN.md — Wave 2（并行）: kmin.go 行级抑制 + executor.go Call 六步 + as_of 系统生成 + 引擎适配器 + WSL 三锁（快照冻结/跨 Skill 一致/引擎集成）（DATA-03/12, KPI-02）
+- [ ] 16-07-PLAN.md — Wave 3: TestNoSQLGenerationSurface 结构禁令 + kpi_call 工具（目录快照+Enum）+ BuildRunner 通道分支 + TestToolsForChannel（DATA-03/08/09）
+- [ ] 16-08-PLAN.md — Wave 4: callbacks 工具名分流 + DataRef SSE 发射 wiring + main.go KPI 管线装配 + GET /api/admin/kpis 只读端点（KPI-01, DATA-03）
+- [ ] 16-09-PLAN.md — Wave 5: verify-phase-16.sh 十段 gate + Makefile target + verify-phase-15 前相回归（全 7 REQ 证据面）
+
+**Wave structure**: W1={16-01, 16-02, 16-03, 16-04 并行} → W2={16-05, 16-06 并行} → W3={16-07} → W4={16-08} → W5={16-09}
 **UI hint**: no
 
 ### Phase 17: KPI 仪表盘 Skill（P10.3）
@@ -710,7 +723,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 8/8 plans complete
+**Plans:** 4/9 plans executed
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 
