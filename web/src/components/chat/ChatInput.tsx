@@ -139,6 +139,19 @@ export default function ChatInput({
     }
   }, [pendingDraft, text, setPendingDraft]);
 
+  // D18-D4: chat-input-prefill event from MessageBubble's regenerate chip
+  // writes to pendingDraft so the next render cycle pre-fills ChatInput.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (typeof customEvent.detail === 'string' && customEvent.detail) {
+        setPendingDraft(customEvent.detail);
+      }
+    };
+    document.addEventListener('chat-input-prefill', handler);
+    return () => document.removeEventListener('chat-input-prefill', handler);
+  }, [setPendingDraft]);
+
   function handleSend() {
     const trimmed = text.trim();
     if (!trimmed) return;
