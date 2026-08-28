@@ -187,6 +187,11 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 		), nil
 	}
 
+	if data.Decision == "request_change" {
+		// D18-D4: 要求修改第三态 — return to LLM with change request
+		return fmt.Sprintf("change requested: %s", data.Reason), nil
+	}
+
 	// Approve path: render and publish the report.
 	result, err := h.publishReport(ctx, &parsed)
 	if err != nil {
