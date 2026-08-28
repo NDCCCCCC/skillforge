@@ -1,5 +1,5 @@
 {
-  "lock_id": "fanout-2026-08-21",
+  "lock_id": "fanout-2026-08-28",
   "model_version": "v0.8",
   "phase": 13,
   "phase_slug": "13-p8-4-sub-agent-fan-out",
@@ -10,19 +10,21 @@
   "eval_set_sha256": "bfe8bbffdcb3e23acf5fb0095b7bb01e0dafe68762ef7d4645023f1f3569868b",
   "model_ver": "glm-5.2",
   "seed": 42,
-  "case_count": 20,
+  "case_count": 24,
   "category_counts": {
     "multi_hop": 8,
     "tier_mismatch_rejection": 6,
     "partial_failure_conservative_merge": 4,
-    "single_vertex_fallback": 2
+    "single_vertex_fallback": 2,
+    "monthly_report": 4
   },
   "thresholds": {
     "fanout_dispatched_count_floor": 20,
     "conservative_merge_rate_max": 0.5,
     "tier_closure_regression_rate_max": 0.0,
     "min_confidence_aggregation_min": 0.0,
-    "tier_mismatch_rejection_rate_min": 1.0
+    "tier_mismatch_rejection_rate_min": 1.0,
+    "monthly_report_fanout_rate_min": 0.95
   },
   "agent_archetype": "orchestrator",
   "sub_agent_budget_frozen": true,
@@ -37,7 +39,10 @@
     "tier_closure_regression_rate_actual": 0.0,
     "min_confidence_aggregation_actual": 0.95,
     "tier_mismatch_rejection_rate_actual": 1.0,
-    "total_cost_usd": 2.92
+    "total_cost_usd": 2.92,
+    "monthly_report_fanout_rate_actual": 1.0,
+    "monthly_report_fanout_rate_min": 0.95,
+    "glm_drift_rate": 0.0
   },
   "operator_signed_at": "2026-08-21",
   "operator_name": "ninedrunk",
