@@ -18,12 +18,15 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/skill"
 )
 
@@ -162,4 +165,112 @@ func TestFanOutDispatchToolInfo(t *testing.T) {
 	assert.Equal(t, FanOutDispatchToolName, info.Name)
 	assert.True(t, strings.Contains(info.Desc, "sub-queries"),
 		"the Tool description must mention sub-queries")
+}
+
+// ---------------------------------------------------------------------------
+// CR-02 (18-REVIEW) — the data-channel V2 variant: extraction, V2 args
+// handling, and the fan_out_success path. The tier-channel
+// BuildFanOutDispatchTool must NEVER be wired for data-channel Skills
+// (its ResolvedTiers validation rejects everything there).
+// ---------------------------------------------------------------------------
+
+// stubKPICaller is a hermetic KPICaller seam stub returning one
+// canned snapshot per call.
+type stubKPICaller struct {
+	calls    []kpi.CallRequest
+	snapshot *kpi.Snapshot
+}
+
+func (s *stubKPICaller) Call(_ context.Context, req kpi.CallRequest) (kpi.CallOutcome, error) {
+	s.calls = append(s.calls, req)
+	return kpi.CallOutcome{Snapshot: s.snapshot}, nil
+}
+
+// TestSectionTitlesAndKPIs — extraction from the manifest template's
+// post-YAML map shape; index alignment titles[i] ↔ kpis[i] is the
+// load-bearing property.
+func TestSectionTitlesAndKPIs(t *testing.T) {
+	var tmpl any
+	raw := `{
+		"title": "2026-08 业务月报",
+		"sections": [
+			{"title": "业务概览", "kpis": ["KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"], "slots": [{"type": "narrative"}]},
+			{"title": "贷款质量", "kpis": ["KPI_NPL_RATIO"]},
+			{"title": "风险提示"}
+		]
+	}`
+	require.NoError(t, json.Unmarshal([]byte(raw), &tmpl))
+
+	titles, kpis := sectionTitlesAndKPIs(tmpl)
+	assert.Equal(t, []string{"业务概览", "贷款质量", "风险提示"}, titles)
+	require.Len(t, kpis, 3)
+	assert.Equal(t, []string{"KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"}, kpis[0])
+	assert.Equal(t, []string{"KPI_NPL_RATIO"}, kpis[1])
+	assert.Empty(t, kpis[2])
+
+	// Defensive shapes → empty, never panic.
+	defTitles, defKPIs := sectionTitlesAndKPIs(nil)
+	assert.Nil(t, defTitles)
+	assert.Nil(t, defKPIs)
+	defTitles, defKPIs = sectionTitlesAndKPIs("not-a-map")
+	assert.Nil(t, defTitles)
+	assert.Nil(t, defKPIs)
+	defTitles, defKPIs = sectionTitlesAndKPIs(map[string]any{"sections": "oops"})
+	assert.Nil(t, defTitles)
+	assert.Nil(t, defKPIs)
+}
+
+// TestDataChannelFanOutV2Success — the wired monthly-report shape:
+// V2 args whose boundaries exactly match the extracted template
+// titles fan out per section and respond fan_out_success, calling the
+// executor once per section KPI.
+func TestDataChannelFanOutV2Success(t *testing.T) {
+	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{}}}
+	titles := []string{"业务概览", "贷款质量"}
+	kpis := [][]string{{"KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"}, {"KPI_NPL_RATIO"}}
+	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub)
+
+	args := `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览", "贷款质量"], "reason": "sections independent"}`
+	out, err := fanOut.InvokableRun(context.Background(), args)
+	require.NoError(t, err)
+	assert.Contains(t, out, `"fan_out_success"`)
+	assert.Contains(t, out, `"num_subtasks":2`)
+
+	require.Len(t, stub.calls, 3, "one executor call per section KPI (2+1)")
+	// Sections run concurrently (errgroup) — collect + sort the names.
+	gotNames := make([]string, 0, len(stub.calls))
+	for _, c := range stub.calls {
+		gotNames = append(gotNames, c.Name)
+	}
+	sort.Strings(gotNames)
+	assert.Equal(t,
+		[]string{"KPI_CUSTOMER_COUNT", "KPI_LOAN_BALANCE", "KPI_NPL_RATIO"}, gotNames)
+}
+
+// TestDataChannelFanOutV2Fallbacks — D18-C4 fallback paths never
+// touch the executor.
+func TestDataChannelFanOutV2Fallbacks(t *testing.T) {
+	stub := &stubKPICaller{}
+	fanOut := BuildFanOutDispatchToolDataChannel([]string{"业务概览"}, [][]string{{"KPI_LOAN_BALANCE"}}, stub)
+
+	cases := []struct {
+		name string
+		args string
+		want string
+	}{
+		{"invalid json", `{broken`, `"invalid_json"`},
+		{"missing boundaries", `{"should_fan_out": true, "num_subtasks": 1}`, `"missing_field"`},
+		{"boundary not in template", `{"should_fan_out": true, "num_subtasks": 1, "task_boundaries": ["不存在的章节"]}`, `"boundary_not_in_template"`},
+		{"num mismatch", `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览"]}`, `"num_subtasks_mismatch"`},
+		{"classifier declined", `{"should_fan_out": false, "num_subtasks": 0, "task_boundaries": []}`, `"classifier_declined_fan_out"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := fanOut.InvokableRun(context.Background(), tc.args)
+			require.NoError(t, err, "fallbacks are tool RESULTS, not Go errors")
+			assert.Contains(t, out, `"fallback_sequential"`)
+			assert.Contains(t, out, tc.want)
+		})
+	}
+	assert.Empty(t, stub.calls, "no KPI call may fire on any fallback path")
 }

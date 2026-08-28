@@ -227,26 +227,80 @@ func validateTaskBoundaries(boundaries []string, sectionTitles []string) (string
 	return "", true
 }
 
+// KPICaller is the narrow seam the data-channel fan-out tool consumes
+// from *kpi.Executor (interface isolation — hermetic tests stub it;
+// mirrors the kpi.AuditSink posture). *kpi.Executor satisfies it via
+// its pointer-receiver Call method.
+type KPICaller interface {
+	Call(ctx context.Context, req kpi.CallRequest) (kpi.CallOutcome, error)
+}
+
+// sectionTitlesAndKPIs extracts the section titles + per-section KPI
+// name lists from a manifest template block (CR-02 18-REVIEW: the
+// data-channel fan-out tool needs the template-declared boundaries,
+// and the manifest's Template field is `any` — yaml/json round-trip
+// materializes it as map[string]any).
+//
+// The walk is defensive and index-safe: titles[i] always pairs with
+// sectionKPIs[i] (a structurally unexpected section entry appends an
+// empty title + nil KPI list rather than skipping). A fully
+// unexpected shape yields empty slices, in which case the tool's
+// boundary validation degrades to the sequential fallback (D18-C4) —
+// never a panic mid-Run.
+func sectionTitlesAndKPIs(template any) ([]string, [][]string) {
+	m, ok := template.(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	sections, ok := m["sections"].([]any)
+	if !ok {
+		return nil, nil
+	}
+	titles := make([]string, 0, len(sections))
+	kpis := make([][]string, 0, len(sections))
+	for _, sec := range sections {
+		title := ""
+		var names []string
+		if secMap, ok := sec.(map[string]any); ok {
+			if s, ok := secMap["title"].(string); ok {
+				title = s
+			}
+			if list, ok := secMap["kpis"].([]any); ok {
+				names = make([]string, 0, len(list))
+				for _, k := range list {
+					if s, ok := k.(string); ok {
+						names = append(names, s)
+					}
+				}
+			}
+		}
+		titles = append(titles, title)
+		kpis = append(kpis, names)
+	}
+	return titles, kpis
+}
+
 // dataChannelFanOutTool is the data-channel fan-out tool using template section boundaries.
 // It validates task_boundaries against the template and falls back to sequential
 // execution when validation fails (D18-C4).
 type dataChannelFanOutTool struct {
-	sectionTitles  []string
-	sectionKPIs    [][]string      // KPIs per section
-	executor       *kpi.Executor
-	period         string
+	sectionTitles []string
+	sectionKPIs   [][]string // KPIs per section (index-aligned with sectionTitles)
+	executor      KPICaller
 }
 
 // Compile-time interface compliance check.
 var _ tool.InvokableTool = (*dataChannelFanOutTool)(nil)
 
-// BuildFanOutDispatchToolDataChannel builds the data-channel fan-out tool for a skill with template.
-func BuildFanOutDispatchToolDataChannel(sectionTitles []string, period string, sectionKPIs [][]string, executor *kpi.Executor) tool.InvokableTool {
+// BuildFanOutDispatchToolDataChannel builds the data-channel fan-out tool for a
+// skill with template. sectionTitles + sectionKPIs are extracted from the
+// manifest template via sectionTitlesAndKPIs; executor is the session's KPI
+// executor (the ONLY call target, same as kpi_call — D16-C3).
+func BuildFanOutDispatchToolDataChannel(sectionTitles []string, sectionKPIs [][]string, executor KPICaller) tool.InvokableTool {
 	return &dataChannelFanOutTool{
 		sectionTitles: sectionTitles,
 		sectionKPIs:   sectionKPIs,
 		executor:      executor,
-		period:        period,
 	}
 }
 

@@ -260,9 +260,19 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 				tools = append(tools, planApproveHandler)
 			}
 		}
-		// D18-A4: add fan_out_dispatch when Template is set
+		// D18-A4: add fan_out_dispatch when Template is set — the V2
+		// data-channel variant. CR-02 (18-REVIEW): the Phase-13
+		// tier-channel BuildFanOutDispatchTool validates every
+		// sub-query tier against parentManifest.ResolvedTiers(), which
+		// is deliberately EMPTY for data-channel Skills (validate.go
+		// skips ResolveTiers), so any V1-shaped call errors — and the
+		// deepArchetypePrefix prompts the LLM with the V2 schema
+		// {should_fan_out, num_subtasks, task_boundaries}, guaranteeing
+		// a schema mismatch. The boundaries + per-section KPIs are
+		// extracted from the manifest template.
 		if cfg.Manifest.Template != nil {
-			fanOutTool := BuildFanOutDispatchTool(cfg.Manifest)
+			titles, kpis := sectionTitlesAndKPIs(cfg.Manifest.Template)
+			fanOutTool := BuildFanOutDispatchToolDataChannel(titles, kpis, cfg.KPIExecutor)
 			tools = append(tools, fanOutTool)
 		}
 	} else {
