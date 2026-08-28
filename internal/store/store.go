@@ -396,6 +396,22 @@ type KPICallsFilter struct {
 	Limit int
 }
 
+// ReportRow is one published monthly report metadata record (Phase 18 /
+// Plan 18-02 / RPT-04). INSERT-only: PutReport appends, no UPDATE path.
+type ReportRow struct {
+	ID               int64
+	TS               time.Time
+	Period          string // e.g. "2026-08"
+	SkillID         string
+	Version         int    // v1, v2, ...
+	Title           string
+	FilePath        string // absolute path to the .html file
+	ApprovalAuditID string // audit row ID of the approval
+	KPICallIDs      string // JSON array of KPI call IDs used
+	TemplateVersion string // hash of template content
+	ResultDigest   string // SHA256 of rendered HTML
+}
+
 // SessionMessage is one turn-half (user OR assistant) of a conversation
 // history. AppendTurn writes a (user, assistant) pair atomically.
 type SessionMessage struct {
@@ -697,6 +713,22 @@ type Store interface {
 	// aggregation over kpi_calls with NO JOIN against the chat audit main
 	// table. Empty map when kpi_calls has no rows.
 	LatestKPICallByFunc(ctx context.Context) (map[string]time.Time, error)
+
+	// PutReport appends one INSERT-only report metadata row (RPT-04).
+	// Called by the report:publish HITL tool after successful publication.
+	PutReport(ctx context.Context, row ReportRow) error
+
+	// ListReports returns report metadata rows for a period, newest-first.
+	ListReports(ctx context.Context, period string, limit int) ([]ReportRow, error)
+
+	// GetReport returns the report for a specific period and version.
+	GetReport(ctx context.Context, period string, version int) (*ReportRow, error)
+
+	// GetLatestReport returns the most recent report for a period.
+	GetLatestReport(ctx context.Context, period string) (*ReportRow, error)
+
+	// ListReportsBySkill returns all reports for a given skill, newest-first.
+	ListReportsBySkill(ctx context.Context, skillID string, limit int) ([]ReportRow, error)
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

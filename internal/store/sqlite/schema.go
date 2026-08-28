@@ -294,6 +294,23 @@ CREATE TABLE IF NOT EXISTS kpi_calls (
     result_snapshot TEXT    NOT NULL,
     signature       TEXT    NOT NULL DEFAULT ''
 );
+
+-- reports (Phase 18 / Plan 18-02 / RPT-04): INSERT-only metadata table for
+-- published monthly reports. Mirrors kpi_calls posture (append-only audit).
+-- GET /reports/* serves the rendered HTML; this table records metadata only.
+CREATE TABLE IF NOT EXISTS reports (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                  TEXT    NOT NULL,
+    period              TEXT    NOT NULL,
+    skill_id            TEXT    NOT NULL,
+    version             INTEGER NOT NULL,
+    title               TEXT    NOT NULL,
+    file_path           TEXT    NOT NULL,
+    approval_audit_id   TEXT    NOT NULL,
+    kpi_call_ids        TEXT    NOT NULL DEFAULT '[]',
+    template_version    TEXT    NOT NULL DEFAULT '',
+    result_digest       TEXT    NOT NULL DEFAULT ''
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
@@ -416,6 +433,17 @@ CREATE INDEX IF NOT EXISTS idx_kpi_calls_session_id ON kpi_calls(session_id)
 
 	createKPICallsTsIdxSQL = `
 CREATE INDEX IF NOT EXISTS idx_kpi_calls_ts ON kpi_calls(ts)
+`
+)
+
+// reports (Phase 18 / Plan 18-02 / RPT-04): read-path indexes for
+// ListReports (by period) and ListReportsBySkill (by skill_id).
+const (
+	createReportsPeriodIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_reports_period ON reports(period)
+`
+	createReportsSkillIDIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_reports_skill_id ON reports(skill_id)
 `
 )
 
@@ -574,6 +602,16 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	}
 	if _, err := s.db.ExecContext(ctx, createKPICallsTsIdxSQL); err != nil {
 		return fmtError("migrate.kpi_calls.ts_idx", err)
+	}
+
+	// Phase 18 / Plan 18-02 — reports read-path indexes (period / skill_id).
+	// Fresh table (additive CREATE TABLE) has no ALTER dependency; same
+	// migrate()-tail convention as kpi_calls.
+	if _, err := s.db.ExecContext(ctx, createReportsPeriodIdxSQL); err != nil {
+		return fmtError("migrate.reports.period_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createReportsSkillIDIdxSQL); err != nil {
+		return fmtError("migrate.reports.skill_id_idx", err)
 	}
 	return nil
 }

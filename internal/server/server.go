@@ -35,6 +35,9 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -66,6 +69,31 @@ const (
 	// NonImportMaxBodyDefault is 8 MiB (8388608 bytes).
 	NonImportMaxBodyDefault int64 = 8388608
 )
+
+// reportPathAllowlist rejects directory-traversal attacks in GET /reports/* paths.
+// The regex allows only [period]/v<N>.html — any ../ or %2e%2e is constructively
+// rejected because the slash-separated segments are matched one at a time against
+// the allowlist pattern (^[A-Za-z0-9_-]+/v[0-9]+\.html$), so there is no
+// way to construct a match for a path containing ".." or encoded traversal.
+var reportPathAllowlist = regexp.MustCompile(`^[A-Za-z0-9_-]+/v[0-9]+\.html$`)
+
+// reportsRoute serves published static HTML reports from the reports/ directory
+// on GET /reports/*filepath. Directory-traversal is blocked by the allowlist regex.
+func reportsRoute(c context.Context, ctx *app.RequestContext) {
+	p := string(ctx.Path())
+	rel := strings.TrimPrefix(p, "/reports/")
+	if !reportPathAllowlist.MatchString(rel) {
+		ctx.String(http.StatusNotFound, "not found")
+		return
+	}
+	file := filepath.Join("reports", filepath.FromSlash(rel))
+	b, err := os.ReadFile(file)
+	if err != nil {
+		ctx.String(http.StatusNotFound, "not found")
+		return
+	}
+	ctx.Data(http.StatusOK, "text/html; charset=utf-8", b)
+}
 
 // Embedder aliases the embedder.Embedder interface (the production
 // BGE-M3 interface the pipeline consumes). The implementation lives in
@@ -430,6 +458,10 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// target=plan_approve, D11-C2 expire-check included).
 	h.GET("/api/run/:id/plan", deps.planGetHandler)
 	h.POST("/api/run/:id/plan/:approvalId/approve", deps.planApproveHandler)
+	// Phase 18 Plan 18-02 — static report portal (RPT-04).
+	// GET /reports/<period>/v<N>.html serves published HTML reports.
+	// Directory traversal is blocked by reportPathAllowlist regex.
+	h.GET("/reports/*filepath", reportsRoute)
 	// Phase 15 — data-import surface. Handlers live in import_api.go.
 	h.POST("/api/import/preview", deps.importPreviewHandler)
 	h.POST("/api/import/commit", deps.importCommitHandler)
