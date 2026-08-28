@@ -5,13 +5,13 @@ milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 17
 current_plan: Not started
 status: verifying
-last_updated: "2026-08-27T14:29:57.808Z"
+last_updated: "2026-08-28T05:45:42.601Z"
 last_activity: 2026-08-27
 progress:
   total_phases: 20
   completed_phases: 13
   total_plans: 86
-  completed_plans: 108
+  completed_plans: 109
   percent: 65
 ---
 
@@ -97,7 +97,7 @@ Plan: 9 of 9 (Plan 16-09 COMPLETE — scripts/verify-phase-16.sh 11-stage accept
 Status: ready for Phase 16 closeout reviews (post-phase gates — verifier, code-review, regression, roadmap sync)
 Last activity: 2026-08-27 -- Plan 16-09 executed; 2 commits landed (`0a74938` verify-phase-16.sh 11-stage gate, `0718e9d` Makefile target). Gate runs **9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows** (D15-01-1 emutls ABI; `internal/kpi/wsl` test binary + cmd/server D-Link); Linux/WSL operator run closes the 2 WSL legs (literal commands in Stage 08 + Stage 10 of the script).
 Next action: `/gsd:close-out-phase 16` for post-phase gates (verifier, code-review, regression, roadmap sync) — the two inherited `internal/kpi/wsl` failures remain operator-WSL responsibilities tracked in Stage 08's blocked-with-notes command line.
-Resume File: `.planning/phases/16-p10-2/16-09-SUMMARY.md`
+Resume File: .planning/phases/18-skill-p10-4/18-CONTEXT.md
 
 **Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
 
