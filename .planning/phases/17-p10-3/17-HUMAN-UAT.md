@@ -24,21 +24,21 @@ why_human: 视觉布局 + CSS 渲染；commit 8740805 改变了用户可见 UI�
 
 ### 3. Eval 运行 + 冻结锁签署（operator 步骤）
 expected: `go run ./cmd/eval --frozen=kpi --dry-run` 填充 prompt_hash / lock_sha256，然后跑 live eval 50 例 → kpi_call_accuracy >= 0.9（lock thresholds），metrics 填充，operator_signed_at 签署
-result: [pending]
+result: [2026-08-28 BLOCKED-WITH-NOTES] live 50 例未跑，不签署（no-falsify）。GLM 端点实际可用（glm-5.3-flash 已在 chat E2E 工作），但 cmd/eval 链路存在 3 个断点：(a) 环境级：cmd/eval 的 retriever 构造不认 RETRIEVER_BACKEND=none（cmd/server 已加，cmd/eval 是独立一份）→ 内网 Milvus 断即 fatal；(b) 代码级：runKPIMode 的 snapRows 为空占位（judge 第三步无数值快照可比，只剩 allowed_expressions 路径）；(c) 代码级：ag.Run 用 compliance manifest（firstManifest），不路由 kpi-dashboard runner；且 golden set expected_value 为合成假设值，与 testdata 实际聚合值（如 4,248,934,525.84）未对齐。闭环路径：gevl-09 live 化（eval 复用 BuildRunner 数据通道 + 按 golden case 注入真实快照 + 重算 golden 期望值）→ 归 Phase 18 前置或 gap closure 决策
 why_human: 依赖内网 GLM 端点可用性（env-intranet-service-flakiness 先例）；签署是 operator 职责
 
 ### 4. WSL leg（Stage 06 补腿）
 expected: `MSYS_NO_PATHCONV=1 wsl -d Ubuntu-22.04 -- bash -c 'cd /mnt/d/code/ClaudeCode/ai-agent && go test ./internal/kpi/wsl/... -count=1'` → PASS（含 7 KPIs + ValidateAgainstKPI 路由名断言）
-result: [pending]
+result: [2026-08-28 PASS] 7/7 tests green (TestKPIEngineIntegration / TestNameLexiconParity / TestKPILoadFailClosedLayer2WSL x3 / TestProbeJSONSerializeSQL x6 / TestKPISnapshotFrozen / TestSameKPIAcrossSkills). Phase 16 legacy 2 blocked-with-notes in internal/kpi/wsl closed by 17-09 fixes.
 why_human: Windows MSYS2 gcc 无法链 duckdb_static（D15-01-1 既定先例）；17-09-SUMMARY 声称已过但验证器无法在本 host 复跑
 
 ## Summary
 
 total: 4
-passed: 2
+passed: 3
 issues: 0
-pending: 2
+pending: 0
 skipped: 0
-blocked: 0
+blocked: 1
 
 ## Gaps
