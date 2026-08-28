@@ -161,6 +161,16 @@ export interface PointReference {
   kMinApplied?: number;
 }
 
+// Phase 18 / Plan 18-03 Task 3 — D18-D4 report_published card payload.
+// Emitted via SSE after report_publish tool is approved and report is
+// rendered. The report URL is included for the "view report" link.
+export interface ReportCard {
+  period: string;
+  version: number;
+  url: string;
+  sections?: Array<{ title: string; kpis?: string[] }>;
+}
+
 // Phase 16 / Plan 16-04 — P16/D16-B3 structured data-citation payload for
 // kpi_reference decisions. Mirrors internal/wire/chunk.go DataReference
 // field-for-field under D15 lockstep. When kpi_call produces a snapshot,
@@ -392,6 +402,10 @@ export type SkillForgeChunk =
   // Strict refinement of AI SDK v5 DataUIMessageChunk — assignability
   // holds so the D15 drift alarm stays green.
   | { type: 'data-decision'; id?: string; data: DecisionPayload }
+  // Plan 18-03 Task 3 — D18-D4 report_published decision card. Emitted
+  // via SSE after report_publish tool approval. Renders a ReportCard
+  // in MessageBubble with period/version badge + view report link + regenerate chip.
+  | { type: 'report_published'; id?: string; data: ReportCard }
   // Plan 05-01 — agent's clause-level redline proposals (D5-14). The
   // 18th wire type. Required-field enforcement happens on the Go side
   // (RedlinePayload.UnmarshalJSON — V8 mitigation). The TS mirror

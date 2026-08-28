@@ -141,8 +141,10 @@ function PendingCardView({
   const [scope, setScope] = useState<ApprovalScope>('session');
   const [denyPromptOpen, setDenyPromptOpen] = useState(false);
   const [denyReason, setDenyReason] = useState('');
+  const [requestChangeOpen, setRequestChangeOpen] = useState(false);
+  const [requestChangeReason, setRequestChangeReason] = useState('');
   const [inFlight, setInFlight] = useState<
-    null | 'approve' | 'approve-remember' | 'deny'
+    null | 'approve' | 'approve-remember' | 'deny' | 'request_change'
   >(null);
 
   const settle = useCallback(
@@ -227,6 +229,32 @@ function PendingCardView({
     }
   }, [approval, denyReason, sessionId, settle]);
 
+  const handleRequestChange = useCallback(async () => {
+    const reason = requestChangeReason.trim();
+    if (reason.length < 3) return;
+    setInFlight('request_change');
+    try {
+      const status = await postDecision(sessionId, approval, {
+        decision: 'request_change',
+        reason,
+        target: approval.target,
+        approval_id: approval.approvalId,
+      });
+      if (status === 200) {
+        settle('change_requested', reason, approval.frozenArgs);
+      } else if (status === 410) {
+        settle('expired', 'Skill 或 prompt 已变更，无法恢复', approval.frozenArgs);
+      } else {
+        settle('failed', `操作失败：HTTP ${status}. 请重试。`, approval.frozenArgs);
+      }
+    } catch (err) {
+      settle('failed', String(err), approval.frozenArgs);
+    } finally {
+      setInFlight(null);
+      setRequestChangeOpen(false);
+    }
+  }, [requestChangeReason, sessionId, approval, settle]);
+
   return (
     <div
       className="absolute z-25 left-4 right-4 bottom-4 max-w-[840px] my-4 rounded-md border-l-[3px] border-l-[var(--color-primary)] bg-[var(--color-surface)] shadow-md"
@@ -268,6 +296,28 @@ function PendingCardView({
           <span className="mx-1">·</span>
           原因：{approval.reason || '未提供具体说明'}
         </p>
+
+        {/* D18-D4: report:publish structure summary — section list + KPI names */}
+        {approval.target === 'report:publish' && (
+          <div
+            className="mt-2 p-2 rounded"
+            style={{ backgroundColor: 'var(--color-surface-2)' }}
+          >
+            <div className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text)' }}>
+              报告结构
+            </div>
+            {(approval.frozenArgs as any).sections?.map((sec: any, idx: number) => (
+              <div key={idx} className="text-xs mb-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                · {sec.title}: {sec.kpis?.join(', ')}
+              </div>
+            ))}
+            {(approval.frozenArgs as any).templateVersion && (
+              <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                模板版本：sha256:{(approval.frozenArgs as any).templateVersion?.slice(0, 16)}...
+              </div>
+            )}
+          </div>
+        )}
 
         {/* FrozenArgs JSON panel — collapsed by default */}
         <div className="rounded border border-[var(--color-border-muted)] bg-[var(--color-surface-2)]">
@@ -357,6 +407,67 @@ function PendingCardView({
             拒绝
           </button>
         </div>
+
+        {/* 要求修改第三态 — D18-D4: 仅 report:publish 可见 */}
+        {approval.target === 'report:publish' && (
+          <>
+            <button
+              type="button"
+              onClick={() => setRequestChangeOpen(!requestChangeOpen)}
+              disabled={inFlight !== null}
+              className="mt-2 px-3 py-1.5 rounded text-sm font-semibold"
+              style={{
+                backgroundColor: 'var(--color-status-needs-info)',
+                color: '#14171e',
+              }}
+              data-testid="request-change-button"
+            >
+              要求修改
+            </button>
+
+            {requestChangeOpen && (
+              <div
+                className="mt-2 p-2 rounded border"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'var(--color-surface-2)',
+                }}
+                data-testid="request-change-prompt"
+              >
+                <p className="text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
+                  请填写修改意见（至少 3 个字符）
+                </p>
+                <textarea
+                  className="w-full h-16 px-2 py-1 text-sm rounded"
+                  style={{
+                    backgroundColor: 'var(--color-surface-3)',
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-text)',
+                  }}
+                  value={requestChangeReason}
+                  onChange={(e) => setRequestChangeReason(e.target.value)}
+                  placeholder="例如：更突出 Q2 风险..."
+                  data-testid="request-change-reason-input"
+                />
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={handleRequestChange}
+                    disabled={requestChangeReason.trim().length < 3 || inFlight !== null}
+                    className="px-3 py-1.5 rounded text-sm font-semibold"
+                    style={{
+                      backgroundColor: 'var(--color-status-needs-info)',
+                      color: '#14171e',
+                    }}
+                    data-testid="request-change-submit"
+                  >
+                    {inFlight === 'request_change' ? '确认修改...' : '确认修改'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Scope radio — ONLY when 批准并记住 is toggled open (D11-D3) */}
         {showRememberScope && (
@@ -492,6 +603,12 @@ function TerminalCardView({ approval }: { approval: TerminalApproval }): JSX.Ele
       text: '失败',
       icon: <AlertOctagon size={16} />,
     },
+    change_requested: {
+      border: 'border-l-[var(--color-status-needs-info)]',
+      badge: 'bg-[var(--color-status-needs-info)] text-black',
+      text: '已要求修改',
+      icon: <AlertOctagon size={16} />,
+    },
   };
   const cfg = statusConfig[approval.status];
 
@@ -504,7 +621,9 @@ function TerminalCardView({ approval }: { approval: TerminalApproval }): JSX.Ele
           ? `审批操作失败：${approval.reason}`
           : approval.status === 'denied'
             ? `已拒绝：${approval.reason}`
-            : '已批准';
+            : approval.status === 'change_requested'
+              ? `已要求修改：${approval.reason}`
+              : '已批准';
 
   return (
     <div

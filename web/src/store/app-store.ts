@@ -88,7 +88,8 @@ export type ApprovalStatus =
   | 'denied'
   | 'expired'
   | 'auto-passed'
-  | 'failed';
+  | 'failed'
+  | 'change_requested';
 
 /** D11-D3 binary scope — no global option. */
 export type ApprovalScope = 'session' | 'skill';
@@ -123,7 +124,7 @@ export interface PendingApproval {
  * failed — one of the 5 terminal visual states). */
 export interface TerminalApproval {
   approvalId: string;
-  status: 'approved' | 'denied' | 'expired' | 'auto-passed' | 'failed';
+  status: 'approved' | 'denied' | 'expired' | 'auto-passed' | 'failed' | 'change_requested';
   frozenArgs: JsonObject;
   /** denied: user reason; failed: failure message; else ''. */
   reason: string;

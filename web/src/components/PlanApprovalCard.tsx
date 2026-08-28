@@ -506,6 +506,12 @@ function TerminalPlanView({ approval }: { approval: TerminalApproval }): JSX.Ele
       text: '失败',
       icon: <AlertOctagon size={16} />,
     },
+    change_requested: {
+      border: 'border-l-[var(--color-status-needs-info)]',
+      badge: 'bg-[var(--color-status-needs-info)] text-black',
+      text: '已要求修改',
+      icon: <AlertOctagon size={16} />,
+    },
   };
   const cfg = statusConfig[approval.status];
 
@@ -518,7 +524,9 @@ function TerminalPlanView({ approval }: { approval: TerminalApproval }): JSX.Ele
           ? `审批操作失败：${approval.reason}`
           : approval.status === 'denied'
             ? `已拒绝：${approval.reason}`
-            : '已批准';
+            : approval.status === 'change_requested'
+              ? `已要求修改：${approval.reason}`
+              : '已批准';
 
   return (
     <div

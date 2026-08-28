@@ -55,7 +55,7 @@ import { DataReferenceChip } from './parts/DataReferenceChip';
 import { isVerdict, type VerdictStatus } from '../../types/verdict';
 
 function renderPart(
-  part: UIMessage['parts'][number],
+  part: UIMessage['parts'][number] | { type: 'report_published'; data?: import('../../types/wire-types').ReportCard },
   i: number,
   chatText?: string,
   verdictStatus?: VerdictStatus,
@@ -120,6 +120,89 @@ function renderPart(
       const data = (part as { data?: RedlinePayload }).data;
       if (!data) return null;
       return <RedlineCard key={i} data={data} />;
+    }
+    case 'report_published': {
+      const card = (part as { data?: import('../../types/wire-types').ReportCard }).data;
+      if (!card) return null;
+      const period = card.period;
+      const versionBadge = `v${card.version}`;
+      const viewReportUrl = card.url;
+      return (
+        <div
+          className="mt-3 p-3 rounded-md border"
+          style={{
+            backgroundColor: 'var(--color-report-bg, #14171e)',
+            borderColor: 'var(--color-report-border, #242833)',
+          }}
+        >
+          {/* Header */}
+          <div className="flex justify-between items-center mb-2">
+            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text)' }}>
+              {period} 业务月报
+            </span>
+            <span
+              style={{
+                backgroundColor: 'var(--color-report-badge-bg)',
+                borderColor: 'var(--color-report-badge-border)',
+                color: 'var(--color-text-muted)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.75rem',
+                padding: '0.125rem 0.5rem',
+                borderRadius: '0.25rem',
+                border: '1px solid',
+              }}
+            >
+              {versionBadge}
+            </span>
+          </div>
+
+          {/* Structure summary */}
+          {card.sections && card.sections.length > 0 && (
+            <div className="text-xs mb-2" style={{ color: 'var(--color-text-muted)' }}>
+              {card.sections.map((s, idx) => (
+                <div key={idx}>· {s.title}: {s.kpis?.join(', ')}</div>
+              ))}
+            </div>
+          )}
+
+          {/* Action row */}
+          <div className="flex justify-between items-center">
+            <a
+              href={viewReportUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-sm"
+              style={{ color: 'var(--color-primary)' }}
+            >
+              查看报告
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                const prefillText = `请重新生成报告（基于 ${period}），修改意见：`;
+                document.dispatchEvent(new CustomEvent('chat-input-prefill', { detail: prefillText }));
+              }}
+              style={{
+                backgroundColor: 'var(--color-regen-chip-bg)',
+                borderColor: 'var(--color-regen-chip-border)',
+                color: 'var(--color-regen-chip-text)',
+                cursor: 'pointer',
+                padding: '0.125rem 0.5rem',
+                borderRadius: '0.25rem',
+                border: '1px solid',
+                fontSize: '0.75rem',
+              }}
+            >
+              带修改重生成
+            </button>
+          </div>
+        </div>
+      );
     }
     default:
       if (part.type.startsWith('tool-')) {
