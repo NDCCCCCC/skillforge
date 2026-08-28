@@ -2,27 +2,45 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
-current_phase: 17
+current_phase: 18
 current_plan: Not started
 status: executing
-last_updated: "2026-08-28T08:00:43.170Z"
-last_activity: 2026-08-28 -- Phase 18 planning complete
+last_updated: "2026-08-28T09:15:00.000Z"
+last_activity: 2026-08-28
 progress:
   total_phases: 20
   completed_phases: 13
-  total_plans: 89
-  completed_plans: 109
-  percent: 65
+  total_plans: 94
+  completed_plans: 115
+  percent: 67
 ---
 
 # State — SkillForge
 
 ## Current Position
 
+Phase: 18 (skill-p10-4) — EXECUTING (Plan 03 of 3 complete)
+Plan: 3 of 3 (Plan 18-03 COMPLETE — 5 tasks committed)
+Status: Phase 18 Wave 3 complete — SUMMARY created
+Last activity: 2026-08-28
+
+**Phase 18 Plan 03 (18-03) delivery summary (2026-08-28):**
+- Task 1: fan_out_dispatch data-channel variant — FanOutDispatchArgsV2 + validation + fallback_sequential (85d67bc)
+- Task 2: golden set fill — 4 monthly-report cases rpt-fanout-01..04 + fanout.lock.json metadata (66914c1)
+- Task 3: FE — report_published card in MessageBubble + ApprovalCard change_requested third state (35d7b81)
+- Task 4: ChatInput pre-fill — chat-input-prefill event listener (700c8e8)
+- Task 5: D18-D2 prev_run_context injection — PrevRunContext + DeepAgent.Run + plan_approve (63ed8cb)
+
+**Phase 18 Plan 02 (18-02) summary:** HITL gate + static routing; see 18-02-SUMMARY.md
+
+**Phase 18 Plan 01 (18-01) summary:** Three-guard unlock + report package skeleton; see 18-01-SUMMARY.md
+
+---
+
 Phase: 16 (p10-2) — EXECUTING (Wave 5 closed; Phase 16 closeout deferred)
 Plan: 9 of 9 (Plan 16-09 COMPLETE — verify-phase-16.sh 11-stage acceptance gate)
-Status: Ready to execute
-Last activity: 2026-08-28 -- Phase 18 planning complete
+Status: Phase complete — ready for verification
+Last activity: 2026-08-28
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -279,7 +297,7 @@ Resume File: .planning/phases/18-skill-p10-4/18-UI-SPEC.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Ready to execute
+- **Status:** Phase complete — ready for verification
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
