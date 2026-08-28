@@ -79,6 +79,14 @@ var reportPathAllowlist = regexp.MustCompile(`^[A-Za-z0-9_-]+/v[0-9]+\.html$`)
 
 // reportsRoute serves published static HTML reports from the reports/ directory
 // on GET /reports/*filepath. Directory-traversal is blocked by the allowlist regex.
+//
+// WR-10 (18-REVIEW): defense-in-depth headers on the served HTML —
+// bluemonday containment is good but a CSP (no default sources, only
+// inline styles) + Cache-Control: no-cache (a published vN is mutable
+// — a re-publish replaces the file, the FE must NOT cache the body)
+// keep operator-facing artifacts from being reused as script-execution
+// surfaces (the X-Content-Type-Options: nosniff block is implied by the
+// strict text/html content type already).
 func reportsRoute(c context.Context, ctx *app.RequestContext) {
 	p := string(ctx.Path())
 	rel := strings.TrimPrefix(p, "/reports/")
@@ -92,6 +100,9 @@ func reportsRoute(c context.Context, ctx *app.RequestContext) {
 		ctx.String(http.StatusNotFound, "not found")
 		return
 	}
+	ctx.Response.Header.SetBytesV("Content-Security-Policy", []byte("default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"))
+	ctx.Response.Header.SetBytesV("Cache-Control", []byte("no-cache"))
+	ctx.Response.Header.SetBytesV("X-Content-Type-Options", []byte("nosniff"))
 	ctx.Data(http.StatusOK, "text/html; charset=utf-8", b)
 }
 
