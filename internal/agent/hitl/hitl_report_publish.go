@@ -50,12 +50,12 @@ const ReportPublishTarget = "report:publish"
 // ReportPublishArgs is the typed payload for the report_publish Tool.
 // The args encode the slot texts and KPI snapshot needed to render the report.
 type ReportPublishArgs struct {
-	Period     string                  `json:"period"`              // e.g. "2026-08"
-	Template   any                   `json:"template"`           // *report.Template — type-asserted at publish time
-	Slots      map[int]map[int]string `json:"slots"`             // sectionIdx -> slotIdx -> text
-	SkillID    string                  `json:"skillId"`           // for audit
-	SessionID  string                  `json:"sessionId"`         // for audit
-	KPICallIDs []int64                `json:"kpiCallIds"`        // KPI call audit IDs
+	Period     string                 `json:"period"`     // e.g. "2026-08"
+	Template   any                    `json:"template"`   // *report.Template — type-asserted at publish time
+	Slots      map[int]map[int]string `json:"slots"`      // sectionIdx -> slotIdx -> text
+	SkillID    string                 `json:"skillId"`    // for audit
+	SessionID  string                 `json:"sessionId"`  // for audit
+	KPICallIDs []int64                `json:"kpiCallIds"` // KPI call audit IDs
 }
 
 // reportPublishTool is the HITL Tool for publishing a rendered report.
@@ -144,6 +144,14 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 		}
 		if parsed.Period == "" {
 			return "", errors.New("report_publish: period is required")
+		}
+		// CR-05 (18-REVIEW): the period rides LLM-controlled args into
+		// filepath.Join("reports", period) — reject every traversal /
+		// absolute / drive form BEFORE the interrupt (fail-closed at
+		// the HITL boundary; report.Publish re-checks as defense in
+		// depth). Same character class as the GET route allowlist.
+		if !report.IsValidPeriod(parsed.Period) {
+			return "", fmt.Errorf("report_publish: invalid period %q (must match ^[A-Za-z0-9_-]+$)", parsed.Period)
 		}
 		if parsed.Template == nil {
 			return "", errors.New("report_publish: template with sections is required")

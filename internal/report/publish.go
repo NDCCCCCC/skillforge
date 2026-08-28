@@ -23,12 +23,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/skillforge/skillforge/internal/store"
 )
+
+// periodRE is the CR-05 (18-REVIEW) write-side traversal guard. The
+// period rides the LLM-controlled tool args and is joined into
+// reports/<period>/v<N>.html; without this gate a prompt-injected
+// "../x" (or an absolute / Windows-drive form) would MkdirAll +
+// WriteFile OUTSIDE the reports directory. Same character class the
+// GET route's reportPathAllowlist enforces per segment — defense in
+// depth at BOTH the HITL tool boundary and the publish boundary.
+var periodRE = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// IsValidPeriod reports whether period is safe to join into the
+// reports/ directory (CR-05). Exported so the HITL tool boundary
+// enforces the SAME character class the publish boundary does.
+func IsValidPeriod(period string) bool { return periodRE.MatchString(period) }
 
 // PublishResult contains the output of a successful publish.
 type PublishResult struct {
@@ -71,6 +86,13 @@ type ReportAuditSink interface {
 func Publish(ctx context.Context, tmpl *ReportTemplate, slots SlotTexts,
 	period string, snap Snapshot, approvalAuditID string, kpiCallIDs []int64,
 	skillID string, audit ReportAuditSink) (*PublishResult, error) {
+
+	// 0. CR-05 traversal gate — fail closed BEFORE any path use
+	// (MkdirAll/WriteFile/ReadDir). The HITL tool validates too; this
+	// is the publish-boundary backstop.
+	if !periodRE.MatchString(period) {
+		return nil, fmt.Errorf("report: invalid period %q (must match ^[A-Za-z0-9_-]+$)", period)
+	}
 
 	// 1. Render
 	html, err := Render(tmpl, slots, snap, DefaultValueFormatter)
