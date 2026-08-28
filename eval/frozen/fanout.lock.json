@@ -7,7 +7,7 @@
   "created_at": "2026-08-21",
   "locked_by": "Phase 13 acceptance gate (13-04 hermetic + 13-05 live)",
   "eval_set": "eval/golden/fanout.jsonl",
-  "eval_set_sha256": "bfe8bbffdcb3e23acf5fb0095b7bb01e0dafe68762ef7d4645023f1f3569868b",
+  "eval_set_sha256": "cd0e54efcb8695601eae72102333c97c6bee97361a82b8317daaecafe84eaf32",
   "model_ver": "glm-5.2",
   "seed": 42,
   "case_count": 24,
@@ -40,7 +40,7 @@
     "min_confidence_aggregation_actual": 0.95,
     "tier_mismatch_rejection_rate_actual": 1.0,
     "total_cost_usd": 2.92,
-    "monthly_report_fanout_rate_actual": 1.0,
+    "monthly_report_fanout_rate_actual": null,
     "monthly_report_fanout_rate_min": 0.95,
     "glm_drift_rate": 0.0
   },
@@ -48,7 +48,10 @@
   "operator_name": "ninedrunk",
   "live_fanout_md_sha256": "e5af980ca019751b7fb78554c03e80ebae6461660d3e5594e3f1291a85dad467",
   "_operator_accepted_deviation": "conservative_merge_rate_max raised 0.0 -> 0.5 (P13-L5 by-design: 2 sub-agent GLM Coding Plan timeouts at fanout-03/07 triggered conservative merge downgrade). 2.5x headroom over measured 0.2 for transient LLM API jitter; not a regression -- matches the P13-L5 conservative posture (any refused/faulted -> needs_input confidence 0).",
-  "gate_verdict": "PASS (5/6 thresholds satisfied unchanged; conservative_merge_rate accepted-deviation per operator sign-off)",
-  "lock_sha256": "f3566e52e67bb66ae0f3024d98245a9182b7b7993c4295a58535bcc4043ed0af",
-  "_lock_sha256_convention": "sha256 of the JSON body EXCLUDING this lock_sha256 field (canonical content hash, decoupled from the field itself)"
+  "_monthly_report_re_measure_required": "WR-05 (18-REVIEW): the data-channel fan-out tool was wired in phase 18 (CR-02) and the 4 monthly_report cases can now hit fan_out_success instead of the unreachable tier-channel path. monthly_report_fanout_rate_actual is null until the operator re-runs plan 13-05 (live LLM backend) on the wired path. Until then the monthly_report threshold rows MUST NOT be treated as gate evidence — see gate_verdict below.",
+  "_review_fix_rebaselined_at": "2026-08-28",
+  "_review_fix_note": "eval_set_sha256 recomputed against the LF-normalized eval/golden/fanout.jsonl content (git blob cd0e54ef...) — the previous bfe8bbff hash matched neither the LF blob nor the CRLF working tree copy and was therefore stale. lock_sha256 recomputed with the convention documented in _lock_sha256_convention below. No operator re-sign; the operator signature dates (created_at, operator_signed_at) reflect the original 13-05 freeze and remain authoritative for the non-monthly_report metrics.",
+  "gate_verdict": "PASS FOR PHASES 1-12 + 13 (5/6 thresholds satisfied unchanged; conservative_merge_rate accepted-deviation per operator sign-off). MONTHLY_REPORT rows NOT gate evidence — wiring was unreachable at the original 13-05 measurement; CR-02 (18-REVIEW) fixed the wiring; operator re-run required for the 4 monthly_report cases to produce gate evidence. See _monthly_report_re_measure_required.",
+  "lock_sha256": "68a3f7863f354a9743a21e696488e2ba1631ffde96009c95ed65859e21c4fd91",
+  "_lock_sha256_convention": "sha256(UTF-8 JSON body EXCLUDING the lock_sha256 field). The body is the file content with the single `\"lock_sha256\": \"...\"` line removed, byte-for-byte; no reformatting, no key reordering, no trailing newline added. Reproduce via: read fanout.lock.json, strip the `\"lock_sha256\": \"<value>\"` line, sha256 the remainder (UTF-8). The prior recorded hash (f3566e52...) cannot be reproduced because the file body itself changed between 13-05 and the 18-REVIEW re-freeze (eval_set_sha256 update + monthly_report null + new annotation fields)."
 }
