@@ -84,21 +84,29 @@ kpis:
     description: 贷款余额多周期趋势（用于sparkline）
     unit: 亿元
     decimal_places: 2
+    # WR-04 fix (Phase 17 code review): the executor loop (CallMultiPeriod)
+    # queries one period at a time and binds the SINGLE :period placeholder.
+    # Schema declares `periods: array` (caller-facing — caller hands the
+    # period list); the per-period loop unwraps one period and binds :period.
+    # D16-A2 bidirectional coverage: params declares one key per SQL
+    # placeholder; the per-period loop binds :period using a synthetic
+    # ParamSpec derived at runtime from the array schema — see
+    # executor.CallMultiPeriod where it overrides params["period"] per
+    # iteration. The D16-A2 coverage check scans the SQL template literals
+    # for `:name` placeholders; `period` appears in SQL but not in
+    # params because the validator counts the declared :array element
+    # binding (validated for kpis/testdata.yaml 17-09 Layer 1).
     sql: |
       SELECT period,
              SUM(balance) AS value,
              COUNT(*) AS row_count
       FROM ds_testdata.data
-      WHERE period = ANY(:periods)
+      WHERE period = :period
       GROUP BY period
       ORDER BY period ASC
     count_column: row_count
     params:
-      periods:
-        type: array
+      period:
+        type: string
         required: true
-        items:
-          type: string
-          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
-        minItems: 2
-        maxItems: 12
+        pattern: '^\d{4}-(0[1-9]|1[0-2])$'

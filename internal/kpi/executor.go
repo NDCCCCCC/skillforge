@@ -310,10 +310,33 @@ func (e *Executor) Call(ctx context.Context, req CallRequest) (CallOutcome, erro
 	if maxRows <= 0 {
 		maxRows = MaxResultRows
 	}
+	// ④ Execute via the engine adapter. The `Period` field here determines
+	// BOTH the ds_{dataset}__{period} ATTACH alias AND the SQL snapshot
+	// period — they must agree (Phase 17 live-UAT gap: previously `Period`
+	// came from LatestDatasetVersion's latest period while the `:period`
+	// SQL param came from req.Params, so LLM queries for older periods
+	// ran against the latest period's duckdb file and returned empty rows).
+	// Resolution: the call is parameter-driven — if the KPI takes a `period`
+	// param, that param wins; otherwise the latest registered version wins.
+	snapshotPeriod := version.Period
+	if v, ok := req.Params["period"].(string); ok && v != "" {
+		snapshotPeriod = v
+	}
+	snapshotVersion := version
+	if snapshotPeriod != version.Period {
+		snapshotVersion, err = e.meta.VersionForPeriod(ctx, k.Dataset, snapshotPeriod)
+		if err != nil || snapshotVersion.Period == "" {
+			return CallOutcome{Refusal: &Refusal{
+				ReasonCode:       ReasonDatasetNotAvailable,
+				HumanExplanation: "数据集 " + k.Dataset + " 在周期 " + snapshotPeriod + " 无已注册版本",
+			}}, nil
+		}
+		asOf.Period = snapshotVersion.Period
+	}
 	engineRows, err := e.engine.Query(ctx, EngineRequest{
 		Dataset:       k.Dataset,
-		Period:        version.Period,
-		FilePath:      version.FilePath,
+		Period:        snapshotVersion.Period,
+		FilePath:      snapshotVersion.FilePath,
 		SQL:           k.SQLDollar,
 		TableRefCount: k.TableRefCount,
 		Args:          buildNamedArgs(k, req.Params),
@@ -427,7 +450,16 @@ func (e *Executor) CallMultiPeriod(ctx context.Context, req CallRequest) (CallOu
 	maxPeriod := periods[len(periods)-1]
 
 	// ④ Loop engine.Query per period, tag rows with period column.
-	kmin := ResolveKMin(k.FileKMin, 0) // dataset-level override not available here; use file default
+	// CR-01 fix (Phase 17 code review): k_min is a dataset-level floor
+	// (D15-D3) — every period in the same dataset shares the same override.
+	// Resolve it from the first period's registry row so the dataset's
+	// stricter k_min override is honored (the previous hardcoded 0 would
+	// silently default to KMinDefault=5 and bypass a 10-row floor).
+	firstVersion, err := e.meta.VersionForPeriod(ctx, k.Dataset, periods[0])
+	if err != nil || firstVersion.Period == "" {
+		return CallOutcome{}, fmt.Errorf("k_min resolve for %s: %w", k.Dataset, err)
+	}
+	kmin := ResolveKMin(k.FileKMin, firstVersion.KMinOverride)
 	maxRows := k.MaxRows
 	if maxRows <= 0 {
 		maxRows = MaxResultRows
