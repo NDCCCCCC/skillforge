@@ -366,12 +366,14 @@ func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _
 	if a.ShouldFanOut {
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(4)
-		results := make([]*kpi.Snapshot, len(a.TaskBoundaries))
+		// WR-07: per-section result is a slice of per-KPI snapshots (no
+		// data loss — the previous contract returned only the first
+		// non-nil snapshot and dropped the rest).
+		results := make([][]*kpi.Snapshot, len(a.TaskBoundaries))
 
 		for i := range a.TaskBoundaries {
 			sectionIdx := i // capture
 			g.Go(func() error {
-				// Find KPIs for this section
 				kpis := t.sectionKPIs[sectionIdx]
 				var snap []*kpi.Snapshot
 				for _, kpiName := range kpis {
@@ -385,7 +387,8 @@ func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _
 						return err
 					}
 					if outcome.Refusal != nil {
-						// Structured refusal — skip, don't append
+						// Structured refusal — skip (leaves a gap in the
+						// section's data; mergeSnapshots filters nils).
 						continue
 					}
 					if outcome.Snapshot != nil {
@@ -413,12 +416,23 @@ func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _
 	return `{"status":"fallback_sequential","reason":"classifier_declined_fan_out"}`, nil
 }
 
-// mergeSnapshots merges multiple KPI snapshots into one per section.
-func mergeSnapshots(snap []*kpi.Snapshot) *kpi.Snapshot {
+// mergeSnapshots preserves every per-KPI snapshot a section produced.
+//
+// WR-07 (18-REVIEW): the previous build returned ONLY the first
+// non-nil snapshot and discarded the rest — a section with N KPIs lost
+// N-1 results, the fan-out response then reported fan_out_success with
+// silently incomplete data. The new contract is: keep them ALL, in
+// the order the kpi_call invocations were issued, so the LLM sees
+// the complete per-section KPI data and the publish-time renderer
+// (which binds via report.MapSnapshot keyed by KPI name) has every
+// value. nil inputs are filtered out (a refused kpi_call leaves no
+// snapshot behind — that is the refusal posture, not data loss).
+func mergeSnapshots(snap []*kpi.Snapshot) []*kpi.Snapshot {
+	out := make([]*kpi.Snapshot, 0, len(snap))
 	for _, s := range snap {
 		if s != nil {
-			return s
+			out = append(out, s)
 		}
 	}
-	return nil
+	return out
 }

@@ -274,3 +274,45 @@ func TestDataChannelFanOutV2Fallbacks(t *testing.T) {
 	}
 	assert.Empty(t, stub.calls, "no KPI call may fire on any fallback path")
 }
+
+// TestMergeSnapshotsPreservesAll — WR-07 regression: every per-KPI
+// snapshot survives the merge (the previous implementation returned
+// only the first non-nil snapshot and dropped the rest — a section
+// with N KPIs silently lost N-1 results).
+func TestMergeSnapshotsPreservesAll(t *testing.T) {
+	mk := func(name string) *kpi.Snapshot {
+		return &kpi.Snapshot{Func: name, Rows: []map[string]any{{"v": 1}}}
+	}
+	got := mergeSnapshots([]*kpi.Snapshot{mk("A"), nil, mk("B"), mk("C")})
+	require.Len(t, got, 3, "no snapshot may be silently dropped (WR-07)")
+	assert.Equal(t, "A", got[0].Func)
+	assert.Equal(t, "B", got[1].Func)
+	assert.Equal(t, "C", got[2].Func)
+
+	// All-nil input yields an empty slice (not nil — JSON encodes as []).
+	assert.NotNil(t, mergeSnapshots(nil))
+}
+
+// TestDataChannelFanOutV2SectionResultsPreserveAllKPIs — WR-07 end
+// to end: the success-path JSON response surfaces a per-section
+// slice of EVERY KPI the section produced.
+func TestDataChannelFanOutV2SectionResultsPreserveAllKPIs(t *testing.T) {
+	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{{"v": 1}}}}
+	titles := []string{"业务概览", "贷款质量"}
+	kpis := [][]string{{"KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"}, {"KPI_NPL_RATIO"}}
+	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub)
+
+	args := `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览", "贷款质量"], "reason": "r"}`
+	out, err := fanOut.InvokableRun(context.Background(), args)
+	require.NoError(t, err)
+
+	// Decode section_results as [][]map[string]any and assert length:
+	// section 0 has 2 KPI entries, section 1 has 1.
+	var resp struct {
+		SectionResults [][]map[string]any `json:"section_results"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &resp))
+	require.Len(t, resp.SectionResults, 2)
+	assert.Len(t, resp.SectionResults[0], 2, "section 0 must carry BOTH KPI snapshots")
+	assert.Len(t, resp.SectionResults[1], 1)
+}
