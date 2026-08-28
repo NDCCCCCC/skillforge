@@ -83,6 +83,20 @@ func BuildDeepAgent(ctx context.Context, cfg DispatchConfig) (adk.ResumableAgent
 		instruction = renderDeepSystemPrompt(cfg.Manifest)
 	}
 
+	// D18-D2: inject previous version context into the system prompt
+	// when PrevRunContext is present (regenerate with modifications).
+	if cfg.PrevRunContext != nil {
+		prev := cfg.PrevRunContext
+		prevNote := fmt.Sprintf(
+			"\n[INHERITED CONTEXT — D18-D2]\nBased on previous run (v%d, period=%s, template=%s): %s\nModify the report according to the user's feedback. Inherit the template structure and period. Re-fetch KPI data (as_of may have updated).\n",
+			prev.PrevVersion,
+			prev.Period,
+			prev.TemplateVersion,
+			prev.ModNotes,
+		)
+		instruction += prevNote
+	}
+
 	agent, err := deep.New(ctx, &deep.Config{
 		Name:        "skillforge-deep-" + cfg.SessionID,
 		Description: fmt.Sprintf("SkillForge DeepAgent for skill %q (session %s)", cfg.Manifest.Name, cfg.SessionID),

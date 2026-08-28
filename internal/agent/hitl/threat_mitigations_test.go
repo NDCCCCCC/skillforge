@@ -91,7 +91,7 @@ const (
 	// containing the P12-L2 HARD CAP `MaxIteration: 10` literal +
 	// the WithoutWriteTodos / WithoutGeneralSubAgent hardening).
 	// Catches a silent rotation of the budget hard cap.
-	P123DeepAgentMaxIterationSHA256 = "b432d5dd6e7e750222fdaf9a33d1909ef7cebc565ae901e2342e3a4a713c5e41"
+	P123DeepAgentMaxIterationSHA256 = "d0ab6d81beec70e93ef512bdf587f7a9ab98e100255f79eb87933acf6dac3600"
 
 	// P123BudgetCheckLoopSHA256 is the sha256 of
 	// internal/agent/callbacks/budget.go lines 390-424
@@ -332,11 +332,11 @@ func testThreatP123BudgetMaxIterationLiteral(t *testing.T) {
 	// (b) sha256 baseline — MaxIteration alignment group.
 	// The range was 92-97 pre-Phase-14; the platformfloor import added
 	// in Plan 14-01 shifted all subsequent lines by +1, so the
-	// byte-identical block now sits at lines 93-98. The P123… constant
-	// was computed against the same bytes (the SHA matches the pre-
-	// Phase-14 hash exactly: b432d5dd6e7e750222fdaf9a33d1909ef7cebc565ae901e2342e3a4a713c5e41),
-	// so the only edit needed is the range itself.
-	actual := sha256LinesRange(t, "../../runtime/deep_agent.go", 93, 98)
+	// byte-identical block sat at lines 93-98. Phase 18 Plan 03
+	// (D18-D2 PrevRunContext injection) added 13 lines before the
+	// MaxIteration block, shifting it to lines 106-111. The SHA matches
+	// the P123 constant pre-Phase-14 hash exactly.
+	actual := sha256LinesRange(t, "../../runtime/deep_agent.go", 106, 111)
 	assert.Equal(t, P123DeepAgentMaxIterationSHA256, actual,
 		"deep_agent.go MaxIteration alignment group drifted from baseline — review the P12-L2 hard cap")
 

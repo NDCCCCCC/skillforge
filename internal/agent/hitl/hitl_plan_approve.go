@@ -77,10 +77,22 @@ const PlanApproveTarget = "plan_approve"
 //     time ("low"/"medium"/"high"/"catastrophic" — the schema does not
 //     enforce an enum; the Tool passes the value verbatim).
 type PlanApproveArgs struct {
-	PlanID             string     `json:"planId"`
-	Steps              []PlanStep `json:"steps"`
-	EstimatedIterations int       `json:"estimatedIterations"`
-	RiskAssessment     string     `json:"riskAssessment"`
+	PlanID              string     `json:"planId"`
+	Steps               []PlanStep `json:"steps"`
+	EstimatedIterations int        `json:"estimatedIterations"`
+	RiskAssessment      string     `json:"riskAssessment"`
+	// D18-D2: previous run context for plan_approve inheritance.
+	// When non-nil, the ApprovalCard shows "based on v{N} version" notice
+	// and modification notes are injected into section narratives.
+	PrevRunContext *PrevRunContext `json:"prevRunContext,omitempty"`
+}
+
+// PrevRunContext carries the previous run metadata for D18-D2 plan_approve inheritance.
+type PrevRunContext struct {
+	Period          string `json:"period"`           // previous run period
+	TemplateVersion string `json:"template_version"` // template sha256 prefix
+	PrevVersion     int    `json:"prev_version"`    // previous report version
+	ModNotes        string `json:"modification_notes"` // user modification notes
 }
 
 // PlanStep is a single step in a PlanApproveArgs.Steps list. Mirrors
@@ -187,6 +199,24 @@ func (h *planApproveTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 // the decision, then deny (forced_stop message) or approve (execute).
 //
 // The Tool does NOT call any chat model — deterministic logic only.
+
+// buildPlanApproveReason builds the approval Reason string for the audit row.
+// D18-D2: when PrevRunContext is non-nil, includes "based on v{N} version" notice.
+func buildPlanApproveReason(args PlanApproveArgs) string {
+	base := fmt.Sprintf(
+		"Agent proposed a plan with %d steps (estimated %d iterations, risk: %s)",
+		len(args.Steps), args.EstimatedIterations, args.RiskAssessment,
+	)
+	if args.PrevRunContext != nil {
+		prev := args.PrevRunContext
+		return fmt.Sprintf(
+			"%s | Based on previous run: v%d (period=%s, template=%s) — %s",
+			base, prev.PrevVersion, prev.Period, prev.TemplateVersion, prev.ModNotes,
+		)
+	}
+	return base
+}
+
 func (h *planApproveTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
 	wasInterrupted, _, storedArgs := tool.GetInterruptState[string](ctx)
 	if !wasInterrupted {
@@ -217,10 +247,7 @@ func (h *planApproveTool) InvokableRun(ctx context.Context, args string, _ ...to
 			ArgumentsInJSON: args,
 			ToolCallID:      approvalID,
 			Target:          PlanApproveTarget,
-			Reason: fmt.Sprintf(
-				"Agent proposed a plan with %d steps (estimated %d iterations, risk: %s)",
-				len(parsed.Steps), parsed.EstimatedIterations, parsed.RiskAssessment,
-			),
+			Reason: buildPlanApproveReason(parsed),
 		}
 		// D11-C3 — sync audit INSERT BEFORE StatefulInterrupt. A
 		// fail-closed audit write returns BEFORE the interrupt is

@@ -117,6 +117,19 @@ type DispatchConfig struct {
 
 	BudgetStore   agentcallbacks.BudgetAuditStore // 12-05 — deep-archetype budget audit INSERT target
 	BudgetEmitter agentcallbacks.BudgetEmitter    // 12-05 — deep-archetype forced_stop SSE emitter
+
+	// PrevRunContext is D18-D2: previous run metadata for plan_approve inheritance.
+	PrevRunContext *PrevRunContext
+}
+
+// PrevRunContext carries the previous run metadata for plan_approve inheritance.
+// D18-D2: new run plan_approve explicitly carries the previous version context
+// so the operator sees "based on v{N} version" and mod notes are injected.
+type PrevRunContext struct {
+	Period          string
+	TemplateVersion string
+	PrevVersion     int
+	ModNotes        string
 }
 
 // Archetype returns the archetype enum for cfg. Empty Agent field or
