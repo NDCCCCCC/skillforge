@@ -194,37 +194,56 @@ func (l *Loader) ValidateAgainstKPI(reg *kpi.Registry) error {
 // validateTemplateKPIs checks that all KPI names in template sections
 // exist in the registry. m.Template is any (yaml.Unmarshal); we type-assert
 // to map[string]any to extract section.kpis[].
+//
+// WR-06 (18-REVIEW): the previous build silently `return nil` whenever
+// the YAML shape differed from expectation (template not a map,
+// sections missing, kpis not a list, entry not a string). A `template:`
+// block with any structural surprise SKIPPED KPI cross-validation
+// entirely — the opposite of the stated fail-closed posture (unknown
+// KPIs must reject the Skill load). Now: nil template → skip (a Skill
+// without a template is fine); any non-nil structural surprise on the
+// template → reject.
 func validateTemplateKPIs(skillName string, template any, reg *kpi.Registry) error {
+	if template == nil {
+		return nil
+	}
 	tmpl, ok := template.(map[string]any)
 	if !ok {
-		// Not a map — skip (Validate will catch structural errors)
-		return nil
+		return fmt.Errorf("skill %q template: must be a YAML mapping, got %T", skillName, template)
 	}
 	sections, ok := tmpl["sections"]
 	if !ok {
-		return nil
+		return fmt.Errorf("skill %q template: missing required \"sections\" field", skillName)
 	}
 	secList, ok := sections.([]any)
 	if !ok {
-		return nil
+		return fmt.Errorf("skill %q template.sections: must be a list, got %T", skillName, sections)
 	}
 	for si, sec := range secList {
 		secMap, ok := sec.(map[string]any)
 		if !ok {
+			return fmt.Errorf(
+				"skill %q template.sections[%d]: each entry must be a mapping, got %T",
+				skillName, si, sec)
+		}
+		kpisRaw, hasKpis := secMap["kpis"]
+		if !hasKpis || kpisRaw == nil {
+			// Sections may legitimately declare no KPIs (the field is
+			// either absent or explicit null).
 			continue
 		}
-		kpis, ok := secMap["kpis"]
+		kpiList, ok := kpisRaw.([]any)
 		if !ok {
-			continue
+			return fmt.Errorf(
+				"skill %q template.sections[%d].kpis: must be a list, got %T",
+				skillName, si, kpisRaw)
 		}
-		kpiList, ok := kpis.([]any)
-		if !ok {
-			continue
-		}
-		for _, kpi := range kpiList {
+		for ki, kpi := range kpiList {
 			kpiName, ok := kpi.(string)
 			if !ok {
-				continue
+				return fmt.Errorf(
+					"skill %q template.sections[%d].kpis[%d]: must be a string, got %T",
+					skillName, si, ki, kpi)
 			}
 			if _, found := reg.Lookup(kpiName); !found {
 				return fmt.Errorf("skill %q template.sections[%d].kpis: unknown KPI %q", skillName, si, kpiName)
