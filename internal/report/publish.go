@@ -64,6 +64,14 @@ type Snapshot interface {
 	Get(kpi string) any
 }
 
+// MapSnapshot adapts a plain KPI-name → value map to the Snapshot
+// interface (CR-06 18-REVIEW): the HITL frozen args carry exactly this
+// shape, produced by the run's kpi_call results in Pass 1.
+type MapSnapshot map[string]any
+
+// Get returns the value recorded for kpi, or nil when absent.
+func (m MapSnapshot) Get(kpi string) any { return m[kpi] }
+
 // ReportAuditSink is the narrow audit-write seam for the reports table
 // (CR-04 18-REVIEW): one INSERT-only writer. store.Store implementers
 // (internal/store/sqlite) satisfy it. Kept as an interface so the

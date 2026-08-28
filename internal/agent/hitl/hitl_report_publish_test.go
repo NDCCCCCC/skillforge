@@ -174,6 +174,61 @@ func TestReportPublishRequiresAuditSink(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "no file may be written when the audit sink is missing")
 }
 
+// kpiTemplateMap is a template whose section declares one KPI — the
+// monthly-report shape (every section has KPIs).
+func kpiTemplateMap(t *testing.T) map[string]any {
+	t.Helper()
+	var m map[string]any
+	raw := `{"title":"2026-08 业务月报","sections":[{"title":"贷款质量","kpis":["KPI_NPL_RATIO"],"slots":[{"type":"risk_note"}]}]}`
+	require.NoError(t, json.Unmarshal([]byte(raw), &m))
+	return m
+}
+
+// TestReportPublishBindsKPISnapshot — CR-06 regression: the approve
+// path binds the frozen-args KPI snapshot into the render (previously
+// a literal nil Snapshot was passed and buildMarkdown's snap.Get
+// panicked mid-resume).
+func TestReportPublishBindsKPISnapshot(t *testing.T) {
+	chdirTempRepo(t)
+
+	sink := &stubReportSink{}
+	h := &reportPublishTool{reports: sink}
+	args := &ReportPublishArgs{
+		Period:   "2026-08",
+		Template: kpiTemplateMap(t),
+		Slots:    map[int]map[int]string{0: {0: "NPL 率 1.23%，风险可控。"}},
+		SkillID:  "monthly-report",
+		Snapshot: map[string]any{"KPI_NPL_RATIO": 1.23},
+	}
+	res, err := h.publishReport(context.Background(), args, "tc-kpi-1")
+	require.NoError(t, err, "publish with a populated snapshot must succeed, not panic")
+	require.NotNil(t, res)
+	html, readErr := os.ReadFile(res.FilePath)
+	require.NoError(t, readErr)
+	assert.Contains(t, string(html), "1.23", "the KPI value must be bound into the rendered HTML")
+}
+
+// TestReportPublishRefusesKPITemplateWithoutSnapshot — CR-06
+// fail-closed: a KPI-declaring template with no snapshot in the frozen
+// args is "insufficient_kpi_data" — an error, never a nil-interface
+// panic.
+func TestReportPublishRefusesKPITemplateWithoutSnapshot(t *testing.T) {
+	chdirTempRepo(t)
+
+	h := &reportPublishTool{reports: &stubReportSink{}}
+	args := &ReportPublishArgs{
+		Period:   "2026-08",
+		Template: kpiTemplateMap(t),
+		// Snapshot deliberately absent.
+	}
+	res, err := h.publishReport(context.Background(), args, "tc-kpi-2")
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "insufficient_kpi_data")
+	_, statErr := os.Stat(filepath.Join("reports", "2026-08"))
+	assert.True(t, os.IsNotExist(statErr), "nothing may be written without KPI data")
+}
+
 // TestReportPublishAuditWriteFailureIsRecoverable — CR-04 ordering
 // contract: the FILE is written first, then the DB row. A failed row
 // write must surface an error that carries the file path (the file is

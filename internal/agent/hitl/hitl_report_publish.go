@@ -49,13 +49,25 @@ const ReportPublishTarget = "report:publish"
 
 // ReportPublishArgs is the typed payload for the report_publish Tool.
 // The args encode the slot texts and KPI snapshot needed to render the report.
+//
+// Template and Snapshot are `any` because they ALWAYS cross a JSON
+// boundary (LLM tool-call args in Pass 1; frozen args round-trip in
+// Pass 2): Template is re-encoded into report.ReportTemplate at
+// publish time (CR-01), and Snapshot is adapted via report.MapSnapshot
+// (CR-06).
 type ReportPublishArgs struct {
-	Period     string                 `json:"period"`     // e.g. "2026-08"
-	Template   any                    `json:"template"`   // *report.Template — type-asserted at publish time
-	Slots      map[int]map[int]string `json:"slots"`      // sectionIdx -> slotIdx -> text
-	SkillID    string                 `json:"skillId"`    // for audit
-	SessionID  string                 `json:"sessionId"`  // for audit
-	KPICallIDs []int64                `json:"kpiCallIds"` // KPI call audit IDs
+	Period     string                 `json:"period"`             // e.g. "2026-08"
+	Template   any                    `json:"template"`           // report template structure (JSON object)
+	Slots      map[int]map[int]string `json:"slots"`              // sectionIdx -> slotIdx -> text
+	SkillID    string                 `json:"skillId"`            // for audit
+	SessionID  string                 `json:"sessionId"`          // for audit
+	KPICallIDs []int64                `json:"kpiCallIds"`         // KPI call audit IDs
+	// Snapshot maps KPI name → value, captured from the run's kpi_call
+	// results (CR-06). Pass 2 binds it into the render via
+	// report.MapSnapshot; a template that declares KPIs without any
+	// snapshot data fails closed (insufficient_kpi_data), it never
+	// panics on a nil Snapshot.
+	Snapshot map[string]any `json:"snapshot,omitempty"`
 }
 
 // reportPublishTool is the HITL Tool for publishing a rendered report.
@@ -126,6 +138,14 @@ func (h *reportPublishTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 				Required: false,
 				Desc:     "KPI call audit IDs used to produce the report.",
 				ElemInfo: &schema.ParameterInfo{Type: schema.Integer},
+			},
+			"snapshot": {
+				Type:     schema.Object,
+				Required: false,
+				Desc: "KPI values keyed by KPI name, copied VERBATIM from the " +
+					"kpi_call results of this run (CR-06). Required when the " +
+					"template declares KPIs — publication without data is refused " +
+					"(insufficient_kpi_data).",
 			},
 		}),
 	}, nil
@@ -252,6 +272,25 @@ func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPubli
 	if err := tmpl.Validate(); err != nil {
 		return nil, fmt.Errorf("report_publish: template invalid: %w", err)
 	}
+	// CR-06 (18-REVIEW): bind the KPI snapshot the render reads. The
+	// frozen args carry the kpi_call-produced values keyed by KPI name
+	// (captured in Pass 1). A template that declares KPIs with NO
+	// snapshot data is a hard error — the previous build passed a
+	// literal nil Snapshot into report.Publish, so buildMarkdown's
+	// snap.Get(...) deterministically panicked mid-resume. Surface
+	// "no KPI data" as an error (the Skill's required_refusal_phrases
+	// vocabulary: insufficient_kpi_data), never a panic.
+	var snap report.Snapshot
+	if len(args.Snapshot) > 0 {
+		snap = report.MapSnapshot(args.Snapshot)
+	} else {
+		for _, sec := range tmpl.Sections {
+			if len(sec.KPIs) > 0 {
+				return nil, errors.New(
+					"report_publish: no KPI snapshot in frozen args but the template declares KPIs (insufficient_kpi_data — CR-06 fail-closed)")
+			}
+		}
+	}
 	// CR-04 fail-closed: no reports sink → no publish. A file without
 	// its append-only audit row would silently break the
 	// artifact↔approval↔KPI-call linkage.
@@ -260,6 +299,6 @@ func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPubli
 			"report_publish: reports audit sink not wired (CR-04 fail-closed) — " +
 				"inject the store-backed ReportAuditSink via hitl.InjectDeps")
 	}
-	return report.Publish(ctx, &tmpl, args.Slots, args.Period, nil,
+	return report.Publish(ctx, &tmpl, args.Slots, args.Period, snap,
 		approvalAuditID, args.KPICallIDs, args.SkillID, h.reports)
 }

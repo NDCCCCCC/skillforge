@@ -91,8 +91,11 @@ func buildMarkdown(tmpl *ReportTemplate, slots SlotTexts, snap Snapshot, fmtFn V
 		sb.WriteString(sec.Title)
 		sb.WriteString("\n")
 
-		// KPI table
-		if len(sec.KPIs) > 0 {
+		// KPI table. CR-06 fail-safe: a nil snapshot skips the table
+		// instead of panicking on the nil-interface Get call (the HITL
+		// tool refuses KPI-declaring templates without data; this guard
+		// keeps Render total for any future caller).
+		if len(sec.KPIs) > 0 && snap != nil {
 			sb.WriteString("| 指标 | 值 |\n|---|---|\n")
 			for _, kpi := range sec.KPIs {
 				val := snap.Get(kpi)
