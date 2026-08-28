@@ -228,7 +228,7 @@ func TestDataChannelFanOutV2Success(t *testing.T) {
 	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{}}}
 	titles := []string{"业务概览", "贷款质量"}
 	kpis := [][]string{{"KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"}, {"KPI_NPL_RATIO"}}
-	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub)
+	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub, "sess-mr", "monthly-report")
 
 	args := `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览", "贷款质量"], "reason": "sections independent"}`
 	out, err := fanOut.InvokableRun(context.Background(), args)
@@ -245,13 +245,21 @@ func TestDataChannelFanOutV2Success(t *testing.T) {
 	sort.Strings(gotNames)
 	assert.Equal(t,
 		[]string{"KPI_CUSTOMER_COUNT", "KPI_LOAN_BALANCE", "KPI_NPL_RATIO"}, gotNames)
+
+	// WR-08: every Call carries the ambient session + skill identity
+	// (the previous build passed "" for both — kpi_calls audit rows
+	// were orphaned and unreplayable).
+	for _, c := range stub.calls {
+		assert.Equal(t, "sess-mr", c.SessionID)
+		assert.Equal(t, "monthly-report", c.SkillID)
+	}
 }
 
 // TestDataChannelFanOutV2Fallbacks — D18-C4 fallback paths never
 // touch the executor.
 func TestDataChannelFanOutV2Fallbacks(t *testing.T) {
 	stub := &stubKPICaller{}
-	fanOut := BuildFanOutDispatchToolDataChannel([]string{"业务概览"}, [][]string{{"KPI_LOAN_BALANCE"}}, stub)
+	fanOut := BuildFanOutDispatchToolDataChannel([]string{"业务概览"}, [][]string{{"KPI_LOAN_BALANCE"}}, stub, "sess-mr", "monthly-report")
 
 	cases := []struct {
 		name string
@@ -300,7 +308,7 @@ func TestDataChannelFanOutV2SectionResultsPreserveAllKPIs(t *testing.T) {
 	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{{"v": 1}}}}
 	titles := []string{"业务概览", "贷款质量"}
 	kpis := [][]string{{"KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"}, {"KPI_NPL_RATIO"}}
-	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub)
+	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub, "sess-mr", "monthly-report")
 
 	args := `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览", "贷款质量"], "reason": "r"}`
 	out, err := fanOut.InvokableRun(context.Background(), args)

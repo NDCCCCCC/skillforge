@@ -287,6 +287,12 @@ type dataChannelFanOutTool struct {
 	sectionTitles []string
 	sectionKPIs   [][]string // KPIs per section (index-aligned with sectionTitles)
 	executor      KPICaller
+	// WR-08 (18-REVIEW): sessionID + skillID ride every kpi_call the
+	// tool issues so the kpi_calls audit rows can be linked back to the
+	// session and the Skill (the previous build passed "" for both —
+	// the audit trail was orphaned).
+	sessionID string
+	skillID   string
 }
 
 // Compile-time interface compliance check.
@@ -296,11 +302,15 @@ var _ tool.InvokableTool = (*dataChannelFanOutTool)(nil)
 // skill with template. sectionTitles + sectionKPIs are extracted from the
 // manifest template via sectionTitlesAndKPIs; executor is the session's KPI
 // executor (the ONLY call target, same as kpi_call — D16-C3).
-func BuildFanOutDispatchToolDataChannel(sectionTitles []string, sectionKPIs [][]string, executor KPICaller) tool.InvokableTool {
+// sessionID + skillID ride every kpi_call so the audit rows carry the
+// ambient identity (WR-08).
+func BuildFanOutDispatchToolDataChannel(sectionTitles []string, sectionKPIs [][]string, executor KPICaller, sessionID, skillID string) tool.InvokableTool {
 	return &dataChannelFanOutTool{
 		sectionTitles: sectionTitles,
 		sectionKPIs:   sectionKPIs,
 		executor:      executor,
+		sessionID:     sessionID,
+		skillID:       skillID,
 	}
 }
 
@@ -380,8 +390,8 @@ func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _
 					outcome, err := t.executor.Call(ctx, kpi.CallRequest{
 						Name:      kpiName,
 						Params:    map[string]any{},
-						SessionID: "",
-						SkillID:   "",
+						SessionID: t.sessionID,
+						SkillID:   t.skillID,
 					})
 					if err != nil {
 						return err

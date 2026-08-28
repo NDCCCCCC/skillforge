@@ -302,7 +302,11 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		// extracted from the manifest template.
 		if cfg.Manifest.Template != nil {
 			titles, kpis := sectionTitlesAndKPIs(cfg.Manifest.Template)
-			fanOutTool := BuildFanOutDispatchToolDataChannel(titles, kpis, cfg.KPIExecutor)
+			// WR-08: thread sessionID + skillID into every kpi_call the
+			// fan-out tool issues so the kpi_calls audit rows carry the
+			// ambient identity (was hardcoded to "" — audit rows were
+			// orphaned and unreplayable).
+			fanOutTool := BuildFanOutDispatchToolDataChannel(titles, kpis, cfg.KPIExecutor, cfg.SessionID, cfg.SkillID)
 			tools = append(tools, fanOutTool)
 		}
 	} else {
