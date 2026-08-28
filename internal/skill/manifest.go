@@ -67,9 +67,11 @@ type Manifest struct {
 	DescriptionVec []float32  `yaml:"-"                       json:"-"`           // Phase 5 D5-01: cached embedding, in-memory only
 	// Template is the optional report template block (D18-A4 — monthly-report
 	// Skill uses template: section to declare the report structure + slot types).
-	// Stored as any; callers type-assert to *report.Template after yaml.Unmarshal.
-	// YAML tag uses inline struct parsing; the field is validated by
-	// ValidateAgainstKPI (loader.go) after the full parse.
+	// Stored as any: yaml.Unmarshal (like json.Unmarshal) materializes it as
+	// map[string]any, so callers must RE-ENCODE + DECODE into
+	// report.ReportTemplate (see hitl_report_publish.go publishReport) — a
+	// direct *report.ReportTemplate assertion can never succeed. The field is
+	// validated by ValidateAgainstKPI (loader.go) after the full parse.
 	Template any `yaml:"template,omitempty" json:"template,omitempty"`
 	// Name is the Skill's directory name (e.g. "compliance"). It is
 	// NOT a YAML field — the loader derives it from the parent dir

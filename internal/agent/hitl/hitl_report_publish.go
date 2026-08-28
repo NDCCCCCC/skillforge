@@ -203,11 +203,30 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 	), nil
 }
 
-// publishReport delegates to report.Publish.
+// publishReport converts the generic template payload into the typed
+// struct and delegates to report.Publish.
+//
+// CR-01 (18-REVIEW): Template is `any` and ALWAYS crosses a JSON
+// boundary — Pass 1 unmarshals the LLM's tool-call JSON, and Pass 2
+// unmarshals the frozen args stored by StatefulInterrupt — so
+// json.Unmarshal materializes it as map[string]any. A direct
+// *report.ReportTemplate type assertion can therefore NEVER succeed
+// (the approve path was unreachable). The fix re-encodes the generic
+// map and decodes it into the typed struct, then validates it
+// fail-closed before any publish side effect (WR-06's publish-side
+// half: an LLM-supplied template with arbitrary slot types must be
+// rejected here, not rendered).
 func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPublishArgs) (*report.PublishResult, error) {
-	tmpl, ok := args.Template.(*report.ReportTemplate)
-	if !ok {
-		return nil, errors.New("report_publish: template is not a *report.Template")
+	raw, err := json.Marshal(args.Template)
+	if err != nil {
+		return nil, fmt.Errorf("report_publish: re-encode template: %w", err)
 	}
-	return report.Publish(ctx, tmpl, args.Slots, args.Period, nil, "", args.KPICallIDs, args.SkillID)
+	var tmpl report.ReportTemplate
+	if err := json.Unmarshal(raw, &tmpl); err != nil {
+		return nil, fmt.Errorf("report_publish: decode template: %w", err)
+	}
+	if err := tmpl.Validate(); err != nil {
+		return nil, fmt.Errorf("report_publish: template invalid: %w", err)
+	}
+	return report.Publish(ctx, &tmpl, args.Slots, args.Period, nil, "", args.KPICallIDs, args.SkillID)
 }
