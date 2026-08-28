@@ -18,6 +18,7 @@ package skill
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/skillforge/skillforge/internal/agent/hitl"
@@ -113,16 +114,22 @@ func Validate(m *Manifest) error {
 				m.Reads, ReadDataAggregatedOnly,
 			)
 		}
-		// (b) Deep archetype + data channel is structurally incompatible:
-		// deep's system prompt hardcodes a retrieve tool promise
-		// (internal/runtime/deep_agent.go:171-174), but data channel's
-		// tool set is {kpi_call} — prompt-inject amplification surface.
-		// v1 fail-closed; author must use "chat" archetype instead.
-		if m.Agent == "deep" {
-			return fmt.Errorf(
-				"agent type %q is incompatible with data channel: deep archetype system prompt hardcodes retrieve tool promise (internal/runtime/deep_agent.go:171-174), conflicts with data channel tool set {kpi_call} — v1 fail-closed; use chat instead",
-				m.Agent,
-			)
+		// (b) Deep archetype + data channel: conditionally allowed.
+		// MODIFIED (D18-A4 / Pattern 3): deep+data is allowed ONLY when
+		// writes contains "report:publish" AND Template is non-nil
+		// (monthly-report Skill uses deep+data+report_publish).
+		// The deep system prompt branches on HasDataChannel() && Template != nil
+		// to serve the data-channel tool set {kpi_call, fan_out_dispatch,
+		// report_publish, plan_approve, write_todos} — replacing the tier-channel
+		// retrieve promise. Without "report:publish" + valid Template, the
+		// original incompatibility stands and we fail-closed.
+		if m.Agent == "deep" && m.HasDataChannel() {
+			if !slices.Contains(m.Writes, "report:publish") || m.Template == nil {
+				return fmt.Errorf(
+					"agent type %q is incompatible with data channel unless writes contains %q AND template: is set (D18-A4); deep archetype system prompt branches to data-channel tool set only when both conditions are met",
+					m.Agent, "report:publish",
+				)
+			}
 		}
 		// (c) Skip ResolveTiers — data channel has no tier semantics.
 		// resolvedTiers stays empty (nil), which the retriever treats as

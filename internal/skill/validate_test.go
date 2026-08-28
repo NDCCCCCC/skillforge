@@ -401,8 +401,9 @@ func TestChannelGuardXOR(t *testing.T) {
 			},
 			wantErr: true,
 			errSubstrs: []string{
-				"deep",           // must name the conflicting archetype
-				"deep_agent.go",  // must cite the hardcoded-retrieve source
+				"deep",            // must name the conflicting archetype
+				"report:publish",  // D18-A4: the conditional-allow error names the exception
+				"template:",       // D18-A4: template is part of the condition
 			},
 		},
 		{

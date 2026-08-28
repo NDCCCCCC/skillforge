@@ -64,6 +64,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -236,16 +237,34 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 	// a channel-specific narration).
 	var tools []tool.BaseTool
 	if cfg.Manifest.HasDataChannel() {
-		// data-channel: ONLY kpi_call. Skip BuildToolsForSkill (the
-		// HITL whitelist is irrelevant — data-channel Skills have
-		// writes:[] in v1 and the load-time XOR excludes data:* +
-		// tier-mixed reads) and skip retrieve (no tier channel here).
+		// data-channel: {kpi_call} base. When writes declares
+		// "report:publish" or "plan_approve", add those HITL tools.
+		// When Template is set (monthly-report Skill), also add
+		// fan_out_dispatch (D18-A4).
 		kpiCallTool := agenttools.BuildKPICallTool(
 			cfg.KPIExecutor, cfg.KPIRegistry,
 			cfg.SessionID, cfg.SkillID,
 			cfg.DataRefEmit,
 		)
 		tools = []tool.BaseTool{kpiCallTool}
+
+		// D18-A4: add report_publish if declared in writes
+		if slices.Contains(cfg.Manifest.Writes, "report:publish") {
+			reportPublishTool := agenttools.BuildReportPublishTool()
+			tools = append(tools, reportPublishTool)
+		}
+		// D18-A4: add plan_approve if declared in writes
+		if slices.Contains(cfg.Manifest.Writes, "plan_approve") {
+			planApproveHandler := hitl.LookupHandler("plan_approve")
+			if planApproveHandler != nil {
+				tools = append(tools, planApproveHandler)
+			}
+		}
+		// D18-A4: add fan_out_dispatch when Template is set
+		if cfg.Manifest.Template != nil {
+			fanOutTool := BuildFanOutDispatchTool(cfg.Manifest)
+			tools = append(tools, fanOutTool)
+		}
 	} else {
 		// tier-channel: existing two-segment composition (HITL
 		// whitelist + retrieve). D11-B1 invariant preserved: writes:[] Skills

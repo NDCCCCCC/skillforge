@@ -155,7 +155,10 @@ func renderDeepSystemPrompt(m *skill.Manifest) string {
 		return platformfloor.ComposePlatformPrompt(deepArchetypeBasePrompt())
 	}
 	var b []byte
-	b = append(b, deepArchetypePrefix()...)
+	// D18-A4: pass the manifest via DispatchConfig so deepArchetypePrefix
+	// can branch on HasDataChannel() && Template != nil
+	cfg := &DispatchConfig{Manifest: m}
+	b = append(b, deepArchetypePrefix(cfg)...)
 	b = append(b, deepArchetypeBasePrompt()...)
 	return platformfloor.ComposePlatformPrompt(string(b))
 }
@@ -164,7 +167,26 @@ func renderDeepSystemPrompt(m *skill.Manifest) string {
 // Exported-via-helper so 12-04 (structured-output final step spike)
 // can REPLACE this prefix with the proven Phase 2 envelope; keeping
 // the prefix in a separate helper makes that swap a one-line edit.
-func deepArchetypePrefix() string {
+//
+// MODIFIED (D18-A4): when the manifest has a data channel AND a Template,
+// the deep archetype serves the data-channel tool set
+// {kpi_call, fan_out_dispatch, report_publish, plan_approve, write_todos}.
+// This is the monthly-report Skill configuration (agent:deep +
+// reads:[data:aggregated_only] + writes:[report:publish] + template:).
+func deepArchetypePrefix(cfg *DispatchConfig) string {
+	if cfg.Manifest.HasDataChannel() && cfg.Manifest.Template != nil {
+		// Data channel: monthly-report Skill
+		return `You are a SkillForge DeepAgent. You have access to:
+- kpi_call (read-only aggregated KPI data)
+- fan_out_dispatch (structured fan-out classifier — decide per-section parallelism)
+- report_publish (HITL-gated report publication)
+- plan_approve (HITL-gated plan confirmation)
+- write_todos (audited task tracking)
+
+MaxIteration = 10. Plan tightly: batched kpi_call calls, compact todos, no silent expansion.
+`
+	}
+	// Tier channel: original retrieve-based tool promise (D14-A3 platform floor unchanged)
 	return `You are a SkillForge DeepAgent. You have access to:
 - write_todos (Plan 12-02 — audited custom Tool; emit a JSON todo plan BEFORE the first tool call)
 - plan_approve (Plan 12-03 — HITL-gated approval Tool; use it after each plan_todos mutation)

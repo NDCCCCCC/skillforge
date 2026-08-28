@@ -43,10 +43,11 @@ func TestAllowedTargetsSubset(t *testing.T) {
 	// adds "plan_approve" between "memory:facts" and "review_report"
 	// after sorting (the slice order is independent of the
 	// defensive-copy sort).
-	assert.Equal(t, []string{"memory:facts", "plan_approve", "review_report", "skill_state"}, got,
+	assert.Equal(t, []string{"memory:facts", "plan_approve", "report:publish", "review_report", "skill_state"}, got,
 		"KnownTargets must be sorted lexicographically (registry contract). "+
 			"`skill_state` is the D7-10 calculator placeholder and intentionally "+
-			"co-lives with the 11-02 + 11-04 + 12-03 write targets.")
+			"co-lives with the 11-02 + 11-04 + 12-03 write targets. "+
+			"D18-A4 adds report:publish between plan_approve and review_report.")
 
 	// Defensive-copy contract: callers MUST NOT mutate the
 	// underlying slice. Mutate the returned copy, re-call, assert

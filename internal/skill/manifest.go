@@ -65,6 +65,12 @@ type Manifest struct {
 	Guardrails     Guardrails `yaml:"guardrails"              json:"guardrails"`  // 6 — prohibitions + refusal phrases + tier limits
 	Temperature    *float32   `yaml:"temperature"             json:"temperature"` // 7 — [0.0, 1.0], pointer = required presence (SYSK-08)
 	DescriptionVec []float32  `yaml:"-"                       json:"-"`           // Phase 5 D5-01: cached embedding, in-memory only
+	// Template is the optional report template block (D18-A4 — monthly-report
+	// Skill uses template: section to declare the report structure + slot types).
+	// Stored as any; callers type-assert to *report.Template after yaml.Unmarshal.
+	// YAML tag uses inline struct parsing; the field is validated by
+	// ValidateAgainstKPI (loader.go) after the full parse.
+	Template any `yaml:"template,omitempty" json:"template,omitempty"`
 	// Name is the Skill's directory name (e.g. "compliance"). It is
 	// NOT a YAML field — the loader derives it from the parent dir
 	// basename on read. The wizard (Plan 05-04) sets it before Commit

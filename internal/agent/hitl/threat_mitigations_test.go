@@ -239,8 +239,9 @@ func testThreatHitl05WritesEnforcement(t *testing.T) {
 	// The pure-function source-of-truth: AllowedWriteTargets is the
 	// ONLY file containing the allowed-write list (D11-B3). Phase 12 /
 	// Plan 12-03 adds "plan_approve" — the DeepAgent plan confirmation
-	// gate — between review_report and skill_state.
-	assert.ElementsMatch(t, []string{"memory:facts", "review_report", "plan_approve", "skill_state"},
+	// gate — between review_report and skill_state. Phase 18 / D18-A4
+	// adds "report:publish" for the monthly-report publication gate.
+	assert.ElementsMatch(t, []string{"memory:facts", "review_report", "plan_approve", "report:publish", "skill_state"},
 		AllowedWriteTargets,
 		"AllowedWriteTargets drifted from the D11-B3 source-of-truth")
 }
