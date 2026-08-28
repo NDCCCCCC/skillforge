@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 17
 current_plan: Not started
-status: executing
-last_updated: "2026-08-27T12:50:49.253Z"
-last_activity: 2026-08-27 -- Phase 17 planning complete
+status: verifying
+last_updated: "2026-08-27T14:29:57.808Z"
+last_activity: 2026-08-27
 progress:
   total_phases: 20
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 86
-  completed_plans: 100
-  percent: 60
+  completed_plans: 108
+  percent: 65
 ---
 
 # State — SkillForge
@@ -21,8 +21,8 @@ progress:
 
 Phase: 16 (p10-2) — EXECUTING (Wave 5 closed; Phase 16 closeout deferred)
 Plan: 9 of 9 (Plan 16-09 COMPLETE — verify-phase-16.sh 11-stage acceptance gate)
-Status: Ready to execute
-Last activity: 2026-08-27 -- Phase 17 planning complete
+Status: Phase complete — ready for verification
+Last activity: 2026-08-27
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -279,7 +279,7 @@ Resume File: `.planning/phases/16-p10-2/16-09-SUMMARY.md`
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Ready to execute
+- **Status:** Phase complete — ready for verification
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
@@ -383,6 +383,7 @@ Resume File: `.planning/phases/16-p10-2/16-09-SUMMARY.md`
 | Phase 14-p10-0-cgo-trust-floor P10 | ~160m | 3 tasks (T1 hermetic relock chain: tail re-anchor 1.0.0→1.1.0 + 双字面量 + 4.5 测试锁 + compliance/platform-floor 双锁重锁 + verify 双 pin，11-stage gate 全绿，commits 174ee18+ebd547c; T2 live judge 20/20 首跑 PASS（long_dialogue_dilution 4/4，pfloor-20 引用新条款拒答）+ compliance replay STOP（端点劣化窗口 faithfulness 0.6876<0.9，不重签）; T3 真机 spot-check 0 code commits — audit 行 117=1.1.0 FLOOR-110-AUDIT-PASS + admin 预览 1.1.0/hash 5b12acd9 一致 ADMIN-FLOOR-110-PASS） | 8 files (5 code/test + 2 locks + verify script) + UAT 6/6 pass；遗留：replay 重跑→fill-lock→README caveat（STATE blocker） |
 | Phase 16 P05 | 25min | 2 tasks | 9 files |
 | Phase 16 P08 | ~35min | 3 tasks | 7 files (2 new: server/kpi_admin.go + agent/callbacks_test.go; 1 new test: server/kpi_admin_test.go; 4 modified: agent/callbacks.go + server/runner_setup.go + server/server.go + cmd/server/main.go) |
+| Phase 17 P07 | 45 | 8 tasks | 6 files |
 
 ## Session Continuity
 

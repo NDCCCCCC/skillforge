@@ -93,16 +93,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **DATA-01**: System provides a data import pipeline for data personnel to ingest CSV (incl. GBK/GB18030 + BOM decode) / SQL dump / API data with tier + schema metadata — v1.0
 - [x] **DATA-02**: System enforces mandatory desensitization at import time (L1 PII hashing with pre-hash normalization + L2 bucketing) — raw L1/L2/L3 data does NOT persist in SkillForge for aggregation-tier Skills — v1.0
-- [ ] **DATA-03**: System exposes aggregation API (predefined KPI functions) — agent invokes KPI functions, never SELECTs raw data — v1.0
+- [x] **DATA-03**: System exposes aggregation API (predefined KPI functions) — agent invokes KPI functions, never SELECTs raw data — v1.0
 - [ ] **DATA-04**: System supports external authorized channel for individual-identification Skills — raw data stays in user's enterprise data warehouse, agent calls via read-only DB user / proxy with TTL token **→ v1.1**
 - [ ] **DATA-05**: External authorized channel enforces field-level second-layer desensitization (e.g., display only last-4 of account number) plus pre-authorization by data personnel **→ v1.1**
 - [ ] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp **→ v1.1**
-- [ ] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized` — v1.0 仅实现 `data:aggregated_only`（external 模式 → v1.1）
-- [ ] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer — v1.0
+- [x] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized` — v1.0 仅实现 `data:aggregated_only`（external 模式 → v1.1）
+- [x] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer — v1.0
 - [x] **DATA-09**: Aggregation channel: agent can ONLY invoke predefined KPI functions / views — no SQL, no new KPI definition (NL2SQL safety layer 1) — v1.0
 - [ ] **DATA-10**: Individual channel: agent queries go through predefined views (not raw tables) — DB user restricted (read-only, limited schema, field-level view masking) (NL2SQL safety layer 2) **→ v1.1**
 - [ ] **DATA-11**: Agent must generate SQL preview (NL2SQL output) BEFORE entering approval flow for individual-identification Skills (NL2SQL safety layer 3 — data officer audits the actual query intent) **→ v1.1**
-- [ ] **DATA-12**: Rejection must include structured reason `{reason_code, human_explanation}` (compliance audit requirement; v1.0 具体化为 `no_matching_kpi` 等 reason code) — v1.0
+- [x] **DATA-12**: Rejection must include structured reason `{reason_code, human_explanation}` (compliance audit requirement; v1.0 具体化为 `no_matching_kpi` 等 reason code) — v1.0
 - [ ] **DATA-13**: Approval timeout = 持续挂起 (no auto-reject, no auto-timeout) — each query must be explicitly approved or rejected by data officer **→ v1.1**
 - [ ] **DATA-14**: Every approval creates audit row: `{query_id, user_id, business_reason, sql_preview, approve_or_reject_result, data_officer_id, ttl_token_id, timestamp, chunk_ids_returned}` **→ v1.1**
 
@@ -166,15 +166,15 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### KPI 注册表 (KPI)
 
-- [ ] **KPI-01**: KPI 注册表由数据人员以受控文件/代码定义，运行时与 agent 不可增改；admin UI 只读展示（签名 + 最后调用时间）
-- [ ] **KPI-02**: 每次 KPI 调用产生数据引用 `{func, args, as_of, result_snapshot}` 冻结进审计行——上游数据清理后仍可完整回放
+- [x] **KPI-01**: KPI 注册表由数据人员以受控文件/代码定义，运行时与 agent 不可增改；admin UI 只读展示（签名 + 最后调用时间）
+- [x] **KPI-02**: 每次 KPI 调用产生数据引用 `{func, args, as_of, result_snapshot}` 冻结进审计行——上游数据清理后仍可完整回放
 
 ### KPI 仪表盘 Skill (DASH)
 
-- [ ] **DASH-01**: 用户可在聊天中提问数字问题（如「2026-Q2 逾期率是多少」），KPI Skill 经函数调用作答
+- [x] **DASH-01**: 用户可在聊天中提问数字问题（如「2026-Q2 逾期率是多少」），KPI Skill 经函数调用作答
 - [ ] **DASH-02**: 每个数字带完整出处——数值 + KPI 定义 + 计算时间窗 + as_of 时间戳 + 数据引用（hover 显示通道名 `data:aggregated_only`）
 - [ ] **DASH-03**: 答案内嵌迷你趋势图（sparkline），每个数据点继承同一引用契约、独立可审计
-- [ ] **DASH-04**: 用户可点击数字下钻（「看月度趋势」）——下钻 = 更多 KPI 调用，永不进入原始行
+- [x] **DASH-04**: 用户可点击数字下钻（「看月度趋势」）——下钻 = 更多 KPI 调用，永不进入原始行
 - [ ] **DASH-05**: 多 KPI 组合答案（「收入 + 客数 + 同比」）由 Skill steps 编排，各自独立引用
 
 ### 业务月报 Skill (RPT)
@@ -211,8 +211,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 生产化 — Eval 抬升 (GEVL)
 
-- [ ] **GEVL-09**: 新指标「KPI 调用准确率」（agent 为 query 选对 KPI？）——50 例 KPI golden set；数值相等用程序判定（非 LLM judge）
-- [ ] **GEVL-10**: faithfulness 扩展到数据引用——答案中的数字必须与所引 KPI 快照一致（引用出处完整性）
+- [x] **GEVL-09**: 新指标「KPI 调用准确率」（agent 为 query 选对 KPI？）——50 例 KPI golden set；数值相等用程序判定（非 LLM judge）
+- [x] **GEVL-10**: faithfulness 扩展到数据引用——答案中的数字必须与所引 KPI 快照一致（引用出处完整性）
 - [ ] **GEVL-11**: eval 门阻塞调度——KPI 指标回退的 Skill 被阻止 cron 重渲染（eval gate ↔ 调度器联动）
 
 ### 生产化 — 平台级信任地板 (PLAT)
@@ -336,16 +336,16 @@ Which phases cover which requirements.
 | CMPL-08 | Phase 5 | Complete |
 | DATA-01 | Phase 15 | Complete (15-04 dump parser + 15-05 Preview/Commit/Push/DryRun orchestrator + 15-06 streaming HTTP surface for preview/commit/push) |
 | DATA-02 | Phase 15 | Complete |
-| DATA-03 | Phase 16 | Pending |
+| DATA-03 | Phase 16 | Complete |
 | DATA-04 | — | Deferred v1.1（外部授权通道） |
 | DATA-05 | — | Deferred v1.1（外部授权通道） |
 | DATA-06 | — | Deferred v1.1（外部授权通道） |
 | DATA-07 | Phase 16 | Pending（仅 aggregated_only 模式） |
-| DATA-08 | Phase 16 | Pending |
+| DATA-08 | Phase 16 | Complete |
 | DATA-09 | Phase 16 | Complete |
 | DATA-10 | — | Deferred v1.1（外部授权通道） |
 | DATA-11 | — | Deferred v1.1（外部授权通道） |
-| DATA-12 | Phase 16 | Pending |
+| DATA-12 | Phase 16 | Complete |
 | DATA-13 | — | Deferred v1.1（外部授权通道） |
 | DATA-14 | — | Deferred v1.1（外部授权通道） |
 | PLAT-04 | Phase 8 | Complete |
@@ -379,15 +379,15 @@ Which phases cover which requirements.
 | DATA-15 | Phase 15 | Complete (15-04 preview session store + `ValidateCommitAgainstPreview` content-hash bridge; 15-06 HTTP handlers for preview/commit and hash-mismatch rejection) |
 | DATA-16 | Phase 15 | Complete (15-02 SUMMARY; LatestImportBatch query surface + import_batches (dataset,period) index) |
 | DATA-17 | Phase 15 | Complete (15-02 SUMMARY; INSERT-only import_batches table with batch_id/raw_size_bytes/desensitized_row_count/discard_ts/dataset + TestBatchAuditRowShape) |
-| KPI-01 | Phase 16 | Pending |
-| KPI-02 | Phase 16 | Pending |
-| DASH-01 | Phase 17 | Pending |
+| KPI-01 | Phase 16 | Complete |
+| KPI-02 | Phase 16 | Complete |
+| DASH-01 | Phase 17 | Complete |
 | DASH-02 | Phase 17 | Pending |
 | DASH-03 | Phase 17 | Pending |
-| DASH-04 | Phase 17 | Pending |
+| DASH-04 | Phase 17 | Complete |
 | DASH-05 | Phase 17 | Pending |
-| GEVL-09 | Phase 17 | Pending |
-| GEVL-10 | Phase 17 | Pending |
+| GEVL-09 | Phase 17 | Complete |
+| GEVL-10 | Phase 17 | Complete |
 | RPT-01 | Phase 18 | Pending |
 | RPT-02 | Phase 18 | Pending |
 | RPT-03 | Phase 18 | Pending |

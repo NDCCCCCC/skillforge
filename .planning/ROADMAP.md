@@ -57,7 +57,7 @@
   - **16-07 runtime channel isolation + kpi_call tool + structural SQL ban** (Wave 3 closed 2026-08-27 — `696ca81` TestNoSQLGenerationSurface gate + `c80867b` BuildKPICallTool + `dc69291` channel branch + TestToolsForChannel + agent.go fail-closed guard) — DATA-03/08/09 runtime closed
   - **16-08 SSE DataRef emission wiring + KPI 管线装配 + admin 只读端点** (Wave 4 closed 2026-08-27 — `0cc1ad3` callbacks 工具名分流 + `1f1aed4` main.go KPI 装配 + server DataRefEmit wiring + `c94e39d` GET /api/admin/kpis) — KPI-01 admin 只读面 + D16-B3 发射闭环
   - **16-09 verify-phase-16 acceptance gate** (Wave 5 closed 2026-08-27 — `0a74938` scripts/verify-phase-16.sh 11-stage hermetic gate [gcc precondition + per-cmd build matrix + hermetic test suite + contract WalkDir + KPI Layer 1 lock-name suite + channel XOR + wire kpi_reference + WSL triple-lock blocked-with-notes + source-grep structural locks + cmd/server live link blocked-with-notes + frozen lock byte-identity] + `0718e9d` Makefile `verify-phase-16` target) — gate runs 9/11 PASS + 2 BLOCKED-WITH-NOTES (D15-01-1 emutls ABI) on Windows; 11/11 PASS on Linux/WSL operator run
-- [ ] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言
+- [x] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言 (completed 2026-08-27)
 - [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
 - [ ] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度
 - [ ] **Phase 20: 管理台（P10.6）** — /admin（复用 /eval + X-Admin-Token）四视图：导入批次 / KPI 只读 / Skill 管理 / 定时任务；admin 动作全审计；里程碑收尾（第 4 冻结锁决策 + wrap）
@@ -591,14 +591,16 @@ Plans:
 **Research flag:** FEATURES.md Cap 3（sparkline 渲染形态：纯 SVG vs 轻量库）plan 期定；GEVL-09 golden set 的 50 例构造来源（合成数据 vs 真实 schema 脱敏）plan 期定
 **Plans**: 8 plans
 **Plan list**:
-- [ ] 17-01-PLAN.md — Wave 1: Wire types (PointReference + DataReference.References) + Sparkline pure SVG
-- [ ] 17-02-PLAN.md — Wave 1: DataReferencePopup + DataReferenceChip + MessageBubble kpi_reference branch
-- [ ] 17-03-PLAN.md — Wave 1: DrillChip + pendingDraft app-store + ChatInput prefill
-- [ ] 17-04-PLAN.md — Wave 1: Multi-period KPI executor (ParamTypeArray + ResolvePeriods + CallMultiPeriod)
-- [ ] 17-05-PLAN.md — Wave 2: kpi-dashboard SKILL.md + ValidateAgainstKPI loader method
-- [ ] 17-06-PLAN.md — Wave 2: GEVL-09/10 eval (JudgeKPIReferenceConsistency + 50-case golden + kpi.lock.json)
-- [ ] 17-07-PLAN.md — Wave 3: reid.jsonl + structural tests + verify-phase-17.sh gate
-- [ ] 17-08-PLAN.md — Wave 3: Data fixtures (kpis/testdata.yaml + testdata.duckdb)
+
+- [x] 17-01-PLAN.md — Wave 1: Wire types (PointReference + DataReference.References) + Sparkline pure SVG
+- [x] 17-02-PLAN.md — Wave 1: DataReferencePopup + DataReferenceChip + MessageBubble kpi_reference branch
+- [x] 17-03-PLAN.md — Wave 1: DrillChip + pendingDraft app-store + ChatInput prefill
+- [x] 17-04-PLAN.md — Wave 1: Multi-period KPI executor (ParamTypeArray + ResolvePeriods + CallMultiPeriod)
+- [x] 17-05-PLAN.md — Wave 2: kpi-dashboard SKILL.md + ValidateAgainstKPI loader method
+- [x] 17-06-PLAN.md — Wave 2: GEVL-09/10 eval (JudgeKPIReferenceConsistency + 50-case golden + kpi.lock.json)
+- [x] 17-07-PLAN.md — Wave 3: reid.jsonl + structural tests + verify-phase-17.sh gate
+- [x] 17-08-PLAN.md — Wave 3: Data fixtures (kpis/testdata.yaml + testdata.duckdb)
+
 **UI hint**: yes（聊天内 sparkline + 引用 hover——AI SDK data part / source 机制复用 Phase 4 模式）
 
 ### Phase 18: 业务月报 Skill（P10.4）
@@ -741,7 +743,7 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 8/0 plans complete
+**Plans:** 8/8 plans complete
 
 ### Phase 999.2: Eval CI Wiring + Live UAT (BACKLOG) — Phase 6b
 
