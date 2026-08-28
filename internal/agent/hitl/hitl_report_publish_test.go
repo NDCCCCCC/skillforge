@@ -34,6 +34,7 @@ package hitl
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +42,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // chdirTempRepo moves the test process into a fresh temp dir so the
@@ -53,6 +56,21 @@ func chdirTempRepo(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.Chdir(dir))
 	t.Cleanup(func() { _ = os.Chdir(orig) })
+}
+
+// stubReportSink is the CR-04 reports-table audit seam stub: it
+// records every PutReport row (or fails with its err).
+type stubReportSink struct {
+	rows []store.ReportRow
+	err  error
+}
+
+func (s *stubReportSink) PutReport(_ context.Context, row store.ReportRow) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.rows = append(s.rows, row)
+	return nil
 }
 
 // validTemplateMap is the JSON-round-trip shape of a minimal valid
@@ -105,15 +123,17 @@ func TestReportPublishFirstPassInterrupts(t *testing.T) {
 func TestReportPublishApprovePublishesFromJSONTemplate(t *testing.T) {
 	chdirTempRepo(t)
 
-	h := &reportPublishTool{}
+	sink := &stubReportSink{}
+	h := &reportPublishTool{reports: sink}
 	args := &ReportPublishArgs{
-		Period:   "2026-08",
-		Template: validTemplateMap(t), // JSON-round-trip shape — the CR-01 bug shape
-		Slots:    map[int]map[int]string{0: {0: "八月业务平稳运行。"}},
-		SkillID:  "monthly-report",
+		Period:     "2026-08",
+		Template:   validTemplateMap(t), // JSON-round-trip shape — the CR-01 bug shape
+		Slots:      map[int]map[int]string{0: {0: "八月业务平稳运行。"}},
+		SkillID:    "monthly-report",
+		KPICallIDs: []int64{11, 22},
 	}
 
-	res, err := h.publishReport(context.Background(), args)
+	res, err := h.publishReport(context.Background(), args, "tc-approve-1")
 	require.NoError(t, err, "the approve path must publish from the JSON-round-trip template shape")
 	require.NotNil(t, res)
 	assert.Equal(t, 1, res.Version, "first publish of a period is v1")
@@ -121,6 +141,55 @@ func TestReportPublishApprovePublishesFromJSONTemplate(t *testing.T) {
 	assert.True(t, strings.HasPrefix(res.URL, "/reports/2026-08/"), "URL must stay inside /reports/")
 	_, statErr := os.Stat(res.FilePath)
 	assert.NoError(t, statErr, "the rendered HTML file must exist on disk")
+
+	// CR-04: the publish must leave exactly one reports audit row
+	// linking the artifact to its approval + KPI calls.
+	require.Len(t, sink.rows, 1, "publish must append the reports audit row (CR-04)")
+	row := sink.rows[0]
+	assert.Equal(t, "2026-08", row.Period)
+	assert.Equal(t, "monthly-report", row.SkillID)
+	assert.Equal(t, 1, row.Version)
+	assert.Equal(t, "tc-approve-1", row.ApprovalAuditID, "the approval linkage must ride the row (D11-C4)")
+	assert.Equal(t, "[11,22]", row.KPICallIDs)
+	assert.Equal(t, res.FilePath, row.FilePath)
+	assert.NotEmpty(t, row.ResultDigest)
+	assert.NotEmpty(t, row.TemplateVersion)
+	assert.Equal(t, res.Digest, row.ResultDigest)
+	assert.Equal(t, res.TemplateVersion, row.TemplateVersion)
+}
+
+// TestReportPublishRequiresAuditSink — CR-04 fail-closed: without the
+// reports sink the publish must refuse (no file-without-audit-row
+// state), even though the render itself would succeed.
+func TestReportPublishRequiresAuditSink(t *testing.T) {
+	chdirTempRepo(t)
+
+	h := &reportPublishTool{} // reports sink NOT wired
+	args := &ReportPublishArgs{Period: "2026-08", Template: validTemplateMap(t)}
+	res, err := h.publishReport(context.Background(), args, "tc-1")
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), "audit sink not wired")
+	_, statErr := os.Stat(filepath.Join("reports", "2026-08"))
+	assert.True(t, os.IsNotExist(statErr), "no file may be written when the audit sink is missing")
+}
+
+// TestReportPublishAuditWriteFailureIsRecoverable — CR-04 ordering
+// contract: the FILE is written first, then the DB row. A failed row
+// write must surface an error that carries the file path (the file is
+// already published — recoverable, never silently dropped).
+func TestReportPublishAuditWriteFailureIsRecoverable(t *testing.T) {
+	chdirTempRepo(t)
+
+	sink := &stubReportSink{err: errors.New("disk full")}
+	h := &reportPublishTool{reports: sink}
+	args := &ReportPublishArgs{Period: "2026-08", Template: validTemplateMap(t)}
+	res, err := h.publishReport(context.Background(), args, "tc-1")
+	require.Error(t, err)
+	assert.Nil(t, res)
+	assert.Contains(t, err.Error(), filepath.Join("reports", "2026-08", "v1.html"),
+		"the error must carry the already-published file path")
+	assert.Contains(t, err.Error(), "disk full")
 }
 
 // TestReportPublishRejectsInvalidTemplate — fail-closed (WR-06
@@ -129,13 +198,13 @@ func TestReportPublishApprovePublishesFromJSONTemplate(t *testing.T) {
 func TestReportPublishRejectsInvalidTemplate(t *testing.T) {
 	chdirTempRepo(t)
 
-	h := &reportPublishTool{}
+	h := &reportPublishTool{reports: &stubReportSink{}}
 	var bad map[string]any
 	raw := `{"title":"t","sections":[{"title":"s","kpis":[],"slots":[{"type":"freeform"}]}]}`
 	require.NoError(t, json.Unmarshal([]byte(raw), &bad))
 
 	args := &ReportPublishArgs{Period: "2026-08", Template: bad}
-	res, err := h.publishReport(context.Background(), args)
+	res, err := h.publishReport(context.Background(), args, "tc-1")
 	require.Error(t, err, "invalid slot type must fail closed")
 	assert.Nil(t, res)
 	assert.Contains(t, err.Error(), "template invalid")
@@ -149,9 +218,9 @@ func TestReportPublishRejectsInvalidTemplate(t *testing.T) {
 func TestReportPublishRejectsUnconvertibleTemplate(t *testing.T) {
 	chdirTempRepo(t)
 
-	h := &reportPublishTool{}
+	h := &reportPublishTool{reports: &stubReportSink{}}
 	args := &ReportPublishArgs{Period: "2026-08", Template: "not-a-template"}
-	res, err := h.publishReport(context.Background(), args)
+	res, err := h.publishReport(context.Background(), args, "tc-1")
 	require.Error(t, err)
 	assert.Nil(t, res)
 }

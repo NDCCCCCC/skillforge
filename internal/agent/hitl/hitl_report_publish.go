@@ -63,10 +63,23 @@ type ReportPublishArgs struct {
 // Pass 2: after approval, render + publish via report.Publish.
 type reportPublishTool struct {
 	audit auditWriterHook
+
+	// reports is the CR-04 reports-table audit sink (INSERT-only
+	// PutReport writer). nil-safe at construction; publishReport
+	// FAILS CLOSED when it is nil — a published file with no
+	// reports row breaks the audit linkage the sink exists for.
+	reports report.ReportAuditSink
 }
 
 // Compile-time interface compliance check.
 var _ tool.InvokableTool = (*reportPublishTool)(nil)
+
+// setReportSink wires the production reports audit sink (CR-04). The
+// unexported setter is invoked by hitl.InjectDeps at Runner
+// construction — see registry.go.
+func (h *reportPublishTool) setReportSink(sink report.ReportAuditSink) {
+	h.reports = sink
+}
 
 func (h *reportPublishTool) auditOrDefault() auditWriterHook {
 	if h.audit == nil {
@@ -192,8 +205,11 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 		return fmt.Sprintf("change requested: %s", data.Reason), nil
 	}
 
-	// Approve path: render and publish the report.
-	result, err := h.publishReport(ctx, &parsed)
+	// Approve path: render and publish the report. data.ApprovalID is
+	// the D11-C4 identity of the pending-approval audit row this Pass 2
+	// resolves — it rides the reports row so the published artifact is
+	// linked to its approval chain (CR-04).
+	result, err := h.publishReport(ctx, &parsed, data.ApprovalID)
 	if err != nil {
 		return "", fmt.Errorf("report_publish: publish failed: %w", err)
 	}
@@ -216,7 +232,7 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 // fail-closed before any publish side effect (WR-06's publish-side
 // half: an LLM-supplied template with arbitrary slot types must be
 // rejected here, not rendered).
-func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPublishArgs) (*report.PublishResult, error) {
+func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPublishArgs, approvalAuditID string) (*report.PublishResult, error) {
 	raw, err := json.Marshal(args.Template)
 	if err != nil {
 		return nil, fmt.Errorf("report_publish: re-encode template: %w", err)
@@ -228,5 +244,14 @@ func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPubli
 	if err := tmpl.Validate(); err != nil {
 		return nil, fmt.Errorf("report_publish: template invalid: %w", err)
 	}
-	return report.Publish(ctx, &tmpl, args.Slots, args.Period, nil, "", args.KPICallIDs, args.SkillID)
+	// CR-04 fail-closed: no reports sink → no publish. A file without
+	// its append-only audit row would silently break the
+	// artifact↔approval↔KPI-call linkage.
+	if h.reports == nil {
+		return nil, errors.New(
+			"report_publish: reports audit sink not wired (CR-04 fail-closed) — " +
+				"inject the store-backed ReportAuditSink via hitl.InjectDeps")
+	}
+	return report.Publish(ctx, &tmpl, args.Slots, args.Period, nil,
+		approvalAuditID, args.KPICallIDs, args.SkillID, h.reports)
 }

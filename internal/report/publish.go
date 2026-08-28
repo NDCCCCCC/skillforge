@@ -19,11 +19,15 @@ package report
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // PublishResult contains the output of a successful publish.
@@ -31,6 +35,12 @@ type PublishResult struct {
 	Version  int
 	FilePath string
 	URL      string // /reports/<period>/v<N>.html
+	// TemplateVersion is the stable content hash of the template that
+	// produced this report (mirrors reports.template_version).
+	TemplateVersion string
+	// Digest is the SHA-256 (16-byte hex) of the rendered HTML
+	// (mirrors reports.result_digest).
+	Digest string
 }
 
 // Snapshot is the KPI data snapshot bound into the report at render time.
@@ -39,11 +49,28 @@ type Snapshot interface {
 	Get(kpi string) any
 }
 
+// ReportAuditSink is the narrow audit-write seam for the reports table
+// (CR-04 18-REVIEW): one INSERT-only writer. store.Store implementers
+// (internal/store/sqlite) satisfy it. Kept as an interface so the
+// render/publish package never imports a driver.
+type ReportAuditSink interface {
+	PutReport(ctx context.Context, row store.ReportRow) error
+}
+
 // Publish renders the report and writes it to reports/<period>/v<N>.html.
-// vN increments atomically within the same period.
+// vN increments within the same period. After the file write succeeds
+// the metadata row is appended to the reports audit table (RPT-04) via
+// the ReportAuditSink — the append-only record tying the published
+// artifact to its approval row + KPI call IDs (CR-04 18-REVIEW; the
+// previous build discarded every audit input with `_ =`).
+//
+// Ordering contract (T-18-B3 posture): FILE FIRST, then the DB row. A
+// failed audit write does NOT delete the file (INSERT-only trail — the
+// operator can re-link it); the error carries the file path so the
+// failure is recoverable, never silent.
 func Publish(ctx context.Context, tmpl *ReportTemplate, slots SlotTexts,
 	period string, snap Snapshot, approvalAuditID string, kpiCallIDs []int64,
-	skillID string) (*PublishResult, error) {
+	skillID string, audit ReportAuditSink) (*PublishResult, error) {
 
 	// 1. Render
 	html, err := Render(tmpl, slots, snap, DefaultValueFormatter)
@@ -69,24 +96,46 @@ func Publish(ctx context.Context, tmpl *ReportTemplate, slots SlotTexts,
 		return nil, fmt.Errorf("report: write failed: %w", err)
 	}
 
-	// 4. Digest
+	// 4. Digest + template version (both persisted to the audit row)
 	digest := sha256Hex(html)
-
-	// 5. Template version hash (stable identifier for this template content)
 	templateVersion := templateHash(tmpl)
 
-	// Suppress unused-variable warnings
-	_ = templateVersion
-	_ = digest
-	_ = skillID
-	_ = approvalAuditID
-	_ = kpiCallIDs
-	_ = ctx
+	// 5. Append-only audit row (CR-04). Fail-closed: a missing sink or
+	// a failed INSERT is a publish ERROR carrying the file path — the
+	// reports table must never stay silently empty while files accrue.
+	if audit == nil {
+		return nil, fmt.Errorf(
+			"report: audit sink not wired — file %s was written but no reports row can be recorded (fail-closed, CR-04)",
+			filePath)
+	}
+	kpiJSON, err := json.Marshal(kpiCallIDs)
+	if err != nil {
+		return nil, fmt.Errorf("report: marshal kpi_call_ids (file=%s): %w", filePath, err)
+	}
+	row := store.ReportRow{
+		TS:              time.Now().UTC(),
+		Period:          period,
+		SkillID:         skillID,
+		Version:         version,
+		Title:           tmpl.Title,
+		FilePath:        filePath,
+		ApprovalAuditID: approvalAuditID,
+		KPICallIDs:      string(kpiJSON),
+		TemplateVersion: templateVersion,
+		ResultDigest:    digest,
+	}
+	if err := audit.PutReport(ctx, row); err != nil {
+		return nil, fmt.Errorf(
+			"report: audit row write failed (file=%s already published; DB row missing — recoverable, do not re-render): %w",
+			filePath, err)
+	}
 
 	return &PublishResult{
-		Version:  version,
-		FilePath: filePath,
-		URL:      "/reports/" + period + "/" + filename,
+		Version:         version,
+		FilePath:        filePath,
+		URL:             "/reports/" + period + "/" + filename,
+		TemplateVersion: templateVersion,
+		Digest:          digest,
 	}, nil
 }
 
