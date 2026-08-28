@@ -168,7 +168,22 @@ type DecisionPayload struct {
 	Ambiguous      bool            `json:"ambiguous,omitempty"`      // D5-04 — true when top-2 gap is below threshold
 	ConflictChunks []ConflictChunk `json:"conflictChunks,omitempty"` // Plan 05-06 / D5-13 — populated only on "counter_evidence" decisions
 	DataRef        *DataReference  `json:"dataRef,omitempty"`        // P16 — kpi_reference events only; structured data citation (D16-B3)
+	ReportCard     *ReportCard     `json:"reportCard,omitempty"`     // P18 — report_published events only; report publication result (D18-B3)
 }
+
+// ReportCard is the structured payload emitted via a data-decision SSE chunk
+// when a report is successfully published (Phase 18 / Plan 18-02 / D18-B3).
+// It is carried inside DecisionPayload.DataRef on a "report_published" decision.
+// No new SSE part type is added — this rides the existing data-decision channel.
+type ReportCard struct {
+	Title    string   `json:"title"`              // report title
+	Period   string   `json:"period"`             // e.g. "2026-08"
+	Version  int      `json:"version"`            // v1, v2, ...
+	URL      string   `json:"url"`               // /reports/<period>/v<N>.html
+	VFHref   string   `json:"vFhref,omitempty"` // optional VF hyperlink
+}
+
+// PointReference is one data point in a sparkline (D17-B2). Attached to
 
 // PointReference is one data point in a sparkline (D17-B2). Attached to
 // DataReference.References[] when kpi_call returns N period rows.
@@ -336,6 +351,19 @@ const (
 	// is NOT invoked (Step 7 short-circuit). Step=0,
 	// Decision="history_classifier_refused", Query=refusal reason.
 	DecisionHistoryClassifierRefused = "history_classifier_refused"
+)
+
+// Phase 18 (Plan 18-02 / D18-B3) — report publication data-decision events.
+// These ride the existing data-decision SSE channel (no new part type).
+// Decision="report_published" carries a ReportCard in DecisionPayload.ReportCard.
+const (
+	// DecisionReportPublished fires when a report is successfully published.
+	// DecisionPayload.ReportCard carries the published report metadata.
+	DecisionReportPublished = "report_published"
+
+	// DecisionPlanChangeRequested fires when an operator requests changes
+	// to a draft plan (D18-D4 — request_change third state).
+	DecisionPlanChangeRequested = "plan_change_requested"
 )
 
 // ValidTypes enumerates the 20 kebab-case chunk types recognized by the
