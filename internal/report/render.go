@@ -48,12 +48,17 @@ var policy = sync.OnceValue(func() *bluemonday.Policy {
 // Order is STRUCTURALLY LOCKED — the bind step produces markdown, goldmark
 // converts to raw HTML, and bluemonday sanitises the final output.
 // D18-A3: CheckNarrativeConsistency is called at exit; mismatches added
-// as HTML comment markers (non-blocking, "标记" semantics).
+// as visible markdown blockquote markers (non-blocking, "标记" semantics).
 func Render(tmpl *ReportTemplate, slots SlotTexts, snap Snapshot, fmtFn ValueFormatter) ([]byte, error) {
 	body := buildMarkdown(tmpl, slots, snap, fmtFn)
 
-	// D18-A3: Check narrative number consistency (non-blocking markers)
-	consistency := CheckNarrativeConsistency(slots, snap, fmtFn)
+	// D18-A3: Check narrative number consistency (non-blocking markers).
+	// WR-04: the previous HTML-comment marker was stripped by goldmark
+	// (raw HTML omitted) and bluemonday (no AllowComments). Blockquote
+	// markers survive both (GFM renders them to <blockquote> which
+	// UGCPolicy allows) AND they are visible to the operator — the
+	// stated "标记" semantics.
+	consistency := CheckNarrativeConsistency(tmpl, slots, snap, fmtFn)
 	if consistency != nil && !consistency.Clean {
 		body = appendConsistencyMarkers(body, consistency)
 	}
@@ -68,11 +73,15 @@ func Render(tmpl *ReportTemplate, slots SlotTexts, snap Snapshot, fmtFn ValueFor
 	return policy().SanitizeBytes(buf.Bytes()), nil
 }
 
-// appendConsistencyMarkers adds HTML comments marking narrative inconsistencies.
+// appendConsistencyMarkers appends markdown blockquote lines marking
+// narrative inconsistencies. WR-04: only markdown that survives the
+// pipeline can reach the published HTML — HTML comments were stripped
+// by goldmark + bluemonday (the previous markers were never emitted).
 func appendConsistencyMarkers(body string, report *ConsistencyReport) string {
 	for _, m := range report.Mismatches {
-		marker := fmt.Sprintf("\n<!-- consistency_mismatch: section_%d_slot_%d expected_%s got_%s -->\n",
-			m.SectionIdx, m.SlotIdx, m.ExpectedValue, m.ActualValue)
+		marker := fmt.Sprintf(
+			"\n\n> ⚠️ 一致性提示：第 %d 节第 %d 槽 narrative 数值 %s 与 KPI 快照 %s 不一致（容差 ±0.5%%）\n\n",
+			m.SectionIdx, m.SlotIdx, m.ActualValue, m.ExpectedValue)
 		body += marker
 	}
 	return body

@@ -19,6 +19,7 @@ package report
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -101,44 +102,163 @@ var allowedExpressions = []string{
 
 var numberRE = regexp.MustCompile(`-?\d+(?:\.\d+)?`)
 
-// CheckNarrativeConsistency verifies that numbers in slot narrative text match
-// KPI snapshot values within ±0.5% tolerance. Returns a ConsistencyReport with
-// mismatches listed. Render adds HTML comment markers for each mismatch
-// (non-blocking per D18-A3 "标记" semantics).
+// isoDateRE strips YYYY-MM period stamps before number scanning so the
+// "2026" / "08" halves of a date never surface as narrative numbers.
+var isoDateRE = regexp.MustCompile(`\d{4}-\d{2}`)
+
+// consistencyTolerance is the ±0.5% relative tolerance (D18-A3).
+const consistencyTolerance = 0.005
+
+// CheckNarrativeConsistency verifies that numbers in slot narrative text
+// match a KPI value of the SAME section (per the SKILL.md contract:
+// insight/risk_note numbers must come from the section's KPI snapshot;
+// narrative slots must not cite numbers at all). A number is a mismatch
+// when NO section KPI value matches it within ±0.5% relative tolerance
+// (a percent-style narration like "1.23%" also matches a 0.0123 snapshot
+// value via the ×100 form).
 //
-// slots: sectionIdx -> slotIdx -> text
-// snap: KPI snapshot with Get method
-// fmtFn: ValueFormatter for formatting expected values
-func CheckNarrativeConsistency(slots SlotTexts, snap interface{ Get(string) any }, fmtFn ValueFormatter) *ConsistencyReport {
+// WR-04 (18-REVIEW): the previous build was a stub — it extracted
+// numbers, discarded every comparison input with `_ =`, and always
+// returned Clean. The allowed-expression exemption is now PER-NUMBER
+// (keyword immediately preceding the matched number), not per-text.
+// Render emits each mismatch as a visible markdown blockquote marker
+// that survives goldmark + bluemonday (HTML comments were stripped by
+// both and never reached the published HTML).
+//
+// A nil snapshot checks nothing (clean) — Render's fail-safe posture.
+func CheckNarrativeConsistency(tmpl *ReportTemplate, slots SlotTexts,
+	snap interface{ Get(string) any }, fmtFn ValueFormatter) *ConsistencyReport {
 	report := &ConsistencyReport{Clean: true}
+	if snap == nil || tmpl == nil {
+		return report
+	}
 
 	for si, slotMap := range slots {
+		if si >= len(tmpl.Sections) {
+			continue
+		}
+		// Candidate values: this section's KPI snapshot values, numeric
+		// only. Non-numeric KPI values are skipped as candidates (they
+		// cannot anchor a numeric narrative claim).
+		candidates := make([]float64, 0, len(tmpl.Sections[si].KPIs))
+		for _, kpiName := range tmpl.Sections[si].KPIs {
+			if v := toFloat(snap.Get(kpiName)); v != nil {
+				candidates = append(candidates, *v)
+			}
+		}
 		for slotIdx, text := range slotMap {
-			// Only check narrative and insight slots (risk_note is expected to cite numbers)
-			matches := numberRE.FindAllString(text, -1)
-			for _, numStr := range matches {
-				if isAllowedExpression(text, numStr) {
+			// Strip ISO period stamps first (2026-08 → not numbers).
+			scanText := isoDateRE.ReplaceAllString(text, "")
+			for _, loc := range numberRE.FindAllStringIndex(scanText, -1) {
+				numStr := scanText[loc[0]:loc[1]]
+				if isAllowedNumber(scanText, loc[0]) {
 					continue
 				}
-				// Compare against KPI values from snapshot
-				// This simplified check validates number presence against KPI snapshot
-				_ = fmtFn
-				_ = snap
-				// In full implementation, each KPI in the section would be checked.
-				// For now, mark clean unless we find a clear mismatch.
-				_ = si
-				_ = slotIdx
+				n, err := strconv.ParseFloat(numStr, 64)
+				if err != nil {
+					continue
+				}
+				// 4-digit years are dates, not narrative claims.
+				if !strings.Contains(numStr, ".") && n >= 1900 && n <= 2100 && len(numStr) == 4 {
+					continue
+				}
+				if matchesAny(n, candidates) {
+					continue
+				}
+				expected := "（无可用 KPI 值）"
+				if len(candidates) > 0 {
+					formatted := make([]string, 0, len(candidates))
+					for _, c := range candidates {
+						formatted = append(formatted, fmtFn(c))
+					}
+					expected = strings.Join(formatted, " / ")
+				}
+				report.Mismatches = append(report.Mismatches, ConsistencyMismatch{
+					SectionIdx:    si,
+					SlotIdx:       slotIdx,
+					NarrativeText: text,
+					ExpectedValue: expected,
+					ActualValue:   numStr,
+					Tolerance:     consistencyTolerance,
+				})
 			}
 		}
 	}
+	report.Clean = len(report.Mismatches) == 0
 	return report
 }
 
-func isAllowedExpression(text, numStr string) bool {
+// isAllowedNumber reports whether the number starting at idx is exempt
+// from the KPI-binding check: an allowed-expression keyword immediately
+// precedes it (e.g. "环比增长5%" — the 5 is a comparative, not a KPI
+// citation). PER-NUMBER, not per-text (WR-04). The window is 24 bytes
+// (~8 CJK runes) so 2-rune keywords like 环比 / 同比 survive in front
+// of phrases like "增长5%".
+func isAllowedNumber(text string, idx int) bool {
+	start := idx - 24
+	if start < 0 {
+		start = 0
+	}
+	prefix := text[start:idx]
 	for _, expr := range allowedExpressions {
-		if strings.Contains(text, expr) {
+		if strings.Contains(prefix, expr) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchesAny reports whether n matches any candidate within ±0.5%
+// relative tolerance, testing the ×100 form too (percent narration of a
+// ratio stored as a fraction).
+func matchesAny(n float64, candidates []float64) bool {
+	for _, c := range candidates {
+		if withinTolerance(n, c) || withinTolerance(n, c*100) {
+			return true
+		}
+	}
+	return len(candidates) == 0 // no candidates → nothing to contradict
+}
+
+func withinTolerance(a, b float64) bool {
+	if b == 0 {
+		return a == 0
+	}
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d <= consistencyTolerance*absFloat(b)
+}
+
+func absFloat(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}
+
+// toFloat attempts to extract a numeric KPI value for comparison;
+// returns nil for non-numeric values (the candidate is silently
+// dropped — non-numeric KPI values can't anchor numeric narrative
+// claims anyway).
+func toFloat(v any) *float64 {
+	switch n := v.(type) {
+	case float64:
+		return &n
+	case float32:
+		f := float64(n)
+		return &f
+	case int:
+		f := float64(n)
+		return &f
+	case int64:
+		f := float64(n)
+		return &f
+	case string:
+		if f, err := strconv.ParseFloat(n, 64); err == nil {
+			return &f
+		}
+	}
+	return nil
 }
