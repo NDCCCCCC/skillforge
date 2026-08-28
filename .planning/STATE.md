@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: — 业务数据支撑（Business Data Support）
 current_phase: 17
 current_plan: Not started
-status: verifying
-last_updated: "2026-08-28T05:45:42.601Z"
-last_activity: 2026-08-27
+status: executing
+last_updated: "2026-08-28T08:00:43.170Z"
+last_activity: 2026-08-28 -- Phase 18 planning complete
 progress:
   total_phases: 20
   completed_phases: 13
-  total_plans: 86
+  total_plans: 89
   completed_plans: 109
   percent: 65
 ---
@@ -21,8 +21,8 @@ progress:
 
 Phase: 16 (p10-2) — EXECUTING (Wave 5 closed; Phase 16 closeout deferred)
 Plan: 9 of 9 (Plan 16-09 COMPLETE — verify-phase-16.sh 11-stage acceptance gate)
-Status: Phase complete — ready for verification
-Last activity: 2026-08-27
+Status: Ready to execute
+Last activity: 2026-08-28 -- Phase 18 planning complete
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**
 
@@ -97,7 +97,7 @@ Plan: 9 of 9 (Plan 16-09 COMPLETE — scripts/verify-phase-16.sh 11-stage accept
 Status: ready for Phase 16 closeout reviews (post-phase gates — verifier, code-review, regression, roadmap sync)
 Last activity: 2026-08-27 -- Plan 16-09 executed; 2 commits landed (`0a74938` verify-phase-16.sh 11-stage gate, `0718e9d` Makefile target). Gate runs **9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows** (D15-01-1 emutls ABI; `internal/kpi/wsl` test binary + cmd/server D-Link); Linux/WSL operator run closes the 2 WSL legs (literal commands in Stage 08 + Stage 10 of the script).
 Next action: `/gsd:close-out-phase 16` for post-phase gates (verifier, code-review, regression, roadmap sync) — the two inherited `internal/kpi/wsl` failures remain operator-WSL responsibilities tracked in Stage 08's blocked-with-notes command line.
-Resume File: .planning/phases/18-skill-p10-4/18-CONTEXT.md
+Resume File: .planning/phases/18-skill-p10-4/18-UI-SPEC.md
 
 **Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
 
@@ -279,7 +279,7 @@ Resume File: .planning/phases/18-skill-p10-4/18-CONTEXT.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Phase complete — ready for verification
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
