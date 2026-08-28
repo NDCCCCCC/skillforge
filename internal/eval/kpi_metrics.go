@@ -116,7 +116,6 @@ func containsASOf(text string) bool {
 	return strings.Contains(text, "as_of") ||
 		strings.Contains(text, "数据截至") ||
 		strings.Contains(text, "截至") ||
-		strings.Contains(text, "截至") ||
 		strings.Contains(text, "截止")
 }
 
