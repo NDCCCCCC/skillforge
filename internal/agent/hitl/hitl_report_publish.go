@@ -79,6 +79,11 @@ type ReportPublishArgs struct {
 	// snapshot data fails closed (insufficient_kpi_data), it never
 	// panics on a nil Snapshot.
 	Snapshot map[string]any `json:"snapshot,omitempty"`
+	// TemplateVersion is the server-derived template content hash
+	// (WR-03) — NOT an LLM-visible schema param. Pass 1 computes it
+	// (report.TemplateHash) and freezes it into the args the operator
+	// reviews; the reports row later carries the SAME identifier.
+	TemplateVersion string `json:"templateVersion,omitempty"`
 }
 
 // reportPublishTool is the HITL Tool for publishing a rendered report.
@@ -196,9 +201,27 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 		if !report.IsValidPeriod(parsed.Period) {
 			return "", fmt.Errorf("report_publish: invalid period %q (must match ^[A-Za-z0-9_-]+$)", parsed.Period)
 		}
-		if parsed.Template == nil {
+			if parsed.Template == nil {
 			return "", errors.New("report_publish: template with sections is required")
 		}
+		// WR-03: convert + validate the template EARLY (fail-fast before
+		// the interrupt, not at approve time) and freeze the stable
+		// template content hash into the args. The hash is what the
+		// ApprovalCard structure summary renders AND what the reports
+		// row will carry (report.TemplateHash) — the operator reviews
+		// the same identifier the audit trail records. The rewritten
+		// args bytes flow to BOTH the audit row and StatefulInterrupt,
+		// so the D11 byte-equality invariant stays intact.
+		tmplConv, convErr := report.ParseTemplate(parsed.Template)
+		if convErr != nil {
+			return "", fmt.Errorf("report_publish: %w", convErr)
+		}
+		parsed.TemplateVersion = report.TemplateHash(tmplConv)
+		frozenBytes, mErr := json.Marshal(parsed)
+		if mErr != nil {
+			return "", fmt.Errorf("report_publish: re-marshal frozen args: %w", mErr)
+		}
+		args = string(frozenBytes)
 
 		approvalID := compose.GetToolCallID(ctx)
 		if approvalID == "" {
@@ -284,16 +307,12 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 // half: an LLM-supplied template with arbitrary slot types must be
 // rejected here, not rendered).
 func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPublishArgs, approvalAuditID string) (*report.PublishResult, error) {
-	raw, err := json.Marshal(args.Template)
+	// CR-01: convert the JSON-round-trip template map into the typed
+	// struct; WR-06: Validate runs inside ParseTemplate — fail-closed
+	// before any publish side effect.
+	tmpl, err := report.ParseTemplate(args.Template)
 	if err != nil {
-		return nil, fmt.Errorf("report_publish: re-encode template: %w", err)
-	}
-	var tmpl report.ReportTemplate
-	if err := json.Unmarshal(raw, &tmpl); err != nil {
-		return nil, fmt.Errorf("report_publish: decode template: %w", err)
-	}
-	if err := tmpl.Validate(); err != nil {
-		return nil, fmt.Errorf("report_publish: template invalid: %w", err)
+		return nil, fmt.Errorf("report_publish: %w", err)
 	}
 	// CR-06 (18-REVIEW): bind the KPI snapshot the render reads. The
 	// frozen args carry the kpi_call-produced values keyed by KPI name
@@ -322,7 +341,7 @@ func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPubli
 			"report_publish: reports audit sink not wired (CR-04 fail-closed) — " +
 				"inject the store-backed ReportAuditSink via hitl.InjectDeps")
 	}
-	result, err := report.Publish(ctx, &tmpl, args.Slots, args.Period, snap,
+	result, err := report.Publish(ctx, tmpl, args.Slots, args.Period, snap,
 		approvalAuditID, args.KPICallIDs, args.SkillID, h.reports)
 	if err != nil {
 		return nil, err

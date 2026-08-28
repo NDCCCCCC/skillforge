@@ -83,6 +83,30 @@ function computeFrozenArgsForPost(
   }
 }
 
+/** WR-03 (18-REVIEW) — narrowed view of the report_publish frozen args
+ * (the BE wire shape hitl.ReportPublishArgs). The structure summary
+ * previously read `frozenArgs.sections` / `frozenArgs.templateVersion`
+ * which DO NOT exist at the top level — sections live at
+ * template.sections, and templateVersion is the server-derived content
+ * hash the BE freezes into the args at Pass 1. Replaces the `as any`
+ * casts that hid the mismatch from the compiler. */
+interface ReportPublishFrozenArgs {
+  period?: string;
+  template?: {
+    title?: string;
+    sections?: Array<{ title?: string; kpis?: string[] }>;
+  };
+  slots?: Record<string, Record<string, string>>;
+  skillId?: string;
+  sessionId?: string;
+  kpiCallIds?: number[];
+  templateVersion?: string;
+}
+
+function asReportPublishArgs(frozenArgs: JsonObject): ReportPublishFrozenArgs {
+  return frozenArgs as ReportPublishFrozenArgs;
+}
+
 /** POST the operator decision. Returns the HTTP status so the caller
  * can map 200 → approved / 410 → expired / other → failed. */
 async function postDecision(
@@ -297,27 +321,41 @@ function PendingCardView({
           原因：{approval.reason || '未提供具体说明'}
         </p>
 
-        {/* D18-D4: report:publish structure summary — section list + KPI names */}
-        {approval.target === 'report:publish' && (
-          <div
-            className="mt-2 p-2 rounded"
-            style={{ backgroundColor: 'var(--color-surface-2)' }}
-          >
-            <div className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text)' }}>
-              报告结构
-            </div>
-            {(approval.frozenArgs as any).sections?.map((sec: any, idx: number) => (
-              <div key={idx} className="text-xs mb-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                · {sec.title}: {sec.kpis?.join(', ')}
+        {/* D18-D4: report:publish structure summary — section list + KPI names.
+            WR-03: reads frozenArgs.template.sections (the real location) with
+            array guards; templateVersion is the server-derived content hash. */}
+        {approval.target === 'report:publish' &&
+          (() => {
+            const reportArgs = asReportPublishArgs(approval.frozenArgs);
+            const sections = Array.isArray(reportArgs.template?.sections)
+              ? reportArgs.template!.sections!
+              : [];
+            return (
+              <div
+                className="mt-2 p-2 rounded"
+                style={{ backgroundColor: 'var(--color-surface-2)' }}
+              >
+                <div className="text-xs font-semibold mb-1" style={{ color: 'var(--color-text)' }}>
+                  报告结构
+                </div>
+                {sections.length === 0 && (
+                  <div className="text-xs mb-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    （模板未声明章节）
+                  </div>
+                )}
+                {sections.map((sec, idx) => (
+                  <div key={idx} className="text-xs mb-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                    · {sec.title ?? `章节 ${idx + 1}`}: {Array.isArray(sec.kpis) ? sec.kpis.join(', ') : ''}
+                  </div>
+                ))}
+                {reportArgs.templateVersion && (
+                  <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    模板版本：sha256:{reportArgs.templateVersion.slice(0, 16)}...
+                  </div>
+                )}
               </div>
-            ))}
-            {(approval.frozenArgs as any).templateVersion && (
-              <div className="text-xs mt-1" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
-                模板版本：sha256:{(approval.frozenArgs as any).templateVersion?.slice(0, 16)}...
-              </div>
-            )}
-          </div>
-        )}
+            );
+          })()}
 
         {/* FrozenArgs JSON panel — collapsed by default */}
         <div className="rounded border border-[var(--color-border-muted)] bg-[var(--color-surface-2)]">

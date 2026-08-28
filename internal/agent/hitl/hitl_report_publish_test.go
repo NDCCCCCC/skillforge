@@ -112,8 +112,17 @@ func TestReportPublishFirstPassInterrupts(t *testing.T) {
 	require.NotNil(t, capturedInfo)
 	assert.Equal(t, ReportPublishToolName, capturedInfo.ToolName)
 	assert.Equal(t, ReportPublishTarget, capturedInfo.Target)
-	assert.Equal(t, args, capturedInfo.ArgumentsInJSON,
-		"the ApprovalInfo must echo the verbatim args bytes")
+
+	// WR-03: Pass 1 re-marshals the args to freeze the server-derived
+	// templateVersion — the audit bytes are the REWRITTEN args (the
+	// same bytes stored for StatefulInterrupt, so the D11 byte-equality
+	// invariant holds). Assert semantic equality + the injected hash.
+	var echoed ReportPublishArgs
+	require.NoError(t, json.Unmarshal([]byte(capturedInfo.ArgumentsInJSON), &echoed))
+	assert.Equal(t, "2026-08", echoed.Period)
+	assert.Equal(t, "monthly-report", echoed.SkillID)
+	assert.NotEmpty(t, echoed.TemplateVersion,
+		"the rewritten args must carry the server-derived template content hash")
 }
 
 // TestReportPublishApprovePublishesFromJSONTemplate — CR-01
@@ -270,7 +279,12 @@ func TestInjectDepsPass1PersistsPendingApprovalRow(t *testing.T) {
 	row := rows[0]
 	assert.Equal(t, ReportPublishTarget, row.Query, "the target column carries the write target")
 	assert.NotEmpty(t, row.ToolCallID, "D11-C4 identity must be stamped")
-	assert.Equal(t, args, string(row.FrozenArgs), "frozen args must be the verbatim tool-call bytes")
+	// WR-03: the frozen bytes are the REWRITTEN args (templateVersion
+	// injected, same bytes that StatefulInterrupt stored).
+	var frozen ReportPublishArgs
+	require.NoError(t, json.Unmarshal(row.FrozenArgs, &frozen))
+	assert.Equal(t, "2026-08", frozen.Period)
+	assert.NotEmpty(t, frozen.TemplateVersion)
 	assert.Equal(t, "sha256:abcdef0123456789", row.SkillVersion, "D11-C2 snapshot must ride the row")
 }
 

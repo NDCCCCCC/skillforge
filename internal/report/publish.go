@@ -45,6 +45,32 @@ var periodRE = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 // enforces the SAME character class the publish boundary does.
 func IsValidPeriod(period string) bool { return periodRE.MatchString(period) }
 
+// ParseTemplate converts the generic JSON-round-trip template payload
+// (map[string]any — what json/yaml Unmarshal materializes from the LLM
+// args and the manifest block) into the typed struct and validates it
+// fail-closed (CR-01 conversion + WR-06 validation in ONE seam, so
+// every caller gets the same conversion + the same rejection rules).
+func ParseTemplate(template any) (*ReportTemplate, error) {
+	raw, err := json.Marshal(template)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode template: %w", err)
+	}
+	var tmpl ReportTemplate
+	if err := json.Unmarshal(raw, &tmpl); err != nil {
+		return nil, fmt.Errorf("decode template: %w", err)
+	}
+	if err := tmpl.Validate(); err != nil {
+		return nil, fmt.Errorf("template invalid: %w", err)
+	}
+	return &tmpl, nil
+}
+
+// TemplateHash is the stable content hash of a template (titles + KPI
+// name sets) — exported for WR-03 so the HITL tool can freeze the SAME
+// identifier the reports row will carry into the operator-visible
+// frozen args.
+func TemplateHash(tmpl *ReportTemplate) string { return templateHash(tmpl) }
+
 // PublishResult contains the output of a successful publish.
 type PublishResult struct {
 	Version  int
