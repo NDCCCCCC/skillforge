@@ -68,13 +68,14 @@ func TestExamplesValidate(t *testing.T) {
 			"a validation error here means a published example is non-conformant",
 	)
 
-	// Exactly five templates ship under examples/skills/ (D7-10's three +
-	// Phase 13's compliance-orchestrator + Phase 17's kpi-dashboard).
-	// Asserting the count catches both accidental deletions (regression) and
-	// accidentally-shipping typos (e.g., a scratch file matching SKILL.md).
+	// Exactly six templates ship under examples/skills/ (D7-10's three +
+	// Phase 13's compliance-orchestrator + Phase 17's kpi-dashboard +
+	// Phase 18's monthly-report). Asserting the count catches both accidental
+	// deletions (regression) and accidentally-shipping typos (e.g., a scratch
+	// file matching SKILL.md).
 	require.Len(t,
-		manifests, 5,
-		"examples/skills/ MUST contain exactly 5 Skill templates (compliance, simple-qa, calculator, compliance-orchestrator, kpi-dashboard); "+
+		manifests, 6,
+		"examples/skills/ MUST contain exactly 6 Skill templates (compliance, simple-qa, calculator, compliance-orchestrator, kpi-dashboard, monthly-report); "+
 			"got %d manifests — check for stray SKILL.md files or a missing template",
 		len(manifests),
 	)

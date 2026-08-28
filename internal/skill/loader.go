@@ -157,26 +157,77 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 	return out, nil
 }
 
-// ValidateAgainstKPI cross-checks every skill's fenced YAML routing table
-// (inside steps:) against kpi.Registry.Names(). Called at server boot
-// AFTER LoadKPIs and AFTER Loader.Scan (D16-C2 hermetic pattern).
+// ValidateAgainstKPI cross-checks every skill's KPI references
+// (routing table in steps: AND template sections) against kpi.Registry.Names().
+// Called at server boot AFTER LoadKPIs and AFTER Loader.Scan (D16-C2 hermetic pattern).
 // Failure = log.Fatalf (mirrors D16-08-D LoadKPIs failure mode).
+//
+// D18-A4: template sections are also validated. Each section.kpis[]
+// entry must exist in the registry.
 func (l *Loader) ValidateAgainstKPI(reg *kpi.Registry) error {
 	manifests := l.Skills()
 	for _, m := range manifests {
 		if !m.HasDataChannel() {
 			continue
 		}
+		// Validate routing table KPIs (kpi-dashboard style)
 		routes, err := parseRoutingTable(m.Steps)
 		if err != nil {
 			return fmt.Errorf("skill %q: parsing routing table: %w", m.Name, err)
 		}
-		if len(routes) == 0 {
-			continue
-		}
 		for _, route := range routes {
 			if _, ok := reg.Lookup(route.KPI); !ok {
 				return fmt.Errorf("skill %q references unknown KPI %q in routing table", m.Name, route.KPI)
+			}
+		}
+
+		// D18-A4: validate template section KPIs
+		if m.Template != nil {
+			if err := validateTemplateKPIs(m.Name, m.Template, reg); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateTemplateKPIs checks that all KPI names in template sections
+// exist in the registry. m.Template is any (yaml.Unmarshal); we type-assert
+// to map[string]any to extract section.kpis[].
+func validateTemplateKPIs(skillName string, template any, reg *kpi.Registry) error {
+	tmpl, ok := template.(map[string]any)
+	if !ok {
+		// Not a map — skip (Validate will catch structural errors)
+		return nil
+	}
+	sections, ok := tmpl["sections"]
+	if !ok {
+		return nil
+	}
+	secList, ok := sections.([]any)
+	if !ok {
+		return nil
+	}
+	for si, sec := range secList {
+		secMap, ok := sec.(map[string]any)
+		if !ok {
+			continue
+		}
+		kpis, ok := secMap["kpis"]
+		if !ok {
+			continue
+		}
+		kpiList, ok := kpis.([]any)
+		if !ok {
+			continue
+		}
+		for _, kpi := range kpiList {
+			kpiName, ok := kpi.(string)
+			if !ok {
+				continue
+			}
+			if _, found := reg.Lookup(kpiName); !found {
+				return fmt.Errorf("skill %q template.sections[%d].kpis: unknown KPI %q", skillName, si, kpiName)
 			}
 		}
 	}
