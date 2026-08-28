@@ -74,6 +74,7 @@ import (
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/kpi"
+	"github.com/skillforge/skillforge/internal/report"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/runtime"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -160,6 +161,20 @@ type RunnerBuildConfig struct {
 	// this hook after producing a Snapshot; nil disables emission
 	// (hermetic test mode + the no-SSE pipeline path).
 	DataRefEmit agenttools.DataRefEmitFunc
+
+	// AuditWriter is the WR-01 (18-REVIEW) production HITL audit hook.
+	// The caller (server) constructs it per request and binds the
+	// D11-C2 identity via WithIdentity(sessionID, "", snapshot);
+	// BuildRunner injects it into the registry's HITL handlers via
+	// hitl.InjectDeps so Pass-1 interrupts persist REAL
+	// action_pending_approval rows (the noop default left the approval
+	// surface blind). nil → no injection (hermetic tests).
+	AuditWriter *hitl.AuditWriter
+
+	// ReportAudit is the CR-04 reports-table audit sink handed to the
+	// report:publish handler alongside AuditWriter. The production
+	// store satisfies report.ReportAuditSink. nil → no injection.
+	ReportAudit report.ReportAuditSink
 }
 
 // BuildRunner constructs the per-session ChatModelAgent + adk.Runner.
@@ -219,6 +234,14 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 	}
 
 	sysPrompt := SystemPrompt(cfg.Manifest)
+
+	// WR-01 (18-REVIEW): inject the production audit hooks into the
+	// registry's HITL handlers (report:publish + plan_approve) BEFORE
+	// the tool list is assembled, so Pass-1 interrupts write real
+	// action_pending_approval rows through the session-bound writer.
+	if cfg.AuditWriter != nil || cfg.ReportAudit != nil {
+		hitl.InjectDeps(cfg.AuditWriter, cfg.ReportAudit)
+	}
 
 	// Channel-kind dispatch (D16-C3 runtime layer). The data-channel
 	// branch is structurally disjoint from the tier-channel branch:

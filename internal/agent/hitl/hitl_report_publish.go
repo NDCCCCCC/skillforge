@@ -86,6 +86,10 @@ type reportPublishTool struct {
 // Compile-time interface compliance check.
 var _ tool.InvokableTool = (*reportPublishTool)(nil)
 
+// setAudit wires the production audit hook (WR-01); called via the
+// auditBinder interface from hitl.InjectDeps.
+func (h *reportPublishTool) setAudit(hook auditWriterHook) { h.audit = hook }
+
 // setReportSink wires the production reports audit sink (CR-04). The
 // unexported setter is invoked by hitl.InjectDeps at Runner
 // construction — see registry.go.

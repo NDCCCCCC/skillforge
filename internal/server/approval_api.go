@@ -489,6 +489,13 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		SessionID:       sessionID,
 		SkillID:         s.ActiveManifest.Name,
 		CheckPointStore: cpStore,
+		// WR-01: the resumed Pass-2 path injects the same session-bound
+		// audit wiring (a fresh writer — the shared Deps.AuditWriter's
+		// ambient identity must not be mutated). The store doubles as
+		// the CR-04 reports audit sink.
+		AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
+			WithIdentity(sessionID, "", snap),
+		ReportAudit: s.Store,
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: approval BuildRunner (sess=%s) failed: %v", sessionID, err)

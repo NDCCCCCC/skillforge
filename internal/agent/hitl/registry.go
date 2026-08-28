@@ -20,6 +20,8 @@ import (
 	"sort"
 
 	"github.com/cloudwego/eino/components/tool"
+
+	"github.com/skillforge/skillforge/internal/report"
 )
 
 // AllowedWriteTargets is the D11-B3 SINGLE SOURCE OF TRUTH for the
@@ -125,6 +127,48 @@ func KnownTargets() []string {
 	copy(out, AllowedWriteTargets)
 	sort.Strings(out)
 	return out
+}
+
+// auditBinder is implemented by registry handlers that accept a
+// production audit hook (WR-01 18-REVIEW). The unexported method keeps
+// the setter invisible outside this package; InjectDeps (same package)
+// performs the type assertion.
+type auditBinder interface{ setAudit(hook auditWriterHook) }
+
+// reportSinkBinder is implemented by handlers that need the CR-04
+// reports-table audit sink (currently report:publish).
+type reportSinkBinder interface{ setReportSink(sink report.ReportAuditSink) }
+
+// InjectDeps wires the production audit hooks into the registry's
+// handlers. Called ONCE per Runner construction (BuildRunner) with the
+// session-bound writer; the handler instances in hitlHandlers are
+// shared singletons, so the LAST InjectDeps wins — the same
+// last-write-wins posture MemoryFactsTool.WithContext documents, and
+// the same single-threaded Agent-construction call path.
+//
+// WR-01 (18-REVIEW): without this wiring the report:publish and
+// plan_approve handlers kept a nil audit field, auditOrDefault()
+// degraded to noopAuditWriter, and Pass-1 interrupts produced NO
+// action_pending_approval row — the operator-facing approval surface
+// (fed exclusively from those rows) could never see the request and
+// the flow dead-ended. The D11-C3 fail-closed INSERT invariant was
+// silently inverted to fail-silent. nil arguments are skipped so
+// unit-test construction without a DB stays a noop.
+func InjectDeps(audit auditWriterHook, reports report.ReportAuditSink) {
+	if audit != nil {
+		for _, h := range hitlHandlers {
+			if b, ok := h.(auditBinder); ok {
+				b.setAudit(audit)
+			}
+		}
+	}
+	if reports != nil {
+		for _, h := range hitlHandlers {
+			if b, ok := h.(reportSinkBinder); ok {
+				b.setReportSink(reports)
+			}
+		}
+	}
 }
 
 // LookupHandler returns the InvokableTool registered for the given

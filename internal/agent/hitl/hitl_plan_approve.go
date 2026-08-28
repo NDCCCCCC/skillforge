@@ -123,9 +123,14 @@ type PlanStep struct {
 // Tool instance (same posture as reviewReportTool).
 type planApproveTool struct {
 	// audit may be nil; nil-safe via auditOrDefault(). The production
-	// wiring (runner_setup) injects the real AuditWriter.
+	// wiring (runner_setup via hitl.InjectDeps — WR-01) injects the
+	// real AuditWriter.
 	audit auditWriterHook
 }
+
+// setAudit wires the production audit hook (WR-01); called via the
+// auditBinder interface from hitl.InjectDeps.
+func (h *planApproveTool) setAudit(hook auditWriterHook) { h.audit = hook }
 
 // auditOrDefault returns the configured audit writer, or a noop if
 // nil (same helper shape as reviewReportTool.auditOrDefault).

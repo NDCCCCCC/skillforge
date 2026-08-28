@@ -44,6 +44,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/store"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 )
 
 // chdirTempRepo moves the test process into a fresh temp dir so the
@@ -227,6 +228,50 @@ func TestReportPublishRefusesKPITemplateWithoutSnapshot(t *testing.T) {
 	assert.Contains(t, err.Error(), "insufficient_kpi_data")
 	_, statErr := os.Stat(filepath.Join("reports", "2026-08"))
 	assert.True(t, os.IsNotExist(statErr), "nothing may be written without KPI data")
+}
+
+// TestInjectDepsPass1PersistsPendingApprovalRow — WR-01 (18-REVIEW)
+// regression. With the production wiring (real AuditWriter over a real
+// sqlite store, injected via InjectDeps — the exact call BuildRunner
+// makes), a Pass-1 interrupt must produce a VISIBLE
+// action_pending_approval audit row carrying the target + frozen args.
+// The previous build silently degraded to noopAuditWriter, so the
+// operator approval surface (fed exclusively from those rows) never
+// saw the request.
+func TestInjectDepsPass1PersistsPendingApprovalRow(t *testing.T) {
+	ctx := context.Background()
+	st, err := sqlite.New(ctx, sqlite.Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = st.Close() }()
+
+	writer := NewAuditWriter(st, "test-floor-1.0.0").
+		WithIdentity("sess-wr01", "", SkillSnapshot{
+			SkillID:    "monthly-report",
+			Version:    "sha256:abcdef0123456789",
+			PromptHash: "00112233445566778899aabbccddeeff",
+		})
+	// The production wiring path (agent.BuildRunner → hitl.InjectDeps)
+	// mutates the REGISTRY singleton; the tool the LLM reaches is the
+	// same instance LookupHandler returns.
+	InjectDeps(writer, st)
+
+	args := `{"period":"2026-08","template":{"title":"2026-08 业务月报","sections":[{"title":"业务概览","kpis":[],"slots":[{"type":"narrative"}]}]},"slots":{},"skillId":"monthly-report","sessionId":"sess-wr01","kpiCallIds":[]}`
+	out, err := LookupHandler(ReportPublishTarget).InvokableRun(ctx, args)
+	assert.Empty(t, out)
+	require.Error(t, err, "Pass 1 must interrupt")
+
+	rows, err := st.QueryAudit(ctx, store.AuditFilter{
+		SessionID: "sess-wr01",
+		Action:    "action_pending_approval",
+		Limit:     10,
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "the pending-approval row must be visible to the operator surface")
+	row := rows[0]
+	assert.Equal(t, ReportPublishTarget, row.Query, "the target column carries the write target")
+	assert.NotEmpty(t, row.ToolCallID, "D11-C4 identity must be stamped")
+	assert.Equal(t, args, string(row.FrozenArgs), "frozen args must be the verbatim tool-call bytes")
+	assert.Equal(t, "sha256:abcdef0123456789", row.SkillVersion, "D11-C2 snapshot must ride the row")
 }
 
 // TestReportPublishAuditWriteFailureIsRecoverable — CR-04 ordering

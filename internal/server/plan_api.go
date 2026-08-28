@@ -434,6 +434,12 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		SessionID:       runID,
 		SkillID:         s.ActiveManifest.Name,
 		CheckPointStore: cpStore,
+		// WR-01: same session-bound audit wiring as the approval
+		// endpoint (fresh writer — the shared Deps.AuditWriter is never
+		// identity-mutated).
+		AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
+			WithIdentity(runID, "", snap),
+		ReportAudit: s.Store,
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: plan BuildRunner (run=%s) failed: %v", runID, err)

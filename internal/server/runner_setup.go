@@ -50,6 +50,8 @@ import (
 
 	"github.com/skillforge/skillforge/internal/agent"
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
+	"github.com/skillforge/skillforge/internal/agent/hitl"
+	"github.com/skillforge/skillforge/internal/report"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
@@ -133,6 +135,20 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 	// KPIExecutor + KPIRegistry are nil unless cmd/server wired the KPI
 	// pipeline; BuildRunner is fail-closed for data-channel Skills when
 	// they are nil (D16-C3), and tier-channel Skills ignore them.
+	//
+	// WR-01 (18-REVIEW): a per-request, session-bound AuditWriter is
+	// injected so the registry HITL handlers persist REAL
+	// action_pending_approval rows (the shared Deps.AuditWriter is NOT
+	// mutated — WithIdentity is stateful and concurrent chat requests
+	// would race it; a fresh writer per request is a cheap struct).
+	// The store also rides as the CR-04 reports audit sink.
+	var auditWriter *hitl.AuditWriter
+	var reportAudit report.ReportAuditSink
+	if s.Store != nil {
+		auditWriter = hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
+			WithIdentity(sessionID, "", activeSkillSnapshot(manifest))
+		reportAudit = s.Store
+	}
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
 		Manifest:    manifest,
 		Embedder:    s.Embedder,
@@ -142,6 +158,8 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		KPIExecutor: s.KPIExecutor,
 		KPIRegistry: s.KPIRegistry,
 		DataRefEmit: s.dataRefEmitter(c),
+		AuditWriter: auditWriter,
+		ReportAudit: reportAudit,
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)
