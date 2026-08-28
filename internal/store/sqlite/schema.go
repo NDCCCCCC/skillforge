@@ -444,8 +444,21 @@ CREATE INDEX IF NOT EXISTS idx_reports_period ON reports(period)
 `
 	createReportsSkillIDIdxSQL = `
 CREATE INDEX IF NOT EXISTS idx_reports_skill_id ON reports(skill_id)
-`
+	`
 )
+
+// createReportsPeriodVersionUniqueIdxSQL is the WR-09 (18-REVIEW)
+// uniqueness backstop against the vN race: two concurrent publishes of
+// the same period would otherwise scan reports/<period>/ at nearly the
+// same moment, both compute the same MAX(v)+1, and os.WriteFile the
+// second copy on top of the first (file truncation — the second
+// publish silently overwrites the first). The UNIQUE index rejects
+// the duplicate PutReport row at the DB; report.Publish surfaces the
+// UNIQUE violation (with the file path so the operator can recover
+// the overwritten vN) instead of the previous fail-silent overwrite.
+const createReportsPeriodVersionUniqueIdxSQL = `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_period_version ON reports(period, version)
+`
 
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
@@ -612,6 +625,12 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	}
 	if _, err := s.db.ExecContext(ctx, createReportsSkillIDIdxSQL); err != nil {
 		return fmtError("migrate.reports.skill_id_idx", err)
+	}
+	// WR-09 (18-REVIEW): UNIQUE backstop on (period, version). Reject the
+	// vN race at the DB boundary instead of silently overwriting the
+	// previously-published vN file.
+	if _, err := s.db.ExecContext(ctx, createReportsPeriodVersionUniqueIdxSQL); err != nil {
+		return fmtError("migrate.reports.period_version_idx", err)
 	}
 	return nil
 }
