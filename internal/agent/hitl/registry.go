@@ -139,6 +139,10 @@ type auditBinder interface{ setAudit(hook auditWriterHook) }
 // reports-table audit sink (currently report:publish).
 type reportSinkBinder interface{ setReportSink(sink report.ReportAuditSink) }
 
+// reportEmitBinder is implemented by handlers that need the WR-02 SSE
+// emission hook (currently report:publish).
+type reportEmitBinder interface{ setEmit(fn ReportPublishEmitFunc) }
+
 // InjectDeps wires the production audit hooks into the registry's
 // handlers. Called ONCE per Runner construction (BuildRunner) with the
 // session-bound writer; the handler instances in hitlHandlers are
@@ -152,9 +156,10 @@ type reportSinkBinder interface{ setReportSink(sink report.ReportAuditSink) }
 // action_pending_approval row — the operator-facing approval surface
 // (fed exclusively from those rows) could never see the request and
 // the flow dead-ended. The D11-C3 fail-closed INSERT invariant was
-// silently inverted to fail-silent. nil arguments are skipped so
-// unit-test construction without a DB stays a noop.
-func InjectDeps(audit auditWriterHook, reports report.ReportAuditSink) {
+// silently inverted to fail-silent. WR-02 extends the same seam with
+// the SSE emission hook for the report_published card. nil arguments
+// are skipped so unit-test construction without a DB stays a noop.
+func InjectDeps(audit auditWriterHook, reports report.ReportAuditSink, emit ReportPublishEmitFunc) {
 	if audit != nil {
 		for _, h := range hitlHandlers {
 			if b, ok := h.(auditBinder); ok {
@@ -166,6 +171,13 @@ func InjectDeps(audit auditWriterHook, reports report.ReportAuditSink) {
 		for _, h := range hitlHandlers {
 			if b, ok := h.(reportSinkBinder); ok {
 				b.setReportSink(reports)
+			}
+		}
+	}
+	if emit != nil {
+		for _, h := range hitlHandlers {
+			if b, ok := h.(reportEmitBinder); ok {
+				b.setEmit(emit)
 			}
 		}
 	}

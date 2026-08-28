@@ -171,19 +171,17 @@ type DecisionPayload struct {
 	ReportCard     *ReportCard     `json:"reportCard,omitempty"`     // P18 — report_published events only; report publication result (D18-B3)
 }
 
-// ReportCard is the structured payload emitted via a data-decision SSE chunk
-// when a report is successfully published (Phase 18 / Plan 18-02 / D18-B3).
-// It is carried inside DecisionPayload.DataRef on a "report_published" decision.
-// No new SSE part type is added — this rides the existing data-decision channel.
+// ReportCard is the structured payload carried inside
+// DecisionPayload.ReportCard on a "report_published" data-decision
+// chunk (Phase 18 / Plan 18-02 / D18-B3). No new SSE part type is
+// added — it rides the existing data-decision channel. The TS mirror
+// is web/src/types/wire-types.ts ReportCard (D15 lockstep).
 type ReportCard struct {
-	Title    string   `json:"title"`              // report title
-	Period   string   `json:"period"`             // e.g. "2026-08"
-	Version  int      `json:"version"`            // v1, v2, ...
-	URL      string   `json:"url"`               // /reports/<period>/v<N>.html
-	VFHref   string   `json:"vFhref,omitempty"` // optional VF hyperlink
+	Title   string `json:"title"`   // report title
+	Period  string `json:"period"`  // e.g. "2026-08"
+	Version int    `json:"version"` // v1, v2, ...
+	URL     string `json:"url"`     // /reports/<period>/v<N>.html
 }
-
-// PointReference is one data point in a sparkline (D17-B2). Attached to
 
 // PointReference is one data point in a sparkline (D17-B2). Attached to
 // DataReference.References[] when kpi_call returns N period rows.

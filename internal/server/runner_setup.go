@@ -150,16 +150,17 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		reportAudit = s.Store
 	}
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
-		Manifest:    manifest,
-		Embedder:    s.Embedder,
-		Retriever:   s.Retriever,
-		ChatModel:   s.ChatModel,
-		SessionID:   sessionID,
-		KPIExecutor: s.KPIExecutor,
-		KPIRegistry: s.KPIRegistry,
-		DataRefEmit: s.dataRefEmitter(c),
-		AuditWriter: auditWriter,
-		ReportAudit: reportAudit,
+		Manifest:          manifest,
+		Embedder:          s.Embedder,
+		Retriever:         s.Retriever,
+		ChatModel:         s.ChatModel,
+		SessionID:         sessionID,
+		KPIExecutor:       s.KPIExecutor,
+		KPIRegistry:       s.KPIRegistry,
+		DataRefEmit:       s.dataRefEmitter(c),
+		AuditWriter:       auditWriter,
+		ReportAudit:       reportAudit,
+		ReportPublishEmit: s.reportPublishEmitter(c),
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)
@@ -235,6 +236,23 @@ func (s *Deps) dataRefEmitter(c *app.RequestContext) agenttools.DataRefEmitFunc 
 			DataRef:  &payload,
 		}); err != nil {
 			log.Printf("[WARN] server: emit kpi_reference data-decision failed (func=%s): %v", ref.Func, err)
+		}
+	}
+}
+
+// reportPublishEmitter builds the per-request SSE emission hook for the
+// WR-02 (18-REVIEW) report_published card: after a successful publish
+// the report_publish HITL tool invokes it with a data-decision payload
+// carrying Decision="report_published" + the ReportCard, and it rides
+// the SAME data-decision envelope as every other decision (D16 overload
+// pattern — no new SSE chunk type, D-04/D15 untouched). Emission
+// failures are logged, never propagated: the published file + the
+// reports DB row are the source of truth, a dropped card must not fail
+// the publish.
+func (s *Deps) reportPublishEmitter(c *app.RequestContext) hitl.ReportPublishEmitFunc {
+	return func(p wire.DecisionPayload) {
+		if err := runnerEmitDecision(c, p); err != nil {
+			log.Printf("[WARN] server: emit %s data-decision failed (toolCallId=%s): %v", p.Decision, p.ToolCallID, err)
 		}
 	}
 }

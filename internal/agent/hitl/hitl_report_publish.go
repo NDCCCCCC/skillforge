@@ -36,6 +36,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/skillforge/skillforge/internal/report"
+	"github.com/skillforge/skillforge/internal/wire"
 )
 
 // ReportPublishToolName is the Eino tool name emitted by the LLM.
@@ -46,6 +47,16 @@ const ReportPublishToolName = "report_publish"
 // write (the policy string in ApprovalInfo.Target). Matches the
 // AllowedWriteTargets entry.
 const ReportPublishTarget = "report:publish"
+
+// ReportPublishEmitFunc is the WR-02 (18-REVIEW) SSE emission hook the
+// server wires at Runner construction (mirroring the DataRefEmit
+// pattern): after a successful publish the tool invokes it once with a
+// data-decision payload whose Decision is wire.DecisionReportPublished
+// and whose ReportCard carries the artifact metadata. Without it the
+// FE report card is dead UI — nothing on the wire ever carries the
+// card. Emission failures are the HOOK's concern (log, never abort the
+// publish — the reports DB row + file are the source of truth).
+type ReportPublishEmitFunc func(p wire.DecisionPayload)
 
 // ReportPublishArgs is the typed payload for the report_publish Tool.
 // The args encode the slot texts and KPI snapshot needed to render the report.
@@ -81,6 +92,10 @@ type reportPublishTool struct {
 	// FAILS CLOSED when it is nil — a published file with no
 	// reports row breaks the audit linkage the sink exists for.
 	reports report.ReportAuditSink
+
+	// emit is the WR-02 SSE hook; nil disables the data-decision
+	// report_published emission (hermetic tests).
+	emit ReportPublishEmitFunc
 }
 
 // Compile-time interface compliance check.
@@ -96,6 +111,10 @@ func (h *reportPublishTool) setAudit(hook auditWriterHook) { h.audit = hook }
 func (h *reportPublishTool) setReportSink(sink report.ReportAuditSink) {
 	h.reports = sink
 }
+
+// setEmit wires the WR-02 SSE emission hook; invoked via the
+// reportEmitBinder interface from hitl.InjectDeps.
+func (h *reportPublishTool) setEmit(fn ReportPublishEmitFunc) { h.emit = fn }
 
 func (h *reportPublishTool) auditOrDefault() auditWriterHook {
 	if h.audit == nil {
@@ -303,6 +322,29 @@ func (h *reportPublishTool) publishReport(ctx context.Context, args *ReportPubli
 			"report_publish: reports audit sink not wired (CR-04 fail-closed) — " +
 				"inject the store-backed ReportAuditSink via hitl.InjectDeps")
 	}
-	return report.Publish(ctx, &tmpl, args.Slots, args.Period, snap,
+	result, err := report.Publish(ctx, &tmpl, args.Slots, args.Period, snap,
 		approvalAuditID, args.KPICallIDs, args.SkillID, h.reports)
+	if err != nil {
+		return nil, err
+	}
+
+	// WR-02 (18-REVIEW): emit the report_published card on the existing
+	// data-decision channel so the FE renders it (previously the
+	// ReportCard struct + Decision constant had ZERO emitters and the
+	// FE card was dead UI). Emission is best-effort — the hook logs
+	// failures; the file + reports row are the source of truth.
+	if h.emit != nil {
+		h.emit(wire.DecisionPayload{
+			Step:       0,
+			Decision:   wire.DecisionReportPublished,
+			ToolCallID: approvalAuditID,
+			ReportCard: &wire.ReportCard{
+				Title:   tmpl.Title,
+				Period:  args.Period,
+				Version: result.Version,
+				URL:     result.URL,
+			},
+		})
+	}
+	return result, nil
 }

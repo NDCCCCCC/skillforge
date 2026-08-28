@@ -492,10 +492,12 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		// WR-01: the resumed Pass-2 path injects the same session-bound
 		// audit wiring (a fresh writer — the shared Deps.AuditWriter's
 		// ambient identity must not be mutated). The store doubles as
-		// the CR-04 reports audit sink.
+		// the CR-04 reports audit sink; WR-02 wires the report_published
+		// card emission into the drained resume stream.
 		AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
 			WithIdentity(sessionID, "", snap),
-		ReportAudit: s.Store,
+		ReportAudit:       s.Store,
+		ReportPublishEmit: s.reportPublishEmitter(c),
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: approval BuildRunner (sess=%s) failed: %v", sessionID, err)

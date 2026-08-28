@@ -161,14 +161,22 @@ export interface PointReference {
   kMinApplied?: number;
 }
 
-// Phase 18 / Plan 18-03 Task 3 — D18-D4 report_published card payload.
-// Emitted via SSE after report_publish tool is approved and report is
-// rendered. The report URL is included for the "view report" link.
+// Phase 18 / Plan 18-02 — D18-B3 report_published card payload
+// (WR-02 18-REVIEW lockstep fix). Carried inside DecisionPayload.
+// reportCard on a data-decision chunk whose decision is
+// 'report_published' — NEVER a standalone chunk type (the BE's
+// wire.ValidTypes has no 'report_published'; the old
+// `{type:'report_published'}` union member was dead wire shape).
+// Mirrors internal/wire/chunk.go ReportCard field-for-field.
 export interface ReportCard {
+  /** Report title (from the template). */
+  title: string;
+  /** e.g. "2026-08". */
   period: string;
+  /** v1, v2, ... */
   version: number;
+  /** /reports/<period>/v<N>.html — same-origin path. */
   url: string;
-  sections?: Array<{ title: string; kpis?: string[] }>;
 }
 
 // Phase 16 / Plan 16-04 — P16/D16-B3 structured data-citation payload for
@@ -257,7 +265,15 @@ export interface DecisionPayload {
     // discriminator (kebab-case data-decision) is unchanged; only the
     // decision STRING enum widens. D16 overload pattern + D15 lockstep
     // with internal/wire/types.go DecisionKPIReference.
-    | 'kpi_reference';
+    | 'kpi_reference'
+    // Phase 18 / Plan 18-02 — D18-B3 + D18-D4 report publication events
+    // (WR-02 18-REVIEW lockstep fix). 'report_published' rides the
+    // approval/resume data-decision stream with payload.reportCard set;
+    // 'plan_change_requested' resolves a request_change third state.
+    // Both mirror wire constants in internal/wire/chunk.go
+    // (DecisionReportPublished / DecisionPlanChangeRequested).
+    | 'report_published'
+    | 'plan_change_requested';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */
@@ -285,6 +301,10 @@ export interface DecisionPayload {
    *  rows body NOT carried on SSE (volume control + agent already has full
    *  snapshot; FE Phase 17 sparkline reads from kpi_calls audit rows). */
   dataRef?: DataReference;
+  /** P18 / D18-B3 — populated only on `report_published` decisions.
+   *  The published report card (title/period/version/url). Mirrors Go
+   *  json:"reportCard,omitempty" (WR-02 18-REVIEW lockstep fix). */
+  reportCard?: ReportCard;
 }
 
 // ----------------------------------------------------------------------------
@@ -401,11 +421,14 @@ export type SkillForgeChunk =
   // Plan 03-01 — agent per-hop decisions (ARAG-01 / SC-1 observability).
   // Strict refinement of AI SDK v5 DataUIMessageChunk — assignability
   // holds so the D15 drift alarm stays green.
+  //
+  // Plan 18-02 / WR-02 (18-REVIEW): the report card is NOT a chunk
+  // type — it rides data-decision as
+  // DecisionPayload{decision:'report_published', reportCard}. The old
+  // `{type:'report_published'}` union member was a wire shape the BE
+  // can never emit (wire.ValidTypes rejects it pre-write, T-1-11) and
+  // has been removed.
   | { type: 'data-decision'; id?: string; data: DecisionPayload }
-  // Plan 18-03 Task 3 — D18-D4 report_published decision card. Emitted
-  // via SSE after report_publish tool approval. Renders a ReportCard
-  // in MessageBubble with period/version badge + view report link + regenerate chip.
-  | { type: 'report_published'; id?: string; data: ReportCard }
   // Plan 05-01 — agent's clause-level redline proposals (D5-14). The
   // 18th wire type. Required-field enforcement happens on the Go side
   // (RedlinePayload.UnmarshalJSON — V8 mitigation). The TS mirror

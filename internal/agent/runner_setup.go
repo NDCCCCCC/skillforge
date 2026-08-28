@@ -175,6 +175,12 @@ type RunnerBuildConfig struct {
 	// report:publish handler alongside AuditWriter. The production
 	// store satisfies report.ReportAuditSink. nil → no injection.
 	ReportAudit report.ReportAuditSink
+
+	// ReportPublishEmit is the WR-02 SSE emission hook: after a
+	// successful publish the report_publish tool emits a
+	// data-decision{decision: "report_published", reportCard} chunk
+	// through it. nil disables emission (hermetic tests).
+	ReportPublishEmit hitl.ReportPublishEmitFunc
 }
 
 // BuildRunner constructs the per-session ChatModelAgent + adk.Runner.
@@ -239,8 +245,9 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 	// registry's HITL handlers (report:publish + plan_approve) BEFORE
 	// the tool list is assembled, so Pass-1 interrupts write real
 	// action_pending_approval rows through the session-bound writer.
-	if cfg.AuditWriter != nil || cfg.ReportAudit != nil {
-		hitl.InjectDeps(cfg.AuditWriter, cfg.ReportAudit)
+	// WR-02: the same seam carries the report_published SSE hook.
+	if cfg.AuditWriter != nil || cfg.ReportAudit != nil || cfg.ReportPublishEmit != nil {
+		hitl.InjectDeps(cfg.AuditWriter, cfg.ReportAudit, cfg.ReportPublishEmit)
 	}
 
 	// Channel-kind dispatch (D16-C3 runtime layer). The data-channel

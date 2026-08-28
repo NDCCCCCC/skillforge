@@ -253,7 +253,7 @@ func TestInjectDepsPass1PersistsPendingApprovalRow(t *testing.T) {
 	// The production wiring path (agent.BuildRunner → hitl.InjectDeps)
 	// mutates the REGISTRY singleton; the tool the LLM reaches is the
 	// same instance LookupHandler returns.
-	InjectDeps(writer, st)
+	InjectDeps(writer, st, nil)
 
 	args := `{"period":"2026-08","template":{"title":"2026-08 业务月报","sections":[{"title":"业务概览","kpis":[],"slots":[{"type":"narrative"}]}]},"slots":{},"skillId":"monthly-report","sessionId":"sess-wr01","kpiCallIds":[]}`
 	out, err := LookupHandler(ReportPublishTarget).InvokableRun(ctx, args)
