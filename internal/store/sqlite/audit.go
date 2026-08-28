@@ -489,6 +489,16 @@ const (
 	ActionFanoutDispatched string = "action_fanout_dispatched"
 	ActionFanoutCompleted  string = "action_fanout_completed"
 	ActionFanoutFailed     string = "action_fanout_failed"
+
+	// Phase 18 / Plan 18-01 — D18-D4 third approval state. Fired when
+	// the operator resolves a pending approval with decision=
+	// "request_change" (要求修改): the draft goes back to the LLM with
+	// the change reason in RefusalReason. No DDL change — the
+	// audit.action column is TEXT (catalog extension per the comment
+	// above). The approval endpoints treat this row as a resolution
+	// for idempotency (approvalAlreadyResolved) exactly like
+	// approved/rejected.
+	ActionChangeRequested string = "action_change_requested"
 )
 
 // ErrInvalidFanoutRunPath is the sentinel error PutAudit surfaces when
@@ -552,6 +562,17 @@ INSERT INTO audit (
     verdict_json, refusal_reason, chunk_ids,
     frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
 ) VALUES (?, ?, ?, ?, 'action_rejected', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+// putChangeRequestedSQL is the D18-D4 third-state resolution INSERT
+// (action_change_requested) — the 要求修改 sibling of approve/reject.
+const putChangeRequestedSQL = `
+INSERT INTO audit (
+    ts, session_id, user_id, skill_id, action,
+    query, prompt_hash, skill_version, model_version,
+    verdict_json, refusal_reason, chunk_ids,
+    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
+) VALUES (?, ?, ?, ?, 'action_change_requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 const putRuleRevokedSQL = `
@@ -641,6 +662,36 @@ func (s *SQLiteStore) MarkRejected(ctx context.Context, row store.ApprovalResolu
 	id, err := res.LastInsertId()
 	if err != nil {
 		return 0, fmtError("MarkRejected.LastInsertId", err)
+	}
+	return id, nil
+}
+
+// MarkChangeRequested writes the D18-D4 third-state resolution row
+// (action_change_requested) when the operator resolves a pending
+// approval with decision="request_change". row.RefusalReason carries
+// the change reason, which is REQUIRED — validated at the HTTP
+// boundary (ApprovalDecision.Validate) and re-checked here so no code
+// path can write a reasonless change request.
+func (s *SQLiteStore) MarkChangeRequested(ctx context.Context, row store.ApprovalResolutionRow) (int64, error) {
+	if s.isClosed() {
+		return 0, sql.ErrConnDone
+	}
+	if row.RefusalReason == "" {
+		return 0, fmtError("MarkChangeRequested", errors.New("refusal_reason (change reason) is required (D18-D4)"))
+	}
+	res, err := s.db.ExecContext(ctx, putChangeRequestedSQL,
+		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
+		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
+		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
+		row.PlatformFloorVersion,
+	)
+	if err != nil {
+		return 0, fmtError("MarkChangeRequested", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmtError("MarkChangeRequested.LastInsertId", err)
 	}
 	return id, nil
 }

@@ -76,6 +76,12 @@ const (
 	auditActionApproved = "action_approved"
 	auditActionRejected = "action_rejected"
 
+	// auditActionChangeRequested is the D18-D4 third-state resolution
+	// (要求修改) — the operator sends the draft back to the LLM with a
+	// change reason. Resolves the pending row for idempotency exactly
+	// like approved/rejected.
+	auditActionChangeRequested = "action_change_requested"
+
 	// approvalStateActive — the pending row's D11-C2 snapshot matches
 	// the active Skill; the operator may approve/deny it.
 	approvalStateActive = "active"
@@ -208,12 +214,13 @@ func (s *Deps) approvalGetHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// Resolved set: tool_call_ids with an action_approved or
-	// action_rejected row (operator decisions AND D11-D1 rule
-	// auto-passes — the auto-pass row is an action_approved row with
+	// Resolved set: tool_call_ids with an action_approved,
+	// action_rejected, or (D18-D4) action_change_requested row
+	// (operator decisions AND D11-D1 rule auto-passes — the auto-pass
+	// row is an action_approved row with
 	// refusal_reason="auto_passed_rule").
 	resolved := map[string]bool{}
-	for _, action := range []string{auditActionApproved, auditActionRejected} {
+	for _, action := range []string{auditActionApproved, auditActionRejected, auditActionChangeRequested} {
 		rows, qErr := s.Store.QueryAudit(ctx, store.AuditFilter{
 			SessionID: sessionID,
 			Action:    action,
@@ -432,7 +439,12 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		frozenArgs = row.FrozenArgs
 	}
 	writer := s.auditWriterOrDefault()
-	if decision.Decision == "deny" {
+	// CR-03 (18-REVIEW): three-way audit resolution — deny → rejected,
+	// request_change → the D18-D4 change_requested row, everything
+	// else → approved. The old two-way branch would have written
+	// action_approved for a request_change decision.
+	switch decision.Decision {
+	case "deny":
 		if _, err := writer.MarkRejected(ctx, sessionID, "", snap, approvalID, approvalID, row.Query, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: approval MarkRejected (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
 			c.JSON(http.StatusInternalServerError, map[string]string{
@@ -440,7 +452,15 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 			})
 			return
 		}
-	} else {
+	case "request_change":
+		if _, err := writer.MarkChangeRequested(ctx, sessionID, "", snap, approvalID, approvalID, row.Query, frozenArgs, decision.Reason); err != nil {
+			log.Printf("[ERROR] server: approval MarkChangeRequested (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
+			c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "audit write failed",
+			})
+			return
+		}
+	default:
 		if _, err := writer.MarkApproved(ctx, sessionID, "", snap, approvalID, approvalID, row.Query, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: approval MarkApproved (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
 			c.JSON(http.StatusInternalServerError, map[string]string{
@@ -511,10 +531,16 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	}
 
 	// D-04 + D15: emit the resolution via the EXISTING data-decision
-	// chunk type — only the decision string is new.
+	// chunk type — only the decision string is new. D18-D4:
+	// request_change resolves to the plan_change_requested event
+	// (wire.DecisionPlanChangeRequested) so the FE can settle the card
+	// into the change-requested state.
 	decisionEvent := decisionEventResumed
-	if decision.Decision == "deny" {
+	switch decision.Decision {
+	case "deny":
 		decisionEvent = decisionEventDenied
+	case "request_change":
+		decisionEvent = wire.DecisionPlanChangeRequested
 	}
 	if err := runnerEmitDecision(c, wire.DecisionPayload{
 		Step:       0,
@@ -529,12 +555,12 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 }
 
 // approvalAlreadyResolved reports whether a resolution row
-// (action_approved | action_rejected) exists for the session +
-// toolCallID. Store errors are treated as "not resolved" — the
-// caller's 404 path is the safe direction for a lookup failure on
-// this idempotency probe.
+// (action_approved | action_rejected | action_change_requested)
+// exists for the session + toolCallID. Store errors are treated as
+// "not resolved" — the caller's 404 path is the safe direction for a
+// lookup failure on this idempotency probe.
 func (s *Deps) approvalAlreadyResolved(ctx context.Context, sessionID, toolCallID string) bool {
-	for _, action := range []string{auditActionApproved, auditActionRejected} {
+	for _, action := range []string{auditActionApproved, auditActionRejected, auditActionChangeRequested} {
 		rows, err := s.Store.QueryAudit(ctx, store.AuditFilter{
 			SessionID:  sessionID,
 			Action:     action,

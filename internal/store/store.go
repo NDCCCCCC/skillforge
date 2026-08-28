@@ -619,6 +619,13 @@ type Store interface {
 	MarkApproved(ctx context.Context, row ApprovalResolutionRow) (int64, error)
 	MarkRejected(ctx context.Context, row ApprovalResolutionRow) (int64, error)
 
+	// MarkChangeRequested writes the D18-D4 third-state resolution row
+	// (action_change_requested) when the operator sends a draft back to
+	// the LLM with a change reason (要求修改). INSERT-only like its
+	// siblings (T-3-AUDIT); the row's RefusalReason carries the change
+	// reason (required — validated upstream).
+	MarkChangeRequested(ctx context.Context, row ApprovalResolutionRow) (int64, error)
+
 	// MarkRuleRevoked records the revoke of an approve-and-remember rule
 	// (D11-D2). The rule row is deleted from its own table; the audit
 	// chain records the revoke as a new row.

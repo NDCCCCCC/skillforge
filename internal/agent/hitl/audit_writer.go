@@ -435,6 +435,49 @@ func (w *AuditWriter) MarkRejected(
 	})
 }
 
+// MarkChangeRequested inserts the D18-D4 third-state resolution row
+// (action_change_requested) when the operator sends a draft back to
+// the LLM with a change reason (要求修改). The reason is REQUIRED
+// (HITL-02 posture extended to the third state — the LLM's revision
+// loop and the audit chain both need it) and is stored in
+// RefusalReason, mirroring MarkRejected's column usage.
+func (w *AuditWriter) MarkChangeRequested(
+	ctx context.Context,
+	sessionID, userID string,
+	snap SkillSnapshot,
+	toolCallID, approvalID, target string,
+	frozenArgs []byte,
+	reason string,
+) (int64, error) {
+	if snap.IsZero() {
+		return 0, errors.New("hitl: MarkChangeRequested: skill snapshot required (D11-C2)")
+	}
+	if reason == "" {
+		return 0, errors.New("hitl: MarkChangeRequested: reason required (D18-D4)")
+	}
+	if err := w.guardFloorVersion(); err != nil {
+		return 0, err
+	}
+	return w.store.MarkChangeRequested(ctx, store.ApprovalResolutionRow{
+		Timestamp:            w.clock(),
+		SessionID:            sessionID,
+		UserID:               userID,
+		SkillID:              snap.SkillID,
+		Query:                target,
+		PromptHash:           snap.PromptHash,
+		SkillVersion:         snap.Version,
+		ModelVersion:         "",
+		VerdictJSON:          "",
+		RefusalReason:        reason,
+		ChunkIDs:             "",
+		FrozenArgs:           frozenArgs,
+		ToolCallID:           toolCallID,
+		ApprovalID:           approvalID,
+		ScopeSessionID:       sessionID,
+		PlatformFloorVersion: w.floorVersion,
+	})
+}
+
 // MarkRuleRevoked inserts the action_rule_revoked row when an
 // approve-and-remember rule is DELETEd (D11-D2 / D11-D4). The rule row
 // itself is removed by internal/store/sqlite/approval_rules.go (11-05);

@@ -42,13 +42,18 @@ import (
 )
 
 // validDecisions enumerates the legal Decision values accepted by the
-// ApprovalDecision validator. Phase 11 ships two: "approve" and "deny".
-// "edit" was considered (HITL-07 edit-before-approve path) but lives
-// as a fe-side affordance that rewrites FrozenArgs before submit,
-// never as a Decision enum value.
+// ApprovalDecision validator. Phase 11 shipped two: "approve" and
+// "deny". Phase 18 / D18-D4 adds the third state "request_change"
+// (要求修改 — the operator sends the draft back to the LLM with a
+// change reason; the report_publish Tool's Pass 2 returns it to the
+// model for revision). CR-03 (18-REVIEW): without this entry the FE's
+// request_change POST was 422'd at Validate() and the third state was
+// dead end-to-end. "edit" remains a FE-side affordance that rewrites
+// FrozenArgs before submit, never a Decision enum value.
 var validDecisions = map[string]bool{
-	"approve": true,
-	"deny":    true,
+	"approve":        true,
+	"deny":           true,
+	"request_change": true,
 }
 
 // validScopes enumerates the legal scope values for approve-and-remember
@@ -90,7 +95,8 @@ func (e *ValidationError) Error() string {
 // All three boundaries MUST use the literal name "hitl.ApprovalDecision"
 // — see D11-B2.
 type ApprovalDecision struct {
-	// Decision is "approve" or "deny". Required.
+	// Decision is "approve", "deny", or (Phase 18 / D18-D4)
+	// "request_change". Required.
 	Decision string `json:"decision"`
 
 	// Reason is mandatory when Decision == "deny" (HITL-02 — deny-without-
@@ -163,10 +169,13 @@ func (d *ApprovalDecision) Validate() error {
 			),
 		}
 	}
-	if d.Decision == "deny" && d.Reason == "" {
+	// HITL-02: a deny must carry the operator's rationale. D18-D4
+	// extends the same rule to request_change — the audit row and the
+	// LLM's revision loop both need the change reason.
+	if (d.Decision == "deny" || d.Decision == "request_change") && d.Reason == "" {
 		return &ValidationError{
 			Field: "reason",
-			Msg:   "is required when decision is deny (HITL-02 — audit must capture the denial rationale)",
+			Msg:   "is required when decision is deny or request_change (HITL-02 — audit must capture the rationale)",
 		}
 	}
 	if !validScopes[d.Scope] {

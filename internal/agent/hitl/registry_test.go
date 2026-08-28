@@ -172,6 +172,30 @@ func TestApprovalDecisionValidate(t *testing.T) {
 			field:     "reason",
 		},
 		{
+			// D18-D4 / CR-03 (18-REVIEW): the third state is a legal
+			// decision value and its reason is mandatory (same HITL-02
+			// rationale as deny).
+			name: "valid_request_change_with_reason",
+			d: &ApprovalDecision{
+				Decision:   "request_change",
+				Reason:     "请更突出 Q2 风险",
+				Target:     "report:publish",
+				ApprovalID: "abc-123",
+			},
+			expectErr: false,
+		},
+		{
+			name: "request_change_without_reason_rejected",
+			d: &ApprovalDecision{
+				Decision:   "request_change",
+				Reason:     "",
+				Target:     "report:publish",
+				ApprovalID: "abc-123",
+			},
+			expectErr: true,
+			field:     "reason",
+		},
+		{
 			name: "unknown_decision_rejected",
 			d: &ApprovalDecision{
 				Decision:   "maybe",

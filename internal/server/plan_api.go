@@ -385,7 +385,11 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		frozenArgs = row.FrozenArgs
 	}
 	writer := s.auditWriterOrDefault()
-	if decision.Decision == "deny" {
+	// CR-03 (18-REVIEW): three-way audit resolution (mirrors
+	// approvalPostHandler) — deny → rejected, request_change → the
+	// D18-D4 change_requested row, everything else → approved.
+	switch decision.Decision {
+	case "deny":
 		if _, err := writer.MarkRejected(ctx, runID, "", snap, approvalID, approvalID, hitl.PlanApproveTarget, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: plan MarkRejected (run=%s id=%s) failed: %v", runID, approvalID, err)
 			c.JSON(http.StatusInternalServerError, map[string]string{
@@ -393,7 +397,15 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 			})
 			return
 		}
-	} else {
+	case "request_change":
+		if _, err := writer.MarkChangeRequested(ctx, runID, "", snap, approvalID, approvalID, hitl.PlanApproveTarget, frozenArgs, decision.Reason); err != nil {
+			log.Printf("[ERROR] server: plan MarkChangeRequested (run=%s id=%s) failed: %v", runID, approvalID, err)
+			c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "audit write failed",
+			})
+			return
+		}
+	default:
 		if _, err := writer.MarkApproved(ctx, runID, "", snap, approvalID, approvalID, hitl.PlanApproveTarget, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: plan MarkApproved (run=%s id=%s) failed: %v", runID, approvalID, err)
 			c.JSON(http.StatusInternalServerError, map[string]string{
@@ -461,10 +473,13 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 
 	// D-04 + D15: emit the resolution via the EXISTING data-decision
 	// chunk type — only the decision string is new (plan-approved /
-	// plan-denied).
+	// plan-denied / D18-D4 plan_change_requested).
 	decisionEvent := planDecisionEventApproved
-	if decision.Decision == "deny" {
+	switch decision.Decision {
+	case "deny":
 		decisionEvent = planDecisionEventDenied
+	case "request_change":
+		decisionEvent = wire.DecisionPlanChangeRequested
 	}
 	if err := runnerEmitDecision(c, wire.DecisionPayload{
 		Step:       0,
