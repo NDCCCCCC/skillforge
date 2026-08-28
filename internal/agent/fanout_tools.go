@@ -47,7 +47,9 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/skill"
 )
 
@@ -192,4 +194,177 @@ func (t *fanOutDispatchTool) InvokableRun(_ context.Context, argsInJSON string, 
 		}
 	}
 	return fmt.Sprintf(`{"declared_sub_queries": %d, "status": "ok"}`, len(args.SubQueries)), nil
+}
+
+// FanOutDispatchArgsV2 is the data-channel fan-out classifier args.
+// D18-C1: per-section boundary defined by template; D18-C2: main loop tool-call self-decides.
+type FanOutDispatchArgsV2 struct {
+	ShouldFanOut   bool     `json:"should_fan_out"`
+	NumSubtasks    int      `json:"num_subtasks"`
+	TaskBoundaries []string `json:"task_boundaries"` // Template section title exact-match
+	Reason         string   `json:"reason"`           // Classification reason — enters audit row (FAN-05)
+}
+
+// fallbackReason enumerations (D18-C4)
+const (
+	FallbackInvalidJSON           = "invalid_json"
+	FallbackMissingField          = "missing_field"
+	FallbackBoundaryNotInTemplate = "boundary_not_in_template"
+	FallbackNumSubtasksMismatch   = "num_subtasks_mismatch"
+)
+
+// validateTaskBoundaries checks that every boundary exists in template section titles.
+func validateTaskBoundaries(boundaries []string, sectionTitles []string) (string, bool) {
+	allowed := make(map[string]bool)
+	for _, t := range sectionTitles {
+		allowed[t] = true
+	}
+	for _, b := range boundaries {
+		if !allowed[b] {
+			return b, false
+		}
+	}
+	return "", true
+}
+
+// dataChannelFanOutTool is the data-channel fan-out tool using template section boundaries.
+// It validates task_boundaries against the template and falls back to sequential
+// execution when validation fails (D18-C4).
+type dataChannelFanOutTool struct {
+	sectionTitles  []string
+	sectionKPIs    [][]string      // KPIs per section
+	executor       *kpi.Executor
+	period         string
+}
+
+// Compile-time interface compliance check.
+var _ tool.InvokableTool = (*dataChannelFanOutTool)(nil)
+
+// BuildFanOutDispatchToolDataChannel builds the data-channel fan-out tool for a skill with template.
+func BuildFanOutDispatchToolDataChannel(sectionTitles []string, period string, sectionKPIs [][]string, executor *kpi.Executor) tool.InvokableTool {
+	return &dataChannelFanOutTool{
+		sectionTitles: sectionTitles,
+		sectionKPIs:   sectionKPIs,
+		executor:      executor,
+		period:        period,
+	}
+}
+
+// Info returns the Tool metadata for the LLM.
+func (t *dataChannelFanOutTool) Info(_ context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: FanOutDispatchToolName,
+		Desc: "Structured fan-out classifier for data-channel monthly report. Declare should_fan_out, num_subtasks, and task_boundaries (template section titles). Fallback to sequential when boundaries are invalid.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"should_fan_out": {
+				Type:     schema.Boolean,
+				Required: true,
+				Desc:     "Whether to fan out in parallel across sections.",
+			},
+			"num_subtasks": {
+				Type:     schema.Integer,
+				Required: true,
+				Desc:     "Number of parallel sub-tasks (must equal task_boundaries length).",
+			},
+			"task_boundaries": {
+				Type:     schema.Array,
+				Required: true,
+				Desc:     "Template section titles — each must exactly match a template section.",
+				ElemInfo: &schema.ParameterInfo{Type: schema.String},
+			},
+			"reason": {
+				Type:     schema.String,
+				Required: false,
+				Desc:     "Classification reason — stored in audit row (FAN-05).",
+			},
+		}),
+	}, nil
+}
+
+// InvokableRun validates args and either fans out in parallel or falls back to sequential.
+func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
+	// 1. Parse args
+	var a FanOutDispatchArgsV2
+	if err := json.Unmarshal([]byte(args), &a); err != nil {
+		// invalid JSON → fallback
+		return `{"status":"fallback_sequential","reason":"invalid_json"}`, nil
+	}
+
+	// 2. Field presence check
+	if a.TaskBoundaries == nil {
+		return `{"status":"fallback_sequential","reason":"missing_field"}`, nil
+	}
+
+	// 3. task_boundaries closure validation
+	if _, ok := validateTaskBoundaries(a.TaskBoundaries, t.sectionTitles); !ok {
+		return fmt.Sprintf(
+			`{"status":"fallback_sequential","reason":"boundary_not_in_template","detail":"%s"}`,
+			"task_boundary not in template sections",
+		), nil
+	}
+
+	// 4. num_subtasks validation
+	if a.NumSubtasks != len(a.TaskBoundaries) {
+		return `{"status":"fallback_sequential","reason":"num_subtasks_mismatch"}`, nil
+	}
+
+	// 5. Validation passed: fan-out execution
+	if a.ShouldFanOut {
+		g, ctx := errgroup.WithContext(ctx)
+		g.SetLimit(4)
+		results := make([]*kpi.Snapshot, len(a.TaskBoundaries))
+
+		for i := range a.TaskBoundaries {
+			sectionIdx := i // capture
+			g.Go(func() error {
+				// Find KPIs for this section
+				kpis := t.sectionKPIs[sectionIdx]
+				var snap []*kpi.Snapshot
+				for _, kpiName := range kpis {
+					outcome, err := t.executor.Call(ctx, kpi.CallRequest{
+						Name:      kpiName,
+						Params:    map[string]any{},
+						SessionID: "",
+						SkillID:   "",
+					})
+					if err != nil {
+						return err
+					}
+					if outcome.Refusal != nil {
+						// Structured refusal — skip, don't append
+						continue
+					}
+					if outcome.Snapshot != nil {
+						snap = append(snap, outcome.Snapshot)
+					}
+				}
+				results[sectionIdx] = mergeSnapshots(snap)
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return "", err
+		}
+		result, _ := json.Marshal(map[string]interface{}{
+			"status":       "fan_out_success",
+			"num_subtasks": a.NumSubtasks,
+			"boundaries":   a.TaskBoundaries,
+			"reason":       a.Reason,
+			"section_results": results,
+		})
+		return string(result), nil
+	}
+
+	// 6. should_fan_out=false → sequential fallback
+	return `{"status":"fallback_sequential","reason":"classifier_declined_fan_out"}`, nil
+}
+
+// mergeSnapshots merges multiple KPI snapshots into one per section.
+func mergeSnapshots(snap []*kpi.Snapshot) *kpi.Snapshot {
+	for _, s := range snap {
+		if s != nil {
+			return s
+		}
+	}
+	return nil
 }
