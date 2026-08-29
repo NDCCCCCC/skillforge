@@ -47,7 +47,7 @@
 
 - [x] **Phase 14: CGO 地基 + 平台信任地板（P10.0）** — MSYS2/gcc 双构建环境（本机 + Docker CGO_ENABLED=1）+ go-duckdb v2.4.3 + sqlite 驱动 CGO 化（modernc → mattn v1.14.50）+ DuckDB 连接模式 spike + 平台级隐藏系统提示词（数据维度铁律 day-1 内建）(completed 2026-08-23 — 12/12 plans: 14-01..14-11 code-complete hermetically; 14-12 landed explicit D14-B4 re-baseline semantics (computeCaseMetrics refused=true → faith=1.0) with RED→GREEN test; authorized compliance replay environment-blocked by BGE-M3 no route to host — no replay run, no falsified numbers, platform-floor.lock.json 1.1.0 formal re-sign remains deferred)
 - [x] **Phase 15: 数据导入管线 + 导入即脱敏（P10.1）** — CSV(GBK/GB18030 自动解码)/SQL dump/API 三通道 + L1 HMAC（哈希前规范化）+ L2 桶化（fail-closed）+ 两阶段预览/提交 + 幂等重导 + 批次审计（raw 即弃）(completed 2026-08-24 — 7/7 plans: 15-01..15-07 code-complete; verify-phase-15.sh 10/10 PASS in WSL2)
-- [x] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计 (completed 2026-08-27)
+- [x] **Phase 16: KPI 聚合通道（P10.2）** — KPI 注册表（数据人员定义/运行时不可改/无注册后门）+ `data:aggregated_only` 通道守卫（镜像 writes: 执法）+ agent 永不写 SQL + 数据引用快照进审计 (completed 2026-08-27 — 9/9 plans; VERIFICATION PASSED after gap closure: 5/5 SC green, 7/7 requirements met, KPI-02 audit-replay invariant demonstrated via TestKPISnapshotFrozen on WSL)
   - 16-01 KPI skeleton + probe lock (`b5f9173`) — registry + Lexicon
   - 16-02 reads channel vocabulary + HasDataChannel + ResolveTiers defense-in-depth (`22bb646`)
   - 16-03 kpi_calls dedicated INSERT-only table (DATA-17 store layer)
@@ -564,7 +564,7 @@ Plans:
 - [x] 16-02-PLAN.md — Wave 1（并行）: reads 通道词表 + XOR 互斥（进 Validate 本体覆盖热重载）+ deep+data 拒绝 + TestChannelGuardXOR（DATA-07/08）
 - [x] 16-03-PLAN.md — Wave 1（并行）: kpi_calls dedicated INSERT-only 审计表（DDL+写路径+只读查询面+结构锁）（KPI-02）
 - [x] 16-04-PLAN.md — Wave 1（并行）: wire data-reference part（DecisionKPIReference+DataRef additive+TS 镜像 lockstep，ValidTypes 23 不破）（DATA-03）
-- [/] 16-05-PLAN.md — Wave 2: validate_sql.go AST 走查（探针 fixture 驱动）+ LoadKPIs 双层管线 + bootstrap 窗口 + :param→$param 受控重写（DATA-09） — partially WIP (loader/registry files staged but uncommitted; executor resumed after WIP per resume_state)
+- [x] 16-05-PLAN.md — Wave 2: validate_sql.go AST 走查（探针 fixture 驱动）+ LoadKPIs 双层管线 + bootstrap 窗口 + :param→$param 受控重写（DATA-09） — completed 2026-08-27 (commits 0b1cd64 / d8c4522 / 8c3c39b; DATA-09 marked complete 2543501; ROADMAP [/] WIP marker was stale — 16-05-SUMMARY.md complete)
 - [x] 16-06-PLAN.md — Wave 2（并行）: kmin.go 行级抑制 + executor.go Call 六步 + as_of 系统生成 + 引擎适配器 + WSL 三锁（快照冻结/跨 Skill 一致/引擎集成）（DATA-03/12, KPI-02） — completed 2026-08-27; WSL execution env-blocked on D15-01-1 (recorded per 14-08 precedent; Go compile locked)
 - [x] 16-07-PLAN.md — Wave 3: TestNoSQLGenerationSurface 结构禁令 + kpi_call 工具（目录快照+Enum）+ BuildRunner 通道分支 + TestToolsForChannel（DATA-03/08/09）
 - [x] 16-08-PLAN.md — Wave 4: callbacks 工具名分流 + DataRef SSE 发射 wiring + main.go KPI 管线装配 + GET /api/admin/kpis 只读端点（KPI-01, DATA-03） — completed 2026-08-27; `go build ./...` + server 套件 WSL 全绿；`internal/kpi/wsl` 2 例失败为 16-06 遗留（已对 dc69291 基线复核）
@@ -732,7 +732,7 @@ Plans:
 | 13. 子 agent 扇出 (P8.4) | 6/6 (13-01 foundation + tier-closure + LRU; 13-02 merge pure + 10× byte-identity + conservative; 13-03 5-step pipeline + audit + D16 + D15 lockstep; 13-04 hermetic gate 9/9 + STRIDE-13 + WalkDir 8; 13-05 live 20-case UAT PASS (5/6 thresholds, 1 ACCEPTED-WITH-NOTES D13-V1 conservative_merge_rate_max 0.0→0.5); 13-06 v0.8 wrap + completion report + README DIST-09 fill) | Complete — pending v0.8.0 operator tag | 2026-08-21 |
 | 14. CGO 地基 + 平台信任地板 (P10.0) | 12/12 (14-01..14-08 core + 14-09/14-10 UAT gap closure + 14-11/14-12 verification gap closure) | Complete — closed with deferred items 2026-08-23 (BGE replay re-sign + Docker live verify = operator gates; UAT 6/6, gates 11/11 + 9/9) | 2026-08-23 |
 | 15. 数据导入管线 + 导入即脱敏 (P10.1) | 7/7 (15-01..15-07) | Complete — verify-phase-15.sh 10/10 PASS; code review resolved 6/6 (commit c0d7d5a, incl. strictUTF8Reader rune-split root cause); 15-VERIFICATION PASS | 2026-08-24 |
-| 16. KPI 聚合通道 (P10.2) | 8/9 (16-01..16-08 closed; 16-09 verify-phase-16 gate planned) | In Progress — Wave 4 leg closed; ready for Wave 5 (16-09) | 2026-08-27 |
+| 16. KPI 聚合通道 (P10.2) | 9/9 (16-01..16-09) | Complete — VERIFICATION PASSED 2026-08-27 (re-verification after gap closure: 5/5 SC green, 7/7 requirements met, 6/6 WSL tests green, cmd/server links on WSL; verify-phase-16 9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows per D15-01-1, 11/11 on WSL) | 2026-08-27 |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
 | 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |
 | 19. 静态报告门户 + 调度器 (P10.5) | 0 (not planned) | Not started | - |

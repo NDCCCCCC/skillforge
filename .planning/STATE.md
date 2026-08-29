@@ -110,11 +110,11 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 ## Current Position
 
-Phase: 16 (KPI 聚合通道，P10.2) — **Wave 5 leg closed** (16-09 complete; Phase 16 closeout deferred)
-Plan: 9 of 9 (Plan 16-09 COMPLETE — scripts/verify-phase-16.sh 11-stage acceptance gate + Makefile target)
-Status: ready for Phase 16 closeout reviews (post-phase gates — verifier, code-review, regression, roadmap sync)
-Last activity: 2026-08-27 -- Plan 16-09 executed; 2 commits landed (`0a74938` verify-phase-16.sh 11-stage gate, `0718e9d` Makefile target). Gate runs **9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows** (D15-01-1 emutls ABI; `internal/kpi/wsl` test binary + cmd/server D-Link); Linux/WSL operator run closes the 2 WSL legs (literal commands in Stage 08 + Stage 10 of the script).
-Next action: `/gsd:close-out-phase 16` for post-phase gates (verifier, code-review, regression, roadmap sync) — the two inherited `internal/kpi/wsl` failures remain operator-WSL responsibilities tracked in Stage 08's blocked-with-notes command line.
+Phase: 16 (KPI 聚合通道，P10.2) — **CLOSED** (2026-08-29 bookkeeping sync; execution + verification complete)
+Plan: 9 of 9 (16-01..16-09 all complete; 16-05 ROADMAP [/] WIP marker corrected to [x] — its SUMMARY was always complete)
+Status: VERIFICATION PASSED (2026-08-27 re-verification after gap closure — 5/5 SC green, 7/7 requirements met, BLOCKER-1/2 closed, WARNING-1/2 closed, 6/6 WSL tests green, cmd/server links on WSL; residual WARNING-3/4/5 bookkeeping + WARNING-6 Windows gate discrimination are non-blocking process debt)
+Last activity: 2026-08-29 -- ROADMAP/STATE synced: 16-05 checkbox fixed, Progress row 16 flipped to Complete, ROADMAP Phase 16 checkbox annotated with verification verdict.
+Next action: none for Phase 16 — residual items tracked in deferred-items.md (WARNING-3 PLAN backfill, WARNING-4 16-VALIDATION draft, WARNING-5 REQUIREMENTS status-row staleness). Phase-level code review (16-REVIEW.md) was not produced; optional retroactive `/gsd:code-review 16` if desired.
 Resume File: .planning/phases/18-skill-p10-4/18-UI-SPEC.md
 
 **Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
