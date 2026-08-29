@@ -19,14 +19,18 @@ progress:
 
 ## Current Position
 
-Phase: 18 (skill-p10-4) — gap closure in progress (18-VERIFICATION 2026-08-29: gaps_found 9/11 — GAP-1 FAN-05 fan-out 审计行 + GAP-2 FAN-06 expected_fan_out 断言消费，修复中 as 18-05)
-Plan: 3 of 3 core plans complete + 18-05 gap closure executing
-Status: Phase 19 CLOSED (VERIFICATION PASSED 9/9, 2026-08-29); Phase 18 gap closure round executing
+Phase: 20 (admin P10.6) — not yet started
+Plan: 0 of 0
+Status: pending — Phase 20 discuss to begin
 Last activity: 2026-08-29
 
-**Phase 19 closure (2026-08-29):** 5/5 plans (19-01..19-03 core + 19-04/19-05 gap closure). Two-round gap closure: 19-04 (c28ca46) wired GetAllKPISnapshots + executeReportRun + report.Publish but left audit sink nil (CR-04 fail-closed → all automated runs failed) and missed SetKPIExecutor boot wiring; 19-05 (ccd8824) closed both — storeDB threaded as ReportAuditSink (compile-time asserted) + sched.SetKPIExecutor(kpiExecutor). Verifier round-2: PASSED 9/9, scheduler 8/8 tests, no new gaps.
+**Phase 19 closure (2026-08-29):** COMPLETE — 5/5 plans, VERIFICATION PASSED 9/9, two gap-closure rounds (19-04 wiring + 19-05 audit-sink + SetKPIExecutor).
 
-**Phase 18 verification (2026-08-29, first-time):** gaps_found 9/11 — main thesis verified (render sandbox pipeline order bind→goldmark→bluemonday, HITL report:publish dual-pass gate, vN persistence, change-request regeneration all code-proven; 18-REVIEW 16 fixes confirmed real). GAP-1 (FAN-05): data-channel fan-out classifier decision+reason has no audit row. GAP-2 (FAN-06): expected_fan_out frozen data in place but no assertion code consumes it (GoldenCase struct lacks fields; fanout_lock_test.go missing). 2 human-verification items (live monthly-report E2E, FAN-06 operator rerun) blocked on CGO host + intranet services.
+**Phase 18 closure (2026-08-29):** COMPLETE — 5/5 plans (18-01..18-03 core + 18-05 gap closure), VERIFICATION human_needed 11/11 automated PASS; GAP-1 FAN-05 (fan-out audit rows, commit 7425ba1) + GAP-2 FAN-06 (expected_fan_out assertion, commit bc552aa) closed. 2 human-verification items remain (live E2E + FAN-06 operator rerun, blocked on CGO host + intranet GLM service).
+
+**Phase 17 status:** human_needed 3/4 UAT passed (gcc linking blocked). Phase 17 closeout pending operator-side gcc test resolution.
+
+**Phase 20 next:** `/gsd-discuss-phase 20` — admin console (/admin four-view: import batches / KPI definitions / Skill management / scheduled tasks) + milestone wrap (4th frozen lock decision + completion report)
 
 **Phase 18 Plan 03 (18-03) delivery summary (2026-08-28):**
 - Task 1: fan_out_dispatch data-channel variant — FanOutDispatchArgsV2 + validation + fallback_sequential (85d67bc)

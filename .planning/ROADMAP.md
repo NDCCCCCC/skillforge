@@ -58,7 +58,7 @@
   - **16-08 SSE DataRef emission wiring + KPI 管线装配 + admin 只读端点** (Wave 4 closed 2026-08-27 — `0cc1ad3` callbacks 工具名分流 + `1f1aed4` main.go KPI 装配 + server DataRefEmit wiring + `c94e39d` GET /api/admin/kpis) — KPI-01 admin 只读面 + D16-B3 发射闭环
   - **16-09 verify-phase-16 acceptance gate** (Wave 5 closed 2026-08-27 — `0a74938` scripts/verify-phase-16.sh 11-stage hermetic gate [gcc precondition + per-cmd build matrix + hermetic test suite + contract WalkDir + KPI Layer 1 lock-name suite + channel XOR + wire kpi_reference + WSL triple-lock blocked-with-notes + source-grep structural locks + cmd/server live link blocked-with-notes + frozen lock byte-identity] + `0718e9d` Makefile `verify-phase-16` target) — gate runs 9/11 PASS + 2 BLOCKED-WITH-NOTES (D15-01-1 emutls ABI) on Windows; 11/11 PASS on Linux/WSL operator run
 - [x] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言 (completed 2026-08-27)
-- [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
+- [x] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）(completed 2026-08-29 — 5/5 plans (18-01..18-03 core + 18-04/18-05 gap closure); VERIFICATION human_needed 11/11 automated must-haves PASS; GAP-1 FAN-05 audit rows + GAP-2 FAN-06 expected_fan_out assertion closed (commits 7425ba1/bc552aa); 2 human-verification items blocked on CGO host + intranet services)
 - [x] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度 (completed 2026-08-29 — 5/5 plans (19-01..19-03 core + 19-04/19-05 gap closure); VERIFICATION PASSED 9/9 after two gap-closure rounds: PORT-04 closed via audit-sink threading (ccd8824) + PORT-03 closed via SetKPIExecutor boot wiring)
 - [ ] **Phase 20: 管理台（P10.6）** — /admin（复用 /eval + X-Admin-Token）四视图：导入批次 / KPI 只读 / Skill 管理 / 定时任务；admin 动作全审计；里程碑收尾（第 4 冻结锁决策 + wrap）
 
@@ -736,7 +736,7 @@ Plans:
 | 15. 数据导入管线 + 导入即脱敏 (P10.1) | 7/7 (15-01..15-07) | Complete — verify-phase-15.sh 10/10 PASS; code review resolved 6/6 (commit c0d7d5a, incl. strictUTF8Reader rune-split root cause); 15-VERIFICATION PASS | 2026-08-24 |
 | 16. KPI 聚合通道 (P10.2) | 9/9 (16-01..16-09) | Complete — VERIFICATION PASSED 2026-08-27 (re-verification after gap closure: 5/5 SC green, 7/7 requirements met, 6/6 WSL tests green, cmd/server links on WSL; verify-phase-16 9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows per D15-01-1, 11/11 on WSL) | 2026-08-27 |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
-| 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |
+| 18. 业务月报 Skill (P10.4) | 5/5 (18-01..18-03 core + 18-05 gap closure) | human_needed — 11/11 automated PASS; 2 human verification items blocked on CGO host + intranet services (live E2E + FAN-06 operator rerun) | 2026-08-29 |
 | 19. 静态报告门户 + 调度器 (P10.5) | 5/5 (19-01..19-03 core + 19-04/19-05 gap closure) | Complete — VERIFICATION PASSED 9/9 (2026-08-29, two gap-closure rounds: PORT-04 audit-sink threading + PORT-03 SetKPIExecutor boot wiring, commit ccd8824; verify evidence: scheduler 8/8 tests, CGO-free builds) | 2026-08-29 |
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
