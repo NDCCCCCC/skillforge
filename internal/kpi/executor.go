@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -713,4 +714,28 @@ func containsString(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// GetAllKPISnapshots returns current values for all registered KPIs as a map.
+// Used by the scheduler to capture KPI snapshots before report generation.
+func (e *Executor) GetAllKPISnapshots(ctx context.Context) (map[string]any, error) {
+	if e == nil || e.reg == nil {
+		return nil, fmt.Errorf("executor not wired")
+	}
+	snapshots := make(map[string]any)
+	for _, kpi := range e.reg.Catalog() {
+		// Call with nil params to get current value; Params is optional so nil is safe.
+		// KPIFuncCall mirrors CallRequest but omits SessionID/SkillID (no audit row).
+		outcome, err := e.Call(ctx, CallRequest{Name: kpi.Name, Params: nil})
+		if err != nil {
+			// Log and continue — individual KPI failure shouldn't block all snapshots.
+			log.Printf("[WARN] scheduler: KPI %s snapshot failed: %v", kpi.Name, err)
+			continue
+		}
+		if outcome.Snapshot != nil && len(outcome.Snapshot.Rows) > 0 {
+			// Return the first (and typically only) row's value map.
+			snapshots[kpi.Name] = outcome.Snapshot.Rows[0]
+		}
+	}
+	return snapshots, nil
 }

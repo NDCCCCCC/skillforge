@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
+	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
 )
@@ -38,6 +39,7 @@ type Scheduler struct {
 	inFlight      *inFlight
 	store         store.Store
 	evalGate      *EvalGate
+	kpiExecutor   *kpi.Executor
 	ttlDetacher   Detacher
 	ttlConfig     TTLCleanupConfig
 	mu            sync.RWMutex
@@ -58,6 +60,9 @@ func (s *Scheduler) SetStore(store store.Store) { s.store = store }
 
 // SetEvalGate injects the eval gate.
 func (s *Scheduler) SetEvalGate(gate *EvalGate) { s.evalGate = gate }
+
+// SetKPIExecutor injects the KPI executor for snapshot capture.
+func (s *Scheduler) SetKPIExecutor(exec *kpi.Executor) { s.kpiExecutor = exec }
 
 // SetDetacher injects the AttachLRU detacher for TTL cleanup.
 func (s *Scheduler) SetDetacher(d Detacher) { s.ttlDetacher = d }
@@ -140,7 +145,7 @@ func (s *Scheduler) runReportJob(ctx context.Context, m *skill.Manifest) {
 		CronExpr: m.ReportSchedule,
 		IsManual: false,
 	}
-	_ = RunReportJob(ctx, input, s.store, s.evalGate) // store nil-safe inside RunReportJob
+	_ = RunReportJob(ctx, input, s.store, s.evalGate, s.kpiExecutor, s.loader)
 }
 
 // runTTLCleanup is called by cron on schedule. It delegates to RunTTLCleanup.

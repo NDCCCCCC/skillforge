@@ -63,7 +63,7 @@ func (deps *Deps) rerenderHandler(ctx context.Context, c *app.RequestContext) {
 	// Run asynchronously — return 202 immediately with a run_id
 	runID := fmt.Sprintf("manual-%d", time.Now().UnixNano())
 	go func() {
-		_ = scheduler.RunReportJob(context.Background(), input, deps.Store, deps.Scheduler.EvalGate())
+		_ = scheduler.RunReportJob(context.Background(), input, deps.Store, deps.Scheduler.EvalGate(), deps.KPIExecutor, nil)
 	}()
 
 	c.JSON(http.StatusAccepted, map[string]string{"run_id": runID})

@@ -20,10 +20,14 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/skillforge/skillforge/internal/kpi"
+	"github.com/skillforge/skillforge/internal/report"
+	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
 )
 
@@ -38,7 +42,7 @@ type ReportJobInput struct {
 // RunReportJob executes a single report run for the given skill and period.
 // It checks the eval gate, acquires the in-flight slot, runs the DeepAgent path,
 // captures KPI snapshots, detects drift, and writes the report_runs audit row.
-func RunReportJob(ctx context.Context, input ReportJobInput, storeDB store.Store, evalGate *EvalGate) error {
+func RunReportJob(ctx context.Context, input ReportJobInput, storeDB store.Store, evalGate *EvalGate, kpiExec *kpi.Executor, loader *skill.Loader) error {
 	key := SkillPeriodKey(input.SkillID, input.Period)
 
 	// 1. Eval gate check (GEVL-11) — skip cron runs if faithfulness regressed
@@ -73,10 +77,10 @@ func RunReportJob(ctx context.Context, input ReportJobInput, storeDB store.Store
 		}
 	}
 
-	// 4. Run the DeepAgent report generation path (stub — full integration in 19-03)
+	// 4. Run the DeepAgent report generation path
 	runID := uuid.New().String()
 	firedAt := time.Now().UTC()
-	currSnapshots, runErr := executeReportRun(ctx, input.SkillID, input.Period)
+	currSnapshots, outputURL, runErr := executeReportRun(ctx, input.SkillID, input.Period, kpiExec, loader)
 
 	// 5. Detect drift
 	driftDetected := false
@@ -86,7 +90,6 @@ func RunReportJob(ctx context.Context, input ReportJobInput, storeDB store.Store
 
 	// 6. Determine status
 	status := "success"
-	outputURL := ""
 	if runErr != nil {
 		status = "failed"
 		log.Printf("[ERROR] scheduler: report run failed for %s: %v", key, runErr)
@@ -132,11 +135,64 @@ func writeBlockedRun(ctx context.Context, input ReportJobInput, storeDB store.St
 	_ = storeDB.PutReportRun(ctx, row)
 }
 
-// executeReportRun calls the KPI executor to get current KPI values.
-// This is the same kpi_call logic used by the DeepAgent during report generation.
-// Returns a map of KPI name -> value. Stub — full integration in 19-03.
-func executeReportRun(ctx context.Context, skillID, period string) (map[string]any, error) {
-	return make(map[string]any), nil
+// executeReportRun generates the report for skill/period and returns KPI snapshots + URL.
+// It calls the KPI executor for current values, then report.Publish to write vN.html.
+func executeReportRun(ctx context.Context, skillID, period string, kpiExec *kpi.Executor, loader *skill.Loader) (map[string]any, string, error) {
+	// 1. Get KPI snapshots from the executor
+	snapshots := make(map[string]any)
+	if kpiExec != nil {
+		vals, err := kpiExec.GetAllKPISnapshots(ctx)
+		if err != nil {
+			log.Printf("[WARN] scheduler: GetAllKPISnapshots failed: %v", err)
+		} else {
+			snapshots = vals
+		}
+	}
+
+	// 2. Load skill manifest for ReportTemplate
+	var tmpl *report.ReportTemplate
+	if loader != nil {
+		for _, m := range loader.Skills() {
+			if m.Name == skillID && m.Template != nil {
+				var err error
+				tmpl, err = report.ParseTemplate(m.Template)
+				if err != nil {
+					log.Printf("[WARN] scheduler: ParseTemplate for %s failed: %v", skillID, err)
+				}
+				break
+			}
+		}
+	}
+
+	// 3. Fallback minimal template if none found
+	if tmpl == nil {
+		tmpl = &report.ReportTemplate{
+			Title:    skillID + " Report",
+			Sections: []report.SectionTemplate{},
+		}
+	}
+
+	// 4. Build empty slot texts (automated runs use DefaultValueFormatter for KPI values)
+	slotTexts := report.SlotTexts{}
+	for secIdx, sec := range tmpl.Sections {
+		for slotIdx := range sec.Slots {
+			if slotTexts[secIdx] == nil {
+				slotTexts[secIdx] = make(map[int]string)
+			}
+			slotTexts[secIdx][slotIdx] = ""
+		}
+	}
+
+	// 5. Build snapshot for rendering
+	snap := report.MapSnapshot(snapshots)
+
+	// 6. Publish — approvalAuditID is empty for automated runs (no HITL approval)
+	result, err := report.Publish(ctx, tmpl, slotTexts, period, snap, "", nil, skillID, nil)
+	if err != nil {
+		return snapshots, "", fmt.Errorf("report.Publish: %w", err)
+	}
+
+	return snapshots, result.URL, nil
 }
 
 // tryAcquireInFlight is a package-level helper that delegates to s.inFlight.
