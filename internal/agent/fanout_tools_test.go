@@ -228,7 +228,7 @@ func TestDataChannelFanOutV2Success(t *testing.T) {
 	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{}}}
 	titles := []string{"业务概览", "贷款质量"}
 	kpis := [][]string{{"KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"}, {"KPI_NPL_RATIO"}}
-	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub, "sess-mr", "monthly-report")
+	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub, "sess-mr", "monthly-report", nil)
 
 	args := `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览", "贷款质量"], "reason": "sections independent"}`
 	out, err := fanOut.InvokableRun(context.Background(), args)
@@ -259,7 +259,7 @@ func TestDataChannelFanOutV2Success(t *testing.T) {
 // touch the executor.
 func TestDataChannelFanOutV2Fallbacks(t *testing.T) {
 	stub := &stubKPICaller{}
-	fanOut := BuildFanOutDispatchToolDataChannel([]string{"业务概览"}, [][]string{{"KPI_LOAN_BALANCE"}}, stub, "sess-mr", "monthly-report")
+	fanOut := BuildFanOutDispatchToolDataChannel([]string{"业务概览"}, [][]string{{"KPI_LOAN_BALANCE"}}, stub, "sess-mr", "monthly-report", nil)
 
 	cases := []struct {
 		name string
@@ -308,7 +308,7 @@ func TestDataChannelFanOutV2SectionResultsPreserveAllKPIs(t *testing.T) {
 	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{{"v": 1}}}}
 	titles := []string{"业务概览", "贷款质量"}
 	kpis := [][]string{{"KPI_LOAN_BALANCE", "KPI_CUSTOMER_COUNT"}, {"KPI_NPL_RATIO"}}
-	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub, "sess-mr", "monthly-report")
+	fanOut := BuildFanOutDispatchToolDataChannel(titles, kpis, stub, "sess-mr", "monthly-report", nil)
 
 	args := `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览", "贷款质量"], "reason": "r"}`
 	out, err := fanOut.InvokableRun(context.Background(), args)
@@ -323,4 +323,131 @@ func TestDataChannelFanOutV2SectionResultsPreserveAllKPIs(t *testing.T) {
 	require.Len(t, resp.SectionResults, 2)
 	assert.Len(t, resp.SectionResults[0], 2, "section 0 must carry BOTH KPI snapshots")
 	assert.Len(t, resp.SectionResults[1], 1)
+}
+
+// ---------------------------------------------------------------------------
+// FAN-05 (18-VERIFICATION GAP-1) — the classifier decision + reason land
+// in audit rows. One action_fanout_dispatched row per fan-out success
+// (reason = compact decision JSON), one action_fanout_fallback row per
+// D18-C4 fallback path (reason = the fallback_reason enum). The rows are
+// ADDITIVE: the JSON return values the LLM consumes are unchanged.
+// ---------------------------------------------------------------------------
+
+// stubFanOutAuditSink records (action, runPath, reason) tuples — the
+// hermetic FanOutAuditSink fake (no store, no CGO).
+type stubFanOutAuditSink struct {
+	rows []stubFanOutAuditRow
+}
+
+type stubFanOutAuditRow struct {
+	action  string
+	runPath string
+	reason  string
+}
+
+func (s *stubFanOutAuditSink) PutAudit(_ context.Context, action, runPath, transferFrom, transferTo, reason string) error {
+	s.rows = append(s.rows, stubFanOutAuditRow{action: action, runPath: runPath, reason: reason})
+	return nil
+}
+
+// fanOutDecisionReason mirrors the compact decision JSON the success
+// path persists into the audit row's reason column (FAN-05/D18-C4:
+// decision + classifier reason replayable from the row alone).
+type fanOutDecisionReason struct {
+	ShouldFanOut bool     `json:"should_fan_out"`
+	NumSubtasks  int      `json:"num_subtasks"`
+	Boundaries   []string `json:"boundaries"`
+	Reason       string   `json:"reason"`
+}
+
+// TestDataChannelFanOutV2AuditDispatchedRow — fan-out success writes
+// EXACTLY ONE action_fanout_dispatched row carrying the decision JSON
+// (should_fan_out true + boundaries) and the classifier reason, under
+// the data_channel/fanout/<skillID> RunPath namespace.
+func TestDataChannelFanOutV2AuditDispatchedRow(t *testing.T) {
+	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{}}}
+	audit := &stubFanOutAuditSink{}
+	fanOut := BuildFanOutDispatchToolDataChannel(
+		[]string{"业务概览", "贷款质量"},
+		[][]string{{"KPI_LOAN_BALANCE"}, {"KPI_NPL_RATIO"}},
+		stub, "sess-mr", "monthly-report", audit)
+
+	args := `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览", "贷款质量"], "reason": "sections independent"}`
+	out, err := fanOut.InvokableRun(context.Background(), args)
+	require.NoError(t, err)
+	assert.Contains(t, out, `"fan_out_success"`)
+
+	require.Len(t, audit.rows, 1, "exactly one audit row per fan-out decision")
+	row := audit.rows[0]
+	assert.Equal(t, FanOutActionDispatched, row.action)
+	assert.Equal(t, "data_channel/fanout/monthly-report", row.runPath)
+	assert.True(t, strings.HasPrefix(row.runPath, dataChannelFanOutRunPath))
+
+	var decision fanOutDecisionReason
+	require.NoError(t, json.Unmarshal([]byte(row.reason), &decision),
+		"the dispatched row's reason MUST be the compact decision JSON")
+	assert.True(t, decision.ShouldFanOut)
+	assert.Equal(t, 2, decision.NumSubtasks)
+	assert.Equal(t, []string{"业务概览", "贷款质量"}, decision.Boundaries)
+	assert.Equal(t, "sections independent", decision.Reason)
+}
+
+// TestDataChannelFanOutV2AuditFallbackRows — every D18-C4 fallback
+// return writes exactly one action_fanout_fallback row whose reason is
+// the fallback_reason enum, and no executor call ever fires.
+func TestDataChannelFanOutV2AuditFallbackRows(t *testing.T) {
+	cases := []struct {
+		name         string
+		args         string
+		wantFallback string
+	}{
+		{"invalid json", `{broken`, FallbackInvalidJSON},
+		{"missing boundaries", `{"should_fan_out": true, "num_subtasks": 1}`, FallbackMissingField},
+		{"boundary not in template", `{"should_fan_out": true, "num_subtasks": 1, "task_boundaries": ["不存在的章节"]}`, FallbackBoundaryNotInTemplate},
+		{"num mismatch", `{"should_fan_out": true, "num_subtasks": 2, "task_boundaries": ["业务概览"]}`, FallbackNumSubtasksMismatch},
+		{"classifier declined", `{"should_fan_out": false, "num_subtasks": 0, "task_boundaries": []}`, "classifier_declined_fan_out"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &stubKPICaller{}
+			audit := &stubFanOutAuditSink{}
+			fanOut := BuildFanOutDispatchToolDataChannel(
+				[]string{"业务概览"}, [][]string{{"KPI_LOAN_BALANCE"}},
+				stub, "sess-mr", "monthly-report", audit)
+
+			out, err := fanOut.InvokableRun(context.Background(), tc.args)
+			require.NoError(t, err, "fallbacks are tool RESULTS, not Go errors")
+			assert.Contains(t, out, `"fallback_sequential"`)
+
+			require.Len(t, audit.rows, 1, "exactly one fallback audit row")
+			row := audit.rows[0]
+			assert.Equal(t, FanOutActionFallback, row.action)
+			assert.Equal(t, "data_channel/fanout/monthly-report", row.runPath)
+			assert.Equal(t, tc.wantFallback, row.reason)
+			assert.Empty(t, stub.calls, "no KPI call may fire on any fallback path")
+		})
+	}
+}
+
+// TestDataChannelFanOutV2NilAuditSink — nil sink (hermetic posture)
+// must not panic and must leave the tool behavior identical to the
+// pre-FAN-05 build: same JSON returns, no hidden state.
+func TestDataChannelFanOutV2NilAuditSink(t *testing.T) {
+	stub := &stubKPICaller{snapshot: &kpi.Snapshot{Func: "KPI_X", Rows: []map[string]any{}}}
+	fanOut := BuildFanOutDispatchToolDataChannel(
+		[]string{"业务概览"}, [][]string{{"KPI_LOAN_BALANCE"}},
+		stub, "sess-mr", "monthly-report", nil)
+
+	// Success path without a sink.
+	out, err := fanOut.InvokableRun(context.Background(),
+		`{"should_fan_out": true, "num_subtasks": 1, "task_boundaries": ["业务概览"], "reason": "r"}`)
+	require.NoError(t, err)
+	assert.Contains(t, out, `"fan_out_success"`)
+	require.Len(t, stub.calls, 1)
+
+	// Fallback path without a sink.
+	out, err = fanOut.InvokableRun(context.Background(), `{broken`)
+	require.NoError(t, err)
+	assert.Contains(t, out, `"invalid_json"`)
+	assert.Len(t, stub.calls, 1, "fallback still must not touch the executor")
 }

@@ -155,6 +155,17 @@ type RunnerBuildConfig struct {
 	// fail-closed contract as KPIExecutor above.
 	KPIRegistry *kpi.Registry
 
+	// FanOutAudit is the FAN-05 (18-VERIFICATION GAP-1) data-channel
+	// fan-out audit sink. When the manifest carries a Template, the
+	// fan_out_dispatch classifier writes ONE audit row per invocation
+	// through it: action_fanout_dispatched (decision + reason JSON) on
+	// the fan-out success path, action_fanout_fallback (D18-C4
+	// fallback_reason enum) on every fallback path. The production store
+	// satisfies FanOutAuditSink via the server-layer adapter
+	// (internal/server fanOutAuditAdapter). nil → the tool skips audit
+	// writes (hermetic-test posture).
+	FanOutAudit FanOutAuditSink
+
 	// DataRefEmit is the per-Runner SSE data-reference part emission
 	// hook for the data channel (16-08 server wiring will pass a
 	// closure matching runnerEmitDecision). The kpi_call tool invokes
@@ -305,8 +316,11 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 			// WR-08: thread sessionID + skillID into every kpi_call the
 			// fan-out tool issues so the kpi_calls audit rows carry the
 			// ambient identity (was hardcoded to "" — audit rows were
-			// orphaned and unreplayable).
-			fanOutTool := BuildFanOutDispatchToolDataChannel(titles, kpis, cfg.KPIExecutor, cfg.SessionID, cfg.SkillID)
+			// orphaned and unreplayable). FAN-05 (GAP-1): the same seam
+			// carries the classifier-decision audit sink — nil sink is
+			// the hermetic-test posture, production wires the store
+			// adapter.
+			fanOutTool := BuildFanOutDispatchToolDataChannel(titles, kpis, cfg.KPIExecutor, cfg.SessionID, cfg.SkillID, cfg.FanOutAudit)
 			tools = append(tools, fanOutTool)
 		}
 	} else {

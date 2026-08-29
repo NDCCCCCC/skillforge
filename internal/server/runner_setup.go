@@ -42,6 +42,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
@@ -49,10 +50,11 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/agent"
-	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/agent/hitl"
+	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/report"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
 )
@@ -141,13 +143,22 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 	// action_pending_approval rows (the shared Deps.AuditWriter is NOT
 	// mutated — WithIdentity is stateful and concurrent chat requests
 	// would race it; a fresh writer per request is a cheap struct).
-	// The store also rides as the CR-04 reports audit sink.
+	// The store also rides as the CR-04 reports audit sink and — FAN-05
+	// (18-VERIFICATION GAP-1) — as the data-channel fan-out
+	// classifier-decision audit sink.
 	var auditWriter *hitl.AuditWriter
 	var reportAudit report.ReportAuditSink
+	var fanOutAudit agent.FanOutAuditSink
 	if s.Store != nil {
 		auditWriter = hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
 			WithIdentity(sessionID, "", activeSkillSnapshot(manifest))
 		reportAudit = s.Store
+		fanOutAudit = &fanOutAuditAdapter{
+			store:     s.Store,
+			sessionID: sessionID,
+			skillID:   chatReq.Skill,
+			floorVer:  agent.PlatformFloorVersion,
+		}
 	}
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
 		Manifest:          manifest,
@@ -161,6 +172,7 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		AuditWriter:       auditWriter,
 		ReportAudit:       reportAudit,
 		ReportPublishEmit: s.reportPublishEmitter(c),
+		FanOutAudit:       fanOutAudit,
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)
@@ -279,4 +291,38 @@ func runnerEmitDecision(c *app.RequestContext, p wire.DecisionPayload) error {
 var (
 	_ = agent.RunnerCheckPointID
 	_ = (*skill.Manifest)(nil)
+
+	// FAN-05 (18-VERIFICATION GAP-1): the adapter MUST keep satisfying
+	// the agent-declared audit seam (structural — internal/agent cannot
+	// import internal/server, so the lock lives on this side).
+	_ agent.FanOutAuditSink = (*fanOutAuditAdapter)(nil)
 )
+
+// fanOutAuditAdapter adapts the session store to agent.FanOutAuditSink
+// (FAN-05, 18-VERIFICATION GAP-1: the data-channel fan_out_dispatch
+// classifier decision lands in the audit table). It carries the same
+// session/skill identity the HITL audit rows use, plus the
+// PlatformFloorVersion every INSERT path is contract-bound to populate
+// (store.AuditRow drift-window semantics). The Deps field type is the
+// store.Store INTERFACE — no sqlite driver dependency at this layer.
+type fanOutAuditAdapter struct {
+	store     store.Store
+	sessionID string
+	skillID   string
+	floorVer  string
+}
+
+func (a *fanOutAuditAdapter) PutAudit(ctx context.Context, action, runPath, transferFrom, transferTo, reason string) error {
+	_, err := a.store.PutAudit(ctx, store.AuditRow{
+		Timestamp:            time.Now().UTC(),
+		SessionID:            a.sessionID,
+		SkillID:              a.skillID,
+		Action:               action,
+		RefusalReason:        reason,
+		RunPath:              runPath,
+		TransferFrom:         transferFrom,
+		TransferTo:           transferTo,
+		PlatformFloorVersion: a.floorVer,
+	})
+	return err
+}

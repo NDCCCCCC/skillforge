@@ -202,7 +202,7 @@ type FanOutDispatchArgsV2 struct {
 	ShouldFanOut   bool     `json:"should_fan_out"`
 	NumSubtasks    int      `json:"num_subtasks"`
 	TaskBoundaries []string `json:"task_boundaries"` // Template section title exact-match
-	Reason         string   `json:"reason"`           // Classification reason — enters audit row (FAN-05)
+	Reason         string   `json:"reason"`          // Classification reason — enters audit row (FAN-05)
 }
 
 // fallbackReason enumerations (D18-C4)
@@ -212,6 +212,33 @@ const (
 	FallbackBoundaryNotInTemplate = "boundary_not_in_template"
 	FallbackNumSubtasksMismatch   = "num_subtasks_mismatch"
 )
+
+// FAN-05 data-channel audit row actions. Values mirror the tier-channel
+// orchestrator's action_fanout_* vocabulary (internal/runtime
+// orchestrator.go writeAudit) so the audit table keeps ONE fanout
+// action namespace across both channels.
+const (
+	FanOutActionDispatched = "action_fanout_dispatched"
+	FanOutActionFallback   = "action_fanout_fallback"
+)
+
+// dataChannelFanOutRunPath is the RunPath namespace prefix for
+// data-channel fan-out audit rows: "data_channel/fanout/<skillID>".
+// Deliberately disjoint from the tier-channel "<runID>/<sub_query_id>"
+// shape (P13-L6) so QueryFanoutByRunPath traces never collide across
+// channels (FAN-05, 18-VERIFICATION GAP-1).
+const dataChannelFanOutRunPath = "data_channel/fanout/"
+
+// FanOutAuditSink is the FAN-05 audit seam for the data-channel fan-out
+// classifier: one INSERT-only writer mirroring the tier-channel
+// SubAgentAuditWriter shape (internal/runtime/orchestrator.go).
+// internal/agent declares it locally — importing internal/runtime would
+// invert the runtime→agent dependency; Go structural typing makes the
+// two interfaces compatible. store.Store-backed adapters are assembled
+// at the server layer (internal/server fanOutAuditAdapter).
+type FanOutAuditSink interface {
+	PutAudit(ctx context.Context, action, runPath, transferFrom, transferTo, reason string) error
+}
 
 // validateTaskBoundaries checks that every boundary exists in template section titles.
 func validateTaskBoundaries(boundaries []string, sectionTitles []string) (string, bool) {
@@ -293,6 +320,13 @@ type dataChannelFanOutTool struct {
 	// the audit trail was orphaned).
 	sessionID string
 	skillID   string
+	// audit is the FAN-05 (18-VERIFICATION GAP-1) audit seam: the
+	// classifier decision + reason land in one audit row per invocation
+	// (action_fanout_dispatched on the fan-out success path,
+	// action_fanout_fallback on every D18-C4 fallback path). nil → the
+	// tool skips audit writes (hermetic-test posture); production MUST
+	// wire it via RunnerBuildConfig.FanOutAudit.
+	audit FanOutAuditSink
 }
 
 // Compile-time interface compliance check.
@@ -303,15 +337,30 @@ var _ tool.InvokableTool = (*dataChannelFanOutTool)(nil)
 // manifest template via sectionTitlesAndKPIs; executor is the session's KPI
 // executor (the ONLY call target, same as kpi_call — D16-C3).
 // sessionID + skillID ride every kpi_call so the audit rows carry the
-// ambient identity (WR-08).
-func BuildFanOutDispatchToolDataChannel(sectionTitles []string, sectionKPIs [][]string, executor KPICaller, sessionID, skillID string) tool.InvokableTool {
+// ambient identity (WR-08). audit receives the FAN-05 classifier-decision
+// row per invocation; nil is allowed and disables audit writes (hermetic
+// tests — production wires the store-backed adapter).
+func BuildFanOutDispatchToolDataChannel(sectionTitles []string, sectionKPIs [][]string, executor KPICaller, sessionID, skillID string, audit FanOutAuditSink) tool.InvokableTool {
 	return &dataChannelFanOutTool{
 		sectionTitles: sectionTitles,
 		sectionKPIs:   sectionKPIs,
 		executor:      executor,
 		sessionID:     sessionID,
 		skillID:       skillID,
+		audit:         audit,
 	}
+}
+
+// writeAudit best-effort writes one FAN-05 audit row through the sink.
+// nil sink → silently skipped (hermetic-test posture, mirroring
+// runtime.FanOutOrchestrator.writeAudit); write errors are dropped — the
+// classifier decision still returns to the LLM and an audit hiccup must
+// not fail the Run (the D18-C4 fallback posture stays available).
+func (t *dataChannelFanOutTool) writeAudit(ctx context.Context, action, reason string) {
+	if t.audit == nil {
+		return
+	}
+	_ = t.audit.PutAudit(ctx, action, dataChannelFanOutRunPath+t.skillID, "", "", reason)
 }
 
 // Info returns the Tool metadata for the LLM.
@@ -346,21 +395,32 @@ func (t *dataChannelFanOutTool) Info(_ context.Context) (*schema.ToolInfo, error
 }
 
 // InvokableRun validates args and either fans out in parallel or falls back to sequential.
+//
+// FAN-05 (18-VERIFICATION GAP-1): every classifier decision lands in an
+// audit row — action_fanout_fallback with the D18-C4 fallback_reason
+// enum on each fallback return (steps 1-4, 6), action_fanout_dispatched
+// with a compact {should_fan_out, num_subtasks, boundaries, reason} JSON
+// payload on the fan-out success path (step 5). A g.Wait() error is a
+// RUN failure, not a classifier decision, and writes NO row. The JSON
+// return values are unchanged — the rows are additive persistence.
 func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
 	// 1. Parse args
 	var a FanOutDispatchArgsV2
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
 		// invalid JSON → fallback
+		t.writeAudit(ctx, FanOutActionFallback, FallbackInvalidJSON)
 		return `{"status":"fallback_sequential","reason":"invalid_json"}`, nil
 	}
 
 	// 2. Field presence check
 	if a.TaskBoundaries == nil {
+		t.writeAudit(ctx, FanOutActionFallback, FallbackMissingField)
 		return `{"status":"fallback_sequential","reason":"missing_field"}`, nil
 	}
 
 	// 3. task_boundaries closure validation
 	if _, ok := validateTaskBoundaries(a.TaskBoundaries, t.sectionTitles); !ok {
+		t.writeAudit(ctx, FanOutActionFallback, FallbackBoundaryNotInTemplate)
 		return fmt.Sprintf(
 			`{"status":"fallback_sequential","reason":"boundary_not_in_template","detail":"%s"}`,
 			"task_boundary not in template sections",
@@ -369,6 +429,7 @@ func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _
 
 	// 4. num_subtasks validation
 	if a.NumSubtasks != len(a.TaskBoundaries) {
+		t.writeAudit(ctx, FanOutActionFallback, FallbackNumSubtasksMismatch)
 		return `{"status":"fallback_sequential","reason":"num_subtasks_mismatch"}`, nil
 	}
 
@@ -410,19 +471,35 @@ func (t *dataChannelFanOutTool) InvokableRun(ctx context.Context, args string, _
 			})
 		}
 		if err := g.Wait(); err != nil {
+			// Run failure (KPI infra error) — NOT a classifier decision.
+			// No audit row here (FAN-05 scopes rows to decisions; the
+			// error propagates to the LLM loop as a tool error).
 			return "", err
 		}
+		// FAN-05: the decision + reason must be replayable from the audit
+		// row alone (D18-C2/D18-C4) — the tool-result JSON below is
+		// ephemeral (consumed by the LLM, never persisted). json.Marshal
+		// of string/int/[]string values cannot fail; the blank error is
+		// the honest pattern here.
+		decisionJSON, _ := json.Marshal(map[string]any{
+			"should_fan_out": true,
+			"num_subtasks":   a.NumSubtasks,
+			"boundaries":     a.TaskBoundaries,
+			"reason":         a.Reason,
+		})
+		t.writeAudit(ctx, FanOutActionDispatched, string(decisionJSON))
 		result, _ := json.Marshal(map[string]interface{}{
-			"status":       "fan_out_success",
-			"num_subtasks": a.NumSubtasks,
-			"boundaries":   a.TaskBoundaries,
-			"reason":       a.Reason,
+			"status":          "fan_out_success",
+			"num_subtasks":    a.NumSubtasks,
+			"boundaries":      a.TaskBoundaries,
+			"reason":          a.Reason,
 			"section_results": results,
 		})
 		return string(result), nil
 	}
 
 	// 6. should_fan_out=false → sequential fallback
+	t.writeAudit(ctx, FanOutActionFallback, "classifier_declined_fan_out")
 	return `{"status":"fallback_sequential","reason":"classifier_declined_fan_out"}`, nil
 }
 
