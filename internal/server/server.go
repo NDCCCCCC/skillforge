@@ -473,6 +473,9 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// GET /reports/<period>/v<N>.html serves published HTML reports.
 	// Directory traversal is blocked by reportPathAllowlist regex.
 	h.GET("/reports/*filepath", reportsRoute)
+	// Phase 19 Plan 19-01 — scheduler-triggered report run portal (PORT-01).
+	// GET /reports lists report_runs rows filtered by skill_id/period.
+	h.GET("/reports", deps.reportsListHandler)
 	// Phase 15 — data-import surface. Handlers live in import_api.go.
 	h.POST("/api/import/preview", deps.importPreviewHandler)
 	h.POST("/api/import/commit", deps.importCommitHandler)
