@@ -19,9 +19,9 @@ progress:
 
 ## Current Position
 
-Phase: 20 (admin P10.6) — not yet started
+Phase: 20 (admin P10.6) — CONTEXT CAPTURED
 Plan: 0 of 0
-Status: pending — Phase 20 discuss to begin
+Status: ready to plan
 Last activity: 2026-08-29
 
 **Phase 19 closure (2026-08-29):** COMPLETE — 5/5 plans, VERIFICATION PASSED 9/9, two gap-closure rounds (19-04 wiring + 19-05 audit-sink + SetKPIExecutor).
@@ -30,7 +30,7 @@ Last activity: 2026-08-29
 
 **Phase 17 status:** human_needed 3/4 UAT passed (gcc linking blocked). Phase 17 closeout pending operator-side gcc test resolution.
 
-**Phase 20 next:** `/gsd-discuss-phase 20` — admin console (/admin four-view: import batches / KPI definitions / Skill management / scheduled tasks) + milestone wrap (4th frozen lock decision + completion report)
+**Phase 20 next:** `/gsd:plan-phase 20` — plan admin console four-view + milestone wrap (CONTEXT.md ready)
 
 **Phase 18 Plan 03 (18-03) delivery summary (2026-08-28):**
 - Task 1: fan_out_dispatch data-channel variant — FanOutDispatchArgsV2 + validation + fallback_sequential (85d67bc)
