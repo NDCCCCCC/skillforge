@@ -150,7 +150,7 @@ go list -m -versions github.com/robfig/cron/v3 2>/dev/null || echo "module confi
 │  ┌───────▼──────┐  ┌──────▼──────┐  ┌────────▼─────────┐    │
 │  │ eval_gate     │  │ eval_gate   │  │  DuckDB ATTACH   │    │
 │  │ check (GEVL- │  │ check (GEVL-│  │  -> file delete  │    │
-│  │ 11)          │  │  11)        │  │  (DATA-18)       │    │
+│  │ 11)          │  │ 11)        │  │  (DATA-18)       │    │
 │  └───────┬──────┘  └──────┬─────┘  └──────────────────┘    │
 │          │                 │                                  │
 │  ┌───────▼─────────────────▼──────────────────────────────┐   │
@@ -178,7 +178,7 @@ internal/
 ├── scheduler/              # NEW — Phase 19
 │   ├── scheduler.go        # cron instance, job registration, lifecycle
 │   ├── report_job.go       # rerender job (eval_gate, drift, concurrent guard)
-│   ├── cleanup_job.go      # TTL cleanup job (DETACH -> delete)
+│   ├── cleanup_job.go       # TTL cleanup job (DETACH -> delete)
 │   ├── drift.go            # drift detection logic
 │   ├── eval_gate.go        # eval store query before cron trigger
 │   ├── in_flight.go        # in-memory concurrent guard map
@@ -279,7 +279,7 @@ os.Remove(datasetFilePath)
 > **This is a greenfield phase for new capabilities.** There is no rename/migration — no existing strings are being renamed. Runtime state audit not applicable.
 
 | Category | Items Found | Action Required |
-|----------|-------------|------------------|
+|----------|-------------|-----------------|
 | Stored data | No existing `report_runs` table | Create via schema migration |
 | Live service config | No existing scheduler | Initialize at server startup, register jobs |
 | OS-registered state | None | — |
@@ -418,27 +418,23 @@ func detectDrift(prev, curr map[string]any, threshold float64) bool {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where does the eval gate query get the faithfulness score from?**
-   - What we know: `internal/eval/gate.go` has `GateDecision` which takes a `Report` and thresholds. The scheduler needs a `GetLatestFaithfulness(skillID string)` method on the eval store.
-   - What's unclear: Whether the eval store persists per-skill latest scores, or if it only has full eval reports. If the latter, the scheduler may need to scan recent eval reports.
-   - Recommendation: Add a `GetLatestSkillFaithfulness(ctx, skillID string) (float64, error)` method to the eval reporter interface.
+   - **Resolution (RESOLVED):** The eval store (`internal/eval`) uses FilesystemEvalReporter which writes JSON reports to `eval/reports/`. The scheduler's `EvalGate` (Plan 19-02, Task 1) scans these files directly to find the latest per-skill `faithfulness` score from `report.Overall["faithfulness"]`. No new eval store method is needed; the scheduler reads the existing JSON report files.
+   - **Implementation:** `EvalGate.getLatestFaithfulness()` in `internal/scheduler/eval_gate.go` reads `eval/reports/*.json`, finds the latest for the given skillID, and returns the `faithfulness` value.
 
 2. **What is the staleness window for `as_of` data in the Phase 17 dashboard?**
-   - What we know: `kpi_metrics.go` has `containsASOf` for detecting the token in answers. The Phase 17 dashboard uses an `as_of` display.
-   - What's unclear: The specific staleness threshold (e.g., 7 days) and the code that implements the yellow warning.
-   - Recommendation: The Phase 17 as_of staleness window should be reusable for the portal. Confirm whether it lives in `kpi_metrics.go`, `eval/metrics.go`, or the dashboard FE code.
+   - **Resolution (OUT OF SCOPE for Phase 19):** This is a Phase 17 concern. Phase 19's portal does not implement `as_of` staleness logic. The portal shows `fired_at` and `created_at` timestamps directly. Staleness warning for `as_of` data is deferred to the Phase 17 dashboard scope.
+   - **Note:** If the Phase 17 staleness threshold is needed for the portal later, it lives in `kpi_metrics.go` or `eval/metrics.go` (per research), not in Phase 19 scope.
 
 3. **Is the drift threshold per-KPI or global?**
-   - What we know: PORT-06 says "per-KPI configurable". The CONTEXT says "default ±5% (per-KPI可配)".
-   - What's unclear: Where is the per-KPI threshold stored — in the Skill manifest, in the `report_runs` table, or in a separate config?
-   - Recommendation: Store in Skill manifest field `drift_threshold` (float64, default 0.05). Fall back to global config if absent.
+   - **Resolution (RESOLVED):** Global default (0.05 = 5%) with per-Skill override stored in the Skill manifest's `drift_threshold` field (float64). Plan 19-02 Task 2's `DetectDrift` takes an explicit `threshold float64` parameter; the caller passes either the Skill's `drift_threshold` or the global default.
+   - **Action:** Add `DriftThreshold float64` to `Manifest` struct in `internal/skill/manifest.go` and `ValidateDriftThreshold` to `internal/skill/loader.go`.
 
 4. **Should the scheduler run TTL cleanup on startup or only on schedule?**
-   - What we know: Two job types (cron rerender + TTL cleanup). TTL cleanup is a separate cron job.
-   - What's unclear: Whether the TTL cleanup cron expression is a fixed schedule (e.g., daily at 2am) or derived from dataset metadata (e.g., per-dataset TTL).
-   - Recommendation: Single global TTL cleanup schedule (e.g., `0 2 * * *` daily at 2am) sufficient for v1.
+   - **Resolution (RESOLVED):** Schedule-only (not on startup). A single global TTL cleanup cron schedule (`"0 2 * * *"` = daily at 2am) is sufficient for v1. The TTL cleanup job is registered as a cron job in `Scheduler.Start()`, just like the report rerender jobs. No startup trigger needed.
+   - **Rationale:** Running cleanup on startup adds complexity with marginal benefit; the cron schedule handles recurring cleanup adequately.
 
 ---
 
@@ -462,7 +458,7 @@ func detectDrift(prev, curr map[string]any, threshold float64) bool {
 ### Phase Requirements -> Test Map
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
+|--------|----------|-----------|-------------------|---------------|
 | PORT-02 | `report_schedule` cron syntax validation at load | unit | `go test ./internal/skill/... -run TestReportSchedule -v` | new |
 | PORT-03 | `report_runs` row appended on every cron trigger | unit + integration | `go test ./internal/report/... -run TestReportRuns -v` | new |
 | PORT-04 | Version increment creates new `vN.html`, not overwrite | unit | `go test ./internal/report/... -run TestVersionIncrement -v` | existing |
@@ -484,7 +480,7 @@ func detectDrift(prev, curr map[string]any, threshold float64) bool {
 - [ ] `internal/server/report_portal.go` — `GET /reports` list handler
 - [ ] `internal/server/rerender.go` — `POST /api/reports/rerender` handler
 - [ ] Schema migration for `report_runs` table
-- Framework install: `go get github.com/robfig/cron/v3` (if not already in go.mod)
+- [ ] Framework install: `go get github.com/robfig/cron/v3` (if not already in go.mod)
 
 ---
 
@@ -539,7 +535,7 @@ func detectDrift(prev, curr map[string]any, threshold float64) bool {
 **Confidence breakdown:**
 
 | Area | Level | Reason |
-|------|-------|--------|
+|------|-------|-------|
 | Standard Stack | MEDIUM-HIGH | `robfig/cron/v3` confirmed via training data + GitHub; not verified against Context7 (MCP tool unavailable); all other findings are from existing codebase |
 | Architecture | HIGH | All patterns verified against existing Phase 18 code |
 | Pitfalls | MEDIUM | Windows DETACH pattern confirmed via `duckdb/staging.go`; cron parser edge cases from training data |
