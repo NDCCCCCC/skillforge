@@ -33,13 +33,15 @@ import (
 // registers all cron jobs from the Loader's Skills() and starts the cron
 // runner, and Stop performs graceful shutdown.
 type Scheduler struct {
-	cron     *cron.Cron
-	loader   *skill.Loader
-	inFlight *inFlight
-	store    store.Store
-	evalGate *EvalGate
-	mu       sync.RWMutex
-	stopped  bool
+	cron          *cron.Cron
+	loader        *skill.Loader
+	inFlight      *inFlight
+	store         store.Store
+	evalGate      *EvalGate
+	ttlDetacher   Detacher
+	ttlConfig     TTLCleanupConfig
+	mu            sync.RWMutex
+	stopped       bool
 }
 
 // New constructs a Scheduler with the given Loader.
@@ -56,6 +58,14 @@ func (s *Scheduler) SetStore(store store.Store) { s.store = store }
 
 // SetEvalGate injects the eval gate.
 func (s *Scheduler) SetEvalGate(gate *EvalGate) { s.evalGate = gate }
+
+// SetDetacher injects the AttachLRU detacher for TTL cleanup.
+func (s *Scheduler) SetDetacher(d Detacher) { s.ttlDetacher = d }
+
+// SetTTLCleanup configures the TTL cleanup job schedule.
+// schedule is a cron expression (e.g. "0 2 * * *" = daily at 2am).
+// A zero/empty schedule disables TTL cleanup.
+func (s *Scheduler) SetTTLCleanup(cfg TTLCleanupConfig) { s.ttlConfig = cfg }
 
 // EvalGate returns the scheduler's eval gate (needed by rerenderHandler).
 func (s *Scheduler) EvalGate() *EvalGate { return s.evalGate }
@@ -83,6 +93,19 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		}
 		log.Printf("[OK] scheduler: registered %s for skill %s", manifest.ReportSchedule, manifest.Name)
 	}
+
+	// Register TTL cleanup job if configured
+	if s.ttlConfig.TTL > 0 {
+		_, err := s.cron.AddFunc("0 2 * * *", func() {
+			s.runTTLCleanup(ctx)
+		})
+		if err != nil {
+			log.Printf("[WARN] scheduler: failed to register TTL cleanup cron: %v", err)
+		} else {
+			log.Printf("[OK] scheduler: TTL cleanup registered (TTL=%v)", s.ttlConfig.TTL)
+		}
+	}
+
 	s.cron.Start()
 	log.Printf("[OK] scheduler: started")
 	return nil
@@ -118,6 +141,17 @@ func (s *Scheduler) runReportJob(ctx context.Context, m *skill.Manifest) {
 		IsManual: false,
 	}
 	_ = RunReportJob(ctx, input, s.store, s.evalGate) // store nil-safe inside RunReportJob
+}
+
+// runTTLCleanup is called by cron on schedule. It delegates to RunTTLCleanup.
+func (s *Scheduler) runTTLCleanup(ctx context.Context) {
+	if s.ttlConfig.TTL <= 0 || s.store == nil {
+		return
+	}
+	log.Printf("[INFO] scheduler: TTL cleanup starting (TTL=%v)", s.ttlConfig.TTL)
+	if err := RunTTLCleanup(ctx, s.store, s.ttlDetacher, s.ttlConfig); err != nil {
+		log.Printf("[ERROR] scheduler: TTL cleanup failed: %v", err)
+	}
 }
 
 // extractPeriodFromCron derives the period string from a cron expression.

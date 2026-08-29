@@ -377,6 +377,38 @@ func main() {
 	log.Printf("[OK] cmd/server: KPI pipeline wired (kpis=%s, registry=%d entries, signature=%s)",
 		kpisDir, len(kpiRegistry.Names()), shortSignature(kpiSignature))
 
+	// Phase 19 — scheduler (PORT-02). Built after the KPI pipeline so kpiLRU
+	// is available as the Detacher for TTL cleanup (DATA-18). TTL defaults to
+	// 90 days; configurable via SKILLFORGE_DATASET_TTL_DAYS env var.
+	ttlDays := 90
+	if v, err := strconv.Atoi(envOr("SKILLFORGE_DATASET_TTL_DAYS", "90")); err == nil && v > 0 {
+		ttlDays = v
+	}
+	sched := scheduler.New(loader)
+	sched.SetStore(st)
+	sched.SetEvalGate(scheduler.NewEvalGate(
+		envOr("EVAL_REPORTS_DIR", defaultEvalReportsDir),
+		"skills/",
+	))
+	sched.SetDetacher(kpiLRU)
+	sched.SetTTLCleanup(scheduler.TTLCleanupConfig{
+		TTL:         time.Duration(ttlDays) * 24 * time.Hour,
+		DatasetsDir: envOr("SKILLFORGE_DATASETS_DIR", "data/datasets"),
+	})
+	if err := sched.Start(ctx); err != nil {
+		log.Printf("[ERROR] cmd/server: scheduler start: %v", err)
+	} else {
+		log.Printf("[OK] cmd/server: scheduler started")
+	}
+	// Graceful scheduler shutdown on process exit
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := sched.Stop(ctx); err != nil {
+			log.Printf("[ERROR] cmd/server: scheduler stop: %v", err)
+		}
+	}()
+
 	// 6c-4. Phase 17 DASH-01: cross-validate data-channel Skill routing
 	// tables against the KPI registry at boot. Tier-channel Skills are
 	// skipped inside ValidateAgainstKPI (HasDataChannel()==false → no
@@ -501,6 +533,9 @@ func main() {
 		// the registry catalog + kpi_calls audit rows.
 		KPIExecutor: kpiExecutor,
 		KPIRegistry: kpiRegistry,
+		// Phase 19 — scheduler wired with store + eval gate + LRU detacher.
+		Scheduler: sched,
+		Detacher:  kpiLRU,
 	}
 
 	// 8. Hertz server (Pattern 1).

@@ -341,7 +341,10 @@ type Deps struct {
 	// (PORT-02). Used by the rerender endpoint to access EvalGate.
 	// nil = scheduler not wired, rerender returns 503.
 	Scheduler *scheduler.Scheduler
-}
+	// Detacher is the DuckDB AttachLRU for the dataset lifecycle (Phase 19 / DATA-18).
+	// Used by the scheduler's TTL cleanup to DETACH before deleting dataset files.
+	// nil = TTL cleanup is a no-op (detacher is nil-safe in RunTTLCleanup).
+	Detacher interface{ Detach(ctx context.Context, id string) error }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
 // Rewriter + RefusalClassifier fields above. The test
