@@ -311,6 +311,27 @@ CREATE TABLE IF NOT EXISTS reports (
     template_version    TEXT    NOT NULL DEFAULT '',
     result_digest       TEXT    NOT NULL DEFAULT ''
 );
+
+-- report_runs (Phase 19 / Plan 19-01 / PORT-01/PORT-02/PORT-03):
+-- INSERT-only audit table for scheduler-triggered report runs. Each
+-- scheduled firing produces one row: run_id (UUID), skill_id, period,
+-- cron_expr (the schedule that fired it), fired_at, kpi_snapshots (JSON
+-- freeze of KPI values at run time), output_url, status (enum:
+// success|failed|skipped_duplicate|eval_gate_blocked), drift_detected
+-- (bool flag for GEVL-11 drift detection), and created_at.
+CREATE TABLE IF NOT EXISTS report_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          TEXT    NOT NULL UNIQUE,
+    skill_id        TEXT    NOT NULL,
+    period          TEXT    NOT NULL,
+    cron_expr       TEXT    NOT NULL DEFAULT '',
+    fired_at        DATETIME NOT NULL,
+    kpi_snapshots   TEXT    NOT NULL DEFAULT '{}',
+    output_url      TEXT    NOT NULL DEFAULT '',
+    status          TEXT    NOT NULL DEFAULT 'success',
+    drift_detected  INTEGER NOT NULL DEFAULT 0,
+    created_at      DATETIME NOT NULL
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
@@ -459,6 +480,17 @@ CREATE INDEX IF NOT EXISTS idx_reports_skill_id ON reports(skill_id)
 const createReportsPeriodVersionUniqueIdxSQL = `
 CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_period_version ON reports(period, version)
 `
+
+// report_runs (Phase 19 / Plan 19-01 / PORT-01): indexes for the
+// scheduler-triggered run audit table.
+const (
+	createReportRunsSkillPeriodIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_report_runs_skill_period ON report_runs(skill_id, period)
+`
+	createReportRunsFiredAtIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_report_runs_fired_at ON report_runs(fired_at)
+`
+)
 
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
@@ -631,6 +663,14 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	// previously-published vN file.
 	if _, err := s.db.ExecContext(ctx, createReportsPeriodVersionUniqueIdxSQL); err != nil {
 		return fmtError("migrate.reports.period_version_idx", err)
+	}
+
+	// Phase 19 / Plan 19-01 / PORT-01: report_runs audit table indexes.
+	if _, err := s.db.ExecContext(ctx, createReportRunsSkillPeriodIdxSQL); err != nil {
+		return fmtError("migrate.report_runs.skill_period_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createReportRunsFiredAtIdxSQL); err != nil {
+		return fmtError("migrate.report_runs.fired_at_idx", err)
 	}
 	return nil
 }

@@ -396,6 +396,24 @@ type KPICallsFilter struct {
 	Limit int
 }
 
+// ReportRunRow is one scheduler-triggered report run audit record (Phase 19 /
+// Plan 19-01 / PORT-01/PORT-02/PORT-03). INSERT-only: PutReportRun appends,
+// no UPDATE path. The run_id is a UUID generated at cron-fire time; the
+// combination of skill_id+period+created_at is the natural ordering key.
+type ReportRunRow struct {
+	ID            int64
+	RunID         string
+	SkillID       string
+	Period        string
+	CronExpr      string
+	FiredAt       time.Time
+	KPISnapshots  string // JSON freeze of KPI values at run time
+	OutputURL     string
+	Status        string // success|failed|skipped_duplicate|eval_gate_blocked
+	DriftDetected bool
+	CreatedAt     time.Time
+}
+
 // ReportRow is one published monthly report metadata record (Phase 18 /
 // Plan 18-02 / RPT-04). INSERT-only: PutReport appends, no UPDATE path.
 type ReportRow struct {
@@ -736,6 +754,21 @@ type Store interface {
 
 	// ListReportsBySkill returns all reports for a given skill, newest-first.
 	ListReportsBySkill(ctx context.Context, skillID string, limit int) ([]ReportRow, error)
+
+	// PutReportRun appends one INSERT-only report run audit row (PORT-01).
+	// Called by the scheduler on each cron firing to record the run outcome.
+	PutReportRun(ctx context.Context, row ReportRunRow) error
+
+	// ListReportRuns returns report run rows filtered by skill_id and/or
+	// period, newest-first. Empty skillID or period means no filter.
+	ListReportRuns(ctx context.Context, skillID, period string, limit int) ([]ReportRunRow, error)
+
+	// GetReportRun returns the report run for a specific run_id.
+	GetReportRun(ctx context.Context, runID string) (*ReportRunRow, error)
+
+	// GetLatestReportRunBySkill returns the most recent report run for a
+	// (skill_id, period) pair, or nil if none exists.
+	GetLatestReportRunBySkill(ctx context.Context, skillID, period string) (*ReportRunRow, error)
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.
