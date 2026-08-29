@@ -638,7 +638,13 @@ Plans:
 
 **Pitfalls addressed:** Pitfall 16（cron TOCTOU——重渲染进行中数据被清/被改；快照绑定 + 原子改名）、Pitfall 23（陈旧数据窗口——报表自动重渲染把过期数据包装成新鲜；as_of 徽标 + drift 检测）
 **Research flag:** ARCHITECTURE.md Q4（调度器嵌入形态：进程内共享 cron 实例 vs 独立 worker——v1 倾向进程内）；robfig/cron API 已全部源码验证（STACK-VERIFICATION §2.2）
-**Plans**: TBD
+**Plans**: 3 plans
+**Plan list**:
+
+- [ ] 19-01-PLAN.md — Wave 1: report_runs table + ReportSchedule manifest field + scheduler skeleton + GET /reports portal API
+- [ ] 19-02-PLAN.md — Wave 2: eval gate (GEVL-11) + drift detection + manual rerender endpoint
+- [ ] 19-03-PLAN.md — Wave 3: TTL cleanup (DATA-18) + ReportPortal FE + deep integration
+
 **UI hint**: yes（/reports 路由——复用 /eval 模式，无登录面）
 
 ### Phase 20: 管理台（P10.6）
