@@ -386,6 +386,10 @@ func main() {
 	}
 	sched := scheduler.New(loader)
 	sched.SetStore(st)
+	// KPI executor injection (19-05 gap closure, PORT-03): without this the
+	// cron path captures empty snapshots and drift detection silently no-ops;
+	// only the manual rerender path (server deps) carried real data.
+	sched.SetKPIExecutor(kpiExecutor)
 	sched.SetEvalGate(scheduler.NewEvalGate(
 		envOr("EVAL_REPORTS_DIR", defaultEvalReportsDir),
 		"skills/",

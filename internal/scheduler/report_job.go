@@ -80,7 +80,7 @@ func RunReportJob(ctx context.Context, input ReportJobInput, storeDB store.Store
 	// 4. Run the DeepAgent report generation path
 	runID := uuid.New().String()
 	firedAt := time.Now().UTC()
-	currSnapshots, outputURL, runErr := executeReportRun(ctx, input.SkillID, input.Period, kpiExec, loader)
+	currSnapshots, outputURL, runErr := executeReportRun(ctx, input.SkillID, input.Period, kpiExec, loader, storeDB)
 
 	// 5. Detect drift
 	driftDetected := false
@@ -137,7 +137,10 @@ func writeBlockedRun(ctx context.Context, input ReportJobInput, storeDB store.St
 
 // executeReportRun generates the report for skill/period and returns KPI snapshots + URL.
 // It calls the KPI executor for current values, then report.Publish to write vN.html.
-func executeReportRun(ctx context.Context, skillID, period string, kpiExec *kpi.Executor, loader *skill.Loader) (map[string]any, string, error) {
+// audit is the CR-04 reports-table sink (19-05 gap closure): RunReportJob threads
+// the storeDB it already holds — a nil sink trips publish's fail-closed contract
+// and every automated run would end status="failed" with an empty output_url.
+func executeReportRun(ctx context.Context, skillID, period string, kpiExec *kpi.Executor, loader *skill.Loader, audit report.ReportAuditSink) (map[string]any, string, error) {
 	// 1. Get KPI snapshots from the executor
 	snapshots := make(map[string]any)
 	if kpiExec != nil {
@@ -186,8 +189,12 @@ func executeReportRun(ctx context.Context, skillID, period string, kpiExec *kpi.
 	// 5. Build snapshot for rendering
 	snap := report.MapSnapshot(snapshots)
 
-	// 6. Publish — approvalAuditID is empty for automated runs (no HITL approval)
-	result, err := report.Publish(ctx, tmpl, slotTexts, period, snap, "", nil, skillID, nil)
+	// 6. Publish — approvalAuditID stays empty for automated runs (no HITL
+	// approval row), but the audit sink IS wired (19-05 gap closure, supersedes
+	// 19-04's nil decision which violated the CR-04 fail-closed contract):
+	// the reports row is the append-only record tying vN.html to its
+	// version/digest/template-version — the PORT-04 persistence chain.
+	result, err := report.Publish(ctx, tmpl, slotTexts, period, snap, "", nil, skillID, audit)
 	if err != nil {
 		return snapshots, "", fmt.Errorf("report.Publish: %w", err)
 	}
