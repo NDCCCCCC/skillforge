@@ -30,3 +30,7 @@ reports/
 # the runtime state this rule protects is the repo-root data/ tree only
 # (DefaultStagingDir / DefaultDatasetsDir, staging.go:34-42).
 /data/
+
+# WSL-built dev server binaries (Phase 16/18/19 verification builds, ~119MB
+# ELF with debug_info) — build artifacts, never commit.
+/skillforge-server*
