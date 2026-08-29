@@ -53,6 +53,7 @@ import (
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/scheduler"
 	"github.com/skillforge/skillforge/internal/server/classifier"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -336,6 +337,10 @@ type Deps struct {
 	// read-only GET /api/admin/kpis surface. Same nil contract as
 	// KPIExecutor above.
 	KPIRegistry *kpi.Registry
+	// Scheduler is the Phase 19 cron-driven report regeneration scheduler
+	// (PORT-02). Used by the rerender endpoint to access EvalGate.
+	// nil = scheduler not wired, rerender returns 503.
+	Scheduler *scheduler.Scheduler
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
@@ -476,6 +481,9 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// Phase 19 Plan 19-01 — scheduler-triggered report run portal (PORT-01).
 	// GET /reports lists report_runs rows filtered by skill_id/period.
 	h.GET("/reports", deps.reportsListHandler)
+	// Phase 19 Plan 19-02 — manual rerender endpoint (PORT-05).
+	// POST /api/reports/rerender triggers immediate report rerun with IsManual=true.
+	h.POST("/api/reports/rerender", deps.rerenderHandler)
 	// Phase 15 — data-import surface. Handlers live in import_api.go.
 	h.POST("/api/import/preview", deps.importPreviewHandler)
 	h.POST("/api/import/commit", deps.importCommitHandler)

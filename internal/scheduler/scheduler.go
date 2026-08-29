@@ -25,6 +25,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // Scheduler runs scheduled report regeneration jobs. It is a singleton
@@ -35,11 +36,13 @@ type Scheduler struct {
 	cron     *cron.Cron
 	loader   *skill.Loader
 	inFlight *inFlight
+	store    store.Store
+	evalGate *EvalGate
 	mu       sync.RWMutex
 	stopped  bool
 }
 
-// New constructs a Scheduler with the given Loader and in-flight tracker.
+// New constructs a Scheduler with the given Loader.
 func New(loader *skill.Loader) *Scheduler {
 	return &Scheduler{
 		cron:     cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger), cron.Recover(cron.DefaultLogger))),
@@ -47,6 +50,15 @@ func New(loader *skill.Loader) *Scheduler {
 		inFlight: &inFlight{m: make(map[string]time.Time)},
 	}
 }
+
+// SetStore injects the store backend.
+func (s *Scheduler) SetStore(store store.Store) { s.store = store }
+
+// SetEvalGate injects the eval gate.
+func (s *Scheduler) SetEvalGate(gate *EvalGate) { s.evalGate = gate }
+
+// EvalGate returns the scheduler's eval gate (needed by rerenderHandler).
+func (s *Scheduler) EvalGate() *EvalGate { return s.evalGate }
 
 // Start registers cron jobs for all Skills that have a non-empty ReportSchedule
 // and starts the cron runner. Idempotent: calling Start twice is a no-op after the first.
@@ -96,19 +108,27 @@ func (s *Scheduler) Stop(ctx context.Context) error {
 	return nil
 }
 
-// runReportJob is the cron job body. It checks eval gate, acquires in-flight slot,
-// then triggers the report run. This is the skeleton — the eval gate and
-// full run logic are in 19-02-PLAN.
+// runReportJob is called by cron on schedule. It delegates to RunReportJob.
 func (s *Scheduler) runReportJob(ctx context.Context, m *skill.Manifest) {
-	key := skillPeriodKey(m.Name, "") // period resolved from manifest or cron
-	if !s.inFlight.tryAcquire(key) {
-		log.Printf("[INFO] scheduler: skipping %s (already in flight)", key)
-		// TODO(19-02): write skipped_duplicate audit row
-		return
+	period := extractPeriodFromCron(m.ReportSchedule)
+	input := ReportJobInput{
+		SkillID:  m.Name,
+		Period:   period,
+		CronExpr: m.ReportSchedule,
+		IsManual: false,
 	}
-	defer s.inFlight.release(key)
-	log.Printf("[INFO] scheduler: firing report job for skill=%s", m.Name)
-	// TODO(19-02): eval gate check, full run
+	_ = RunReportJob(ctx, input, s.store, s.evalGate) // store nil-safe inside RunReportJob
+}
+
+// extractPeriodFromCron derives the period string from a cron expression.
+// Monthly cron (e.g. "0 9 1 * *") → "YYYY-MM"
+// For v1, the period is derived from the cron expression.
+// Returns current month as "YYYY-MM" as a sensible default.
+func extractPeriodFromCron(cronExpr string) string {
+	if cronExpr == "" {
+		return ""
+	}
+	return time.Now().Format("2006-01")
 }
 
 // SkillPeriodKey exposes the helper for use in report_job.go.
