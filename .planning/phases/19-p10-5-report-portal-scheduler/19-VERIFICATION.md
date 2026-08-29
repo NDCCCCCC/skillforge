@@ -1,47 +1,28 @@
 ---
 phase: 19-p10-5-report-portal-scheduler
-verified: 2026-08-29T12:44:03Z
-status: gaps_found
-score: 8/9 must-haves verified
+verified: 2026-08-29T12:55:58Z
+status: passed
+score: 9/9 must-haves verified
 overrides_applied: 0
-re_verification: Yes — after gap closure 19-04 (commit c28ca46)
+re_verification: Yes — 第二轮 gap closure（19-05，commit ccd8824）
 re_verification_meta:
   previous_status: gaps_found
   previous_score: 8/9
-  gaps_closed: []
-  gaps_remaining:
-    - "PORT-04 — report.Publish 仍无法在自动化路径上成功返回：executeReportRun 以 nil audit sink 调用 Publish，触发 publish.go 的 fail-closed 契约报错，output_url 仍恒为空串"
-    - "PORT-03 — SetKPIExecutor 在 cmd/server/main.go 装配时从未调用，cron 路径 KPI 快照恒为空（手动重渲染路径正常）"
+  gaps_closed:
+    - "PORT-04 — executeReportRun 新增 audit report.ReportAuditSink 参数，RunReportJob 把 storeDB 直通传入（report_job.go:83/:143/:197）；编译期断言 var _ report.ReportAuditSink = (store.Store)(nil) 锁定接口关系；TestExecuteReportRunWiresAuditSink 实测 PASS 证明 URL=/reports/<period>/v1.html 且 reports 行含 version/digest/template_version"
+    - "PORT-03 — cmd/server/main.go:392 补 sched.SetKPIExecutor(kpiExecutor)（先于 :402 的 sched.Start），cron 路径 KPI 快照接线闭合"
+  gaps_remaining: []
   regressions: []
-gaps:
-  - truth: "Version persistence —每次发布新增 vN.html 不覆盖（PORT-04）"
-    status: failed
-    reason: "19-04 把 executeReportRun 从 stub 改为真实实现并接入了 report.Publish（结构性接线成立），但 report_job.go:190 以 nil 作为第 9 个参数（audit ReportAuditSink）调用 Publish。publish.go:162-166 的 fail-closed 契约（CR-04）对 nil audit 直接返回错误（且错误发生在 vN.html 文件已写入之后）。因此生产路径上每次自动化运行：孤儿 vN.html 落盘 → Publish 返回 error → executeReportRun 返回 (\"\", err) → RunReportJob 写 status=\"failed\"、OutputURL=\"\"。上一轮记录的可观测失败（output_url 恒为空串）依旧存在，只是根因从 stub 变成了 nil audit sink。19-04 SUMMARY 把『传 nil audit』列为决策，但该决策与 publish.go 自身的 fail-closed 契约及其测试 TestPublishRequiresAuditSink（publish_test.go:126-135，本机实测 PASS 证明该调用形态必报错）直接矛盾。执行侧只跑了 go build + scheduler 测试，而 scheduler 包仅有 drift_test.go / eval_gate_test.go，对 executeReportRun 零覆盖，因此未能发现。"
-    artifacts:
-      - path: internal/scheduler/report_job.go
-        issue: "line 190: report.Publish(..., nil) 第 9 参 audit sink 为 nil，Publish 必然返回 error，outputURL 恒为空串"
-      - path: internal/report/publish.go
-        issue: "lines 162-166 fail-closed 契约正确（非缺陷）——缺陷在调用方传 nil；每次失败运行还遗留无 reports 表行关联的孤儿 vN.html 文件"
-    missing:
-      - "executeReportRun 需接收并传递真实的 audit sink：RunReportJob 已持有 storeDB store.Store，且 SQLiteStore.PutReport（internal/store/sqlite/reports.go:46）已满足 ReportAuditSink 接口，把 storeDB（或窄化后的 sink）传入 executeReportRun 作为 Publish 的第 9 参即可"
-      - "为 scheduler 包新增覆盖 executeReportRun 端到端（stub engine + stub audit）的测试，防止再次回归"
-  - truth: "每次运行有审计行 + 全量 KPI 快照（PORT-03）— cron 路径 KPI 快照恒为空"
-    status: partial
-    reason: "SetKPIExecutor（scheduler.go:65）在全仓库无任何调用点。cmd/server/main.go:387-397 装配 Scheduler 时调用了 SetStore/SetEvalGate/SetDetacher/SetTTLCleanup，唯独漏掉 sched.SetKPIExecutor(kpiExecutor)——而 kpiExecutor 在 main.go:375 已构建完成，接线成本为一行。后果：cron 路径 scheduler.go:148 传入 nil executor → executeReportRun 跳过 GetAllKPISnapshots → kpi_snapshots 恒为 {}，且 report_job.go:87 的 len(currSnapshots)>0 守卫使漂移检测（PORT-06）在自动化路径上静默失效。手动重渲染路径正常（main.go:534 → server.Deps.KPIExecutor → rerender.go:66，真实 KPI 数据流通）。"
-    artifacts:
-      - path: cmd/server/main.go
-        issue: "scheduler 装配块（387-397 行）缺少 sched.SetKPIExecutor(kpiExecutor) 调用"
-    missing:
-      - "在 main.go 的 sched.Start(ctx) 之前补一行 sched.SetKPIExecutor(kpiExecutor)"
+gaps: []
 ---
 
 # Phase 19: Static Report Portal + Shared Scheduler Verification Report
 
 **Phase Goal:** Static report portal + shared scheduler for automated report regeneration with drift detection, eval gate, TTL cleanup
-**Verified:** 2026-08-29T12:44:03Z
-**Status:** gaps_found
-**Re-verification:** Yes — after gap closure 19-04 (commit `c28ca46`)
-**Score:** 8/9 must-haves verified
+**Verified:** 2026-08-29T12:55:58Z
+**Status:** passed
+**Re-verification:** Yes — 第二轮 gap closure（19-05，commit `ccd8824`；第一轮 19-04 commit `c28ca46` 修复不完整，本轮补齐）
+**Score:** 9/9 must-haves verified
 
 ## Goal Achievement
 
@@ -49,50 +30,74 @@ gaps:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|---------|
-| 1 | `GET /reports` lists all published reports with skill/period/version/time/status | VERIFIED | 回归确认：`reportsListHandler` + `server.go:486` 路由未变；`ListReportRuns` 返回真实审计行 |
-| 2 | Skill manifest accepts `report_schedule:` cron expression validated at load time | VERIFIED | 回归确认：`manifest.go:80` 字段 + `loader.go:197` `cron.ParseStandard` 校验未变 |
-| 3 | Scheduler starts with server and registers cron jobs for all Skills with schedules | VERIFIED | 回归确认：`scheduler.go:80` Start 迭代 `loader.Skills()` 注册非空 `ReportSchedule`；`cron.WithChain(SkipIfStillRunning, Recover)`（scheduler.go:52）未变 |
-| 4 | Every scheduled run produces a `report_runs` audit row with run_id and status | VERIFIED | 回归确认：`report_job.go:112` `PutReportRun` 对 success/failed 均写行；`writeBlockedRun` 覆盖 blocked/skipped；19-04 后失败运行也会落审计行（status="failed"） |
-| 5 | Drift is detected by comparing KPI snapshots between consecutive runs | VERIFIED | 回归确认：`DetectDrift`（drift.go:30）在 `report_job.go:88` 被调用，机制在快照存在时工作（手动重渲染路径已验证数据流通）。注意：cron 路径因 GAP-2 快照恒空而静默跳过，该问题归入 PORT-03 gap 追踪，不在本 truth 重复扣分 |
-| 6 | Manual rerender via `POST /api/reports/rerender` triggers the same run path as cron | VERIFIED | 回归确认 + 增强：`rerender.go:66` 现传入 `deps.KPIExecutor`（main.go:534 装配），手动路径 KPI 数据真实流通 |
-| 7 | Scheduler checks eval gate before firing a cron run; blocked runs get `eval_gate_blocked` status | VERIFIED | 回归确认：`report_job.go:50` `evalGate.Check`；blocked → `writeBlockedRun("eval_gate_blocked")` 未变 |
-| 8 | TTL cleanup job DETACHs DuckDB datasets before deleting; only anonymized datasets are cleaned | VERIFIED | 回归确认：`cleanup_job.go` tier 检查 + DETACH-before-delete 顺序未变 |
-| 9 | Version persistence —每次发布新增 vN.html 不覆盖 | FAILED | 19-04 结构性接线成立（executeReportRun 非 stub、`report.Publish` 被调用、`OutputURL` 字段接入审计行），但 `report_job.go:190` 以 nil audit sink 调用 Publish，触发 `publish.go:162-166` fail-closed 报错 → 每次运行 `status="failed"`、`output_url=""`，与上一轮相同的可观测失败。本机实测：`TestPublishRequiresAuditSink` PASS 证明该调用形态必报错 |
+| 1 | `GET /reports` lists all published reports with skill/period/version/time/status | VERIFIED | `reportsListHandler` + `server.go:486` 路由；`ListReportRuns` 返回真实审计行（三轮回归确认） |
+| 2 | Skill manifest accepts `report_schedule:` cron expression validated at load time | VERIFIED | `manifest.go:80` 字段 + `loader.go:197` `cron.ParseStandard` 加载期校验（回归确认） |
+| 3 | Scheduler starts with server and registers cron jobs for all Skills with schedules | VERIFIED | `scheduler.go:80` Start 迭代 `loader.Skills()`；`cron.WithChain(SkipIfStillRunning, Recover)`；main.go `:392` 装配 → `:402` Start 顺序正确 |
+| 4 | Every scheduled run produces a `report_runs` audit row with run_id and status | VERIFIED | `report_job.go:112` `PutReportRun` 覆盖 success/failed；`writeBlockedRun` 覆盖 blocked/skipped |
+| 5 | Drift is detected by comparing KPI snapshots between consecutive runs | VERIFIED | `drift.go:30` + `report_job.go:88`；本轮 GAP-2 修复后 cron 路径 `kpiExecutor` 已接线（main.go:392），`len(currSnapshots)>0` 守卫不再因 nil executor 恒跳过；DRIFT 徽标 `ReportPortal.tsx:161-167` |
+| 6 | Manual rerender via `POST /api/reports/rerender` triggers the same run path as cron | VERIFIED | `rerender.go:66` 传 `deps.KPIExecutor` + `deps.Store`（经 RunReportJob 直通，自动成为 audit sink）；202 + 异步执行 |
+| 7 | Scheduler checks eval gate before firing a cron run; blocked runs get `eval_gate_blocked` status | VERIFIED | `report_job.go:50` `evalGate.Check`；blocked → `writeBlockedRun("eval_gate_blocked")` |
+| 8 | TTL cleanup job DETACHs DuckDB datasets before deleting; only anonymized datasets are cleaned | VERIFIED | `cleanup_job.go` tier=="anonymized" 检查 + DETACH-before-delete 顺序 |
+| 9 | Version persistence —每次发布新增 vN.html 不覆盖 | VERIFIED | `publish.go:198-228` `getNextVersion` 扫描 `reports/<period>/` 取 MAX+1（永不覆盖）；`report_job.go:197` Publish 收到实 audit sink → reports 行写入 version/digest/template_version（PORT-04 持久化链闭合）；`TestExecuteReportRunWiresAuditSink` 实测断言 `URL=/reports/2026-08/v1.html` + 行字段 |
 
-**Score:** 8/9 truths verified
+**Score:** 9/9 truths verified
+
+### Re-verification 记录（第二轮，19-05）
+
+**Commit:** `ccd8824`（fix(19-05): wire audit sink + KPI executor into scheduler run paths，PORT-03/PORT-04）
+
+**逐项核实（读代码 + 本机重跑测试，未采信 SUMMARY 陈述）：**
+
+1. **PORT-04 audit sink threading** ✓
+   - `report_job.go:143` — `executeReportRun(..., audit report.ReportAuditSink)` 新参数
+   - `report_job.go:83` — `RunReportJob` 把已持有的 `storeDB` 直通传入（store.Store 方法集含 PutReport）
+   - `report_job.go:197` — `report.Publish(..., skillID, audit)`：nil 决策被撤销，approvalAuditID 保持空串（自动化运行无 HITL 审批）但 reports 行照写
+   - `report_job_test.go:42` — 编译期断言 `var _ report.ReportAuditSink = (store.Store)(nil)` 锁定窄接口关系
+   - `report_job_test.go:60-78` — `TestExecuteReportRunWiresAuditSink`：断言 `url == "/reports/2026-08/v1.html"`、reports 行 `Version=1`、`ApprovalAuditID` 为空、`FilePath/ResultDigest/TemplateVersion` 非空
+   - `report_job_test.go:83-91` — `TestExecuteReportRunNilAuditFailsClosed`：nil sink → error 含 "audit sink not wired"（CR-04 契约在 scheduler 层保持可见）
+2. **PORT-03 boot 装配** ✓
+   - `cmd/server/main.go:392` — `sched.SetKPIExecutor(kpiExecutor)`，位于 `:402 sched.Start(ctx)` 之前，带注释说明此前 cron 路径空快照 + drift 静默失效的后果
+   - 类型正确性经双侧签名交叉验证：`SetKPIExecutor(exec *kpi.Executor)`（scheduler.go:65，包编译通过）× `kpiExecutor = kpi.NewExecutor(...)` 返回 `*kpi.Executor`（main.go:375 / executor.go:205）
+3. **一致性检查** ✓
+   - `executeReportRun` 生产调用方唯一（report_job.go:83）；`rerender.go:66` 签名未变，手动路径经 storeDB 直通自动获得 audit sink——cron 与手动路径行为一致
+   - 测试用 `chdirTemp`（t.TempDir + os.Chdir，无 t.Parallel）隔离发布写入，不污染仓库工作树
+
+**19-04（第一轮）与 19-05（第二轮）closure 对比：** 19-04 把 Publish 调用接进来但传 nil sink（与 publish.go CR-04 fail-closed 契约矛盾，运行期必败）；19-05 修正为实 sink threading 并补齐 boot 接线与测试覆盖。两轮合计，`executeReportRun` 端到端（快照 → 模板 → Publish → URL 回填 → 审计行）已有直接测试覆盖，不再可能以"编译通过"假象掩盖运行期失败。
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `internal/kpi/executor.go` | `GetAllKPISnapshots` method | VERIFIED | executor.go:721-741 真实实现：迭代 `reg.Catalog()`，逐 KPI `Call`，取 `Snapshot.Rows[0]`，单点失败 log+skip，包保持 CGO-free |
-| `internal/scheduler/scheduler.go` | `kpiExecutor` field + `SetKPIExecutor` setter | VERIFIED (存在) / 接线断裂 | scheduler.go:42 字段、:65 setter 存在；但 setter 全仓库零调用点（见 GAP-2） |
-| `internal/scheduler/report_job.go` | executeReportRun 真实实现（KPI executor + report.Publish + URL 回填） | STUB→真实，但运行期必败 | :140-196 结构完整（快照→模板→slotTexts→MapSnapshot→Publish）；:190 nil audit sink 使 Publish 运行期必报错（见 GAP-1） |
-| `internal/scheduler/report_job.go` | `RunReportJob` 捕获 outputURL 写入审计行 | VERIFIED (plumbing) | :83 接收返回值、:107 `OutputURL: outputURL` 字段接线正确——只因上游 Publish 必败而恒为空串 |
-| `internal/server/rerender.go` | 手动路径传 KPIExecutor | VERIFIED | :66 传入 `deps.KPIExecutor`；loader 传 nil → 回落最小模板（可接受，GAP-1 修复后手动路径即可产出带 KPI 的报告） |
-| `internal/store/sqlite/reports.go` | `PutReport`（ReportAuditSink 实现，修复路径已具备） | VERIFIED | :46 已实现——修复 GAP-1 无需新增接口，把 RunReportJob 已有的 storeDB 传入即可 |
+| `internal/kpi/executor.go` | `GetAllKPISnapshots` method | VERIFIED | executor.go:721-741：迭代 `reg.Catalog()`，逐 KPI `Call`，取 `Snapshot.Rows[0]`，单点失败 log+skip，CGO-free |
+| `internal/scheduler/scheduler.go` | `kpiExecutor` field + `SetKPIExecutor` + 装配调用 | VERIFIED | scheduler.go:42/:65 + main.go:392 调用点（本轮闭合） |
+| `internal/scheduler/report_job.go` | executeReportRun 完整实现 + 实 audit sink | VERIFIED | :143 audit 参数、:83 storeDB 直通、:197 Publish 实 sink；`TestExecuteReportRunWiresAuditSink` 端到端验证 |
+| `internal/scheduler/report_job.go` | outputURL 回填 report_runs | VERIFIED | :107 `OutputURL: outputURL`，URL 来自 Publish 真实返回值（测试断言 `/reports/2026-08/v1.html`） |
+| `internal/scheduler/report_job_test.go` | executeReportRun 测试覆盖 | VERIFIED | 两个新测试 + 编译期断言（本轮新增） |
+| `internal/server/rerender.go` | 手动路径完整依赖 | VERIFIED | :66 deps.Store（兼 audit sink）+ deps.KPIExecutor |
+| `internal/report/publish.go` | 版本递增 + fail-closed 审计 | VERIFIED | :198-228 MAX+1 扫描；:162-166 nil-sink 拒绝（契约未动，调用方已修正） |
+| `cmd/server/main.go` | scheduler 装配完整 | VERIFIED | :387-402 Store/EvalGate/KPIExecutor/Detacher/TTLCleanup 全部接线后 Start |
 
-（19-01/19-02/19-03 的其余 artifacts——report_runs.go、schema.go、manifest.go、in_flight.go、eval_gate.go、drift.go、cleanup_job.go、report_portal.go、ReportPortal.tsx——本轮回归抽查关键点未发现变化，维持 VERIFIED。）
+（19-01/19-02/19-03 的其余 artifacts——report_runs.go、schema.go、manifest.go、in_flight.go、eval_gate.go、drift.go、cleanup_job.go、report_portal.go、ReportPortal.tsx——三轮回归抽查未发现变化，维持 VERIFIED。）
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| `report_job.go` | `kpi/executor.go` | `kpiExec.GetAllKPISnapshots(ctx)` | WIRED | report_job.go:144 调用；但 cron 路径 kpiExec 为 nil（GAP-2），仅手动路径数据流通 |
-| `report_job.go` | `report/publish.go` | `report.Publish(...)` | PARTIAL | report_job.go:190 调用存在，但 nil audit sink → 运行期必返回 error |
-| `report_job.go` | `report/publish.go` | Publish 第 9 参 audit sink | NOT_WIRED | 传 nil；SQLiteStore.PutReport 已实现该接口却未被传入 |
-| `cmd/server/main.go` | `scheduler.go` | `SetKPIExecutor(kpiExecutor)` | NOT_WIRED | setter 存在但装配块（main.go:387-397）无调用；server.Deps.KPIExecutor（main.go:534）只覆盖手动路径 |
-| `scheduler.go` | `skill/loader.go` | `loader.Skills()` | WIRED | scheduler.go:86 未变 |
-| `report_portal.go` | `store/report_runs.go` | `ListReportRuns()` | WIRED | 未变 |
-| `ReportPortal.tsx` | `report_portal.go` / `rerender.go` | fetch / POST | WIRED | 未变 |
+| `cmd/server/main.go` | `scheduler.go` | `SetKPIExecutor(kpiExecutor)` | WIRED | main.go:392（本轮闭合），先于 :402 Start |
+| `report_job.go` | `report/publish.go` | Publish 第 9 参 audit sink | WIRED | report_job.go:197 传 `audit`（storeDB 直通）；编译期断言 report_job_test.go:42 |
+| `report_job.go` | `kpi/executor.go` | `kpiExec.GetAllKPISnapshots(ctx)` | WIRED | report_job.go:147；cron 路径 kpiExec 自本轮起非 nil |
+| `report_job.go` | `report/publish.go` | `report.Publish(...)` | WIRED | report_job.go:197，测试证明运行期成功返回 URL |
+| `scheduler.go` | `skill/loader.go` | `loader.Skills()` | WIRED | scheduler.go:86 |
+| `report_portal.go` | `store/report_runs.go` | `ListReportRuns()` | WIRED | 回归确认 |
+| `ReportPortal.tsx` | `report_portal.go` / `rerender.go` | fetch / POST | WIRED | 回归确认 |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 |----------|--------------|--------|-------------------|--------|
-| `report_job.go`（手动路径） | `currSnapshots` | `deps.KPIExecutor` → GetAllKPISnapshots | Yes | FLOWING（较上轮 STUB 有实质改善） |
-| `report_job.go`（cron 路径） | `currSnapshots` | `s.kpiExecutor` = nil（SetKPIExecutor 未调用） | No — `if kpiExec != nil` 跳过 | DISCONNECTED（GAP-2） |
-| `report_job.go` | `outputURL` | `report.Publish` 返回值 | No — Publish 因 nil audit 必报错，result 为 nil | DISCONNECTED（GAP-1，与上轮同症状、新根因） |
+| `report_job.go`（cron 路径） | `currSnapshots` | `s.kpiExecutor`（main.go:392 已接线） | Yes — GetAllKPISnapshots 经既有 Call（Phase 16/17 全测试覆盖）取真实值 | FLOWING（本轮闭合） |
+| `report_job.go`（手动路径） | `currSnapshots` | `deps.KPIExecutor` | Yes | FLOWING |
+| `report_job.go` | `outputURL` | `report.Publish` 返回值（实 audit sink） | Yes — 测试断言真实 URL + reports 行字段 | FLOWING（本轮闭合） |
 | `ReportPortal.tsx` | `runs` | `GET /reports` | Yes | FLOWING |
 
 ### Behavioral Spot-Checks
@@ -100,66 +105,46 @@ gaps:
 | Behavior | Command | Result | Status |
 | -------- | ------- | ------ | ------ |
 | 三包编译 | `CGO_ENABLED=0 go build ./internal/scheduler/... ./internal/kpi/... ./internal/report/...` | BUILD OK | ✓ PASS |
-| scheduler 测试 | `CGO_ENABLED=0 go test ./internal/scheduler/... -count=1` | ok 0.193s | ✓ PASS（但不含 executeReportRun 覆盖） |
-| Publish nil-audit 契约（证明 GAP-1） | `CGO_ENABLED=0 go test ./internal/report/ -run "TestPublishRequiresAuditSink\|TestPublishWritesAuditRow" -count=1 -v` | 两测试均 PASS——TestPublishRequiresAuditSink 证明与 report_job.go:190 相同的 nil-audit 调用形态必返回 "audit sink not wired" 错误且 result 为 nil | ✗ 证明集成路径运行期必败 |
+| scheduler 全量测试（含 2 个新测试） | `CGO_ENABLED=0 go test ./internal/scheduler/ -count=1 -v` | ok 0.247s，8/8 PASS：`TestExecuteReportRunWiresAuditSink`、`TestExecuteReportRunNilAuditFailsClosed`、drift 3 项、eval_gate 3 项 | ✓ PASS |
+| Publish 审计契约回归 | `CGO_ENABLED=0 go test ./internal/report/ -run "TestPublish" -count=1`（第一轮已验） | 契约未变，调用方已修正 | ✓ PASS |
+| cmd/server 本机编译 | `go build ./cmd/server/...` | 失败于 cgo.exe（本 shell 无 gcc；已知 D15-01-1 环境约束，服务端二进制按 81b975f 惯例 WSL 侧构建） | ? SKIP（环境约束；改动行类型经双侧签名交叉验证） |
 
 ### Probe Execution
 
-SKIPPED — 无 `scripts/*/tests/probe-*.sh` 约定探针，PLAN/SUMMARY 亦未声明探针；以上 Behavioral Spot-Checks 已覆盖可编程验证面。端到端启动服务器触发重渲染依赖内网 Milvus/GLM/BGE 栈，留给下一轮 gap 修复后的验证。
+SKIPPED — 无 `scripts/*/tests/probe-*.sh` 约定探针，PLAN/SUMMARY 未声明探针。Behavioral Spot-Checks 已覆盖可编程验证面。
 
 ### Requirements Coverage
 
 | Requirement | Description | Status | Evidence |
 |-------------|-------------|--------|---------|
-| PORT-01 | /reports 门户列出全部已发布报告，可筛选 | VERIFIED | `report_portal.go` + `server.go:486`（回归确认） |
-| PORT-02 | `report_schedule` = manifest 字段，加载期校验，热重载生效 | VERIFIED | `manifest.go:80` + `loader.go:197` + `scheduler.go:86`（回归确认） |
-| PORT-03 | 每次定时重渲染产生审计行 + 全量 KPI 快照（含 `kpi_snapshots[]`、`output_url` 字段） | PARTIAL → 计入 GAP | 审计行 ✓（report_job.go:112）；但 cron 路径 `kpi_snapshots` 恒空（GAP-2）、`output_url` 恒空（GAP-1），两个显式声明字段不达标 |
-| PORT-04 | 版本留存——每次重渲染新增 run 目录永不覆盖，历史报告可追溯 | FAILED | 文件层 vN 递增逻辑正确（publish.go:198-228）且每次运行确会写入新 vN.html；但 nil-audit 使运行必标 failed、output_url 空、无 reports 表行 → "历史报告可追溯" 不成立（GAP-1） |
-| PORT-05 | 手动触发「立即重渲染」复用运行路径 | VERIFIED | `rerender.go` 202 + 异步 RunReportJob；本轮还接入 deps.KPIExecutor（增强） |
-| PORT-06 | 漂移检测 ±5% 阈值 + drift 徽标 | VERIFIED | `drift.go:30` + `report_job.go:88` + `ReportPortal.tsx` DRIFT 徽标（回归确认；cron 路径受 GAP-2 影响静默跳过，已在该 gap 记录） |
-| PORT-07 | 并发运行守卫 (skill, period) | VERIFIED | `in_flight.go` + `report_job.go:62`（回归确认） |
-| DATA-18 | TTL 清理先 DETACH 后删文件，只作用脱敏数据集 | VERIFIED | `cleanup_job.go`（回归确认） |
-| GEVL-11 | eval 门阻塞指标回退 Skill 的 cron 重渲染 | VERIFIED | `eval_gate.go` + `report_job.go:50`（回归确认） |
+| PORT-01 | /reports 门户列出全部已发布报告，可筛选 | VERIFIED | `report_portal.go` + `server.go:486` |
+| PORT-02 | `report_schedule` = manifest 字段，加载期校验，热重载生效 | VERIFIED | `manifest.go:80` + `loader.go:197` + `scheduler.go:86` |
+| PORT-03 | 每次定时重渲染产生审计行 + 全量 KPI 快照（含 `kpi_snapshots[]`、`output_url`） | VERIFIED | 审计行 report_job.go:112；`kpi_snapshots` 经 main.go:392 接线的 executor 真实采集；`output_url` 经实 audit sink 的 Publish 真实回填（ccd8824） |
+| PORT-04 | 版本留存——每次重渲染新增 run 目录永不覆盖，历史报告可追溯 | VERIFIED | `getNextVersion` MAX+1 永不覆盖（publish.go:198-228）；reports 行写入 version/digest/template_version（实 sink，report_job_test.go:69-77 断言）+ report_runs.output_url → 历史可追溯（ccd8824） |
+| PORT-05 | 手动触发「立即重渲染」复用运行路径 | VERIFIED | `rerender.go` 202 + 异步 RunReportJob（storeDB 直通兼 audit sink） |
+| PORT-06 | 漂移检测 ±5% 阈值 + drift 徽标 | VERIFIED | `drift.go:30` + `report_job.go:88`；cron 路径快照源已接线，守卫不再恒跳过 |
+| PORT-07 | 并发运行守卫 (skill, period) | VERIFIED | `in_flight.go` + `report_job.go:62` |
+| DATA-18 | TTL 清理先 DETACH 后删文件，只作用脱敏数据集 | VERIFIED | `cleanup_job.go` tier 检查 + DETACH-first |
+| GEVL-11 | eval 门阻塞指标回退 Skill 的 cron 重渲染 | VERIFIED | `eval_gate.go` + `report_job.go:50` |
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| internal/kpi/executor.go | 728 | 注释声称 "no audit row"，实际经 `e.Call` 每次会写 kpi_calls 审计行（SessionID/SkillID 为空） | ℹ️ Info | 行为本身符合审计纪律（T-16-06-05），仅注释与实现不符；建议下一轮顺手修正注释 |
-| （其余 3 个 19-04 修改文件） | — | 无 TBD/FIXME/XXX/PLACEHOLDER/stub 模式 | — | 干净 |
-
-### 19-04 Gap Closure 评估（Re-verification 记录）
-
-**Commit:** `c28ca46`（feat(19-04): wire KPI executor and report.Publish into scheduler to close PORT-04）
-
-**已落实的部分：**
-1. `GetAllKPISnapshots`（executor.go:721）真实实现且被 executeReportRun 调用 ✓
-2. `executeReportRun` 从 stub 变为完整实现（模板解析、slotTexts、MapSnapshot、Publish 调用链）✓
-3. `RunReportJob` 签名扩展 + `OutputURL` 字段回填 plumbing ✓
-4. 手动重渲染路径接入 `deps.KPIExecutor`，手动路径 KPI 数据真实流通 ✓
-5. 三包 `CGO_ENABLED=0` 编译通过 ✓
-
-**未达成的部分（gap 未闭合）：**
-1. **GAP-1（PORT-04 本体）**：`report_job.go:190` 第 9 参传 nil audit sink → `publish.go:162-166` fail-closed 必报错 → output_url 恒空、status 恒 failed。上一轮的可观测失败原样保留，仅根因由 stub 换成 nil-audit。执行侧声明"传 nil audit"为决策，但与 publish.go 的 CR-04 契约及包内测试直接矛盾；且 scheduler 包测试对 executeReportRun 零覆盖（仅 drift_test.go / eval_gate_test.go），导致 `go test` 通过造成"已修复"假象。
-2. **GAP-2（PORT-03 cron 路径）**：`SetKPIExecutor` 全仓库零调用点；main.go:387-397 装配块遗漏一行 `sched.SetKPIExecutor(kpiExecutor)`（executor 在 main.go:375 已就绪）。cron 自动化路径 KPI 快照恒空，连带 PORT-06 漂移检测在该路径静默失效。
-
-**修复成本评估：** GAP-1 = 把 RunReportJob 已持有的 storeDB 传入 executeReportRun 作为 Publish 的 audit sink（SQLiteStore.PutReport 已实现接口）+ 补一个 executeReportRun 端到端测试；GAP-2 = main.go 一行接线。两项合计预期极小改动量。
+| internal/kpi/executor.go | 728 | 注释声称 "no audit row"，实际经 `e.Call` 每次写 kpi_calls 审计行（SessionID/SkillID 为空） | ℹ️ Info | 行为符合审计纪律（T-16-06-05），仅注释与实现不符，建议顺手修正 |
+| （19-05 全部改动文件） | — | 无 TBD/FIXME/XXX/PLACEHOLDER/stub 模式 | — | 干净 |
 
 ### Human Verification Required
 
-无新增人工验证项——两个 gap 均为可编程验证的代码级缺陷。待 gap 修复后，建议下轮验证加入：启动服务器（内网栈可用时）手动触发一次重渲染，确认 `GET /reports` 行的 output_url 可点击打开对应 vN.html（浏览器渲染效果属人工确认范畴）。
+无门禁性人工验证项——9/9 truths 均以代码阅读 + 本机通过的测试完成程序化验证。
+
+（信息性备注，非门禁项：真实环境的端到端冒烟——WSL 构建二进制启动服务器、内网 Milvus/DuckDB 数据集就绪后手动触发一次重渲染、浏览器打开 portal 中 output_url 确认 v1.html 渲染效果——属项目既有 live-UAT 惯例范畴，且依赖内网服务可用性。本轮验证遵循"不启动服务器"的验证流程约束，未覆盖此面。）
 
 ## Gaps Summary
 
-**2 gaps（1 个继承未闭合 + 1 个新发现），根因相互独立：**
-
-**GAP-1（继承自上轮，根因更换）：PORT-04 版本留存。** 19-04 把 Publish 调用接进来了，但传了 nil audit sink，而 publish.go 的 fail-closed 契约（CR-04，防"文件落盘而审计表空"）使该调用在运行期必然失败。每次自动化运行留下孤儿 vN.html、审计行标 failed、output_url 恒空。修复：传入 storeDB 作为 audit sink + 补 executeReportRun 测试覆盖。
-
-**GAP-2（新发现）：PORT-03 cron 路径 KPI 快照恒空。** SetKPIExecutor 定义了但从未被调用——scheduler 装配块遗漏接线。cron 路径（本 phase 的主交付路径"共享调度器自动重渲染月报"）拿不到 KPI 数据，漂移检测随之静默失效；仅手动重渲染路径数据流通。修复：main.go 一行。
-
-两个 gap 修复后 PORT-03/PORT-04 才能真正闭合；届时本 phase 9/9 truths 可达 passed。
+无残留 gap。第一轮验证记录的 PORT-04（executeReportRun stub）经 19-04（c28ca46）结构性接线但被 nil-audit 否决，最终由 19-05（ccd8824）以实 sink threading + boot 装补齐 + 测试覆盖三项闭合；PORT-03 的 cron 路径 KPI 快照断链同轮闭合。9/9 truths VERIFIED，phase goal 达成，可进入下一 phase。
 
 ---
 
-_Verified: 2026-08-29T12:44:03Z_
+_Verified: 2026-08-29T12:55:58Z_
 _Verifier: Claude (gsd-verifier)_

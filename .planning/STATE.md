@@ -19,10 +19,14 @@ progress:
 
 ## Current Position
 
-Phase: 18 (skill-p10-4) — EXECUTING (Plan 03 of 3 complete)
-Plan: 3 of 3 (Plan 18-03 COMPLETE — 5 tasks committed)
-Status: Phase 18 Wave 3 complete — SUMMARY created
-Last activity: 2026-08-28
+Phase: 18 (skill-p10-4) — gap closure in progress (18-VERIFICATION 2026-08-29: gaps_found 9/11 — GAP-1 FAN-05 fan-out 审计行 + GAP-2 FAN-06 expected_fan_out 断言消费，修复中 as 18-05)
+Plan: 3 of 3 core plans complete + 18-05 gap closure executing
+Status: Phase 19 CLOSED (VERIFICATION PASSED 9/9, 2026-08-29); Phase 18 gap closure round executing
+Last activity: 2026-08-29
+
+**Phase 19 closure (2026-08-29):** 5/5 plans (19-01..19-03 core + 19-04/19-05 gap closure). Two-round gap closure: 19-04 (c28ca46) wired GetAllKPISnapshots + executeReportRun + report.Publish but left audit sink nil (CR-04 fail-closed → all automated runs failed) and missed SetKPIExecutor boot wiring; 19-05 (ccd8824) closed both — storeDB threaded as ReportAuditSink (compile-time asserted) + sched.SetKPIExecutor(kpiExecutor). Verifier round-2: PASSED 9/9, scheduler 8/8 tests, no new gaps.
+
+**Phase 18 verification (2026-08-29, first-time):** gaps_found 9/11 — main thesis verified (render sandbox pipeline order bind→goldmark→bluemonday, HITL report:publish dual-pass gate, vN persistence, change-request regeneration all code-proven; 18-REVIEW 16 fixes confirmed real). GAP-1 (FAN-05): data-channel fan-out classifier decision+reason has no audit row. GAP-2 (FAN-06): expected_fan_out frozen data in place but no assertion code consumes it (GoldenCase struct lacks fields; fanout_lock_test.go missing). 2 human-verification items (live monthly-report E2E, FAN-06 operator rerun) blocked on CGO host + intranet services.
 
 **Phase 18 Plan 03 (18-03) delivery summary (2026-08-28):**
 - Task 1: fan_out_dispatch data-channel variant — FanOutDispatchArgsV2 + validation + fallback_sequential (85d67bc)
@@ -37,9 +41,9 @@ Last activity: 2026-08-28
 
 ---
 
-Phase: 16 (p10-2) — EXECUTING (Wave 5 closed; Phase 16 closeout deferred)
-Plan: 9 of 9 (Plan 16-09 COMPLETE — verify-phase-16.sh 11-stage acceptance gate)
-Status: Phase complete — ready for verification
+Phase: 16 (p10-2) — CLOSED (VERIFICATION PASSED 2026-08-27; see CLOSED section above and ROADMAP Progress row 16)
+Plan: 9 of 9
+Status: closed — residual items in .planning/phases/16-p10-2/deferred-items.md
 Last activity: 2026-08-28
 
 **Phase 14 final closeout (2026-08-23, user decision: close with deferred items):**

@@ -59,7 +59,7 @@
   - **16-09 verify-phase-16 acceptance gate** (Wave 5 closed 2026-08-27 — `0a74938` scripts/verify-phase-16.sh 11-stage hermetic gate [gcc precondition + per-cmd build matrix + hermetic test suite + contract WalkDir + KPI Layer 1 lock-name suite + channel XOR + wire kpi_reference + WSL triple-lock blocked-with-notes + source-grep structural locks + cmd/server live link blocked-with-notes + frozen lock byte-identity] + `0718e9d` Makefile `verify-phase-16` target) — gate runs 9/11 PASS + 2 BLOCKED-WITH-NOTES (D15-01-1 emutls ABI) on Windows; 11/11 PASS on Linux/WSL operator run
 - [x] **Phase 17: KPI 仪表盘 Skill（P10.3）** — 聊天内数字问答（数值+定义+时间窗+as_of+引用）+ sparkline 趋势 + 下钻 + KPI eval 双指标（调用准确率/引用一致性）+ 再识别 eval 断言 (completed 2026-08-27)
 - [ ] **Phase 18: 业务月报 Skill（P10.4）** — DeepAgent 计划先行 + 计划确认门 + 模板=Skill steps（类型化叙事槽位）+ fan-out LLM 分类器 + HITL 审批发布静态页（渲染沙箱）
-- [ ] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度
+- [x] **Phase 19: 静态报告门户 + 调度器（P10.5）** — /reports 门户 + report_schedule manifest 字段 + 共享调度器（cron 重渲染 + TTL 清理）+ 重渲染纪律（审计+快照+版本留存+drift+并发守卫）+ eval 门阻塞调度 (completed 2026-08-29 — 5/5 plans (19-01..19-03 core + 19-04/19-05 gap closure); VERIFICATION PASSED 9/9 after two gap-closure rounds: PORT-04 closed via audit-sink threading (ccd8824) + PORT-03 closed via SetKPIExecutor boot wiring)
 - [ ] **Phase 20: 管理台（P10.6）** — /admin（复用 /eval + X-Admin-Token）四视图：导入批次 / KPI 只读 / Skill 管理 / 定时任务；admin 动作全审计；里程碑收尾（第 4 冻结锁决策 + wrap）
 
 ---
@@ -641,9 +641,11 @@ Plans:
 **Plans**: 3 plans
 **Plan list**:
 
-- [ ] 19-01-PLAN.md — Wave 1: report_runs table + ReportSchedule manifest field + scheduler skeleton + GET /reports portal API
-- [ ] 19-02-PLAN.md — Wave 2: eval gate (GEVL-11) + drift detection + manual rerender endpoint
-- [ ] 19-03-PLAN.md — Wave 3: TTL cleanup (DATA-18) + ReportPortal FE + deep integration
+- [x] 19-01-PLAN.md — Wave 1: report_runs table + ReportSchedule manifest field + scheduler skeleton + GET /reports portal API
+- [x] 19-02-PLAN.md — Wave 2: eval gate (GEVL-11) + drift detection + manual rerender endpoint
+- [x] 19-03-PLAN.md — Wave 3: TTL cleanup (DATA-18) + ReportPortal FE + deep integration
+- [x] 19-04-PLAN.md — gap closure round 1: KPI executor GetAllKPISnapshots + executeReportRun real impl + report.Publish wiring (PORT-04) — commit c28ca46
+- [x] 19-05-PLAN.md — gap closure round 2: audit-sink threading (CR-04 fail-closed alignment) + SetKPIExecutor boot wiring (PORT-03/PORT-04 final closure) — commit ccd8824
 
 **UI hint**: yes（/reports 路由——复用 /eval 模式，无登录面）
 
@@ -735,7 +737,7 @@ Plans:
 | 16. KPI 聚合通道 (P10.2) | 9/9 (16-01..16-09) | Complete — VERIFICATION PASSED 2026-08-27 (re-verification after gap closure: 5/5 SC green, 7/7 requirements met, 6/6 WSL tests green, cmd/server links on WSL; verify-phase-16 9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows per D15-01-1, 11/11 on WSL) | 2026-08-27 |
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
 | 18. 业务月报 Skill (P10.4) | 0 (not planned) | Not started | - |
-| 19. 静态报告门户 + 调度器 (P10.5) | 0 (not planned) | Not started | - |
+| 19. 静态报告门户 + 调度器 (P10.5) | 5/5 (19-01..19-03 core + 19-04/19-05 gap closure) | Complete — VERIFICATION PASSED 9/9 (2026-08-29, two gap-closure rounds: PORT-04 audit-sink threading + PORT-03 SetKPIExecutor boot wiring, commit ccd8824; verify evidence: scheduler 8/8 tests, CGO-free builds) | 2026-08-29 |
 | 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
 
 ---
