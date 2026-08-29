@@ -451,6 +451,21 @@ export type SkillForgeChunk =
 // compiler is the first line of defense against wire drift.
 type AssertAssignable<A, B> = A extends B ? (B extends A ? true : never) : never;
 type _driftCheck = AssertAssignable<SkillForgeChunk, UIMessageChunk>;
+// Phase 19 / Plan 19-03 — Report Run type (PORT-01/PORT-03).
+// Mirrors internal/store.ReportRunRow field-for-field.
+export interface ReportRun {
+  run_id: string;
+  skill_id: string;
+  period: string;
+  cron_expr: string;
+  fired_at: string;
+  kpi_snapshots: string;
+  output_url: string;
+  status: 'success' | 'failed' | 'skipped_duplicate' | 'eval_gate_blocked';
+  drift_detected: boolean;
+  created_at: string;
+}
+
 // Surface the assertion — TS will error here if assignability breaks.
 // (No runtime cost; this exists purely for compile-time drift check.)
 export const _driftCheckTrue: _driftCheck = true;
