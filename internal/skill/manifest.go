@@ -73,6 +73,11 @@ type Manifest struct {
 	// direct *report.ReportTemplate assertion can never succeed. The field is
 	// validated by ValidateAgainstKPI (loader.go) after the full parse.
 	Template any `yaml:"template,omitempty" json:"template,omitempty"`
+	// ReportSchedule is the cron expression for automated report regeneration
+	// (PORT-02). Standard 5-field cron format: "分 时 日 月 周" (e.g.
+	// "0 9 1 * *" = 9:00 on the 1st of every month). Empty string means
+	// no scheduled regeneration. Validated by ValidateReportSchedule at load time.
+	ReportSchedule string `yaml:"report_schedule" json:"report_schedule"`
 	// Name is the Skill's directory name (e.g. "compliance"). It is
 	// NOT a YAML field — the loader derives it from the parent dir
 	// basename on read. The wizard (Plan 05-04) sets it before Commit

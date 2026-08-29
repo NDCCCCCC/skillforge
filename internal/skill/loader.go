@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/robfig/cron/v3"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"gopkg.in/yaml.v3"
 )
@@ -191,6 +192,16 @@ func (l *Loader) ValidateAgainstKPI(reg *kpi.Registry) error {
 	return nil
 }
 
+// ValidateReportSchedule validates that expr is a valid standard cron expression.
+// Returns nil for empty string (optional field). Returns error for malformed expressions.
+func ValidateReportSchedule(expr string) error {
+	if expr == "" {
+		return nil
+	}
+	_, err := cron.ParseStandard(expr)
+	return err
+}
+
 // validateTemplateKPIs checks that all KPI names in template sections
 // exist in the registry. m.Template is any (yaml.Unmarshal); we type-assert
 // to map[string]any to extract section.kpis[].
@@ -269,7 +280,7 @@ func parseRoutingTable(steps string) ([]routeEntry, error) {
 	var doc struct {
 		Routes map[string][]struct {
 			Triggers []string `yaml:"triggers"`
-			KPI     string    `yaml:"kpi"`
+			KPI      string   `yaml:"kpi"`
 		} `yaml:"routes"`
 	}
 	if err := yaml.Unmarshal([]byte(yamlContent), &doc); err != nil {
@@ -347,6 +358,9 @@ func parseAndValidate(path string) (*Manifest, []string, error) {
 	}
 	if err := Validate(&m); err != nil {
 		return nil, nil, fmt.Errorf("validate %s: %w", path, err)
+	}
+	if err := ValidateReportSchedule(m.ReportSchedule); err != nil {
+		return nil, nil, fmt.Errorf("skill %q report_schedule: %w", m.Name, err)
 	}
 	// Pre-compute resolved tiers once — the pipeline does not need
 	// to re-resolve on every request. Data-channel Skills skip
