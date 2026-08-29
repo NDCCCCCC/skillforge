@@ -105,7 +105,7 @@ func (s *SQLiteStore) ListReportRuns(ctx context.Context, skillID, period string
 	out := make([]store.ReportRunRow, 0)
 	for rows.Next() {
 		var r store.ReportRunRow
-		var ts, firedAt, createdAt string
+		var firedAt, createdAt string
 		if err := rows.Scan(
 			&r.ID, &r.RunID, &r.SkillID, &r.Period, &r.CronExpr,
 			&firedAt, &r.KPISnapshots, &r.OutputURL, &r.Status,
