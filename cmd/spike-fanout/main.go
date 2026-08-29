@@ -60,9 +60,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/skillforge/skillforge/internal/embedder"
@@ -106,9 +106,9 @@ const (
 	// total — 20 fan-out cases land in the same order of magnitude).
 	// The measured total is recorded in fanout_summary.json so the
 	// operator's re-baseline can tighten the cap on subsequent UATs.
-	defaultCostLimit      = 5.00
-	defaultSeed           = 42
-	defaultScenario       = "canonical"
+	defaultCostLimit = 5.00
+	defaultSeed      = 42
+	defaultScenario  = "canonical"
 )
 
 // newSpikeFlagSet binds the 7-flag matrix to a fresh FlagSet.
@@ -400,21 +400,34 @@ type GoldenSubSkill struct {
 
 // GoldenCase is one row of eval/golden/fanout.jsonl.
 type GoldenCase struct {
-	ID                           string           `json:"id"`
-	Scenario                     string           `json:"scenario"` // multi_hop | tier_mismatch | partial_failure | single_vertex
-	ParentSkill                  string           `json:"parent_skill"`
-	SubSkills                    []GoldenSubSkill `json:"sub_skills"`
+	ID          string           `json:"id"`
+	Scenario    string           `json:"scenario"` // multi_hop | tier_mismatch | partial_failure | single_vertex | monthly_report
+	ParentSkill string           `json:"parent_skill"`
+	SubSkills   []GoldenSubSkill `json:"sub_skills"`
 	// ParentReads overrides the per-case parent tier surface for the
 	// FAN-02 SC-2 load-time validation (fanout-12: parent with EMPTY
 	// resolved tiers must be rejected). nil = use the shared live
 	// parent manifest (loadFanoutConfig).
-	ParentReads                  []string         `json:"parent_reads,omitempty"`
-	Query                        string           `json:"query"`
-	ExpectedDispatchedCountFloor int              `json:"expected_dispatched_count_floor"`
-	ExpectedConservativeMerge    bool             `json:"expected_conservative_merge"`
-	ExpectedMergedStatus         string           `json:"expected_merged_status"`
-	TierGroundTruth              string           `json:"tier_ground_truth"`
-	Notes                        string           `json:"notes"`
+	ParentReads                  []string `json:"parent_reads,omitempty"`
+	Query                        string   `json:"query"`
+	ExpectedDispatchedCountFloor int      `json:"expected_dispatched_count_floor"`
+	ExpectedConservativeMerge    bool     `json:"expected_conservative_merge"`
+	ExpectedMergedStatus         string   `json:"expected_merged_status"`
+	// FAN-06 (18-VERIFICATION GAP-2): monthly_report data-channel
+	// assertion fields (rpt-fanout-01..04). Tier-channel cases leave
+	// all four zero/nil. Before GAP-2 json.Unmarshal SILENTLY DROPPED
+	// these keys — the frozen expectations were unparseable, so no
+	// assertion code could consume them. ExpectedFanOut is a *bool so
+	// absent (tier-channel) ≠ declared false (monthly_report).
+	ExpectedFanOut      *bool `json:"expected_fan_out"`
+	ExpectedNumSubtasks int   `json:"expected_num_subtasks"`
+	// ExpectedFallback mirrors the frozen expected_fallback bool (D18-C4
+	// sequential-fallback expectation). The frozen rows carry JSON
+	// booleans, NOT strings.
+	ExpectedFallback bool     `json:"expected_fallback"`
+	TemplateSections []string `json:"template_sections"`
+	TierGroundTruth  string   `json:"tier_ground_truth"`
+	Notes            string   `json:"notes"`
 }
 
 // LiveCaseResult is the measured per-case outcome. DurationMS is the
@@ -498,6 +511,40 @@ const (
 // one golden case (T-13-05-1 mitigation — abort BEFORE overspend).
 func estimateCost(c GoldenCase) float64 {
 	return classifierCostEstimateUSD + perSubAgentCostEstimateUSD*float64(len(c.SubSkills))
+}
+
+// EvaluateFanOutExpectation is the FAN-06 monthly_report assertion seam
+// (18-VERIFICATION GAP-2): it judges the OBSERVED data-channel fan-out
+// decision — dispatched=true meaning the classifier produced a valid
+// fan_out_success dispatch, dispatched=false meaning one of the D18-C4
+// sequential-fallback paths fired — against the frozen per-case
+// expectation (expected_fan_out / expected_fallback).
+//
+// Return contract:
+//   - ExpectedFanOut == nil → true. Tier-channel cases declare NO
+//     data-channel expectation; the monthly_report_fanout_rate gate
+//     denominators count only cases with a declared expectation.
+//   - dispatched != *ExpectedFanOut → false (classifier drift — the
+//     drift FAN-06 exists to detect).
+//   - ExpectedFallback == *ExpectedFanOut → false (D18-C4 self-consistency
+//     lock: fallback and fan-out are mutually exclusive outcomes, so a
+//     frozen row declaring both the same way is an authoring bug).
+//   - otherwise true.
+//
+// Honesty note (GAP-2): THIS entrypoint drives the tier-channel
+// FanOutOrchestrator only — the data-channel classifier is NOT
+// reachable here, so no live monthly_report decision is fabricated by
+// this binary. The operator's FAN-06 live rerun consumes this function
+// against real data-channel decisions; the hermetic tests pin the
+// semantics against the actual rpt-fanout-01..04 frozen rows.
+func EvaluateFanOutExpectation(c GoldenCase, dispatched bool) bool {
+	if c.ExpectedFanOut == nil {
+		return true
+	}
+	if dispatched != *c.ExpectedFanOut {
+		return false
+	}
+	return c.ExpectedFallback != *c.ExpectedFanOut
 }
 
 // loadFanoutGolden parses the golden JSONL set (one GoldenCase per

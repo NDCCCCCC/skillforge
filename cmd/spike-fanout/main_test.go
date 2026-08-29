@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -304,10 +305,10 @@ func TestValidateSubSkillTiers(t *testing.T) {
 		name  string
 		reads []string
 	}{
-		{"personal", []string{"personal/**"}},                 // 个人 ∩ 权威 = ∅
-		{"draft", []string{"draft/**"}},                       // 草稿 ∩ 权威 = ∅
-		{"empty", []string{}},                                 // empty Reads
-		{"unknown-tier", []string{"not-a-tier/**"}},           // not in TierEnum
+		{"personal", []string{"personal/**"}},       // 个人 ∩ 权威 = ∅
+		{"draft", []string{"draft/**"}},             // 草稿 ∩ 权威 = ∅
+		{"empty", []string{}},                       // empty Reads
+		{"unknown-tier", []string{"not-a-tier/**"}}, // not in TierEnum
 	} {
 		c := GoldenCase{
 			ID:        "fanout-mm-" + tc.name,
@@ -434,5 +435,124 @@ func TestComputeFanoutMetrics(t *testing.T) {
 	}
 	if m.TotalCostUSD != 0.42 || m.Seed != 7 {
 		t.Fatalf("cost/seed passthrough: %v %d", m.TotalCostUSD, m.Seed)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// FAN-06 monthly_report assertion seam (18-VERIFICATION GAP-2)
+// ----------------------------------------------------------------------------
+
+// goldenSetPath is the relative path from cmd/spike-fanout to the
+// shipped fan-out golden set.
+const goldenSetPath = "../../eval/golden/fanout.jsonl"
+
+// boolPtr is a tiny helper for synthetic expectation rows.
+func boolPtr(b bool) *bool { return &b }
+
+// TestMonthlyReportGoldenCasesParseAssertions — the four frozen
+// monthly_report rows must PARSE with all four assertion fields
+// populated. Before GAP-2 json.Unmarshal silently dropped these keys
+// (GoldenCase lacked the fields), so the frozen expectations were
+// unparseable by any code. The values pinned here are the exact frozen
+// rows in eval/golden/fanout.jsonl.
+func TestMonthlyReportGoldenCasesParseAssertions(t *testing.T) {
+	cases, err := loadFanoutGolden(goldenSetPath)
+	if err != nil {
+		t.Fatalf("load golden set: %v", err)
+	}
+	var monthly []GoldenCase
+	for _, c := range cases {
+		if c.Scenario == "monthly_report" {
+			monthly = append(monthly, c)
+		}
+	}
+	if len(monthly) != 4 {
+		t.Fatalf("want exactly 4 monthly_report cases, got %d", len(monthly))
+	}
+
+	want := map[string]struct {
+		fanOut   bool
+		numTasks int
+		fallback bool
+		sections []string
+	}{
+		"rpt-fanout-01": {true, 4, false, []string{"业务概览", "贷款质量", "风险提示", "客户情况"}},
+		"rpt-fanout-02": {true, 2, false, []string{"业务概览", "贷款质量"}},
+		"rpt-fanout-03": {false, 1, true, []string{"业务概览"}},
+		"rpt-fanout-04": {true, 3, false, []string{"业务概览", "贷款质量", "风险提示"}},
+	}
+	for _, c := range monthly {
+		w, ok := want[c.ID]
+		if !ok {
+			t.Fatalf("unexpected monthly_report case id %q", c.ID)
+		}
+		if c.ExpectedFanOut == nil {
+			t.Errorf("%s: expected_fan_out must parse (nil means the tier-channel posture leaked into a monthly_report row)", c.ID)
+			continue
+		}
+		if *c.ExpectedFanOut != w.fanOut {
+			t.Errorf("%s: expected_fan_out = %v, want %v", c.ID, *c.ExpectedFanOut, w.fanOut)
+		}
+		if c.ExpectedNumSubtasks != w.numTasks {
+			t.Errorf("%s: expected_num_subtasks = %d, want %d", c.ID, c.ExpectedNumSubtasks, w.numTasks)
+		}
+		if c.ExpectedFallback != w.fallback {
+			t.Errorf("%s: expected_fallback = %v, want %v", c.ID, c.ExpectedFallback, w.fallback)
+		}
+		if !slices.Equal(c.TemplateSections, w.sections) {
+			t.Errorf("%s: template_sections = %v, want %v", c.ID, c.TemplateSections, w.sections)
+		}
+	}
+}
+
+// TestEvaluateFanOutExpectation — the FAN-06 assertion seam judged
+// against synthetic decision inputs: the real frozen rows must pass
+// when the observed classifier decision matches the frozen expectation
+// and FAIL on drift; tier-channel rows (no expectation) pass vacuously;
+// a self-contradictory row (fallback == fan_out) fails as an authoring
+// bug (D18-C4 mutual exclusion).
+func TestEvaluateFanOutExpectation(t *testing.T) {
+	cases, err := loadFanoutGolden(goldenSetPath)
+	if err != nil {
+		t.Fatalf("load golden set: %v", err)
+	}
+	byID := make(map[string]GoldenCase, len(cases))
+	for _, c := range cases {
+		byID[c.ID] = c
+	}
+
+	// Fan-out-expected rows (rpt-fanout-01/02/04): dispatch passes.
+	for _, id := range []string{"rpt-fanout-01", "rpt-fanout-02", "rpt-fanout-04"} {
+		c := byID[id]
+		if !EvaluateFanOutExpectation(c, true) {
+			t.Errorf("%s: dispatched=true must PASS the frozen expectation (expected_fan_out=true)", id)
+		}
+		if EvaluateFanOutExpectation(c, false) {
+			t.Errorf("%s: dispatched=false must FAIL — classifier drift is exactly what FAN-06 detects", id)
+		}
+	}
+
+	// Fallback-expected row (rpt-fanout-03): sequential fallback passes.
+	rpt03 := byID["rpt-fanout-03"]
+	if !EvaluateFanOutExpectation(rpt03, false) {
+		t.Error("rpt-fanout-03: dispatched=false (D18-C4 sequential fallback) must PASS")
+	}
+	if EvaluateFanOutExpectation(rpt03, true) {
+		t.Error("rpt-fanout-03: dispatched=true must FAIL (frozen expectation is fallback)")
+	}
+
+	// Tier-channel row: ExpectedFanOut nil → vacuous pass either way
+	// (the monthly_report_fanout_rate denominator must not count it).
+	tier := byID["fanout-01"]
+	if !EvaluateFanOutExpectation(tier, true) || !EvaluateFanOutExpectation(tier, false) {
+		t.Error("tier-channel case (expected_fan_out absent) must pass vacuously in both directions")
+	}
+
+	// Contradictory authoring: expected_fan_out=true + expected_fallback=true
+	// is impossible under D18-C4 mutual exclusion → FAIL even though the
+	// observation matches fan_out.
+	bad := GoldenCase{ID: "rpt-bad", Scenario: "monthly_report", ExpectedFanOut: boolPtr(true), ExpectedFallback: true}
+	if EvaluateFanOutExpectation(bad, true) {
+		t.Error("self-contradictory expectation row must FAIL (authoring bug lock)")
 	}
 }
