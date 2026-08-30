@@ -1,0 +1,60 @@
+{
+  "lock_id": "data-v1",
+  "model_version": "v0.8",
+  "phase": 20,
+  "phase_slug": "20-p10-6-admin-console",
+  "schema_version": "v1",
+  "created_at": "2026-08-29",
+  "locked_by": "Phase 20 acceptance gate (20-07 milestone wrap)",
+  "description": "v1.0 milestone — Business Data Support (P10.6) admin console freeze",
+  "scope": {
+    "phase": "20",
+    "requirements": ["ADM-01", "ADM-02", "ADM-03", "ADM-04", "ADM-05", "ADM-06"],
+    "artifacts": [
+      "admin route + X-Admin-Token gate",
+      "import batch list view",
+      "KPI definition list view",
+      "skill management view",
+      "scheduled task list view",
+      "admin audit actor_type tag"
+    ]
+  },
+  "locked_decisions": [
+    {
+      "id": "D20-01",
+      "description": "Tab switching — horizontal Tab bar four-view, reuse /eval dashboard visual style"
+    },
+    {
+      "id": "D20-02",
+      "description": "Skill eval result interaction: hover tooltip only"
+    },
+    {
+      "id": "D20-03",
+      "description": "Audit monitoring: capacity progress bars per table"
+    },
+    {
+      "id": "D20-04",
+      "description": "KPI definitions read-only — files are sole source of truth"
+    },
+    {
+      "id": "D20-05",
+      "description": "Schedule files read-only — UI is read-only"
+    }
+  ],
+  "scope_notes": [
+    "audit growth monitoring is UI indicator only — INSERT-only invariant locked elsewhere",
+    "no new auth model — X-Admin-Token gate reused from /eval",
+    "no new redaction — Phase 6 redact() function reused"
+  ],
+  "v1_milestone_phases": [
+    "Phase 14: Platform trust floor + CGO foundation",
+    "Phase 15: Data import pipeline + desensitization",
+    "Phase 16: KPI aggregation channel",
+    "Phase 17: KPI dashboard Skill",
+    "Phase 18: Business report Skill",
+    "Phase 19: Report portal + scheduler",
+    "Phase 20: Admin console + milestone wrap"
+  ],
+  "operator_signed_at": "2026-08-30",
+  "operator_name": "ninedrunk"
+}
