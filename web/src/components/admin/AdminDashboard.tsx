@@ -18,6 +18,7 @@ import { ArrowLeft, BarChart3, Clock, Database, RefreshCw, Wrench } from 'lucide
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import CapacityMonitor from './CapacityMonitor';
+import ImportBatchList from './ImportBatchList';
 
 export default function AdminDashboard() {
   const adminSubroute = useAppStore((s) => s.adminSubroute);
@@ -140,9 +141,7 @@ export default function AdminDashboard() {
         data-testid="admin-dashboard-body"
         className="flex-1 overflow-y-auto p-4"
       >
-        {adminSubroute === 'batches' && (
-          <div className="text-xs text-text-muted">导入批次视图（后续计划实现）</div>
-        )}
+        {adminSubroute === 'batches' && <ImportBatchList />}
         {adminSubroute === 'kpis' && (
           <div className="text-xs text-text-muted">KPI 定义视图（后续计划实现）</div>
         )}
