@@ -19,6 +19,9 @@ import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import CapacityMonitor from './CapacityMonitor';
 import ImportBatchList from './ImportBatchList';
+import KPIDefinitionList from './KPIDefinitionList';
+import SkillManagementList from './SkillManagementList';
+import ScheduledTaskList from './ScheduledTaskList';
 
 export default function AdminDashboard() {
   const adminSubroute = useAppStore((s) => s.adminSubroute);
@@ -142,15 +145,9 @@ export default function AdminDashboard() {
         className="flex-1 overflow-y-auto p-4"
       >
         {adminSubroute === 'batches' && <ImportBatchList />}
-        {adminSubroute === 'kpis' && (
-          <div className="text-xs text-text-muted">KPI 定义视图（后续计划实现）</div>
-        )}
-        {adminSubroute === 'skills' && (
-          <div className="text-xs text-text-muted">Skill 管理视图（后续计划实现）</div>
-        )}
-        {adminSubroute === 'schedules' && (
-          <div className="text-xs text-text-muted">定时任务视图（后续计划实现）</div>
-        )}
+        {adminSubroute === 'kpis' && <KPIDefinitionList />}
+        {adminSubroute === 'skills' && <SkillManagementList />}
+        {adminSubroute === 'schedules' && <ScheduledTaskList />}
       </main>
     </div>
   );

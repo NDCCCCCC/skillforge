@@ -462,6 +462,12 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// applied (isAdmin=true → admin sees raw rows). Filtered at the store
 	// layer via AuditFilter.ActorType="admin".
 	h.GET("/api/admin/audit", deps.adminAuditHandler)
+	// Phase 20 Plan 20-04 (ADM-04) — admin skill registry view.
+	// Overlays hot-reload status + last eval result from eval/reports/INDEX.json.
+	h.GET("/api/admin/skills", deps.adminSkillsHandler)
+	// Phase 20 Plan 20-05 (ADM-05) — admin scheduled task list view.
+	// Returns report run list with cron_expr, status, drift_status via ListReportRuns.
+	h.GET("/api/admin/schedules", deps.adminSchedulesHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
 	// turns + the session-bound skill_id so the FE can rebuild the
