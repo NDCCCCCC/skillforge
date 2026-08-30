@@ -449,6 +449,14 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// surface is retrieval-only by design (a mutation route here would be
 	// a registration backdoor — see kpi_admin.go godoc).
 	h.GET("/api/admin/kpis", deps.kpiAdminHandler)
+	// Phase 20 Plan 20-01 (ADM-01) — admin console capacity monitor.
+	// Returns per-table row counts + thresholds for the capacity bars.
+	h.GET("/api/admin/table-counts", deps.tableCountsHandler)
+	// Phase 20 Plan 20-06 (ADM-06) — admin audit sub-view endpoint.
+	// Returns audit rows with actor_type='admin', with Phase 6 redact()
+	// applied (isAdmin=true → admin sees raw rows). Filtered at the store
+	// layer via AuditFilter.ActorType="admin".
+	h.GET("/api/admin/audit", deps.adminAuditHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
 	// turns + the session-bound skill_id so the FE can rebuild the

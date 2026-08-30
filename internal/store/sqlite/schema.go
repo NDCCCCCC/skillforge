@@ -377,6 +377,13 @@ const (
 	// string denotes pre-floor era rows.
 	alterAuditAddPlatformFloorVersionSQL = "ALTER TABLE audit ADD COLUMN platform_floor_version TEXT NOT NULL DEFAULT ''"
 
+	// Phase 20 / Plan 20-06 (ADM-06) — actor_type discriminator for the
+	// admin audit sub-view. Admin handlers tag their audit rows with
+	// actor_type='admin'; regular chat-path rows get the SQL DEFAULT
+	// 'user'. ADDITIVE migration only — no backfill needed because the
+	// DEFAULT 'user' covers existing rows.
+	alterAuditAddActorTypeSQL = "ALTER TABLE audit ADD COLUMN actor_type TEXT NOT NULL DEFAULT 'user'"
+
 	// Phase 15 / Plan 15-02 — DATA-16 idempotency key + D15-C2 period
 	// + D15-D3 k_min override. NOT NULL DEFAULT '' / 0 keeps the
 	// migration additive for existing datasets rows; the import pipeline
@@ -510,6 +517,8 @@ var auditLifecycleColumns = []struct{ column, stmt string }{
 	{"transfer_to", alterAuditAddTransferToSQL},
 	// Phase 14 / Plan 14-02 — PLAT-10 platform-floor version column.
 	{"platform_floor_version", alterAuditAddPlatformFloorVersionSQL},
+	// Phase 20 / Plan 20-06 (ADM-06) — actor_type discriminator for admin audit.
+	{"actor_type", alterAuditAddActorTypeSQL},
 }
 
 var checkpointSnapshotColumns = []struct{ column, stmt string }{

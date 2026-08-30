@@ -140,6 +140,12 @@ type AuditRow struct {
 	// `SELECT DISTINCT platform_floor_version FROM audit` reveals the
 	// drift window.
 	PlatformFloorVersion string
+	// ActorType is the Phase 20 / Plan 20-06 (ADM-06) admin audit
+	// discriminator. Admin handlers tag their audit rows with 'admin';
+	// regular chat-path rows get the SQL DEFAULT 'user'. Used by the
+	// admin audit sub-view (GET /api/admin/audit) to filter to
+	// admin-only rows.
+	ActorType string
 }
 
 // FanoutEvent is one row of the Phase 13 / Plan 13-03 FAN-04 SC-4
@@ -539,6 +545,9 @@ type AuditFilter struct {
 	// store layer is unchanged in posture (still 100% `?`-parameterized)
 	// — the new value is appended to args, not fmt.Sprintf'd into SQL.
 	Offset int
+	// ActorType filters by the Phase 20 / Plan 20-06 (ADM-06) admin
+	// audit discriminator. One of "user" | "admin" | "" (empty = all).
+	ActorType string
 }
 
 // Store is the abstraction over the audit + session-memory backend.
@@ -769,6 +778,11 @@ type Store interface {
 	// GetLatestReportRunBySkill returns the most recent report run for a
 	// (skill_id, period) pair, or nil if none exists.
 	GetLatestReportRunBySkill(ctx context.Context, skillID, period string) (*ReportRunRow, error)
+
+	// CountRows returns the total row count for a named table. Used by the
+	// admin console capacity monitor (Phase 20 / ADM-01). Returns an error
+	// for unknown table names (caller should return 500).
+	CountRows(ctx context.Context, table string) (int64, error)
 
 	// Health reports whether the backend is reachable. Used by
 	// cmd/server startup to fail fast on a misconfigured DSN.

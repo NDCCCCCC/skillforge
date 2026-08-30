@@ -48,8 +48,8 @@ INSERT INTO audit (
     action, skill_version, frozen_args, tool_call_id, approval_id,
     scope_session_id, budget_layer,
     faithfulness, context_precision, answer_relevance, context_recall,
-    run_path, transfer_from, transfer_to, platform_floor_version
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    run_path, transfer_from, transfer_to, platform_floor_version, actor_type
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // PutAudit appends an immutable audit row. GEVL-03: the row MUST exist
@@ -111,6 +111,7 @@ func (s *SQLiteStore) PutAudit(ctx context.Context, row store.AuditRow) (int64, 
 		toNullString(row.TransferFrom),
 		toNullString(row.TransferTo),
 		row.PlatformFloorVersion,
+		row.ActorType,
 	)
 	if err != nil {
 		return 0, fmtError("PutAudit", err)
@@ -140,7 +141,7 @@ const queryAuditCols = `
     action, skill_version, frozen_args, tool_call_id, approval_id,
     scope_session_id, budget_layer,
     faithfulness, context_precision, answer_relevance, context_recall,
-    run_path, transfer_from, transfer_to, platform_floor_version
+    run_path, transfer_from, transfer_to, platform_floor_version, actor_type
 `
 
 // QueryAudit returns rows matching filter, newest-first. The WHERE
@@ -187,6 +188,10 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 	if !filter.Until.IsZero() {
 		clauses = append(clauses, "ts < ?")
 		args = append(args, filter.Until.UTC())
+	}
+	if filter.ActorType != "" {
+		clauses = append(clauses, "actor_type = ?")
+		args = append(args, filter.ActorType)
 	}
 
 	limit := filter.Limit
@@ -239,6 +244,7 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 			&r.ApprovalID, &r.ScopeSessionID, &r.BudgetLayer,
 			&faith, &ctxPrec, &ansRel, &ctxRecall,
 			&runPath, &transferFrom, &transferTo, &r.PlatformFloorVersion,
+			&r.ActorType,
 		); err != nil {
 			return nil, fmtError("QueryAudit.Scan", err)
 		}
