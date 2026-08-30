@@ -406,8 +406,9 @@ function savePersistedPlan(plan: Record<string, PlanState>): void {
 }
 
 /** Plan 06-04 (D6-01) — admin-mode route toggle. The dashboard
- * replaces the chat three-panel when `route === 'eval'`. */
-export type AppRoute = 'chat' | 'eval';
+ * replaces the chat three-panel when `route === 'eval'`.
+ * Plan 20-01 (ADM-01) — admin console route. */
+export type AppRoute = 'chat' | 'eval' | 'admin';
 
 /** Plan 06-04 (D6-04) — `/eval` has a sub-route for the audit table. */
 export type EvalSubroute = 'dashboard' | 'audit';
@@ -452,6 +453,8 @@ export interface AppState {
   // uses its own JSON transport; the chat SSE wire is untouched.
   route: AppRoute;
   evalSubroute: EvalSubroute;
+  // Plan 20-01 (ADM-01) — admin console subroute.
+  adminSubroute: 'batches' | 'kpis' | 'skills' | 'schedules';
   indexReports: IndexRun[];
   auditRows: AuditRow[];
   auditFilter: AuditFilter;
@@ -514,6 +517,8 @@ export interface AppActions {
   // Plan 06-04 — eval dashboard actions (no messages setter).
   setRoute(route: AppRoute): void;
   setEvalSubroute(sub: EvalSubroute): void;
+  // Plan 20-01 (ADM-01) — admin console subroute action.
+  setAdminSubroute(sub: 'batches' | 'kpis' | 'skills' | 'schedules'): void;
   setIndexReports(runs: IndexRun[]): void;
   setAuditRows(rows: AuditRow[]): void;
   setAuditFilter(filter: AuditFilter): void;
@@ -567,6 +572,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // default; eval is opt-in via LeftSidebar / popstate.
   route: 'chat',
   evalSubroute: 'dashboard',
+  // Plan 20-01 (ADM-01) — admin console subroute. Default 'batches'.
+  adminSubroute: 'batches',
   indexReports: [],
   auditRows: [],
   auditFilter: { limit: 100, offset: 0 },
@@ -823,6 +830,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // SSE transport (D14 + D-04/D12 preserved by isolation).
   setRoute: (route) => set({ route }),
   setEvalSubroute: (sub) => set({ evalSubroute: sub }),
+  // Plan 20-01 (ADM-01) — admin console subroute action.
+  setAdminSubroute: (sub) => set({ adminSubroute: sub }),
   setIndexReports: (runs) => set({ indexReports: runs }),
   setAuditRows: (rows) => set({ auditRows: rows }),
   setAuditFilter: (filter) => set({ auditFilter: filter }),

@@ -33,6 +33,7 @@ import ChatColumn from './components/layout/ChatColumn';
 import DetailPanel from './components/layout/DetailPanel';
 import ReloadToast from './components/layout/ReloadToast';
 import EvalDashboard from './components/eval/EvalDashboard';
+import AdminDashboard from './components/admin/AdminDashboard';
 import { MessageBubble } from './components/chat/MessageBubble';
 import HistoryRewriteHint from './components/chat/HistoryRewriteHint';
 import { useSkillReload } from './hooks/useSkillReload';
@@ -260,6 +261,7 @@ function LiveApp() {
   const clearLastCreatedSkill = useAppStore((s) => s.clearLastCreatedSkill);
   const setRoute = useAppStore((s) => s.setRoute);
   const setEvalSubroute = useAppStore((s) => s.setEvalSubroute);
+  const setAdminSubroute = useAppStore((s) => s.setAdminSubroute);
 
   // Plan 06-04 — sync window.location.pathname into the store. We
   // boot from the current URL on mount (so a hard reload at /eval
@@ -276,6 +278,8 @@ function LiveApp() {
       } else if (path === '/eval') {
         setRoute('eval');
         setEvalSubroute('dashboard');
+      } else if (path === '/admin') {
+        setRoute('admin');
       } else {
         setRoute('chat');
       }
@@ -283,7 +287,7 @@ function LiveApp() {
     syncFromLocation();
     window.addEventListener('popstate', syncFromLocation);
     return () => window.removeEventListener('popstate', syncFromLocation);
-  }, [setRoute, setEvalSubroute]);
+  }, [setRoute, setEvalSubroute, setAdminSubroute]);
 
   // Plan 05-03 — SC-2 hot-reload consumer. Mounted at the App root so
   // polling outlives route changes. Polls GET /api/skills and diffs the
@@ -332,6 +336,12 @@ function LiveApp() {
     // messages payload; AI SDK v5 forwards extra body fields).
     const currentSkillId = useAppStore.getState().currentSkillId;
     void sendMessage({ text }, { body: { skill: currentSkillId ?? undefined } });
+  }
+
+  // Plan 20-01 (ADM-01) — admin console route renders the AdminDashboard
+  // shell. Mirrors the eval route pattern; no ReloadToast needed.
+  if (route === 'admin') {
+    return <AdminDashboard />;
   }
 
   // Plan 06-04 (D6-01) — admin-mode route renders the EvalDashboard

@@ -25,6 +25,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -129,6 +130,28 @@ func (s *SQLiteStore) ListReportRuns(ctx context.Context, skillID, period string
 		return nil, fmtError("ListReportRuns.Rows", err)
 	}
 	return out, nil
+}
+
+// CountRows returns the total row count for a named table. Used by the
+// admin console capacity monitor (Phase 20 / ADM-01). Table names are
+// allowlisted — unknown names return an error (caller → 500).
+func (s *SQLiteStore) CountRows(ctx context.Context, table string) (int64, error) {
+	if s.isClosed() {
+		return 0, sql.ErrConnDone
+	}
+	// Allowlist: only pre-defined table names are accepted.
+	switch table {
+	case "audit", "kpi_calls", "report_runs":
+		// allowed
+	default:
+		return 0, fmt.Errorf("CountRows: unknown table %q", table)
+	}
+	var count int64
+	query := "SELECT COUNT(*) FROM " + table
+	if err := s.db.QueryRowContext(ctx, query).Scan(&count); err != nil {
+		return 0, fmtError("CountRows."+table, err)
+	}
+	return count, nil
 }
 
 // GetReportRun returns the report run for a specific run_id.
