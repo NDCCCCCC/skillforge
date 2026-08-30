@@ -452,6 +452,11 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// Phase 20 Plan 20-01 (ADM-01) — admin console capacity monitor.
 	// Returns per-table row counts + thresholds for the capacity bars.
 	h.GET("/api/admin/table-counts", deps.tableCountsHandler)
+	// Phase 20 Plan 20-02 (ADM-02) — admin import batch list view.
+	// Returns every import batch audit row across all datasets, newest first.
+	// Retrieval-only by construction: the import_batches table is INSERT-only
+	// and this handler only reads (see admin_batches.go godoc).
+	h.GET("/api/admin/batches", deps.batchesAdminHandler)
 	// Phase 20 Plan 20-06 (ADM-06) — admin audit sub-view endpoint.
 	// Returns audit rows with actor_type='admin', with Phase 6 redact()
 	// applied (isAdmin=true → admin sees raw rows). Filtered at the store

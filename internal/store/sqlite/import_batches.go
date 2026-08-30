@@ -61,6 +61,15 @@ WHERE dataset = ?
 ORDER BY created_at DESC
 `
 
+// listAllImportBatchesSQL returns every batch across all datasets, newest first.
+const listAllImportBatchesSQL = `
+SELECT batch_id, dataset, period, tier, content_sha256, rules_sha256,
+       raw_size_bytes, desensitized_row_count, discard_ts, supersedes_batch_id,
+       created_at
+FROM import_batches
+ORDER BY created_at DESC
+`
+
 // putDatasetDeleteSQL appends one dataset deletion audit row (D15-C3).
 const putDatasetDeleteSQL = `
 INSERT INTO dataset_deletes (name, dataset, deleted_at)
@@ -156,6 +165,47 @@ func (s *SQLiteStore) ListImportBatches(ctx context.Context, dataset string) ([]
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmtError("ListImportBatches", err)
+	}
+	return out, nil
+}
+
+// ListAllImportBatches returns every import batch audit row across all datasets,
+// newest first.
+func (s *SQLiteStore) ListAllImportBatches(ctx context.Context) ([]store.ImportBatchRow, error) {
+	rows, err := s.db.QueryContext(ctx, listAllImportBatchesSQL)
+	if err != nil {
+		return nil, fmtError("ListAllImportBatches", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]store.ImportBatchRow, 0)
+	for rows.Next() {
+		var r store.ImportBatchRow
+		var createdAt string
+		if err := rows.Scan(
+			&r.BatchID,
+			&r.Dataset,
+			&r.Period,
+			&r.Tier,
+			&r.ContentSHA256,
+			&r.RulesSHA256,
+			&r.RawSizeBytes,
+			&r.DesensitizedRowCount,
+			&r.DiscardTS,
+			&r.SupersedesBatchID,
+			&createdAt,
+		); err != nil {
+			return nil, fmtError("ListAllImportBatches", err)
+		}
+		ts, err := time.Parse(time.RFC3339Nano, createdAt)
+		if err != nil {
+			return nil, fmtError("ListAllImportBatches", err)
+		}
+		r.CreatedAt = ts.UTC()
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmtError("ListAllImportBatches", err)
 	}
 	return out, nil
 }

@@ -722,6 +722,10 @@ type Store interface {
 	// substrate).
 	ListImportBatches(ctx context.Context, dataset string) ([]ImportBatchRow, error)
 
+	// ListAllImportBatches returns every import batch audit row across all
+	// datasets, newest first. Used by the admin batch list view (ADM-02).
+	ListAllImportBatches(ctx context.Context) ([]ImportBatchRow, error)
+
 	// PutDatasetDelete appends one INSERT-only dataset deletion audit row
 	// (D15-C3). The state-side deletion is performed separately by the
 	// caller.
