@@ -665,7 +665,18 @@ Plans:
 
 **Pitfalls addressed:** Pitfall 20（审计体量爆炸——增长监控面在此交付；压缩/归档与「永不删」不变量的冲突留 wrap 决策）、Pitfall 18（第 4 冻结锁——data.lock.json 的收录范围在此定稿）
 **Research flag:** ARCHITECTURE.md Q5（admin 路由形态）+ Q6（分类器位置收口）；无新外部依赖
-**Plans**: TBD
+**Plans**: 7 plans
+**Plan list**:
+- [ ] 20-01-PLAN.md — Admin route + auth gate (ADM-01)
+- [ ] 20-02-PLAN.md — Import batch list view (ADM-02)
+- [ ] 20-03-PLAN.md — KPI definitions view (ADM-03)
+- [ ] 20-04-PLAN.md — Skill management view (ADM-04)
+- [ ] 20-05-PLAN.md — Scheduled task list (ADM-05)
+- [ ] 20-06-PLAN.md — Admin audit actor_type INSERT (ADM-06)
+- [ ] 20-07-PLAN.md — Milestone wrap: data.lock.json + 20-SUMMARY.md
+
+**Wave structure**: W1={20-01, 20-03, 20-06 parallel} -> W2={20-02, 20-04, 20-05 parallel} -> W3={20-07}
+
 **UI hint**: yes（/admin 四视图——复用 /eval dashboard 视觉模式）
 
 ---
@@ -738,7 +749,7 @@ Plans:
 | 17. KPI 仪表盘 Skill (P10.3) | 0 (not planned) | Not started | - |
 | 18. 业务月报 Skill (P10.4) | 5/5 (18-01..18-03 core + 18-05 gap closure) | human_needed — 11/11 automated PASS; 2 human verification items blocked on CGO host + intranet services (live E2E + FAN-06 operator rerun) | 2026-08-29 |
 | 19. 静态报告门户 + 调度器 (P10.5) | 5/5 (19-01..19-03 core + 19-04/19-05 gap closure) | Complete — VERIFICATION PASSED 9/9 (2026-08-29, two gap-closure rounds: PORT-04 audit-sink threading + PORT-03 SetKPIExecutor boot wiring, commit ccd8824; verify evidence: scheduler 8/8 tests, CGO-free builds) | 2026-08-29 |
-| 20. 管理台 (P10.6) | 0 (not planned) | Not started | - |
+| 20. 管理台 (P10.6) | 0/7 (planned) | Not started | - |
 
 ---
 *Last updated: 2026-08-27 — Phase 16 Plan 16-09 (verify-phase-16 acceptance gate) CLOSED: 2/2 tasks in 2 commits (`0a74938` scripts/verify-phase-16.sh 11-stage hermetic gate [gcc + per-cmd build matrix + hermetic tests + contract WalkDir + KPI Layer 1 lock-name suite + channel XOR + wire kpi_reference + WSL triple-lock + source-grep + cmd/server live-link + frozen locks]; 9/11 PASS + 2 BLOCKED-WITH-NOTES on Windows (D15-01-1 emutls ABI); 11/11 PASS on Linux/WSL; `0718e9d` Makefile `verify-phase-16` operator target). Gate mirrors verify-phase-15.sh structure (ten-stage precedent → 11 reported stages; the cmd/server live-link lock is its own stage for triage clarity). `internal/kpi/wsl` 2 例失败（TestKPIEngineIntegration fixture↔validator 覆盖 + TestNameLexiconParity 64 字符边界）依然在 WSL operator leg of Stage 08 — 不归 16-09 范围（Rule 3 scope: not directly caused by this plan's changes），归 Phase 16 close-out operator review.*
