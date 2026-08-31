@@ -317,7 +317,7 @@ CREATE TABLE IF NOT EXISTS reports (
 -- scheduled firing produces one row: run_id (UUID), skill_id, period,
 -- cron_expr (the schedule that fired it), fired_at, kpi_snapshots (JSON
 -- freeze of KPI values at run time), output_url, status (enum:
-// success|failed|skipped_duplicate|eval_gate_blocked), drift_detected
+-- success|failed|skipped_duplicate|eval_gate_blocked), drift_detected
 -- (bool flag for GEVL-11 drift detection), and created_at.
 CREATE TABLE IF NOT EXISTS report_runs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -472,7 +472,7 @@ CREATE INDEX IF NOT EXISTS idx_reports_period ON reports(period)
 `
 	createReportsSkillIDIdxSQL = `
 CREATE INDEX IF NOT EXISTS idx_reports_skill_id ON reports(skill_id)
-	`
+`
 )
 
 // createReportsPeriodVersionUniqueIdxSQL is the WR-09 (18-REVIEW)

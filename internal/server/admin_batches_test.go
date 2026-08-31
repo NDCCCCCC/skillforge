@@ -51,26 +51,27 @@ func newBatchesStore(t *testing.T) store.Store {
 	t.Cleanup(func() { _ = st.Close() })
 
 	base := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
-	for i, row := range []store.ImportBatchRow{
+	rows := []store.ImportBatchRow{
 		{
 			BatchID:              "batch-001",
-			Dataset:             "loans",
+			Dataset:              "loans",
 			Period:               "2026-07",
-			RawSizeBytes:        1024000,
+			RawSizeBytes:         1024000,
 			DesensitizedRowCount: 5000,
-			DiscardTS:           "2026-07-01T12:00:00Z",
-			CreatedAt:           base,
+			DiscardTS:            "2026-07-01T12:00:00Z",
+			CreatedAt:            base,
 		},
 		{
 			BatchID:              "batch-002",
-			Dataset:             "claims",
+			Dataset:              "claims",
 			Period:               "2026-07",
-			RawSizeBytes:        512000,
+			RawSizeBytes:         512000,
 			DesensitizedRowCount: 2500,
-			DiscardTS:           "",
-			CreatedAt:           base.Add(time.Duration(i+1) * time.Hour),
+			DiscardTS:            "",
+			CreatedAt:            base.Add(time.Hour),
 		},
-	} {
+	}
+	for _, row := range rows {
 		require.NoError(t, st.PutImportBatch(context.Background(), row))
 	}
 	return st
@@ -144,7 +145,7 @@ func TestAdminBatchesHandler(t *testing.T) {
 	// ④ empty store → 200 with empty batches array.
 	t.Run("empty batch list", func(t *testing.T) {
 		t.Setenv("SKILLFORGE_ADMIN_TOKEN", "the-real-token")
-		deps := &Deps{Store: emptyBatchesStore{}}
+		deps := &Deps{Store: newBatchesStore(t)}
 		resp := invokeAdminBatches(t, deps, "the-real-token")
 		require.Equal(t, http.StatusOK, resp.Code)
 		var body importBatchesAdminResponse

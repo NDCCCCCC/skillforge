@@ -18,12 +18,12 @@ package server
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/ut"
 )
 
 // TestAdminSkillsRetrievalOnly asserts that admin_skills.go contains no
@@ -51,55 +51,39 @@ func TestAdminSkillsRetrievalOnly(t *testing.T) {
 	}
 }
 
+// invokeAdminSkills issues GET /api/admin/skills against a Hertz engine.
+// Mirrors invokeAdminBatches pattern.
+func invokeAdminSkills(t *testing.T, deps *Deps, adminToken string) *ut.ResponseRecorder {
+	t.Helper()
+	h := server.Default(server.WithHostPorts(":0"))
+	h.GET("/api/admin/skills", deps.adminSkillsHandler)
+	var headers []ut.Header
+	if adminToken != "" {
+		headers = append(headers, ut.Header{Key: "X-Admin-Token", Value: adminToken})
+	}
+	return ut.PerformRequest(h.Engine, http.MethodGet, "/api/admin/skills", nil, headers...)
+}
+
 // TestAdminSkillsHandler403 asserts that GET /api/admin/skills returns
 // 403 when no X-Admin-Token is provided.
 func TestAdminSkillsHandler403(t *testing.T) {
 	deps := &Deps{}
-	h := app.NewApp(":0", func(ctx context.Context, c *app.RequestContext) {
-		deps.adminSkillsHandler(ctx, c)
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/skills", nil)
-	rec := httptest.NewRecorder()
-
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rec.Code)
+	if code := invokeAdminSkills(t, deps, "").Code; code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", code)
 	}
 }
 
 // TestAdminSkillsHandler200 asserts that GET /api/admin/skills returns
 // 200 with valid X-Admin-Token and a well-formed JSON body.
 func TestAdminSkillsHandler200(t *testing.T) {
-	// Set a valid admin token for this test.
-	oldToken := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
-	os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-	defer func() {
-		if oldToken != "" {
-			os.Setenv("SKILLFORGE_ADMIN_TOKEN", oldToken)
-		} else {
-			os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		}
-	}()
-
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
 	deps := &Deps{}
-	h := app.NewApp(":0", func(ctx context.Context, c *app.RequestContext) {
-		deps.adminSkillsHandler(ctx, c)
-	})
+	resp := invokeAdminSkills(t, deps, "test-admin-token")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/skills", nil)
-	req.Header.Set("X-Admin-Token", "test-admin-token")
-	rec := httptest.NewRecorder()
-
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	if resp.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
-
-	// Verify the response is valid JSON with a "skills" key.
-	body := rec.Body.String()
+	body := resp.Body.String()
 	if !strings.Contains(body, `"skills"`) {
 		t.Errorf("expected JSON with 'skills' key, got: %s", body)
 	}

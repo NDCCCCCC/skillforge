@@ -19,13 +19,13 @@ package server
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"github.com/skillforge/skillforge/internal/store"
 )
@@ -65,6 +65,15 @@ type fakeAdminSchedulesStore struct {
 
 func (f *fakeAdminSchedulesStore) ListReportRuns(_ context.Context, _, _ string, _ int) ([]store.ReportRunRow, error) {
 	return f.rows, f.err
+}
+func (f *fakeAdminSchedulesStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
+	panic("not implemented")
+}
+func (f *fakeAdminSchedulesStore) CountRows(_ context.Context, _ string) (int64, error) {
+	panic("not implemented")
+}
+func (f *fakeAdminSchedulesStore) ListAllImportBatches(_ context.Context) ([]store.ImportBatchRow, error) {
+	panic("not implemented")
 }
 
 // Unused store.Store methods — panic if reached.
@@ -195,6 +204,15 @@ func (s *spyAdminSchedulesStore) ListReportRuns(_ context.Context, skillID, peri
 	s.calls = append(s.calls, struct{ skillID, period string; limit int }{skillID, period, limit})
 	return s.rows, nil
 }
+func (s *spyAdminSchedulesStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
+	panic("not implemented")
+}
+func (s *spyAdminSchedulesStore) CountRows(_ context.Context, _ string) (int64, error) {
+	panic("not implemented")
+}
+func (s *spyAdminSchedulesStore) ListAllImportBatches(_ context.Context) ([]store.ImportBatchRow, error) {
+	panic("not implemented")
+}
 
 // Unused store.Store methods — panic if reached.
 func (s *spyAdminSchedulesStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
@@ -314,103 +332,80 @@ func (s *spyAdminSchedulesStore) Close() error {
 
 var _ store.Store = (*spyAdminSchedulesStore)(nil)
 
+// invokeAdminSchedules issues GET /api/admin/schedules against a Hertz engine that
+// has ONLY the retrieval route bound. Mirrors invokeAdminBatches pattern.
+func invokeAdminSchedules(t *testing.T, deps *Deps, adminToken string) *ut.ResponseRecorder {
+	t.Helper()
+	h := server.Default(server.WithHostPorts(":0"))
+	h.GET("/api/admin/schedules", deps.adminSchedulesHandler)
+	var headers []ut.Header
+	if adminToken != "" {
+		headers = append(headers, ut.Header{Key: "X-Admin-Token", Value: adminToken})
+	}
+	return ut.PerformRequest(h.Engine, http.MethodGet, "/api/admin/schedules", nil, headers...)
+}
+
 // TestAdminSchedulesHandler tests the three terminal response paths of
 // adminSchedulesHandler: 403 (no token), 503 (store nil), and 200 (ok).
 func TestAdminSchedulesHandler(t *testing.T) {
-	os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-	defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-
 	t.Run("403_without_token", func(t *testing.T) {
 		os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		h := app.NewApp(app.EngineOpts{})
-		h.GET("/api/admin/schedules", func(ctx context.Context, c *app.RequestContext) {
-			deps := &Deps{Store: &fakeAdminSchedulesStore{}}
-			deps.adminSchedulesHandler(ctx, c)
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/schedules", nil)
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected 403, got %d", rec.Code)
+		deps := &Deps{Store: &fakeAdminSchedulesStore{}}
+		if code := invokeAdminSchedules(t, deps, "").Code; code != http.StatusForbidden {
+			t.Errorf("expected 403, got %d", code)
 		}
 	})
 
 	t.Run("503_store_nil", func(t *testing.T) {
-		os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-		defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		h := app.NewApp(app.EngineOpts{})
-		h.GET("/api/admin/schedules", func(ctx context.Context, c *app.RequestContext) {
-			deps := &Deps{Store: nil}
-			deps.adminSchedulesHandler(ctx, c)
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/schedules", nil)
-		req.Header.Set("X-Admin-Token", "test-admin-token")
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("expected 503, got %d", rec.Code)
+		t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
+		deps := &Deps{Store: nil}
+		if code := invokeAdminSchedules(t, deps, "test-admin-token").Code; code != http.StatusServiceUnavailable {
+			t.Errorf("expected 503, got %d", code)
 		}
 	})
 
 	t.Run("200_ok_empty", func(t *testing.T) {
-		os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-		defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		h := app.NewApp(app.EngineOpts{})
-		h.GET("/api/admin/schedules", func(ctx context.Context, c *app.RequestContext) {
-			deps := &Deps{Store: &fakeAdminSchedulesStore{rows: nil}}
-			deps.adminSchedulesHandler(ctx, c)
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/schedules", nil)
-		req.Header.Set("X-Admin-Token", "test-admin-token")
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d", rec.Code)
+		t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
+		deps := &Deps{Store: &fakeAdminSchedulesStore{rows: nil}}
+		if code := invokeAdminSchedules(t, deps, "test-admin-token").Code; code != http.StatusOK {
+			t.Errorf("expected 200, got %d", code)
 		}
 	})
 
 	t.Run("200_ok_with_rows", func(t *testing.T) {
-		os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-		defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		h := app.NewApp(app.EngineOpts{})
-		h.GET("/api/admin/schedules", func(ctx context.Context, c *app.RequestContext) {
-			deps := &Deps{
-				Store: &fakeAdminSchedulesStore{
-					rows: []store.ReportRunRow{
-						{
-							ID:            1,
-							RunID:         "run-001",
-							SkillID:       "compliance",
-							Period:        "2026-08",
-							CronExpr:      "0 0 * * *",
-							FiredAt:       time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
-							Status:        "completed",
-							DriftDetected: false,
-						},
-						{
-							ID:            2,
-							RunID:         "run-002",
-							SkillID:       "compliance",
-							Period:        "2026-08",
-							CronExpr:      "0 0 * * *",
-							FiredAt:       time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC),
-							Status:        "failed",
-							DriftDetected: true,
-						},
+		t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
+		deps := &Deps{
+			Store: &fakeAdminSchedulesStore{
+				rows: []store.ReportRunRow{
+					{
+						ID:            1,
+						RunID:         "run-001",
+						SkillID:       "compliance",
+						Period:        "2026-08",
+						CronExpr:      "0 0 * * *",
+						FiredAt:       time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
+						Status:        "completed",
+						DriftDetected: false,
+					},
+					{
+						ID:            2,
+						RunID:         "run-002",
+						SkillID:       "compliance",
+						Period:        "2026-08",
+						CronExpr:      "0 0 * * *",
+						FiredAt:       time.Date(2026, 8, 29, 0, 0, 0, 0, time.UTC),
+						Status:        "failed",
+						DriftDetected: true,
 					},
 				},
-			}
-			deps.adminSchedulesHandler(ctx, c)
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/schedules", nil)
-		req.Header.Set("X-Admin-Token", "test-admin-token")
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d", rec.Code)
+			},
+		}
+		resp := invokeAdminSchedules(t, deps, "test-admin-token")
+		if resp.Code != http.StatusOK {
+			t.Errorf("expected 200, got %d", resp.Code)
 		}
 		// Verify response envelope contains "schedules" key.
-		body := rec.Body.String()
+		body := resp.Body.String()
 		if !strings.Contains(body, `"schedules"`) {
 			t.Errorf("expected response to contain 'schedules' key, got: %s", body)
 		}
@@ -427,23 +422,11 @@ func TestAdminSchedulesHandler(t *testing.T) {
 // TestAdminSchedulesListReportRunsArgs verifies that ListReportRuns is called
 // with empty strings for skillID and period (no filter) and limit 100.
 func TestAdminSchedulesListReportRunsArgs(t *testing.T) {
-	os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-	defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
 	spy := &spyAdminSchedulesStore{}
 	deps := &Deps{Store: spy}
+	invokeAdminSchedules(t, deps, "test-admin-token")
 
-	h := app.NewApp(app.EngineOpts{})
-	h.GET("/api/admin/schedules", deps.adminSchedulesHandler)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/schedules", nil)
-	req.Header.Set("X-Admin-Token", "test-admin-token")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rec.Code)
-	}
 	if len(spy.calls) != 1 {
 		t.Fatalf("expected 1 ListReportRuns call, got %d", len(spy.calls))
 	}

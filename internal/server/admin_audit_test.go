@@ -9,7 +9,7 @@
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
+// See License for the specific language governing permissions and
 // limitations under the License.
 //
 // SPDX-License-Identifier: Apache-2.0
@@ -19,13 +19,13 @@ package server
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"github.com/skillforge/skillforge/internal/store"
 )
@@ -141,6 +141,9 @@ func (f *fakeAdminAuditStore) LatestImportBatch(_ context.Context, _, _ string) 
 func (f *fakeAdminAuditStore) ListImportBatches(_ context.Context, _ string) ([]store.ImportBatchRow, error) {
 	panic("not implemented")
 }
+func (f *fakeAdminAuditStore) ListAllImportBatches(_ context.Context) ([]store.ImportBatchRow, error) {
+	panic("not implemented")
+}
 func (f *fakeAdminAuditStore) PutDatasetDelete(_ context.Context, _ store.DatasetDeleteRow) error {
 	panic("not implemented")
 }
@@ -181,6 +184,9 @@ func (f *fakeAdminAuditStore) GetLatestReportRunBySkill(_ context.Context, _, _ 
 	panic("not implemented")
 }
 func (f *fakeAdminAuditStore) Health(_ context.Context) error {
+	panic("not implemented")
+}
+func (f *fakeAdminAuditStore) CountRows(_ context.Context, _ string) (int64, error) {
 	panic("not implemented")
 }
 func (f *fakeAdminAuditStore) Close() error {
@@ -272,6 +278,9 @@ func (s *spyAdminAuditStore) LatestImportBatch(_ context.Context, _, _ string) (
 func (s *spyAdminAuditStore) ListImportBatches(_ context.Context, _ string) ([]store.ImportBatchRow, error) {
 	panic("not implemented")
 }
+func (s *spyAdminAuditStore) ListAllImportBatches(_ context.Context) ([]store.ImportBatchRow, error) {
+	panic("not implemented")
+}
 func (s *spyAdminAuditStore) PutDatasetDelete(_ context.Context, _ store.DatasetDeleteRow) error {
 	panic("not implemented")
 }
@@ -314,94 +323,82 @@ func (s *spyAdminAuditStore) GetLatestReportRunBySkill(_ context.Context, _, _ s
 func (s *spyAdminAuditStore) Health(_ context.Context) error {
 	panic("not implemented")
 }
+func (s *spyAdminAuditStore) CountRows(_ context.Context, _ string) (int64, error) {
+	panic("not implemented")
+}
 func (s *spyAdminAuditStore) Close() error {
 	panic("not implemented")
 }
 
 var _ store.Store = (*spyAdminAuditStore)(nil)
 
+// invokeAdminAudit issues GET /api/admin/audit against a Hertz engine that
+// has ONLY the admin audit route bound. Mirrors invokeAdminBatches pattern.
+func invokeAdminAudit(t *testing.T, deps *Deps, adminToken string) *ut.ResponseRecorder {
+	t.Helper()
+	h := server.Default(server.WithHostPorts(":0"))
+	h.GET("/api/admin/audit", deps.adminAuditHandler)
+	var headers []ut.Header
+	if adminToken != "" {
+		headers = append(headers, ut.Header{Key: "X-Admin-Token", Value: adminToken})
+	}
+	return ut.PerformRequest(h.Engine, http.MethodGet, "/api/admin/audit", nil, headers...)
+}
+
 // TestAdminAuditHandler tests the three terminal response paths of
 // adminAuditHandler: 403 (no token), 503 (store nil), and 200 (ok).
 func TestAdminAuditHandler(t *testing.T) {
-	os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-	defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-
 	t.Run("403_without_token", func(t *testing.T) {
 		os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		h := app.NewApp(app.EngineOpts{})
-		h.GET("/api/admin/audit", func(ctx context.Context, c *app.RequestContext) {
-			deps := &Deps{Store: &fakeAdminAuditStore{}}
-			deps.adminAuditHandler(ctx, c)
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/audit", nil)
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("expected 403, got %d", rec.Code)
+		deps := &Deps{Store: &fakeAdminAuditStore{}}
+		if code := invokeAdminAudit(t, deps, "").Code; code != http.StatusForbidden {
+			t.Errorf("expected 403, got %d", code)
 		}
 	})
 
 	t.Run("503_store_nil", func(t *testing.T) {
-		os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-		defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		h := app.NewApp(app.EngineOpts{})
-		h.GET("/api/admin/audit", func(ctx context.Context, c *app.RequestContext) {
-			deps := &Deps{Store: nil}
-			deps.adminAuditHandler(ctx, c)
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/audit", nil)
-		req.Header.Set("X-Admin-Token", "test-admin-token")
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("expected 503, got %d", rec.Code)
+		t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
+		deps := &Deps{Store: nil}
+		if code := invokeAdminAudit(t, deps, "test-admin-token").Code; code != http.StatusServiceUnavailable {
+			t.Errorf("expected 503, got %d", code)
 		}
 	})
 
 	t.Run("200_ok", func(t *testing.T) {
-		os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-		defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		h := app.NewApp(app.EngineOpts{})
-		h.GET("/api/admin/audit", func(ctx context.Context, c *app.RequestContext) {
-			deps := &Deps{
-				Store: &fakeAdminAuditStore{
-					rows: []store.AuditRow{
-						{
-							ID:                 1,
-							Timestamp:          time.Now(),
-							SessionID:          "sess-admin-1",
-							UserID:             "admin",
-							SkillID:            "compliance",
-							Query:              "show me all pending approvals",
-							PromptHash:         "abc123",
-							ModelVersion:       "v1",
-							VerdictJSON:        "{}",
-							RefusalReason:      "",
-							ChunkIDs:           "",
-							Action:             "action_pending_approval",
-							SkillVersion:       "1.0",
-							FrozenArgs:         nil,
-							ToolCallID:         "tc-1",
-							ApprovalID:         "tc-1",
-							ScopeSessionID:     "sess-admin-1",
-							BudgetLayer:        "",
-							RunPath:            "",
-							TransferFrom:       "",
-							TransferTo:         "",
-							PlatformFloorVersion: "1.0.0",
-							ActorType:          "admin",
-						},
+		t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
+		deps := &Deps{
+			Store: &fakeAdminAuditStore{
+				rows: []store.AuditRow{
+					{
+						ID:                    1,
+						Timestamp:             time.Now(),
+						SessionID:             "sess-admin-1",
+						UserID:                "admin",
+						SkillID:               "compliance",
+						Query:                 "show me all pending approvals",
+						PromptHash:            "abc123",
+						ModelVersion:          "v1",
+						VerdictJSON:           "{}",
+						RefusalReason:         "",
+						ChunkIDs:              "",
+						Action:                "action_pending_approval",
+						SkillVersion:          "1.0",
+						FrozenArgs:            nil,
+						ToolCallID:            "tc-1",
+						ApprovalID:            "tc-1",
+						ScopeSessionID:        "sess-admin-1",
+						BudgetLayer:           "",
+						RunPath:               "",
+						TransferFrom:          "",
+						TransferTo:            "",
+						PlatformFloorVersion:  "1.0.0",
+						ActorType:             "admin",
 					},
 				},
-			}
-			deps.adminAuditHandler(ctx, c)
-		})
-		req := httptest.NewRequest(http.MethodGet, "/api/admin/audit", nil)
-		req.Header.Set("X-Admin-Token", "test-admin-token")
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected 200, got %d", rec.Code)
+			},
+		}
+		if code := invokeAdminAudit(t, deps, "test-admin-token").Code; code != http.StatusOK {
+			t.Errorf("expected 200, got %d", code)
 		}
 	})
 }
@@ -409,27 +406,14 @@ func TestAdminAuditHandler(t *testing.T) {
 // TestAdminAuditActorType verifies that QueryAudit is called with
 // ActorType="admin" when the admin audit handler is invoked.
 func TestAdminAuditActorType(t *testing.T) {
-	os.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
-	defer os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "test-admin-token")
 	spy := &spyAdminAuditStore{}
 	deps := &Deps{Store: spy}
-
-	h := app.NewApp(app.EngineOpts{})
-	h.GET("/api/admin/audit", deps.adminAuditHandler)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/audit", nil)
-	req.Header.Set("X-Admin-Token", "test-admin-token")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", rec.Code)
+	invokeAdminAudit(t, deps, "test-admin-token")
+	if len(spy.calls) == 0 {
+		t.Fatalf("expected at least one QueryAudit call, got none")
 	}
-	if len(spy.calls) != 1 {
-		t.Fatalf("expected 1 QueryAudit call, got %d", len(spy.calls))
-	}
-	if spy.calls[0].ActorType != "admin" {
-		t.Errorf("expected ActorType='admin', got %q", spy.calls[0].ActorType)
+	if got := spy.calls[0].ActorType; got != "admin" {
+		t.Errorf("expected ActorType=admin, got %q", got)
 	}
 }
