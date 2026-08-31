@@ -1,30 +1,55 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: — 业务数据支撑（Business Data Support）
-current_phase: 20
+milestone: v1.1
+milestone_name: (planned)
+current_phase: 0
 current_plan: Not started
-status: closed
-last_updated: "2026-08-30T00:00:00.000Z"
-last_activity: 2026-08-30
+status: planning
+last_updated: "2026-08-31T00:00:00.000Z"
+last_activity: 2026-08-31
 progress:
-  total_phases: 20
-  completed_phases: 14
-  total_plans: 94
-  completed_plans: 122
-  percent: 71
+  total_phases: 0
+  completed_phases: 20
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 20 (admin P10.6) — COMPLETE
-Plan: 7 of 7
-Status: closed
-Last activity: 2026-08-30
+**v1.0 MILESTONE CLOSED** — 业务数据支撑 (Business Data Support) shipped 2026-08-30
+Archived: `.planning/milestones/v1.0-ROADMAP.md` + `.planning/milestones/v1.0-REQUIREMENTS.md`
 
-**Phase 20 closure (2026-08-30):** COMPLETE — 7/7 plans, Wave 1 (20-01 admin route + 20-06 audit actor_type) → Wave 2 (20-02..20-05 four views) → Wave 3 (20-07 milestone wrap). TypeScript clean. Go build blocked by pre-existing MSYS2/CGO env issue.
+Next milestone: **v1.1** — External Authorized Channel + Phase 7 completion + Eval CI Wiring
+
+## Deferred Items
+
+Items acknowledged and deferred at v1.0 milestone close on 2026-08-31:
+
+| Category | Item | Status |
+|----------|------|--------|
+| operator_gate | BGE-M3 endpoint restore + compliance replay re-sign | Deferred |
+| operator_gate | Docker live build+run verification | Deferred |
+| operator_gate | Phase 18 live E2E | Deferred |
+| operator_gate | Phase 18 FAN-06 operator rerun | Deferred |
+| env_issue | gcc linking (MSYS2 emutls ABI) | Deferred |
+| incomplete | Phase 7 Open-Source Release | Deferred |
+
+## v1.0 Summary
+
+**Phases:** 14-20 (7 phases, 53 plans, 418 files, +81,854 LOC)
+**Timeline:** 2026-08-23 → 2026-08-30 (7 days)
+**Requirements:** 44/44 v1.0 requirements satisfied
+**Key deliverables:**
+- CGO 地基 + platform floor 1.1.0 (Phase 14)
+- 数据导入即脱敏三通道 (Phase 15)
+- KPI 聚合通道零后门 (Phase 16)
+- 数字问答 + sparkline + 再识别断言 (Phase 17)
+- 业务月报 DeepAgent + fan-out + HITL (Phase 18)
+- /reports 门户 + cron 调度 (Phase 19)
+- /admin 管理台四视图 (Phase 20)
 
 **Phase 19 closure (2026-08-29):** COMPLETE — 5/5 plans, VERIFICATION PASSED 9/9, two gap-closure rounds (19-04 wiring + 19-05 audit-sink + SetKPIExecutor).
 
