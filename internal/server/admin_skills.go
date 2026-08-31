@@ -119,7 +119,7 @@ func (s *Deps) adminSkillsHandler(ctx context.Context, c *app.RequestContext) {
 			entries = append(entries, entry)
 		}
 		// Surface skills that failed before entering the snapshot.
-		for name, msg := range failed {
+		for name := range failed {
 			if _, ok := snap[name]; ok {
 				continue
 			}

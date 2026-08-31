@@ -88,6 +88,7 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
+	"github.com/skillforge/skillforge/internal/scheduler"
 	"github.com/skillforge/skillforge/internal/server"
 	"github.com/skillforge/skillforge/internal/server/classifier"
 	"github.com/skillforge/skillforge/internal/server/rewrite"

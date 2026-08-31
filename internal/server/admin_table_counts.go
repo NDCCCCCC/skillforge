@@ -34,8 +34,6 @@ import (
 	"strconv"
 
 	"github.com/cloudwego/hertz/pkg/app"
-
-	"github.com/skillforge/skillforge/internal/store"
 )
 
 // tableCapacity holds a count and its operational threshold.

@@ -30,7 +30,7 @@ import (
 func (deps *Deps) reportsListHandler(ctx context.Context, c *app.RequestContext) {
 	skillID := string(c.Query("skill_id"))
 	period := string(c.Query("period"))
-	limitStr := string(c.Query("limit", "20"))
+	limitStr := string(c.Query("limit"))
 	limit, _ := strconv.Atoi(limitStr)
 	if limit <= 0 || limit > 100 {
 		limit = 20
