@@ -59,7 +59,7 @@ func newBatchesStore(t *testing.T) store.Store {
 			RawSizeBytes:         1024000,
 			DesensitizedRowCount: 5000,
 			DiscardTS:            "2026-07-01T12:00:00Z",
-			CreatedAt:            base,
+			CreatedAt:            base.Add(time.Hour), // newer = comes first in DESC order
 		},
 		{
 			BatchID:              "batch-002",
@@ -68,7 +68,7 @@ func newBatchesStore(t *testing.T) store.Store {
 			RawSizeBytes:         512000,
 			DesensitizedRowCount: 2500,
 			DiscardTS:            "",
-			CreatedAt:            base.Add(time.Hour),
+			CreatedAt:            base,
 		},
 	}
 	for _, row := range rows {
@@ -145,7 +145,10 @@ func TestAdminBatchesHandler(t *testing.T) {
 	// ④ empty store → 200 with empty batches array.
 	t.Run("empty batch list", func(t *testing.T) {
 		t.Setenv("SKILLFORGE_ADMIN_TOKEN", "the-real-token")
-		deps := &Deps{Store: newBatchesStore(t)}
+		emptySt, err := sqlite.New(context.Background(), sqlite.Config{DSN: ":memory:"})
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = emptySt.Close() })
+		deps := &Deps{Store: emptySt}
 		resp := invokeAdminBatches(t, deps, "the-real-token")
 		require.Equal(t, http.StatusOK, resp.Code)
 		var body importBatchesAdminResponse

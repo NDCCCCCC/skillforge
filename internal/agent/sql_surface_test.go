@@ -341,6 +341,11 @@ func TestKPINarrowSurface(t *testing.T) {
 		// still apply, and the agent-visible tool still funnels every call
 		// through kpi_tool's catalog Enum.
 		"CallMultiPeriod": true,
+		// GetAllKPISnapshots — Phase 19 / Plan 19-04 (PORT-04 closure):
+		// scheduler report-run loop reads every (func, as_of, result)
+		// snapshot tuple from the catalog to freeze into report_runs.
+		// Read-only audit-style consumer; no SQL generation surface.
+		"GetAllKPISnapshots": true,
 	}
 	for got := range methodNames {
 		if !allowed[got] {
