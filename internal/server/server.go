@@ -489,6 +489,11 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/session/:id/approval", deps.approvalGetHandler)
 	h.POST("/api/session/:id/approval/:approvalId", deps.approvalPostHandler)
 	h.GET("/api/session/:id/audit", deps.auditListHandler)
+	// Phase 11 / Plan 11-05 (HITL-08) — approval_rules CRUD surface.
+	// ListApprovalRulesHandler supports ?scope=session|skill[&skill_id=X][&target=X];
+	// RevokeApprovalRuleHandler clears a remembered rule (D11-D2 single-table reuse).
+	h.GET("/api/session/:id/approval-rules", deps.ListApprovalRulesHandler)
+	h.DELETE("/api/session/:id/approval-rules/:ruleId", deps.RevokeApprovalRuleHandler)
 	// Phase 12 Plan 04 (PLAN-05 BE replay + PLAN-03 BE confirm
 	// endpoint) — the run-keyed planning surface. GET returns the
 	// run's plan_todos rows in ts-ASC latest-snapshot order (the FE

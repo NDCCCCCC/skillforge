@@ -166,8 +166,17 @@ func (s *Deps) ListApprovalRulesHandler(ctx context.Context, c *app.RequestConte
 		return
 	}
 
+	// D11-D2 single-table reuse — the FE splits approval_rules by
+	// target (memory:facts / review_report / plan_approve). The BE
+	// filters in-memory after QueryRules; future growth can push this
+	// into the SQL WHERE clause without breaking the FE contract.
+	targetFilter := string(c.Query("target"))
+
 	out := ListApprovalRulesResponse{Rules: make([]ApprovalRuleJSON, 0, len(rules))}
 	for _, r := range rules {
+		if targetFilter != "" && r.Target != targetFilter {
+			continue
+		}
 		out.Rules = append(out.Rules, toApprovalRuleJSON(r))
 	}
 	c.JSON(http.StatusOK, out)
