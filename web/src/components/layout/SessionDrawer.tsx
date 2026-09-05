@@ -48,6 +48,10 @@ const GROUP_ORDER: GroupKey[] = ['pinned', 'today', 'week', 'older'];
 
 /** Relative-time label for a session row (Chinese-first copy). */
 function relativeTime(ts: number, now: number): string {
+  // UAT 2026-09-06 B4 — legacy rows carry the Go zero time
+  // (0001-01-01 → a large negative epoch), which used to render as
+  // "1-01-01". Any non-positive epoch means "no activity recorded".
+  if (ts <= 0) return '—';
   const diff = now - ts;
   if (diff < 60_000) return '刚刚';
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;

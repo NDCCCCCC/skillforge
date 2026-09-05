@@ -542,8 +542,16 @@ const DEFAULT_DETAIL_WIDTH = 380;
 // (we do not need UUID uniqueness across reloads — the page reloads
 // wipe all session state). `INITIAL_SESSION_ID` seeds the boot state
 // so activeSessionId is never empty when the app mounts.
+//
+// UAT 2026-09-06 B3 (P2) — local ids live in the `local-session-`
+// NAMESPACE, structurally disjoint from server roster ids. The old
+// `session-N` prefix collided with legacy server sessions literally
+// named "session-2": after a reload the counter restarts at 1, so a
+// newly created session could share an id with a hydrated roster row —
+// duplicate React keys (rows rendered with swapped props) and a
+// rename/delete on one row silently targeting the other session.
 let sessionCounter = 1;
-const INITIAL_SESSION_ID = `session-${sessionCounter++}`;
+const INITIAL_SESSION_ID = `local-session-${sessionCounter++}`;
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
   currentSkillId: null,
@@ -765,7 +773,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // Plan 05-07 actions
   setSkills: (list) => set({ skills: list }),
   createSession: () => {
-    const id = `session-${sessionCounter++}`;
+    // `local-session-` namespace — see the B3 note above INITIAL_SESSION_ID.
+    const id = `local-session-${sessionCounter++}`;
     const name = `会话 ${sessionCounter - 1}`;
     set((state) => ({
       sessions: [...state.sessions, { id, name, createdAt: Date.now() }],
@@ -785,7 +794,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       if (remaining.length > 0) {
         active = remaining[0].id;
       } else {
-        const freshId = `session-${sessionCounter++}`;
+        const freshId = `local-session-${sessionCounter++}`;
         const freshName = `会话 ${sessionCounter - 1}`;
         remaining.push({ id: freshId, name: freshName, createdAt: Date.now() });
         active = freshId;
@@ -797,7 +806,18 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   hydrateSessions: (list) => {
     if (list.length === 0) return; // empty/null roster → keep local state
     const pins = loadSessionPins();
-    const hydrated = list.map((s) => ({ ...s, pinned: pins.has(s.id) || s.pinned }));
+    // B3 defense in depth — a duplicated roster id would render duplicate
+    // React keys (swapped row props). The server should never send one;
+    // drop it here so a future BE regression degrades to a missing row
+    // instead of row-action misrouting.
+    const seen = new Set<string>();
+    const hydrated = list
+      .filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      })
+      .map((s) => ({ ...s, pinned: pins.has(s.id) || s.pinned }));
     set((state) => {
       // activeSessionId: prefer the newest BE session (roster is
       // newest-first) unless the current active is itself in the
