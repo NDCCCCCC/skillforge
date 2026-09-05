@@ -272,7 +272,55 @@ func (s *Deps) auditHandler(ctx context.Context, c *app.RequestContext) {
 	// applied between QueryAudit and c.JSON.
 	redact(rows, auditRetention(), time.Now(), isAdminRequest(c))
 
-	c.JSON(http.StatusOK, rows)
+	// UAT 2026-09-06 B1 (P1): project onto the snake_case wire shape
+	// the FE contract documents (web/src/types/eval.ts AuditRow).
+	// Marshaling store.AuditRow directly leaked Go field names
+	// (PascalCase) — every FE field read came back undefined and
+	// AuditTable's redaction check crashed on `.startsWith`,
+	// white-screening /eval/audit.
+	c.JSON(http.StatusOK, toAuditWireRows(rows))
+}
+
+// auditWireRow is the /api/audit wire projection — snake_case JSON keys
+// mirroring web/src/types/eval.ts AuditRow (the contract the eval
+// dashboard's AuditTable consumes). Deliberately a DISTINCT type from
+// store.AuditRow: store structs have no JSON tags by design (they are
+// a persistence shape, not a wire shape), and marshaling them directly
+// couples the FE to Go field-name capitalization.
+type auditWireRow struct {
+	Ts               string   `json:"ts"`
+	UserID           string   `json:"user_id"`
+	SkillID          string   `json:"skill_id"`
+	SessionID        string   `json:"session_id"`
+	RefusalReason    string   `json:"refusal_reason"`
+	Query            string   `json:"query"`
+	VerdictJSON      string   `json:"verdict_json"`
+	Faithfulness     *float64 `json:"faithfulness"`
+	ContextPrecision *float64 `json:"context_precision"`
+	AnswerRelevance  *float64 `json:"answer_relevance"`
+	ContextRecall    *float64 `json:"context_recall"`
+}
+
+// toAuditWireRows projects store rows onto the /api/audit wire shape.
+// Ts is RFC3339 UTC (the FE parses it with Date.parse / string compare).
+func toAuditWireRows(rows []store.AuditRow) []auditWireRow {
+	out := make([]auditWireRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, auditWireRow{
+			Ts:               r.Timestamp.UTC().Format(time.RFC3339),
+			UserID:           r.UserID,
+			SkillID:          r.SkillID,
+			SessionID:        r.SessionID,
+			RefusalReason:    r.RefusalReason,
+			Query:            r.Query,
+			VerdictJSON:      r.VerdictJSON,
+			Faithfulness:     r.Faithfulness,
+			ContextPrecision: r.ContextPrecision,
+			AnswerRelevance:  r.AnswerRelevance,
+			ContextRecall:    r.ContextRecall,
+		})
+	}
+	return out
 }
 
 // parseAuditTime parses an RFC3339 timestamp. Empty string is the

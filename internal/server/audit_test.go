@@ -131,7 +131,7 @@ func TestAuditHandler_QueryParamsMapToFilter(t *testing.T) {
 	t.Run("user filter", func(t *testing.T) {
 		got := invokeAuditHandler(t, deps, "user=u1", "")
 		require.Equal(t, http.StatusOK, got.Code)
-		var rows []store.AuditRow
+		var rows []auditWireRow
 		require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 		assert.Len(t, rows, 3, "u1 has 3 rows (sess-1, sess-3, sess-5)")
 		for _, r := range rows {
@@ -142,7 +142,7 @@ func TestAuditHandler_QueryParamsMapToFilter(t *testing.T) {
 	t.Run("skill filter", func(t *testing.T) {
 		got := invokeAuditHandler(t, deps, "skill=s1", "")
 		require.Equal(t, http.StatusOK, got.Code)
-		var rows []store.AuditRow
+		var rows []auditWireRow
 		require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 		for _, r := range rows {
 			assert.Equal(t, "s1", r.SkillID)
@@ -152,7 +152,7 @@ func TestAuditHandler_QueryParamsMapToFilter(t *testing.T) {
 	t.Run("refusal_reason filter", func(t *testing.T) {
 		got := invokeAuditHandler(t, deps, "refusal_reason=no_authorized_source", "")
 		require.Equal(t, http.StatusOK, got.Code)
-		var rows []store.AuditRow
+		var rows []auditWireRow
 		require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 		require.Len(t, rows, 2)
 		for _, r := range rows {
@@ -166,7 +166,7 @@ func TestAuditHandler_QueryParamsMapToFilter(t *testing.T) {
 		until := base.Add(150 * 24 * time.Hour).Format(time.RFC3339)
 		got := invokeAuditHandler(t, deps, "since="+since+"&until="+until, "")
 		require.Equal(t, http.StatusOK, got.Code)
-		var rows []store.AuditRow
+		var rows []auditWireRow
 		require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 		require.Len(t, rows, 2, "rows in [50d, 150d) are sess-3 and sess-4")
 	})
@@ -175,7 +175,7 @@ func TestAuditHandler_QueryParamsMapToFilter(t *testing.T) {
 		// limit=2 → 2 newest rows; offset=2 → 2 next rows.
 		got := invokeAuditHandler(t, deps, "limit=2", "")
 		require.Equal(t, http.StatusOK, got.Code)
-		var rows []store.AuditRow
+		var rows []auditWireRow
 		require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 		require.Len(t, rows, 2)
 
@@ -190,6 +190,41 @@ func TestAuditHandler_QueryParamsMapToFilter(t *testing.T) {
 		require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 		require.Len(t, rows, 1)
 	})
+}
+
+// TestAuditHandler_WireShapeIsSnakeCase — UAT 2026-09-06 B1 (P1)
+// regression lock. The /api/audit contract is the snake_case shape of
+// web/src/types/eval.ts AuditRow; marshaling store.AuditRow directly
+// (PascalCase Go field names) fed the FE undefined fields and crashed
+// AuditTable's redaction check (white screen). The lock asserts the
+// exact key set: snake_case keys present, PascalCase keys absent.
+func TestAuditHandler_WireShapeIsSnakeCase(t *testing.T) {
+	s := newTestStore(t)
+	seedAuditRows(t, s)
+	deps := &Deps{Store: s}
+
+	got := invokeAuditHandler(t, deps, "limit=1", "")
+	require.Equal(t, http.StatusOK, got.Code)
+
+	var raws []map[string]any
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &raws))
+	require.Len(t, raws, 1)
+
+	want := []string{
+		"ts", "user_id", "skill_id", "session_id", "refusal_reason",
+		"query", "verdict_json", "faithfulness", "context_precision",
+		"answer_relevance", "context_recall",
+	}
+	for _, k := range want {
+		assert.Contains(t, raws[0], k, "wire row must carry snake_case key %q", k)
+	}
+	for _, k := range []string{"Query", "Timestamp", "VerdictJSON", "RefusalReason", "UserID", "SkillID", "SessionID"} {
+		assert.NotContains(t, raws[0], k, "PascalCase Go field names must not leak to the wire")
+	}
+
+	// The metrics columns stay nullable on the wire (rows without eval
+	// backfill carry null, not 0 — the FE distinguishes unset from zero).
+	assert.Nil(t, raws[0]["faithfulness"], "un-backfilled faithfulness must be null")
 }
 
 // TestAuditHandler_NegativeLimitRejected — V5 ASVS: limit must

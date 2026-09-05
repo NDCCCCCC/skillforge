@@ -36,7 +36,10 @@ function buildQuery(filter: AuditFilter): string {
 }
 
 function isRedacted(value: string): boolean {
-  return value.startsWith('[REDACTED:');
+  // UAT 2026-09-06 B1 hardening — a wire-shape drift once fed `undefined`
+  // in here (TypeError → whole-page white screen). A non-string can never
+  // be redacted; degrade to false instead of crashing the subtree.
+  return typeof value === 'string' && value.startsWith('[REDACTED:');
 }
 
 function RedactedBadge({ value }: { value: string }) {
