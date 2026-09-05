@@ -489,6 +489,10 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/session/:id/approval", deps.approvalGetHandler)
 	h.POST("/api/session/:id/approval/:approvalId", deps.approvalPostHandler)
 	h.GET("/api/session/:id/audit", deps.auditListHandler)
+	// Phase 24 / Task 24-01 — session-scoped W3C PROV-JSON export of the
+	// audit chain (internal/auditprov; zero-LLM, read-only, SC-9 isolation
+	// identical to the audit route above).
+	h.GET("/api/session/:id/audit/prov", deps.sessionProvHandler)
 	// Phase 11 / Plan 11-05 (HITL-08) — approval_rules CRUD surface.
 	// ListApprovalRulesHandler supports ?scope=session|skill[&skill_id=X][&target=X];
 	// RevokeApprovalRuleHandler clears a remembered rule (D11-D2 single-table reuse).
