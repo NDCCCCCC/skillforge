@@ -21,24 +21,37 @@
 //     when either input changes — the user might have just loaded a
 //     new Skill that matches the session's history.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '../store/app-store';
 
 /**
  * Auto-switch SkillPicker to the session-bound skill on history
  * restore. Pass the `skill_id` field from the GET /api/session/:id/history
  * response. Empty / unknown skillId is a no-op.
+ *
+ * UAT 2026-09-06 B2 (P1) — the restore payload is applied AT MOST ONCE per
+ * distinct skillId. The previous implementation kept `currentSkillId` in the
+ * dependency array with an equality idempotency check, so every MANUAL
+ * SkillPicker override re-fired the effect, saw `currentSkillId !== skillId`,
+ * and snapped the user's explicit selection back to the session-bound skill —
+ * making skill switching impossible on any session with restored history.
+ * A `useRef` ledger replaces the equality check: the effect only fires when
+ * the restore payload itself changes (session switch) or when the skill list
+ * first contains the bound skill (delayed load).
  */
 export function useSkillAutoSwitch(skillId: string | null | undefined): void {
   const skills = useAppStore((s) => s.skills);
-  const currentSkillId = useAppStore((s) => s.currentSkillId);
   const setCurrentSkill = useAppStore((s) => s.setCurrentSkill);
+  // Ledger of the last restore payload this hook applied (or is waiting to
+  // apply). Deliberately NOT applied-skill state — user overrides never
+  // touch it, so they can never re-trigger the auto-switch.
+  const appliedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!skillId) return;
-    // No-op when already set (idempotency — the hook may fire on
-    // every skills-list refresh).
-    if (currentSkillId === skillId) return;
+    // No-op when this exact restore payload was already applied
+    // (idempotency — the hook re-fires on every skills-list refresh).
+    if (appliedRef.current === skillId) return;
     // No-op when the skill is not in the loaded list (skills.json
     // hasn't loaded yet OR the session references a Skill the user
     // does not have locally). The hook re-fires when skills
@@ -46,6 +59,7 @@ export function useSkillAutoSwitch(skillId: string | null | undefined): void {
     // auto-switch.
     const known = skills.some((s) => s.id === skillId);
     if (!known) return;
+    appliedRef.current = skillId;
     setCurrentSkill(skillId);
-  }, [skillId, skills, currentSkillId, setCurrentSkill]);
+  }, [skillId, skills, setCurrentSkill]);
 }
