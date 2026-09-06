@@ -23,13 +23,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestBuildMilvusFilterSlugs — Phase 26 / KBM-05. The filter's tier values
+// are now registry slugs. This test asserts the expression TEMPLATE
+// character-for-character so a future edit cannot silently change the
+// filter shape while swapping the value source: only the VALUES changed
+// from CN chars to slugs, never the clause structure, the %q escaping, or
+// the PRE-similarity position.
+func TestBuildMilvusFilterSlugs(t *testing.T) {
+	const now int64 = 1700000000
+	got := BuildMilvusFilter([]string{"authority", "historical"}, now)
+	assert.Equal(t,
+		`tier in ["authority","historical"] and (effective_to == 0 or effective_to >= 1700000000)`,
+		got,
+		"the expr template must stay byte-identical — only the value source moved to registry slugs (KBM-05)")
+}
+
 // TestBuildMilvusFilter_TiersOnly — Phase 2 baseline. Tiers still drives
 // the clause; the effective clause is appended but is only present
 // when the signature accepts a `now` parameter (Plan 05-02).
 func TestBuildMilvusFilter_TiersOnly(t *testing.T) {
-	got := BuildMilvusFilter([]string{"权威", "历史"}, 1700000000)
-	assert.Contains(t, got, "tier in [\"权威\",\"历史\"]",
-		"tier clause must include the resolved CN-char tier values")
+	got := BuildMilvusFilter([]string{"authority", "historical"}, 1700000000)
+	assert.Contains(t, got, "tier in [\"authority\",\"historical\"]",
+		"tier clause must include the resolved slug tier values")
 	assert.NotContains(t, got, "false",
 		"non-empty tiers must not return the default-deny 'false' literal")
 }
@@ -46,13 +61,13 @@ func TestBuildMilvusFilter_EmptyTiers(t *testing.T) {
 // effective_to PRE-filter uses sentinel-0 design (NOT nullable). The
 // resulting expression MUST be:
 //
-//	tier in ["权威"] and (effective_to == 0 or effective_to >= <now>)
+//	tier in ["authority"] and (effective_to == 0 or effective_to >= <now>)
 //
 // This catches the Milvus NULL-evaluates-FALSE pitfall — by NOT using
 // nullable fields we sidestep the rule entirely.
 func TestBuildMilvusFilter_EffectiveToSentinel(t *testing.T) {
 	const now int64 = 1700000000
-	got := BuildMilvusFilter([]string{"权威"}, now)
+	got := BuildMilvusFilter([]string{"authority"}, now)
 	assert.Contains(t, got, "effective_to == 0",
 		"effective PRE-filter must include the perpetual sentinel clause")
 	assert.Contains(t, got, "effective_to >= 1700000000",
@@ -71,7 +86,7 @@ func TestBuildMilvusFilter_EffectiveToSentinel(t *testing.T) {
 // Defensive — production always passes time.Now().Unix() but tests
 // sometimes pass 0 to keep assertions simple.
 func TestBuildMilvusFilter_EffectiveToNowZero(t *testing.T) {
-	got := BuildMilvusFilter([]string{"权威"}, 0)
+	got := BuildMilvusFilter([]string{"authority"}, 0)
 	assert.Contains(t, got, "effective_to >= 0",
 		"now=0 must still produce a well-formed effective clause")
 }
