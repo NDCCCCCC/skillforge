@@ -14,87 +14,178 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package skill test — Plan 03-01 Task 2 (TDD).
+// Package skill test — Phase 26 / Plan 26-04 Task 1 (TDD).
 //
-// TestTierEnumByValue + TestTierEnumValuesDeterminism pin the
-// TierEnumByValue / TierEnumValues reverse-lookup helpers that Plan
-// 03-04's KNOW-02 indexer enforcement consumes. The indexer validates
-// every Document.Tier against the canonical 4-tier CN-char set; these
-// tests pin both the happy path (4 known tiers resolve) and the
-// default-deny path (unknown / empty string → ok=false).
+// ResolveTiers is now a thin delegate over kb.Registry.ResolveReads
+// (KBM-01): the compiled-in TierEnum enumeration is deleted, so the
+// reads contract is validated against the live knowledge-base registry
+// instead of a 4-value map. These tests pin the delegation contract and
+// the two semantics that are part of the Skill-author experience:
+// the data:-prefix defense-in-depth guard and the fail-closed
+// unknown-KB error that lists the active slug set.
 //
-// RED phase (this commit): the test file fails to compile because
-// TierEnumByValue and TierEnumValues do not exist yet. The GREEN
-// commit lands both functions in tier.go.
+// RED phase (this commit): the test file targets the two-argument
+// ResolveTiers(reads, reg) signature, which does not exist yet.
 
 package skill
 
 import (
 	"testing"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TestTierEnumByValue covers Task 2 behavior tests 1-3:
-// happy path for all 4 canonical CN-char values, default-deny for
-// unknown + empty string. Table-driven so adding a future tier
-// (e.g. "草稿" → "draft") is a one-line append.
-func TestTierEnumByValue(t *testing.T) {
-	tests := []struct {
-		name    string
-		value   string
-		wantDir string
-		wantOK  bool
-	}{
-		{name: "authority", value: "权威", wantDir: "authority", wantOK: true},
-		{name: "historical", value: "历史", wantDir: "historical", wantOK: true},
-		{name: "personal", value: "个人", wantDir: "personal", wantOK: true},
-		{name: "draft", value: "草稿", wantDir: "draft", wantOK: true},
-		{name: "unknown_CN", value: "未知层级", wantDir: "", wantOK: false},
-		{name: "unknown_ascii_accidental", value: "authority", wantDir: "", wantOK: false},
-		{name: "empty_string", value: "", wantDir: "", wantOK: false},
+// baselineKBEntries returns the four baseline knowledge bases of the
+// controlled seed (knowledge_bases.yaml), all active. Only Slug / Role /
+// RetrievalEnabled participate in reads resolution; the display names
+// are ASCII here so this package stays free of CN data-layer literals
+// (the structural gate greps the test files too).
+func baselineKBEntries() []kb.Entry {
+	return []kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotDir, gotOK := TierEnumByValue(tt.value)
-			assert.Equal(t, tt.wantDir, gotDir,
-				"TierEnumByValue(%q) dir mismatch", tt.value)
-			assert.Equal(t, tt.wantOK, gotOK,
-				"TierEnumByValue(%q) ok mismatch — KNOW-02 indexer relies on "+
-					"ok=false for any tier outside the canonical 4-value set", tt.value)
+}
+
+// testKBReg returns the read-only registry over the four baseline bases.
+// The test-only registry constructor is shared by every test in this
+// package that resolves or validates reads.
+func testKBReg() kb.Registry {
+	return kb.New(baselineKBEntries())
+}
+
+// testKBRegHistoricalDeactivated returns the baseline registry with the
+// historical base deactivated — the KBM-02 deactivation posture that a
+// skill referencing it must fail closed against.
+func testKBRegHistoricalDeactivated() kb.Registry {
+	entries := baselineKBEntries()
+	for i := range entries {
+		if entries[i].Slug == "historical" {
+			entries[i].RetrievalEnabled = false
+		}
+	}
+	return kb.New(entries)
+}
+
+// TestResolveTiersDelegatesToRegistry pins the KBM-01 delegation: the
+// resolved set is the registry's ResolveReads output — slug values, not
+// a compiled-in mapping. Slug patterns and bare slugs both resolve, and
+// overlapping patterns dedupe.
+func TestResolveTiersDelegatesToRegistry(t *testing.T) {
+	reg := testKBReg()
+
+	cases := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{"slug_pattern", []string{"authority/**"}, []string{"authority"}},
+		{"bare_slug", []string{"authority"}, []string{"authority"}},
+		{"multi_slug", []string{"authority/**", "historical"}, []string{"authority", "historical"}},
+		{"dedup_overlap", []string{"authority/**", "authority/policies/**"}, []string{"authority"}},
+		{"deep_path", []string{"authority/policies/anti-bribery/v3"}, []string{"authority"}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ResolveTiers(tc.in, reg)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+
+			// The delegation is exact: ResolveTiers adds nothing of its
+			// own beyond the data:-prefix guard below.
+			want, err := reg.ResolveReads(tc.in)
+			require.NoError(t, err)
+			assert.Equal(t, want, got,
+				"ResolveTiers MUST be a thin delegate of kb.Registry.ResolveReads (KBM-01)")
 		})
 	}
 }
 
-// TestTierEnumValuesDeterminism covers Task 2 behavior tests 4-5:
-// exactly 4 elements, deterministic order (callers in error messages
-// rely on stable ordering), and the slice is a fresh allocation per
-// call so callers cannot mutate the package-level TierEnum map.
-func TestTierEnumValuesDeterminism(t *testing.T) {
-	first := TierEnumValues()
-	second := TierEnumValues()
+// TestResolveTiersDataPrefixGuard — the defense-in-depth guard keeps its
+// position BEFORE the delegation: a data-channel value reaching
+// ResolveTiers is a caller bug (Validate branches first, D16-C1/C2) and
+// must surface as this guard's error, never as a registry lookup.
+func TestResolveTiersDataPrefixGuard(t *testing.T) {
+	_, err := ResolveTiers([]string{"data:aggregated_only"}, testKBReg())
+	require.Error(t, err,
+		"ResolveTiers MUST reject data: prefixed reads (defense-in-depth guard, D16-C2)")
+	assert.Contains(t, err.Error(), "data:",
+		"error MUST name the data: prefix")
+	assert.Contains(t, err.Error(), "D16-C2",
+		"error MUST cite D16-C2 for traceability")
+}
 
-	// Test 4 — exactly the 4 canonical CN-char values, in the
-	// TierEnum-key-sorted order documented in the godoc
-	// (authority → draft → historical → personal ⇒ values
-	// 权威, 草稿, 历史, 个人).
-	want := []string{"权威", "草稿", "历史", "个人"}
-	assert.Equal(t, want, first,
-		"TierEnumValues must return the 4 canonical CN-char values in "+
-			"TierEnum-key-sorted order (authority, draft, historical, personal)")
-
-	// Test 5 — idempotent across calls (no internal mutation).
-	assert.Equal(t, first, second,
-		"TierEnumValues must be deterministic across calls — the package-level "+
-			"TierEnum map is shared and MUST NOT be mutated by callers")
-
-	// Mutating the returned slice MUST NOT affect the next call — proves
-	// the implementation returns a fresh allocation each time.
-	if len(first) > 0 {
-		first[0] = "MUTATED"
-		third := TierEnumValues()
-		assert.Equal(t, want, third,
-			"TierEnumValues must return a freshly-allocated slice — caller "+
-				"mutation MUST NOT leak into subsequent calls or the TierEnum map")
+// TestResolveTiersUnknownListsActive — the Skill-author error contract
+// survives the delegation: an unknown slug fails closed and the message
+// lists the active set (the KBM-04 wording of the old known-dirs list).
+func TestResolveTiersUnknownListsActive(t *testing.T) {
+	_, err := ResolveTiers([]string{"nope/**"}, testKBReg())
+	require.Error(t, err,
+		"unknown KB must fail closed (default-deny: silently resolving to nothing would mask a typo)")
+	assert.Contains(t, err.Error(), "unknown or deactivated KB",
+		"error MUST use the registry's unknown-or-deactivated wording")
+	assert.Contains(t, err.Error(), "nope",
+		"error MUST echo the offending top segment")
+	for _, active := range []string{"authority", "historical", "personal"} {
+		assert.Contains(t, err.Error(), active,
+			"error MUST list the active slug set so the author can self-correct")
 	}
+}
+
+// TestResolveTiersEmptyReadsReturnsNilNoError — ResolveTiers still does
+// NOT enforce default-deny (that is Validate's job) and must answer the
+// empty case before touching the registry.
+func TestResolveTiersEmptyReadsReturnsNilNoError(t *testing.T) {
+	got, err := ResolveTiers([]string{}, testKBReg())
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	got, err = ResolveTiers(nil, testKBReg())
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+// TestResolveTiersNilRegistryFailsClosed — a nil registry is a wiring
+// bug, never a silent pass. Non-empty reads cannot be resolved without
+// the registry, so the fail-closed answer is an error (Validate turns
+// it into a load failure, BuildSubAgent into a construction failure).
+func TestResolveTiersNilRegistryFailsClosed(t *testing.T) {
+	_, err := ResolveTiers([]string{"authority/**"}, nil)
+	require.Error(t, err,
+		"nil registry MUST fail closed — a silent empty set would be indistinguishable from default-deny")
+	assert.Contains(t, err.Error(), "registry",
+		"error MUST name the missing registry so the operator can fix the wiring")
+}
+
+// TestResolveTiersDeactivatedKBRejected — a deactivated base is
+// indistinguishable from an unregistered one for reads resolution
+// (KBM-02): the skill stops loading rather than silently narrowing.
+func TestResolveTiersDeactivatedKBRejected(t *testing.T) {
+	_, err := ResolveTiers([]string{"historical/**"}, testKBRegHistoricalDeactivated())
+	require.Error(t, err,
+		"a deactivated KB must fail closed at reads resolution (KBM-02)")
+	assert.Contains(t, err.Error(), "historical")
+}
+
+// TestResolveTiersRoleWildcardAccepted — the KBM-04 wildcard expands to
+// the active retrieval-eligible members of the role.
+func TestResolveTiersRoleWildcardAccepted(t *testing.T) {
+	got, err := ResolveTiers([]string{"role:authority"}, testKBReg())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"authority"}, got)
+}
+
+// TestResolveTiersDraftReadResolvesEmpty — draft-role semantics outrank
+// the explicit declaration: the base is dropped, not granted (A3), so
+// an explicit draft read yields the empty default-deny set.
+func TestResolveTiersDraftReadResolvesEmpty(t *testing.T) {
+	got, err := ResolveTiers([]string{"draft/**"}, testKBReg())
+	require.NoError(t, err)
+	assert.Empty(t, got,
+		"a draft-role KB contributes nothing to the resolved set (KBM-03: draft is never retrievable)")
 }

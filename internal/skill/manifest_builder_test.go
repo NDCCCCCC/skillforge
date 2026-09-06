@@ -32,7 +32,7 @@ import (
 func TestManifestBuilderWithReads(t *testing.T) {
 	base := validManifest()
 	b := NewManifestBuilder(base)
-	out, err := b.WithReads([]string{"authority/**"}).Build()
+	out, err := b.WithReads([]string{"authority/**"}).Build(testKBReg())
 	require.NoError(t, err, "valid base + non-empty Reads must build")
 	require.NotNil(t, out)
 	assert.Equal(t, []string{"authority/**"}, out.Reads,
@@ -45,7 +45,7 @@ func TestManifestBuilderWithReads(t *testing.T) {
 func TestManifestBuilderEmptyIntersectionFails(t *testing.T) {
 	base := validManifest()
 	b := NewManifestBuilder(base)
-	out, err := b.WithReads([]string{}).Build()
+	out, err := b.WithReads([]string{}).Build(testKBReg())
 	require.Error(t, err)
 	assert.Nil(t, out)
 	assert.Contains(t, err.Error(), "empty Reads",
@@ -57,7 +57,7 @@ func TestManifestBuilderEmptyIntersectionFails(t *testing.T) {
 func TestManifestBuilderInvalidReadsFails(t *testing.T) {
 	base := validManifest()
 	b := NewManifestBuilder(base)
-	out, err := b.WithReads([]string{"unknown-tier-not-in-enum"}).Build()
+	out, err := b.WithReads([]string{"unknown-tier-not-in-enum"}).Build(testKBReg())
 	require.Error(t, err)
 	assert.Nil(t, out)
 	assert.Contains(t, err.Error(), "reads")
@@ -70,7 +70,7 @@ func TestManifestBuilderCloneSemantics(t *testing.T) {
 	base := validManifest()
 	originalReads := append([]string(nil), base.Reads...)
 	b := NewManifestBuilder(base)
-	_, err := b.WithReads([]string{"authority/**"}).Build()
+	_, err := b.WithReads([]string{"authority/**"}).Build(testKBReg())
 	require.NoError(t, err)
 	assert.Equal(t, originalReads, base.Reads,
 		"the builder's WithReads MUST NOT mutate the caller's base manifest")
@@ -96,7 +96,7 @@ func TestManifestBuilderNilBasePanics(t *testing.T) {
 func TestManifestBuilderChainedFluent(t *testing.T) {
 	base := validManifest()
 	b := NewManifestBuilder(base)
-	out, err := b.WithReads([]string{"authority/**"}).WithReads([]string{"authority/**", "historical/**"}).Build()
+	out, err := b.WithReads([]string{"authority/**"}).WithReads([]string{"authority/**", "historical/**"}).Build(testKBReg())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"authority/**", "historical/**"}, out.Reads,
 		"chained WithReads — the last call wins")
@@ -109,14 +109,14 @@ func TestManifestBuilderChainedFluent(t *testing.T) {
 // share the slice with base. Mutation of one must not affect the other.
 func TestManifestBuilderResolvedTiersCloned(t *testing.T) {
 	base := validManifest()
-	base.SetResolvedTiersForTest([]string{"权威", "历史"})
+	base.SetResolvedTiersForTest([]string{"authority", "historical"})
 	b := NewManifestBuilder(base)
-	out, err := b.WithReads([]string{"authority/**"}).Build()
+	out, err := b.WithReads([]string{"authority/**"}).Build(testKBReg())
 	require.NoError(t, err)
-	assert.Equal(t, []string{"权威", "历史"}, out.ResolvedTiers())
+	assert.Equal(t, []string{"authority", "historical"}, out.ResolvedTiers())
 	// Append to base's resolvedTiers — out's must be unchanged.
-	base.SetResolvedTiersForTest(append(base.ResolvedTiers(), "个人"))
-	assert.Equal(t, []string{"权威", "历史"}, out.ResolvedTiers(),
+	base.SetResolvedTiersForTest(append(base.ResolvedTiers(), "personal"))
+	assert.Equal(t, []string{"authority", "historical"}, out.ResolvedTiers(),
 		"base.resolvedTiers mutation must not affect the builder's output")
 }
 
@@ -126,7 +126,7 @@ func TestManifestBuilderResolvedTiersCloned(t *testing.T) {
 func TestManifestBuilderBuildErrorMessageStable(t *testing.T) {
 	base := validManifest()
 	b := NewManifestBuilder(base)
-	_, err := b.WithReads([]string{}).Build()
+	_, err := b.WithReads([]string{}).Build(testKBReg())
 	require.Error(t, err)
 	// Contract substring — runtime.BuildSubAgent surfaces this verbatim.
 	assert.True(t, strings.Contains(err.Error(), "FAN-02"),

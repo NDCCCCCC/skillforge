@@ -33,7 +33,7 @@ func TestManifestValidatesOrchestratorAgent(t *testing.T) {
 	m := validManifest()
 	m.Agent = "orchestrator"
 	m.Writes = []string{} // orchestrator is read-only by structural design
-	require.NoError(t, Validate(m),
+	require.NoError(t, Validate(m, testKBReg()),
 		"manifest.Agent=\"orchestrator\" must validate (P13-L1 whitelist extension)")
 }
 
@@ -43,7 +43,7 @@ func TestManifestValidatesOrchestratorAgent(t *testing.T) {
 func TestManifestRejectsUnknownAgentWithOrchestratorList(t *testing.T) {
 	m := validManifest()
 	m.Agent = "bogus-archetype"
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "agent type",
 		"unknown agent type error MUST name the failing field")
@@ -79,7 +79,7 @@ func TestValidAgentTypesRejectsUnknown(t *testing.T) {
 func TestValidateErrorMessageMentionsOrchestrator(t *testing.T) {
 	m := validManifest()
 	m.Agent = "bogus-archetype"
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "orchestrator"),
 		"the unknown-agent-type error MUST list orchestrator in the valid types")
@@ -142,7 +142,7 @@ func TestManifestChannel_EmptyReads(t *testing.T) {
 // normal path never routes data: values into ResolveTiers — Validate
 // branches before calling it).
 func TestResolveTiers_DataPrefixDefenseInDepth(t *testing.T) {
-	_, err := ResolveTiers([]string{"data:aggregated_only"})
+	_, err := ResolveTiers([]string{"data:aggregated_only"}, testKBReg())
 	require.Error(t, err,
 		"ResolveTiers MUST reject data: prefixed reads (defense-in-depth)")
 	assert.Contains(t, err.Error(), "data:",
@@ -152,24 +152,23 @@ func TestResolveTiers_DataPrefixDefenseInDepth(t *testing.T) {
 }
 
 // TestResolveTiers_ExistingTierBehavior_Unchanged is a regression lock:
-// all existing tier-resolving behavior must remain byte-identical after
-// the data: prefix guard addition.
+// the resolved set is still the deduplicated top-segment set, with only
+// the value source moved to the registry slugs (Phase 26 / Plan 26-04).
 func TestResolveTiers_ExistingTierBehavior_Unchanged(t *testing.T) {
-	// Re-run a subset of the existing TestResolveTiers_KnownDirs cases
-	// to prove zero regression.
+	// Re-run a subset of the delegation cases to prove zero regression.
 	cases := []struct {
 		name string
 		in   []string
 		want []string
 	}{
-		{"authority", []string{"authority/**"}, []string{"权威"}},
-		{"multi_tier", []string{"authority/**", "historical/**"}, []string{"权威", "历史"}},
-		{"bare_dir", []string{"authority"}, []string{"权威"}},
+		{"authority", []string{"authority/**"}, []string{"authority"}},
+		{"multi_tier", []string{"authority/**", "historical/**"}, []string{"authority", "historical"}},
+		{"bare_dir", []string{"authority"}, []string{"authority"}},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ResolveTiers(tc.in)
+			got, err := ResolveTiers(tc.in, testKBReg())
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
 		})

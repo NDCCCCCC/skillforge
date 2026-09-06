@@ -54,7 +54,7 @@ func validManifest() *Manifest {
 func TestValidate_CompliantSkill_HappyPath(t *testing.T) {
 	// Test 1 — the canonical 7-field SKILL.md passes Validate.
 	m := validManifest()
-	require.NoError(t, Validate(m),
+	require.NoError(t, Validate(m, testKBReg()),
 		"the canonical 7-field compliance Skill MUST validate (the whole SYSK-02 contract depends on this passing)")
 }
 
@@ -63,7 +63,7 @@ func TestValidate_NilManifest(t *testing.T) {
 	// Validate itself must reject nil so callers from HTTP handlers
 	// (plan 02-04 POST /api/skills) get a clear error.
 	var nilM *Manifest
-	err := Validate(nilM)
+	err := Validate(nilM, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nil")
 }
@@ -73,7 +73,7 @@ func TestValidate_MissingTemperature_SYSK08(t *testing.T) {
 	// decodes to nil; Validate rejects nil.
 	m := validManifest()
 	m.Temperature = nil
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "temperature",
 		"the error MUST name the failing field so the Skill author can fix it")
@@ -86,7 +86,7 @@ func TestValidate_WildcardReads_PSKILL3(t *testing.T) {
 	// tier-based access control entirely.
 	m := validManifest()
 	m.Reads = []string{"*"}
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "wildcard")
 	assert.Contains(t, err.Error(), "P-SKILL-3")
@@ -97,7 +97,7 @@ func TestValidate_EmptyReads_DefaultDeny(t *testing.T) {
 	// no reads must not silently fall through to "no filter".
 	m := validManifest()
 	m.Reads = []string{}
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reads")
 	assert.True(t,
@@ -110,7 +110,7 @@ func TestValidate_FewerThan3Prohibitions_PSKILL2(t *testing.T) {
 	// Skill; the validator is the gate, not the LLM.
 	m := validManifest()
 	m.Guardrails.Prohibitions = []string{"only one prohibition", "and another"}
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "prohibitions")
 	assert.Contains(t, err.Error(), "P-SKILL-2")
@@ -123,7 +123,7 @@ func TestValidate_UnknownAgent_PSKILL_SchemaField2(t *testing.T) {
 	// otherwise silently bind to a no-op at runtime.
 	m := validManifest()
 	m.Agent = "FooAgent"
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "agent")
 	assert.Contains(t, err.Error(), "ChatModelAgent",
@@ -135,49 +135,40 @@ func TestValidate_UnknownAgent_PSKILL_SchemaField2(t *testing.T) {
 // Skill declaring `agent: deep` MUST validate so the loader accepts
 // the file at startup; the runtime.DispatchAgent layer routes the
 // construction to runtime.BuildDeepAgent (P12-L2 MaxIteration: 10).
-//
-// Pre-Phase-12 this would have failed because the validAgentTypes
-// whitelist only contained Eino ADK type names. The Phase 12 plan
-// adds "deep" (the canonical Phase 12 archetype name) and "chat"
-// (the canonical Phase 12 archetype name that maps to the legacy
-// ChatModelAgent path). The Phase 11 Eino ADK names remain valid
-// as alias forms for backwards compatibility.
 func TestValidate_DeepAgent_P12Archetype(t *testing.T) {
 	// Case 1: canonical Phase 12 short name "deep".
 	m := validManifest()
 	m.Agent = "deep"
-	require.NoError(t, Validate(m),
+	require.NoError(t, Validate(m, testKBReg()),
 		"manifest with agent=deep MUST validate (Phase 12 / Plan 12-01 adds 'deep' to the validAgentTypes whitelist so the DeepAgent archetype is accepted at load time)")
 
 	// Case 2: canonical Phase 12 short name "chat".
 	m = validManifest()
 	m.Agent = "chat"
-	require.NoError(t, Validate(m),
+	require.NoError(t, Validate(m, testKBReg()),
 		"manifest with agent=chat MUST validate (Phase 12 archetype name; maps to the Phase 11 ChatModelAgent path)")
 
 	// Case 3: legacy Phase 11 Eino ADK type still validates.
 	m = validManifest()
 	m.Agent = "ChatModelAgent"
-	require.NoError(t, Validate(m),
+	require.NoError(t, Validate(m, testKBReg()),
 		"manifest with agent=ChatModelAgent MUST still validate (Phase 11 alias form preserved for backwards compat with Skills written before 12-01)")
 
 	// Case 4: empty Agent is still rejected (default-deny posture).
 	m = validManifest()
 	m.Agent = ""
-	require.Error(t, Validate(m),
+	require.Error(t, Validate(m, testKBReg()),
 		"empty agent MUST be rejected (no implicit default; matches the existing 'unknown agent type' check)")
 }
 
 // TestValidate_RejectsUnknownAgent is the Phase 12 / Plan 12-01
 // negative-path regression lock. A Skill declaring an unknown agent
 // type MUST fail Validate() so the loader surfaces the error at
-// startup (D11-B3 fail-closed posture). The runtime.DispatchAgent
-// layer's switch-default branch is the defense-in-depth; the
-// manifest validator is the primary gate.
+// startup (D11-B3 fail-closed posture).
 func TestValidate_RejectsUnknownAgent(t *testing.T) {
 	m := validManifest()
 	m.Agent = "bogus"
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "agent",
 		"error MUST name the failing field")
@@ -193,7 +184,7 @@ func TestValidate_TemperatureOutOfRange_SYSK08(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			m := validManifest()
 			m.Temperature = &bad
-			err := Validate(m)
+			err := Validate(m, testKBReg())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "temperature")
 			assert.Contains(t, err.Error(), "[0.0, 1.0]")
@@ -206,26 +197,125 @@ func TestValidate_NilWrites_PSKILL_SchemaField4(t *testing.T) {
 	// Empty [] is the valid read-only form; nil is the failure mode.
 	m := validManifest()
 	m.Writes = nil
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "writes")
 	assert.Contains(t, err.Error(), "[]",
 		"error should hint at `[]` as the read-only form so the author knows the fix")
 }
 
-func TestValidate_UnknownTierInReads_SYSK07_D212(t *testing.T) {
-	// Test 9 — SYSK-07 + D2-12: unknown top-level dir -> rejection.
-	// A typo in the Skill author's reads pattern must NOT silently
-	// resolve to "no tier" (fail-open); it must error so the operator
-	// sees it at startup.
+// TestValidate_UnknownKBInReads_SYSK07 — the KBM-04 form of the old
+// D2-12 unknown-dir check: a reads pattern naming an unregistered KB is
+// rejected at load time and the error lists the active slug set.
+func TestValidate_UnknownKBInReads_SYSK07(t *testing.T) {
 	m := validManifest()
 	m.Reads = []string{"unknown/**"}
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown",
-		"error should name the unknown tier dir")
-	// error message should list the known dirs so the author can fix it
-	assert.Contains(t, err.Error(), "authority")
+		"error should name the unknown KB")
+	assert.Contains(t, err.Error(), "authority",
+		"error should list at least one active slug so the author can fix it")
+}
+
+// --- Phase 26 / Plan 26-04 Task 1: the reads contract is registry-driven ---
+
+// TestValidateFailsClosedNilRegistry — a tier-channel Skill cannot be
+// validated without the knowledge-base registry: the wiring gap must
+// surface as a load failure, never as a silent pass (T-26-04-1).
+func TestValidateFailsClosedNilRegistry(t *testing.T) {
+	m := validManifest() // tier channel: reads [authority/**]
+	err := Validate(m, nil)
+	require.Error(t, err,
+		"tier-channel Skill + nil registry MUST fail closed (no silent pass)")
+	assert.Contains(t, err.Error(), "registry",
+		"error MUST name the missing registry so the operator fixes the wiring")
+
+	// The same Skill validates once the registry is wired.
+	require.NoError(t, Validate(m, testKBReg()),
+		"the identical Skill MUST validate against the baseline registry")
+}
+
+// TestValidateDataChannelIgnoresRegistry — the data channel has no KB
+// semantics (D16-C1 XOR), so a data-channel Skill validates with a nil
+// registry: requiring one there would make the registry a hard
+// dependency of every data Skill.
+func TestValidateDataChannelIgnoresRegistry(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{ReadDataAggregatedOnly}
+	require.NoError(t, Validate(m, nil),
+		"data-channel Skill MUST validate without a registry (D16-C1: data and tier channels are mutually exclusive)")
+}
+
+// TestValidateUnknownKBRejected — the KBM-04 load-time gate: a reads
+// declaration naming a KB that is not in the registry fails validation.
+func TestValidateUnknownKBRejected(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{"ghost/**"}
+	err := Validate(m, testKBReg())
+	require.Error(t, err,
+		"reads naming an unregistered KB MUST fail validation at load time (KBM-04)")
+	assert.Contains(t, err.Error(), "ghost")
+}
+
+// TestValidateDeactivatedKBRejected — deactivation (KBM-02) removes the
+// base from the validation surface: skills referencing it stop loading
+// instead of silently narrowing to the remaining bases.
+func TestValidateDeactivatedKBRejected(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{"historical/**"}
+	err := Validate(m, testKBRegHistoricalDeactivated())
+	require.Error(t, err,
+		"reads naming a deactivated KB MUST fail validation (KBM-02: deactivated = invisible)")
+	assert.Contains(t, err.Error(), "historical")
+}
+
+// TestValidateRoleWildcardAccepted — the KBM-04 role wildcard is part of
+// the reads vocabulary: it validates and expands to the role's active
+// retrieval-eligible slugs.
+func TestValidateRoleWildcardAccepted(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{"role:authority"}
+	require.NoError(t, Validate(m, testKBReg()),
+		"the role wildcard MUST be accepted by the reads contract (KBM-04)")
+
+	got, err := ResolveTiers(m.Reads, testKBReg())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"authority"}, got,
+		"the wildcard MUST expand to the authority-role slug set")
+}
+
+// TestLegacyCNLiteralsRejected — the destructive-switch evidence
+// (T-26-04-3): the old CN-char tier names are no longer legal slugs, so
+// a skill carrying them fails the registry lookup instead of silently
+// mapping onto the enum.
+func TestLegacyCNLiteralsRejected(t *testing.T) {
+	m := validManifest()
+	m.Reads = []string{"权威/**"}
+	err := Validate(m, testKBReg())
+	require.Error(t, err,
+		"the legacy CN-char tier literal MUST be rejected — it is not a registered slug (KBM-04 breaking switch)")
+	assert.Contains(t, err.Error(), "unknown or deactivated KB")
+}
+
+// TestExistingSkillsLoad — the compatibility half of the breaking
+// switch: every shipped SKILL.md (skills/ + examples/skills/) keeps
+// loading unchanged, because the seed slugs ARE the ASCII directory
+// names the files already declare. No spelling migration is required.
+func TestExistingSkillsLoad(t *testing.T) {
+	repoRoot, err := findRepoRoot(t)
+	require.NoError(t, err)
+
+	for _, dir := range []string{"skills", filepath.Join("examples", "skills")} {
+		dir := dir
+		t.Run(dir, func(t *testing.T) {
+			loader := NewLoader(filepath.Join(repoRoot, dir), testKBReg())
+			manifests, err := loader.Scan()
+			require.NoError(t, err,
+				"every shipped SKILL.md MUST load against the seed registry without a spelling migration (KBM-04)")
+			require.NotEmpty(t, manifests, "%s must ship at least one Skill", dir)
+		})
+	}
 }
 
 func TestValidate_EmptyDescription_SchemaField1(t *testing.T) {
@@ -233,7 +323,7 @@ func TestValidate_EmptyDescription_SchemaField1(t *testing.T) {
 	// after TrimSpace (whitespace-only is rejected).
 	m := validManifest()
 	m.Description = "   \t  "
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "description")
 }
@@ -244,70 +334,9 @@ func TestValidate_EmptySteps_SchemaField5(t *testing.T) {
 	// rejected).
 	m := validManifest()
 	m.Steps = ""
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "steps")
-}
-
-func TestResolveTiers_KnownDirs(t *testing.T) {
-	// TierEnum must map all four top-level dirs correctly. This pins
-	// the D2-12 ASCII -> CN-char mapping against future drift.
-	cases := []struct {
-		name string
-		in   []string
-		want []string
-	}{
-		{"authority", []string{"authority/**"}, []string{"权威"}},
-		{"historical", []string{"historical/**"}, []string{"历史"}},
-		{"personal", []string{"personal/**"}, []string{"个人"}},
-		{"draft", []string{"draft/**"}, []string{"草稿"}},
-		// Multi-pattern dedup: overlapping patterns collapse to one tier.
-		{"dedup_overlap", []string{"authority/**", "authority/policies/**"}, []string{"权威"}},
-		// Multi-tier Skills: each unique top-level dir produces one entry.
-		{"multi_tier", []string{"authority/**", "historical/**"}, []string{"权威", "历史"}},
-		// Reads without trailing "**" still resolve via top-level dir.
-		{"bare_dir", []string{"authority"}, []string{"权威"}},
-		// Deep path: only the top-level dir matters.
-		{"deep_path", []string{"authority/policies/anti-bribery/v3"}, []string{"权威"}},
-	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := ResolveTiers(tc.in)
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestResolveTiers_UnknownDirErrors(t *testing.T) {
-	// Default-deny on unknown tier dir (Pitfall 5 / D2-12). The
-	// error must name both the offending pattern and the known set
-	// so the Skill author can self-correct without reading code.
-	_, err := ResolveTiers([]string{"unknown/**"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown/**",
-		"error should echo the bad pattern")
-	assert.Contains(t, err.Error(), "authority",
-		"error should list at least one known dir as a hint")
-
-	// "admin" looks plausible but is not in the enum.
-	_, err = ResolveTiers([]string{"admin/**"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "admin")
-}
-
-func TestResolveTiers_EmptyReturnsNilNoError(t *testing.T) {
-	// Empty input returns nil, no error — ResolveTiers does NOT
-	// enforce default-deny (that is Validate's job). This split keeps
-	// each function single-responsibility.
-	got, err := ResolveTiers([]string{})
-	require.NoError(t, err)
-	assert.Nil(t, got)
-
-	got, err = ResolveTiers(nil)
-	require.NoError(t, err)
-	assert.Nil(t, got)
 }
 
 // --- Phase 16 / Plan 16-02 Task 2: Channel guard XOR + data+deep rejection ---
@@ -403,9 +432,9 @@ func TestChannelGuardXOR(t *testing.T) {
 			},
 			wantErr: true,
 			errSubstrs: []string{
-				"unknown data channel mode",  // the fail-closed framing
-				"data:totally_unknown",       // must echo the bad value
-				"data:external:authorized",   // must name BOTH supported modes
+				"unknown data channel mode", // the fail-closed framing
+				"data:totally_unknown",      // must echo the bad value
+				"data:external:authorized",  // must name BOTH supported modes
 			},
 		},
 		{
@@ -424,9 +453,9 @@ func TestChannelGuardXOR(t *testing.T) {
 			},
 			wantErr: true,
 			errSubstrs: []string{
-				"deep",            // must name the conflicting archetype
-				"report:publish",  // D18-A4: the conditional-allow error names the exception
-				"template:",       // D18-A4: template is part of the condition
+				"deep",           // must name the conflicting archetype
+				"report:publish", // D18-A4: the conditional-allow error names the exception
+				"template:",      // D18-A4: template is part of the condition
 			},
 		},
 		{
@@ -472,7 +501,7 @@ func TestChannelGuardXOR(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			err := Validate(tc.manifest)
+			err := Validate(tc.manifest, testKBReg())
 			if tc.wantErr {
 				require.Error(t, err, "Validate MUST reject this manifest")
 				for _, sub := range tc.errSubstrs {
@@ -488,13 +517,14 @@ func TestChannelGuardXOR(t *testing.T) {
 
 // TestChannelGuardXOR_PureDataChannel_SkipsResolveTiers verifies that a
 // data-channel Skill passes Validate with resolvedTiers left empty (nil),
-// confirming that ResolveTiers is never called for data-channel reads.
+// confirming that the KB registry is never consulted for data-channel
+// reads.
 func TestChannelGuardXOR_PureDataChannel_SkipsResolveTiers(t *testing.T) {
 	m := validManifest()
 	m.Reads = []string{ReadDataAggregatedOnly}
-	require.NoError(t, Validate(m))
+	require.NoError(t, Validate(m, testKBReg()))
 	assert.Nil(t, m.ResolvedTiers(),
-		"data channel Skill MUST have nil resolvedTiers after Validate (ResolveTiers is skipped)")
+		"data channel Skill MUST have nil resolvedTiers after Validate (the tier resolution path is skipped)")
 }
 
 // TestChannelGuardXOR_ReloadOne_HotReloadWindow verifies that the channel
@@ -518,7 +548,7 @@ temperature: 0.0
 `)
 
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 
 	// Confirm initial load succeeded.
