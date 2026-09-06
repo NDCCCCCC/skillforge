@@ -185,7 +185,13 @@ func (c *RefusalClassifier) Classify(ctx context.Context, in RefusalClassifierIn
 	}
 	opts := []model.Option{
 		model.WithTemperature(0.0),
-		model.WithMaxTokens(60),
+		// 2048, not a tight envelope-sized cap: thinking models (qwen3.8,
+		// DeepSeek-R1, ...) spend the SAME budget on reasoning before the
+		// JSON content — a 60-token cap truncates into an empty content and
+		// the classifier fails closed to out_of_scope on every query
+		// (observed 2026-09-06). Non-thinking models still stop at
+		// finish_reason=stop, so the headroom costs nothing there.
+		model.WithMaxTokens(2048),
 		openai.WithExtraFields(extraFields),
 	}
 

@@ -172,7 +172,11 @@ func (r *QueryRewriter) Rewrite(ctx context.Context, history []schema.Message, q
 	}
 	opts := []model.Option{
 		model.WithTemperature(0.0),
-		model.WithMaxTokens(80),
+		// 2048 headroom for thinking models — same rationale as the
+		// classifier's MaxTokens (thinking burns the shared budget before
+		// the rewrite JSON; a tight cap fails closed). Non-thinking models
+		// stop at finish_reason=stop regardless.
+		model.WithMaxTokens(2048),
 		openai.WithExtraFields(extraFields),
 	}
 

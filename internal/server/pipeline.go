@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -370,7 +371,12 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// slice in adk.WithChatModelOptions for Runner.Query.
 	chatModelOpts := []model.Option{
 		model.WithTemperature(temp),
-		model.WithMaxTokens(600),
+		// 4096 headroom for thinking models: their reasoning tokens share
+		// this budget, and a tight cap truncates the verdict JSON mid-emit
+		// (the 600 cap was tuned for GLM's non-thinking output). Models
+		// that do not think stop at finish_reason=stop, so the headroom
+		// changes nothing for them.
+		model.WithMaxTokens(4096),
 		openai.WithExtraFields(extraFields),
 	}
 	opts := []adk.AgentRunOption{
@@ -611,7 +617,29 @@ var (
 // upstream (Recv blocked forever) becomes a retriable error instead of
 // a true hang.
 const streamMaxAttempts = 4 // initial + 3 retries (backoff 1s/2s/4s)
-const streamAttemptTimeout = 60 * time.Second
+
+// streamAttemptTimeout is env-tunable (VERDICT_STREAM_TIMEOUT) because a
+// self-hosted THINKING model is silent (reasoning on a side field, no
+// content deltas) for the whole thinking phase — 60s of silence reads as
+// a stalled upstream and burns all 4 attempts (observed with qwen3.8 on
+// ollama, 2026-09-06). Cloud-API default stays 60s.
+var streamAttemptTimeout = envDurationOr("VERDICT_STREAM_TIMEOUT", 60*time.Second)
+
+// envDurationOr parses name as a Go duration; falls back to def on
+// unset/invalid (invalid also logs once — a typo'd operator value should
+// be visible, not silently defaulted).
+func envDurationOr(name string, def time.Duration) time.Duration {
+	s := os.Getenv(name)
+	if s == "" {
+		return def
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		log.Printf("[WARN] internal/server: %s=%q invalid (want Go duration, e.g. 240s); using default %s", name, s, def)
+		return def
+	}
+	return d
+}
 
 // streamBackoff computes the pre-attempt sleep for attempt n (1-based;
 // n>=2). A package var so tests can pin it to zero.

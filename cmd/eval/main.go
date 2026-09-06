@@ -445,6 +445,17 @@ func main() {
 		}
 		caseDelayDur = d
 	}
+	// Per-case budget (default 90s = GLM-tuned). EVAL_CASE_TIMEOUT=300s
+	// for a slow self-hosted thinking model — an abort here scores the
+	// case as refusal, which would silently poison refusal_accuracy.
+	if s := envOr("EVAL_CASE_TIMEOUT", ""); s != "" {
+		d, err := time.ParseDuration(s)
+		if err != nil || d <= 0 {
+			log.Fatalf("[FAIL] cmd/eval: EVAL_CASE_TIMEOUT=%q invalid (try e.g. 300s)", s)
+		}
+		evalCaseTimeout = d
+		log.Printf("[INFO] cmd/eval: per-case budget = %s (EVAL_CASE_TIMEOUT)", d)
+	}
 
 	// --gate-check short-circuits BEFORE any bootstrap: gating reads a
 	// file, so it must not require GLM_API_KEY / Milvus / BGE-M3.
@@ -653,6 +664,12 @@ type evalPass struct {
 	caseDelay time.Duration
 }
 
+// evalCaseTimeout is the per-case budget (agent verdict + 4 metric judge
+// calls). EVAL_CASE_TIMEOUT raises it for slow self-hosted models — a
+// thinking 27B on ollama spends minutes per LLM call, and the 90s default
+// (tuned for GLM) aborts mid-verdict (2026-09-06).
+var evalCaseTimeout = 90 * time.Second
+
 // runEvalPass scores every case with ONE judge and returns the report +
 // the calibration inputs. Extracted verbatim from the Phase 3 main()
 // loop so a cross-eval run can execute it once per judge model.
@@ -661,7 +678,7 @@ func runEvalPass(ctx context.Context, p evalPass) (eval.Report, []eval.CaseScore
 	scores := make([]eval.CaseScore, 0, len(p.cases))
 
 	for i, c := range p.cases {
-		caseCtx, caseCancel := context.WithTimeout(ctx, 90*time.Second)
+		caseCtx, caseCancel := context.WithTimeout(ctx, evalCaseTimeout)
 		sessionID := "eval-" + c.ID
 
 		// 3a. Parallel retriever.Search for the calibration MaxScore +
