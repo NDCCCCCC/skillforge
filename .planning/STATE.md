@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: (planned)
+milestone: v1.2
+milestone_name: 知识库运营与反馈闭环
 current_phase: 0
 current_plan: Not started
 status: planning
-last_updated: "2026-08-31T00:00:00.000Z"
+last_updated: "2026-09-07T00:00:00.000Z"
 last_activity: 2026-09-07
 progress:
   total_phases: 0
-  completed_phases: 20
+  completed_phases: 0
   total_plans: 0
   completed_plans: 0
   percent: 0
@@ -19,14 +19,12 @@ progress:
 
 ## Current Position
 
-**v1.0 MILESTONE CLOSED** — 业务数据支撑 (Business Data Support) shipped 2026-08-30
-Archived: `.planning/milestones/v1.0-ROADMAP.md` + `.planning/milestones/v1.0-REQUIREMENTS.md`
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-09-07 — Milestone v1.2 started
 
-**v1.0 全功能 UAT 完成（2026-09-06，chrome-devtools 走查）**：13 功能点 = 8 PASS + 2 环境阻塞 + 3 缺陷（2×P1 / 1×P2）——**3 缺陷当日修复并实机复验**（8208d30 skill 切换回弹 / d2aa97c /eval/audit 白屏 / a615407 会话 id 冲突+日期+favicon），439/439 vitest + tsc 0 错 + BE audit 套件绿。报告：`.planning/uat/v1.0-uat-2026-09-06.md`。降级模式信任契约链路（拒答构造→RefusalCard→分层建议）端到端验证可用。
-
-Next milestone: **v1.1 SHIPPED 2026-09-06**. All 5 phases (21 / 22 / 24 / 25 / 23) closed. README / CHANGELOG / RELEASE-NOTES / CONTRIBUTING all shipped. Next release timing (v1.2 or any operator-driven tag) is up to user — nothing queued in the automation pipeline.
-
-**v1.1 milestone summary generated (2026-09-06):** `.planning/reports/MILESTONE_SUMMARY-v1.1.md` (commit 446b041) — reconstructed from uat closure reports + code verification because per-phase GSD artifacts were never produced. Summary flags **HIGH Gap 1: Phase 21 external channel not reachable** — `ExternalAuthManager` never constructed in `cmd/server/main.go` (nil Deps → all 4 endpoints 503), `needs_external_query` agent tool missing, `reads: data:external:authorized` still fail-closed in `internal/skill/validate.go:104` (DATA-07 half open). Plus: `eval/frozen/external-auth.jsonl` golden set (Wave 5) never created, README.md:85 architecture paragraph still carries the old v1.0 "three moats" (inconsistent with new §115), REQUIREMENTS.md DATA rows not flipped. Candidates for a v1.1.1 cleanup before tagging.
+**Prior milestone record (v1.1 + v1.1.1):** v1.1 SHIPPED 2026-09-06 (phases 25/24/22/21/23; README/CHANGELOG/RELEASE-NOTES/CONTRIBUTING)。Milestone summary: `.planning/reports/MILESTONE_SUMMARY-v1.1.md`。v1.1.1 清理 shipped 2026-09-07（quick 260906-w62，commits 6cda7d4..c7fc580 + 42adc56，分支 `v1.1.1-cleanup`）——Phase 21 外部授权通道接通（`EXTERNAL_AUTH_ENABLED=1` 门 + admin token 门 + `needs_external_query` 工具 + `data:external:authorized` allowlist + `external_views/` 受控视图 + MemoryStore）、golden set 10 案例、README 三护城河统一、REQUIREMENTS DATA 行翻转、CHANGELOG v1.1.1。VERIFICATION 7/7 truths passed；3 人工项（进程实启 / 真 LLM 工具环 / README 叙述连贯）留 operator。v1.1.1 尚未 git tag（无 remote，tag 时机 user 驱动）。
 
 ## Deferred Items
 

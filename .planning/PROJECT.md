@@ -107,32 +107,30 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 | **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
 
-## Current Milestone: v1.0 业务数据支撑（Business Data Support）
+## Current Milestone: v1.2 知识库运营与反馈闭环（Knowledge Base Operations & Feedback Loop）
 
-**Goal:** 把 SkillForge 从「可信问答 harness」升级为「IT 部门的数据支撑平台」——敏感数据导入即脱敏、KPI 聚合接口、聊天内数据问答 + 定时更新的静态报告门户；合规审计全程基线化。
+**Goal:** 把知识层从「4 个硬编码 tier 的启动期目录」升级为「运营型知识库平台」——管理员上传常用格式文档入库、知识库（tier）动态可建、图谱反映真实知识结构、反馈按钮产生真实数据闭环、工单系统预留标准接口。
 
-**Target features (7 块):**
+**Target features (5 块):**
 
 | # | 能力 | 形态 |
 |---|---|---|
-| 1 | 数据导入管线 + 导入即脱敏 | CSV/SQL/API 导入；L1 哈希 + L2 桶化；**只持久化脱敏数据**；原始文件即弃 |
-| 2 | KPI 聚合接口 | 数据人员预定义 KPI 函数；agent 只能调函数**永不写 SQL**；`reads: ["data:aggregated_only"]` 通道声明 + 平台层守卫 |
-| 3 | KPI 仪表盘 Skill | 聊天内数据问答（数字 + 迷你趋势 + 数据引用进审计），无新路由页面 |
-| 4 | 业务月报 Skill | 聊天触发（DeepAgent 计划 + 多 KPI 调用 + 组装报告）；可发布为静态页 |
-| 5 | 静态报告门户 + 定时更新 | 报告 = 模板 + KPI 数据绑定 + cron 计划；调度器定时重渲染发布；版本留存可追溯（每次重渲染进审计+KPI 快照） |
-| 6 | 管理台（admin 静态页） | 数据导入管理 + KPI 函数定义 + Skill 管理入口——延续 `/eval` admin 模式 |
-| 7 | 生产化增强 | fan-out LLM classifier（真拆分多跳）+ D8-07 eval 指标抬升 + 平台级隐藏系统提示词层（Skill 不可覆盖的下限，代码级 trust 机制兜底）|
+| 1 | 知识库分层重构 + 动态建库 | 重新定义 权威/历史/个人/草稿 的语义（原 4 tier 变为注册表条目）；管理员可创建/停用新知识库；Skill `reads` 契约按知识库名声明；KNOW-02 fail-closed 语义保留（未注册 = 拒绝） |
+| 2 | 管理员文档上传入库 | /admin 知识库管理视图：上传 md/pdf/docx 等 office 文档 → 解析 → 分块 → 向量化 → 入指定知识库；类型/大小/数量防护；入库即审计；原始文件不落盘 |
+| 3 | 知识图谱扩展 | 图谱反映动态知识库（不再硬编码 4 tier）；新增 chunk 间关系层（同实体/引用共现边）+ 邻居/路径查询 API；FE GraphCanvas 升级 |
+| 4 | 反馈闭环 | FeedbackRow 三按钮（有帮助/没帮助/报告知识过时）落库：INSERT-only 反馈表 + 一次一票 + 过时报告进管理台复核队列；反馈指标进 admin 仪表盘 |
+| 5 | 工单系统预留接口 | TicketService Go 接口 + 配置驱动 provider（none/webhook）；POST /api/tickets 预留端点（FeedbackRow 创建工单按钮接真）；工单请求 INSERT-only 审计 |
 
-**横切基础设施：** 调度器（页面定时重渲染 + 数据 TTL 清理共用）；审计行 INSERT-only 永不删（合规基线）；清理只作用于脱敏数据集；KPI 快照冻结在审计行（数据清了不影响回放）。
+**Standards（用户锁定 2026-09-07）:**
+- **处理全部 todo**：代码 TODO 清零（当前仅 cmd/spike-history/long.go:54 一处真实 TODO）+ GSD pending todos 清空（现为空）
+- **零硬编码**：格式/扩展名/限额/tier 语义全部配置或注册表驱动
+- **不受向后兼容与既有设计约束**：可破坏性重构 TierEnum → 注册表（信任语义保留，实现自由）
+- **Go 最佳实践，不使用反模式**；全 SDLC：开发 / 验证 / 测试
 
 **Key decisions:**
-- **合规定位 = 基线，不是 feature 方向**（用户角色：金融 IT 部门，非合规专员）。合规月报 Skill 出局，业务支撑 Skill 优先
-- **定时页面更新**从 v1.1 提前进 v1.0（业务硬需求：月报 + KPI 仪表板要按口径自动重算）
-- **外部授权通道（DATA-04/05/10..14、个体识别 + TTL token + 持续挂起审批）→ v1.1**，v1.0 仅聚合通道
-- **sqlite 驱动 CGO 化**（2026-08-21 用户决策）：`modernc.org/sqlite` → `mattn/go-sqlite3` v1.14.50（捆绑 SQLite 3.53.4）——go-duckdb 已引入 CGO 前置，边际成本零，审计写路径换真 SQLite 性能；Dockerfile `CGO_ENABLED` 翻转与 duckdb 合并处理（迁移点见 STACK-VERIFICATION.md §2.7）
-- **Phase 10 live 35-case 重跑**保持 operator gate（BLOCKED-ENV，从 v0.8 ledger 转入 v1.0 ledger，不阻塞关闭）
-- **数据引用 = 新引用类型**：函数名+参数+时间窗+结果快照，区别于文档 chunk 引用；同样进审计可回放
-- Phase 编号从 **14** 延续；研究先行（4 并行 researcher：Stack / Features / Architecture / Pitfalls）
+- **v1.0 → v1.1 沿革**：业务数据支撑（数据导入即脱敏 + KPI + 报告门户 + 管理台）已 shipped 2026-08-30；外部授权通道 + 审计链强化 + Eval CI + OSS 叙事重置 shipped 2026-09-06；v1.1.1 清理（Phase 21 接线）shipped 2026-09-07
+- 合规定位 = 基线，不是 feature 方向（用户角色：金融 IT 部门）
+- 知识库 tier 隔离 + 拒答构造 + 引用白名单 = 平台护城河，重构**不得削弱**信任语义（KNOW-02 fail-closed、D-09 拒答构造原样保留）
 
 ## Evolution
 
