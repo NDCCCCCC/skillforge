@@ -6,7 +6,7 @@ current_phase: 0
 current_plan: Not started
 status: planning
 last_updated: "2026-08-31T00:00:00.000Z"
-last_activity: 2026-08-31
+last_activity: 2026-09-07
 progress:
   total_phases: 0
   completed_phases: 20
@@ -395,6 +395,7 @@ Resume File: .planning/phases/18-skill-p10-4/18-UI-SPEC.md
 | 260817-hck | VerdictCard 答案去重：verdict.answer 与聊天流结论正文重复时隐藏卡片内 verdict-answer 区块（chatText 可选 prop，verbatim-substring 判定），卡片只保留状态徽章 + 引用计数 + CitationCluster；MessageBubble → DataPolicyPart → VerdictCard 逐级透传；CenterPanel 独立用法不受影响。vitest 272/272 PASS | 2026-08-17 | e41a2cd + ec0b1b2 + edfcd72 + 0da6e17 |  | [260817-hck-verdictcard-dedupe-answer-vs-chat-conclu](./quick/260817-hck-verdictcard-dedupe-answer-vs-chat-conclu/) |
 | 260817-i36 | 聊天回答区四项 UI 修复（每项一原子提交）：①「已给出」StatusBadge 从 VerdictCard 移除，改为结论正文角标小徽章（MessageBubble 从 data-policy 提取 status → TextPart verdictStatus prop）；②引用去重——source-document chips 改 button 可点击跳转（setCenterView chunk-source），VerdictCard 在聊天上下文（chatText 存在）隐藏 CitationCluster/计数，DataPolicyPart 对 ok 事实型且非 review_required 时 return null，CenterPanel 完整卡片保留；③chip 区分——BE titleFor 产出「path · chunk N」+ FE 去冗余 doc: 前缀；④conclusionText 标点——剥 Answer 结尾句号 + 统一 。。→。。go test ok；vitest 280/280 PASS；tsc 维持既有 1 错无新增 | 2026-08-17 | 135b655 + a2732ce + 5c08229 + 561c162 + b7de1d3 + ed43c0e + b0a9e7c + 14158d8 + b1c70aa + 5b7a734 |  | [260817-i36-chat-answer-area-four-ui-fixes-verdict-b](./quick/260817-i36-chat-answer-area-four-ui-fixes-verdict-b/) |
 | 260819-dsp | 移除 DataSubprogressPart.tsx:47 预存在 FE tsc 错误（data.state 不在 SubprogressStep；步骤是 append-only 无 live pending 态可建模）。单文件 4 处移除 + 1 注释，**不触碰 D15 wire-type 不变式**。npx tsc --noEmit exit 0（was exit 1 + 1 pre-existing error）；npx vitest 349/349 PASS（无回归）；Phase 10 UAT Test 22 由 issue 转为 pass。 | 2026-08-19 | c285c55 |  | [260819-dsp-fix-datasubprogress-state-ref](./quick/260819-dsp-fix-datasubprogress-state-ref/) |
+| 260906-w62 | v1.1.1 清理：接通 Phase 21 外部授权通道（cmd/server 6c-5 装配 `EXTERNAL_AUTH_ENABLED=1` 门 + 5 面 X-Admin-Token 门；`needs_external_query` 工具 pass-through nl2sql；reads allowlist 放行 `data:external:authorized`；MemoryStore + LoadViewsDir 受控视图；`eval/frozen/external-auth.jsonl` 10 案例 3 拒答不伪造 lock；README 三护城河统一 + External Authorized Channel 节；REQUIREMENTS DATA 行翻转；CHANGELOG v1.1.1；21-SUMMARY 补记）。7/7 must_haves 代码级证实；T8 门全绿（WSL check-cgo/build/vet + 6 包测试 + 4 结构 grep）；3 人工项（进程实启 / 真 LLM 工具环 / README 叙述）待 operator。 | 2026-09-07 | c7fc580 | Needs Review | [260906-w62-v1-1-1-cleanup-wire-phase-21-external-au](./quick/260906-w62-v1-1-1-cleanup-wire-phase-21-external-au/) |
 
 *260814-w4n：代码层 5/5 must-haves 全部验证通过（5 个真实 fsnotify 测试 Windows 本机 PASS，无 skip）；唯一待办为完整 HTTP E2E——本机无 Milvus/Docker 无法起独立实例，待用户重启其 dev 服务器时由 chrome-devtools 复验关闭。
 
