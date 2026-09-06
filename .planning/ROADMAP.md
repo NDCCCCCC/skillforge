@@ -111,7 +111,20 @@
   3. 索引侧与检索侧对未注册知识库值均 fail-closed 拒绝；Milvus/Mongo 过滤表达式改为注册表驱动的知识库集合——KNOW-02 信任语义不削弱
   4. 四语义角色语义（authority = 唯一可引用证据源 / historical = 被取代版本留档不进默认检索 / personal = 用户私有默认排除 / draft = 未生效永不检索）写入平台地板文档与 README，且 citation 白名单代码强制仅限 authority 语义角色
   5. 启动期 `knowledge/<slug>/` 目录按注册表装载（未知目录 WARN + 跳过 + 审计，服务照常启动）；全仓非测试 Go 文件 TODO/FIXME 计数为 0 且有结构门把守回归（含 `cmd/spike-history/long.go:54` MEM-05 TODO 处置——核对 summarization 中间件真实落地状态后更新或移除）
-**Plans**: TBD
+**Plans**: 10 plans in 7 waves (planned 2026-09-07)
+
+Plans:
+- [ ] 26-01-PLAN.md — internal/kb 注册表契约层（Role/CitableRole/slug/seed/原子快照/ResolveReads）+ knowledge_bases.yaml 受控 seed（KBM-01/03）
+- [ ] 26-02-PLAN.md — sqlite knowledge_bases 表 + kb.Store 实现 + kb.Open「结构归配置、开关归运营」合并语义（KBM-01/02）
+- [ ] 26-03-PLAN.md — knowledge/retriever 注册表化：共享 walker + 未知目录 WARN+审计 + validateTiers/graph Lookup + Milvus/Mongo slug 过滤 + cmd 调用点（KBM-05/06）
+- [ ] 26-04-PLAN.md — skill reads 契约破坏性切换：TierEnum 族删除 + Validate/ResolveTiers 注册表委托 + 全消费面迁移（runtime/data/loans.yaml/server/cmd）（KBM-01/04）
+- [ ] 26-05-PLAN.md — 服务端 KB 管理面：token 门创建/停用端点 + INSERT-only 审计 + 公开投影 + 反证/pipeline/knowledge.go 注册表化（KBM-02/03）
+- [ ] 26-06-PLAN.md — agent 信任面：ChunkAccumulator citability 门控（仅 authority 可引用）+ hitl Enum 注册表快照（KBM-03）
+- [ ] 26-07-PLAN.md — 评测数据迁移：fanout golden set CN→slug + fanout.lock.json 显式重签（单一连续任务）+ calculator/CONTRIBUTING 词汇（KBM-04）
+- [ ] 26-08-PLAN.md — FE：/admin Knowledge Base 管理视图 + TierBadge/图标签注册表化 + 类型放宽 + 硬编码 fallback 清除（KBM-02）
+- [ ] 26-09-PLAN.md — 装配收口：kb.Open 生产接线 + 审计钩子 + Milvus RECREATE re-seed 门 + WSL 全量门（KBM-01/02/05/06）
+- [ ] 26-10-PLAN.md — 收尾：KBM-03 四角色语义落档（README/kb godoc/STRIDE-26）+ verify-phase-26 三门（TODO 清零 RED→GREEN）+ live 迁移 operator checkpoint（KBM-03/HYG-01）
+
 **UI hint**: yes
 **Notes**: 用户已授权破坏性重构（不受向后兼容与既有设计约束）；受影响面 = `internal/skill`（TierEnum + validate.go allowlist）、`internal/knowledge/indexer.go` (KNOW-02)、`internal/retriever/{milvus,mongo}`、FE TierBadge / graph 节点；信任语义（KNOW-02 / D-09 / citation 白名单）只许迁移实现、不许削弱。
 
