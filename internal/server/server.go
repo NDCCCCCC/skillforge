@@ -50,6 +50,7 @@ import (
 	"github.com/skillforge/skillforge/internal/agent/hitl"
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -345,6 +346,11 @@ type Deps struct {
 	// Used by the scheduler's TTL cleanup to DETACH before deleting dataset files.
 	// nil = TTL cleanup is a no-op (detacher is nil-safe in RunTTLCleanup).
 	Detacher interface{ Detach(ctx context.Context, id string) error }
+
+	// ExternalAuthManager is Phase 21 — the External Authorized
+	// Channel orchestrator (DATA-04..14). nil = the channel is
+	// disabled; the four /api/external-auth/* endpoints return 503.
+	ExternalAuthManager *externalauth.Manager
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
@@ -501,6 +507,19 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// audit substrate (T-3-AUDIT).
 	h.GET("/api/session/:id/decision-chain", deps.SessionChainHandler())
 	h.GET("/api/session/:id/state", deps.SessionStateHandler())
+
+	// Phase 21 Task 21-04 — External Authorized Channel endpoints.
+	// 6 routes: create + list pending + approve + reject + execute
+	// + reconcile. All return 503 when ExternalAuthManager is nil
+	// (degraded-mode posture; cmd/server main.go wires the manager
+	// only when EXTERNAL_AUTH_ENABLED=1).
+	mgr := deps.ExternalAuthManager
+	h.POST("/api/external-auth/request", postExternalAuthRequest(deps, mgr))
+	h.GET("/api/external-auth/pending", getExternalAuthPending(deps, mgr))
+	h.POST("/api/external-auth/approve", postExternalAuthApprove(deps, mgr))
+	h.POST("/api/external-auth/reject", postExternalAuthReject(deps, mgr))
+	h.POST("/api/external-auth/execute", postExternalAuthExecute(deps, mgr))
+	h.GET("/api/external-auth/audit/reconcile", getExternalAuthAuditReconcile(deps, mgr))
 	// Phase 11 / Plan 11-05 (HITL-08) — approval_rules CRUD surface.
 	// ListApprovalRulesHandler supports ?scope=session|skill[&skill_id=X][&target=X];
 	// RevokeApprovalRuleHandler clears a remembered rule (D11-D2 single-table reuse).
