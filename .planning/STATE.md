@@ -26,6 +26,8 @@ Archived: `.planning/milestones/v1.0-ROADMAP.md` + `.planning/milestones/v1.0-RE
 
 Next milestone: **v1.1 SHIPPED 2026-09-06**. All 5 phases (21 / 22 / 24 / 25 / 23) closed. README / CHANGELOG / RELEASE-NOTES / CONTRIBUTING all shipped. Next release timing (v1.2 or any operator-driven tag) is up to user — nothing queued in the automation pipeline.
 
+**v1.1 milestone summary generated (2026-09-06):** `.planning/reports/MILESTONE_SUMMARY-v1.1.md` (commit 446b041) — reconstructed from uat closure reports + code verification because per-phase GSD artifacts were never produced. Summary flags **HIGH Gap 1: Phase 21 external channel not reachable** — `ExternalAuthManager` never constructed in `cmd/server/main.go` (nil Deps → all 4 endpoints 503), `needs_external_query` agent tool missing, `reads: data:external:authorized` still fail-closed in `internal/skill/validate.go:104` (DATA-07 half open). Plus: `eval/frozen/external-auth.jsonl` golden set (Wave 5) never created, README.md:85 architecture paragraph still carries the old v1.0 "three moats" (inconsistent with new §115), REQUIREMENTS.md DATA rows not flipped. Candidates for a v1.1.1 cleanup before tagging.
+
 ## Deferred Items
 
 Items acknowledged and deferred at v1.0 milestone close on 2026-08-31:
