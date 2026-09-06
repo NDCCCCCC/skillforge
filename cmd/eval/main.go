@@ -30,10 +30,11 @@
 //     (faithfulness < 0.9 blocks Skill promotion — GEVL-07) consumes
 //     the JSON report this binary writes.
 //
-// Bootstrap mirrors cmd/server: same env vars (BGE_M3_URL, GLM_API_KEY,
-// GLM_BASE_URL, MILVUS_ADDRESS / MONGO_URI, SQLITE_DSN), same bge +
-// retriever + agent + store construction. The judge uses JUDGE_MODEL
-// (default glm-5.2) — the D3-07 slot for Phase 6 cross-evaluation.
+// Bootstrap mirrors cmd/server: same env vars (BGE_M3_URL,
+// LOCAL_*/GLM_API_KEY + GLM_BASE_URL, MILVUS_ADDRESS / MONGO_URI,
+// SQLITE_DSN), same bge + retriever + agent + store construction. The
+// judge uses LOCAL_MODEL / JUDGE_MODEL (default glm-5.2) — the D3-07
+// slot for Phase 6 cross-evaluation.
 //
 // Per-case flow:
 //
@@ -434,7 +435,16 @@ func main() {
 	judgeModels := flag.String("judge-models", "", "comma list (e.g. glm-5.2,deepseek-chat); runs the eval once per judge (cross-eval)")
 	gateCheck := flag.String("gate-check", "", "path to a report.json; applies per-Skill thresholds, prints a markdown table and exits non-zero on regression")
 	skillsDir := flag.String("skills-dir", defaultSkillsDir, "directory holding <skill>/eval-gate.json threshold files")
+	caseDelay := flag.String("case-delay", envOr("EVAL_CASE_DELAY", ""), "pause between cases (Go duration, e.g. 3s); rate-limit courtesy for throttled endpoints (Coding Plan 429 / single-seat local server). EVAL_CASE_DELAY env sets the default")
 	flag.Parse()
+	caseDelayDur := 0 * time.Second
+	if s := strings.TrimSpace(*caseDelay); s != "" {
+		d, err := time.ParseDuration(s)
+		if err != nil || d < 0 {
+			log.Fatalf("[FAIL] cmd/eval: --case-delay %q: invalid duration (try e.g. 3s, 500ms)", *caseDelay)
+		}
+		caseDelayDur = d
+	}
 
 	// --gate-check short-circuits BEFORE any bootstrap: gating reads a
 	// file, so it must not require GLM_API_KEY / Milvus / BGE-M3.
@@ -538,11 +548,17 @@ func main() {
 
 	reportsByJudge := make(map[string]eval.Report, len(judges))
 	for _, judgeModel := range judges {
-		// NewGLMChatModel reads JUDGE_MODEL at construction; setting it
-		// here is how a per-judge model is selected without duplicating
-		// the chat-model wiring. Safe: this CLI is single-threaded batch.
+		// NewGLMChatModel reads the model slot at construction (via
+		// ResolveLLM: LOCAL_MODEL > JUDGE_MODEL); setting BOTH here is
+		// how a per-judge model is selected without duplicating the
+		// chat-model wiring — LOCAL_MODEL alone would win the precedence
+		// and silently pin every cross-eval judge to one model. Safe:
+		// this CLI is single-threaded batch.
 		if err := os.Setenv("JUDGE_MODEL", judgeModel); err != nil {
 			log.Fatalf("[FAIL] cmd/eval: set JUDGE_MODEL=%s: %v", judgeModel, err)
+		}
+		if err := os.Setenv("LOCAL_MODEL", judgeModel); err != nil {
+			log.Fatalf("[FAIL] cmd/eval: set LOCAL_MODEL=%s: %v", judgeModel, err)
 		}
 		judge := eval.NewJudge(buildChatModel(ctx))
 		log.Printf("[INFO] cmd/eval: scoring %d cases with judge=%s", len(cases), judgeModel)
@@ -558,6 +574,7 @@ func main() {
 			topK:    *topK,
 			skill:   skillName,
 			nJudges: len(judges),
+			caseDelay: caseDelayDur,
 		})
 		reportsByJudge[judgeModel] = report
 
@@ -615,6 +632,13 @@ type evalPass struct {
 	topK    int
 	skill   string
 	nJudges int
+	// caseDelay sleeps this long after each case (except the last).
+	// Rationale (2026-09-06): the GLM Coding Plan 429s at back-to-back
+	// case rates; a self-hosted LOCAL_* endpoint may also be
+	// single-seat. Each case issues ~4-6 LLM calls (agent verdict +
+	// 4 metric judge calls), so even 2-3s of delay meaningfully lowers
+	// the request rate.
+	caseDelay time.Duration
 }
 
 // runEvalPass scores every case with ONE judge and returns the report +
@@ -695,6 +719,18 @@ func runEvalPass(ctx context.Context, p evalPass) (eval.Report, []eval.CaseScore
 
 		log.Printf("[OK] cmd/eval: case %d/%d %s [%s] faith=%.3f arel=%.3f cprec=%.3f crecall=%.3f refused=%t maxScore=%.3f",
 			i+1, len(p.cases), c.ID, c.Category, faith, arel, cprec, crecall, refused, maxScore)
+
+		// Rate-limit courtesy: sleep between cases (not after the last)
+		// so a throttled endpoint (Coding Plan 429 / single-seat local
+		// server) is not hammered back-to-back.
+		if p.caseDelay > 0 && i < len(p.cases)-1 {
+			log.Printf("[..] cmd/eval: case pacing — sleeping %s before next case", p.caseDelay)
+			select {
+			case <-time.After(p.caseDelay):
+			case <-ctx.Done():
+				log.Printf("[WARN] cmd/eval: pacing sleep aborted: %v", ctx.Err())
+			}
+		}
 	}
 
 	report := buildReport(results)
@@ -799,8 +835,8 @@ func buildRetriever(ctx context.Context, emb *bge.BGE) retriever.Retriever {
 	}
 }
 
-// buildChatModel constructs the agent's chat model. Reads GLM_API_KEY
-// (required) + GLM_BASE_URL (default Coding Plan endpoint). Returns the
+// buildChatModel constructs the agent's chat model via eval.NewGLMChatModel
+// (resolves LOCAL_* > GLM_* — see eval.ResolveLLM). Returns the
 // model.ToolCallingChatModel that agent.NewAgent requires.
 func buildChatModel(ctx context.Context) model.ToolCallingChatModel {
 	cm, err := eval.NewGLMChatModel(ctx)

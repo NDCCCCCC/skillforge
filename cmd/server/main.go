@@ -52,8 +52,14 @@
 //   - BGE_M3_TLS_SKIP_VERIFY (optional) — "true" disables TLS cert verification
 //     for BGE_M3_URL. Internal-network self-signed HTTPS ONLY; logs [WARN]
 //     at startup. Default unset means verify-on (production safe).
-//   - GLM_API_KEY       (required) — Zhipu Coding Plan subscription key
+//   - LOCAL_API_KEY     (optional) — self-hosted OpenAI-compatible key;
+//     when set (with LOCAL_BASE_URL) it OVERRIDES GLM_* for the chat model
+//   - LOCAL_BASE_URL    (optional) — self-hosted OpenAI-compatible base URL
+//   - LOCAL_MODEL       (optional) — model id on the LOCAL_* endpoint
+//   - GLM_API_KEY       (required unless LOCAL_API_KEY set) — Zhipu Coding
+//     Plan subscription key
 //   - GLM_BASE_URL      (optional) — default https://open.bigmodel.cn/api/coding/paas/v4
+//   - GLM_MODEL         (optional) — Coding Plan model, default glm-5.3-flash
 //   - SERVER_ADDR       (optional) — default ":8888" (Pitfall 7)
 //   - USE_AGENT_PATH    (optional) — "true" opts into the Phase 3 ReAct
 //     agent path (runAgentPath). Default unset → VerdictPipeline is the
@@ -158,8 +164,14 @@ func main() {
 	// this unset so verify-on is the default. Case-insensitive "true" maps
 	// to true; any other value (including empty / unset) keeps verify-on.
 	bgeTLSSkipVerify := strings.EqualFold(os.Getenv("BGE_M3_TLS_SKIP_VERIFY"), "true")
-	glmKey := envRequired("GLM_API_KEY")
-	glmBase := envOr("GLM_BASE_URL", defaultGLMBaseURL)
+	// Chat endpoint triple. LOCAL_* (self-hosted OpenAI-compatible
+	// server) overrides GLM_* (Zhipu Coding Plan) — same precedence as
+	// eval.ResolveLLM (2026-09-06 operator decision: the Coding Plan
+	// 429s at eval-scale request rates; point both server and eval CLI
+	// at one resolver so judge and agent agree on the model under test).
+	glmKey := envOr("LOCAL_API_KEY", envRequired("GLM_API_KEY"))
+	glmBase := envOr("LOCAL_BASE_URL", envOr("GLM_BASE_URL", defaultGLMBaseURL))
+	serverModel := envOr("LOCAL_MODEL", envOr("GLM_MODEL", "glm-5.3-flash"))
 	serverAddr := envOr("SERVER_ADDR", defaultServerAddr)
 	evalReportsDir := envOr("EVAL_REPORTS_DIR", defaultEvalReportsDir)
 	evalFrozenDir := envOr("EVAL_FROZEN_DIR", defaultEvalFrozenDir)
@@ -235,17 +247,23 @@ func main() {
 	}
 	r, backendLabel := buildRetriever(ctx, backend, emb)
 
-	// 5. GLM ChatModel (Coding Plan endpoint per Pitfall 6). Phase 17
-	// live-UAT: GLM_MODEL selects the model (user decision 2026-08-27:
-	// glm-5.3-flash default) instead of the historical hardcoded "glm-5.2".
+	// 5. ChatModel (GLM Coding Plan per Pitfall 6, or LOCAL_* override —
+	// see the env triple above). Phase 17 live-UAT: GLM_MODEL selects the
+	// model (user decision 2026-08-27: glm-5.3-flash default) instead of
+	// the historical hardcoded "glm-5.2".
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: glmBase,
 		APIKey:  glmKey,
-		Model:   envOr("GLM_MODEL", "glm-5.3-flash"),
+		Model:   serverModel,
 	})
 	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: GLM chat model init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
+		log.Fatalf("[FAIL] cmd/server: chat model init: %v (check LOCAL_BASE_URL/GLM_BASE_URL=%s, LOCAL_API_KEY/GLM_API_KEY set)", err, glmBase)
 	}
+	chatSource := "glm"
+	if os.Getenv("LOCAL_BASE_URL") != "" {
+		chatSource = "local"
+	}
+	log.Printf("[OK] cmd/server: chat model = %s via %s endpoint %s (LOCAL_*/GLM_* precedence)", serverModel, chatSource, glmBase)
 
 	// 6. ChatModelAgent + Runner.
 	adkAgent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
@@ -470,11 +488,11 @@ func main() {
 	} else {
 		rewriter, err = rewrite.NewQueryRewriter(cm)
 		if err != nil {
-			log.Fatalf("[FAIL] cmd/server: query rewriter init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
+			log.Fatalf("[FAIL] cmd/server: query rewriter init: %v (check LOCAL_BASE_URL/GLM_BASE_URL=%s, key set)", err, glmBase)
 		}
 		refusalClassifier, err = classifier.NewRefusalClassifier(cm)
 		if err != nil {
-			log.Fatalf("[FAIL] cmd/server: refusal classifier init: %v (check GLM_BASE_URL=%s, GLM_API_KEY set)", err, glmBase)
+			log.Fatalf("[FAIL] cmd/server: refusal classifier init: %v (check LOCAL_BASE_URL/GLM_BASE_URL=%s, key set)", err, glmBase)
 		}
 		log.Printf("[OK] cmd/server: history-aware pipeline ACTIVE (rewrite + classifier; budget window + neutral placeholder + multi-turn messages)")
 	}

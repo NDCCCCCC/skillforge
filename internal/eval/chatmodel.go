@@ -64,42 +64,71 @@ const DefaultGLMBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 // DeepSeek/another model).
 const DefaultJudgeModel = "glm-5.2"
 
-// NewGLMChatModel constructs a ChatModel pointing at the GLM Coding Plan
-// endpoint, for use as the Judge's underlying LLM. It reads:
+// LLMConfig is the resolved chat-endpoint triple (base URL / key / model).
+type LLMConfig struct {
+	BaseURL string
+	APIKey  string
+	Model   string
+}
+
+// firstNonEmptyEnv returns the first non-empty env var among keys.
+func firstNonEmptyEnv(keys ...string) string {
+	for _, k := range keys {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// ResolveLLM resolves the chat endpoint with this precedence:
 //
-//   - GLM_BASE_URL (optional, default DefaultGLMBaseURL) — Coding Plan
-//     endpoint base URL.
-//   - GLM_API_KEY (REQUIRED) — Coding Plan subscription key.
-//   - JUDGE_MODEL (optional, default "glm-5.2") — the D3-07 slot for
-//     cross-evaluation with another model (DeepSeek, etc.) without
-//     touching the production agent.
+//  1. LOCAL_* — a self-hosted OpenAI-compatible endpoint
+//     (LOCAL_BASE_URL + LOCAL_API_KEY + LOCAL_MODEL). Rationale
+//     (2026-09-06 operator decision): the GLM Coding Plan throttles at
+//     eval-scale request rates (429), so the eval CLI and server can be
+//     pointed at a local inference server instead.
+//  2. GLM_* — the Zhipu Coding Plan production endpoint.
+//  3. Built-in defaults (DefaultGLMBaseURL + DefaultJudgeModel).
 //
-// Returns model.ToolCallingChatModel so the judge can be upgraded to a
+// Shared by NewGLMChatModel (judge) and cmd/server's inline construction —
+// both sides must resolve the SAME endpoint so judge and agent agree on
+// the model under test.
+func ResolveLLM() LLMConfig {
+	baseURL := firstNonEmptyEnv("LOCAL_BASE_URL", "GLM_BASE_URL")
+	if baseURL == "" {
+		baseURL = DefaultGLMBaseURL
+	}
+	modelName := firstNonEmptyEnv("LOCAL_MODEL", "JUDGE_MODEL")
+	if modelName == "" {
+		modelName = DefaultJudgeModel
+	}
+	return LLMConfig{
+		BaseURL: baseURL,
+		APIKey:  firstNonEmptyEnv("LOCAL_API_KEY", "GLM_API_KEY"),
+		Model:   modelName,
+	}
+}
+
+// NewGLMChatModel constructs a ChatModel pointing at the resolved
+// endpoint (see ResolveLLM for the LOCAL_* > GLM_* precedence), for use
+// as the Judge's underlying LLM. Historically GLM Coding Plan-only; the
+// LOCAL_* slots (2026-09-06) let the same constructor drive a
+// self-hosted OpenAI-compatible server. Returns
+// model.ToolCallingChatModel so the judge can be upgraded to a
 // tool-calling variant if a future Ragas-style structured-output
 // optimization requires it. Today the judge uses plain JSON output
 // (response_format: json_object) which the openai.NewChatModel emits
 // natively.
-//
-// NOTE: this construction is byte-identical to cmd/server/main.go:152
-// and scripts/spiked/e2e.go:179. The 4 existing sites COULD be refactored
-// to share this helper, but that is out of scope for Plan 03-06 — the
-// eval package deliberately stands alone so it can be lifted into a
-// separate binary (cmd/eval) without dragging cmd/server's wiring.
 func NewGLMChatModel(ctx context.Context) (model.ToolCallingChatModel, error) {
-	if err := validateEnv(); err != nil {
-		return nil, err
+	cfg := ResolveLLM()
+	if cfg.APIKey == "" {
+		return nil, errors.New("eval: no chat API key resolved (set LOCAL_API_KEY for a self-hosted endpoint, or GLM_API_KEY for the Coding Plan — copy .env.example to .env and populate)")
 	}
-	baseURL := os.Getenv("GLM_BASE_URL")
-	if baseURL == "" {
-		baseURL = DefaultGLMBaseURL
-	}
-	modelName := os.Getenv("JUDGE_MODEL")
-	if modelName == "" {
-		modelName = DefaultJudgeModel
-	}
+	modelName := cfg.Model
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		BaseURL: baseURL,
-		APIKey:  os.Getenv("GLM_API_KEY"),
+		BaseURL: cfg.BaseURL,
+		APIKey:  cfg.APIKey,
 		Model:   modelName,
 	})
 	if err != nil {
@@ -116,16 +145,4 @@ func NewGLMChatModel(ctx context.Context) (model.ToolCallingChatModel, error) {
 	// the smallest possible scope).
 	var tcm model.ToolCallingChatModel = cm
 	return tcm, nil
-}
-
-// validateEnv raises a clear, actionable error if GLM_API_KEY is unset
-// (T-3-ENV mitigation). The key is read via os.Getenv and NEVER
-// serialized to report/calibration files (the report writer has no
-// access to env vars by design). .env is in .gitignore (verified during
-// Plan 03-02 — the same env-var handling pattern).
-func validateEnv() error {
-	if os.Getenv("GLM_API_KEY") == "" {
-		return errors.New("eval: GLM_API_KEY env var not set (the judge needs a GLM Coding Plan key — copy .env.example to .env and populate, or set JUDGE_MODEL to point at a different OpenAI-compatible endpoint and adjust GLM_BASE_URL)")
-	}
-	return nil
 }

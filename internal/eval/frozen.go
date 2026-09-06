@@ -165,8 +165,15 @@ func PromptHashFor(skillName, modelVersion, renderedPromptBody string) string {
 // ActiveModelVersion reports the model id the current process would use
 // for the judge (and, in cmd/eval, the agent — both are built from the
 // same env). This is the "live" value AssertPin compares against the
-// lock's model_ver.
+// lock's model_ver. Precedence mirrors ResolveLLM: LOCAL_MODEL > JUDGE_MODEL
+// > DefaultJudgeModel. A deployment relying on LOCAL_BASE_URL/LOCAL_API_KEY
+// (self-hosted endpoint) MUST set LOCAL_MODEL — otherwise the pin/report
+// would silently record the GLM default name while actually calling the
+// local server.
 func ActiveModelVersion() string {
+	if m := os.Getenv("LOCAL_MODEL"); m != "" {
+		return m
+	}
 	if m := os.Getenv("JUDGE_MODEL"); m != "" {
 		return m
 	}
