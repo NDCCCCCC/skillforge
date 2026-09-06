@@ -22,7 +22,11 @@ skillforge.db-wal
 /body_quantum.json
 
 # Phase 9 spike reports (一次性产物，不入 git 历史)
-reports/
+# ROOT-ANCHORED (same class of fix as /data/ below): the bare `reports/`
+# pattern also swallowed .planning/reports/ planning artifacts and
+# eval/reports/ runtime output. The repo-root spike dir is the only target.
+/reports/
+/eval/reports/
 
 # Data-support runtime state (D14-D4): staging batches + committed datasets.
 # ROOT-ANCHORED (Phase 15 / Plan 15-01): the bare `data/` pattern matched at
