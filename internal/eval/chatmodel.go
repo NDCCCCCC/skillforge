@@ -49,6 +49,8 @@ import (
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
+
+	"github.com/skillforge/skillforge/internal/llm"
 )
 
 // DefaultGLMBaseURL is the GLM Coding Plan endpoint (Pitfall 6: NOT
@@ -126,7 +128,7 @@ func NewGLMChatModel(ctx context.Context) (model.ToolCallingChatModel, error) {
 		return nil, errors.New("eval: no chat API key resolved (set LOCAL_API_KEY for a self-hosted endpoint, or GLM_API_KEY for the Coding Plan — copy .env.example to .env and populate)")
 	}
 	modelName := cfg.Model
-	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+	cmRaw, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: cfg.BaseURL,
 		APIKey:  cfg.APIKey,
 		Model:   modelName,
@@ -143,6 +145,11 @@ func NewGLMChatModel(ctx context.Context) (model.ToolCallingChatModel, error) {
 	// *openai.ChatModel's WithTools/Generate methods, the build breaks
 	// here AND at cmd/server (intentional: surface the regression at
 	// the smallest possible scope).
-	var tcm model.ToolCallingChatModel = cm
-	return tcm, nil
+	var cm model.ToolCallingChatModel = cmRaw
+	// LOCAL_LLM_THINK=false decorates every call with the ollama
+	// think:false field — the eval ReAct agent has no chat-model-option
+	// passthrough (flowagent, eino v0.9.14), so construction-time
+	// wrapping is the only point that reaches agent AND judge.
+	cm = llm.LocalThinkOffModel(cm)
+	return cm, nil
 }

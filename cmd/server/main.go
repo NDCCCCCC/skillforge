@@ -56,6 +56,10 @@
 //     when set (with LOCAL_BASE_URL) it OVERRIDES GLM_* for the chat model
 //   - LOCAL_BASE_URL    (optional) — self-hosted OpenAI-compatible base URL
 //   - LOCAL_MODEL       (optional) — model id on the LOCAL_* endpoint
+//   - HISTORY_LAYER_TIMEOUT (optional) — per-call budget for the rewrite +
+//     classifier LLM calls (Go duration; default 2s, cloud-API tuned).
+//     Raise for self-hosted thinking models (e.g. 30s) or the classifier
+//     fails closed to out_of_scope on every query.
 //   - GLM_API_KEY       (required unless LOCAL_API_KEY set) — Zhipu Coding
 //     Plan subscription key
 //   - GLM_BASE_URL      (optional) — default https://open.bigmodel.cn/api/coding/paas/v4
@@ -91,6 +95,7 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/kpi"
+	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
@@ -251,7 +256,7 @@ func main() {
 	// see the env triple above). Phase 17 live-UAT: GLM_MODEL selects the
 	// model (user decision 2026-08-27: glm-5.3-flash default) instead of
 	// the historical hardcoded "glm-5.2".
-	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+	cmRaw, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: glmBase,
 		APIKey:  glmKey,
 		Model:   serverModel,
@@ -259,6 +264,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: chat model init: %v (check LOCAL_BASE_URL/GLM_BASE_URL=%s, LOCAL_API_KEY/GLM_API_KEY set)", err, glmBase)
 	}
+	// LOCAL_LLM_THINK=false wraps the model so EVERY server call site
+	// (verdict pipeline, rewriter, classifier) carries ollama's
+	// think:false — a thinking local model is silent for minutes (see
+	// internal/llm.LocalThinkOffModel), which the pipeline's latency
+	// floors correctly read as failure.
+	cm := llm.LocalThinkOffModel(cmRaw)
 	chatSource := "glm"
 	if os.Getenv("LOCAL_BASE_URL") != "" {
 		chatSource = "local"
@@ -493,6 +504,22 @@ func main() {
 		refusalClassifier, err = classifier.NewRefusalClassifier(cm)
 		if err != nil {
 			log.Fatalf("[FAIL] cmd/server: refusal classifier init: %v (check LOCAL_BASE_URL/GLM_BASE_URL=%s, key set)", err, glmBase)
+		}
+		// HISTORY_LAYER_TIMEOUT raises the per-call budget for the rewrite
+		// + classifier LLM calls (default 2s, tuned for cloud-API first
+		// tokens). A self-hosted thinking model (e.g. qwen3.8 on ollama)
+		// exceeds 2s per attempt, all 3 retries deadline out, and the
+		// classifier fails closed to out_of_scope — refusing EVERY query
+		// (observed 2026-09-06). Same override feeds both layers because
+		// they compose one latency budget.
+		if s := envOr("HISTORY_LAYER_TIMEOUT", ""); s != "" {
+			d, err := time.ParseDuration(s)
+			if err != nil || d <= 0 {
+				log.Fatalf("[FAIL] cmd/server: HISTORY_LAYER_TIMEOUT=%q invalid (try e.g. 15s, 30s)", s)
+			}
+			rewriter.Timeout = d
+			refusalClassifier.Timeout = d
+			log.Printf("[OK] cmd/server: history layers timeout=%s (HISTORY_LAYER_TIMEOUT)", d)
 		}
 		log.Printf("[OK] cmd/server: history-aware pipeline ACTIVE (rewrite + classifier; budget window + neutral placeholder + multi-turn messages)")
 	}
@@ -844,9 +871,13 @@ func shortSignature(sig kpi.Signature) string {
 // test can assert on it directly.
 type prodRunner struct {
 	runner *adk.Runner
-	cm     model.ChatModel
-	mu     sync.Mutex
-	count  int
+	// cm is retained for wiring symmetry with Deps.ChatModel but is
+	// currently unused (the adk Runner owns the model). Typed as
+	// ToolCallingChatModel so the LOCAL_LLM_THINK decorator (which does
+	// not implement the deprecated BindTools) still fits.
+	cm    model.ToolCallingChatModel
+	mu    sync.Mutex
+	count int
 }
 
 func (r *prodRunner) Query(ctx context.Context, query string, opts ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
