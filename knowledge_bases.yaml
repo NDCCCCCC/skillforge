@@ -1,0 +1,35 @@
+# knowledge_bases.yaml — baseline knowledge-base registry seed
+# CONTROLLED FILE: versioned in git, changed via PR review (D16-A1 form).
+# Operators author this file; the server loads it fail-closed at startup.
+# An absent file is the single legal degraded state; a malformed or invalid
+# file is a boot error that names the file and the offending entry.
+#
+# The semantic roles (authority/historical/personal/draft) are platform
+# constants declared in internal/kb/kb.go Roles() — never configuration.
+# retrieval_enabled here is only the seed initial value: at runtime the
+# sqlite current value wins, so an admin deactivation is never resurrected
+# by this file ("structure belongs to config, the switch belongs to ops").
+# Signature = content hash rides every audit row so "which registry version
+# produced this answer" stays replayable.
+version: "1"
+knowledge_bases:
+  - slug: authority
+    display_name: 权威
+    role: authority
+    description: 唯一可引用证据源（citation 白名单仅此角色）
+    retrieval_enabled: true
+  - slug: historical
+    display_name: 历史
+    role: historical
+    description: 被取代版本留档；不进默认检索，显式声明才可读；不可引用
+    retrieval_enabled: true
+  - slug: personal
+    display_name: 个人
+    role: personal
+    description: 用户私有；默认排除检索，显式声明才可读；不可引用
+    retrieval_enabled: true
+  - slug: draft
+    display_name: 草稿
+    role: draft
+    description: 未生效；永不进检索，仅入库预览；不可引用
+    retrieval_enabled: true   # draft 角色的检索闸由 Role 语义强制关闭（角色优先于条目开关）
