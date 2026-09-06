@@ -161,18 +161,23 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		}
 	}
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
-		Manifest:          manifest,
-		Embedder:          s.Embedder,
-		Retriever:         s.Retriever,
-		ChatModel:         s.ChatModel,
-		SessionID:         sessionID,
-		KPIExecutor:       s.KPIExecutor,
-		KPIRegistry:       s.KPIRegistry,
-		DataRefEmit:       s.dataRefEmitter(c),
-		AuditWriter:       auditWriter,
-		ReportAudit:       reportAudit,
-		ReportPublishEmit: s.reportPublishEmitter(c),
-		FanOutAudit:       fanOutAudit,
+		Manifest:    manifest,
+		Embedder:    s.Embedder,
+		Retriever:   s.Retriever,
+		ChatModel:   s.ChatModel,
+		SessionID:   sessionID,
+		KPIExecutor: s.KPIExecutor,
+		KPIRegistry: s.KPIRegistry,
+		// v1.1.1 (Phase 21 wiring): nil unless EXTERNAL_AUTH_ENABLED=1
+		// (6c-5); only an external:authorized Skill consumes it and
+		// BuildRunner fail-fasts if the Skill declares the channel while
+		// the server did not wire it.
+		ExternalAuthManager: s.ExternalAuthManager,
+		DataRefEmit:         s.dataRefEmitter(c),
+		AuditWriter:         auditWriter,
+		ReportAudit:         reportAudit,
+		ReportPublishEmit:   s.reportPublishEmitter(c),
+		FanOutAudit:         fanOutAudit,
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)

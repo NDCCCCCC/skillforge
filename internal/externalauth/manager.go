@@ -395,3 +395,11 @@ type ReconcileReport struct {
 // the fakeStore; production wires the SQLite-backed implementation
 // (Phase 21-02 follow-on).
 func (m *Manager) Store() Store { return m.store }
+
+// Registry exposes the view allowlist the manager was constructed
+// with (v1.1.1): the needs_external_query agent tool derives its
+// construction-time NL2SQL schema snapshot and its mask-field list
+// from the same registry the manager enforces, so the two can never
+// disagree about which views exist. Read-only view; registration
+// happens only at boot through LoadViewsDir.
+func (m *Manager) Registry() *ViewRegistry { return m.registry }

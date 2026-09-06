@@ -149,10 +149,25 @@ func (m *Manifest) SetDescriptionVec(v []float32) {
 // This constant is the sole owner of the data:aggregated_only string literal.
 // All channel-kind branching MUST go through HasDataChannel() / Channel()
 // (single source of truth discipline — mirrors the validAgentTypes comment
-// narrative). v1.1 may add data:external:authorized here, but it must NOT
-// appear in any allowlist until explicitly added — unknown data:* values are
-// rejected at Validate (fail-closed, D16-C2).
+// narrative). v1.1 added ReadDataExternalAuthorized below — the two
+// data-channel constants together are the complete allowlist; anything
+// else is rejected at Validate (fail-closed, D16-C2).
 const ReadDataAggregatedOnly = "data:aggregated_only"
+
+// ReadDataExternalAuthorized is the v1.1 (DATA-07) external-channel reads
+// value: a Skill declaring reads: ["data:external:authorized"] enters the
+// data channel with access to the External Authorized Channel instead of
+// the aggregated KPI surface. The TWO data-channel constants
+// (ReadDataAggregatedOnly + ReadDataExternalAuthorized) are the COMPLETE
+// allowlist — validate.go rejects any other "data:"-prefixed value
+// fail-closed (D16-C2).
+//
+// Declaring it routes the Skill into the data channel (HasDataChannel /
+// Channel); at runtime BuildRunner additionally requires the wired
+// ExternalAuthManager and attaches the needs_external_query tool —
+// capability is granted only by the explicit Skill contract, never by
+// default (T-W62-05).
+const ReadDataExternalAuthorized = "data:external:authorized"
 
 // ChannelKind distinguishes the two mutually-exclusive read channels a Skill
 // may use (D16-C1). Tier channel reads from Milvus knowledge tiers; data

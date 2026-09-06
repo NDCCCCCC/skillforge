@@ -73,6 +73,7 @@ import (
 	"github.com/skillforge/skillforge/internal/agent/hitl"
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/report"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -154,6 +155,17 @@ type RunnerBuildConfig struct {
 	// KPIRegistry is the data-channel catalog backing kpi_call. Same
 	// fail-closed contract as KPIExecutor above.
 	KPIRegistry *kpi.Registry
+
+	// ExternalAuthManager is the v1.1.1 external-authorized-channel
+	// dependency (DATA-04..14). It is required ONLY when the manifest
+	// declares skill.ReadDataExternalAuthorized in reads: that Skill's
+	// tool set additionally carries needs_external_query, which talks to
+	// this manager. nil + external:authorized Skill fails fast at
+	// BuildRunner (fail-closed, mirroring the D16-C3 guard); nil is
+	// ignored for every other Skill — an aggregated_only data Skill
+	// never sees the tool (capability is granted only by the explicit
+	// Skill contract, DATA-07).
+	ExternalAuthManager *externalauth.Manager
 
 	// FanOutAudit is the FAN-05 (18-VERIFICATION GAP-1) data-channel
 	// fan-out audit sink. When the manifest carries a Template, the
@@ -322,6 +334,30 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 			// adapter.
 			fanOutTool := BuildFanOutDispatchToolDataChannel(titles, kpis, cfg.KPIExecutor, cfg.SessionID, cfg.SkillID, cfg.FanOutAudit)
 			tools = append(tools, fanOutTool)
+		}
+		// v1.1.1 (DATA-07 second half + T-W62-05): the external
+		// authorized channel is granted ONLY by the explicit Skill
+		// contract — a Skill must declare skill.ReadDataExternalAuthorized
+		// in reads to see needs_external_query. An aggregated_only data
+		// Skill never sees it. When the contract IS declared, the
+		// assembly fails fast on a nil ExternalAuthManager (the server
+		// did not wire the channel) rather than silently running a
+		// Skill whose one capability is missing.
+		if slices.Contains(cfg.Manifest.Reads, skill.ReadDataExternalAuthorized) {
+			if cfg.ExternalAuthManager == nil {
+				return nil, errors.New(
+					"agent.BuildRunner: Skill declares " + skill.ReadDataExternalAuthorized +
+						" but ExternalAuthManager is nil — refusing to register the " + agenttools.ExternalQueryToolName +
+						" tool (fail-closed assembly — T-W62-05, mirrors the D16-C3 guard); server 未装配外部授权通道时 external:authorized Skill 不可运行")
+			}
+			externalQueryTool := agenttools.BuildExternalQueryTool(agenttools.ExternalQueryToolConfig{
+				Manager:   cfg.ExternalAuthManager,
+				ChatModel: cfg.ChatModel,
+				Registry:  cfg.ExternalAuthManager.Registry(),
+				SessionID: cfg.SessionID,
+				SkillID:   cfg.SkillID,
+			})
+			tools = append(tools, externalQueryTool)
 		}
 	} else {
 		// tier-channel: existing two-segment composition (HITL
