@@ -90,9 +90,9 @@ const (
 // promise). `BusinessReason` is the user's stated reason; the data
 // officer reads this + the SQL to decide approve/reject.
 type QueryPreview struct {
-	SQLPreview    string `json:"sql_preview"`
-	ViewName      string `json:"view_name"`
-	EstimatedRows int    `json:"estimated_rows"`
+	SQLPreview     string `json:"sql_preview"`
+	ViewName       string `json:"view_name"`
+	EstimatedRows  int    `json:"estimated_rows"`
 	BusinessReason string `json:"business_reason"`
 }
 
@@ -104,13 +104,13 @@ type QueryPreview struct {
 // IDs are UUIDv4-shaped strings generated server-side (see store
 // implementation); callers never supply them.
 type ExternalAuthRequest struct {
-	RequestID    string       `json:"request_id"`
-	UserID       string       `json:"user_id"`
-	SkillID      string       `json:"skill_id"`
-	SessionID    string       `json:"session_id"`
-	Preview      QueryPreview `json:"preview"`
-	State        string       `json:"state"`
-	CreatedAt    time.Time    `json:"created_at"`
+	RequestID string       `json:"request_id"`
+	UserID    string       `json:"user_id"`
+	SkillID   string       `json:"skill_id"`
+	SessionID string       `json:"session_id"`
+	Preview   QueryPreview `json:"preview"`
+	State     string       `json:"state"`
+	CreatedAt time.Time    `json:"created_at"`
 	// TTLTokenID is set ONLY when State == StateApproved (after
 	// approval, the system mints a TTL token; the agent uses this
 	// token to call Source.Execute). NULL while pending/rejected.
@@ -154,15 +154,15 @@ func (t TTLToken) Valid(now time.Time) bool {
 type AuditRow struct {
 	// QueryID is the external_auth_requests.request_id — the
 	// canonical join key for reconciliation.
-	QueryID          string   `json:"query_id"`
-	UserID           string   `json:"user_id"`
-	BusinessReason   string   `json:"business_reason"`
-	SQLPreview       string   `json:"sql_preview"`
-	Decision         string   `json:"decision"` // approved | rejected
-	DataOfficerID    string   `json:"data_officer_id"`
-	TTLTokenID       string   `json:"ttl_token_id,omitempty"`
+	QueryID          string    `json:"query_id"`
+	UserID           string    `json:"user_id"`
+	BusinessReason   string    `json:"business_reason"`
+	SQLPreview       string    `json:"sql_preview"`
+	Decision         string    `json:"decision"` // approved | rejected
+	DataOfficerID    string    `json:"data_officer_id"`
+	TTLTokenID       string    `json:"ttl_token_id,omitempty"`
 	Timestamp        time.Time `json:"ts"`
-	ChunkIDsReturned []string `json:"chunk_ids_returned"`
+	ChunkIDsReturned []string  `json:"chunk_ids_returned"`
 	// MaskApplied is a list of field names that were masked on the
 	// returned rows (DATA-05). Empty when the view returns no
 	// masked fields, or when Decision == rejected (nothing was
@@ -182,15 +182,34 @@ type MaskSpec struct {
 	KeepLen int `json:"keep_len"`
 }
 
+// ViewColumn is one declared column of a PrecompiledView. The column
+// list is what the NL2SQL preview generator renders into its prompt,
+// so the model never has to guess a column name (a guessed name is a
+// fabricated-preview risk, and the warehouse would reject it anyway).
+// Types are advisory labels only — the warehouse stays the source of
+// truth for the real type.
+//
+// v1.1.1 additive type: a view declared without columns still loads
+// (the masks are the load-bearing contract); the NL2SQL prompt simply
+// carries no column list for that view.
+type ViewColumn struct {
+	Name string `json:"name"`
+	Type string `json:"type"` // string | int | float | bool | datetime
+}
+
 // PrecompiledView is the DATA-10 whitelist entry: the agent can ONLY
 // target registered views, never raw tables. ViewName is unique per
 // deployment; FieldMasks lists the columns that need redaction on
 // return. The actual row materialization is Source's job (see
 // source.go) — the view here is the *contract*.
 type PrecompiledView struct {
-	ViewName   string      `json:"view_name"`
-	Source     string      `json:"source"` // human-readable origin
-	FieldMasks []MaskSpec  `json:"field_masks"`
+	ViewName   string     `json:"view_name"`
+	Source     string     `json:"source"` // human-readable origin
+	FieldMasks []MaskSpec `json:"field_masks"`
+	// Columns is the v1.1.1 additive declaration consumed by the
+	// NL2SQL preview prompt (see ViewColumn). omitempty keeps the
+	// wire shape of pre-existing responses unchanged.
+	Columns []ViewColumn `json:"columns,omitempty"`
 }
 
 // ViewRegistry is the in-process whitelist of allowed views.

@@ -1,0 +1,39 @@
+# Copyright 2026 SkillForge Authors
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# Controlled view file (DATA-10) — loaded once at boot by
+# externalauth.LoadViewsDir from cmd/server/main.go (section 6c-5).
+# These files are the ONLY source of view
+# registrations at runtime: reviewable, diffable, and fail-closed on
+# any invalid entry (a malformed file refuses to boot the channel).
+#
+# This is a SCHEMA DEMONSTRATION — no data rows ship in git. The
+# warehouse (or the v1.1 MemorySource reference driver in tests/UAT)
+# materializes the rows at execution time, behind the approval + TTL
+# token + field-mask pipeline.
+
+views:
+  - view_name: v_user_consumption
+    source: read-only warehouse replica of the monthly user consumption table (individual-level rows; masked per the field_masks below)
+    columns:
+      - name: user_id
+        type: string
+      - name: amount
+        type: float
+      - name: account_no
+        type: string
+      - name: phone
+        type: string
+      - name: email
+        type: string
+    field_masks:
+      - field_name: account_no
+        kind: account
+        keep_len: 4
+      - field_name: phone
+        kind: phone
+        keep_len: 4
+      - field_name: email
+        kind: email
+        keep_len: 2
