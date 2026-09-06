@@ -216,7 +216,7 @@ func TestWizardHandler_HappyPath(t *testing.T) {
 	tmp := t.TempDir()
 	llm := &stubWizardLLM{response: wizardValidManifestJSON}
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(llm, tmp)
+	deps.Wizard = skill.NewWizard(llm, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -230,7 +230,7 @@ func TestWizardHandler_HappyPath(t *testing.T) {
 	// Validate was run — the preview passes the 7-field gate.
 	// (resp.Preview.Name is json:"-" on purpose — the directory name is
 	// carried in resp.Name, not echoed in the body.)
-	assert.NoError(t, skill.Validate(resp.Preview))
+	assert.NoError(t, skill.Validate(resp.Preview, testKBReg()))
 	assert.Equal(t, 1, llm.calls, "one LLM call on a valid first response (no retry)")
 }
 
@@ -240,7 +240,7 @@ func TestWizardHandler_LLMErrorSurfacesToFE(t *testing.T) {
 	tmp := t.TempDir()
 	llm := &stubWizardLLM{err: context.DeadlineExceeded}
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(llm, tmp)
+	deps.Wizard = skill.NewWizard(llm, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -256,7 +256,7 @@ func TestWizardHandler_LLMErrorSurfacesToFE(t *testing.T) {
 func TestWizardHandler_MalformedJSONReturns400(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -270,7 +270,7 @@ func TestWizardHandler_MalformedJSONReturns400(t *testing.T) {
 func TestWizardHandler_NameExtractionFailureReturns400(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -286,7 +286,7 @@ func TestWizardHandler_NameExtractionFailureReturns400(t *testing.T) {
 func TestWizardCommitHandler_HappyPath(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -317,7 +317,7 @@ func TestWizardCommitHandler_HappyPath(t *testing.T) {
 func TestWizardCommitHandler_RejectsPathEscape(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -343,7 +343,7 @@ func TestWizardCommitHandler_RejectsPathEscape(t *testing.T) {
 func TestWizardCommitHandler_RejectsInvalidManifest(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -370,7 +370,7 @@ func TestWizardCommitHandler_RejectsInvalidManifest(t *testing.T) {
 func TestWizardCommitHandler_MissingPreviewReturns400(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -388,7 +388,7 @@ func TestWizardCommitHandler_MissingPreviewReturns400(t *testing.T) {
 func TestWizardCommitHandler_RefusesExistingSkillWith409(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps()
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 
@@ -447,14 +447,14 @@ func TestWizardCommitHandler_RegistersAndRefreshesLoader(t *testing.T) {
 	tmp := t.TempDir()
 
 	// Loader + Wizard share the same skills dir — same as cmd/server.
-	loader := skill.NewLoader(tmp)
+	loader := skill.NewLoader(tmp, testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	require.Empty(t, loader.Skills(), "freshly-scanned empty skills dir must yield 0 skills")
 
 	deps := newTestDeps()
 	deps.Loader = loader
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 
 	// Stand up BOTH routes so we can drive the full closed loop in one test.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -503,7 +503,7 @@ func TestWizardCommitHandler_RegistersAndRefreshesLoader(t *testing.T) {
 func TestWizardCommitHandler_RegisteredFalseWhenLoaderNil(t *testing.T) {
 	tmp := t.TempDir()
 	deps := newTestDeps() // Loader is nil
-	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp)
+	deps.Wizard = skill.NewWizard(&stubWizardLLM{}, tmp, testKBReg())
 	addr, cleanup := newWizardHertz(t, deps)
 	defer cleanup()
 

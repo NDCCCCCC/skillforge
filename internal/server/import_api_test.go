@@ -108,6 +108,7 @@ func importTestDeps(t *testing.T) (*Deps, func()) {
 		RulesDir:    datarulesDir,
 		StagingDir:  stagingDir,
 		DatasetsDir: datasetsDir,
+		KBRegistry:  testKBReg(),
 	}, db, lru)
 
 	deps := &Deps{
@@ -127,7 +128,7 @@ func importTestDeps(t *testing.T) (*Deps, func()) {
 func writeLoansRules(t *testing.T, dir string) {
 	t.Helper()
 	yaml := `dataset: loans
-tier: 历史
+tier: historical
 k_min: 10
 columns:
   customer_name: { rule: hash, profile: person_name }
@@ -330,7 +331,7 @@ func TestPreviewEndpointShape(t *testing.T) {
 	assert.NotEmpty(t, pr.PreviewID)
 	assert.Equal(t, "loans", pr.Dataset)
 	assert.Equal(t, "2026-07", pr.Period)
-	assert.Equal(t, "历史", pr.ProposedTier)
+	assert.Equal(t, "historical", pr.ProposedTier)
 	assert.NotEmpty(t, pr.RulesSHA256)
 	assert.NotEmpty(t, pr.ContentSHA256)
 	assert.Equal(t, int64(5), pr.RowCount)

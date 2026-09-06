@@ -173,17 +173,18 @@ func main() {
 // encountered. Each scenario prints a single JSON line to stdout.
 func runRF4Spike(scenario string) error {
 	ctx := context.Background()
+	kbReg := loadSeedKBRegistry()
 	switch scenario {
 	case "match":
-		return runMatchScenario(ctx)
+		return runMatchScenario(ctx, kbReg)
 	case "empty-intersection":
-		return runEmptyIntersectionScenario(ctx)
+		return runEmptyIntersectionScenario(ctx, kbReg)
 	case "sub-empty-reads":
 		return runSubEmptyReadsScenario(ctx)
 	case "parent-empty-tiers":
 		return runParentEmptyTiersScenario(ctx)
 	case "canonical":
-		return runCanonicalScenario(ctx)
+		return runCanonicalScenario(ctx, kbReg)
 	default:
 		return fmt.Errorf("unknown scenario %q", scenario)
 	}
@@ -237,14 +238,15 @@ func makeSub(name string, reads []string, tiers []string) *skill.Manifest {
 	return m
 }
 
-// runMatchScenario — happy path. parent [权威] / sub [权威] → BuildSubAgent succeeds.
-func runMatchScenario(ctx context.Context) error {
-	parent := makeParent([]string{"权威"}, "compliance-orchestrator")
-	sub := makeSub("sub-compliance", []string{"authority/**"}, []string{"权威"})
+// runMatchScenario — happy path. parent [authority] / sub [authority] → BuildSubAgent succeeds.
+func runMatchScenario(ctx context.Context, kbReg kb.Registry) error {
+	parent := makeParent([]string{"authority"}, "compliance-orchestrator")
+	sub := makeSub("sub-compliance", []string{"authority/**"}, []string{"authority"})
 
 	a, err := runtime.BuildSubAgent(ctx, runtime.SubAgentConfig{
 		ParentManifest:   parent,
 		SubSkillManifest: sub,
+		KBRegistry:       kbReg,
 		SubQueryID:       "sa1",
 		ChatModel:        &stubChatModel{},
 		Embedder:         stubEmbedder{},
@@ -266,14 +268,15 @@ func runMatchScenario(ctx context.Context) error {
 	return nil
 }
 
-// runEmptyIntersectionScenario — parent [权威] / sub [个人] → load-time error.
-func runEmptyIntersectionScenario(ctx context.Context) error {
-	parent := makeParent([]string{"权威"}, "compliance-orchestrator")
-	sub := makeSub("sub-personal", []string{"personal/**"}, []string{"个人"})
+// runEmptyIntersectionScenario — parent [authority] / sub [personal] → load-time error.
+func runEmptyIntersectionScenario(ctx context.Context, kbReg kb.Registry) error {
+	parent := makeParent([]string{"authority"}, "compliance-orchestrator")
+	sub := makeSub("sub-personal", []string{"personal/**"}, []string{"personal"})
 
 	_, err := runtime.BuildSubAgent(ctx, runtime.SubAgentConfig{
 		ParentManifest:   parent,
 		SubSkillManifest: sub,
+		KBRegistry:       kbReg,
 		SubQueryID:       "sa1",
 		ChatModel:        &stubChatModel{},
 		Embedder:         stubEmbedder{},
@@ -294,7 +297,7 @@ func runEmptyIntersectionScenario(ctx context.Context) error {
 
 // runSubEmptyReadsScenario — sub_skill.Reads is empty → load-time error.
 func runSubEmptyReadsScenario(ctx context.Context) error {
-	parent := makeParent([]string{"权威"}, "compliance-orchestrator")
+	parent := makeParent([]string{"authority"}, "compliance-orchestrator")
 	sub := makeSub("sub-empty", []string{}, []string{})
 
 	_, err := runtime.BuildSubAgent(ctx, runtime.SubAgentConfig{
@@ -321,7 +324,7 @@ func runSubEmptyReadsScenario(ctx context.Context) error {
 // runParentEmptyTiersScenario — parent.ResolvedTiers() empty → load-time error.
 func runParentEmptyTiersScenario(ctx context.Context) error {
 	parent := makeParent([]string{}, "compliance-orchestrator")
-	sub := makeSub("sub-ok", []string{"authority/**"}, []string{"权威"})
+	sub := makeSub("sub-ok", []string{"authority/**"}, []string{"authority"})
 
 	_, err := runtime.BuildSubAgent(ctx, runtime.SubAgentConfig{
 		ParentManifest:   parent,
@@ -347,17 +350,17 @@ func runParentEmptyTiersScenario(ctx context.Context) error {
 // runCanonicalScenario — demonstrates orchestrator's 5-step pipeline
 // skeleton with 3 sub-queries. Each sub-query is built via
 // BuildSubAgent with matching tiers.
-func runCanonicalScenario(ctx context.Context) error {
-	parent := makeParent([]string{"权威", "历史"}, "compliance-orchestrator")
+func runCanonicalScenario(ctx context.Context, kbReg kb.Registry) error {
+	parent := makeParent([]string{"authority", "historical"}, "compliance-orchestrator")
 	subs := []struct {
 		name  string
 		reads []string
 		tiers []string
 		query string
 	}{
-		{"sub-1", []string{"authority/**"}, []string{"权威"}, "sa1 query"},
-		{"sub-2", []string{"historical/**"}, []string{"历史"}, "sa2 query"},
-		{"sub-3", []string{"authority/**", "historical/**"}, []string{"权威", "历史"}, "sa3 query"},
+		{"sub-1", []string{"authority/**"}, []string{"authority"}, "sa1 query"},
+		{"sub-2", []string{"historical/**"}, []string{"historical"}, "sa2 query"},
+		{"sub-3", []string{"authority/**", "historical/**"}, []string{"authority", "historical"}, "sa3 query"},
 	}
 
 	var agents []string
@@ -366,6 +369,7 @@ func runCanonicalScenario(ctx context.Context) error {
 		a, err := runtime.BuildSubAgent(ctx, runtime.SubAgentConfig{
 			ParentManifest:   parent,
 			SubSkillManifest: sub,
+			KBRegistry:       kbReg,
 			SubQueryID:       subCfg.name,
 			ChatModel:        &stubChatModel{},
 			Embedder:         stubEmbedder{},
@@ -576,6 +580,52 @@ func loadFanoutGolden(path string) ([]GoldenCase, error) {
 	return out, nil
 }
 
+// loadSeedKBRegistry builds the read-only registry the spike resolves
+// skill reads and golden-case tiers against.
+//
+// PROVISIONAL (26-04): read-only seed snapshot — replaced by the
+// sqlite-backed kb.Open registry in plan 26-09 (skill-loader side; the
+// corpus-index path in newMilvusRetriever keeps its own 26-03 snapshot).
+func loadSeedKBRegistry() kb.Registry {
+	seedPath, locateErr := locateSeedFile("knowledge_bases.yaml")
+	if locateErr != nil {
+		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN knowledge_bases.yaml not found from cwd — knowledge-base registry is empty (every tier Skill will fail reads validation)\n")
+		return kb.New(nil)
+	}
+	kbSeeds, err := kb.LoadSeedFile(seedPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[spike-fanout] FATAL kb seed load (%s): %v\n", seedPath, err)
+		os.Exit(1)
+	}
+	if kbSeeds == nil {
+		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN empty knowledge_bases.yaml seed at %s — knowledge-base registry is empty\n", seedPath)
+	}
+	return kb.New(kbSeeds)
+}
+
+// locateSeedFile resolves a repo-root-relative controlled file from
+// whichever directory the binary (or its test binary) runs in: the
+// process cwd, then up to four parents. The seed is a single git-
+// controlled file, so the search is bounded and deterministic.
+func locateSeedFile(name string) (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for i := 0; i < 5; i++ {
+		candidate := filepath.Join(dir, name)
+		if _, statErr := os.Stat(candidate); statErr == nil {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("cwd upward search")
+}
+
 // loadFanoutConfig loads the orchestrator parent Skill from the
 // --sub-skill-config path (examples/skills/compliance-orchestrator/
 // SKILL.md). The Loader scans the skill's PARENT directory so the
@@ -584,10 +634,10 @@ func loadFanoutGolden(path string) ([]GoldenCase, error) {
 // synthesized per-case from the golden set's sub_skills reads patterns
 // (resolveSubManifest below) — the golden set is the per-case wiring
 // truth, the SKILL.md documents the parent contract.
-func loadFanoutConfig(path string) (*skill.Manifest, error) {
-	skillDir := filepath.Dir(path)                    // .../compliance-orchestrator
-	name := filepath.Base(skillDir)                   // compliance-orchestrator
-	loader := skill.NewLoader(filepath.Dir(skillDir)) // .../examples/skills
+func loadFanoutConfig(path string, kbReg kb.Registry) (*skill.Manifest, error) {
+	skillDir := filepath.Dir(path)                           // .../compliance-orchestrator
+	name := filepath.Base(skillDir)                          // compliance-orchestrator
+	loader := skill.NewLoader(filepath.Dir(skillDir), kbReg) // .../examples/skills
 	if _, err := loader.Scan(); err != nil {
 		return nil, fmt.Errorf("skill scan %s: %w", filepath.Dir(skillDir), err)
 	}
@@ -603,12 +653,13 @@ func loadFanoutConfig(path string) (*skill.Manifest, error) {
 }
 
 // resolveSubManifest synthesizes a sub-skill Manifest from a golden
-// case's sub_skills entry (reads patterns). Tiers resolve via
-// skill.ResolveTiers; unknown dirs (fanout-13's adversarial tier)
-// surface as the FAN-02 SC-2 load-time error inside BuildSubAgent.
-func resolveSubManifest(sub GoldenSubSkill) (*skill.Manifest, error) {
+// case's sub_skills entry (reads patterns). Tiers resolve through the
+// knowledge-base registry via skill.ResolveTiers; unknown slugs
+// (fanout-13's adversarial tier) surface as the FAN-02 SC-2 load-time
+// error inside BuildSubAgent.
+func resolveSubManifest(sub GoldenSubSkill, kbReg kb.Registry) (*skill.Manifest, error) {
 	m := makeSub(sub.Name, sub.Reads, nil)
-	tiers, err := skill.ResolveTiers(sub.Reads)
+	tiers, err := skill.ResolveTiers(sub.Reads, kbReg)
 	if err != nil {
 		// Unknown tier dir — return the manifest with EMPTY tiers so
 		// BuildSubAgent rejects it at load time (the golden case's
@@ -692,7 +743,7 @@ func (a *sqliteAuditWriter) PutAudit(ctx context.Context, action, runPath, from,
 // holds (tier_mismatch cases MUST be rejected; multi-hop sub-skills
 // MUST NOT be — the gate's tier_closure_regression_rate counts
 // mismatch cases that were NOT rejected).
-func validateSubSkillTiers(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, c GoldenCase) (bool, string) {
+func validateSubSkillTiers(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, kbReg kb.Registry, c GoldenCase) (bool, string) {
 	// Duplicate sub_query id guard (fanout-14 contract).
 	seen := map[string]bool{}
 	for _, s := range c.SubSkills {
@@ -702,7 +753,7 @@ func validateSubSkillTiers(ctx context.Context, parent *skill.Manifest, cm model
 		seen[s.Name] = true
 	}
 	for _, s := range c.SubSkills {
-		sub, err := resolveSubManifest(s)
+		sub, err := resolveSubManifest(s, kbReg)
 		if err != nil {
 			return true, fmt.Sprintf("sub_skill %q: %v", s.Name, err)
 		}
@@ -713,13 +764,14 @@ func validateSubSkillTiers(ctx context.Context, parent *skill.Manifest, cm model
 		caseParent := parent
 		if c.ParentReads != nil {
 			caseParent = makeSub("case-parent", c.ParentReads, nil)
-			if tiers, terr := skill.ResolveTiers(c.ParentReads); terr == nil && len(tiers) > 0 {
+			if tiers, terr := skill.ResolveTiers(c.ParentReads, kbReg); terr == nil && len(tiers) > 0 {
 				caseParent.SetResolvedTiersForTest(tiers)
 			}
 		}
 		_, err = runtime.BuildSubAgent(ctx, runtime.SubAgentConfig{
 			ParentManifest:   caseParent,
 			SubSkillManifest: sub,
+			KBRegistry:       kbReg,
 			SubQueryID:       s.Name,
 			ChatModel:        cm,
 			Embedder:         stubEmbedder{},
@@ -828,7 +880,7 @@ func runCaseThroughOrchestrator(ctx context.Context, parent *skill.Manifest, cm 
 // runLiveCase executes ONE golden case end-to-end: the load-time
 // tier-closure validation (FAN-02 SC-2) plus the orchestrator Run
 // (FAN-01/03/04 pipeline) with audit-row metering.
-func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, emb embedder.Embedder, ret retriever.Retriever, durable runtime.SubAgentAuditWriter, c GoldenCase) LiveCaseResult {
+func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCallingChatModel, emb embedder.Embedder, ret retriever.Retriever, durable runtime.SubAgentAuditWriter, kbReg kb.Registry, c GoldenCase) LiveCaseResult {
 	res := LiveCaseResult{
 		ID:       c.ID,
 		Scenario: c.Scenario,
@@ -836,7 +888,7 @@ func runLiveCase(ctx context.Context, parent *skill.Manifest, cm model.ToolCalli
 		CostUSD:  estimateCost(c),
 	}
 	// FAN-02 SC-2 load-time validation (structural — no LLM call).
-	res.TierMismatchRejected, res.RejectedReason = validateSubSkillTiers(ctx, parent, cm, c)
+	res.TierMismatchRejected, res.RejectedReason = validateSubSkillTiers(ctx, parent, cm, kbReg, c)
 
 	// Tee the audit stream: in-memory counter (gate metrics) + the
 	// durable SQLite store (RunPath/Transfer traceback, P13-L6).
@@ -1195,7 +1247,8 @@ func runLiveSpike(f *spikeFlags) error {
 	if err != nil {
 		return fmt.Errorf("load golden: %w", err)
 	}
-	parentManifest, err := loadFanoutConfig(f.subSkillConfig)
+	kbReg := loadSeedKBRegistry()
+	parentManifest, err := loadFanoutConfig(f.subSkillConfig, kbReg)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -1231,7 +1284,7 @@ func runLiveSpike(f *spikeFlags) error {
 			return fmt.Errorf("cost-limit $%.2f exceeded at case %d/%d (total so far $%.4f) — T-13-05-1 abort BEFORE overspend",
 				f.costLimit, i+1, len(golden), totalCost)
 		}
-		res := runLiveCase(ctx, parentManifest, chatModel, emb, ret, durable, c)
+		res := runLiveCase(ctx, parentManifest, chatModel, emb, ret, durable, kbReg, c)
 		totalCost += res.CostUSD
 		results = append(results, res)
 		if res.FailReason != "" {

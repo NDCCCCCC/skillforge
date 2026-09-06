@@ -91,7 +91,7 @@ temperature: 0.3
 // prompt + hash, unknown skill 404.
 func TestPlatformPromptPreview(t *testing.T) {
 	skillDir := writeTestSkillDir(t)
-	loader := skill.NewLoader(skillDir)
+	loader := skill.NewLoader(skillDir, testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 

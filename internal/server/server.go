@@ -51,6 +51,7 @@ import (
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/externalauth"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -355,6 +356,16 @@ type Deps struct {
 	// sensitive surfaces (pending/approve/reject/execute/reconcile)
 	// additionally require X-Admin-Token.
 	ExternalAuthManager *externalauth.Manager
+
+	// KBRegistry is Phase 26 — the knowledge-base registry seeded from
+	// the controlled file + sqlite runtime state. It is the reads
+	// contract every skill validates against (KBM-04), the source of
+	// the knowledge graph node set, and (26-05) the admin
+	// create/deactivate surface. nil degrades the KB surfaces to 503
+	// fail-closed — the same posture as a nil KPIRegistry, because a
+	// skill whose reads cannot be checked against the live base set
+	// must not pass validation silently.
+	KBRegistry kb.Registry
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the

@@ -88,6 +88,7 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/eval"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
@@ -762,8 +763,26 @@ func buildChatModelLive(ctx context.Context) model.ToolCallingChatModel {
 // manifest.Agent value does not influence routing — but the
 // resolved-tier slice MUST be present for the retrieve tool's
 // KNOW-03 whitelist. Mirrors cmd/spike-history:479.
+// loadSeedKBRegistry builds the read-only registry the skill loader
+// validates reads declarations against.
+//
+// PROVISIONAL (26-04): read-only seed snapshot — replaced by the
+// sqlite-backed kb.Open registry in plan 26-09 (this binary never
+// touches the knowledge corpus, so the seed snapshot is its long-term
+// shape).
+func loadSeedKBRegistry() kb.Registry {
+	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/spike-deep: kb seed load: %v", err)
+	}
+	if kbSeeds == nil {
+		log.Printf("[WARN] cmd/spike-deep: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every tier Skill will fail reads validation)")
+	}
+	return kb.New(kbSeeds)
+}
+
 func loadManifestLive() *skill.Manifest {
-	loader := skill.NewLoader("skills/")
+	loader := skill.NewLoader("skills/", loadSeedKBRegistry())
 	if _, err := loader.Scan(); err != nil {
 		log.Fatalf("[FAIL] cmd/spike-deep: skill scan: %v", err)
 	}

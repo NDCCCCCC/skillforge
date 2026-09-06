@@ -22,7 +22,7 @@
 // Startup sequence (fail fast on any error — the operator must see the
 // problem at startup, never at request time):
 //
-//  1. Load skills via skill.NewLoader("skills/").Scan(). An invalid
+//  1. Load skills via skill.NewLoader("skills/", kbReg).Scan(). An invalid
 //     Skill is fatal — the operator should see the SYSK-02 violation
 //     in the startup log, not as a confusing 500 later.
 //  2. Construct the configured retriever backend (RETRIEVER_BACKEND):
@@ -222,8 +222,23 @@ func main() {
 	// versioned artifacts, unlike the datasets they read).
 	kpisDir := envOr("SKILLFORGE_KPIS_DIR", "kpis")
 
+	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
+	// sqlite-backed kb.Open registry in plan 26-09. The seed file is the
+	// controlled baseline; a missing file is the one legal degraded state
+	// (empty registry, every knowledge/ dir then audits as unregistered).
+	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: kb seed load: %v (fix the controlled knowledge_bases.yaml — a bad seed must not boot a half-known knowledge surface)", err)
+	}
+	if kbSeeds == nil {
+		log.Printf("[WARN] cmd/server: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
+	}
+	kbReg := kb.New(kbSeeds)
+	log.Printf("[OK] cmd/server: kb registry wired (provisional seed snapshot, %d base(s), signature=%s)",
+		len(kbSeeds), shortSignature(kbReg.Signature()))
+
 	// 2. Load Skills (SYSK-02 validation at startup).
-	loader := skill.NewLoader("skills/")
+	loader := skill.NewLoader("skills/", kbReg)
 	manifests, err := loader.Scan()
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: skill scan: %v (fix the SKILL.md or remove it from skills/)", err)
@@ -260,21 +275,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
 	}
-
-	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
-	// sqlite-backed kb.Open registry in plan 26-09. The seed file is the
-	// controlled baseline; a missing file is the one legal degraded state
-	// (empty registry, every knowledge/ dir then audits as unregistered).
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: kb seed load: %v (fix the controlled knowledge_bases.yaml — a bad seed must not boot a half-known knowledge surface)", err)
-	}
-	if kbSeeds == nil {
-		log.Printf("[WARN] cmd/server: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
-	}
-	kbReg := kb.New(kbSeeds)
-	log.Printf("[OK] cmd/server: kb registry wired (provisional seed snapshot, %d base(s), signature=%s)",
-		len(kbSeeds), shortSignature(kbReg.Signature()))
 
 	// INSERT-only audit sink for the corpus walk's unregistered-directory
 	// decision (KBM-06: WARN + skip + audit). The callback seam keeps the
@@ -563,7 +563,7 @@ func main() {
 	// at startup. The watcher goroutine runs until ctx (background) is
 	// cancelled — i.e. process exit — matching the existing Store.Close
 	// posture (Phase 6 adds graceful shutdown).
-	reg, err := skill.New("skills/", nil)
+	reg, err := skill.New("skills/", nil, kbReg)
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: skill registry: %v (fix the SKILL.md or remove it from skills/)", err)
 	}
@@ -628,7 +628,7 @@ func main() {
 	// the Loader scans; the fsnotify-driven Registry (Plan 05-01) picks
 	// up the new file automatically and the chat path sees it on the
 	// next request — D5-11 closed loop. SkillsDir is intentionally the
-	// same string passed to skill.NewLoader("skills/") above so the
+	// same string passed to skill.NewLoader("skills/", kbReg) above so the
 	// "wizard wrote here, Loader reads there" contract holds.
 	//
 	// EvalReporter (Plan 06-02 / SC-1) reads the same eval/reports/
@@ -649,7 +649,7 @@ func main() {
 		Runner:       &prodRunner{runner: runner, cm: cm},
 		Agent:        ag,
 		Store:        st,
-		Wizard:       skill.NewWizard(cm, "skills/"),
+		Wizard:       skill.NewWizard(cm, "skills/", kbReg),
 		Knowledge:    knowledge.New(r, kbReg),
 		EvalReporter: server.NewFilesystemEvalReporter(evalReportsDir, evalFrozenDir),
 		ChatModel:    cm,
@@ -676,6 +676,10 @@ func main() {
 		// reaches kpi_call through them and GET /api/admin/kpis reads
 		// the registry catalog + kpi_calls audit rows.
 		KPIExecutor: kpiExecutor,
+		// Phase 26 — the same seed registry the loader validated against
+		// at boot (26-05 consumes it for the admin endpoints; 26-09 swaps
+		// the provisional seed snapshot for kb.Open).
+		KBRegistry:  kbReg,
 		KPIRegistry: kpiRegistry,
 		// Phase 19 — scheduler wired with store + eval gate + LRU detacher.
 		Scheduler: sched,

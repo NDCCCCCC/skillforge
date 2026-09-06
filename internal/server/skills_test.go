@@ -29,6 +29,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,19 @@ import (
 //  5. TestValidateSkillHandler_MalformedJSON — T-2-30 / V5 ASVS
 //  6. TestValidateSkillHandler_DoesNotPersist — D2-07 dry-run contract
 //  7. TestValidateSkillHandler_RejectsWildcardReads — P-SKILL-3
+
+// testKBReg returns the read-only registry the server tests resolve the
+// reads contract against: the four baseline bases of the controlled seed
+// (knowledge_bases.yaml), all active. Display names are ASCII here —
+// they never participate in reads resolution.
+func testKBReg() kb.Registry {
+	return kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+	})
+}
 
 // newTestSkillsHertz spins a Hertz server on a dynamic port with BOTH
 // skills routes registered against deps (mirrors New()).
@@ -104,7 +118,7 @@ func newComplianceLoader(t *testing.T) *skill.Loader {
 	dir := filepath.Join(root, "compliance")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(complianceSkillYAML), 0o644))
-	l := skill.NewLoader(root)
+	l := skill.NewLoader(root, testKBReg())
 	_, err := l.Scan()
 	require.NoError(t, err)
 	return l
@@ -213,7 +227,7 @@ func newComplianceRegistry(t *testing.T) (*skill.Registry, string) {
 	dir := filepath.Join(root, "compliance")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(complianceSkillYAML), 0o644))
-	reg, err := skill.New(root, nil)
+	reg, err := skill.New(root, nil, testKBReg())
 	require.NoError(t, err)
 	return reg, filepath.Join(dir, "SKILL.md")
 }
@@ -360,4 +374,61 @@ func removeJSONLine(src, needle string) string {
 		out = append(out, ln)
 	}
 	return strings.Join(out, "\n")
+}
+
+// --- Phase 26 / Plan 26-04 Task 3: the endpoint carries the registry ---
+
+// TestValidateSkillEndpointWithRegistry — POST /api/skills against a
+// wired registry: a valid skill answers 200/valid, and a reads
+// declaration naming an unregistered base answers 200/invalid with the
+// active slug set in the error (the load-time gate, surfaced over HTTP).
+func TestValidateSkillEndpointWithRegistry(t *testing.T) {
+	deps := newTestDeps()
+	deps.KBRegistry = kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	addr, cleanup := newTestSkillsHertz(t, deps)
+	defer cleanup()
+
+	code, vr := postSkill(t, addr, validSkillJSON)
+	require.Equal(t, http.StatusOK, code)
+	assert.True(t, vr.Valid, "error=%s", vr.Error)
+
+	// ghost/** is not in the one-entry registry → rejected, active set named.
+	body := strings.Replace(validSkillJSON, `["authority/**"]`, `["ghost/**"]`, 1)
+	code, vr = postSkill(t, addr, body)
+	assert.Equal(t, http.StatusOK, code)
+	assert.False(t, vr.Valid, "an unregistered slug must fail validation over HTTP (KBM-04)")
+	assert.Contains(t, vr.Error, "ghost")
+	assert.Contains(t, vr.Error, "authority", "the error must list the active slug set")
+}
+
+// TestValidateSkillEndpointNilRegistry503 — a tier-channel request with
+// no registry wired is a 503 fail-closed (mirrors the kpiPipelineNotWired
+// posture): answering "valid" would assert a trust contract nobody checked.
+func TestValidateSkillEndpointNilRegistry503(t *testing.T) {
+	deps := newTestDeps()
+	deps.KBRegistry = nil
+	addr, cleanup := newTestSkillsHertz(t, deps)
+	defer cleanup()
+
+	code, vr := postSkill(t, addr, validSkillJSON)
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+	assert.False(t, vr.Valid)
+	assert.Contains(t, vr.Error, "KB registry not wired")
+}
+
+// TestValidateSkillDataChannelStillWorks — the data channel has no KB
+// semantics (D16-C1 XOR), so a data-channel skill validates even with the
+// registry unwired: degrading it would break data skills for no trust gain.
+func TestValidateSkillDataChannelStillWorks(t *testing.T) {
+	deps := newTestDeps()
+	deps.KBRegistry = nil
+	addr, cleanup := newTestSkillsHertz(t, deps)
+	defer cleanup()
+
+	body := strings.Replace(validSkillJSON, `["authority/**"]`, `["data:aggregated_only"]`, 1)
+	code, vr := postSkill(t, addr, body)
+	assert.Equal(t, http.StatusOK, code)
+	assert.True(t, vr.Valid, "error=%s", vr.Error)
 }

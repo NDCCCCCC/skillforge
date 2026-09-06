@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/platformfloor"
 	"github.com/skillforge/skillforge/internal/reprohash"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -332,7 +333,7 @@ temperature: 0.0
 		t.Fatalf("write SKILL.md: %v", err)
 	}
 
-	loader := skill.NewLoader(tmp)
+	loader := skill.NewLoader(tmp, testKBReg())
 	manifests, err := loader.Scan()
 	if err != nil {
 		t.Fatalf("loader.Scan: %v", err)
@@ -434,7 +435,7 @@ temperature: 0.0
 		}
 	}
 
-	loader := skill.NewLoader(tmp)
+	loader := skill.NewLoader(tmp, testKBReg())
 
 	// v1: simple body.
 	writeSkill("body version 1 — completely benign text")
@@ -497,4 +498,16 @@ temperature: 0.0
 	if r1 != r2 {
 		t.Errorf("v1 and v2 renders differ — Skill body reached the system prompt (injection channel exists)")
 	}
+}
+
+// testKBReg returns the read-only registry the loader resolves the reads
+// contract against: the four baseline bases of the controlled seed
+// (knowledge_bases.yaml), all active.
+func testKBReg() kb.Registry {
+	return kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+	})
 }

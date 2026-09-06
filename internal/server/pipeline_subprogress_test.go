@@ -80,11 +80,11 @@ func TestVerdictPipeline_SubprogressOrder(t *testing.T) {
 	deps := newVerdictPipelineDeps(t)
 	chunkText := "员工累计工作已满1年不满10年的，年假5天。"
 	chunks := []retriever.Hit{
-		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/annual_leave.md", Score: 0.65},
-		{ID: 2, Tier: "权威", Content: "备用条款", Source: "authority/other.md", Score: 0.55},
+		{ID: 1, Tier: "authority", Content: chunkText, Source: "authority/annual_leave.md", Score: 0.65},
+		{ID: 2, Tier: "authority", Content: "备用条款", Source: "authority/other.md", Score: 0.55},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
-	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, chunkText, "权威"))
+	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, chunkText, "authority"))
 
 	addr, cleanup := newTestHertz(t, deps)
 	defer cleanup()
@@ -108,9 +108,9 @@ func TestVerdictPipeline_SubprogressOrder(t *testing.T) {
 	// (b) found_candidates carries count=len(chunks) + the search tier.
 	assert.Equal(t, 2, progress[1].Count,
 		"found_candidates.count must equal the retrieved chunk count")
-	assert.Equal(t, "权威", progress[1].Tier,
+	assert.Equal(t, "authority", progress[1].Tier,
 		"found_candidates.tier must carry the first resolved search tier")
-	assert.Equal(t, "权威", progress[0].Tier,
+	assert.Equal(t, "authority", progress[0].Tier,
 		"retrieve.tier must carry the first resolved search tier")
 
 	// (c) Every data-subprogress chunk precedes text-start (the assistant

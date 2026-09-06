@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/agent"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/reprohash"
 	"github.com/skillforge/skillforge/internal/skill"
 )
@@ -234,7 +235,7 @@ func TestShippedFrozenLockIsInSync(t *testing.T) {
 	assert.Equal(t, "compliance", lock.SkillName)
 	assert.Equal(t, DefaultJudgeModel, lock.ModelVersion)
 
-	loader := skill.NewLoader(filepath.Join(repoRoot, "examples", "skills"))
+	loader := skill.NewLoader(filepath.Join(repoRoot, "examples", "skills"), testKBReg())
 	_, err = loader.Scan()
 	require.NoError(t, err, "scan skills/")
 
@@ -266,4 +267,16 @@ func TestShippedFrozenSetLoads(t *testing.T) {
 	}
 	assert.Positive(t, refusalCases,
 		"the frozen set must retain refusal-required cases — refusal_accuracy is derived from that category")
+}
+
+// testKBReg returns the read-only registry the loader resolves the reads
+// contract against: the four baseline bases of the controlled seed
+// (knowledge_bases.yaml), all active.
+func testKBReg() kb.Registry {
+	return kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+	})
 }

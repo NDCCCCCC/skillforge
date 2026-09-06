@@ -119,6 +119,10 @@ func newTestDeps() *Deps {
 		Embedder:  newStubEmbedder(),
 		Retriever: &stubRetriever{},
 		Runner:    newStubRunner(""),
+		// The reads contract is registry-driven since Phase 26 (KBM-04):
+		// tests resolve against the seed baseline unless a case swaps in
+		// its own registry.
+		KBRegistry: testKBReg(),
 	}
 }
 
@@ -162,7 +166,7 @@ temperature: %v
 
 	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(yaml), 0o644))
 
-	manifests, err := skill.NewLoader(root).Scan()
+	manifests, err := skill.NewLoader(root, testKBReg()).Scan()
 	require.NoError(t, err)
 	require.NotEmpty(t, manifests, "test Loader must produce ≥1 manifest")
 	require.Len(t, manifests, 1)
@@ -183,7 +187,7 @@ func postChat(t *testing.T, addr, query, skill string) (string, string) {
 }
 
 // TestChatHandlerSSE — SC-6 / AGNT-03 happy path. With a mock retriever
-// returning 2 retriever.Hit chunks (tier=权威) + a mock runner
+// returning 2 retriever.Hit chunks (tier=authority) + a mock runner
 // returning a valid Verdict JSON with 2 citations, the POST /api/chat
 // SSE stream must contain:
 //
@@ -201,8 +205,8 @@ func TestChatHandlerSSE(t *testing.T) {
 	chunk1 := "出差住宿费超标 200 元以内由部门负责人审批"
 	chunk2 := "采购合同 50 万元以下由部门负责人审批"
 	chunks := []retriever.Hit{
-		{ID: 1, Tier: "权威", Content: chunk1, Source: "authority/travel_expense.md", Score: 0.92},
-		{ID: 2, Tier: "权威", Content: chunk2, Source: "authority/contract_approval.md", Score: 0.88},
+		{ID: 1, Tier: "authority", Content: chunk1, Source: "authority/travel_expense.md", Score: 0.92},
+		{ID: 2, Tier: "authority", Content: chunk2, Source: "authority/contract_approval.md", Score: 0.88},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
 	// Two chunks returned but the verdict only cites chunk 1 (the
@@ -211,10 +215,10 @@ func TestChatHandlerSSE(t *testing.T) {
 	// retrieval set — so chunk 2 does NOT appear as a source-document
 	// frame. The assertion below reflects this.
 	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95,
-		[]string{"1"}, chunk1, "权威"))
+		[]string{"1"}, chunk1, "authority"))
 
 	// Loader with the real compliance SKILL.md so findSkill returns the manifest.
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader
@@ -239,7 +243,7 @@ func TestChatHandlerSSE(t *testing.T) {
 	assert.Contains(t, sourceDocIDs, "1",
 		"source-document for chunk_id=1 (the cited chunk) must be on the wire")
 
-	// (b) data-policy with a Verdict carrying the citation + tier="权威".
+	// (b) data-policy with a Verdict carrying the citation + tier="authority".
 	var dataPolicy *verdict.Verdict
 	for _, f := range frames {
 		if f.Type == "data-policy" {
@@ -256,7 +260,7 @@ func TestChatHandlerSSE(t *testing.T) {
 		"Compliance Skill verdict rides in ComplianceStatus, not Status (260817-vsm)")
 	assert.Equal(t, 0.95, dataPolicy.Confidence)
 	require.Len(t, dataPolicy.Citations, 1)
-	assert.Equal(t, "权威", dataPolicy.Citations[0].Tier,
+	assert.Equal(t, "authority", dataPolicy.Citations[0].Tier,
 		"tier must ride in the data-policy Verdict payload (Pattern 2 line 311)")
 
 	// (c) finish-step.
@@ -287,7 +291,7 @@ func TestNoChunksRefusal(t *testing.T) {
 	deps := newTestDeps()
 	deps.Retriever = &stubRetriever{chunks: nil}
 
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader
@@ -312,14 +316,14 @@ func TestNoChunksRefusal(t *testing.T) {
 
 // TestPersonalTierRefusal — SC-4 / SYSK-07 tier bleed guard. Querying
 // for personal contact info against the compliance Skill (whose reads
-// resolve to ["权威"]) must produce a refusal with the retriever's
-// filter containing ONLY 权威 — no 个人 bleed.
+// resolve to ["authority"]) must produce a refusal with the retriever's
+// filter containing ONLY authority — no personal bleed.
 func TestPersonalTierRefusal(t *testing.T) {
 	deps := newTestDeps()
 	stubSrch := &stubRetriever{chunks: nil}
 	deps.Retriever = stubSrch
 
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader
@@ -332,10 +336,10 @@ func TestPersonalTierRefusal(t *testing.T) {
 
 	tiers := stubSrch.LastTiers()
 	require.NotEmpty(t, tiers, "retriever should have been called once")
-	assert.Contains(t, tiers, "权威",
-		"tier list must include 权威 (compliance skill's only read tier)")
-	assert.NotContains(t, tiers, "个人",
-		"tier list MUST NOT include 个人 — SC-4 / SYSK-07 tier bleed guard")
+	assert.Contains(t, tiers, "authority",
+		"tier list must include authority (compliance skill's only read tier)")
+	assert.NotContains(t, tiers, "personal",
+		"tier list MUST NOT include personal — SC-4 / SYSK-07 tier bleed guard")
 
 	refusal := findRefusal(t, frames)
 	assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, refusal.Reason)
@@ -348,12 +352,12 @@ func TestPersonalTierRefusal(t *testing.T) {
 func TestLowScoreRefusal(t *testing.T) {
 	deps := newTestDeps()
 	chunks := []retriever.Hit{
-		{ID: 1, Tier: "权威", Content: "weakly related text", Source: "authority/random.md", Score: 0.15},
-		{ID: 2, Tier: "权威", Content: "more noise", Source: "authority/other.md", Score: 0.20},
+		{ID: 1, Tier: "authority", Content: "weakly related text", Source: "authority/random.md", Score: 0.15},
+		{ID: 2, Tier: "authority", Content: "more noise", Source: "authority/other.md", Score: 0.20},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
 
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader
@@ -391,17 +395,17 @@ func TestLowScoreRefusal(t *testing.T) {
 func TestTemperaturePassthrough(t *testing.T) {
 	deps := newTestDeps()
 	chunks := []retriever.Hit{
-		{ID: 1, Tier: "权威", Content: "出差住宿费超标 200 元以内由部门负责人审批", Source: "authority/travel_expense.md", Score: 0.95},
+		{ID: 1, Tier: "authority", Content: "出差住宿费超标 200 元以内由部门负责人审批", Source: "authority/travel_expense.md", Score: 0.95},
 	}
 	stubSrch := &stubRetriever{chunks: chunks}
 	deps.Retriever = stubSrch
 	stubRun := newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95,
-		[]string{"1"}, "出差住宿费超标 200 元以内由部门负责人审批", "权威"))
+		[]string{"1"}, "出差住宿费超标 200 元以内由部门负责人审批", "authority"))
 	deps.Runner = stubRun
 
 	// Loader points at the real on-disk skills/ directory which holds
 	// skills/compliance/SKILL.md (temperature: 0.0 declared there).
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader
@@ -468,10 +472,10 @@ func TestPipelineInvokesGroundingChecker(t *testing.T) {
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
 	stubRun := newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95,
-		[]string{"1"}, chunkText, "权威"))
+		[]string{"1"}, chunkText, "authority"))
 	deps.Runner = stubRun
 
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader
@@ -514,7 +518,7 @@ func TestRefusalShape(t *testing.T) {
 	t.Run("no_authorized_source", func(t *testing.T) {
 		deps := newTestDeps()
 		deps.Retriever = &stubRetriever{chunks: nil}
-		loader := skill.NewLoader(skillsDirPath())
+		loader := skill.NewLoader(skillsDirPath(), testKBReg())
 		_, err := loader.Scan()
 		require.NoError(t, err)
 		deps.Loader = loader
@@ -532,7 +536,7 @@ func TestRefusalShape(t *testing.T) {
 		deps.Retriever = &stubRetriever{chunks: []retriever.Hit{
 			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.10},
 		}}
-		loader := skill.NewLoader(skillsDirPath())
+		loader := skill.NewLoader(skillsDirPath(), testKBReg())
 		_, err := loader.Scan()
 		require.NoError(t, err)
 		deps.Loader = loader
@@ -669,7 +673,7 @@ temperature: 0.0
 		require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(yaml), 0o644))
 	}
 
-	r, err := skill.New(root, emb)
+	r, err := skill.New(root, emb, testKBReg())
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	require.NoError(t, r.Watch(ctx))
@@ -692,7 +696,7 @@ func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
 		Retriever: &stubRetriever{chunks: []retriever.Hit{
 			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.92},
 		}},
-		Runner:   newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, "x", "权威")),
+		Runner:   newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, "x", "authority")),
 		Router:   skill.NewRouter(emb),
 		Registry: r,
 	}
@@ -750,7 +754,7 @@ func TestChatHandler_EmptyRegistryDoesNotInvokePipeline(t *testing.T) {
 	// Build a registry rooted at an empty temp dir — New() will succeed
 	// (no SKILL.md to seed; the snapshot stays empty).
 	root := t.TempDir()
-	r, err := skill.New(root, emb)
+	r, err := skill.New(root, emb, testKBReg())
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -866,9 +870,9 @@ func TestVerdictStreamCarriesConclusionText(t *testing.T) {
 	deps.Retriever = &stubRetriever{chunks: chunks}
 	// confidence 0.85 < 0.9 → ReviewRequired=true, so the conclusion
 	// sentence must also surface the human-review note.
-	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.DowngradeStatus, 0.85, []string{"1"}, span, "权威"))
+	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.DowngradeStatus, 0.85, []string{"1"}, span, "authority"))
 
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader
@@ -948,7 +952,7 @@ func TestRefusalStreamCarriesTextPart(t *testing.T) {
 	deps := newTestDeps()
 	deps.Retriever = &stubRetriever{chunks: nil}
 
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err)
 	deps.Loader = loader

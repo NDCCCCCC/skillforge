@@ -284,7 +284,7 @@ func TestGraphDeterministicOrder(t *testing.T) {
 
 	for i := 1; i < len(g1.Tiers); i++ {
 		assert.Less(t, g1.Tiers[i-1].Tier, g1.Tiers[i].Tier,
-			"nodes must be ascending by slug (replaces the old TierEnumValues order)")
+			"nodes must be ascending by slug (the registry slug set is the node order)")
 	}
 	for i := range g1.Tiers {
 		assert.Equal(t, g1.Tiers[i].Tier, g2.Tiers[i].Tier)

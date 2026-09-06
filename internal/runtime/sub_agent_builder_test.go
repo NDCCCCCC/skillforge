@@ -43,7 +43,7 @@ func (stubEmbedder) Dimensions() int { return 3 }
 // tests. All methods return nil/empty; no I/O.
 type stubRetriever struct{}
 
-func (stubRetriever) Health(_ context.Context) error  { return nil }
+func (stubRetriever) Health(_ context.Context) error { return nil }
 func (stubRetriever) Search(_ context.Context, _ []float32, _ []string, _ int, _ int64) ([]retriever.Hit, error) {
 	return nil, nil
 }

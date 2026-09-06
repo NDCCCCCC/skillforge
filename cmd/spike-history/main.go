@@ -492,12 +492,30 @@ func buildStore(ctx context.Context) *sqlite.SQLiteStore {
 	return s
 }
 
+// loadSeedKBRegistry builds the read-only registry the skill loader
+// validates reads declarations against. buildRetriever keeps its own
+// 26-03 snapshot for the corpus path; both read the same controlled
+// seed file.
+//
+// PROVISIONAL (26-04): read-only seed snapshot — replaced by the
+// sqlite-backed kb.Open registry in plan 26-09 (skill-loader side).
+func loadSeedKBRegistry() kb.Registry {
+	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/spike-history: kb seed load: %v", err)
+	}
+	if kbSeeds == nil {
+		log.Printf("[WARN] cmd/spike-history: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every tier Skill will fail reads validation)")
+	}
+	return kb.New(kbSeeds)
+}
+
 // firstManifest loads skills/ and returns the first Skill manifest
 // (the compliance Skill in Phase 8/9).
 //
 // Mirrored from cmd/eval/main.go:599-609.
 func firstManifest() *skill.Manifest {
-	loader := skill.NewLoader(defaultSkillsDir)
+	loader := skill.NewLoader(defaultSkillsDir, loadSeedKBRegistry())
 	if _, err := loader.Scan(); err != nil {
 		log.Fatalf("[FAIL] cmd/spike-history: skill scan: %v", err)
 	}

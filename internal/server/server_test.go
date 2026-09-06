@@ -68,7 +68,7 @@ func minimalChatDeps(t *testing.T) *Deps {
 	return &Deps{
 		Agent:     ag,
 		Store:     newTestStore(t),
-		Loader:    skill.NewLoader("skills/"),
+		Loader:    skill.NewLoader("skills/", testKBReg()),
 		Embedder:  newStubEmbedder(),
 		Retriever: &stubRetriever{},
 	}

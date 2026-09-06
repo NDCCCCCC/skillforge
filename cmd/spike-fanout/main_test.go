@@ -24,7 +24,21 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/skillforge/skillforge/internal/kb"
 )
+
+// testKBReg returns the read-only registry the spike tests resolve the
+// reads contract against: the four baseline bases of the controlled seed
+// (knowledge_bases.yaml), all active.
+func testKBReg() kb.Registry {
+	return kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+	})
+}
 
 // ----------------------------------------------------------------------------
 // 13-01 hermetic scenario preservation (the 5 RF-4 scenarios stay the
@@ -129,7 +143,7 @@ func TestLiveFlagParsing(t *testing.T) {
 // the only wall-clock field.
 func TestLiveModeParityWithHermetic(t *testing.T) {
 	ctx := context.Background()
-	parent := makeParent([]string{"权威", "历史"}, "compliance-orchestrator")
+	parent := makeParent([]string{"authority", "historical"}, "compliance-orchestrator")
 
 	run := func() LiveCaseResult {
 		counter := &countingAuditWriter{}
@@ -198,8 +212,8 @@ func TestLiveModeRunsWithoutNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load golden: %v", err)
 	}
-	parent := makeParent([]string{"权威", "历史"}, "compliance-orchestrator")
-	res := runLiveCase(ctx, parent, cm, nil, nil, nil, golden[0])
+	parent := makeParent([]string{"authority", "historical"}, "compliance-orchestrator")
+	res := runLiveCase(ctx, parent, cm, nil, nil, nil, testKBReg(), golden[0])
 	if res.ID != golden[0].ID {
 		t.Fatalf("case id mismatch: %q != %q", res.ID, golden[0].ID)
 	}
@@ -218,7 +232,7 @@ func TestLiveModeRunsWithoutNetwork(t *testing.T) {
 // closed hermetically: the example Skill ships in this repo, so the
 // operator's live command runs without any manual file creation).
 func TestLoadFanoutConfigResolvesExample(t *testing.T) {
-	m, err := loadFanoutConfig("../../examples/skills/compliance-orchestrator/SKILL.md")
+	m, err := loadFanoutConfig("../../examples/skills/compliance-orchestrator/SKILL.md", testKBReg())
 	if err != nil {
 		t.Fatalf("loadFanoutConfig: %v", err)
 	}
@@ -287,7 +301,7 @@ func TestParseMergedVerdictFromEvent(t *testing.T) {
 // unknown-tier sub-skills reject at BuildSubAgent.
 func TestValidateSubSkillTiers(t *testing.T) {
 	ctx := context.Background()
-	parent := makeParent([]string{"权威"}, "compliance-orchestrator")
+	parent := makeParent([]string{"authority"}, "compliance-orchestrator")
 
 	ok := GoldenCase{
 		ID:       "fanout-ok",
@@ -297,7 +311,7 @@ func TestValidateSubSkillTiers(t *testing.T) {
 			{Name: "s2", Reads: []string{"authority/**", "historical/**"}},
 		},
 	}
-	if rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, ok); rejected {
+	if rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, testKBReg(), ok); rejected {
 		t.Errorf("matching-tier sub-skills must NOT reject, got: %s", reason)
 	}
 
@@ -305,17 +319,17 @@ func TestValidateSubSkillTiers(t *testing.T) {
 		name  string
 		reads []string
 	}{
-		{"personal", []string{"personal/**"}},       // 个人 ∩ 权威 = ∅
-		{"draft", []string{"draft/**"}},             // 草稿 ∩ 权威 = ∅
+		{"personal", []string{"personal/**"}},       // personal ∩ authority = ∅
+		{"draft", []string{"draft/**"}},             // draft ∩ authority = ∅
 		{"empty", []string{}},                       // empty Reads
-		{"unknown-tier", []string{"not-a-tier/**"}}, // not in TierEnum
+		{"unknown-tier", []string{"not-a-tier/**"}}, // not a registered knowledge-base slug
 	} {
 		c := GoldenCase{
 			ID:        "fanout-mm-" + tc.name,
 			Scenario:  "tier_mismatch",
 			SubSkills: []GoldenSubSkill{{Name: "s1", Reads: tc.reads}},
 		}
-		rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, c)
+		rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, testKBReg(), c)
 		if !rejected {
 			t.Errorf("tier_mismatch sub-skill %q (reads %v) must reject at load time", tc.name, tc.reads)
 		}
@@ -333,7 +347,7 @@ func TestValidateSubSkillTiers(t *testing.T) {
 			{Name: "same", Reads: []string{"authority/**"}},
 		},
 	}
-	if rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, dup); !rejected || !strings.Contains(reason, "duplicate sub_query id") {
+	if rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, testKBReg(), dup); !rejected || !strings.Contains(reason, "duplicate sub_query id") {
 		t.Errorf("duplicate sub_query id must reject with the Tool-validator reason, got rejected=%v reason=%q", rejected, reason)
 	}
 
@@ -348,7 +362,7 @@ func TestValidateSubSkillTiers(t *testing.T) {
 		ParentReads: []string{},
 		SubSkills:   []GoldenSubSkill{{Name: "s1", Reads: []string{"authority/**"}}},
 	}
-	rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, emptyParent)
+	rejected, reason := validateSubSkillTiers(ctx, parent, &stubChatModel{}, testKBReg(), emptyParent)
 	if !rejected || !strings.Contains(reason, "empty ResolvedTiers()") {
 		t.Errorf("parent-empty-tiers case must reject with the ResolvedTiers reason, got rejected=%v reason=%q", rejected, reason)
 	}

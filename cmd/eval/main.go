@@ -503,7 +503,8 @@ func main() {
 	// fall back to the first manifest for it.
 	kpiMode := *frozen == "kpi"
 	emb := buildEmbedder()
-	r := buildRetriever(ctx, emb)
+	kbReg := loadSeedKBRegistry()
+	r := buildRetriever(ctx, emb, kbReg)
 	manifestName := *frozen
 	if kpiMode {
 		// KPI frozen set is a programmatic-judge mode, not a named Skill —
@@ -520,7 +521,7 @@ func main() {
 		// stem matches no manifest — right contract for a mis-targeted run.
 		manifestName = strings.TrimSuffix(filepath.Base(*goldenPath), filepath.Ext(*goldenPath))
 	}
-	manifest := manifestFor(*skillsDir, manifestName)
+	manifest := manifestFor(*skillsDir, manifestName, kbReg)
 	cm := buildChatModel(ctx) // agent's chat model (GLM_API_KEY)
 	ag := buildAgent(ctx, manifest, emb, r, cm)
 	st := buildStore(ctx)
@@ -535,7 +536,7 @@ func main() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		emb := buildEmbedder()
-		r := buildRetriever(ctx, emb)
+		r := buildRetriever(ctx, emb, kbReg)
 		cm := buildChatModel(ctx)
 		ag := buildAgent(ctx, manifest, emb, r, cm)
 		_ = st
@@ -892,21 +893,12 @@ func buildEmbedder() *bge.BGE {
 }
 
 // buildRetriever mirrors cmd/server's RETRIEVER_BACKEND switch.
-func buildRetriever(ctx context.Context, emb *bge.BGE) retriever.Retriever {
-	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
-	// sqlite-backed kb.Open registry in plan 26-09. CLI paths keep the
-	// audit hooks nil (WARN-only: an unregistered knowledge/ dir is logged
-	// and skipped but writes no audit row — cmd/eval has its own store and
-	// must not pollute the server's audit trail).
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/eval: kb seed load: %v", err)
-	}
-	if kbSeeds == nil {
-		log.Printf("[WARN] cmd/eval: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
-	}
-	kbReg := kb.New(kbSeeds)
-
+func buildRetriever(ctx context.Context, emb *bge.BGE, kbReg kb.Registry) retriever.Retriever {
+	// The registry is built once in main (loadSeedKBRegistry) and shared
+	// with the skill loader. CLI paths keep the audit hooks nil
+	// (WARN-only: an unregistered knowledge/ dir is logged and skipped but
+	// writes no audit row — cmd/eval has its own store and must not
+	// pollute the server's audit trail).
 	backend := strings.ToLower(os.Getenv("RETRIEVER_BACKEND"))
 	if backend == "" {
 		backend = "milvus"
@@ -943,6 +935,22 @@ func buildRetriever(ctx context.Context, emb *bge.BGE) retriever.Retriever {
 		}
 		return mc
 	}
+}
+
+// loadSeedKBRegistry builds the read-only registry shared by the skill
+// loader and the corpus index/seed path.
+//
+// PROVISIONAL (26-03/26-04): read-only seed snapshot — replaced by the
+// sqlite-backed kb.Open registry in plan 26-09.
+func loadSeedKBRegistry() kb.Registry {
+	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/eval: kb seed load: %v", err)
+	}
+	if kbSeeds == nil {
+		log.Printf("[WARN] cmd/eval: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
+	}
+	return kb.New(kbSeeds)
 }
 
 // buildChatModel constructs the agent's chat model via eval.NewGLMChatModel
@@ -999,8 +1007,8 @@ func buildStore(ctx context.Context) store.Store {
 // examples/skills (run with --skills-dir=examples/skills). With no frozen
 // name the first tier-compatible manifest is returned (legacy posture).
 // Aborts on error.
-func manifestFor(skillsDir, name string) *skill.Manifest {
-	loader := skill.NewLoader(skillsDir)
+func manifestFor(skillsDir, name string, kbReg kb.Registry) *skill.Manifest {
+	loader := skill.NewLoader(skillsDir, kbReg)
 	if _, err := loader.Scan(); err != nil {
 		log.Fatalf("[FAIL] cmd/eval: skill scan (%s): %v", skillsDir, err)
 	}

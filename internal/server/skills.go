@@ -178,6 +178,11 @@ func (s *Deps) listSkillsHandler(_ context.Context, c *app.RequestContext) {
 // Status codes:
 //   - 400 + {valid:false,...} when the body is not parseable JSON
 //     (T-2-30 / V5 ASVS — the response never reflects the raw body back).
+//   - 503 + {valid:false, error:"..."} when the request declares tier
+//     reads but Deps.KBRegistry is nil (fail-closed: the reads contract
+//     cannot be checked, so the request is never answered "valid").
+//     Data-channel requests are unaffected — they have no KB semantics
+//     (D16-C1 XOR).
 //   - 200 + {valid:false, error:"..."} when the body parses but fails the
 //     7-field schema (the request itself was well-formed; the validation
 //     result is the payload).
@@ -200,7 +205,19 @@ func (s *Deps) validateSkillHandler(_ context.Context, c *app.RequestContext) {
 		})
 		return
 	}
-	if err := skill.Validate(&m); err != nil {
+	// KBM-04 fail-closed gate: a tier-channel reads declaration is
+	// answered only when the registry that would verify it is wired. A
+	// nil registry with data-channel reads still proceeds — the data
+	// channel never consults the registry (D16-C1 XOR), so degrading it
+	// would break data Skills for no trust gain.
+	if s.KBRegistry == nil && !m.HasDataChannel() {
+		c.JSON(http.StatusServiceUnavailable, validationResponse{
+			Valid: false,
+			Error: "KB registry not wired (server started without a knowledge-base registry)",
+		})
+		return
+	}
+	if err := skill.Validate(&m, s.KBRegistry); err != nil {
 		c.JSON(http.StatusOK, validationResponse{Valid: false, Error: err.Error()})
 		return
 	}

@@ -64,7 +64,7 @@ import (
 // canned verdict after construction.
 func newVerdictPipelineDeps(t *testing.T) *Deps {
 	t.Helper()
-	loader := skill.NewLoader(skillsDirPath())
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
 	_, err := loader.Scan()
 	require.NoError(t, err, "load real skills/compliance/SKILL.md")
 	return &Deps{
