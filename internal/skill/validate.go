@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/skillforge/skillforge/internal/agent/hitl"
+	"github.com/skillforge/skillforge/internal/kb"
 )
 
 // MinProhibitions is the lower bound on guardrails.prohibitions length.
@@ -34,6 +35,12 @@ const MinProhibitions = 3
 // Returns nil on pass; an error whose message names the failing field +
 // the rule (each error is suitable for inclusion in the operator's startup
 // log + the API response from plan 02-04's POST /api/skills).
+//
+// reg is the knowledge-base registry the reads contract resolves against
+// (Phase 26 KBM-04). A tier-channel Skill REQUIRES it: an unknown or
+// deactivated KB fails closed, and a nil registry fails closed too (there
+// is no compiled-in list left to check against). Data-channel Skills have
+// no KB semantics (D16-C1 XOR), so they validate with a nil registry.
 //
 // Order of checks matters: cheap field-presence checks first (so the
 // operator sees the most basic mistake immediately), then domain-level
@@ -48,7 +55,7 @@ const MinProhibitions = 3
 // nil; a present key (even at 0.0) decodes as a non-nil pointer. This is
 // the only correct way to distinguish "author explicitly set 0.0" from
 // "author forgot the field entirely".
-func Validate(m *Manifest) error {
+func Validate(m *Manifest, reg kb.Registry) error {
 	if m == nil {
 		return fmt.Errorf("manifest is nil (SYSK-02: 7-field SKILL.md required)")
 	}
@@ -96,7 +103,7 @@ func Validate(m *Manifest) error {
 	// two supported data-channel constants (v1.0 aggregated_only +
 	// v1.1 external:authorized). This catches typos and future
 	// not-yet-supported modes before they reach ResolveTiers (which
-	// would produce a misleading TierEnum error). The error names BOTH
+	// would produce a misleading unknown-KB error). The error names BOTH
 	// supported modes and echoes the offending value so the Skill
 	// author can self-correct (D16-C2 fail-closed framing).
 	for _, r := range m.Reads {
@@ -136,11 +143,13 @@ func Validate(m *Manifest) error {
 		// resolvedTiers stays empty (nil), which the retriever treats as
 		// default-deny via BuildMilvusFilter.
 	} else {
-		// Tier channel: resolve reads patterns into Milvus tier VARCHAR values.
-		// Every top-level dir must be in TierEnum (SYSK-07 + D2-12). Delegate
-		// to ResolveTiers so there is exactly ONE tier-enum source of truth
-		// in this package.
-		if _, err := ResolveTiers(m.Reads); err != nil {
+		// Tier channel: resolve reads patterns into knowledge-base slugs.
+		// Every top segment must be a registered, active KB (SYSK-07 +
+		// KBM-04) and `role:<r>` wildcards expand through the registry.
+		// Delegate to ResolveTiers so there is exactly ONE reads-resolution
+		// choke point in this package — and so a nil registry fails closed
+		// here rather than passing a Skill the retriever cannot ground.
+		if _, err := ResolveTiers(m.Reads, reg); err != nil {
 			return fmt.Errorf("reads: %w", err)
 		}
 	}
@@ -170,8 +179,8 @@ func Validate(m *Manifest) error {
 	// instead of float32 (Pitfall 4).
 	if m.Temperature == nil {
 		return fmt.Errorf(
-			"temperature is required (SYSK-08 — no implicit default; missing field rejected). "+
-				"Declare an explicit value, e.g. `temperature: 0.0` for compliance/data Skills, "+
+			"temperature is required (SYSK-08 — no implicit default; missing field rejected). " +
+				"Declare an explicit value, e.g. `temperature: 0.0` for compliance/data Skills, " +
 				"`temperature: 0.7+` for creative Skills.",
 		)
 	}

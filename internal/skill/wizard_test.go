@@ -91,11 +91,11 @@ func (m *stubWizardChatModel) CallCount() int {
 // Validate. Wizard.Generate tests use it as the canned LLM response so
 // the resulting Manifest passes the 7-field gate.
 const validWizardManifestJSON = `{
-  "description": "审批流合规审计 Skill，依据权威 tier 制度给出可核验判定",
+  "description": "审批流合规审计 Skill，依据治理 tier 制度给出可核验判定",
   "agent": "ChatModelAgent",
   "reads": ["authority/**"],
   "writes": [],
-  "steps": "1. 检索权威制度条款\n2. 逐条比对并给出判定\n3. 输出结构化 verdict 或 refusal",
+  "steps": "1. 检索治理制度条款\n2. 逐条比对并给出判定\n3. 输出结构化 verdict 或 refusal",
   "guardrails": {
     "prohibitions": [
       "Never cite clauses not retrieved from authority tier",
@@ -112,7 +112,7 @@ const validWizardManifestJSON = `{
 // Tests use it to drive the retry path — first call returns invalid
 // (no temperature), second call returns the valid form.
 const invalidWizardManifestJSON_NoTemperature = `{
-  "description": "审批流合规审计 Skill，依据权威 tier 制度给出可核验判定",
+  "description": "审批流合规审计 Skill，依据治理 tier 制度给出可核验判定",
   "agent": "ChatModelAgent",
   "reads": ["authority/**"],
   "writes": [],
@@ -132,7 +132,7 @@ const invalidWizardManifestJSON_NoTemperature = `{
 // ---------------------------------------------------------------------------
 func TestWizard_Name_Pattern(t *testing.T) {
 	tmp := t.TempDir()
-	w := NewWizard(&stubWizardChatModel{}, tmp)
+	w := NewWizard(&stubWizardChatModel{}, tmp, testKBReg())
 
 	cases := []struct {
 		name      string
@@ -179,19 +179,19 @@ func TestWizard_Name_Pattern(t *testing.T) {
 func TestWizard_Generate_ValidatesOutput(t *testing.T) {
 	w := NewWizard(&stubWizardChatModel{
 		responses: []string{validWizardManifestJSON},
-	}, t.TempDir())
+	}, t.TempDir(), testKBReg())
 
 	m, err := w.Generate(context.Background(), Answers{
 		Purpose:    "审批流合规审计",
 		Reads:      []string{"authority/**"},
 		SkillType:  "compliance",
-		Guardrails: "额外的禁止事项：不要修改权威 tier 内容",
+		Guardrails: "额外的禁止事项：不要修改治理 tier 内容",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, m)
 
 	// The generated Manifest MUST pass Validate (D5-11).
-	require.NoError(t, Validate(m), "the wizard's output must pass the 7-field validator")
+	require.NoError(t, Validate(m, testKBReg()), "the wizard's output must pass the 7-field validator")
 	assert.Contains(t, m.Description, "审批流")
 	assert.Equal(t, "ChatModelAgent", m.Agent)
 	assert.Equal(t, []string{"authority/**"}, m.Reads)
@@ -215,7 +215,7 @@ func TestWizard_Generate_RetriesOnValidationFailure(t *testing.T) {
 	cm := &stubWizardChatModel{
 		responses: []string{invalidWizardManifestJSON_NoTemperature, validWizardManifestJSON},
 	}
-	w := NewWizard(cm, t.TempDir())
+	w := NewWizard(cm, t.TempDir(), testKBReg())
 
 	m, err := w.Generate(context.Background(), Answers{
 		Purpose:   "审批流合规审计",
@@ -239,7 +239,7 @@ func TestWizard_Generate_FailsAfterTwoInvalidAttempts(t *testing.T) {
 	cm := &stubWizardChatModel{
 		responses: []string{invalidWizardManifestJSON_NoTemperature, invalidWizardManifestJSON_NoTemperature},
 	}
-	w := NewWizard(cm, t.TempDir())
+	w := NewWizard(cm, t.TempDir(), testKBReg())
 
 	_, err := w.Generate(context.Background(), Answers{
 		Purpose: "x", Reads: []string{"authority/**"}, SkillType: "compliance",
@@ -260,7 +260,7 @@ func TestWizard_Generate_HandlesMarkdownFence(t *testing.T) {
 	fenced := "```json\n" + validWizardManifestJSON + "\n```"
 	w := NewWizard(&stubWizardChatModel{
 		responses: []string{fenced},
-	}, t.TempDir())
+	}, t.TempDir(), testKBReg())
 
 	m, err := w.Generate(context.Background(), Answers{
 		Purpose: "x", Reads: []string{"authority/**"}, SkillType: "compliance",
@@ -279,7 +279,7 @@ func TestWizard_Generate_HandlesLLMError(t *testing.T) {
 	cm := &stubWizardChatModel{
 		errs: []error{context.DeadlineExceeded},
 	}
-	w := NewWizard(cm, t.TempDir())
+	w := NewWizard(cm, t.TempDir(), testKBReg())
 
 	_, err := w.Generate(context.Background(), Answers{
 		Purpose: "x", Reads: []string{"authority/**"}, SkillType: "compliance",
@@ -298,7 +298,7 @@ func TestWizard_Generate_HandlesLLMError(t *testing.T) {
 // ---------------------------------------------------------------------------
 func TestWizard_Commit_AtomicWrite(t *testing.T) {
 	tmp := t.TempDir()
-	w := NewWizard(&stubWizardChatModel{}, tmp)
+	w := NewWizard(&stubWizardChatModel{}, tmp, testKBReg())
 
 	m := &Manifest{Name: "compliance-audit"}
 	require.NoError(t, json.Unmarshal([]byte(validWizardManifestJSON), m))
@@ -335,7 +335,7 @@ func TestWizard_Commit_AtomicWrite(t *testing.T) {
 // ---------------------------------------------------------------------------
 func TestWizard_Commit_RejectsPathEscape(t *testing.T) {
 	tmp := t.TempDir()
-	w := NewWizard(&stubWizardChatModel{}, tmp)
+	w := NewWizard(&stubWizardChatModel{}, tmp, testKBReg())
 
 	m := &Manifest{Name: "../../etc/passwd"}
 	require.NoError(t, json.Unmarshal([]byte(validWizardManifestJSON), m))
@@ -359,7 +359,7 @@ func TestWizard_Commit_RejectsPathEscape(t *testing.T) {
 // ---------------------------------------------------------------------------
 func TestWizard_Commit_RejectsInvalidManifest(t *testing.T) {
 	tmp := t.TempDir()
-	w := NewWizard(&stubWizardChatModel{}, tmp)
+	w := NewWizard(&stubWizardChatModel{}, tmp, testKBReg())
 
 	// Valid name + invalid manifest (no temperature).
 	m := &Manifest{
@@ -397,7 +397,7 @@ func TestWizard_Commit_RejectsInvalidManifest(t *testing.T) {
 // ---------------------------------------------------------------------------
 func TestWizard_Commit_FsnotifyPathClosesLoop(t *testing.T) {
 	tmp := t.TempDir()
-	w := NewWizard(&stubWizardChatModel{}, tmp)
+	w := NewWizard(&stubWizardChatModel{}, tmp, testKBReg())
 
 	m := &Manifest{Name: "qa-review"}
 	require.NoError(t, json.Unmarshal([]byte(validWizardManifestJSON), m))
@@ -429,7 +429,7 @@ func TestWizard_Commit_FsnotifyPathClosesLoop(t *testing.T) {
 // ---------------------------------------------------------------------------
 func TestWizard_Commit_RefusesExistingSkill(t *testing.T) {
 	tmp := t.TempDir()
-	w := NewWizard(&stubWizardChatModel{}, tmp)
+	w := NewWizard(&stubWizardChatModel{}, tmp, testKBReg())
 
 	m := &Manifest{Name: "compliance-audit"}
 	require.NoError(t, json.Unmarshal([]byte(validWizardManifestJSON), m))
@@ -472,7 +472,7 @@ func TestWizard_Commit_RefusesExistingSkill(t *testing.T) {
 // ---------------------------------------------------------------------------
 func TestWizard_Commit_AllowsOrphanDirectory(t *testing.T) {
 	tmp := t.TempDir()
-	w := NewWizard(&stubWizardChatModel{}, tmp)
+	w := NewWizard(&stubWizardChatModel{}, tmp, testKBReg())
 
 	// Pre-create the Skill directory WITHOUT a SKILL.md (simulates a
 	// previously-failed commit that left an orphan dir).

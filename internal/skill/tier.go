@@ -19,105 +19,40 @@ package skill
 import (
 	"fmt"
 	"strings"
+
+	"github.com/skillforge/skillforge/internal/kb"
 )
 
-// TierEnum maps the ASCII top-level directory name from a Skill's `reads`
-// pattern (e.g., "authority") to the Milvus tier VARCHAR value (e.g.,
-// "权威"). This is the ONLY place those two worlds meet — a typo here
-// silently breaks the trust boundary (the retriever queries a tier that
-// doesn't exist in Milvus, returning zero chunks, which the pipeline
-// correctly treats as `no_authorized_source` refusal — fail-closed by
-// construction).
-//
-// Source of the CN-char values: PROJECT.md D-07 + the spike-era Milvus
-// schema proven in internal/spike/milvus_client.go (now graduated to
-// internal/retriever). The four tiers are the locked set for SkillForge
-// v1 — adding a new tier requires adding both an entry here AND creating
-// the corresponding knowledge/<dir>/ directory.
-var TierEnum = map[string]string{
-	"authority":  "权威",
-	"historical": "历史",
-	"personal":   "个人",
-	"draft":      "草稿",
-}
-
-// TierEnumByValue performs the reverse lookup of TierEnum: given a
-// CN-char tier value (e.g. "权威"), it returns the ASCII dir key
-// ("authority") and ok=true. Empty string and any value outside the 4
-// canonical CN-char tiers return ("", false).
-//
-// Used by internal/knowledge.Index (KNOW-02) to validate that a
-// Document's Tier field is one of the 4 canonical CN-char values; the
-// indexer rejects docs where TierEnumByValue(doc.Tier) returns ok=false.
-// This is the backend-agnostic tier-mandatory enforcement path per
-// CONTEXT.md discretion clause (the Milvus/Mongo schema validators
-// are belt-and-suspenders on top of this — see 03-RESEARCH.md §Pitfall 6).
-func TierEnumByValue(value string) (dir string, ok bool) {
-	if value == "" {
-		return "", false
-	}
-	for k, v := range TierEnum {
-		if v == value {
-			return k, true
-		}
-	}
-	return "", false
-}
-
-// TierEnumValues returns a freshly-allocated slice of the 4 canonical
-// CN-char tier values ("权威", "草稿", "历史", "个人"), ordered by the
-// ASCII dir key (authority, draft, historical, personal) so the output
-// is deterministic across calls and reusable in error messages.
-//
-// The returned slice is freshly allocated on every call; callers may
-// mutate it without affecting the package-level TierEnum map. Used by
-// internal/knowledge.Index (KNOW-02) to enumerate valid tiers in its
-// rejection error message so Skill authors see the canonical set.
-func TierEnumValues() []string {
-	dirs := knownTierDirs() // sorted ASCII dir keys
-	out := make([]string, 0, len(dirs))
-	for _, k := range dirs {
-		out = append(out, TierEnum[k])
-	}
-	return out
-}
-
-// knownTierDirs returns the sorted list of valid ASCII top-level dir names.
-// Used in error messages from ResolveTiers so Skill authors immediately
-// see what they should have written instead of guessing.
-func knownTierDirs() []string {
-	out := make([]string, 0, len(TierEnum))
-	for k := range TierEnum {
-		out = append(out, k)
-	}
-	// sort for stable error messages — map iteration order is randomized
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j-1] > out[j]; j-- {
-			out[j-1], out[j] = out[j], out[j-1]
-		}
-	}
-	return out
-}
-
 // ResolveTiers converts a Skill's reads patterns (e.g., ["authority/**",
-// "authority/policies/**"]) into the unique set of Milvus tier VARCHAR
-// values that the retriever may query (e.g., ["权威"]).
+// "authority/policies/**"]) into the unique set of knowledge-base slugs
+// that the retriever may query (e.g., ["authority"]).
 //
-// Behavior contract:
+// ResolveTiers is a historical function name kept as a compatibility
+// shim — the real source of truth is kb.Registry.ResolveReads (Phase 26,
+// KBM-01: the D17-era compiled-in enumeration is deleted, and the slug
+// set, the semantic roles and the deactivation switches live only in the
+// registry). Keeping the name shrinks the blast radius: every existing
+// caller site keeps its call shape and only gains the registry argument.
+//
+// Behavior contract (unchanged by the delegation except for the value
+// source):
 //   - Empty input → returns nil, no error (the caller MUST then call
 //     Validate separately, which rejects empty reads with default-deny).
 //     ResolveTiers does NOT enforce default-deny — that is Validate's job.
-//   - Unknown top-level dir → returns an error (default-deny: refuse
-//     rather than guess; "unknown/**" silently mapping to nothing would
-//     mask a typo in the Skill author).
-//   - Duplicate tier values from overlapping patterns (authority/** AND
-//     authority/policies/**) are deduplicated so Milvus sees only the
-//     unique set (BuildMilvusFilter still works on duplicates but the
-//     filter expression is cleaner).
+//   - Unknown or deactivated knowledge base → returns an error listing
+//     the active slug set (default-deny: refuse rather than guess;
+//     "unknown/**" silently mapping to nothing would mask a Skill-author
+//     typo).
+//   - Duplicate slugs from overlapping patterns (authority/** AND
+//     authority/policies/**) are deduplicated so the retriever filter
+//     sees only the unique set.
+//   - reg == nil with non-empty reads → error (fail-closed): without the
+//     registry the reads contract cannot be evaluated, and a silent empty
+//     set would be indistinguishable from a deliberate default-deny.
 //
 // ResolveTiers is pure — no I/O, no globals — so it is trivially
-// unit-testable (TestResolveTiers).
-func ResolveTiers(reads []string) ([]string, error) {
+// unit-testable (TestResolveTiersDelegatesToRegistry).
+func ResolveTiers(reads []string, reg kb.Registry) ([]string, error) {
 	if len(reads) == 0 {
 		return nil, nil
 	}
@@ -126,7 +61,8 @@ func ResolveTiers(reads []string) ([]string, error) {
 	// when HasDataChannel() is true, so this branch should never be
 	// hit in normal flow. It prevents future callers from bypassing
 	// Validate and calling ResolveTiers directly, which would produce
-	// a misleading TierEnum error for "data:" prefixed values (D16-C2).
+	// a misleading unknown-KB error for "data:" prefixed values
+	// (D16-C2).
 	for _, r := range reads {
 		if strings.HasPrefix(r, "data:") {
 			return nil, fmt.Errorf(
@@ -135,28 +71,11 @@ func ResolveTiers(reads []string) ([]string, error) {
 			)
 		}
 	}
-	seen := make(map[string]bool, len(TierEnum))
-	out := make([]string, 0, len(reads))
-	for _, r := range reads {
-		// Split on the first "/" — the top-level dir is everything before.
-		// "authority/policies/anti-bribery" → "authority"
-		// "authority" (no slash) → "authority" (single-segment reads are
-		//   valid per SKILL_SCHEMA "tier patterns" examples).
-		top := r
-		if i := strings.Index(r, "/"); i >= 0 {
-			top = r[:i]
-		}
-		tier, ok := TierEnum[top]
-		if !ok {
-			return nil, fmt.Errorf(
-				"reads %q: unknown tier dir %q (known: %v)",
-				r, top, knownTierDirs(),
-			)
-		}
-		if !seen[tier] {
-			seen[tier] = true
-			out = append(out, tier)
-		}
+	if reg == nil {
+		return nil, fmt.Errorf(
+			"reads %v: no knowledge-base registry wired — reads resolve against kb.Registry (KBM-01), so a nil registry fails closed instead of resolving to a silent empty set",
+			reads,
+		)
 	}
-	return out, nil
+	return reg.ResolveReads(reads)
 }

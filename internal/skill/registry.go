@@ -31,6 +31,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kb"
 )
 
 // ReloadDebounce is the quiet-period window during which consecutive
@@ -89,6 +90,7 @@ type Registry struct {
 	skillsDir string                            // as-passed; rootAbs is the canonical absolute form
 	rootAbs   string                            // absolute resolved skills dir (for Lstat root if ever needed)
 	embedder  embedder.Embedder                 // nil allowed; descriptions get nil DescVec
+	kbReg     kb.Registry                       // reads-contract source (KBM-01); may be nil — tier-channel Skills then fail closed at Validate
 	snapshot  atomic.Pointer[map[string]*Entry] // immutable; copy-on-write
 	watcher   *fsnotify.Watcher                 // owned by Registry; created + Add in New, closed in watchLoop exit
 	debounce  struct {
@@ -134,7 +136,13 @@ type Registry struct {
 //
 // The watcher is owned by the Registry and closed when Watch's goroutine
 // exits (i.e., when ctx is cancelled).
-func New(skillsDir string, emb embedder.Embedder) (*Registry, error) {
+// reg is the knowledge-base registry every tier-channel Skill's reads
+// declaration resolves against (Phase 26 KBM-01/04). Boot must wire it
+// BEFORE New — the registry is the baseline a Skill's reads validate
+// against at load time, on both the startup scan and every hot reload.
+// A nil registry is accepted (tests, data-only deployments) but every
+// tier-channel Skill then fails validation.
+func New(skillsDir string, emb embedder.Embedder, reg kb.Registry) (*Registry, error) {
 	root, err := filepath.Abs(skillsDir)
 	if err != nil {
 		return nil, fmt.Errorf("resolve absolute path for %q: %w", skillsDir, err)
@@ -184,6 +192,7 @@ func New(skillsDir string, emb embedder.Embedder) (*Registry, error) {
 		skillsDir: skillsDir,
 		rootAbs:   root,
 		embedder:  emb,
+		kbReg:     reg,
 		watcher:   watcher,
 	}
 	if err := r.startupScan(); err != nil {
@@ -560,7 +569,7 @@ func (r *Registry) reloadOne(path string) {
 		}
 		return
 	}
-	m, tiers, err := parseAndValidate(path)
+	m, tiers, err := parseAndValidate(path, r.kbReg)
 	if err != nil {
 		// Record the failure for the HTTP listing's status:"failed"
 		// overlay (SC-2 polling toast). The snapshot + Entry.Version are
@@ -642,7 +651,7 @@ func (r *Registry) startupScan() error {
 			return nil
 		}
 		name := filepath.Base(filepath.Dir(path))
-		m, tiers, err := parseAndValidate(path)
+		m, tiers, err := parseAndValidate(path, r.kbReg)
 		if err != nil {
 			return err
 		}

@@ -46,6 +46,8 @@ package skill
 import (
 	"errors"
 	"fmt"
+
+	"github.com/skillforge/skillforge/internal/kb"
 )
 
 // ManifestBuilder is the fluent builder seeded with a clone of an
@@ -138,15 +140,23 @@ func (b *ManifestBuilder) WithReads(intersection []string) *ManifestBuilder {
 // Build returns the constructed Manifest after validation. The two
 // fail-closed checks are:
 //  1. len(Reads) == 0 → empty-intersection error (FAN-02 SC-2).
-//  2. Validate(b.base) error → 7-field schema violation.
+//  2. Validate(b.base, reg) error → 7-field schema violation.
+//
+// reg is the knowledge-base registry the sub-manifest's reads contract
+// resolves against (Phase 26 KBM-04). It is a Build argument (not a
+// builder field) so the fluent chain stays per-Run stateless and the
+// orchestrator passes the SAME registry its parent manifest was
+// validated against. A nil registry fails closed for tier-channel
+// sub-skills — a sub-agent must never be constructed against a reads
+// contract nobody could verify.
 //
 // On error, the caller MUST treat the returned Manifest as undefined
 // (the working copy may be in a partially-mutated state).
-func (b *ManifestBuilder) Build() (*Manifest, error) {
+func (b *ManifestBuilder) Build(reg kb.Registry) (*Manifest, error) {
 	if len(b.base.Reads) == 0 {
 		return nil, errors.New("skill.ManifestBuilder: empty Reads (FAN-02 tier inheritance requires non-empty intersection)")
 	}
-	if err := Validate(b.base); err != nil {
+	if err := Validate(b.base, reg); err != nil {
 		return nil, fmt.Errorf("skill.ManifestBuilder: Validate: %w", err)
 	}
 	return b.base, nil

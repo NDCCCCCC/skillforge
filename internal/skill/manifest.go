@@ -16,24 +16,25 @@
 
 // Package skill implements the Skill-as-platform substrate for SkillForge:
 // the 7-field SKILL.md manifest, the loader that scans skills/*/SKILL.md on
-// startup, and the tier-name → Milvus tier-VARCHAR mapper that the retriever
-// consumes.
+// startup, and the reads-pattern → knowledge-base-slug resolution that the
+// retriever consumes.
 //
 // Scope of this package (Phase 2 plan 02-02):
 //   - Manifest + Guardrails structs (the 7-field validation contract).
-//   - Validate(*Manifest) enforcing SYSK-02 + SYSK-08.
-//   - TierEnum + ResolveTiers (dir-name → CN-char tier resolution; the only
-//     place the ASCII reads-pattern world meets the CN-char Milvus world).
+//   - Validate(*Manifest, kb.Registry) enforcing SYSK-02 + SYSK-08.
+//   - ResolveTiers (reads patterns → active KB slug set; a thin delegate
+//     of kb.Registry.ResolveReads since Phase 26 / KBM-01 — the slug set,
+//     the semantic roles and the deactivation switches live only in the
+//     knowledge-base registry, never in this package).
 //   - Loader.Scan (file-driven registration) + parseFrontmatter.
 //
 // Package ownership inversion (Wave-1 parallel-safety, per 02-02 plan):
-// TierEnum and ResolveTiers live HERE, not in internal/retriever, even
-// though the retriever ultimately consumes the resolved tier values.
-// Rationale: keep internal/skill → internal/retriever import direction
-// forbidden so plan 02-01 and plan 02-02 can run in parallel without
-// file conflicts. The retriever takes pre-resolved tier values
-// ([]string of CN-char VARCHARs) — it never needs to know the ASCII dir
-// names.
+// ResolveTiers lives HERE, not in internal/retriever, even though the
+// retriever ultimately consumes the resolved slug set. Rationale: keep the
+// internal/skill → internal/retriever import direction forbidden so plan
+// 02-01 and plan 02-02 could run in parallel without file conflicts. The
+// retriever takes pre-resolved slug values ([]string) — it never needs to
+// know how the reads patterns were spelled.
 package skill
 
 import "strings"
@@ -49,8 +50,10 @@ import "strings"
 // "absent" so Validate can reject it (SYSK-08 — no implicit default).
 //
 // The resolvedTiers field is NOT yaml-decoded. The Loader populates it
-// post-Validate by calling ResolveTiers(m.Reads), so the pipeline in
-// plan 02-03 doesn't have to re-resolve on every request.
+// post-Validate by calling ResolveTiers(m.Reads, reg) against the
+// knowledge-base registry (Phase 26 KBM-01: the values are active KB
+// slugs — draft-role bases are dropped by ResolveReads), so the pipeline
+// in plan 02-03 doesn't have to re-resolve on every request.
 //
 // DescriptionVec is the in-memory cached vector of `Description`, populated
 // by Registry.reloadOne via the embedded embedder (Phase 5 D5-01 + D5-06
@@ -84,7 +87,7 @@ type Manifest struct {
 	// so the on-disk path can be constructed; production loaders leave
 	// it empty and rely on the directory layout.
 	Name          string   `yaml:"-" json:"-"`
-	resolvedTiers []string // not serialized — populated by Loader after Validate
+	resolvedTiers []string // not serialized — populated by Loader after Validate; active registry slug set (draft-role bases dropped by ResolveReads)
 }
 
 // SetDescriptionVec injects the cached embedding vector for `Description`.
@@ -105,11 +108,11 @@ type Guardrails struct {
 	TierLimits             map[string][]string `yaml:"tier_limits"              json:"tier_limits"`
 }
 
-// ResolvedTiers returns the unique set of Milvus tier VARCHAR values that
-// this Skill may query (e.g., ["权威"] for a Skill with reads:[authority/**]).
-// The Loader populates this once after Validate; downstream consumers
-// (plan 02-03's pipeline, plan 02-04's GET /api/skills handler) read it
-// instead of re-resolving on every request.
+// ResolvedTiers returns the unique set of active knowledge-base slugs
+// that this Skill may query (e.g., ["authority"] for a Skill with
+// reads:[authority/**]). The Loader populates this once after Validate;
+// downstream consumers (plan 02-03's pipeline, plan 02-04's GET /api/skills
+// handler) read it instead of re-resolving on every request.
 //
 // Safe to call before Loader.Scan: returns nil (which the retriever treats as
 // default-deny via BuildMilvusFilter).
@@ -124,7 +127,8 @@ func (m *Manifest) ResolvedTiers() []string {
 // cost of writing a SKILL.md to a temp dir + invoking Loader.Scan.
 //
 // Production code paths MUST continue to populate resolvedTiers via the
-// Loader (Loader.Scan → Validate → ResolveTiers → assignment). This method
+// Loader (Loader.Scan → Validate → ResolveTiers(reads, kbReg) →
+// assignment). This method
 // has the `ForTest` suffix to flag any non-test caller in review.
 //
 // Calling with nil clears the cache; downstream consumers treat nil as
@@ -175,9 +179,9 @@ const ReadDataExternalAuthorized = "data:external:authorized"
 type ChannelKind int
 
 const (
-	// ChannelKindTier is the default channel: reads resolve to Milvus tier
-	// VARCHAR values via ResolveTiers. The retrieve Tool is attached at
-	// runtime (D16-C3).
+	// ChannelKindTier is the default channel: reads resolve to active
+	// knowledge-base slugs via ResolveTiers (the kb.Registry delegate).
+	// The retrieve Tool is attached at runtime (D16-C3).
 	ChannelKindTier ChannelKind = iota
 	// ChannelKindData is the data channel: reads contain one of the two
 	// data-channel constants (ReadDataAggregatedOnly or

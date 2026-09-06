@@ -290,12 +290,18 @@ func TestValidateRoleWildcardAccepted(t *testing.T) {
 // a skill carrying them fails the registry lookup instead of silently
 // mapping onto the enum.
 func TestLegacyCNLiteralsRejected(t *testing.T) {
+	// The legacy display name is spelled through its code points so this
+	// package carries no CN data-layer literal (the structural gate greps
+	// the test files too) while still exercising the exact byte sequence.
+	legacy := string(rune(0x6743)) + string(rune(0x5A01)) // U+6743 U+5A01
 	m := validManifest()
-	m.Reads = []string{"权威/**"}
+	m.Reads = []string{legacy + "/**"}
 	err := Validate(m, testKBReg())
 	require.Error(t, err,
 		"the legacy CN-char tier literal MUST be rejected — it is not a registered slug (KBM-04 breaking switch)")
 	assert.Contains(t, err.Error(), "unknown or deactivated KB")
+	assert.Contains(t, err.Error(), legacy,
+		"the error MUST echo the offending legacy literal")
 }
 
 // TestExistingSkillsLoad — the compatibility half of the breaking

@@ -87,7 +87,7 @@ func TestRegistry_New_SeedsSnapshot(t *testing.T) {
 	writeRegistrySkill(t, filepath.Join(tmp, "qa"))
 
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
@@ -100,7 +100,7 @@ func TestRegistry_New_SeedsSnapshot(t *testing.T) {
 	require.NotNil(t, entry)
 	assert.NotNil(t, entry.Manifest)
 	assert.Equal(t, "ChatModelAgent", entry.Manifest.Agent)
-	assert.Equal(t, []string{"权威"}, entry.Manifest.ResolvedTiers())
+	assert.Equal(t, []string{"authority"}, entry.Manifest.ResolvedTiers())
 	require.Len(t, entry.DescVec, 4, "DescriptionVec must be populated by the startup embed")
 	assert.Greater(t, entry.Version, int64(0))
 }
@@ -115,7 +115,7 @@ func TestRegistry_Snapshot_Atomic(t *testing.T) {
 	writeRegistrySkill(t, filepath.Join(tmp, "compliance"))
 
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 
 	// Capture once and store it locally — readers MUST treat this as
@@ -182,7 +182,7 @@ func TestRegistry_Reload_Debounce(t *testing.T) {
 	writeRegistrySkill(t, skillDir)
 
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -236,7 +236,7 @@ func TestRegistry_Reload_ValidationFailure_KeepsOld(t *testing.T) {
 	writeRegistrySkill(t, skillDir)
 
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 
 	// Capture the good version's manifest description.
@@ -289,7 +289,7 @@ func TestRegistry_Reload_SymlinkEscape_Rejected(t *testing.T) {
 	writeRegistrySkill(t, skillDir)
 
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 
 	// Capture the good state.
@@ -347,7 +347,7 @@ func TestRegistry_Snapshot_ParallelReaders(t *testing.T) {
 	writeRegistrySkill(t, filepath.Join(tmp, "qa"))
 
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 
 	const N = 64
@@ -397,7 +397,7 @@ func TestRegistry_FailedMap_SurfacesValidationError(t *testing.T) {
 	skillDir := filepath.Join(tmp, "compliance")
 	writeRegistrySkill(t, skillDir)
 
-	r, err := New(tmp, &stubEmbedder{dim: 4})
+	r, err := New(tmp, &stubEmbedder{dim: 4}, testKBReg())
 	require.NoError(t, err)
 	assert.Empty(t, r.Failed(), "no failures at startup")
 
@@ -427,7 +427,7 @@ func TestRegistry_FailedMap_SurfacesValidationError(t *testing.T) {
 func mustWatchRegistry(t *testing.T, tmp string) *Registry {
 	t.Helper()
 	emb := &stubEmbedder{dim: 4}
-	r, err := New(tmp, emb)
+	r, err := New(tmp, emb, testKBReg())
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -597,7 +597,7 @@ func TestRegistry_Reconcile_MissingFile_RemovesDeterministic(t *testing.T) {
 	qaPath := writeRegistrySkill(t, filepath.Join(tmp, "qa"))
 	orphanPath := writeRegistrySkill(t, filepath.Join(tmp, "orphan"))
 
-	r, err := New(tmp, &stubEmbedder{dim: 4})
+	r, err := New(tmp, &stubEmbedder{dim: 4}, testKBReg())
 	require.NoError(t, err)
 	require.Len(t, r.Snapshot(), 3)
 

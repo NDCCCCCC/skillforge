@@ -60,7 +60,7 @@ import (
 // ./internal/skill` runs with the package directory as cwd, so the
 // relative path works in any clone without env vars.
 func TestExamplesValidate(t *testing.T) {
-	loader := NewLoader("../../examples/skills")
+	loader := NewLoader("../../examples/skills", testKBReg())
 	manifests, err := loader.Scan()
 	require.NoError(t,
 		err,

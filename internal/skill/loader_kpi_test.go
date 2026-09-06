@@ -31,7 +31,7 @@ import (
 
 func TestKPISkillStepsRoutingTable(t *testing.T) {
 	// Load kpi-dashboard SKILL.md
-	sl := NewLoader("../../examples/skills")
+	sl := NewLoader("../../examples/skills", testKBReg())
 	_, err := sl.Scan()
 	require.NoError(t, err)
 
@@ -118,7 +118,7 @@ func TestValidateAgainstKPI(t *testing.T) {
 	require.Contains(t, reg.Names(), "KPI_LOAN_BALANCE", "corpus must carry the routing-table names")
 
 	// Load examples/skills (includes kpi-dashboard with data channel).
-	sl := NewLoader("../../examples/skills")
+	sl := NewLoader("../../examples/skills", testKBReg())
 	_, err = sl.Scan()
 	require.NoError(t, err)
 
@@ -143,7 +143,7 @@ func TestValidateAgainstKPI(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(tierSkill), 0o755))
 	require.NoError(t, os.WriteFile(tierSkill, []byte(
 		"---\ndescription: tier-only skill\nagent: ChatModelAgent\nreads:\n  - authority/**\nwrites: []\nsteps: |\n  1. answer\nguardrails:\n  prohibitions:\n    - \"Never fabricate citations\"\n    - \"Never answer without retrieved grounding\"\n    - \"Never leak other-tier content\"\ntemperature: 0.0\n---\n"), 0o644))
-	tierLoader := NewLoader(tierDir)
+	tierLoader := NewLoader(tierDir, testKBReg())
 	_, err = tierLoader.Scan()
 	require.NoError(t, err)
 	require.NoError(t, tierLoader.ValidateAgainstKPI(emptyReg),

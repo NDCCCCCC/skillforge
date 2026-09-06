@@ -97,7 +97,7 @@ func TestLoader_ScanCompliance_HappyPath(t *testing.T) {
 	skillDir := filepath.Join(tmp, "compliance")
 	writeSkillFile(t, skillDir, nil)
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	skills, err := l.Scan()
 	require.NoError(t, err)
 	require.Len(t, skills, 1, "exactly one Skill expected")
@@ -109,8 +109,8 @@ func TestLoader_ScanCompliance_HappyPath(t *testing.T) {
 	require.NotNil(t, m.Temperature, "pointer MUST be non-nil after Scan")
 	assert.Equal(t, float32(0.0), *m.Temperature)
 	// Resolved tiers pre-computed.
-	assert.Equal(t, []string{"权威"}, m.ResolvedTiers(),
-		"compliance Skill reads=[authority/**] must resolve to ['权威'] (CMPL-04)")
+	assert.Equal(t, []string{"authority"}, m.ResolvedTiers(),
+		"compliance Skill reads=[authority/**] must resolve to ['authority'] (CMPL-04)")
 }
 
 func TestLoader_ScanIgnoresNonSkillMD(t *testing.T) {
@@ -123,7 +123,7 @@ func TestLoader_ScanIgnoresNonSkillMD(t *testing.T) {
 		filepath.Join(tmp, "notes.md"), []byte("free text\n"), 0o644))
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "subdir"), 0o755))
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	skills, err := l.Scan()
 	require.NoError(t, err)
 	assert.Empty(t, skills, "no SKILL.md → empty slice, no error")
@@ -149,7 +149,7 @@ guardrails:
 `
 	writeCustomSkill(t, skillDir, fm)
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	_, err := l.Scan()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "temperature")
@@ -162,7 +162,7 @@ func TestLoader_ScanFindsMultipleSkills(t *testing.T) {
 	writeSkillFile(t, filepath.Join(tmp, "compliance"), nil)
 	writeSkillFile(t, filepath.Join(tmp, "qa"), nil)
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	skills, err := l.Scan()
 	require.NoError(t, err)
 	assert.Len(t, skills, 2)
@@ -187,7 +187,7 @@ func TestLoader_ScanStampsManifestNameFromParentDir(t *testing.T) {
 	writeSkillFile(t, filepath.Join(tmp, "compliance"), nil)
 	writeSkillFile(t, filepath.Join(tmp, "qa"), nil)
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	skills, err := l.Scan()
 	require.NoError(t, err)
 	require.Len(t, skills, 2)
@@ -212,7 +212,7 @@ func TestLoader_ScanAndSkillsConcurrentNoRace(t *testing.T) {
 	tmp := t.TempDir()
 	writeSkillFile(t, filepath.Join(tmp, "compliance"), nil)
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	if _, err := l.Scan(); err != nil {
 		t.Fatalf("prime scan: %v", err)
 	}
@@ -271,7 +271,7 @@ func TestLoader_ScanRejectsSymlinkEscape(t *testing.T) {
 	// Symlink: <tmp>/evil/SKILL.md -> <outside>/SKILL.md (escape!)
 	require.NoError(t, os.Symlink(outsideSkill, filepath.Join(evilDir, "SKILL.md")))
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	_, err := l.Scan()
 	require.Error(t, err, "symlink escape must be rejected")
 	assert.True(t,
@@ -289,7 +289,7 @@ func TestLoader_ParseComplianceCanonicalSkill(t *testing.T) {
 	require.NoError(t, err)
 
 	skillsDir := filepath.Join(repoRoot, "examples", "skills")
-	l := NewLoader(skillsDir)
+	l := NewLoader(skillsDir, testKBReg())
 	skills, err := l.Scan()
 	require.NoError(t, err)
 	require.NotEmpty(t, skills, "the canonical compliance Skill MUST exist (CMPL-01)")
@@ -307,8 +307,8 @@ func TestLoader_ParseComplianceCanonicalSkill(t *testing.T) {
 	require.NotNil(t, found.Temperature)
 	assert.Equal(t, float32(0.0), *found.Temperature,
 		"compliance Skill temperature MUST be 0.0 (deterministic for compliance/data Skills)")
-	assert.Equal(t, []string{"权威"}, found.ResolvedTiers(),
-		"compliance Skill ResolvedTiers MUST be ['权威'] (CMPL-04)")
+	assert.Equal(t, []string{"authority"}, found.ResolvedTiers(),
+		"compliance Skill ResolvedTiers MUST be ['authority'] (CMPL-04)")
 }
 
 func TestLoader_ScanRejectsFrontmatterWithoutOpeningMarker(t *testing.T) {
@@ -322,7 +322,7 @@ func TestLoader_ScanRejectsFrontmatterWithoutOpeningMarker(t *testing.T) {
 		[]byte("# This file has no frontmatter at all\n"),
 		0o644))
 
-	l := NewLoader(tmp)
+	l := NewLoader(tmp, testKBReg())
 	_, err := l.Scan()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no YAML frontmatter")
@@ -335,7 +335,7 @@ func TestLoader_ScanReturnsEmptyForMissingDir(t *testing.T) {
 	tmp := t.TempDir()
 	missing := filepath.Join(tmp, "does-not-exist")
 
-	l := NewLoader(missing)
+	l := NewLoader(missing, testKBReg())
 	_, err := l.Scan()
 	require.Error(t, err)
 	assert.True(t,
@@ -403,11 +403,11 @@ func TestValidateUnknownWriteTarget(t *testing.T) {
 		Guardrails: Guardrails{
 			Prohibitions:           []string{"a", "b", "c"},
 			RequiredRefusalPhrases: []string{"no_auth"},
-			TierLimits:             map[string][]string{"权威": {"read-only"}},
+			TierLimits:             map[string][]string{"authority": {"read-only"}},
 		},
 		Temperature: ptrFloat32(0.0),
 	}
-	err := Validate(m)
+	err := Validate(m, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown target "external_api"`)
 	// Error message must point the Skill author at the source of
@@ -432,11 +432,11 @@ func TestValidateAcceptsKnownTargets(t *testing.T) {
 		Guardrails: Guardrails{
 			Prohibitions:           []string{"a", "b", "c"},
 			RequiredRefusalPhrases: []string{"no_auth"},
-			TierLimits:             map[string][]string{"权威": {"read-only"}},
+			TierLimits:             map[string][]string{"authority": {"read-only"}},
 		},
 		Temperature: ptrFloat32(0.0),
 	}
-	require.NoError(t, Validate(m),
+	require.NoError(t, Validate(m, testKBReg()),
 		"every target in AllowedWriteTargets must validate cleanly")
 }
 

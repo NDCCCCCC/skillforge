@@ -64,8 +64,9 @@ const AmbiguityMargin = 0.08
 // internal/retriever/mongo/rank.go; promoted to a leaf package in
 // Plan 05-02 so this Router (in internal/skill) can reuse it
 // without a cycle through mongo/seed.go (which imports internal/skill
-// for TierEnum). Future contributors must NOT hand-roll a second
-// cosine — the existing implementation is bit-exact and unit-tested.
+// for the reads resolution). Future contributors must NOT hand-roll a
+// second cosine — the existing implementation is bit-exact and
+// unit-tested.
 type Router struct {
 	embedder embedder.Embedder
 }

@@ -17,7 +17,7 @@
 // Package skill test — Phase 26 / Plan 26-04 Task 1 (TDD).
 //
 // ResolveTiers is now a thin delegate over kb.Registry.ResolveReads
-// (KBM-01): the compiled-in TierEnum enumeration is deleted, so the
+// (KBM-01): the compiled-in four-value enumeration is deleted, so the
 // reads contract is validated against the live knowledge-base registry
 // instead of a 4-value map. These tests pin the delegation contract and
 // the two semantics that are part of the Skill-author experience:

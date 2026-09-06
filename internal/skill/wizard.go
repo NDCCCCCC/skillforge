@@ -28,6 +28,8 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
+	"github.com/skillforge/skillforge/internal/kb"
 )
 
 // Answers is the input shape for the wizard interview (D5-10). It
@@ -61,6 +63,7 @@ type Answers struct {
 type Wizard struct {
 	cm        model.ToolCallingChatModel
 	skillsDir string
+	kbReg     kb.Registry // reads-contract source (KBM-01); may be nil — tier-channel previews then fail closed at Validate
 }
 
 // NewWizard constructs a Wizard. cm is REQUIRED (Wizard.Generate would
@@ -73,8 +76,12 @@ type Wizard struct {
 // the same package — Registry.New takes a different argument shape
 // (skillsDir + embedder) and a different return shape (*Registry,
 // error). Mirrors NewRouter's naming convention.
-func NewWizard(cm model.ToolCallingChatModel, skillsDir string) *Wizard {
-	return &Wizard{cm: cm, skillsDir: skillsDir}
+// reg is the knowledge-base registry the generated manifest's reads
+// declaration is validated against (Phase 26 KBM-04) on both the Generate
+// retry loop and the Commit re-validation. A nil registry is accepted but
+// every tier-channel manifest then fails validation (fail-closed).
+func NewWizard(cm model.ToolCallingChatModel, skillsDir string, reg kb.Registry) *Wizard {
+	return &Wizard{cm: cm, skillsDir: skillsDir, kbReg: reg}
 }
 
 // wizardSystemPrompt instructs the LLM to emit a 7-field Manifest as
@@ -136,7 +143,7 @@ func (w *Wizard) Generate(ctx context.Context, ans Answers) (*Manifest, error) {
 		return nil, err
 	}
 
-	if verr := Validate(m); verr != nil {
+	if verr := Validate(m, w.kbReg); verr != nil {
 		// One retry with the validator's error in the prompt (T-5-18).
 		retryPrompt := buildWizardUserPrompt(ans, verr)
 		retryMsgs := []*schema.Message{
@@ -155,7 +162,7 @@ func (w *Wizard) Generate(ctx context.Context, ans Answers) (*Manifest, error) {
 		if perr != nil {
 			return nil, perr
 		}
-		if verr2 := Validate(m2); verr2 != nil {
+		if verr2 := Validate(m2, w.kbReg); verr2 != nil {
 			return nil, fmt.Errorf("wizard: validation failed twice (first: %v; second: %v)", verr, verr2)
 		}
 		return m2, nil
@@ -308,7 +315,7 @@ func (w *Wizard) Commit(ctx context.Context, m *Manifest) (string, error) {
 	}
 
 	// Third gate — Validate must pass before any disk write.
-	if err := Validate(m); err != nil {
+	if err := Validate(m, w.kbReg); err != nil {
 		return "", fmt.Errorf("wizard: Commit: validation failed: %w", err)
 	}
 

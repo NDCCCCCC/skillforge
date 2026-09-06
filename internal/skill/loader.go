@@ -27,6 +27,7 @@ import (
 	"sync"
 
 	"github.com/robfig/cron/v3"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"gopkg.in/yaml.v3"
 )
@@ -53,6 +54,7 @@ import (
 // directory at startup; Watch lives on Registry (a separate type).
 type Loader struct {
 	skillsDir string       // absolute path; rejected-against root for symlinks
+	kbReg     kb.Registry  // reads-contract source (KBM-01); may be nil — tier-channel Skills then fail closed at Validate
 	cached    []*Manifest  // populated by Scan; guarded by mu
 	mu        sync.RWMutex // guards cached: Scan (wizard-commit rescan, request goroutine) writes; Skills (GET /api/skills, request goroutine) reads. Required since the UAT Test 9 fix made Scan reachable post-startup.
 }
@@ -62,8 +64,15 @@ type Loader struct {
 // point at a temp dir). The path is stored as given; relative paths are
 // resolved to absolute by Scan (so callers can pass "./skills" from the
 // project root).
-func NewLoader(skillsDir string) *Loader {
-	return &Loader{skillsDir: skillsDir}
+//
+// reg is the knowledge-base registry every tier-channel Skill's reads
+// declaration resolves against (Phase 26 KBM-01/04). Boot must wire the
+// registry BEFORE Scan — the registry seed is the controlled baseline a
+// Skill's reads are validated against at load time. A nil registry is
+// accepted (tests, data-only deployments) but every tier-channel Skill
+// then fails validation.
+func NewLoader(skillsDir string, reg kb.Registry) *Loader {
+	return &Loader{skillsDir: skillsDir, kbReg: reg}
 }
 
 // Skills returns the most recently scanned slice of validated manifests.
@@ -129,7 +138,7 @@ func (l *Loader) Scan() ([]*Manifest, error) {
 			return nil
 		}
 
-		m, tiers, err := parseAndValidate(path)
+		m, tiers, err := parseAndValidate(path, l.kbReg)
 		if err != nil {
 			return err
 		}
@@ -317,7 +326,7 @@ type routeEntry struct {
 // helper does not need to defend against that case.
 //
 // On any error the returned Manifest is nil — callers MUST NOT use it.
-func parseAndValidate(path string) (*Manifest, []string, error) {
+func parseAndValidate(path string, kbReg kb.Registry) (*Manifest, []string, error) {
 	// V12 ASVS — symlink guard runs on EVERY parse (not just startup).
 	// An editor / wizard save+rename cycle can atomically replace a real
 	// SKILL.md with a symlink. Re-running this guard on each reload is
@@ -356,7 +365,7 @@ func parseAndValidate(path string) (*Manifest, []string, error) {
 	if err := yaml.Unmarshal(front, &m); err != nil {
 		return nil, nil, fmt.Errorf("unmarshal YAML in %s: %w", path, err)
 	}
-	if err := Validate(&m); err != nil {
+	if err := Validate(&m, kbReg); err != nil {
 		return nil, nil, fmt.Errorf("validate %s: %w", path, err)
 	}
 	if err := ValidateReportSchedule(m.ReportSchedule); err != nil {
@@ -368,7 +377,7 @@ func parseAndValidate(path string) (*Manifest, []string, error) {
 	var tiers []string
 	if !m.HasDataChannel() {
 		var err error
-		tiers, err = ResolveTiers(m.Reads)
+		tiers, err = ResolveTiers(m.Reads, kbReg)
 		if err != nil {
 			// Validate already rejected unknown dirs, so this is
 			// belt-and-braces; treat as fatal anyway.
