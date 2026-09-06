@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/wire"
 )
@@ -228,24 +229,75 @@ func TestCounterEvidence_RetrieverErrorIsNonFatal(t *testing.T) {
 	assert.False(t, ok, "retriever error → no counter_evidence chunk on the wire (verdict stands)")
 }
 
-// TestCounterEvidence_PassesHistoryTierOnly — the search call inside
-// emitCounterEvidence must request ONLY the 历史 tier (D5-13). A leak
-// to 权威 or 个人 here would route grounded material into the
-// annotation channel and break the moat. We assert via stubRetriever's
-// capturedTiers slot.
-func TestCounterEvidence_PassesHistoryTierOnly(t *testing.T) {
+// TestCounterEvidenceUsesRegistryRoles — the search call inside
+// emitCounterEvidence must request EXACTLY the registry's historical-role
+// slug set (KBM-01: the registry is the single source of the KB set; a
+// hardcoded tier list here would silently drift from it). A leak to any
+// other role would route grounded material into the annotation channel and
+// break the moat. We assert via stubRetriever's capturedTiers slot against
+// the SAME registry the deps carry — no literal anywhere in the assertion.
+func TestCounterEvidenceUsesRegistryRoles(t *testing.T) {
 	sr := &stubRetriever{chunks: []retriever.Hit{
-		{ID: 301, Tier: "历史", Content: "old", Source: "history/x.md", Score: 0.7},
+		{ID: 301, Tier: "historical", Content: "old", Source: "history/x.md", Score: 0.7},
 	}}
 	deps := newTestDeps()
+	deps.KBRegistry = kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+	})
 	deps.Retriever = sr
 
 	_ = runAnnotatePass(t, deps, []float32{1.0}, 1_800_000_000)
 
 	lastTiers := sr.LastTiers()
 	require.NotEmpty(t, lastTiers, "Search must have been called")
-	assert.Equal(t, []string{"历史"}, lastTiers,
-		"D5-13: counter-evidence pass must query ONLY the 历史 tier")
+	assert.Equal(t, deps.KBRegistry.SlugsByRole(kb.RoleHistorical), lastTiers,
+		"D5-13: the counter-evidence set is the registry's historical-role set (never a literal)")
+	assert.Equal(t, []string{"historical"}, lastTiers,
+		"only the historical-role base is queried — authority/draft never enter the annotation channel")
+}
+
+// TestCounterEvidenceEmptyRoleZeroHit — a registry with NO active
+// historical-role base yields the EMPTY retrieval set, which is the
+// constructive zero-hit state (D-09: the retriever's empty-set default
+// deny refuses at the storage layer). The pass still runs, still searches,
+// and still emits the empty-state annotation chunk.
+func TestCounterEvidenceEmptyRoleZeroHit(t *testing.T) {
+	sr := &stubRetriever{chunks: nil}
+	deps := newTestDeps()
+	deps.KBRegistry = kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	deps.Retriever = sr
+
+	frames := runAnnotatePass(t, deps, []float32{1.0}, 1_800_000_000)
+
+	assert.Equal(t, 1, sr.CallCount(), "the search still runs on an empty role set (always build the filter)")
+	assert.Empty(t, sr.LastTiers(), "the historical-role set is empty — nothing else may be queried")
+
+	payload, _, ok := findCounterEvidenceFrame(frames)
+	require.True(t, ok, "the empty-state annotation chunk is still emitted")
+	assert.Empty(t, payload.ConflictChunks)
+}
+
+// TestCounterEvidenceNilRegistryNonFatal — a nil registry is a wiring bug,
+// not an empty result: the pass returns the error for the caller's
+// log-and-continue branch and emits NO annotation chunk (the verdict
+// stands, exactly like a retriever outage).
+func TestCounterEvidenceNilRegistryNonFatal(t *testing.T) {
+	sr := &stubRetriever{chunks: []retriever.Hit{
+		{ID: 302, Tier: "historical", Content: "old", Source: "history/x.md", Score: 0.7},
+	}}
+	deps := newTestDeps()
+	deps.KBRegistry = nil
+	deps.Retriever = sr
+
+	frames := runAnnotatePass(t, deps, []float32{1.0}, 1_800_000_000)
+
+	assert.Equal(t, 0, sr.CallCount(), "no registry → no search is even attempted")
+	_, _, ok := findCounterEvidenceFrame(frames)
+	assert.False(t, ok, "a nil registry emits no counter_evidence chunk (non-fatal, caller logs)")
 }
 
 // snapshotGroundingMap clones a map[string]string for before/after
