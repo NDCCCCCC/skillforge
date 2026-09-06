@@ -35,10 +35,10 @@ func TestValidateSlugAccepts(t *testing.T) {
 func TestValidateSlugRejects(t *testing.T) {
 	rejects := []string{
 		"",
-		"Authority", // uppercase
-		"1abc",      // digit-leading
-		"a_b",       // underscore
-		"a b",       // whitespace
+		"Authority",                       // uppercase
+		"1abc",                            // digit-leading
+		"a_b",                             // underscore
+		"a b",                             // whitespace
 		strings.Repeat("a", MaxSlugLen+1), // over the bound
 		"./escape",
 		"../cmd", // traversal attempt

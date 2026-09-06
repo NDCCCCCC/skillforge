@@ -260,6 +260,18 @@ func (s *snapshot) ResolveReads(reads []string) ([]string, error) {
 // owns its own deadlines and wraps what it needs.
 func storeContext() context.Context { return context.Background() }
 
+// containsString reports whether s is present in the slice. Registry sets
+// are tiny (a handful of bases), so a linear scan beats a map for these
+// intersections and membership probes.
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 // Create registers a new knowledge base (KBM-02). Validation fails closed
 // on an invalid or reserved slug, an unknown role, or an empty display
 // name; a slug that already exists — including a deactivated one — is a

@@ -286,13 +286,3 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
-
-// containsString reports whether s is present in the slice.
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
