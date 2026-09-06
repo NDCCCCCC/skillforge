@@ -149,7 +149,7 @@ func validateSeedEntry(e seedEntry) (Entry, error) {
 // LoadSeedRegistry is the convenience constructor for commands and boot
 // paths that want the seed view directly: LoadSeedFile followed by New.
 // The returned registry is read-only (no Store wired).
-func LoadSeedRegistry(path string) (*snapshot, error) {
+func LoadSeedRegistry(path string) (Registry, error) {
 	entries, err := LoadSeedFile(path)
 	if err != nil {
 		return nil, err

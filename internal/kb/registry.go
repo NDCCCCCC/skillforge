@@ -5,11 +5,14 @@
 package kb
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // snapshot is the in-memory Registry implementation: an immutable
@@ -45,15 +48,19 @@ func newSnapshot(entries []Entry, st Store) *snapshot {
 	return s
 }
 
-// New returns a read-only registry over entries: Lookup/List and the
-// derived slug sets are fully functional, while the mutation verbs stay
-// unavailable because no Store is wired to persist them. It is the
-// construction path for tests and for commands that only need the seed
-// view of the world; the production sqlite-backed registry is assembled
-// in 26-02.
-func New(entries []Entry) *snapshot {
+// New returns a read-only Registry over entries: the read surface is
+// fully functional, while Create and Deactivate fail closed with
+// ErrReadOnly because no Store is wired to persist them — a mutation that
+// could not be persisted must not happen at all, since it would silently
+// vanish on restart. It is the construction path for tests and for
+// commands that only need the seed view of the world; the production
+// sqlite-backed registry is assembled in 26-02.
+func New(entries []Entry) Registry {
 	return newSnapshot(entries, nil)
 }
+
+// compile-time proof that the snapshot carries the whole Registry contract.
+var _ Registry = (*snapshot)(nil)
 
 // current returns the live entry map. Readers must not mutate it.
 func (s *snapshot) current() map[string]Entry {
@@ -160,4 +167,170 @@ func computeSignature(entries []Entry) string {
 		fmt.Fprintf(h, "%s|%s|%s|%s|%t\n", e.Slug, e.Role, e.DisplayName, e.Description, e.RetrievalEnabled)
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// ResolveReads expands a skill's reads declarations into the set of slugs
+// the retriever may query (KBM-04). It is the single choke point between
+// what a skill declares and what a search may touch.
+//
+// Accepted forms:
+//
+//   - "<slug>/**" or "<slug>" — an explicit base. An unknown or
+//     deactivated slug is an error listing the active set (fail-closed:
+//     silently resolving to nothing would hide a typo from the author).
+//   - "role:<r>" — the wildcard: every retrieval-eligible base of that
+//     role, ascending. An unknown role or a zero expansion is an error;
+//     a wildcard that grants nothing must stop the load, not shrink to a
+//     silent no-op.
+//   - "data:..." — never accepted here. The data channel is validated by
+//     the skill contract (D16-C2); this guard is defense-in-depth against
+//     a future caller bypassing that validation.
+//
+// Draft-role bases are dropped from the resolved set rather than errored
+// on: the author named a real base, the role simply never contributes to
+// retrieval, so the honest result is an empty (default-deny) set for that
+// read. Role semantics outrank the entry switch — see RetrievalEligible.
+func (s *snapshot) ResolveReads(reads []string) ([]string, error) {
+	if len(reads) == 0 {
+		return nil, nil
+	}
+	for _, r := range reads {
+		if strings.HasPrefix(r, "data:") {
+			return nil, fmt.Errorf("reads %q: data channel values are validated by the skill contract (D16-C2), not by the knowledge-base registry — defense-in-depth guard", r)
+		}
+	}
+
+	seen := make(map[string]bool, len(reads))
+	out := make([]string, 0, len(reads))
+	add := func(slug string) {
+		if !seen[slug] {
+			seen[slug] = true
+			out = append(out, slug)
+		}
+	}
+
+	for _, read := range reads {
+		top := read
+		if i := strings.Index(read, "/"); i >= 0 {
+			top = read[:i]
+		}
+
+		if strings.HasPrefix(top, "role:") {
+			role := Role(strings.TrimPrefix(top, "role:"))
+			if !IsRole(string(role)) {
+				return nil, fmt.Errorf("reads %q: unknown role %q (roles: %v)", read, role, Roles())
+			}
+			// Intersect the role membership with the retrieval-eligible
+			// set: a wildcard expands to what can actually be searched.
+			eligible := s.RetrievalEligible()
+			members := s.SlugsByRole(role)
+			expanded := make([]string, 0, len(members))
+			for _, slug := range members {
+				if containsString(eligible, slug) {
+					expanded = append(expanded, slug)
+				}
+			}
+			if len(expanded) == 0 {
+				return nil, fmt.Errorf("reads %q: role %q matches zero active KBs (fail-closed)", read, role)
+			}
+			for _, slug := range expanded {
+				add(slug)
+			}
+			continue
+		}
+
+		e, ok := s.Lookup(top)
+		if !ok {
+			return nil, fmt.Errorf("reads %q: unknown or deactivated KB %q (active: %v)", read, top, s.ActiveSlugs())
+		}
+		// draft role semantics outrank the explicit declaration: drop the
+		// base from the resolved set so an explicit draft read yields an
+		// empty (default-deny) set instead of a grant (A3).
+		if e.Role == RoleDraft {
+			continue
+		}
+		add(top)
+	}
+	return out, nil
+}
+
+// storeContext is the context carried into Store calls issued by the
+// mutation verbs. The verbs take no context of their own (the admin
+// handlers drive them synchronously at request scope); the store adapter
+// owns its own deadlines and wraps what it needs.
+func storeContext() context.Context { return context.Background() }
+
+// Create registers a new knowledge base (KBM-02). Validation fails closed
+// on an invalid or reserved slug, an unknown role, or an empty display
+// name; a slug that already exists — including a deactivated one — is a
+// conflict, because re-creating would silently reset its identity. The
+// store write happens before the in-memory swap, so a failed persistence
+// never leaks into memory state.
+func (s *snapshot) Create(in CreateInput) (Entry, error) {
+	if s.store == nil {
+		return Entry{}, ErrReadOnly
+	}
+	if err := ValidateNewSlug(in.Slug); err != nil {
+		return Entry{}, err
+	}
+	if !IsRole(string(in.Role)) {
+		return Entry{}, fmt.Errorf("role %q must be one of %v (roles are platform semantics, not configuration)", in.Role, Roles())
+	}
+	if strings.TrimSpace(in.DisplayName) == "" {
+		return Entry{}, fmt.Errorf("display_name must be non-empty (it is the UI badge text)")
+	}
+	if _, exists := s.current()[in.Slug]; exists {
+		return Entry{}, fmt.Errorf("kb %q is already registered (deactivate it instead of re-creating)", in.Slug)
+	}
+
+	now := time.Now().UTC()
+	e := Entry{
+		Slug:             in.Slug,
+		DisplayName:      in.DisplayName,
+		Role:             in.Role,
+		Description:      in.Description,
+		RetrievalEnabled: true,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+	if err := s.store.UpsertBase(storeContext(), e); err != nil {
+		return Entry{}, fmt.Errorf("kb.Create: persist %q: %w", in.Slug, err)
+	}
+	s.swap(append(s.List(), e))
+	return e, nil
+}
+
+// Deactivate flips the retrieval switch of slug to false (KBM-02). The
+// entry stays listed for admins, vanishes from Lookup and from every
+// retrieval-eligible set, and its data is untouched — there is no delete
+// verb anywhere in this package. Already-deactivated bases deactivate
+// idempotently. The store write happens before the in-memory swap.
+func (s *snapshot) Deactivate(slug string) (Entry, error) {
+	if s.store == nil {
+		return Entry{}, ErrReadOnly
+	}
+	cur, ok := s.current()[slug]
+	if !ok {
+		return Entry{}, fmt.Errorf("kb %q is not registered (active: %v)", slug, s.ActiveSlugs())
+	}
+	if !cur.RetrievalEnabled {
+		return cur, nil // already deactivated: idempotent no-op
+	}
+
+	now := time.Now().UTC()
+	if err := s.store.SetRetrievalEnabled(storeContext(), slug, false, now); err != nil {
+		return Entry{}, fmt.Errorf("kb.Deactivate: persist %q: %w", slug, err)
+	}
+	updated := cur
+	updated.RetrievalEnabled = false
+	updated.UpdatedAt = now
+
+	entries := s.List()
+	for i := range entries {
+		if entries[i].Slug == slug {
+			entries[i] = updated
+		}
+	}
+	s.swap(entries)
+	return updated, nil
 }

@@ -85,7 +85,7 @@ func testRegistry() Registry {
 // still sees it.
 func TestLookupActiveOnly(t *testing.T) {
 	entries := testEntries()
-	reg := newSnapshot(entries, nil)
+	reg := newSnapshot(entries, &fakeStore{})
 	if _, err := reg.Deactivate("historical"); err != nil {
 		t.Fatalf("Deactivate = %v, want nil", err)
 	}
@@ -260,7 +260,7 @@ func TestResolveReadsUnknownSlug(t *testing.T) {
 // deactivated base disappears from skill validation entirely.
 func TestResolveReadsDeactivatedSlug(t *testing.T) {
 	entries := testEntries()
-	reg := newSnapshot(entries, nil)
+	reg := newSnapshot(entries, &fakeStore{})
 	if _, err := reg.Deactivate("historical"); err != nil {
 		t.Fatalf("Deactivate = %v, want nil", err)
 	}
@@ -315,7 +315,7 @@ func TestResolveReadsRoleWildcard(t *testing.T) {
 	}
 
 	// deactivating every base of a role empties the expansion → error
-	only := newSnapshot(testEntries(), nil)
+	only := newSnapshot(testEntries(), &fakeStore{})
 	if _, err := only.Deactivate("authority"); err != nil {
 		t.Fatalf("Deactivate = %v, want nil", err)
 	}
