@@ -4,7 +4,7 @@ milestone: v1.2
 milestone_name: 知识库运营与反馈闭环
 current_phase: 26
 current_plan: Not started
-status: ready_to_plan
+status: ready_to_execute
 last_updated: "2026-09-07T00:00:00.000Z"
 last_activity: 2026-09-07
 progress:
@@ -22,7 +22,9 @@ progress:
 Phase: 26 (知识库注册表地基, KBM-01..06 + HYG-01) — first of 5 v1.2 phases (26-30)
 Plan: Not started (phase not yet planned)
 Status: Ready to plan
-Last activity: 2026-09-07 — v1.2 roadmap created (phases 26-30; 29/29 requirements mapped)
+Last activity: 2026-09-07 — Phase 26 PLANNED (10 plans / 7 waves; checker 2 iterations, 0 blockers; 7/7 REQ covered)
+
+**Phase 26 planning record (2026-09-07):** 26-01..26-10 in 7 waves（Wave1:{01} → 2:{02,03} → 3:{04 枚举删除} → 4:{05,06,07} → 5:{08 FE} → 6:{09 装配+全量门} → 7:{10 落档+三门+operator checkpoint autonomous:false}）。计划提交链：6e565d7（初版）→ dbd7f80（iteration-1 修订：5 个无人认领编译破坏调用点归位 26-04/26-06 + VALIDATION.md 从模板重生成 + FE 残留 CN 字面量清扫进 26-08 + 26-07 提前到 wave 4）→ orchestrator 文件清单补丁（6 个测试文件进 files_modified + 26-09 两处措辞）。REQ 覆盖 7/7（gap-analysis 词边界核对）；Hyquist 契约 active（27 任务行）。注意：26-10 含 live Milvus re-seed operator gate（SKILLFORGE_MILVUS_RECREATE，前置探测 BGE/Milvus 可达性，参考 env-intranet 波动记忆）。
 
 Progress: [░░░░░] 0% (v1.2: 0/5 phases complete, 0/29 requirements satisfied)
 
