@@ -475,9 +475,16 @@ func main() {
 
 	// 1. Bootstrap: mirror cmd/server's wiring (env vars + construction).
 	// Any failure here is fatal — same fail-fast contract as cmd/server.
+	// The KPI frozen set is a programmatic-judge mode, not a named Skill —
+	// fall back to the first manifest for it.
+	kpiMode := *frozen == "kpi"
 	emb := buildEmbedder()
 	r := buildRetriever(ctx, emb)
-	manifest := firstManifest()
+	manifestName := *frozen
+	if kpiMode {
+		manifestName = ""
+	}
+	manifest := manifestFor(*skillsDir, manifestName)
 	cm := buildChatModel(ctx) // agent's chat model (GLM_API_KEY)
 	ag := buildAgent(ctx, manifest, emb, r, cm)
 	st := buildStore(ctx)
@@ -487,13 +494,12 @@ func main() {
 	// baseline, so failing loud here is strictly better than emitting
 	// scores that look authoritative and are not.
 	skillName := *frozen
-	if *frozen == "kpi" {
+	if kpiMode {
 		// KPI eval path: uses programmatic judge, not LLM judge.
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		emb := buildEmbedder()
 		r := buildRetriever(ctx, emb)
-		manifest := firstManifest()
 		cm := buildChatModel(ctx)
 		ag := buildAgent(ctx, manifest, emb, r, cm)
 		_ = st
@@ -837,19 +843,45 @@ func buildStore(ctx context.Context) store.Store {
 	return s
 }
 
-// firstManifest loads skills/ and returns the first Skill manifest
-// (Phase 3 has exactly one Skill — compliance; multi-Skill routing is
-// Phase 5). Aborts on error.
-func firstManifest() *skill.Manifest {
-	loader := skill.NewLoader("skills/")
+// manifestFor loads Skills from skillsDir and resolves the manifest for
+// the frozen set. Resolution contract (UAT 2026-09-06 fix): when a frozen
+// set names a Skill (e.g. --frozen=compliance → "compliance"), the manifest
+// with THAT Name is required — the compliance golden set is meaningless
+// against any other Skill, and picking "the first skill" stopped working
+// when skills/ grew data-channel entries (kpi-dashboard, Phase 16: the
+// experimental agent path rejects them) and compliance moved to
+// examples/skills (run with --skills-dir=examples/skills). With no frozen
+// name the first tier-compatible manifest is returned (legacy posture).
+// Aborts on error.
+func manifestFor(skillsDir, name string) *skill.Manifest {
+	loader := skill.NewLoader(skillsDir)
 	if _, err := loader.Scan(); err != nil {
-		log.Fatalf("[FAIL] cmd/eval: skill scan: %v", err)
+		log.Fatalf("[FAIL] cmd/eval: skill scan (%s): %v", skillsDir, err)
 	}
-	for _, m := range loader.Skills() {
+	all := loader.Skills()
+	if len(all) == 0 {
+		log.Fatalf("[FAIL] cmd/eval: zero Skills loaded from %s (the agent requires a manifest)", skillsDir)
+	}
+	if name != "" {
+		for _, m := range all {
+			if m.Name == name {
+				return m
+			}
+		}
+		log.Fatalf("[FAIL] cmd/eval: frozen set names Skill %q but no manifest with that Name exists in %s (known: %v)", name, skillsDir, manifestNames(all))
+	}
+	for _, m := range all {
 		return m
 	}
-	log.Fatalf("[FAIL] cmd/eval: zero Skills loaded (the agent requires a manifest)")
 	return nil
+}
+
+func manifestNames(ms []*skill.Manifest) []string {
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, m.Name)
+	}
+	return out
 }
 
 // backfillAuditMetrics queries the store for an audit row matching the
