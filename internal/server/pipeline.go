@@ -35,6 +35,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/history"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/server/classifier"
@@ -276,7 +277,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		emitErr := emitRefusal(c, verdict.Refusal{
 			Reason:                    verdict.RefusalReasonNoAuthorizedSource,
 			CanRephrase:               true,
-			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers),
+			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
 		s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
 		return emitErr
@@ -301,7 +302,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		emitErr := emitRefusal(c, verdict.Refusal{
 			Reason:                    verdict.RefusalReasonLowRetrievalScore,
 			CanRephrase:               true,
-			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers),
+			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
 		s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonLowRetrievalScore, meta)
 		return emitErr
@@ -336,7 +337,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			emitErr := emitRefusal(c, verdict.Refusal{
 				Reason:                    classifyOut.Reason,
 				CanRephrase:               true,
-				SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers),
+				SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 			})
 			s.emitHistoryDecision(c, wire.DecisionPayload{
 				Step:     0,
@@ -502,7 +503,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		emitErr := emitRefusal(c, verdict.Refusal{
 			Reason:                    verdict.RefusalReasonNoAuthorizedSource,
 			CanRephrase:               true,
-			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers),
+			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
 		s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
 		return emitErr
@@ -525,7 +526,8 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// Step 12: SC-6 / SC-7 post-verdict annotation passes (Plan 05-06).
 	//
 	//   - emitCounterEvidence (D5-13): runs an INDEPENDENT retrieval pass
-	//     against the 历史 tier and emits the contradicting chunks as
+	//     against the registry's historical-role bases and emits the
+	//     contradicting chunks as
 	//     ANNOTATION — they NEVER enter the verdict's chunksByID map
 	//     (the trust moat lives in the function signature: emitCounterEvidence
 	//     does not receive chunksByID). Best-effort: errors are logged
@@ -1001,27 +1003,63 @@ func maxScore(chunks []retriever.Hit) float32 {
 	return m
 }
 
-// ruleBasedSuggestion produces a rephrased query that hints the user
-// to include the tier keyword (e.g. "权威制度"). Per D2-14 (amended
-// during planning): Phase 2 uses rule-based ONLY — LLM-generated
-// suggestions are deferred to Phase 5 polish because the refusal path
-// precedes any LLM call (D-09), so there is no LLM in-flight to
-// generate a suggestion structurally.
+// suggestionRoleSuffix turns a knowledge base's display name into the
+// keyword the refusal copy asks the user to include. It is the surviving
+// half of the pre-registry hardcoded default (baseline seed display name
+// 权威 + this suffix), kept as a constant so the keyword composition has
+// one home and the display name stays pure registry data (KBM-01).
+const suggestionRoleSuffix = "制度"
+
+// ruleBasedSuggestion produces a rephrased query that hints the user to
+// include the knowledge-base keyword (baseline seed: the authority base's
+// display name + the suffix). Per D2-14 (amended during planning): Phase 2
+// uses rule-based ONLY — LLM-generated suggestions are deferred to Phase 5
+// polish because the refusal path precedes any LLM call (D-09), so there
+// is no LLM in-flight to generate a suggestion structurally.
 //
-// The heuristic: if the original query does not already contain a
-// tier keyword, prefix it with "权威制度". Otherwise leave it alone
-// (the user already knows the keyword).
-func ruleBasedSuggestion(query string, tiers []string) string {
-	// Find the first non-empty tier to suggest. Only 权威 (authority)
-	// matters for the compliance Skill in Phase 2.
-	tier := "权威制度"
+// The keyword source, in priority order:
+//
+//  1. the first resolved tier — the slug the Skill actually reads, so the
+//     hint names a base that can really answer;
+//  2. otherwise the registry's first active authority-role base's display
+//     name (seed data — never a literal here) plus suggestionRoleSuffix.
+//     With the baseline seed the composed keyword is byte-identical to the
+//     pre-registry hardcoded default, which the frozen eval / FE retry-chip
+//     copy depends on;
+//  3. otherwise (nil registry, no authority-role base) no keyword at all —
+//     the query is returned untouched. Graceful degradation, never a panic
+//     (TestPipelineNilRegistryGraceful).
+//
+// A query that already contains the keyword is returned as-is (the user
+// already knows it).
+func ruleBasedSuggestion(query string, tiers []string, reg kb.Registry) string {
+	keyword := ""
 	if len(tiers) > 0 {
-		tier = tiers[0]
+		keyword = tiers[0]
+	} else if displayName := authorityDisplayName(reg); displayName != "" {
+		keyword = displayName + suggestionRoleSuffix
 	}
-	if strings.Contains(query, tier) {
+	if keyword == "" || strings.Contains(query, keyword) {
 		return query
 	}
-	return tier + " " + query
+	return keyword + " " + query
+}
+
+// authorityDisplayName returns the display name of the registry's first
+// (slug-ascending) active authority-role base, or "" when the registry is
+// nil or names none — the caller's graceful-degradation path. The
+// authority role (kb.RoleAuthority) is the citable role, so its display
+// name is what the refusal copy should point the user at.
+func authorityDisplayName(reg kb.Registry) string {
+	if reg == nil {
+		return ""
+	}
+	for _, slug := range reg.SlugsByRole(kb.RoleAuthority) {
+		if e, ok := reg.Lookup(slug); ok {
+			return e.DisplayName
+		}
+	}
+	return ""
 }
 
 // truncate keeps error messages bounded. The LLM's raw output may be
