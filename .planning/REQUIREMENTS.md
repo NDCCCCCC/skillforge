@@ -471,6 +471,35 @@ Which phases cover which requirements.
 | ADM-04 | Phase 20 | Pending |
 | ADM-05 | Phase 20 | Pending |
 | ADM-06 | Phase 20 | Pending |
+| KBM-01 | Phase 26 | Pending |
+| KBM-02 | Phase 26 | Pending |
+| KBM-03 | Phase 26 | Pending |
+| KBM-04 | Phase 26 | Pending |
+| KBM-05 | Phase 26 | Pending |
+| KBM-06 | Phase 26 | Pending |
+| DOC-01 | Phase 27 | Pending |
+| DOC-02 | Phase 27 | Pending |
+| DOC-03 | Phase 27 | Pending |
+| DOC-04 | Phase 27 | Pending |
+| DOC-05 | Phase 27 | Pending |
+| DOC-06 | Phase 27 | Pending |
+| GRF-01 | Phase 28 | Pending |
+| GRF-02 | Phase 28 | Pending |
+| GRF-03 | Phase 28 | Pending |
+| GRF-04 | Phase 28 | Pending |
+| GRF-05 | Phase 28 | Pending |
+| FBK-01 | Phase 29 | Pending |
+| FBK-02 | Phase 29 | Pending |
+| FBK-03 | Phase 29 | Pending |
+| FBK-04 | Phase 29 | Pending |
+| FBK-05 | Phase 29 | Pending |
+| TKT-01 | Phase 29 | Pending |
+| TKT-02 | Phase 29 | Pending |
+| TKT-03 | Phase 29 | Pending |
+| TKT-04 | Phase 29 | Pending |
+| HYG-01 | Phase 26 | Pending |
+| HYG-02 | Phase 30 | Pending |
+| HYG-03 | Phase 30 | Pending |
 
 **Coverage:**
 
@@ -480,6 +509,8 @@ Which phases cover which requirements.
 - v0.8 mapped to phases: 25 (phases 8-13)
 - v1.0 requirements: 44 total (added 2026-08-21 via /gsd:new-milestone；7 条激活 DATA + 37 条新 ID：DATA-15..18 / KPI-01..02 / DASH-01..05 / RPT-01..05 / PORT-01..07 / ADM-01..06 / FAN-05..06 / GEVL-09..11 / PLAT-09..11)
 - v1.0 mapped to phases: 44 (phases 14-20; inline roadmap 2026-08-21)
+- v1.2 requirements: 29 total (added 2026-09-07 via /gsd:new-milestone autonomous long-range；KBM-01..06 / DOC-01..06 / GRF-01..05 / FBK-01..05 / TKT-01..04 / HYG-01..03)
+- v1.2 mapped to phases: 29 (phases 26-30; inline roadmap 2026-09-07)
 - Unmapped (within active milestones): 0 ✓
 
 **Phase distribution:**
@@ -509,7 +540,13 @@ Which phases cover which requirements.
 | Phase 19 (静态报告门户 + 调度器 P10.5) | 9 | PORT-01..07, DATA-18, GEVL-11 |
 | Phase 20 (管理台 P10.6) | 6 | ADM-01..06 |
 | **v1.0 Total** | **44** | |
+| Phase 26 (知识库注册表地基 + 卫生门) | 7 | KBM-01..06, HYG-01 |
+| Phase 27 (文档上传入库) | 6 | DOC-01..06 |
+| Phase 28 (知识图谱动态化 + 关系层) | 5 | GRF-01..05 |
+| Phase 29 (反馈闭环 + 工单预留) | 9 | FBK-01..05, TKT-01..04 |
+| Phase 30 (工程卫生收尾) | 2 | HYG-02, HYG-03 |
+| **v1.2 Total** | **29** | |
 
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-08-21 — v1.0 milestone requirements (44) added + mapped to phases 14-20（inline roadmap）; DATA-01..14 归并（7 激活 / 7 延 v1.1）；Out of Scope 扩充（NL2SQL / 去哈希 / 拖拽构建器 / PDF / 推送 / RBAC 等）*
+*Last updated: 2026-09-07 — v1.2 milestone requirements (29) mapped to phases 26-30（inline roadmap；v1.2 checkbox 保持未勾选，state 由 phase 执行翻转）; prior: 2026-08-21 v1.0 (44) mapped to phases 14-20, DATA-01..14 归并*

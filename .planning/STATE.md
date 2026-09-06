@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: 知识库运营与反馈闭环
-current_phase: 0
+current_phase: 26
 current_plan: Not started
-status: planning
+status: ready_to_plan
 last_updated: "2026-09-07T00:00:00.000Z"
 last_activity: 2026-09-07
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,10 +19,14 @@ progress:
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-09-07 — Milestone v1.2 started
+Phase: 26 (知识库注册表地基, KBM-01..06 + HYG-01) — first of 5 v1.2 phases (26-30)
+Plan: Not started (phase not yet planned)
+Status: Ready to plan
+Last activity: 2026-09-07 — v1.2 roadmap created (phases 26-30; 29/29 requirements mapped)
+
+Progress: [░░░░░] 0% (v1.2: 0/5 phases complete, 0/29 requirements satisfied)
+
+**Next action:** `/gsd:plan-phase 26`
 
 **Prior milestone record (v1.1 + v1.1.1):** v1.1 SHIPPED 2026-09-06 (phases 25/24/22/21/23; README/CHANGELOG/RELEASE-NOTES/CONTRIBUTING)。Milestone summary: `.planning/reports/MILESTONE_SUMMARY-v1.1.md`。v1.1.1 清理 shipped 2026-09-07（quick 260906-w62，commits 6cda7d4..c7fc580 + 42adc56，分支 `v1.1.1-cleanup`）——Phase 21 外部授权通道接通（`EXTERNAL_AUTH_ENABLED=1` 门 + admin token 门 + `needs_external_query` 工具 + `data:external:authorized` allowlist + `external_views/` 受控视图 + MemoryStore）、golden set 10 案例、README 三护城河统一、REQUIREMENTS DATA 行翻转、CHANGELOG v1.1.1。VERIFICATION 7/7 truths passed；3 人工项（进程实启 / 真 LLM 工具环 / README 叙述连贯）留 operator。v1.1.1 尚未 git tag（无 remote，tag 时机 user 驱动）。
 
@@ -133,7 +137,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 16 — p10-2
+**Current focus:** Phase 26 — 知识库注册表地基 (v1.2)
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**

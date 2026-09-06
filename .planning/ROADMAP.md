@@ -14,6 +14,7 @@
 - ✅ **v0.8** — Harness 可信×行动融合 (phases 8-13) — shipped 2026-08-21
 - ✅ **v1.0** — 业务数据支撑 Business Data Support (phases 14-20) — shipped 2026-08-30
 - ✅ **v1.1** — 信任架构成熟 + OSS 收官 (phases 21-25) — shipped 2026-09-06
+- 🚧 **v1.2** — 知识库运营与反馈闭环 (phases 26-30) — planned 2026-09-07
 
 ## Phase Details
 
@@ -86,6 +87,87 @@
 - `.planning/milestones/v0.8-ROADMAP.md`
 - `.planning/milestones/v1.0-ROADMAP.md`
 
+### 🚧 v1.2 — 知识库运营与反馈闭环 (phases 26-30) — PLANNED 2026-09-07
+
+**Milestone Goal:** 把知识层从「4 个硬编码 tier 的启动期目录」升级为「运营型知识库平台」——动态知识库注册表、管理员上传常用格式文档入库、图谱反映真实知识结构、反馈按钮产生真实数据闭环、工单系统预留标准接口。贯穿性不变量：**信任语义不削弱**（KNOW-02 fail-closed / D-09 拒答构造 / citation 白名单）+ INSERT-only 审计纪律 + admin-token 门 + additive migration（D14-E1）+ 图谱边零 LLM 确定性 + 零硬编码（注册表/配置驱动）。
+
+**Phases (execution order 26 → 27 → 28 → 29 → 30；28 与 29 可在 26 之后并行)：**
+
+- [ ] **Phase 26: 知识库注册表地基** - TierEnum 硬编码 4 值枚举 → 注册表驱动的动态知识库（admin 可建/停用，Skill reads 契约与检索层 fail-closed 校验）+ 里程碑卫生门（TODO 清零 + 结构门）
+- [ ] **Phase 27: 文档上传入库** - /admin 上传 md/pdf/docx/xlsx/pptx → 解析 → 分块 → 向量化 → 入指定知识库；原始文件即弃；入库即审计、即可见
+- [ ] **Phase 28: 知识图谱动态化 + 关系层** - 图谱按注册表输出 N 知识库节点 + 确定性 chunk 关系边 + 邻居/路径查询 API + GraphCanvas 升级 + 性能护栏
+- [ ] **Phase 29: 反馈闭环 + 工单预留** - FeedbackRow 三按钮真实落库（一次一票）+ 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets
+- [ ] **Phase 30: 工程卫生收尾** - 零硬编码魔数抽查 + 全 SDLC 门里程碑级验收 + 信任语义回归证明
+
+**Coverage:** 29/29 v1.2 requirements mapped — KBM-01..06 + HYG-01 → 26; DOC-01..06 → 27; GRF-01..05 → 28; FBK-01..05 + TKT-01..04 → 29; HYG-02..03 → 30
+
+#### Phase 26: 知识库注册表地基 (KB Registry Foundation)
+**Goal**: 管理员可以创建/停用知识库，Skill `reads` 契约与检索/索引两侧全部按注册表 fail-closed 校验，四语义角色语义重定义落档——知识层从「硬编码 4 tier 枚举」变为「注册表驱动的运营平台地基」，信任语义不削弱；同时建立里程碑卫生门（TODO 清零 + 结构门），后续所有 phase 继承该门。
+**Depends on**: Nothing (v1.2 首个 phase；Phase 27/28/29 均依赖本 phase)
+**Requirements**: KBM-01, KBM-02, KBM-03, KBM-04, KBM-05, KBM-06, HYG-01
+**Success Criteria** (what must be TRUE):
+  1. 管理员可经 token 门端点 + `/admin` 视图创建新知识库（slug 合法性校验）并停用既有知识库；停用后该库从检索与 Skill 校验中消失但数据不物理删除；创建/停用动作均产生 INSERT-only 审计行
+  2. `reads` 声明未注册或已停用知识库的 Skill 在加载期校验失败（fail-closed）；旧 4-tier 字面量不再被接受——破坏性切换附带一次性迁移，既有 Skill 迁移后可正常加载
+  3. 索引侧与检索侧对未注册知识库值均 fail-closed 拒绝；Milvus/Mongo 过滤表达式改为注册表驱动的知识库集合——KNOW-02 信任语义不削弱
+  4. 四语义角色语义（authority = 唯一可引用证据源 / historical = 被取代版本留档不进默认检索 / personal = 用户私有默认排除 / draft = 未生效永不检索）写入平台地板文档与 README，且 citation 白名单代码强制仅限 authority 语义角色
+  5. 启动期 `knowledge/<slug>/` 目录按注册表装载（未知目录 WARN + 跳过 + 审计，服务照常启动）；全仓非测试 Go 文件 TODO/FIXME 计数为 0 且有结构门把守回归（含 `cmd/spike-history/long.go:54` MEM-05 TODO 处置——核对 summarization 中间件真实落地状态后更新或移除）
+**Plans**: TBD
+**UI hint**: yes
+**Notes**: 用户已授权破坏性重构（不受向后兼容与既有设计约束）；受影响面 = `internal/skill`（TierEnum + validate.go allowlist）、`internal/knowledge/indexer.go` (KNOW-02)、`internal/retriever/{milvus,mongo}`、FE TierBadge / graph 节点；信任语义（KNOW-02 / D-09 / citation 白名单）只许迁移实现、不许削弱。
+
+#### Phase 27: 文档上传入库 (Document Upload Pipeline)
+**Goal**: 管理员可在 `/admin` 把常用格式文档上传进指定知识库，解析 → 分块 → 向量化 → 索引全链路 fail-closed，原始文件即弃，入库即审计、即可见（无需重启）。
+**Depends on**: Phase 26（上传目标 = 注册表中的知识库）
+**Requirements**: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06
+**Success Criteria** (what must be TRUE):
+  1. 管理员可经 `/admin` 知识库管理视图上传 Markdown / PDF / Word(docx) / Excel(xlsx) / PowerPoint(pptx) 到指定知识库；解析器由注册表驱动（扩展名 + MIME 白名单，零硬编码）
+  2. 上传文档按内容探测格式（不仅扩展名），走解析 → 既有分块 → 向量化 → 索引入指定知识库；解析失败 fail-closed，不产生半成品入库
+  3. 上传处理完成后原始文件不落盘——持久化的只有解析文本与 chunk（延续 v1.0「不保存原始数据」哲学）
+  4. 超限与重复上传按配置被拒绝或去重：单文件大小上限 / 并发上限 / 内容哈希去重策略（拒绝或替换为新版）全部配置驱动
+  5. 每次上传产生 INSERT-only 审计行（操作者 / 知识库 / 文件名 / 大小 / hash / chunk 数 / 结果）；成功上传后文档立即出现在知识图谱与检索（无需重启），失败错误明确回报 UI
+**Plans**: TBD
+**UI hint**: yes
+**Risks**: eino-ext document parsers 尚不在 go.mod 且内网网络间歇断——plan-phase 必须把「parser 依赖获取」当显式风险处理并预备纯 Go fallback 决策；上传管线不得继承 `knowledge.Index` 的 milvus-coupling（`cmd/server/main.go:730` 的启动期路径 Mongo 后端跑不了，新管线两条后端都要能达）。
+
+#### Phase 28: 知识图谱动态化 + 关系层 (Dynamic Knowledge Graph)
+**Goal**: 知识图谱反映真实知识结构——按注册表输出 N 个知识库节点、chunk 间确定性关系边可查可展开、性能超限优雅降级，管理员与（未来的）agent 工具都能消费同一张图。
+**Depends on**: Phase 26（动态 KB 节点来自注册表）；可与 Phase 27 并行执行（Phase 27 落地后图谱须包含上传文档——与 DOC-06 联合验收）
+**Requirements**: GRF-01, GRF-02, GRF-03, GRF-04, GRF-05
+**Success Criteria** (what must be TRUE):
+  1. `GET /api/knowledge/graph` 按注册表输出 N 个知识库节点——创建/停用知识库后图谱结构随之变化，固定 4 tier 节点假设移除
+  2. 图谱包含确定性（零 LLM、同输入可复算相同边集）chunk 关系边：同文档版本继承边 + 跨文档实体/关键词条款共现边
+  3. 可经 API 查询给定 chunk 的关系邻居与受限深度路径（供 FE 与未来 agent 工具消费）
+  4. FE GraphCanvas 渲染动态知识库节点与关系边，并支持邻居展开交互
+  5. 节点/边上限、分页与懒加载策略全部配置驱动；超限返回骨架图并明示降级
+**Plans**: TBD
+**UI hint**: yes
+**Notes**: 图谱边保持零 LLM 确定性（可 hash 复现）——LLM 实体关系抽取明确 Out of Scope（未来候选，需评测门）。
+
+#### Phase 29: 反馈闭环 + 工单预留 (Feedback Loop + Ticket Interface)
+**Goal**: FeedbackRow 的四个按钮全部产生真实结果——三按钮投票落库幂等、过时报告进人工复核队列、指标进 admin 仪表盘、创建工单接真实端点；工单外发尽力而为不阻塞主链路；反馈绝不自动改信任。
+**Depends on**: Phase 26（FBK-03 per-知识库指标需注册表命名）；可与 Phase 27/28 并行执行（session/message/chunk ids 已存在）
+**Requirements**: FBK-01, FBK-02, FBK-03, FBK-04, FBK-05, TKT-01, TKT-02, TKT-03, TKT-04
+**Success Criteria** (what must be TRUE):
+  1. 用户点击有帮助 / 没帮助 / 报告知识过时后，投票写入 INSERT-only 反馈表（session/message/verdict/被引 chunk ids）且一次一票幂等（重复提交返回已记录状态）；FE 锁定态由服务端驱动、toast 反映真实结果——占位 toast 移除
+  2. outdated 反馈生成复核队列条目，管理员在 `/admin` 复核视图看到待复核 chunk 并按已更新 / 误报 / 忽略处置，处置动作进审计；反馈绝不自动降权或删除 chunk——知识库变更只能由人工复核处置产生
+  3. admin 仪表盘展示 per-Skill / per-知识库帮助率与过时报告数趋势
+  4. FeedbackRow 创建工单按钮调用真实 `POST /api/tickets`：工单请求 INSERT-only 落库（session/message 引用、描述、被引 chunk ids），UI 诚实展示受理结果（受理编号 / 排队中 / 未配置 provider）
+  5. TicketService Go 接口 + 配置驱动 provider 注册表（`none` / `webhook`）落地；provider 外发失败不影响聊天与反馈主流程（尽力而为 + 配置驱动重试），外发结果（成功/失败/none）进审计
+**Plans**: TBD
+**UI hint**: yes
+**Notes**: 真实工单系统对接（Jira/ServiceNow/自建）明确 Out of Scope——本里程碑只预留接口 + webhook provider；起点代码 = `web/src/components/chat/parts/FeedbackRow.tsx`（现为 toast 占位）+ `internal/server/` admin-token 门模式。
+
+#### Phase 30: 工程卫生收尾 (Hygiene & Milestone Gate)
+**Goal**: 里程碑级工程卫生达标——本里程碑新增的全部配置面零硬编码、全 SDLC 门在 phases 26-29 上可证、信任语义经注册表重构后由既有基线证明未削弱。
+**Depends on**: Phase 26, Phase 27, Phase 28, Phase 29（里程碑收尾必须在全部功能 phase 之后）
+**Requirements**: HYG-02, HYG-03
+**Success Criteria** (what must be TRUE):
+  1. 本里程碑新增的格式白名单 / 大小限额 / 图深限制 / 语义角色定义等关键字段魔数抽查通过——全部注册表或配置驱动，无新增硬编码字面量
+  2. Phase 26-29 每个均可出示：单元测试 + hermetic 集成测试证据、WSL 构建验证（`make check-cgo` 前置）通过、受影响 verify 门全绿
+  3. 触及 FE 的 phase（26-29 均触）均有 vitest + tsc 干净记录
+  4. 信任语义回归证明：KNOW-02 fail-closed / D-09 拒答构造 / citation 白名单在注册表重构后由既有冻结 eval 基线与结构门证明未削弱
+**Plans**: TBD
+
 ---
 
 ## Progress
@@ -114,8 +196,14 @@
 | 20. 管理台 (P10.6) | 7/7 | Complete | 2026-08-30 |
 | 21. External Authorized Channel (DATA-04..14) | 6/6 | Complete | 2026-09-06 |
 | 22. Eval CI Wiring + Live UAT | 4/4 | Complete | 2026-09-06 |
+| 23. Open-Source Release (Phase 7 completion) | 4/4 | Complete | 2026-09-06 |
 | 24. 审计链强化 (PROV-O + decision-chain + time-travel) | 4/4 | Complete | 2026-09-06 |
 | 25. 评测信任环闭环 (eval trust-loop closure) | 4/4 | Complete | 2026-09-06 |
+| 26. 知识库注册表地基 (KBM + HYG-01) | 0/TBD | Not started | - |
+| 27. 文档上传入库 (DOC) | 0/TBD | Not started | - |
+| 28. 知识图谱动态化 + 关系层 (GRF) | 0/TBD | Not started | - |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 0/TBD | Not started | - |
+| 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---
 
