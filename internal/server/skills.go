@@ -213,7 +213,7 @@ func (s *Deps) validateSkillHandler(_ context.Context, c *app.RequestContext) {
 	if s.KBRegistry == nil && !m.HasDataChannel() {
 		c.JSON(http.StatusServiceUnavailable, validationResponse{
 			Valid: false,
-			Error: "KB registry not wired (server started without a knowledge-base registry)",
+			Error: kbRegistryNotWiredError,
 		})
 		return
 	}

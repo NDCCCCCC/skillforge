@@ -79,13 +79,19 @@ type AuditRow struct {
 	// InsertPendingApproval / MarkApproved / MarkRejected /
 	// MarkRuleRevoked — each writes ONE new row, never an UPDATE.
 	//
-	// Phase 26 adds the boot-time knowledge-corpus walk action
-	// "action_kb_dir_unregistered" (KBM-06: an unregistered knowledge/
-	// directory is WARN-ed, skipped, and recorded) written by cmd/server's
-	// INSERT-only audit wrapper over the knowledge/mongo seed hooks; the
-	// walk detail rides FrozenArgs as JSON. Future kb mutation rows
-	// (action_kb_created / action_kb_deactivated, plan 26-05) land in the
-	// same INSERT-only discipline.
+	// Phase 26 adds three knowledge-base actions, all INSERT-only:
+	//   - "action_kb_dir_unregistered" (KBM-06: an unregistered knowledge/
+	//     directory is WARN-ed, skipped, and recorded) written by cmd/server's
+	//     INSERT-only audit wrapper over the knowledge/mongo seed hooks; the
+	//     walk detail rides FrozenArgs as JSON (plan 26-03).
+	//   - "action_kb_created" / "action_kb_deactivated" (KBM-02: the admin
+	//     create/deactivate surface) written by internal/server's
+	//     kbCreateHandler / kbDeactivateHandler; the resulting kb.Entry
+	//     snapshot rides FrozenArgs as JSON and ActorType is "admin" so the
+	//     admin audit sub-view surfaces them (plan 26-05). There is no
+	//     delete verb and no delete endpoint anywhere in the KB surface —
+	//     deactivation hides a base, it never destroys it.
+	// No code path UPDATEs or DELETEs an audit row.
 	Action string
 	// SkillVersion is the D11-C2 snapshot of the active Skill's version
 	// at the moment the row was written. Paired with PromptHash it forms

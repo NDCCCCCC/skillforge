@@ -471,6 +471,21 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// surface is retrieval-only by design (a mutation route here would be
 	// a registration backdoor — see kpi_admin.go godoc).
 	h.GET("/api/admin/kpis", deps.kpiAdminHandler)
+	// Phase 26 Plan 26-05 (KBM-02 / KBM-03) — knowledge-base registry
+	// admin surface + public projection. Unlike the KPI view above, this
+	// surface INTENTIONALLY carries POST verbs: KBs are operational
+	// content, not controlled SQL definitions. Both mutations are
+	// admin-token-gated (CHECK ORDER: 403 before the nil-registry 503) and
+	// each writes one INSERT-only audit row (action_kb_created /
+	// action_kb_deactivated); there is no delete endpoint (deactivate ≠
+	// delete). Trust model: kb_admin.go.
+	h.GET("/api/admin/kb", deps.kbAdminHandler)
+	h.POST("/api/admin/kb", deps.kbCreateHandler)
+	h.POST("/api/admin/kb/:slug/deactivate", deps.kbDeactivateHandler)
+	// Public read-only projection for the chat FE (slug → display_name
+	// badge mapping). No token by design: the payload is minimized to
+	// slug/display_name/role of ACTIVE entries only.
+	h.GET("/api/knowledge/bases", deps.knowledgeBasesHandler)
 	// Phase 20 Plan 20-01 (ADM-01) — admin console capacity monitor.
 	// Returns per-table row counts + thresholds for the capacity bars.
 	h.GET("/api/admin/table-counts", deps.tableCountsHandler)
