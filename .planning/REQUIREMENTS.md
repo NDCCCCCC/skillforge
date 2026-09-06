@@ -221,6 +221,67 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **PLAT-10**: 审计行携带 platform_prompt 版本；admin 可预览 Skill + 平台合成后的有效 prompt
 - [x] **PLAT-11**: `platform-floor.jsonl` 冻结集断言平台层不变量（诱导写 raw SQL → 拒答）
 
+## v1.2 Requirements (知识库运营与反馈闭环 Milestone)
+
+> Added 2026-09-07 via /gsd:new-milestone (autonomous long-range)。用户锁定标准：
+> 处理全部 TODO、零硬编码、不受向后兼容与既有设计约束（可破坏性重构）、Go 最佳实践、
+> 全 SDLC。信任语义（KNOW-02 fail-closed / D-09 拒答构造 / citation 白名单）不得削弱。
+
+### 知识库分层重构 (KBM)
+
+- [ ] **KBM-01**: 知识库注册表——知识库从 `skill.TierEnum` 硬编码 4 值枚举改为注册表（受控文件装载 + admin 运行时管理）；条目含：slug、显示名、语义角色（authority/historical/personal/draft 四选一）、描述、检索启用位、时间戳；`skill` 包消费注册表接口而非具体枚举
+- [ ] **KBM-02**: 管理员可创建/停用知识库——admin 端点（token 门）+ `/admin` 视图；slug 合法性校验；创建/停用即审计；停用 = 检索与 Skill 校验不可见，不物理删除数据
+- [ ] **KBM-03**: 四语义角色重定义并落档——authority=唯一可引用证据源（citation 白名单仅 authority 语义角色）；historical=被取代版本留档（不进默认检索，可显式时间点查询）；personal=用户私有（默认排除检索，显式声明才可读）；draft=未生效（永不进检索，仅入库预览）；语义写入平台地板文档与 README
+- [ ] **KBM-04**: Skill `reads` 契约按注册表校验——reads 声明知识库 slug 或语义角色通配，validate 对照注册表 fail-closed（未注册/已停用 = 校验失败）；旧 4-tier 字面量不再被接受（破坏性切换，附一次性迁移）
+- [ ] **KBM-05**: 检索层过滤注册表化——Milvus/Mongo 过滤表达式从 4 枚举改为注册表驱动的知识库集合；KNOW-02 不变式保留：未知知识库值在索引与检索两侧均 fail-closed 拒绝
+- [ ] **KBM-06**: 启动期目录装载适配注册表——`knowledge/<slug>/` 按注册表装载；未知目录 WARN + 跳过 + 审计（不再要求目录名 ∈ 固定枚举）
+
+### 文档上传入库 (DOC)
+
+- [ ] **DOC-01**: 管理员上传文档到指定知识库——multipart 上传端点（admin token 门）+ `/admin` 知识库管理视图；格式支持 Markdown / PDF / Word(docx) / Excel(xlsx) / PowerPoint(pptx)；解析器注册表驱动（扩展名 + MIME 白名单，零硬编码）
+- [ ] **DOC-02**: 解析管线——格式按内容探测（不仅扩展名）；解析 → 既有分块 → 向量化 → 索引入指定知识库；解析失败 fail-closed（不产生半成品入库）
+- [ ] **DOC-03**: 原始文件即弃——上传件仅存于内存/临时区，处理完成即删；持久化的只有解析文本与 chunk（延续 v1.0「不保存原始数据」哲学）
+- [ ] **DOC-04**: 上传防护配置化——单文件大小上限、并发上限、内容哈希去重策略（同 hash 拒绝或替换为新版）全部配置驱动
+- [ ] **DOC-05**: 入库即审计——每次上传审计行：操作者、知识库、文件名、大小、hash、chunk 数、结果（INSERT-only）
+- [ ] **DOC-06**: 上传即可见——成功上传后文档立即出现在知识图谱与检索（无需重启）；失败错误明确回报 UI
+
+### 知识图谱扩展 (GRF)
+
+- [ ] **GRF-01**: 图谱动态知识库化——`GET /api/knowledge/graph` 按注册表输出 N 个知识库节点（移除固定 4 tier 假设）
+- [ ] **GRF-02**: chunk 关系层——确定性（零 LLM）关系边：同文档版本继承边 + 跨文档实体/关键词条款共现边；边可确定性重算
+- [ ] **GRF-03**: 图谱查询 API——邻居查询（给定 chunk 的关系边）+ 受限深度路径查询；供 FE 与未来 agent 工具消费
+- [ ] **GRF-04**: FE GraphCanvas 升级——动态知识库渲染 + 关系边可视化 + 邻居展开交互
+- [ ] **GRF-05**: 图谱性能护栏——节点/边上限、分页与懒加载策略配置驱动；超限返回骨架图并明示降级
+
+### 反馈闭环 (FBK)
+
+- [ ] **FBK-01**: 反馈落库——`POST /api/feedback`：FeedbackRow 三按钮（有帮助/没帮助/报告知识过时）写入 INSERT-only 反馈表（session/message/verdict/被引 chunk ids）；一次一票，重复提交幂等返回已记录状态
+- [ ] **FBK-02**: 过时复核队列——outdated 反馈生成 review 队列条目（INSERT-only）；`/admin` 复核视图列出待复核 chunk，人工处置（已更新/误报/忽略）且处置动作审计
+- [ ] **FBK-03**: 反馈指标进 admin 仪表盘——per-Skill / per-知识库帮助率、过时报告数与趋势
+- [ ] **FBK-04**: FE FeedbackRow 接真——投票调用真实端点；锁定态由服务端驱动（同会话回显已投状态）；toast 反映真实结果
+- [ ] **FBK-05**: 反馈不自动改信任——反馈是人工复核信号，绝不自动降权/删除 chunk；知识库变更只能由复核处置产生
+
+### 工单系统预留 (TKT)
+
+- [ ] **TKT-01**: TicketService 接口 + provider 注册表——Go 接口 + 配置驱动 provider（`none` / `webhook`）；`none` = 仅落库不外发
+- [ ] **TKT-02**: `POST /api/tickets` 预留端点——工单请求 INSERT-only 落库（session/message 引用、描述、被引 chunk ids）；provider 外发结果（成功/失败/none）进审计
+- [ ] **TKT-03**: FE 创建工单接真——调用真实端点并诚实展示结果（受理编号 / 排队中 / 未配置 provider）
+- [ ] **TKT-04**: 工单外发不阻塞主链路——外发失败不影响聊天与反馈主流程（尽力而为 + 配置驱动重试）
+
+### 工程卫生 (HYG)
+
+- [ ] **HYG-01**: 代码 TODO 清零——处置 `cmd/spike-history/long.go:54` MEM-05 TODO（核对 summarization 中间件真实落地状态后更新或移除）；全仓非测试 Go 文件 TODO/FIXME 计数归零并纳入结构门
+- [ ] **HYG-02**: 零硬编码不变式——本里程碑新增的格式白名单、大小限额、图深限制、语义角色定义等全部注册表/配置驱动；verify 增加关键字段魔数抽查
+- [ ] **HYG-03**: 全量 SDLC 门——每 phase 交付含单元测试 + hermetic 集成测试 + WSL 构建验证 + 受影响 verify 门全绿 + FE vitest/tsc（若触 FE）
+
+### v1.2 Out of Scope（明确不做 + 理由）
+
+- **真实工单系统对接**（Jira/ServiceNow/自建工单具体集成）——本里程碑只预留 TicketService 接口 + webhook provider；具体系统无生产实例可测
+- **Office 二进制老格式**（.doc/.xls/.ppt）——现代企业环境 Open XML（docx/xlsx/pptx）已覆盖；老格式解析库质量差且引入高风险依赖
+- **知识图谱 LLM 实体关系抽取**——保持图谱确定性零 LLM（可 hash 复现）；LLM 抽取是未来候选（需评测门）
+- **知识库级 RBAC / 多租户**——用户体系仍不存在（v2 PLAT/SCALE 范围）
+- **反馈数据导出 / BI 对接**——admin 仪表盘内呈现即可
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
