@@ -59,6 +59,11 @@
 
 ### 🚧 Next Milestone (v1.1 — Planned)
 
+- [ ] Phase 25: 评测信任环闭环 (Eval Trust-Loop Closure) — 2026-09-06 新增，本地模型基线回放暴露的 harness 遗留问题闭环；**建议最先执行**（golden 集是 Phase 22 Eval CI 的前置数据基础）：
+  - [ ] **Golden-corpus 同步**：frozen compliance 集 20 道 adversarial 题中 17 道（`source: None`，spike 后追加）+ 多数 mh 题的 ground_truth 在 knowledge/authority/ 无对应条款（4 字 shingle 覆盖 0-44%）。逐题处置：补写 authority 语料（首选，保留测试强度）或收缩 GT/降级为 refusal-required。验收 = 覆盖分析脚本全部应答题 ≥50%。
+  - [ ] **agent_error 与 refused 分离**：`classifyRunOutcome` 把 agent 运行错误（`exceeds max steps`、LLM 5xx）计为 refused，污染拒答类指标（全量跑 2/50）。CaseResult additive 增加 refusal_reason，Report 均值排除 agent_error 案例并单独计数。
+  - [ ] **本地模型基线归档**：已完成（.planning/uat/local-model-baselines-2026-09-06.md v2 修订）——修正后真实差距 = 语料无据时 48% 硬编率；UD-IQ1_M 对照 0/20 全编确认 1-bit 不可用。
+  - [ ] **闭环验收**：补语料 + 重索引后全量 replay 复跑，确认语料内应答题 faith、refusal-required 20/20、无 agent_error 混入。正式 pinned glm-5.2 复签（14-10 Task 2）仍等 GLM 配额，独立于本阶段。
 - [ ] Phase 21: External Authorized Channel (DATA-04/05/06/10/11/13/14)
 - [ ] Phase 22: Eval CI Wiring + Live UAT (Phase 6b completion) — 含 2026-09-05 竞品格局分析补充项：
   - [ ] **Judge 人工校准集**：30-50 例人工标注对齐 + judge-vs-human agreement 报告（MLflow 2026 指南的标准 practice）。现有 `--judge-models` 跨评测只覆盖 judge 间分歧（Pitfall 8 自评偏差），未覆盖 judge-人工一致性——这是行业标准做法中缺口的一半。golden set 已有，成本低。
