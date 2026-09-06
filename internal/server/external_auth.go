@@ -2,6 +2,32 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+// external_auth.go — Phase 21 (v1.1.1 wiring) External Authorized
+// Channel HTTP surface.
+//
+// Surface map — who calls what, and who is gated:
+//
+//   - POST /api/external-auth/request — the AGENT's path. It is
+//     intentionally NOT admin-token-gated: the agent reaches the
+//     manager in-process (needs_external_query calls
+//     Manager.RequestApproval directly), and the HTTP route exists as
+//     the observable / audit surface for that same call. It is bounded
+//     by the DATA-10 view allowlist (an unknown view is rejected before
+//     anything persists) and writes only a pending audit row — no data
+//     leaves the warehouse through it. Unauthenticated request-flood
+//     hardening (shared secret + rate limit) is queued for v1.2 with
+//     real auth (threat register T-W62-06); abuse is operator-visible
+//     as dual-audit rows via reconcile.
+//
+//   - GET /api/external-auth/pending, POST approve, POST reject,
+//     POST execute, GET audit/reconcile — operator / data-officer
+//     surfaces. Each requires the X-Admin-Token gate
+//     (isAdminRequest: SKILLFORGE_ADMIN_TOKEN + constant-time compare)
+//     and answers 403 without it.
+//
+// CHECK ORDER invariant (locked by the tests): every gated handler
+// runs the admin check FIRST and only then the nil-manager 503 check —
+// a 403 must never leak whether the channel is configured.
 package server
 
 import (
@@ -18,21 +44,21 @@ import (
 // POST /api/external-auth/request. The agent fills business_reason +
 // the NL2SQL preview; the handler validates + persists.
 type externalAuthRequestBody struct {
-	UserID       string `json:"user_id"`
-	SkillID      string `json:"skill_id"`
-	SessionID    string `json:"session_id"`
-	SQLPreview   string `json:"sql_preview"`
-	ViewName     string `json:"view_name"`
-	EstimatedRows int    `json:"estimated_rows"`
+	UserID         string `json:"user_id"`
+	SkillID        string `json:"skill_id"`
+	SessionID      string `json:"session_id"`
+	SQLPreview     string `json:"sql_preview"`
+	ViewName       string `json:"view_name"`
+	EstimatedRows  int    `json:"estimated_rows"`
 	BusinessReason string `json:"business_reason"`
 }
 
 // externalAuthResolveBody is the wire shape of the approve/reject
 // actions (POST /api/external-auth/approve + /reject).
 type externalAuthResolveBody struct {
-	RequestID       string   `json:"request_id"`
-	DataOfficerID   string   `json:"data_officer_id"`
-	BusinessReason  string   `json:"business_reason"`
+	RequestID        string   `json:"request_id"`
+	DataOfficerID    string   `json:"data_officer_id"`
+	BusinessReason   string   `json:"business_reason"`
 	ChunkIDsReturned []string `json:"chunk_ids_returned,omitempty"`
 }
 
@@ -71,9 +97,15 @@ func postExternalAuthRequest(deps *Deps, mgr *externalauth.Manager) app.HandlerF
 }
 
 // getExternalAuthPending: data officer dashboard (DATA-13). FIFO
-// list of pending requests.
+// list of pending requests. Admin-gated.
 func getExternalAuthPending(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
+		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
+		// the channel is configured.
+		if !isAdminRequest(c) {
+			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+			return
+		}
 		if mgr == nil {
 			c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "external auth not configured"})
 			return
@@ -95,9 +127,15 @@ func getExternalAuthPending(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc 
 }
 
 // postExternalAuthApprove + postExternalAuthReject: DATA-13
-// human resolution paths.
+// human resolution paths. Both admin-gated.
 func postExternalAuthApprove(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
+		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
+		// the channel is configured.
+		if !isAdminRequest(c) {
+			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+			return
+		}
 		if mgr == nil {
 			c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "external auth not configured"})
 			return
@@ -121,6 +159,12 @@ func postExternalAuthApprove(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc
 
 func postExternalAuthReject(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
+		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
+		// the channel is configured.
+		if !isAdminRequest(c) {
+			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+			return
+		}
 		if mgr == nil {
 			c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "external auth not configured"})
 			return
@@ -141,8 +185,16 @@ func postExternalAuthReject(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc 
 
 // postExternalAuthExecute: agent's post-approval query. Uses the
 // minted TTL token to call Source.Execute; rows come back masked.
+// Admin-gated — executing against the warehouse is an operator /
+// data-officer-auditable surface, not an open one.
 func postExternalAuthExecute(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
+		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
+		// the channel is configured.
+		if !isAdminRequest(c) {
+			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+			return
+		}
 		if mgr == nil {
 			c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "external auth not configured"})
 			return
@@ -168,9 +220,15 @@ func postExternalAuthExecute(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc
 
 // getExternalAuthAuditReconcile: DATA-06 dual-audit pair
 // mismatch surfacing. InternalOnly / ExternalOnly rows are
-// security events.
+// security events. Admin-gated.
 func getExternalAuthAuditReconcile(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
+		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
+		// the channel is configured.
+		if !isAdminRequest(c) {
+			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+			return
+		}
 		if mgr == nil {
 			c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "external auth not configured"})
 			return

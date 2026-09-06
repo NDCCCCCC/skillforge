@@ -349,7 +349,11 @@ type Deps struct {
 
 	// ExternalAuthManager is Phase 21 — the External Authorized
 	// Channel orchestrator (DATA-04..14). nil = the channel is
-	// disabled; the four /api/external-auth/* endpoints return 503.
+	// disabled; the six /api/external-auth/* routes bound below all
+	// answer 503. cmd/server main.go (section 6c-5) assigns this field
+	// only when EXTERNAL_AUTH_ENABLED=1; when wired, the five
+	// sensitive surfaces (pending/approve/reject/execute/reconcile)
+	// additionally require X-Admin-Token.
 	ExternalAuthManager *externalauth.Manager
 }
 

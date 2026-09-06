@@ -93,6 +93,7 @@ import (
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
+	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/llm"
@@ -458,6 +459,53 @@ func main() {
 	}
 	log.Printf("[OK] cmd/server: skill/KPI routing cross-validation passed (%d skill(s) checked)", len(loader.Skills()))
 
+	// 6c-5. Phase 21 (wired in v1.1.1) — External Authorized Channel
+	// (DATA-04..14) assembly. Mirrors the 6c-3 KPI posture with ONE
+	// deliberate difference: this channel is behind an explicit operator
+	// opt-in, EXTERNAL_AUTH_ENABLED=1.
+	//
+	// Note the deviation from the original orchestrator sketch: the
+	// route table in internal/server/server.go already declares
+	// "cmd/server wires the manager only when EXTERNAL_AUTH_ENABLED=1"
+	// as the contract, and this channel brokers INDIVIDUAL-LEVEL PII —
+	// an explicit fail-closed default-off gate (mirroring
+	// SKILLFORGE_DATA_SALT for the import surface) is the correct
+	// posture rather than unconditional-on. With the gate unset the
+	// behavior is byte-identical to pre-wiring (every
+	// /api/external-auth/* route answers 503); with it set the channel
+	// is live.
+	//
+	// Controlled-file posture (D16-08-D, same as kpis/ above): a bad
+	// external_views/*.yaml is FATAL at boot — a malformed view file
+	// must never boot a PII channel. An empty or absent views directory
+	// is the single legal degraded state: the registry loads empty, the
+	// log says so, and every RequestApproval is then rejected
+	// view-not-in-registry (fail-closed by construction).
+	//
+	// v1.1 reference implementations (v1.1-D10): MemorySource is the
+	// warehouse-side Source and MemoryStore the persistence Store. Both
+	// are in-process and non-durable; real drivers (Postgres/MySQL +
+	// sqlite/vault-backed tokens) swap in behind the same interfaces in
+	// v1.2 with zero caller change.
+	var externalAuthManager *externalauth.Manager
+	if envOr("EXTERNAL_AUTH_ENABLED", "") != "1" {
+		log.Printf("[WARN] cmd/server: external auth channel disabled (EXTERNAL_AUTH_ENABLED != 1) — /api/external-auth/* will answer 503 (fail-closed)")
+	} else {
+		viewsDir := envOr("SKILLFORGE_EXTERNAL_VIEWS_DIR", "external_views")
+		extRegistry, err := externalauth.LoadViewsDir(viewsDir)
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: external view load from %s: %v (fix the controlled view file or remove it from the directory — a bad view file must not boot a PII channel)", viewsDir, err)
+		}
+		extSource := externalauth.NewMemorySource(extRegistry)
+		extStore := externalauth.NewMemoryStore()
+		externalAuthManager = externalauth.NewManager(extStore, extSource, extRegistry)
+		log.Printf("[OK] cmd/server: external auth channel wired (views=%s, registry=%d entries, source=MemorySource (v1.1 reference — real drivers v1.2), store=MemoryStore (in-process — sqlite/vault v1.2))",
+			viewsDir, len(extRegistry.Names()))
+		if len(extRegistry.Names()) == 0 {
+			log.Printf("[WARN] cmd/server: external auth channel has no views registered — every RequestApproval will be rejected with view-not-in-registry (register a controlled file in external_views/)")
+		}
+	}
+
 	// 6d. Skill Registry (Plan 05-01 / §2 hot-reload). The fsnotify-driven
 	// registry is the production source of truth for the GET /api/skills
 	// listing's version + status fields — touching skills/<name>/SKILL.md
@@ -586,6 +634,11 @@ func main() {
 		// Phase 19 — scheduler wired with store + eval gate + LRU detacher.
 		Scheduler: sched,
 		Detacher:  kpiLRU,
+		// Phase 21 / 6c-5 — External Authorized Channel. nil unless
+		// EXTERNAL_AUTH_ENABLED=1 (fail-closed default-off); when nil,
+		// every /api/external-auth/* route answers 503 and the agent
+		// never sees needs_external_query in its tool set.
+		ExternalAuthManager: externalAuthManager,
 	}
 
 	// 8. Hertz server (Pattern 1).
