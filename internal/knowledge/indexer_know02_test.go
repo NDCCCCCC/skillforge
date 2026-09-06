@@ -18,12 +18,17 @@
 // layer is covered by these focused tests. The validation is split out of
 // Index into a pure helper (validateTiers) so the rejection branches can
 // be exercised directly with hand-constructed doc slices — the normal
-// scan path always assigns Tier from skill.TierEnum[tierDir] and can
-// therefore never produce an empty / invalid Tier, so the rejection
-// branches are unreachable through Index end-to-end and MUST be tested
-// at the helper boundary. The end-to-end happy path (all 4 valid tiers)
-// IS exercised through Index + indexSeedHook to regression-lock the
-// existing seeding behavior.
+// scan path always assigns Tier = the registry slug of the walked
+// directory and can therefore never produce an empty / invalid Tier, so
+// the rejection branches are unreachable through Index end-to-end and
+// MUST be tested at the helper boundary. The end-to-end happy path (all
+// baseline slugs) IS exercised through Index + indexSeedHook to
+// regression-lock the existing seeding behavior.
+//
+// Phase 26 note: the gate resolves through kb.Registry.Lookup, so the
+// canonical valid set is the registry's ACTIVE slug set — a deactivated
+// slug is rejected exactly like an unknown one — and the error message
+// lists the active slugs so a Skill/corpus author can self-correct.
 
 package knowledge
 
@@ -32,6 +37,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,11 +57,11 @@ import (
 func TestIndexerRejectsMissingTier(t *testing.T) {
 	cap := withSeedHook(t) // would intercept seedDocs if it were ever called
 	docs := []retriever.Document{
-		{ID: 1, Tier: "权威", Source: "authority/valid.md", Content: "valid"},
+		{ID: 1, Tier: "authority", Source: "authority/valid.md", Content: "valid"},
 		{ID: 2, Tier: "", Source: "authority/missing.md", Content: "no tier"},
 	}
 
-	err := validateTiers(docs)
+	err := validateTiers(docs, baselineRegistry())
 	require.Error(t, err)
 
 	msg := err.Error()
@@ -67,64 +73,62 @@ func TestIndexerRejectsMissingTier(t *testing.T) {
 }
 
 // TestIndexerRejectsInvalidTier (KNOW-02): a doc with a Tier value outside
-// the 4 canonical CN-char tiers is rejected, and the error lists ALL 4
-// valid values so a Skill author sees the canonical set instead of
-// guessing. Asserts every one of {权威, 历史, 个人, 草稿} appears in the
-// error message.
+// the registry's active slug set is rejected, and the error lists ALL of
+// the active slugs so a Skill author sees the canonical set instead of
+// guessing. Asserts every baseline slug appears in the error message.
 func TestIndexerRejectsInvalidTier(t *testing.T) {
 	cap := withSeedHook(t)
 	docs := []retriever.Document{
 		{ID: 1, Tier: "classified", Source: "authority/bad.md", Content: "bad tier"},
 	}
 
-	err := validateTiers(docs)
+	err := validateTiers(docs, baselineRegistry())
 	require.Error(t, err)
 
 	msg := err.Error()
 	assert.Contains(t, msg, "unknown tier", "error must name the failing rule")
 	assert.Contains(t, msg, "classified", "error must echo the offending tier value")
 	assert.Contains(t, msg, "KNOW-02")
-	// Every canonical CN-char tier value must appear so authors see the
-	// valid set. TierEnumValues() returns them sorted by ASCII dir key
-	// (authority, draft, historical, personal) -> [权威, 草稿, 历史, 个人];
-	// here we only assert presence, not ordering, to stay robust to
-	// future enum reshaping.
-	for _, v := range []string{"权威", "历史", "个人", "草稿"} {
+	// Every active slug must appear so authors see the valid set.
+	// ActiveSlugs() returns them ascending; only presence is asserted, not
+	// ordering, to stay robust to future registry reshaping.
+	for _, v := range testBaselineSlugs {
 		assert.Containsf(t, msg, v, "error must list valid tier %q (KNOW-02: enumerate the canonical set)", v)
 	}
 	assert.Empty(t, cap.docs, "seedDocs hook must NOT be called on rejection")
 }
 
 // TestIndexerAcceptsAllValidTiers (happy-path regression): a corpus
-// covering all 4 valid tier values indexes end-to-end through Index. This
+// covering every baseline slug indexes end-to-end through Index. This
 // regression-locks the existing seeding behavior AND proves the KNOW-02
 // validation loop is a no-op on a valid corpus (no valid doc is rejected,
 // no doc is mutated, all docs reach the seedDocs hook in order).
 func TestIndexerAcceptsAllValidTiers(t *testing.T) {
 	dir := makeKnowledgeDir(t)
-	writeDoc(t, dir, "authority", "a.md", "权威 tier doc")
-	writeDoc(t, dir, "historical", "h.md", "历史 tier doc")
-	writeDoc(t, dir, "personal", "p.md", "个人 tier doc")
-	writeDoc(t, dir, "draft", "d.md", "草稿 tier doc")
+	writeDoc(t, dir, "authority", "a.md", "authority tier doc")
+	writeDoc(t, dir, "historical", "h.md", "historical tier doc")
+	writeDoc(t, dir, "personal", "p.md", "personal tier doc")
+	writeDoc(t, dir, "draft", "d.md", "draft tier doc")
 
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 
 	// All 4 docs pass validateTiers (no error returned by Index) and
 	// reach the seedDocs hook unchanged.
-	require.Lenf(t, cap.docs, 4, "all 4 tier docs must be seeded; got %d", len(cap.docs))
+	require.Lenf(t, cap.docs, 4, "all 4 baseline-slug docs must be seeded; got %d", len(cap.docs))
 	seen := make(map[string]bool, 4)
 	for _, d := range cap.docs {
 		seen[d.Tier] = true
 	}
-	for _, v := range []string{"权威", "历史", "个人", "草稿"} {
+	for _, v := range testBaselineSlugs {
 		assert.Truef(t, seen[v], "doc with tier %q must be present in the seeded set", v)
 	}
 
 	// Direct unit-level confirmation: validateTiers on the captured docs
 	// returns nil. The hook-fired docs already passed it implicitly, but
 	// assert directly to lock the contract on the pure function itself.
-	assert.NoError(t, validateTiers(cap.docs), "validateTiers must accept all 4 canonical tier values")
+	assert.NoError(t, validateTiers(cap.docs, baselineRegistry()),
+		"validateTiers must accept every active registry slug")
 }
 
 // TestIndexerErrorMessageNamesDocIndex (operator ergonomics): when a
@@ -135,12 +139,12 @@ func TestIndexerAcceptsAllValidTiers(t *testing.T) {
 // they let the operator jump straight to the bad file.
 func TestIndexerErrorMessageNamesDocIndex(t *testing.T) {
 	docs := []retriever.Document{
-		{ID: 1, Tier: "权威", Source: "authority/a.md", Content: "ok"},
-		{ID: 2, Tier: "历史", Source: "historical/b.md", Content: "ok"},
+		{ID: 1, Tier: "authority", Source: "authority/a.md", Content: "ok"},
+		{ID: 2, Tier: "historical", Source: "historical/b.md", Content: "ok"},
 		{ID: 3, Tier: "bad", Source: "authority/x.md", Content: "bad tier"},
 	}
 
-	err := validateTiers(docs)
+	err := validateTiers(docs, baselineRegistry())
 	require.Error(t, err)
 
 	msg := err.Error()

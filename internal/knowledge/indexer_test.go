@@ -26,6 +26,7 @@ import (
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/stretchr/testify/assert"
@@ -61,13 +62,14 @@ func (e *fakeEmbedder) Embed(_ context.Context, text string) ([]float32, error) 
 func (e *fakeEmbedder) Dimensions() int { return e.dim }
 
 // makeKnowledgeDir creates a temp dir shaped like the project knowledge/
-// root with the four known tier subdirectories. Returns the dir path;
-// t.TempDir handles cleanup.
+// root with the four baseline knowledge-base subdirectories (the slugs the
+// controlled seed declares). Returns the dir path; t.TempDir handles
+// cleanup.
 func makeKnowledgeDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	for _, tier := range knownTierDirs {
-		require.NoError(t, os.MkdirAll(filepath.Join(dir, tier), 0o755))
+	for _, slug := range testBaselineSlugs {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, slug), 0o755))
 	}
 	return dir
 }
@@ -107,34 +109,34 @@ func withSeedHook(t *testing.T) *indexSeedCapture {
 }
 
 // driveIndex invokes Index with a nil Milvus client (the seedDocs hook
-// intercepts before the SDK is touched). knowledgeDir + emb come from
-// the caller.
-func driveIndex(t *testing.T, knowledgeDir string, emb embedder.Embedder) error {
+// intercepts before the SDK is touched) and the caller's registry.
+// knowledgeDir + emb come from the caller.
+func driveIndex(t *testing.T, knowledgeDir string, emb embedder.Embedder, reg kb.Registry) error {
 	t.Helper()
-	return Index(context.Background(), knowledgeDir, emb, nil, milvus.Config{CollectionName: "test_collection"})
+	return Index(context.Background(), knowledgeDir, emb, nil, milvus.Config{CollectionName: "test_collection"}, reg)
 }
 
 // TestIndexer_EmptyTierDirsOK asserts the SC-4 mechanism: an empty
 // knowledge/ tree with only authority/*.md (1 file) + empty personal/
-// historical/ draft/ indexes exactly 1 document with tier=权威, no
+// historical/ draft/ indexes exactly 1 document with tier=authority, no
 // failure from the empty dirs.
 func TestIndexer_EmptyTierDirsOK(t *testing.T) {
 	dir := makeKnowledgeDir(t)
 	writeDoc(t, dir, "authority", "policy.md", "出差住宿费超过 500 元时须上级审批。")
 
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 
 	require.Len(t, cap.docs, 1, "expected exactly 1 doc (1 authority file)")
-	assert.Equal(t, "权威", cap.docs[0].Tier)
+	assert.Equal(t, "authority", cap.docs[0].Tier)
 	assert.Equal(t, "authority/policy.md", cap.docs[0].Source)
 	assert.Equal(t, int64(1), cap.docs[0].ID)
 }
 
-// TestIndexer_TierMetadataCorrect asserts dir-name → CN-char tier value:
-// 2 files in authority/ + 1 in historical/ → seeded docs have tier=权威
-// for the first 2, tier=历史 for the third (alphabetical order: authority
-// first, then historical).
+// TestIndexer_TierMetadataCorrect asserts dir-name → slug tier value:
+// 2 files in authority/ + 1 in historical/ → seeded docs have tier=authority
+// for the first 2, tier=historical for the third (ascending slug order:
+// authority first, then historical).
 func TestIndexer_TierMetadataCorrect(t *testing.T) {
 	dir := makeKnowledgeDir(t)
 	writeDoc(t, dir, "authority", "alpha.md", "A 类城市差旅住宿费 800 元。")
@@ -142,12 +144,12 @@ func TestIndexer_TierMetadataCorrect(t *testing.T) {
 	writeDoc(t, dir, "historical", "legacy.md", "旧版制度（仅供参考）：差旅实报实销。")
 
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 
 	require.Len(t, cap.docs, 3, "expected 3 docs (2 authority + 1 historical)")
-	assert.Equal(t, "权威", cap.docs[0].Tier, "doc 1 should be tier=权威")
-	assert.Equal(t, "权威", cap.docs[1].Tier, "doc 2 should be tier=权威")
-	assert.Equal(t, "历史", cap.docs[2].Tier, "doc 3 should be tier=历史")
+	assert.Equal(t, "authority", cap.docs[0].Tier, "doc 1 should be tier=authority")
+	assert.Equal(t, "authority", cap.docs[1].Tier, "doc 2 should be tier=authority")
+	assert.Equal(t, "historical", cap.docs[2].Tier, "doc 3 should be tier=historical")
 	assert.Equal(t, "authority/alpha.md", cap.docs[0].Source)
 	assert.Equal(t, "authority/bravo.md", cap.docs[1].Source)
 	assert.Equal(t, "historical/legacy.md", cap.docs[2].Source)
@@ -162,7 +164,7 @@ func TestIndexer_StripFrontmatter(t *testing.T) {
 	writeDoc(t, dir, "authority", "frontmatter.md", body)
 
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 
 	require.Len(t, cap.docs, 1)
 	assert.Equal(t, "actual content here", cap.docs[0].Content,
@@ -201,7 +203,7 @@ func TestIndexer_RejectsOversizeDocs(t *testing.T) {
 	writeDoc(t, dir, "authority", "huge.md", big)
 
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 
 	require.Len(t, cap.docs, 1, "expected only the small doc to be seeded; oversize doc must be skipped")
 	assert.Equal(t, "small.md", filepath.Base(cap.docs[0].Source))
@@ -215,20 +217,24 @@ func TestIndexer_EmptyKnowledgeTreeOK(t *testing.T) {
 	dir := makeKnowledgeDir(t) // dirs exist but no .md files
 
 	cap := withSeedHook(t)
-	require.NoError(t, driveIndex(t, dir, newFakeEmbedder()))
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 	assert.Empty(t, cap.docs, "empty knowledge tree should produce 0 docs (no error)")
 }
 
-// TestIndexer_RejectsEmptyInputs guards the two hard-error entry
-// conditions: empty knowledgeDir → error; nil embedder → error
-// (Pitfall 8: we MUST fail closed, never silently fall back).
+// TestIndexer_RejectsEmptyInputs guards the hard-error entry conditions:
+// empty knowledgeDir → error; nil embedder → error (Pitfall 8: we MUST
+// fail closed, never silently fall back); nil registry → error (fail
+// closed rather than silently treating every directory as unregistered).
 func TestIndexer_RejectsEmptyInputs(t *testing.T) {
 	ctx := context.Background()
-	err := Index(ctx, "", newFakeEmbedder(), nil, milvus.Config{})
+	err := Index(ctx, "", newFakeEmbedder(), nil, milvus.Config{}, nil)
 	assert.Error(t, err, "empty knowledgeDir must error")
 
-	err = Index(ctx, "knowledge", nil, nil, milvus.Config{})
+	err = Index(ctx, "knowledge", nil, nil, milvus.Config{}, nil)
 	assert.Error(t, err, "nil embedder must error (Pitfall 8)")
+
+	err = Index(ctx, "knowledge", newFakeEmbedder(), nil, milvus.Config{}, nil)
+	assert.Error(t, err, "nil registry must error (fail-closed)")
 }
 
 // TestSplitFrontmatter covers the helper directly with a few shapes.
@@ -307,27 +313,27 @@ func TestIndexer_ValidateEffective(t *testing.T) {
 	}{
 		{
 			name:    "perpetual_sentinel_ok",
-			doc:     retriever.Document{Tier: "权威", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			doc:     retriever.Document{Tier: "authority", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
 			wantErr: false,
 		},
 		{
 			name:    "negative_effective_to_errors",
-			doc:     retriever.Document{Tier: "权威", Source: "authority/b.md", EffectiveFrom: 0, EffectiveTo: -1},
+			doc:     retriever.Document{Tier: "authority", Source: "authority/b.md", EffectiveFrom: 0, EffectiveTo: -1},
 			wantErr: true,
 		},
 		{
 			name:    "inverted_window_errors",
-			doc:     retriever.Document{Tier: "权威", Source: "authority/c.md", EffectiveFrom: now, EffectiveTo: now - 1},
+			doc:     retriever.Document{Tier: "authority", Source: "authority/c.md", EffectiveFrom: now, EffectiveTo: now - 1},
 			wantErr: true,
 		},
 		{
 			name:    "one_side_unset_ok",
-			doc:     retriever.Document{Tier: "权威", Source: "authority/d.md", EffectiveFrom: 0, EffectiveTo: now},
+			doc:     retriever.Document{Tier: "authority", Source: "authority/d.md", EffectiveFrom: 0, EffectiveTo: now},
 			wantErr: false,
 		},
 		{
 			name:    "valid_bounded_window_ok",
-			doc:     retriever.Document{Tier: "权威", Source: "authority/e.md", EffectiveFrom: now - 100, EffectiveTo: now + 100},
+			doc:     retriever.Document{Tier: "authority", Source: "authority/e.md", EffectiveFrom: now - 100, EffectiveTo: now + 100},
 			wantErr: false,
 		},
 	}
