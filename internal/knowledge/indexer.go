@@ -15,16 +15,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package knowledge contains the corpus loader that turns a tree of
-// hand-authored policy markdown into Milvus Document rows with correct
-// tier metadata.
+// hand-authored policy markdown into retriever Document rows with correct
+// knowledge-base tier metadata.
 //
 // Index is the canonical Pattern 7 (02-RESEARCH.md §lines 576-607)
-// implementation: scan knowledge/{authority,historical,personal,draft}/*.md,
-// strip YAML frontmatter, embed the body via the Embedder interface
-// (production — NOT the deterministic spike-only fallback per Pitfall 8),
-// and insert into Milvus with the dir-name's CN-char tier value (resolved
-// through internal/skill.TierEnum so the loader cannot drift from the
-// retriever).
+// implementation: walk the knowledge/<slug>/ directories the kb.Registry
+// reports active (WalkRegisteredDirs), strip YAML frontmatter, embed the
+// body via the Embedder interface (production — NOT the deterministic
+// spike-only fallback per Pitfall 8), and insert into the backend with the
+// directory's slug as the tier value. The registry is the single source of
+// truth for which directories exist and what they are called, so the
+// loader cannot drift from the retriever: both consume the same slug set.
 //
 // One-doc-one-chunk is the Phase 2 minimal model — each .md file becomes
 // exactly one Document row. The corpus is hand-authored, each clause is
@@ -49,9 +50,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
-	"github.com/skillforge/skillforge/internal/skill"
 )
 
 // maxDocBytes is a defensive cap on the body size we will embed and insert.
@@ -65,22 +66,19 @@ import (
 // build one is an open backlog decision.)
 const maxDocBytes = 4000
 
-// knownTierDirs is the fixed enumeration of tier subdirectories we scan.
-// Mirrors internal/skill.TierEnum keys but ordered for deterministic iteration
-// (Go map iteration is randomized). Adding a new tier requires adding to
-// both this slice AND skill.TierEnum (the loader uses TierEnum for the
-// CN-char mapping).
-var knownTierDirs = []string{"authority", "historical", "personal", "draft"}
-
-// Index scans knowledgeDir/{authority,historical,personal,draft}/*.md,
-// embeds the body of each .md file via the Embedder interface, and
-// seeds the resulting Documents into Milvus with the tier metadata
-// derived from the dir name.
+// Index walks the ACTIVE knowledge/<slug>/ directories under knowledgeDir
+// (via WalkRegisteredDirs), embeds the body of each .md file via the
+// Embedder interface, and seeds the resulting Documents into Milvus with
+// the slug as the tier metadata.
 //
 // Behavior:
-//   - Tier directories that do not exist on disk are skipped silently.
-//     Empty tier dirs ARE valid: knowledge/personal/ being empty is the
-//     SC-4 refusal mechanism — a Skill whose reads=[authority/**] can
+//   - The directory walk is registry-driven (KBM-06). A deactivated base's
+//     directory is skipped with a WARN and NO audit row; an unregistered
+//     directory is skipped with a WARN plus an INSERT-only audit row
+//     delivered through indexAuditHook; neither fails the walk (SC-5).
+//     Registered directories that do not exist on disk are skipped
+//     silently. Empty dirs ARE valid: knowledge/personal/ being empty is
+//     the SC-4 refusal mechanism — a Skill whose reads=[authority/**] can
 //     never query personal/, AND a contact-info query against an empty
 //     personal/ returns 0 chunks → no_authorized_source refusal.
 //   - .md files without YAML frontmatter are still indexed (the body is
@@ -89,16 +87,17 @@ var knownTierDirs = []string{"authority", "historical", "personal", "draft"}
 //   - Files exceeding maxDocBytes are logged via fmt.Fprintf(os.Stderr, ...)
 //     and SKIPPED (not silently truncated — the operator needs to see it).
 //   - Documents are assigned numeric IDs starting at 1, monotonically
-//     increasing across tier dirs. Re-running on the same collection
+//     increasing across slug dirs. Re-running on the same collection
 //     inserts duplicates (Milvus INT64 PK is not auto-deduped); the
 //     startup hook may want to drop+recreate for clean re-seeds.
 //   - KNOW-02 (Phase 3): docs with empty or unknown Tier are rejected at
 //     insert time before any embedder / backend call (see validateTiers).
-//     The valid tier values are skill.TierEnumValues() — currently
-//     ["权威","草稿","历史","个人"] (sorted by ASCII dir name). A rejection
-//     here means an operator can trust a downstream no_authorized_source
-//     refusal really means "no authorized source for this query", never
-//     "we forgot to tag the docs" (refusal-masking moat, T-3-MASK).
+//     The valid tier values are the registry's ACTIVE slugs
+//     (reg.ActiveSlugs()) — a deactivated slug is rejected exactly like an
+//     unknown one. A rejection here means an operator can trust a
+//     downstream no_authorized_source refusal really means "no authorized
+//     source for this query", never "we forgot to tag the docs"
+//     (refusal-masking moat, T-3-MASK).
 //
 // Returns:
 //   - nil on success (collection seeded with N>=0 documents).
@@ -109,15 +108,24 @@ var knownTierDirs = []string{"authority", "historical", "personal", "draft"}
 //     with semantically meaningless vectors.
 //
 // knowledgeDir is expected to be the project-relative "knowledge/" path
-// but any directory with the standard 4-tier layout works. emb is the
-// embedder.Embedder used to vectorize each document; mc is the Milvus
-// client used to seed the resulting documents.
-func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc client.Client, cfg milvus.Config) error {
+// but any directory whose first-level subdirectories are registered slugs
+// works. emb is the embedder.Embedder used to vectorize each document; mc
+// is the Milvus client used to seed the resulting documents; reg is the
+// knowledge-base registry — REQUIRED, because a nil registry would make
+// every directory look unregistered and silently index nothing.
+func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc client.Client, cfg milvus.Config, reg kb.Registry) error {
 	if knowledgeDir == "" {
 		return errors.New("knowledge.Index: knowledgeDir is empty")
 	}
 	if emb == nil {
 		return errors.New("knowledge.Index: embedder is nil")
+	}
+	// The registry is a hard requirement (fail-closed): without it the walk
+	// would classify every directory as unregistered and produce an empty
+	// corpus — indistinguishable from a healthy one. It is checked before
+	// the client because it is required regardless of backend.
+	if reg == nil {
+		return errors.New("knowledge.Index: registry is required (fail-closed; pass kb.Open or kb.LoadSeedRegistry)")
 	}
 	// mc==nil is rejected only when the test hook is not active; in test
 	// mode the hook intercepts before any Milvus SDK call, so a nil
@@ -129,36 +137,21 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 	var docs []retriever.Document
 	nextID := int64(1)
 
-	// Stable order for the tier scan: alphabetical. Go map iteration is
-	// randomized; sorting the dir list here makes the IDs assigned in
-	// re-seeds line up as much as Milvus allows (no PK auto-dedup, but at
-	// least the order is predictable for human inspection).
-	sortedTiers := make([]string, len(knownTierDirs))
-	copy(sortedTiers, knownTierDirs)
-	sort.Strings(sortedTiers)
+	// Registry-driven directory walk (KBM-06). The walker owns the
+	// three-state decision table — active/deactivated/unregistered — and
+	// returns the ascending active slug set, which is what keeps chunk IDs
+	// deterministic across re-seeds. Audit rows for unregistered
+	// directories ride the indexAuditHook callback (Pitfall 7: callback
+	// injection, never a store parameter on this pure index function).
+	dirs, err := WalkRegisteredDirs(knowledgeDir, reg, indexAuditHook)
+	if err != nil {
+		return fmt.Errorf("knowledge.Index: walk %s: %w", knowledgeDir, err)
+	}
 
-	for _, tierDir := range sortedTiers {
-		tierVal, ok := skill.TierEnum[tierDir]
-		if !ok {
-			// This would indicate a code-level bug — the two lists drifted.
-			// Fail fast; do not silently skip.
-			return fmt.Errorf("knowledge.Index: tier %q missing from skill.TierEnum (loader + skill must stay in sync)", tierDir)
-		}
+	for _, slug := range dirs {
+		tierAbs := filepath.Join(knowledgeDir, slug)
 
-		tierAbs := filepath.Join(knowledgeDir, tierDir)
-		info, err := os.Stat(tierAbs)
-		if err != nil {
-			if os.IsNotExist(err) {
-				// Empty / missing tier dir IS valid (SC-4 mechanism). Skip silently.
-				continue
-			}
-			return fmt.Errorf("knowledge.Index: stat %s: %w", tierAbs, err)
-		}
-		if !info.IsDir() {
-			return fmt.Errorf("knowledge.Index: %s exists but is not a directory", tierAbs)
-		}
-
-		// Glob *.md in this tier dir. Files are processed in lexical order
+		// Glob *.md in this slug dir. Files are processed in lexical order
 		// for deterministic nextID assignment across re-runs.
 		pattern := filepath.Join(tierAbs, "*.md")
 		matches, err := filepath.Glob(pattern)
@@ -214,7 +207,7 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 
 			docs = append(docs, retriever.Document{
 				ID:            nextID,
-				Tier:          tierVal,
+				Tier:          slug,
 				Content:       string(body),
 				Source:        relSlash,
 				Embedding:     vec,
@@ -233,7 +226,7 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 	// contributor add RETRIEVER_BACKEND=foo and silently bypass tier
 	// enforcement). An empty docs slice trivially passes (loop is a
 	// no-op), so the empty-corpus path below still fires unchanged.
-	if err := validateTiers(docs); err != nil {
+	if err := validateTiers(docs, reg); err != nil {
 		return err
 	}
 
@@ -264,11 +257,11 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 
 // validateTiers enforces the KNOW-02 tier-mandatory invariant on a slice
 // of docs built by Index, BEFORE the docs reach seedDocs / any backend
-// write. A doc with an empty or unknown Tier is rejected with a wrapped
-// error that names the offending doc index (0-based, e.g. "doc[2]"),
-// the source path, the failing rule, and the canonical set of valid tier
-// values — so the operator can jump straight to the bad file and see what
-// to fix.
+// write. A doc with an empty, unknown, or DEACTIVATED Tier is rejected
+// with a wrapped error that names the offending doc index (0-based, e.g.
+// "doc[2]"), the source path, the failing rule, and the canonical set of
+// valid tier values (the registry's ACTIVE slugs) — so the operator can
+// jump straight to the bad file and see what to fix.
 //
 // This is the backend-agnostic hard path around D7 ("tier is metadata,
 // filter PRE-similarity"). Backend-specific schema validators (Milvus,
@@ -280,23 +273,30 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 // SC-4 no_authorized_source refusal — eroding the refusal-by-construction
 // moat, T-3-MASK).
 //
-// The function is pure (no I/O, no globals beyond the read-only
-// skill.TierEnum map) so the rejection branches are unit-testable via
-// direct calls with hand-constructed doc slices. The normal scan path
-// always assigns Tier from skill.TierEnum[tierDir] and can therefore
-// never produce an empty / invalid Tier; the rejection branches exist
-// for defense-in-depth (a future code path that constructs docs without
-// going through the tier-dir scan, e.g. a batch-ingest CLI, would still
-// be gated by this check).
-func validateTiers(docs []retriever.Document) error {
+// The tier check resolves through kb.Registry.Lookup, so the valid set is
+// the registry's ACTIVE slug set: an unknown slug and a deactivated one
+// are the same failure (a deactivated base must disappear from the index
+// side too, not just from retrieval). The function is pure (no I/O, no
+// globals beyond the registry argument) so the rejection branches are
+// unit-testable via direct calls with hand-constructed doc slices. The
+// normal scan path always assigns Tier = the walked directory's slug and
+// can therefore never produce an empty / invalid Tier; the rejection
+// branches exist for defense-in-depth (a future code path that constructs
+// docs without going through the registry walk, e.g. a batch-ingest CLI,
+// would still be gated by this check).
+func validateTiers(docs []retriever.Document, reg kb.Registry) error {
+	if reg == nil {
+		return errors.New("knowledge.Index: registry is required (KNOW-02 gate cannot resolve tier values without it)")
+	}
+	active := reg.ActiveSlugs()
 	for i, d := range docs {
 		if d.Tier == "" {
-			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has empty tier (KNOW-02: tier is mandatory metadata; valid values: %v)",
-				i, d.Source, skill.TierEnumValues())
+			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has empty tier (KNOW-02: tier is mandatory metadata; active knowledge bases: %v)",
+				i, d.Source, active)
 		}
-		if _, ok := skill.TierEnumByValue(d.Tier); !ok {
-			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has unknown tier=%q (KNOW-02: valid values: %v)",
-				i, d.Source, d.Tier, skill.TierEnumValues())
+		if _, ok := reg.Lookup(d.Tier); !ok {
+			return fmt.Errorf("knowledge.Index: doc[%d] source=%s has unknown tier=%q (KNOW-02: unknown or deactivated knowledge base; active slugs: %v)",
+				i, d.Source, d.Tier, active)
 		}
 	}
 	return nil
@@ -352,6 +352,26 @@ func validateEffective(docs []retriever.Document) error {
 // branch inside Index) while letting unit tests assert on the docs
 // that would have been inserted.
 var indexSeedHook func(ctx context.Context, mc client.Client, cfg milvus.Config, docs []retriever.Document) error
+
+// indexAuditHook is the audit callback Index hands to WalkRegisteredDirs
+// for the unregistered-directory decision (KBM-06: WARN + skip + audit).
+// It is deliberately a callback seam and NOT a store.Store parameter
+// (Pitfall 7): this is a pure index function and must not drag the sqlite
+// store — or any store — into cmd/eval, the spike binaries, or any test
+// path just to record one audit row.
+//
+// Production binds an INSERT-only wrapper over store.PutAudit at boot via
+// SetIndexAuditHook (cmd/server main.go); hermetic tests bind an in-memory
+// collector; nil (the default) means "do not audit" — the WARN still
+// fires, only the audit row is skipped.
+var indexAuditHook func(action, detail string)
+
+// SetIndexAuditHook binds the production audit sink for the
+// unregistered-directory decision. The wrapper the caller hands in MUST be
+// INSERT-only (it records an anomaly; it never updates or deletes audit
+// rows). Called once at boot, before any Index call, so no synchronization
+// is needed afterwards.
+func SetIndexAuditHook(fn func(action, detail string)) { indexAuditHook = fn }
 
 func seedDocs(ctx context.Context, mc client.Client, cfg milvus.Config, docs []retriever.Document) error {
 	if indexSeedHook != nil {

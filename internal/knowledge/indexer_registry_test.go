@@ -39,6 +39,7 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
@@ -186,8 +187,17 @@ func TestWalkRegisteredDirsUnregistered(t *testing.T) {
 	rows := cap.all()
 	require.Len(t, rows, 1, "exactly one audit row for the one unregistered dir")
 	assert.Equal(t, actionKBDirUnregistered, rows[0].action)
-	assert.Contains(t, rows[0].detail, "legacy-cn", "the audit detail must name the directory")
-	assert.Contains(t, rows[0].detail, root, "the audit detail must name the knowledge dir")
+	// The detail must be a valid JSON object naming both the directory and
+	// the knowledge root — cmd/server stores it verbatim in the audit
+	// row's FrozenArgs column, so it has to stay parseable JSON.
+	var detail struct {
+		Dir          string `json:"dir"`
+		KnowledgeDir string `json:"knowledge_dir"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(rows[0].detail), &detail),
+		"audit detail must be a JSON object (it lands in the FrozenArgs column)")
+	assert.Equal(t, "legacy-cn", detail.Dir)
+	assert.Equal(t, root, detail.KnowledgeDir)
 }
 
 // TestWalkRegisteredDirsDeactivated: a registered-but-deactivated directory

@@ -37,7 +37,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -164,11 +163,11 @@ func TestIndexer_ValidateTiersRunsBeforeSeedDocs(t *testing.T) {
 	require.NoError(t, err)
 	src := string(data)
 
-	validatePos := strings.Index(src, "validateTiers(docs)")
+	validatePos := strings.Index(src, "validateTiers(docs, reg)")
 	seedPos := strings.Index(src, "seedDocs(ctx, mc, cfg, docs)")
-	require.GreaterOrEqualf(t, validatePos, 0, "Index must call validateTiers(docs) — internal/knowledge/indexer.go")
+	require.GreaterOrEqualf(t, validatePos, 0, "Index must call validateTiers(docs, reg) — internal/knowledge/indexer.go")
 	require.GreaterOrEqualf(t, seedPos, 0, "Index must call seedDocs(ctx, mc, cfg, docs) — internal/knowledge/indexer.go")
 	assert.Less(t, validatePos, seedPos,
-		"validateTiers(docs) must run BEFORE seedDocs(ctx, mc, cfg, docs) in Index "+
+		"validateTiers(docs, reg) must run BEFORE seedDocs(ctx, mc, cfg, docs) in Index "+
 			"so KNOW-02-rejected docs never reach the backend (Pitfall 6: backend-agnostic enforcement)")
 }
