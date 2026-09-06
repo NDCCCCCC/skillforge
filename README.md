@@ -1,16 +1,25 @@
 # SkillForge
 
-> **Same agent kernel, customized per enterprise via pluggable Skill files — without code changes.**
+> **Execution-time trust boundaries for AI agents — 什么不许答、什么必须批.**
+> We sit alongside WeKnora (查得准) and Semantica (为什么) — three complementary
+> lanes in the open-source AI agent stack.
 
-SkillForge is an open-source, Skill-driven enterprise Agent platform. The same Go + Eino ADK agent core adapts to any business domain by editing or adding a `SKILL.md` file — no recompilation, no code changes.
-
-The same kernel serves legal review, HR policy, IT helpdesk, document-grounded QA, or any business domain — swap in your own `SKILL.md` and the new domain is live. Three ready-to-run templates ship in [`examples/skills/`](examples/skills/) — `simple-qa`, `calculator`, and `compliance` — and [`CONTRIBUTING.md`](CONTRIBUTING.md) walks you through writing your own.
+**What is a Skill here?** A `SKILL.md` file in SkillForge is a *domain
+adaptation contract* (knowledge tier boundaries + write targets +
+refusal guardrails + system prompt). It is **not** a sandboxed skill
+plugin (the WeKnora usage) and not an MCP tool (the Anthropic Agent
+Skills usage). One `SKILL.md` retargets the same agent kernel to
+legal review, HR policy, IT helpdesk, or any other business domain
+— no recompilation, no code changes. Three ready-to-run templates
+ship in [`examples/skills/`](examples/skills/) — `simple-qa`,
+`calculator`, and `compliance` — and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) walks you through writing your own.
 
 ![SkillForge demo](docs/demo.gif)
 
 [![Go Version](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![CI](https://img.shields.io/badge/CI-pending%20%2807--05%29-yellow)](.github/workflows/)
+[![CI](https://img.shields.io/badge/CI-eval--gate--22--09--06-green)](.github/workflows/)
 
 ---
 
@@ -105,19 +114,35 @@ flowchart TD
 
 ## Why SkillForge? — The Three Moats
 
-These three already-validated mechanisms are the defensible core. Each is proven by a spike or phase success criterion.
+These three already-validated mechanisms are the defensible core of v1.1. Each is proven by a spike or phase success criterion; each is **not yet offered by the two mature competitors** in our lane (see comparison below).
 
-### 1. 真源分离 Tier-Filter (True-Source Separation)
+### 1. Approve-and-Remember as a first-class primitive
 
-Knowledge is split into four tiers — **权威** (authority), **历史** (historical), **个人** (personal), **草稿** (draft). Each Skill declares which tiers it may read via the `reads` field. The retriever applies a **metadata filter before similarity search** (`tier IN [...]`), so an authority-only Skill physically cannot see draft or personal notes — the trust boundary is enforced in the database query, not in prompt pleading. Validated by Phase 1 SC-2 (Milvus tier-filter) and the default-deny validator (`internal/skill.Validate` rejects empty `reads`).
+HITL write actions (Phase 11) bind operator approval to **byte-identical tool-call args** (`frozen_args` SHA-256) scoped to `(session, skill)`. A rejected argument cannot silently drift into an approved one (D11-C4 byte-identity invariant). Approved actions become **remembered rules** (`approval_rules` table) — the same `(target, args_hash, skill_id, scope_session_id)` PK, written by `INSERT … SELECT` in one tx with the audit row (`action_rule_created`). Revocation is `DELETE + action_rule_revoked` in another tx — T-3-AUDIT INSERT-only ledger, never an UPDATE.
 
-### 2. Skill-as-Platform
+| Pattern | SkillForge | Semantica | WeKnora |
+|---------|-----------|-----------|---------|
+| Pre-execution approval | ✅ `tool_call_id == approval_id` (D11-C4) | ❌ decision intelligence is post-hoc causal trace | ❌ no approval gate |
+| Byte-identity binding | ✅ `frozen_args` SHA-256 | ❌ n/a (no gate) | ❌ n/a |
+| Approve-and-remember rule | ✅ `(target, args_hash, skill_id, scope_session_id)` PK | ❌ n/a | ❌ n/a |
+| Revocation is audit | ✅ `DELETE + action_rule_revoked` one tx | ❌ n/a | ❌ n/a |
 
-The agent kernel is fixed Go + Eino ADK code. Adapting SkillForge to a new enterprise domain (legal review, HR policy, IT helpdesk) means **authoring or editing a `SKILL.md` file** — never touching Go source. Skills are hot-reloaded: drop a file in `skills/`, the registry picks it up, intent routing vectors the description, and the new domain is live. This turns SkillForge from a single "compliance app" into a **platform** — and is the direct counter to the "AI wrapper is dead" lesson (Height.app closed 2025.9 because it was a feature, not a platform).
+Validated by `internal/approval_api_test.go` (D11-D3 / D11-D4 / D11-C4).
+
+### 2. Trust Contract Kernel — refuse-by-construction
+
+The agent kernel enforces four trust primitives **before any LLM call**, not by prompt pleading:
+
+1. **Tier-filter at the database query** — `tier IN [...]` is a Milvus metadata filter; an authority-only Skill physically cannot see draft / personal notes.
+2. **Refuse-by-construction** — when no chunk matches the declared `reads` filter, the answer is `no_authorized_source` *before* the verdict prompt. The agent never sees an ungrounded question.
+3. **Citation whitelist = this retrieval round** — every answer carries the chunks that justified it. Adding chunks after the fact is impossible (the verifier checks the exact set).
+4. **Default-deny on missing fields** — `internal/skill.Validate` rejects Skills with empty `reads`/`writes`/`steps` at load time. The trust boundary is the schema, not the operator's discipline.
+
+This is why the trust floor matters in production: WeKnora's hybrid search gets more relevant chunks per query, but a WeKnora Skill without the SkillForge-style `reads` field can still hallucinate against the user's private notes. SkillForge physically cannot.
 
 ### 3. CI-Integrated Trust Gate (Skill 晋级闭环)
 
-Hallucination is the #1 failure mode for enterprise RAG. SkillForge ships a single-language Go evaluator (`internal/eval` + `cmd/eval`) that scores every Skill on four RAG-trust metrics and gates promotion through CI (`.github/workflows/eval-gate.yml`).
+Every Skill promotion runs through `.github/workflows/eval-gate.yml`: frozen compliance replay (50 cases) → `cmd/eval --gate-check` against per-Skill thresholds (`examples/skills/<skill>/eval-gate.json`) → fail-closed exit code. Headline: faithfulness ≥ 0.9 / refusal-accuracy ≥ 0.95 — the gate that catches a Skill regression **before** it ships. Cross-judge + planned human-judge calibration (Phase 22-02) close the self-eval bias loop.
 
 **评测器定位声明（Phase 22）**
 
@@ -134,6 +159,30 @@ The 4 metrics are a verbatim port of Ragas v0.1.21 (Apache-2.0, attributed in `e
 | License | Ragas Apache-2.0 / DeepEval Apache-2.0 / TruLens MIT | In-tree, no sidecar |
 
 **Single-language posture**: keeping the evaluator in Go (no Python sidecar, no Ragas pip install) is a deployment convenience, not a competitive moat. We document this transparently because the value is the **CI integration + Skill promotion loop**, not the metric implementation.
+
+---
+
+## SkillForge vs WeKnora vs Semantica — three lanes, not three head-to-head rivals
+
+| | SkillForge | WeKnora (Tencent) | Semantica (semantica-agi) |
+|---|---|---|---|
+| **Lane** | 什么不许答 / 什么必须批 — execution-time trust boundaries | 文档怎么查得准 — retrieval + multi-tenant RBAC | 决策为什么 — knowledge fact provenance + causal graph |
+| **Differentiator** | approve-and-remember primitive + tier-filter at DB + refusal-by-construction + frozen-pin CI gate | hybrid retrieval quality (RAG + Wiki Mode), Go single-binary deployment, 4-level RBAC | W3C PROV-O standard for fact / decision tracing + time-travel replay |
+| **Agent audit** | INSERT-only execution ledger (Phase 11 + 24); PROV-O export (Phase 24-01) | workspace audit log + AES-256-GCM at rest | PROV-O source of truth (their first-class citizen) |
+| **Write actions** | HITL approval gate with frozen-args byte-identity + remember rule | ❌ no approval gate | ❌ decision intelligence is post-hoc, not pre-execution |
+| **Eval posture** | In-tree Go gate (Ragas v0.1.21 verbatim port) | external benchmark suites | external |
+| **License** | Apache-2.0 | MIT | MIT |
+| **"Skill" means** | domain adaptation contract (one file = new domain) | sandboxed skill plugin (Docker / E2B / Cube) | n/a |
+
+We are **complementary, not competing**:
+
+- If you want **better document recall** → use WeKnora.
+- If you want **why-the-agent-decided-X explanations** → use Semantica.
+- If you want **an agent that physically cannot leak private data, cannot run unapproved writes, and cannot ship a regressed Skill** → use SkillForge.
+
+**Support, not head-to-head.** SkillForge ships **PROV-O export** (`GET /api/session/:id/audit/prov`, Phase 24-01) so Semantica users can import SkillForge's execution audit as PROV-O entities. We view audit / decision-trace as a **supporting capability**, not a headline; Semantica is the leader there and we acknowledge it.
+
+---
 
 ---
 

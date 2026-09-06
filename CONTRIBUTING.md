@@ -2,6 +2,24 @@
 
 Thanks for your interest in contributing! SkillForge is built around a simple thesis: **the highest-leverage contribution is a domain `SKILL.md`, not Go code.** Most contributions land in `skills/` or `knowledge/`. This guide covers the three most common contribution patterns.
 
+## How to position SkillForge in PRs, docs, and talks
+
+SkillForge sits alongside (not against) two mature open-source agents:
+
+| Lane | Project | What they own |
+|---|---|---|
+| 查得准 — retrieval + multi-tenant RBAC | WeKnora (Tencent) | Hybrid retrieval, Go single-binary, 4-level RBAC |
+| 为什么 — decision provenance + causal graph | Semantica (semantica-agi) | W3C PROV-O source of truth, time-travel replay |
+| **什么不许答、什么必须批 — execution-time trust boundaries** | **SkillForge (this repo)** | **Approve-and-remember primitive, tier-filter at DB, refusal-by-construction, CI-Integrated Trust Gate** |
+
+When writing PR descriptions, docs, blog posts, or talks about SkillForge:
+
+- ✅ **Lead with**: approve-and-remember primitive · tier-filter at the database query · refusal-by-construction · frozen-pin CI gate · PROV-O export (we ship it; we don't pretend it's our lane leader).
+- ⚠️ **Don't claim**: "Go 企业 RAG 平台" (WeKnora is the leader there), "best RAG retrieval" (not our focus), "best evaluation suite" (Ragas / DeepEval / TruLens are).
+- ⚠️ **Don't say**: "Skill is a sandboxed skill plugin" (WeKnora usage) or "Skill is an MCP tool" (Anthropic Agent Skills usage). In SkillForge, a Skill is a **domain adaptation contract** — one `SKILL.md` retargets the kernel to a new business domain. README has the de-confusion note at the top.
+
+If a feature PR doesn't fit one of the three lanes above, that's a signal it may not belong in SkillForge.
+
 ## Fork + PR Flow
 
 1. **Fork** the repo and clone your fork.
