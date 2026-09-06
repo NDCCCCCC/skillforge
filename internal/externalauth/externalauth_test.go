@@ -8,80 +8,19 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
 
-// fakeStore implements Store in-process for tests.
-type fakeStore struct {
-	mu       sync.Mutex
-	requests map[string]ExternalAuthRequest
-	tokens   map[string]TTLToken
-	audits   []AuditRow
-}
+// fakeStore is the historical name of the in-process Store the package
+// tests build their Manager with. Since the v1.1.1 wiring task the
+// production MemoryStore (memstore.go) IS that implementation — the
+// alias below keeps the historical test vocabulary (newFakeStore and
+// the mgr.store.(*fakeStore) assertion) compiling unchanged while the
+// tests exercise the real production seam.
+type fakeStore = MemoryStore
 
-func newFakeStore() *fakeStore {
-	return &fakeStore{
-		requests: make(map[string]ExternalAuthRequest),
-		tokens:   make(map[string]TTLToken),
-	}
-}
-
-func (f *fakeStore) IssueExternalAuthRequest(_ context.Context, r ExternalAuthRequest) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if _, ok := f.requests[r.RequestID]; ok {
-		return errors.New("duplicate")
-	}
-	f.requests[r.RequestID] = r
-	return nil
-}
-func (f *fakeStore) GetExternalAuthRequest(_ context.Context, id string) (ExternalAuthRequest, bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	r, ok := f.requests[id]
-	return r, ok, nil
-}
-func (f *fakeStore) ResolveExternalAuthRequest(_ context.Context, r ExternalAuthRequest, a AuditRow, t *TTLToken) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.requests[r.RequestID] = r
-	if t != nil {
-		f.tokens[t.TokenID] = *t
-	}
-	f.audits = append(f.audits, a)
-	return nil
-}
-func (f *fakeStore) ListPendingExternalAuthRequests(_ context.Context, limit int) ([]ExternalAuthRequest, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]ExternalAuthRequest, 0)
-	for _, r := range f.requests {
-		if r.State == StatePending {
-			out = append(out, r)
-		}
-	}
-	return out, nil
-}
-func (f *fakeStore) GetTTLToken(_ context.Context, id string) (TTLToken, bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	t, ok := f.tokens[id]
-	return t, ok, nil
-}
-func (f *fakeStore) ListAuditRows(_ context.Context, fromMs, toMs int64) ([]AuditRow, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]AuditRow, 0)
-	for _, a := range f.audits {
-		ms := a.Timestamp.UnixMilli()
-		if ms >= fromMs && ms < toMs {
-			out = append(out, a)
-		}
-	}
-	return out, nil
-}
+func newFakeStore() *fakeStore { return NewMemoryStore() }
 
 func mustBuildManager(t *testing.T) (*Manager, *MemorySource, *ViewRegistry) {
 	t.Helper()
