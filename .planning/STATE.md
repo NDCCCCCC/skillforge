@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: 知识库运营与反馈闭环
+milestone_name: — 知识库运营与反馈闭环
 current_phase: 26
-current_plan: Not started
-status: ready_to_execute
-last_updated: "2026-09-07T00:00:00.000Z"
-last_activity: 2026-09-07
+current_plan: 1
+status: executing
+last_updated: "2026-09-06T20:16:27.843Z"
+last_activity: 2026-09-06 -- Phase 26 execution started
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 0
-  total_plans: 0
+  total_plans: 10
   completed_plans: 0
   percent: 0
 ---
@@ -19,10 +19,10 @@ progress:
 
 ## Current Position
 
-Phase: 26 (知识库注册表地基, KBM-01..06 + HYG-01) — first of 5 v1.2 phases (26-30)
-Plan: Not started (phase not yet planned)
-Status: Ready to plan
-Last activity: 2026-09-07 — Phase 26 PLANNED (10 plans / 7 waves; checker 2 iterations, 0 blockers; 7/7 REQ covered)
+Phase: 26 (知识库注册表地基) — EXECUTING
+Plan: 1 of 10
+Status: Executing Phase 26
+Last activity: 2026-09-06 -- Phase 26 execution started
 
 **Phase 26 planning record (2026-09-07):** 26-01..26-10 in 7 waves（Wave1:{01} → 2:{02,03} → 3:{04 枚举删除} → 4:{05,06,07} → 5:{08 FE} → 6:{09 装配+全量门} → 7:{10 落档+三门+operator checkpoint autonomous:false}）。计划提交链：6e565d7（初版）→ dbd7f80（iteration-1 修订：5 个无人认领编译破坏调用点归位 26-04/26-06 + VALIDATION.md 从模板重生成 + FE 残留 CN 字面量清扫进 26-08 + 26-07 提前到 wave 4）→ orchestrator 文件清单补丁（6 个测试文件进 files_modified + 26-09 两处措辞）。REQ 覆盖 7/7（gap-analysis 词边界核对）；Hyquist 契约 active（27 任务行）。注意：26-10 含 live Milvus re-seed operator gate（SKILLFORGE_MILVUS_RECREATE，前置探测 BGE/Milvus 可达性，参考 env-intranet 波动记忆）。
 
@@ -51,6 +51,7 @@ Items acknowledged and deferred at v1.0 milestone close on 2026-08-31:
 **Timeline:** 2026-08-23 → 2026-08-30 (7 days)
 **Requirements:** 44/44 v1.0 requirements satisfied
 **Key deliverables:**
+
 - CGO 地基 + platform floor 1.1.0 (Phase 14)
 - 数据导入即脱敏三通道 (Phase 15)
 - KPI 聚合通道零后门 (Phase 16)
@@ -68,6 +69,7 @@ Items acknowledged and deferred at v1.0 milestone close on 2026-08-31:
 **Phase 20 next:** `/gsd:plan-phase 20` — plan admin console four-view + milestone wrap (CONTEXT.md ready)
 
 **Phase 18 Plan 03 (18-03) delivery summary (2026-08-28):**
+
 - Task 1: fan_out_dispatch data-channel variant — FanOutDispatchArgsV2 + validation + fallback_sequential (85d67bc)
 - Task 2: golden set fill — 4 monthly-report cases rpt-fanout-01..04 + fanout.lock.json metadata (66914c1)
 - Task 3: FE — report_published card in MessageBubble + ApprovalCard change_requested third state (35d7b81)
@@ -118,8 +120,8 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 17
-**Current Plan:** Not started
+**Current Phase:** 26
+**Current Plan:** 1
 **Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
 **Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
 **Extension 2026-08-11:** 02-04-MONGO — MongoDB retriever backend shipped. Set `RETRIEVER_BACKEND=mongo` + `MONGO_URI=mongodb://...` to switch. See `.planning/phases/02-compliance-vertical-slice/02-04-MONGO-SUMMARY.md`.
@@ -139,7 +141,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 26 — 知识库注册表地基 (v1.2)
+**Current focus:** Phase 26 — 知识库注册表地基
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**
@@ -345,7 +347,7 @@ Resume File: .planning/phases/18-skill-p10-4/18-UI-SPEC.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Phase complete — ready for verification
+- **Status:** Executing Phase 26
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
