@@ -94,17 +94,17 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DATA-01**: System provides a data import pipeline for data personnel to ingest CSV (incl. GBK/GB18030 + BOM decode) / SQL dump / API data with tier + schema metadata — v1.0
 - [x] **DATA-02**: System enforces mandatory desensitization at import time (L1 PII hashing with pre-hash normalization + L2 bucketing) — raw L1/L2/L3 data does NOT persist in SkillForge for aggregation-tier Skills — v1.0
 - [x] **DATA-03**: System exposes aggregation API (predefined KPI functions) — agent invokes KPI functions, never SELECTs raw data — v1.0
-- [ ] **DATA-04**: System supports external authorized channel for individual-identification Skills — raw data stays in user's enterprise data warehouse, agent calls via read-only DB user / proxy with TTL token **→ v1.1**
-- [ ] **DATA-05**: External authorized channel enforces field-level second-layer desensitization (e.g., display only last-4 of account number) plus pre-authorization by data personnel **→ v1.1**
-- [ ] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp **→ v1.1**
-- [x] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized` — v1.0 仅实现 `data:aggregated_only`（external 模式 → v1.1）
+- [x] **DATA-04**: System supports external authorized channel for individual-identification Skills — raw data stays in user's enterprise data warehouse, agent calls via read-only DB user / proxy with TTL token — v1.1 (Phase 21; wired + agent tool in v1.1.1)
+- [x] **DATA-05**: External authorized channel enforces field-level second-layer desensitization (e.g., display only last-4 of account number) plus pre-authorization by data personnel — v1.1 (Phase 21; wired + agent tool in v1.1.1)
+- [x] **DATA-06**: System maintains dual audit log: internal (SkillForge query log) + external (data warehouse query log), reconcilable by query ID + timestamp — v1.1 (Phase 21; wired + agent tool in v1.1.1)
+- [x] **DATA-07**: Skill's `reads` field supports two new value patterns: `data:aggregated_only` and `data:external:authorized` — v1.0 aggregated_only + v1.1.1 external:authorized (both modes complete)
 - [x] **DATA-08**: System rejects any agent query that violates the Skill's data channel (e.g., aggregation skill trying to call external channel) — guardrail at platform layer — v1.0
 - [x] **DATA-09**: Aggregation channel: agent can ONLY invoke predefined KPI functions / views — no SQL, no new KPI definition (NL2SQL safety layer 1) — v1.0
-- [ ] **DATA-10**: Individual channel: agent queries go through predefined views (not raw tables) — DB user restricted (read-only, limited schema, field-level view masking) (NL2SQL safety layer 2) **→ v1.1**
-- [ ] **DATA-11**: Agent must generate SQL preview (NL2SQL output) BEFORE entering approval flow for individual-identification Skills (NL2SQL safety layer 3 — data officer audits the actual query intent) **→ v1.1**
+- [x] **DATA-10**: Individual channel: agent queries go through predefined views (not raw tables) — DB user restricted (read-only, limited schema, field-level view masking) (NL2SQL safety layer 2) — v1.1 (Phase 21; wired + agent tool in v1.1.1)
+- [x] **DATA-11**: Agent must generate SQL preview (NL2SQL output) BEFORE entering approval flow for individual-identification Skills (NL2SQL safety layer 3 — data officer audits the actual query intent) — v1.1 (Phase 21; wired + agent tool in v1.1.1)
 - [x] **DATA-12**: Rejection must include structured reason `{reason_code, human_explanation}` (compliance audit requirement; v1.0 具体化为 `no_matching_kpi` 等 reason code) — v1.0
-- [ ] **DATA-13**: Approval timeout = 持续挂起 (no auto-reject, no auto-timeout) — each query must be explicitly approved or rejected by data officer **→ v1.1**
-- [ ] **DATA-14**: Every approval creates audit row: `{query_id, user_id, business_reason, sql_preview, approve_or_reject_result, data_officer_id, ttl_token_id, timestamp, chunk_ids_returned}` **→ v1.1**
+- [x] **DATA-13**: Approval timeout = 持续挂起 (no auto-reject, no auto-timeout) — each query must be explicitly approved or rejected by data officer — v1.1 (Phase 21; wired + agent tool in v1.1.1)
+- [x] **DATA-14**: Every approval creates audit row: `{query_id, user_id, business_reason, sql_preview, approve_or_reject_result, data_officer_id, ttl_token_id, timestamp, chunk_ids_returned}` — v1.1 (Phase 21; wired + agent tool in v1.1.1)
 
 ## v0.8 Requirements (Harness Milestone — 可信×行动融合)
 
@@ -337,17 +337,17 @@ Which phases cover which requirements.
 | DATA-01 | Phase 15 | Complete (15-04 dump parser + 15-05 Preview/Commit/Push/DryRun orchestrator + 15-06 streaming HTTP surface for preview/commit/push) |
 | DATA-02 | Phase 15 | Complete |
 | DATA-03 | Phase 16 | Complete |
-| DATA-04 | — | Deferred v1.1（外部授权通道） |
-| DATA-05 | — | Deferred v1.1（外部授权通道） |
-| DATA-06 | — | Deferred v1.1（外部授权通道） |
-| DATA-07 | Phase 16 | Pending（仅 aggregated_only 模式） |
+| DATA-04 | Phase 21 | Complete (Phase 21; wired v1.1.1) — internal/externalauth + internal/server/external_auth.go + needs_external_query tool |
+| DATA-05 | Phase 21 | Complete (Phase 21; wired v1.1.1) — internal/externalauth + internal/server/external_auth.go + needs_external_query tool |
+| DATA-06 | Phase 21 | Complete (Phase 21; wired v1.1.1) — internal/externalauth + internal/server/external_auth.go + needs_external_query tool |
+| DATA-07 | Phase 16 + 21 | Complete (Phase 21; wired v1.1.1) — v1.0 aggregated_only + v1.1.1 external:authorized (both modes complete) |
 | DATA-08 | Phase 16 | Complete |
 | DATA-09 | Phase 16 | Complete |
-| DATA-10 | — | Deferred v1.1（外部授权通道） |
-| DATA-11 | — | Deferred v1.1（外部授权通道） |
+| DATA-10 | Phase 21 | Complete (Phase 21; wired v1.1.1) — internal/externalauth + internal/server/external_auth.go + needs_external_query tool |
+| DATA-11 | Phase 21 | Complete (Phase 21; wired v1.1.1) — internal/externalauth + internal/server/external_auth.go + needs_external_query tool |
 | DATA-12 | Phase 16 | Complete |
-| DATA-13 | — | Deferred v1.1（外部授权通道） |
-| DATA-14 | — | Deferred v1.1（外部授权通道） |
+| DATA-13 | Phase 21 | Complete (Phase 21; wired v1.1.1) — internal/externalauth + internal/server/external_auth.go + needs_external_query tool |
+| DATA-14 | Phase 21 | Complete (Phase 21; wired v1.1.1) — internal/externalauth + internal/server/external_auth.go + needs_external_query tool |
 | PLAT-04 | Phase 8 | Complete |
 | PLAT-05 | Phase 8 | Complete |
 | GEVL-08 | Phase 9 | Complete |

@@ -5,6 +5,62 @@ All notable changes to SkillForge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.1.1] — 2026-09-07
+
+v1.1.1 closes the Phase 21 integration gap flagged by
+`.planning/reports/MILESTONE_SUMMARY-v1.1.md` (Gap 1, HIGH): the External
+Authorized Channel shipped in v1.1.0 as a fully tested library + HTTP
+surface, but nothing could reach it in a running server. No breaking
+changes.
+
+### Added
+
+- **`needs_external_query` agent tool** (`internal/agent/tools/external_query_tool.go`)
+  — the only agent-visible entry into the channel: pass-through NL2SQL
+  preview → pending approval → masked rows after approval, with
+  structured refusals (never Go errors). Registration is fail-closed: a
+  Skill must declare `reads: [data:external:authorized]` AND the server
+  must have wired the manager, otherwise `BuildRunner` refuses to build.
+- **`external_views/` controlled-file view registry** +
+  `externalauth.LoadViewsDir` (DATA-10) — the only source of view
+  registrations at runtime; fail-closed on malformed files, empty
+  directory is the single legal degraded state. Ships a reference view
+  `external_views/v_user_consumption.yaml`.
+- **`eval/frozen/external-auth.jsonl`** — 10-case golden set covering
+  DATA-04/05/06/10/11/13/14, exactly 3 refusal-required. Deliberately
+  unpinned (no `.lock.json`) until an authorized live replay mints one.
+- Published example Skill `examples/skills/external-lookup` (approve-
+  before-query flow, 4 prohibitions).
+
+### Fixed
+
+- **External Authorized Channel is reachable** — `externalauth.Manager`
+  is now constructed in `cmd/server` (assembly section 6c-5) behind the
+  repo's declared `EXTERNAL_AUTH_ENABLED=1` opt-in gate; the six
+  `/api/external-auth/*` routes no longer answer a permanent `503` in a
+  wired deployment. With the gate unset the behavior is unchanged
+  (fail-closed `503`).
+- Sensitive channel surfaces (`pending` / `approve` / `reject` /
+  `execute` / `reconcile`) now require `X-Admin-Token` (constant-time
+  compare); the admin check runs before the nil-manager `503` so a `403`
+  never leaks channel state. `POST /api/external-auth/request` remains
+  intentionally agent-facing and un-gated in v1.1.1 (documented in the
+  README channel section; hardening queued for v1.2).
+- `reads: [data:external:authorized]` now validates (DATA-07 second
+  half) — the two data-channel constants are the complete allowlist and
+  unknown `data:*` values still fail closed.
+
+### Docs
+
+- README: architecture paragraph + diagram labels now name the same
+  three moats as the moats section (approve-and-remember /
+  trust-contract kernel / CI-integrated trust gate); new **External
+  Authorized Channel** section with the honest ✅/⚠️/❌ boundary table.
+- `.planning/REQUIREMENTS.md`: DATA-04/05/06/07/10/11/13/14 rows
+  reconciled with the shipped code.
+- `.planning/phases/21-external-auth-channel/21-SUMMARY.md`: honest
+  post-hoc phase record backfilled (a955450 + this cleanup).
+
 ## [v1.1.0] — 2026-09-06
 
 v1.1 is a **trust-architecture maturation** release. No breaking changes —

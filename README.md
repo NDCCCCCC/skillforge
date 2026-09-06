@@ -82,7 +82,7 @@ The backend is also directly reachable at `http://localhost:8888` for `curl` pro
 
 ## Architecture
 
-`docker compose up` brings up five services plus two external endpoints. The three moats — **真源分离 tier-filter**, **Skill-as-platform**, and the **Go-native trust evaluator** — are labeled below.
+`docker compose up` brings up five services plus two external endpoints. The three moats — **approve-and-remember**, the **trust-contract kernel**, and the **CI-integrated trust gate** — are labeled below (the same three mechanisms detailed in [Why SkillForge? — The Three Moats](#why-skillforge--the-three-moats)).
 
 ```mermaid
 flowchart TD
@@ -90,31 +90,33 @@ flowchart TD
         etcd["etcd<br/>(metadata)"]
         minio["minio<br/>(object storage)"]
         milvus["Milvus v2.4.x<br/>(vector DB, RocksMQ)"]
-        backend["Go backend<br/>(Hertz :8888)<br/>─── Skill-as-platform ───<br/>pluggable SKILL.md<br/>no code changes"]
+        backend["Go backend<br/>(Hertz :8888)<br/>─── trust-contract kernel ───<br/>pluggable SKILL.md under the moats<br/>no code changes"]
         frontend["nginx frontend<br/>(:8080 → :80)"]
     end
 
     etcd --> milvus
     minio --> milvus
-    milvus -->|"真源分离 tier-filter<br/>PRE-similarity metadata filter<br/>(Moat 1)"| backend
+    milvus -->|"trust-contract kernel primitive: tier-filter<br/>PRE-similarity metadata filter<br/>(part of Moat 2)"| backend
     backend -->|"/api proxy_pass<br/>SSE UIMessageChunk stream"| frontend
     frontend --> browser["🌍 Browser<br/>localhost:8080<br/>cited verdict / refusal card"]
 
     ollama["External: BGE-M3<br/>(ollama, embedding)"] -.->|"BGE_M3_URL"| backend
     glm["External: GLM API<br/>(Zhipu, LLM + judge)"] -.->|"GLM_API_KEY"| backend
-    backend -.->|"trust evaluator<br/>Go-native, Ragas 口径<br/>(Moat 3)"| glm
+    backend -.->|"frozen-replay eval engine<br/>Ragas 口径<br/>(feeds Moat 3: the CI-integrated trust gate)"| glm
 
     classDef moat fill:#fff3cd,stroke:#856404,stroke-width:2px;
     class backend glm milvus moat;
 ```
 
-**The demo Skill is replaceable, not the product.** The Milvus tier-filter, the Skill registry, and the trust evaluator are domain-agnostic. All of the demo behavior — the retrieval boundary, the answer format, the refusal guardrails — lives in a single 30-line Markdown file ([`skills/simple-qa/SKILL.md`](skills/simple-qa/SKILL.md)). Delete it and SkillForge has no domain-specific logic left to remove.
+**The demo Skill is replaceable, not the product.** The tier-filter is a trust-contract-kernel primitive, the Skill registry is the contract format those moats are written in, and the eval engine exists to feed the CI-integrated trust gate — all three are domain-agnostic. All of the demo behavior — the retrieval boundary, the answer format, the refusal guardrails — lives in a single 30-line Markdown file ([`skills/simple-qa/SKILL.md`](skills/simple-qa/SKILL.md)). Delete it and SkillForge has no domain-specific logic left to remove.
 
 ---
 
 ## Why SkillForge? — The Three Moats
 
 These three already-validated mechanisms are the defensible core of v1.1. Each is proven by a spike or phase success criterion; each is **not yet offered by the two mature competitors** in our lane (see comparison below).
+
+> Canonical names, used identically everywhere in this document: **approve-and-remember** (Moat 1) · **trust-contract kernel** (Moat 2) · **CI-integrated trust gate** (Moat 3).
 
 ### 1. Approve-and-Remember as a first-class primitive
 
@@ -162,12 +164,33 @@ The 4 metrics are a verbatim port of Ragas v0.1.21 (Apache-2.0, attributed in `e
 
 ---
 
+## External Authorized Channel
+
+Moat 1 (**approve-and-remember**) applied to the data warehouse. When a user asks for individual-level records — an employee's consumption last month, a customer's account number — SkillForge does not hand the agent a database connection. It asks a human first, every time:
+
+1. user query → the Skill declares `reads: [data:external:authorized]`, so the agent sees the `needs_external_query` tool
+2. the tool asks `nl2sql` for a **read-only SQL preview** over a registered view (the agent never authors SQL itself)
+3. the request enters the **pending** state — a data officer approves or rejects it (no auto-reject, no auto-timeout)
+4. on approval a **5-minute TTL token** is minted, scoped to `(view, session)`
+5. the agent re-invokes with the `query_id` and receives **masked rows** — account numbers keep only the last 4 digits, phones the last 4, emails the first 2 local characters
+6. both sides audit the event (internal ledger + warehouse-side log) and `reconcile` surfaces any one-sided row as a security event
+
+| | |
+|---|---|
+| ✅ | Precompiled views only (registered from controlled `external_views/*.yaml` files at boot) · field-level masking on every returned row · approval is continuously pending until a human acts · dual-audit reconcile · the pending/approve/reject/execute/reconcile surfaces are `X-Admin-Token` gated |
+| ⚠️ | `MemorySource` is the v1.1 reference warehouse driver (real Postgres/MySQL drivers land in v1.2 behind the same `Source` interface) · views come from controlled files in `external_views/` (a malformed file refuses to boot the channel) · the FE approval panel is not built — the HTTP surfaces + the agent tool are the interface · **`POST /api/external-auth/request` is intentionally agent-facing and un-gated in v1.1.1**: it can only create a pending request against an allowlisted view and writes an audit row; abuse is operator-visible as dual-audit rows via reconcile, and a shared secret + rate limit are queued for v1.2 (threat register T-W62-06) |
+| ❌ | Never raw-table access · never auto-execute without an approved, unexpired token · never auto-reject or auto-timeout a pending approval · never return unmasked rows |
+
+The channel is **off by default**. It runs only when the server is started with `EXTERNAL_AUTH_ENABLED=1` (plus `SKILLFORGE_EXTERNAL_VIEWS_DIR`, default `external_views/`); with the gate unset every `/api/external-auth/*` route answers `503` and no Skill can reach the tool.
+
+---
+
 ## SkillForge vs WeKnora vs Semantica — three lanes, not three head-to-head rivals
 
 | | SkillForge | WeKnora (Tencent) | Semantica (semantica-agi) |
 |---|---|---|---|
 | **Lane** | 什么不许答 / 什么必须批 — execution-time trust boundaries | 文档怎么查得准 — retrieval + multi-tenant RBAC | 决策为什么 — knowledge fact provenance + causal graph |
-| **Differentiator** | approve-and-remember primitive + tier-filter at DB + refusal-by-construction + frozen-pin CI gate | hybrid retrieval quality (RAG + Wiki Mode), Go single-binary deployment, 4-level RBAC | W3C PROV-O standard for fact / decision tracing + time-travel replay |
+| **Differentiator** | approve-and-remember primitive + tier-filter at DB + refusal-by-construction + CI-integrated trust gate | hybrid retrieval quality (RAG + Wiki Mode), Go single-binary deployment, 4-level RBAC | W3C PROV-O standard for fact / decision tracing + time-travel replay |
 | **Agent audit** | INSERT-only execution ledger (Phase 11 + 24); PROV-O export (Phase 24-01) | workspace audit log + AES-256-GCM at rest | PROV-O source of truth (their first-class citizen) |
 | **Write actions** | HITL approval gate with frozen-args byte-identity + remember rule | ❌ no approval gate | ❌ decision intelligence is post-hoc, not pre-execution |
 | **Eval posture** | In-tree Go gate (Ragas v0.1.21 verbatim port) | external benchmark suites | external |
