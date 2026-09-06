@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/skillforge/skillforge/internal/duckdb"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/store"
 )
 
@@ -61,6 +62,11 @@ type ImporterConfig struct {
 	// DatasetsDir is the directory for committed dataset .duckdb files.
 	// Empty falls back to duckdb.DefaultDatasetsDir.
 	DatasetsDir string
+	// KBRegistry is the knowledge-base registry a rule file's tier field
+	// resolves against (Phase 26 KBM-04). nil → every rule-file load
+	// fails closed at ValidateRules: an import whose trust tier cannot
+	// be verified must not run.
+	KBRegistry kb.Registry
 }
 
 func (c ImporterConfig) rulesDir() string {
@@ -428,7 +434,7 @@ func (imp *Importer) guardDatasetPeriod(dataset, period string) error {
 // loadRules loads the controlled rule file for dataset.
 func (imp *Importer) loadRules(dataset string) (*Rules, string, error) {
 	path := filepath.Join(imp.cfg.rulesDir(), dataset+".yaml")
-	rules, sha, err := LoadRules(path)
+	rules, sha, err := LoadRules(path, imp.cfg.KBRegistry)
 	if err != nil {
 		return nil, "", fmtError("loadRules", err)
 	}

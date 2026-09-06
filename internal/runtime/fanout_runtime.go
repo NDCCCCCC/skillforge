@@ -46,6 +46,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 )
@@ -280,6 +281,13 @@ type SubAgentConfig struct {
 	SessionID        string
 	ChunkAccumulator *SharedChunkAccumulator
 	Instruction      string
+	// KBRegistry is the knowledge-base registry a sub-skill's reads
+	// declaration resolves against when the manifest carries no
+	// pre-resolved tier set (Phase 26 KBM-01/04). nil fails closed: a
+	// sub-agent whose tier boundary cannot be verified must not be
+	// constructed. The 26-06 hitl tool injection reuses this same
+	// field rather than adding a second registry seam.
+	KBRegistry kb.Registry
 }
 
 // SubAgentFactoryError is the sentinel for BuildSubAgent load-time

@@ -61,8 +61,9 @@ func TestMain(m *testing.M) {
 
 func TestPreviewFirst100Pairs(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
-		SiteSalt: "test-site-salt-16bytes",
-		RulesDir: "../../datarules",
+		SiteSalt:   "test-site-salt-16bytes",
+		RulesDir:   "../../datarules",
+		KBRegistry: testKBReg(),
 	}, nil, nil)
 
 	var rows []string
@@ -83,7 +84,8 @@ func TestPreviewFirst100Pairs(t *testing.T) {
 	assert.Equal(t, "2026-07", resp.Period)
 	assert.Equal(t, int64(150), resp.RowCount)
 	assert.Len(t, resp.SamplePairs, 100)
-	assert.Equal(t, "历史", resp.ProposedTier)
+	assert.Equal(t, "historical", resp.ProposedTier,
+		"the proposed tier is the registry slug from the rule file (KBM-04)")
 	assert.NotEmpty(t, resp.PreviewID)
 	assert.NotEmpty(t, resp.ContentSHA256)
 	assert.NotEmpty(t, resp.RulesSHA256)
@@ -100,8 +102,9 @@ func TestPreviewFirst100Pairs(t *testing.T) {
 
 func TestPreviewBucketOverride(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
-		SiteSalt: "test-site-salt-16bytes",
-		RulesDir: "../../datarules",
+		SiteSalt:   "test-site-salt-16bytes",
+		RulesDir:   "../../datarules",
+		KBRegistry: testKBReg(),
 	}, nil, nil)
 
 	rows := []string{
@@ -123,8 +126,9 @@ func TestPreviewBucketOverride(t *testing.T) {
 
 func TestPreviewPeriodFormat(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
-		SiteSalt: "test-site-salt-16bytes",
-		RulesDir: "../../datarules",
+		SiteSalt:   "test-site-salt-16bytes",
+		RulesDir:   "../../datarules",
+		KBRegistry: testKBReg(),
 	}, nil, nil)
 
 	rows := []string{
@@ -146,8 +150,9 @@ func TestPreviewPeriodFormat(t *testing.T) {
 
 func TestPreviewUnknownChannel(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
-		SiteSalt: "test-site-salt-16bytes",
-		RulesDir: "../../datarules",
+		SiteSalt:   "test-site-salt-16bytes",
+		RulesDir:   "../../datarules",
+		KBRegistry: testKBReg(),
 	}, nil, nil)
 
 	req := PreviewRequest{
@@ -163,8 +168,9 @@ func TestPreviewUnknownChannel(t *testing.T) {
 
 func TestPreviewEmptySaltFailClosed(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
-		SiteSalt: "",
-		RulesDir: "../../datarules",
+		SiteSalt:   "",
+		RulesDir:   "../../datarules",
+		KBRegistry: testKBReg(),
 	}, nil, nil)
 
 	rows := []string{
@@ -184,8 +190,9 @@ func TestPreviewEmptySaltFailClosed(t *testing.T) {
 
 func TestPreviewUnknownColumnFailClosed(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
-		SiteSalt: "test-site-salt-16bytes",
-		RulesDir: "../../datarules",
+		SiteSalt:   "test-site-salt-16bytes",
+		RulesDir:   "../../datarules",
+		KBRegistry: testKBReg(),
 	}, nil, nil)
 
 	rows := []string{
@@ -350,6 +357,7 @@ func TestRawNeverOnDisk(t *testing.T) {
 	imp := NewImporter(ImporterConfig{
 		SiteSalt:    "test-site-salt-16bytes",
 		RulesDir:    "../../datarules",
+		KBRegistry:  testKBReg(),
 		StagingDir:  stagingDir,
 		DatasetsDir: datasetsDir,
 	}, db, nil)

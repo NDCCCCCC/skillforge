@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/skillforge/skillforge/internal/duckdb"
-	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/kb"
 	"gopkg.in/yaml.v3"
 )
 
@@ -80,9 +80,14 @@ var duckDBTypeVocab = []string{"", "VARCHAR", "BIGINT", "DOUBLE", "TIMESTAMP"}
 // symlink is rejected (V12 mirror of the SKILL.md loader guard — an
 // atomically swapped symlink must not be silently followed).
 //
+// reg is the knowledge-base registry the file's tier field resolves
+// against (Phase 26 KBM-04). It is forwarded to ValidateRules only —
+// parsing stays registry-free. A nil registry fails closed there, so
+// an import rule whose trust tier cannot be verified never loads.
+//
 // Errors carry the file path (loader.go:202-215 form); validation
 // errors are NOT silently swallowed.
-func LoadRules(path string) (*Rules, string, error) {
+func LoadRules(path string, reg kb.Registry) (*Rules, string, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, "", fmtError("LoadRules", fmt.Errorf("lstat %s: %w", path, err))
@@ -101,7 +106,7 @@ func LoadRules(path string) (*Rules, string, error) {
 	if err := yaml.Unmarshal(raw, &m); err != nil {
 		return nil, "", fmtError("LoadRules", fmt.Errorf("unmarshal YAML in %s: %w", path, err))
 	}
-	if err := ValidateRules(&m); err != nil {
+	if err := ValidateRules(&m, reg); err != nil {
 		return nil, "", fmtError("LoadRules", fmt.Errorf("validate %s: %w", path, err))
 	}
 	return &m, rulesSHA, nil
@@ -116,9 +121,11 @@ func LoadRules(path string) (*Rules, string, error) {
 //     (same ^[A-Za-z0-9_-]{1,64}$ allowlist the ATTACH layer enforces),
 //     and contains no "__" — that separator is reserved for the
 //     "{dataset}__{period}" composite registry name (D15-C2 / A4).
-//   - Tier: one of 权威|历史|个人 via skill.TierEnumByValue; 草稿 (draft)
-//     is explicitly excluded — dataset imports never produce draft
-//     state. Single source of truth: internal/skill TierEnum.
+//   - Tier: an active knowledge-base slug in reg whose role is not
+//     draft. The draft exclusion is kept from Phase 15 — dataset
+//     imports never produce draft state. Single source of truth:
+//     internal/kb.Registry (Phase 26 / KBM-01); the error lists the
+//     active slug set so the data steward can self-correct.
 //   - KMin: >= 0; 0 means "use the global KMinDefault" (D15-D3).
 //   - Columns: at least one; per column the rule kind, profile, width,
 //     and duckdb_type vocabs above.
@@ -127,7 +134,7 @@ func LoadRules(path string) (*Rules, string, error) {
 // function — it happens per import against the actual upload and lists
 // the complete diff (ValidateColumnSet below), while file validation
 // stays first-error-short-circuit like the Skill validator.
-func ValidateRules(m *Rules) error {
+func ValidateRules(m *Rules, reg kb.Registry) error {
 	if m == nil {
 		return fmtError("ValidateRules", fmt.Errorf("rules is nil — a rule file is required for every dataset (D15-A1)"))
 	}
@@ -143,10 +150,18 @@ func ValidateRules(m *Rules) error {
 		return fmtError("ValidateRules", fmt.Errorf(
 			"dataset %q contains \"__\" — \"__\" is the reserved separator of the \"{dataset}__{period}\" composite registry name; use single underscores (D15-C2 / RESEARCH A4)", m.Dataset))
 	}
-	dir, ok := skill.TierEnumByValue(m.Tier)
-	if !ok || dir == "draft" {
+	if reg == nil {
 		return fmtError("ValidateRules", fmt.Errorf(
-			"tier %q is not a valid dataset tier (valid: 权威, 历史, 个人; 草稿/draft is excluded — dataset imports never produce draft state; single source of truth: internal/skill TierEnum)", m.Tier))
+			"tier %q cannot be verified: no knowledge-base registry wired (fail-closed — an import rule whose trust tier cannot be checked must not load; single source of truth: internal/kb.Registry)", m.Tier))
+	}
+	entry, ok := reg.Lookup(m.Tier)
+	if !ok {
+		return fmtError("ValidateRules", fmt.Errorf(
+			"tier %q is not a live knowledge base (active: %v; a deactivated or unregistered base is not a legal dataset tier — dataset imports never produce draft state; single source of truth: internal/kb.Registry)", m.Tier, reg.ActiveSlugs()))
+	}
+	if entry.Role == kb.RoleDraft {
+		return fmtError("ValidateRules", fmt.Errorf(
+			"tier %q resolves to the draft role, which dataset imports never produce (KBM-03: draft is not yet effective and never enters retrieval; single source of truth: internal/kb.Registry)", m.Tier))
 	}
 	if m.KMin < 0 {
 		return fmtError("ValidateRules", fmt.Errorf(

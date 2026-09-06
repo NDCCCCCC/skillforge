@@ -1,6 +1,6 @@
 # datarules/loans.yaml —— 数据人员可写；loader 加载期 fail-closed 校验
 dataset: loans          # 必须与注册名 __ 前缀一致（禁 "__" 子串）
-tier: 历史               # 权威|历史|个人（TierEnum 词表）
+tier: historical        # 注册表 slug（internal/kb.Registry 活跃条目，且角色非 draft；KBM-04）
 k_min: 10               # 可选 override（缺省 0 = 用全局 KMinDefault=5）
 columns:
   customer_name: { rule: hash, profile: person_name }

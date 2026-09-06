@@ -226,7 +226,7 @@ func TestLoadRulesComputesSHA256(t *testing.T) {
 	// Validation failure carries the file path (loader.go:202-215 form).
 	dir := t.TempDir()
 	bad := filepath.Join(dir, "bad.yaml")
-	require.NoError(t, os.WriteFile(bad, []byte("dataset: x\ntier: ghost\ncolumns:\n  a: {rule: encrypt}\n"), 0o644))
+	require.NoError(t, os.WriteFile(bad, []byte("dataset: x\ntier: authority\ncolumns:\n  a: {rule: encrypt}\n"), 0o644))
 	_, _, err = LoadRules(bad, testKBReg())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), bad, "load error must carry the file path")

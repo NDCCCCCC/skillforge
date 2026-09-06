@@ -47,6 +47,7 @@ func testImporter(t *testing.T) (*Importer, store.Store, string, string) {
 	imp := NewImporter(ImporterConfig{
 		SiteSalt:    "test-site-salt-16bytes",
 		RulesDir:    "../../datarules",
+		KBRegistry:  testKBReg(),
 		StagingDir:  stagingDir,
 		DatasetsDir: datasetsDir,
 	}, db, nil)

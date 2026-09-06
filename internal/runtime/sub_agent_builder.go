@@ -25,9 +25,9 @@
 //   - Prompt injection cannot expand the sub-agent's tier boundary
 //     because the tier slice is baked into the Tool's closure, NOT
 //     into the system prompt. A user-controlled sub-query that
-//     claims "tier_filter: [权威, 历史]" but the parent's
-//     ResolvedTiers() is [权威] gets rejected at BuildSubAgent (empty
-//     intersection → FAN-02 SC-2 load-time error).
+//     claims "tier_filter: [historical, personal]" but the parent's
+//     ResolvedTiers() is [authority] gets rejected at BuildSubAgent
+//     (empty intersection → FAN-02 SC-2 load-time error).
 //
 // Why empty intersection = LOAD-TIME error (not runtime silence):
 //   - FAN-02 SC-2 invariant: a sub-skill with no overlapping tier
@@ -92,13 +92,15 @@ func BuildSubAgent(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error) {
 		return nil, fmt.Errorf("%w: parent %q has empty ResolvedTiers() — orchestrator's parent must declare at least one tier",
 			ErrSubAgentFactory, cfg.ParentManifest.Name)
 	}
-	// Sub-skill's ResolvedTiers (CN-char Milvus VARCHAR values).
-	// Falls back to resolving subSkillManifest.Reads (ASCII patterns)
-	// so the hermetic tests can populate tiers directly via
-	// SetResolvedTiersForTest OR via ResolveTiers(reads).
+	// Sub-skill's ResolvedTiers (active knowledge-base slugs since
+	// Phase 26 / KBM-01 — the loader resolves them from reads through
+	// kb.Registry.ResolveReads). Falls back to resolving the reads
+	// patterns here so a synthesized sub-manifest still resolves against
+	// cfg.KBRegistry; a nil registry fails closed (an unresolvable tier
+	// boundary must not become a running sub-agent).
 	subTiers := cfg.SubSkillManifest.ResolvedTiers()
 	if len(subTiers) == 0 {
-		resolved, err := skill.ResolveTiers(cfg.SubSkillManifest.Reads)
+		resolved, err := skill.ResolveTiers(cfg.SubSkillManifest.Reads, cfg.KBRegistry)
 		if err != nil {
 			return nil, fmt.Errorf("%w: sub_skill %q ResolveTiers: %w", ErrSubAgentFactory, cfg.SubSkillManifest.Name, err)
 		}
@@ -115,17 +117,17 @@ func BuildSubAgent(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error) {
 			ErrSubAgentFactory, parentTiers, subTiers)
 	}
 
-	// Translate the CN-char resolved-tier intersection back to the
-	// ASCII tier-dir patterns that the Manifest's Reads field
-	// expects. TierEnumByValue provides the reverse lookup; we
-	// build a `<dir>/**` pattern for each intersected tier so the
-	// downstream retriever sees a familiar pattern shape.
+	// Translate the resolved-slug intersection back into the reads
+	// patterns the Manifest's Reads field expects. Since the values ARE
+	// the registry slugs (KBM-01), a slug is its own pattern top segment:
+	// the mapping is a plain slug + "/**" concatenation with no reverse
+	// lookup left to maintain.
 	readPatterns := resolvedTiersToReadPatterns(intersection)
 
 	// Build subManifest with the intersection baked into Reads.
 	subManifest, err := skill.NewManifestBuilder(cfg.SubSkillManifest).
 		WithReads(readPatterns).
-		Build()
+		Build(cfg.KBRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("%w: ManifestBuilder.Build: %w", ErrSubAgentFactory, err)
 	}
@@ -185,7 +187,7 @@ func BuildSubAgent(ctx context.Context, cfg SubAgentConfig) (adk.Agent, error) {
 
 // intersectTiers returns the set intersection of parent and sub,
 // order-preserving on the LEFT operand (parent's tiers first).
-// O(n*m) — fine for small N (4 tiers max per Phase 3 / TierEnum).
+// O(n*m) — fine for the handful of bases a registry holds.
 //
 // The order-preserving property matters because the orchestrator
 // logs the parent's tier order; deterministic output simplifies
@@ -204,24 +206,19 @@ func intersectTiers(parent, sub []string) []string {
 	return out
 }
 
-// resolvedTiersToReadPatterns converts a CN-char resolved-tier slice
-// (e.g. ["权威", "历史"]) back into the canonical ASCII Reads patterns
-// (e.g. ["authority/**", "historical/**"]) that the Manifest schema
-// expects. This is the reverse of ResolveTiers — we look up each
-// CN-char value in TierEnumByValue and build the "<dir>/**" pattern.
-//
-// Any unknown tier value is silently dropped (defense-in-depth —
-// TierEnumByValue returns ok=false for unknown values, and we have
-// already passed ResolveTiers upstream so the input slice should
-// always be valid; this guard catches future drift).
+// resolvedTiersToReadPatterns converts a resolved-slug slice (e.g.
+// ["authority", "historical"]) into the reads patterns the Manifest
+// schema expects (e.g. ["authority/**", "historical/**"]). The
+// translation is trivial since Phase 26 / KBM-01: a resolved tier IS a
+// knowledge-base slug, and a slug is its own pattern top segment, so
+// the mapping is a bare concatenation. The old reverse lookup (and its
+// "unknown values are silently dropped" defense) is gone with it — the
+// upstream resolution is fail-closed against the registry, so there is
+// no unknown value left to drop and nothing to hide.
 func resolvedTiersToReadPatterns(tiers []string) []string {
 	out := make([]string, 0, len(tiers))
-	for _, t := range tiers {
-		dir, ok := skill.TierEnumByValue(t)
-		if !ok {
-			continue
-		}
-		out = append(out, dir+"/**")
+	for _, slug := range tiers {
+		out = append(out, slug+"/**")
 	}
 	return out
 }
