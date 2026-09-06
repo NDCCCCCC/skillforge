@@ -303,3 +303,41 @@ func TestRefusedCaseFaithExemption(t *testing.T) {
 	assert.InDelta(t, 0.0, faith, 1e-9, "refused=false must let the hostile judge score 0.0")
 	assert.InDelta(t, 0.0, crecall, 1e-9, "refused=false REFUSAL ground truth scores 0.0")
 }
+
+func TestBuildReport_ExcludesAgentErrors(t *testing.T) {
+	results := []eval.CaseResult{
+		{ID: "adv-001", Category: "adversarial", Faithfulness: 1.0, AnswerRelevance: 0.8, ContextPrecision: 1.0, ContextRecall: 0.4},
+		{ID: "adv-002", Category: "adversarial", Faithfulness: 0.5, AnswerRelevance: 0.6, ContextPrecision: 0.5, ContextRecall: 0.0},
+		{ID: "adv-008", Category: "adversarial", Faithfulness: 1.0, Refused: true, RefusalReason: eval.AgentErrorReason},
+		{ID: "ref-000", Category: "refusal-required", Faithfulness: 1.0, Refused: true, RefusalReason: "verdict_status_refused"},
+		{ID: "mh-006", Category: "multi-hop", Faithfulness: 1.0, Refused: true, RefusalReason: eval.AgentErrorReason},
+	}
+	rep := buildReport(results)
+
+	assert.Equal(t, 2, rep.AgentErrors, "agent_error cases counted separately")
+	// adversarial mean excludes the agent_error case: (1.0+0.5)/2.
+	if adv := rep.PerCategory["adversarial"]; assert.NotNil(t, adv) {
+		assert.InDelta(t, 0.75, adv["faithfulness"], 1e-9, "adversarial faith mean excludes agent_error case")
+	}
+	// overall denominator = 3 scored cases (1.0+0.5+1.0)/3.
+	assert.InDelta(t, 0.8333, rep.Overall["faithfulness"], 1e-3, "overall faith mean excludes agent_error cases")
+	// per-case detail still carries every case + the reason.
+	assert.Len(t, rep.Cases, 5)
+	found := false
+	for _, c := range rep.Cases {
+		if c.ID == "adv-008" {
+			found = true
+			assert.Equal(t, eval.AgentErrorReason, c.RefusalReason)
+		}
+	}
+	assert.True(t, found, "agent_error case retained in per-case detail")
+
+	// Degenerate guard: a category made ONLY of agent_error cases must
+	// not divide by zero.
+	allErr := buildReport([]eval.CaseResult{
+		{ID: "x", Category: "adversarial", Refused: true, RefusalReason: eval.AgentErrorReason},
+	})
+	assert.Equal(t, 1, allErr.AgentErrors)
+	assert.NotNil(t, allErr.PerCategory["adversarial"])
+	assert.InDelta(t, 0.0, allErr.PerCategory["adversarial"]["faithfulness"], 1e-9, "zero-denominator category means stay 0")
+}

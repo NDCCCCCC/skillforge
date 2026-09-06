@@ -72,6 +72,13 @@ type Sample struct {
 // CaseResult is the per-case metric output in a Report. Carries the
 // Case ID + Category (so the report is self-describing without a join
 // back to the golden set) and the 4 metric scores.
+//
+// RefusalReason (additive, Phase 25) distinguishes WHY a case is
+// refused: a model decision ("verdict_status_refused",
+// "no_authorized_source", ...) versus a harness failure
+// ("agent_error" — react step-cap exhaustion, LLM 5xx). buildReport
+// excludes agent_error cases from the means so infrastructure faults
+// do not masquerade as model refusals.
 type CaseResult struct {
 	ID               string  `json:"id"`
 	Category         string  `json:"category"`
@@ -80,7 +87,12 @@ type CaseResult struct {
 	AnswerRelevance  float64 `json:"answer_relevance"`
 	ContextRecall    float64 `json:"context_recall"`
 	Refused          bool    `json:"refused"`
+	RefusalReason    string  `json:"refusal_reason,omitempty"`
 }
+
+// AgentErrorReason marks a case whose refusal was a harness failure
+// rather than a model decision. Excluded from Report means.
+const AgentErrorReason = "agent_error"
 
 // Report is the top-level JSON written by WriteReport. The Overall map
 // holds mean scores across all cases; the PerCategory map holds mean
@@ -99,6 +111,10 @@ type Report struct {
 	Overall     map[string]float64            `json:"overall"`
 	PerCategory map[string]map[string]float64 `json:"per_category"`
 	Cases       []CaseResult                  `json:"cases"`
+	// AgentErrors counts cases excluded from the means because the
+	// agent failed to run at all (harness fault, not model behavior).
+	// Additive + omitempty: pre-Phase-25 consumers ignore it.
+	AgentErrors int `json:"agent_errors,omitempty"`
 }
 
 // SampleToResult converts a Sample + its 4 metric scores into a
@@ -114,6 +130,7 @@ func SampleToResult(s Sample, faith, cp, ar, cr float64) CaseResult {
 		AnswerRelevance:  ar,
 		ContextRecall:    cr,
 		Refused:          s.RefusalReason != "",
+		RefusalReason:    s.RefusalReason,
 	}
 }
 

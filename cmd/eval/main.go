@@ -1051,8 +1051,24 @@ func buildReport(results []eval.CaseResult) eval.Report {
 	sumOverall := map[string]float64{}
 	sumPerCat := map[string]map[string]float64{}
 	countPerCat := map[string]int{}
+	// Phase 25: agent_error cases measure the HARNESS (react step-cap
+	// exhaustion, LLM 5xx), not the model — excluded from every mean
+	// and reported separately so a 2/50 infra fault cannot masquerade
+	// as a 2/50 refusal collapse.
+	agentErrors := 0
 
 	for _, r := range results {
+		// The category stays visible in per_category even when every
+		// case in it errored (means = 0) — hiding the row would read as
+		// "category not run".
+		if _, ok := sumPerCat[r.Category]; !ok {
+			sumPerCat[r.Category] = map[string]float64{}
+			countPerCat[r.Category] = 0
+		}
+		if r.RefusalReason == eval.AgentErrorReason {
+			agentErrors++
+			continue
+		}
 		countPerCat[r.Category]++
 		if _, ok := sumPerCat[r.Category]; !ok {
 			sumPerCat[r.Category] = map[string]float64{}
@@ -1068,9 +1084,10 @@ func buildReport(results []eval.CaseResult) eval.Report {
 	}
 
 	overall := map[string]float64{}
+	denom := len(results) - agentErrors
 	for _, m := range metrics {
-		if len(results) > 0 {
-			overall[m] = round4(sumOverall[m] / float64(len(results)))
+		if denom > 0 {
+			overall[m] = round4(sumOverall[m] / float64(denom))
 		}
 	}
 
@@ -1078,7 +1095,9 @@ func buildReport(results []eval.CaseResult) eval.Report {
 	for cat, n := range countPerCat {
 		per := map[string]float64{}
 		for _, m := range metrics {
-			per[m] = round4(sumPerCat[cat][m] / float64(n))
+			if n > 0 {
+				per[m] = round4(sumPerCat[cat][m] / float64(n))
+			}
 		}
 		perCat[cat] = per
 	}
@@ -1087,6 +1106,7 @@ func buildReport(results []eval.CaseResult) eval.Report {
 		Overall:     overall,
 		PerCategory: perCat,
 		Cases:       results,
+		AgentErrors: agentErrors,
 	}
 }
 
