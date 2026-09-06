@@ -313,6 +313,12 @@ func (c *Client) Insert(ctx context.Context, docs []retriever.Document) error {
 // are enforced by the database query itself — we never load all docs and
 // then filter.
 //
+// The tier values are knowledge-base registry slugs (what kb.Registry's
+// ActiveSlugs / ResolveReads produce). Phase 26 moved the VALUE source from
+// the retired 4-value CN-char tier enum to the registry; the filter shape,
+// its PRE-similarity position, and the default-deny semantics below are
+// unchanged.
+//
 // Empty tiers → {tier: {$in: []}} matches no documents → 0 hits. This
 // is the structural refusal-by-construction (D-09): the database itself
 // refuses, independent of any agent policy. We do not special-case the

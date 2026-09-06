@@ -72,7 +72,7 @@ type docRow struct {
 // Originally lived here in Plan 02-04; promoted to a leaf package in
 // Plan 05-02 because internal/skill/router.go needed to reuse cosine
 // without creating a cycle through internal/retriever/mongo/seed.go
-// (which itself imports internal/skill for TierEnum).
+// (which itself imports the knowledge packages for the corpus walk).
 func Cosine(a, b []float32) float32 {
 	return vecmath.Cosine(a, b)
 }

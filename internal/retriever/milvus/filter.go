@@ -21,10 +21,16 @@ import (
 	"strings"
 )
 
-// BuildMilvusFilter converts a Skill.reads slice (e.g. ["权威"]) into a
-// Milvus filter expression applied PRE-similarity at the SDK Search layer,
-// co-layered with the policy-version effective_to PRE-filter (Plan 05-02
-// D5-15).
+// BuildMilvusFilter converts a resolved tier set (knowledge-base registry
+// slugs, e.g. ["authority"]) into a Milvus filter expression applied
+// PRE-similarity at the SDK Search layer, co-layered with the
+// policy-version effective_to PRE-filter (Plan 05-02 D5-15).
+//
+// The signature and the expression shape are frozen (D7: tier is metadata
+// filtered BEFORE similarity). What changed in Phase 26 is only the VALUE
+// source: callers now pass kb.Registry-derived slugs (skill resolvedTiers
+// / ActiveSlugs), never CN-char tier names — those retired from the data
+// layer entirely.
 //
 // Empty / nil tiers returns the literal string "false" which Milvus
 // evaluates as a never-matching predicate (default-deny per D-09). This is
@@ -33,7 +39,7 @@ import (
 //
 // Effective PRE-filter (D5-15 sentinel design, NOT nullable):
 //
-//	tier in [<quoted tiers>] and (effective_to == 0 or effective_to >= <now>)
+//	tier in [<quoted slugs>] and (effective_to == 0 or effective_to >= <now>)
 //
 // Order: tier first (the selectivity win), effective clause second. The
 // optimizer can short-circuit on tier — a default-deny Skill never
@@ -46,10 +52,11 @@ import (
 // sidesteps that pitfall entirely: existing chunks with no effective_*
 // metadata get the default value 0 (perpetual) and pass the predicate.
 //
-// CN characters in tier names are escaped via Go's %q formatter (Pitfall 7
-// mitigation): %q produces a valid double-quoted string with hostile
-// characters (single quotes, double quotes, backslashes) backslash-escaped,
-// so the resulting expression is injection-safe for all tier values.
+// Slug values are escaped via Go's %q formatter (Pitfall 7 mitigation):
+// %q produces a valid double-quoted string with hostile characters (single
+// quotes, double quotes, backslashes) backslash-escaped, so the resulting
+// expression is injection-safe for all slug values (the kb slug whitelist
+// upstream is the first gate; %q is the second).
 //
 // `now` is the epoch-seconds cutoff (computed once at pipeline entry,
 // per VerdictPipeline). Tests may pass 0 to assert expression shape;
@@ -67,8 +74,8 @@ func BuildMilvusFilter(tiers []string, now int64) string {
 	quoted := make([]string, len(tiers))
 	for i, t := range tiers {
 		// %q produces a double-quoted, backslash-escaped Go string literal.
-		// For CN chars it yields "权威" verbatim (UTF-8 safe); for hostile
-		// chars it yields "O\"Brien" / "a\\b" — both safe inside [ ... ].
+		// For ASCII slugs it yields "authority" verbatim; for hostile chars
+		// it yields "O\"Brien" / "a\\b" — both safe inside [ ... ].
 		quoted[i] = fmt.Sprintf("%q", t)
 	}
 	tierClause := fmt.Sprintf("tier in [%s]", strings.Join(quoted, ","))

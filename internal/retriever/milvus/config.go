@@ -33,6 +33,8 @@ import (
 	"time"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
+
+	"github.com/skillforge/skillforge/internal/kb"
 )
 
 // Spike collection / index defaults. The default collection name is fixed
@@ -41,11 +43,16 @@ import (
 const (
 	DefaultCollectionName = "skillforge_spike_test"
 	DefaultEmbedDim       = 1024 // BGE-M3 dense output dimension
-	DefaultTierMaxLen     = 20   // CN tier names: 权威/历史/个人/草稿 (≤2 chars, 20 is headroom)
-	DefaultContentMaxLen  = 8192 // BGE-M3 context is 8192 tokens; content field mirrors that ceiling
-	DefaultSourceMaxLen   = 256  // fixture relative path
-	DefaultIVFNList       = 128  // IVF_FLAT nlist — small dataset, modest cluster count
-	DefaultIVFNProbe      = 10   // search-time nprobe
+	// DefaultTierMaxLen is the Milvus tier (VARCHAR) column width. The slug
+	// ceiling's single home is internal/kb.MaxSlugLen — this constant is
+	// only that ceiling's projection onto the collection schema, so the two
+	// can never drift (a second literal copy of the number would be a new
+	// hardcode under the v1.2 zero-hardcode standard).
+	DefaultTierMaxLen    = kb.MaxSlugLen
+	DefaultContentMaxLen = 8192 // BGE-M3 context is 8192 tokens; content field mirrors that ceiling
+	DefaultSourceMaxLen  = 256  // fixture relative path
+	DefaultIVFNList      = 128  // IVF_FLAT nlist — small dataset, modest cluster count
+	DefaultIVFNProbe     = 10   // search-time nprobe
 
 	// Network resilience (per Plan 01-01 internal-api strategy).
 	dialTimeout  = 5 * time.Second

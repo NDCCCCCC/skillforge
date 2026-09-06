@@ -18,7 +18,7 @@
 // that have no shared ancestor (e.g. internal/retriever/mongo and
 // internal/skill). Extracted from internal/retriever/mongo/rank.go
 // in Plan 05-02 so the Skill Router can reuse cosine without dragging
-// in the Mongo driver + the skill.TierEnum dependency that seed.go
+// in the Mongo driver + the knowledge-corpus dependencies that seed.go
 // imports (which would create an import cycle: skill -> mongo -> skill).
 //
 // Why a separate package (not inlined): the plan's "Don't Hand-Roll"
@@ -46,7 +46,7 @@ import "math"
 // Originally lived in internal/retriever/mongo/rank.go; promoted to a
 // leaf package in Plan 05-02 so internal/skill/router.go can import it
 // without a cycle through internal/retriever/mongo/seed.go (which
-// itself imports internal/skill for TierEnum).
+// itself imports the knowledge packages for the corpus walk).
 func Cosine(a, b []float32) float32 {
 	if len(a) != len(b) {
 		panic("vecmath.Cosine: length mismatch")
