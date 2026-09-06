@@ -115,9 +115,25 @@ Knowledge is split into four tiers — **权威** (authority), **历史** (histo
 
 The agent kernel is fixed Go + Eino ADK code. Adapting SkillForge to a new enterprise domain (legal review, HR policy, IT helpdesk) means **authoring or editing a `SKILL.md` file** — never touching Go source. Skills are hot-reloaded: drop a file in `skills/`, the registry picks it up, intent routing vectors the description, and the new domain is live. This turns SkillForge from a single "compliance app" into a **platform** — and is the direct counter to the "AI wrapper is dead" lesson (Height.app closed 2025.9 because it was a feature, not a platform).
 
-### 3. Go-Native Trust Evaluator
+### 3. CI-Integrated Trust Gate (Skill 晋级闭环)
 
-Hallucination is the #1 failure mode for enterprise RAG. SkillForge ships a single-language Go evaluator (`internal/eval` + `cmd/eval`) that scores every Skill on four RAG-trust metrics. The **faithfulness** metric ports the Ragas v0.1.21 claim-extraction + entailment prompts **verbatim** (Apache-2.0, attributed in `eval/NOTICE`) so the headline number is industry-comparable ("Ragas 口径"); the other three metrics use Go-authored judge prompts. This keeps the stack single-language (no Python sidecar) while remaining benchmark-comparable. Validated by Phase 3 SC-6 (reproducibility via frozen lock + StubJudge).
+Hallucination is the #1 failure mode for enterprise RAG. SkillForge ships a single-language Go evaluator (`internal/eval` + `cmd/eval`) that scores every Skill on four RAG-trust metrics and gates promotion through CI (`.github/workflows/eval-gate.yml`).
+
+**评测器定位声明（Phase 22）**
+
+The 4 metrics are a verbatim port of Ragas v0.1.21 (Apache-2.0, attributed in `eval/NOTICE`). SkillForge does **not** ship an independent evaluation platform — `internal/eval` is the **internal infrastructure** that backs the Skill promotion gate, and nothing more. If you want a standalone RAG evaluation suite, use [Ragas](https://docs.ragas.io/) directly (or DeepEval / TruLens); we deliberately do not compete in that lane.
+
+| Aspect | Ragas / DeepEval / TruLens | SkillForge `internal/eval` |
+|--------|---------------------------|----------------------------|
+| Goal | Standalone RAG evaluation platform | Skill promotion gate inside the platform |
+| Metrics | 4+ proprietary | 4 verbatim-port (Ragas v0.1.21) |
+| Calibration set | User-supplied | 50-case frozen compliance golden (`.planning/phases/22-eval-ci/`) |
+| Pin / lock | Optional | **Required** (`AssertPin` + frozen replay) |
+| CI integration | User wires their own | First-class (`.github/workflows/eval-gate.yml`) |
+| Cross-judge | Via LLM swap | `--judge-models glm-5.2,deepseek` + planned human-judge calibration (Phase 22-02) |
+| License | Ragas Apache-2.0 / DeepEval Apache-2.0 / TruLens MIT | In-tree, no sidecar |
+
+**Single-language posture**: keeping the evaluator in Go (no Python sidecar, no Ragas pip install) is a deployment convenience, not a competitive moat. We document this transparently because the value is the **CI integration + Skill promotion loop**, not the metric implementation.
 
 ---
 
