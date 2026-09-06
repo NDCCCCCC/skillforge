@@ -546,14 +546,17 @@ func (s *snapshot) RetrievalEligible() []string {
 ## Open Questions
 
 1. **可变表 vs 事件溯源注册表**
+   **RESOLVED (26-02):** 采用可变表 knowledge_bases + INSERT-only 审计行（internal/store/sqlite/kb_registry.go 的 UPDATE retrieval_enabled = 停用语义；事件溯源的时间点重建留作 Phase 24 time-travel 的未来能力）——见 26-02-PLAN.md Task 1/2。
    - What we know: KBM-02 要停用不删 + INSERT-only 审计；repo 已有可变配置表先例（datasets 有真 DELETE）也有 INSERT-only 生命周期先例（approval_rules）。
    - What's unclear: `knowledge_bases` 用可变表（UPDATE retrieval_enabled）还是全事件行（末行投影）。
    - Recommendation: **可变表 + 审计行**（本 phase 体积可控）；Phase 24 的 time-travel 模式未来可在审计行上重建任意 T 时刻注册表，不必现在付事件溯源的代码成本。若 planner 判体量允许，事件溯源是上限更高的选择（A4 联动）。
 2. **`GET /api/knowledge/bases` 公开只读投影是否存在**
+   **RESOLVED (26-05 GET /api/knowledge/bases):** 新增公开只读端点（仅活跃条目的 slug/display_name/role，无 token、无 description/enabled），admin 端点保留完整视图——见 26-05-PLAN.md Task 1；FE 消费在 26-08 的 web/src/lib/kb-bases.ts。
    - What we know: FE TierBadge/管理视图需要 slug→display_name 映射；chat 用户侧徽标不该要求 admin token。
    - What's unclear: 复用 admin 端点（FE 聊天页无 token）还是新增公开只读端点。
    - Recommendation: 新增公开 `GET /api/knowledge/bases`（返回活跃条目的 slug/display_name/role；无描述无开关——信息面最小化），admin 端点保留完整视图。
 3. **`cmd/eval` / `internal/eval` 是否消费 tier 值**
+   **RESOLVED — verified (planner 复核):** internal/eval 与 web/src/components/eval/ 均 0 tier 引用（grep 复核 2026-09-07）——eval 链唯一触面是 fanout golden/lock 的词汇迁移（26-07），无 FE 报表视图清单项，LOW residual risk 关闭。
    - What we know: 全仓扫描 `internal/eval` 仅 fanout_lock_test 触及 golden 文件；`cmd/eval` 未见 tier 分支。
    - What's unclear: eval 报告/reports INDEX 是否在 UI 按 tier 分组（若有则 FE 报表视图也在清单）。
    - Recommendation: planner 执行时 grep `internal/eval` + `web/src/components/eval` 复核一次（本 research 已扫，未见 tier 依赖；标 LOW residual risk）。
