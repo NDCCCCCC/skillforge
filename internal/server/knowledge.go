@@ -46,6 +46,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -55,6 +56,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 )
 
@@ -253,24 +255,13 @@ var _ KnowledgeBuilder = (*knowledge.GraphBuilder)(nil)
 // "what is ON DISK" — the left-sidebar FILES tree. They can differ
 // transiently (a file added but not yet re-indexed); the FE shows the
 // disk truth for browsing and the graph truth for retrieval.
+//
+// Since Phase 26 the corpus tree is knowledge/<slug>/ and the slug IS the
+// directory name — the registry (Deps.KBRegistry) is the only source of
+// which directories exist, so there is no separate tier→directory mapping
+// layer to keep in sync (the old one silently produced empty listings the
+// day the two lists drifted).
 const knowledgeRootDir = "knowledge/"
-
-// validKnowledgeTiers gates the `tier` query param on /api/knowledge/doc.
-// Everything else 400s — the value is concatenated into a filesystem
-// path, so an open tier would let a caller probe arbitrary directories
-// (e.g. tier=../cmd). Keep in lockstep with the indexer's 4-tier set.
-var validKnowledgeTiers = map[string]bool{
-	"权威": true, "历史": true, "个人": true, "草稿": true,
-}
-
-// tierDirEn maps a canonical tier to its on-disk subdirectory. The
-// corpus tree uses ENGLISH directory names (knowledge/authority/...) —
-// the Chinese tier names are wire/UI vocabulary only. Joining the tier
-// name directly into the path silently produced empty listings (the
-// live "文件树为空" trap: knowledge/权威 does not exist on disk).
-var tierDirEn = map[string]string{
-	"权威": "authority", "历史": "historical", "个人": "personal", "草稿": "draft",
-}
 
 // docEntry is one file row in the /api/knowledge/docs response.
 type docEntry struct {
@@ -278,7 +269,8 @@ type docEntry struct {
 	Bytes    int64  `json:"bytes"`
 }
 
-// docsTier is one tier block in the /api/knowledge/docs response.
+// docsTier is one tier block in the /api/knowledge/docs response. Tier
+// carries the registry slug.
 type docsTier struct {
 	Tier string     `json:"tier"`
 	Docs []docEntry `json:"docs"`
@@ -287,56 +279,107 @@ type docsTier struct {
 // docsHandler implements GET /api/knowledge/docs — the disk-truth file
 // tree for the left-sidebar FILES panel (and the doc nodes' click target
 // in the knowledge graph view). Unlike graphHandler this does NOT touch
-// the retriever: it walks knowledge/<tier>/ and returns filenames +
+// the retriever: it walks knowledge/<slug>/ and returns filenames +
 // sizes. Frontmatter stays in the content (the doc viewer renders it as
 // the metadata header block).
 //
+// The block set is the ACTIVE registry set (slug ascending — List() is
+// sorted): a deactivated base disappears from the browsing surface exactly
+// as it does from retrieval and skill validation, and a newly created base
+// appears without a code change (KBM-01: the registry is the single source
+// of the KB set). An empty registry is a legal degraded state → 200 with
+// an empty list (the FE renders an empty tree), never a 500.
+//
 //	GET /api/knowledge/docs → 200 { tiers: [ { tier, docs: [{filename, bytes}] } ] }
-//	                        → 500 { error: "knowledge docs scan failed — see server logs" }
+//	                        → 503 { error: KB registry not wired }
 func (s *Deps) docsHandler(ctx context.Context, c *app.RequestContext) {
-	tiers := make([]docsTier, 0, len(validKnowledgeTiers))
-	for _, tier := range []string{"权威", "历史", "个人", "草稿"} {
-		entries, err := os.ReadDir(filepath.Join(knowledgeRootDir, tierDirEn[tier]))
-		if err != nil {
-			// Missing tier dir (e.g. a fresh checkout with only .gitkeep
-			// gone) is an empty tier, not a 500 — the tree shows 0 docs.
-			tiers = append(tiers, docsTier{Tier: tier, Docs: []docEntry{}})
-			continue
-		}
-		docs := make([]docEntry, 0, len(entries))
-		for _, e := range entries {
-			if e.IsDir() || e.Name() == ".gitkeep" || !strings.HasSuffix(e.Name(), ".md") {
-				continue
-			}
-			info, err := e.Info()
-			if err != nil {
-				continue
-			}
-			docs = append(docs, docEntry{Filename: e.Name(), Bytes: info.Size()})
-		}
-		tiers = append(tiers, docsTier{Tier: tier, Docs: docs})
+	if s.KBRegistry == nil {
+		// Fail-closed: an empty-looking 200 would read as "no corpus",
+		// which is a different operational fact than "registry unwired".
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: kbRegistryNotWiredError})
+		return
+	}
+	tiers := make([]docsTier, 0)
+	for _, slug := range s.KBRegistry.ActiveSlugs() {
+		tiers = append(tiers, docsTierFor(slug))
 	}
 	c.JSON(http.StatusOK, map[string]any{"tiers": tiers})
 }
 
+// docsTierFor lists one corpus directory into a docsTier block. The slug
+// doubles as the directory name under knowledgeRootDir, and it is already
+// whitelist-validated by the registry (a slug can never carry a separator
+// — kb.ValidateSlug), so joining it into a path is safe by construction.
+//
+// A missing directory is an EMPTY tier, not a 500: a base can exist in the
+// registry before its corpus lands on disk (and a fresh checkout may ship
+// no .gitkeep at all). The tree shows 0 docs for it.
+func docsTierFor(slug string) docsTier {
+	entries, err := os.ReadDir(filepath.Join(knowledgeRootDir, slug))
+	if err != nil {
+		return docsTier{Tier: slug, Docs: []docEntry{}}
+	}
+	docs := make([]docEntry, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || e.Name() == ".gitkeep" || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		docs = append(docs, docEntry{Filename: e.Name(), Bytes: info.Size()})
+	}
+	return docsTier{Tier: slug, Docs: docs}
+}
+
 // docContentHandler implements GET /api/knowledge/doc?tier=&file= — the
 // full markdown source of one corpus doc, backing the DocViewer (left
-// FILES click → center panel; graph doc-node click). Path traversal is
-// blocked structurally: tier must be in validKnowledgeTiers AND file
-// must be a bare base name (filepath.Base(file) == file — rejects any
-// separator, so "../" prefixes and nested paths never reach Join).
+// FILES click → center panel; graph doc-node click).
+//
+// Path traversal is blocked by a DOUBLE gate (T-26-05-3). The tier value
+// is joined into a filesystem path and the slug set is OPEN (admins create
+// bases at runtime), so a 4-value lookup table is neither possible nor
+// sufficient — both halves are required:
+//
+//  1. kb.ValidateSlug — the whitelist REGEX (lowercase/digit/hyphen, no
+//     separators): traversal-shaped values never reach the registry, and
+//     the regex gate holds for every slug that will ever exist;
+//  2. registry Lookup — the value must be a currently-registered ACTIVE
+//     base, so unregistered AND deactivated slugs refuse here too (the
+//     400 names the active set, mirroring the reads-contract error form).
+//
+// The file half is unchanged: it must be a bare base name
+// (filepath.Base(file) == file — rejects any separator, so "../" prefixes
+// and nested paths never reach Join).
 //
 //	GET /api/knowledge/doc → 200 { tier, file, content }
-//	                       → 400 { error: "invalid tier or file" }
+//	                       → 400 { error: "invalid tier or file" }          (regex / bare-name gate)
+//	                       → 400 { error: "unknown or deactivated KB …" }   (registry gate)
 //	                       → 404 { error: "doc not found" }
 func (s *Deps) docContentHandler(ctx context.Context, c *app.RequestContext) {
+	if s.KBRegistry == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: kbRegistryNotWiredError})
+		return
+	}
 	tier := string(c.Query("tier"))
 	file := string(c.Query("file"))
-	if !validKnowledgeTiers[tier] || file == "" || filepath.Base(file) != file || strings.Contains(file, "\\") {
+	// Gate 1 — the whitelist regex + the bare-base-name rule. Same 400
+	// envelope as before, so the FE error handling is unchanged.
+	if kb.ValidateSlug(tier) != nil || file == "" || filepath.Base(file) != file || strings.Contains(file, "\\") {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid tier or file"})
 		return
 	}
-	content, err := os.ReadFile(filepath.Join(knowledgeRootDir, tierDirEn[tier], file))
+	// Gate 2 — registry membership: an unknown OR deactivated slug 400s
+	// naming the active set (fail-closed with the valid set in the
+	// message, the same discipline as the reads contract).
+	if _, ok := s.KBRegistry.Lookup(tier); !ok {
+		c.JSON(http.StatusBadRequest, graphResponseError{
+			Error: fmt.Sprintf("unknown or deactivated knowledge base %q (active: %v)", tier, s.KBRegistry.ActiveSlugs()),
+		})
+		return
+	}
+	content, err := os.ReadFile(filepath.Join(knowledgeRootDir, tier, file))
 	if err != nil {
 		// Missing file (deleted between docs listing and click) → 404, not
 		// a 500 with a path-bearing error message (W-3 posture).
