@@ -253,7 +253,7 @@ func TestAuditHandler_OversizeLimitClamped(t *testing.T) {
 
 	got := invokeAuditHandler(t, deps, "limit=10000", "")
 	require.Equal(t, http.StatusOK, got.Code)
-	var rows []store.AuditRow
+	var rows []auditWireRow
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 	assert.LessOrEqual(t, len(rows), 5, "clamp does not exceed seeded rows")
 }
@@ -339,7 +339,7 @@ func TestAdminToken_UnsetEnv(t *testing.T) {
 	got := invokeAuditHandler(t, deps, "", "")
 	require.Equal(t, http.StatusOK, got.Code)
 
-	var rows []store.AuditRow
+	var rows []auditWireRow
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 	require.NotEmpty(t, rows, "the seeded row must be returned (even if redacted)")
 	for _, r := range rows {
@@ -383,7 +383,7 @@ func TestAdminToken_WrongTokenTimingSafe(t *testing.T) {
 	deps := &Deps{Store: s}
 	got := invokeAuditHandler(t, deps, "", "wrong-token")
 	require.Equal(t, http.StatusOK, got.Code)
-	var rows []store.AuditRow
+	var rows []auditWireRow
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 	for _, r := range rows {
 		assert.NotEqual(t, "PII", r.Query, "wrong token MUST NOT return raw rows (T-6-TOKEN)")
@@ -414,10 +414,10 @@ func TestAdminToken_CorrectTokenReturnsRaw(t *testing.T) {
 	deps := &Deps{Store: s}
 	got := invokeAuditHandler(t, deps, "", "the-real-token")
 	require.Equal(t, http.StatusOK, got.Code)
-	var rows []store.AuditRow
+	var rows []auditWireRow
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
 	require.NotEmpty(t, rows)
-	var hit *store.AuditRow
+	var hit *auditWireRow
 	for i := range rows {
 		if rows[i].SessionID == "sess-old" {
 			hit = &rows[i]
@@ -444,7 +444,7 @@ func TestSQLiRegression_AuditHandlerParam(t *testing.T) {
 
 	got2 := invokeAuditHandler(t, deps, "", "")
 	require.Equal(t, http.StatusOK, got2.Code)
-	var rows []store.AuditRow
+	var rows []auditWireRow
 	require.NoError(t, json.Unmarshal(got2.Body.Bytes(), &rows))
 	assert.GreaterOrEqual(t, len(rows), 5, "table must survive the DROP TABLE payload (T-3-SQLI)")
 }
