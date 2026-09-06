@@ -436,6 +436,8 @@ func main() {
 	gateCheck := flag.String("gate-check", "", "path to a report.json; applies per-Skill thresholds, prints a markdown table and exits non-zero on regression")
 	skillsDir := flag.String("skills-dir", defaultSkillsDir, "directory holding <skill>/eval-gate.json threshold files")
 	caseDelay := flag.String("case-delay", envOr("EVAL_CASE_DELAY", ""), "pause between cases (Go duration, e.g. 3s); rate-limit courtesy for throttled endpoints (Coding Plan 429 / single-seat local server). EVAL_CASE_DELAY env sets the default")
+	casesFilter := flag.String("cases", "", "comma list of case IDs to run (e.g. adv-006,adv-007); diagnostic subset — report/calibration still reflect ONLY the cases run")
+	dumpPath := flag.String("dump", "", "write per-case diagnostics (query, raw verdict, refusal, contexts, scores) to this JSON file; for investigating model-vs-harness disputes — report.json deliberately omits answer text")
 	flag.Parse()
 	caseDelayDur := 0 * time.Second
 	if s := strings.TrimSpace(*caseDelay); s != "" {
@@ -554,6 +556,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/eval: load eval set %q: %v", goldenSetPath, err)
 	}
+	if *casesFilter != "" {
+		want := map[string]bool{}
+		for _, id := range strings.Split(*casesFilter, ",") {
+			want[strings.TrimSpace(id)] = true
+		}
+		var kept []eval.Case
+		for _, c := range cases {
+			if want[c.ID] {
+				kept = append(kept, c)
+			}
+		}
+		if len(kept) == 0 {
+			log.Fatalf("[FAIL] cmd/eval: --cases %q matched none of the %d loaded cases", *casesFilter, len(cases))
+		}
+		log.Printf("[INFO] cmd/eval: --cases filter kept %d case(s)", len(kept))
+		cases = kept
+	}
 	if *limit > 0 && *limit < len(cases) {
 		cases = cases[:*limit]
 		log.Printf("[INFO] cmd/eval: --limit=%d capped cases to %d", *limit, len(cases))
@@ -571,6 +590,7 @@ func main() {
 
 	reportsByJudge := make(map[string]eval.Report, len(judges))
 	for _, judgeModel := range judges {
+		var dumpRows []map[string]any
 		// NewGLMChatModel reads the model slot at construction (via
 		// ResolveLLM: LOCAL_MODEL > JUDGE_MODEL); setting BOTH here is
 		// how a per-judge model is selected without duplicating the
@@ -598,8 +618,20 @@ func main() {
 			skill:   skillName,
 			nJudges: len(judges),
 			caseDelay: caseDelayDur,
+			dump:    &dumpRows,
 		})
 		reportsByJudge[judgeModel] = report
+
+		// --dump: persist the raw per-case evidence next to the run.
+		if *dumpPath != "" {
+			if b, mErr := json.MarshalIndent(dumpRows, "", "  "); mErr == nil {
+				if wErr := os.WriteFile(*dumpPath, b, 0o644); wErr != nil {
+					log.Printf("[WARN] cmd/eval: write dump %q: %v", *dumpPath, wErr)
+				} else {
+					log.Printf("[OK] cmd/eval: case diagnostics dumped to %s (%d cases)", *dumpPath, len(dumpRows))
+				}
+			}
+		}
 
 		// The canonical eval/report.json + calibration.json reflect the
 		// FIRST judge (the primary). Cross-eval judges are published only
@@ -662,6 +694,8 @@ type evalPass struct {
 	// 4 metric judge calls), so even 2-3s of delay meaningfully lowers
 	// the request rate.
 	caseDelay time.Duration
+	// dump, when non-nil, collects per-case raw diagnostics (--dump).
+	dump *[]map[string]any
 }
 
 // evalCaseTimeout is the per-case budget (agent verdict + 4 metric judge
@@ -723,10 +757,42 @@ func runEvalPass(ctx context.Context, p evalPass) (eval.Report, []eval.CaseScore
 		}
 		caseCancel()
 
+		// --dump: capture the raw evidence for offline inspection (the
+		// report intentionally stays metric-only). faith is patched in
+		// after the metrics run below.
+		var dumpIdx = -1
+		if p.dump != nil {
+			raw, _ := json.Marshal(v)
+			hits := p.agent.LastRetrieved()
+			scores := make([]map[string]any, 0, len(hits))
+			for _, h := range hits {
+				scores = append(scores, map[string]any{"id": h.ID, "score": h.Score})
+			}
+			*p.dump = append(*p.dump, map[string]any{
+				"id":             c.ID,
+				"category":       c.Category,
+				"query":          c.Query,
+				"ground_truth":   c.GroundTruth,
+				"expected":       c.ExpectedChunks,
+				"agent_error":    err != nil,
+				"err":            errString(err),
+				"refused":        refused,
+				"refusal_reason": refusalReason,
+				"verdict":        json.RawMessage(raw),
+				"chunk_scores":   scores,
+				"faith":          0.0,
+			})
+			dumpIdx = len(*p.dump) - 1
+		}
+
 		// 3c. Compute the 4 metrics via the explicit exemption helper.
 		// Errors here are per-case, not fatal — log and score 0 for the
 		// failing metric.
 		faith, arel, cprec, crecall := computeCaseMetrics(ctx, c.ID, refused, answer, c.Query, c.GroundTruth, contexts, hits, p.judge, p.emb)
+		if dumpIdx >= 0 {
+			(*p.dump)[dumpIdx]["faith"] = faith
+			(*p.dump)[dumpIdx]["answer"] = answer
+		}
 
 		// 3d. Backfill the audit row if one exists for this session.
 		// Skipped under cross-eval: N judges scoring the same session
@@ -1105,6 +1171,14 @@ func classifyRunOutcome(err error, refusal *verdict.Refusal, v verdict.Verdict) 
 		answer = string(b)
 	}
 	return false, answer, ""
+}
+
+// errString flattens an error for the --dump JSON (nil → "").
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // round4 rounds to 4 decimal places — enough precision for a trust
