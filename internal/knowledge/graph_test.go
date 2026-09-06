@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 )
 
@@ -61,61 +62,99 @@ func (s *stubMetaRetriever) Disconnect() error                                  
 // retriever.Retriever interface — required by knowledge.New.
 var _ retriever.Retriever = (*stubMetaRetriever)(nil)
 
+// graphSlugRoles maps the baseline slugs to their registry roles.
+var graphSlugRoles = map[string]kb.Role{
+	"authority":  kb.RoleAuthority,
+	"historical": kb.RoleHistorical,
+	"personal":   kb.RolePersonal,
+	"draft":      kb.RoleDraft,
+}
+
+// graphEntries builds registry entries from slugs, all active unless the
+// slug is listed in deactivated.
+func graphEntries(slugs []string, deactivated ...string) []kb.Entry {
+	off := make(map[string]bool, len(deactivated))
+	for _, s := range deactivated {
+		off[s] = true
+	}
+	entries := make([]kb.Entry, 0, len(slugs))
+	for _, slug := range slugs {
+		entries = append(entries, kb.Entry{
+			Slug:             slug,
+			DisplayName:      slug,
+			Role:             graphSlugRoles[slug],
+			RetrievalEnabled: !off[slug],
+		})
+	}
+	return entries
+}
+
+// graphRegistry builds a read-only registry over the given slugs (any slug
+// outside graphSlugRoles must be given a role explicitly by extending the
+// map in the test that needs it).
+func graphRegistry(slugs []string, deactivated ...string) kb.Registry {
+	return kb.New(graphEntries(slugs, deactivated...))
+}
+
 // fixtureRows returns the canonical corpus-shaped metadata for tests:
-// one doc per tier, two chunks in 权威, plus effective_* windows so the
-// version-label path is exercised.
+// one doc per baseline slug, two chunks in authority, plus effective_*
+// windows so the version-label path is exercised. Tier values are
+// registry slugs — the only values the graph's Lookup re-check accepts.
 func fixtureRows() []retriever.DocumentMeta {
 	const (
 		jan2026 int64 = 1735689600 // 2025-01-01 UTC (use distinct value from formatDate path)
 		jul2025 int64 = 1720137600 // 2025-07-05 UTC
 	)
 	return []retriever.DocumentMeta{
-		{ID: 1, Tier: "权威", Source: "authority/contract-approval.md",
+		{ID: 1, Tier: "authority", Source: "authority/contract-approval.md",
 			EffectiveFrom: jan2026, EffectiveTo: 0},
-		{ID: 2, Tier: "权威", Source: "authority/travel-expense.md",
+		{ID: 2, Tier: "authority", Source: "authority/travel-expense.md",
 			EffectiveFrom: 0, EffectiveTo: 0},
-		{ID: 3, Tier: "历史", Source: "historical/old-policy-2023.md",
+		{ID: 3, Tier: "historical", Source: "historical/old-policy-2023.md",
 			EffectiveFrom: 0, EffectiveTo: jul2025},
-		{ID: 4, Tier: "个人", Source: "personal/dept-note.md",
+		{ID: 4, Tier: "personal", Source: "personal/dept-note.md",
 			EffectiveFrom: 0, EffectiveTo: 0},
-		{ID: 5, Tier: "草稿", Source: "draft/draft-policy.md",
+		{ID: 5, Tier: "draft", Source: "draft/draft-policy.md",
 			EffectiveFrom: 0, EffectiveTo: 0},
 	}
 }
 
+// baselineGraphSlugs is the ascending slug order the node set takes when
+// the whole baseline registry is active.
+var baselineGraphSlugs = []string{"authority", "draft", "historical", "personal"}
+
 func TestGraphBuilder_TierStructure(t *testing.T) {
-	g, err := New(&stubMetaRetriever{rows: fixtureRows()}).Build(context.Background())
+	g, err := New(&stubMetaRetriever{rows: fixtureRows()}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, g)
 
-	// Always 4 tiers emitted (权威, 草稿, 历史, 个人) — deterministic
-	// order per skill.TierEnumValues().
+	// One node per ACTIVE registry entry, ascending by slug — the fixed
+	// 4-tier emission is gone; the order is the registry's.
 	require.Len(t, g.Tiers, 4)
-	assert.Equal(t, "权威", g.Tiers[0].Tier)
-	assert.Equal(t, "草稿", g.Tiers[1].Tier)
-	assert.Equal(t, "历史", g.Tiers[2].Tier)
-	assert.Equal(t, "个人", g.Tiers[3].Tier)
+	for i, slug := range baselineGraphSlugs {
+		assert.Equal(t, slug, g.Tiers[i].Tier, "node %d must be slug %q (ascending registry order)", i, slug)
+	}
 
-	// 权威 has 2 docs (contract-approval + travel-expense) + 2 chunks.
-	权威 := g.Tiers[0]
-	assert.Equal(t, 2, 权威.DocCount)
-	assert.Equal(t, 2, 权威.ChunkCount)
-	require.Len(t, 权威.Docs, 2)
+	// authority has 2 docs (contract-approval + travel-expense) + 2 chunks.
+	authority := g.Tiers[0]
+	assert.Equal(t, 2, authority.DocCount)
+	assert.Equal(t, 2, authority.ChunkCount)
+	require.Len(t, authority.Docs, 2)
 	// Sort is alphabetical by source path — contract-approval comes
 	// before travel-expense.
-	assert.Equal(t, "contract-approval.md", 权威.Docs[0].Filename)
-	assert.Equal(t, "travel-expense.md", 权威.Docs[1].Filename)
+	assert.Equal(t, "contract-approval.md", authority.Docs[0].Filename)
+	assert.Equal(t, "travel-expense.md", authority.Docs[1].Filename)
 
-	// Each of 历史 / 个人 / 草稿 has exactly 1 doc + 1 chunk.
-	for _, t0 := range []string{"历史", "个人", "草稿"} {
+	// Each of draft / historical / personal has exactly 1 doc + 1 chunk.
+	for _, slug := range []string{"draft", "historical", "personal"} {
 		var n *TierNode
 		for i := range g.Tiers {
-			if g.Tiers[i].Tier == t0 {
+			if g.Tiers[i].Tier == slug {
 				n = &g.Tiers[i]
 				break
 			}
 		}
-		require.NotNil(t, n, "missing tier %s", t0)
+		require.NotNilf(t, n, "missing node %s", slug)
 		assert.Equal(t, 1, n.DocCount)
 		assert.Equal(t, 1, n.ChunkCount)
 		require.Len(t, n.Docs, 1)
@@ -123,14 +162,14 @@ func TestGraphBuilder_TierStructure(t *testing.T) {
 }
 
 func TestGraphBuilder_EffectiveFields(t *testing.T) {
-	g, err := New(&stubMetaRetriever{rows: fixtureRows()}).Build(context.Background())
+	g, err := New(&stubMetaRetriever{rows: fixtureRows()}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.NoError(t, err)
 
-	// Find 权威 → contract-approval → chunk with effective_from populated.
+	// Find authority → contract-approval → chunk with effective_from populated.
 	var chunk ChunkNode
 	var found bool
 	for _, t0 := range g.Tiers {
-		if t0.Tier != "权威" {
+		if t0.Tier != "authority" {
 			continue
 		}
 		for _, d := range t0.Docs {
@@ -149,27 +188,28 @@ func TestGraphBuilder_EffectiveFields(t *testing.T) {
 	assert.True(t, strings.HasPrefix(chunk.Version, "自 "),
 		"expected version label with '自 ' prefix, got %q", chunk.Version)
 
-	// 历史 → old-policy → chunk with effective_to populated, from=0.
+	// historical → old-policy → chunk with effective_to populated, from=0.
 	for _, t0 := range g.Tiers {
-		if t0.Tier != "历史" {
+		if t0.Tier != "historical" {
 			continue
 		}
 		require.Len(t, t0.Docs, 1)
 		require.Len(t, t0.Docs[0].Chunks, 1)
-		历史chunk := t0.Docs[0].Chunks[0]
-		assert.Equal(t, int64(0), 历史chunk.EffectiveFrom)
-		assert.Equal(t, int64(1720137600), 历史chunk.EffectiveTo)
-		assert.True(t, strings.HasSuffix(历史chunk.Version, "起失效"),
-			"expected version label with '起失效' suffix, got %q", 历史chunk.Version)
+		historicalChunk := t0.Docs[0].Chunks[0]
+		assert.Equal(t, int64(0), historicalChunk.EffectiveFrom)
+		assert.Equal(t, int64(1720137600), historicalChunk.EffectiveTo)
+		assert.True(t, strings.HasSuffix(historicalChunk.Version, "起失效"),
+			"expected version label with '起失效' suffix, got %q", historicalChunk.Version)
 	}
 }
 
 func TestGraphBuilder_Empty(t *testing.T) {
-	g, err := New(&stubMetaRetriever{rows: nil}).Build(context.Background())
+	g, err := New(&stubMetaRetriever{rows: nil}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, g)
 
-	// 4 tier entries, all with 0 docs.
+	// One node per active registry entry, all with 0 docs — the empty
+	// collection does not shrink the registry's node set.
 	require.Len(t, g.Tiers, 4)
 	for _, t0 := range g.Tiers {
 		assert.Equal(t, 0, t0.DocCount)
@@ -178,14 +218,74 @@ func TestGraphBuilder_Empty(t *testing.T) {
 	}
 }
 
-func TestGraphBuilder_DeterministicOrder(t *testing.T) {
-	// Two builds with the same rows must produce identical output
-	// (regression for FE stable rendering / snapshot tests).
-	g1, err := New(&stubMetaRetriever{rows: fixtureRows()}).Build(context.Background())
+// TestGraphNodesFromRegistry — Phase 26 (KBM-05): the node set is a pure
+// function of the registry. Four active entries → four node groups;
+// deactivating personal removes its node; registering a fifth base adds a
+// fifth node group (N dynamic, not fixed at 4).
+func TestGraphNodesFromRegistry(t *testing.T) {
+	rowsFor := func(slugs ...string) []retriever.DocumentMeta {
+		rows := make([]retriever.DocumentMeta, 0, len(slugs))
+		for i, slug := range slugs {
+			rows = append(rows, retriever.DocumentMeta{
+				ID:     int64(i + 1),
+				Tier:   slug,
+				Source: slug + "/doc.md",
+			})
+		}
+		return rows
+	}
+
+	t.Run("four_active_entries_four_nodes", func(t *testing.T) {
+		g, err := New(&stubMetaRetriever{rows: rowsFor("authority", "historical", "personal", "draft")},
+			graphRegistry(testBaselineSlugs)).Build(context.Background())
+		require.NoError(t, err)
+		got := make([]string, 0, len(g.Tiers))
+		for _, n := range g.Tiers {
+			got = append(got, n.Tier)
+		}
+		assert.Equal(t, baselineGraphSlugs, got)
+	})
+
+	t.Run("deactivated_personal_node_disappears", func(t *testing.T) {
+		// Rows only for the still-active bases: a deactivated base must not
+		// be a node, and a backend row still carrying its slug is rejected
+		// by the re-check (locked separately in TestGraphBuilder_RejectsDeactivatedTier).
+		g, err := New(&stubMetaRetriever{rows: rowsFor("authority", "historical")},
+			graphRegistry(testBaselineSlugs, "personal")).Build(context.Background())
+		require.NoError(t, err)
+		got := make([]string, 0, len(g.Tiers))
+		for _, n := range g.Tiers {
+			got = append(got, n.Tier)
+			assert.NotEqual(t, "personal", n.Tier, "a deactivated base must not be a node")
+		}
+		assert.NotContains(t, got, "personal")
+	})
+
+	t.Run("fifth_active_entry_adds_a_node", func(t *testing.T) {
+		entries := append(graphEntries(testBaselineSlugs),
+			kb.Entry{Slug: "it-policies", DisplayName: "IT Policies", Role: kb.RoleAuthority, RetrievalEnabled: true})
+		g, err := New(&stubMetaRetriever{rows: rowsFor("authority", "historical", "personal", "draft", "it-policies")},
+			kb.New(entries)).Build(context.Background())
+		require.NoError(t, err)
+		require.Len(t, g.Tiers, 5, "the node set is N-dynamic, not fixed at 4")
+		// Ascending: authority < draft < historical < it-policies < personal.
+		assert.Equal(t, "it-policies", g.Tiers[3].Tier, "new base slots into ascending slug order")
+	})
+}
+
+// TestGraphDeterministicOrder: the node set is ascending by slug, and two
+// builds over the same rows produce identical output (regression for FE
+// stable rendering / snapshot tests).
+func TestGraphDeterministicOrder(t *testing.T) {
+	g1, err := New(&stubMetaRetriever{rows: fixtureRows()}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.NoError(t, err)
-	g2, err := New(&stubMetaRetriever{rows: fixtureRows()}).Build(context.Background())
+	g2, err := New(&stubMetaRetriever{rows: fixtureRows()}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.NoError(t, err)
 
+	for i := 1; i < len(g1.Tiers); i++ {
+		assert.Less(t, g1.Tiers[i-1].Tier, g1.Tiers[i].Tier,
+			"nodes must be ascending by slug (replaces the old TierEnumValues order)")
+	}
 	for i := range g1.Tiers {
 		assert.Equal(t, g1.Tiers[i].Tier, g2.Tiers[i].Tier)
 		assert.Equal(t, len(g1.Tiers[i].Docs), len(g2.Tiers[i].Docs))
@@ -197,34 +297,63 @@ func TestGraphBuilder_DeterministicOrder(t *testing.T) {
 }
 
 func TestGraphBuilder_NilRetriever(t *testing.T) {
-	_, err := New(nil).Build(context.Background())
+	_, err := New(nil, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	assert.ErrorIs(t, err, ErrNoRetriever)
+}
+
+// TestGraphNilRegistryFailsClosed — Phase 26 (KBM-05): a nil registry has
+// no honest node set and no honest tier re-check, so Build fails closed.
+func TestGraphNilRegistryFailsClosed(t *testing.T) {
+	_, err := New(&stubMetaRetriever{rows: fixtureRows()}, nil).Build(context.Background())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNoRegistry)
 }
 
 func TestGraphBuilder_RetrieverErrorPropagates(t *testing.T) {
 	want := errors.New("list metadata blew up")
-	_, err := New(&stubMetaRetriever{err: want}).Build(context.Background())
+	_, err := New(&stubMetaRetriever{err: want}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, want)
 }
 
-func TestGraphBuilder_RejectsUnknownTier(t *testing.T) {
+// TestGraphInvalidTierListsActiveSlugs — the re-check's error names the
+// active slug set (the same fail-closed message discipline as the indexer
+// gate), so an operator seeing a stale backend row knows what IS valid.
+func TestGraphInvalidTierListsActiveSlugs(t *testing.T) {
 	bad := []retriever.DocumentMeta{
-		{ID: 1, Tier: "权威", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		{ID: 1, Tier: "authority", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
 		{ID: 2, Tier: "SecretTier", Source: "secret/x.md", EffectiveFrom: 0, EffectiveTo: 0},
 	}
-	_, err := New(&stubMetaRetriever{rows: bad}).Build(context.Background())
+	_, err := New(&stubMetaRetriever{rows: bad}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.Error(t, err)
 	var inv ErrInvalidTier
 	require.ErrorAs(t, err, &inv)
 	assert.Equal(t, "SecretTier", inv.Tier)
+	msg := err.Error()
+	assert.Contains(t, msg, "KNOW-02", "the re-check keeps citing the requirement")
+	for _, slug := range testBaselineSlugs {
+		assert.Containsf(t, msg, slug, "the error must list active slug %q", slug)
+	}
+}
+
+// A deactivated slug in a backend row must be rejected by the re-check —
+// deactivation removes a base from the graph too, not just from retrieval.
+func TestGraphBuilder_RejectsDeactivatedTier(t *testing.T) {
+	bad := []retriever.DocumentMeta{
+		{ID: 1, Tier: "personal", Source: "personal/dept-note.md", EffectiveFrom: 0, EffectiveTo: 0},
+	}
+	_, err := New(&stubMetaRetriever{rows: bad}, graphRegistry(testBaselineSlugs, "personal")).Build(context.Background())
+	require.Error(t, err)
+	var inv ErrInvalidTier
+	require.ErrorAs(t, err, &inv)
+	assert.Equal(t, "personal", inv.Tier)
 }
 
 func TestGraphBuilder_RejectsEmptySource(t *testing.T) {
 	bad := []retriever.DocumentMeta{
-		{ID: 1, Tier: "权威", Source: "", EffectiveFrom: 0, EffectiveTo: 0},
+		{ID: 1, Tier: "authority", Source: "", EffectiveFrom: 0, EffectiveTo: 0},
 	}
-	_, err := New(&stubMetaRetriever{rows: bad}).Build(context.Background())
+	_, err := New(&stubMetaRetriever{rows: bad}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.Error(t, err)
 	var empty ErrEmptySource
 	require.ErrorAs(t, err, &empty)
@@ -234,22 +363,22 @@ func TestGraphBuilder_GroupsBySource(t *testing.T) {
 	// Two chunks sharing the same source path must collapse into one
 	// DocNode (otherwise the FE would render the same .md twice).
 	rows := []retriever.DocumentMeta{
-		{ID: 10, Tier: "权威", Source: "authority/x.md", EffectiveFrom: 0, EffectiveTo: 0},
-		{ID: 11, Tier: "权威", Source: "authority/x.md", EffectiveFrom: 0, EffectiveTo: 0},
-		{ID: 12, Tier: "权威", Source: "authority/y.md", EffectiveFrom: 0, EffectiveTo: 0},
+		{ID: 10, Tier: "authority", Source: "authority/x.md", EffectiveFrom: 0, EffectiveTo: 0},
+		{ID: 11, Tier: "authority", Source: "authority/x.md", EffectiveFrom: 0, EffectiveTo: 0},
+		{ID: 12, Tier: "authority", Source: "authority/y.md", EffectiveFrom: 0, EffectiveTo: 0},
 	}
-	g, err := New(&stubMetaRetriever{rows: rows}).Build(context.Background())
+	g, err := New(&stubMetaRetriever{rows: rows}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.NoError(t, err)
 	require.Len(t, g.Tiers, 4)
-	权威 := g.Tiers[0]
-	assert.Equal(t, 2, 权威.DocCount)
-	assert.Equal(t, 3, 权威.ChunkCount)
+	authority := g.Tiers[0]
+	assert.Equal(t, 2, authority.DocCount)
+	assert.Equal(t, 3, authority.ChunkCount)
 
 	// Find x.md and confirm it carries both chunk IDs.
 	var xDoc *DocNode
-	for i := range 权威.Docs {
-		if 权威.Docs[i].Filename == "x.md" {
-			xDoc = &权威.Docs[i]
+	for i := range authority.Docs {
+		if authority.Docs[i].Filename == "x.md" {
+			xDoc = &authority.Docs[i]
 			break
 		}
 	}
@@ -268,13 +397,13 @@ func TestGraphBuilder_GetChunk_Found(t *testing.T) {
 	)
 	chunk := retriever.ChunkContent{
 		ID:            7,
-		Tier:          "权威",
+		Tier:          "authority",
 		Source:        "authority/contract-approval.md",
 		Content:       "出差住宿费超过 500 元须审批。",
 		EffectiveFrom: jan2026,
 		EffectiveTo:   0,
 	}
-	b := New(&stubMetaRetriever{chunk: chunk})
+	b := New(&stubMetaRetriever{chunk: chunk}, graphRegistry(testBaselineSlugs))
 
 	got, err := b.GetChunk(context.Background(), 7)
 	require.NoError(t, err)
@@ -282,7 +411,7 @@ func TestGraphBuilder_GetChunk_Found(t *testing.T) {
 
 	// ID is rendered via the same int64ToChunkID the graph node uses.
 	assert.Equal(t, "7", got.ID, "ID uses int64ToChunkID (byte-identical to graph node label)")
-	assert.Equal(t, "权威", got.Tier)
+	assert.Equal(t, "authority", got.Tier)
 	assert.Equal(t, "authority/contract-approval.md", got.Source)
 	assert.Equal(t, "出差住宿费超过 500 元须审批。", got.Content)
 	assert.Equal(t, jan2026, got.EffectiveFrom)
@@ -294,7 +423,7 @@ func TestGraphBuilder_GetChunk_Found(t *testing.T) {
 }
 
 func TestGraphBuilder_GetChunk_NotFound(t *testing.T) {
-	b := New(&stubMetaRetriever{chunkErr: retriever.ErrChunkNotFound})
+	b := New(&stubMetaRetriever{chunkErr: retriever.ErrChunkNotFound}, graphRegistry(testBaselineSlugs))
 	_, err := b.GetChunk(context.Background(), 999)
 	require.Error(t, err)
 	// retriever.ErrChunkNotFound is mapped to the layer-local sentinel.
@@ -304,7 +433,7 @@ func TestGraphBuilder_GetChunk_NotFound(t *testing.T) {
 }
 
 func TestGraphBuilder_GetChunk_NilRetriever(t *testing.T) {
-	b := New(nil)
+	b := New(nil, graphRegistry(testBaselineSlugs))
 	_, err := b.GetChunk(context.Background(), 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrNoRetriever)
@@ -312,7 +441,7 @@ func TestGraphBuilder_GetChunk_NilRetriever(t *testing.T) {
 
 func TestGraphBuilder_GetChunk_PropagatesRetrieverError(t *testing.T) {
 	boom := errors.New("boom: backend down")
-	b := New(&stubMetaRetriever{chunkErr: boom})
+	b := New(&stubMetaRetriever{chunkErr: boom}, graphRegistry(testBaselineSlugs))
 	_, err := b.GetChunk(context.Background(), 1)
 	require.Error(t, err)
 	// The raw error propagates verbatim (server maps it to 500).

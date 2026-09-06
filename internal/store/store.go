@@ -78,6 +78,14 @@ type AuditRow struct {
 	// pre-date the column). The lifecycle rows are written exclusively by
 	// InsertPendingApproval / MarkApproved / MarkRejected /
 	// MarkRuleRevoked — each writes ONE new row, never an UPDATE.
+	//
+	// Phase 26 adds the boot-time knowledge-corpus walk action
+	// "action_kb_dir_unregistered" (KBM-06: an unregistered knowledge/
+	// directory is WARN-ed, skipped, and recorded) written by cmd/server's
+	// INSERT-only audit wrapper over the knowledge/mongo seed hooks; the
+	// walk detail rides FrozenArgs as JSON. Future kb mutation rows
+	// (action_kb_created / action_kb_deactivated, plan 26-05) land in the
+	// same INSERT-only discipline.
 	Action string
 	// SkillVersion is the D11-C2 snapshot of the active Skill's version
 	// at the moment the row was written. Paired with PromptHash it forms

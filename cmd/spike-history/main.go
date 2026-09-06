@@ -93,6 +93,7 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/eval"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
@@ -388,6 +389,18 @@ func buildEmbedder() *bge.BGE {
 //
 // Mirrored from cmd/eval/main.go:513-550.
 func buildRetriever(ctx context.Context, emb *bge.BGE) retriever.Retriever {
+	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
+	// sqlite-backed kb.Open registry in plan 26-09. Spike paths keep the
+	// audit hooks nil (WARN-only for unregistered knowledge/ dirs).
+	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/spike-history: kb seed load: %v", err)
+	}
+	if kbSeeds == nil {
+		log.Printf("[WARN] cmd/spike-history: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
+	}
+	kbReg := kb.New(kbSeeds)
+
 	backend := strings.ToLower(os.Getenv("RETRIEVER_BACKEND"))
 	if backend == "" {
 		backend = "milvus"
@@ -402,7 +415,7 @@ func buildRetriever(ctx context.Context, emb *bge.BGE) retriever.Retriever {
 		if err := mc.Ensure(ctx); err != nil {
 			log.Fatalf("[FAIL] cmd/spike-history: mongo ensure: %v", err)
 		}
-		if err := mc.SeedFromKnowledgeDir(ctx, "knowledge/", emb); err != nil {
+		if err := mc.SeedFromKnowledgeDir(ctx, "knowledge/", emb, kbReg); err != nil {
 			log.Printf("[WARN] cmd/spike-history: mongo seed: %v", err)
 		}
 		return mc
@@ -419,7 +432,7 @@ func buildRetriever(ctx context.Context, emb *bge.BGE) retriever.Retriever {
 		if err := mc.Ensure(ctx); err != nil {
 			log.Fatalf("[FAIL] cmd/spike-history: milvus ensure: %v", err)
 		}
-		if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), cfg); err != nil {
+		if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), cfg, kbReg); err != nil {
 			log.Printf("[WARN] cmd/spike-history: knowledge index: %v", err)
 		}
 		return mc

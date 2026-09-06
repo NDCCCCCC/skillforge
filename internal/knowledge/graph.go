@@ -17,15 +17,17 @@
 // Plan 05-05 / SC-5 (KNOW-06) — knowledge graph builder.
 //
 // GraphBuilder turns the retriever's metadata projection
-// (Retriever.ListMetadata) into the tier -> doc -> chunk tree the FE
-// graph browser renders. The graph endpoint deliberately bypasses the
-// vector search path: the FE only needs metadata (id, tier, source,
+// (Retriever.ListMetadata) into the knowledge-base -> doc -> chunk tree
+// the FE graph browser renders. The graph endpoint deliberately bypasses
+// the vector search path: the FE only needs metadata (id, tier, source,
 // effective_*) — chunk verbatim text opens separately via ChunkSourceView
 // when the operator clicks a chunk (threat T-5-22 mitigation).
 //
-// Always returns exactly 4 tier entries (权威 / 历史 / 个人 / 草稿)
-// even when the underlying collection is empty — the FE empty-state
-// hero is mounted in a separate code branch when no docs exist.
+// The node set is the kb.Registry's ACTIVE entries — N knowledge bases,
+// ascending by slug — even when the underlying collection is empty. The
+// fixed 4-tier assumption is gone (Phase 26): the TierNode.Tier field
+// carries the slug and the FE maps it to a display name through
+// /api/knowledge/bases (plan 26-08).
 
 package knowledge
 
@@ -37,14 +39,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
-	"github.com/skillforge/skillforge/internal/skill"
 )
 
 // ErrNoRetriever is returned when GraphBuilder.Build is invoked with a
 // nil retriever (defense-in-depth — production always wires a real
 // retriever; tests may inject).
 var ErrNoRetriever = errors.New("knowledge.GraphBuilder: retriever is nil")
+
+// ErrNoRegistry is returned when GraphBuilder.Build is invoked without a
+// kb.Registry. The node set and the tier re-check both resolve through the
+// registry, so a nil one has no honest answer — it fails closed instead of
+// silently rendering an empty graph.
+var ErrNoRegistry = errors.New("knowledge.GraphBuilder: kb registry is required (fail-closed)")
 
 // ErrChunkNotFound is returned by GraphBuilder.GetChunk when the
 // retriever has no row for the requested id. The knowledge layer keeps
@@ -54,19 +62,23 @@ var ErrNoRetriever = errors.New("knowledge.GraphBuilder: retriever is nil")
 // maps knowledge.ErrChunkNotFound → HTTP 404.
 var ErrChunkNotFound = errors.New("knowledge: chunk not found")
 
-// ErrInvalidTier wraps a doc row with an unknown tier value. KNOW-02
-// already rejects this at the indexer layer, but the graph builder
-// re-checks at the metadata-read seam (defense-in-depth).
+// ErrInvalidTier wraps a doc row with a tier value that is not an active
+// knowledge-base slug. KNOW-02 already rejects this at the indexer layer,
+// but the graph builder re-checks at the metadata-read seam
+// (defense-in-depth). Active carries the registry's active slug set so the
+// error names what IS valid, the same fail-closed message discipline the
+// indexer's gate uses.
 type ErrInvalidTier struct {
 	ID     int64
 	Source string
 	Tier   string
+	Active []string
 }
 
 func (e ErrInvalidTier) Error() string {
 	return fmt.Sprintf(
-		"knowledge.GraphBuilder: doc id=%d source=%s has unknown tier=%q (valid: %v)",
-		e.ID, e.Source, e.Tier, skill.TierEnumValues(),
+		"knowledge.GraphBuilder: doc id=%d source=%s has unknown tier=%q (KNOW-02: unknown or deactivated knowledge base; active slugs: %v)",
+		e.ID, e.Source, e.Tier, e.Active,
 	)
 }
 
@@ -88,9 +100,9 @@ type Graph struct {
 	Tiers []TierNode `json:"tiers"`
 }
 
-// TierNode is one tier in the graph. Always emitted for each of the 4
-// canonical CN-char tiers per UI-SPEC §SC-5 (even if its Docs list is
-// empty).
+// TierNode is one knowledge base in the graph. One node is emitted per
+// ACTIVE registry entry (even when its Docs list is empty) — the tier
+// field carries the registry slug; the FE resolves the display name.
 type TierNode struct {
 	Tier       string    `json:"tier"`
 	DocCount   int       `json:"docCount"`
@@ -139,27 +151,35 @@ type ChunkPayload struct {
 // GraphBuilder reads retriever metadata and assembles a Graph.
 type GraphBuilder struct {
 	retriever retriever.Retriever
+	reg       kb.Registry
 }
 
-// New constructs a GraphBuilder bound to the given retriever. The
-// retriever is the metadata source — NEVER call Search here.
-func New(r retriever.Retriever) *GraphBuilder {
-	return &GraphBuilder{retriever: r}
+// New constructs a GraphBuilder bound to the given retriever and
+// knowledge-base registry. The retriever is the metadata source — NEVER
+// call Search here. The registry decides the node set (the ACTIVE
+// entries) and arbitrates the tier re-check in Build; a nil registry is
+// accepted at construction but Build fails closed on it.
+func New(r retriever.Retriever, reg kb.Registry) *GraphBuilder {
+	return &GraphBuilder{retriever: r, reg: reg}
 }
 
 // Build reads the retriever's documents via ListMetadata and groups them
-// into the tier -> doc -> chunk tree. Returns a Graph with exactly 4
-// tier entries (in TierEnum order: 权威, 草稿, 历史, 个人 — the same
-// deterministic order as skill.TierEnumValues). Documents with an
-// unknown / empty Tier are rejected with a wrapped error — the
-// backend-agnostic KNOW-02 invariant already enforced at index time
+// into the knowledge-base -> doc -> chunk tree. Returns a Graph with one
+// tier entry per ACTIVE registry entry, ascending by slug (N dynamic,
+// deterministic — the fixed 4-tier assumption is gone). Documents whose
+// tier is not an active registry slug are rejected with a wrapped error —
+// the backend-agnostic KNOW-02 invariant already enforced at index time
 // means this should never happen in production, but a defense-in-depth
-// reject keeps a hand-edited corpus from poisoning the FE.
+// reject keeps a hand-edited corpus (or a stale backend row carrying a
+// retired value) from poisoning the FE.
 //
 // Pure metadata — no embedding / content is loaded (T-5-22).
 func (b *GraphBuilder) Build(ctx context.Context) (*Graph, error) {
 	if b.retriever == nil {
 		return nil, ErrNoRetriever
+	}
+	if b.reg == nil {
+		return nil, ErrNoRegistry
 	}
 	metas, err := b.retriever.ListMetadata(ctx)
 	if err != nil {
@@ -173,8 +193,8 @@ func (b *GraphBuilder) Build(ctx context.Context) (*Graph, error) {
 	groups := make(map[string]map[string]*chunkAccum)
 
 	for _, m := range metas {
-		if _, ok := skill.TierEnumByValue(m.Tier); !ok {
-			return nil, ErrInvalidTier{ID: m.ID, Source: m.Source, Tier: m.Tier}
+		if _, ok := b.reg.Lookup(m.Tier); !ok {
+			return nil, ErrInvalidTier{ID: m.ID, Source: m.Source, Tier: m.Tier, Active: b.reg.ActiveSlugs()}
 		}
 		if m.Source == "" {
 			return nil, ErrEmptySource{ID: m.ID}
@@ -197,8 +217,20 @@ func (b *GraphBuilder) Build(ctx context.Context) (*Graph, error) {
 		})
 	}
 
-	// Always emit all 4 tiers in deterministic order (TierEnumValues).
-	tiers := skill.TierEnumValues()
+	// Node set = the registry's ACTIVE entries, ascending by slug
+	// (N dynamic, deterministic; List() is already slug-sorted). The fixed
+	// 4-tier emission is gone: a deactivated base disappears from the graph
+	// exactly as it disappears from retrieval and skill validation, and a
+	// newly registered base shows up with an empty Docs list until its
+	// corpus is indexed. TierNode.Tier carries the slug — the FE maps it to
+	// a display name via /api/knowledge/bases (plan 26-08).
+	entries := b.reg.List()
+	tiers := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if _, ok := b.reg.Lookup(e.Slug); ok {
+			tiers = append(tiers, e.Slug)
+		}
+	}
 	out := &Graph{Tiers: make([]TierNode, 0, len(tiers))}
 	for _, tier := range tiers {
 		byDoc := groups[tier]

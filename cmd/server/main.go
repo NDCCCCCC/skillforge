@@ -94,6 +94,7 @@ import (
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/externalauth"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/llm"
@@ -247,11 +248,56 @@ func main() {
 	// corpus. The default is "milvus" (unchanged historical behavior);
 	// "mongo" switches to the MongoDB-backed retriever (used when the
 	// internal Milvus is unavailable — see 02-04-MONGO-SUMMARY.md).
+	//
+	// Phase 26 ordering note: the store is built BEFORE the retriever now,
+	// because the corpus walk's unregistered-directory audit rows (KBM-06)
+	// must land in the store during the boot-time index — binding the audit
+	// hook only after the retriever ran would silently drop the very rows
+	// the decision table exists to record. This is also the boot order
+	// 26-02 documented as the 26-09 target (store migrate → kb registry →
+	// skill loader).
+	st, err := buildStore(ctx)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
+	}
+
+	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
+	// sqlite-backed kb.Open registry in plan 26-09. The seed file is the
+	// controlled baseline; a missing file is the one legal degraded state
+	// (empty registry, every knowledge/ dir then audits as unregistered).
+	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: kb seed load: %v (fix the controlled knowledge_bases.yaml — a bad seed must not boot a half-known knowledge surface)", err)
+	}
+	if kbSeeds == nil {
+		log.Printf("[WARN] cmd/server: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
+	}
+	kbReg := kb.New(kbSeeds)
+	log.Printf("[OK] cmd/server: kb registry wired (provisional seed snapshot, %d base(s), signature=%s)",
+		len(kbSeeds), shortSignature(kbReg.Signature()))
+
+	// INSERT-only audit sink for the corpus walk's unregistered-directory
+	// decision (KBM-06: WARN + skip + audit). The callback seam keeps the
+	// index/seed functions store-free (Pitfall 7); the row is append-only —
+	// no UPDATE, no DELETE, and the detail rides FrozenArgs as JSON.
+	kbDirAudit := func(action, detail string) {
+		if _, err := st.PutAudit(ctx, store.AuditRow{
+			Timestamp:  time.Now().UTC(),
+			UserID:     "system",
+			Action:     action,
+			FrozenArgs: []byte(detail),
+		}); err != nil {
+			log.Printf("[ERROR] cmd/server: kb dir audit row (%s): %v", action, err)
+		}
+	}
+	knowledge.SetIndexAuditHook(kbDirAudit)
+	mongo.SetSeedAuditHook(kbDirAudit)
+
 	backend := strings.ToLower(os.Getenv("RETRIEVER_BACKEND"))
 	if backend == "" {
 		backend = "milvus"
 	}
-	r, backendLabel := buildRetriever(ctx, backend, emb)
+	r, backendLabel := buildRetriever(ctx, backend, emb, kbReg)
 
 	// 5. ChatModel (GLM Coding Plan per Pitfall 6, or LOCAL_* override —
 	// see the env triple above). Phase 17 live-UAT: GLM_MODEL selects the
@@ -334,10 +380,10 @@ func main() {
 	// persistent audit trail next to the binary). Health-check fails
 	// fast on a misconfigured DSN — the operator sees the problem at
 	// startup, not at the first /api/chat request.
-	st, err := buildStore(ctx)
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
-	}
+	//
+	// Phase 26 (26-03): construction MOVED to step 4, ahead of the
+	// retriever, so the corpus walk's unregistered-directory audit rows
+	// land in the store during the boot-time index (see the note there).
 
 	// 6c-2. Phase 15 — data-import orchestrator. The importer needs a
 	// dedicated DuckDB connection for lazy ATTACH/DETACH of dataset files.
@@ -604,7 +650,7 @@ func main() {
 		Agent:        ag,
 		Store:        st,
 		Wizard:       skill.NewWizard(cm, "skills/"),
-		Knowledge:    knowledge.New(r),
+		Knowledge:    knowledge.New(r, kbReg),
 		EvalReporter: server.NewFilesystemEvalReporter(evalReportsDir, evalFrozenDir),
 		ChatModel:    cm,
 		// Plan 260815-cos: PipelineChatModel = cm activates Step 8
@@ -672,9 +718,14 @@ func main() {
 // paths log.Fatalf on a misconfigured URI / unreachable server — the
 // operator must see the failure at startup, not at request time.
 //
+// kbReg is the knowledge-base registry both corpus-loading paths consume:
+// the registry decides which knowledge/<slug>/ directories are indexed and
+// arbitrates the KNOW-02 gate (KBM-05/06). Unregistered-directory audit
+// rows ride the hooks bound before this call.
+//
 // Returns the constructed Retriever plus a short label for the startup
 // log line (e.g. "milvus(10.x.x.x:19530)" / "mongo(10.x.x.x:27017)").
-func buildRetriever(ctx context.Context, backend string, emb *bge.BGE) (retriever.Retriever, string) {
+func buildRetriever(ctx context.Context, backend string, emb *bge.BGE, kbReg kb.Registry) (retriever.Retriever, string) {
 	switch backend {
 	case "none":
 		// Phase 17 live-UAT gap closure: safe degraded backend for
@@ -704,7 +755,7 @@ func buildRetriever(ctx context.Context, backend string, emb *bge.BGE) (retrieve
 		// own SeedFromKnowledgeDir, which mirrors the indexer's scan +
 		// strip + embed + Insert flow. See mongo/seed.go godoc for the
 		// Rule 3 deviation rationale.
-		if err := mc.SeedFromKnowledgeDir(ctx, "knowledge/", emb); err != nil {
+		if err := mc.SeedFromKnowledgeDir(ctx, "knowledge/", emb, kbReg); err != nil {
 			log.Printf("[WARN] cmd/server: mongo knowledge seed failed (retrieval will return no_authorized_source until re-seeded): %v", err)
 		} else {
 			log.Printf("[OK] knowledge corpus seeded into mongo %s.%s", mc.DatabaseName(), mc.CollectionName())
@@ -727,7 +778,7 @@ func buildRetriever(ctx context.Context, backend string, emb *bge.BGE) (retrieve
 			log.Fatalf("[FAIL] cmd/server: milvus ensure collection: %v", err)
 		}
 		// Milvus path: unchanged — uses the milvus-coupled indexer.
-		if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), mcfg); err != nil {
+		if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), mcfg, kbReg); err != nil {
 			log.Printf("[WARN] cmd/server: knowledge index failed (retrieval will return no_authorized_source until re-indexed): %v", err)
 		} else {
 			log.Printf("[OK] knowledge corpus indexed into %s", defaultCollection)

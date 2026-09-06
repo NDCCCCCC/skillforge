@@ -68,6 +68,7 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/eval"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
@@ -1124,6 +1125,18 @@ func newMilvusRetriever(ctx context.Context, emb embedder.Embedder) (retriever.R
 	if addr == "" {
 		return nil, fmt.Errorf("live mode requires MILVUS_ADDRESS (Docker Milvus standalone)")
 	}
+	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
+	// sqlite-backed kb.Open registry in plan 26-09. Spike paths keep the
+	// audit hooks nil (WARN-only for unregistered knowledge/ dirs).
+	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("kb seed load: %w", err)
+	}
+	if kbSeeds == nil {
+		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)\n")
+	}
+	kbReg := kb.New(kbSeeds)
+
 	cfg := milvus.Config{Addr: addr, CollectionName: "skillforge_knowledge"}
 	mc, err := milvus.New(ctx, cfg)
 	if err != nil {
@@ -1132,7 +1145,7 @@ func newMilvusRetriever(ctx context.Context, emb embedder.Embedder) (retriever.R
 	if err := mc.Ensure(ctx); err != nil {
 		return nil, fmt.Errorf("milvus ensure: %w", err)
 	}
-	if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), cfg); err != nil {
+	if err := knowledge.Index(ctx, "knowledge/", emb, mc.ClientOf(), cfg, kbReg); err != nil {
 		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN knowledge index: %v\n", err)
 	}
 	return mc, nil
