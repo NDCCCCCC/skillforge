@@ -366,11 +366,33 @@ func TestChannelGuardXOR(t *testing.T) {
 			errSubstrs: nil,
 		},
 		{
-			name: "unknown_data_mode_rejected",
+			// v1.1.1 (DATA-07 second half): the external channel read is
+			// now a supported mode — it must VALIDATE, not reject.
+			name: "external_authorized_data_mode_passes",
 			manifest: &Manifest{
-				Description: "unknown data mode",
+				Description: "external authorized data Skill",
 				Agent:       "chat",
-				Reads:       []string{"data:external:authorized"},
+				Reads:       []string{ReadDataExternalAuthorized},
+				Writes:      []string{},
+				Steps:       "1. Ask the data officer for approval",
+				Guardrails: Guardrails{
+					Prohibitions:           []string{"p1", "p2", "p3"},
+					RequiredRefusalPhrases: []string{"no_data"},
+				},
+				Temperature: &temp,
+			},
+			wantErr:    false,
+			errSubstrs: nil,
+		},
+		{
+			// The fail-closed default for UNKNOWN data:* modes stays
+			// locked: adding a second supported mode must not loosen the
+			// allowlist into a prefix-accepts-anything rule.
+			name: "truly_unknown_data_mode_rejected",
+			manifest: &Manifest{
+				Description: "truly unknown data mode",
+				Agent:       "chat",
+				Reads:       []string{"data:totally_unknown"},
 				Writes:      []string{},
 				Steps:       "1. Call KPI",
 				Guardrails: Guardrails{
@@ -381,8 +403,9 @@ func TestChannelGuardXOR(t *testing.T) {
 			},
 			wantErr: true,
 			errSubstrs: []string{
-				"aggregated_only",           // must name the only supported mode
-				"data:external:authorized",  // must echo the bad value
+				"unknown data channel mode",  // the fail-closed framing
+				"data:totally_unknown",       // must echo the bad value
+				"data:external:authorized",   // must name BOTH supported modes
 			},
 		},
 		{

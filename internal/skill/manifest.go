@@ -179,9 +179,11 @@ const (
 	// VARCHAR values via ResolveTiers. The retrieve Tool is attached at
 	// runtime (D16-C3).
 	ChannelKindTier ChannelKind = iota
-	// ChannelKindData is the aggregated-KPI channel: reads contain only
-	// ReadDataAggregatedOnly; ResolveTiers is skipped (no tier semantics).
-	// The kpi_call Tool is attached at runtime (D16-C3).
+	// ChannelKindData is the data channel: reads contain one of the two
+	// data-channel constants (ReadDataAggregatedOnly or
+	// ReadDataExternalAuthorized); ResolveTiers is skipped (no tier
+	// semantics). The tool set is kpi_call, plus needs_external_query
+	// when the external:authorized contract is declared (D16-C3).
 	ChannelKindData
 )
 
@@ -191,13 +193,13 @@ const (
 // assembly MUST call HasDataChannel() rather than re-parsing reads strings
 // (single source of truth, mirrors validAgentTypes enforcement narrative).
 //
-// Broad detection (any "data:" prefix) rather than exact-match on
-// ReadDataAggregatedOnly ensures that unknown data:* modes like
-// "data:external:authorized" are routed into the data-channel branch of
-// Validate, where the exact-match check produces the correct "unknown data
-// channel mode" error with the supported-mode hint — rather than falling
-// through to the tier-channel branch and hitting ResolveTiers' defense-in-
-// depth guard (which would produce a confusing TierEnum error).
+// Broad detection (any "data:" prefix) rather than exact-match on the
+// two constants routes BOTH known data-channel modes
+// (ReadDataAggregatedOnly + ReadDataExternalAuthorized) into the
+// data-channel branch of Validate and of the runtime tool assembly,
+// while Validate's pre-scan rejects any other data:* value fail-closed
+// (D16-C2) — so prefix detection stays the single routing decision and
+// the allowlist stays the single admission decision.
 func (m *Manifest) HasDataChannel() bool {
 	for _, r := range m.Reads {
 		if strings.HasPrefix(r, "data:") {

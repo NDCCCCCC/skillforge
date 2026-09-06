@@ -68,14 +68,14 @@ func TestExamplesValidate(t *testing.T) {
 			"a validation error here means a published example is non-conformant",
 	)
 
-	// Exactly six templates ship under examples/skills/ (D7-10's three +
+	// Exactly seven templates ship under examples/skills/ (D7-10's three +
 	// Phase 13's compliance-orchestrator + Phase 17's kpi-dashboard +
-	// Phase 18's monthly-report). Asserting the count catches both accidental
-	// deletions (regression) and accidentally-shipping typos (e.g., a scratch
-	// file matching SKILL.md).
+	// Phase 18's monthly-report + v1.1.1's external-lookup). Asserting the
+	// count catches both accidental deletions (regression) and
+	// accidentally-shipping typos (e.g., a scratch file matching SKILL.md).
 	require.Len(t,
-		manifests, 6,
-		"examples/skills/ MUST contain exactly 6 Skill templates (compliance, simple-qa, calculator, compliance-orchestrator, kpi-dashboard, monthly-report); "+
+		manifests, 7,
+		"examples/skills/ MUST contain exactly 7 Skill templates (compliance, simple-qa, calculator, compliance-orchestrator, kpi-dashboard, monthly-report, external-lookup); "+
 			"got %d manifests — check for stray SKILL.md files or a missing template",
 		len(manifests),
 	)
@@ -87,7 +87,7 @@ func TestExamplesValidate(t *testing.T) {
 	for _, m := range manifests {
 		names[m.Name] = true
 	}
-	for _, want := range []string{"compliance", "simple-qa", "calculator", "compliance-orchestrator", "kpi-dashboard"} {
+	for _, want := range []string{"compliance", "simple-qa", "calculator", "compliance-orchestrator", "kpi-dashboard", "external-lookup"} {
 		assert.True(t,
 			names[want],
 			"expected examples/skills/%s/SKILL.md to be scanned; got names %v",

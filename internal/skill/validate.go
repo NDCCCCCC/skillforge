@@ -92,17 +92,18 @@ func Validate(m *Manifest) error {
 	// (Pitfall 6: zero additional code needed to cover the hot-reload
 	// window — parseAndValidate calls Validate).
 	//
-	// Pre-scan: reject any data:-prefixed value that is NOT the known
-	// v1.0 constant. This catches "data:external:authorized" etc. before
-	// they reach ResolveTiers (which would produce a misleading TierEnum
-	// error). Although HasDataChannel() now uses prefix detection (any
-	// "data:" value), this pre-scan provides a more specific error message
-	// for unknown data:* modes before the HasDataChannel branch.
+	// Pre-scan: reject any data:-prefixed value that is NEITHER of the
+	// two supported data-channel constants (v1.0 aggregated_only +
+	// v1.1 external:authorized). This catches typos and future
+	// not-yet-supported modes before they reach ResolveTiers (which
+	// would produce a misleading TierEnum error). The error names BOTH
+	// supported modes and echoes the offending value so the Skill
+	// author can self-correct (D16-C2 fail-closed framing).
 	for _, r := range m.Reads {
-		if strings.HasPrefix(r, "data:") && r != ReadDataAggregatedOnly {
+		if strings.HasPrefix(r, "data:") && r != ReadDataAggregatedOnly && r != ReadDataExternalAuthorized {
 			return fmt.Errorf(
-				"reads %q: unknown data channel mode — v1.0 only supports %q (data:external:authorized and other undefined modes are not in the allowlist; D16-C2 fail-closed)",
-				r, ReadDataAggregatedOnly,
+				"reads %q: unknown data channel mode — supported modes are %q (aggregated KPIs only) and %q (external authorized channel, requires the server to wire the channel); D16-C2 fail-closed",
+				r, ReadDataAggregatedOnly, ReadDataExternalAuthorized,
 			)
 		}
 	}
@@ -110,8 +111,8 @@ func Validate(m *Manifest) error {
 		// (a) Data channel must be the sole reads entry — no mixing with tiers.
 		if len(m.Reads) > 1 {
 			return fmt.Errorf(
-				"reads declares both data channel and tier reads %v — mutually exclusive (D16-C1: two storage systems / two evidence systems), mixed Skill is v1 deferred; keep only %s or keep only tier reads",
-				m.Reads, ReadDataAggregatedOnly,
+				"reads declares both data channel and tier reads %v — mutually exclusive (D16-C1: two storage systems / two evidence systems), mixed Skill is v1 deferred; keep only one data-channel mode (%s | %s) or keep only tier reads",
+				m.Reads, ReadDataAggregatedOnly, ReadDataExternalAuthorized,
 			)
 		}
 		// (b) Deep archetype + data channel: conditionally allowed.
