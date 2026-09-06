@@ -492,7 +492,19 @@ func main() {
 	r := buildRetriever(ctx, emb)
 	manifestName := *frozen
 	if kpiMode {
+		// KPI frozen set is a programmatic-judge mode, not a named Skill —
+		// fall back to the first manifest for it.
 		manifestName = ""
+	} else if manifestName == "" && explicitGolden {
+		// Non-frozen explicit --golden: the golden set is Skill-bound (the
+		// frozen sets live at eval/frozen/<skill>.jsonl, so the stem IS the
+		// intended Skill name). Resolving it here closes the UAT 2026-09-06
+		// gap where `--golden eval/frozen/compliance.jsonl` silently ran the
+		// FIRST manifest (calculator): all 50 compliance questions were then
+		// correctly refused as out-of-scope and the report scored a skill
+		// the questions never exercised. manifestFor fails loud when the
+		// stem matches no manifest — right contract for a mis-targeted run.
+		manifestName = strings.TrimSuffix(filepath.Base(*goldenPath), filepath.Ext(*goldenPath))
 	}
 	manifest := manifestFor(*skillsDir, manifestName)
 	cm := buildChatModel(ctx) // agent's chat model (GLM_API_KEY)
