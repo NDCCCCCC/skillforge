@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/skillforge/skillforge/internal/store"
 )
@@ -226,35 +227,10 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 
 	var out []store.AuditRow
 	for rows.Next() {
-		var (
-			r           store.AuditRow
-			faith       sql.NullFloat64
-			ctxPrec     sql.NullFloat64
-			ansRel      sql.NullFloat64
-			ctxRecall   sql.NullFloat64
-			runPath     sql.NullString
-			transferFrom sql.NullString
-			transferTo   sql.NullString
-		)
-		if err := rows.Scan(
-			&r.ID, &r.Timestamp, &r.SessionID, &r.UserID, &r.SkillID,
-			&r.Query, &r.PromptHash, &r.ModelVersion, &r.VerdictJSON,
-			&r.RefusalReason, &r.ChunkIDs,
-			&r.Action, &r.SkillVersion, &r.FrozenArgs, &r.ToolCallID,
-			&r.ApprovalID, &r.ScopeSessionID, &r.BudgetLayer,
-			&faith, &ctxPrec, &ansRel, &ctxRecall,
-			&runPath, &transferFrom, &transferTo, &r.PlatformFloorVersion,
-			&r.ActorType,
-		); err != nil {
+		r, err := scanAuditRow(rows)
+		if err != nil {
 			return nil, fmtError("QueryAudit.Scan", err)
 		}
-		r.Faithfulness = fromNullFloat64(faith)
-		r.ContextPrecision = fromNullFloat64(ctxPrec)
-		r.AnswerRelevance = fromNullFloat64(ansRel)
-		r.ContextRecall = fromNullFloat64(ctxRecall)
-		r.RunPath = runPath.String
-		r.TransferFrom = transferFrom.String
-		r.TransferTo = transferTo.String
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -264,6 +240,99 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 		out = []store.AuditRow{}
 	}
 	return out, nil
+}
+
+// AuditBySessionAt returns the audit rows for sessionID with ts <= t
+// (UnixMilli), ordered by id ASC. Phase 24 Task 24-02 (decision-chain)
+// and 24-03 (time-travel state) need chronological-by-session reads
+// with a time bound; the existing QueryAudit is newest-first and
+// unbounded.
+//
+// ts is stored as ISO-8601 string (RFC 3339) — comparison is
+// lexicographic and works correctly for the documented format. The
+// composite predicate (session_id = ? AND ts <= ?) reuses the
+// idx_audit_session_id index for the session scan; the per-session
+// ordering is monotonic because auto-increment id IS monotonic per
+// writer (Phase 25 / T-3-AUDIT invariant).
+//
+// Empty sessionID returns an empty slice (no SQL executed); t <= 0
+// returns every row for the session. The sessionID="" + t<=0 path
+// is reachable only via direct test injection — call sites 400 on
+// empty input.
+func (s *SQLiteStore) AuditBySessionAt(ctx context.Context, sessionID string, t int64) ([]store.AuditRow, error) {
+	if s.isClosed() {
+		return nil, sql.ErrConnDone
+	}
+	if sessionID == "" {
+		return []store.AuditRow{}, nil
+	}
+	// Compute the timestamp cutoff (UTC RFC3339). Use 9999-12-31 as the
+	// unbounded tail so a t<=0 caller gets every row.
+	var cutoff string
+	if t > 0 {
+		cutoff = time.UnixMilli(t).UTC().Format(time.RFC3339Nano)
+	} else {
+		cutoff = "9999-12-31T23:59:59.999999999Z"
+	}
+	q := "SELECT " + queryAuditCols + " FROM audit WHERE session_id = ? AND ts <= ? ORDER BY id ASC"
+	rows, err := s.db.QueryContext(ctx, q, sessionID, cutoff)
+	if err != nil {
+		return nil, fmtError("AuditBySessionAt.Query", err)
+	}
+	defer rows.Close()
+
+	out := []store.AuditRow{}
+	for rows.Next() {
+		r, err := scanAuditRow(rows)
+		if err != nil {
+			return nil, fmtError("AuditBySessionAt.Scan", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmtError("AuditBySessionAt.Rows", err)
+	}
+	return out, nil
+}
+
+// scanAuditRow scans one row from the queryAuditCols SELECT list. The
+// column order MUST stay in sync with queryAuditCols. Both QueryAudit
+// (newest-first) and AuditBySessionAt (chronological-by-session) reuse
+// this so a column add only needs to touch one place.
+//
+// Factored out during Phase 24 because the per-row scan block is 25+
+// lines and a third call site (PROV export) is in flight.
+func scanAuditRow(rows *sql.Rows) (store.AuditRow, error) {
+	var (
+		r            store.AuditRow
+		faith        sql.NullFloat64
+		ctxPrec      sql.NullFloat64
+		ansRel       sql.NullFloat64
+		ctxRecall    sql.NullFloat64
+		runPath      sql.NullString
+		transferFrom sql.NullString
+		transferTo   sql.NullString
+	)
+	if err := rows.Scan(
+		&r.ID, &r.Timestamp, &r.SessionID, &r.UserID, &r.SkillID,
+		&r.Query, &r.PromptHash, &r.ModelVersion, &r.VerdictJSON,
+		&r.RefusalReason, &r.ChunkIDs,
+		&r.Action, &r.SkillVersion, &r.FrozenArgs, &r.ToolCallID,
+		&r.ApprovalID, &r.ScopeSessionID, &r.BudgetLayer,
+		&faith, &ctxPrec, &ansRel, &ctxRecall,
+		&runPath, &transferFrom, &transferTo, &r.PlatformFloorVersion,
+		&r.ActorType,
+	); err != nil {
+		return r, err
+	}
+	r.Faithfulness = fromNullFloat64(faith)
+	r.ContextPrecision = fromNullFloat64(ctxPrec)
+	r.AnswerRelevance = fromNullFloat64(ansRel)
+	r.ContextRecall = fromNullFloat64(ctxRecall)
+	r.RunPath = runPath.String
+	r.TransferFrom = transferFrom.String
+	r.TransferTo = transferTo.String
+	return r, nil
 }
 
 // toNullFloat64 converts a *float64 metric to sql.NullFloat64 so NULL

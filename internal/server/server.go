@@ -493,6 +493,14 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// audit chain (internal/auditprov; zero-LLM, read-only, SC-9 isolation
 	// identical to the audit route above).
 	h.GET("/api/session/:id/audit/prov", deps.sessionProvHandler)
+	// Phase 24 Tasks 24-02 + 24-03 (decision-chain + time-travel state).
+	// decision-chain returns every audit row for the session classified
+	// into a chronological Link list; state?at=RFC3339 reconstructs the
+	// session state at time T (visible turns + effective rules). Both
+	// are zero-LLM read-only reconstructions from the INSERT-only
+	// audit substrate (T-3-AUDIT).
+	h.GET("/api/session/:id/decision-chain", deps.SessionChainHandler())
+	h.GET("/api/session/:id/state", deps.SessionStateHandler())
 	// Phase 11 / Plan 11-05 (HITL-08) — approval_rules CRUD surface.
 	// ListApprovalRulesHandler supports ?scope=session|skill[&skill_id=X][&target=X];
 	// RevokeApprovalRuleHandler clears a remembered rule (D11-D2 single-table reuse).

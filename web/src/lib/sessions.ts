@@ -351,3 +351,130 @@ export async function fetchAuditRows(
     return null;
   }
 }
+
+/* ------------------------------------------------------------------
+ * Phase 24 Tasks 24-02 + 24-03 — decision-chain + time-travel state
+ * ------------------------------------------------------------------ */
+
+/** LinkKind from internal/auditchain (Phase 24 / Task 24-02).
+ * `verdict` is a regular chat verdict; the rest are the HITL-04 +
+ * approve-and-remember lifecycle. */
+export type DecisionLinkKind =
+  | 'verdict'
+  | 'pending_approval'
+  | 'approved'
+  | 'rejected'
+  | 'rule_created'
+  | 'rule_revoked';
+
+/** One link in the session's chronological decision chain. The
+ * shape mirrors internal/auditchain.Link field-for-field (camelCase). */
+export interface DecisionLink {
+  kind: DecisionLinkKind;
+  auditId: number;
+  /** epoch ms. */
+  tsUnixMs: number;
+  toolCallId?: string;
+  /** CSV of cited chunk ids (verdict rows only). */
+  chunkIds?: string;
+  /** base64url-encoded rule PK for rule_* links (decode on demand). */
+  frozenArgs?: string;
+  skillId: string;
+  modelVersion: string;
+  refusalReason?: string;
+}
+
+/** Envelope of GET /api/session/:id/decision-chain. */
+export interface DecisionChainResponse {
+  sessionId: string;
+  at: string;
+  links: DecisionLink[];
+  count: number;
+}
+
+/** Envelope of GET /api/session/:id/state?at=RFC3339. */
+export interface SessionState {
+  session_id: string;
+  at_unix_ms: number;
+  visible_turns: number;
+  rules: Array<{
+    target: string;
+    args_hash: string;
+    skill_id: string;
+    scope_session_id: string;
+    created_at: number;
+    revoked?: boolean;
+  }>;
+  last_chain_audit_id: number;
+}
+
+/** Fetch GET /api/session/:id/decision-chain. Returns the parsed
+ * envelope or null on any error / non-2xx / malformed payload — the
+ * chain view renders a fail-closed banner on null (same posture as
+ * fetchAuditRows; the audit chain is the trust anchor). */
+export async function fetchDecisionChain(
+  sessionId: string,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<DecisionChainResponse | null> {
+  try {
+    const resp = await fetchImpl(
+      `${API_BASE}/session/${encodeURIComponent(sessionId)}/decision-chain?limit=200`,
+      { headers: { Accept: 'application/json' } },
+    );
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as {
+      session_id?: string;
+      at?: string;
+      links?: unknown[];
+      count?: number;
+    };
+    if (!body || !Array.isArray(body.links)) return null;
+    const links: DecisionLink[] = [];
+    for (const raw of body.links) {
+      const w = raw as Record<string, unknown>;
+      const kind = typeof w.kind === 'string' ? (w.kind as DecisionLinkKind) : null;
+      if (!kind) continue;
+      links.push({
+        kind,
+        auditId: typeof w.audit_id === 'number' ? (w.audit_id as number) : 0,
+        tsUnixMs: typeof w.ts_unix_ms === 'number' ? (w.ts_unix_ms as number) : 0,
+        toolCallId: typeof w.tool_call_id === 'string' ? (w.tool_call_id as string) : undefined,
+        chunkIds: typeof w.chunk_ids === 'string' ? (w.chunk_ids as string) : undefined,
+        frozenArgs: typeof w.frozen_args === 'string' ? (w.frozen_args as string) : undefined,
+        skillId: typeof w.skill_id === 'string' ? (w.skill_id as string) : '',
+        modelVersion: typeof w.model_version === 'string' ? (w.model_version as string) : '',
+        refusalReason: typeof w.refusal_reason === 'string' ? (w.refusal_reason as string) : undefined,
+      });
+    }
+    return {
+      sessionId: typeof body.session_id === 'string' ? body.session_id : sessionId,
+      at: typeof body.at === 'string' ? body.at : '',
+      links,
+      count: typeof body.count === 'number' ? body.count : links.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch GET /api/session/:id/state?at=RFC3339. Returns the parsed
+ * state or null on any error (the chain view renders a fail-closed
+ * banner). */
+export async function fetchSessionState(
+  sessionId: string,
+  at: string,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<SessionState | null> {
+  try {
+    const resp = await fetchImpl(
+      `${API_BASE}/session/${encodeURIComponent(sessionId)}/state?at=${encodeURIComponent(at)}`,
+      { headers: { Accept: 'application/json' } },
+    );
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as Partial<SessionState>;
+    if (!body || typeof body.session_id !== 'string') return null;
+    return body as SessionState;
+  } catch {
+    return null;
+  }
+}

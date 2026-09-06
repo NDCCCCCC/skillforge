@@ -572,6 +572,15 @@ type Store interface {
 	// The filter is applied via parameterized placeholders (T-3-SQLI).
 	QueryAudit(ctx context.Context, filter AuditFilter) ([]AuditRow, error)
 
+	// AuditBySessionAt returns the audit rows for sessionID with
+	// ts <= tUnixMs, ordered by id ASC. Phase 24 Task 24-02
+	// (decision-chain) and 24-03 (time-travel state) need
+	// chronological-by-session reads with a time bound; the existing
+	// QueryAudit is newest-first and unbounded. Empty sessionID
+	// returns an empty slice rather than erroring — call sites
+	// already 400 on empty input.
+	AuditBySessionAt(ctx context.Context, sessionID string, tUnixMs int64) ([]AuditRow, error)
+
 	// GetSession returns the message history for sessionID in
 	// chronological order. Returns an empty (non-nil) slice for an
 	// unknown session_id — callers treat empty as "start fresh". The

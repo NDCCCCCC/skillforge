@@ -69,6 +69,7 @@ func (f *fakeAdminSchedulesStore) ListReportRuns(_ context.Context, _, _ string,
 func (f *fakeAdminSchedulesStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
 	panic("not implemented")
 }
+func (f *fakeAdminSchedulesStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
 func (f *fakeAdminSchedulesStore) CountRows(_ context.Context, _ string) (int64, error) {
 	panic("not implemented")
 }
@@ -207,6 +208,7 @@ func (s *spyAdminSchedulesStore) ListReportRuns(_ context.Context, skillID, peri
 func (s *spyAdminSchedulesStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
 	panic("not implemented")
 }
+func (s *spyAdminSchedulesStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
 func (s *spyAdminSchedulesStore) CountRows(_ context.Context, _ string) (int64, error) {
 	panic("not implemented")
 }

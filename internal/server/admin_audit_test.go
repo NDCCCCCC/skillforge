@@ -67,6 +67,7 @@ type fakeAdminAuditStore struct {
 func (f *fakeAdminAuditStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
 	return f.rows, f.err
 }
+func (f *fakeAdminAuditStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
 
 // Unused store.Store methods — panic if reached.
 func (f *fakeAdminAuditStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
@@ -202,6 +203,10 @@ type spyAdminAuditStore struct {
 
 func (s *spyAdminAuditStore) QueryAudit(_ context.Context, filter store.AuditFilter) ([]store.AuditRow, error) {
 	s.calls = append(s.calls, filter)
+	return nil, nil
+}
+
+func (s *spyAdminAuditStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) {
 	return nil, nil
 }
 

@@ -23,7 +23,13 @@
 import { useEffect, useState } from 'react';
 import { cn } from '../lib/cn';
 import { useAppStore } from '../store/app-store';
-import { fetchAuditRows, type SessionAuditRow } from '../lib/sessions';
+import {
+  fetchAuditRows,
+  fetchDecisionChain,
+  type DecisionLink,
+  type DecisionLinkKind,
+  type SessionAuditRow,
+} from '../lib/sessions';
 
 type FilterKey = 'all' | 'pending' | 'approved' | 'rejected' | 'revoked';
 
@@ -86,6 +92,13 @@ export default function AuditTimelineTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  // Phase 24 Task 24-02: decision-chain header. Independent fetch —
+  // chain load failure does NOT flip the audit-log error flag (the
+  // audit log and the chain are two surfaces; the latter is
+  // informative, the former is the trust anchor).
+  const [chainLinks, setChainLinks] = useState<DecisionLink[] | null>(null);
+  const [chainError, setChainError] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -109,6 +122,28 @@ export default function AuditTimelineTab() {
     };
   }, [activeSessionId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setChainError(false);
+    if (!activeSessionId) {
+      setChainLinks([]);
+      return;
+    }
+    void (async () => {
+      const resp = await fetchDecisionChain(activeSessionId);
+      if (cancelled) return;
+      if (resp === null) {
+        setChainError(true);
+        setChainLinks(null);
+      } else {
+        setChainLinks(resp.links);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId]);
+
   const filtered =
     filter === 'all' ? rows : rows.filter((r) => r.action === FILTER_TO_ACTION[filter]);
 
@@ -126,6 +161,11 @@ export default function AuditTimelineTab() {
 
   return (
     <div data-testid="audit-timeline" className="flex flex-col gap-3 px-1">
+      <DecisionChainHeader
+        links={chainLinks}
+        error={chainError}
+        sessionId={activeSessionId}
+      />
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="审计动作筛选">
         {FILTER_ORDER.map((key) => (
           <button
@@ -192,5 +232,146 @@ export default function AuditTimelineTab() {
         </ol>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+ * DecisionChainHeader — Phase 24 Task 24-02 FE companion.
+ *
+ * Renders the chronological decision-chain links above the audit log.
+ * A condensed vertical timeline (one dot per link, color by kind,
+ * 4px dashed connector). The full audit log below stays the trust
+ * anchor; this header is the "what just happened at a glance" view.
+ *
+ * Empty / error / no-session postures:
+ *   - no session       → null (the parent hides the whole tab body)
+ *   - chain error      → inline status-error banner (fail-closed,
+ *                        same posture as the audit log alert)
+ *   - chain empty      → empty-state hint ("no decision events yet")
+ *   - chain populated  → rendered timeline
+ * ------------------------------------------------------------------ */
+
+const LINK_KIND_ZH: Record<DecisionLinkKind, string> = {
+  verdict: '判定',
+  pending_approval: '待审批',
+  approved: '已批准',
+  rejected: '已拒绝',
+  rule_created: '已记规则',
+  rule_revoked: '已撤规则',
+};
+
+const LINK_KIND_COLOR: Record<DecisionLinkKind, [string, string]> = {
+  verdict: ['bg-primary', 'text-primary'],
+  pending_approval: ['bg-status-needs-info', 'text-status-needs-info'],
+  approved: ['bg-status-compliant', 'text-status-compliant'],
+  rejected: ['bg-status-non-compliant', 'text-status-non-compliant'],
+  rule_created: ['bg-primary', 'text-primary'],
+  rule_revoked: ['bg-status-needs-info', 'text-status-needs-info'],
+};
+
+function chainLinkDetail(link: DecisionLink): string {
+  if (link.kind === 'verdict' && link.chunkIds) {
+    return `引用 chunk ${link.chunkIds}`;
+  }
+  if (
+    (link.kind === 'approved' || link.kind === 'rejected') &&
+    link.refusalReason
+  ) {
+    return `${link.kind === 'approved' ? '理由' : '拒因'} ${link.refusalReason}`;
+  }
+  if (link.kind === 'rule_created' || link.kind === 'rule_revoked') {
+    return link.frozenArgs ? 'rule pk 已记' : '';
+  }
+  return '';
+}
+
+function chainTs(epochMs: number): string {
+  if (!epochMs) return '—';
+  const d = new Date(epochMs);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function DecisionChainHeader({
+  links,
+  error,
+  sessionId,
+}: {
+  links: DecisionLink[] | null;
+  error: boolean;
+  sessionId: string;
+}) {
+  if (!sessionId) return null;
+  if (error) {
+    return (
+      <div
+        data-testid="decision-chain-error"
+        role="alert"
+        className="rounded-md border border-status-error/40 bg-status-error/10 px-3 py-2 text-xs text-status-error"
+      >
+        决策链读取异常
+      </div>
+    );
+  }
+  if (links === null) {
+    return (
+      <div data-testid="decision-chain-loading" className="text-xs text-text-muted">
+        加载决策链…
+      </div>
+    );
+  }
+  if (links.length === 0) {
+    return (
+      <div data-testid="decision-chain-empty" className="text-xs text-text-muted">
+        该会话还没有决策链事件。
+      </div>
+    );
+  }
+  return (
+    <section
+      data-testid="decision-chain"
+      data-count={links.length}
+      className="rounded-md border border-border bg-surface px-3 py-2"
+    >
+      <header className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold text-text">决策链</h3>
+        <span className="text-xs text-text-muted">共 {links.length} 步</span>
+      </header>
+      <ol data-testid="decision-chain-list" className="relative ml-2 space-y-1.5 border-l border-border pl-4">
+        {links.map((l) => {
+          const [bullet, label] = LINK_KIND_COLOR[l.kind];
+          const detail = chainLinkDetail(l);
+          return (
+            <li
+              key={`chain-${l.auditId}-${l.kind}`}
+              data-testid="decision-chain-link"
+              data-kind={l.kind}
+              data-audit-id={l.auditId}
+              className="relative"
+            >
+              <span
+                data-testid="decision-chain-bullet"
+                aria-hidden="true"
+                className={cn(
+                  'absolute -left-[1.4rem] top-1.5 inline-block h-2 w-2 rounded-full ring-2 ring-surface',
+                  bullet,
+                )}
+              />
+              <div className="flex flex-wrap items-baseline gap-2 text-xs">
+                <span className={cn('font-semibold', label)}>{LINK_KIND_ZH[l.kind]}</span>
+                <span className="font-mono text-text-muted">#{l.auditId}</span>
+                <span className="text-text-muted">{chainTs(l.tsUnixMs)}</span>
+                {l.skillId && (
+                  <span className="font-mono text-text-muted">{l.skillId}</span>
+                )}
+              </div>
+              {detail && (
+                <div className="mt-0.5 text-xs text-text-dim">{detail}</div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
