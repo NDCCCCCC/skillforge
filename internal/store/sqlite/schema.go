@@ -332,6 +332,44 @@ CREATE TABLE IF NOT EXISTS report_runs (
     drift_detected  INTEGER NOT NULL DEFAULT 0,
     created_at      DATETIME NOT NULL
 );
+
+-- knowledge_bases (Phase 26 / Plan 26-02 / KBM-01/02): the mutable
+-- registry-config table behind the knowledge-base registry. Deliberate
+-- asymmetry with kpi_calls: kpi_calls is an insert-only audit table
+-- because a KPI call is evidence; a knowledge base is OPERATIONAL
+-- CONFIGURATION, so this table carries the current state only and is
+-- updated in place (datasets is the established precedent for the
+-- "config is not evidence" split, store.go PutDataset/DeleteDataset).
+-- The irreproducible history still exists — every structure or switch
+-- change is recorded by the CALLER as an insert-only audit row in the
+-- EXISTING audit table (action_kb_created / action_kb_deactivated,
+-- server layer, Plan 26-05). No new audit table is created here, and
+-- this file ships no audit-row write path of its own.
+--
+-- Schema rationale:
+--   - slug PRIMARY KEY: one registry row per knowledge base; the slug is
+--     also the knowledge/<slug>/ directory name and the retriever filter
+--     value (whitelist-validated upstream by internal/kb).
+--   - role CHECK: the closed four-value vocabulary is platform semantics
+--     (internal/kb Roles() is its single home), so the storage layer
+--     backstops it — a typo'd role is refused by sqlite, not merely by
+--     Go-side validation.
+--   - retrieval_enabled: the deactivation switch (0 = deactivated).
+--     Deactivation NEVER deletes the row or its data (KBM-02: deactivate,
+--     never destroy) — there is no delete path for this table anywhere in
+--     the store.
+--   - Additive migration only (D14-E1): a brand-new table created with
+--     IF NOT EXISTS; its index is created at the migrate() tail, never
+--     inlined here (see idxKnowledgeBasesRole).
+CREATE TABLE IF NOT EXISTS knowledge_bases (
+    slug              TEXT PRIMARY KEY,
+    display_name      TEXT NOT NULL,
+    role              TEXT NOT NULL CHECK (role IN ('authority','historical','personal','draft')),
+    description       TEXT NOT NULL DEFAULT '',
+    retrieval_enabled INTEGER NOT NULL DEFAULT 1,
+    created_at        DATETIME NOT NULL,
+    updated_at        DATETIME NOT NULL
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
@@ -498,6 +536,21 @@ CREATE INDEX IF NOT EXISTS idx_report_runs_skill_period ON report_runs(skill_id,
 CREATE INDEX IF NOT EXISTS idx_report_runs_fired_at ON report_runs(fired_at)
 `
 )
+
+// idxKnowledgeBasesRole (Phase 26 / Plan 26-02 / KBM-01): the role index
+// for the knowledge_bases registry table — the read path filters by role
+// (annotate's counter-evidence channel resolves the historical-role set,
+// the role wildcard expands by role membership).
+//
+// Executed at the TAIL of migrate() AFTER the ALTER loops, per the D14-E1
+// ordering contract: never inline an index into schemaSQL. knowledge_bases
+// itself is brand-new (additive, no ALTER dependency) but keeps the same
+// migrate()-tail convention so there is exactly one index shape to
+// remember. CREATE INDEX IF NOT EXISTS is idempotent at the SQLite level;
+// no PRAGMA gating needed.
+const idxKnowledgeBasesRole = `
+CREATE INDEX IF NOT EXISTS idx_knowledge_bases_role ON knowledge_bases(role)
+`
 
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
@@ -680,6 +733,14 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	}
 	if _, err := s.db.ExecContext(ctx, createReportRunsFiredAtIdxSQL); err != nil {
 		return fmtError("migrate.report_runs.fired_at_idx", err)
+	}
+
+	// Phase 26 / Plan 26-02 / KBM-01: knowledge_bases role index. Executed
+	// AFTER the ALTER loops per the D14-E1 ordering posture; the table
+	// itself is brand-new (additive, no ALTER dependency) but keeps the
+	// same migrate()-tail convention as kpi_calls / reports / report_runs.
+	if _, err := s.db.ExecContext(ctx, idxKnowledgeBasesRole); err != nil {
+		return fmtError("migrate.knowledge_bases.role_idx", err)
 	}
 	return nil
 }
