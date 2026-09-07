@@ -68,7 +68,7 @@ A Skill is a single `SKILL.md` file in `skills/<name>/`. It declares everything 
 |-------|------|------|
 | `description` | string | Non-empty intent-routing text (the router matches user queries against this). |
 | `agent` | string | One of the 6 Eino ADK agent types (see below). |
-| `reads` | `[]string` | **Non-empty** tier patterns (default-deny). No `*` wildcard. |
+| `reads` | `[]string` | **Non-empty** knowledge-base patterns (default-deny): `authority/**` or a role wildcard `role:authority`. No `*` wildcard. |
 | `writes` | `[]string` | Present (use `[]` for read-only Skills). |
 | `steps` | string (block scalar) | Non-empty declarative ordered list. |
 | `guardrails.prohibitions` | `[]string` | At least 3 entries. |
@@ -114,7 +114,7 @@ temperature: 0.3
 
 ### Two Gotchas
 
-1. **`reads` must be non-empty.** The validator rejects an empty `reads` slice (default-deny — `P-SKILL-3`). Every Skill must declare at least one tier it may read. If your Skill is purely tool-driven with no knowledge tier, declare a placeholder tier (e.g. `draft/**`) and note it in prose — do **not** relax the validator.
+1. **`reads` must be non-empty.** The validator rejects an empty `reads` slice (default-deny — `P-SKILL-3`). Every Skill must declare at least one knowledge base it may read. If your Skill is purely tool-driven with no knowledge source, declare a draft-role KB as a placeholder (e.g. `draft/**`) and note it in prose — a draft-role KB never enters retrieval (KBM-03: `kb.ResolveReads` drops draft-role bases from the resolved set), so the declaration satisfies the non-empty contract while granting zero retrievable source. Do **not** relax the validator.
 
 2. **`temperature` is a required pointer.** The field is `*float32`, not `float32`. This is intentional: a plain `float32` silently decodes a missing YAML key as `0.0`, defaulting the Skill to deterministic mode without the author knowing (`SYSK-08`). You **must** declare an explicit value — `temperature: 0.0` for compliance/data Skills, `temperature: 0.7+` for creative Skills.
 
@@ -195,72 +195,60 @@ func BuildMyTool() tool.InvokableTool {
 ### Notes
 
 - **Tier access is closed over at construction.** The retrieve tool snapshots `manifest.ResolvedTiers()` once when built — the LLM cannot override which tiers a tool reads (`KNOW-03`). Follow the same pattern for any tool that touches knowledge: pass the resolved tier slice in at construction, never accept it from LLM-emitted args.
-- **Tool-only Skills (calculator-style):** declare a placeholder tier in `reads` (e.g. `draft/**`) so the 7-field validator passes. The runtime today is a RAG pipeline; pure tool-execution support is a future version. See `examples/skills/calculator/SKILL.md` for the pattern.
+- **Tool-only Skills (calculator-style):** declare a draft-role KB in `reads` (e.g. `draft/**`) so the 7-field validator passes — a draft-role KB never enters retrieval (KBM-03), so this grants no source. The runtime today is a RAG pipeline; pure tool-execution support is a future version. See `examples/skills/calculator/SKILL.md` for the pattern.
 
 ---
 
-## Add a Knowledge Tier
+## Add a Knowledge Base
 
-SkillForge organizes knowledge into four tiers. A tier is both a **Milvus metadata value** (CN-char VARCHAR) and a **directory under `knowledge/`**. Adding a new tier means wiring both sides.
+SkillForge organizes knowledge into **knowledge bases (KBs)** registered in the knowledge-base registry (Phase 26). A KB is a registry entry — a **slug**, a display name, and one of four semantic **roles** — paired with a directory under `knowledge/` whose name is the slug. Adding a new KB means registering it and creating the directory; no Go code changes.
 
-### The TierEnum
+### The Four Semantic Roles
 
-Tiers are defined in [`internal/skill/tier.go`](internal/skill/tier.go):
+Roles are platform constants (see `Roles()` in [`internal/kb/kb.go`](internal/kb/kb.go)), not configuration. They decide trust, not just filtering:
 
-| Directory (`knowledge/<dir>/`) | Milvus tier value | Meaning |
-|--------------------------------|-------------------|---------|
-| `authority/` | `权威` | Authoritative, currently-effective source of truth |
-| `historical/` | `历史` | Historical / superseded versions |
-| `personal/` | `个人` | Personal notes / individual context |
-| `draft/` | `草稿` | Drafts / unverified |
+| Directory (`knowledge/<slug>/`) | Role | Retrieval | Citable |
+|--------------------------------|------|-----------|---------|
+| `authority/` | `authority` | default-on | **yes — the only citable role** (citation whitelist) |
+| `historical/` | `historical` | only via explicit `reads` | no (annotation channel) |
+| `personal/` | `personal` | only via explicit `reads` | no (annotation channel) |
+| `draft/` | `draft` | **never** — the role outranks the entry switch | no |
 
-`ResolveTiers(reads)` maps a Skill's `reads` patterns (e.g. `authority/**`) to the unique set of Milvus tier values. The indexer (`internal/knowledge.Index`) rejects any document whose `Tier` field is outside the 4 canonical values — `fail-closed` default-deny.
+### Two Ways to Register a Knowledge Base
 
-### Add a Document to an Existing Tier
+1. **Seed PR (shipped baselines):** add an entry to [`knowledge_bases.yaml`](knowledge_bases.yaml) — a controlled file changed via PR review — and create the directory. Slugs must match `^[a-z][a-z0-9-]{0,19}$`; `data` and the role names are reserved.
+2. **Admin API (runtime operations):** `POST /api/admin/kb` with the `X-Admin-Token` header. Creation and deactivation are INSERT-only audited; deactivation hides the KB from retrieval and Skill validation without deleting any data.
 
-The simple case: drop a Markdown file into the tier directory.
+### Add a Document to an Existing Knowledge Base
+
+The simple case: drop a Markdown file into the KB directory.
 
 ```bash
 # Add a new authoritative policy doc
 knowledge/authority/new_policy.md
 ```
 
-The file format is Markdown with optional YAML frontmatter (the indexer parses `.md` natively):
+The file format is Markdown with optional YAML frontmatter (the indexer parses `.md` natively). **The tier is decided by the directory, not by the document** — the registry-driven walker assigns `tier = <slug>` to every indexed file, and the frontmatter carries only the optional effective window:
 
 ```markdown
 ---
-tier: 权威
 source: internal-policy-2026-01
-effective_date: 2026-01-15
+effective_from: 1768435200
+effective_to: 0
 ---
 
 # New Policy Title
 
 The policy body. This text is chunked, embedded, and indexed into Milvus
-under tier=权威. A Skill with reads: [authority/**] can retrieve it.
+under tier=authority. A Skill with reads: [authority/**] can retrieve it,
+and only authority-role chunks can become citations.
 ```
 
-On the next `cmd/server` startup (or hot-reload), the indexer scans `knowledge/`, chunks the file, embeds it via BGE-M3, and writes it to Milvus with the `tier` metadata. No code change needed.
+On the next `cmd/server` startup, the indexer scans the registered `knowledge/<slug>/` directories, chunks the file, embeds it via BGE-M3, and writes it to Milvus with the `tier` metadata. No code change needed. A directory with no registry entry is skipped with a WARN and an audit row (KBM-06).
 
-### Add a Brand-New Tier
+### KNOW-02: Unknown Tiers Are Rejected
 
-Adding a 5th tier requires a code change — the tier set is the locked trust boundary for v1:
-
-1. Add an entry to `TierEnum` in [`internal/skill/tier.go`](internal/skill/tier.go):
-   ```go
-   var TierEnum = map[string]string{
-       "authority":  "权威",
-       "historical": "历史",
-       "personal":   "个人",
-       "draft":      "草稿",
-       "newtier":    "新层",   // add your tier
-   }
-   ```
-2. Create the directory: `mkdir knowledge/newtier`.
-3. Add at least one document (see above).
-4. A Skill can now declare `reads: [newtier/**]` and `ResolveTiers` will resolve it.
-
-`TierEnumByValue` and `TierEnumValues` automatically pick up the new entry (they iterate `TierEnum`), so the indexer's default-deny check and error messages update without further edits.
+`internal/knowledge.validateTiers` rejects any document whose tier is not an **active** registry slug — `fail-closed` default-deny. The same fail-closed posture applies at Skill load time: a `reads` pattern naming an unknown or deactivated slug fails validation with the active slug list in the error message.
 
 ---
 

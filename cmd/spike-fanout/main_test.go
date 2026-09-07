@@ -249,8 +249,8 @@ func TestLoadFanoutConfigResolvesExample(t *testing.T) {
 func TestLoadFanoutGolden(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "golden.jsonl")
-	content := `{"id":"fanout-01","scenario":"multi_hop","parent_skill":"compliance-orchestrator","sub_skills":[{"name":"s1","reads":["authority/**"],"writes":[]}],"query":"q","expected_dispatched_count_floor":2,"expected_conservative_merge":false,"expected_merged_status":"compliant","tier_ground_truth":"权威","notes":"n"}` + "\n\n" +
-		`{"id":"fanout-09","scenario":"tier_mismatch","parent_skill":"compliance-orchestrator","sub_skills":[{"name":"s2","reads":["personal/**"],"writes":[]}],"query":"q2","expected_dispatched_count_floor":0,"expected_conservative_merge":true,"expected_merged_status":"needs_input","tier_ground_truth":"权威","notes":"n2"}` + "\n"
+	content := `{"id":"fanout-01","scenario":"multi_hop","parent_skill":"compliance-orchestrator","sub_skills":[{"name":"s1","reads":["authority/**"],"writes":[]}],"query":"q","expected_dispatched_count_floor":2,"expected_conservative_merge":false,"expected_merged_status":"compliant","tier_ground_truth":"authority","notes":"n"}` + "\n\n" +
+		`{"id":"fanout-09","scenario":"tier_mismatch","parent_skill":"compliance-orchestrator","sub_skills":[{"name":"s2","reads":["personal/**"],"writes":[]}],"query":"q2","expected_dispatched_count_floor":0,"expected_conservative_merge":true,"expected_merged_status":"needs_input","tier_ground_truth":"authority","notes":"n2"}` + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}

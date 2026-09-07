@@ -431,8 +431,13 @@ type GoldenCase struct {
 	// booleans, NOT strings.
 	ExpectedFallback bool     `json:"expected_fallback"`
 	TemplateSections []string `json:"template_sections"`
-	TierGroundTruth  string   `json:"tier_ground_truth"`
-	Notes            string   `json:"notes"`
+	// TierGroundTruth carries the registry-slug vocabulary (Phase 26
+	// KBM-04: CN tier chars were migrated to kb.Registry slugs in
+	// 26-07). Parsed for golden-set schema fidelity; the tier-mismatch
+	// gate itself asserts on the Load-time BuildSubAgent rejection, not
+	// on this field.
+	TierGroundTruth string   `json:"tier_ground_truth"`
+	Notes           string   `json:"notes"`
 }
 
 // LiveCaseResult is the measured per-case outcome. DurationMS is the
@@ -1076,7 +1081,7 @@ func renderFanoutSummary(results []LiveCaseResult, totalCost float64, seed int) 
 	// multi_hop.md — the 8 multi-hop drill-down.
 	var mh strings.Builder
 	fmt.Fprintf(&mh, "# Phase 13 Live Fan-out UAT — multi_hop.md\n\n")
-	fmt.Fprintf(&mh, "8 multi-hop cases: parent Reads [权威(,历史)], classifier fans out 2-3\n")
+	fmt.Fprintf(&mh, "8 multi-hop cases: parent Reads [authority(/historical)], classifier fans out 2-3\n")
 	fmt.Fprintf(&mh, "sub-queries with overlapping tier filters; conservative merge aggregates\n")
 	fmt.Fprintf(&mh, "min-confidence.\n\n| id | query | dispatched | merged | confidence |\n|---|---|---|---|---|\n")
 	for _, r := range results {
