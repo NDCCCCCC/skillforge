@@ -31,7 +31,7 @@ import (
 // session isolation enforcement — no row from another session can ever
 // satisfy it.
 const getSessionSQL = `
-SELECT role, content, ts
+SELECT id, role, content, ts
 FROM session_turn
 WHERE session_id = ?
 ORDER BY ts ASC
@@ -39,7 +39,9 @@ ORDER BY ts ASC
 
 // GetSession returns the message history for sessionID in chronological
 // order. Returns an empty (non-nil) slice for an unknown session_id;
-// callers treat empty as "start fresh".
+// callers treat empty as "start fresh". Each row carries its
+// session_turn id (Phase 29 / Plan 29-01 / D-29-01 — the server-side
+// message identity surfaced to the FE for vote binding).
 func (s *SQLiteStore) GetSession(ctx context.Context, sessionID string) ([]store.SessionMessage, error) {
 	if s.isClosed() {
 		return nil, sql.ErrConnDone
@@ -56,7 +58,7 @@ func (s *SQLiteStore) GetSession(ctx context.Context, sessionID string) ([]store
 	out := []store.SessionMessage{}
 	for rows.Next() {
 		var m store.SessionMessage
-		if err := rows.Scan(&m.Role, &m.Content, &m.Ts); err != nil {
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.Ts); err != nil {
 			return nil, fmtError("GetSession.Scan", err)
 		}
 		out = append(out, m)
@@ -83,37 +85,53 @@ ON CONFLICT(session_id, role, ts) DO NOTHING
 // this). Both rows are written in a single transaction so a partial
 // failure cannot leave an orphaned user turn without its assistant
 // reply (or vice versa).
-func (s *SQLiteStore) AppendTurn(ctx context.Context, sessionID string, user, assistant store.SessionMessage) error {
+//
+// Phase 29 / Plan 29-01 (D-29-01): returns the ASSISTANT row's
+// session_turn.id on a fresh insert. A replayed call returns (0, nil)
+// — see appendTurnHalf for why LastInsertId is FORBIDDEN on that path.
+func (s *SQLiteStore) AppendTurn(ctx context.Context, sessionID string, user, assistant store.SessionMessage) (int64, error) {
 	if s.isClosed() {
-		return sql.ErrConnDone
+		return 0, sql.ErrConnDone
 	}
 	if sessionID == "" {
-		return errEmptySessionID
+		return 0, errEmptySessionID
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmtError("AppendTurn.BeginTx", err)
+		return 0, fmtError("AppendTurn.BeginTx", err)
 	}
 	defer func() { _ = tx.Rollback() }() // safe: no-op once committed
 
-	if err := appendTurnHalf(ctx, tx, sessionID, user); err != nil {
-		return err
+	if _, err := appendTurnHalf(ctx, tx, sessionID, user); err != nil {
+		return 0, err
 	}
-	if err := appendTurnHalf(ctx, tx, sessionID, assistant); err != nil {
-		return err
+	asstID, err := appendTurnHalf(ctx, tx, sessionID, assistant)
+	if err != nil {
+		return 0, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmtError("AppendTurn.Commit", err)
+		return 0, fmtError("AppendTurn.Commit", err)
 	}
-	return nil
+	return asstID, nil
 }
 
 // appendTurnHalf inserts one SessionMessage within an existing
-// transaction. The role CHECK constraint ("user" | "assistant") is the
-// last line of defense against a malformed SessionMessage.
-func appendTurnHalf(ctx context.Context, tx *sql.Tx, sessionID string, m store.SessionMessage) error {
+// transaction and returns the assigned session_turn row id (0 when the
+// idempotent replay path swallowed the insert). The role CHECK
+// constraint ("user" | "assistant") is the last line of defense against
+// a malformed SessionMessage.
+//
+// Pitfall 2 (Plan 29-01): RowsAffected()==0 marks the ON CONFLICT DO
+// NOTHING replay. In that branch LastInsertId must NOT be consulted —
+// under mattn/go-sqlite3 it reports the rowid of the most recent
+// SUCCESSFUL INSERT on the connection, which after a swallowed conflict
+// is a stale id belonging to an EARLIER turn (a silent mismatch, i.e.
+// exactly the cross-turn vote misbinding T-29-06 exists to prevent).
+// 0 is the documented "no new row — caller must not emit data-turn"
+// sentinel.
+func appendTurnHalf(ctx context.Context, tx *sql.Tx, sessionID string, m store.SessionMessage) (int64, error) {
 	role := m.Role
 	if role == "" {
 		// Fall back to a safe default rather than tripping the CHECK
@@ -124,8 +142,20 @@ func appendTurnHalf(ctx context.Context, tx *sql.Tx, sessionID string, m store.S
 	if ts.IsZero() {
 		ts = time.Now().UTC()
 	}
-	if _, err := tx.ExecContext(ctx, appendTurnSQL, sessionID, role, m.Content, ts.UTC()); err != nil {
-		return fmtError("AppendTurn.Exec", err)
+	res, err := tx.ExecContext(ctx, appendTurnSQL, sessionID, role, m.Content, ts.UTC())
+	if err != nil {
+		return 0, fmtError("AppendTurn.Exec", err)
 	}
-	return nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmtError("AppendTurn.RowsAffected", err)
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmtError("AppendTurn.LastInsertId", err)
+	}
+	return id, nil
 }

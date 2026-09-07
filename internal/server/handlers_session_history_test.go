@@ -132,7 +132,7 @@ func seedSessionTurn(t *testing.T, s *sqlite.SQLiteStore, sessionID, userContent
 	// AppendTurn requires two half-messages with the same Role pair;
 	// the store tags them with the supplied Ts verbatim so this test
 	// can interleave sessions without nanosecond collisions.
-	err := s.AppendTurn(context.Background(), sessionID,
+	_, err := s.AppendTurn(context.Background(), sessionID,
 		store.SessionMessage{Role: "user", Content: userContent, Ts: ts},
 		store.SessionMessage{Role: "assistant", Content: assistantContent, Ts: ts.Add(time.Millisecond)},
 	)

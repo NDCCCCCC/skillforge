@@ -314,7 +314,9 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
+		// 29-01: the returned turn id is discarded here — Plan 29-04
+		// emits the data-turn frame in this window.
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
 		return
 	}
 }
@@ -446,7 +448,7 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 		// writes one audit row before the handler returns).
 		_ = wire.EmitChunk(c, errorChunk(err.Error()))
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
-		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
 		if ctx.Err() != nil {
 			log.Printf("[INFO] server: agent run cancelled (sess=%s): %v", sessionID, err)
 		} else {
@@ -458,7 +460,7 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	if refusal != nil {
 		// Trust floor or out-of-scope refusal (verdict is zero-value).
 		_ = emitRefusal(c, *refusal)
-		s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", refusal.Reason, nil)
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", refusal.Reason, nil)
 		return
 	}
 
@@ -480,7 +482,9 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-	s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "", nil)
+	// 29-01: the returned turn id is discarded here — Plan 29-04
+	// emits the data-turn frame in this window (right after finish).
+	_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "", nil)
 }
 
 // writeAuditAndTurn persists the audit row + (user, assistant) session
@@ -509,9 +513,16 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 // pins the skill that produced the verdict) and "" on refusal / error
 // paths (mirrors runAgentPath's historical args exactly — refusal rows
 // hash only model_version since no skill-specific prompt was rendered).
-func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason string, meta *store.AuditMeta) {
+//
+// Phase 29 / Plan 29-01 (D-29-01): returns the assistant row's
+// session_turn.id so the chat path can identify the message server-side
+// (the feedback vote key). The posture stays best-effort: a swallowed
+// error or an idempotent replay yields (0, nil), and the caller must
+// not emit a data-turn frame for id 0. Plan 29-04 owns the actual
+// data-turn emission window; this plan only opens the return channel.
+func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason string, meta *store.AuditMeta) (int64, error) {
 	if s.Store == nil {
-		return
+		return 0, nil
 	}
 	const modelVersion = "glm-5.2"
 	verdictJSON := ""
@@ -554,12 +565,15 @@ func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query 
 	if refusalReason != "" {
 		assistantContent = refusalReason
 	}
-	if err := s.Store.AppendTurn(ctx, sessionID,
+	turnID, err := s.Store.AppendTurn(ctx, sessionID,
 		store.SessionMessage{Role: "user", Content: query, Ts: time.Now().UTC()},
 		store.SessionMessage{Role: "assistant", Content: assistantContent, Ts: time.Now().UTC()},
-	); err != nil {
+	)
+	if err != nil {
 		log.Printf("[WARN] server: session turn append (sess=%s): %v (response already streamed; non-fatal)", sessionID, err)
+		return 0, nil
 	}
+	return turnID, nil
 }
 
 // newSessionID generates a fresh 32-char hex session ID (128 bits of

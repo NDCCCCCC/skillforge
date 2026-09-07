@@ -41,7 +41,7 @@ func newMetaTestStore(t *testing.T) *SQLiteStore {
 // session ids and activity times.
 func seedTurns(t *testing.T, s *SQLiteStore, sessionID, userQuery string, ts time.Time) {
 	t.Helper()
-	err := s.AppendTurn(context.Background(), sessionID,
+	_, err := s.AppendTurn(context.Background(), sessionID,
 		store.SessionMessage{Role: "user", Content: userQuery, Ts: ts},
 		store.SessionMessage{Role: "assistant", Content: `{"status":"compliant"}`, Ts: ts.Add(time.Second)})
 	require.NoError(t, err)

@@ -72,7 +72,7 @@ func seedPriorSession(t *testing.T, s store.Store, sessionID string, userContent
 	t.Helper()
 	ctx := context.Background()
 	now := time.Now().UTC()
-	err := s.AppendTurn(ctx, sessionID,
+	_, err := s.AppendTurn(ctx, sessionID,
 		store.SessionMessage{Role: "user", Content: userContent, Ts: now},
 		store.SessionMessage{Role: "assistant", Content: historyTestChunkText, Ts: now.Add(time.Second)},
 	)
@@ -456,7 +456,7 @@ func TestVerdictPipeline_BudgetTruncatedEvent(t *testing.T) {
 	// over the 8000-char DefaultCharBudget.
 	ctx := context.Background()
 	huge := strings.Repeat("A", 8500)
-	err := deps.Store.AppendTurn(ctx, sessID,
+	_, err := deps.Store.AppendTurn(ctx, sessID,
 		store.SessionMessage{Role: "user", Content: huge, Ts: time.Now().UTC().Add(2 * time.Second)},
 		store.SessionMessage{Role: "assistant", Content: "B", Ts: time.Now().UTC().Add(3 * time.Second)},
 	)

@@ -458,6 +458,13 @@ type SessionMessage struct {
 	Role    string
 	Content string
 	Ts      time.Time
+
+	// ID is the session_turn row id — the server-side message identity
+	// (Phase 29 / Plan 29-01 / D-29-01; feedback votes key on it). It is
+	// a READ-back field: GetSession fills it from the row, while
+	// AppendTurn IGNORES it on input (sqlite AUTOINCREMENT assigns the
+	// id; a caller-supplied value is never persisted).
+	ID int64
 }
 
 // SessionSummary is one roster row for ListSessions (session-management
@@ -604,7 +611,15 @@ type Store interface {
 	// AppendTurn atomically appends a (user, assistant) turn pair for
 	// sessionID. Idempotent on (sessionID, user.Ts, assistant.Ts) via
 	// a UNIQUE constraint + ON CONFLICT DO NOTHING.
-	AppendTurn(ctx context.Context, sessionID string, user, assistant SessionMessage) error
+	//
+	// Phase 29 / Plan 29-01 (D-29-01): returns the ASSISTANT row's
+	// session_turn.id — the server-side message identity the feedback
+	// endpoints key votes on. When the replay path swallowed both
+	// halves (ON CONFLICT DO NOTHING), the id is 0: the caller must NOT
+	// emit a data-turn frame for it (the FE already holds the id from
+	// the first delivery and degrades to a disabled vote row). Errors
+	// return id 0.
+	AppendTurn(ctx context.Context, sessionID string, user, assistant SessionMessage) (int64, error)
 
 	// UpdateAuditMetrics backfills the 4 metric columns on an existing
 	// audit row. This is the ONLY sanctioned UPDATE path — Plan 03-06's

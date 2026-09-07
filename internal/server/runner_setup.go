@@ -212,7 +212,7 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		// terminal state, then persist the audit row.
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-		s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, "", "internal_error", nil)
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, "", "internal_error", nil)
 		return
 	}
 
@@ -229,7 +229,7 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 	// (the verdict path is captured in the audit row's verdict_json in
 	// the legacy chatHandler — 11-04 re-uses writeAuditAndTurn with the
 	// parsed verdict).
-	s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, chatReq.Skill, "", nil)
+	_, _ = s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, chatReq.Skill, "", nil)
 }
 
 // dataRefEmitter builds the per-request SSE data-reference emitter for

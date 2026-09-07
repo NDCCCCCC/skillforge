@@ -223,7 +223,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			Reason:      verdict.RefusalReasonOutOfScope,
 			CanRephrase: false,
 		})
-		s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonOutOfScope, meta)
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonOutOfScope, meta)
 		return emitErr
 	}
 
@@ -279,7 +279,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			CanRephrase:               true,
 			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
-		s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
 		return emitErr
 	}
 
@@ -304,7 +304,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			CanRephrase:               true,
 			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
-		s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonLowRetrievalScore, meta)
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonLowRetrievalScore, meta)
 		return emitErr
 	}
 
@@ -344,7 +344,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 				Decision: wire.DecisionHistoryClassifierRefused,
 				Query:    classifyOut.Reason,
 			})
-			s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", classifyOut.Reason, meta)
+			_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", classifyOut.Reason, meta)
 			return emitErr
 		}
 	}
@@ -512,7 +512,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			CanRephrase:               true,
 			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
-		s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
+		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
 		return emitErr
 	}
 
@@ -525,7 +525,9 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// path (matches runAgentPath's `req.Skill` arg). Phase 10: the
 	// audit_meta sibling row carries the rewriter + classifier +
 	// history signals.
-	s.writeAuditAndTurn(ctx, sessionID, skillID, query, v, skillID, "", meta)
+	// 29-01: the returned turn id is discarded here — Plan 29-04 emits
+	// the data-turn frame in this window (right after emitVerdictStream).
+	_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, v, skillID, "", meta)
 	if emitErr != nil {
 		return fmt.Errorf("verdict pipeline: emit verdict stream: %w", emitErr)
 	}

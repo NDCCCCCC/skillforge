@@ -75,7 +75,8 @@ func TestSqliteMattnZeroRegression(t *testing.T) {
 		ts := time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC)
 		user := store.SessionMessage{Role: "user", Content: "u", Ts: ts}
 		asst := store.SessionMessage{Role: "assistant", Content: "a", Ts: ts.Add(time.Second)}
-		require.NoError(t, s.AppendTurn(ctx, "sess-turns", user, asst), "AppendTurn should insert")
+		_, err = s.AppendTurn(ctx, "sess-turns", user, asst)
+		require.NoError(t, err, "AppendTurn should insert")
 		hist, err := s.GetSession(ctx, "sess-turns")
 		require.NoError(t, err)
 		require.Len(t, hist, 2, "session history must round-trip")

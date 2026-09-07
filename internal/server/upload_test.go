@@ -71,7 +71,9 @@ func (m *mockStore) PutAudit(_ context.Context, _ store.AuditRow) (int64, error)
 func (m *mockStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) { panic("not implemented") }
 func (m *mockStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
 func (m *mockStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) { panic("not implemented") }
-func (m *mockStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) error { panic("not implemented") }
+// AppendTurn satisfies the interface; 0 = no real row id — downstream
+// data-turn emitters treat 0 as the degrade signal (Plan 29-01).
+func (m *mockStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) (int64, error) { return 0, nil }
 func (m *mockStore) UpdateAuditMetrics(_ context.Context, _ int64, _, _, _, _ *float64) error { panic("not implemented") }
 func (m *mockStore) PutAuditMeta(_ context.Context, _ store.AuditMeta) error { panic("not implemented") }
 func (m *mockStore) ListSessions(_ context.Context) ([]store.SessionSummary, error) { panic("not implemented") }

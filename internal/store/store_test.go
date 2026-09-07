@@ -202,7 +202,7 @@ func TestSessionIsolationConcurrent(t *testing.T) {
 			ts := time.Date(2026, 8, 12, 10, i, 0, 0, time.UTC)
 			user := store.SessionMessage{Role: "user", Content: sessionID + "-q-" + string(rune('a'+i)), Ts: ts}
 			asst := store.SessionMessage{Role: "assistant", Content: sessionID + "-a-" + string(rune('a'+i)), Ts: ts.Add(1 * time.Second)}
-			if err := s.AppendTurn(ctx, sessionID, user, asst); err != nil {
+			if _, err := s.AppendTurn(ctx, sessionID, user, asst); err != nil {
 				t.Errorf("AppendTurn(%s): %v", sessionID, err)
 				return
 			}
@@ -249,9 +249,12 @@ func TestAppendTurnIdempotent(t *testing.T) {
 	user := store.SessionMessage{Role: "user", Content: "hello", Ts: time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)}
 	asst := store.SessionMessage{Role: "assistant", Content: "hi back", Ts: time.Date(2026, 8, 12, 10, 0, 1, 0, time.UTC)}
 
-	require.NoError(t, s.AppendTurn(ctx, "sess-x", user, asst))
-	// Replay with identical timestamps — must be a no-op (idempotent).
-	require.NoError(t, s.AppendTurn(ctx, "sess-x", user, asst))
+	_, err := s.AppendTurn(ctx, "sess-x", user, asst)
+	require.NoError(t, err)
+	// Replay with identical timestamps — must be a no-op (idempotent);
+	// Phase 29 / Plan 29-01: the replay returns id 0 (no new row).
+	_, err = s.AppendTurn(ctx, "sess-x", user, asst)
+	require.NoError(t, err)
 
 	got, err := s.GetSession(ctx, "sess-x")
 	require.NoError(t, err)
@@ -289,7 +292,7 @@ func TestHealthAndClose(t *testing.T) {
 	assert.Error(t, err, "GetSession after Close must return an error")
 
 	// AppendTurn after Close.
-	err = s.AppendTurn(ctx, "sess-z",
+	_, err = s.AppendTurn(ctx, "sess-z",
 		store.SessionMessage{Role: "user", Content: "x", Ts: time.Now()},
 		store.SessionMessage{Role: "assistant", Content: "y", Ts: time.Now()})
 	assert.Error(t, err, "AppendTurn after Close must return an error")

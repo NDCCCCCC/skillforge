@@ -81,8 +81,11 @@ func (f *fakeAdminSchedulesStore) ListAllImportBatches(_ context.Context) ([]sto
 func (f *fakeAdminSchedulesStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
 	panic("not implemented")
 }
-func (f *fakeAdminSchedulesStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) error {
-	panic("not implemented")
+// AppendTurn satisfies the interface; 0 = no real row id (no sqlite
+// backend behind this fake) — downstream data-turn emitters treat 0 as
+// the degrade signal (Phase 29 / Plan 29-01 contract).
+func (f *fakeAdminSchedulesStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) (int64, error) {
+	return 0, nil
 }
 func (f *fakeAdminSchedulesStore) UpdateAuditMetrics(_ context.Context, _ int64, _, _, _, _ *float64) error {
 	panic("not implemented")
@@ -223,8 +226,11 @@ func (s *spyAdminSchedulesStore) ListAllImportBatches(_ context.Context) ([]stor
 func (s *spyAdminSchedulesStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
 	panic("not implemented")
 }
-func (s *spyAdminSchedulesStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) error {
-	panic("not implemented")
+// AppendTurn satisfies the interface; 0 = no real row id (no sqlite
+// backend behind this spy) — downstream data-turn emitters treat 0 as
+// the degrade signal (Phase 29 / Plan 29-01 contract).
+func (s *spyAdminSchedulesStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) (int64, error) {
+	return 0, nil
 }
 func (s *spyAdminSchedulesStore) UpdateAuditMetrics(_ context.Context, _ int64, _, _, _, _ *float64) error {
 	panic("not implemented")
