@@ -57,8 +57,11 @@ func TestAdminSchedulesRetrievalOnly(t *testing.T) {
 
 // fakeAdminSchedulesStore is a minimal store.Store stub used to test
 // adminSchedulesHandler response shapes. Only ListReportRuns is wired; all
-// other methods panic if called.
+// other methods panic if called. The embedded nil store.Store covers
+// interface growth (Phase 29 feedback/ticket methods) the same way
+// recordingAuditStore does — unoverridden calls panic on the nil embed.
 type fakeAdminSchedulesStore struct {
+	store.Store
 	rows []store.ReportRunRow
 	err  error
 }
@@ -203,8 +206,12 @@ var _ store.Store = (*fakeAdminSchedulesStore)(nil)
 
 // spyAdminSchedulesStore captures the filter args passed to ListReportRuns.
 type spyAdminSchedulesStore struct {
-	calls []struct{ skillID, period string; limit int }
-	rows  []store.ReportRunRow
+	store.Store // nil embed: unoverridden Phase 29 methods panic (recordingAuditStore pattern)
+	calls       []struct {
+		skillID, period string
+		limit           int
+	}
+	rows []store.ReportRunRow
 }
 
 func (s *spyAdminSchedulesStore) ListReportRuns(_ context.Context, skillID, period string, limit int) ([]store.ReportRunRow, error) {

@@ -58,8 +58,11 @@ func TestAdminAuditRetrievalOnly(t *testing.T) {
 // fakeAdminAuditStore is a minimal store.Store stub used to test
 // adminAuditHandler response shapes. Only QueryAudit is wired; all
 // other methods panic if called (the handler under test only calls
-// QueryAudit).
+// QueryAudit). The embedded nil store.Store covers interface growth
+// (Phase 29 feedback/ticket methods) the same way recordingAuditStore
+// does — unoverridden calls panic on the nil embed.
 type fakeAdminAuditStore struct {
+	store.Store
 	rows []store.AuditRow
 	err  error
 }
@@ -203,7 +206,11 @@ func (f *fakeAdminAuditStore) HasUploadBySHA256(_ context.Context, _, _ string) 
 var _ store.Store = (*fakeAdminAuditStore)(nil)
 
 // spyAdminAuditStore captures the AuditFilter passed to QueryAudit.
+// The embedded nil store.Store covers interface growth (Phase 29
+// feedback/ticket methods) the same way recordingAuditStore does —
+// unoverridden calls panic on the nil embed.
 type spyAdminAuditStore struct {
+	store.Store
 	calls []store.AuditFilter
 }
 

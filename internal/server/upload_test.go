@@ -48,7 +48,11 @@ import (
 
 // mockStore is a minimal test double for store.Store that implements
 // HasUploadBySHA256 for deduplication tests. All other methods panic.
+// The embedded nil store.Store covers interface growth (Phase 29
+// feedback/ticket methods) the same way recordingAuditStore does —
+// unoverridden calls panic on the nil embed.
 type mockStore struct {
+	store.Store
 	mu              sync.Mutex
 	hasUploadCalls  []struct{ Slug, SHA256 string }
 	hasUploadResult bool
