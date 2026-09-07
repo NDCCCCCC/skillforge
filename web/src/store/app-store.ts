@@ -454,7 +454,17 @@ export interface AppState {
   route: AppRoute;
   evalSubroute: EvalSubroute;
   // Plan 20-01 (ADM-01) — admin console subroute.
-  adminSubroute: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules';
+  // Plan 29-08 (D-29-12) — 'feedback' (第 6 tab, FBK-03 仪表盘) and
+  // 'review' (第 7 tab, FBK-02 复核队列) extend the union; the default
+  // stays 'batches' so deep-links land on 导入批次 unchanged.
+  adminSubroute:
+    | 'batches'
+    | 'bases'
+    | 'kpis'
+    | 'skills'
+    | 'schedules'
+    | 'feedback'
+    | 'review';
   indexReports: IndexRun[];
   auditRows: AuditRow[];
   auditFilter: AuditFilter;
@@ -518,7 +528,10 @@ export interface AppActions {
   setRoute(route: AppRoute): void;
   setEvalSubroute(sub: EvalSubroute): void;
   // Plan 20-01 (ADM-01) — admin console subroute action.
-  setAdminSubroute(sub: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules'): void;
+  // Plan 29-08 (D-29-12) — union widened for the 反馈/复核 tabs.
+  setAdminSubroute(
+    sub: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules' | 'feedback' | 'review',
+  ): void;
   setIndexReports(runs: IndexRun[]): void;
   setAuditRows(rows: AuditRow[]): void;
   setAuditFilter(filter: AuditFilter): void;
