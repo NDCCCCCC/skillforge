@@ -77,6 +77,30 @@ type rowFinder interface {
 	FindRows(ctx context.Context, filter any) ([]docRow, error)
 }
 
+// aggregator is the testable seam for the aggregation step of GetMaxID.
+// Production wires this to mongoCollectionAggregator; tests inject a fake
+// that returns canned cursor results without a live MongoDB.
+type aggregator interface {
+	Aggregate(ctx context.Context, pipeline any) (aggregatorCursor, error)
+}
+
+// aggregatorCursor is the subset of *mongo.Cursor that GetMaxID needs.
+// It is the return type of aggregator.Aggregate.
+type aggregatorCursor interface {
+	All(ctx context.Context, out interface{}) error
+	Close(ctx context.Context) error
+}
+
+// mongoCollectionAggregator adapts *mongo.Collection to the aggregator
+// interface.
+type mongoCollectionAggregator struct {
+	coll *mongo.Collection
+}
+
+func (a mongoCollectionAggregator) Aggregate(ctx context.Context, pipeline any) (aggregatorCursor, error) {
+	return a.coll.Aggregate(ctx, pipeline)
+}
+
 // mongoCollectionFinder adapts *mongo.Collection to the rowFinder
 // interface. Find → cursor → cursor.All decodes the BSON rows into the
 // docRow value type with no per-row allocation beyond the slice grow.
@@ -111,7 +135,8 @@ type Client struct {
 	cfg    Config
 	conn   *mongo.Client
 	coll   *mongo.Collection
-	finder rowFinder // injectable; defaults to mongoCollectionFinder{coll}
+	finder rowFinder  // injectable; defaults to mongoCollectionFinder{coll}
+	agg    aggregator // injectable; defaults to mongoCollectionAggregator{coll}
 }
 
 // Compile-time check that *Client satisfies retriever.Retriever.
@@ -153,6 +178,7 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 		conn:   conn,
 		coll:   coll,
 		finder: mongoCollectionFinder{coll: coll},
+		agg:    mongoCollectionAggregator{coll: coll},
 	}
 	return c, nil
 }
@@ -176,11 +202,31 @@ func (c *Client) Disconnect() error {
 	return c.conn.Disconnect(ctx)
 }
 
-// GetMaxID is a stub that returns 0, nil. The real implementation queries
-// the MongoDB collection for the maximum chunk ID for the given tier.
-// Implemented in Plan 27-04.
+// GetMaxID returns the highest chunk ID currently stored for the given
+// tier via aggregation pipeline [{$match: {tier}}, {$sort: {id: -1}},
+// {$limit: 1}]. Returns 0 (no error) when no chunks exist for the tier.
+// Implements the retriever.Retriever contract added by Phase 27/Plan 02.
 func (c *Client) GetMaxID(ctx context.Context, tier string) (int64, error) {
-	return 0, nil
+	if c == nil || c.agg == nil {
+		return 0, nil
+	}
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"tier": tier}}},
+		{{Key: "$sort", Value: bson.M{"id": -1}}},
+		{{Key: "$limit", Value: 1}},
+	}
+	cur, err := c.agg.Aggregate(ctx, pipeline)
+	if err != nil {
+		return 0, fmt.Errorf("mongo.GetMaxID: Aggregate: %w", err)
+	}
+	var rows []struct{ ID int64 `bson:"id"` }
+	if err := cur.All(ctx, &rows); err != nil {
+		return 0, fmt.Errorf("mongo.GetMaxID: cursor.All: %w", err)
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	return rows[0].ID, nil
 }
 
 // Ensure creates the collection + a {tier:1} index if absent. Idempotent
