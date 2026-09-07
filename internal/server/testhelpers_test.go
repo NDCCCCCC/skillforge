@@ -122,6 +122,7 @@ func (s *stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMet
 func (s *stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
 	return retriever.ChunkContent{}, retriever.ErrChunkNotFound
 }
+func (s *stubRetriever) GetMaxID(_ context.Context, _ string) (int64, error) { return 0, nil }
 func (s *stubRetriever) Disconnect() error { return nil }
 
 // LastTiers returns the most recent tier list (or nil if none).
