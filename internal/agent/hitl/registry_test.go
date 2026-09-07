@@ -104,7 +104,7 @@ func TestApprovalDecisionRoundTrip(t *testing.T) {
 		Decision:   "approve",
 		Reason:     "verified by operator 2026-08-20",
 		Target:     "memory:facts",
-		FrozenArgs: json.RawMessage(`{"key":"employee_count","value":"150","tier":"权威"}`),
+		FrozenArgs: json.RawMessage(`{"key":"employee_count","value":"150","tier":"authority"}`),
 		Scope:      "session",
 		ApprovalID: "abc-123-def-456",
 	}

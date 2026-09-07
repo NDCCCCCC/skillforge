@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/skill"
 )
 
@@ -31,7 +32,7 @@ import (
 // return a non-nil error so the build_runner caller can surface the
 // issue at startup (before any chat invocation).
 func TestBuildToolsForSkill_NilManifest(t *testing.T) {
-	tools, err := BuildToolsForSkill(context.Background(), nil, "", "", nil)
+	tools, err := BuildToolsForSkill(context.Background(), nil, "", "", nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "manifest is nil")
 	assert.Nil(t, tools)
@@ -71,7 +72,7 @@ func TestBuildToolsForSkill_TableDriven(t *testing.T) {
 				Agent:       "ChatModelAgent",
 				Writes:      tc.writes,
 			}
-			got, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil)
+			got, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, testKBReg())
 			require.NoError(t, err)
 			assert.Len(t, got, tc.want,
 				"writes=%v must yield %d Tools", tc.writes, tc.want)
@@ -92,7 +93,7 @@ func TestReviewReportToolAppearsInWhitelist(t *testing.T) {
 			Agent:       "ChatModelAgent",
 			Writes:      writes,
 		}
-		tools, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil)
+		tools, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, testKBReg())
 		require.NoError(t, err)
 		names := make([]string, 0, len(tools))
 		for _, bt := range tools {
@@ -145,12 +146,12 @@ func TestPromptInjectionResistance(t *testing.T) {
 		Writes:      []string{"memory:facts"},
 	}
 
-	readOnlyTools, err := BuildToolsForSkill(context.Background(), readOnly, "sess-test", "test-skill", nil)
+	readOnlyTools, err := BuildToolsForSkill(context.Background(), readOnly, "sess-test", "test-skill", nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, readOnlyTools,
 		"read-only Skill MUST see 0 Tools (HITL-05 structural defense)")
 
-	writeyTools, err := BuildToolsForSkill(context.Background(), writey, "sess-test", "test-skill", nil)
+	writeyTools, err := BuildToolsForSkill(context.Background(), writey, "sess-test", "test-skill", nil, testKBReg())
 	require.NoError(t, err)
 	require.Len(t, writeyTools, 1,
 		"simple-qa with writes:[memory:facts] must see exactly 1 Tool")
@@ -177,9 +178,9 @@ func TestBuildToolsForSkill_DeterministicOrder(t *testing.T) {
 		Agent:       "ChatModelAgent",
 		Writes:      []string{"memory:facts"},
 	}
-	first, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil)
+	first, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, testKBReg())
 	require.NoError(t, err)
-	second, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil)
+	second, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, testKBReg())
 	require.NoError(t, err)
 	require.Len(t, first, 1)
 	require.Len(t, second, 1)
@@ -189,4 +190,78 @@ func TestBuildToolsForSkill_DeterministicOrder(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, firstInfo.Name, secondInfo.Name,
 		"BuildToolsForSkill must be deterministic — same input → same Tool order")
+}
+
+// TestBuildToolsForSkillNilRegistryFailsClosed — Plan 26-06 / T-26-06-2.
+// A Skill whose writes declare memory:facts cannot build its hitl tool
+// without a registry: the tier vocabulary is a registry snapshot, so a
+// nil registry is a wiring bug, never a silent fallback to the old
+// compiled-in Enum.
+func TestBuildToolsForSkillNilRegistryFailsClosed(t *testing.T) {
+	m := &skill.Manifest{
+		Description: "test skill",
+		Agent:       "ChatModelAgent",
+		Writes:      []string{"memory:facts"},
+	}
+	tools, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, nil)
+	require.Error(t, err, "nil registry must fail closed at the hitl construction seam")
+	assert.Nil(t, tools)
+	assert.Contains(t, err.Error(), "kb registry required")
+}
+
+// TestBuildToolsForSkillRegistryReachesEnum — end-to-end threading
+// evidence: the registry handed to BuildToolsForSkill is the one the
+// memory_facts schema Enum was snapshotted from.
+func TestBuildToolsForSkillRegistryReachesEnum(t *testing.T) {
+	reg := testKBReg()
+	m := &skill.Manifest{
+		Description: "test skill",
+		Agent:       "ChatModelAgent",
+		Writes:      []string{"memory:facts"},
+	}
+	tools, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, reg)
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+
+	info, err := tools[0].Info(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "memory_facts_write", info.Name)
+	pm, err := info.ParamsOneOf.ToJSONSchema()
+	require.NoError(t, err)
+	tier, ok := pm.Properties["tier"]
+	require.True(t, ok, "the tier parameter must exist in the schema")
+	assert.Equal(t, reg.ActiveSlugs(), tier.Enum,
+		"the tool schema Enum must be the registry snapshot passed through BuildToolsForSkill")
+}
+
+// TestBuildToolsForSkillReadOnlyNilRegistryAllowed — a read-only Skill
+// never constructs a hitl tool, so the registry seam is not exercised
+// and nil stays legal (the fail-closed branch is scoped to the
+// memory:facts write target).
+func TestBuildToolsForSkillReadOnlyNilRegistryAllowed(t *testing.T) {
+	m := &skill.Manifest{
+		Description: "read-only",
+		Agent:       "ChatModelAgent",
+		Writes:      []string{},
+	}
+	tools, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, nil)
+	require.NoError(t, err)
+	assert.Empty(t, tools, "read-only Skills see zero write tools (HITL-05)")
+}
+
+// TestBuildToolsForSkillNoAuthorityRoleFailsClosed — a registry whose
+// active set has no authority-role KB cannot derive the default write
+// tier, so the whitelist recompute fails closed.
+func TestBuildToolsForSkillNoAuthorityRoleFailsClosed(t *testing.T) {
+	reg := kb.New([]kb.Entry{
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+	})
+	m := &skill.Manifest{
+		Description: "test skill",
+		Agent:       "ChatModelAgent",
+		Writes:      []string{"memory:facts"},
+	}
+	_, err := BuildToolsForSkill(context.Background(), m, "sess-test", "test-skill", nil, reg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authority")
 }

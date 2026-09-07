@@ -24,10 +24,24 @@ import (
 	"testing"
 
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// testKBReg returns the four-baseline read-only registry the tier
+// vocabulary snapshots against (26-04 cross-package pattern: seed
+// entries in code with ASCII display names so tests stay hermetic and
+// the source tree stays free of CN tier literals).
+func testKBReg() kb.Registry {
+	return kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+	})
+}
 
 // TestMemoryFactsToolFirstPassInterrupts — Pass 1 of the
 // StatefulInterrupt contract. A context WITHOUT prior interrupt
@@ -60,7 +74,7 @@ func TestMemoryFactsToolFirstPassInterrupts(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	args := `{"key":"employee_count","value":"150","tier":"权威"}`
+	args := `{"key":"employee_count","value":"150","tier":"authority"}`
 	out, err := h.InvokableRun(ctx, args)
 
 	// Pass 1 must produce an Interrupt error and must NOT return
@@ -124,7 +138,8 @@ func TestMemoryFactsToolRejectsDenyWithoutReason(t *testing.T) {
 // Properties orderedmap (eino@v0.9.14 typed the Properties as
 // *orderedmap.OrderedMap which is not a vanilla map[string]any).
 func TestMemoryFactsToolInfoSchema(t *testing.T) {
-	h := &MemoryFactsTool{}
+	h, ctorErr := NewMemoryFactsTool(testKBReg())
+	require.NoError(t, ctorErr)
 	info, err := h.Info(context.Background())
 	require.NoError(t, err)
 
@@ -138,6 +153,75 @@ func TestMemoryFactsToolInfoSchema(t *testing.T) {
 		"key must be required (ComplianceSkill cannot write a fact without a stable identifier)")
 	require.Contains(t, pm.Required, "value",
 		"value must be required (an empty fact body is meaningless)")
+}
+
+// TestMemFactsEnumFromRegistry — Plan 26-06 / T-26-06-2. The tier
+// parameter's Enum is the registry's ActiveSlugs snapshot taken at
+// construction (slug-ascending), and the default is the first
+// slug-ascending authority-role KB. No compiled-in tier list survives.
+func TestMemFactsEnumFromRegistry(t *testing.T) {
+	reg := testKBReg()
+	h, err := NewMemoryFactsTool(reg)
+	require.NoError(t, err)
+
+	info, err := h.Info(context.Background())
+	require.NoError(t, err)
+	pm, err := info.ParamsOneOf.ToJSONSchema()
+	require.NoError(t, err)
+
+	props, ok := pm.Properties["tier"]
+	require.True(t, ok, "the tier parameter must exist in the schema")
+	require.NotNil(t, props.Enum, "tier must declare an Enum")
+	assert.Equal(t, reg.ActiveSlugs(), props.Enum,
+		"the Enum must be the registry ActiveSlugs snapshot, derived not literal")
+	assert.Equal(t, []string{"authority", "draft", "historical", "personal"}, props.Enum,
+		"the four-baseline snapshot is slug-ascending (26-06 behavior test contract)")
+	assert.Equal(t, reg.SlugsByRole(kb.RoleAuthority)[0], h.defaultTier,
+		"the default tier is the first authority-role slug")
+}
+
+// TestMemFactsNoAuthorityRoleFailsClosed — a registry with no
+// authority-role KB has no derivable default write target, so
+// construction fails instead of silently falling back to a compiled-in
+// literal (the old CN default is gone).
+func TestMemFactsNoAuthorityRoleFailsClosed(t *testing.T) {
+	reg := kb.New([]kb.Entry{
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+	})
+	_, err := NewMemoryFactsTool(reg)
+	require.Error(t, err, "no authority-role KB means no derivable default tier")
+	assert.Contains(t, err.Error(), "authority",
+		"the error must name the missing authority role so the operator can fix the seed")
+}
+
+// TestMemFactsNilRegistryFailsClosed — nil registry is a wiring bug,
+// never a silent empty vocabulary (26-04's nil-interface fail-closed
+// pattern, applied at the hitl construction seam).
+func TestMemFactsNilRegistryFailsClosed(t *testing.T) {
+	_, err := NewMemoryFactsTool(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "kb registry required")
+}
+
+// TestMemFactsWriteUsesSlug — the write path resolves the omitted tier
+// through the registry snapshot: the OK message carries the bound
+// default slug, and an explicit slug argument is preserved verbatim.
+func TestMemFactsWriteUsesSlug(t *testing.T) {
+	h, err := NewMemoryFactsTool(testKBReg())
+	require.NoError(t, err)
+
+	out, err := h.executeMemoryFactsWrite(context.Background(), []byte(`{"key":"employee_count","value":"150"}`))
+	require.NoError(t, err)
+	assert.Contains(t, out, "tier=authority",
+		"the omitted tier must resolve to the bound authority-role default slug")
+
+	out, err = h.executeMemoryFactsWrite(context.Background(), []byte(`{"key":"employee_count","value":"150","tier":"historical"}`))
+	require.NoError(t, err)
+	assert.Contains(t, out, "tier=historical",
+		"an explicit registry slug passes through unchanged")
+
+	_, err = (&MemoryFactsTool{}).executeMemoryFactsWrite(context.Background(), []byte(`{"key":"k","value":"v"}`))
+	require.Error(t, err, "an unbound tool must refuse to invent a default tier")
 }
 
 // spyAuditWriter records every InsertPendingApproval call. The
@@ -223,11 +307,11 @@ func TestNoopAuditWriter(t *testing.T) {
 // write in prod.
 func TestMemFactsArgsParse(t *testing.T) {
 	var parsed memFactsArgs
-	raw := json.RawMessage(`{"key":"employee_count","value":"150","tier":"权威"}`)
+	raw := json.RawMessage(`{"key":"employee_count","value":"150","tier":"authority"}`)
 	require.NoError(t, json.Unmarshal(raw, &parsed))
 	assert.Equal(t, "employee_count", parsed.Key)
 	assert.Equal(t, "150", parsed.Value)
-	assert.Equal(t, "权威", parsed.Tier)
+	assert.Equal(t, "authority", parsed.Tier)
 }
 
 // invokableTool is the type assertion sentinel: a MemoryFactsTool
@@ -278,7 +362,7 @@ func TestRuleAutoPass(t *testing.T) {
 		skillID:     "compliance",
 	}
 
-	args := `{"key":"employee_count","value":"150","tier":"权威"}`
+	args := `{"key":"employee_count","value":"150","tier":"authority"}`
 	ctx := context.Background()
 
 	result, err := h.InvokableRun(ctx, args)

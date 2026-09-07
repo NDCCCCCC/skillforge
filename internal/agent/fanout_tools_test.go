@@ -31,7 +31,7 @@ import (
 )
 
 // validParentForFanOut returns a parent manifest whose ResolvedTiers
-// include ["权威", "历史"] so the validation tests have a known
+// include the authority and historical slugs so the validation tests have a known
 // allowed set.
 func validParentForFanOut() *skill.Manifest {
 	temp := float32(0.0)
@@ -50,7 +50,7 @@ func validParentForFanOut() *skill.Manifest {
 		},
 		Temperature: &temp,
 	}
-	m.SetResolvedTiersForTest([]string{"权威", "历史"})
+	m.SetResolvedTiersForTest([]string{"authority", "historical"})
 	return m
 }
 
@@ -63,9 +63,9 @@ func TestFanOutDispatchToolInvokableRun(t *testing.T) {
 
 	args := `{
 		"sub_queries": [
-			{"id": "sa1", "query": "first sub-query", "tier_filter": ["权威"]},
-			{"id": "sa2", "query": "second sub-query", "tier_filter": ["历史"]},
-			{"id": "sa3", "query": "third sub-query", "tier_filter": ["权威", "历史"]}
+			{"id": "sa1", "query": "first sub-query", "tier_filter": ["authority"]},
+			{"id": "sa2", "query": "second sub-query", "tier_filter": ["historical"]},
+			{"id": "sa3", "query": "third sub-query", "tier_filter": ["authority", "historical"]}
 		]
 	}`
 	out, err := tool.InvokableRun(context.Background(), args)
@@ -94,8 +94,8 @@ func TestFanOutDispatchToolEmptySubQueries(t *testing.T) {
 func TestFanOutDispatchToolDuplicateID(t *testing.T) {
 	tool := BuildFanOutDispatchTool(validParentForFanOut())
 	args := `{"sub_queries": [
-		{"id": "sa1", "query": "q1", "tier_filter": ["权威"]},
-		{"id": "sa1", "query": "q2", "tier_filter": ["历史"]}
+		{"id": "sa1", "query": "q1", "tier_filter": ["authority"]},
+		{"id": "sa1", "query": "q2", "tier_filter": ["historical"]}
 	]}`
 	_, err := tool.InvokableRun(context.Background(), args)
 	require.Error(t, err)
@@ -118,7 +118,7 @@ func TestFanOutDispatchToolEmptyTierFilter(t *testing.T) {
 func TestFanOutDispatchToolTierFilterOutsideParent(t *testing.T) {
 	tool := BuildFanOutDispatchTool(validParentForFanOut())
 	args := `{"sub_queries": [
-		{"id": "sa1", "query": "q1", "tier_filter": ["个人"]}
+		{"id": "sa1", "query": "q1", "tier_filter": ["personal"]}
 	]}`
 	_, err := tool.InvokableRun(context.Background(), args)
 	require.Error(t, err)
@@ -129,7 +129,7 @@ func TestFanOutDispatchToolTierFilterOutsideParent(t *testing.T) {
 func TestFanOutDispatchToolEmptyQuery(t *testing.T) {
 	tool := BuildFanOutDispatchTool(validParentForFanOut())
 	args := `{"sub_queries": [
-		{"id": "sa1", "query": "", "tier_filter": ["权威"]}
+		{"id": "sa1", "query": "", "tier_filter": ["authority"]}
 	]}`
 	_, err := tool.InvokableRun(context.Background(), args)
 	require.Error(t, err)
@@ -140,7 +140,7 @@ func TestFanOutDispatchToolEmptyQuery(t *testing.T) {
 func TestFanOutDispatchToolMissingID(t *testing.T) {
 	tool := BuildFanOutDispatchTool(validParentForFanOut())
 	args := `{"sub_queries": [
-		{"id": "", "query": "q1", "tier_filter": ["权威"]}
+		{"id": "", "query": "q1", "tier_filter": ["authority"]}
 	]}`
 	_, err := tool.InvokableRun(context.Background(), args)
 	require.Error(t, err)

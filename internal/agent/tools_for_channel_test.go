@@ -152,16 +152,17 @@ func dataChannelManifest() *skill.Manifest {
 	return m
 }
 
-// tierChannelManifest is a Manifest declaring a tier read ("权威") +
+// tierChannelManifest is a Manifest declaring a tier read (the authority
+// slug) +
 // a single write target so BuildToolsForSkill has something to do.
 func tierChannelManifest() *skill.Manifest {
 	m := &skill.Manifest{
 		Description: "tier-channel test skill",
 		Agent:       "ChatModelAgent",
-		Reads:       []string{"权威"},
+		Reads:       []string{"authority"},
 		Writes:      []string{"memory:facts"},
 	}
-	m.SetResolvedTiersForTest([]string{"权威"})
+	m.SetResolvedTiersForTest([]string{"authority"})
 	return m
 }
 
@@ -238,7 +239,7 @@ func agentChannelTools(cfg agent.RunnerBuildConfig) ([]tool.BaseTool, error) {
 		}, nil
 	}
 	// tier-channel branch — same composition as runner_setup.go.
-	tools, err := agent.BuildToolsForSkill(context.Background(), cfg.Manifest, cfg.SessionID, cfg.SkillID, hitl.NoopRuleMatcher{})
+	tools, err := agent.BuildToolsForSkill(context.Background(), cfg.Manifest, cfg.SessionID, cfg.SkillID, hitl.NoopRuleMatcher{}, cfg.KBRegistry)
 	if err != nil {
 		return nil, err
 	}
