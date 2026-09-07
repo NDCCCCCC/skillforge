@@ -18,6 +18,7 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"sync"
@@ -100,11 +101,22 @@ func InvalidateCache() {
 	log.Printf("[WARN] knowledge: graph cache invalidated (upload/deactivate event)")
 }
 
+// ResetCaches clears both the main and citation cache.
+// Exported for test isolation; not called in production.
+func ResetCaches() {
+	graphCache.Delete(cacheKeyMain)
+	citationCache.Delete(cacheKeyCitation)
+}
+
 // GetOrCompute returns a cached EdgeGraph if still valid, otherwise recomputes
 // via EdgeGraphFromMetadata and caches the result with TTL() expiry.
 // Lazy eviction: expired entries are replaced on next call (no background
 // goroutine needed for v1.2).
 func GetOrCompute(ctx context.Context, r retriever.Retriever) (*EdgeGraph, error) {
+	// Defensive nil check — fail fast rather than returning an empty graph.
+	if r == nil {
+		return nil, errors.New("GetOrCompute: retriever is nil")
+	}
 	// Check main cache.
 	if entry, ok := graphCache.Load(cacheKeyMain); ok {
 		ce := entry.(*GraphCacheEntry)
