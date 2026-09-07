@@ -2,9 +2,10 @@
 
 **Phase:** 26 知识库注册表地基 (KB Registry Foundation)
 **Plan:** 26-10 (checkpoint task)
-**Status:** OPERATOR-PENDING — the hermetic layer is fully green; the live migration needs an
-operator on the intranet stack. This document is the complete runbook.
+**Status:** RESOLVED — 5/5 acceptance criteria PASS (2026-09-07, operator-authorized run
+executed by the autonomous session after explicit user approval "帮我跑验收")
 **Authored:** 2026-09-07 (Plan 26-10)
+**Executed:** 2026-09-07 12:03–12:22 (+08:00 logs UTC) — see §6 execution record
 
 ---
 
@@ -85,3 +86,32 @@ established 14-08 precedent:
   is a leftover CN display-order map flagged by 26-08 as out of its scope. Phase 26's gates scan
   Go only (`--include='*.go'`), so this FE file is outside them. It is a display-order constant,
   not a data value — listed here so the phase verifier decides its fate deliberately.
+
+## 6. Execution record (2026-09-07, authorized run)
+
+**Preconditions (single-pass probes, no retries):** Milvus TCP `10.62.10.34:19530` REACHABLE ·
+BGE-M3 HTTP 200 (3.17s) · WSL gcc 11.4.0 (check-cgo OK) · `verify-phase-26.sh` exit 0 pre-run.
+
+**Re-seed:** `SKILLFORGE_MILVUS_RECREATE=1` boot — `[WARN] recreating collection skillforge_knowledge`
+at 12:03:35, corpus re-indexed OK at 12:03:42 (~7s). One-shot flag removed from `.env` immediately
+after boot; clean restart verified **zero** RECREATE lines. (First boot attempt hit `:8888 already
+in use` from a stale pre-registry dev server `skillforge-serv` pid 21814 — killed; the re-seed
+itself had already completed before the bind failure.)
+
+**Acceptance results:**
+
+| # | Criterion | Evidence | Verdict |
+|---|-----------|----------|---------|
+| ① | Retrieval non-zero hits | `POST /api/chat` (compliance query): SSE `found_candidates`, full verdict `结论：…依据 权威 tier 条款：「采购合同金额 5 万元以下由部门负责人审批…」`, zero refusals. The `依据 权威` label is `tierDisplayName` resolving slug→DisplayName live | **PASS** |
+| ② | /eval not 100% refusal | 3-case live subset (`adv-001,mh-004,ref-009`, judge=Qwen3.8 local): 2 answered (adv-001 faith=0.556, mh-004 faith=0.750), ref-009 correctly refused (faith=1.0) → refusal rate 33% ≪ 100% | **PASS** |
+| ③ | Graph nodes have chunks | `GET /api/knowledge/graph`: authority 16 docs / 16 chunks (total >0 — migration took; empty historical/personal/draft are legitimate empty states, corpus only ships authority content) | **PASS** |
+| ④ | Admin round-trip | `uat-check` created (201) → deactivated (200) → **server restart** → admin list shows it `active:false` with unchanged created_at (NOT resurrected by seed); public projection excludes it (0 occurrences) | **PASS** |
+| ⑤ | Structural gate on live tree | `verify-phase-26.sh` → 3/3 stages PASS, exit 0 (post-migration tree) | **PASS** |
+
+**Notes:** the acceptance create payload's `display_name` arrived mojibake ("UAT????") — the
+git-bash curl sent GBK bytes; server stored verbatim (slug/role/active semantics unaffected;
+throwaway base). This is exactly the client-side encoding hazard the /api/chat UTF-8 guard
+documented in quick 260815-gcw.
+
+**Post-acceptance state:** server rebuilt at the phase tip is expected to be replaced once more
+by the code-review Critical fixes (CR-01..04) + fresh restart before milestone close.
