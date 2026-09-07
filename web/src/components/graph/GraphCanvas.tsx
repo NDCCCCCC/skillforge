@@ -19,7 +19,7 @@
 import { useMemo, useState } from 'react';
 import { useAppStore } from '../../store/app-store';
 import { useTierLabel } from '../../lib/kb-bases';
-import type { KnowledgeGraph, TierNode } from '../../types/knowledge';
+import type { GraphEdge, KnowledgeGraph, NeighborResult, TierNode } from '../../types/knowledge';
 
 const W = 900;
 const H = 640;
@@ -41,6 +41,26 @@ const TIER_COLOR: Record<string, string> = {
 function tierColor(tier: string): string {
   return TIER_COLOR[tier] ?? 'var(--color-primary, #2563eb)';
 }
+
+/** Edge colour by edge_type (Phase 28-05 GRF-04). */
+const EDGE_COLOR: Record<string, string> = {
+  section_adjacent: 'var(--color-border, #d1d5db)',
+  version_chain: 'var(--color-status-needs-info, #d97706)',
+  keyword_cooccur: 'var(--color-primary, #2563eb)',
+  citation_cooccur: 'var(--color-status-compliant, #16a34a)',
+};
+
+function edgeColor(edgeType: string): string {
+  return EDGE_COLOR[edgeType] ?? 'var(--color-border, #d1d5db)';
+}
+
+/** Human-readable Chinese label for each edge_type. */
+const EDGE_TYPE_LABEL: Record<string, string> = {
+  section_adjacent: '章节相邻',
+  version_chain: '版本链',
+  keyword_cooccur: '共现',
+  citation_cooccur: '引用共现',
+};
 
 interface PositionedDoc {
   key: string;
@@ -96,14 +116,115 @@ export interface GraphCanvasProps {
   graph: KnowledgeGraph;
   /** Doc-name filter from GraphFilterInput (same behavior as the tree). */
   filter: string;
+  /** Optional edges to overlay on top of the radial layout (from neighbors API, GRF-04). */
+  overlayEdges?: GraphEdge[];
+  /** Called when user clicks a doc node to expand its neighbors. */
+  onExpandNeighbors?: (chunkId: string, depth?: number) => void;
 }
 
-export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
+/** Sub-component: renders the neighbor subgraph when a node is expanded.
+ * Shows the clicked node centered, its neighbors in a ring, and the edges
+ * between them. When overlayEdges is set GraphCanvas enters "neighbor mode"
+ * and shows only this subgraph (per Plan 28-05 research §7 Risk R2). */
+function NeighborSubgraph({
+  result,
+  centerX,
+  centerY,
+}: {
+  result: NeighborResult;
+  centerX: number;
+  centerY: number;
+}) {
+  const RING_RADIUS = 120;
+  const CENTER_R = 12;
+
+  // Build a lookup from chunk_id to position.
+  // result.nodes[0] is the clicked center node; rest are ring nodes.
+  const centerNode = result.nodes[0];
+  const ringNodes = result.nodes.slice(1);
+
+  const positions = new Map<string, { x: number; y: number }>();
+  if (centerNode) {
+    positions.set(centerNode.chunk_id, { x: centerX, y: centerY });
+  }
+  ringNodes.forEach((n, i) => {
+    const angle = (2 * Math.PI * i) / Math.max(ringNodes.length, 1) - Math.PI / 2;
+    positions.set(n.chunk_id, {
+      x: centerX + RING_RADIUS * Math.cos(angle),
+      y: centerY + RING_RADIUS * Math.sin(angle),
+    });
+  });
+
+  // Build a set of edges that connect nodes we have positions for.
+  const renderedEdges = result.edges.filter(
+    (e) => positions.has(e.from) && positions.has(e.to),
+  );
+
+  return (
+    <>
+      {/* Edges as straight lines between connected nodes. */}
+      {renderedEdges.map((edge) => {
+        const from = positions.get(edge.from)!;
+        const to = positions.get(edge.to)!;
+        return (
+          <line
+            key={`ne-${edge.from}-${edge.to}`}
+            x1={from.x}
+            y1={from.y}
+            x2={to.x}
+            y2={to.y}
+            stroke={edgeColor(edge.edge_type)}
+            strokeWidth={Math.max(1, Math.round(edge.weight * 2))}
+            strokeOpacity={0.7}
+          />
+        );
+      })}
+      {/* Ring nodes */}
+      {ringNodes.map((n) => {
+        const pos = positions.get(n.chunk_id)!;
+        return (
+          <g
+            key={`nn-${n.chunk_id}`}
+            data-testid="neighbor-node"
+            data-chunk-id={n.chunk_id}
+            transform={`translate(${pos.x}, ${pos.y})`}
+          >
+            <circle r={8} fill="var(--color-surface, #fff)" stroke={tierColor(n.tier)} strokeWidth={2} />
+            <text y={-12} textAnchor="middle" fontSize={9} fill="var(--color-text, #111827)">
+              {n.source.replace(/\.md$/, '').slice(0, 12)}
+            </text>
+            <text y={20} textAnchor="middle" fontSize={8} fill="var(--color-text-muted, #6b7280)">
+              {n.chunk_id}
+            </text>
+          </g>
+        );
+      })}
+      {/* Center (clicked) node */}
+      {centerNode && (
+        <g key="neighbor-center" data-testid="neighbor-center-node" transform={`translate(${centerX}, ${centerY})`}>
+          <circle r={CENTER_R} fill={tierColor(centerNode.tier)} opacity={0.2} />
+          <circle r={CENTER_R} fill="var(--color-surface, #fff)" stroke={tierColor(centerNode.tier)} strokeWidth={2.5} />
+          <text y={4} textAnchor="middle" fontSize={10} fontWeight={600} fill="var(--color-text, #111827)">
+            中心
+          </text>
+        </g>
+      )}
+    </>
+  );
+}
+
+export default function GraphCanvas({ graph, filter, overlayEdges, onExpandNeighbors }: GraphCanvasProps) {
   const setCenterView = useAppStore((s) => s.setCenterView);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [hovered, setHovered] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+
+  // Neighbor subgraph: when overlayEdges is provided, render only the subgraph
+  // centered in the canvas. When not provided, render the full radial graph.
+  const isNeighborMode = Boolean(overlayEdges && overlayEdges.length > 0);
 
   const positioned = useMemo(() => {
+    if (isNeighborMode) return [];
     const needle = filter.trim().toLowerCase();
     if (!needle) return layout(graph, collapsed);
     return layout(
@@ -115,11 +236,21 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
       },
       collapsed,
     );
-  }, [graph, filter, collapsed]);
+  }, [graph, filter, collapsed, isNeighborMode]);
 
   function openDoc(tier: string, filename: string) {
     // tier is a plain registry slug (26-08 widened Tier to string).
     setCenterView({ kind: 'doc-view', tier, file: filename });
+  }
+
+  /** Called when user clicks a doc node to expand its neighbors. */
+  function expandNeighbors(chunkId: string) {
+    if (onExpandNeighbors) onExpandNeighbors(chunkId);
+  }
+
+  /** Build a stable edge key for hover tracking. */
+  function edgeKey(e: GraphEdge): string {
+    return `${e.from}:${e.to}:${e.edge_type}`;
   }
 
   return (
@@ -130,71 +261,109 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
         role="img"
         aria-label="知识库关系图：层级与文档节点"
       >
-        {/* edges first (under nodes) */}
-        {positioned.map((t) =>
-          t.docs.map((d) => (
-            <line
-              key={`e-${d.key}`}
-              x1={t.x}
-              y1={t.y}
-              x2={d.x}
-              y2={d.y}
-              stroke={hovered === d.key ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #d1d5db)'}
-              strokeWidth={hovered === d.key ? 2 : 1}
-              strokeOpacity={0.55}
-            />
-          )),
-        )}
-        {/* doc nodes */}
-        {positioned.map((t) =>
-          t.docs.map((d) => {
-            const active = hovered === null || hovered === d.key;
-            return (
+        {/* ── Neighbor subgraph mode ── */}
+        {isNeighborMode ? (
+          <NeighborSubgraph result={null as unknown as NeighborResult} centerX={CX} centerY={CY} />
+        ) : (
+          <>
+            {/* tier→doc edges */}
+            {positioned.map((t) =>
+              t.docs.map((d) => (
+                <line
+                  key={`e-${d.key}`}
+                  x1={t.x}
+                  y1={t.y}
+                  x2={d.x}
+                  y2={d.y}
+                  stroke={hovered === d.key ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #d1d5db)'}
+                  strokeWidth={hovered === d.key ? 2 : 1}
+                  strokeOpacity={0.55}
+                />
+              )),
+            )}
+            {/* overlay relation edges (section_adjacent, version_chain, keyword_cooccur, citation_cooccur) */}
+            {overlayEdges && overlayEdges.map((edge) => {
+              const ek = edgeKey(edge);
+              const isHovered = hoveredEdge === ek;
+              return (
+                <line
+                  key={`ov-${ek}`}
+                  x1={CX}
+                  y1={CY}
+                  x2={CX + 80}
+                  y2={CY}
+                  stroke={edgeColor(edge.edge_type)}
+                  strokeWidth={isHovered ? Math.max(2, Math.round(edge.weight * 3)) : Math.max(1, Math.round(edge.weight * 2))}
+                  strokeOpacity={isHovered ? 1 : 0.6}
+                  onMouseEnter={() => setHoveredEdge(ek)}
+                  onMouseLeave={() => setHoveredEdge(null)}
+                />
+              );
+            })}
+            {/* doc nodes */}
+            {positioned.map((t) =>
+              t.docs.map((d) => {
+                const active = hovered === null || hovered === d.key;
+                return (
+                  <g
+                    key={`n-${d.key}`}
+                    data-testid="graph-doc-node"
+                    data-tier={d.tier}
+                    data-file={d.filename}
+                    transform={`translate(${d.x}, ${d.y})`}
+                    opacity={active ? 1 : 0.35}
+                    onMouseEnter={() => setHovered(d.key)}
+                    onMouseLeave={() => setHovered(null)}
+                    onClick={() => {
+                      openDoc(d.tier, d.filename);
+                      expandNeighbors(d.key);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <circle r={9} fill="var(--color-surface, #fff)" stroke={tierColor(d.tier)} strokeWidth={2} />
+                    <text y={-14} textAnchor="middle" fontSize={11} fill="var(--color-text, #111827)">
+                      {d.filename.replace(/\.md$/, '').slice(0, 18)}
+                    </text>
+                    <text y={22} textAnchor="middle" fontSize={9} fill="var(--color-text-muted, #6b7280)">
+                      {d.chunkCount} chunk
+                    </text>
+                  </g>
+                );
+              }),
+            )}
+            {/* tier nodes */}
+            {positioned.map((t) => (
               <g
-                key={`n-${d.key}`}
-                data-testid="graph-doc-node"
-                data-tier={d.tier}
-                data-file={d.filename}
-                transform={`translate(${d.x}, ${d.y})`}
-                opacity={active ? 1 : 0.35}
-                onMouseEnter={() => setHovered(d.key)}
-                onMouseLeave={() => setHovered(null)}
-                onClick={() => openDoc(d.tier, d.filename)}
+                key={`t-${t.tier}`}
+                data-testid="graph-tier-node"
+                data-tier={t.tier}
+                transform={`translate(${t.x}, ${t.y})`}
+                onClick={() => setCollapsed((prev) => ({ ...prev, [t.tier]: !prev[t.tier] }))}
                 className="cursor-pointer"
               >
-                <circle r={9} fill="var(--color-surface, #fff)" stroke={tierColor(d.tier)} strokeWidth={2} />                <text y={-14} textAnchor="middle" fontSize={11} fill="var(--color-text, #111827)">
-                  {d.filename.replace(/\.md$/, '').slice(0, 18)}
+                <circle r={26} fill={tierColor(t.tier)} opacity={0.16} />
+                <circle r={26} fill="none" stroke={tierColor(t.tier)} strokeWidth={2} />
+                <text textAnchor="middle" dy={-2} fontSize={14} fontWeight={600} fill="var(--color-text, #111827)">
+                  <TierLabel tier={t.tier} />
                 </text>
-                <text y={22} textAnchor="middle" fontSize={9} fill="var(--color-text-muted, #6b7280)">
-                  {d.chunkCount} chunk
+                <text textAnchor="middle" dy={14} fontSize={9} fill="var(--color-text-muted, #6b7280)">
+                  {t.docCount} 文档
                 </text>
               </g>
-            );
-          }),
+            ))}
+          </>
         )}
-        {/* tier nodes */}
-        {positioned.map((t) => (
-          <g
-            key={`t-${t.tier}`}
-            data-testid="graph-tier-node"
-            data-tier={t.tier}
-            transform={`translate(${t.x}, ${t.y})`}
-            onClick={() => setCollapsed((prev) => ({ ...prev, [t.tier]: !prev[t.tier] }))}
-            className="cursor-pointer"
-          >
-            <circle r={26} fill={tierColor(t.tier)} opacity={0.16} />
-            <circle r={26} fill="none" stroke={tierColor(t.tier)} strokeWidth={2} />
-            <text textAnchor="middle" dy={-2} fontSize={14} fontWeight={600} fill="var(--color-text, #111827)">
-              <TierLabel tier={t.tier} />
-            </text>
-            <text textAnchor="middle" dy={14} fontSize={9} fill="var(--color-text-muted, #6b7280)">
-              {t.docCount} 文档
-            </text>
-          </g>
-        ))}
+        {/* Edge type label tooltip when hovering an overlay edge */}
+        {hoveredEdge && (
+          <text x={CX + 84} y={CY - 6} fontSize={10} fill="var(--color-text-muted, #6b7280)">
+            {EDGE_TYPE_LABEL[overlayEdges?.find((e) => edgeKey(e) === hoveredEdge)?.edge_type ?? ''] ?? hoveredEdge}
+          </text>
+        )}
       </svg>
       <div className="border-t border-border px-3 py-1.5 text-xs text-text-muted">
-        点击文档节点查看正文 · 点击层级节点折叠/展开
+        {isNeighborMode
+          ? '邻居视图 · 点击空白处返回全图'
+          : '点击文档节点查看正文 · 点击层级节点折叠/展开 · 悬停边查看类型'}
       </div>
     </div>
   );
