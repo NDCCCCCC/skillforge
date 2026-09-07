@@ -29,7 +29,7 @@
 | `internal/server/handlers_session_history.go` (mod) | controller | request-response | same file `historyEntry` (handlers_session_history.go:45-67) | exact |
 | `internal/server/server.go` (mod) | route/config | — | same file `Deps` (server.go:204+) + route block (server.go:483-611) | exact |
 | `cmd/server/main.go` (mod) | config | — | same file envOr helpers (main.go:146-192) | exact |
-| `internal/server/{admin_audit,admin_schedules,kb_admin,upload}_test.go` (mod — fake ripple) | test | — | same files (AppendTurn fakes at admin_audit_test.go:76,220; admin_schedules_test.go:84,226; kb_admin_test.go recordingAuditStore; upload_test.go:74) | exact |
+| `internal/server/{admin_audit,admin_schedules,upload}_test.go` (mod — fake ripple: 5 explicit AppendTurn fakes) | test | — | same files (AppendTurn fakes at admin_audit_test.go:76,220; admin_schedules_test.go:84,226; upload_test.go:74)。**kb_admin_test.go NOT modified**: recordingAuditStore embeds store.Store → inherits the new signature, zero edits (checker warning-5) | exact |
 | `web/src/components/chat/parts/FeedbackRow.tsx` (rewrite) | component | event → request-response | same file (current placeholder, 85 lines) | exact |
 | `web/src/__tests__/FeedbackRow.test.tsx` (rewrite) | test | — | same file | exact |
 | `web/src/components/chat/MessageBubble.tsx` (mod) | component | transform (part scan) | same file verdictStatus scan (MessageBubble.tsx:272-305) | exact |
@@ -218,12 +218,12 @@ ORDER BY ts ASC
 ```
 → `SELECT id, role, content, ts ...` + Scan into `&m.ID` (session.go:57-62).
 
-**Fake-store ripple (MUST be in the same commit as the signature change)** — all are explicit per-method impls, none embed, so none inherit the new method:
+**Fake-store ripple (MUST be in the same commit as the signature change)** — exactly **5** explicit AppendTurn impls (per-method impls, none embed, so none inherit the new method):
 - `internal/server/admin_audit_test.go:76` (`fakeAdminAuditStore.AppendTurn`), `:220` (`spyAdminAuditStore.AppendTurn`) — both files assert `var _ store.Store` at `:200` / `:344`
 - `internal/server/admin_schedules_test.go:84`, `:226` (+ `var _` at `:199` / `:341`)
-- `internal/server/kb_admin_test.go:114` (`recordingAuditStore`)
 - `internal/server/upload_test.go:74` (`mockStore`)
-- Plus `writeAuditAndTurn` call sites (chat.go:483, :515, :528, :557) and `internal/store/store_test.go:245` `TestAppendTurnIdempotent`.
+- Correction (checker warning-5): `internal/server/kb_admin_test.go:114` (`recordingAuditStore`) **embeds `store.Store`** and contains zero AppendTurn references — it satisfies the new signature through the embedded interface and needs NO edit. Explicit-fake count is 5, not 6.
+- Plus `writeAuditAndTurn` call sites — 12 total, grep-verified: chat.go:317/:449/:461/:483, pipeline.go:226/:282/:307/:347/:515/:528, runner_setup.go:215/:232 — and `internal/store/store_test.go:245` `TestAppendTurnIdempotent`.
 
 ---
 

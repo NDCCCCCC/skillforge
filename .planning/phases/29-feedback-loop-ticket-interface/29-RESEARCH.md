@@ -62,7 +62,7 @@
 
 ## Summary
 
-本 phase 是一个**纯代码库内接线**任务：零新外部依赖、零 schema 破坏性变更（两张新表 + 一张归一化 refs 表全部 additive），全部技术难点都已被仓库既有先例解决过一次。最关键的非显然发现有三个。**其一，turn id 的暴露路径**：`AppendTurn` 现签名只返回 `error`，`session_turn.id` 从未回流到 server 层——必须在同一 commit 内改签名返回 assistant 行 id（`LastInsertId`），并同步修 5+ 个 server 测试 fake（D16-03 先例：接口签名与实现分 commit 落地会撞碎 `var _ store.Store` 编译门）。SSE 侧 pipeline 在 `writeAuditAndTurn`（pipeline.go:528）**之后**、`finish`（:580）**之前**还有干净的发射窗口，新增 `data-turn` chunk type（ValidTypes + TS union 配对提交）即可让 live 流与 history 恢复两条路径共用同一个 FE part。**其二，FBK-05 红线的结构落点**：反馈/处置代码与 retriever/KB 之间没有任何必要的写路径，用 source-grep 结构锁（`TestAdminKPIs/retrieval_only` 先例）把「反馈绝不自动改信任」从纪律变成编译/门级事实。**其三，指标与复核队列的归一化**：`audit.chunk_ids` 是 CSV，sqlite 里拆 CSV 聚合很别扭；投票时服务端顺手把每个 chunk 的 KB slug（`retriever.GetChunk().Tier` 即注册表 slug，Phase 26 后语义）写进 `feedback_chunk_refs` 归一化表，per-chunk 聚合与 per-KB 指标都变成平凡 GROUP BY，admin 读路径零 retriever 依赖。
+本 phase 是一个**纯代码库内接线**任务：零新外部依赖、零 schema 破坏性变更（两张新表 + 一张归一化 refs 表全部 additive），全部技术难点都已被仓库既有先例解决过一次。最关键的非显然发现有三个。**其一，turn id 的暴露路径**：`AppendTurn` 现签名只返回 `error`，`session_turn.id` 从未回流到 server 层——必须在同一 commit 内改签名返回 assistant 行 id（`LastInsertId`），并同步修 5 个显式实现 AppendTurn 的 server 测试 fake（kb_admin_test.go 的 recordingAuditStore embeds store.Store 免改——D16-03 先例：接口签名与实现分 commit 落地会撞碎 `var _ store.Store` 编译门）。SSE 侧 pipeline 在 `writeAuditAndTurn`（pipeline.go:528）**之后**、`finish`（:580）**之前**还有干净的发射窗口，新增 `data-turn` chunk type（ValidTypes + TS union 配对提交）即可让 live 流与 history 恢复两条路径共用同一个 FE part。**其二，FBK-05 红线的结构落点**：反馈/处置代码与 retriever/KB 之间没有任何必要的写路径，用 source-grep 结构锁（`TestAdminKPIs/retrieval_only` 先例）把「反馈绝不自动改信任」从纪律变成编译/门级事实。**其三，指标与复核队列的归一化**：`audit.chunk_ids` 是 CSV，sqlite 里拆 CSV 聚合很别扭；投票时服务端顺手把每个 chunk 的 KB slug（`retriever.GetChunk().Tier` 即注册表 slug，Phase 26 后语义）写进 `feedback_chunk_refs` 归一化表，per-chunk 聚合与 per-KB 指标都变成平凡 GROUP BY，admin 读路径零 retriever 依赖。
 
 **Primary recommendation:** 按三段推进——(1) store 层：`AppendTurn` 返回 turn id + 三张新表 + InsertOnly 测试族；(2) server 层：`data-turn` chunk + `/api/feedback` + `/api/tickets` + admin 复核/指标端点（admin 门 403-先于-503、INSERT-only 审计行照抄 `putKBAdminAuditRow`）；(3) FE：FeedbackRow 真实化 + data-turn part 扫描 + AdminDashboard 第 6 tab + sf-toast 监听器。工单外发 = 落库即 201、goroutine 异步 webhook（`context.Background()` + 配置超时/重试）、结果只写审计行不回写工单行（保住 INSERT-only）。
 
@@ -389,7 +389,7 @@ retries      := parseIntEnvOrDefault("SKILLFORGE_TICKET_WEBHOOK_RETRIES", 2)
 ## Common Pitfalls
 
 ### Pitfall 1: Store 接口签名变更的编译涟漪（最高优先级）
-**What goes wrong:** `AppendTurn` 加返回值会瞬间打破 `var _ store.Store` 编译门——SQLiteStore + internal/server 至少 5 个手写 fake（recordingAuditStore / fakeAdminSchedulesStore / spyAdminSchedulesStore / fakeAdminAuditStore / spyAdminAuditStore + upload_test mockStore）。fake 是逐方法实现（非 embed），不会自动继承新方法。
+**What goes wrong:** `AppendTurn` 加返回值会瞬间打破 `var _ store.Store` 编译门——SQLiteStore + internal/server 恰好 **5 个**显式实现 AppendTurn 的手写 fake（fakeAdminAuditStore / spyAdminAuditStore / fakeAdminSchedulesStore / spyAdminSchedulesStore / upload_test mockStore）。fake 是逐方法实现（非 embed），不会自动继承新方法。**校正（checker warning-5）：kb_admin_test.go:114 的 recordingAuditStore embeds store.Store、全文零 AppendTurn 引用，经 embed 自动满足新签名——零改动，不计入 fake 计数。**
 **Why it happens:** fake 显式实现全部接口方法；中间态 commit 无法编译。
 **How to avoid:** 接口签名 + sqlite impl + `writeAuditAndTurn` 调用点 + 全部 fake 修复放**同一个原子 commit**（D16-03 SUMMARY 教训：接口与实现分 Task/commit 落地曾直接撞碎中间态 verify）。plan 需把 fake 清单写死进 files_modified。
 **Warning signs:** `go build ./...` 在 store 包之外的 server/agent 包报「does not implement store.Store」。
@@ -499,19 +499,22 @@ func (w *webhookProvider) Dispatch(ctx context.Context, t ticket.Ticket) (ticket
 | A6 | 一票涉多 KB 时每个 KB 各计一票（票数在 KB 维度可重复计数，在 Skill/总量维度严格一次） | Pattern 6 | 口径歧义 → 指标被质疑；见 Open Questions 2 |
 | A7 | 拒绝轮（refusal）可投票、其 chunk_ids 为空 → 只进 per-Skill 不进 per-KB | Pattern 4/6 | 若用户期望拒绝轮不可投，FeedbackRow 渲染条件需加 verdict 判断——plan 应确认（默认可投：拒答质量也是信号） |
 
-## Open Questions
+## Open Questions (RESOLVED — 2026-09-08 planner 定案，测试锁定于 29-02 / 29-04)
 
 1. **处置后再报告的语义**（A5）
    - What we know: D-29-09 锁定三处置均终态；未规定处置之后同一 chunk 收到**新的** outdated 报告时是否重开条目。
    - What's unclear: 用户意图——「已更新」后新报告大概率是新一批内容又过时（应重开）；「误报/忽略」后新报告（也可能重开）。
    - Recommendation: 采用「最新处置时间戳赢」（Pattern 5 SQL 天然支持：新报告 ts > 处置 ts → 重新 pending），并在 plan 中标注为可一行反转的口径常量；discuss-phase 未覆盖，建议 planner 默认重开并在 SUMMARY 里显式记录。
+   - ✅ **RESOLVED**：处置后重开，latest-disposition-wins。落地：29-02 PendingReviewChunks 的 NOT EXISTS 重开口径 + reopen hermetic 测试（checker warning-6 注记）。
 2. **多 KB 一票的指标口径**（A6）
    - What we know: 一个回答可能引用两个 KB 的 chunk；帮助率的 per-KB 分母语义未定义。
    - What's unclear: 重复计数是否可接受。
    - Recommendation: 接受重复计数（每 KB 视角独立统计「含该 KB 引用的回答的得票」），在反馈 tab 加一行口径说明文案；总量/per-Skill 维度严格一次。
+   - ✅ **RESOLVED**：per-KB 独立计数（票数在 KB 维度可重复计数）+ 口径脚注。落地：29-02 的 godoc 与 SQL 注释写死口径 + 29-08 反馈指标 tab 常驻口径脚注（checker warning-6 注记）。
 3. **FeedbackRow 是否在拒绝轮渲染投票**
    - What we know: MessageBubble 对所有 assistant 消息渲染 FeedbackRow（含拒绝轮）。
    - Recommendation: 保持可投（拒绝质量是合法信号），无 chunk 引用时 refs 无行、UI 引用区显示「无引用」。若 planner 认为需收窄，改动点只在 MessageBubble 渲染条件。
+   - ✅ **RESOLVED**：拒绝轮可投。落地：29-04 拒绝路径先落库重排——5 条拒绝路径（pipeline.go :226/:282/:307/:347/:515）全部发射 data-turn，拒绝轮拿到 turn id 可投票（checker warning-6 注记）。
 
 ## Environment Availability
 

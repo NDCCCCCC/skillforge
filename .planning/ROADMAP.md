@@ -195,10 +195,10 @@ Plans:
 **Plans**: 9 plans in 6 waves (planned 2026-09-08)
 
 Plans:
-- [ ] 29-01-PLAN.md — turn id 地基：AppendTurn → (int64, error) 原子涟漪（接口 + sqlite RowsAffected 守卫 + writeAuditAndTurn 返回值 + 13 调用点 + 6 fake）+ turn-id 语义测试（FBK-01/04 地基，D-29-01）
+- [ ] 29-01-PLAN.md — turn id 地基：AppendTurn → (int64, error) 原子涟漪（接口 + sqlite RowsAffected 守卫 + writeAuditAndTurn 返回值 + 12 调用点 + 5 fake）+ turn-id 语义测试（FBK-01/04 地基，D-29-01）
 - [ ] 29-02-PLAN.md — 反馈/复核/工单存储层：4 张 additive 新表（feedback / feedback_chunk_refs / feedback_dispositions / tickets）+ 13 个 Store 方法 + InsertOnly 结构锁 + pending 派生视图（处置后重开口径）+ 全票分母指标 SQL（FBK-01/02/03 + TKT-02 存储面，D-29-02/08/09/10/14 + Open Q1/Q2 resolved）
 - [ ] 29-03-PLAN.md — internal/ticket 包：Provider 窄接口 + none/webhook 配置注册表 + webhook 出站（per-instance client + 有界重试 + body-only payload）（TKT-01）
-- [ ] 29-04-PLAN.md — data-turn wire 帧：ValidTypes + TS union D15 配对 + emitTurnID + 9 发射点（含 5 条拒绝路径的先落库重排，Open Q3 resolved 拒绝轮可投）+ history 内嵌 turn_id/voted_verdict（FBK-01/04，D-29-03）
+- [ ] 29-04-PLAN.md — data-turn wire 帧：ValidTypes + TS union D15 配对 + emitTurnID + 11 发射点（pipeline.go 6 / chat.go 3 / runner_setup.go 2；含 5 条拒绝路径的先落库重排，Open Q3 resolved 拒绝轮可投）+ history 内嵌 turn_id/voted_verdict（FBK-01/04，D-29-03）
 - [ ] 29-05-PLAN.md — HTTP 面：POST /api/feedback（幂等投票 + audit 邻近归因服务端真相）+ admin 复核/处置/指标三端点（403 先于 503 + closed_count + 全票分母 null 语义）+ FBK-05 source-grep 结构锁（FBK-01/02/03/05，D-29-05/07）
 - [ ] 29-06-PLAN.md — POST /api/tickets：幂等落库 + TKT-{id} 编号派生 + 异步外发 goroutine（后台 ctx + recover + 总预算）+ dispatch 结果审计行 + main.go 5 个 SKILLFORGE_TICKET_* env 装配（TKT-02/04）
 - [ ] 29-07-PLAN.md — FE 接真：FeedbackRow 重写（服务端驱动锁定态 + outdated 说明框 + 工单 4 态诚实文案）+ MessageBubble data-turn 扫描 + SfToast 全局视口（chat/eval 分支）（FBK-04 + TKT-03，D-29-04/06/13，UI-SPEC 文案逐字）
