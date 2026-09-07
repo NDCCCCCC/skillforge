@@ -6,7 +6,7 @@
 # gate). Run `make` or `make verify-phase-11` to execute the gate;
 # the banner at the end is the operator's pass/fail signal.
 
-.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 verify-phase-26 phase-27 phase-28 test-unit test-frontend build clean
+.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 verify-phase-26 phase-27 phase-28 phase-29 test-unit test-frontend build clean
 
 # check-cgo fails fast with an actionable message when gcc is missing.
 # mattn/go-sqlite3 and go-duckdb both require CGO; install MSYS2 UCRT64 gcc
@@ -102,6 +102,16 @@ phase-28:
 	@echo "Running Phase 28 verification..."
 	@bash scripts/verify-phase-28.sh
 	@echo "Phase 28 verification passed"
+
+# phase-29 is the Phase 29 structural gate (Plan 29-09).
+# Invokes scripts/verify-phase-29.sh; exits 0 with the PASS banner on
+# full pass, 1 with a FAIL line otherwise. 4 stages: TODO clear /
+# FBK-05 trust red line (INSERT-only feedback surface) / D15 data-turn
+# pairing (Go+TS) / DDL discipline (DO NOTHING, zero DO UPDATE).
+phase-29:
+	@echo "Running Phase 29 verification..."
+	@bash scripts/verify-phase-29.sh
+	@echo "Phase 29 verification passed"
 
 # test-unit runs the full Go test suite for fast iteration.
 test-unit:
