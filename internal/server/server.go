@@ -49,6 +49,7 @@ import (
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/agent/hitl"
 	"github.com/skillforge/skillforge/internal/data"
+	"github.com/skillforge/skillforge/internal/document"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kb"
@@ -366,6 +367,29 @@ type Deps struct {
 	// skill whose reads cannot be checked against the live base set
 	// must not pass validation silently.
 	KBRegistry kb.Registry
+
+	// --- Phase 27: Document Upload Pipeline ---
+
+	// IndexerBackend is the narrow insert-only interface for the upload pipeline.
+	// Only Insert is needed — the query path goes through retriever.Retriever.
+	// Wired at boot: a MilvusIndexerBackend or MongoIndexerBackend.
+	IndexerBackend IndexerBackend
+
+	// ParserRegistry is the document format parser registry (DOC-01).
+	// Used by the upload handler to verify magic bytes before parsing.
+	ParserRegistry *document.ParserRegistry
+
+	// UploadMaxBodyBytes is the per-route body-size limit for POST /api/admin/kb/:slug/upload.
+	// Default: 100 MiB. Set via SKILLFORGE_UPLOAD_MAX_BYTES env var at boot.
+	// Zero falls back to the default.
+	UploadMaxBodyBytes int64
+}
+
+// IndexerBackend is the narrow interface the upload pipeline uses to insert chunks.
+// Only Insert is needed — the query path goes through retriever.Retriever.
+// Owned by Plan 27-04; this stub declaration exists so upload.go compiles.
+type IndexerBackend interface {
+	Insert(ctx context.Context, docs []retriever.Document) error
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
@@ -482,6 +506,10 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/admin/kb", deps.kbAdminHandler)
 	h.POST("/api/admin/kb", deps.kbCreateHandler)
 	h.POST("/api/admin/kb/:slug/deactivate", deps.kbDeactivateHandler)
+	// Phase 27 — document upload surface. POST /api/admin/kb/:slug/upload
+	// accepts a multipart/form-data file, verifies magic bytes, parses it
+	// into chunks, embeds each chunk, and inserts into the vector backend.
+	h.POST("/api/admin/kb/:slug/upload", deps.uploadHandler)
 	// Public read-only projection for the chat FE (slug → display_name
 	// badge mapping). No token by design: the payload is minimized to
 	// slug/display_name/role of ACTIVE entries only.

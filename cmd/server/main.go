@@ -109,6 +109,7 @@ import (
 
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/data"
+	"github.com/skillforge/skillforge/internal/document"
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/externalauth"
@@ -305,6 +306,10 @@ func main() {
 	importMaxBody := parseBytesEnvOrDefault("SKILLFORGE_IMPORT_MAX_BODY_BYTES", server.ImportMaxBodyDefault)
 	nonImportMaxBody := parseBytesEnvOrDefault("SKILLFORGE_MAX_BODY_BYTES", server.NonImportMaxBodyDefault)
 	datarulesDir := envOr("SKILLFORGE_DATARULES_DIR", "datarules")
+	// Phase 27 — document upload pipeline (DOC-01..DOC-05).
+	// SKILLFORGE_UPLOAD_MAX_BYTES tunes the per-upload body-size limit.
+	// Default: 100 MiB. Zero falls back to the default inside the handler.
+	uploadMaxBody := parseBytesEnvOrDefault("SKILLFORGE_UPLOAD_MAX_BYTES", 100*1024*1024)
 	// Phase 16 — KPI aggregation channel (D16-A1). SKILLFORGE_KPIS_DIR is the
 	// directory of controlled KPI definition files (*.yaml) that is the ONLY
 	// source of callable aggregations. The directory lives INSIDE git (.gitignore
@@ -741,6 +746,23 @@ func main() {
 	// makes chatHandler take the VerdictPipeline branch (the production
 	// default); the agent path remains constructable + unit-tested for
 	// future use.
+
+	// Phase 27 — bind the upload pipeline audit hook before the server starts.
+	// The closure delegates to store.PutAudit so audit rows land in SQLite
+	// alongside every other admin action. Best-effort: a failed write logs
+	// and does not abort the upload.
+	server.SetDocUploadAuditHook(func(action, detail string) {
+		if _, err := st.PutAudit(ctx, store.AuditRow{
+			Timestamp:  time.Now().UTC(),
+			UserID:     "admin",
+			Action:     action,
+			ActorType:  "admin",
+			FrozenArgs: []byte(detail),
+		}); err != nil {
+			log.Printf("[WARN] cmd/server: doc upload audit row (%s): %v", action, err)
+		}
+	})
+
 	deps := &server.Deps{
 		Loader:       loader,
 		Registry:     reg,
@@ -792,6 +814,12 @@ func main() {
 		// every /api/external-auth/* route answers 503 and the agent
 		// never sees needs_external_query in its tool set.
 		ExternalAuthManager: externalAuthManager,
+		// Phase 27 — document upload pipeline.
+		// ParserRegistry: constructed here; SetDocUploadAuditHook binds the
+		// store-backed audit sink before the server starts accepting requests.
+		ParserRegistry:       document.NewParserRegistry(),
+		IndexerBackend:       r,
+		UploadMaxBodyBytes:   uploadMaxBody,
 	}
 
 	// 19. Hertz server (Pattern 1).
@@ -1147,6 +1175,10 @@ func (noopRetriever) Insert(ctx context.Context, docs []retriever.Document) erro
 	return fmt.Errorf("retrieval disabled (RETRIEVER_BACKEND=none)")
 }
 
+func (noopRetriever) GetMaxID(ctx context.Context, tier string) (int64, error) { return 0, nil }
+
+func (noopRetriever) Disconnect() error { return nil }
+
 func (noopRetriever) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, error) {
 	return nil, nil
 }
@@ -1154,5 +1186,3 @@ func (noopRetriever) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta
 func (noopRetriever) GetChunk(ctx context.Context, id int64) (retriever.ChunkContent, error) {
 	return retriever.ChunkContent{}, fmt.Errorf("retrieval disabled (RETRIEVER_BACKEND=none)")
 }
-
-func (noopRetriever) Disconnect() error { return nil }
