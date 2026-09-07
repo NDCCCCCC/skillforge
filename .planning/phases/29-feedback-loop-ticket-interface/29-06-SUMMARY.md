@@ -142,6 +142,13 @@ None - no external service configuration required. Operators who want outbound d
 - The dispatch trail already surfaces in the existing GET /api/admin/audit (ActorType=admin filter) — no admin endpoint work needed for 29-08.
 - Residual: none known for this plan; REQUIREMENTS rows for TKT-02/TKT-04 flip at phase close per convention.
 
+## Self-Check: PASSED
+
+- Files: internal/server/tickets.go, internal/server/tickets_test.go, internal/server/server.go, cmd/server/main.go, 29-06-SUMMARY.md — all FOUND on disk.
+- Commits: 7148583 (RED-1), 638b54e (GREEN-1), 56b772a (RED-2), e781bb3 (GREEN-2), 232051b (plan docs) — all FOUND in git log.
+- Verification commands re-run green: `wsl go build ./...` exit 0; `go test ./internal/server/... ./internal/ticket/ -count=1` all ok; `go vet ./cmd/server/ ./internal/server/` clean.
+- Isolation: the 4 pre-existing dirty files (.planning/config.json, internal/server/knowledge.go, web GraphCanvas.tsx, InspectorRetrieval.tsx) appear in none of this plan's 5 commits.
+
 ---
 *Phase: 29-feedback-loop-ticket-interface*
 *Completed: 2026-09-08*
