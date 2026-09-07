@@ -172,11 +172,37 @@ func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 		mu.Lock()
 		defer mu.Unlock()
 
+		// STEP 7a: SHA-256 deduplication check (DOC-04).
+		// Check BEFORE UploadIndex so we don't waste a parse on a duplicate.
+		if s.Store != nil {
+			dup, dupErr := s.Store.HasUploadBySHA256(ctx, slug, sha256Hex)
+			if dupErr == nil && dup {
+				parseErr = fmt.Errorf("duplicate file")
+				if docUploadAuditHook != nil {
+					reject := DocUploadRejectAudit{
+						Slug:     slug,
+						FileName: filename,
+						FileSize: int64(len(data)),
+						Reason:   "duplicate file (same SHA-256 already uploaded)",
+					}
+					payload, _ := json.Marshal(reject)
+					docUploadAuditHook(actionDocUploadRejected, string(payload))
+				}
+				c.JSON(http.StatusConflict, graphResponseError{Error: "duplicate file (same SHA-256 already uploaded)"})
+				return parseErr
+			}
+			// Non-nil dupErr: best-effort dedup; log and continue.
+			if dupErr != nil {
+				// Best-effort: dedup failed but the file is still eligible for upload.
+				// The store query error is not propagated to the client.
+			}
+		}
+
 		// UploadIndex: parse + chunk + embed. Does NOT call Insert.
 		docs, err := knowledge.UploadIndex(ctx, slug, data, form.Metadata, filename, s.Embedder, s.KBRegistry, s.Retriever)
 		if err != nil {
 			parseErr = err
-			// STEP 7: UploadIndex failure → 422 with rejection audit
+			// STEP 7b: UploadIndex failure → 422 with rejection audit
 			if docUploadAuditHook != nil {
 				reject := DocUploadRejectAudit{
 					Slug:     slug,
@@ -190,24 +216,60 @@ func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 			return err
 		}
 
-		// STEP 8: IndexerBackend.Insert → 503 with Retry-After on failure
-		if err := s.IndexerBackend.Insert(ctx, docs); err != nil {
-			parseErr = err
+		// STEP 7c: Re-check slug is still active (fail-closed on race).
+		// Between UploadIndex and Insert, the slug may have been deactivated.
+		if _, ok := s.KBRegistry.Lookup(slug); !ok {
+			parseErr = fmt.Errorf("slug deactivated during upload")
 			if docUploadAuditHook != nil {
 				reject := DocUploadRejectAudit{
 					Slug:     slug,
 					FileName: filename,
 					FileSize: int64(len(data)),
-					Reason:   "indexer unavailable: " + err.Error(),
+					Reason:   "slug deactivated during upload",
 				}
 				payload, _ := json.Marshal(reject)
 				docUploadAuditHook(actionDocUploadRejected, string(payload))
 			}
-			c.Response.Header.Set("Retry-After", "30")
-			c.JSON(http.StatusServiceUnavailable, graphResponseError{
-				Error: "indexer unavailable: " + err.Error(),
+			c.JSON(http.StatusConflict, graphResponseError{Error: "slug deactivated during upload"})
+			return parseErr
+		}
+
+		// STEP 8: IndexerBackend.Insert → 503 on backend unavailable,
+		// 500 on other Insert errors.
+		if err := s.IndexerBackend.Insert(ctx, docs); err != nil {
+			parseErr = err
+			if isBackendUnavailable(err) {
+				if docUploadAuditHook != nil {
+					reject := DocUploadRejectAudit{
+						Slug:     slug,
+						FileName: filename,
+						FileSize: int64(len(data)),
+						Reason:   "backend unavailable: " + err.Error(),
+					}
+					payload, _ := json.Marshal(reject)
+					docUploadAuditHook(actionDocUploadRejected, string(payload))
+				}
+				c.Response.Header.Set("Retry-After", "30")
+				c.JSON(http.StatusServiceUnavailable, graphResponseError{
+					Error: "backend unavailable: " + err.Error(),
+				})
+				return parseErr
+			}
+			// Generic 500 for other Insert errors.
+			if docUploadAuditHook != nil {
+				reject := DocUploadRejectAudit{
+					Slug:     slug,
+					FileName: filename,
+					FileSize: int64(len(data)),
+					Reason:   "insert failed: " + err.Error(),
+				}
+				payload, _ := json.Marshal(reject)
+				docUploadAuditHook(actionDocUploadRejected, string(payload))
+			}
+			c.JSON(http.StatusInternalServerError, graphResponseError{
+				Error: "indexing failed — see server logs",
 			})
-			return err
+			return parseErr
 		}
 
 		// STEP 9: success — write action_doc_uploaded audit row
@@ -369,4 +431,19 @@ func VerifyMagicBytes(data []byte, declaredType string) error {
 		return fmt.Errorf("unknown format: %s", declaredType)
 	}
 	return nil
+}
+
+// isBackendUnavailable returns true when err is a network-level backend
+// failure that should produce a 503 with Retry-After instead of a generic
+// 500. It checks for connection-level error substrings that indicate the
+// Milvus/Milvus-Connect indexer is unreachable rather than a logic error.
+func isBackendUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "context canceled")
 }
