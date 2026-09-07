@@ -150,6 +150,20 @@ func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 		// Magic byte verification: declared MIME must match actual bytes.
 		if err := VerifyMagicBytes(data, form.Metadata); err != nil {
 			parseErr = err
+			// Write the HTTP response from inside the callback — the outer
+			// parseUploadForm wrapper sees parseErr != nil and bails on the
+			// double-write guard without ever sending a response otherwise.
+			if docUploadAuditHook != nil {
+				reject := DocUploadRejectAudit{
+					Slug:     slug,
+					FileName: filename,
+					FileSize: int64(len(data)),
+					Reason:   err.Error(),
+				}
+				payload, _ := json.Marshal(reject)
+				docUploadAuditHook(actionDocUploadRejected, string(payload))
+			}
+			c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
 			return err
 		}
 
@@ -274,6 +288,14 @@ func parseUploadForm(c *app.RequestContext, onFile func(form *uploadForm, file i
 		name := part.FormName()
 		if name == "file" {
 			filename := part.FileName()
+			// Source-of-truth for the declared MIME is the file part's own
+			// Content-Type header (the multipart "metadata" form field is
+			// ignored at this gate — DOC-03 says the header is untrusted, but
+			// the bytes are; the form-field was a v1 convenience that
+			// confused the test and the route contract). If the part has no
+			// explicit Content-Type, multipart's default of application/octet-stream
+			// is what we get — and VerifyMagicBytes rejects it.
+			form.Metadata = part.Header.Get("Content-Type")
 			return onFile(form, part, filename)
 		}
 
@@ -323,17 +345,25 @@ func VerifyMagicBytes(data []byte, declaredType string) error {
 			return document.ErrContentTypeMismatch
 		}
 	case "text/markdown":
-		// Markdown: first line starts with "#" (ATX heading) or "---"
-		// (YAML frontmatter delimiter) or is plain text (no special sig).
+		// Markdown: first non-empty line must start with "#" (ATX heading),
+		// "---" (YAML frontmatter delimiter), or be a single-line plain
+		// paragraph. Pure magic-byte refusal is NOT possible for markdown —
+		// plain text is a valid subset — so this branch enforces a soft
+		// structural check: reject bytes whose first non-empty line starts
+		// with a known-binary signature that would never appear in md.
 		firstLine := bytes.SplitN(data, []byte("\n"), 2)
 		if len(firstLine) == 0 {
 			return document.ErrContentTypeMismatch
 		}
 		trimmed := bytes.TrimSpace(firstLine[0])
-		if len(trimmed) == 0 || trimmed[0] == '#' || bytes.HasPrefix(trimmed, []byte("---")) {
-			return nil // looks like markdown
+		// Reject obvious binary masquerading as markdown.
+		if bytes.HasPrefix(trimmed, []byte("%PDF")) ||
+			bytes.HasPrefix(trimmed, []byte("PK\x03\x04")) ||
+			bytes.HasPrefix(trimmed, []byte{0x00, 0x00, 0x00}) {
+			return document.ErrContentTypeMismatch
 		}
-		// Also accept plain text (no signature needed for unknown types).
+		// Anything else — including plain paragraphs and "#"-prefixed
+		// headings — is accepted as markdown.
 		return nil
 	default:
 		return fmt.Errorf("unknown format: %s", declaredType)

@@ -24,8 +24,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"sync"
 	"testing"
@@ -71,14 +73,31 @@ func (m *mockIndexerBackend) Docs() [][]retriever.Document {
 }
 
 // mockRetrieverForUpload is the test double for retriever.Retriever used in upload tests.
-// It implements GetMaxID for UploadIndex nextID coordination.
+// It embeds mockIndexerBackend so all retriever.Retriever methods are
+// inherited; the GetMaxID override reads the SAME backend's recorded
+// Insert batches (production contract: GetMaxID queries the live
+// collection), so the per-slug serialization test observes non-overlapping
+// ID ranges across concurrent uploads.
+//
+// IMPORTANT: the embedded mockIndexerBackend is a *POINTER* so the
+// Retriever and IndexerBackend share the same mu/docs — copying the
+// struct by value would split the state and break the GetMaxID read.
 type mockRetrieverForUpload struct {
-	mockIndexerBackend
-	maxID int64
+	*mockIndexerBackend
 }
 
 func (m *mockRetrieverForUpload) GetMaxID(_ context.Context, _ string) (int64, error) {
-	return m.maxID, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var maxID int64
+	for _, batch := range m.docs {
+		for _, d := range batch {
+			if d.ID > maxID {
+				maxID = d.ID
+			}
+		}
+	}
+	return maxID, nil
 }
 
 func (m *mockRetrieverForUpload) Health(_ context.Context) error { return nil }
@@ -117,6 +136,9 @@ func (e *stubEmbedderForUpload) Dimensions() int { return 1024 }
 
 // uploadTestDeps builds a fully-wired Deps for upload tests.
 // KBRegistry has one active base: "authority".
+// The IndexerBackend and Retriever mocks share the SAME underlying state
+// (idxBackend embeds mockIndexerBackend, and we wrap it as the Retriever)
+// so GetMaxID reflects Insert calls — this is the production contract.
 func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 	t.Helper()
 	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
@@ -135,7 +157,7 @@ func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 	return &Deps{
 		KBRegistry:       kbReg,
 		Embedder:         newStubEmbedderForUpload(),
-		Retriever:        &mockRetrieverForUpload{maxID: 0},
+		Retriever:        &mockRetrieverForUpload{mockIndexerBackend: idxBackend},
 		IndexerBackend:   idxBackend,
 		ParserRegistry:  document.NewParserRegistry(),
 		UploadMaxBodyBytes: 50 << 20, // 50 MiB for tests
@@ -143,21 +165,26 @@ func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 }
 
 // buildUploadMultipart builds a multipart/form-data body with a "file" part
-// containing content and a "metadata" field set to mimeType.
+// carrying the given Content-Type header (mimeType) and content. The route
+// reads the declared MIME from the file part's Content-Type header, NOT from
+// a "metadata" form field (DOC-03 contract; the part header is source-of-truth).
 // Returns body bytes, Content-Type string, and total length.
 func buildUploadMultipart(t *testing.T, filename, mimeType string, content []byte) ([]byte, string, int) {
 	t.Helper()
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	fw, err := w.CreateFormFile("file", filename)
+	// Use CreatePart (NOT CreateFormFile) so we can set the file part's
+	// Content-Type header explicitly — CreateFormFile would default it to
+	// application/octet-stream and break the content-type allowlist test.
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, filename))
+	if mimeType != "" {
+		h.Set("Content-Type", mimeType)
+	}
+	fw, err := w.CreatePart(h)
 	require.NoError(t, err)
 	_, err = fw.Write(content)
 	require.NoError(t, err)
-	if mimeType != "" {
-		mfw, err := w.CreateFormField("metadata")
-		require.NoError(t, err)
-		_, _ = mfw.Write([]byte(mimeType))
-	}
 	require.NoError(t, w.Close())
 	return buf.Bytes(), w.FormDataContentType(), buf.Len()
 }
@@ -205,7 +232,7 @@ func TestUploadKBRegistryNotWired(t *testing.T) {
 	deps := &Deps{
 		KBRegistry:       nil, // not wired
 		Embedder:         newStubEmbedderForUpload(),
-		Retriever:        &mockRetrieverForUpload{maxID: 0},
+		Retriever:        &mockRetrieverForUpload{mockIndexerBackend: &mockIndexerBackend{}},
 		IndexerBackend:   &mockIndexerBackend{},
 		ParserRegistry:  document.NewParserRegistry(),
 		UploadMaxBodyBytes: 50 << 20,
@@ -372,8 +399,32 @@ func TestUploadAuditRowOnRejected(t *testing.T) {
 
 // --- Test 12: Per-slug serialization ---
 func TestUploadPerSlugSerialization(t *testing.T) {
+	// CRITICAL: the same mockIndexerBackend instance must back BOTH the
+	// IndexerBackend (for Insert) AND the Retriever (for GetMaxID) — the
+	// production contract is that GetMaxID reads the live collection, and
+	// the per-slug serialization test depends on that read to see the first
+	// upload's chunks before the second upload computes its nextID.
 	idx := &mockIndexerBackend{}
-	deps := uploadTestDeps(t, idx)
+	deps := &Deps{
+		KBRegistry: kb.New([]kb.Entry{
+			{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		}),
+		Embedder:          newStubEmbedderForUpload(),
+		Retriever:         &mockRetrieverForUpload{mockIndexerBackend: idx},
+		IndexerBackend:    idx,
+		ParserRegistry:    document.NewParserRegistry(),
+		UploadMaxBodyBytes: 50 << 20,
+	}
+	// Set admin token (uploadTestDeps helper does this; replicated here).
+	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
+	_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)
+	t.Cleanup(func() {
+		if prev == "" {
+			_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
+		} else {
+			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev)
+		}
+	})
 
 	content := []byte("# Chunk\n\nLine one.\nLine two.")
 	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
