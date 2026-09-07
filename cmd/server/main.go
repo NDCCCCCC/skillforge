@@ -491,6 +491,13 @@ func main() {
 		importer = data.NewImporter(data.ImporterConfig{
 			SiteSalt: dataSalt,
 			RulesDir: datarulesDir,
+			// Phase 26 KBM-04 / CR-01 (26-REVIEW): a rule file's tier
+			// field resolves against the LIVE registry. ValidateRules
+			// fails closed on a nil registry, so an assembly that omits
+			// this field makes every Preview/Commit/Push/DryRun of the
+			// loans dataset fail in a real boot (locked by
+			// TestImporterConfigWiresKBRegistry).
+			KBRegistry: kbReg,
 		}, st, lru)
 		log.Printf("[OK] cmd/server: import pipeline wired (salt present, rules=%s)", datarulesDir)
 	} else {
