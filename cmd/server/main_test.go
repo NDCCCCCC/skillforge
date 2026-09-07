@@ -429,3 +429,65 @@ func TestKBSeedEnvDefault(t *testing.T) {
 		t.Fatal("cmd/server must read SKILLFORGE_KB_SEED with the controlled default knowledge_bases.yaml")
 	}
 }
+
+// TestMilvusRecreateGateWiring locks the assembly side of the one-shot
+// re-seed gate (T-26-09-2): the destructive path is reachable only behind
+// the explicit SKILLFORGE_MILVUS_RECREATE gate, the WARN names the env var
+// and its cost, and the gate is evaluated BEFORE the collection is ensured
+// and the corpus indexed (a recreate that runs after the seed would waste
+// the whole embed pass).
+func TestMilvusRecreateGateWiring(t *testing.T) {
+	raw, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+	src := string(raw)
+
+	gate := "milvus.ShouldRecreate(os.Getenv(milvus.RecreateEnvVar))"
+	recreate := "RecreateCollection(ctx, defaultCollection)"
+	for _, needle := range []string{gate, recreate} {
+		if !strings.Contains(src, needle) {
+			t.Fatalf("main.go does not wire the re-seed path (%q missing)", needle)
+		}
+	}
+
+	// Everything below reads the milvus branch of buildRetriever only, so
+	// an unrelated call elsewhere in the file cannot satisfy the lock.
+	i := strings.Index(src, "func buildRetriever(")
+	if i < 0 {
+		t.Fatal("buildRetriever not found")
+	}
+	branch := src[i:]
+
+	gateAt := strings.Index(branch, gate)
+	ensureAt := strings.Index(branch, "mc.Ensure(ctx)")
+	if ensureAt < 0 {
+		t.Fatal("buildRetriever's milvus branch no longer ensures the collection")
+	}
+	if gateAt < 0 {
+		t.Fatal("buildRetriever's milvus branch does not read the RECREATE gate")
+	}
+	if gateAt > ensureAt {
+		t.Fatalf("gate read must precede mc.Ensure (offset %d > %d) — a recreate after the ensure/seed wastes the entire embed pass", gateAt, ensureAt)
+	}
+	recreateAt := strings.Index(branch, recreate)
+	if recreateAt < gateAt {
+		t.Fatalf("the recreate call (offset %d) must sit inside the gate branch (gate at %d)", recreateAt, gateAt)
+	}
+
+	// The WARN is the operator's only in-log signal that a destructive
+	// one-shot ran; it must name the env var and the re-embed consequence.
+	warn := branch[strings.Index(branch, "[WARN]"):]
+	if !strings.Contains(warn[:min(len(warn), 600)], "recreating collection") ||
+		!strings.Contains(warn[:min(len(warn), 600)], "SKILLFORGE_MILVUS_RECREATE") ||
+		!strings.Contains(warn[:min(len(warn), 600)], "re-embedded") {
+		t.Fatalf("the RECREATE WARN must name the collection, the env var and the re-embed cost; got %.600s", warn)
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
