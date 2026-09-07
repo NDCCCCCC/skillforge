@@ -184,17 +184,14 @@ func (s *Deps) graphHandler(ctx context.Context, c *app.RequestContext) {
 		totalChunks += tier.ChunkCount
 	}
 
-	// Default limits (hardcoded per plan 28-02; plan 28-04 replaces with env via Deps).
-	const defaultGraphMaxNodes = 50
-	if totalChunks > defaultGraphMaxNodes {
-		// Use map response to include degraded fields alongside the graph.
-		resp := map[string]any{
-			"tiers":            g.Tiers,
-			"degraded":         true,
-			"degradedReason":   "节点数量超过限制（" + strconv.Itoa(totalChunks) + " > " + strconv.Itoa(defaultGraphMaxNodes) + "），图谱已降级。see SKILLFORGE_GRAPH_MAX_NODES config.",
-		}
-		c.JSON(http.StatusOK, resp)
-		return
+	// Phase 28 (GRF-05): read limit from Deps; zero-value falls back to default.
+	maxNodes := s.GraphLimits.MaxNodes
+	if maxNodes <= 0 {
+		maxNodes = 50
+	}
+	if totalChunks > maxNodes {
+		g.Degraded = true
+		g.DegradedReason = fmt.Sprintf("节点数超过 %d（实际 %d）；已返回骨架图，请调高 SKILLFORGE_GRAPH_MAX_NODES 或减少知识库内容", maxNodes, totalChunks)
 	}
 
 	c.JSON(http.StatusOK, g)
@@ -264,14 +261,6 @@ func (s *Deps) chunkHandler(ctx context.Context, c *app.RequestContext) {
 	c.JSON(http.StatusOK, payload)
 }
 
-// Default limits for graph query APIs (hardcoded per plan 28-02;
-// plan 28-04 replaces with env var wiring via Deps).
-const (
-	defaultNeighborDepth = 2  // SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT
-	defaultPathHops      = 4  // SKILLFORGE_GRAPH_PATH_HOPS_LIMIT
-	defaultGraphMaxNodes = 50 // SKILLFORGE_GRAPH_MAX_NODES
-)
-
 // neighborsHandler implements GET /api/knowledge/graph/neighbors?chunk_id=X&depth=N.
 // Returns the N-depth neighborhood subgraph around chunk X including all edges.
 // D-28-02-AUTH: public read (no admin token required).
@@ -301,16 +290,20 @@ func (s *Deps) neighborsHandler(ctx context.Context, c *app.RequestContext) {
 	}
 	chunkID := strconv.FormatInt(id, 10)
 
+	maxDepth := s.GraphLimits.NeighborDepthLimit
+	if maxDepth <= 0 {
+		maxDepth = 2
+	}
 	depthStr := string(c.Query("depth"))
-	depth := defaultNeighborDepth
+	depth := maxDepth
 	if depthStr != "" {
 		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 {
 			depth = d
 		}
 	}
-	// Cap at default.
-	if depth > defaultNeighborDepth {
-		depth = defaultNeighborDepth
+	// Cap at configured max.
+	if depth > maxDepth {
+		depth = maxDepth
 	}
 
 	// Build EdgeGraph from metadata.
@@ -323,7 +316,30 @@ func (s *Deps) neighborsHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	result := eg.Neighbors(chunkID, depth, defaultGraphMaxNodes)
+	// Phase 28 (GRF-05): read limits from Deps; zero-value falls back to defaults.
+	maxNodes := s.GraphLimits.MaxNodes
+	if maxNodes <= 0 {
+		maxNodes = 50
+	}
+	maxEdges := s.GraphLimits.MaxEdges
+	if maxEdges <= 0 {
+		maxEdges = 200
+	}
+
+	result := eg.Neighbors(chunkID, depth, maxNodes)
+	if result == nil {
+		c.JSON(http.StatusNotFound, graphResponseError{Error: "chunk not found"})
+		return
+	}
+
+	// Cap edge count and tag as degraded if limit exceeded.
+	if len(result.Edges) > maxEdges {
+		result.Degraded = true
+		result.DegradedReason = fmt.Sprintf("边数超过 %d（实际 %d），已截断。请调高 SKILLFORGE_GRAPH_MAX_EDGES", maxEdges, len(result.Edges))
+		result.Edges = result.Edges[:maxEdges]
+	}
+
+	c.JSON(http.StatusOK, result)
 	if result == nil {
 		c.JSON(http.StatusNotFound, graphResponseError{Error: "chunk not found"})
 		return
@@ -367,16 +383,21 @@ func (s *Deps) pathHandler(ctx context.Context, c *app.RequestContext) {
 	from := strconv.FormatInt(fromID, 10)
 	to := strconv.FormatInt(toID, 10)
 
+	// Phase 28 (GRF-05): read hops limit from Deps; zero-value falls back to default.
+	maxHopsLimit := s.GraphLimits.PathHopsLimit
+	if maxHopsLimit <= 0 {
+		maxHopsLimit = 4
+	}
 	maxHopsStr := string(c.Query("max_hops"))
-	maxHops := defaultPathHops
+	maxHops := maxHopsLimit
 	if maxHopsStr != "" {
 		if m, err := strconv.Atoi(maxHopsStr); err == nil && m > 0 {
 			maxHops = m
 		}
 	}
-	// Cap at default.
-	if maxHops > defaultPathHops {
-		maxHops = defaultPathHops
+	// Cap at configured max.
+	if maxHops > maxHopsLimit {
+		maxHops = maxHopsLimit
 	}
 
 	// Build EdgeGraph from metadata.
@@ -390,6 +411,11 @@ func (s *Deps) pathHandler(ctx context.Context, c *app.RequestContext) {
 	}
 
 	result := eg.ShortestPath(from, to, maxHops)
+	// If max_hops was capped at the configured limit, tag as degraded.
+	if maxHops < maxHopsLimit {
+		result.Degraded = true
+		result.DegradedReason = fmt.Sprintf("max_hops 超过限制 %d（请求 %d），已截断。请调高 SKILLFORGE_GRAPH_PATH_HOPS_LIMIT", maxHopsLimit, maxHops)
+	}
 	c.JSON(http.StatusOK, result)
 }
 

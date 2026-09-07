@@ -105,6 +105,10 @@ func (e ErrEmptySource) Error() string {
 // tags mirror the TS KnowledgeGraph type (web/src/types/knowledge.ts).
 type Graph struct {
 	Tiers []TierNode `json:"tiers"`
+	// Degraded is true when the graph was truncated due to a config limit.
+	Degraded bool `json:"degraded"`
+	// DegradedReason describes which limit was exceeded (Chinese, names the env var).
+	DegradedReason string `json:"degradedReason,omitempty"`
 }
 
 // TierNode is one knowledge base in the graph. One node is emitted per
