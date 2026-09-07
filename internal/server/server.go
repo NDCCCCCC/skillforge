@@ -373,7 +373,7 @@ type Deps struct {
 	// IndexerBackend is the narrow insert-only interface for the upload pipeline.
 	// Only Insert is needed — the query path goes through retriever.Retriever.
 	// Wired at boot: a MilvusIndexerBackend or MongoIndexerBackend.
-	IndexerBackend IndexerBackend
+	IndexerBackend retriever.IndexerBackend
 
 	// ParserRegistry is the document format parser registry (DOC-01).
 	// Used by the upload handler to verify magic bytes before parsing.
@@ -383,13 +383,6 @@ type Deps struct {
 	// Default: 100 MiB. Set via SKILLFORGE_UPLOAD_MAX_BYTES env var at boot.
 	// Zero falls back to the default.
 	UploadMaxBodyBytes int64
-}
-
-// IndexerBackend is the narrow interface the upload pipeline uses to insert chunks.
-// Only Insert is needed — the query path goes through retriever.Retriever.
-// Owned by Plan 27-04; this stub declaration exists so upload.go compiles.
-type IndexerBackend interface {
-	Insert(ctx context.Context, docs []retriever.Document) error
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the

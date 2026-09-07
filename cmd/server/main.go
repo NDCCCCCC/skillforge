@@ -394,6 +394,18 @@ func main() {
 	}
 	r, backendLabel := buildRetriever(ctx, backend, emb, kbReg)
 
+	// Wire the narrow IndexerBackend for the upload pipeline (Phase 27).
+	// The upload handler uses this to insert chunks; it does NOT know
+	// which backend is active (backend-agnostic by interface design).
+	var indexerBackend retriever.IndexerBackend
+	switch backend {
+	case "mongo":
+		indexerBackend = mongo.NewIndexerBackend(r.(*mongo.Client))
+	default:
+		// "none" and any unknown value fall through to milvus (default).
+		indexerBackend = milvus.NewIndexerBackend(r.(*milvus.MilvusClient))
+	}
+
 	// 8. ChatModel (GLM Coding Plan per Pitfall 6, or LOCAL_* override —
 	// see the env triple above). Phase 17 live-UAT: GLM_MODEL selects the
 	// model (user decision 2026-08-27: glm-5.3-flash default) instead of
@@ -818,7 +830,7 @@ func main() {
 		// ParserRegistry: constructed here; SetDocUploadAuditHook binds the
 		// store-backed audit sink before the server starts accepting requests.
 		ParserRegistry:       document.NewParserRegistry(),
-		IndexerBackend:       r,
+		IndexerBackend:       indexerBackend,
 		UploadMaxBodyBytes:   uploadMaxBody,
 	}
 
