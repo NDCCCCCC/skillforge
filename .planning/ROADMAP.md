@@ -93,7 +93,7 @@
 
 **Phases (execution order 26 → 27 → 28 → 29 → 30；28 与 29 可在 26 之后并行)：**
 
-- [ ] **Phase 26: 知识库注册表地基** - TierEnum 硬编码 4 值枚举 → 注册表驱动的动态知识库（admin 可建/停用，Skill reads 契约与检索层 fail-closed 校验）+ 里程碑卫生门（TODO 清零 + 结构门）
+- [x] **Phase 26: 知识库注册表地基** - TierEnum 硬编码 4 值枚举 → 注册表驱动的动态知识库（admin 可建/停用，Skill reads 契约与检索层 fail-closed 校验）+ 里程碑卫生门（TODO 清零 + 结构门）（completed 2026-09-07 — 10/10 plans，verification 54/54 + 3/3 human items resolved，live UAT 5/5 PASS）
 - [ ] **Phase 27: 文档上传入库** - /admin 上传 md/pdf/docx/xlsx/pptx → 解析 → 分块 → 向量化 → 入指定知识库；原始文件即弃；入库即审计、即可见
 - [ ] **Phase 28: 知识图谱动态化 + 关系层** - 图谱按注册表输出 N 知识库节点 + 确定性 chunk 关系边 + 邻居/路径查询 API + GraphCanvas 升级 + 性能护栏
 - [ ] **Phase 29: 反馈闭环 + 工单预留** - FeedbackRow 三按钮真实落库（一次一票）+ 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets
@@ -114,16 +114,16 @@
 **Plans**: 10 plans in 7 waves (planned 2026-09-07)
 
 Plans:
-- [ ] 26-01-PLAN.md — internal/kb 注册表契约层（Role/CitableRole/slug/seed/原子快照/ResolveReads）+ knowledge_bases.yaml 受控 seed（KBM-01/03）
-- [ ] 26-02-PLAN.md — sqlite knowledge_bases 表 + kb.Store 实现 + kb.Open「结构归配置、开关归运营」合并语义（KBM-01/02）
-- [ ] 26-03-PLAN.md — knowledge/retriever 注册表化：共享 walker + 未知目录 WARN+审计 + validateTiers/graph Lookup + Milvus/Mongo slug 过滤 + cmd 调用点（KBM-05/06）
-- [ ] 26-04-PLAN.md — skill reads 契约破坏性切换：TierEnum 族删除 + Validate/ResolveTiers 注册表委托 + 全消费面迁移（runtime/data/loans.yaml/server/cmd）（KBM-01/04）
-- [ ] 26-05-PLAN.md — 服务端 KB 管理面：token 门创建/停用端点 + INSERT-only 审计 + 公开投影 + 反证/pipeline/knowledge.go 注册表化（KBM-02/03）
-- [ ] 26-06-PLAN.md — agent 信任面：ChunkAccumulator citability 门控（仅 authority 可引用）+ hitl Enum 注册表快照（KBM-03）
-- [ ] 26-07-PLAN.md — 评测数据迁移：fanout golden set CN→slug + fanout.lock.json 显式重签（单一连续任务）+ calculator/CONTRIBUTING 词汇（KBM-04）
-- [ ] 26-08-PLAN.md — FE：/admin Knowledge Base 管理视图 + TierBadge/图标签注册表化 + 类型放宽 + 硬编码 fallback 清除（KBM-02）
-- [ ] 26-09-PLAN.md — 装配收口：kb.Open 生产接线 + 审计钩子 + Milvus RECREATE re-seed 门 + WSL 全量门（KBM-01/02/05/06）
-- [ ] 26-10-PLAN.md — 收尾：KBM-03 四角色语义落档（README/kb godoc/STRIDE-26）+ verify-phase-26 三门（TODO 清零 RED→GREEN）+ live 迁移 operator checkpoint（KBM-03/HYG-01）
+- [x] 26-01-PLAN.md — internal/kb 注册表契约层（Role/CitableRole/slug/seed/原子快照/ResolveReads）+ knowledge_bases.yaml 受控 seed（KBM-01/03）
+- [x] 26-02-PLAN.md — sqlite knowledge_bases 表 + kb.Store 实现 + kb.Open「结构归配置、开关归运营」合并语义（KBM-01/02）
+- [x] 26-03-PLAN.md — knowledge/retriever 注册表化：共享 walker + 未知目录 WARN+审计 + validateTiers/graph Lookup + Milvus/Mongo slug 过滤 + cmd 调用点（KBM-05/06）
+- [x] 26-04-PLAN.md — skill reads 契约破坏性切换：TierEnum 族删除 + Validate/ResolveTiers 注册表委托 + 全消费面迁移（runtime/data/loans.yaml/server/cmd）（KBM-01/04）
+- [x] 26-05-PLAN.md — 服务端 KB 管理面：token 门创建/停用端点 + INSERT-only 审计 + 公开投影 + 反证/pipeline/knowledge.go 注册表化（KBM-02/03）
+- [x] 26-06-PLAN.md — agent 信任面：ChunkAccumulator citability 门控（仅 authority 可引用）+ hitl Enum 注册表快照（KBM-03）
+- [x] 26-07-PLAN.md — 评测数据迁移：fanout golden set CN→slug + fanout.lock.json 显式重签（单一连续任务）+ calculator/CONTRIBUTING 词汇（KBM-04）
+- [x] 26-08-PLAN.md — FE：/admin Knowledge Base 管理视图 + TierBadge/图标签注册表化 + 类型放宽 + 硬编码 fallback 清除（KBM-02）
+- [x] 26-09-PLAN.md — 装配收口：kb.Open 生产接线 + 审计钩子 + Milvus RECREATE re-seed 门 + WSL 全量门（KBM-01/02/05/06）
+- [x] 26-10-PLAN.md — 收尾：KBM-03 四角色语义落档（README/kb godoc/STRIDE-26）+ verify-phase-26 三门（TODO 清零 RED→GREEN）+ live 迁移 operator checkpoint（KBM-03/HYG-01）
 
 **UI hint**: yes
 **Notes**: 用户已授权破坏性重构（不受向后兼容与既有设计约束）；受影响面 = `internal/skill`（TierEnum + validate.go allowlist）、`internal/knowledge/indexer.go` (KNOW-02)、`internal/retriever/{milvus,mongo}`、FE TierBadge / graph 节点；信任语义（KNOW-02 / D-09 / citation 白名单）只许迁移实现、不许削弱。
@@ -212,7 +212,7 @@ Plans:
 | 23. Open-Source Release (Phase 7 completion) | 4/4 | Complete | 2026-09-06 |
 | 24. 审计链强化 (PROV-O + decision-chain + time-travel) | 4/4 | Complete | 2026-09-06 |
 | 25. 评测信任环闭环 (eval trust-loop closure) | 4/4 | Complete | 2026-09-06 |
-| 26. 知识库注册表地基 (KBM + HYG-01) | 0/TBD | Not started | - |
+| 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 0/TBD | Not started | - |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 0/TBD | Not started | - |
 | 29. 反馈闭环 + 工单预留 (FBK + TKT) | 0/TBD | Not started | - |

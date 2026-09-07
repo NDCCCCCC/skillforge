@@ -82,10 +82,13 @@ established 14-08 precedent:
 
 ## 5. Residue carried for the phase verifier (not in this runbook's path)
 
-- `web/src/components/layout/KnowledgeModal.tsx:40` — `TIER_ORDER: Tier[] = ['权威','历史','个人','草稿']`
-  is a leftover CN display-order map flagged by 26-08 as out of its scope. Phase 26's gates scan
-  Go only (`--include='*.go'`), so this FE file is outside them. It is a display-order constant,
-  not a data value — listed here so the phase verifier decides its fate deliberately.
+- **RESOLVED 2026-09-07 (commit 05c096c):** `web/src/components/layout/KnowledgeModal.tsx:40` —
+  `TIER_ORDER: Tier[] = ['权威','历史','个人','草稿']` was a leftover CN display-order map flagged
+  by 26-08 as out of its scope. The modal now renders the server's tier array verbatim (registry
+  slug order, KBM-01), resolves labels via `useTierLabel`, and computes the dir hint as
+  `knowledge/<slug>/`; DocViewer's badge joined the pass. Tests migrated to slugs + registry
+  projection stubs (FE suite 500 green); live walkthrough verified `[权威] 16` tree rendering.
+  Full disposition in 26-VERIFICATION.md (R-1 + Human Verification Resolution).
 
 ## 6. Execution record (2026-09-07, authorized run)
 

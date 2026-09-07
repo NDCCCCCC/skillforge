@@ -229,12 +229,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 知识库分层重构 (KBM)
 
-- [ ] **KBM-01**: 知识库注册表——知识库从 `skill.TierEnum` 硬编码 4 值枚举改为注册表（受控文件装载 + admin 运行时管理）；条目含：slug、显示名、语义角色（authority/historical/personal/draft 四选一）、描述、检索启用位、时间戳；`skill` 包消费注册表接口而非具体枚举
-- [ ] **KBM-02**: 管理员可创建/停用知识库——admin 端点（token 门）+ `/admin` 视图；slug 合法性校验；创建/停用即审计；停用 = 检索与 Skill 校验不可见，不物理删除数据
-- [ ] **KBM-03**: 四语义角色重定义并落档——authority=唯一可引用证据源（citation 白名单仅 authority 语义角色）；historical=被取代版本留档（不进默认检索，可显式时间点查询）；personal=用户私有（默认排除检索，显式声明才可读）；draft=未生效（永不进检索，仅入库预览）；语义写入平台地板文档与 README
-- [ ] **KBM-04**: Skill `reads` 契约按注册表校验——reads 声明知识库 slug 或语义角色通配，validate 对照注册表 fail-closed（未注册/已停用 = 校验失败）；旧 4-tier 字面量不再被接受（破坏性切换，附一次性迁移）
-- [ ] **KBM-05**: 检索层过滤注册表化——Milvus/Mongo 过滤表达式从 4 枚举改为注册表驱动的知识库集合；KNOW-02 不变式保留：未知知识库值在索引与检索两侧均 fail-closed 拒绝
-- [ ] **KBM-06**: 启动期目录装载适配注册表——`knowledge/<slug>/` 按注册表装载；未知目录 WARN + 跳过 + 审计（不再要求目录名 ∈ 固定枚举）
+- [x] **KBM-01**: 知识库注册表——知识库从 `skill.TierEnum` 硬编码 4 值枚举改为注册表（受控文件装载 + admin 运行时管理）；条目含：slug、显示名、语义角色（authority/historical/personal/draft 四选一）、描述、检索启用位、时间戳；`skill` 包消费注册表接口而非具体枚举
+- [x] **KBM-02**: 管理员可创建/停用知识库——admin 端点（token 门）+ `/admin` 视图；slug 合法性校验；创建/停用即审计；停用 = 检索与 Skill 校验不可见，不物理删除数据
+- [x] **KBM-03**: 四语义角色重定义并落档——authority=唯一可引用证据源（citation 白名单仅 authority 语义角色）；historical=被取代版本留档（不进默认检索，可显式时间点查询）；personal=用户私有（默认排除检索，显式声明才可读）；draft=未生效（永不进检索，仅入库预览）；语义写入平台地板文档与 README
+- [x] **KBM-04**: Skill `reads` 契约按注册表校验——reads 声明知识库 slug 或语义角色通配，validate 对照注册表 fail-closed（未注册/已停用 = 校验失败）；旧 4-tier 字面量不再被接受（破坏性切换，附一次性迁移）
+- [x] **KBM-05**: 检索层过滤注册表化——Milvus/Mongo 过滤表达式从 4 枚举改为注册表驱动的知识库集合；KNOW-02 不变式保留：未知知识库值在索引与检索两侧均 fail-closed 拒绝
+- [x] **KBM-06**: 启动期目录装载适配注册表——`knowledge/<slug>/` 按注册表装载；未知目录 WARN + 跳过 + 审计（不再要求目录名 ∈ 固定枚举）
 
 ### 文档上传入库 (DOC)
 
@@ -270,7 +270,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 工程卫生 (HYG)
 
-- [ ] **HYG-01**: 代码 TODO 清零——处置 `cmd/spike-history/long.go:54` MEM-05 TODO（核对 summarization 中间件真实落地状态后更新或移除）；全仓非测试 Go 文件 TODO/FIXME 计数归零并纳入结构门
+- [x] **HYG-01**: 代码 TODO 清零——处置 `cmd/spike-history/long.go:54` MEM-05 TODO（核对 summarization 中间件真实落地状态后更新或移除）；全仓非测试 Go 文件 TODO/FIXME 计数归零并纳入结构门
 - [ ] **HYG-02**: 零硬编码不变式——本里程碑新增的格式白名单、大小限额、图深限制、语义角色定义等全部注册表/配置驱动；verify 增加关键字段魔数抽查
 - [ ] **HYG-03**: 全量 SDLC 门——每 phase 交付含单元测试 + hermetic 集成测试 + WSL 构建验证 + 受影响 verify 门全绿 + FE vitest/tsc（若触 FE）
 
@@ -471,12 +471,12 @@ Which phases cover which requirements.
 | ADM-04 | Phase 20 | Pending |
 | ADM-05 | Phase 20 | Pending |
 | ADM-06 | Phase 20 | Pending |
-| KBM-01 | Phase 26 | Pending |
-| KBM-02 | Phase 26 | Pending |
-| KBM-03 | Phase 26 | Pending |
-| KBM-04 | Phase 26 | Pending |
-| KBM-05 | Phase 26 | Pending |
-| KBM-06 | Phase 26 | Pending |
+| KBM-01 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
+| KBM-02 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
+| KBM-03 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
+| KBM-04 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
+| KBM-05 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
+| KBM-06 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
 | DOC-01 | Phase 27 | Pending |
 | DOC-02 | Phase 27 | Pending |
 | DOC-03 | Phase 27 | Pending |
@@ -497,7 +497,7 @@ Which phases cover which requirements.
 | TKT-02 | Phase 29 | Pending |
 | TKT-03 | Phase 29 | Pending |
 | TKT-04 | Phase 29 | Pending |
-| HYG-01 | Phase 26 | Pending |
+| HYG-01 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
 | HYG-02 | Phase 30 | Pending |
 | HYG-03 | Phase 30 | Pending |
 

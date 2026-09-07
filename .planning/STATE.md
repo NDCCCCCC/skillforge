@@ -2,33 +2,37 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
-current_phase: 26
-current_plan: 1
-status: executing
-last_updated: "2026-09-06T20:16:27.843Z"
-last_activity: 2026-09-06 -- Phase 26 execution started
+current_phase: 27
+current_plan: 0
+status: phase-complete
+last_updated: "2026-09-07T07:20:00.000Z"
+last_activity: 2026-09-07 -- Phase 26 CLOSED (verification passed + human items resolved)
 progress:
-  total_phases: 6
-  completed_phases: 0
+  total_phases: 5
+  completed_phases: 1
   total_plans: 10
-  completed_plans: 0
-  percent: 0
+  completed_plans: 10
+  percent: 20
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 26 (知识库注册表地基) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 26
-Last activity: 2026-09-06 -- Phase 26 execution started
+Phase: 26 (知识库注册表地基) — CLOSED (2026-09-07)
+Plan: 10 of 10
+Status: Phase complete — verification passed, ROADMAP/STATE synced. Next: Phase 27 (文档上传入库) planning.
+Last activity: 2026-09-07 -- Phase 26 close-out: R-1 KnowledgeModal registry-driven fix (05c096c) + browser walkthrough resolving all 3 verifier human items + records sync
+
+**Phase 26 closure record (2026-09-07):** 10/10 plans executed (6 waves + orchestrator citability fix 8cbe270) → code review CR-01..04 + WR-01/02 all fixed (e4211c6/adce584/dc05ca7/629590a/d9cb8b4/d67d8a8) → live Milvus re-seed acceptance 5/5 PASS (user-authorized, SKILLFORGE_MILVUS_RECREATE one-shot) → verifier 54/54 must-haves (1 override: D14-B4 byte-freeze outranks SC4 literal wording) → R-1 KnowledgeModal CN→registry residue fixed at 05c096c (FE 67 files / 500 tests + tsc green) → browser walkthrough on the post-CR-fix binary (:8888 process started 13:38 > fixes 13:22): chat cited-verdict smoke, /admin KB tab full round-trip (create with CN display name / invalid-slug server rule text / deactivate with audit dialog), registry labels live everywhere ([权威] modal tree / DocViewer badge / graph center node / citation badge). console clean. Human item 1's HITL half honestly reclassified residue (no shipped skill routes memory:facts today; -race coverage stands). 26-VERIFICATION status → passed.
+
+Progress: [█░░░░] 20% (v1.2: 1/5 phases complete, 7/29 requirements satisfied — KBM-01..06 + HYG-01)
+
+**Next action:** `/gsd:plan-phase 27` — 文档上传入库 (DOC-01..06；注意 eino-ext 解析器获取风险 + pure-Go fallback + 不得继承 milvus-coupling)
+
+**Residues carried (non-blocking, from 26-VERIFICATION):** R-2 hitl.InjectDeps per-request-hook seam（plan_approve/report:publish 单例仍共享 hook；memory:facts 无生产 Skill 路由面）· R-3 pre-existing fanout_tools_test.go -race fixture failure（test-only，先于 Phase 26）· R-5 uat-check + walkthrough-tmp 两个一次性 deactivated 库留在 live sqlite（无 delete verb 是设计）· 服务端排序现为 slug 升序（authority/draft/historical/personal），语义顺序（权威→历史→个人→草稿）如需恢复属 registry 排序字段的服务端演进，不阻塞。
 
 **Phase 26 planning record (2026-09-07):** 26-01..26-10 in 7 waves（Wave1:{01} → 2:{02,03} → 3:{04 枚举删除} → 4:{05,06,07} → 5:{08 FE} → 6:{09 装配+全量门} → 7:{10 落档+三门+operator checkpoint autonomous:false}）。计划提交链：6e565d7（初版）→ dbd7f80（iteration-1 修订：5 个无人认领编译破坏调用点归位 26-04/26-06 + VALIDATION.md 从模板重生成 + FE 残留 CN 字面量清扫进 26-08 + 26-07 提前到 wave 4）→ orchestrator 文件清单补丁（6 个测试文件进 files_modified + 26-09 两处措辞）。REQ 覆盖 7/7（gap-analysis 词边界核对）；Hyquist 契约 active（27 任务行）。注意：26-10 含 live Milvus re-seed operator gate（SKILLFORGE_MILVUS_RECREATE，前置探测 BGE/Milvus 可达性，参考 env-intranet 波动记忆）。
-
-Progress: [░░░░░] 0% (v1.2: 0/5 phases complete, 0/29 requirements satisfied)
-
-**Next action:** `/gsd:plan-phase 26`
 
 **Prior milestone record (v1.1 + v1.1.1):** v1.1 SHIPPED 2026-09-06 (phases 25/24/22/21/23; README/CHANGELOG/RELEASE-NOTES/CONTRIBUTING)。Milestone summary: `.planning/reports/MILESTONE_SUMMARY-v1.1.md`。v1.1.1 清理 shipped 2026-09-07（quick 260906-w62，commits 6cda7d4..c7fc580 + 42adc56，分支 `v1.1.1-cleanup`）——Phase 21 外部授权通道接通（`EXTERNAL_AUTH_ENABLED=1` 门 + admin token 门 + `needs_external_query` 工具 + `data:external:authorized` allowlist + `external_views/` 受控视图 + MemoryStore）、golden set 10 案例、README 三护城河统一、REQUIREMENTS DATA 行翻转、CHANGELOG v1.1.1。VERIFICATION 7/7 truths passed；3 人工项（进程实启 / 真 LLM 工具环 / README 叙述连贯）留 operator。v1.1.1 尚未 git tag（无 remote，tag 时机 user 驱动）。
 

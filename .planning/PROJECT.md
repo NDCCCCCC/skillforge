@@ -115,7 +115,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 | # | 能力 | 形态 |
 |---|---|---|
-| 1 | 知识库分层重构 + 动态建库 | 重新定义 权威/历史/个人/草稿 的语义（原 4 tier 变为注册表条目）；管理员可创建/停用新知识库；Skill `reads` 契约按知识库名声明；KNOW-02 fail-closed 语义保留（未注册 = 拒绝） |
+| 1 | 知识库分层重构 + 动态建库 | 重新定义 权威/历史/个人/草稿 的语义（原 4 tier 变为注册表条目）；管理员可创建/停用新知识库；Skill `reads` 契约按知识库名声明；KNOW-02 fail-closed 语义保留（未注册 = 拒绝）——✅ Delivered by Phase 26 (closed 2026-09-07)：`internal/kb` 注册表 + admin 端点 + /admin 视图 + 全消费面 fail-closed 迁移 |
 | 2 | 管理员文档上传入库 | /admin 知识库管理视图：上传 md/pdf/docx 等 office 文档 → 解析 → 分块 → 向量化 → 入指定知识库；类型/大小/数量防护；入库即审计；原始文件不落盘 |
 | 3 | 知识图谱扩展 | 图谱反映动态知识库（不再硬编码 4 tier）；新增 chunk 间关系层（同实体/引用共现边）+ 邻居/路径查询 API；FE GraphCanvas 升级 |
 | 4 | 反馈闭环 | FeedbackRow 三按钮（有帮助/没帮助/报告知识过时）落库：INSERT-only 反馈表 + 一次一票 + 过时报告进管理台复核队列；反馈指标进 admin 仪表盘 |
@@ -129,6 +129,7 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 **Key decisions:**
 - **v1.0 → v1.1 沿革**：业务数据支撑（数据导入即脱敏 + KPI + 报告门户 + 管理台）已 shipped 2026-08-30；外部授权通道 + 审计链强化 + Eval CI + OSS 叙事重置 shipped 2026-09-06；v1.1.1 清理（Phase 21 接线）shipped 2026-09-07
+- **Phase 26 注册表地基（2026-09-07 closed）**：知识库身份 = registry slug（ASCII，`knowledge/<slug>/` 即目录名），中文显示名只是 seed 数据；`kb.Citable(reg, tier)` 是唯一可引用判定（4 个插入点全部委托，nil registry = legacy 姿态）；「结构归配置、开关归运营」——seed 永不复活 admin 停用；admin 403 先于 503；KB 审计 INSERT-only；平台地板字节不动（D14-B4）。后续 phase（27 上传 / 28 图谱 / 29 反馈指标）一律以 slug 为键，不再出现 CN tier 数据值
 - 合规定位 = 基线，不是 feature 方向（用户角色：金融 IT 部门）
 - 知识库 tier 隔离 + 拒答构造 + 引用白名单 = 平台护城河，重构**不得削弱**信任语义（KNOW-02 fail-closed、D-09 拒答构造原样保留）
 
@@ -150,4 +151,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-18 — Phase 9 complete (历史注入 spike 硬门 GEVL-08: 6/6 plans, VERIFICATION passed 7/7; **NO-GO 签字接受带逃逸方案** — 拒答 95%→0% 实证 Pitfall 1 H2, SC-3 零穿透守住, 消毒骨架交付; Phase 10 前置 D9-V2 trust-floor 强化 + 4 Critical 工具链修复). Prior: Phase 8 complete (eino v0.9.14 + eino-ext v0.1.13 lockstep, sqlite CheckPointStore 骨架, live 三门 human-verify approved; v0.8 frozen eval 基线 faithfulness 0.972 / refusal_accuracy 95%).*
+*Last updated: 2026-09-07 — v1.2 Phase 26 closed (知识库注册表地基: 10/10 plans, verification 54/54 + 3/3 human items resolved, live UAT 5/5 PASS; 目标功能块 1 交付). Prior: v1.1 shipped 2026-09-06 + v1.1.1 cleanup 2026-09-07.*
