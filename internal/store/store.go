@@ -818,4 +818,11 @@ type Store interface {
 	// Close releases the underlying connection pool. After Close every
 	// method returns a meaningful error (sql.ErrConnDone-equivalent).
 	Close() error
+
+	// HasUploadBySHA256 returns true if an action_doc_uploaded audit row
+	// exists for the given slug with the given SHA-256 hash. Used for DOC-04
+	// deduplication: same content hash for the same slug = same document,
+	// regardless of filename. The slug is the knowledge-base namespace; two
+	// uploads of identical content to different slugs are NOT duplicates.
+	HasUploadBySHA256(ctx context.Context, slug, sha256 string) (bool, error)
 }

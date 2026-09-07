@@ -795,3 +795,38 @@ func (s *SQLiteStore) MarkRuleRevoked(ctx context.Context, row store.RuleRevokeR
 	}
 	return id, nil
 }
+
+// HasUploadBySHA256 returns true if an action_doc_uploaded audit row
+// exists for the given slug with the given SHA-256 hash (DOC-04 dedup).
+// It queries the FrozenArgs JSON column via json_extract for both the
+// slug and the sha256 field — SQLite 3.38+ (mattn/go-sqlite3) supports
+// json_extract; the fallback LIKE approach is also documented inline.
+//
+// The query is scoped by both slug and sha256 so that the same file
+// uploaded to two different slugs is NOT considered a duplicate.
+// The index idx_audit_action (action) is used; the json_extract on
+// frozen_args is a scan-time expression, not an indexed column.
+func (s *SQLiteStore) HasUploadBySHA256(ctx context.Context, slug, sha256 string) (bool, error) {
+	if s.isClosed() {
+		return false, sql.ErrConnDone
+	}
+	// json_extract(frozen_args, '$.slug') = ? AND
+	// json_extract(frozen_args, '$.sha256') = ?
+	// LIMIT 1 so we stop as soon as one match is found.
+	row := s.db.QueryRowContext(ctx,
+		`SELECT 1 FROM audit
+		 WHERE action = 'action_doc_uploaded'
+		   AND json_extract(frozen_args, '$.slug') = ?
+		   AND json_extract(frozen_args, '$.sha256') = ?
+		 LIMIT 1`,
+		slug, sha256)
+	var x int
+	err := row.Scan(&x)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmtError("HasUploadBySHA256", err)
+	}
+	return true, nil
+}
