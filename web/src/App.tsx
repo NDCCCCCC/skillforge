@@ -32,6 +32,9 @@ import ChatLayout from './components/layout/ChatLayout';
 import ChatColumn from './components/layout/ChatColumn';
 import DetailPanel from './components/layout/DetailPanel';
 import ReloadToast from './components/layout/ReloadToast';
+// Plan 29-07 Task 1 — global sf-toast viewport (listener + single-slot
+// latest-wins). Mounted per route branch below; see the branch comments.
+import SfToast from './components/layout/SfToast';
 import EvalDashboard from './components/eval/EvalDashboard';
 import AdminDashboard from './components/admin/AdminDashboard';
 import { MessageBubble } from './components/chat/MessageBubble';
@@ -340,6 +343,10 @@ function LiveApp() {
 
   // Plan 20-01 (ADM-01) — admin console route renders the AdminDashboard
   // shell. Mirrors the eval route pattern; no ReloadToast needed.
+  // Plan 29-07 — this early-return BYPASSES App's own markup, so the
+  // admin branch mounts NO sf-toast viewport here: 29-08 mounts the
+  // SfToast component inside AdminDashboard's root div instead
+  // (UI-SPEC §Component 5).
   if (route === 'admin') {
     return <AdminDashboard />;
   }
@@ -351,6 +358,8 @@ function LiveApp() {
     return (
         <>
           <EvalDashboard />
+          {/* Plan 29-07 Task 1 — sf-toast listener for the eval branch. */}
+          <SfToast />
           <ReloadToast />
         </>
       );
@@ -375,6 +384,10 @@ function LiveApp() {
         }
       />
       <ReloadToast />
+      {/* Plan 29-07 Task 1 — sf-toast listener for the chat branch.
+          FeedbackRow's vote/ticket toasts (29-07 Task 2) and
+          SessionDrawer's rename-failure toast land here. */}
+      <SfToast />
       {lastCreatedSkill && (
         <div
           data-testid="wizard-success-toast"
