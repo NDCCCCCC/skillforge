@@ -27,8 +27,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -492,8 +494,229 @@ func TestTicketsHandler(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// structural locks
+// Task 2 — non-blocking dispatch + INSERT-only audit trail
 // ---------------------------------------------------------------------------
+
+// waitForAuditRows polls until the dispatcher wrote n audit rows or the
+// deadline passes (bounded — a test must never hang on a missing goroutine).
+func waitForAuditRows(t *testing.T, fake *ticketsFakeStore, n int) []store.AuditRow {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		rows := fake.putAuditSnapshot()
+		if len(rows) >= n {
+			return rows
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("dispatch goroutine never wrote %d audit row(s) (have %d)", n, len(fake.putAuditSnapshot()))
+	return nil
+}
+
+// dispatchTestDeps is the webhook-wired Deps the dispatch tests share.
+func dispatchTestDeps(fake *ticketsFakeStore, provider ticket.Provider) *Deps {
+	return &Deps{
+		Store:                fake,
+		TicketProvider:       provider,
+		TicketProviderName:   ticket.ProviderWebhook,
+		TicketDispatchBudget: 5 * time.Second,
+	}
+}
+
+const dispatchTestBody = `{"session_id":"tktest-session-01","turn_id":42,"description":"第 3 条引用已过期，请复核"}`
+
+// TestTicketDispatchAuditRows locks the settled-outcome trail: every
+// dispatch — success, failure, or panic — lands as an INSERT-only
+// action_ticket_dispatch_* audit row with ActorType "admin" (the
+// adminAuditHandler visibility filter) and UserID "system" (the real actor
+// identity: the platform itself, not an admin user). The ticket row is
+// never touched on any path — the store ships no UPDATE verb for it.
+func TestTicketDispatchAuditRows(t *testing.T) {
+	newFixture := func(provider ticket.Provider) (*ticketsFakeStore, *server.Hertz) {
+		fake := newTicketsFakeStore()
+		fake.tkSeedTurn(tkTestSession, 42, "assistant", tkTurnTs, "compliance", "11,12")
+		return fake, newTicketsHertz(dispatchTestDeps(fake, provider))
+	}
+	decodeFrozenArgs := func(t *testing.T, raw []byte) map[string]any {
+		t.Helper()
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(raw, &payload), "FrozenArgs must be a JSON snapshot: %s", raw)
+		return payload
+	}
+
+	t.Run("success writes action_ticket_dispatch_succeeded", func(t *testing.T) {
+		fake, h := newFixture(&ticketStubProvider{result: ticket.DispatchResult{ExternalRef: "EXT-77", Attempts: 3}})
+
+		resp := tkRequest(h, dispatchTestBody)
+		require.Equal(t, http.StatusCreated, resp.Code, "body: %s", resp.Body.String())
+
+		rows := waitForAuditRows(t, fake, 1)
+		require.Len(t, rows, 1)
+		assert.Equal(t, "action_ticket_dispatch_succeeded", rows[0].Action)
+		assert.Equal(t, "admin", rows[0].ActorType, "ActorType=admin is the /api/admin/audit visibility filter")
+		assert.Equal(t, "system", rows[0].UserID, "the platform dispatched it, not an admin user")
+
+		payload := decodeFrozenArgs(t, rows[0].FrozenArgs)
+		assert.EqualValues(t, 1, payload["ticket_id"])
+		assert.Equal(t, "webhook", payload["provider"])
+		assert.EqualValues(t, 3, payload["attempts"])
+		assert.Equal(t, "EXT-77", payload["external_ref"])
+
+		// INSERT-only discipline: the settled outcome lives in the audit
+		// row, the ticket row keeps its insert-time shape forever.
+		after := fake.ticketSnapshot()
+		require.Len(t, after, 1)
+		assert.Equal(t, "webhook", after[0].Provider)
+		assert.Equal(t, "queued", after[0].DispatchStatus)
+		assert.EqualValues(t, 1, after[0].ID)
+	})
+
+	t.Run("failure writes action_ticket_dispatch_failed and keeps the row", func(t *testing.T) {
+		fake, h := newFixture(&ticketStubProvider{err: errors.New("connection refused")})
+
+		resp := tkRequest(h, dispatchTestBody)
+		require.Equal(t, http.StatusCreated, resp.Code, "an outbound failure must never fail the accepted ticket")
+
+		rows := waitForAuditRows(t, fake, 1)
+		require.Len(t, rows, 1)
+		assert.Equal(t, "action_ticket_dispatch_failed", rows[0].Action)
+		assert.Equal(t, "admin", rows[0].ActorType)
+		assert.Equal(t, "system", rows[0].UserID)
+
+		payload := decodeFrozenArgs(t, rows[0].FrozenArgs)
+		assert.EqualValues(t, 1, payload["ticket_id"])
+		assert.Equal(t, "webhook", payload["provider"])
+		assert.Contains(t, payload["error"], "connection refused")
+
+		after := fake.ticketSnapshot()
+		require.Len(t, after, 1)
+		assert.Equal(t, "queued", after[0].DispatchStatus, "no UPDATE path rewrites the ticket row on failure")
+	})
+
+	t.Run("panic is contained and recorded as a failed dispatch", func(t *testing.T) {
+		fake, h := newFixture(&ticketStubProvider{panicWith: "webhook exploded"})
+
+		resp := tkRequest(h, dispatchTestBody)
+		require.Equal(t, http.StatusCreated, resp.Code, "the handler must already have returned before the panic")
+
+		// If the goroutine's recover were missing, this process would be
+		// dead before the assertion below could run — surviving here IS
+		// the assertion (T-29-07).
+		rows := waitForAuditRows(t, fake, 1)
+		require.Len(t, rows, 1)
+		assert.Equal(t, "action_ticket_dispatch_failed", rows[0].Action)
+		assert.Equal(t, "admin", rows[0].ActorType)
+
+		payload := decodeFrozenArgs(t, rows[0].FrozenArgs)
+		assert.Contains(t, payload["error"], "panic")
+		assert.Contains(t, payload["error"], "webhook exploded")
+	})
+
+	t.Run("dispatch context is budgeted and independent of the request", func(t *testing.T) {
+		// A bare request context carries no deadline; the dispatcher's
+		// context.Background()+WithTimeout budget always does. Observing a
+		// deadline inside Dispatch proves the goroutine is not riding the
+		// HTTP request's lifetime — abandoning the request cannot abort a
+		// ticket the user was told exists.
+		stub := &ticketStubProvider{delay: 50 * time.Millisecond}
+		fake, h := newFixture(stub)
+
+		resp := tkRequest(h, dispatchTestBody)
+		require.Equal(t, http.StatusCreated, resp.Code)
+
+		waitForTicketCalls(t, stub, 1)
+		assert.True(t, stub.sawDeadline(), "the dispatch ctx must carry the budget deadline")
+		assert.Equal(t, "queued", fake.ticketSnapshot()[0].DispatchStatus)
+	})
+}
+
+// TestTicketDispatchNonBlocking is the TKT-04 structural proof: the 201 is
+// on the wire long before a slow endpoint settles, and the dispatch still
+// happens afterwards.
+func TestTicketDispatchNonBlocking(t *testing.T) {
+	fake := newTicketsFakeStore()
+	fake.tkSeedTurn(tkTestSession, 42, "assistant", tkTurnTs, "compliance", "11,12")
+	stub := &ticketStubProvider{delay: 300 * time.Millisecond, result: ticket.DispatchResult{ExternalRef: "EXT-1", Attempts: 1}}
+	h := newTicketsHertz(dispatchTestDeps(fake, stub))
+
+	start := time.Now()
+	resp := tkRequest(h, dispatchTestBody)
+	elapsed := time.Since(start)
+
+	require.Equal(t, http.StatusCreated, resp.Code, "body: %s", resp.Body.String())
+	var body struct {
+		DispatchStatus string `json:"dispatch_status"`
+	}
+	tkDecode(t, resp, &body)
+	assert.Equal(t, "queued", body.DispatchStatus)
+
+	assert.Less(t, elapsed, 150*time.Millisecond,
+		"the 201 must not wait for the outbound dispatch (provider needs 300ms, response took %s)", elapsed)
+
+	waitForTicketCalls(t, stub, 1)
+	assert.True(t, stub.sawDeadline(), "the dispatch ctx must carry the budget deadline (background-derived, not the request ctx)")
+}
+
+// ---------------------------------------------------------------------------
+// structural locks — dispatch surface + assembly wiring
+// ---------------------------------------------------------------------------
+
+// TestTicketsDispatchSourceDiscipline keeps the dispatch surface honest at
+// source level: no row mutation, no direct SQL, the background-derived
+// context and the panic containment present (comment lines are exempt —
+// the lock is on statements, not prose).
+func TestTicketsDispatchSourceDiscipline(t *testing.T) {
+	src, err := os.ReadFile("tickets.go")
+	require.NoError(t, err)
+	lines := strings.Split(string(src), "\n")
+
+	var offenders []string
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") || trimmed == "" {
+			continue
+		}
+		for _, verb := range []string{"UPDATE ", "DELETE ", "Exec("} {
+			if strings.Contains(line, verb) {
+				offenders = append(offenders, fmt.Sprintf("line %d contains %q: %s", i+1, verb, trimmed))
+			}
+		}
+	}
+	assert.Empty(t, offenders, "tickets.go must stay INSERT-only and SQL-free:\n%s", strings.Join(offenders, "\n"))
+
+	s := string(src)
+	assert.Contains(t, s, "context.Background()", "the dispatch goroutine must not ride the request context")
+	assert.Contains(t, s, "recover()", "a panicking provider must be contained (T-29-07)")
+}
+
+// TestTicketAssemblyWiring locks the env-driven assembly: five knobs, the
+// registry constructor, and TWO fail-fast branches (webhook without a URL,
+// unknown provider name) in cmd/server/main.go.
+func TestTicketAssemblyWiring(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "cmd", "server", "main.go"))
+	require.NoError(t, err, "the assembly lock reads the main package source relative to internal/server")
+	s := string(src)
+
+	for _, env := range []string{
+		"SKILLFORGE_TICKET_PROVIDER",
+		"SKILLFORGE_TICKET_WEBHOOK_URL",
+		"SKILLFORGE_TICKET_WEBHOOK_TIMEOUT_MS",
+		"SKILLFORGE_TICKET_WEBHOOK_RETRIES",
+		"SKILLFORGE_TICKET_DISPATCH_BUDGET_MS",
+	} {
+		assert.Contains(t, s, env, "%s must be read at the assembly point (zero hardcoding)", env)
+	}
+	assert.Contains(t, s, "ticket.NewProvider", "the provider must come from the registry, never hand-rolled")
+
+	fatals := 0
+	for _, line := range strings.Split(s, "\n") {
+		if strings.Contains(line, "log.Fatalf") && strings.Contains(strings.ToLower(line), "ticket") {
+			fatals++
+		}
+	}
+	assert.GreaterOrEqual(t, fatals, 2,
+		"webhook-without-URL and unknown provider must both log.Fatalf (D16-08-D: no silent degradation)")
+}
 
 // TestTicketsRouteRegisteredOnce keeps the route table honest: POST
 // /api/tickets is bound exactly once, as a POST, in server.go.
