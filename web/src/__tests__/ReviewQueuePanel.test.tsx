@@ -42,8 +42,9 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/** Method-aware fetch stub — GET/POST share URLs across status tabs. */
-function stubFetch(routes: Array<{ url: string; method?: string; respond: () => Response }>): FetchMock {
+/** Method-aware fetch stub — GET/POST share URLs across status tabs.
+ *  `respond` may return a deferred Promise for in-flight assertions. */
+function stubFetch(routes: Array<{ url: string; method?: string; respond: () => Response | Promise<Response> }>): FetchMock {
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = (init?.method ?? 'GET').toUpperCase();
@@ -198,11 +199,11 @@ describe('ReviewQueuePanel — pending queue', () => {
     expect(await screen.findByTestId('review-error')).toHaveTextContent('复核队列加载失败（点击重试）');
     expect(screen.getByTestId('review-error-detail')).toHaveTextContent('admin token required');
 
-    // Retry链 — a successful re-GET recovers the view.
+    // Retry链 — the error line IS the retry affordance; a successful re-GET recovers the view.
     fetchMock.mockImplementation((input: RequestInfo | URL) =>
       Promise.resolve(String(input) === PENDING_URL ? pendingResponse() : jsonResponse({ error: 'x' }, 404)),
     );
-    fireEvent.click(screen.getByTestId('review-retry'));
+    fireEvent.click(screen.getByTestId('review-error'));
     await waitFor(() => expect(screen.getByTestId('review-row-7')).toBeInTheDocument());
     stop();
   });
@@ -306,7 +307,16 @@ describe('ReviewQueuePanel — disposition verb', () => {
     const { stop } = captureToasts();
     let resolvePost: (r: Response) => void = () => {};
     stubFetch([
-      { url: PENDING_URL, respond: pendingResponse },
+      {
+        url: PENDING_URL,
+        respond: (() => {
+          let calls = 0;
+          return () => {
+            calls += 1;
+            return calls > 1 ? jsonResponse({ pending: [], total: 0 }) : pendingResponse();
+          };
+        })(),
+      },
       {
         url: DISPOSE_URL,
         method: 'POST',
