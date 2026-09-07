@@ -24,6 +24,7 @@ import { useAppStore } from '../../store/app-store';
 import CapacityMonitor from './CapacityMonitor';
 import ImportBatchList from './ImportBatchList';
 import KnowledgeBaseList from './KnowledgeBaseList';
+import DocUpload from './DocUpload';
 import KPIDefinitionList from './KPIDefinitionList';
 import SkillManagementList from './SkillManagementList';
 import ScheduledTaskList from './ScheduledTaskList';
@@ -157,7 +158,12 @@ export default function AdminDashboard() {
         className="flex-1 overflow-y-auto p-4"
       >
         {adminSubroute === 'batches' && <ImportBatchList />}
-        {adminSubroute === 'bases' && <KnowledgeBaseList />}
+        {adminSubroute === 'bases' && (
+          <>
+            <KnowledgeBaseList />
+            <DocUpload />
+          </>
+        )}
         {adminSubroute === 'kpis' && <KPIDefinitionList />}
         {adminSubroute === 'skills' && <SkillManagementList />}
         {adminSubroute === 'schedules' && <ScheduledTaskList />}
