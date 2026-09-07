@@ -232,7 +232,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 29-08-PLAN.md — FE admin：「反馈」第 6 tab（口径注 + 5 汇总卡 0 票「—」+ 日/周趋势 + per-KB 脚注 + 待复核 cross-link）+「复核」第 7 tab（按 chunk 聚合 + 三处置 + 处置历史 + FBK-05 信任横幅）（FBK-02/03 + TKT-03，D-29-10/11/12）
+- [x] 29-08-PLAN.md — FE admin：「反馈」第 6 tab（口径注 + 5 汇总卡 0 票「—」+ 日/周趋势 + per-KB 脚注 + 待复核 cross-link）+「复核」第 7 tab（按 chunk 聚合 + 三处置 + 处置历史 + FBK-05 信任横幅）（FBK-02/03 + TKT-03，D-29-10/11/12）
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -289,7 +289,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 7/9 | In progress (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 + 29-05; Wave 4: 29-06 + 29-07 shipped) | - |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 8/9 | In progress (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 + 29-05; Wave 4: 29-06 + 29-07; Wave 5: 29-08 shipped — 29-09 verify gate remaining) | 2026-09-08 |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---

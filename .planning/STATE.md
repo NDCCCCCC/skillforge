@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 29
-current_plan: 7
+current_plan: 8
 status: executing
-last_updated: "2026-09-07T21:35:00.000Z"
-last_activity: 2026-09-08 -- 29-07 SHIPPED (FE 反馈/工单接真: FeedbackRow 真实端点状态机 + SfToast 全局视口, commits 90c84ff/72c77dc + 0da0428/cff8267)
+last_updated: "2026-09-07T22:00:00.000Z"
+last_activity: 2026-09-08 -- 29-08 SHIPPED (admin FE: 反馈第 6 tab + 复核第 7 tab + SfToast /admin 挂载, commits ef2343c/09ced1d/99456a8/caf9981/13d1acd)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 33
-  completed_plans: 27
+  completed_plans: 28
   percent: 50
 ---
 
@@ -20,9 +20,11 @@ progress:
 ## Current Position
 
 Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
-Plan: 7 of 9
-Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 + 29-07 shipped, 29-08 next)
-Last activity: 2026-09-08 -- 29-07 SHIPPED (FE 反馈/工单接真: FeedbackRow 从 toast 占位重写为真实端点状态机 + SfToast 首个 sf-toast 监听者挂进 chat/eval 分支, commits 90c84ff/72c77dc + 0da0428/cff8267)
+Plan: 8 of 9
+Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 + 29-07 shipped; Wave 5: 29-08 shipped — 29-09 verify gate next)
+Last activity: 2026-09-08 -- 29-08 SHIPPED (admin FE: D-29-12 七 tab shell + FBK-02 复核队列 + FBK-03 反馈仪表盘, commits ef2343c + 09ced1d/99456a8 + caf9981/13d1acd)
+
+**Phase 29 Plan 29-08 delivery summary (Wave 5, 2026-09-08):** FBK-02/FBK-03 的 admin 渲染半面 + TKT-03 admin 半面 — 5 个原子 commit（ef2343c Task1 + 09ced1d RED/99456a8 GREEN + caf9981 RED/13d1acd GREEN，双 TDD 环），FE 三 plan 测试文件 32/32 + `tsc --noEmit` 干净 + 全量回归 74 文件/595 用例全绿（29-07 基线 71/563 → +3 文件 +32 用例）+ 零新依赖/零新 token。store 层唯一变更是 `adminSubroute` union 与 setter 签名各追加 `'feedback' | 'review'`（default 仍 'batches'，零新 zustand 字段）。`AdminDashboard.tsx`：7 tab（反馈第 6 `admin-tab-feedback`/MessageSquare、复核第 7 `admin-tab-review`/Inbox，顺序单测锁定）+ 两 ViewBody 分支 + 根 div 挂 `<SfToast />`（App.tsx /admin early-return 的 toast 通道补全），URL sync useEffect 零改动。`ReviewQueuePanel.tsx`：逐字 FBK-05 信任横幅常驻（「不会自动修改知识库内容」）+ pending 按 chunk 聚合（报告次数 ≥2 → text-status-needs-info font-semibold，D-29-08）+ 三处置单点击终态（busy 按行禁用 → 201 `{closed_count}` → 服务端真相 refetch + success toast 报关闭条数；失败行保留 + body.error 行内原文 + error toast）+ 说明（n）aria-expanded 展开逐条报告（空说明「（未填写说明）」）+ 既有 fetchChunkContent 预览（加载态 + 「无法加载 chunk 内容」回退，零新读面）+ 处置历史/disposition 过滤/badge 三色（已更新=compliant/误报=non-compliant/忽略=unanswered）。`FeedbackMetricsPanel.tsx`：逐字全票口径注常驻（D-29-10）+ FE 永不自行算比率（服务端 number|null → null 渲染「—」，0 票测试扫 document.body 断言无 0%/NaN）+ 5 汇总卡（帮助率/outdated 率 24px/600 mono）+ 维度/时间范围切换重取、趋势粒度纯客户端重分桶（导出 `bucketWeekly` 纯函数：按最新日锚定聚 7 天桶，零第二请求形态，切粒度 fetch 计数不变有测试锁定）+ 三条 Sparkline 经 `--color-sparkline` 行内注入 compliant/non-compliant/needs-info 三色（共享 Phase-17 组件零改动）+ per-KB 双计脚注逐字 + `待复核 {pending_count} 条` cross-link → setAdminSubroute('review')（AdminDashboard 集成测试锁）。4 个测试侧 auto-fix（retry 即 error 行本身、busy stub 二次翻转、日 series 并集日轴 0 填充 3 点、Sparkline aria-label 恒复数）+ 1 个诚实偏离：展开子行相对时间为行级（29-05 冻结线形无逐条报告时间戳，逐条渲染即编造）。REQUIREMENTS FBK-02/FBK-03/TKT-03 行按 phase-close 约定保持 Pending（admin 半面实质已交付，29-09 翻转）。
 
 **Phase 29 Plan 29-07 delivery summary (Wave 4, 2026-09-08):** FBK-04 + TKT-03 的 chat 侧全部 — 4 个原子 commit（90c84ff RED/72c77dc GREEN + 0da0428 RED/cff8267 GREEN，双 TDD 环），FE 全量回归 563/563（71 文件，既有 535 + 新增 28）+ `tsc --noEmit` 干净 + 零新依赖/零新 token。新组件 `web/src/components/layout/SfToast.tsx`：应用内第一个 `sf-toast` 监听者（listener + 视口同组件，卸载移除，镜像 App.tsx wizard-success 先例）——latest-wins 单槽、新消息重置计时器、error 6000ms / success+info 4000ms 自动消失、宽松 kind 映射（'error'→error / 'success'|'compliant'→success / 其它含缺省→info，SessionDrawer 既有 `kind:'error'` 派发零改动可用）；App.tsx 恰 2 个挂载点（chat + eval 分支），admin early-return 处注释指明归 29-08 在 AdminDashboard 根 div 挂载。`FeedbackRow.tsx` 整文件重写（保留 VOTE_META/testid 套件/.feedback-row 骨架）：POST /api/feedback + /api/tickets 公开端点 raw fetch（无 X-Admin-Token），锁定态服务端驱动——201 recorded → active pill + 其余禁用 + 逐字 success toast（「已记录反馈：有帮助 / 没帮助 / 已标记知识可能过时，将进入人工复核」）、200 already_recorded → 渲染服务端 verdict + info toast「该消息已反馈过：…」、失败（网络断/5xx，body.error 真实原因回退 `HTTP {status}` 文案）→ 不锁定可重试 + error toast、votedVerdict history 回显 → 初始锁定零请求；outdated 选中展开行内 1 行说明框（提交说明，空注干净提交随 body.comment 发送并收起，锁定 pill aria-label 仅在存有说明时带「已附说明」）；创建工单展开行内表单（非 modal）：问题描述（必填）预填 chatText 截 200 字、mono 引用条（会话短 id · 轮次 #n · chunk chips / 无引用）、4 态诚实文案逐字（none 留档 / queued 排队外发 / already_exists / 失败行内错误 + toast 且表单保持可改可重提）+ 成功后收起为结果行且 trigger 变「已建单」禁用。`MessageBubble.tsx`：data-turn part 派生 turnId（>0 守卫，缺失→诚实禁用 title「该消息缺少服务端轮次标识，暂时无法反馈」，T-29-06 不编造身份）+ votedVerdict、verdict.citations 容错派生 chunkIds（只读展示，POST body 零 chunk 上报，D-29-05/T-29-04）、sessionId 取 store activeSessionId、chatText 作 messageText。POST body 形状测试锁定（无 messageId，Pitfall 7）；占位文案「功能即将上线」清零 + dangerouslySetInnerHTML 双文件计数 0（T-29-09 全 JSX 文本节点）。1 个 test-side auto-fix（aria-label 缺失时 getAttribute 返 null 的断言改为 not.toHaveAttribute）。线形契约零漂移：29-06 并行未探测其 SUMMARY，冻结契约（ticket_number/dispatch_status/already_exists）实测吻合。REQUIREMENTS FBK-04/TKT-03 行按 phase-close 约定保持 Pending（chat 侧实质已交付，29-08 交付 admin 侧渲染半面）。
 
@@ -44,7 +46,7 @@ Last activity: 2026-09-08 -- 29-07 SHIPPED (FE 反馈/工单接真: FeedbackRow 
 
 Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02 + GRF-03 + GRF-05)
 
-**Next action:** Continue Phase 29 execution — Wave 5: 29-08 (admin FE: 「反馈」第 6 tab + 「复核」第 7 tab, mounts its own SfToast inside AdminDashboard root div per the split documented at App.tsx's admin early-return) then 29-09 (verify gate 收尾).
+**Next action:** Continue Phase 29 execution — Wave 6: 29-09 (verify gate 收尾: 全 plan 测试/grep 门 + REQUIREMENTS FBK-02/FBK-03/TKT-03 行翻转 + phase closeout).
 
 **Phase 27 residues (non-blocking):**
 
