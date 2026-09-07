@@ -218,7 +218,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 29-02-PLAN.md — 反馈/复核/工单存储层：4 张 additive 新表（feedback / feedback_chunk_refs / feedback_dispositions / tickets）+ 13 个 Store 方法 + InsertOnly 结构锁 + pending 派生视图（处置后重开口径）+ 全票分母指标 SQL（FBK-01/02/03 + TKT-02 存储面，D-29-02/08/09/10/14 + Open Q1/Q2 resolved）
+- [x] 29-02-PLAN.md — 反馈/复核/工单存储层：4 张 additive 新表（feedback / feedback_chunk_refs / feedback_dispositions / tickets）+ 14 个 Store 方法 + InsertOnly 结构锁 + pending 派生视图（处置后重开口径）+ 全票分母指标 SQL（FBK-01/02/03 + TKT-02 存储面，D-29-02/08/09/10/14 + Open Q1/Q2 resolved）— SHIPPED 2026-09-08（fcc0383 + 3210b56 + e45e72a；TestFeedbackSchema/TestTicketsSchema 列序+索引+UNIQUE/CHECK DDL 锁 + fresh/legacy 双库；TestFeedbackInsertOnly/TestTicketsInsertOnly source-grep 零行变异动词；重放 inserted=false 读回首行；per-vote NOT EXISTS 派生 pending 视图锁重开口径；per-KB 一票多 KB 每 KB 各计一次 godoc+测试双落档）
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -289,7 +289,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 2/9 | In progress (Wave 1: 29-01 + 29-03 shipped) | - |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 3/9 | In progress (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped) | - |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---

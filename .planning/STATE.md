@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 29
-current_plan: 2
+current_plan: 3
 status: executing
-last_updated: "2026-09-07T19:05:30.000Z"
-last_activity: 2026-09-08 -- 29-03 SHIPPED (TKT-01 ticket provider interface, internal/ticket)
+last_updated: "2026-09-07T19:36:54.000Z"
+last_activity: 2026-09-08 -- 29-02 SHIPPED (FBK-01/02/03 + TKT-02 store layer: 4 additive tables + 14 Store methods, INSERT-only locks)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 33
-  completed_plans: 25
+  completed_plans: 26
   percent: 50
 ---
 
@@ -20,9 +20,11 @@ progress:
 ## Current Position
 
 Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
-Plan: 2 of 9
-Status: Executing Phase 29 (Wave 1 complete: 29-01 + 29-03 shipped; 29-02 next)
-Last activity: 2026-09-08 -- 29-03 SHIPPED (TKT-01 internal/ticket provider surface, commits 625b143 + d585b14 + 370944a)
+Plan: 3 of 9
+Status: Executing Phase 29 (Wave 1 complete: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; 29-04 next)
+Last activity: 2026-09-08 -- 29-02 SHIPPED (FBK-01/02/03 + TKT-02 store layer, commits fcc0383 + 3210b56 + e45e72a)
+
+**Phase 29 Plan 29-02 delivery summary (Wave 2, 2026-09-08):** FBK-01/02/03 + TKT-02 的存储层全部 — 四张 additive 新表 + 14 个 Store 新方法 + INSERT-only 结构锁，3 个原子 commit（fcc0383 schema/DDL 锁 + 3210b56 feedback 面 + e45e72a tickets 面），WSL `go build ./...` + `go test ./internal/store/...` 全绿。`schema.go`：feedback / feedback_chunk_refs / feedback_dispositions / tickets 四表全 `CREATE TABLE IF NOT EXISTS` 零 ALTER；feedback 与 tickets 均带 `UNIQUE(session_id, turn_id)` 幂等键（D-29-02 一次一票 / D-29-14 一消息一单，DB 约束是唯一真相，FE 锁定态只是缓存）；verdict 与 dispatch_status CHECK 封闭词表（knowledge_bases.role 先例）；6 个索引 const 走 migrate() 尾部（D14-E1 单一形态）。`store.go`：+7 类型（FeedbackRow/ChunkRef/DispositionRow/PendingReviewRow/FeedbackCountRow/FeedbackTrendRow/TicketRow）+14 方法（PutFeedback/FeedbackByTurn/PutFeedbackChunkRefs/VotedVerdictsBySession/PutDisposition/PendingReviewChunks/ResolvedDispositions/PendingReviewCount/FeedbackMetricsBySkill/FeedbackMetricsByKB/FeedbackDailyTrend/GetSessionTurn/PutTicket/TicketByTurn），PutTicket/TicketByTurn 按 plan 处方延后到 Task 3 的 commit 才进接口（提前声明会撞碎 var _ store.Store 编译门）。`feedback.go`/`tickets.go`：整文件镜像 kpi_calls.go + session.go ON CONFLICT 形态——写路径仅 3+1 个且全部 DO NOTHING/无冲突键，source-grep 双锁（TestFeedbackInsertOnly/TestTicketsInsertOnly 断言零 "UPDATE "/"DELETE "）；RowsAffected 守卫令重放返回 inserted=false 且读回首行（LastInsertId 永不在重放路径上问询）。pending 复核视图是纯派生读模型（per-vote NOT EXISTS：最新处置时间戳赢 + 处置后新报告重开 = Open Q1；report_count 计未解决批次）；指标 SQL 只出原始计数（D-29-10 全票分母比率归 29-08 Go 侧算），per-KB 一票涉多 KB 每 KB 各计一次（Open Q2，godoc+测试双落档）；GetSessionTurn/TicketByTurn/VotedVerdictsBySession 全部 session_id 绑定（T-29-06）。关键实现发现：sqlite 不给 MAX() 聚合列传 DATETIME decltype（driver 按 TEXT 交付）→ parseSQLiteTS 四布局解析；刻意保留 mattn 原生 time.Time 绑定而非 RFC3339Nano TEXT——前者可选小数格式使字典序比较时间序正确（避开 D16-03-B 尾零陷阱）。2 个 auto-fix 偏差：schema.go 既有 checkpoint 注释含字面 "DO UPDATE"（Task 1 验收 grep 会炸，仅改注释措辞）；PutTicket 对空 provider/dispatch_status 归一化为 'none'（Go 零值字段绕过 SQL DEFAULT，非空非法值仍被 CHECK fail-closed）。REQUIREMENTS FBK-01/02/03/TKT-02 保持 Pending（存储半面已交付，端点归 29-05/29-06、FE 归 29-07/29-08）。
 
 **Phase 29 Plan 29-03 delivery summary (Wave 1, 2026-09-08):** TKT-01 接口预留面 — 新包 `internal/ticket`（纯 stdlib 零 cgo，Windows 原生测试）。`ticket.go`：`Provider` 窄接口恰好一个方法 `Dispatch(ctx, Ticket) (DispatchResult, error)`（IndexerBackend 同款最小面纪律，reflect 锁定）+ `Ticket`/`DispatchResult`（ExternalRef 空 = 无外部回执）/`ProviderNotWiredError` 503 body 常量/`Config`（本包零 env 读取）。`registry.go`：`NewProvider(name, cfg)` 配置驱动三分支——"none" → `noneProvider{}` Dispatch 零副作用直接成功（仅落库不外发）、"webhook" → `newWebhookProvider(cfg)`（空 WebhookURL 拒绝，Rule 2 偏差：给 29-06 main.go 单一 error 路径覆盖 webhook-无-URL 与未知 provider 名两个 log.Fatalf 分支）、其它值 → error 列出合法值；fatal 决策留装配点（D16-08-D）。`webhook.go`：per-instance `*http.Client`（`DefaultTransport.Clone()`，零进程级默认 client 引用）+ `retries+1` 有界尝试 + 尝试间 1s 固定退避（select 监听 ctx.Done）+ 每次尝试 `context.WithTimeout` + 2xx 即成功 + payload 只进 JSON body（ticketNumber/sessionId/turnId/description/chunkIds/skillId，chunkIds nil→`[]`）+ 可选 `X-SkillForge-Ticket-Secret` 头（导出常量 `ticket.SecretHeader`）；URL 零用户输入（T-29-02 测试断言 rawQuery=="" ）。14 个 hermetic 测试全绿（TestNewProvider 5 子用例 + TestWebhookDispatch 7 子用例含慢端点超时界定与父 ctx 取消打断退避）；go vet/gofmt clean；`go build ./...` 仅 cmd/server cgo 链接挂（已记录 D15-01-1 环境限制，本包不在失败面）。TDD：Task 1 RED(625b143)+GREEN(d585b14) 齐；Task 2 无独立 RED（registry↔webhookProvider 编译耦合，webhook.go 随 Task 1 GREEN 提交，测试 370944a 落地即绿——SUMMARY 已记录 advisory 偏差）。真实工单系统（Jira/ServiceNow）明确 Out of Scope，本包即里程碑承诺的全部。
 
@@ -34,7 +36,7 @@ Last activity: 2026-09-08 -- 29-03 SHIPPED (TKT-01 internal/ticket provider surf
 
 Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02 + GRF-03 + GRF-05)
 
-**Next action:** Continue Phase 29 execution — 29-02 feedback/tickets store layer next (Wave 2; 29-06 consumes this plan's `internal/ticket` contract).
+**Next action:** Continue Phase 29 execution — 29-04 data-turn wire 帧 next (Wave 2; consumes 29-02's VotedVerdictsBySession for the history `voted_verdict` inline field).
 
 **Phase 27 residues (non-blocking):**
 

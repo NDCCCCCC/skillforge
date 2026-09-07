@@ -82,6 +82,9 @@ Each task was committed atomically:
 1. **Task 1: 四张新表 DDL + migrate() 尾部索引 + PRAGMA/schema 断言测试** - `fcc0383` (feat)
 2. **Task 2: Store 接口新方法 + feedback.go 读写实现** - `3210b56` (feat)
 3. **Task 3: tickets.go 幂等落库 + InsertOnly 锁** - `e45e72a` (feat)
+4. **Cleanup: schema.go index doc-comment reflow to gofmt preference** - `fdb3255` (style, comment-only)
+
+**Plan metadata:** `2ef1864` (docs: complete plan)
 
 _Note: Tasks 2 and 3 are tdd="true" but have no standalone RED commit — the Store interface and its SQLiteStore implementation must land in the same commit or `var _ store.Store` breaks the build (D16-03 lesson; same advisory posture as 29-03 Task 2). RED was observed before each GREEN commit as the documented build failure on the undefined surface (store.FeedbackRow / s.PutFeedback … undefined)._
 
@@ -144,6 +147,12 @@ None — every method is wired end-to-end against the real tables; no placeholde
 - 29-06 (tickets endpoint) has PutTicket/TicketByTurn plus the documented "TKT-{row id}" number derivation convention
 - 29-09's "DDL 只用 DO NOTHING" grep gate is already satisfiable: all three touched files grep zero for `DO UPDATE` and the two new files zero for `UPDATE `/`DELETE `
 - Watch item for 29-05: comment text rides GROUP_CONCAT(char(10)) into PendingReviewChunks.Comments — a multi-line comment will split into multiple list entries (plan-prescribed trade-off; FE renders the list, so impact is cosmetic)
+
+## Self-Check: PASSED
+
+- Files verified on disk: internal/store/sqlite/{feedback.go, tickets.go, feedback_test.go, tickets_test.go, schema.go}, internal/store/store.go, 29-02-SUMMARY.md — all FOUND
+- Commits verified in git log: fcc0383 (Task 1), 3210b56 (Task 2), e45e72a (Task 3), fdb3255 (style cleanup), 2ef1864 (plan docs) — all FOUND
+- Plan-level verification re-run at HEAD: WSL `go build ./...` exit 0 + `go test ./internal/store/... -count=1` green + `grep -c "DO UPDATE"` == 0 across schema.go / feedback.go / tickets.go
 
 ---
 *Phase: 29-feedback-loop-ticket-interface*
