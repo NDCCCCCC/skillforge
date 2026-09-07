@@ -149,15 +149,53 @@ type reportEmitBinder interface{ setEmit(fn ReportPublishEmitFunc) }
 // is the kb registry ActiveSlugs snapshot, Plan 26-06).
 type kbBinder interface{ bindKBRegistry(reg kb.Registry) error }
 
+// sessionCloner is implemented by handlers that carry per-request
+// bindable state (sessionID / skillID / ruleMatcher / tier vocabulary —
+// currently memory:facts). CR-04 (26-REVIEW): those fields must never be
+// written on the shared singleton, because BuildToolsForSkill runs per
+// HTTP request on its own goroutine; the handler is asked for a
+// request-scoped copy instead.
+type sessionCloner interface {
+	cloneForSession(reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher) (tool.InvokableTool, error)
+}
+
+// HandlerForSession returns the write handler for target, scoped to the
+// per-request identity. Handlers WITHOUT bindable state are returned as
+// the shared singleton (they are read-only after init, and the D11-B3
+// map is the source of truth); handlers WITH bindable state return a
+// fresh copy carrying (reg, sessionID, skillID, ruleMatcher), so two
+// concurrent requests never share mutable fields and an interrupt's
+// audit row can only name the session that actually issued it.
+//
+// Fail-closed contract (T-26-06-2): a nil registry, or one without an
+// authority-role KB, aborts the clone for handlers that need the
+// vocabulary — the returned error is the caller's signal to refuse tool
+// construction, never a fallback to a compiled-in tier list. A nil
+// handler (unregistered target) returns (nil, nil) and stays the
+// caller's silent-skip case.
+func HandlerForSession(target string, reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher) (tool.InvokableTool, error) {
+	h := hitlHandlers[target]
+	if h == nil {
+		return nil, nil
+	}
+	if c, ok := h.(sessionCloner); ok {
+		return c.cloneForSession(reg, sessionID, skillID, ruleMatcher)
+	}
+	return h, nil
+}
+
 // BindKBRegistry snapshots the knowledge-base registry into every
-// handler whose schema needs it (T-26-06-2). Called from the agent
-// package's BuildToolsForSkill before any Info() publishes a schema,
-// so the LLM never sees a vocabulary that is not the registry's. A nil
-// registry or a registry without an authority-role KB fails closed —
-// the returned error is the caller's signal to refuse tool
-// construction, never to fall back to a compiled-in tier list. The
-// last bind wins (the handlers are shared singletons bound from the
-// single-threaded Agent-construction path — the InjectDeps posture).
+// handler whose schema needs it (T-26-06-2). A nil registry or a
+// registry without an authority-role KB fails closed — the returned
+// error is the caller's signal to refuse construction, never to fall
+// back to a compiled-in tier list.
+//
+// CR-04 (26-REVIEW): this is NO LONGER on the per-request path.
+// BuildToolsForSkill now obtains a request-scoped clone via
+// HandlerForSession instead of mutating the shared singletons — the
+// "last bind wins" posture was a data race plus a cross-session audit
+// mis-attribution once BuildRunner ran per HTTP request. This helper
+// stays for boot-time / test construction that binds explicitly.
 func BindKBRegistry(reg kb.Registry) error {
 	for _, h := range hitlHandlers {
 		if b, ok := h.(kbBinder); ok {

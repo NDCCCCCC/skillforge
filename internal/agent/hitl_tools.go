@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -68,13 +67,19 @@ import (
 // T-26-06-2). Read-only Skills never construct a hitl tool, so their
 // nil-registry call stays legal.
 //
+// CR-04 (26-REVIEW): the whitelisted handler for a bindable target is a
+// per-request COPY (hitl.HandlerForSession → cloneForSession). The
+// handlers in hitlHandlers are package-global singletons while this
+// function runs per HTTP request on its own goroutine, so the earlier
+// bind-on-the-shared-singleton posture (BindKBRegistry + WithContext)
+// was both a Go data race and a cross-session audit mis-attribution.
+//
 // D11-B1 INVARIANTS (test by internal/agent/hitl_tools_test.go):
 //
 //   - Same (ctx, manifest) → same []tool.BaseTool. No caching. No
-//     global state. The function is pure. (26-06: the registry bind on
-//     the shared handler follows the same last-write-wins posture
-//     WithContext and InjectDeps already document — the whitelist
-//     recompute itself stays stateless.)
+//     global state. The function is pure: it reads the registry map and
+//     returns fresh copies for bindable targets, never mutating the
+//     shared singletons.
 //   - Read-only Skills (writes: nil or len==0) → 0-element slice.
 //     The LLM never sees a write Tool schema.
 //   - Unknown targets (writes: ["external_api"]) → silently skipped.
@@ -97,9 +102,9 @@ import (
 // 11-05 EXTENSION (HITL-08 / D11-D1): the signature carries the
 // per-session context (sessionID, skillID, ruleMatcher) so each
 // whitelisted HITL Tool is bound to the CURRENT session + Skill + rule
-// store via WithContext. A nil ruleMatcher degrades to
-// hitl.NoopRuleMatcher (no auto-pass — every write interrupts; the
-// fail-closed direction).
+// store (via the clone, not a shared-instance mutation — CR-04). A nil
+// ruleMatcher degrades to hitl.NoopRuleMatcher (no auto-pass — every
+// write interrupts; the fail-closed direction).
 func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, skillID string, ruleMatcher hitl.RuleMatcher, reg kb.Registry) ([]tool.BaseTool, error) {
 	if manifest == nil {
 		return nil, errors.New("agent.BuildToolsForSkill: manifest is nil")
@@ -115,17 +120,19 @@ func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, 
 		return nil, nil
 	}
 
-	// Plan 26-06 / T-26-06-2: bind the registry BEFORE any schema is
-	// published. Only Skills that actually declare the memory:facts
-	// write target need the vocabulary, which keeps read-only Skill
-	// construction registry-free. A nil registry (or one without an
-	// authority-role KB) aborts the whitelist here — the error path is
-	// the fail-closed contract, not a degraded Enum.
-	if slices.Contains(writes, hitl.MemoryFactsTarget) {
-		if err := hitl.BindKBRegistry(reg); err != nil {
-			return nil, fmt.Errorf("agent.BuildToolsForSkill: %w", err)
-		}
-	}
+	// Plan 26-06 / T-26-06-2: the registry (and the per-session identity)
+	// is bound on a REQUEST-SCOPED handler copy inside the loop below via
+	// hitl.HandlerForSession. CR-04 (26-REVIEW): the handlers in
+	// hitlHandlers are package-global singletons and BuildToolsForSkill
+	// runs per HTTP request on its own goroutine, so binding
+	// (BindKBRegistry + WithContext) on the shared instance was a data
+	// race AND let the last in-flight request re-attribute another
+	// session's memory:facts interrupt in the audit trail. Only Skills
+	// that actually declare the memory:facts write target need the
+	// vocabulary — read-only Skill construction stays registry-free — and
+	// a nil registry (or one without an authority-role KB) aborts the
+	// whitelist there: the error path is the fail-closed contract, not a
+	// degraded Enum.
 
 	// Collect (name, tool) pairs so we can sort by tool name without
 	// calling Info() twice per pair. ctx is context.Background()
@@ -148,18 +155,24 @@ func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, 
 		if !hitl.Contains(hitl.AllowedWriteTargets, target) {
 			continue
 		}
-		// Handler not yet registered (e.g. "review_report" before
-		// 11-04 lands) → silently skip. The LLM does NOT see a
-		// Tool schema for an unregistered handler — see Task 2's
-		// hitlHandlers var declaration comment.
-		h := hitl.LookupHandler(target)
+		// Request-scoped handler (CR-04): a fresh copy carrying
+		// (reg, sessionID, skillID, ruleMatcher) for handlers with
+		// bindable state (memory:facts), the shared read-only singleton
+		// otherwise. A nil result means "allowed but unregistered"
+		// (e.g. "review_report" before 11-04 lands) → silently skip:
+		// the LLM does NOT see a Tool schema for an unregistered
+		// handler — see Task 2's hitlHandlers var declaration comment.
+		h, err := hitl.HandlerForSession(target, reg, sessionID, skillID, ruleMatcher)
+		if err != nil {
+			return nil, fmt.Errorf("agent.BuildToolsForSkill: %w", err)
+		}
 		if h == nil {
 			continue
 		}
-		info, err := h.Info(context.Background())
-		if err != nil {
+		info, infoErr := h.Info(context.Background())
+		if infoErr != nil {
 			return nil, fmt.Errorf(
-				"agent.BuildToolsForSkill: tool %s Info: %w", target, err,
+				"agent.BuildToolsForSkill: tool %s Info: %w", target, infoErr,
 			)
 		}
 		if seenNames[info.Name] {
@@ -167,14 +180,11 @@ func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, 
 		}
 		seenNames[info.Name] = true
 
-		// 11-05: bind the per-session context (sessionID + skillID +
-		// ruleMatcher) so the Tool's Pass-1 D11-D1 rule lookup and
-		// Pass-2 audit rows are scoped to THIS session + Skill. nil
-		// ruleMatcher → the Tool's own NoopRuleMatcher default
-		// (fail-closed toward human review).
-		if mft, ok := h.(*hitl.MemoryFactsTool); ok {
-			mft.WithContext(sessionID, skillID, ruleMatcher)
-		}
+		// The per-session context (sessionID + skillID + ruleMatcher)
+		// traveled INTO the handler copy above, so the Tool's Pass-1
+		// D11-D1 rule lookup and Pass-2 audit rows are scoped to THIS
+		// session + Skill. nil ruleMatcher → the Tool's own
+		// NoopRuleMatcher default (fail-closed toward human review).
 		pairs = append(pairs, pair{name: info.Name, t: h})
 	}
 

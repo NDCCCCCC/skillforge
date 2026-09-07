@@ -260,9 +260,11 @@ func testThreatHitl05WritesEnforcement(t *testing.T) {
 func testThreatHitl07FrozenArgsByteEquality(t *testing.T) {
 	// (b) sha256 baseline — InvokableRun function body.
 	// Plan 26-06 shifted the range from 263-365 to 320-422 (registry
-	// snapshot fields + constructor added above the function); the hash
-	// is unchanged, so the body did not rotate.
-	actual := sha256LinesRange(t, "hitl_memory_facts.go", 320, 422)
+	// snapshot fields + constructor added above the function); CR-04
+	// (26-REVIEW) shifted it again to 339-441 (cloneForSession replaced
+	// the WithContext shared-singleton mutator above the function); the
+	// hash is unchanged, so the body did not rotate.
+	actual := sha256LinesRange(t, "hitl_memory_facts.go", 339, 441)
 	assert.Equal(t, HITL07MemoryFactsInvokableRunSHA256, actual,
 		"hitl_memory_facts.go::InvokableRun body drifted from baseline — review the HITL-07 3-way byte-equality assertion")
 

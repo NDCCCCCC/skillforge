@@ -155,10 +155,12 @@ type MemoryFactsTool struct {
 	// back to the interrupt path — fail-closed toward human review.
 	ruleMatcher RuleMatcher
 
-	// sessionID / skillID are the per-session identity injected by
-	// BuildToolsForSkill via WithContext at Agent construction time
-	// (D11-B1 per-turn whitelist recompute carries the session context
-	// with it — Skill-A's rules never leak into Skill-B's session).
+	// sessionID / skillID are the per-session identity bound when
+	// BuildToolsForSkill asks the registry for a request-scoped copy
+	// (cloneForSession, CR-04 26-REVIEW — D11-B1 per-turn whitelist
+	// recompute carries the session context with it — Skill-A's rules
+	// never leak into Skill-B's session). They are NEVER written on a
+	// shared instance: every request gets its own copy.
 	sessionID string
 	skillID   string
 
@@ -213,16 +215,33 @@ func (t *MemoryFactsTool) bindKBRegistry(reg kb.Registry) error {
 	return nil
 }
 
-// WithContext binds the per-session identity + rule matcher. Called
-// once per BuildToolsForSkill whitelist computation (per Runner
-// construction) — the Tool instances in hitlHandlers are shared, so
-// the LAST WithContext wins; BuildToolsForSkill is always called from
-// the single-threaded Agent-construction path (D11-B4 per-session
-// Runner singleton), never concurrently.
-func (t *MemoryFactsTool) WithContext(sessionID, skillID string, ruleMatcher RuleMatcher) {
-	t.sessionID = sessionID
-	t.skillID = skillID
-	t.ruleMatcher = ruleMatcher
+// cloneForSession returns a per-request COPY of the tool with the
+// session identity + rule matcher bound and the tier vocabulary
+// snapshotted from reg (CR-04, 26-REVIEW).
+//
+// WHY A COPY: the instances in hitlHandlers are package-global
+// singletons, but BuildToolsForSkill runs per HTTP request (Hertz serves
+// each request on its own goroutine). Mutating the shared instance per
+// request was both a genuine Go data race (concurrent requests write
+// sessionID/skillID/ruleMatcher while others read them in Info() and
+// InvokableRun) and an audit-integrity defect — with two in-flight write
+// requests the last WithContext won, so a memory_facts_write interrupt
+// and its action_pending_approval row could be attributed to the wrong
+// session/skill. A clone is cheap (a struct copy plus two registry
+// snapshot slices) and makes the bindable state private to one request.
+//
+// Validation is fail-closed and happens BEFORE any state is used: a nil
+// registry (or one without an authority-role KB) refuses the clone, the
+// same contract as NewMemoryFactsTool.
+func (t *MemoryFactsTool) cloneForSession(reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher) (tool.InvokableTool, error) {
+	c := *t // shallow copy: carries the audit hook and any bound vocabulary
+	if err := c.bindKBRegistry(reg); err != nil {
+		return nil, err
+	}
+	c.sessionID = sessionID
+	c.skillID = skillID
+	c.ruleMatcher = ruleMatcher
+	return &c, nil
 }
 
 // auditOrDefault returns the configured audit writer, or a noop if
