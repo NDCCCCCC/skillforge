@@ -32,8 +32,8 @@ package main
 //     hooks bound before the retriever) is asserted by line position —
 //     T-26-09-1's mitigation is an order that is provable, not just
 //     documented;
-//   - the PROVISIONAL (26-03/26-04) seed snapshot must never come back
-//     (the assembly contract: one kb.Open, zero scaffold markers).
+//   - the 26-03/26-04 read-only seed snapshot must never come back (the
+//     assembly contract: one kb.Open, zero scaffold markers).
 
 import (
 	"bytes"
@@ -327,7 +327,7 @@ func TestEmptyRegistryBootsWithWarning(t *testing.T) {
 // TestBootAssemblyOrder is the T-26-09-1 mitigation made executable: the
 // kb registry is opened BEFORE the skill loader consumes it, the audit
 // hooks are bound BEFORE anything can walk the corpus, and the
-// PROVISIONAL seed scaffold is gone for good.
+// seed scaffold those plans left behind is gone for good.
 func TestBootAssemblyOrder(t *testing.T) {
 	raw, err := os.ReadFile("main.go")
 	if err != nil {
@@ -411,9 +411,10 @@ func TestBootAssemblyOrder(t *testing.T) {
 		}
 	}
 
-	// 5. The PROVISIONAL scaffold must never return.
+	// 5. The seed scaffold must never return: zero scaffold markers of
+	//    any kind in the assembly file.
 	if strings.Contains(src, "PROVISIONAL") {
-		t.Fatal("cmd/server/main.go still carries a PROVISIONAL marker — the 26-03/26-04 seed snapshots were replaced by kb.Open")
+		t.Fatal("cmd/server/main.go still carries a scaffold marker — the 26-03/26-04 seed snapshots were replaced by kb.Open")
 	}
 }
 

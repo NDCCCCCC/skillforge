@@ -503,7 +503,13 @@ func main() {
 	// fall back to the first manifest for it.
 	kpiMode := *frozen == "kpi"
 	emb := buildEmbedder()
-	kbReg := loadSeedKBRegistry()
+	// The store is opened BEFORE the registry now (26-09): the eval CLI
+	// measures the production system, so it resolves reads against the SAME
+	// store-backed registry the server serves — seed structure merged with
+	// whatever an admin has created or deactivated in this deployment's
+	// sqlite knowledge_bases table. Not a seed snapshot.
+	st := buildStore(ctx)
+	kbReg := openKBRegistry(ctx, kbSeedPath(), st)
 	r := buildRetriever(ctx, emb, kbReg)
 	manifestName := *frozen
 	if kpiMode {
@@ -524,7 +530,6 @@ func main() {
 	manifest := manifestFor(*skillsDir, manifestName, kbReg)
 	cm := buildChatModel(ctx) // agent's chat model (GLM_API_KEY)
 	ag := buildAgent(ctx, manifest, emb, r, cm)
-	st := buildStore(ctx)
 
 	// SC-6 / D6-13: assert the pin BEFORE scoring. A drifted model or
 	// prompt makes the resulting numbers incomparable to the published
@@ -937,20 +942,37 @@ func buildRetriever(ctx context.Context, emb *bge.BGE, kbReg kb.Registry) retrie
 	}
 }
 
-// loadSeedKBRegistry builds the read-only registry shared by the skill
-// loader and the corpus index/seed path.
-//
-// PROVISIONAL (26-03/26-04): read-only seed snapshot — replaced by the
-// sqlite-backed kb.Open registry in plan 26-09.
-func loadSeedKBRegistry() kb.Registry {
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+// kbSeedPath is the controlled seed file the registry is assembled from.
+// SKILLFORGE_KB_SEED overrides the in-repo default (same surface cmd/server
+// reads, so a CLI run and a server boot agree on the vocabulary).
+func kbSeedPath() string {
+	return envOr("SKILLFORGE_KB_SEED", "knowledge_bases.yaml")
+}
+
+// openKBRegistry assembles the PRODUCTION registry (26-09): kb.Open over
+// the 26-02 SQLiteStore, seed structure merged with the persisted switch
+// state. The eval CLI deliberately shares the deployment's store — the
+// numbers it publishes must describe the registry production actually
+// serves, not an idealized seed snapshot.
+func openKBRegistry(ctx context.Context, seedPath string, st *sqlite.SQLiteStore) kb.Registry {
+	reg, err := kb.Open(ctx, seedPath, st)
 	if err != nil {
-		log.Fatalf("[FAIL] cmd/eval: kb seed load: %v", err)
+		log.Fatalf("[FAIL] cmd/eval: kb registry open from %s: %v (fix the controlled seed file — a bad seed must not score a half-known knowledge surface)", seedPath, err)
 	}
-	if kbSeeds == nil {
-		log.Printf("[WARN] cmd/eval: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
+	if n := len(reg.List()); n == 0 {
+		log.Printf("[WARN] cmd/eval: empty KB registry (every tier-Skill validation will fail — seed %s or register a base via the admin endpoint)", seedPath)
+	} else {
+		log.Printf("[OK] cmd/eval: kb registry wired (seed=%s, %d base(s), signature=%s)", seedPath, n, shortKBSignature(reg.Signature()))
 	}
-	return kb.New(kbSeeds)
+	return reg
+}
+
+// shortKBSignature renders a registry signature for the startup log.
+func shortKBSignature(sig string) string {
+	if len(sig) > 12 {
+		return sig[:12]
+	}
+	return sig
 }
 
 // buildChatModel constructs the agent's chat model via eval.NewGLMChatModel
@@ -983,8 +1005,12 @@ func buildAgent(ctx context.Context, manifest *skill.Manifest, emb embedder.Embe
 	return ag
 }
 
-// buildStore mirrors cmd/server's SQLite store construction.
-func buildStore(ctx context.Context) store.Store {
+// buildStore mirrors cmd/server's SQLite store construction. It returns
+// the concrete *sqlite.SQLiteStore (not the wide store.Store interface)
+// because the kb registry assembly consumes the narrow kb.Store seam it
+// implements — the same handle serves both the eval audit rows and the
+// registry, exactly as in cmd/server.
+func buildStore(ctx context.Context) *sqlite.SQLiteStore {
 	dsn := envOr("SQLITE_DSN", "skillforge.db")
 	s, err := sqlite.New(ctx, sqlite.Config{DSN: dsn})
 	if err != nil {

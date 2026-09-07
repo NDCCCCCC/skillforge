@@ -236,8 +236,13 @@ func main() {
 		// with a clear message if GLM_API_KEY is missing.
 		envRequired("GLM_API_KEY")
 		emb := buildEmbedder()
-		r := buildRetriever(ctx, emb)
-		manifest := firstManifest()
+		// ONE registry per run (26-09): both the corpus path (buildRetriever)
+		// and the loader path (firstManifest) consume the same value, so the
+		// vocabulary the loader validates against is byte-identical to the
+		// vocabulary the indexer filters with.
+		kbReg := openKBRegistry(ctx)
+		r := buildRetriever(ctx, emb, kbReg)
+		manifest := firstManifest(kbReg)
 		cm := buildChatModel(ctx)
 		judge := eval.NewJudge(cm)
 		deps = &runnerDeps{
@@ -387,20 +392,11 @@ func buildEmbedder() *bge.BGE {
 // buildRetriever mirrors cmd/server's RETRIEVER_BACKEND switch
 // (milvus default, mongo optional).
 //
-// Mirrored from cmd/eval/main.go:513-550.
-func buildRetriever(ctx context.Context, emb *bge.BGE) retriever.Retriever {
-	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
-	// sqlite-backed kb.Open registry in plan 26-09. Spike paths keep the
-	// audit hooks nil (WARN-only for unregistered knowledge/ dirs).
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/spike-history: kb seed load: %v", err)
-	}
-	if kbSeeds == nil {
-		log.Printf("[WARN] cmd/spike-history: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
-	}
-	kbReg := kb.New(kbSeeds)
-
+// Mirrored from cmd/eval/main.go:513-550. kbReg is the registry assembled
+// once in main (openKBRegistry) — the same value the loader validated
+// against. Spike paths keep the audit hooks nil (WARN-only for
+// unregistered knowledge/ dirs, D26-03-D).
+func buildRetriever(ctx context.Context, emb *bge.BGE, kbReg kb.Registry) retriever.Retriever {
 	backend := strings.ToLower(os.Getenv("RETRIEVER_BACKEND"))
 	if backend == "" {
 		backend = "milvus"
@@ -492,30 +488,38 @@ func buildStore(ctx context.Context) *sqlite.SQLiteStore {
 	return s
 }
 
-// loadSeedKBRegistry builds the read-only registry the skill loader
-// validates reads declarations against. buildRetriever keeps its own
-// 26-03 snapshot for the corpus path; both read the same controlled
-// seed file.
-//
-// PROVISIONAL (26-04): read-only seed snapshot — replaced by the
-// sqlite-backed kb.Open registry in plan 26-09 (skill-loader side).
-func loadSeedKBRegistry() kb.Registry {
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+// openKBRegistry assembles the registry the spike measures against
+// (26-09): the PRODUCTION kb.Open over the 26-02 SQLiteStore, no seed
+// snapshot. The store is TRANSIENT (":memory:") on purpose — a measurement
+// harness must neither mutate the deployment's persisted registry nor
+// depend on whatever skillforge.db sits in the working directory (this
+// binary deliberately avoids opening the persistent DSN — see the
+// buildStore note in the dry-run branch: a legacy DB cannot always be
+// reconciled by a stale binary's migrations). The controlled seed file is
+// therefore the whole vocabulary here, which is exactly what the loader
+// validation and the tier filters need.
+func openKBRegistry(ctx context.Context) kb.Registry {
+	kbStore, err := sqlite.New(ctx, sqlite.Config{DSN: ":memory:"})
 	if err != nil {
-		log.Fatalf("[FAIL] cmd/spike-history: kb seed load: %v", err)
+		log.Fatalf("[FAIL] cmd/spike-history: sqlite.New(:memory:) for the kb registry: %v", err)
 	}
-	if kbSeeds == nil {
-		log.Printf("[WARN] cmd/spike-history: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every tier Skill will fail reads validation)")
+	seedPath := envOr("SKILLFORGE_KB_SEED", "knowledge_bases.yaml")
+	reg, err := kb.Open(ctx, seedPath, kbStore)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/spike-history: kb registry open from %s: %v (fix the controlled seed file)", seedPath, err)
 	}
-	return kb.New(kbSeeds)
+	if n := len(reg.List()); n == 0 {
+		log.Printf("[WARN] cmd/spike-history: empty KB registry (every tier Skill will fail reads validation — seed %s)", seedPath)
+	}
+	return reg
 }
 
 // firstManifest loads skills/ and returns the first Skill manifest
 // (the compliance Skill in Phase 8/9).
 //
 // Mirrored from cmd/eval/main.go:599-609.
-func firstManifest() *skill.Manifest {
-	loader := skill.NewLoader(defaultSkillsDir, loadSeedKBRegistry())
+func firstManifest(kbReg kb.Registry) *skill.Manifest {
+	loader := skill.NewLoader(defaultSkillsDir, kbReg)
 	if _, err := loader.Scan(); err != nil {
 		log.Fatalf("[FAIL] cmd/spike-history: skill scan: %v", err)
 	}

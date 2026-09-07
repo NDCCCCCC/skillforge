@@ -94,6 +94,7 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/runtime"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 )
 
 // Default flag values — constants (not flag.Defaults) so a future
@@ -215,10 +216,16 @@ func runParseRate(args []string) int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// The ONE registry for this run (26-09): the loader (loadManifestLive)
+	// and the hitl tool construction below consume the same value, so the
+	// vocabulary the manifest was validated against is the vocabulary the
+	// tools resolve at run time.
+	kbReg := openKBRegistry(ctx)
+
 	emb := buildEmbedderLive()
 	r := buildRetrieverLive(ctx, emb)
 	cm := buildChatModelLive(ctx)
-	manifest := loadManifestLive()
+	manifest := loadManifestLive(kbReg)
 
 	// ---- 4. Resolve output path ----
 	resolvedOut := *outPath
@@ -240,14 +247,6 @@ func runParseRate(args []string) int {
 	defer outFile.Close()
 	bw := bufio.NewWriter(outFile)
 	defer bw.Flush()
-
-	// PROVISIONAL (26-06): read-only seed snapshot feeding the hitl tool
-	// construction (agent.BuildToolsForSkill) — replaced by kb.Open in
-	// plan 26-09, same posture as the loader-side snapshot above. Hoisted
-	// once before the loop: the seed file is read once per spike run, and
-	// a nil registry would fail closed at BuildToolsForSkill for every
-	// case whose manifest declares the memory:facts write target.
-	kbReg := loadSeedKBRegistry()
 
 	// ---- 5. Main loop ----
 	cost := &costState{LimitUSD: *costLimit, PerCallUSD: perCallEstimateUSD, Seed: *seed}
@@ -772,26 +771,33 @@ func buildChatModelLive(ctx context.Context) model.ToolCallingChatModel {
 // manifest.Agent value does not influence routing — but the
 // resolved-tier slice MUST be present for the retrieve tool's
 // KNOW-03 whitelist. Mirrors cmd/spike-history:479.
-// loadSeedKBRegistry builds the read-only registry the skill loader
-// validates reads declarations against.
-//
-// PROVISIONAL (26-04): read-only seed snapshot — replaced by the
-// sqlite-backed kb.Open registry in plan 26-09 (this binary never
-// touches the knowledge corpus, so the seed snapshot is its long-term
-// shape).
-func loadSeedKBRegistry() kb.Registry {
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+// openKBRegistry assembles the registry the spike measures against
+// (26-09): the PRODUCTION kb.Open over the 26-02 SQLiteStore. The store
+// is TRANSIENT (":memory:") on purpose — this binary never touches the
+// knowledge corpus and must neither mutate a deployment's persisted
+// registry nor depend on whatever skillforge.db sits in the working
+// directory; the controlled seed file is the whole vocabulary here.
+func openKBRegistry(ctx context.Context) kb.Registry {
+	kbStore, err := sqlite.New(ctx, sqlite.Config{DSN: ":memory:"})
 	if err != nil {
-		log.Fatalf("[FAIL] cmd/spike-deep: kb seed load: %v", err)
+		log.Fatalf("[FAIL] cmd/spike-deep: sqlite.New(:memory:) for the kb registry: %v", err)
 	}
-	if kbSeeds == nil {
-		log.Printf("[WARN] cmd/spike-deep: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every tier Skill will fail reads validation)")
+	seedPath := os.Getenv("SKILLFORGE_KB_SEED")
+	if seedPath == "" {
+		seedPath = "knowledge_bases.yaml"
 	}
-	return kb.New(kbSeeds)
+	reg, err := kb.Open(ctx, seedPath, kbStore)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/spike-deep: kb registry open from %s: %v (fix the controlled seed file)", seedPath, err)
+	}
+	if n := len(reg.List()); n == 0 {
+		log.Printf("[WARN] cmd/spike-deep: empty KB registry (every tier Skill will fail reads validation — seed %s)", seedPath)
+	}
+	return reg
 }
 
-func loadManifestLive() *skill.Manifest {
-	loader := skill.NewLoader("skills/", loadSeedKBRegistry())
+func loadManifestLive(kbReg kb.Registry) *skill.Manifest {
+	loader := skill.NewLoader("skills/", kbReg)
 	if _, err := loader.Scan(); err != nil {
 		log.Fatalf("[FAIL] cmd/spike-deep: skill scan: %v", err)
 	}

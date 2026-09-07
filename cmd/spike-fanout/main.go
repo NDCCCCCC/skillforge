@@ -173,7 +173,7 @@ func main() {
 // encountered. Each scenario prints a single JSON line to stdout.
 func runRF4Spike(scenario string) error {
 	ctx := context.Background()
-	kbReg := loadSeedKBRegistry()
+	kbReg := openKBRegistry(ctx)
 	switch scenario {
 	case "match":
 		return runMatchScenario(ctx, kbReg)
@@ -585,27 +585,34 @@ func loadFanoutGolden(path string) ([]GoldenCase, error) {
 	return out, nil
 }
 
-// loadSeedKBRegistry builds the read-only registry the spike resolves
-// skill reads and golden-case tiers against.
-//
-// PROVISIONAL (26-04): read-only seed snapshot — replaced by the
-// sqlite-backed kb.Open registry in plan 26-09 (skill-loader side; the
-// corpus-index path in newMilvusRetriever keeps its own 26-03 snapshot).
-func loadSeedKBRegistry() kb.Registry {
+// openKBRegistry assembles the registry the spike resolves skill reads
+// and golden-case tiers against (26-09): the PRODUCTION kb.Open over the
+// 26-02 SQLiteStore. The store is TRANSIENT (":memory:") on purpose — a
+// measurement harness must neither mutate the deployment's persisted
+// registry nor depend on whatever skillforge.db sits in the working
+// directory; the controlled seed file is the whole vocabulary here. The
+// live corpus-index path in newMilvusRetriever assembles its own registry
+// the same way.
+func openKBRegistry(ctx context.Context) kb.Registry {
+	kbStore, err := sqlite.New(ctx, sqlite.Config{DSN: ":memory:"})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[spike-fanout] FATAL sqlite.New(:memory:) for the kb registry: %v\n", err)
+		os.Exit(1)
+	}
 	seedPath, locateErr := locateSeedFile("knowledge_bases.yaml")
 	if locateErr != nil {
 		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN knowledge_bases.yaml not found from cwd — knowledge-base registry is empty (every tier Skill will fail reads validation)\n")
 		return kb.New(nil)
 	}
-	kbSeeds, err := kb.LoadSeedFile(seedPath)
+	reg, err := kb.Open(ctx, seedPath, kbStore)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[spike-fanout] FATAL kb seed load (%s): %v\n", seedPath, err)
+		fmt.Fprintf(os.Stderr, "[spike-fanout] FATAL kb registry open (%s): %v\n", seedPath, err)
 		os.Exit(1)
 	}
-	if kbSeeds == nil {
-		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN empty knowledge_bases.yaml seed at %s — knowledge-base registry is empty\n", seedPath)
+	if n := len(reg.List()); n == 0 {
+		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN empty KB registry from %s — every tier Skill will fail reads validation\n", seedPath)
 	}
-	return kb.New(kbSeeds)
+	return reg
 }
 
 // locateSeedFile resolves a repo-root-relative controlled file from
@@ -1182,17 +1189,10 @@ func newMilvusRetriever(ctx context.Context, emb embedder.Embedder) (retriever.R
 	if addr == "" {
 		return nil, fmt.Errorf("live mode requires MILVUS_ADDRESS (Docker Milvus standalone)")
 	}
-	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
-	// sqlite-backed kb.Open registry in plan 26-09. Spike paths keep the
-	// audit hooks nil (WARN-only for unregistered knowledge/ dirs).
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("kb seed load: %w", err)
-	}
-	if kbSeeds == nil {
-		fmt.Fprintf(os.Stderr, "[spike-fanout] WARN no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)\n")
-	}
-	kbReg := kb.New(kbSeeds)
+	// The corpus path assembles the registry through the same production
+	// assembly the loader path uses (26-09). Spike paths keep the audit
+	// hooks nil (WARN-only for unregistered knowledge/ dirs, D26-03-D).
+	kbReg := openKBRegistry(ctx)
 
 	cfg := milvus.Config{Addr: addr, CollectionName: "skillforge_knowledge"}
 	mc, err := milvus.New(ctx, cfg)
@@ -1252,7 +1252,7 @@ func runLiveSpike(f *spikeFlags) error {
 	if err != nil {
 		return fmt.Errorf("load golden: %w", err)
 	}
-	kbReg := loadSeedKBRegistry()
+	kbReg := openKBRegistry(ctx)
 	parentManifest, err := loadFanoutConfig(f.subSkillConfig, kbReg)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
