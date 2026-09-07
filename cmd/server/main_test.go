@@ -452,12 +452,17 @@ func TestMilvusRecreateGateWiring(t *testing.T) {
 	}
 
 	// Everything below reads the milvus branch of buildRetriever only, so
-	// an unrelated call elsewhere in the file cannot satisfy the lock.
+	// an unrelated call elsewhere in the file (or in the mongo branch)
+	// cannot satisfy the lock.
 	i := strings.Index(src, "func buildRetriever(")
 	if i < 0 {
 		t.Fatal("buildRetriever not found")
 	}
-	branch := src[i:]
+	j := strings.Index(src[i:], "milvusAddr := envRequired(")
+	if j < 0 {
+		t.Fatal("buildRetriever's milvus branch not found")
+	}
+	branch := src[i+j:]
 
 	gateAt := strings.Index(branch, gate)
 	ensureAt := strings.Index(branch, "mc.Ensure(ctx)")
