@@ -5,12 +5,12 @@ milestone_name: — 知识库运营与反馈闭环
 current_phase: 26
 current_plan: 1
 status: executing
-last_updated: "2026-09-07T16:25:24.054Z"
-last_activity: "2026-09-07 -- Phase 28 CLOSED: graph_edges.go + graph_cache.go + neighborsHandler/pathHandler + GraphLimits env-var config + FE useGraphNeighbors hook + InspectorRetrieval 「常被一起引用」 面板 + STRIDE-28 + 28-UAT; ready for Phase 29 planning (FeedbackRow 三按钮真实落库 + 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets)."
+last_updated: "2026-09-07T18:24:27.935Z"
+last_activity: 2026-09-07 -- Phase 29 planning complete
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 24
+  total_plans: 33
   completed_plans: 24
   percent: 50
 ---
@@ -21,8 +21,8 @@ progress:
 
 Phase: 29 (反馈闭环 + 工单预留) — Plan 00 of ~07 (planning ready)
 Plan: 0 of ~7
-Status: Phase 28 closed 2026-09-07 hermetically. 7/7 plans executed (28-01 GRF-02 + 28-02 GRF-03 + 28-03 GRF-05 + 28-04 wiring + 28-05 FE GraphCanvas + 28-06 FE InspectorRetrieval + 28-07 hygiene gate). 19 atomic commits, mid-execution bug-fix 3766eb5 (Neighbors degraded semantic frontier-cut). verify-phase-28.sh 3 stages / 6 sub-checks PASS; 23 BE tests + 535 FE tests green; tsc --noEmit clean.
-Last activity: 2026-09-07 -- Phase 28 CLOSED: graph_edges.go + graph_cache.go + neighborsHandler/pathHandler + GraphLimits env-var config + FE useGraphNeighbors hook + InspectorRetrieval 「常被一起引用」 面板 + STRIDE-28 + 28-UAT; ready for Phase 29 planning (FeedbackRow 三按钮真实落库 + 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets).
+Status: Ready to execute
+Last activity: 2026-09-07 -- Phase 29 planning complete
 
 **Phase 28 closure record (2026-09-07):** 7/7 plans executed across 4 waves (Wave 1: 28-01 GRF-02 ComputeEdges pure function + 4 edge-type constants; Wave 2: 28-02 GRF-03 neighborsHandler + pathHandler + graphHandler degraded extension → 28-03 GRF-05 sync.Map TTL cache with cross-phase invalidation hooks → 28-04 GRF-05 4 SKILLFORGE_GRAPH_* env vars + SetGraphCacheInvalidateHook boot binding; Wave 3: 28-05 GRF-04 FE GraphCanvas 边层 + useGraphNeighbors hook + NeighborExpandButton → 28-06 GRF-04 InspectorRetrieval 「常被一起引用」 面板; Wave 4: 28-07 GRF-01..05 hygiene gate verify-phase-28.sh 3 stages / 6 sub-checks + STRIDE-28 + 28-UAT.md（含 Phase 27→28 联合验收 operator runbook）) → 19 atomic commits (5144fae + 858474c + 61d6932 + 6b649f7 + 3a67f07 + 8b6aaa3 + d0369a5 + 6867599 + ef64ffa + fc8cc61 + afc9377 + 028d3b9 + 2c14387 + 1767b1d + 41cebec + c654cd9 + 0fceddc + c0906d1 + d8a881b + 82a7a1e + bug-fix 3766eb5) → 23 BE tests (graph_edges_test.go + graph_cache_test.go + knowledge_test.go NeighborsAtDepth/DepthLimit/TestGraphLimits) + FE 535 tests (useGraphNeighbors + NeighborExpandButton + InspectorRetrieval neighbors panel) all PASS → verify-phase-28.sh 3 stages / 6 sub-checks PASS (TODO clear / Trust invariant kb.Citable defined + graph_edges.go doesn't call it / Doc-nodes-from-registry reg.List() + no hardcoded CN tier literal) → STRIDE-28.md threat model (8 threats T-28-01..06 + T-28-SC + T-28-LLM) → 28-UAT.md operator runbook（5 graph endpoint steps + 5 Phase 27 joint acceptance steps verifying uploaded docs appear in graph immediately via cache invalidation hook）. Mid-execution bug-fix 3766eb5: Neighbors degraded semantic changed from "queue non-empty OR depth exhausted" to "frontier cuts unreached nodes" (depthFrontierCut = len(queue)>0 && depth>=maxDepth && unreached>0) — resolves contradictory TestNeighborsAtDepth/DepthLimit fixtures by aligning degraded semantics to product semantics.
 
@@ -173,7 +173,7 @@ Plan: 9 of 9 (16-01..16-09 all complete; 16-05 ROADMAP [/] WIP marker corrected 
 Status: VERIFICATION PASSED (2026-08-27 re-verification after gap closure — 5/5 SC green, 7/7 requirements met, BLOCKER-1/2 closed, WARNING-1/2 closed, 6/6 WSL tests green, cmd/server links on WSL; residual WARNING-3/4/5 bookkeeping + WARNING-6 Windows gate discrimination are non-blocking process debt)
 Last activity: 2026-08-29 -- ROADMAP/STATE synced: 16-05 checkbox fixed, Progress row 16 flipped to Complete, ROADMAP Phase 16 checkbox annotated with verification verdict.
 Next action: none for Phase 16 — residual items tracked in deferred-items.md (WARNING-3 PLAN backfill, WARNING-4 16-VALIDATION draft, WARNING-5 REQUIREMENTS status-row staleness). Phase-level code review (16-REVIEW.md) was not produced; optional retroactive `/gsd:code-review 16` if desired.
-Resume File: .planning/phases/29-feedback-loop-ticket-interface/29-CONTEXT.md
+Resume File: .planning/phases/29-feedback-loop-ticket-interface/29-UI-SPEC.md
 
 **Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
 
@@ -360,7 +360,7 @@ Resume File: .planning/phases/29-feedback-loop-ticket-interface/29-CONTEXT.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Executing Phase 26
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
