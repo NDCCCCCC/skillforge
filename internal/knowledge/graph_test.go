@@ -316,37 +316,66 @@ func TestGraphBuilder_RetrieverErrorPropagates(t *testing.T) {
 	assert.ErrorIs(t, err, want)
 }
 
-// TestGraphInvalidTierListsActiveSlugs — the re-check's error names the
-// active slug set (the same fail-closed message discipline as the indexer
-// gate), so an operator seeing a stale backend row knows what IS valid.
-func TestGraphInvalidTierListsActiveSlugs(t *testing.T) {
-	bad := []retriever.DocumentMeta{
+// TestGraphUnknownTierRowSkippedWithWarn — WR-01 (26-REVIEW). A backend
+// row whose tier is no longer an active registry slug (an unknown slug, or
+// a deactivated base's stale vector rows that KBM-02 deliberately keeps on
+// disk) must not 500 the whole graph endpoint: the row is skipped with a
+// WARN and the rest of the graph renders. The row could not appear as a
+// node anyway — the node set is the ACTIVE registry entries.
+func TestGraphUnknownTierRowSkippedWithWarn(t *testing.T) {
+	rows := []retriever.DocumentMeta{
 		{ID: 1, Tier: "authority", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
 		{ID: 2, Tier: "SecretTier", Source: "secret/x.md", EffectiveFrom: 0, EffectiveTo: 0},
 	}
-	_, err := New(&stubMetaRetriever{rows: bad}, graphRegistry(testBaselineSlugs)).Build(context.Background())
+	g, err := New(&stubMetaRetriever{rows: rows}, graphRegistry(testBaselineSlugs)).Build(context.Background())
+	require.NoError(t, err, "an unregistered tier row is a skip-and-WARN, not a graph-wide failure")
+
+	got := make(map[string]*TierNode, len(g.Tiers))
+	for i := range g.Tiers {
+		got[g.Tiers[i].Tier] = &g.Tiers[i]
+	}
+	authority, ok := got["authority"]
+	require.True(t, ok, "the healthy rows must still render")
+	assert.Equal(t, 1, authority.DocCount)
+	assert.Equal(t, 1, authority.ChunkCount)
+	_, ok = got["SecretTier"]
+	assert.False(t, ok, "an unregistered tier can never be a node")
+}
+
+// A deactivated base's stale backend rows are skipped the same way —
+// deactivation removes a base from the graph without breaking it.
+func TestGraphDeactivatedTierRowSkipped(t *testing.T) {
+	rows := []retriever.DocumentMeta{
+		{ID: 1, Tier: "authority", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		{ID: 2, Tier: "personal", Source: "personal/dept-note.md", EffectiveFrom: 0, EffectiveTo: 0},
+	}
+	g, err := New(&stubMetaRetriever{rows: rows}, graphRegistry(testBaselineSlugs, "personal")).Build(context.Background())
+	require.NoError(t, err, "deactivation must not break the operator graph surface")
+	for _, n := range g.Tiers {
+		assert.NotEqual(t, "personal", n.Tier, "a deactivated base must not be a node")
+	}
+	authority := g.Tiers[0]
+	assert.Equal(t, "authority", authority.Tier)
+	assert.Equal(t, 1, authority.DocCount, "the surviving rows are untouched")
+}
+
+// TestGraphEmptyTierStillFailsClosed — the strict rejection stays scoped
+// to genuinely corrupt rows: an EMPTY tier cannot be resolved to any base
+// and is a data-integrity violation, not a deactivation consequence.
+func TestGraphEmptyTierStillFailsClosed(t *testing.T) {
+	rows := []retriever.DocumentMeta{
+		{ID: 1, Tier: "", Source: "authority/a.md", EffectiveFrom: 0, EffectiveTo: 0},
+	}
+	_, err := New(&stubMetaRetriever{rows: rows}, graphRegistry(testBaselineSlugs)).Build(context.Background())
 	require.Error(t, err)
 	var inv ErrInvalidTier
 	require.ErrorAs(t, err, &inv)
-	assert.Equal(t, "SecretTier", inv.Tier)
+	assert.Empty(t, inv.Tier)
 	msg := err.Error()
 	assert.Contains(t, msg, "KNOW-02", "the re-check keeps citing the requirement")
 	for _, slug := range testBaselineSlugs {
 		assert.Containsf(t, msg, slug, "the error must list active slug %q", slug)
 	}
-}
-
-// A deactivated slug in a backend row must be rejected by the re-check —
-// deactivation removes a base from the graph too, not just from retrieval.
-func TestGraphBuilder_RejectsDeactivatedTier(t *testing.T) {
-	bad := []retriever.DocumentMeta{
-		{ID: 1, Tier: "personal", Source: "personal/dept-note.md", EffectiveFrom: 0, EffectiveTo: 0},
-	}
-	_, err := New(&stubMetaRetriever{rows: bad}, graphRegistry(testBaselineSlugs, "personal")).Build(context.Background())
-	require.Error(t, err)
-	var inv ErrInvalidTier
-	require.ErrorAs(t, err, &inv)
-	assert.Equal(t, "personal", inv.Tier)
 }
 
 func TestGraphBuilder_RejectsEmptySource(t *testing.T) {

@@ -35,6 +35,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -62,12 +63,18 @@ var ErrNoRegistry = errors.New("knowledge.GraphBuilder: kb registry is required 
 // maps knowledge.ErrChunkNotFound → HTTP 404.
 var ErrChunkNotFound = errors.New("knowledge: chunk not found")
 
-// ErrInvalidTier wraps a doc row with a tier value that is not an active
-// knowledge-base slug. KNOW-02 already rejects this at the indexer layer,
-// but the graph builder re-checks at the metadata-read seam
-// (defense-in-depth). Active carries the registry's active slug set so the
-// error names what IS valid, the same fail-closed message discipline the
-// indexer's gate uses.
+// ErrInvalidTier wraps a doc row with an EMPTY tier value — a row that
+// cannot be resolved to any knowledge base at all. KNOW-02 already
+// rejects this at the indexer layer, but the graph builder re-checks at
+// the metadata-read seam (defense-in-depth). Active carries the
+// registry's active slug set so the error names what IS valid, the same
+// fail-closed message discipline the indexer's gate uses.
+//
+// WR-01 (26-REVIEW): a row carrying a NON-EMPTY tier that is simply not
+// an active slug (a deactivated base's stale vector rows, which KBM-02
+// deliberately keeps on disk with no delete verb) is NOT this error — it
+// is skipped with a WARN, because failing the whole graph endpoint would
+// turn a routine deactivation into an outage.
 type ErrInvalidTier struct {
 	ID     int64
 	Source string
@@ -166,12 +173,24 @@ func New(r retriever.Retriever, reg kb.Registry) *GraphBuilder {
 // Build reads the retriever's documents via ListMetadata and groups them
 // into the knowledge-base -> doc -> chunk tree. Returns a Graph with one
 // tier entry per ACTIVE registry entry, ascending by slug (N dynamic,
-// deterministic — the fixed 4-tier assumption is gone). Documents whose
-// tier is not an active registry slug are rejected with a wrapped error —
-// the backend-agnostic KNOW-02 invariant already enforced at index time
-// means this should never happen in production, but a defense-in-depth
-// reject keeps a hand-edited corpus (or a stale backend row carrying a
-// retired value) from poisoning the FE.
+// deterministic — the fixed 4-tier assumption is gone).
+//
+// Tier re-check semantics (WR-01, 26-REVIEW — three states, mirroring the
+// walker's):
+//
+//   - ACTIVE slug → the row renders.
+//   - NON-ACTIVE but non-empty tier → the row is SKIPPED with a WARN
+//     (skipped rows are summed and logged once). KBM-02 keeps a
+//     deactivated base's data on disk and in the vector store with no
+//     delete verb, so deactivation leaves stale backend rows behind; they
+//     cannot render (the node set is the active entries) and must not
+//     500 the whole operator surface.
+//   - EMPTY tier → ErrInvalidTier. A row with no tier at all is corrupt
+//     data (an indexer contract violation), not a deactivation
+//     consequence, and stays a hard fail-closed reject.
+//
+// An empty source path is likewise a hard reject (ErrEmptySource) — two
+// docs would collapse into one FE group key.
 //
 // Pure metadata — no embedding / content is loaded (T-5-22).
 func (b *GraphBuilder) Build(ctx context.Context) (*Graph, error) {
@@ -192,9 +211,17 @@ func (b *GraphBuilder) Build(ctx context.Context) (*Graph, error) {
 	}
 	groups := make(map[string]map[string]*chunkAccum)
 
+	skipped := 0 // non-active (deactivated / retired) tier rows skipped
 	for _, m := range metas {
-		if _, ok := b.reg.Lookup(m.Tier); !ok {
+		if m.Tier == "" {
 			return nil, ErrInvalidTier{ID: m.ID, Source: m.Source, Tier: m.Tier, Active: b.reg.ActiveSlugs()}
+		}
+		if _, ok := b.reg.Lookup(m.Tier); !ok {
+			// Stale row for a deactivated or retired base: it can never be
+			// a node (the node set is the ACTIVE entries), so drop it and
+			// keep the rest of the graph serving.
+			skipped++
+			continue
 		}
 		if m.Source == "" {
 			return nil, ErrEmptySource{ID: m.ID}
@@ -215,6 +242,10 @@ func (b *GraphBuilder) Build(ctx context.Context) (*Graph, error) {
 			EffectiveTo:   m.EffectiveTo,
 			Version:       versionFromEffective(m.EffectiveFrom, m.EffectiveTo),
 		})
+	}
+	if skipped > 0 {
+		log.Printf("[WARN] knowledge.GraphBuilder: skipped %d metadata row(s) whose tier is not an active knowledge-base slug (active: %v) — stale vector rows for a deactivated/retired base; they stay on disk (KBM-02 deactivate-never-destroy) and are excluded from the graph",
+			skipped, b.reg.ActiveSlugs())
 	}
 
 	// Node set = the registry's ACTIVE entries, ascending by slug
