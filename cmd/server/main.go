@@ -58,6 +58,11 @@
 //   - SKILLFORGE_KB_SEED (optional) — controlled knowledge-base seed file,
 //     default "knowledge_bases.yaml". Structure only: the runtime
 //     retrieval switches live in the sqlite knowledge_bases table.
+//   - SKILLFORGE_MILVUS_RECREATE (optional, milvus only) — ONE-SHOT
+//     re-seed door. Set to exactly "1" for a single boot to drop the
+//     collection and re-create it empty before the boot-time index
+//     re-embeds the corpus (the migration exit for a legacy-tier vector
+//     library). Unset = never drops anything.
 //   - RETRIEVER_BACKEND (optional) — "milvus" (default) | "mongo"
 //   - MILVUS_ADDRESS    (milvus only, required) — gRPC host:port
 //   - MONGO_URI         (mongo only, required)  — e.g. mongodb://10.62.10.34:27017
@@ -863,6 +868,26 @@ func buildRetriever(ctx context.Context, backend string, emb *bge.BGE, kbReg kb.
 		mc, err := milvus.New(ctx, mcfg)
 		if err != nil {
 			log.Fatalf("[FAIL] cmd/server: milvus dial %s: %v", milvusAddr, err)
+		}
+		// ONE-SHOT re-seed gate (plan 26-09 / Pitfall 1a). A deployment that
+		// switched to the 26-01 slug vocabulary inherits a vector library
+		// whose tier rows still carry the legacy CN values; those rows match
+		// no registry slug, so every tier-filtered search returns zero hits
+		// and every query is refused — a silent, total outage that looks
+		// like a safe empty result. tier is row-level metadata (it cannot be
+		// updated in place), so the clean exit is drop + recreate + let the
+		// boot-time index below re-embed the corpus. This is an explicit
+		// operator opt-in, NOT a boot behavior: the gate opens on the literal
+		// "1" only (a missed re-seed is a documented step undone; a surprise
+		// re-seed is a wiped corpus), and the WARN is the operator's log
+		// receipt. Mongo needs no twin gate — SeedFromKnowledgeDir resets its
+		// collection before every seed (mongo.go Reset).
+		// See the SKILLFORGE_MILVUS_RECREATE row in .env.example.
+		if milvus.ShouldRecreate(os.Getenv(milvus.RecreateEnvVar)) {
+			log.Printf("[WARN] cmd/server: recreating collection %s (SKILLFORGE_MILVUS_RECREATE=1 — all vectors will be re-embedded on next knowledge index; one-shot migration door, unset the var afterwards)", defaultCollection)
+			if err := mc.RecreateCollection(ctx, defaultCollection); err != nil {
+				log.Fatalf("[FAIL] cmd/server: milvus recreate collection %s: %v (the drop may have succeeded — re-run with the gate still set to finish the re-seed)", defaultCollection, err)
+			}
 		}
 		if err := mc.Ensure(ctx); err != nil {
 			log.Fatalf("[FAIL] cmd/server: milvus ensure collection: %v", err)

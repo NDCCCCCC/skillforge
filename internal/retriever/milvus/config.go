@@ -139,3 +139,28 @@ func truncateRunes(s string, max int) string {
 	}
 	return string(r[:max])
 }
+
+// RecreateEnvVar is the ONE-SHOT re-seed gate (plan 26-09 / Pitfall 1a):
+// set to exactly "1" and the next boot drops the collection and re-creates
+// it empty before the boot-time knowledge.Index re-seeds the corpus.
+//
+// Fail-closed by construction: ShouldRecreate accepts the literal "1" and
+// nothing else, so the default (unset — and any of the loose spellings an
+// ops runbook might reach for) leaves the corpus untouched. The cost
+// asymmetry is the reason for the strictness: a missed re-seed leaves a
+// known, documented migration step undone, while a surprise re-seed wipes
+// a corpus and burns a full re-embed.
+const RecreateEnvVar = "SKILLFORGE_MILVUS_RECREATE"
+
+// ShouldRecreate reports whether the operator explicitly opted into the
+// one-shot drop + recreate re-seed. Deliberately NOT a bool.Parse: the
+// gate is conservative by design (T-26-09-2) — "true", "yes", "on", any
+// casing, and any padding stay closed, because the destructive path this
+// gate opens is a full corpus re-embed, not a flag flip.
+//
+// Mongo needs no twin gate: mongo.SeedFromKnowledgeDir resets the
+// collection itself before every seed (internal/retriever/mongo/mongo.go
+// Reset), so the mongo backend has no stale-row failure mode to escape.
+func ShouldRecreate(envValue string) bool {
+	return envValue == "1"
+}

@@ -60,7 +60,7 @@ func Wrap(mc client.Client, cfg Config) *MilvusClient {
 
 // ClientOf returns the underlying milvus-sdk-go client. Used by
 // callers that need the raw SDK handle (the legacy NewMilvusClient
-// shim, the integration test that calls DropCollection directly).
+// shim, and the integration test that clears the collection directly).
 // Returns nil after Disconnect.
 func (m *MilvusClient) ClientOf() client.Client {
 	return m.mc
@@ -86,8 +86,49 @@ func (m *MilvusClient) Disconnect() error {
 }
 
 // Ensure creates the collection + IVF_FLAT index if absent. Idempotent.
+// This is the routine boot path — it NEVER drops anything (the only
+// destructive path in this package is RecreateCollection behind the
+// SKILLFORGE_MILVUS_RECREATE gate).
 func (m *MilvusClient) Ensure(ctx context.Context) error {
 	return EnsureCollection(ctx, m.mc, m.cfg)
+}
+
+// RecreateCollection drops the named collection and re-creates it with
+// the package schema + IVF_FLAT index — the idempotent drop → ensure
+// sequence behind the ONE-SHOT re-seed gate (SKILLFORGE_MILVUS_RECREATE,
+// plan 26-09 / Pitfall 1a).
+//
+// Why this exists: a deployment that switches its knowledge-base identity
+// (26-01's slug vocabulary) inherits a vector library whose `tier` rows
+// still carry the legacy values. Those rows match no registry slug, so
+// every tier-filtered search returns zero hits and every query is refused
+// with no_authorized_source — a silent, total outage that looks like a
+// safe empty result (Pitfall 1's 灯下黑). tier is row-level metadata, so
+// the rows cannot be updated in place by the indexer; the only clean exit
+// is to drop the collection and let the next boot re-embed the corpus
+// (minutes at demo scale, per 26-RESEARCH's Runtime State Inventory).
+//
+// This is therefore a CONFIG-DRIVEN, operator-opt-in migration door, not
+// a boot behavior: buildRetriever reads the env gate before Ensure, and
+// the gate opens only on the literal "1". The empty, freshly created
+// collection is deliberately the safe resting state — the boot-time
+// knowledge.Index that follows re-seeds it from knowledge/.
+//
+// An empty collection name is rejected before any call: the drop target
+// must be explicit, never a silent default.
+func (m *MilvusClient) RecreateCollection(ctx context.Context, collection string) error {
+	if collection == "" {
+		return fmt.Errorf("milvus.RecreateCollection: collection name is empty (name the collection to drop explicitly)")
+	}
+	if err := m.mc.DropCollection(ctx, collection); err != nil {
+		return fmt.Errorf("milvus.RecreateCollection: DropCollection(%q): %w", collection, err)
+	}
+	cfg := m.cfg
+	cfg.CollectionName = collection
+	if err := EnsureCollection(ctx, m.mc, cfg); err != nil {
+		return fmt.Errorf("milvus.RecreateCollection: EnsureCollection(%q): %w", collection, err)
+	}
+	return nil
 }
 
 // Insert seeds docs into the collection via the package-level helper.

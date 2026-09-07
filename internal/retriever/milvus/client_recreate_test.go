@@ -42,7 +42,7 @@ import (
 // passing — which is the point of a hermetic mock.
 type recreateMockClient struct {
 	client.Client
-	calls []string
+	calls  []string
 	exists bool
 }
 
