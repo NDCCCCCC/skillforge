@@ -14,6 +14,7 @@
 // operator reads policy text exactly as indexed.
 import { useEffect, useState } from 'react';
 import { FileText } from 'lucide-react';
+import { useTierLabel } from '../../lib/kb-bases';
 import type { Tier } from '../../types/verdict';
 
 interface DocPayload {
@@ -38,6 +39,10 @@ export interface DocViewerProps {
 export default function DocViewer({ tier, file }: DocViewerProps) {
   const [doc, setDoc] = useState<DocPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The header badge shows the registry display label (KNOW-05 bracketed
+  // badge form) — the raw slug only stays visible in the loading line,
+  // where it names the request path being fetched.
+  const tierLabel = useTierLabel(doc?.tier ?? tier);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -82,7 +87,12 @@ export default function DocViewer({ tier, file }: DocViewerProps) {
       <div className="flex items-center gap-2">
         <FileText className="h-4 w-4 shrink-0 text-primary" />
         <h3 className="text-lg font-semibold text-text">{doc.file}</h3>
-        <span className="rounded bg-primary-dim px-1.5 py-0.5 text-xs text-primary">{doc.tier}</span>
+        <span
+          data-testid="doc-viewer-tier"
+          className="rounded bg-primary-dim px-1.5 py-0.5 text-xs text-primary"
+        >
+          {tierLabel}
+        </span>
       </div>
 
       {meta && (
