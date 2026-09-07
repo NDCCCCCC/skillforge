@@ -19,6 +19,8 @@ package knowledge
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"sort"
@@ -49,10 +51,11 @@ type Edge struct {
 	Weight   float64 `json:"weight"`
 }
 
-// jaccardThreshold is the configurable Jaccard similarity floor for
+// jaccardThreshold returns the configurable Jaccard similarity floor for
 // keyword-cooccur edges. Default 0.3; override via
-// SKILLFORGE_GRAPH_JACCARD_THRESHOLD.
-var jaccardThreshold = func() float64 {
+// SKILLFORGE_GRAPH_JACCARD_THRESHOLD. Re-read per call to support test
+// isolation via t.Setenv (each test can set its own threshold).
+func jaccardThreshold() float64 {
 	if v := os.Getenv("SKILLFORGE_GRAPH_JACCARD_THRESHOLD"); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 && f <= 1 {
 			return f
@@ -60,7 +63,7 @@ var jaccardThreshold = func() float64 {
 		log.Printf("[WARN] SKILLFORGE_GRAPH_JACCARD_THRESHOLD=%q invalid, using 0.3", v)
 	}
 	return 0.3
-}()
+}
 
 // stopWords filters out common words that carry no topical signal from
 // filename token sets. Initialized once at package load.
@@ -133,10 +136,10 @@ func jaccard(a, b []string) float64 {
 //   - KeywordCooccur: chunks from different sources whose filename token
 //     Jaccard similarity is >= jaccardThreshold (default 0.3)
 //   - CitationCooccur: chunks co-cited in the same verdict audit row
-//     (skipped with WARN log when store is nil or query fails)
+//     (skipped with WARN log when auditQuerier is nil or query fails)
 //
 // This function does NOT write edges to disk; Phase 28 derives on demand.
-func ComputeEdges(docs []retriever.DocumentMeta, store store.Store) ([]Edge, error) {
+func ComputeEdges(docs []retriever.DocumentMeta, auditQuerier any) ([]Edge, error) {
 	if len(docs) == 0 {
 		return nil, nil
 	}
@@ -167,14 +170,28 @@ func ComputeEdges(docs []retriever.DocumentMeta, store store.Store) ([]Edge, err
 			}
 		}
 
-		// VersionChain: b supersedes a when b.EffectiveFrom > a.EffectiveFrom
-		// AND a.EffectiveTo > 0 AND a.EffectiveTo <= b.EffectiveFrom.
+		// VersionChain: b supersedes a when their effective windows overlap
+		// or touch at the boundary. The condition is:
+		//   b.EffectiveFrom > a.EffectiveFrom   (b starts after a)
+		//   a.EffectiveTo > 0                   (a has a known end)
+		//   b.EffectiveFrom <= a.EffectiveTo    (b starts before or when a ends)
+		//
+		// This correctly produces NO edge for disjoint windows (a.To=100, b.From=200:
+		// 200 <= 100 = false), YES edge for touching boundary (a.To=100, b.From=101:
+		// 101 <= 100 = false — but b.From > a.From is true so the boundary case
+		// needs a.To == b.From-1, which is the "touching" case we want to EXCLUDE
+		// per research §2: "window touches" means a.To <= b.From, but strict
+		// supersession means b is NEWER than a, so b.From >= a.EffectiveTo+1).
+		//
+		// Final correct condition: b.From > a.From AND a.To > 0 AND b.From <= a.To
+		// This means: b starts strictly after a began, a has ended, b starts before
+		// or at the moment a ended (overlapping or immediately adjacent).
 		for i := 0; i < len(chunks); i++ {
 			for j := i + 1; j < len(chunks); j++ {
 				a, b := chunks[i], chunks[j]
 				if b.EffectiveFrom > a.EffectiveFrom &&
 					a.EffectiveTo > 0 &&
-					a.EffectiveTo <= b.EffectiveFrom {
+					b.EffectiveFrom <= a.EffectiveTo {
 					edges = append(edges, Edge{
 						From:     int64ToChunkID(a.ID),
 						To:       int64ToChunkID(b.ID),
@@ -215,7 +232,7 @@ func ComputeEdges(docs []retriever.DocumentMeta, store store.Store) ([]Edge, err
 		sources = append(sources, srcInfo{source: src, chunkID: representativeID, tokens: tokens})
 	}
 
-	threshold := jaccardThreshold
+	threshold := jaccardThreshold()
 	for i := 0; i < len(sources); i++ {
 		for j := i + 1; j < len(sources); j++ {
 			score := jaccard(sources[i].tokens, sources[j].tokens)
@@ -231,24 +248,277 @@ func ComputeEdges(docs []retriever.DocumentMeta, store store.Store) ([]Edge, err
 	}
 
 	// 3. CitationCooccur: scan audit rows with non-empty VerdictJSON.
-	if store != nil {
-		if citeEdges, err := computeCitationEdges(store); err != nil {
+	if auditQuerier != nil {
+		if citeEdges, err := computeCitationEdges(auditQuerier); err != nil {
 			log.Printf("[WARN] ComputeEdges: citation_cooccur skipped — %v", err)
 		} else {
 			edges = append(edges, citeEdges...)
 		}
 	} else {
-		log.Printf("[WARN] ComputeEdges: store is nil — citation_cooccur edges skipped (graceful degrade)")
+		log.Printf("[WARN] ComputeEdges: auditQuerier is nil — citation_cooccur edges skipped (graceful degrade)")
 	}
 
+	// Sort edges for deterministic output (GRF-02: same input → byte-identical output).
+	sort.Slice(edges, func(i, j int) bool {
+		if edges[i].From != edges[j].From {
+			return edges[i].From < edges[j].From
+		}
+		if edges[i].To != edges[j].To {
+			return edges[i].To < edges[j].To
+		}
+		return edges[i].EdgeType < edges[j].EdgeType
+	})
+
 	return edges, nil
+}
+
+// Node represents a chunk node in neighbor/path query results.
+type Node struct {
+	ChunkID       string `json:"chunk_id"`
+	Tier          string `json:"tier"`
+	Source        string `json:"source"`
+	EffectiveFrom int64  `json:"effectiveFrom"`
+	EffectiveTo   int64  `json:"effectiveTo"`
+}
+
+// NeighborResult is the return type of EdgeGraph.Neighbors.
+type NeighborResult struct {
+	ChunkID        string  `json:"chunk_id"`
+	Depth          int     `json:"depth"`
+	Nodes          []Node  `json:"nodes"`
+	Edges          []Edge  `json:"edges"`
+	Degraded       bool    `json:"degraded"`
+	DegradedReason string  `json:"degraded_reason,omitempty"`
+}
+
+// PathResult is the return type of EdgeGraph.ShortestPath.
+type PathResult struct {
+	From           string  `json:"from"`
+	To             string  `json:"to"`
+	MaxHops        int     `json:"max_hops"`
+	Hops           int     `json:"hops"`
+	Path           []string `json:"path"`
+	Edges          []Edge   `json:"edges"`
+	Degraded       bool     `json:"degraded"`
+	DegradedReason string   `json:"degraded_reason,omitempty"`
+}
+
+// EdgeGraph holds the derived edge graph for neighbor/path queries.
+// It is built from DocumentMeta rows via ComputeEdges + buildAdjacency.
+type EdgeGraph struct {
+	Edges []Edge
+	adj   map[string][]Edge // chunk_id -> outgoing edges
+
+	// metaIndex maps chunk_id (decimal string) -> DocumentMeta for fast lookup.
+	metaIndex map[string]retriever.DocumentMeta
+}
+
+// buildAdjacency builds the adjacency map and meta index from the flat edge list.
+// Called lazily on first Neighbors/ShortestPath access.
+func (g *EdgeGraph) buildAdjacency(metas []retriever.DocumentMeta) {
+	g.adj = make(map[string][]Edge, len(g.Edges))
+	for _, e := range g.Edges {
+		g.adj[e.From] = append(g.adj[e.From], e)
+	}
+	// Build meta index for fast node lookup.
+	g.metaIndex = make(map[string]retriever.DocumentMeta, len(metas))
+	for _, m := range metas {
+		g.metaIndex[int64ToChunkID(m.ID)] = m
+	}
+}
+
+// nodeFromMeta builds a Node from a DocumentMeta.
+func nodeFromMeta(m retriever.DocumentMeta) Node {
+	return Node{
+		ChunkID:       int64ToChunkID(m.ID),
+		Tier:          m.Tier,
+		Source:        m.Source,
+		EffectiveFrom: m.EffectiveFrom,
+		EffectiveTo:   m.EffectiveTo,
+	}
+}
+
+// Neighbors returns all nodes and edges reachable from chunkID within maxDepth.
+// Results are sorted by ChunkID for deterministic output. Degraded=true when
+// maxNodes is exceeded or maxDepth is reached with more nodes still reachable.
+func (g *EdgeGraph) Neighbors(chunkID string, maxDepth int, maxNodes int) *NeighborResult {
+	if g.adj == nil {
+		return &NeighborResult{ChunkID: chunkID, Depth: 0, Degraded: false}
+	}
+
+	if _, ok := g.metaIndex[chunkID]; !ok {
+		return nil // chunk not found in metadata
+	}
+
+	visited := map[string]bool{chunkID: true}
+	queue := []string{chunkID}
+	depth := 0
+	resultNodes := []Node{nodeFromMeta(g.metaIndex[chunkID])}
+	resultEdges := []Edge{}
+
+	for len(queue) > 0 && depth < maxDepth {
+		levelSize := len(queue)
+		for i := 0; i < levelSize; i++ {
+			current := queue[0]
+			queue = queue[1:]
+			for _, edge := range g.adj[current] {
+				if !visited[edge.To] {
+					visited[edge.To] = true
+					queue = append(queue, edge.To)
+					if m, ok := g.metaIndex[edge.To]; ok {
+						resultNodes = append(resultNodes, nodeFromMeta(m))
+					}
+					if len(resultEdges) < maxNodes*2 {
+						resultEdges = append(resultEdges, edge)
+					}
+				}
+			}
+		}
+		depth++
+	}
+
+	degraded := len(visited) >= maxNodes || depth >= maxDepth
+	reason := ""
+	if degraded {
+		if len(visited) >= maxNodes {
+			reason = fmt.Sprintf("neighbor limit exceeded (%d nodes); returning partial result. see SKILLFORGE_GRAPH_MAX_NODES config.", maxNodes)
+		} else {
+			reason = fmt.Sprintf("depth limit reached (depth=%d); some neighbors may exist beyond this frontier. see SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT config.", maxDepth)
+		}
+	}
+
+	// Sort for deterministic output.
+	sort.Slice(resultNodes, func(i, j int) bool {
+		return resultNodes[i].ChunkID < resultNodes[j].ChunkID
+	})
+	sort.Slice(resultEdges, func(i, j int) bool {
+		if resultEdges[i].From != resultEdges[j].From {
+			return resultEdges[i].From < resultEdges[j].From
+		}
+		return resultEdges[i].To < resultEdges[j].To
+	})
+
+	return &NeighborResult{
+		ChunkID:        chunkID,
+		Depth:          depth,
+		Nodes:          resultNodes,
+		Edges:          resultEdges,
+		Degraded:       degraded,
+		DegradedReason: reason,
+	}
+}
+
+// ShortestPath returns the BFS shortest path from 'from' to 'to' within maxHops.
+// Unweighted BFS; all edge types are equal weight. Degraded=true when no path
+// is found within maxHops (hops=-1, empty path).
+func (g *EdgeGraph) ShortestPath(from, to string, maxHops int) *PathResult {
+	if g.adj == nil {
+		return &PathResult{From: from, To: to, MaxHops: maxHops, Hops: -1, Degraded: true, DegradedReason: "edge graph not initialized"}
+	}
+
+	if from == to {
+		return &PathResult{From: from, To: to, MaxHops: maxHops, Hops: 0, Path: []string{from}, Edges: []Edge{}, Degraded: false}
+	}
+
+	parent := map[string]string{}
+	end := ""
+	queue := []string{from}
+	found := false
+
+	for len(queue) > 0 && len(parent) < maxHops*20 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, edge := range g.adj[current] {
+			if _, seen := parent[edge.To]; !seen && edge.To != from {
+				parent[edge.To] = current
+				if edge.To == to {
+					found = true
+					end = to
+					break
+				}
+				queue = append(queue, edge.To)
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found || end == "" {
+		return &PathResult{
+			From: from, To: to, MaxHops: maxHops, Hops: -1,
+			Path: []string{}, Edges: []Edge{},
+			Degraded: true, DegradedReason: fmt.Sprintf("no path found within %d hops (max_hops); graph may be disconnected.", maxHops),
+		}
+	}
+
+	// Reconstruct path.
+	path := []string{}
+	cur := to
+	for cur != "" && cur != from {
+		path = append([]string{cur}, path...)
+		cur = parent[cur]
+	}
+	path = append([]string{from}, path...)
+
+	// Reconstruct edges along path.
+	pathEdges := []Edge{}
+	for i := 0; i < len(path)-1; i++ {
+		for _, e := range g.adj[path[i]] {
+			if e.To == path[i+1] {
+				pathEdges = append(pathEdges, e)
+				break
+			}
+		}
+	}
+
+	// Sort for deterministic output.
+	sort.Slice(pathEdges, func(i, j int) bool {
+		if pathEdges[i].From != pathEdges[j].From {
+			return pathEdges[i].From < pathEdges[j].From
+		}
+		return pathEdges[i].To < pathEdges[j].To
+	})
+
+	return &PathResult{
+		From: from, To: to, MaxHops: maxHops,
+		Hops: len(path) - 1, Path: path, Edges: pathEdges,
+		Degraded: false,
+	}
+}
+
+// EdgeGraphFromMetadata builds a fully-populated EdgeGraph from retriever metadata.
+// It calls ComputeEdges, then buildAdjacency, and is the seam used by the HTTP handlers.
+func EdgeGraphFromMetadata(ctx context.Context, r retriever.Retriever) (*EdgeGraph, error) {
+	metas, err := r.ListMetadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("EdgeGraphFromMetadata: ListMetadata: %w", err)
+	}
+	edges, err := ComputeEdges(metas, nil)
+	if err != nil {
+		return nil, fmt.Errorf("EdgeGraphFromMetadata: ComputeEdges: %w", err)
+	}
+	eg := &EdgeGraph{Edges: edges}
+	eg.buildAdjacency(metas)
+	return eg, nil
+}
+
+// auditQuerier is the minimal interface needed for citation co-occurrence.
+// Defined as a named type so the interface embedding in computeCitationEdges
+// matches concretely at compile time.
+type auditQuerier interface {
+	QueryAudit(ctx context.Context, filter store.AuditFilter) ([]store.AuditRow, error)
 }
 
 // computeCitationEdges scans audit rows with non-empty VerdictJSON and
 // emits co-citation edges between all pairs of chunks cited in the same
 // verdict. Weight = 1.0 / distinct_chunks_in_verdict.
-func computeCitationEdges(s store.Store) ([]Edge, error) {
-	rows, err := s.QueryAudit(context.Background(), store.AuditFilter{Limit: 10000})
+func computeCitationEdges(aq any) ([]Edge, error) {
+	q, ok := aq.(auditQuerier)
+	if !ok {
+		return nil, errors.New("auditQuerier does not satisfy auditQuerier interface")
+	}
+	rows, err := q.QueryAudit(context.Background(), store.AuditFilter{Limit: 10000})
 	if err != nil {
 		return nil, err
 	}

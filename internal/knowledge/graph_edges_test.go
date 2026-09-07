@@ -251,6 +251,9 @@ func TestEdgeKeywordCooccur(t *testing.T) {
 // ------------------------------------------------------------------
 
 func TestEdgeCitationCooccur(t *testing.T) {
+	// Set threshold to 0 to isolate citation edges (no keyword_cooccur).
+	t.Setenv("SKILLFORGE_GRAPH_JACCARD_THRESHOLD", "0")
+
 	v := verdict.Verdict{
 		Status:     "ok",
 		Confidence: 0.95,
@@ -267,11 +270,6 @@ func TestEdgeCitationCooccur(t *testing.T) {
 			{ID: 1, VerdictJSON: string(vJSON)},
 		},
 	}
-
-	// Patch jaccardThreshold to 0 to isolate citation edges.
-	origThreshold := jaccardThreshold
-	jaccardThreshold = 0.0
-	defer func() { jaccardThreshold = origThreshold }()
 
 	edges, err := ComputeEdges([]retriever.DocumentMeta{
 		{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
@@ -328,16 +326,15 @@ func TestJaccardThresholdConfigurable(t *testing.T) {
 	edges, err := ComputeEdges(metas, nil)
 	require.NoError(t, err)
 	keywordEdges := filterEdges(edges, EdgeTypeKeywordCooccur)
-	assert.Len(t, keywordEdges, 0, "Jaccard ~0.2 must not exceed threshold 0.3")
+	assert.Len(t, keywordEdges, 0, "Jaccard 0.25 must not exceed threshold 0.3")
 
-	// Patch threshold to 0.1 → 1 edge.
-	jaccardThreshold = 0.1
-	defer func() { jaccardThreshold = 0.3 }()
+	// Set threshold to 0.1 via t.Setenv (proper test isolation) → 1 edge.
+	t.Setenv("SKILLFORGE_GRAPH_JACCARD_THRESHOLD", "0.1")
 
 	edges, err = ComputeEdges(metas, nil)
 	require.NoError(t, err)
 	keywordEdges = filterEdges(edges, EdgeTypeKeywordCooccur)
-	assert.Len(t, keywordEdges, 1, "Jaccard ~0.2 must exceed patched threshold 0.1")
+	assert.Len(t, keywordEdges, 1, "Jaccard 0.25 must exceed threshold 0.1")
 }
 
 // ------------------------------------------------------------------
