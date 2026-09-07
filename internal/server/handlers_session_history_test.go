@@ -19,6 +19,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -457,4 +458,214 @@ func TestSessionHistoryAPI_HandlerDoesNotCallProject(t *testing.T) {
 // Wraps os.ReadFile with a unified return shape.
 func readFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
+}
+
+// ---------------------------------------------------------------------------
+// Phase 29 / Plan 29-04 Task 3 — turn_id + voted_verdict history echo
+// (D-29-03: session restore carries BOTH fields in ONE request — zero
+// extra round-trips; T-29-06: votes are session-partitioned).
+// ---------------------------------------------------------------------------
+
+// countedVotedVerdictStore wraps a real store, counts VotedVerdictsBySession
+// calls (D-29-03: exactly ONE batch query per history request), and can be
+// scripted to fail (the degradation fixture).
+type countedVotedVerdictStore struct {
+	store.Store
+	calls int
+	err   error
+}
+
+func (s *countedVotedVerdictStore) VotedVerdictsBySession(ctx context.Context, sessionID string) (map[int64]string, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.Store.VotedVerdictsBySession(ctx, sessionID)
+}
+
+// seedEchoTurn appends one (user, assistant) pair and returns the
+// assistant row id (the turn id the history response must echo).
+func seedEchoTurn(t *testing.T, s *sqlite.SQLiteStore, sessionID, userContent, assistantContent string, ts time.Time) int64 {
+	t.Helper()
+	turnID, err := s.AppendTurn(context.Background(), sessionID,
+		store.SessionMessage{Role: "user", Content: userContent, Ts: ts},
+		store.SessionMessage{Role: "assistant", Content: assistantContent, Ts: ts.Add(time.Millisecond)},
+	)
+	require.NoError(t, err, "AppendTurn (sess=%s)", sessionID)
+	require.Greater(t, turnID, int64(0), "AppendTurn must return the assistant row id (29-01)")
+	return turnID
+}
+
+// historyRowsAsMaps decodes the raw response's messages array into raw
+// JSON objects so assertions can check KEY ABSENCE (omitempty fields
+// must not serialize when unset — the FE treats a missing turn_id as
+// "feedback disabled for this row").
+func historyRowsAsMaps(t *testing.T, raw []byte) []map[string]any {
+	t.Helper()
+	var envelope struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &envelope),
+		"history response must be JSON-decodable; raw=%s", string(raw))
+	return envelope.Messages
+}
+
+// mustPutEchoVote writes one feedback row (test convenience).
+func mustPutEchoVote(t *testing.T, s *sqlite.SQLiteStore, row store.FeedbackRow) {
+	t.Helper()
+	inserted, err := s.PutFeedback(context.Background(), row)
+	require.NoError(t, err, "PutFeedback (sess=%s turn=%d)", row.SessionID, row.TurnID)
+	require.True(t, inserted, "echo fixtures must cast fresh votes")
+}
+
+// TestSessionHistoryAPI_TurnIDAndVotedVerdictEcho — the D-29-03 core:
+// assistant rows carry turn_id (== session_turn.id) and voted_verdict
+// only when voted; user rows and unvoted rows serialize WITHOUT the
+// optional keys; the whole response costs exactly ONE VotedVerdictsBySession
+// batch query; a vote on ANOTHER session's turn never bleeds in.
+func TestSessionHistoryAPI_TurnIDAndVotedVerdictEcho(t *testing.T) {
+	realStore := historyTestStore(t)
+	counted := &countedVotedVerdictStore{Store: realStore}
+	deps := &Deps{Store: counted}
+	addr, cleanup := historyTestHertz(t, deps)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Turn 1 — verdict row, voted helpful.
+	turn1 := seedEchoTurn(t, realStore, "session-echo-12345",
+		"first question",
+		`{"status":"ok","confidence":0.9,"citations":[],"review_required":false,"compliance_status":"compliant"}`,
+		time.Now().Add(-2*time.Minute),
+	)
+	// Turn 2 — refusal row, unvoted.
+	turn2 := seedEchoTurn(t, realStore, "session-echo-12345",
+		"second question",
+		verdict.RefusalReasonNoAuthorizedSource,
+		time.Now().Add(-1*time.Minute),
+	)
+	// A DIFFERENT session voting on ITS turn — must never bleed into
+	// session-echo-12345's response (T-29-06 session partition).
+	otherTurn := seedEchoTurn(t, realStore, "session-other-6789",
+		"other session question", "ok", time.Now().Add(-time.Minute))
+	mustPutEchoVote(t, realStore, store.FeedbackRow{
+		SessionID: "session-other-6789", TurnID: otherTurn, Verdict: "unhelpful", SkillID: "compliance",
+	})
+	// The vote under test: turn 1 → helpful.
+	mustPutEchoVote(t, realStore, store.FeedbackRow{
+		SessionID: "session-echo-12345", TurnID: turn1, Verdict: "helpful", SkillID: "compliance",
+	})
+
+	status, body, raw := getHistory(t, addr, "session-echo-12345")
+	require.Equal(t, http.StatusOK, status, "raw=%s", string(raw))
+	require.Len(t, body.Messages, 4, "2 (user, assistant) pairs expected; raw=%s", string(raw))
+	require.Len(t, historyRowsAsMaps(t, raw), 4)
+
+	rows := historyRowsAsMaps(t, raw)
+
+	// Row 0 — user: NO turn_id key (omitempty).
+	assert.Equal(t, 0.0, body.Messages[0].TurnID, "user row must not carry a turn id")
+	_, hasTurnID := rows[0]["turn_id"]
+	assert.False(t, hasTurnID, "user row must serialize WITHOUT turn_id (omitempty); raw row=%v", rows[0])
+
+	// Row 1 — assistant verdict row: turn_id + voted_verdict present.
+	assert.Equal(t, float64(turn1), body.Messages[1].TurnID,
+		"assistant row must echo its session_turn.id")
+	assert.Equal(t, "helpful", body.Messages[1].VotedVerdict,
+		"voted assistant row must echo the voter's verdict")
+
+	// Row 2 — user: NO turn_id.
+	_, hasTurnID = rows[2]["turn_id"]
+	assert.False(t, hasTurnID, "second user row must serialize WITHOUT turn_id")
+
+	// Row 3 — refusal assistant row: turn_id present, voted_verdict absent
+	// (unvoted → omitempty; refusal rounds are votable, Open Q3).
+	assert.Equal(t, float64(turn2), body.Messages[3].TurnID,
+		"refusal row must echo its session_turn.id too")
+	_, hasVerdict := rows[3]["voted_verdict"]
+	assert.False(t, hasVerdict, "unvoted assistant row must serialize WITHOUT voted_verdict; raw row=%v", rows[3])
+
+	// Cross-session bleed guard (T-29-06).
+	assert.NotContains(t, string(raw), `"voted_verdict":"unhelpful"`,
+		"another session's vote must never appear in this session's echo")
+
+	// D-29-03: exactly ONE batch VotedVerdictsBySession call per request.
+	assert.Equal(t, 1, counted.calls,
+		"handler must issue exactly one VotedVerdictsBySession batch query (no per-row queries)")
+}
+
+// TestSessionHistoryAPI_VotedVerdictSurvivesTruncation — after the
+// D10-B3 display cap drops the OLDEST pair, the surviving rows keep
+// their OWN turn_id + voted_verdict (no loss, no off-by-one bleed onto
+// the wrong row).
+func TestSessionHistoryAPI_VotedVerdictSurvivesTruncation(t *testing.T) {
+	realStore := historyTestStore(t)
+	deps := &Deps{Store: realStore}
+	addr, cleanup := historyTestHertz(t, deps)
+	defer cleanup()
+
+	ctx := context.Background()
+	// Oldest pair: over-budget content → evicted by the display cap.
+	bigUser := strings.Repeat("a", 10000)
+	seedEchoTurn(t, realStore, "session-cap-vote-1",
+		bigUser, bigUser, time.Now().Add(-2*time.Minute))
+	// Newer pair: survives; its assistant row is voted outdated.
+	newerTurn := seedEchoTurn(t, realStore, "session-cap-vote-1",
+		"small user message",
+		`{"status":"ok","confidence":0.9,"citations":[],"review_required":false,"compliance_status":"compliant"}`,
+		time.Now().Add(-1*time.Minute),
+	)
+	mustPutEchoVote(t, realStore, store.FeedbackRow{
+		SessionID: "session-cap-vote-1", TurnID: newerTurn, Verdict: "outdated", SkillID: "compliance",
+	})
+
+	status, body, raw := getHistory(t, addr, "session-cap-vote-1")
+	require.Equal(t, http.StatusOK, status, "raw=%s", string(raw))
+	require.NotEmpty(t, body.Messages)
+
+	var survivor *historyEntry
+	for i := range body.Messages {
+		if body.Messages[i].Role == "assistant" {
+			survivor = &body.Messages[i]
+		}
+	}
+	require.NotNil(t, survivor, "the surviving pair's assistant row must be present")
+	assert.Equal(t, float64(newerTurn), survivor.TurnID,
+		"surviving assistant row must keep its OWN turn_id after truncation; raw=%s", string(raw))
+	assert.Equal(t, "outdated", survivor.VotedVerdict,
+		"surviving assistant row must keep its OWN voted_verdict after truncation")
+	// The EVICTED turn's id must not appear anywhere.
+	assert.NotContains(t, string(raw), `"turn_id":1`,
+		"evicted rows must not leave their turn_id behind (no bleed)")
+}
+
+// TestSessionHistoryAPI_VotedVerdictStoreErrorDegrades — a failed
+// VotedVerdictsBySession degrades to rows WITHOUT voted_verdict and a
+// 200 response (history availability first; the echo is an enhancement,
+// not a dependency). turn_id is still echoed.
+func TestSessionHistoryAPI_VotedVerdictStoreErrorDegrades(t *testing.T) {
+	realStore := historyTestStore(t)
+	counted := &countedVotedVerdictStore{
+		Store: realStore,
+		err:   errors.New("simulated voted-verdict read failure"),
+	}
+	deps := &Deps{Store: counted}
+	addr, cleanup := historyTestHertz(t, deps)
+	defer cleanup()
+
+	turnID := seedEchoTurn(t, realStore, "session-degrade-123",
+		"question",
+		`{"status":"ok","confidence":0.9,"citations":[],"review_required":false,"compliance_status":"compliant"}`,
+		time.Now().Add(-time.Minute),
+	)
+
+	status, body, raw := getHistory(t, addr, "session-degrade-123")
+	require.Equal(t, http.StatusOK, status,
+		"voted-verdict read failure must NOT 500 (degrade, don't fail); raw=%s", string(raw))
+	require.Len(t, body.Messages, 2)
+	assert.Equal(t, float64(turnID), body.Messages[1].TurnID,
+		"turn_id echo survives the voted-verdict degradation")
+	assert.Empty(t, body.Messages[1].VotedVerdict,
+		"degraded rows carry no voted_verdict")
+	assert.NotContains(t, string(raw), "voted_verdict",
+		"no row may claim a verdict when the read failed")
 }

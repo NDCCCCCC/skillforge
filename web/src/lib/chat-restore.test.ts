@@ -154,3 +154,111 @@ describe('chat-restore / historyToUIMessages', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 29 / Plan 29-04 Task 3 — the history echo's FE half (D-29-03).
+// Assistant rows carrying turn_id synthesize a data-turn part (same
+// consumption point as the live stream); rows without one (user rows,
+// unattributed legacy rows) synthesize none. voted_verdict rides the
+// data-turn payload's optional TS-only field — the Go emit side never
+// marshals it (see wire-types.ts TurnPayload).
+// ---------------------------------------------------------------------------
+
+describe('chat-restore / historyToUIMessages data-turn synthesis', () => {
+  it('TestHistoryToUIMessages_DataTurnSynthesis — assistant rows with turn_id gain a data-turn part', () => {
+    const history: SessionHistoryResponse = {
+      messages: [
+        { role: 'user', content: 'question', ts: 1000, turn_id: 0 },
+        {
+          role: 'assistant',
+          content: 'compliant',
+          ts: 1100,
+          turn_id: 41,
+          voted_verdict: 'helpful',
+          verdict: {
+            status: 'ok',
+            confidence: 0.9,
+            citations: [],
+            review_required: false,
+            compliance_status: 'compliant',
+          },
+        },
+        {
+          role: 'assistant',
+          content: '无法给出结论：未检索到可回答该问题的授权知识源。',
+          ts: 1200,
+          turn_id: 43,
+        },
+      ],
+      skill_id: 'compliance',
+    };
+    const out = historyToUIMessages(history, 'sess-turn-echo');
+
+    // Row 0 — user: no data-turn part even when the key is present (0
+    // is the unset value on the wire; user rows never carry it).
+    expect(out[0].parts.every((p) => p.type !== 'data-turn')).toBe(true);
+
+    // Row 1 — verdict assistant: data-turn part carrying turnId +
+    // votedVerdict alongside the data-policy part.
+    const dataTurn1 = out[1].parts.find((p) => p.type === 'data-turn');
+    expect(dataTurn1).toMatchObject({
+      type: 'data-turn',
+      data: { turnId: 41, votedVerdict: 'helpful' },
+    });
+
+    // Row 2 — refusal assistant: data-turn part with NO votedVerdict
+    // (unvoted → undefined, never null/fabricated).
+    const dataTurn2 = out[2].parts.find((p) => p.type === 'data-turn');
+    expect(dataTurn2).toMatchObject({
+      type: 'data-turn',
+      data: { turnId: 43 },
+    });
+    expect(
+      (dataTurn2 as { data: { votedVerdict?: string } }).data.votedVerdict,
+    ).toBeUndefined();
+  });
+
+  it('TestHistoryToUIMessages_NoTurnID — rows without turn_id gain no data-turn part', () => {
+    const history: SessionHistoryResponse = {
+      messages: [
+        {
+          role: 'assistant',
+          content: 'compliant',
+          ts: 1100,
+          verdict: {
+            status: 'ok',
+            confidence: 0.9,
+            citations: [],
+            review_required: false,
+            compliance_status: 'compliant',
+          },
+        },
+        {
+          role: 'assistant',
+          content: 'plain prose',
+          ts: 1200,
+        },
+      ],
+      skill_id: '',
+    };
+    const out = historyToUIMessages(history, 'sess-no-turn');
+    expect(out[0].parts.every((p) => p.type !== 'data-turn')).toBe(true);
+    expect(out[1].parts.every((p) => p.type !== 'data-turn')).toBe(true);
+  });
+
+  it('TestHistoryToUIMessages_TurnIDZero — turn_id 0 emits no data-turn part (degradation posture)', () => {
+    const history: SessionHistoryResponse = {
+      messages: [
+        {
+          role: 'assistant',
+          content: 'plain prose',
+          ts: 1300,
+          turn_id: 0,
+        },
+      ],
+      skill_id: '',
+    };
+    const out = historyToUIMessages(history, 'sess-zero-turn');
+    expect(out[0].parts.every((p) => p.type !== 'data-turn')).toBe(true);
+  });
+});
