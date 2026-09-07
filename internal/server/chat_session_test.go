@@ -35,6 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/agent"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/skillforge/skillforge/internal/verdict"
@@ -559,48 +560,25 @@ func TestSessionIDGeneration(t *testing.T) {
 // count in this plan's acceptance criteria instead.
 // ---------------------------------------------------------------------------
 
-// retrieveThenVerdictModel drives the ReAct loop one hop: turn 1 emits
-// the retrieve tool call, turn 2 emits the final grounded verdict JSON
-// (citing the chunk the stub retriever returns verbatim so the
-// grounding checker leaves it intact).
-type retrieveThenVerdictModel struct {
-	mu    sync.Mutex
-	calls int
-}
-
-var _ model.ToolCallingChatModel = (*retrieveThenVerdictModel)(nil)
-
-func (m *retrieveThenVerdictModel) Generate(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.calls++
-	if m.calls == 1 {
-		return &schema.Message{
-			Role: schema.Assistant,
-			ToolCalls: []schema.ToolCall{
-				{
-					ID:   "call_1",
-					Type: "function",
-					Function: schema.FunctionCall{
-						Name:      agent.RetrieveToolName,
-						Arguments: `{"query":"年假有几天"}`,
-					},
-				},
-			},
-		}, nil
-	}
-	return &schema.Message{
-		Role:    schema.Assistant,
-		Content: cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, historyTestChunkText, "权威"),
-	}, nil
-}
-
-func (m *retrieveThenVerdictModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	return nil, fmt.Errorf("retrieveThenVerdictModel: Stream not implemented")
-}
-
-func (m *retrieveThenVerdictModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
-	return m, nil
+// newAgentWithData mirrors newTestAgent but seeds the agent's OWN
+// retriever with citable chunks. The agent holds its embedder/retriever
+// internally (deps-level seams are ignored on this path), and its
+// pre-retrieve pass populates the accumulator from that retriever — so
+// a canned verdict citing chunk "1" survives the trust floor +
+// grounding checker and reaches the verdict branch.
+func newAgentWithData(t *testing.T, cm model.ToolCallingChatModel, chunks []retriever.Hit) *agent.Agent {
+	t.Helper()
+	m := &skill.Manifest{}
+	m.SetResolvedTiersForTest([]string{"权威"})
+	ag, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+		Manifest:  m,
+		Embedder:  newStubEmbedder(),
+		Retriever: &stubRetriever{chunks: chunks},
+		ChatModel: cm,
+		MaxHops:   1,
+	})
+	require.NoError(t, err, "agent.NewAgent must succeed with stub deps")
+	return ag
 }
 
 // errorChatModel fails Generate outright → Agent.Run returns an error →
@@ -632,23 +610,29 @@ func (m *errorChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatM
 // Both turnIds equal the persisted assistant row id.
 func TestRunAgentPath_DataTurnRefusalAndVerdict(t *testing.T) {
 	cases := []struct {
-		name    string
-		summon func(t *testing.T) model.ToolCallingChatModel
+		name   string
+		summon func(t *testing.T) *agent.Agent
 	}{
 		{
 			name: "agent_refusal",
-			summon: func(t *testing.T) model.ToolCallingChatModel {
+			summon: func(t *testing.T) *agent.Agent {
 				t.Helper()
-				// Never calls retrieve → accumulator empty → trust floor
-				// refuses (no_authorized_source).
-				return &cannedChatModel{}
+				// Never calls retrieve + no seeded chunks → accumulator
+				// empty → trust floor refuses (no_authorized_source).
+				return newTestAgent(t, &cannedChatModel{})
 			},
 		},
 		{
 			name: "agent_verdict",
-			summon: func(t *testing.T) model.ToolCallingChatModel {
+			summon: func(t *testing.T) *agent.Agent {
 				t.Helper()
-				return &retrieveThenVerdictModel{}
+				// Canned final-message verdict citing the chunk the
+				// agent's own retriever returns — pre-retrieve seeds the
+				// accumulator, so the trust floor passes and the verdict
+				// branch runs.
+				return newAgentWithData(t,
+					&cannedChatModel{content: cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, historyTestChunkText, "权威")},
+					emitChunks())
 			},
 		},
 	}
@@ -656,12 +640,10 @@ func TestRunAgentPath_DataTurnRefusalAndVerdict(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sessID := "sess-29-04-agent-" + tc.name
-			retrieverStub := &stubRetriever{chunks: emitChunks()}
 			deps := &Deps{
-				Embedder:  newStubEmbedder(),
-				Retriever: retrieverStub,
-				Agent:     newTestAgent(t, tc.summon(t)),
-				Store:     newTestStore(t),
+				Embedder: newStubEmbedder(),
+				Agent:    tc.summon(t),
+				Store:    newTestStore(t),
 			}
 			addr, cleanup := newTestHertz(t, deps)
 			defer cleanup()
@@ -694,7 +676,8 @@ func TestRunAgentPath_DataTurnRefusalAndVerdict(t *testing.T) {
 				require.Greater(t, textEnd, -1, "verdict stream must have text-end")
 				assert.Less(t, turnIdx[0], textEnd,
 					"agent verdict: data-turn MUST precede the terminal text lifecycle close")
-				assert.NotNil(t, mustVerdict(t, frames), "agent verdict stream must carry a data-policy Verdict")
+				assert.NotNil(t, mustVerdict(t, frames),
+					"agent verdict stream must carry a data-policy Verdict; sequence=%v", frameTypeList(frames))
 			}
 		})
 	}

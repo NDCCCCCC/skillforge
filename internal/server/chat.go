@@ -308,15 +308,22 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		// calls onError). The readable text is a fixed template (no
 		// internal error detail leaks to the client).
 		log.Printf("[ERROR] server: chatHandler verdict pipeline failed sess=%s: %v", sessionID, err)
+		// 29-04 (T-29-06): persist the audit row + turn pair FIRST, emit
+		// the data-turn vote key, THEN the terminal frames — a client
+		// that registered this error-shaped assistant message (the full
+		// text lifecycle below reaches finish) can vote on it, and the
+		// vote key must precede finish. write-first also guarantees the
+		// audit row survives an emit failure (GEVL-03).
+		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
+		if emitErr := emitTurnID(c, turnID); emitErr != nil {
+			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
+		}
 		_ = wire.EmitChunk(c, errorChunk(err.Error()))
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: pipelineErrorText})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-		// 29-01: the returned turn id is discarded here — Plan 29-04
-		// emits the data-turn frame in this window.
-		_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
 		return
 	}
 }
@@ -446,6 +453,14 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 		// the error frame + finish-step, then persist the audit row
 		// with RefusalReason="internal_error" (GEVL-03: every query
 		// writes one audit row before the handler returns).
+		//
+		// 29-04 (T-29-06): this branch deliberately does NOT emit
+		// data-turn and the writeAuditAndTurn call stays AFTER the
+		// terminal emits in its original order. There is no finish frame
+		// here, so useChat never registers an assistant message — no
+		// FeedbackRow renders and there is nothing to vote on; a turn id
+		// would fabricate a vote target. The audit row is still written
+		// (GEVL-03) but its id is discarded.
 		_ = wire.EmitChunk(c, errorChunk(err.Error()))
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
@@ -459,8 +474,16 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 
 	if refusal != nil {
 		// Trust floor or out-of-scope refusal (verdict is zero-value).
+		// 29-04 (T-29-06): persist the turn FIRST, emit the data-turn
+		// vote key, THEN the refusal stream — emitRefusal writes the
+		// terminal frames internally, so the vote key must precede it.
+		// Refusal rounds are votable too (Open Q3: refusal quality is a
+		// legitimate signal).
+		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", refusal.Reason, nil)
+		if emitErr := emitTurnID(c, turnID); emitErr != nil {
+			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
+		}
 		_ = emitRefusal(c, *refusal)
-		_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", refusal.Reason, nil)
 		return
 	}
 
@@ -471,6 +494,15 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	// future Plan can lift it via an accessor if richer source-document
 	// metadata is needed.
 	_ = emitVerdictStream(c, v, nil, nil)
+	// 29-04 (T-29-06): persist the audit row + turn pair FIRST and emit
+	// the data-turn vote key BEFORE the terminal frames — useChat
+	// registers the assistant message at finish, so the FeedbackRow
+	// needs the vote key before that point. write-first also guarantees
+	// the audit row survives an emit failure (GEVL-03).
+	turnID, _ := s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "", nil)
+	if emitErr := emitTurnID(c, turnID); emitErr != nil {
+		log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
+	}
 	// Close the AI SDK v5 message lifecycle. emitVerdictStream opens the
 	// text part (text-start + conclusion text-delta) but deliberately
 	// does NOT close it (the VerdictPipeline closes it after its
@@ -482,9 +514,6 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-	// 29-01: the returned turn id is discarded here — Plan 29-04
-	// emits the data-turn frame in this window (right after finish).
-	_, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, v, req.Skill, "", nil)
 }
 
 // writeAuditAndTurn persists the audit row + (user, assistant) session

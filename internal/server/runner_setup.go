@@ -208,11 +208,17 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 	if err := agent.DrainRunnerEvents(ctx, iter, emit); err != nil {
 		log.Printf("[ERROR] server: ChatHandler DrainRunnerEvents failed: %v", err)
 		// The SSE stream is already in flight — we cannot change status
-		// here. Emit an error chunk + finish-step so the client sees a
-		// terminal state, then persist the audit row.
+		// here. Persist the audit row FIRST, emit the data-turn vote
+		// key, then the terminal finish-step + finish pair so a client
+		// that still holds the stream sees the vote key before the
+		// message registers (T-29-06). write-first guarantees the audit
+		// row survives an emit failure (GEVL-03).
+		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, "", "internal_error", nil)
+		if emitErr := emitTurnID(c, turnID); emitErr != nil {
+			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
+		}
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
-		_, _ = s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, "", "internal_error", nil)
 		return
 	}
 
@@ -221,15 +227,24 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 	// moves the verdict parse + audit write into this handler; for 11-01
 	// we log + persist a minimal audit row (best-effort).
 	log.Printf("[INFO] server: ChatHandler drain complete (sess=%s skill=%s)", sessionID, chatReq.Skill)
-	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
-	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
 
 	// 11-01 stub: verdict parse + trust floor + grounding land in
 	// 11-04. For now write a minimal audit row with refusal_reason=\"\"
 	// (the verdict path is captured in the audit row's verdict_json in
 	// the legacy chatHandler — 11-04 re-uses writeAuditAndTurn with the
 	// parsed verdict).
-	_, _ = s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, chatReq.Skill, "", nil)
+	//
+	// 29-04 (T-29-06): the write moved ABOVE the terminal pair — persist
+	// first, emit the data-turn vote key, then finish-step + finish so
+	// the FeedbackRow has its vote key before useChat registers the
+	// message at finish. turnID <= 0 emits nothing; emission errors are
+	// logged, never propagated (GEVL-03: the audit row exists).
+	turnID, _ := s.writeAuditAndTurn(ctx, sessionID, chatReq.Skill, chatReq.Query, verdict.Verdict{}, chatReq.Skill, "", nil)
+	if emitErr := emitTurnID(c, turnID); emitErr != nil {
+		log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
+	}
+	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
+	_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
 }
 
 // dataRefEmitter builds the per-request SSE data-reference emitter for

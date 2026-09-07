@@ -219,12 +219,19 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		// reads resolved to no tiers (which Validate already rejected).
 		// We still defensive-emit a refusal here so a future code path
 		// that bypasses Validate cannot leak through.
-		emitErr := emitRefusal(c, verdict.Refusal{
+		// 29-04 (T-29-06): persist the turn FIRST, emit the data-turn
+		// vote key, THEN the refusal stream — emitRefusal writes the
+		// terminal frames internally, so the vote key must precede it.
+		// write-first also guarantees the audit row exists even if the
+		// emit fails (GEVL-03 still holds: one audit row per query).
+		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonOutOfScope, meta)
+		if err := emitTurnID(c, turnID); err != nil {
+			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", err)
+		}
+		return emitRefusal(c, verdict.Refusal{
 			Reason:      verdict.RefusalReasonOutOfScope,
 			CanRephrase: false,
 		})
-		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonOutOfScope, meta)
-		return emitErr
 	}
 
 	// Step 2: resolve which query to embed. When history is present
@@ -274,13 +281,17 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 
 	// Step 5: SC-2 — 0 chunks → refusal, NO LLM call.
 	if len(chunks) == 0 {
-		emitErr := emitRefusal(c, verdict.Refusal{
+		// 29-04 (T-29-06): write-first, then the vote key, then the
+		// refusal stream (see the Step-1 refusal comment above).
+		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
+		if err := emitTurnID(c, turnID); err != nil {
+			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", err)
+		}
+		return emitRefusal(c, verdict.Refusal{
 			Reason:                    verdict.RefusalReasonNoAuthorizedSource,
 			CanRephrase:               true,
 			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
-		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
-		return emitErr
 	}
 
 	// FEUI-06 channel (quick plan 260815-0xb): retrieval succeeded with
@@ -299,13 +310,17 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// Step 6: GEVL-01 — max retrieval score below threshold → refusal,
 	// NO LLM call.
 	if maxScore(chunks) < retrievalScoreThreshold {
-		emitErr := emitRefusal(c, verdict.Refusal{
+		// 29-04 (T-29-06): write-first, then the vote key, then the
+		// refusal stream (see the Step-1 refusal comment above).
+		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonLowRetrievalScore, meta)
+		if err := emitTurnID(c, turnID); err != nil {
+			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", err)
+		}
+		return emitRefusal(c, verdict.Refusal{
 			Reason:                    verdict.RefusalReasonLowRetrievalScore,
 			CanRephrase:               true,
 			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
-		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonLowRetrievalScore, meta)
-		return emitErr
 	}
 
 	// Step 7 (Phase 10 / D10-A1 / D10-A2 escape): query-only refusal
@@ -334,18 +349,22 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			log.Printf("[WARN] server: refusal classifier (sess=%s): %v (continuing with classifier output; non-fatal)", sessionID, classifyErr)
 		}
 		if classifyOut.Decision == "refuse" {
-			emitErr := emitRefusal(c, verdict.Refusal{
-				Reason:                    classifyOut.Reason,
-				CanRephrase:               true,
-				SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
-			})
+			// 29-04 (T-29-06): write-first, then the vote key, then the
+			// classifier-refused transparency event + refusal stream.
+			turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", classifyOut.Reason, meta)
+			if err := emitTurnID(c, turnID); err != nil {
+				log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", err)
+			}
 			s.emitHistoryDecision(c, wire.DecisionPayload{
 				Step:     0,
 				Decision: wire.DecisionHistoryClassifierRefused,
 				Query:    classifyOut.Reason,
 			})
-			_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", classifyOut.Reason, meta)
-			return emitErr
+			return emitRefusal(c, verdict.Refusal{
+				Reason:                    classifyOut.Reason,
+				CanRephrase:               true,
+				SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
+			})
 		}
 	}
 
@@ -507,13 +526,17 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// 260817-vsm: Status is now platform-neutral; "refused" replaces the
 	// legacy compliance-specific "unanswered".
 	if v.Status == "refused" {
-		emitErr := emitRefusal(c, verdict.Refusal{
+		// 29-04 (T-29-06): write-first, then the vote key, then the
+		// refusal stream (see the Step-1 refusal comment above).
+		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
+		if err := emitTurnID(c, turnID); err != nil {
+			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", err)
+		}
+		return emitRefusal(c, verdict.Refusal{
 			Reason:                    verdict.RefusalReasonNoAuthorizedSource,
 			CanRephrase:               true,
 			SuggestedAlternativeQuery: ruleBasedSuggestion(query, tiers, s.KBRegistry),
 		})
-		_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", verdict.RefusalReasonNoAuthorizedSource, meta)
-		return emitErr
 	}
 
 	// Step 11: SSE emit (CMPL-02 + SC-6 + AGNT-03).
@@ -525,9 +548,12 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// path (matches runAgentPath's `req.Skill` arg). Phase 10: the
 	// audit_meta sibling row carries the rewriter + classifier +
 	// history signals.
-	// 29-01: the returned turn id is discarded here — Plan 29-04 emits
-	// the data-turn frame in this window (right after emitVerdictStream).
-	_, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, v, skillID, "", meta)
+	// 29-04 (T-29-06): the returned turn id is captured here and the
+	// data-turn frame is emitted further below — AFTER the counter-
+	// evidence / redline annotation passes and BEFORE text-end /
+	// finish-step / finish (useChat registers the assistant message at
+	// finish, so the FeedbackRow needs the vote key before that point).
+	turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, v, skillID, "", meta)
 	if emitErr != nil {
 		return fmt.Errorf("verdict pipeline: emit verdict stream: %w", emitErr)
 	}
@@ -558,6 +584,15 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 	if err := s.emitRedline(ctx, c, v, chunksByID); err != nil {
 		log.Printf("[WARN] server: redline pass failed: %v (verdict stands; non-fatal)", err)
+	}
+	// 29-04 (T-29-06): emit the data-turn vote key now — after the
+	// post-verdict annotations and BEFORE the terminal frames below.
+	// turnID <= 0 (nil Store / swallowed append error / idempotent
+	// replay) emits nothing; emission errors are logged, never
+	// propagated (the verdict is already on the wire; GEVL-03 wants
+	// exactly one audit row per query and the audit row exists).
+	if err := emitTurnID(c, turnID); err != nil {
+		log.Printf("[WARN] server: data-turn emit failed (verdict + annotations already streamed; non-fatal): %v", err)
 	}
 	// Close the AI SDK v5 message lifecycle AFTER all post-verdict
 	// annotations. emitVerdictStream opened the message with text-start;
