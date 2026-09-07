@@ -77,6 +77,10 @@ func TestReviewReportToolFirstPassInterrupts(t *testing.T) {
 // registry carries BOTH write tools after 11-04, with distinct
 // LLM-visible names.
 func TestReviewReportToolSecondWriteTool(t *testing.T) {
+	// Plan 26-06: the memory:facts schema publishes a registry-derived
+	// tier Enum, so the shared handler must be bound before Info() —
+	// the same bind the production BuildToolsForSkill performs.
+	require.NoError(t, BindKBRegistry(testKBReg()))
 	rr := LookupHandler(ReviewReportTarget)
 	require.NotNil(t, rr, "review_report handler must be registered after 11-04")
 	mf := LookupHandler(MemoryFactsTarget)

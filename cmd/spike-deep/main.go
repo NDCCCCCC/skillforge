@@ -241,6 +241,14 @@ func runParseRate(args []string) int {
 	bw := bufio.NewWriter(outFile)
 	defer bw.Flush()
 
+	// PROVISIONAL (26-06): read-only seed snapshot feeding the hitl tool
+	// construction (agent.BuildToolsForSkill) — replaced by kb.Open in
+	// plan 26-09, same posture as the loader-side snapshot above. Hoisted
+	// once before the loop: the seed file is read once per spike run, and
+	// a nil registry would fail closed at BuildToolsForSkill for every
+	// case whose manifest declares the memory:facts write target.
+	kbReg := loadSeedKBRegistry()
+
 	// ---- 5. Main loop ----
 	cost := &costState{LimitUSD: *costLimit, PerCallUSD: perCallEstimateUSD, Seed: *seed}
 	summary := newSummary(len(cases), *seed, *maxIter)
@@ -249,7 +257,7 @@ func runParseRate(args []string) int {
 			log.Printf("[WARN] cmd/spike-deep: --cost-limit=$%.2f exceeded after %d/%d cases — stopping (existing JSONL preserved)", *costLimit, i, len(cases))
 			break
 		}
-		row := measureParseRate(ctx, c, cm, emb, r, manifest, cost)
+		row := measureParseRate(ctx, c, cm, emb, r, manifest, kbReg, cost)
 		summary.absorb(row)
 		if err := writeJSONLRow(bw, row); err != nil {
 			log.Printf("[FAIL] cmd/spike-deep: write row %s: %v", c.ID, err)
@@ -430,6 +438,7 @@ func measureParseRate(
 	emb embedder.Embedder,
 	r retriever.Retriever,
 	manifest *skill.Manifest,
+	kbReg kb.Registry,
 	cost *costState,
 ) parseRateRow {
 	row := parseRateRow{
@@ -446,7 +455,7 @@ func measureParseRate(
 	// agent.BuildRunner uses internally. The deep agent's
 	// MaxIteration is hard-capped at 10 by runtime.BuildDeepAgent
 	// (P12-L2 source-grep locked).
-	tools, terr := agent.BuildToolsForSkill(ctx, manifest, c.ID, manifest.Name, nil)
+	tools, terr := agent.BuildToolsForSkill(ctx, manifest, c.ID, manifest.Name, nil, kbReg)
 	if terr != nil {
 		row.Error = fmt.Sprintf("BuildToolsForSkill: %v", terr)
 		return row

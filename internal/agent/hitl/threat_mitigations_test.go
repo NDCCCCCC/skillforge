@@ -69,9 +69,14 @@ const (
 	HITL04AuditWriterSHA256 = "df52a40794effec930ca180a6942f3680574a2346ed61d4a623d8a8416b08a88"
 
 	// HITL07MemoryFactsInvokableRunSHA256 is the sha256 of
-	// internal/agent/hitl/hitl_memory_facts.go lines 263-365
+	// internal/agent/hitl/hitl_memory_facts.go lines 320-422
 	// (MemoryFactsTool.InvokableRun's body). Catches a silent
-	// rotation of the 3-way byte-equality assertion.
+	// rotation of the 3-way byte-equality assertion. Plan 26-06
+	// added the registry-snapshot fields + constructor above
+	// InvokableRun, shifting the line range from 263-365 (11-08
+	// baseline) to 320-422; the hash itself is unchanged (the body
+	// did not rotate — re-range only, same procedure as the 14-02
+	// HITL-04 re-range).
 	HITL07MemoryFactsInvokableRunSHA256 = "28ced7ec66d248bd0ec640022be3bf32c37fd7af9d61808ab76bfa1d56887425"
 
 	// HITL08ApprovalRulesCreateSHA256 is the sha256 of
@@ -254,7 +259,10 @@ func testThreatHitl05WritesEnforcement(t *testing.T) {
 // (which calls the assertion) has not rotated.
 func testThreatHitl07FrozenArgsByteEquality(t *testing.T) {
 	// (b) sha256 baseline — InvokableRun function body.
-	actual := sha256LinesRange(t, "hitl_memory_facts.go", 263, 365)
+	// Plan 26-06 shifted the range from 263-365 to 320-422 (registry
+	// snapshot fields + constructor added above the function); the hash
+	// is unchanged, so the body did not rotate.
+	actual := sha256LinesRange(t, "hitl_memory_facts.go", 320, 422)
 	assert.Equal(t, HITL07MemoryFactsInvokableRunSHA256, actual,
 		"hitl_memory_facts.go::InvokableRun body drifted from baseline — review the HITL-07 3-way byte-equality assertion")
 

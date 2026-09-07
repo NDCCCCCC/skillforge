@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -169,12 +170,21 @@ func TestMemFactsEnumFromRegistry(t *testing.T) {
 	pm, err := info.ParamsOneOf.ToJSONSchema()
 	require.NoError(t, err)
 
-	props, ok := pm.Properties["tier"]
+	// eino@v0.9.14 types Properties as a wk8/go-ordered-map, not a vanilla
+	// map — access the tier parameter through Get (same discipline as the
+	// Required assertions above).
+	props, ok := pm.Properties.Get("tier")
 	require.True(t, ok, "the tier parameter must exist in the schema")
 	require.NotNil(t, props.Enum, "tier must declare an Enum")
-	assert.Equal(t, reg.ActiveSlugs(), props.Enum,
+	// The JSON-Schema Enum is []interface{}; flatten to []string so the
+	// comparison is against the registry's typed slug slice.
+	gotEnum := make([]string, 0, len(props.Enum))
+	for _, v := range props.Enum {
+		gotEnum = append(gotEnum, fmt.Sprint(v))
+	}
+	assert.Equal(t, reg.ActiveSlugs(), gotEnum,
 		"the Enum must be the registry ActiveSlugs snapshot, derived not literal")
-	assert.Equal(t, []string{"authority", "draft", "historical", "personal"}, props.Enum,
+	assert.Equal(t, []string{"authority", "draft", "historical", "personal"}, gotEnum,
 		"the four-baseline snapshot is slug-ascending (26-06 behavior test contract)")
 	assert.Equal(t, reg.SlugsByRole(kb.RoleAuthority)[0], h.defaultTier,
 		"the default tier is the first authority-role slug")

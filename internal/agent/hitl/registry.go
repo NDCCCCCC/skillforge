@@ -21,6 +21,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/report"
 )
 
@@ -142,6 +143,31 @@ type reportSinkBinder interface{ setReportSink(sink report.ReportAuditSink) }
 // reportEmitBinder is implemented by handlers that need the WR-02 SSE
 // emission hook (currently report:publish).
 type reportEmitBinder interface{ setEmit(fn ReportPublishEmitFunc) }
+
+// kbBinder is implemented by handlers whose LLM-visible schema carries
+// registry-derived vocabulary (currently memory:facts — its tier Enum
+// is the kb registry ActiveSlugs snapshot, Plan 26-06).
+type kbBinder interface{ bindKBRegistry(reg kb.Registry) error }
+
+// BindKBRegistry snapshots the knowledge-base registry into every
+// handler whose schema needs it (T-26-06-2). Called from the agent
+// package's BuildToolsForSkill before any Info() publishes a schema,
+// so the LLM never sees a vocabulary that is not the registry's. A nil
+// registry or a registry without an authority-role KB fails closed —
+// the returned error is the caller's signal to refuse tool
+// construction, never to fall back to a compiled-in tier list. The
+// last bind wins (the handlers are shared singletons bound from the
+// single-threaded Agent-construction path — the InjectDeps posture).
+func BindKBRegistry(reg kb.Registry) error {
+	for _, h := range hitlHandlers {
+		if b, ok := h.(kbBinder); ok {
+			if err := b.bindKBRegistry(reg); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // InjectDeps wires the production audit hooks into the registry's
 // handlers. Called ONCE per Runner construction (BuildRunner) with the

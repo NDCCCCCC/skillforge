@@ -342,6 +342,7 @@ func measureOneResumeCancel(t *testing.T, iter int) time.Duration {
 		SessionID:       sessionID,
 		SkillID:         manifest.Name,
 		CheckPointStore: s,
+		KBRegistry:      agentTestKBReg(),
 	})
 	require.NoError(t, err, "iteration %d: BuildRunner (resume)", iter)
 
@@ -384,6 +385,7 @@ func driveInterruptPhase(t *testing.T, ctx context.Context, s *sqlite.SQLiteStor
 		SessionID:       sessionID,
 		SkillID:         manifest.Name,
 		CheckPointStore: s,
+		KBRegistry:      agentTestKBReg(),
 	})
 	require.NoError(t, err, "iteration %d: BuildRunner (interrupt)", iter)
 

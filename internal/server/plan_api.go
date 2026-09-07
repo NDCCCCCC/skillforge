@@ -434,6 +434,10 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		SessionID:       runID,
 		SkillID:         s.ActiveManifest.Name,
 		CheckPointStore: cpStore,
+		// Plan 26-06: the hitl tool construction fails closed without a
+		// registry when the manifest declares memory:facts — thread the
+		// same registry the annotate/KB admin surfaces already use.
+		KBRegistry: s.KBRegistry,
 		// WR-01: same session-bound audit wiring as the approval
 		// endpoint (fresh writer — the shared Deps.AuditWriter is never
 		// identity-mutated).

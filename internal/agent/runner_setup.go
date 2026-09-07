@@ -379,7 +379,7 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		if ruleMatcher == nil {
 			ruleMatcher = hitl.NoopRuleMatcher{}
 		}
-		hits, err := BuildToolsForSkill(ctx, cfg.Manifest, cfg.SessionID, cfg.SkillID, ruleMatcher)
+		hits, err := BuildToolsForSkill(ctx, cfg.Manifest, cfg.SessionID, cfg.SkillID, ruleMatcher, cfg.KBRegistry)
 		if err != nil {
 			return nil, fmt.Errorf("agent.BuildRunner: BuildToolsForSkill: %w", err)
 		}

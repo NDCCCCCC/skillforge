@@ -20,11 +20,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/cloudwego/eino/components/tool"
 
 	"github.com/skillforge/skillforge/internal/agent/hitl"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/skill"
 )
 
@@ -55,13 +57,24 @@ import (
 //
 // CALL SITE (per Runner construction):
 //
-//	tools, err := agent.BuildToolsForSkill(ctx, manifest)
+//	tools, err := agent.BuildToolsForSkill(ctx, manifest, sessionID, skillID, ruleMatcher, reg)
 //	// → BuildRunner appends retrieveTool after, constructs the Agent.
+//
+// The registry argument (Plan 26-06) threads the knowledge-base
+// registry into the hitl tool construction: memory:facts' tier
+// vocabulary is the registry's ActiveSlugs snapshot, and a Skill whose
+// writes declare memory:facts CANNOT build its tool without one (nil →
+// error, fail-closed — never a silent fallback to a compiled-in Enum;
+// T-26-06-2). Read-only Skills never construct a hitl tool, so their
+// nil-registry call stays legal.
 //
 // D11-B1 INVARIANTS (test by internal/agent/hitl_tools_test.go):
 //
 //   - Same (ctx, manifest) → same []tool.BaseTool. No caching. No
-//     global state. The function is pure.
+//     global state. The function is pure. (26-06: the registry bind on
+//     the shared handler follows the same last-write-wins posture
+//     WithContext and InjectDeps already document — the whitelist
+//     recompute itself stays stateless.)
 //   - Read-only Skills (writes: nil or len==0) → 0-element slice.
 //     The LLM never sees a write Tool schema.
 //   - Unknown targets (writes: ["external_api"]) → silently skipped.
@@ -87,7 +100,7 @@ import (
 // store via WithContext. A nil ruleMatcher degrades to
 // hitl.NoopRuleMatcher (no auto-pass — every write interrupts; the
 // fail-closed direction).
-func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, skillID string, ruleMatcher hitl.RuleMatcher) ([]tool.BaseTool, error) {
+func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, skillID string, ruleMatcher hitl.RuleMatcher, reg kb.Registry) ([]tool.BaseTool, error) {
 	if manifest == nil {
 		return nil, errors.New("agent.BuildToolsForSkill: manifest is nil")
 	}
@@ -100,6 +113,18 @@ func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, 
 	writes := manifest.Writes
 	if len(writes) == 0 {
 		return nil, nil
+	}
+
+	// Plan 26-06 / T-26-06-2: bind the registry BEFORE any schema is
+	// published. Only Skills that actually declare the memory:facts
+	// write target need the vocabulary, which keeps read-only Skill
+	// construction registry-free. A nil registry (or one without an
+	// authority-role KB) aborts the whitelist here — the error path is
+	// the fail-closed contract, not a degraded Enum.
+	if slices.Contains(writes, hitl.MemoryFactsTarget) {
+		if err := hitl.BindKBRegistry(reg); err != nil {
+			return nil, fmt.Errorf("agent.BuildToolsForSkill: %w", err)
+		}
 	}
 
 	// Collect (name, tool) pairs so we can sort by tool name without

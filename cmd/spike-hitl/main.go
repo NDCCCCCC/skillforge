@@ -65,6 +65,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/cloudwego/eino/adk"
@@ -73,6 +74,7 @@ import (
 
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/agent/hitl"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
@@ -286,6 +288,51 @@ func smokeManifest(skillID string) *skill.Manifest {
 	return m
 }
 
+// smokeKBRegistry builds the read-only registry the smoke Skill's hitl
+// tool construction resolves its tier vocabulary against (Plan 26-06:
+// BuildToolsForSkill fails closed without one when the manifest declares
+// memory:facts). The seed file is located by walking cwd upward so both
+// `go run ./cmd/spike-hitl` (repo root) and `go test` (package dir)
+// resolve it.
+//
+// PROVISIONAL (26-06): read-only seed snapshot — replaced by kb.Open in
+// plan 26-09 (same posture as the other spike binaries' 26-03/26-04
+// snapshots).
+func smokeKBRegistry() kb.Registry {
+	path, err := locateSeedFile("knowledge_bases.yaml")
+	if err != nil {
+		log.Printf("[WARN] cmd/spike-hitl: knowledge_bases.yaml not found from cwd: %v — knowledge-base registry is empty (hitl tool construction will fail closed)", err)
+		return kb.New(nil)
+	}
+	kbSeeds, err := kb.LoadSeedFile(path)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/spike-hitl: kb seed load: %v", err)
+	}
+	return kb.New(kbSeeds)
+}
+
+// locateSeedFile walks cwd upward (max 5 levels) looking for the named
+// file. Mirrors cmd/spike-fanout's helper (deliberate duplication across
+// spike binaries — no shared main-package seam exists).
+func locateSeedFile(name string) (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for i := 0; i < 5; i++ {
+		candidate := filepath.Join(dir, name)
+		if _, statErr := os.Stat(candidate); statErr == nil {
+			return candidate, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", fmt.Errorf("cwd upward search")
+}
+
 // step1Interrupt drives Pass 1: a BuildRunner-constructed Runner
 // executes one Run whose scripted memory_facts_write tool call
 // interrupts; the checkpoint persists to s. Returns the captured
@@ -299,6 +346,7 @@ func step1Interrupt(ctx context.Context, s *sqlite.SQLiteStore, manifest *skill.
 		SessionID:       sessionID,
 		SkillID:         manifest.Name,
 		CheckPointStore: s,
+		KBRegistry:      smokeKBRegistry(),
 	})
 	if err != nil {
 		return "", fmt.Errorf("BuildRunner: %w", err)
@@ -418,6 +466,7 @@ func step5ApproveResume(ctx context.Context, s *sqlite.SQLiteStore, manifest *sk
 		SessionID:       sessionID,
 		SkillID:         manifest.Name,
 		CheckPointStore: s,
+		KBRegistry:      smokeKBRegistry(),
 	})
 	if err != nil {
 		return fmt.Errorf("BuildRunner (resume): %w", err)

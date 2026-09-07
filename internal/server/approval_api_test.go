@@ -232,6 +232,7 @@ func interruptSession(t *testing.T, ctx context.Context, s *sqlite.SQLiteStore, 
 		SessionID:       sessionID,
 		SkillID:         m.Name,
 		CheckPointStore: s,
+		KBRegistry:      testKBReg(),
 	})
 	require.NoError(t, err, "phase 1 BuildRunner")
 
@@ -453,6 +454,7 @@ func TestDataDecisionExtensionNoNewChunkTypes(t *testing.T) {
 		ActiveManifest: manifest,
 		Embedder:       newStubEmbedder(),
 		Retriever:      &stubRetriever{},
+		KBRegistry:     testKBReg(),
 	}
 	addr, cleanup := approvalTestHertz(t, deps)
 	defer cleanup()
@@ -535,6 +537,7 @@ func TestCancelPropagationMidToolRunner(t *testing.T) {
 		SessionID:       sessionID,
 		SkillID:         manifest.Name,
 		CheckPointStore: s,
+		KBRegistry:      testKBReg(),
 	})
 	require.NoError(t, err)
 

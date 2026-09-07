@@ -18,6 +18,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -228,9 +229,16 @@ func TestBuildToolsForSkillRegistryReachesEnum(t *testing.T) {
 	assert.Equal(t, "memory_facts_write", info.Name)
 	pm, err := info.ParamsOneOf.ToJSONSchema()
 	require.NoError(t, err)
-	tier, ok := pm.Properties["tier"]
+	// Properties is a wk8/go-ordered-map (not a vanilla map) — same
+	// access discipline as hitl_memory_facts_test.go. The JSON-Schema
+	// Enum is []interface{}; flatten to []string for the typed compare.
+	tier, ok := pm.Properties.Get("tier")
 	require.True(t, ok, "the tier parameter must exist in the schema")
-	assert.Equal(t, reg.ActiveSlugs(), tier.Enum,
+	gotEnum := make([]string, 0, len(tier.Enum))
+	for _, v := range tier.Enum {
+		gotEnum = append(gotEnum, fmt.Sprint(v))
+	}
+	assert.Equal(t, reg.ActiveSlugs(), gotEnum,
 		"the tool schema Enum must be the registry snapshot passed through BuildToolsForSkill")
 }
 

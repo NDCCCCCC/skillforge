@@ -132,7 +132,7 @@ func BuildRetrieveTool(emb embedder.Embedder, ret retriever.Retriever, m *skill.
 
 	desc := &schema.ToolInfo{
 		Name: RetrieveToolName,
-		Desc: "Retrieve compliance-regulation chunks from the knowledge tiers this Skill is authorized to read (authority / historical / personal). Call this tool when the user's question requires grounding in actual policy text. The query should be a focused compliance question or a refined search phrase; avoid single-word queries.",
+		Desc: "Retrieve compliance-regulation chunks from the knowledge bases this Skill is authorized to read (the reads declaration resolves to knowledge-base slugs via the registry; only authority-role material is citable). Call this tool when the user's question requires grounding in actual policy text. The query should be a focused compliance question or a refined search phrase; avoid single-word queries.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"query": {
 				Type:     schema.String,

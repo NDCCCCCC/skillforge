@@ -53,6 +53,7 @@ import (
 	"github.com/skillforge/skillforge/internal/agent"
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/agent/hitl"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
@@ -138,6 +139,19 @@ func newToolsForChannelFixture(t *testing.T) *toolsForChannelFixture {
 		audit:     &toolsForChannelAudit{},
 		dummyFile: dummy,
 	}
+}
+
+// agentTestKBReg is the four-baseline read-only registry the tier-channel
+// assembly consumes (Plan 26-06): the hitl tool construction fails closed
+// without one when a Skill declares the memory:facts write target. Mirrors
+// the testKBReg helpers in the other packages (26-04 pattern).
+func agentTestKBReg() kb.Registry {
+	return kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
+		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
+		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+	})
 }
 
 // dataChannelManifest is a Manifest declaring reads "data:aggregated_only"
@@ -286,12 +300,13 @@ func TestToolsForChannel(t *testing.T) {
 		manifest := tierChannelManifest()
 		require.False(t, manifest.HasDataChannel(), "manifest must be tier-channel")
 		tools, err := agentChannelTools(agent.RunnerBuildConfig{
-			Manifest:  manifest,
-			Embedder:  newStubEmbedder(),
-			Retriever: &stubRetriever{},
-			ChatModel: cm,
-			SessionID: "sess-tier",
-			SkillID:   "tier-skill",
+			Manifest:   manifest,
+			Embedder:   newStubEmbedder(),
+			Retriever:  &stubRetriever{},
+			ChatModel:  cm,
+			SessionID:  "sess-tier",
+			SkillID:    "tier-skill",
+			KBRegistry: agentTestKBReg(),
 		})
 		require.NoError(t, err, "BuildRunner must succeed for tier-channel Skill")
 		names := toolNamesInfo(t, tools)
@@ -355,12 +370,13 @@ func TestToolsForChannel(t *testing.T) {
 		// must NOT trigger the fail-closed guard.
 		manifest := tierChannelManifest()
 		tools, err := agentChannelTools(agent.RunnerBuildConfig{
-			Manifest:  manifest,
-			Embedder:  newStubEmbedder(),
-			Retriever: &stubRetriever{},
-			ChatModel: cm,
-			SessionID: "sess-tier-no-kpi",
-			SkillID:   "tier-skill",
+			Manifest:   manifest,
+			Embedder:   newStubEmbedder(),
+			Retriever:  &stubRetriever{},
+			ChatModel:  cm,
+			SessionID:  "sess-tier-no-kpi",
+			SkillID:    "tier-skill",
+			KBRegistry: agentTestKBReg(),
 		})
 		require.NoError(t, err, "tier-channel must not depend on KPI deps")
 		names := toolNamesInfo(t, tools)

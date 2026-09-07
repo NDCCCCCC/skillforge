@@ -27,6 +27,8 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+
+	"github.com/skillforge/skillforge/internal/kb"
 )
 
 // MemoryFactsToolName is the Eino tool name emitted by the LLM in
@@ -159,6 +161,56 @@ type MemoryFactsTool struct {
 	// with it — Skill-A's rules never leak into Skill-B's session).
 	sessionID string
 	skillID   string
+
+	// tierEnum is the LLM-visible write-target vocabulary: the kb
+	// registry's ActiveSlugs snapshot taken at construction (Plan 26-06
+	// / T-26-06-2). It is deliberately a SNAPSHOT, not a live view — a
+	// knowledge base created at runtime does not backfill an already
+	// constructed agent's tool schema; the new slug takes effect when
+	// the Runner is rebuilt (restart), which is the same
+	// snapshot-per-construction semantic the retrieve tool's tier
+	// closure and the skill loader's resolved reads follow.
+	tierEnum []string
+
+	// defaultTier is the write target used when the LLM omits the tier
+	// argument: the first slug-ascending active authority-role KB. The
+	// authority role is the citable evidence role, so an unspecified
+	// fact lands where it can be cited.
+	defaultTier string
+}
+
+// NewMemoryFactsTool constructs the tool with its tier vocabulary
+// snapshotted from the registry (Plan 26-06). Both failure modes fail
+// closed rather than degrading to a compiled-in tier list:
+//
+//   - reg == nil → "kb registry required" (a wiring bug, never an
+//     empty vocabulary — the 26-04 nil-interface posture);
+//   - no active authority-role KB → the default write target is not
+//     derivable, so construction refuses.
+func NewMemoryFactsTool(reg kb.Registry) (*MemoryFactsTool, error) {
+	t := &MemoryFactsTool{}
+	if err := t.bindKBRegistry(reg); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// bindKBRegistry snapshots the tier vocabulary and the default write
+// target from reg. Validation completes BEFORE any field is assigned,
+// so a failed bind leaves the tool in its unbound state instead of
+// half-configured.
+func (t *MemoryFactsTool) bindKBRegistry(reg kb.Registry) error {
+	if reg == nil {
+		return errors.New("hitl: memory_facts_write: kb registry required (the tier vocabulary is a registry snapshot, not a compiled-in list)")
+	}
+	slugs := reg.ActiveSlugs()
+	authority := reg.SlugsByRole(kb.RoleAuthority)
+	if len(authority) == 0 {
+		return errors.New("hitl: memory_facts_write: kb registry has no authority-role knowledge base — the default write tier is not derivable (fail-closed)")
+	}
+	t.tierEnum = slugs
+	t.defaultTier = authority[0]
+	return nil
 }
 
 // WithContext binds the per-session identity + rule matcher. Called
@@ -209,10 +261,14 @@ func (t *MemoryFactsTool) snapshot() SkillSnapshot {
 // `args string` and parses it manually — the schema is what the LLM
 // is FORBIDDEN to drift from.
 //
-// tier defaults to "权威" when omitted (matches the ComplianceSkill
-// canonical behavior; the JSON-schema `default` is informational —
-// the InvokableRun enforces the default at parse time).
+// The tier parameter's Enum and default are the registry snapshot bound
+// at construction (Plan 26-06). An unbound tool has no vocabulary to
+// publish, so Info fails closed instead of advertising an empty or
+// stale Enum.
 func (t *MemoryFactsTool) Info(_ context.Context) (*schema.ToolInfo, error) {
+	if t.tierEnum == nil {
+		return nil, errors.New("hitl: memory_facts_write: kb registry required — construct via NewMemoryFactsTool (or hitl.BindKBRegistry) before publishing the schema")
+	}
 	return &schema.ToolInfo{
 		Name: MemoryFactsToolName,
 		Desc: "Persist an authoritative fact into the memory:facts corpus (long-lived retrieval). " +
@@ -232,15 +288,16 @@ func (t *MemoryFactsTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 			"tier": {
 				Type:     schema.String,
 				Required: false,
-				Enum:     []string{"权威", "历史", "个人"},
-				Desc:     "Tier to write into. Defaults to \"权威\" (canonical ComplianceSkill tier). Use \"历史\" for archived facts and \"个人\" for per-session notes.",
+				Enum:     t.tierEnum,
+				Desc:     "Tier (knowledge-base slug) to write into. Defaults to " + t.defaultTier + " (the first active authority-role knowledge base).",
 			},
 		}),
 	}, nil
 }
 
-// memFactsArgs is the typed parse target for ArgumentsInJSON. Default
-// tier = "权威" matches ComplianceSkill's canonical behavior.
+// memFactsArgs is the typed parse target for ArgumentsInJSON. An empty
+// Tier resolves through the registry-bound authority-role default at
+// write time (executeMemoryFactsWrite).
 type memFactsArgs struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
@@ -369,15 +426,20 @@ func (t *MemoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 // INSERT ships in Phase 12 with the memory store's Persist). The
 // success string is structured ("memory_facts_write OK: tier=X key=Y
 // value=Z") so the chatHandler can render the verdict deterministically.
-// The tier default ("权威") is enforced here so BOTH the Pass-1
-// auto-pass path and the Pass-2 approve path share one behavior.
+// The tier default is the registry-bound authority-role slug (Plan
+// 26-06) and is enforced here so BOTH the Pass-1 auto-pass path and the
+// Pass-2 approve path share one behavior; an unbound tool refuses to
+// invent a target rather than writing into an empty slug.
 func (t *MemoryFactsTool) executeMemoryFactsWrite(_ context.Context, writeArgs []byte) (string, error) {
 	var parsed memFactsArgs
 	if err := json.Unmarshal(writeArgs, &parsed); err != nil {
 		return "", fmt.Errorf("memory_facts_write: parse args: %w", err)
 	}
 	if parsed.Tier == "" {
-		parsed.Tier = "权威"
+		if t.defaultTier == "" {
+			return "", errors.New("memory_facts_write: no default tier bound (kb registry missing at construction — fail-closed)")
+		}
+		parsed.Tier = t.defaultTier
 	}
 	return fmt.Sprintf(
 		"memory_facts_write OK: tier=%s key=%s value=%s",
