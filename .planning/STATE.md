@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 29
-current_plan: 5
+current_plan: 6
 status: executing
-last_updated: "2026-09-07T20:50:00.000Z"
-last_activity: 2026-09-08 -- 29-05 SHIPPED (feedback HTTP surface: idempotent vote endpoint + admin review/disposition/metrics + FBK-05 structural lock)
+last_updated: "2026-09-07T21:14:00.000Z"
+last_activity: 2026-09-08 -- 29-06 SHIPPED (ticket HTTP surface: POST /api/tickets idempotent + non-blocking async dispatch + INSERT-only audit rows + SKILLFORGE_TICKET_* env assembly)
 progress:
   total_phases: 6
   completed_phases: 3
@@ -20,9 +20,11 @@ progress:
 ## Current Position
 
 Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
-Plan: 5 of 9
-Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 + 29-07 next)
-Last activity: 2026-09-08 -- 29-05 SHIPPED (feedback HTTP 面: POST /api/feedback 幂等投票 + admin 复核/处置/指标 + FBK-05 结构锁, commits 14b0e17/e7cfb17 + 046a37c/5898fc7)
+Plan: 6 of 9
+Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 shipped, 29-07 next)
+Last activity: 2026-09-08 -- 29-06 SHIPPED (ticket HTTP 面: POST /api/tickets 幂等落库 + 非阻塞异步外发 + INSERT-only 审计行 + env 装配, commits 7148583/638b54e + 56b772a/e781bb3)
+
+**Phase 29 Plan 29-06 delivery summary (Wave 4, 2026-09-08):** TKT-02/04 的 HTTP 面全部 — 4 个原子 commit（7148583 RED/638b54e GREEN + 56b772a RED/e781bb3 GREEN，双 TDD 环），WSL `go build ./...` 退出 0 + `go test ./internal/server/... ./internal/ticket/ -count=1` 全绿（13.5s + 5.7s）+ vet/gofmt（本 plan 三文件）干净。`internal/server/tickets.go`：`POST /api/tickets` 固定门序（body 解码 → sessionIDRegex → turn_id>0 → description 必填 + 4000-rune 上限 `maxTicketDescriptionChars` → provider nil 503（body 恰为 `ticket.ProviderNotWiredError`，不落任何行）→ Store nil 503 → GetSessionTurn 404 三形态合一信封）+ D-29-05 同款服务端归因（复用 `feedbackAttribution` 邻近回溯取 SkillID/ChunkIDs CSV，工单只存 CSV 快照、无 refs 表）+ `PutTicket`→`TicketByTurn` 读回：201 `{ticket_number:"TKT-{row id}", dispatch_status}` | UNIQUE 重放 200 `{status:"already_exists", ticket_number:既有编号}` 且 dispatch_status 半边 omitempty 序列化消失、绝不二次外发（D-29-14，行数锁死 + stub 计数锁死）。TKT-04 非阻塞是结构事实：`dispatchForTicket` 仅对 `dispatch_status=="queued"` 行启动 goroutine（none = 仅落库零 goroutine）、ctx 从 `context.Background()+WithTimeout(TicketDispatchBudget)` 派生（测试以「Dispatch 收到的 ctx 带 deadline」证明与 request ctx 无关——弃请求不弃已受理工单）+ `defer recover` 兜底（panic 进程存活且落 failed 审计行）+ 结果只写 INSERT-only `action_ticket_dispatch_succeeded/failed` 审计行（FrozenArgs JSON 快照 ticket_id/ticket_number/provider/attempts/external_ref/error；ActorType=admin 走 admin_audit.go:72 可见性过滤，UserID=system 表达真实操作者；best-effort 同 putFeedbackAuditRow 姿态），工单行零 UPDATE 路径（TestTicketsDispatchSourceDiscipline 注释豁免的逐行扫描锁 "UPDATE "/"DELETE "/"Exec(" == 0 + `context.Background()`/`recover()` 存在锁）。`TestTicketDispatchNonBlocking`：300ms 慢 provider 下 201 耗时 <150ms 且外发随后到达。`cmd/server/main.go`：SKILLFORGE_TICKET_PROVIDER（缺省 none）/_WEBHOOK_URL/_WEBHOOK_TIMEOUT_MS(5000)/_WEBHOOK_RETRIES(2)/_DISPATCH_BUDGET_MS(30000) + 可选 _WEBHOOK_SECRET（Rule 2 偏差：registry 已有的 Secret 旋钮在装配点无 env 绑定则永不可达）全部 env 驱动；webhook-无-URL 与未知 provider 名双 log.Fatalf（D16-08-D）；Deps 三字段带 nil-contract godoc，POST /api/tickets 路由注册恰一次（grep 锁）。advisory：Task 2 RED 的 TestTicketDispatchNonBlocking/SourceDiscipline 按设计即绿（结构隔离随 Task 1 GREEN 的「即时响应」先行落地），诚实 RED 是审计行 + 装配两锁。线形契约冻结于 29-06-SUMMARY 供 29-07 FE 三态文案消费；TKT-02/04 实质交付，REQUIREMENTS 行按 phase-close 约定保持 Pending。
 
 **Phase 29 Plan 29-05 delivery summary (Wave 3, 2026-09-08):** FBK-01/02/03/05 的 HTTP 面全部 — 4 个原子 commit（14b0e17 RED/e7cfb17 GREEN + 046a37c RED/5898fc7 GREEN，TDD 双环），WSL `go build ./...` + `go test ./internal/server/... -count=1` 全绿（14.5s）+ vet/gofmt 干净。`internal/server/feedback.go`：`POST /api/feedback` 固定门序（body 解码 → sessionIDRegex → verdict 闭集 → turn_id>0 → 2000-rune comment 上限 → Store nil 503 → GetSessionTurn 存在性+role 绑定）+ D-29-05 服务端归因（`QueryAudit{SessionID, Until: turn.Ts, Limit: 1}` 参数化取 turn 前最近 audit 行，复制 SkillID/ChunkIDs CSV——请求体零参与）+ refs 归一化（CSV 拆分 ParseInt、不可解析/重复段跳过、kb_slug=GetChunk().Tier 且 nil/错误诚实降级空串）+ UNIQUE 重放 `200 already_recorded` 读回首 verdict 零额外写（D-29-02）。admin 三端点首行 isAdminRequest（403 先于 503，Pitfall 8，测试 grep 锁定首语句）：review pending/resolved 双分支 disjoint wire；disposition closed_count 先查后写 + INSERT-only 状态行 + `action_feedback_disposition` 审计行（ActorType admin + JSON 快照 FrozenArgs）；metrics D-29-10 全票分母 Go 侧算、0 票 → JSON null 绝非 0%、per-KB by_key 一票多 KB 各计一次而 totals 恒取 strict 单计聚合（新裁决，锁于 KB 行和 4 > 实际 3 票的用例）+ pending_count cross-link。`TestFeedbackNoTrustMutation` FBK-05 红线成测试事实：feedback.go 零 "UPDATE "/"DELETE "/"Insert("、retriever 唯一引用 GetChunk、三文件（server/feedback.go + store/sqlite/{feedback,tickets}.go）零 Indexer 引用、4 路由各注册恰一次。处置闭环 + 重开（latest-disposition-wins）走真 `:memory:` sqlite（语义是 store 自己的，非测试本地复刻）。3 个 test-side auto-fix：固定 wall-date fixture 漂进 store 未来使 d.ts>=f.ts 反转（改 clock-relative）、结构锁相对路径多退一级、首语句 grep 误杀多行 CHECK ORDER 注释（放行注释行不放行语句）。线形契约四端点 shape 冻结于 29-05-SUMMARY 供 29-07/29-08 消费。REQUIREMENTS 行保持 Pending（phase-close 约定）；FBK-01/05 实质已交付，FBK-02/03 另待 29-08 渲染半面。
 
@@ -40,7 +42,7 @@ Last activity: 2026-09-08 -- 29-05 SHIPPED (feedback HTTP 面: POST /api/feedbac
 
 Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02 + GRF-03 + GRF-05)
 
-**Next action:** Continue Phase 29 execution — Wave 4: 29-06 (POST /api/tickets, mirrors 29-05's vote-endpoint shape) + 29-07 (FE FeedbackRow 接真, consumes the frozen wire contract).
+**Next action:** Continue Phase 29 execution — Wave 4: 29-07 (FE FeedbackRow 接真, consumes 29-05's frozen feedback contract + 29-06's frozen ticket contract: ticket_number / dispatch_status 三态文案) then 29-08 (admin FE).
 
 **Phase 27 residues (non-blocking):**
 
