@@ -463,4 +463,66 @@ describe('MessageBubble', () => {
     expect(screen.getByText('流式中途的草稿文本。')).toBeInTheDocument();
     expect(screen.queryByTestId('status-badge')).toBeNull();
   });
+
+  // --- Plan 29-07 Task 2: FeedbackRow 接真 (data-turn part + new props) ---
+
+  it('derives turnId/votedVerdict from the data-turn part — history echo locks the row (29-07)', () => {
+    const message: UIMessage = {
+      id: 'm9',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: '结论：由部门负责人审批。' },
+        { type: 'data-turn', data: { turnId: 41, votedVerdict: 'helpful' } },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    const row = screen.getByTestId('feedback-row');
+    expect(row).toHaveAttribute('data-turn-id', '41');
+    expect(row).toHaveAttribute('data-message-id', 'm9');
+    expect(row).toHaveAttribute('data-voted', 'helpful');
+    // votedVerdict (server truth echoed by the history endpoint) renders
+    // the locked state without any request.
+    expect(screen.getByTestId('feedback-helpful')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('feedback-unhelpful')).toBeDisabled();
+  });
+
+  it('renders the honest disabled row when no data-turn part exists yet (mid-stream) (29-07)', () => {
+    const message: UIMessage = {
+      id: 'm9',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '流式草稿。' }],
+    };
+
+    render(<MessageBubble message={message} />);
+    const row = screen.getByTestId('feedback-row');
+    expect(row).toHaveAttribute('data-turn-id', '');
+    const helpful = screen.getByTestId('feedback-helpful');
+    expect(helpful).toBeDisabled();
+    expect(helpful).toHaveAttribute('title', '该消息缺少服务端轮次标识，暂时无法反馈');
+  });
+
+  it('feeds FeedbackRow from the store session + verdict citations for the ticket form (29-07)', () => {
+    useAppStore.setState({ activeSessionId: 'sess-abc12345678' });
+    const message: UIMessage = {
+      id: 'm9',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: '结论：由部门负责人审批。' },
+        { type: 'data-policy', id: 'p1', data: factualVerdictData },
+        { type: 'data-turn', data: { turnId: 41 } },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    fireEvent.click(screen.getByTestId('feedback-ticket'));
+    // messageText = the aggregated chat text parts (260817-hck chatText).
+    const textarea = screen.getByTestId('feedback-ticket-description') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('结论：由部门负责人审批。');
+    const refs = screen.getByTestId('feedback-ticket-refs');
+    expect(refs).toHaveTextContent('会话 12345678');
+    expect(refs).toHaveTextContent('轮次 #41');
+    // chunkIds derive from verdict.citations[].chunk_id (Go snake_case).
+    expect(refs).toHaveTextContent('c-001');
+  });
 });
