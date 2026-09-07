@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
-current_phase: 29
-current_plan: 0
-status: ready-for-plan (Phase 28 closed 2026-09-07 hermetically)
-last_updated: "2026-09-07T18:30:00.000Z"
-last_activity: "2026-09-07 -- Phase 28 CLOSED hermetically: 7/7 plans executed across 4 waves (28-01 GRF-02 → 28-02/03/04 parallel → 28-05/06 → 28-07 hygiene gate); 19 atomic commits; mid-execution bug-fix 3766eb5 (Neighbors degraded semantic frontier-cut); verify-phase-28.sh 3 stages / 6 sub-checks all PASS; 23 BE tests + 535 FE tests green; STRIDE-28.md 8 threats + 28-UAT.md (Phase 27→28 联合验收 operator runbook). Next: Phase 29 反馈闭环 + 工单预留 planning."
+current_phase: 26
+current_plan: 1
+status: executing
+last_updated: "2026-09-07T16:25:24.054Z"
+last_activity: "2026-09-07 -- Phase 28 CLOSED: graph_edges.go + graph_cache.go + neighborsHandler/pathHandler + GraphLimits env-var config + FE useGraphNeighbors hook + InspectorRetrieval 「常被一起引用」 面板 + STRIDE-28 + 28-UAT; ready for Phase 29 planning (FeedbackRow 三按钮真实落库 + 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets)."
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 36
-  completed_plans: 35
-  percent: 47
+  total_plans: 24
+  completed_plans: 24
+  percent: 50
 ---
 
 # State — SkillForge
@@ -33,6 +33,7 @@ Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements s
 **Next action:** Continue Phase 28 execution — 28-04 main.go wiring (SetGraphCacheInvalidateHook boot binding) next.
 
 **Phase 27 residues (non-blocking):**
+
 - ParserVersion: "unknown" in DocUploadAudit — parser registry doesn't expose per-parse version (27-03 SUMMARY noted); minor cosmetic, planned to surface via parser registry Name() field lookup in 27-04+ if needed
 - goproxy.cn eino-ext pseudo-version pin: the parser/splitter submodules are pinned to a 2026-09-04 commit hash because eino-ext v0.1.13 was not on the goproxy.cn mirror at planning time; if a real release tag lands, update go.mod with `go get ...@v0.1.13` and re-tidy
 
@@ -172,7 +173,7 @@ Plan: 9 of 9 (16-01..16-09 all complete; 16-05 ROADMAP [/] WIP marker corrected 
 Status: VERIFICATION PASSED (2026-08-27 re-verification after gap closure — 5/5 SC green, 7/7 requirements met, BLOCKER-1/2 closed, WARNING-1/2 closed, 6/6 WSL tests green, cmd/server links on WSL; residual WARNING-3/4/5 bookkeeping + WARNING-6 Windows gate discrimination are non-blocking process debt)
 Last activity: 2026-08-29 -- ROADMAP/STATE synced: 16-05 checkbox fixed, Progress row 16 flipped to Complete, ROADMAP Phase 16 checkbox annotated with verification verdict.
 Next action: none for Phase 16 — residual items tracked in deferred-items.md (WARNING-3 PLAN backfill, WARNING-4 16-VALIDATION draft, WARNING-5 REQUIREMENTS status-row staleness). Phase-level code review (16-REVIEW.md) was not produced; optional retroactive `/gsd:code-review 16` if desired.
-Resume File: .planning/phases/18-skill-p10-4/18-UI-SPEC.md
+Resume File: .planning/phases/29-feedback-loop-ticket-interface/29-CONTEXT.md
 
 **Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
 
