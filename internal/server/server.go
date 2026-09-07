@@ -40,6 +40,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -61,6 +62,7 @@ import (
 	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
+	"github.com/skillforge/skillforge/internal/ticket"
 )
 
 // Default body-size limits. Import endpoints need a much larger envelope than
@@ -389,6 +391,29 @@ type Deps struct {
 	// Zero values fall back to hardcoded defaults in the handlers
 	// (fail-closed: non-positive values are caught at startup in main.go).
 	GraphLimits GraphLimits
+
+	// --- Phase 29: Feedback Loop / Ticket Interface ---
+
+	// TicketProvider is the outbound ticket dispatcher (TKT-01 / Plan
+	// 29-06). nil = the server started without a ticket provider: POST
+	// /api/tickets answers 503 with ticket.ProviderNotWiredError and no
+	// ticket row is ever persisted. The "none" provider IS a wired
+	// provider — store-only, zero outbound traffic — and never surfaces
+	// that 503. cmd/server wires it from SKILLFORGE_TICKET_PROVIDER.
+	TicketProvider ticket.Provider
+	// TicketProviderName is the configured provider name ("none" |
+	// "webhook"). It decides the insert-time dispatch_status the ticket
+	// row carries: "webhook" → "queued" (handed to the background
+	// dispatcher), anything else → "none" (store-only receipt). The row is
+	// never updated afterwards (INSERT-only; the settled outcome lands in
+	// the action_ticket_dispatch_* audit trail instead).
+	TicketProviderName string
+	// TicketDispatchBudget is the WHOLE-dispatch wall-clock budget for one
+	// background dispatch goroutine (T-29-07: the provider's bounded
+	// retries run inside this bounded budget). Zero falls back to
+	// defaultTicketDispatchBudget. cmd/server wires it from
+	// SKILLFORGE_TICKET_DISPATCH_BUDGET_MS.
+	TicketDispatchBudget time.Duration
 }
 
 // GraphLimits holds the config-driven limits for the knowledge graph.
@@ -541,6 +566,16 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/admin/feedback/review", deps.feedbackReviewHandler)
 	h.POST("/api/admin/feedback/dispositions", deps.feedbackDispositionHandler)
 	h.GET("/api/admin/feedback/metrics", deps.feedbackMetricsHandler)
+	// Phase 29 Plan 29-06 (TKT-02/04) — the ticket HTTP surface. POST
+	// /api/tickets is a PUBLIC write endpoint (same trust shape as
+	// /api/chat and /api/feedback): one ticket per message via the store's
+	// UNIQUE(session_id, turn_id) key (D-29-14), an acceptance number
+	// derived as "TKT-{row id}", and an IMMEDIATE 201 — the outbound
+	// dispatch runs in its own goroutine on a background-derived budget
+	// (TKT-04 structural non-blocking) and its settled outcome lands as an
+	// INSERT-only action_ticket_dispatch_* audit row, never as an update to
+	// the ticket row. Trust model: tickets.go.
+	h.POST("/api/tickets", deps.ticketsHandler)
 	// Phase 20 Plan 20-01 (ADM-01) — admin console capacity monitor.
 	// Returns per-table row counts + thresholds for the capacity bars.
 	h.GET("/api/admin/table-counts", deps.tableCountsHandler)

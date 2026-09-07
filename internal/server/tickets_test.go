@@ -27,7 +27,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -40,8 +39,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/skillforge/skillforge/internal/ticket"
 	"github.com/skillforge/skillforge/internal/store"
+	"github.com/skillforge/skillforge/internal/ticket"
 )
 
 // ---------------------------------------------------------------------------
@@ -332,7 +331,7 @@ func TestTicketsHandler(t *testing.T) {
 
 		// none = 仅落库不外发: no goroutine is ever started for this row.
 		time.Sleep(50 * time.Millisecond)
-		assert.Equal(t, 0, len(rows), "sanity: exactly one row")
+		assert.Len(t, fake.ticketSnapshot(), 1, "exactly one row, and no second write after the settle window")
 	})
 
 	t.Run("queues dispatch with the webhook provider", func(t *testing.T) {
@@ -412,13 +411,13 @@ func TestTicketsHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		for name, body := range map[string]string{
-			"empty description":  `{"session_id":"tktest-session-01","turn_id":42,"description":""}`,
-			"blank description":  `{"session_id":"tktest-session-01","turn_id":42,"description":"   "}`,
-			"oversized body":     string(payload),
-			"bad session shape":  `{"session_id":"bad_id!","turn_id":42,"description":"需要复核"}`,
-			"zero turn id":       `{"session_id":"tktest-session-01","turn_id":0,"description":"需要复核"}`,
-			"negative turn id":   `{"session_id":"tktest-session-01","turn_id":-5,"description":"需要复核"}`,
-			"unparseable body":   `{not json`,
+			"empty description":   `{"session_id":"tktest-session-01","turn_id":42,"description":""}`,
+			"blank description":   `{"session_id":"tktest-session-01","turn_id":42,"description":"   "}`,
+			"oversized body":      string(payload),
+			"bad session shape":   `{"session_id":"bad_id!","turn_id":42,"description":"需要复核"}`,
+			"zero turn id":        `{"session_id":"tktest-session-01","turn_id":0,"description":"需要复核"}`,
+			"negative turn id":    `{"session_id":"tktest-session-01","turn_id":-5,"description":"需要复核"}`,
+			"unparseable body":    `{not json`,
 			"missing description": `{"session_id":"tktest-session-01","turn_id":42}`,
 		} {
 			resp := tkRequest(h, body)
@@ -434,7 +433,12 @@ func TestTicketsHandler(t *testing.T) {
 		fake := newTicketsFakeStore()
 		fake.tkSeedTurn(tkTestSession, 42, "user", tkTurnTs, "", "")            // exists, wrong role
 		fake.tkSeedTurn("other-session-9999", 7, "assistant", tkTurnTs, "", "") // exists, other session
-		deps := &Deps{Store: fake, TicketProviderName: ticket.ProviderNone}
+		// A wired provider is required to REACH the turn gate: the dependency
+		// 503s run before it, so an unwired deployment never leaks whether a
+		// turn exists.
+		none, err := ticket.NewProvider(ticket.ProviderNone, ticket.Config{})
+		require.NoError(t, err)
+		deps := &Deps{Store: fake, TicketProvider: none, TicketProviderName: ticket.ProviderNone}
 		h := newTicketsHertz(deps)
 
 		cases := map[string]string{
