@@ -214,7 +214,7 @@ Plans:
 **Wave 1**
 
 - [x] 29-01-PLAN.md — turn id 地基：AppendTurn → (int64, error) 原子涟漪（接口 + sqlite RowsAffected 守卫 + writeAuditAndTurn 返回值 + 12 调用点 + 5 fake）+ turn-id 语义测试（FBK-01/04 地基，D-29-01）— SHIPPED 2026-09-07（b5c7a4c + c47d15d；TestAppendTurnReturnsAssistantID 4 子用例锁 conflict→0）
-- [ ] 29-03-PLAN.md — internal/ticket 包：Provider 窄接口 + none/webhook 配置注册表 + webhook 出站（per-instance client + 有界重试 + body-only payload）（TKT-01）
+- [x] 29-03-PLAN.md — internal/ticket 包：Provider 窄接口 + none/webhook 配置注册表 + webhook 出站（per-instance client + 有界重试 + body-only payload）（TKT-01）— SHIPPED 2026-09-08（625b143 + d585b14 + 370944a；14 个 Windows 原生 hermetic 测试：registry 三分支 + webhook 7 用例矩阵含超时/密钥头/URL 零注入/ctx 取消；纯 stdlib 零 cgo）
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -289,7 +289,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 0/9 | Not started | - |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 2/9 | In progress (Wave 1: 29-01 + 29-03 shipped) | - |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---

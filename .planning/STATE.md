@@ -5,13 +5,13 @@ milestone_name: — 知识库运营与反馈闭环
 current_phase: 29
 current_plan: 2
 status: executing
-last_updated: "2026-09-07T18:47:30.000Z"
-last_activity: 2026-09-07 -- 29-01 SHIPPED (turn-id foundation)
+last_updated: "2026-09-07T19:05:30.000Z"
+last_activity: 2026-09-08 -- 29-03 SHIPPED (TKT-01 ticket provider interface, internal/ticket)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 33
-  completed_plans: 24
+  completed_plans: 25
   percent: 50
 ---
 
@@ -21,8 +21,10 @@ progress:
 
 Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
 Plan: 2 of 9
-Status: Executing Phase 29 (Wave 1: 29-01 done, 29-03 next)
-Last activity: 2026-09-07 -- 29-01 SHIPPED (turn-id foundation, commits b5c7a4c + c47d15d)
+Status: Executing Phase 29 (Wave 1 complete: 29-01 + 29-03 shipped; 29-02 next)
+Last activity: 2026-09-08 -- 29-03 SHIPPED (TKT-01 internal/ticket provider surface, commits 625b143 + d585b14 + 370944a)
+
+**Phase 29 Plan 29-03 delivery summary (Wave 1, 2026-09-08):** TKT-01 接口预留面 — 新包 `internal/ticket`（纯 stdlib 零 cgo，Windows 原生测试）。`ticket.go`：`Provider` 窄接口恰好一个方法 `Dispatch(ctx, Ticket) (DispatchResult, error)`（IndexerBackend 同款最小面纪律，reflect 锁定）+ `Ticket`/`DispatchResult`（ExternalRef 空 = 无外部回执）/`ProviderNotWiredError` 503 body 常量/`Config`（本包零 env 读取）。`registry.go`：`NewProvider(name, cfg)` 配置驱动三分支——"none" → `noneProvider{}` Dispatch 零副作用直接成功（仅落库不外发）、"webhook" → `newWebhookProvider(cfg)`（空 WebhookURL 拒绝，Rule 2 偏差：给 29-06 main.go 单一 error 路径覆盖 webhook-无-URL 与未知 provider 名两个 log.Fatalf 分支）、其它值 → error 列出合法值；fatal 决策留装配点（D16-08-D）。`webhook.go`：per-instance `*http.Client`（`DefaultTransport.Clone()`，零进程级默认 client 引用）+ `retries+1` 有界尝试 + 尝试间 1s 固定退避（select 监听 ctx.Done）+ 每次尝试 `context.WithTimeout` + 2xx 即成功 + payload 只进 JSON body（ticketNumber/sessionId/turnId/description/chunkIds/skillId，chunkIds nil→`[]`）+ 可选 `X-SkillForge-Ticket-Secret` 头（导出常量 `ticket.SecretHeader`）；URL 零用户输入（T-29-02 测试断言 rawQuery=="" ）。14 个 hermetic 测试全绿（TestNewProvider 5 子用例 + TestWebhookDispatch 7 子用例含慢端点超时界定与父 ctx 取消打断退避）；go vet/gofmt clean；`go build ./...` 仅 cmd/server cgo 链接挂（已记录 D15-01-1 环境限制，本包不在失败面）。TDD：Task 1 RED(625b143)+GREEN(d585b14) 齐；Task 2 无独立 RED（registry↔webhookProvider 编译耦合，webhook.go 随 Task 1 GREEN 提交，测试 370944a 落地即绿——SUMMARY 已记录 advisory 偏差）。真实工单系统（Jira/ServiceNow）明确 Out of Scope，本包即里程碑承诺的全部。
 
 **Phase 29 Plan 29-01 delivery summary (Wave 1, 2026-09-07):** D-29-01 消息身份地基 — `store.Store.AppendTurn` 签名改 `(int64, error)` 返回 assistant 行 `session_turn.id`；`SessionMessage` 增加 read-back `ID int64`（GetSession 回填，AppendTurn 入参忽略）；`getSessionSQL` 改 `SELECT id, role, content, ts`；`appendTurnHalf` 加 `RowsAffected()==0` 守卫——幂等重放返回 0 且**永不**触碰 `LastInsertId`（mattn/go-sqlite3 下冲突后它返回连接上最近一次成功 INSERT 的 rowid，即静默跨轮错绑，T-29-06 mitigate）。`writeAuditAndTurn` 返回 `(int64, error)`（Store==nil / append err → `0, nil`，best-effort 姿态不变），12 个调用点（chat.go×4 / pipeline.go×6 / runner_setup.go×2）以 `_, _ =` 丢弃并注释指向 29-04 的 data-turn 发射窗口；5 个显式 AppendTurn 测试 fake 同步 `(0, nil)`（kb_admin_test.go recordingAuditStore 经 store.Store embed 免改）。`TestAppendTurnReturnsAssistantID` 4 子用例（fresh / replay_conflict=严格 0 / GetSession id 严格递增 / closed store 报错）hermetic 锁定。1 个 auto-fix 偏差：plan 处方的 `_ =` 丢弃形式对双返回值是 Go 编译错误，改为 `_, _ =`（b5c7a4c）。FBK-01/04 的 phase 级 REQUIREMENTS 行保持 Pending（端点与 FE 接线归 29-02/29-05）。WSL build + vet + store/server 全量测试绿。
 
@@ -32,7 +34,7 @@ Last activity: 2026-09-07 -- 29-01 SHIPPED (turn-id foundation, commits b5c7a4c 
 
 Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02 + GRF-03 + GRF-05)
 
-**Next action:** Continue Phase 28 execution — 28-04 main.go wiring (SetGraphCacheInvalidateHook boot binding) next.
+**Next action:** Continue Phase 29 execution — 29-02 feedback/tickets store layer next (Wave 2; 29-06 consumes this plan's `internal/ticket` contract).
 
 **Phase 27 residues (non-blocking):**
 
