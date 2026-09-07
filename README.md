@@ -245,6 +245,19 @@ An unregistered directory is skipped with a WARN and an audit row. See ["Add a K
 
 ---
 
+## Document Upload (Phase 27)
+
+Admins can upload documents to any active knowledge base via `/admin` → 上传文档 panel:
+
+- **Formats:** `.md` / `.pdf` / `.docx` / `.xlsx` / `.pptx` (Content-Type allowlist; magic-byte verification at upload time)
+- **Size:** default 100 MB; override with `SKILLFORGE_UPLOAD_MAX_BYTES`
+- **Flow:** multipart streaming → in-memory parse → chunk → embed → Insert → INSERT-only audit row
+- **Trust:** no temp file ever; SHA-256 in memory; D-09 / KNOW-02 / citation whitelist unchanged
+- **Live acceptance runbook:** see `.planning/phases/27-document-upload-pipeline/27-UAT.md` (Phase 27 Plan 06 T3)
+- **Structural gate:** `bash scripts/verify-phase-27.sh` or `make phase-27`
+
+---
+
 ## Eval Results
 
 This snapshot is the **frozen v0.8 compliance baseline** (Phase 8 pin — `eval/frozen/compliance.lock.json`, sha256 `5cf700f3…`). Every figure below is rendered verbatim by `go run ./scripts/eval_snapshot` from `eval/report.json` + the lock; none are hand-typed. Regenerating the lock is tampering (T-8-12) — it pins the model, prompt hash, and seed so the run is byte-identically reproducible.
