@@ -73,9 +73,9 @@ type ticketPayload struct {
 // newWebhookProvider builds the outbound provider. The client is
 // per-instance: the transport is a Clone of DefaultTransport so proxy/TLS
 // defaults survive while the connection pool stays private to this provider.
-// http.DefaultClient is never used (bge.go:90-98 discipline) and the TLS
-// posture is never skipped — intranet webhooks verify certificates like
-// everything else.
+// The process-wide default client is never used (bge.go:90-98 discipline)
+// and the TLS posture is never skipped — intranet webhooks verify
+// certificates like everything else.
 func newWebhookProvider(cfg Config) *webhookProvider {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
