@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/verdict"
 )
@@ -51,6 +52,24 @@ import (
 //     This prevents a subtle TOCTOU where the floor reads a half-filled
 //     accumulator while a callback is still in flight.
 //
+//   - **Citable gate (KBM-03 / Plan 26-06)**: when a KB registry is
+//     bound (SetKBRegistry), Add filters every hit at THIS insertion
+//     point — the single physical entrance to the grounding closure.
+//     A hit whose tier fails kb.Registry.Lookup, or whose entry role is
+//     not kb.CitableRole, is structurally excluded: TierMatched(),
+//     ChunksByID() and GroundingChecker never see it, so no prompt
+//     convention is involved in keeping non-authority material out of
+//     the citation set (T-26-06-1, the stronger successor of the old
+//     "tier equality means citable" rule). The three layers stay
+//     distinct (26-RESEARCH Pitfall 2): retrieval still follows the
+//     Skill's reads declaration, non-citable presentation travels the
+//     annotate channel (internal/server/annotate.go), and THIS gate
+//     owns only the grounding closure. A nil registry is the legacy
+//     posture — tests and degraded paths keep today's behavior
+//     byte-for-byte (Pattern R3 sanctioned); production construction
+//     binds the registry at accumulator creation (newRunAccumulator;
+//     the boot wiring lands in 26-09).
+//
 // Construction: callers use NewChunkAccumulator (returns a ready-to-use
 // zero-value accumulator with the maps initialized).
 type ChunkAccumulator struct {
@@ -58,6 +77,12 @@ type ChunkAccumulator struct {
 	closed bool
 	seen   map[string]struct{} // chunk ID (decimal string) → existence
 	byID   map[string]retriever.Hit
+
+	// kb is the registry the citable gate resolves tiers against.
+	// nil = legacy semantics (no gate); a bound registry is never
+	// swapped back to nil (SetKBRegistry ignores a nil argument), so
+	// "legacy" is always the explicit not-bound state.
+	kb kb.Registry
 
 	// callCount = number of retrieve tool calls (Add batches). Used by
 	// HasMultipleRetrieveCalls for critique gating.
@@ -72,6 +97,35 @@ func NewChunkAccumulator() *ChunkAccumulator {
 	}
 }
 
+// SetKBRegistry binds the citable gate's registry. A nil argument is
+// ignored so callers can pass the config field unconditionally: the
+// legacy posture stays expressible only as "never bound", never as a
+// bound-then-cleared state that would silently reopen the closure.
+func (a *ChunkAccumulator) SetKBRegistry(reg kb.Registry) {
+	if reg == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.kb = reg
+}
+
+// citable reports whether one hit may enter the grounding closure. It
+// is the KBM-03 comparison point: the only citability test written
+// against kb.CitableRole (the kb package's single source), never
+// against a role literal. Lookup failure and non-citable role are the
+// same outcome — the hit is not evidence.
+func (a *ChunkAccumulator) citable(h retriever.Hit) bool {
+	if a.kb == nil {
+		return true // legacy: no registry bound (tests / degraded path)
+	}
+	entry, ok := a.kb.Lookup(h.Tier)
+	if !ok {
+		return false // unregistered or deactivated slug → not evidence
+	}
+	return entry.Role == kb.CitableRole
+}
+
 // Add records the given hits. Dedups by chunk ID (the D3-01 open
 // question 2 resolution). Hits with ID=0 are still recorded (a zero ID
 // is treated as a valid chunk ID; the retrieve tool does not skip ID=0).
@@ -83,6 +137,10 @@ func NewChunkAccumulator() *ChunkAccumulator {
 //
 // Add is a no-op when called after MarkClosed (defense-in-depth against
 // a stray callback firing post-iterator-EOF).
+//
+// With a registry bound, non-citable hits are dropped BEFORE the dedup
+// insert (the citable gate above): a dropped hit also frees its chunk
+// ID, so a later citable hit with the same ID can still be recorded.
 func (a *ChunkAccumulator) Add(hits []retriever.Hit) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -95,6 +153,9 @@ func (a *ChunkAccumulator) Add(hits []retriever.Hit) {
 	}
 	a.callCount++
 	for _, h := range hits {
+		if !a.citable(h) {
+			continue
+		}
 		key := chunkKey(h.ID)
 		if _, dup := a.seen[key]; dup {
 			continue
@@ -109,7 +170,10 @@ func (a *ChunkAccumulator) Add(hits []retriever.Hit) {
 // to iterate (and to mutate) without holding the accumulator's lock.
 //
 // The trust floor reads this AFTER MarkClosed to decide whether the
-// agent had any grounding at all (KNOW-04 / D-09).
+// agent had any grounding at all (KNOW-04 / D-09). With a registry
+// bound it contains citable hits only (see the citable gate on Add) —
+// the three-way agreement with ChunksByID / GroundingChecker on the
+// chunk-key format now extends to the citability filter itself.
 func (a *ChunkAccumulator) TierMatched() []retriever.Hit {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -122,7 +186,9 @@ func (a *ChunkAccumulator) TierMatched() []retriever.Hit {
 
 // ChunksByID returns a map from chunk ID (decimal string) → chunk
 // Content. This is the shape verdict.GroundingChecker expects (its
-// second argument is `map[string]string` keyed by chunk ID).
+// second argument is `map[string]string` keyed by chunk ID). With a
+// registry bound, the map holds citable hits only — this map IS the
+// physical citation whitelist (KBM-03), not a prompt convention.
 func (a *ChunkAccumulator) ChunksByID() map[string]string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -189,11 +255,12 @@ func (a *ChunkAccumulator) HasMultipleRetrieveCalls() bool {
 //     returns (verdict.Verdict{}, refusal, nil) from (*Agent).Run.
 //
 // The SuggestedAlternativeQuery is rule-based (D2-14): it appends the
-// first resolved tier keyword to the original query, giving the user a
-// one-tap retry chip in the UI. Production code path: the suggester is
-// extracted from internal/server/pipeline.go ruleBasedSuggestion (the
-// trust floor reuses it verbatim via the local ruleBasedSuggestion
-// helper — see ruleBasedSuggestion godoc for the source).
+// citable-role display name (or, with no registry bound, the first
+// resolved tier) to the original query, giving the user a one-tap retry
+// chip in the UI. Production code path: the suggester is extracted from
+// internal/server/pipeline.go ruleBasedSuggestion (the trust floor
+// reuses it verbatim via the local ruleBasedSuggestion helper — see
+// ruleBasedSuggestion godoc for the source).
 func ApplyTrustFloor(acc *ChunkAccumulator, originalQuery string, resolvedTiers []string) *verdict.Refusal {
 	matched := acc.TierMatched()
 	if len(matched) > 0 {
@@ -202,32 +269,44 @@ func ApplyTrustFloor(acc *ChunkAccumulator, originalQuery string, resolvedTiers 
 	return &verdict.Refusal{
 		Reason:                    verdict.RefusalReasonNoAuthorizedSource,
 		CanRephrase:               true,
-		SuggestedAlternativeQuery: ruleBasedSuggestion(originalQuery, resolvedTiers),
+		SuggestedAlternativeQuery: ruleBasedSuggestion(acc.kb, originalQuery, resolvedTiers),
 	}
 }
 
 // ruleBasedSuggestion produces a rephrased query suggestion for the
-// refusal path. Copied verbatim (logic-equivalent) from
-// internal/server/pipeline.go:267-278 — the trust floor reuses the same
+// refusal path. Logic-equivalent to the
+// internal/server/pipeline.go helper (26-05 moved that copy to the
+// registry display name as well) — the trust floor reuses the same
 // heuristic so refusal suggestions stay consistent across the old
 // pipeline (Plan 02-03) and the new agent (Plan 03-03).
 //
-// The suggestion appends the first resolved tier keyword (e.g. "权威")
-// to the original query so a follow-up retrieve has a stronger tier
-// signal. When the tier list is empty (default-deny skill — should not
-// happen at runtime because the loader rejects empty reads, but
-// defensive), the suggestion is the original query with a generic
-// "制度" suffix.
+// Plan 26-06 (T-26-06-4): with a registry bound, the keyword is the
+// DisplayName of the first slug-ascending active authority-role KB —
+// the citable role is what the refusal copy should point the user at,
+// and the controlled seed's display names keep the copy byte-identical
+// to the frozen eval assertions. With no registry bound (legacy) the
+// keyword falls back to the first resolved tier, the pre-26-06
+// behavior. When both sources are unavailable (empty resolved tiers —
+// default-deny skill, which the loader rejects, but defensive), the
+// suggestion is the original query with a generic "制度" suffix.
 //
 // Production migration target (Plan 03-05): lift this into a shared
 // internal/agent/prompt.go (or internal/suggester package) and have
 // both pipeline.go and trust_floor.go import it — anti-pattern #1
 // drift guard. Until then the duplication is intentional and
 // regression-locked by TestTrustFloorForcesRefusal.
-func ruleBasedSuggestion(originalQuery string, resolvedTiers []string) string {
+func ruleBasedSuggestion(reg kb.Registry, originalQuery string, resolvedTiers []string) string {
 	q := strings.TrimSpace(originalQuery)
 	if q == "" {
 		q = "相关制度"
+	}
+	if reg != nil {
+		for _, slug := range reg.SlugsByRole(kb.RoleAuthority) {
+			entry, ok := reg.Lookup(slug)
+			if ok && entry.DisplayName != "" {
+				return q + " " + entry.DisplayName
+			}
+		}
 	}
 	if len(resolvedTiers) == 0 {
 		return q + " 制度"

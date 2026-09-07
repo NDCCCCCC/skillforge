@@ -75,6 +75,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -125,6 +126,24 @@ type AgentConfig struct {
 	// decision chunks are emitted (agent runs silently — used by unit
 	// tests that do not exercise SC-1 observability).
 	Emit DecisionEmitFunc
+
+	// KBRegistry is the knowledge-base registry the per-Run accumulator's
+	// citable gate resolves tiers against (KBM-03 / Plan 26-06). Bound at
+	// accumulator construction (newRunAccumulator); nil keeps the legacy
+	// ungated posture, and the production registry is wired at boot by
+	// Plan 26-09. Same seam as RunnerBuildConfig.KBRegistry and
+	// runtime.SubAgentConfig.KBRegistry (26-04).
+	KBRegistry kb.Registry
+}
+
+// newRunAccumulator constructs the per-Run accumulator with the config's
+// KB registry bound. Centralized so Run and the tests observe the same
+// construction contract: a configured registry makes the citable gate
+// live from the first Add, an unset field leaves the legacy posture.
+func newRunAccumulator(cfg AgentConfig) *ChunkAccumulator {
+	acc := NewChunkAccumulator()
+	acc.SetKBRegistry(cfg.KBRegistry)
+	return acc
 }
 
 // DecisionEmitFunc is the signature for emitting one wire.DecisionPayload
@@ -485,7 +504,7 @@ func WithRunEmit(ctx context.Context, emit DecisionEmitFunc) context.Context {
 // regression-locks the 200ms responsiveness at the unit level. The
 // SC-8 end-to-end test (real network + LLM) is in Plan 03-05.
 func (a *Agent) Run(ctx context.Context, sessionID, query string) (verdict.Verdict, *verdict.Refusal, error) {
-	acc := NewChunkAccumulator()
+	acc := newRunAccumulator(a.cfg)
 	// Stash the accumulator on the Agent so LastRetrieved() can expose
 	// the agent's actual retrieved chunks after Run returns (Plan 03-06
 	// additive accessor). Written under lastMu so a concurrent

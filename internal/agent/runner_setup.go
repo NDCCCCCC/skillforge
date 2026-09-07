@@ -74,6 +74,7 @@ import (
 	agenttools "github.com/skillforge/skillforge/internal/agent/tools"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/externalauth"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/report"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -204,6 +205,17 @@ type RunnerBuildConfig struct {
 	// data-decision{decision: "report_published", reportCard} chunk
 	// through it. nil disables emission (hermetic tests).
 	ReportPublishEmit hitl.ReportPublishEmitFunc
+
+	// KBRegistry is the knowledge-base registry threaded through the
+	// Runner assembly (Plan 26-06): BuildToolsForSkill consumes it for
+	// the hitl tool tier vocabulary (memory_facts Enum = registry
+	// ActiveSlugs snapshot), and it is the same seam the accumulator's
+	// citable gate binds via ChunkAccumulator.SetKBRegistry where an
+	// accumulator is constructed (legacy Agent.Run binds it through
+	// AgentConfig.KBRegistry; the boot wiring lands in 26-09). nil fails
+	// closed at the hitl construction seam — a Skill whose writes
+	// declare memory:facts cannot build its tool without a registry.
+	KBRegistry kb.Registry
 }
 
 // BuildRunner constructs the per-session ChatModelAgent + adk.Runner.
