@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 29
-current_plan: 6
+current_plan: 7
 status: executing
-last_updated: "2026-09-07T21:14:00.000Z"
-last_activity: 2026-09-08 -- 29-06 SHIPPED (ticket HTTP surface: POST /api/tickets idempotent + non-blocking async dispatch + INSERT-only audit rows + SKILLFORGE_TICKET_* env assembly)
+last_updated: "2026-09-07T21:35:00.000Z"
+last_activity: 2026-09-08 -- 29-07 SHIPPED (FE 反馈/工单接真: FeedbackRow 真实端点状态机 + SfToast 全局视口, commits 90c84ff/72c77dc + 0da0428/cff8267)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 33
-  completed_plans: 26
+  completed_plans: 27
   percent: 50
 ---
 
@@ -20,9 +20,11 @@ progress:
 ## Current Position
 
 Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
-Plan: 6 of 9
-Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 shipped, 29-07 next)
-Last activity: 2026-09-08 -- 29-06 SHIPPED (ticket HTTP 面: POST /api/tickets 幂等落库 + 非阻塞异步外发 + INSERT-only 审计行 + env 装配, commits 7148583/638b54e + 56b772a/e781bb3)
+Plan: 7 of 9
+Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 + 29-07 shipped, 29-08 next)
+Last activity: 2026-09-08 -- 29-07 SHIPPED (FE 反馈/工单接真: FeedbackRow 从 toast 占位重写为真实端点状态机 + SfToast 首个 sf-toast 监听者挂进 chat/eval 分支, commits 90c84ff/72c77dc + 0da0428/cff8267)
+
+**Phase 29 Plan 29-07 delivery summary (Wave 4, 2026-09-08):** FBK-04 + TKT-03 的 chat 侧全部 — 4 个原子 commit（90c84ff RED/72c77dc GREEN + 0da0428 RED/cff8267 GREEN，双 TDD 环），FE 全量回归 563/563（71 文件，既有 535 + 新增 28）+ `tsc --noEmit` 干净 + 零新依赖/零新 token。新组件 `web/src/components/layout/SfToast.tsx`：应用内第一个 `sf-toast` 监听者（listener + 视口同组件，卸载移除，镜像 App.tsx wizard-success 先例）——latest-wins 单槽、新消息重置计时器、error 6000ms / success+info 4000ms 自动消失、宽松 kind 映射（'error'→error / 'success'|'compliant'→success / 其它含缺省→info，SessionDrawer 既有 `kind:'error'` 派发零改动可用）；App.tsx 恰 2 个挂载点（chat + eval 分支），admin early-return 处注释指明归 29-08 在 AdminDashboard 根 div 挂载。`FeedbackRow.tsx` 整文件重写（保留 VOTE_META/testid 套件/.feedback-row 骨架）：POST /api/feedback + /api/tickets 公开端点 raw fetch（无 X-Admin-Token），锁定态服务端驱动——201 recorded → active pill + 其余禁用 + 逐字 success toast（「已记录反馈：有帮助 / 没帮助 / 已标记知识可能过时，将进入人工复核」）、200 already_recorded → 渲染服务端 verdict + info toast「该消息已反馈过：…」、失败（网络断/5xx，body.error 真实原因回退 `HTTP {status}` 文案）→ 不锁定可重试 + error toast、votedVerdict history 回显 → 初始锁定零请求；outdated 选中展开行内 1 行说明框（提交说明，空注干净提交随 body.comment 发送并收起，锁定 pill aria-label 仅在存有说明时带「已附说明」）；创建工单展开行内表单（非 modal）：问题描述（必填）预填 chatText 截 200 字、mono 引用条（会话短 id · 轮次 #n · chunk chips / 无引用）、4 态诚实文案逐字（none 留档 / queued 排队外发 / already_exists / 失败行内错误 + toast 且表单保持可改可重提）+ 成功后收起为结果行且 trigger 变「已建单」禁用。`MessageBubble.tsx`：data-turn part 派生 turnId（>0 守卫，缺失→诚实禁用 title「该消息缺少服务端轮次标识，暂时无法反馈」，T-29-06 不编造身份）+ votedVerdict、verdict.citations 容错派生 chunkIds（只读展示，POST body 零 chunk 上报，D-29-05/T-29-04）、sessionId 取 store activeSessionId、chatText 作 messageText。POST body 形状测试锁定（无 messageId，Pitfall 7）；占位文案「功能即将上线」清零 + dangerouslySetInnerHTML 双文件计数 0（T-29-09 全 JSX 文本节点）。1 个 test-side auto-fix（aria-label 缺失时 getAttribute 返 null 的断言改为 not.toHaveAttribute）。线形契约零漂移：29-06 并行未探测其 SUMMARY，冻结契约（ticket_number/dispatch_status/already_exists）实测吻合。REQUIREMENTS FBK-04/TKT-03 行按 phase-close 约定保持 Pending（chat 侧实质已交付，29-08 交付 admin 侧渲染半面）。
 
 **Phase 29 Plan 29-06 delivery summary (Wave 4, 2026-09-08):** TKT-02/04 的 HTTP 面全部 — 4 个原子 commit（7148583 RED/638b54e GREEN + 56b772a RED/e781bb3 GREEN，双 TDD 环），WSL `go build ./...` 退出 0 + `go test ./internal/server/... ./internal/ticket/ -count=1` 全绿（13.5s + 5.7s）+ vet/gofmt（本 plan 三文件）干净。`internal/server/tickets.go`：`POST /api/tickets` 固定门序（body 解码 → sessionIDRegex → turn_id>0 → description 必填 + 4000-rune 上限 `maxTicketDescriptionChars` → provider nil 503（body 恰为 `ticket.ProviderNotWiredError`，不落任何行）→ Store nil 503 → GetSessionTurn 404 三形态合一信封）+ D-29-05 同款服务端归因（复用 `feedbackAttribution` 邻近回溯取 SkillID/ChunkIDs CSV，工单只存 CSV 快照、无 refs 表）+ `PutTicket`→`TicketByTurn` 读回：201 `{ticket_number:"TKT-{row id}", dispatch_status}` | UNIQUE 重放 200 `{status:"already_exists", ticket_number:既有编号}` 且 dispatch_status 半边 omitempty 序列化消失、绝不二次外发（D-29-14，行数锁死 + stub 计数锁死）。TKT-04 非阻塞是结构事实：`dispatchForTicket` 仅对 `dispatch_status=="queued"` 行启动 goroutine（none = 仅落库零 goroutine）、ctx 从 `context.Background()+WithTimeout(TicketDispatchBudget)` 派生（测试以「Dispatch 收到的 ctx 带 deadline」证明与 request ctx 无关——弃请求不弃已受理工单）+ `defer recover` 兜底（panic 进程存活且落 failed 审计行）+ 结果只写 INSERT-only `action_ticket_dispatch_succeeded/failed` 审计行（FrozenArgs JSON 快照 ticket_id/ticket_number/provider/attempts/external_ref/error；ActorType=admin 走 admin_audit.go:72 可见性过滤，UserID=system 表达真实操作者；best-effort 同 putFeedbackAuditRow 姿态），工单行零 UPDATE 路径（TestTicketsDispatchSourceDiscipline 注释豁免的逐行扫描锁 "UPDATE "/"DELETE "/"Exec(" == 0 + `context.Background()`/`recover()` 存在锁）。`TestTicketDispatchNonBlocking`：300ms 慢 provider 下 201 耗时 <150ms 且外发随后到达。`cmd/server/main.go`：SKILLFORGE_TICKET_PROVIDER（缺省 none）/_WEBHOOK_URL/_WEBHOOK_TIMEOUT_MS(5000)/_WEBHOOK_RETRIES(2)/_DISPATCH_BUDGET_MS(30000) + 可选 _WEBHOOK_SECRET（Rule 2 偏差：registry 已有的 Secret 旋钮在装配点无 env 绑定则永不可达）全部 env 驱动；webhook-无-URL 与未知 provider 名双 log.Fatalf（D16-08-D）；Deps 三字段带 nil-contract godoc，POST /api/tickets 路由注册恰一次（grep 锁）。advisory：Task 2 RED 的 TestTicketDispatchNonBlocking/SourceDiscipline 按设计即绿（结构隔离随 Task 1 GREEN 的「即时响应」先行落地），诚实 RED 是审计行 + 装配两锁。线形契约冻结于 29-06-SUMMARY 供 29-07 FE 三态文案消费；TKT-02/04 实质交付，REQUIREMENTS 行按 phase-close 约定保持 Pending。
 
@@ -42,7 +44,7 @@ Last activity: 2026-09-08 -- 29-06 SHIPPED (ticket HTTP 面: POST /api/tickets �
 
 Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02 + GRF-03 + GRF-05)
 
-**Next action:** Continue Phase 29 execution — Wave 4: 29-07 (FE FeedbackRow 接真, consumes 29-05's frozen feedback contract + 29-06's frozen ticket contract: ticket_number / dispatch_status 三态文案) then 29-08 (admin FE).
+**Next action:** Continue Phase 29 execution — Wave 5: 29-08 (admin FE: 「反馈」第 6 tab + 「复核」第 7 tab, mounts its own SfToast inside AdminDashboard root div per the split documented at App.tsx's admin early-return) then 29-09 (verify gate 收尾).
 
 **Phase 27 residues (non-blocking):**
 

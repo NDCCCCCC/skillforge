@@ -228,7 +228,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 29-06-PLAN.md — POST /api/tickets：幂等落库 + TKT-{id} 编号派生 + 异步外发 goroutine（后台 ctx + recover + 总预算）+ dispatch 结果审计行 + main.go 5 个 SKILLFORGE_TICKET_* env 装配（TKT-02/04）— SHIPPED 2026-09-08（7148583/638b54e + 56b772a/e781bb3 双 TDD 环；7 子用例行为矩阵 + 重放 200 already_exists 读回既有编号且零二次外发 + 归因服务端复制 + nil provider 503 body 恰为 ProviderNotWiredError；非阻塞结构证明 201 <150ms vs 300ms provider + ctx 带 deadline 证明弃请求不弃工单 + recover 兜底 panic 落 failed 审计行 + action_ticket_dispatch_* INSERT-only 快照 ActorType=admin/UserID=system；TestTicketsDispatchSourceDiscipline 零 UPDATE/DELETE/Exec + context.Background()/recover() 存在锁；main.go 五 env + 可选 SECRET + webhook-无-URL/未知 provider 双 log.Fatalf；WSL build exit 0 + server/ticket 套件全绿）
-- [ ] 29-07-PLAN.md — FE 接真：FeedbackRow 重写（服务端驱动锁定态 + outdated 说明框 + 工单 4 态诚实文案）+ MessageBubble data-turn 扫描 + SfToast 全局视口（chat/eval 分支）（FBK-04 + TKT-03，D-29-04/06/13，UI-SPEC 文案逐字）
+- [x] 29-07-PLAN.md — FE 接真：FeedbackRow 重写（服务端驱动锁定态 + outdated 说明框 + 工单 4 态诚实文案）+ MessageBubble data-turn 扫描 + SfToast 全局视口（chat/eval 分支）（FBK-04 + TKT-03，D-29-04/06/13，UI-SPEC 文案逐字）— SHIPPED 2026-09-08（90c84ff/72c77dc + 0da0428/cff8267 双 TDD 环；SfToast 8 用例 = 监听 + latest-wins 单槽 + 4000/6000ms 自动消失 + 宽松 kind 映射（SessionDrawer 既有 error 派发零改动可用）+ App.tsx 恰 2 挂载（chat/eval，admin 注释归 29-08）；FeedbackRow 19 用例 = 投票 body 严格形状（无 messageId）+ 201 锁定/200 already_recorded 渲染服务端 verdict + 失败不锁定可重试 + body.error 真实原因回退 HTTP 文案 + outdated 空注干净提交/已附说明 aria + 工单 4 态逐字文案 + 预填截 200 + 无引用 + 空描述禁用 + 失败保持可改可重提；MessageBubble data-turn 派生 turnId/votedVerdict（turnID<=0 诚实禁用）+ citations→chunkIds 容错派生；全量 FE 回归 563/563 + tsc 干净 + 占位文案/逃逸口 grep 双清零）
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -289,7 +289,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 6/9 | In progress (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 + 29-05; Wave 4: 29-06 shipped) | - |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 7/9 | In progress (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 + 29-05; Wave 4: 29-06 + 29-07 shipped) | - |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---
