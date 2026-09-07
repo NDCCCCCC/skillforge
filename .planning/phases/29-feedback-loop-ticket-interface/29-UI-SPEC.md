@@ -114,7 +114,7 @@ Trend series colors (Sparkline rows): 有帮助 → compliant, 没帮助 → non
 │ ┊ │ 问题描述（必填） [textarea, prefill = 回答摘要 ≤200 字] │  │
 │ ┊ │ 会话 {short-id} · 轮次 #{turnId} · 引用 {n} chunk      │  │
 │ ┊ │ (mono chips; refusal/no-citation → 「无引用」)          │  │
-│ ┊ │ [提交工单 (primary)]  [收起 (ghost)]                    │  │
+│ ┊ │ [提交工单 (primary)]  [收起表单 (ghost)]                │  │
 │ ┊ └────────────────────────────────────────────────────────┘  │
 │ ┊ ✓ 工单已受理 · TKT-17 — 未配置外发渠道，工单已留档 (inline) │
 └──────────────────────────────────────────────────────────────┘
