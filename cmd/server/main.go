@@ -22,29 +22,42 @@
 // Startup sequence (fail fast on any error — the operator must see the
 // problem at startup, never at request time):
 //
-//  1. Load skills via skill.NewLoader("skills/", kbReg).Scan(). An invalid
+//  1. Open the store (buildStore): the sqlite audit + session-memory
+//     backend AND the persistence half of the kb registry.
+//  2. Assemble the knowledge-base registry (buildKBRegistry → kb.Open):
+//     the controlled seed file supplies structure, the sqlite
+//     knowledge_bases table supplies the runtime switch state, and the
+//     merged store-backed registry is what makes an admin create/
+//     deactivate survive a restart. A malformed seed is fatal; an absent
+//     seed over an empty table is the one legal degraded state.
+//  3. Bind the INSERT-only audit hooks (kbDirAuditHook) for the corpus
+//     walk's unregistered-directory decisions (KBM-06).
+//  4. Load skills via skill.NewLoader("skills/", kbReg).Scan(). An invalid
 //     Skill is fatal — the operator should see the SYSK-02 violation
 //     in the startup log, not as a confusing 500 later.
-//  2. Construct the configured retriever backend (RETRIEVER_BACKEND):
+//  5. Construct the configured retriever backend (RETRIEVER_BACKEND):
 //     "milvus" (default) — milvus.New (bounded retries) + Ensure + Index.
 //     "mongo"            — mongo.New (Connect+Ping) + Ensure +
 //     SeedFromKnowledgeDir. Used when the internal
 //     Milvus is unavailable; MongoDB 4.4+ has no
 //     native vector search, so cosine is computed
 //     in Go against the tier-filtered rows.
-//  3. BGE-M3 outage is NOT fatal at startup (Pitfall 8 — production
+//  6. BGE-M3 outage is NOT fatal at startup (Pitfall 8 — production
 //     refuses on BGE-M3 outage at request time, not startup time, so
 //     the server can boot into a known-broken state and operators can
 //     see the failure mode in the first chat request).
-//  4. Build the GLM-5.2 ChatModel via openai.NewChatModel pointed at
+//  7. Build the GLM-5.2 ChatModel via openai.NewChatModel pointed at
 //     the Coding Plan endpoint (Pitfall 6 — NOT /api/paas/v4, the
 //     standard endpoint rejects Coding Plan keys with a confusing
 //     "余额不足" error).
-//  5. Wrap the ChatModel in adk.NewChatModelAgent + adk.NewRunner.
-//  6. Build *server.Deps, h := server.New(addr, deps), h.Spin().
+//  8. Wrap the ChatModel in adk.NewChatModelAgent + adk.NewRunner.
+//  9. Build *server.Deps, h := server.New(addr, deps), h.Spin().
 //
 // Environment variables (the deployment surface):
 //
+//   - SKILLFORGE_KB_SEED (optional) — controlled knowledge-base seed file,
+//     default "knowledge_bases.yaml". Structure only: the runtime
+//     retrieval switches live in the sqlite knowledge_bases table.
 //   - RETRIEVER_BACKEND (optional) — "milvus" (default) | "mongo"
 //   - MILVUS_ADDRESS    (milvus only, required) — gRPC host:port
 //   - MONGO_URI         (mongo only, required)  — e.g. mongodb://10.62.10.34:27017
@@ -157,6 +170,78 @@ func parseBytesEnvOrDefault(name string, def int64) int64 {
 	return n
 }
 
+// buildKBRegistry assembles the PRODUCTION knowledge-base registry
+// (KBM-01): kb.Open joins the controlled seed file (structure) with the
+// sqlite knowledge_bases table (the runtime switch state), so an admin
+// create/deactivate survives a restart and a PR-added base reaches every
+// existing deployment (26-02). This replaces the 26-03/26-04 read-only
+// seed snapshots — this function is the only place in cmd/server that
+// decides what the knowledge surface is.
+//
+// st is the store.Store built at boot. The SQLiteStore is the one adapter
+// that satisfies kb.Store (compile-time assertion in
+// internal/store/sqlite/kb_registry.go); anything else reaching this
+// function is a wiring bug that must fail loudly, never silently boot an
+// unbacked registry.
+//
+// Trust posture (26-02 semantics): an ABSENT seed over an empty table is
+// the single legal degraded state — a deployment may legitimately run on
+// its persisted registry alone — so the assembly proceeds with an empty
+// registry and a WARN that names the seed path and the consequence. A
+// MALFORMED seed is an error the caller log.Fatalf's: a bad controlled
+// file must not boot a half-known knowledge surface (the D16-08-D
+// controlled-file posture).
+//
+// Gating note (the D16-08-C analogue): the registry is assembled
+// UNCONDITIONALLY. SKILLFORGE_DATA_SALT is the WRITE-side (import
+// desensitization) HMAC site secret; the kb registry is identity
+// metadata from a controlled file plus the local sqlite table, and
+// gating it on the salt would strip every tier Skill of its reads
+// vocabulary on a perfectly valid read-only deployment.
+func buildKBRegistry(ctx context.Context, seedPath string, st store.Store) (kb.Registry, error) {
+	kbStore, ok := st.(kb.Store)
+	if !ok {
+		return nil, fmt.Errorf("store %T does not satisfy kb.Store (the 26-02 SQLiteStore is the production adapter — see internal/store/sqlite/kb_registry.go)", st)
+	}
+	reg, err := kb.Open(ctx, seedPath, kbStore)
+	if err != nil {
+		return nil, err // already names the seed file and the offending entry
+	}
+	if len(reg.List()) == 0 {
+		log.Printf("[WARN] cmd/server: empty KB registry (every tier-Skill validation will fail — seed %s or register a base via POST /api/admin/kb)", seedPath)
+	}
+	return reg, nil
+}
+
+// kbDirAuditHook returns the INSERT-only audit sink both corpus seams
+// write through (knowledge.Index's unregistered-directory decision and
+// mongo.SeedFromKnowledgeDir's equivalent — KBM-06: WARN + skip + audit).
+//
+// Row shape: the action enum rides Action, the walk detail rides
+// FrozenArgs verbatim (the walker already emits a compact JSON object —
+// re-marshalling it would double-encode the string into `"{\"dir\":...}"`)
+// and SessionID/SkillID/Query stay empty. This row records a corpus
+// anomaly, not a chat turn, so it must never be mistaken for one and must
+// never pollute the SC-9 session partition.
+//
+// INSERT-only by construction: the only store verb reachable from this
+// closure is PutAudit (locked by TestBootAssemblyOrder's body scan). A
+// failed write logs and continues — auditing an anomaly must never take
+// the boot or the index down, which is the whole-repo best-effort audit
+// posture — but it is never silent.
+func kbDirAuditHook(ctx context.Context, st store.Store) func(action, detail string) {
+	return func(action, detail string) {
+		if _, err := st.PutAudit(ctx, store.AuditRow{
+			Timestamp:  time.Now().UTC(),
+			UserID:     "system",
+			Action:     action,
+			FrozenArgs: []byte(detail),
+		}); err != nil {
+			log.Printf("[ERROR] cmd/server: kb dir audit row (%s): %v", action, err)
+		}
+	}
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -221,23 +306,49 @@ func main() {
 	// only excludes data/ — the KPI definitions are reviewable, diffable,
 	// versioned artifacts, unlike the datasets they read).
 	kpisDir := envOr("SKILLFORGE_KPIS_DIR", "kpis")
+	// SKILLFORGE_KB_SEED is the controlled knowledge-base seed file
+	// (KBM-01). It defaults to the in-repo controlled file; a deployment
+	// may point it elsewhere (e.g. a mounted ops-managed copy) without a
+	// rebuild.
+	kbSeedPath := envOr("SKILLFORGE_KB_SEED", "knowledge_bases.yaml")
 
-	// PROVISIONAL (26-03): read-only seed snapshot — replaced by the
-	// sqlite-backed kb.Open registry in plan 26-09. The seed file is the
-	// controlled baseline; a missing file is the one legal degraded state
-	// (empty registry, every knowledge/ dir then audits as unregistered).
-	kbSeeds, err := kb.LoadSeedFile("knowledge_bases.yaml")
+	// 2. Store (audit + session-memory backend, Plan 03-02). Moved ahead of
+	// the skill loader by 26-09: the kb registry (step 3) persists through
+	// this store, and the corpus walk's unregistered-directory audit rows
+	// (step 4) must land in it during the boot-time index — binding the
+	// audit hook only after the retriever ran would silently drop the very
+	// rows the decision table exists to record. This is the boot order
+	// 26-02 documented as the 26-09 target:
+	// store migrate → kb registry → skill loader.
+	st, err := buildStore(ctx)
 	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: kb seed load: %v (fix the controlled knowledge_bases.yaml — a bad seed must not boot a half-known knowledge surface)", err)
+		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
 	}
-	if kbSeeds == nil {
-		log.Printf("[WARN] cmd/server: no knowledge_bases.yaml seed found — knowledge-base registry is empty (every knowledge/ dir will be treated as unregistered)")
-	}
-	kbReg := kb.New(kbSeeds)
-	log.Printf("[OK] cmd/server: kb registry wired (provisional seed snapshot, %d base(s), signature=%s)",
-		len(kbSeeds), shortSignature(kbReg.Signature()))
 
-	// 2. Load Skills (SYSK-02 validation at startup).
+	// 3. Knowledge-base registry (KBM-01) — the PRODUCTION assembly. The
+	// seed supplies structure, the sqlite knowledge_bases table supplies
+	// the runtime switch state, and the merged store-backed registry is
+	// the ONE value every consumer below receives (skill loader, skill
+	// registry, wizard, knowledge graph, Deps.KBRegistry). A malformed
+	// seed is fatal: the operator must see the bad controlled file at
+	// startup, not as a half-loaded knowledge surface at request time.
+	kbReg, err := buildKBRegistry(ctx, kbSeedPath, st)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: kb registry open from %s: %v (fix the controlled seed file — a bad seed must not boot a half-known knowledge surface)", kbSeedPath, err)
+	}
+	log.Printf("[OK] cmd/server: kb registry wired (seed=%s, %d base(s), signature=%s)",
+		kbSeedPath, len(kbReg.List()), shortSignature(kbReg.Signature()))
+
+	// 4. INSERT-only audit sink for the corpus walk's unregistered-directory
+	// decision (KBM-06: WARN + skip + audit). The callback seam keeps the
+	// index/seed functions store-free (Pitfall 7); the row is append-only —
+	// no UPDATE, no DELETE, and the detail rides FrozenArgs as JSON.
+	knowledge.SetIndexAuditHook(kbDirAuditHook(ctx, st))
+	mongo.SetSeedAuditHook(kbDirAuditHook(ctx, st))
+
+	// 5. Load Skills (SYSK-02 validation at startup). The loader resolves
+	// every reads declaration against the SAME registry the indexers and
+	// the citation gate consume (KBM-01: one identity source).
 	loader := skill.NewLoader("skills/", kbReg)
 	manifests, err := loader.Scan()
 	if err != nil {
@@ -245,7 +356,7 @@ func main() {
 	}
 	log.Printf("[OK] loaded %d Skill(s)", len(manifests))
 
-	// 3. BGE-M3 HTTP embedder (production; refuses on outage).
+	// 6. BGE-M3 HTTP embedder (production; refuses on outage).
 	// BGE_M3_MODEL defaults to "bge-m3" (required by Ollama's
 	// OpenAI-compatible /v1/embeddings; harmless on vLLM/TEI).
 	// BGE_M3_TIMEOUT defaults to 60s (Ollama cold-loads the 1.2GB model on
@@ -259,47 +370,21 @@ func main() {
 		log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", bgeURL)
 	}
 
-	// 4. Construct the configured retriever backend + seed the knowledge
+	// 7. Construct the configured retriever backend + seed the knowledge
 	// corpus. The default is "milvus" (unchanged historical behavior);
 	// "mongo" switches to the MongoDB-backed retriever (used when the
 	// internal Milvus is unavailable — see 02-04-MONGO-SUMMARY.md).
 	//
-	// Phase 26 ordering note: the store is built BEFORE the retriever now,
-	// because the corpus walk's unregistered-directory audit rows (KBM-06)
-	// must land in the store during the boot-time index — binding the audit
-	// hook only after the retriever ran would silently drop the very rows
-	// the decision table exists to record. This is also the boot order
-	// 26-02 documented as the 26-09 target (store migrate → kb registry →
-	// skill loader).
-	st, err := buildStore(ctx)
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: store init: %v", err)
-	}
-
-	// INSERT-only audit sink for the corpus walk's unregistered-directory
-	// decision (KBM-06: WARN + skip + audit). The callback seam keeps the
-	// index/seed functions store-free (Pitfall 7); the row is append-only —
-	// no UPDATE, no DELETE, and the detail rides FrozenArgs as JSON.
-	kbDirAudit := func(action, detail string) {
-		if _, err := st.PutAudit(ctx, store.AuditRow{
-			Timestamp:  time.Now().UTC(),
-			UserID:     "system",
-			Action:     action,
-			FrozenArgs: []byte(detail),
-		}); err != nil {
-			log.Printf("[ERROR] cmd/server: kb dir audit row (%s): %v", action, err)
-		}
-	}
-	knowledge.SetIndexAuditHook(kbDirAudit)
-	mongo.SetSeedAuditHook(kbDirAudit)
-
+	// The store (step 2) and the audit hooks (step 4) already exist here,
+	// so the boot-time index writes its unregistered-directory rows into
+	// the real audit table (KBM-06).
 	backend := strings.ToLower(os.Getenv("RETRIEVER_BACKEND"))
 	if backend == "" {
 		backend = "milvus"
 	}
 	r, backendLabel := buildRetriever(ctx, backend, emb, kbReg)
 
-	// 5. ChatModel (GLM Coding Plan per Pitfall 6, or LOCAL_* override —
+	// 8. ChatModel (GLM Coding Plan per Pitfall 6, or LOCAL_* override —
 	// see the env triple above). Phase 17 live-UAT: GLM_MODEL selects the
 	// model (user decision 2026-08-27: glm-5.3-flash default) instead of
 	// the historical hardcoded "glm-5.2".
@@ -323,7 +408,7 @@ func main() {
 	}
 	log.Printf("[OK] cmd/server: chat model = %s via %s endpoint %s (LOCAL_*/GLM_* precedence)", serverModel, chatSource, glmBase)
 
-	// 6. ChatModelAgent + Runner.
+	// 9. ChatModelAgent + Runner.
 	adkAgent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "skillforge-compliance",
 		Description: "SkillForge compliance-review ChatModelAgent",
@@ -335,7 +420,7 @@ func main() {
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: adkAgent})
 
-	// 6b. Phase 3 ReAct Agent (Plan 03-03). Constructed ONLY when
+	// 10. Phase 3 ReAct Agent (Plan 03-03). Constructed ONLY when
 	// USE_AGENT_PATH=true (opt-in). The PRODUCTION DEFAULT is the Phase 2
 	// VerdictPipeline (chatHandler falls through to it when s.Agent ==
 	// nil), which live-verified 6/6 SC green and is robust against LLM
@@ -374,18 +459,16 @@ func main() {
 		log.Printf("[OK] cmd/server: /api/chat path = VerdictPipeline (default; USE_AGENT_PATH unset)")
 	}
 
-	// 6c. Store (audit + session-memory backend, Plan 03-02). Zero-ops
-	// default: pure-Go modernc.org/sqlite at SQLITE_DSN (default
-	// "skillforge.db" so a plain `go run cmd/server` produces a
-	// persistent audit trail next to the binary). Health-check fails
-	// fast on a misconfigured DSN — the operator sees the problem at
-	// startup, not at the first /api/chat request.
-	//
-	// Phase 26 (26-03): construction MOVED to step 4, ahead of the
-	// retriever, so the corpus walk's unregistered-directory audit rows
-	// land in the store during the boot-time index (see the note there).
+	// 11. Store (audit + session-memory backend, Plan 03-02) — built at
+	// step 2 since 26-09. Zero-ops default: pure-Go modernc.org/sqlite at
+	// SQLITE_DSN (default "skillforge.db" so a plain `go run cmd/server`
+	// produces a persistent audit trail next to the binary). Health-check
+	// fails fast on a misconfigured DSN — the operator sees the problem at
+	// startup, not at the first /api/chat request. The SAME handle backs
+	// the kb registry (step 3), which is why an admin create/deactivate
+	// survives a restart.
 
-	// 6c-2. Phase 15 — data-import orchestrator. The importer needs a
+	// 12. Phase 15 — data-import orchestrator. The importer needs a
 	// dedicated DuckDB connection for lazy ATTACH/DETACH of dataset files.
 	// A nil Importer is fine (import endpoints return 503), but a non-empty
 	// SKILLFORGE_DATA_SALT wires the full pipeline.
@@ -409,7 +492,7 @@ func main() {
 		log.Printf("[WARN] cmd/server: SKILLFORGE_DATA_SALT unset — import endpoints disabled (fail-closed)")
 	}
 
-	// 6c-3. Phase 16 — KPI aggregation pipeline (D16-A1 / D16-C3 / KPI-01).
+	// 13. Phase 16 — KPI aggregation pipeline (D16-A1 / D16-C3 / KPI-01).
 	// Mirrors the importer assembly above (dedicated in-memory DuckDB
 	// connector + AttachLRU + fail-closed posture) with ONE deliberate
 	// difference: the KPI pipeline is wired UNCONDITIONALLY, regardless of
@@ -452,7 +535,7 @@ func main() {
 	kpiExecutor := kpi.NewExecutor(kpiRegistry, storeDatasetMeta{st: st},
 		duckdb.NewEngineAdapter(kpiLRU), st, time.Now)
 	log.Printf("[OK] cmd/server: KPI pipeline wired (kpis=%s, registry=%d entries, signature=%s)",
-		kpisDir, len(kpiRegistry.Names()), shortSignature(kpiSignature))
+		kpisDir, len(kpiRegistry.Names()), shortSignature(string(kpiSignature)))
 
 	// Phase 19 — scheduler (PORT-02). Built after the KPI pipeline so kpiLRU
 	// is available as the Detacher for TTL cleanup (DATA-18). TTL defaults to
@@ -490,7 +573,7 @@ func main() {
 		}
 	}()
 
-	// 6c-4. Phase 17 DASH-01: cross-validate data-channel Skill routing
+	// 14. Phase 17 DASH-01: cross-validate data-channel Skill routing
 	// tables against the KPI registry at boot. Tier-channel Skills are
 	// skipped inside ValidateAgainstKPI (HasDataChannel()==false → no
 	// routing table to check); only Skills declaring a "data:" read
@@ -505,7 +588,7 @@ func main() {
 	}
 	log.Printf("[OK] cmd/server: skill/KPI routing cross-validation passed (%d skill(s) checked)", len(loader.Skills()))
 
-	// 6c-5. Phase 21 (wired in v1.1.1) — External Authorized Channel
+	// 15. Phase 21 (wired in v1.1.1) — External Authorized Channel
 	// (DATA-04..14) assembly. Mirrors the 6c-3 KPI posture with ONE
 	// deliberate difference: this channel is behind an explicit operator
 	// opt-in, EXTERNAL_AUTH_ENABLED=1.
@@ -552,7 +635,7 @@ func main() {
 		}
 	}
 
-	// 6d. Skill Registry (Plan 05-01 / §2 hot-reload). The fsnotify-driven
+	// 16. Skill Registry (Plan 05-01 / §2 hot-reload). The fsnotify-driven
 	// registry is the production source of truth for the GET /api/skills
 	// listing's version + status fields — touching skills/<name>/SKILL.md
 	// on disk bumps that skill's Entry.Version (which the FE polls) and, on
@@ -571,7 +654,7 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: registry watch: %v", err)
 	}
 
-	// 6e. Phase 10 history-aware pipeline assembly (Plan 10-02 Task 4 /
+	// 17. Phase 10 history-aware pipeline assembly (Plan 10-02 Task 4 /
 	// checker B2 key fix). Without this step the running product would
 	// have nil Rewriter / RefusalClassifier and the SC-1 / SC-2 escape
 	// mechanisms would never fire. Both constructors fail-fast at
@@ -618,7 +701,7 @@ func main() {
 		log.Printf("[OK] cmd/server: history-aware pipeline ACTIVE (rewrite + classifier; budget window + neutral placeholder + multi-turn messages)")
 	}
 
-	// 7. Build *server.Deps. Embedder + Retriever are concrete impls
+	// 18. Build *server.Deps. Embedder + Retriever are concrete impls
 	// behind the interfaces; Runner wraps the Eino Runner. Phase 3 adds
 	// Agent + Store so chatHandler can run the ReAct loop + persist audit
 	// rows + session turns (Plan 03-05).
@@ -672,13 +755,16 @@ func main() {
 		ImportMaxBodyBytes:    importMaxBody,
 		NonImportMaxBodyBytes: nonImportMaxBody,
 		// Phase 16 — KPI aggregation channel. Both fields are always
-		// non-nil here (6c-3 is unconditional); a data-channel Skill
+		// non-nil here (13 is unconditional); a data-channel Skill
 		// reaches kpi_call through them and GET /api/admin/kpis reads
 		// the registry catalog + kpi_calls audit rows.
 		KPIExecutor: kpiExecutor,
-		// Phase 26 — the same seed registry the loader validated against
-		// at boot (26-05 consumes it for the admin endpoints; 26-09 swaps
-		// the provisional seed snapshot for kb.Open).
+		// Phase 26 — the ONE store-backed registry built at step 3: the
+		// same value the loader validated reads against, the wizard writes
+		// into, the knowledge graph walks, and 26-05's admin endpoints
+		// mutate. Admin creates/deactivations through it persist across a
+		// restart, which is exactly what the 26-03/26-04 read-only seed
+		// snapshots could not do.
 		KBRegistry:  kbReg,
 		KPIRegistry: kpiRegistry,
 		// Phase 19 — scheduler wired with store + eval gate + LRU detacher.
@@ -691,7 +777,7 @@ func main() {
 		ExternalAuthManager: externalAuthManager,
 	}
 
-	// 8. Hertz server (Pattern 1).
+	// 19. Hertz server (Pattern 1).
 	h := server.New(serverAddr, deps)
 	log.Printf("[OK] cmd/server: SkillForge listening on %s (backend=%s)", serverAddr, backendLabel)
 	log.Printf("     POST /api/chat                — verdict pipeline (verdict or structured refusal)")
@@ -957,14 +1043,16 @@ func (m storeDatasetMeta) VersionForPeriod(ctx context.Context, dataset, period 
 	}, nil
 }
 
-// shortSignature renders the KPI registry content-hash for the startup log:
-// the first 12 hex chars, or an explicit bootstrap marker when the registry
-// loaded zero definitions (empty kpis/ directory — the one legal degraded
-// state).
-func shortSignature(sig kpi.Signature) string {
-	s := string(sig)
+// shortSignature renders a registry content-hash for the startup log:
+// the first 12 hex chars, or an explicit bootstrap marker when the
+// signature is empty (an empty kpis/ directory, or an empty knowledge-base
+// registry — both are the one legal degraded state for their surface).
+// Takes a plain string so the KPI and kb registries (whose signature types
+// differ) share one renderer.
+func shortSignature(sig string) string {
+	s := sig
 	if s == "" {
-		return "(empty registry — no KPI definitions loaded)"
+		return "(empty registry)"
 	}
 	if len(s) > 12 {
 		return s[:12]

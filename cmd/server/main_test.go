@@ -278,8 +278,8 @@ func TestAuditHookLandsInSqliteAuditTable(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("audit table rows for action_kb_dir_unregistered = %d, want 1", len(rows))
 	}
-	if !strings.Contains(rows[0].FrozenArgs, "rogue") {
-		t.Fatalf("persisted FrozenArgs = %q, want the walk detail", rows[0].FrozenArgs)
+	if !strings.Contains(string(rows[0].FrozenArgs), "rogue") {
+		t.Fatalf("persisted FrozenArgs = %q, want the walk detail", string(rows[0].FrozenArgs))
 	}
 }
 
@@ -342,23 +342,36 @@ func TestBootAssemblyOrder(t *testing.T) {
 		}
 		return i
 	}
+	// indexOfInMain searches from `func main() {` onward so a doc comment
+	// mentioning a call cannot satisfy (or break) a boot-order assertion.
+	mainIdx := indexOf("func main() {")
+	mainSrc := src[mainIdx:]
+	indexOfInMain := func(needle string) int {
+		i := strings.Index(mainSrc, needle)
+		if i < 0 {
+			t.Fatalf("main() no longer contains %q — update this order lock alongside the boot sequence", needle)
+		}
+		return i
+	}
 
 	// 1. The registry exists before anything consumes it. kb.Open is the
-	//    production assembly; the skill loader is its first consumer.
-	if kbOpen, loader := indexOf("kb.Open("), indexOf("skill.NewLoader("); kbOpen > loader {
-		t.Fatalf("boot order broken: kb.Open (offset %d) must precede skill.NewLoader (offset %d)", kbOpen, loader)
+	//    production assembly; the skill loader is its first consumer. (The
+	//    kb.Open presence check is file-wide; the ORDER check reads main's
+	//    body so the package doc cannot satisfy it.)
+	if !strings.Contains(src, "kb.Open(") {
+		t.Fatal("main.go no longer calls kb.Open — the production registry assembly is gone")
 	}
-	if boot, loader := indexOf("buildKBRegistry(ctx, "), indexOf("skill.NewLoader("); boot > loader {
-		t.Fatalf("boot order broken: the registry build in main() (offset %d) must precede skill.NewLoader (offset %d)", boot, loader)
+	if boot, loader := indexOfInMain("buildKBRegistry(ctx, "), indexOfInMain("skill.NewLoader("); boot > loader {
+		t.Fatalf("boot order broken: the registry build (offset %d in main) must precede skill.NewLoader (offset %d)", boot, loader)
 	}
 
 	// 2. The store exists before the registry (kb.Open persists through
 	//    it) and the audit hooks are bound before the corpus walk.
-	if st, reg := indexOf("st, err := buildStore(ctx)"), indexOf("buildKBRegistry(ctx, "); st > reg {
-		t.Fatalf("boot order broken: buildStore (offset %d) must precede the registry build (offset %d)", st, reg)
+	if st, reg := indexOfInMain("st, err := buildStore(ctx)"), indexOfInMain("buildKBRegistry(ctx, "); st > reg {
+		t.Fatalf("boot order broken: buildStore (offset %d in main) must precede the registry build (offset %d)", st, reg)
 	}
-	if hook, ret := indexOf("knowledge.SetIndexAuditHook("), indexOf("buildRetriever(ctx, "); hook > ret {
-		t.Fatalf("boot order broken: the audit hook binding (offset %d) must precede buildRetriever (offset %d) — the boot-time corpus index writes its unregistered-dir rows through it", hook, ret)
+	if hook, ret := indexOfInMain("knowledge.SetIndexAuditHook("), indexOfInMain("buildRetriever(ctx, "); hook > ret {
+		t.Fatalf("boot order broken: the audit hook binding (offset %d in main) must precede buildRetriever (offset %d) — the boot-time corpus index writes its unregistered-dir rows through it", hook, ret)
 	}
 
 	// 3. The whole registry is ONE value injected everywhere (single
