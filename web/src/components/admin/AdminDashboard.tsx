@@ -5,20 +5,25 @@
 //
 // Responsibilities:
 //   - Top bar: "Admin Console" title + /admin badge + Back to Chat button + Refresh
-//   - Tab bar: 4 SubrouteTab buttons (Import Batches / KPI Definitions / Skill Management / Scheduled Tasks)
+//   - Tab bar: 5 SubrouteTab buttons (Import Batches / Knowledge Bases / KPI
+//     Definitions / Skill Management / Scheduled Tasks)
 //   - CapacityMonitor: capacity bar strip (audit / kpi_calls / report_runs)
 //   - ViewBody: renders the active view component based on adminSubroute
 //
-// The shell is structural only — the four view components are implemented
-// in later plans. SubrouteTab is copied inline from EvalDashboard.tsx per
-// the plan instruction (do NOT extract to a shared file).
+// The shell is structural only — the view components own their data
+// fetching. SubrouteTab is copied inline from EvalDashboard.tsx per the
+// plan instruction (do NOT extract to a shared file).
+//
+// Plan 26-08 (KBM-02) adds the Knowledge Bases tab — the registry's
+// mutation surface (create / deactivate, token-gated, audit-backed).
 
 import { useEffect } from 'react';
-import { ArrowLeft, BarChart3, Clock, Database, RefreshCw, Wrench } from 'lucide-react';
+import { ArrowLeft, BarChart3, BookOpen, Clock, Database, RefreshCw, Wrench } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import CapacityMonitor from './CapacityMonitor';
 import ImportBatchList from './ImportBatchList';
+import KnowledgeBaseList from './KnowledgeBaseList';
 import KPIDefinitionList from './KPIDefinitionList';
 import SkillManagementList from './SkillManagementList';
 import ScheduledTaskList from './ScheduledTaskList';
@@ -40,7 +45,7 @@ export default function AdminDashboard() {
     // Wired for future: trigger a re-fetch of the active subroute's data.
   }
 
-  function handleSubroute(next: 'batches' | 'kpis' | 'skills' | 'schedules') {
+  function handleSubroute(next: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules') {
     setAdminSubroute(next);
     // URL is /admin for all subroutes (store-only subroute, no sub-path segment).
     if (window.location.pathname !== '/admin') {
@@ -112,6 +117,13 @@ export default function AdminDashboard() {
           onClick={() => handleSubroute('batches')}
         />
         <SubrouteTab
+          active={adminSubroute === 'bases'}
+          testId="admin-tab-bases"
+          icon={<BookOpen className="h-3.5 w-3.5" />}
+          label="Knowledge Bases"
+          onClick={() => handleSubroute('bases')}
+        />
+        <SubrouteTab
           active={adminSubroute === 'kpis'}
           testId="admin-tab-kpis"
           icon={<BarChart3 className="h-3.5 w-3.5" />}
@@ -145,6 +157,7 @@ export default function AdminDashboard() {
         className="flex-1 overflow-y-auto p-4"
       >
         {adminSubroute === 'batches' && <ImportBatchList />}
+        {adminSubroute === 'bases' && <KnowledgeBaseList />}
         {adminSubroute === 'kpis' && <KPIDefinitionList />}
         {adminSubroute === 'skills' && <SkillManagementList />}
         {adminSubroute === 'schedules' && <ScheduledTaskList />}

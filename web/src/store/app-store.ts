@@ -454,7 +454,7 @@ export interface AppState {
   route: AppRoute;
   evalSubroute: EvalSubroute;
   // Plan 20-01 (ADM-01) — admin console subroute.
-  adminSubroute: 'batches' | 'kpis' | 'skills' | 'schedules';
+  adminSubroute: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules';
   indexReports: IndexRun[];
   auditRows: AuditRow[];
   auditFilter: AuditFilter;
@@ -518,7 +518,7 @@ export interface AppActions {
   setRoute(route: AppRoute): void;
   setEvalSubroute(sub: EvalSubroute): void;
   // Plan 20-01 (ADM-01) — admin console subroute action.
-  setAdminSubroute(sub: 'batches' | 'kpis' | 'skills' | 'schedules'): void;
+  setAdminSubroute(sub: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules'): void;
   setIndexReports(runs: IndexRun[]): void;
   setAuditRows(rows: AuditRow[]): void;
   setAuditFilter(filter: AuditFilter): void;
