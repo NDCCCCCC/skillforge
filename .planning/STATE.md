@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 29
-current_plan: 8
+current_plan: 9
 status: executing
-last_updated: "2026-09-07T22:00:00.000Z"
-last_activity: 2026-09-08 -- 29-08 SHIPPED (admin FE: 反馈第 6 tab + 复核第 7 tab + SfToast /admin 挂载, commits ef2343c/09ced1d/99456a8/caf9981/13d1acd)
+last_updated: "2026-09-07T22:12:00.000Z"
+last_activity: 2026-09-08 -- 29-09 SHIPPED (verify gate b6bbf0c + STRIDE-29/29-UAT 3dd2384 — Phase 29 全 9 plans 执行完毕, 待 phase closeout)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 33
-  completed_plans: 28
+  completed_plans: 29
   percent: 50
 ---
 
@@ -19,10 +19,12 @@ progress:
 
 ## Current Position
 
-Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
-Plan: 8 of 9
-Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 + 29-07 shipped; Wave 5: 29-08 shipped — 29-09 verify gate next)
-Last activity: 2026-09-08 -- 29-08 SHIPPED (admin FE: D-29-12 七 tab shell + FBK-02 复核队列 + FBK-03 反馈仪表盘, commits ef2343c + 09ced1d/99456a8 + caf9981/13d1acd)
+Phase: 29 (feedback-loop-ticket-interface) — EXECUTING (all 9 plans shipped; pending phase closeout/verification)
+Plan: 9 of 9
+Status: Phase 29 fully executed (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 + 29-05; Wave 4: 29-06 + 29-07; Wave 5: 29-08; Wave 6: 29-09 verify gate — next: /gsd:verify-phase 29 closeout)
+Last activity: 2026-09-08 -- 29-09 SHIPPED (verify-phase-29.sh 4-stage 结构门 + make phase-29 目标 b6bbf0c + STRIDE-29 威胁模型 / 29-UAT operator runbook 3dd2384)
+
+**Phase 29 Plan 29-09 delivery summary (Wave 6, 2026-09-08):** 收尾卫生门（沿 26-10/27-06/28-07 惯例）2 个原子 commit（b6bbf0c Task1 + 3dd2384 Task2）。`scripts/verify-phase-29.sh` 四阶段全 PASS（hermetic grep-only 零 Go 工具链）：Stage 1 TODO 清零沿 verify-phase-26 正则惯例（TODO(/TODO:/FIXME(/FIXME: 才计数；deep.TODO 在本 phase 文件内恰 4 处引用 0 误配，反误伤断言比 28 版更强）+ 覆盖 Go+TS 全 25 个 phase 生产文件；Stage 2 FBK-05 信任红线——feedback.go + store/sqlite/{feedback,tickets}.go 零 `UPDATE `/`DELETE `/`Insert(`、retriever 唯一引用 GetChunk（4 处）、零 Search(/Indexer、三文件零 internal/knowledge 引用；Stage 3 D15 配对双侧存在（wire/chunk.go 5 + wire-types.ts 4）；Stage 4 DDL 纪律——写表面（schema+feedback+tickets）零 DO UPDATE、7 处 DO NOTHING ≥4、4 张 additive 新表各 CREATE TABLE IF NOT EXISTS。负向自证通过：注入真实违禁 token `UPDATE ` 注释 → Stage 2a FAIL 点名文件+行号 exit 1，原样恢复（diff 干净）后 exit 0——计划原稿示例 "UPDATED" 不含尾随空格不会触发门，按原字面执行会假绿。Makefile phase-29 target 镜像 phase-28 + .PHONY；Windows host 无 make → 经 WSL 执行 exit 0（29-UAT Test 9 已记录 operator 指引）。`docs/threat-model/STRIDE-29.md`：7 条信任边界（含「门脚本→代码库」弱化面）+ 10 威胁行全 Disposition（T-29-01..09 + T-29-SC accept），Mitigation 全部指到实测核实的 file:line 锚点（TestFeedbackNoTrustMutation@feedback_test.go:1082、UNIQUE@schema.go:405/470、isAdminRequest 首语句@feedback.go:436/535/663、SecretHeader@webhook.go:39、SKILLFORGE_TICKET_*.env@main.go:354-364）；STRIDE-29 落 docs/threat-model/（计划 artifacts 显式路径 + 主流惯例 6/7；STRIDE-28 落 phase 目录是离群点，计划 read_first 的两个 28 路径系笔误已按真实位置读取）。`29-UAT.md`：9 段编号测试（投票/幂等回显/复核处置/重开/指标/工单 none/工单 webhook/Phase 27→29 联合验收/结构门）每步命令+期望结果+实测记录列，live/webhook 项标 [operator]。3 个 auto-fix 偏差（Stage 4 DO NOTHING 断言位置修正为三文件写表面 7 处、Stage 1 正则防 deep.TODO 误伤、负向自证 token 修正）——无一弱化断言，Stage 4 覆盖面反而更宽。回归：WSL `go test ./... -count=1` exit 0 + FE 74 文件/595 用例全绿 + `tsc --noEmit` 干净（与 29-08 基线零漂移）。REQUIREMENTS FBK-01..05 / TKT-02..04 行留给 phase closeout 翻转。
 
 **Phase 29 Plan 29-08 delivery summary (Wave 5, 2026-09-08):** FBK-02/FBK-03 的 admin 渲染半面 + TKT-03 admin 半面 — 5 个原子 commit（ef2343c Task1 + 09ced1d RED/99456a8 GREEN + caf9981 RED/13d1acd GREEN，双 TDD 环），FE 三 plan 测试文件 32/32 + `tsc --noEmit` 干净 + 全量回归 74 文件/595 用例全绿（29-07 基线 71/563 → +3 文件 +32 用例）+ 零新依赖/零新 token。store 层唯一变更是 `adminSubroute` union 与 setter 签名各追加 `'feedback' | 'review'`（default 仍 'batches'，零新 zustand 字段）。`AdminDashboard.tsx`：7 tab（反馈第 6 `admin-tab-feedback`/MessageSquare、复核第 7 `admin-tab-review`/Inbox，顺序单测锁定）+ 两 ViewBody 分支 + 根 div 挂 `<SfToast />`（App.tsx /admin early-return 的 toast 通道补全），URL sync useEffect 零改动。`ReviewQueuePanel.tsx`：逐字 FBK-05 信任横幅常驻（「不会自动修改知识库内容」）+ pending 按 chunk 聚合（报告次数 ≥2 → text-status-needs-info font-semibold，D-29-08）+ 三处置单点击终态（busy 按行禁用 → 201 `{closed_count}` → 服务端真相 refetch + success toast 报关闭条数；失败行保留 + body.error 行内原文 + error toast）+ 说明（n）aria-expanded 展开逐条报告（空说明「（未填写说明）」）+ 既有 fetchChunkContent 预览（加载态 + 「无法加载 chunk 内容」回退，零新读面）+ 处置历史/disposition 过滤/badge 三色（已更新=compliant/误报=non-compliant/忽略=unanswered）。`FeedbackMetricsPanel.tsx`：逐字全票口径注常驻（D-29-10）+ FE 永不自行算比率（服务端 number|null → null 渲染「—」，0 票测试扫 document.body 断言无 0%/NaN）+ 5 汇总卡（帮助率/outdated 率 24px/600 mono）+ 维度/时间范围切换重取、趋势粒度纯客户端重分桶（导出 `bucketWeekly` 纯函数：按最新日锚定聚 7 天桶，零第二请求形态，切粒度 fetch 计数不变有测试锁定）+ 三条 Sparkline 经 `--color-sparkline` 行内注入 compliant/non-compliant/needs-info 三色（共享 Phase-17 组件零改动）+ per-KB 双计脚注逐字 + `待复核 {pending_count} 条` cross-link → setAdminSubroute('review')（AdminDashboard 集成测试锁）。4 个测试侧 auto-fix（retry 即 error 行本身、busy stub 二次翻转、日 series 并集日轴 0 填充 3 点、Sparkline aria-label 恒复数）+ 1 个诚实偏离：展开子行相对时间为行级（29-05 冻结线形无逐条报告时间戳，逐条渲染即编造）。REQUIREMENTS FBK-02/FBK-03/TKT-03 行按 phase-close 约定保持 Pending（admin 半面实质已交付，29-09 翻转）。
 
@@ -46,7 +48,7 @@ Last activity: 2026-09-08 -- 29-08 SHIPPED (admin FE: D-29-12 七 tab shell + FB
 
 Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02 + GRF-03 + GRF-05)
 
-**Next action:** Continue Phase 29 execution — Wave 6: 29-09 (verify gate 收尾: 全 plan 测试/grep 门 + REQUIREMENTS FBK-02/FBK-03/TKT-03 行翻转 + phase closeout).
+**Next action:** Phase 29 全部 9 plans 已执行完毕 — 运行 `/gsd:verify-phase 29` 做 phase 级验收（消费 verify-phase-29.sh PASS 记录 + 29-UAT Test 9 负向自证），然后 phase closeout（REQUIREMENTS FBK-01..05 / TKT-01..04 行翻转 + STATE current_phase 30）。Operator-facing：29-UAT.md Test 1–8（live 投票/复核/工单双 provider/联合验收）留 operator 按需执行。
 
 **Phase 27 residues (non-blocking):**
 

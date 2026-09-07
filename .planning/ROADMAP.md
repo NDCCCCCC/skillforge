@@ -236,7 +236,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 29-09-PLAN.md — 收尾卫生门：verify-phase-29.sh 4 stages（TODO 清零 / FBK-05 结构锁 / D15 配对 / DO NOTHING 纪律，含负向自证）+ make phase-29 + STRIDE-29.md + 29-UAT.md（含 Phase 27→29 联合验收）（FBK-05 门 + 全 REQ 收口）
+- [x] 29-09-PLAN.md — 收尾卫生门：verify-phase-29.sh 4 stages（TODO 清零 / FBK-05 结构锁 / D15 配对 / DO NOTHING 纪律，含负向自证）+ make phase-29 + STRIDE-29.md + 29-UAT.md（含 Phase 27→29 联合验收）（FBK-05 门 + 全 REQ 收口）— SHIPPED 2026-09-08（b6bbf0c 门+make target：Stage 1 TODO 正则沿 26 惯例 + deep.TODO 反误伤断言（4 refs 0 误配）/ Stage 2 FBK-05 三文件零 UPDATE/DELETE/Insert( + GetChunk 唯一 retriever 面 + 零 internal/knowledge / Stage 3 data-turn 双侧存在（Go 5 + TS 4）/ Stage 4 写表面零 DO UPDATE + 7 DO NOTHING + 4 新表 DDL；负向自证注入 `UPDATE ` → Stage 2a FAIL 点名行号 exit 1，撤销恢复 PASS；3dd2384 STRIDE-29（7 信任边界 + 10 威胁全 Disposition，锚点 file:line 实测）+ 29-UAT 9 段 runbook（含 Phase 27→29 联合验收 Test 8 + 结构门 Test 9）；回归全绿：WSL go test exit 0 + FE 595/595 + tsc 干净）
 
 **UI hint**: yes
 **Notes**: 真实工单系统对接（Jira/ServiceNow/自建）明确 Out of Scope——本里程碑只预留接口 + webhook provider；起点代码 = `web/src/components/chat/parts/FeedbackRow.tsx`（现为 toast 占位）+ `internal/server/` admin-token 门模式。
@@ -289,7 +289,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 8/9 | In progress (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 + 29-05; Wave 4: 29-06 + 29-07; Wave 5: 29-08 shipped — 29-09 verify gate remaining) | 2026-09-08 |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 9/9 | Complete (all 6 waves shipped 2026-09-08 — 29-09 verify gate + STRIDE-29 + 29-UAT closed out; pending phase-level verification/closeout) | 2026-09-08 |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---
