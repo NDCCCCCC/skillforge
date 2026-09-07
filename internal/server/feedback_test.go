@@ -778,7 +778,9 @@ func TestFeedbackDispositionAdminGate(t *testing.T) {
 		src, err := os.ReadFile("feedback.go")
 		require.NoError(t, err)
 		for _, fn := range []string{"feedbackReviewHandler", "feedbackDispositionHandler", "feedbackMetricsHandler"} {
-			gate := regexp.MustCompile(`func \(s \*Deps\) ` + fn + `\([^)]*\) \{\s*\n\s*// CHECK ORDER[^\n]*\n\s*if !isAdminRequest\(c\) \{`)
+			// Only COMMENT lines may sit between the brace and the gate —
+			// any executable statement before isAdminRequest breaks the lock.
+			gate := regexp.MustCompile(`func \(s \*Deps\) ` + fn + `\([^)]*\) \{\s*\n(?:\s*//[^\n]*\n)*\s*if !isAdminRequest\(c\) \{`)
 			assert.Regexp(t, gate, string(src),
 				"%s must run the admin-token gate as its FIRST statement", fn)
 		}
@@ -832,7 +834,12 @@ func TestFeedbackDispositionAdminGate(t *testing.T) {
 		s := feedbackRealStore(t)
 		h := newFeedbackHertz(&Deps{Store: s})
 		ctx := context.Background()
-		base := time.Date(2026, 9, 8, 8, 0, 0, 0, time.UTC)
+		// Vote timestamps are clock-RELATIVE (one hour ago) on purpose:
+		// the disposition's ts is stamped server-side at write time, and
+		// the pending derivation closes a vote iff d.ts >= f.ts. A fixed
+		// wall-date fixture can drift into the store's future and silently
+		// flip the comparison.
+		base := time.Now().UTC().Add(-time.Hour)
 
 		// Two outdated reports on chunk 7 (the queue priority signal),
 		// one helpful vote on the same chunk (must NOT count), and an
@@ -883,9 +890,8 @@ func TestFeedbackDispositionAdminGate(t *testing.T) {
 		t.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)
 		s := feedbackRealStore(t)
 		h := newFeedbackHertz(&Deps{Store: s})
-		base := time.Date(2026, 9, 8, 8, 0, 0, 0, time.UTC)
 
-		fbPutVote(t, s, "fbstore-session-01", 1, "outdated", base, 7)
+		fbPutVote(t, s, "fbstore-session-01", 1, "outdated", time.Now().UTC().Add(-time.Hour), 7)
 		resp := fbRequest(h, http.MethodPost, "/api/admin/feedback/dispositions",
 			`{"chunk_id":7,"disposition":"ignored"}`, testAdminToken)
 		require.Equal(t, http.StatusCreated, resp.Code)
@@ -894,10 +900,10 @@ func TestFeedbackDispositionAdminGate(t *testing.T) {
 		require.Equal(t, http.StatusOK, pendingAfterDisposition.Code)
 		assert.NotContains(t, pendingAfterDisposition.Body.String(), `"chunk_id":7`)
 
-		// A NEW report, later than the disposition: the chunk is back
-		// (Open Q1 resolved semantics, driven through the store's own
-		// NOT EXISTS derivation).
-		fbPutVote(t, s, "fbstore-session-01", 2, "outdated", base.Add(time.Hour), 7)
+		// A NEW report, strictly later than the disposition's server-side
+		// stamp: the chunk is back (Open Q1 resolved semantics, driven
+		// through the store's own NOT EXISTS derivation).
+		fbPutVote(t, s, "fbstore-session-01", 2, "outdated", time.Now().UTC().Add(time.Second), 7)
 		reopened := fbRequest(h, http.MethodGet, "/api/admin/feedback/review?status=pending", "", testAdminToken)
 		require.Equal(t, http.StatusOK, reopened.Code, "body: %s", reopened.Body.String())
 		assert.Contains(t, reopened.Body.String(), `"chunk_id":7`, "a post-disposition report must reopen the chunk")
@@ -935,8 +941,8 @@ func TestFeedbackMetricsHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.Code, "body: %s", resp.Body.String())
 
 		var body struct {
-			Dim  string `json:"dim"`
-			Days int    `json:"days"`
+			Dim    string `json:"dim"`
+			Days   int    `json:"days"`
 			Totals struct {
 				Helpful      int      `json:"helpful"`
 				Unhelpful    int      `json:"unhelpful"`
@@ -993,8 +999,8 @@ func TestFeedbackMetricsHandler(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.Code, "body: %s", resp.Body.String())
 
 		var body struct {
-			Dim    string `json:"dim"`
-			ByKey  []struct {
+			Dim   string `json:"dim"`
+			ByKey []struct {
 				Key     string `json:"key"`
 				Helpful int    `json:"helpful"`
 			} `json:"by_key"`
@@ -1100,7 +1106,7 @@ func TestFeedbackNoTrustMutation(t *testing.T) {
 	// ③ The feedback/ticket storage family never references the knowledge
 	// ingestion surface — the trust boundary is between two file sets,
 	// not two code paths in one file.
-	for _, rel := range []string{"feedback.go", "../../store/sqlite/feedback.go", "../../store/sqlite/tickets.go"} {
+	for _, rel := range []string{"feedback.go", "../store/sqlite/feedback.go", "../store/sqlite/tickets.go"} {
 		familySrc, err := os.ReadFile(rel)
 		require.NoError(t, err, rel)
 		assert.NotContains(t, string(familySrc), "Indexer",

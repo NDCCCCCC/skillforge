@@ -525,14 +525,22 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// badge mapping). No token by design: the payload is minimized to
 	// slug/display_name/role of ACTIVE entries only.
 	h.GET("/api/knowledge/bases", deps.knowledgeBasesHandler)
-	// Phase 29 Plan 29-05 (FBK-01) — the public vote endpoint. One vote
+	// Phase 29 Plan 29-05 (FBK-01/02/03/05) — the feedback loop HTTP
+	// surface. POST /api/feedback is a PUBLIC write endpoint (same trust
+	// shape as /api/chat: local deployment, no account system): one vote
 	// per (session, turn) enforced by the store's UNIQUE key (D-29-02);
 	// the cited chunks + skill are copied SERVER-side from the turn's
-	// audit row (D-29-05), never from the request body. FBK-05 red line:
-	// this path appends vote rows only — it can never mutate knowledge
-	// state (TestFeedbackNoTrustMutation locks that at source level).
-	// Trust model: feedback.go.
+	// audit row (D-29-05), never from the request body. The three admin
+	// routes are token-gated (CHECK ORDER: 403 before the nil-Store 503)
+	// and carry the review queue, the disposition verb (INSERT-only state
+	// row + audit row — the ONLY path feedback influences anything), and
+	// the full-denominator metrics view. FBK-05 red line: no feedback path
+	// mutates knowledge state (TestFeedbackNoTrustMutation locks that at
+	// source level). Trust model: feedback.go.
 	h.POST("/api/feedback", deps.feedbackHandler)
+	h.GET("/api/admin/feedback/review", deps.feedbackReviewHandler)
+	h.POST("/api/admin/feedback/dispositions", deps.feedbackDispositionHandler)
+	h.GET("/api/admin/feedback/metrics", deps.feedbackMetricsHandler)
 	// Phase 20 Plan 20-01 (ADM-01) — admin console capacity monitor.
 	// Returns per-table row counts + thresholds for the capacity bars.
 	h.GET("/api/admin/table-counts", deps.tableCountsHandler)
