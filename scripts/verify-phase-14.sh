@@ -221,7 +221,7 @@ run_stage "structural-constant source-greps (floor version + hermetic SETs + LRU
 
 EXPECTED_COMPLIANCE_SHA="1dc6f148fe3debd0b572872d87126242362905b26ae1097b983ed8754277bbdc"      # 14-01 re-pin → 14-10 floor-1.1.0 re-pin
 EXPECTED_HITL_SHA="6e91881f4aafeffb843e996c89ff1c27ef22eb18fac94eceff9184f938481d08"            # Phase 11 baseline UNCHANGED
-EXPECTED_FANOUT_SHA="af3020fd7f38fce2f7396dce81eb151e4ed6952262565785554a59ff51e01252"          # Phase 13 baseline UNCHANGED
+EXPECTED_FANOUT_SHA="f00f5b31c691070a7e5c0d76062e870148bfe65c231328ca41f7e10cc9ebf90e"          # 18 WR-05 re-freeze → 26-07 KBM-04 tier-vocabulary re-sign
 EXPECTED_DEEP_SHA="f3958dcd4930ac09e03c824f781df9c6eb04b691770cab4d512e11fba3c3c482"            # Phase 10 placeholder UNCHANGED
 
 run_stage "frozen lock byte-identity (4 byte-frozen locks + platform-floor field-self-consistency in Stage 09)" \
