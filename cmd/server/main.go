@@ -127,6 +127,7 @@ import (
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
+	"github.com/skillforge/skillforge/internal/ticket"
 )
 
 // env-or-default helpers. Each required var aborts startup on empty.
@@ -335,6 +336,42 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: graph limits must be positive (MAX_NODES=%d, MAX_EDGES=%d, NEIGHBOR_DEPTH=%d, PATH_HOPS=%d)",
 			graphMaxNodes, graphMaxEdges, graphNeighborDepth, graphPathHops)
 	}
+	// Phase 29 — ticket dispatch surface (TKT-04, Plan 29-06). Five env
+	// knobs, zero hardcoding (HYG discipline): the provider name, the
+	// webhook destination, its per-attempt timeout, its retry count, and
+	// the whole-dispatch wall-clock budget the background goroutine runs
+	// under. POST /api/tickets answers 201 the moment the row is durable —
+	// the outbound hand-off is asynchronous — so a slow or broken webhook
+	// can never stall the chat/feedback main link (Pitfall 6: the failure
+	// mode an operator must never see is the ticket endpoint hanging).
+	//
+	// Fail-fast posture (D16-08-D, same as LoadKPIs): a misconfigured
+	// ticket channel must not boot. SKILLFORGE_TICKET_PROVIDER=webhook
+	// without a URL is a controlled-config hole that would silently drop
+	// every ticket's outbound half — the deployment must say so at startup,
+	// not at first ticket; an unknown provider name is a typo that would
+	// otherwise surface as a confusing 503 on the first POST /api/tickets.
+	ticketProviderName := envOr("SKILLFORGE_TICKET_PROVIDER", "none")
+	ticketWebhookURL := envOr("SKILLFORGE_TICKET_WEBHOOK_URL", "")
+	ticketWebhookTimeoutMS := parseIntEnvOrDefault("SKILLFORGE_TICKET_WEBHOOK_TIMEOUT_MS", 5000)
+	ticketWebhookRetries := parseIntEnvOrDefault("SKILLFORGE_TICKET_WEBHOOK_RETRIES", 2)
+	ticketBudgetMS := parseIntEnvOrDefault("SKILLFORGE_TICKET_DISPATCH_BUDGET_MS", 30000)
+	if ticketProviderName == ticket.ProviderWebhook && ticketWebhookURL == "" {
+		log.Fatalf("[FAIL] cmd/server: SKILLFORGE_TICKET_PROVIDER=webhook requires SKILLFORGE_TICKET_WEBHOOK_URL (a ticket webhook without a destination must not silently degrade, D16-08-D)")
+	}
+	// Optional shared secret — the only other provider knob internal/ticket
+	// exposes; empty = the X-SkillForge-Ticket-Secret header is not sent.
+	ticketSecret := envOr("SKILLFORGE_TICKET_WEBHOOK_SECRET", "")
+	ticketProvider, err := ticket.NewProvider(ticketProviderName, ticket.Config{
+		WebhookURL: ticketWebhookURL,
+		Timeout:    time.Duration(ticketWebhookTimeoutMS) * time.Millisecond,
+		Retries:    ticketWebhookRetries,
+		Secret:     ticketSecret,
+	})
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: ticket provider assembly (SKILLFORGE_TICKET_PROVIDER=%q): %v", ticketProviderName, err)
+	}
+	log.Printf("[OK] cmd/server: ticket provider wired (provider=%s, dispatch_budget=%dms)", ticketProviderName, ticketBudgetMS)
 	// Phase 16 — KPI aggregation channel (D16-A1). SKILLFORGE_KPIS_DIR is the
 	// directory of controlled KPI definition files (*.yaml) that is the ONLY
 	// source of callable aggregations. The directory lives INSIDE git (.gitignore
@@ -859,16 +896,25 @@ func main() {
 		// Phase 27 — document upload pipeline.
 		// ParserRegistry: constructed here; SetDocUploadAuditHook binds the
 		// store-backed audit sink before the server starts accepting requests.
-		ParserRegistry:       document.NewParserRegistry(),
-		IndexerBackend:       indexerBackend,
-		UploadMaxBodyBytes:   uploadMaxBody,
+		ParserRegistry:     document.NewParserRegistry(),
+		IndexerBackend:     indexerBackend,
+		UploadMaxBodyBytes: uploadMaxBody,
 		// Phase 28 — graph performance limits (GRF-05).
 		GraphLimits: server.GraphLimits{
 			MaxNodes:           graphMaxNodes,
-			MaxEdges:          graphMaxEdges,
+			MaxEdges:           graphMaxEdges,
 			NeighborDepthLimit: graphNeighborDepth,
-			PathHopsLimit:     graphPathHops,
+			PathHopsLimit:      graphPathHops,
 		},
+		// Phase 29 — ticket dispatch surface (TKT-02/04). The provider is
+		// ALWAYS wired (the "none" provider is a legal, store-only choice —
+		// 仅落库不外发 — never a 503 posture); TicketProviderName decides the
+		// insert-time dispatch_status, and the budget bounds each background
+		// dispatch goroutine so a hung webhook cannot leak goroutines
+		// unbounded (T-29-07).
+		TicketProvider:       ticketProvider,
+		TicketProviderName:   ticketProviderName,
+		TicketDispatchBudget: time.Duration(ticketBudgetMS) * time.Millisecond,
 	}
 
 	// 19. Hertz server (Pattern 1).

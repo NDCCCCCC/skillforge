@@ -39,6 +39,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -277,6 +278,36 @@ func parseTicketChunkIDs(csv string) []int64 {
 	return ids
 }
 
+// actionTicketDispatchSucceeded / actionTicketDispatchFailed are the audit
+// actions for one settled dispatch series (TKT-02). They are the ONLY
+// record of the outbound outcome: the ticket row is INSERT-only, so a
+// webhook result can never rewrite what the user was told at accept time —
+// the trail appends, it never edits.
+const (
+	actionTicketDispatchSucceeded = "action_ticket_dispatch_succeeded"
+	actionTicketDispatchFailed    = "action_ticket_dispatch_failed"
+)
+
+// ticketDispatchAudit is the FrozenArgs snapshot of one settled dispatch —
+// the durable "what happened to ticket N" record inside the admin audit
+// trail. ticket_number rides along so the trail is readable without a join
+// back into the tickets table.
+type ticketDispatchAudit struct {
+	// TicketID is the persisted tickets row id (the "TKT-{id}" source).
+	TicketID int64 `json:"ticket_id"`
+	// TicketNumber is the derived acceptance number shown to the user.
+	TicketNumber string `json:"ticket_number"`
+	// Provider is the provider name configured at insert time.
+	Provider string `json:"provider"`
+	// Attempts is the number of HTTP attempts the provider actually made.
+	Attempts int `json:"attempts"`
+	// ExternalRef is the remote ticket id; empty = no external receipt.
+	ExternalRef string `json:"external_ref,omitempty"`
+	// Error is the settled failure; for a panicking provider it is the
+	// recovered value prefixed with "panic:".
+	Error string `json:"error,omitempty"`
+}
+
 // dispatchForTicket hands one persisted ticket row to the wired provider
 // in a background goroutine (TKT-04). Structural isolation, not convention:
 //
@@ -287,11 +318,10 @@ func parseTicketChunkIDs(csv string) []int64 {
 //     the ticket exists, so an abandoned request must not abort it;
 //   - a panicking provider is contained by defer recover — the chat and
 //     feedback main links must survive a broken outbound integration
-//     (T-29-07: no shared state, no crash path).
-//
-// The settled outcome is logged here; the durable record is an INSERT-only
-// action_ticket_dispatch_* audit row — the ticket row itself has no UPDATE
-// path anywhere in this package.
+//     (T-29-07: no shared state, no crash path);
+//   - the settled outcome — success, failure, or panic — is recorded as an
+//     INSERT-only action_ticket_dispatch_* audit row; the ticket row itself
+//     has no UPDATE path anywhere in this package.
 func (s *Deps) dispatchForTicket(row store.TicketRow, description string) {
 	if row.DispatchStatus != ticketDispatchQueued {
 		return // "none" = store-only: no outbound traffic, no goroutine
@@ -300,10 +330,19 @@ func (s *Deps) dispatchForTicket(row store.TicketRow, description string) {
 		return // defensive: the handler gates this; never dispatch into nil
 	}
 	go func() {
+		// Panic containment is ALSO an audit event: a provider that blows
+		// up mid-dispatch produced no settled result, which is exactly the
+		// failed-dispatch shape the operator needs to see.
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("[WARN] server: ticket dispatch goroutine panicked (ticket %s, provider=%s): %v (server survives; recorded as a failed dispatch)",
 					ticketNumberFor(row.ID), row.Provider, r)
+				s.putTicketDispatchAuditRow(actionTicketDispatchFailed, ticketDispatchAudit{
+					TicketID:     row.ID,
+					TicketNumber: ticketNumberFor(row.ID),
+					Provider:     row.Provider,
+					Error:        fmt.Sprintf("panic: %v", r),
+				})
 			}
 		}()
 
@@ -325,9 +364,56 @@ func (s *Deps) dispatchForTicket(row store.TicketRow, description string) {
 		result, err := s.TicketProvider.Dispatch(ctx, t)
 		if err != nil {
 			log.Printf("[WARN] server: ticket dispatch failed (ticket %s, provider=%s): %v", t.Number, row.Provider, err)
+			s.putTicketDispatchAuditRow(actionTicketDispatchFailed, ticketDispatchAudit{
+				TicketID:     row.ID,
+				TicketNumber: t.Number,
+				Provider:     row.Provider,
+				Error:        err.Error(),
+			})
 			return
 		}
 		log.Printf("[OK] server: ticket dispatched (ticket %s, provider=%s, attempts=%d, external_ref=%q)",
 			t.Number, row.Provider, result.Attempts, result.ExternalRef)
+		s.putTicketDispatchAuditRow(actionTicketDispatchSucceeded, ticketDispatchAudit{
+			TicketID:     row.ID,
+			TicketNumber: t.Number,
+			Provider:     row.Provider,
+			Attempts:     result.Attempts,
+			ExternalRef:  result.ExternalRef,
+		})
 	}()
+}
+
+// putTicketDispatchAuditRow writes the INSERT-only audit row for one
+// settled dispatch with the outcome snapshot in FrozenArgs.
+//
+// ActorType is "admin" so GET /api/admin/audit (ADM-06) surfaces the row —
+// admin_audit.go filters on ActorType, and a dispatch trail invisible to
+// the admin view would be a trail nobody can follow. UserID is "system":
+// the real actor is the platform's background dispatcher, not an admin
+// user, and that distinction must survive in the row itself.
+//
+// Best-effort, mirroring putFeedbackAuditRow / putKBAdminAuditRow: a failed
+// write is logged at WARN and never panics the goroutine into a second
+// recover round — the ticket row is already persisted and the dispatch has
+// already settled; losing the trail row is an observability gap, not a
+// reason to fabricate a failure the outbound system never reported.
+func (s *Deps) putTicketDispatchAuditRow(action string, payload ticketDispatchAudit) {
+	if s.Store == nil {
+		return
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("[WARN] server: ticket dispatch audit row marshal (%s ticket=%s): %v (row skipped)", action, payload.TicketNumber, err)
+		return
+	}
+	if _, err := s.Store.PutAudit(context.Background(), store.AuditRow{
+		Timestamp:  time.Now().UTC(),
+		UserID:     "system",
+		Action:     action,
+		ActorType:  "admin",
+		FrozenArgs: b,
+	}); err != nil {
+		log.Printf("[WARN] server: ticket dispatch audit row write (%s ticket=%s): %v (best-effort, dispatch already settled)", action, payload.TicketNumber, err)
+	}
 }
