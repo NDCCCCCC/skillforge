@@ -8,6 +8,27 @@
 // Registry interface instead of a compiled-in enumeration (KBM-01), plus
 // the code-level home of the citation whitelist (KBM-03).
 //
+// KBM-03 canonical semantics (code-level statement): every knowledge base
+// carries exactly one of four semantic roles, and the role — not the
+// operator switch alone — decides trust.
+//
+//   - authority is the ONLY citable evidence source. The citation
+//     whitelist accepts authority-role chunks and nothing else, enforced
+//     at the single constant CitableRole below.
+//   - historical is a superseded revision kept for the record: it is out
+//     of default retrieval, reachable only through an explicit reads
+//     declaration (or an explicit point-in-time query), and never citable.
+//   - personal is user-private material: excluded from retrieval unless a
+//     skill explicitly declares it, and never citable.
+//   - draft is not-yet-effective material: never retrievable regardless of
+//     the entry's retrieval switch (role semantics outrank the switch),
+//     and never citable — it exists for ingestion preview only.
+//
+// The user-facing statement of these semantics lives in the README section
+// "Knowledge Bases"; the two are dual anchors for the same contract. Any
+// semantic change made here MUST be mirrored in that README section in the
+// same change.
+//
 // The package is a leaf: the persistence seam (Store) and the read
 // contract (Registry) are declared here and assembled elsewhere (the
 // sqlite adapter in 26-02, the boot wiring in 26-09), and the skill,
@@ -56,6 +77,15 @@ const (
 // order. The order is part of the contract: validation errors and
 // documentation list roles in this order, so callers must not sort,
 // filter or extend the returned slice.
+//
+// This function (with the Role constants above) is the canonical code-level
+// documentation of the KBM-03 role semantics: authority is the only citable
+// evidence source, historical is a superseded revision reachable only via an
+// explicit reads declaration, personal is user-private and excluded from
+// retrieval unless explicitly declared, and draft is never retrievable or
+// citable. The README section "Knowledge Bases" carries the user-facing
+// statement of the same contract — semantic changes here must be mirrored
+// there in the same change.
 func Roles() []Role {
 	return []Role{RoleAuthority, RoleHistorical, RolePersonal, RoleDraft}
 }
@@ -78,7 +108,9 @@ func IsRole(s string) bool {
 // contribute citation evidence. Consumers (the trust floor, the verdict
 // pipeline) must compare against this constant and never against a
 // literal role name, so tightening or loosening citability stays a
-// one-line change in one home.
+// one-line change in one home. It is the code anchor the README's
+// "Knowledge Bases" section names for the "authority is the only citable
+// evidence source" promise; the two statements are one contract.
 const CitableRole = RoleAuthority
 
 // MaxSlugLen is the single home of the knowledge-base slug length

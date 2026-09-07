@@ -220,6 +220,31 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to write your own Skill — the
 
 ---
 
+## Knowledge Bases
+
+Knowledge lives in **knowledge bases (KBs)** managed by the runtime registry (Phase 26) — not a compile-time enum. Every KB carries exactly one of four **semantic roles**, and the role decides trust, not just filtering:
+
+| Role | Meaning | Retrieval | Citable |
+|------|---------|-----------|---------|
+| `authority` | The **唯一可引用证据源 — the only citable evidence source**. The citation whitelist accepts authority-role chunks and nothing else; the whitelist is code-enforced at the single constant [`internal/kb.CitableRole`](internal/kb/kb.go). | default-on | **yes — the only citable role** |
+| `historical` | Superseded revisions kept for the record. Not in default retrieval; reachable only through an explicit `reads` declaration (or an explicit point-in-time query). | explicit `reads` only | no — annotation channel |
+| `personal` | User-private material. Excluded from retrieval unless a Skill explicitly declares it. | explicit `reads` only | no — annotation channel |
+| `draft` | Not-yet-effective material, visible only as an ingestion preview. | **never** — the role outranks the KB's own retrieval switch | no |
+
+Roles are platform constants (`Roles()` in [`internal/kb/kb.go`](internal/kb/kb.go) — the code-level canonical statement of these semantics); slugs, display names, descriptions, and the retrieval switches are registry data. Non-authority hits still reach the model through the counter-evidence annotation channel — they can inform an answer, but they can never back a citation.
+
+### Adding a knowledge base
+
+Adding a KB is a registry operation, not a code change:
+
+1. **Register the base** — either a PR to the controlled seed file [`knowledge_bases.yaml`](knowledge_bases.yaml), or a runtime `POST /api/admin/kb` with the `X-Admin-Token` header (both audited, INSERT-only; no delete verb exists — deactivation hides a base, it never destroys data).
+2. **Create the content directory** — `knowledge/<slug>/`, named after the slug.
+3. **Restart** (or run the upload pipeline) — the startup indexer walks the registered directories and indexes every Markdown file under `tier = <slug>`.
+
+An unregistered directory is skipped with a WARN and an audit row. See ["Add a Knowledge Base"](CONTRIBUTING.md#add-a-knowledge-base) for the full walkthrough.
+
+---
+
 ## Eval Results
 
 This snapshot is the **frozen v0.8 compliance baseline** (Phase 8 pin — `eval/frozen/compliance.lock.json`, sha256 `5cf700f3…`). Every figure below is rendered verbatim by `go run ./scripts/eval_snapshot` from `eval/report.json` + the lock; none are hand-typed. Regenerating the lock is tampering (T-8-12) — it pins the model, prompt hash, and seed so the run is byte-identically reproducible.
@@ -243,7 +268,7 @@ Contributions are welcome — especially **new Skills** that prove the platform 
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for guides on:
 - Writing a Skill (the 7-field schema + validation)
 - Adding a tool (the Eino `tool.InvokableTool` interface)
-- Adding a knowledge tier (the `TierEnum` + `knowledge/` convention)
+- Adding a knowledge base (the registry + `knowledge/<slug>/` convention)
 
 The standard flow is fork → branch → PR. Run `gofmt` and `go test ./...` before opening a PR.
 

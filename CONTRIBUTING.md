@@ -118,6 +118,8 @@ temperature: 0.3
 
 2. **`temperature` is a required pointer.** The field is `*float32`, not `float32`. This is intentional: a plain `float32` silently decodes a missing YAML key as `0.0`, defaulting the Skill to deterministic mode without the author knowing (`SYSK-08`). You **must** declare an explicit value — `temperature: 0.0` for compliance/data Skills, `temperature: 0.7+` for creative Skills.
 
+3. **A `reads` pattern naming an unknown or deactivated KB fails to load.** `reads` accepts exactly two forms — a slug pattern (`authority/**`, or the bare slug `authority`) and a role wildcard (`role:authority`). Both resolve against the live registry at load time: an unregistered slug, or one an admin has **deactivated**, is a load-time error listing the currently active slugs — fail-closed, never silently empty (`kb.Registry.ResolveReads`, KBM-04). Deactivation hides the base from retrieval *and* from Skill validation, so Skills referencing it stop loading until the base is reactivated or the Skill is re-pointed. The underlying data is untouched (KBM-02: deactivate, never destroy).
+
 ### Validate Before PR
 
 The example Skills in `examples/` are validated by a regression test. Run it against your own Skill:
