@@ -258,6 +258,24 @@ Admins can upload documents to any active knowledge base via `/admin` → 上传
 
 ---
 
+## Knowledge Graph (Phase 28)
+
+The knowledge graph (`GET /api/knowledge/graph`) reflects the registered knowledge bases and their document structure. Key capabilities:
+
+- **N-dynamic nodes**: One node per active knowledge base (from KBRegistry), not a fixed 4-tier assumption
+- **Deterministic relation edges**: Chunk relationships derived without LLM:
+  - `section_adjacent`: consecutive chunk IDs within the same document
+  - `version_chain`: EffectiveFrom/To windows showing policy supersession
+  - `keyword_cooccur`: cross-document filename token Jaccard ≥ 0.3
+  - `citation_cooccur`: chunks co-cited in the same verdict (from audit rows)
+- **Neighbor API**: `GET /api/knowledge/graph/neighbors?chunk_id=X&depth=N` — explore relations
+- **Path API**: `GET /api/knowledge/graph/path?from=X&to=Y&max_hops=N` — find relationships
+- **Config-driven limits**: SKILLFORGE_GRAPH_MAX_NODES, MAX_EDGES, NEIGHBOR_DEPTH_LIMIT, PATH_HOPS_LIMIT
+
+See [Phase 28 docs](./.planning/phases/28-dynamic-knowledge-graph/) for full runbook.
+
+---
+
 ## Eval Results
 
 This snapshot is the **frozen v0.8 compliance baseline** (Phase 8 pin — `eval/frozen/compliance.lock.json`, sha256 `5cf700f3…`). Every figure below is rendered verbatim by `go run ./scripts/eval_snapshot` from `eval/report.json` + the lock; none are hand-typed. Regenerating the lock is tampering (T-8-12) — it pins the model, prompt hash, and seed so the run is byte-identically reproducible.
