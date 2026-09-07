@@ -255,18 +255,18 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 反馈闭环 (FBK)
 
-- [ ] **FBK-01**: 反馈落库——`POST /api/feedback`：FeedbackRow 三按钮（有帮助/没帮助/报告知识过时）写入 INSERT-only 反馈表（session/message/verdict/被引 chunk ids）；一次一票，重复提交幂等返回已记录状态
-- [ ] **FBK-02**: 过时复核队列——outdated 反馈生成 review 队列条目（INSERT-only）；`/admin` 复核视图列出待复核 chunk，人工处置（已更新/误报/忽略）且处置动作审计
-- [ ] **FBK-03**: 反馈指标进 admin 仪表盘——per-Skill / per-知识库帮助率、过时报告数与趋势
-- [ ] **FBK-04**: FE FeedbackRow 接真——投票调用真实端点；锁定态由服务端驱动（同会话回显已投状态）；toast 反映真实结果
-- [ ] **FBK-05**: 反馈不自动改信任——反馈是人工复核信号，绝不自动降权/删除 chunk；知识库变更只能由复核处置产生
+- [x] **FBK-01**: 反馈落库——`POST /api/feedback`：FeedbackRow 三按钮（有帮助/没帮助/报告知识过时）写入 INSERT-only 反馈表（session/message/verdict/被引 chunk ids）；一次一票，重复提交幂等返回已记录状态
+- [x] **FBK-02**: 过时复核队列——outdated 反馈生成 review 队列条目（INSERT-only）；`/admin` 复核视图列出待复核 chunk，人工处置（已更新/误报/忽略）且处置动作审计
+- [x] **FBK-03**: 反馈指标进 admin 仪表盘——per-Skill / per-知识库帮助率、过时报告数与趋势
+- [x] **FBK-04**: FE FeedbackRow 接真——投票调用真实端点；锁定态由服务端驱动（同会话回显已投状态）；toast 反映真实结果
+- [x] **FBK-05**: 反馈不自动改信任——反馈是人工复核信号，绝不自动降权/删除 chunk；知识库变更只能由复核处置产生
 
 ### 工单系统预留 (TKT)
 
-- [ ] **TKT-01**: TicketService 接口 + provider 注册表——Go 接口 + 配置驱动 provider（`none` / `webhook`）；`none` = 仅落库不外发
-- [ ] **TKT-02**: `POST /api/tickets` 预留端点——工单请求 INSERT-only 落库（session/message 引用、描述、被引 chunk ids）；provider 外发结果（成功/失败/none）进审计
-- [ ] **TKT-03**: FE 创建工单接真——调用真实端点并诚实展示结果（受理编号 / 排队中 / 未配置 provider）
-- [ ] **TKT-04**: 工单外发不阻塞主链路——外发失败不影响聊天与反馈主流程（尽力而为 + 配置驱动重试）
+- [x] **TKT-01**: TicketService 接口 + provider 注册表——Go 接口 + 配置驱动 provider（`none` / `webhook`）；`none` = 仅落库不外发
+- [x] **TKT-02**: `POST /api/tickets` 预留端点——工单请求 INSERT-only 落库（session/message 引用、描述、被引 chunk ids）；provider 外发结果（成功/失败/none）进审计
+- [x] **TKT-03**: FE 创建工单接真——调用真实端点并诚实展示结果（受理编号 / 排队中 / 未配置 provider）
+- [x] **TKT-04**: 工单外发不阻塞主链路——外发失败不影响聊天与反馈主流程（尽力而为 + 配置驱动重试）
 
 ### 工程卫生 (HYG)
 
@@ -488,15 +488,15 @@ Which phases cover which requirements.
 | GRF-03 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
 | GRF-04 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
 | GRF-05 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
-| FBK-01 | Phase 29 | Pending |
-| FBK-02 | Phase 29 | Pending |
-| FBK-03 | Phase 29 | Pending |
-| FBK-04 | Phase 29 | Pending |
-| FBK-05 | Phase 29 | Pending |
-| TKT-01 | Phase 29 | Pending |
-| TKT-02 | Phase 29 | Pending |
-| TKT-03 | Phase 29 | Pending |
-| TKT-04 | Phase 29 | Pending |
+| FBK-01 | Phase 29 | Complete |
+| FBK-02 | Phase 29 | Complete |
+| FBK-03 | Phase 29 | Complete |
+| FBK-04 | Phase 29 | Complete |
+| FBK-05 | Phase 29 | Complete |
+| TKT-01 | Phase 29 | Complete |
+| TKT-02 | Phase 29 | Complete |
+| TKT-03 | Phase 29 | Complete |
+| TKT-04 | Phase 29 | Complete |
 | HYG-01 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
 | HYG-02 | Phase 30 | Pending |
 | HYG-03 | Phase 30 | Pending |

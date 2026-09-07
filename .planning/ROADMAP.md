@@ -104,7 +104,7 @@
   - [x] 28-05 — FE GraphCanvas 边层 + useGraphNeighbors hook + NeighborExpandButton (GRF-04) — 4 commits: afc9377 + 028d3b9 + 2c14387 + 1767b1d
   - [x] 28-06 — InspectorRetrieval "常被一起引用" 面板 (GRF-04) — 2 commits: 41cebec + c654cd9
   - [x] 28-07 — 卫生门 (verify-phase-28.sh) + STRIDE-28 + 28-UAT.md（含 Phase 27→28 联合验收） — 4 commits: 0fceddc + c0906d1 + d8a881b + 82a7a1e
-- [ ] **Phase 29: 反馈闭环 + 工单预留** - FeedbackRow 三按钮真实落库（一次一票）+ 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets
+- [x] **Phase 29: 反馈闭环 + 工单预留** - FeedbackRow 三按钮真实落库（一次一票）+ 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets (completed 2026-09-07)
 - [ ] **Phase 30: 工程卫生收尾** - 零硬编码魔数抽查 + 全 SDLC 门里程碑级验收 + 信任语义回归证明
 
 **Coverage:** 29/29 v1.2 requirements mapped — KBM-01..06 + HYG-01 → 26; DOC-01..06 → 27; GRF-01..05 → 28; FBK-01..05 + TKT-01..04 → 29; HYG-02..03 → 30
@@ -289,7 +289,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 9/9 | Complete (all 6 waves shipped 2026-09-08 — 29-09 verify gate + STRIDE-29 + 29-UAT closed out; pending phase-level verification/closeout) | 2026-09-08 |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 9/9 | Complete    | 2026-09-07 |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---
@@ -300,4 +300,4 @@ Plans:
 
 **Goal:** Decide the fate of the markdown hierarchical splitter that was silently dropped from scope. Two options: (a) formally record one-doc-one-chunk + maxDocBytes(4000) guardrail as the permanent design (fine if knowledge corpus stays short-clause .md), or (b) implement eino-ext markdown header splitter to support long policy docs / PDFs. Origin: stale comments in internal/knowledge/indexer.go claimed "deferred to Phase 3 (CMPL-06)" — corrected in quick task 260814-ofn; no phase ever owned this work.
 **Requirements:** TBD
-**Plans:** 8/8 plans complete
+**Plans:** 9/9 plans complete
