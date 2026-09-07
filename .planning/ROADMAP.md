@@ -138,7 +138,7 @@ Plans:
   3. 上传处理完成后原始文件不落盘——持久化的只有解析文本与 chunk（延续 v1.0「不保存原始数据」哲学）
   4. 超限与重复上传按配置被拒绝或去重：单文件大小上限 / 并发上限 / 内容哈希去重策略（拒绝或替换为新版）全部配置驱动
   5. 每次上传产生 INSERT-only 审计行（操作者 / 知识库 / 文件名 / 大小 / hash / chunk 数 / 结果）；成功上传后文档立即出现在知识图谱与检索（无需重启），失败错误明确回报 UI
-**Plans**: TBD
+**Plans**: 7 plans in 4 waves
 **UI hint**: yes
 **Risks**: eino-ext document parsers 尚不在 go.mod 且内网网络间歇断——plan-phase 必须把「parser 依赖获取」当显式风险处理并预备纯 Go fallback 决策；上传管线不得继承 `knowledge.Index` 的 milvus-coupling（`cmd/server/main.go:730` 的启动期路径 Mongo 后端跑不了，新管线两条后端都要能达）。
 
@@ -152,7 +152,7 @@ Plans:
   3. 可经 API 查询给定 chunk 的关系邻居与受限深度路径（供 FE 与未来 agent 工具消费）
   4. FE GraphCanvas 渲染动态知识库节点与关系边，并支持邻居展开交互
   5. 节点/边上限、分页与懒加载策略全部配置驱动；超限返回骨架图并明示降级
-**Plans**: TBD
+**Plans**: 7 plans in 4 waves
 **UI hint**: yes
 **Notes**: 图谱边保持零 LLM 确定性（可 hash 复现）——LLM 实体关系抽取明确 Out of Scope（未来候选，需评测门）。
 
@@ -166,7 +166,7 @@ Plans:
   3. admin 仪表盘展示 per-Skill / per-知识库帮助率与过时报告数趋势
   4. FeedbackRow 创建工单按钮调用真实 `POST /api/tickets`：工单请求 INSERT-only 落库（session/message 引用、描述、被引 chunk ids），UI 诚实展示受理结果（受理编号 / 排队中 / 未配置 provider）
   5. TicketService Go 接口 + 配置驱动 provider 注册表（`none` / `webhook`）落地；provider 外发失败不影响聊天与反馈主流程（尽力而为 + 配置驱动重试），外发结果（成功/失败/none）进审计
-**Plans**: TBD
+**Plans**: 7 plans in 4 waves
 **UI hint**: yes
 **Notes**: 真实工单系统对接（Jira/ServiceNow/自建）明确 Out of Scope——本里程碑只预留接口 + webhook provider；起点代码 = `web/src/components/chat/parts/FeedbackRow.tsx`（现为 toast 占位）+ `internal/server/` admin-token 门模式。
 
@@ -179,7 +179,7 @@ Plans:
   2. Phase 26-29 每个均可出示：单元测试 + hermetic 集成测试证据、WSL 构建验证（`make check-cgo` 前置）通过、受影响 verify 门全绿
   3. 触及 FE 的 phase（26-29 均触）均有 vitest + tsc 干净记录
   4. 信任语义回归证明：KNOW-02 fail-closed / D-09 拒答构造 / citation 白名单在注册表重构后由既有冻结 eval 基线与结构门证明未削弱
-**Plans**: TBD
+**Plans**: 7 plans in 4 waves
 
 ---
 
