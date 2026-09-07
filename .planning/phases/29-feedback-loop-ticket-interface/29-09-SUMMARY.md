@@ -141,6 +141,13 @@ None - 本 plan 纯文档/门产物，零运行时代码，无 stub 面向 UI。
 - 待 operator：按 29-UAT.md Test 1–8 完成 live 验收（投票/幂等/复核/指标/工单双 provider/Phase 27→29 联合）；Test 9 已由本 plan 代跑并留档。
 - 全量回归：WSL `go test ./... -count=1` exit 0 + FE 74 文件/595 用例全绿 + `tsc --noEmit` 干净（与 29-08 基线一致，零漂移）。
 
+## Self-Check: PASSED
+
+- 4/4 created files exist on disk (verify-phase-29.sh / STRIDE-29.md / 29-UAT.md / 29-09-SUMMARY.md)
+- 3/3 commits found in git log (b6bbf0c / 3dd2384 / 8f16c87)
+- Final gate re-run post-commit: `bash scripts/verify-phase-29.sh` exit 0
+- Pre-existing unrelated working-tree changes (.planning/config.json, internal/server/knowledge.go, web/src/components/graph/GraphCanvas.tsx, web/src/components/inspector/InspectorRetrieval.tsx) left untouched, per execution constraints
+
 ---
 *Phase: 29-feedback-loop-ticket-interface*
 *Completed: 2026-09-08*
