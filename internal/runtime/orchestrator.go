@@ -71,6 +71,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
@@ -174,6 +175,13 @@ type FanOutOrchestrator struct {
 	tools              []tool.BaseTool
 	instruction        string
 	timeoutPerSubAgent time.Duration
+	// kbReg is the knowledge-base registry the citable gate resolves
+	// tiers against (CR-02, 26-REVIEW): it is bound onto every shared
+	// accumulator this orchestrator creates and threaded into every
+	// ApplyTrustStage call, so non-authority material can never enter
+	// the per-sub-agent or merged grounding closures. nil = legacy
+	// posture (tests / degraded paths).
+	kbReg kb.Registry
 	// classifierForTest is a test-only seam that overrides the
 	// production classify() step. Production code leaves this nil;
 	// tests inject a deterministic plan via this field. The field is
@@ -220,6 +228,7 @@ func NewOrchestrator(ctx context.Context, cfg DispatchConfig, factory SubAgentFa
 		mergeFunc:           merge,
 		subEmbedder:         cfg.Embedder,
 		subRetriever:        cfg.Retriever,
+		kbReg:               cfg.KBRegistry,
 		runID:               cfg.SessionID,
 		sessionID:           cfg.SessionID,
 		tools:               cfg.Tools,
@@ -426,8 +435,12 @@ func extractFirstUserText(in *adk.AgentInput) string {
 func (o *FanOutOrchestrator) fanOut(ctx context.Context, subs []subQueryPlan, input *adk.AgentInput) ([]SubAgentResult, *SharedChunkAccumulator) {
 	results := make([]SubAgentResult, len(subs))
 
-	// Shared accumulator across parent + sub-agents (P13-L9).
+	// Shared accumulator across parent + sub-agents (P13-L9). The
+	// citable gate (CR-02, 26-REVIEW) is bound here so a sub-skill whose
+	// reads resolve to historical/personal slugs can never push
+	// non-authority chunks into the merged grounding union.
 	acc := NewSharedChunkAccumulator(SharedChunkAccumulatorMaxEntries)
+	acc.SetKBRegistry(o.kbReg)
 
 	// Semaphore (channel-based) — implements errgroup.SetLimit(4)
 	// semantics without importing the errgroup package (the orchestrator
@@ -647,10 +660,11 @@ func (o *FanOutOrchestrator) runSubAgentInner(ctx context.Context, subAgent adk.
 		}
 	}
 	tsOut, err := ApplyTrustStage(ctx, &TrustStageInput{
-		Manifest: o.parentManifest,
-		Output:   finalMsg,
-		Chunks:   hits,
-		History:  nil,
+		Manifest:   o.parentManifest,
+		Output:     finalMsg,
+		Chunks:     hits,
+		History:    nil,
+		KBRegistry: o.kbReg,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sub-agent %q ApplyTrustStage: %w", sub.SubQueryID, err)
@@ -705,10 +719,11 @@ func (o *FanOutOrchestrator) applyTrustStageToMerged(ctx context.Context, merged
 		chunks = acc.Hits()
 	}
 	tsOut, err := ApplyTrustStage(ctx, &TrustStageInput{
-		Manifest: o.parentManifest,
-		Output:   out,
-		Chunks:   chunks,
-		History:  nil,
+		Manifest:   o.parentManifest,
+		Output:     out,
+		Chunks:     chunks,
+		History:    nil,
+		KBRegistry: o.kbReg,
 	})
 	if err != nil {
 		// Defensive: trust-stage error maps to a refused output.

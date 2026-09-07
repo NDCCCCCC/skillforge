@@ -165,6 +165,18 @@ func SubAgentBudgetCallbacks(cfg SubAgentBudgetConfig) []any {
 //   - Goroutine-safe. Sub-agents run in parallel (errgroup with
 //     SetLimit(4)); a mutex is mandatory.
 //
+//   - Citable gate (KBM-03 / CR-02 26-REVIEW): with a registry bound
+//     (SetKBRegistry), Add filters every hit at THIS insertion point —
+//     Hits() is the union the merged verdict's [ref-N] citations are
+//     entailment-checked against, so a hit whose tier fails
+//     kb.Registry.Lookup, or whose entry role is not kb.CitableRole, is
+//     structurally excluded. A sub-skill whose reads resolve to
+//     historical/personal slugs can therefore never push non-authority
+//     material into the merged grounding closure. A nil registry is the
+//     legacy posture — tests and degraded paths keep today's behavior
+//     byte-for-byte (the same posture as internal/agent's accumulator
+//     gate); production binds the registry at orchestrator construction.
+//
 // The Hit key is the chunk ID (decimal string). Dedup is keyed on
 // chunk ID (Pitfall 2 from internal/agent/trust_floor.go — D3-01
 // open question 2 — same dedup-by-chunk-id posture).
@@ -173,6 +185,12 @@ type SharedChunkAccumulator struct {
 	ll     *list.List               // doubly-linked; front = newest, back = oldest
 	byID   map[string]*list.Element // chunk ID → list element
 	max    int                      // max entries (default SharedChunkAccumulatorMaxEntries)
+
+	// kb is the registry the citable gate resolves tiers against.
+	// nil = legacy semantics (no gate); a bound registry is never
+	// swapped back to nil (SetKBRegistry ignores a nil argument), so
+	// "legacy" is always the explicit not-bound state.
+	kb kb.Registry
 }
 
 // sharedAccumulatorEntry is the LRU payload. The key field is a
@@ -195,19 +213,43 @@ func NewSharedChunkAccumulator(maxEntries int) *SharedChunkAccumulator {
 	}
 }
 
-// Add records a single hit. Dedup by chunk ID (Pitfall 2 from
+// SetKBRegistry binds the citable gate's registry. A nil argument is
+// ignored so callers can pass the config field unconditionally: the
+// legacy posture stays expressible only as "never bound", never as a
+// bound-then-cleared state that would silently reopen the closure.
+func (s *SharedChunkAccumulator) SetKBRegistry(reg kb.Registry) {
+	if reg == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.kb = reg
+}
+
+// Add records a single hit. With a registry bound, a hit whose tier is
+// not citable (unregistered, deactivated, or a role other than
+// kb.CitableRole) is dropped BEFORE the dedup insert — the KBM-03 gate at
+// this insertion point; a dropped hit also frees its chunk ID, so a later
+// citable hit with the same ID can still be recorded.
+//
+// Otherwise: dedup by chunk ID (Pitfall 2 from
 // internal/agent/trust_floor.go). If the chunk ID is already
 // present, the existing entry is moved to the front (LRU touch —
 // "most recently used" position). If the LRU is at capacity and the
 // chunk ID is new, the oldest entry is evicted.
 //
 // Returns true if a NEW entry was added; false if the chunk ID was
-// already present (idempotent re-touch).
+// already present (idempotent re-touch) or the hit failed the citable
+// gate.
 //
 // Safe for concurrent calls (mutex-guarded).
 func (s *SharedChunkAccumulator) Add(hit retriever.Hit) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if !kb.Citable(s.kb, hit.Tier) {
+		return false // non-authority material never enters the grounding union
+	}
 
 	key := chunkKey(hit.ID)
 	if elem, ok := s.byID[key]; ok {

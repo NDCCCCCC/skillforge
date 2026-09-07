@@ -414,6 +414,10 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		SessionID:   cfg.SessionID,
 		Tools:       tools,
 		Instruction: sysPrompt,
+		// CR-02 (26-REVIEW): the orchestrator archetype binds this onto
+		// its shared chunk accumulator and into every ApplyTrustStage
+		// call, so the fan-out grounding closure is citable chunks only.
+		KBRegistry: cfg.KBRegistry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("agent.BuildRunner: runtime.DispatchAgent: %w", err)

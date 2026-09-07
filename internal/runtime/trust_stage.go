@@ -55,6 +55,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
@@ -82,6 +83,15 @@ type TrustStageInput struct {
 	Output   *schema.Message
 	Chunks   []retriever.Hit
 	History  []schema.Message
+
+	// KBRegistry is the knowledge-base registry the grounding map
+	// resolves citability against (CR-02, 26-REVIEW — defense in depth
+	// behind the accumulator gates): chunksByID holds citable chunks
+	// only, so a non-authority chunk can never be the key a citation is
+	// entailment-checked against. A nil registry is the legacy posture
+	// and keeps today's behavior byte-for-byte; the orchestrator threads
+	// its registry here at both call sites.
+	KBRegistry kb.Registry
 }
 
 // TrustStageOutput is the per-Run verdict envelope produced by
@@ -186,11 +196,12 @@ func ApplyTrustStage(ctx context.Context, in *TrustStageInput) (*TrustStageOutpu
 
 	// Build the chunksByID map for the GroundingChecker. Same key
 	// shape as internal/agent.ChunkAccumulator.ChunksByID() — the
-	// decimal chunk ID → chunk text.
-	chunksByID := make(map[string]string, len(in.Chunks))
-	for _, ch := range in.Chunks {
-		chunksByID[chunkKey(ch.ID)] = ch.Content
-	}
+	// decimal chunk ID → chunk text. CR-02 (26-REVIEW): this map IS the
+	// physical citation whitelist on this path, so it keeps citable
+	// chunks only (kb.Citable is the single-source predicate the agent
+	// accumulator gate and the server pipeline use); a nil registry is
+	// the legacy posture and keeps every chunk.
+	chunksByID := citableChunksByID(in.KBRegistry, in.Chunks)
 
 	// 2. Grounding (D2-01) — verify every citation's Span literally
 	//    appears in its ChunkID's chunk text. Downgrades on
@@ -226,6 +237,23 @@ func ApplyTrustStage(ctx context.Context, in *TrustStageInput) (*TrustStageOutpu
 // internal/agent.chunkKey).
 func chunkKey(id int64) string {
 	return decimalFormat(id)
+}
+
+// citableChunksByID keys the grounding closure by chunk ID, keeping only
+// citable chunks. kb.Citable is the single-source predicate (the same one
+// the agent-side accumulator gate and internal/server's verdict pipeline
+// use); see the KBRegistry field doc for the insertion-point rationale.
+// A nil registry is the legacy posture: every chunk enters the closure
+// byte-for-byte as before the registry existed.
+func citableChunksByID(reg kb.Registry, chunks []retriever.Hit) map[string]string {
+	byID := make(map[string]string, len(chunks))
+	for _, ch := range chunks {
+		if !kb.Citable(reg, ch.Tier) {
+			continue
+		}
+		byID[chunkKey(ch.ID)] = ch.Content
+	}
+	return byID
 }
 
 // decimalFormat is a strconv-free int64-to-decimal helper kept here

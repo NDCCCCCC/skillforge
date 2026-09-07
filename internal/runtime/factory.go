@@ -43,6 +43,7 @@ import (
 
 	agentcallbacks "github.com/skillforge/skillforge/internal/agent/callbacks"
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 )
@@ -117,6 +118,14 @@ type DispatchConfig struct {
 
 	BudgetStore   agentcallbacks.BudgetAuditStore // 12-05 — deep-archetype budget audit INSERT target
 	BudgetEmitter agentcallbacks.BudgetEmitter    // 12-05 — deep-archetype forced_stop SSE emitter
+
+	// KBRegistry is the knowledge-base registry the orchestrator
+	// archetype binds onto its shared chunk accumulator and threads into
+	// every ApplyTrustStage call (CR-02, 26-REVIEW): the citation
+	// whitelist must hold citable chunks only. nil = legacy posture
+	// (tests); production threads RunnerBuildConfig.KBRegistry through
+	// agent.BuildRunner's DispatchConfig.
+	KBRegistry kb.Registry
 
 	// PrevRunContext is D18-D2: previous run metadata for plan_approve inheritance.
 	PrevRunContext *PrevRunContext
