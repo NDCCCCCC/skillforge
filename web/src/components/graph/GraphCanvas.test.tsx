@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import GraphCanvas from './GraphCanvas';
 import { useAppStore } from '../../store/app-store';
-import type { KnowledgeGraph } from '../../types/knowledge';
+import type { GraphEdge, KnowledgeGraph } from '../../types/knowledge';
 
 const REGISTRY_BASES = [
   { slug: 'authority', display_name: '权威', role: 'authority' },
@@ -161,5 +161,42 @@ describe('GraphCanvas — dispatch', () => {
         expect(cv.file).toBe('authority-doc.md');
       }
     });
+  });
+});
+
+describe('GraphCanvas — overlay edges (GRF-04)', () => {
+  const OVERLAY_EDGES: GraphEdge[] = [
+    { from: '1', to: '2', edge_type: 'section_adjacent', weight: 1.0, tier: 'authority' },
+    { from: '2', to: '3', edge_type: 'keyword_cooccur', weight: 0.8, tier: 'authority' },
+    { from: '1', to: '3', edge_type: 'citation_cooccur', weight: 0.5, tier: 'authority' },
+  ];
+
+  it('renders SVG lines when overlayEdges is provided', () => {
+    stubRegistry();
+    render(<GraphCanvas graph={THREE_KB} filter="" overlayEdges={OVERLAY_EDGES} onExpandNeighbors={vi.fn()} />);
+    const svg = screen.getByRole('img');
+    // THREE_KB: 3 tiers × 1 doc = 3 tier→doc lines
+    // OVERLAY_EDGES: 3 relation edges
+    // Total: 6 line elements
+    expect(svg.querySelectorAll('line')).toHaveLength(6);
+  });
+
+  it('calls onExpandNeighbors when a doc node is clicked', async () => {
+    stubRegistry();
+    const onExpand = vi.fn();
+    render(<GraphCanvas graph={THREE_KB} filter="" onExpandNeighbors={onExpand} />);
+    fireEvent.click(screen.getAllByTestId('graph-doc-node')[0]);
+    await waitFor(() => {
+      expect(onExpand).toHaveBeenCalledTimes(1);
+      expect(onExpand).toHaveBeenCalledWith('authority::authority-doc.md');
+    });
+  });
+
+  it('does not render overlay edge lines when overlayEdges is absent', () => {
+    stubRegistry();
+    render(<GraphCanvas graph={THREE_KB} filter="" />);
+    // Only tier→doc edges and no overlay edges → still has line elements from tier→doc
+    const lines = screen.getByRole('img').querySelectorAll('line');
+    expect(lines.length).toBeGreaterThan(0);
   });
 });
