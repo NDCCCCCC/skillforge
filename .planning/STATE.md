@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
-current_phase: 27
-current_plan: 0
-status: phase-complete (hermetic; operator runbook pending)
-last_updated: "2026-09-07T12:00:00.000Z"
-last_activity: "2026-09-07 -- Phase 27 CLOSED hermetically (operator runbook 27-UAT pending)"
+current_phase: 28
+current_plan: 1
+status: plan-complete (28-01 executed; Phase 28 in progress)
+last_updated: "2026-09-07T13:00:00.000Z"
+last_activity: "2026-09-07 -- Phase 28-01 COMPLETE: graph_edges.go (333 lines) + graph_edges_test.go (379 lines); 9/9 edge tests pass; 2 commits: 5144fae + 858474c"
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 24
-  completed_plans: 24
+  total_plans: 25
+  completed_plans: 25
   percent: 33
 ---
 
@@ -19,16 +19,16 @@ progress:
 
 ## Current Position
 
-Phase: 27 (文档上传入库) — CLOSED hermetically (2026-09-07)
-Plan: 7 of 7
-Status: Phase complete — verify-phase-27.sh 3 stages / 6 sub-checks all PASS; 17/17 upload tests PASS; FE 68 files / 512 tests PASS. Operator runbook 27-UAT.md at .planning/phases/27-document-upload-pipeline/27-UAT.md pending live execution.
-Last activity: 2026-09-07 -- Phase 27 close-out: 7 plans executed (4 waves), 1 plan iteration-1 fix round (4 blockers + 4 warnings), 3 commits in 27-03 bug-fix round (1c26818)
+Phase: 28 (知识图谱动态化 + 关系层) — Plan 01 of ~07
+Plan: 1 of ~7
+Status: Plan 28-01 complete — graph_edges.go (334L) + graph_edges_test.go (376L); 9/9 edge tests pass; 2 commits (5144fae + 858474c). Phase 28 in progress.
+Last activity: 2026-09-07 -- Phase 28-01 COMPLETE: Edge struct + 4 edge-type constants + ComputeEdges pure function; all tests pass.
 
 **Phase 27 closure record (2026-09-07):** 7/7 plans executed across 4 waves (Wave1:{01,02,03,04} all parallel — no file conflicts after iteration-1 expanded 27-04 files_modified) → 24 atomic commits (0991ca0..ca842fc + 4b38a81 + 12ea50a deps + 1c26818 bug-fix + 179038e ROADMAP/STATE sync) → eino-ext parser submodules fetched via goproxy.cn (env-intranet workaround per env-intranet-service-flakiness memory) → verify-phase-27.sh 3 stages / 6 sub-checks all PASS (TODO clear / streaming-multipart + no-disk + VerifyMagicBytes presence + VerifyMagicBytes-no-disk / validateTiers-before-embedder + kb.Citable-not-at-insert) → 17/17 TestUpload* hermetic tests pass (12 from 27-03 + 5 degraded from 27-07) → FE DocUpload panel vitest 12/12 PASS → FE 68 files / 512 tests + tsc --noEmit all green → STRIDE-27.md threat model (9 threats + T-27-SC, T-27-01..09, 6 trust boundaries) → README "Document Upload (Phase 27)" section. 27-03 fixed 5 real handler bugs surfaced by hermetic test: (1) MIME source moved from form.Metadata form field to part header; (2) text/markdown branch rejects binary signatures; (3) VerifyMagicBytes failure writes HTTP response from inside onFile; (4) buildUploadMultipart uses CreatePart + textproto.MIMEHeader so fixture Content-Type matches declared; (5) mockRetrieverForUpload pointer-embeds mockIndexerBackend so GetMaxID reads the same backend's Insert batches.
 
-Progress: [██░░░] 33% (v1.2: 2/6 phases complete, 13/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06)
+Progress: [██░░░] 33% (v1.2: 2/6 phases complete, 14/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02)
 
-**Next action:** `/gsd:plan-phase 28` — 知识图谱动态化 + 关系层 (GRF-01..05；与 Phase 27 已落地验证 — DOC-06 联合验收：上传文档立即出现在图谱中)
+**Next action:** Continue Phase 28 execution — 28-02 likely next plan.
 
 **Phase 27 residues (non-blocking):**
 - ParserVersion: "unknown" in DocUploadAudit — parser registry doesn't expose per-parse version (27-03 SUMMARY noted); minor cosmetic, planned to surface via parser registry Name() field lookup in 27-04+ if needed
