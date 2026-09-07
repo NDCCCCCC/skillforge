@@ -6,7 +6,7 @@
 # gate). Run `make` or `make verify-phase-11` to execute the gate;
 # the banner at the end is the operator's pass/fail signal.
 
-.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 test-unit test-frontend build clean
+.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 verify-phase-26 test-unit test-frontend build clean
 
 # check-cgo fails fast with an actionable message when gcc is missing.
 # mattn/go-sqlite3 and go-duckdb both require CGO; install MSYS2 UCRT64 gcc
@@ -75,6 +75,17 @@ verify-phase-16:
 # [STAGE-NN-BLOCKED-WITH-NOTES] for the WSL CGO leg (D15-01-1 emutls ABI).
 verify-phase-17:
 	bash scripts/verify-phase-17.sh
+
+# verify-phase-26 is the Phase 26 structural hygiene gate (HYG-01, Plan 26-10).
+# Three grep-only structural locks over non-test Go — no Go toolchain needed:
+#   01 todo-fixme-zero            (only TODO( / TODO: / FIXME( / FIXME: count;
+#                                  the eino type name deep.TODO never matches)
+#   02 tierenum-zero              (Phase 26 enum deletion evidence)
+#   03 cn-tier-literal-scoped-ban (exact quoted CN tier data values banned;
+#                                  two annotated prose whitelists, 复核 2027-03)
+# Exits 0 with the PASS banner on full pass, 1 with [STAGE-NN-FAIL] otherwise.
+verify-phase-26:
+	bash scripts/verify-phase-26.sh
 
 # test-unit runs the full Go test suite for fast iteration.
 test-unit:
