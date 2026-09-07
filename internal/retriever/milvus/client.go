@@ -85,11 +85,41 @@ func (m *MilvusClient) Disconnect() error {
 	return m.mc.Close()
 }
 
-// GetMaxID is a stub that returns 0, nil. The real implementation queries
-// the Milvus collection for the maximum chunk ID for the given tier.
-// Implemented in Plan 27-04.
+// GetMaxID returns the highest chunk ID currently stored for the given
+// tier. Returns 0 (no error) when no chunks exist for the tier.
+// Implements the retriever.Retriever contract added by Phase 27/Plan 02.
 func (m *MilvusClient) GetMaxID(ctx context.Context, tier string) (int64, error) {
-	return 0, nil
+	if m == nil || m.cfg.CollectionName == "" {
+		return 0, nil
+	}
+	// Query the collection filtered by tier, asking only for the id field.
+	// We request a generous limit (10000) and scan client-side for max —
+	// Milvus Query does not support ORDER BY. The Phase 2 corpus has ~30
+	// chunks per tier, so a single round-trip is always sufficient.
+	expr := fmt.Sprintf(`tier == "%s"`, tier)
+	rs, err := m.mc.Query(
+		ctx,
+		m.cfg.CollectionName,
+		nil, // partitions (nil = default)
+		expr,
+		[]string{"id"},
+		client.WithLimit(10000),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("milvus.GetMaxID: Query: %w", err)
+	}
+	var maxID int64
+	for _, col := range rs {
+		if col.Name() != "id" {
+			continue
+		}
+		for i := 0; i < col.Len(); i++ {
+			if v, e := col.GetAsInt64(i); e == nil && v > maxID {
+				maxID = v
+			}
+		}
+	}
+	return maxID, nil
 }
 
 // Ensure creates the collection + IVF_FLAT index if absent. Idempotent.
