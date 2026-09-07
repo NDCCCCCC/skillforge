@@ -529,7 +529,7 @@ func main() {
 	}
 	manifest := manifestFor(*skillsDir, manifestName, kbReg)
 	cm := buildChatModel(ctx) // agent's chat model (GLM_API_KEY)
-	ag := buildAgent(ctx, manifest, emb, r, cm)
+	ag := buildAgent(ctx, manifest, emb, r, cm, kbReg)
 
 	// SC-6 / D6-13: assert the pin BEFORE scoring. A drifted model or
 	// prompt makes the resulting numbers incomparable to the published
@@ -543,7 +543,7 @@ func main() {
 		emb := buildEmbedder()
 		r := buildRetriever(ctx, emb, kbReg)
 		cm := buildChatModel(ctx)
-		ag := buildAgent(ctx, manifest, emb, r, cm)
+		ag := buildAgent(ctx, manifest, emb, r, cm, kbReg)
 		_ = st
 		runKPIMode(ctx, *frozen, ag, emb, r)
 		return
@@ -991,13 +991,19 @@ func buildChatModel(ctx context.Context) model.ToolCallingChatModel {
 // buildAgent mirrors cmd/server's agent construction (MaxHops=2 D3-02
 // hard cap). The AgentConfig.Emit field is left nil — the eval CLI runs
 // in batch mode and does NOT emit data-decision SSE chunks.
-func buildAgent(ctx context.Context, manifest *skill.Manifest, emb embedder.Embedder, r retriever.Retriever, cm model.ToolCallingChatModel) *agent.Agent {
+//
+// CR-03 (26-REVIEW): kbReg is threaded so the eval agent measures the
+// SAME gated trust contract approval_api/plan_api serve — the numbers
+// this CLI publishes must describe production, not the pre-26 ungated
+// posture (locked by TestEvalBuildAgentWiresKBRegistry).
+func buildAgent(ctx context.Context, manifest *skill.Manifest, emb embedder.Embedder, r retriever.Retriever, cm model.ToolCallingChatModel, kbReg kb.Registry) *agent.Agent {
 	ag, err := agent.NewAgent(ctx, agent.AgentConfig{
-		Manifest:  manifest,
-		Embedder:  emb,
-		Retriever: r,
-		ChatModel: cm,
-		MaxHops:   2,
+		Manifest:   manifest,
+		Embedder:   emb,
+		Retriever:  r,
+		ChatModel:  cm,
+		MaxHops:    2,
+		KBRegistry: kbReg,
 	})
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/eval: agent init: %v", err)

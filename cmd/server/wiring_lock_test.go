@@ -86,3 +86,22 @@ func TestImporterConfigWiresKBRegistry(t *testing.T) {
 		t.Fatal("data.ImporterConfig in main.go does not wire KBRegistry — ValidateRules fails closed on a nil registry, so EVERY import of the loans dataset fails in production (CR-01)")
 	}
 }
+
+// TestAgentConfigWiresKBRegistry is the CR-03 (26-REVIEW) lock for the
+// legacy agent path: T-26-05 says a nil registry is "never a production
+// assembly state", but the USE_AGENT_PATH=true assembly omitted the
+// field, so newRunAccumulator bound nothing and the citable gate in
+// ChunkAccumulator.Add stayed inert — the agent path silently ran the
+// pre-26 posture where historical/personal chunks can be cited
+// (fail-open, trust contract).
+func TestAgentConfigWiresKBRegistry(t *testing.T) {
+	src := mainGoSource(t)
+
+	lit, ok := structLiteral(src, "agent.AgentConfig{")
+	if !ok {
+		t.Fatal("main.go no longer constructs agent.AgentConfig — if the agent assembly moved, update this lock to the new construction site")
+	}
+	if !strings.Contains(lit, "KBRegistry: kbReg,") {
+		t.Fatal("agent.AgentConfig in main.go does not wire KBRegistry — the accumulator's citable gate stays inert and the agent path runs the pre-26 posture (CR-03)")
+	}
+}

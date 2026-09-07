@@ -168,6 +168,12 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		SessionID:   sessionID,
 		KPIExecutor: s.KPIExecutor,
 		KPIRegistry: s.KPIRegistry,
+		// CR-03 (26-REVIEW): thread the same registry approval_api and
+		// plan_api already pass. Without it a tier-channel Skill that
+		// declares memory:facts fails hard here ("kb registry required")
+		// and the accumulator's citable gate stays inert. Locked by
+		// TestChatHandlerBuildRunnerWiresKBRegistry.
+		KBRegistry: s.KBRegistry,
 		// v1.1.1 (Phase 21 wiring): nil unless EXTERNAL_AUTH_ENABLED=1
 		// (6c-5); only an external:authorized Skill consumes it and
 		// BuildRunner fail-fasts if the Skill declares the channel while

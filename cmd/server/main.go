@@ -453,6 +453,11 @@ func main() {
 			Retriever: r,
 			ChatModel: cm,
 			MaxHops:   2, // D3-02 hard cap — see agent.ComputeMaxStep
+			// CR-03 (26-REVIEW): T-26-05 — a nil registry is never a
+			// production assembly state. newRunAccumulator binds this so
+			// the citable gate in ChunkAccumulator.Add is live on the
+			// agent path (locked by TestAgentConfigWiresKBRegistry).
+			KBRegistry: kbReg,
 		})
 		if err != nil {
 			log.Fatalf("[FAIL] cmd/server: agent init: %v", err)
