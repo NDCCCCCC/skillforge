@@ -130,14 +130,17 @@ export interface SkillScore {
   selected: boolean;
 }
 
-// Plan 05-06 / SC-6 / D5-13 — one 历史-tier annotation row carried inside
-// a counter_evidence DecisionPayload. The trust moat (D5-13) lives in
+// Plan 05-06 / SC-6 / D5-13 — one historical-role annotation row carried
+// inside a counter_evidence DecisionPayload. The trust moat (D5-13) lives in
 // the BE function signature: emitCounterEvidence never receives the
 // verdict's chunksByID map; this struct is annotation-only metadata.
 export interface ConflictChunk {
   /** Numeric chunk id rendered as decimal string (matches Hit.ID). */
   chunkId: string;
-  /** Always "历史" today; kept on the struct for forward-compat. */
+  /** Registry slug of the annotation's source base (a historical-role KB).
+   * Kept on the struct for forward-compat; a row replayed from a
+   * pre-migration audit may carry the legacy CN display name, which the FE
+   * renders bracketed rather than treating as a live tier. */
   tier: string;
   /** Slash-normalized corpus path (e.g. "history/2023-policy.md"). */
   source: string;

@@ -21,6 +21,7 @@
 // dependency").
 
 import GraphChunkNode from './GraphChunkNode';
+import { useTierLabel } from '../../lib/kb-bases';
 import type { KnowledgeGraph, TierNode } from '../../types/knowledge';
 
 export interface GraphTreeProps {
@@ -50,6 +51,10 @@ function TierSection({
   tier: TierNode;
   needle: string;
 }) {
+  // 26-08 — the section heading shows the REGISTRY display label (the KB
+  // projection's display_name), not the raw slug; an unknown slug degrades
+  // to `[slug]` exactly like TierBadge.
+  const label = useTierLabel(tier.tier);
   const visibleDocs = needle
     ? tier.docs.filter((d) => d.filename.toLowerCase().includes(needle))
     : tier.docs;
@@ -67,7 +72,7 @@ function TierSection({
       <summary
         className="cursor-pointer px-3 py-2 text-sm font-semibold text-primary"
       >
-        {tier.tier}（{visibleDocs.length} 文档 / {totalChunks} 片段）
+        {label}（{visibleDocs.length} 文档 / {totalChunks} 片段）
       </summary>
       {visibleDocs.length === 0 ? (
         <div

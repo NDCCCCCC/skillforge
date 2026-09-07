@@ -76,7 +76,9 @@ describe('useWizard', () => {
     rerender();
     expect(result.current.answers.purpose).toBe('Compliance audit for policy reviews.');
     expect(result.current.step).toBe(1);
-    expect(result.current.currentPrompt).toContain('知识层');
+    // 26-08: the reads prompt speaks the registry vocabulary (slugs / roles).
+    expect(result.current.currentPrompt).toContain('知识库');
+    expect(result.current.currentPrompt).toContain('authority');
   });
 
   it('submitAnswer parses reads as a comma-separated list', () => {

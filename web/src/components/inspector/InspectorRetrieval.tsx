@@ -6,35 +6,52 @@
 // setCenterView({kind:'chunk-source', chunkId, ...}) so the operator
 // can browse the chunk verbatim from the inspector.
 //
-// The wire chunks for retrieved chunks are source-document parts. We
-// surface the sourceId (chunk ID) and optional title/filename. The
-// tier is unknown on the wire chunk (the agent doesn't tag it); we
-// default to 权威 per the SC-6 fallback (compliance Skill defaults to
-// the authority tier).
-
+// The dispatch needs a tier for the ChunkSourceView metadata row, but the
+// wire chunk carries none (the agent doesn't tag it). 26-08 residual sweep:
+// the default is the REGISTRY's first authority-role slug (the citable
+// role) resolved from the public projection — the hardcoded CN default was
+// deleted because, after the KB migration, that literal is not a slug and
+// the dispatch would target a knowledge base that cannot exist. Until the
+// projection resolves, the placeholder is the EMPTY STRING and TierBadge
+// renders nothing for it (an honest "tier unknown", never a fabricated
+// tier).
+import { useEffect, useState } from 'react';
+import { firstSlugByRole } from '../../lib/kb-bases';
 import { useAppStore } from '../../store/app-store';
-import type { Tier } from '../../types/verdict';
 import type { RetrievalRow } from './hop-types';
 
 export interface InspectorRetrievalProps {
   retrievals: RetrievalRow[];
-  /** Default tier for the chunk-source CenterView dispatch (when the
-   * source-document part doesn't carry a tier). The plan defaults to
-   * 权威 for compliance-domain retrievals. */
-  defaultTier?: Tier;
+  /** Optional tier override for the chunk-source dispatch. When omitted,
+   * the first authority-role slug from the KB projection is used ('' until
+   * the projection resolves — no tier literal substitute). */
+  defaultTier?: string;
 }
 
 export default function InspectorRetrieval({
   retrievals,
-  defaultTier = '权威',
+  defaultTier,
 }: InspectorRetrievalProps) {
+  const [registryDefault, setRegistryDefault] = useState('');
+
+  useEffect(() => {
+    if (defaultTier !== undefined) return;
+    let cancelled = false;
+    void firstSlugByRole('authority').then((slugValue) => {
+      if (!cancelled) setRegistryDefault(slugValue);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultTier]);
+
   if (retrievals.length === 0) return null;
 
   function handleClick(chunkId: string) {
     useAppStore.getState().setCenterView({
       kind: 'chunk-source',
       chunkId,
-      tier: defaultTier,
+      tier: defaultTier ?? registryDefault,
       version: null,
       effectiveDate: null,
       effectiveTo: null,
@@ -42,7 +59,7 @@ export default function InspectorRetrieval({
   }
 
   return (
-    <div data-testid="inspector-retrieval">
+    <div data-testid="inspector-retrieval" data-default-tier={defaultTier ?? registryDefault}>
       <div className="text-xs font-semibold text-text-muted">
         检索结果（{retrievals.length} 条）
       </div>

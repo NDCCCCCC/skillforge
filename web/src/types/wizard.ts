@@ -15,8 +15,8 @@ export interface WizardAnswers {
   /** First-sentence purpose; the BE slugifies the first sentence to
    * derive the Skill directory name (T-5-16 path-traversal gate). */
   purpose: string;
-  /** Read tiers / glob paths the Skill needs (authority / history /
-   * personal / drafts). */
+  /** Knowledge bases the Skill reads — registry slugs (e.g. "authority")
+   * or "role:<name>" wildcards over the semantic roles. */
   reads: string[];
   /** Compliance | qa | creative (drives the type-default temperature). */
   skillType: 'compliance' | 'qa' | 'creative' | string;
@@ -57,7 +57,7 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
   },
   {
     id: 'reads',
-    prompt: '它需要读取哪些知识层？可选：权威/历史/个人/草稿',
+    prompt: '它需要读取哪些知识库？可用注册表 slug（authority / historical / personal / draft）或 role: 前缀按角色选择',
     isOptional: false,
   },
   {

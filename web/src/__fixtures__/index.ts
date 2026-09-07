@@ -32,7 +32,10 @@ export interface SkillFixture {
 }
 
 export interface ChunkFixtureEntry {
-  tier: '权威' | '历史' | '个人' | '草稿';
+  /** Registry slug of the source base. The fixture DATA deliberately keeps
+   * pre-migration CN display names so the FE degradation paths (bracketed
+   * label, badge hiding) render against realistic legacy values. */
+  tier: string;
   version: string;
   effective_date: string;
   text: string;

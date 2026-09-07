@@ -366,8 +366,9 @@ describe('MessageBubble', () => {
     expect(centerView.kind).toBe('chunk-source');
     if (centerView.kind === 'chunk-source') {
       expect(centerView.chunkId).toBe('c-001');
-      // Real metadata pulled by extractChunkMetadata (fixture c-001).
-      expect(centerView.tier).toBe('权威');
+      // 26-08: the dispatch tier is the REGISTRY SLUG derived from the
+      // title's directory prefix; the display label is the projection's job.
+      expect(centerView.tier).toBe('authority');
       expect(centerView.version).toBe('v3.2');
       expect(centerView.effectiveDate).toBe('2026-01-15');
     }

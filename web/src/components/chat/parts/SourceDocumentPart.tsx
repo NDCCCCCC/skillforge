@@ -20,44 +20,43 @@
 // — making the doc chips under the conclusion the single, interactive
 // citation UI in the chat stream.
 //
-// Open Design B5 — tier 药丸徽章: the chip leads with a colored tier
-// pill (权威=靛蓝 / 历史=琥珀 / 个人=青 / 草稿=灰). The tier is
-// resolved from the chunk fixtures via extractChunkMetadata, falling
-// back to the title's directory prefix (authority/… etc.).
+// Open Design B5 — tier 药丸徽章: the chip leads with a tier pill. 26-08
+// residual sweep: the fixed 4-key CN title→tier table is GONE. The pill's
+// value is the REGISTRY SLUG — derived from the backend title's first path
+// segment ("authority/annual_leave.md · chunk 3") with the chunk fixture as
+// the fallback — and its DISPLAY label resolves through the KB registry
+// projection (lib/kb-bases), the same source TierBadge uses. An unknown
+// slug renders `[slug]`; no derivable tier hides the pill. A pre-migration
+// CN value replayed from an audit row is not a registry slug, so it
+// degrades to a bracketed legacy label instead of masquerading as a live
+// tier (T-26-08-2).
 import type { SourceDocumentUIPart } from 'ai';
 import { FileText } from 'lucide-react';
+import { useTierLabel } from '../../../lib/kb-bases';
 import { extractChunkMetadata, normalizeChunkID } from '../../../lib/chunk-lookup';
 import { useAppStore } from '../../../store/app-store';
-import type { Tier } from '../../../types/verdict';
 
-const TITLE_DIR_TO_TIER: Array<[string, Tier]> = [
-  ['authority/', '权威'],
-  ['historical/', '历史'],
-  ['personal/', '个人'],
-  ['draft/', '草稿'],
-];
-
-function resolveTier(sourceId: string, title: string): Tier | null {
-  // Backend-truth first: the title carries the tier directory
-  // ("authority/annual_leave.md · chunk 3"). The fixture lookup is the
-  // fallback (it never throws — a miss degrades to 权威).
+function resolveTierSlug(sourceId: string, title: string): string | null {
+  // Backend truth first: the title carries the tier directory as its first
+  // path segment ("authority/annual_leave.md · chunk 3").
   const lower = title.toLowerCase();
-  for (const [dir, tier] of TITLE_DIR_TO_TIER) {
-    if (lower.startsWith(dir)) return tier;
-  }
+  const slash = lower.indexOf('/');
+  if (slash > 0) return lower.slice(0, slash);
+  // Fallback: the chunk fixture — null on a miss, no tier invented.
   return extractChunkMetadata(normalizeChunkID(sourceId)).tier;
 }
 
 export function SourceDocumentPart({ part }: { part: SourceDocumentUIPart }) {
   const label = part.title ?? part.sourceId;
-  const tier = resolveTier(part.sourceId, label);
+  const tierSlug = resolveTierSlug(part.sourceId, label);
+  const tierLabel = useTierLabel(tierSlug ?? '');
   const handleClick = () => {
     const chunkId = normalizeChunkID(part.sourceId);
     const meta = extractChunkMetadata(chunkId);
     useAppStore.getState().setCenterView({
       kind: 'chunk-source',
       chunkId,
-      tier: meta.tier ?? '',
+      tier: tierSlug ?? meta.tier ?? '',
       version: meta.version,
       effectiveDate: meta.effectiveDate,
       effectiveTo: null,
@@ -69,12 +68,12 @@ export function SourceDocumentPart({ part }: { part: SourceDocumentUIPart }) {
       className="citation-chip"
       data-testid="source-document"
       data-chunk-id={part.sourceId}
-      data-tier={tier ?? ''}
+      data-tier={tierSlug ?? ''}
       onClick={handleClick}
     >
-      {tier && (
-        <span className="citation-tier-pill" data-tier={tier}>
-          {tier}
+      {tierSlug && (
+        <span className="citation-tier-pill" data-testid="citation-tier-pill" data-tier={tierSlug}>
+          {tierLabel}
         </span>
       )}
       <FileText className="h-3 w-3" />

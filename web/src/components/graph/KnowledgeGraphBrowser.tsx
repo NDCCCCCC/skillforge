@@ -9,8 +9,8 @@
 // chunk). Empty + loading + error states branch out per UI-SPEC §SC-5:
 //
 //   - 知识库为空    — when the corpus has 0 docs across all tiers
-//                     (the BE always returns 4 tier entries so we
-//                     detect empty by summing docCount).
+//                     (one tier entry per registered knowledge base, so
+//                     emptiness is detected by summing docCount).
 //   - 正在加载知识层级…  — fetch in flight.
 //   - 无法加载知识图谱：{error}  — fetch failed; refetch button.
 //
@@ -43,7 +43,9 @@ export default function KnowledgeGraphBrowser({
   const isLoading = loadingOverride ?? status === 'loading';
 
   // Empty-state hero: render when the corpus has 0 docs across all
-  // tiers. The BE always returns 4 tier entries (per UI-SPEC §SC-5).
+  // tiers. The BE emits one tier entry per REGISTERED knowledge base
+  // (Phase 26 registry — the fixed 4-tier shape is gone), so emptiness is
+  // detected by summing docCount rather than by counting tiers.
   const totalDocs = useMemo(
     () => (graph ? graph.tiers.reduce((acc, t) => acc + t.docCount, 0) : 0),
     [graph],
@@ -101,7 +103,7 @@ export default function KnowledgeGraphBrowser({
         </div>
         <div className="text-2xl font-semibold text-text">知识库为空</div>
         <p className="mt-2 text-base text-text-muted max-w-md">
-          请先通过知识索引导入文档（权威 / 历史 / 个人 / 草稿），或运行 <code className="font-mono text-xs">scripts/spiked index</code> 示例语料。
+          请先通过知识索引导入文档到已注册的知识库，或运行 <code className="font-mono text-xs">scripts/spiked index</code> 示例语料。
         </p>
       </div>
     );

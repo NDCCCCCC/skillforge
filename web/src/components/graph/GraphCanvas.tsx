@@ -18,7 +18,7 @@
 //   - click a tier node → collapse / expand its doc fan
 import { useMemo, useState } from 'react';
 import { useAppStore } from '../../store/app-store';
-import type { Tier } from '../../types/verdict';
+import { useTierLabel } from '../../lib/kb-bases';
 import type { KnowledgeGraph, TierNode } from '../../types/knowledge';
 
 const W = 900;
@@ -28,12 +28,19 @@ const CY = H / 2;
 const TIER_RING = 110; // inner ring radius (tier nodes)
 const DOC_RING_BASE = 260; // outer ring base radius (doc nodes)
 
+// Palette keyed by registry SLUG (26-08: the tier vocabulary is
+// registry-driven). A slug outside the seed palette falls back to the
+// primary accent; identity stays TEXT-driven (KNOW-05).
 const TIER_COLOR: Record<string, string> = {
-  权威: 'var(--color-status-compliant, #16a34a)',
-  历史: 'var(--color-status-needs-info, #d97706)',
-  个人: 'var(--color-primary, #2563eb)',
-  草稿: 'var(--color-text-muted, #6b7280)',
+  authority: 'var(--color-status-compliant, #16a34a)',
+  historical: 'var(--color-status-needs-info, #d97706)',
+  personal: 'var(--color-primary, #2563eb)',
+  draft: 'var(--color-text-muted, #6b7280)',
 };
+
+function tierColor(tier: string): string {
+  return TIER_COLOR[tier] ?? 'var(--color-primary, #2563eb)';
+}
 
 interface PositionedDoc {
   key: string;
@@ -111,7 +118,8 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
   }, [graph, filter, collapsed]);
 
   function openDoc(tier: string, filename: string) {
-    setCenterView({ kind: 'doc-view', tier: tier as Tier, file: filename });
+    // tier is a plain registry slug (26-08 widened Tier to string).
+    setCenterView({ kind: 'doc-view', tier, file: filename });
   }
 
   return (
@@ -154,8 +162,7 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
                 onClick={() => openDoc(d.tier, d.filename)}
                 className="cursor-pointer"
               >
-                <circle r={9} fill="var(--color-surface, #fff)" stroke={TIER_COLOR[d.tier]} strokeWidth={2} />
-                <text y={-14} textAnchor="middle" fontSize={11} fill="var(--color-text, #111827)">
+                <circle r={9} fill="var(--color-surface, #fff)" stroke={tierColor(d.tier)} strokeWidth={2} />                <text y={-14} textAnchor="middle" fontSize={11} fill="var(--color-text, #111827)">
                   {d.filename.replace(/\.md$/, '').slice(0, 18)}
                 </text>
                 <text y={22} textAnchor="middle" fontSize={9} fill="var(--color-text-muted, #6b7280)">
@@ -175,10 +182,10 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
             onClick={() => setCollapsed((prev) => ({ ...prev, [t.tier]: !prev[t.tier] }))}
             className="cursor-pointer"
           >
-            <circle r={26} fill={TIER_COLOR[t.tier]} opacity={0.16} />
-            <circle r={26} fill="none" stroke={TIER_COLOR[t.tier]} strokeWidth={2} />
+            <circle r={26} fill={tierColor(t.tier)} opacity={0.16} />
+            <circle r={26} fill="none" stroke={tierColor(t.tier)} strokeWidth={2} />
             <text textAnchor="middle" dy={-2} fontSize={14} fontWeight={600} fill="var(--color-text, #111827)">
-              {t.tier}
+              <TierLabel tier={t.tier} />
             </text>
             <text textAnchor="middle" dy={14} fontSize={9} fill="var(--color-text-muted, #6b7280)">
               {t.docCount} 文档
@@ -191,4 +198,10 @@ export default function GraphCanvas({ graph, filter }: GraphCanvasProps) {
       </div>
     </div>
   );
+}
+
+// TierLabel — registry display label for one tier node (a component because
+// the label resolves through the useTierLabel hook; layout is untouched).
+function TierLabel({ tier }: { tier: string }) {
+  return <>{useTierLabel(tier)}</>;
 }

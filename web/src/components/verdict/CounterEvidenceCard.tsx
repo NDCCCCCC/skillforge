@@ -5,9 +5,10 @@
 //
 // CounterEvidenceCard — the visible trust-moat marker. Renders inline
 // AFTER VerdictCard as a sibling (NOT inside VerdictCard) so the visual
-// hierarchy matches the semantic boundary: the verdict reads ONLY 权威
-// (CMPL-04 / D-09 trust floor), and counter-evidence is ANNOTATION from
-// the 历史 tier that NEVER entered grounding.
+// hierarchy matches the semantic boundary: the verdict grounds ONLY on
+// authority-role knowledge bases (CMPL-04 / D-09 trust floor — the single
+// citable role in the Phase 26 registry), and counter-evidence is
+// ANNOTATION from historical-role bases that NEVER entered grounding.
 //
 // The card's left border + the 历史 tier badge use --color-annotation
 // (teal) — the ONLY teal surface in the app (05-05 SUMMARY: GraphTree
@@ -42,7 +43,11 @@ export interface CounterEvidenceCardProps {
   conflictChunks?: ConflictChunk[];
 }
 
-/** The hardcoded disclaimer sentence (UI-SPEC §SC-6 — never customized). */
+/** The hardcoded disclaimer sentence (UI-SPEC §SC-6 — never customized).
+ * WHITELIST NOTE (26-10 CN-tier gate, review 2026-10): 「历史」 here is the
+ * historical ROLE in locked user-facing copy — the SC-6 disclaimer is a
+ * test-pinned JSX literal (T-5-27), not a tier value, comparison, or
+ * default. Tier *identifiers* in this file are registry slugs. */
 const DISCLAIMER =
   '以下内容来自「历史」知识层，仅供人工参考，不参与本次结论的生成与校验。';
 

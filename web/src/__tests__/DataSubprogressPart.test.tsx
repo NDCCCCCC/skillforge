@@ -11,6 +11,10 @@
 //   - self_verify → 自校验
 //   - generate → 生成结论
 // Plus the data-testid="data-subprogress" wrapper + data-step attribute.
+//
+// Plan 26-08 Task 3 adds the no-tier pin: a retrieve step WITHOUT a tier
+// renders NO badge (检索知识层) — the old hardcoded tier default was
+// deleted because that CN literal is no longer a registry slug.
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
@@ -35,6 +39,15 @@ describe('DataSubprogressPart', () => {
     const node = screen.getByTestId('data-subprogress');
     expect(node).toHaveAttribute('data-step', 'retrieve');
     expect(node).toHaveTextContent('检索 [权威] 知识层');
+  });
+
+  it('renders no tier badge for step="retrieve" without a tier (26-08 residual sweep)', () => {
+    render(<DataSubprogressPart part={makePart({ step: 'retrieve' })} />);
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveAttribute('data-step', 'retrieve');
+    expect(node).toHaveTextContent('检索知识层');
+    // No fabricated tier anywhere in the row copy.
+    expect(node.textContent).not.toContain('[');
   });
 
   it('renders "找到 12 条候选" for step="found_candidates" + count=12', () => {

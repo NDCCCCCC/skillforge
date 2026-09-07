@@ -11,7 +11,14 @@
 // The component is intentionally append-only — the timeline grows
 // top-to-bottom as the agent emits more steps, with no animation on
 // the prior rows (they're done; the user already saw them stream in).
+//
+// 26-08 residual sweep: the retrieve step's tier label comes from the KB
+// registry projection (lib/kb-bases) and a step with NO tier renders NO
+// badge — the old hardcoded tier default was deleted because, after the
+// KB registry migration, that CN literal matches no slug and would
+// describe a knowledge layer that cannot exist.
 import type { SubprogressStep } from '../../../types/verdict';
+import { useTierLabel } from '../../../lib/kb-bases';
 import type { UIMessage } from 'ai';
 
 type DataSubprogressPartType = {
@@ -20,10 +27,10 @@ type DataSubprogressPartType = {
   data: SubprogressStep;
 };
 
-function renderStep(step: SubprogressStep): string {
+function renderStep(step: SubprogressStep, tierLabel: string | null): string {
   switch (step.step) {
     case 'retrieve':
-      return `检索 [${step.tier ?? '权威'}] 知识层`;
+      return tierLabel ? `检索 ${tierLabel} 知识层` : '检索知识层';
     case 'found_candidates':
       return `找到 ${step.count ?? 0} 条候选`;
     case 'rerank':
@@ -50,6 +57,10 @@ export default function DataSubprogressPart({
   part: DataSubprogressPartType | (UIMessage['parts'][number] & Record<string, unknown>);
 }) {
   const data = (part as DataSubprogressPartType).data as SubprogressStep;
+  // Hook must run unconditionally; useTierLabel('') is a no-op that hides
+  // the badge when the step carries no tier.
+  const resolvedLabel = useTierLabel(data.tier ?? '');
+  const tierLabel = data.tier ? resolvedLabel : null;
 
   return (
     <div
@@ -58,7 +69,7 @@ export default function DataSubprogressPart({
       className="subprogress-step"
     >
       <span className="subprogress-step-dot" aria-hidden />
-      <span>{renderStep(data)}</span>
+      <span>{renderStep(data, tierLabel)}</span>
       <span className="subprogress-step-line" aria-hidden />
     </div>
   );

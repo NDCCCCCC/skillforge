@@ -49,8 +49,8 @@ export type ComplianceStatus = typeof COMPLIANCE_STATUSES[number];
 // (N knowledge bases are first-class). TIERS below is the SEED FIXTURE list
 // (the four knowledge_bases.yaml baseline slugs), NOT a closed enum — do not
 // switch on it. Display names come from the registry projection
-// (lib/kb-bases.ts); the pre-migration CN values (权威/历史/个人/草稿) are
-// display names only and are no longer identifiers.
+// (lib/kb-bases.ts); the pre-migration Chinese display names are display
+// strings only and are no longer identifiers anywhere in the FE.
 export const TIERS = ['authority', 'historical', 'personal', 'draft'] as const;
 export type Tier = string;
 
