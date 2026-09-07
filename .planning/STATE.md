@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
-current_phase: 26
-current_plan: 1
+current_phase: 29
+current_plan: 2
 status: executing
-last_updated: "2026-09-07T18:24:27.935Z"
-last_activity: 2026-09-07 -- Phase 29 planning complete
+last_updated: "2026-09-07T18:47:30.000Z"
+last_activity: 2026-09-07 -- 29-01 SHIPPED (turn-id foundation)
 progress:
   total_phases: 6
   completed_phases: 3
@@ -19,10 +19,12 @@ progress:
 
 ## Current Position
 
-Phase: 29 (反馈闭环 + 工单预留) — Plan 00 of ~07 (planning ready)
-Plan: 0 of ~7
-Status: Ready to execute
-Last activity: 2026-09-07 -- Phase 29 planning complete
+Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
+Plan: 2 of 9
+Status: Executing Phase 29 (Wave 1: 29-01 done, 29-03 next)
+Last activity: 2026-09-07 -- 29-01 SHIPPED (turn-id foundation, commits b5c7a4c + c47d15d)
+
+**Phase 29 Plan 29-01 delivery summary (Wave 1, 2026-09-07):** D-29-01 消息身份地基 — `store.Store.AppendTurn` 签名改 `(int64, error)` 返回 assistant 行 `session_turn.id`；`SessionMessage` 增加 read-back `ID int64`（GetSession 回填，AppendTurn 入参忽略）；`getSessionSQL` 改 `SELECT id, role, content, ts`；`appendTurnHalf` 加 `RowsAffected()==0` 守卫——幂等重放返回 0 且**永不**触碰 `LastInsertId`（mattn/go-sqlite3 下冲突后它返回连接上最近一次成功 INSERT 的 rowid，即静默跨轮错绑，T-29-06 mitigate）。`writeAuditAndTurn` 返回 `(int64, error)`（Store==nil / append err → `0, nil`，best-effort 姿态不变），12 个调用点（chat.go×4 / pipeline.go×6 / runner_setup.go×2）以 `_, _ =` 丢弃并注释指向 29-04 的 data-turn 发射窗口；5 个显式 AppendTurn 测试 fake 同步 `(0, nil)`（kb_admin_test.go recordingAuditStore 经 store.Store embed 免改）。`TestAppendTurnReturnsAssistantID` 4 子用例（fresh / replay_conflict=严格 0 / GetSession id 严格递增 / closed store 报错）hermetic 锁定。1 个 auto-fix 偏差：plan 处方的 `_ =` 丢弃形式对双返回值是 Go 编译错误，改为 `_, _ =`（b5c7a4c）。FBK-01/04 的 phase 级 REQUIREMENTS 行保持 Pending（端点与 FE 接线归 29-02/29-05）。WSL build + vet + store/server 全量测试绿。
 
 **Phase 28 closure record (2026-09-07):** 7/7 plans executed across 4 waves (Wave 1: 28-01 GRF-02 ComputeEdges pure function + 4 edge-type constants; Wave 2: 28-02 GRF-03 neighborsHandler + pathHandler + graphHandler degraded extension → 28-03 GRF-05 sync.Map TTL cache with cross-phase invalidation hooks → 28-04 GRF-05 4 SKILLFORGE_GRAPH_* env vars + SetGraphCacheInvalidateHook boot binding; Wave 3: 28-05 GRF-04 FE GraphCanvas 边层 + useGraphNeighbors hook + NeighborExpandButton → 28-06 GRF-04 InspectorRetrieval 「常被一起引用」 面板; Wave 4: 28-07 GRF-01..05 hygiene gate verify-phase-28.sh 3 stages / 6 sub-checks + STRIDE-28 + 28-UAT.md（含 Phase 27→28 联合验收 operator runbook）) → 19 atomic commits (5144fae + 858474c + 61d6932 + 6b649f7 + 3a67f07 + 8b6aaa3 + d0369a5 + 6867599 + ef64ffa + fc8cc61 + afc9377 + 028d3b9 + 2c14387 + 1767b1d + 41cebec + c654cd9 + 0fceddc + c0906d1 + d8a881b + 82a7a1e + bug-fix 3766eb5) → 23 BE tests (graph_edges_test.go + graph_cache_test.go + knowledge_test.go NeighborsAtDepth/DepthLimit/TestGraphLimits) + FE 535 tests (useGraphNeighbors + NeighborExpandButton + InspectorRetrieval neighbors panel) all PASS → verify-phase-28.sh 3 stages / 6 sub-checks PASS (TODO clear / Trust invariant kb.Citable defined + graph_edges.go doesn't call it / Doc-nodes-from-registry reg.List() + no hardcoded CN tier literal) → STRIDE-28.md threat model (8 threats T-28-01..06 + T-28-SC + T-28-LLM) → 28-UAT.md operator runbook（5 graph endpoint steps + 5 Phase 27 joint acceptance steps verifying uploaded docs appear in graph immediately via cache invalidation hook）. Mid-execution bug-fix 3766eb5: Neighbors degraded semantic changed from "queue non-empty OR depth exhausted" to "frontier cuts unreached nodes" (depthFrontierCut = len(queue)>0 && depth>=maxDepth && unreached>0) — resolves contradictory TestNeighborsAtDepth/DepthLimit fixtures by aligning degraded semantics to product semantics.
 
@@ -133,7 +135,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 **Project:** SkillForge (Skill-driven enterprise Agent platform)
 **Mode:** mvp (vertical slices)
 
-**Current Phase:** 26
+**Current Phase:** 29
 **Current Plan:** 1
 **Previous phase:** 10 (closed hermetic-gated) — live 35-case re-run is v0.8 milestone gate, NOT Phase 11 entry prerequisite
 **Phase 11 prerequisites (locked by /gsd:discuss-phase 11):** D11-A* Runner 化、信任楼梯三层 / D11-B* per-turn Tool whitelist + 共享 ApprovalDecision / D11-C* Dual 端点 + Snapshot 双表落 + fail-closed / D11-D* approval_rules 独立表 + session/skill 二元
@@ -154,7 +156,7 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 
 **License:** Apache-2.0.
 
-**Current focus:** Phase 26 — 知识库注册表地基
+**Current focus:** Phase 29 — feedback-loop-ticket-interface
 **See:** `.planning/PROJECT.md` (updated 2026-08-17 — v0.8 milestone section)
 **Phase 10 closeout (2026-08-20):** shipped hermetic-gated — see "Current Position" / "Last updated" above. Live 35-case re-run remains operator gate for v0.8 milestone (NOT Phase 11 prerequisite).
 **Phase 11 prerequisites inherited from Phase 9/10:**
@@ -360,7 +362,7 @@ Resume File: .planning/phases/29-feedback-loop-ticket-interface/29-UI-SPEC.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Ready to execute
+- **Status:** Executing Phase 29
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).

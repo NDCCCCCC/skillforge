@@ -213,7 +213,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 29-01-PLAN.md — turn id 地基：AppendTurn → (int64, error) 原子涟漪（接口 + sqlite RowsAffected 守卫 + writeAuditAndTurn 返回值 + 12 调用点 + 5 fake）+ turn-id 语义测试（FBK-01/04 地基，D-29-01）
+- [x] 29-01-PLAN.md — turn id 地基：AppendTurn → (int64, error) 原子涟漪（接口 + sqlite RowsAffected 守卫 + writeAuditAndTurn 返回值 + 12 调用点 + 5 fake）+ turn-id 语义测试（FBK-01/04 地基，D-29-01）— SHIPPED 2026-09-07（b5c7a4c + c47d15d；TestAppendTurnReturnsAssistantID 4 子用例锁 conflict→0）
 - [ ] 29-03-PLAN.md — internal/ticket 包：Provider 窄接口 + none/webhook 配置注册表 + webhook 出站（per-instance client + 有界重试 + body-only payload）（TKT-01）
 
 **Wave 2** *(blocked on Wave 1 completion)*
