@@ -26,3 +26,4 @@ Dockerfile*    text eol=lf
 # Phase 15 decode-pipeline fixtures — byte-exact encodings (GBK / GB18030 /
 # BOM variants); EOL normalization would silently change what they test.
 internal/data/testdata/*.csv -text
+*.jsonl text eol=lf
