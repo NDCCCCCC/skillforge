@@ -660,13 +660,13 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_bases_role ON knowledge_bases(role)
 // migrate()-tail convention so the D14-E1 ordering contract keeps
 // exactly one shape to remember.
 //
-//   - idx_feedback_session:       per-conversation vote history (29-03
-//                                 VotedVerdictsBySession read).
-//   - idx_feedback_ts:            metrics time-window scans (D-29-10/11).
-//   - idx_feedback_skill:         per-Skill metric aggregation (FBK-03).
-//   - idx_refs_chunk:             per-chunk pending-review queue reads.
-//   - idx_dispositions_chunk:     latest-disposition-wins lookup per chunk.
-//   - idx_tickets_session:        per-conversation ticket lookups.
+//   - idx_feedback_session: per-conversation vote history (29-03
+//     VotedVerdictsBySession read).
+//   - idx_feedback_ts: metrics time-window scans (D-29-10/11).
+//   - idx_feedback_skill: per-Skill metric aggregation (FBK-03).
+//   - idx_refs_chunk: per-chunk pending-review queue reads.
+//   - idx_dispositions_chunk: latest-disposition-wins lookup per chunk.
+//   - idx_tickets_session: per-conversation ticket lookups.
 const (
 	idxFeedbackSession = `
 CREATE INDEX IF NOT EXISTS idx_feedback_session ON feedback(session_id)
