@@ -470,6 +470,8 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/skills/wizard", deps.wizardHandler)
 	h.POST("/api/skills/wizard/commit", deps.wizardCommitHandler)
 	h.GET("/api/knowledge/graph", deps.graphHandler)
+	h.GET("/api/knowledge/graph/neighbors", deps.neighborsHandler)
+	h.GET("/api/knowledge/graph/path", deps.pathHandler)
 	h.GET("/api/knowledge/chunk/:id", deps.chunkHandler)
 	h.GET("/api/knowledge/docs", deps.docsHandler)
 	h.GET("/api/knowledge/doc", deps.docContentHandler)

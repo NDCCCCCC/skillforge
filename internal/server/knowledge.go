@@ -177,6 +177,26 @@ func (s *Deps) graphHandler(ctx context.Context, c *app.RequestContext) {
 		})
 		return
 	}
+
+	// Count total chunks across all tiers.
+	totalChunks := 0
+	for _, tier := range g.Tiers {
+		totalChunks += tier.ChunkCount
+	}
+
+	// Default limits (hardcoded per plan 28-02; plan 28-04 replaces with env via Deps).
+	const defaultGraphMaxNodes = 50
+	if totalChunks > defaultGraphMaxNodes {
+		// Use map response to include degraded fields alongside the graph.
+		resp := map[string]any{
+			"tiers":            g.Tiers,
+			"degraded":         true,
+			"degradedReason":   "节点数量超过限制（" + strconv.Itoa(totalChunks) + " > " + strconv.Itoa(defaultGraphMaxNodes) + "），图谱已降级。see SKILLFORGE_GRAPH_MAX_NODES config.",
+		}
+		c.JSON(http.StatusOK, resp)
+		return
+	}
+
 	c.JSON(http.StatusOK, g)
 }
 
@@ -242,6 +262,135 @@ func (s *Deps) chunkHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	c.JSON(http.StatusOK, payload)
+}
+
+// Default limits for graph query APIs (hardcoded per plan 28-02;
+// plan 28-04 replaces with env var wiring via Deps).
+const (
+	defaultNeighborDepth = 2  // SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT
+	defaultPathHops      = 4  // SKILLFORGE_GRAPH_PATH_HOPS_LIMIT
+	defaultGraphMaxNodes = 50 // SKILLFORGE_GRAPH_MAX_NODES
+)
+
+// neighborsHandler implements GET /api/knowledge/graph/neighbors?chunk_id=X&depth=N.
+// Returns the N-depth neighborhood subgraph around chunk X including all edges.
+// D-28-02-AUTH: public read (no admin token required).
+func (s *Deps) neighborsHandler(ctx context.Context, c *app.RequestContext) {
+	if s.Knowledge == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{
+			Error: "knowledge graph not initialized",
+		})
+		return
+	}
+	if s.Retriever == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{
+			Error: "retriever not initialized",
+		})
+		return
+	}
+
+	chunkIDStr := string(c.Query("chunk_id"))
+	if chunkIDStr == "" {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "chunk_id is required"})
+		return
+	}
+	id, ok := parseLenientChunkID(chunkIDStr)
+	if !ok {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid chunk id"})
+		return
+	}
+	chunkID := strconv.FormatInt(id, 10)
+
+	depthStr := string(c.Query("depth"))
+	depth := defaultNeighborDepth
+	if depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 {
+			depth = d
+		}
+	}
+	// Cap at default.
+	if depth > defaultNeighborDepth {
+		depth = defaultNeighborDepth
+	}
+
+	// Build EdgeGraph from metadata.
+	eg, err := knowledge.EdgeGraphFromMetadata(ctx, s.Retriever)
+	if err != nil {
+		log.Printf("[WARN] server: neighborsHandler EdgeGraphFromMetadata: %v", err)
+		c.JSON(http.StatusInternalServerError, graphResponseError{
+			Error: "neighbor query failed — see server logs",
+		})
+		return
+	}
+
+	result := eg.Neighbors(chunkID, depth, defaultGraphMaxNodes)
+	if result == nil {
+		c.JSON(http.StatusNotFound, graphResponseError{Error: "chunk not found"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// pathHandler implements GET /api/knowledge/graph/path?from=X&to=Y&max_hops=N.
+// Returns the BFS shortest path between two chunks, or degraded if no path exists.
+// D-28-02-AUTH: public read (no admin token required).
+func (s *Deps) pathHandler(ctx context.Context, c *app.RequestContext) {
+	if s.Knowledge == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{
+			Error: "knowledge graph not initialized",
+		})
+		return
+	}
+	if s.Retriever == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{
+			Error: "retriever not initialized",
+		})
+		return
+	}
+
+	fromStr := string(c.Query("from"))
+	toStr := string(c.Query("to"))
+	if fromStr == "" || toStr == "" {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "from and to are required"})
+		return
+	}
+	fromID, ok := parseLenientChunkID(fromStr)
+	if !ok {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid from chunk id"})
+		return
+	}
+	toID, ok := parseLenientChunkID(toStr)
+	if !ok {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid to chunk id"})
+		return
+	}
+	from := strconv.FormatInt(fromID, 10)
+	to := strconv.FormatInt(toID, 10)
+
+	maxHopsStr := string(c.Query("max_hops"))
+	maxHops := defaultPathHops
+	if maxHopsStr != "" {
+		if m, err := strconv.Atoi(maxHopsStr); err == nil && m > 0 {
+			maxHops = m
+		}
+	}
+	// Cap at default.
+	if maxHops > defaultPathHops {
+		maxHops = defaultPathHops
+	}
+
+	// Build EdgeGraph from metadata.
+	eg, err := knowledge.EdgeGraphFromMetadata(ctx, s.Retriever)
+	if err != nil {
+		log.Printf("[WARN] server: pathHandler EdgeGraphFromMetadata: %v", err)
+		c.JSON(http.StatusInternalServerError, graphResponseError{
+			Error: "path query failed — see server logs",
+		})
+		return
+	}
+
+	result := eg.ShortestPath(from, to, maxHops)
+	c.JSON(http.StatusOK, result)
 }
 
 // Compile-time check that knowledge.GraphBuilder satisfies the
