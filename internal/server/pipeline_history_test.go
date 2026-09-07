@@ -41,6 +41,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"sync"
@@ -49,12 +50,15 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/server/classifier"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
+	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
@@ -555,4 +559,294 @@ func mustVerdict(t *testing.T, frames []wire.UIMessageChunk) *verdict.Verdict {
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Phase 29 / Plan 29-04 Task 2 — data-turn frame-order locks (T-29-06).
+//
+// The behavior matrix under test (Pitfall 3's frame-order window):
+//
+//   - verdict stream: data-turn sits AFTER the post-verdict annotation
+//     frames (counter-evidence / redline) and BEFORE text-end /
+//     finish-step / finish; turnId == the assistant row id
+//     writeAuditAndTurn persisted (Store.GetSession is ground truth).
+//   - every refusal shape (out_of_scope / no_authorized_source /
+//     low_retrieval_score / classifier-refuse / status-refused):
+//     data-turn precedes emitRefusal's text-start — and therefore the
+//     finish emitRefusal writes internally — because the refusal
+//     terminal frames live INSIDE emitRefusal.
+//   - turnID==0 (nil Store): ZERO data-turn frames; the rest of the
+//     frame sequence is byte-identical.
+// ---------------------------------------------------------------------------
+
+// frameTypeList renders the frame type sequence for assertion messages.
+func frameTypeList(frames []wire.UIMessageChunk) []string {
+	out := make([]string, 0, len(frames))
+	for _, f := range frames {
+		out = append(out, f.Type)
+	}
+	return out
+}
+
+// indexOfChunkType returns the index of the FIRST frame with the given
+// type, or -1 when absent.
+func indexOfChunkType(frames []wire.UIMessageChunk, chunkType string) int {
+	for i, f := range frames {
+		if f.Type == chunkType {
+			return i
+		}
+	}
+	return -1
+}
+
+// dataTurnIndexes returns the indexes of every data-turn frame.
+func dataTurnIndexes(frames []wire.UIMessageChunk) []int {
+	out := make([]int, 0, 1)
+	for i, f := range frames {
+		if f.Type == "data-turn" {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// soleTurnID asserts exactly one data-turn frame exists and decodes its
+// TurnPayload.
+func soleTurnID(t *testing.T, frames []wire.UIMessageChunk) int64 {
+	t.Helper()
+	idx := dataTurnIndexes(frames)
+	require.Len(t, idx, 1,
+		"expected exactly one data-turn frame; got %d (sequence=%v)", len(idx), frameTypeList(frames))
+	var p wire.TurnPayload
+	require.NoError(t, json.Unmarshal(frames[idx[0]].Data, &p),
+		"data-turn payload must unmarshal into wire.TurnPayload; raw=%s", string(frames[idx[0]].Data))
+	return p.TurnID
+}
+
+// assistantRowID returns the id of the session's LAST assistant row
+// (GetSession is the writeAuditAndTurn ground truth — 29-01 backfills
+// SessionMessage.ID).
+func assistantRowID(t *testing.T, s store.Store, sessionID string) int64 {
+	t.Helper()
+	msgs, err := s.GetSession(context.Background(), sessionID)
+	require.NoError(t, err, "GetSession(%s)", sessionID)
+	require.NotEmpty(t, msgs, "session must have turns")
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "assistant" {
+			require.Greater(t, msgs[i].ID, int64(0),
+				"GetSession must backfill the assistant row id (29-01 contract)")
+			return msgs[i].ID
+		}
+	}
+	t.Fatal("session has no assistant row")
+	return 0
+}
+
+// TestVerdictPipeline_DataTurnVerdictFrameOrder — the verdict path
+// emits data-turn AFTER the counter-evidence annotation frame and
+// BEFORE text-end / finish-step / finish, carrying the assistant row id
+// writeAuditAndTurn just persisted.
+func TestVerdictPipeline_DataTurnVerdictFrameOrder(t *testing.T) {
+	const sessID = "sess-29-04-verdict-turn"
+	deps := newHistoryAwareDeps(t, sessID, false)
+	deps.Retriever = &stubRetriever{chunks: emitChunks()}
+	// Wire the registry so the post-verdict counter-evidence pass emits
+	// its data-decision annotation — the frame data-turn must FOLLOW.
+	deps.KBRegistry = testKBReg()
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	resp, err := postChatRaw(t, context.Background(), addr, sessID, "年假有几天")
+	require.NoError(t, err)
+	body := drainBody(t, resp)
+
+	frames := parseFrames(t, body)
+	turnIdx := dataTurnIndexes(frames)
+	require.Len(t, turnIdx, 1,
+		"verdict stream must carry exactly one data-turn frame; sequence=%v", frameTypeList(frames))
+
+	counterEvidence := indexOfChunkType(frames, "data-decision")
+	textEnd := indexOfChunkType(frames, "text-end")
+	finishStep := indexOfChunkType(frames, "finish-step")
+	finish := indexOfChunkType(frames, "finish")
+	require.Greater(t, counterEvidence, -1,
+		"fixture must produce a counter-evidence annotation frame; sequence=%v", frameTypeList(frames))
+	require.Greater(t, textEnd, -1, "verdict stream must reach text-end; sequence=%v", frameTypeList(frames))
+	require.Greater(t, finish, -1, "verdict stream must reach finish; sequence=%v", frameTypeList(frames))
+
+	assert.Greater(t, turnIdx[0], counterEvidence,
+		"data-turn MUST follow the post-verdict counter-evidence annotation (behavior matrix)")
+	assert.Less(t, turnIdx[0], textEnd,
+		"data-turn MUST precede text-end (T-29-06 frame-order window)")
+	assert.Less(t, turnIdx[0], finishStep,
+		"data-turn MUST precede finish-step")
+	assert.Less(t, turnIdx[0], finish,
+		"data-turn MUST precede finish — useChat registers the message at finish")
+
+	// turnId == the persisted assistant row id.
+	assert.Equal(t, assistantRowID(t, deps.Store, sessID), soleTurnID(t, frames),
+		"data-turn turnId MUST equal the assistant row id writeAuditAndTurn persisted")
+}
+
+// TestVerdictPipeline_DataTurnRefusalShapes — the four reachable
+// pipeline refusal short-circuits all emit data-turn BEFORE the refusal
+// stream's text-start (emitRefusal writes text-start AND finish
+// internally, so "before text-start" is the strictest honest lock) and
+// carry the persisted assistant row id.
+func TestVerdictPipeline_DataTurnRefusalShapes(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+		mut  func(t *testing.T, deps *Deps)
+	}{
+		{
+			name: "no_authorized_source",
+			want: verdict.RefusalReasonNoAuthorizedSource,
+			mut: func(t *testing.T, deps *Deps) {
+				t.Helper()
+				// Default stub retriever returns zero chunks → SC-2.
+			},
+		},
+		{
+			name: "low_retrieval_score",
+			want: verdict.RefusalReasonLowRetrievalScore,
+			mut: func(t *testing.T, deps *Deps) {
+				t.Helper()
+				low := emitChunks()
+				for i := range low {
+					low[i].Score = 0.05 // < retrievalScoreThreshold (0.3)
+				}
+				deps.Retriever = &stubRetriever{chunks: low}
+			},
+		},
+		{
+			name: "classifier_refuse",
+			want: verdict.RefusalReasonOutOfScope,
+			mut: func(t *testing.T, deps *Deps) {
+				t.Helper()
+				deps.Retriever = &stubRetriever{chunks: emitChunks()}
+				classifierLM := &historyTestStubLM{canned: `{"decision": "refuse", "reason": "out_of_scope", "confidence": 0.92}`}
+				deps.RefusalClassifier, _ = classifier.NewRefusalClassifier(classifierLM)
+			},
+		},
+		{
+			name: "status_refused",
+			want: verdict.RefusalReasonNoAuthorizedSource,
+			mut: func(t *testing.T, deps *Deps) {
+				t.Helper()
+				deps.Retriever = &stubRetriever{chunks: emitChunks()}
+				// The LLM itself refuses → Step 10b maps it to the
+				// structured refusal shape.
+				deps.PipelineChatModel = &stubStreamingChatModel{
+					tokens: []string{`{"status":"refused","confidence":0.0,"citations":[],"review_required":true}`},
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sessID := "sess-29-04-refuse-" + tc.name
+			deps := newHistoryAwareDeps(t, sessID, false)
+			tc.mut(t, deps)
+
+			addr, cleanup := newTestHertz(t, deps)
+			defer cleanup()
+
+			resp, err := postChatRaw(t, context.Background(), addr, sessID, "那第一条呢")
+			require.NoError(t, err)
+			body := drainBody(t, resp)
+
+			frames := parseFrames(t, body)
+			r := findRefusal(t, frames)
+			assert.Equal(t, tc.want, r.Reason, "fixture must produce the expected refusal reason")
+
+			turnIdx := dataTurnIndexes(frames)
+			require.Len(t, turnIdx, 1,
+				"refusal stream (%s) must carry exactly one data-turn frame; sequence=%v", tc.name, frameTypeList(frames))
+			textStart := indexOfChunkType(frames, "text-start")
+			finish := indexOfChunkType(frames, "finish")
+			require.Greater(t, textStart, -1, "refusal stream must have text-start")
+			require.Greater(t, finish, -1, "refusal stream must reach finish")
+			assert.Less(t, turnIdx[0], textStart,
+				"data-turn MUST precede emitRefusal's text-start (the refusal terminal frames live inside emitRefusal)")
+			assert.Less(t, turnIdx[0], finish,
+				"data-turn MUST precede finish")
+			assert.Equal(t, assistantRowID(t, deps.Store, sessID), soleTurnID(t, frames),
+				"data-turn turnId MUST equal the assistant row id (refusal rounds are votable too — Open Q3)")
+		})
+	}
+}
+
+// TestVerdictPipeline_DataTurnOutOfScopeEmptyTiers — the defensive
+// empty-resolved-tiers branch (pipeline Step 1). The Loader can never
+// produce it (Validate rejects empty reads), so the test invokes
+// VerdictPipeline directly with a zero Manifest through a real listener.
+func TestVerdictPipeline_DataTurnOutOfScopeEmptyTiers(t *testing.T) {
+	const sessID = "sess-29-04-oos-empty-tiers"
+	deps := newVerdictPipelineDeps(t)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "bind dynamic listener")
+	h := server.Default(server.WithListener(ln))
+	h.POST("/api/chat", func(ctx context.Context, c *app.RequestContext) {
+		_ = deps.VerdictPipeline(ctx, c, "年假有几天", &skill.Manifest{}, sessID, "compliance")
+	})
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.Run() }()
+	cleanup := func() { _ = h.Close(); <-errCh }
+	defer cleanup()
+
+	addr := "127.0.0.1:" + portStr(ln.Addr().(*net.TCPAddr).Port)
+	require.NoError(t, waitForListener(addr, 3*time.Second), "server warmup")
+
+	resp, err := postChatRaw(t, context.Background(), addr, sessID, "年假有几天")
+	require.NoError(t, err)
+	body := drainBody(t, resp)
+
+	frames := parseFrames(t, body)
+	r := findRefusal(t, frames)
+	assert.Equal(t, verdict.RefusalReasonOutOfScope, r.Reason,
+		"empty-tiers branch must refuse out_of_scope")
+	turnIdx := dataTurnIndexes(frames)
+	require.Len(t, turnIdx, 1, "sequence=%v", frameTypeList(frames))
+	textStart := indexOfChunkType(frames, "text-start")
+	assert.Less(t, turnIdx[0], textStart,
+		"data-turn MUST precede emitRefusal's text-start on the out_of_scope shape")
+	assert.Equal(t, assistantRowID(t, deps.Store, sessID), soleTurnID(t, frames))
+}
+
+// TestVerdictPipeline_DataTurnZeroIDSendsNothing — turnID==0 (nil
+// Store → writeAuditAndTurn returns (0, nil)) suppresses the frame
+// entirely; the rest of the verdict frame sequence is unchanged. The FE
+// renders its disabled feedback state instead of wiring a vote to a
+// fabricated id (T-29-06).
+func TestVerdictPipeline_DataTurnZeroIDSendsNothing(t *testing.T) {
+	const sessID = "sess-29-04-zero-turn-id"
+	deps := newVerdictPipelineDeps(t)
+	deps.Store = nil // degraded: writeAuditAndTurn returns (0, nil)
+	chunkText := "员工累计工作已满1年不满10年的，年假5天。"
+	deps.Retriever = &stubRetriever{chunks: []retriever.Hit{
+		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/annual_leave.md", Score: 0.65},
+	}}
+	deps.Runner = newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, chunkText, "权威"))
+
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	resp, err := postChatRaw(t, context.Background(), addr, sessID, "年假有几天")
+	require.NoError(t, err)
+	body := drainBody(t, resp)
+
+	frames := parseFrames(t, body)
+	assert.Empty(t, dataTurnIndexes(frames),
+		"turnID==0 must emit ZERO data-turn frames; sequence=%v", frameTypeList(frames))
+	require.NotNil(t, mustVerdict(t, frames), "verdict must still stream")
+	textEnd := indexOfChunkType(frames, "text-end")
+	finish := indexOfChunkType(frames, "finish")
+	require.Greater(t, textEnd, -1, "verdict lifecycle unchanged: text-end present")
+	require.Greater(t, finish, -1, "verdict lifecycle unchanged: finish present")
+	assert.Less(t, indexOfChunkType(frames, "data-policy"), textEnd,
+		"rest of the frame sequence must be unchanged (data-policy before text-end)")
 }

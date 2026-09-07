@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sync"
 	"testing"
@@ -29,12 +30,14 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
+	"github.com/skillforge/skillforge/internal/verdict"
 )
 
 // Phase 3 Plan 03-05 integration tests. These three tests are the
@@ -537,4 +540,238 @@ func TestSessionIDGeneration(t *testing.T) {
 		assert.Equal(t, "user", msgs[2].Role)
 		assert.Equal(t, "second query", msgs[2].Content)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 29 / Plan 29-04 Task 2 — data-turn locks on the agent path
+// (runAgentPath) and the Runner path (ChatHandler).
+//
+// Coverage note (honest): runAgentPath's agent-ERROR branch
+// (chat.go, the errorChunk + finish-step-only shape) deliberately does
+// NOT emit data-turn — without a finish frame useChat never registers
+// the assistant message, so there is no FeedbackRow to vote on and a
+// turn id would fabricate a vote target. The
+// TestRunAgentPath_ErrorBranchHasNoDataTurn lock pins that. The runner
+// path's DrainRunnerEvents-error branch has the same property in
+// reverse: it only fires after the client connection is gone or the
+// ctx is cancelled, so its frame order is structurally unobservable
+// over HTTP — its data-turn wiring is locked by the == 11 call-site
+// count in this plan's acceptance criteria instead.
+// ---------------------------------------------------------------------------
+
+// retrieveThenVerdictModel drives the ReAct loop one hop: turn 1 emits
+// the retrieve tool call, turn 2 emits the final grounded verdict JSON
+// (citing the chunk the stub retriever returns verbatim so the
+// grounding checker leaves it intact).
+type retrieveThenVerdictModel struct {
+	mu    sync.Mutex
+	calls int
+}
+
+var _ model.ToolCallingChatModel = (*retrieveThenVerdictModel)(nil)
+
+func (m *retrieveThenVerdictModel) Generate(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls++
+	if m.calls == 1 {
+		return &schema.Message{
+			Role: schema.Assistant,
+			ToolCalls: []schema.ToolCall{
+				{
+					ID:   "call_1",
+					Type: "function",
+					Function: schema.FunctionCall{
+						Name:      agent.RetrieveToolName,
+						Arguments: `{"query":"年假有几天"}`,
+					},
+				},
+			},
+		}, nil
+	}
+	return &schema.Message{
+		Role:    schema.Assistant,
+		Content: cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, historyTestChunkText, "权威"),
+	}, nil
+}
+
+func (m *retrieveThenVerdictModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, fmt.Errorf("retrieveThenVerdictModel: Stream not implemented")
+}
+
+func (m *retrieveThenVerdictModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	return m, nil
+}
+
+// errorChatModel fails Generate outright → Agent.Run returns an error →
+// the agent-error branch (no finish, no data-turn).
+type errorChatModel struct{}
+
+var _ model.ToolCallingChatModel = (*errorChatModel)(nil)
+
+func (m *errorChatModel) Generate(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	return nil, fmt.Errorf("simulated LLM outage")
+}
+
+func (m *errorChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, fmt.Errorf("errorChatModel: Stream not implemented")
+}
+
+func (m *errorChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	return m, nil
+}
+
+// TestRunAgentPath_DataTurnRefusalAndVerdict — the agent path's two
+// votable shapes:
+//
+//   - refusal (trust floor, accumulator empty): data-turn precedes
+//     emitRefusal's text-start and finish;
+//   - verdict (one retrieve hop + grounded final JSON): data-turn
+//     precedes text-end / finish-step / finish.
+//
+// Both turnIds equal the persisted assistant row id.
+func TestRunAgentPath_DataTurnRefusalAndVerdict(t *testing.T) {
+	cases := []struct {
+		name    string
+		summon func(t *testing.T) model.ToolCallingChatModel
+	}{
+		{
+			name: "agent_refusal",
+			summon: func(t *testing.T) model.ToolCallingChatModel {
+				t.Helper()
+				// Never calls retrieve → accumulator empty → trust floor
+				// refuses (no_authorized_source).
+				return &cannedChatModel{}
+			},
+		},
+		{
+			name: "agent_verdict",
+			summon: func(t *testing.T) model.ToolCallingChatModel {
+				t.Helper()
+				return &retrieveThenVerdictModel{}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sessID := "sess-29-04-agent-" + tc.name
+			retrieverStub := &stubRetriever{chunks: emitChunks()}
+			deps := &Deps{
+				Embedder:  newStubEmbedder(),
+				Retriever: retrieverStub,
+				Agent:     newTestAgent(t, tc.summon(t)),
+				Store:     newTestStore(t),
+			}
+			addr, cleanup := newTestHertz(t, deps)
+			defer cleanup()
+
+			resp, err := postChatRaw(t, context.Background(), addr, sessID, "年假有几天")
+			require.NoError(t, err)
+			body := drainBody(t, resp)
+
+			frames := parseFrames(t, body)
+			turnIdx := dataTurnIndexes(frames)
+			require.Len(t, turnIdx, 1,
+				"agent %s stream must carry exactly one data-turn frame; sequence=%v", tc.name, frameTypeList(frames))
+			finish := indexOfChunkType(frames, "finish")
+			require.Greater(t, finish, -1, "agent path must reach finish; sequence=%v", frameTypeList(frames))
+			assert.Less(t, turnIdx[0], finish,
+				"data-turn MUST precede finish on the agent %s shape", tc.name)
+			assert.Equal(t, assistantRowID(t, deps.Store, sessID), soleTurnID(t, frames),
+				"agent %s: turnId MUST equal the persisted assistant row id", tc.name)
+
+			if tc.name == "agent_refusal" {
+				textStart := indexOfChunkType(frames, "text-start")
+				require.Greater(t, textStart, -1, "refusal stream must have text-start")
+				assert.Less(t, turnIdx[0], textStart,
+					"agent refusal: data-turn MUST precede emitRefusal's text-start")
+				r := findRefusal(t, frames)
+				assert.Equal(t, verdict.RefusalReasonNoAuthorizedSource, r.Reason)
+			}
+			if tc.name == "agent_verdict" {
+				textEnd := indexOfChunkType(frames, "text-end")
+				require.Greater(t, textEnd, -1, "verdict stream must have text-end")
+				assert.Less(t, turnIdx[0], textEnd,
+					"agent verdict: data-turn MUST precede the terminal text lifecycle close")
+				assert.NotNil(t, mustVerdict(t, frames), "agent verdict stream must carry a data-policy Verdict")
+			}
+		})
+	}
+}
+
+// TestRunAgentPath_ErrorBranchHasNoDataTurn — the agent-error branch
+// emits errorChunk + finish-step ONLY (no finish → useChat never
+// registers the assistant message → no FeedbackRow to vote on). The
+// branch deliberately does NOT emit data-turn: broadcasting a turn id
+// for an unvotable message would fabricate a vote target.
+func TestRunAgentPath_ErrorBranchHasNoDataTurn(t *testing.T) {
+	const sessID = "sess-29-04-agent-error"
+	deps := &Deps{
+		Embedder:  newStubEmbedder(),
+		Retriever: &stubRetriever{chunks: emitChunks()},
+		Agent:     newTestAgent(t, &errorChatModel{}),
+		Store:     newTestStore(t),
+	}
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	resp, err := postChatRaw(t, context.Background(), addr, sessID, "年假有几天")
+	require.NoError(t, err)
+	body := drainBody(t, resp)
+
+	frames := parseFrames(t, body)
+	assert.Equal(t, "error", frames[0].Type,
+		"agent-error branch must lead with the error chunk; sequence=%v", frameTypeList(frames))
+	assert.Empty(t, dataTurnIndexes(frames),
+		"agent-error branch must NOT emit data-turn (no finish → message unregistered → no FeedbackRow); sequence=%v",
+		frameTypeList(frames))
+}
+
+// TestRunnerChatHandler_DataTurnBeforeFinish — the Runner-path drain
+// branch: the handler's terminal finish-step + finish pair is preceded
+// by exactly one data-turn carrying the persisted assistant row id.
+func TestRunnerChatHandler_DataTurnBeforeFinish(t *testing.T) {
+	const sessID = "sess-29-04-runner-drain"
+	loader := skill.NewLoader(skillsDirPath(), testKBReg())
+	_, err := loader.Scan()
+	require.NoError(t, err, "load real skills/compliance/SKILL.md")
+
+	deps := &Deps{
+		Embedder:   newStubEmbedder(),
+		Retriever:  &stubRetriever{chunks: emitChunks()},
+		ChatModel:  &cannedChatModel{content: cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, historyTestChunkText, "权威")},
+		Store:      newTestStore(t),
+		Loader:     loader,
+		KBRegistry: testKBReg(),
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err, "bind dynamic listener")
+	h := hertzserver.Default(hertzserver.WithListener(ln))
+	h.POST("/api/chat", deps.ChatHandler)
+	errCh := make(chan error, 1)
+	go func() { errCh <- h.Run() }()
+	cleanup := func() { _ = h.Close(); <-errCh }
+	defer cleanup()
+
+	addr := "127.0.0.1:" + portStr(ln.Addr().(*net.TCPAddr).Port)
+	require.NoError(t, waitForListener(addr, 3*time.Second), "server warmup")
+
+	resp, err := postChatRaw(t, context.Background(), addr, sessID, "年假有几天")
+	require.NoError(t, err)
+	body := drainBody(t, resp)
+
+	frames := parseFrames(t, body)
+	turnIdx := dataTurnIndexes(frames)
+	require.Len(t, turnIdx, 1,
+		"runner drain stream must carry exactly one data-turn frame; sequence=%v", frameTypeList(frames))
+	finishStep := indexOfChunkType(frames, "finish-step")
+	finish := indexOfChunkType(frames, "finish")
+	require.Greater(t, finishStep, -1, "runner path must emit its terminal finish-step; sequence=%v", frameTypeList(frames))
+	require.Greater(t, finish, -1, "runner path must emit its terminal finish")
+	assert.Less(t, turnIdx[0], finishStep, "data-turn MUST precede the terminal finish-step")
+	assert.Less(t, turnIdx[0], finish, "data-turn MUST precede finish")
+	assert.Equal(t, assistantRowID(t, deps.Store, sessID), soleTurnID(t, frames),
+		"runner path: turnId MUST equal the persisted assistant row id")
 }
