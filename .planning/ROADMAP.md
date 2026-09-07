@@ -222,7 +222,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 29-04-PLAN.md — data-turn wire 帧：ValidTypes + TS union D15 配对 + emitTurnID + 11 发射点（pipeline.go 6 / chat.go 3 / runner_setup.go 2；含 5 条拒绝路径的先落库重排，Open Q3 resolved 拒绝轮可投）+ history 内嵌 turn_id/voted_verdict（FBK-01/04，D-29-03）
+- [x] 29-04-PLAN.md — data-turn wire 帧：ValidTypes + TS union D15 配对 + emitTurnID + 11 发射点（pipeline.go 6 / chat.go 3 / runner_setup.go 2；含 5 条拒绝路径的先落库重排，Open Q3 resolved 拒绝轮可投）+ history 内嵌 turn_id/voted_verdict（FBK-01/04，D-29-03）— SHIPPED 2026-09-08（271a5bb D15 配对 + 4471b88/affeaa1 TDD 帧序 + 2f5e032/5ba4cfc TDD 回显；emitTurnID ==11 精确等式 + turnID<=0 零字节 + 全部拒绝形态 data-turn 先于 finish 且 turnId == GetSession 落库 id；VotedVerdictsBySession 恰一次批量；wire-contract + chat-restore 15/15 + tsc 干净）
 - [ ] 29-05-PLAN.md — HTTP 面：POST /api/feedback（幂等投票 + audit 邻近归因服务端真相）+ admin 复核/处置/指标三端点（403 先于 503 + closed_count + 全票分母 null 语义）+ FBK-05 source-grep 结构锁（FBK-01/02/03/05，D-29-05/07）
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -289,7 +289,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 3/9 | In progress (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped) | - |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 4/9 | In progress (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 shipped) | - |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---
