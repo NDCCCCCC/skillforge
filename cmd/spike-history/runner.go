@@ -672,8 +672,9 @@ func buildUserMessageBody(query string, hits []retriever.Hit, projected []schema
 
 // dryRunHits returns 5 deterministic synthetic hits for a given query.
 // The IDs are 9991..9995 — high enough to avoid collision with any
-// real corpus chunk. Tier is hard-coded to "权威" (the compliance
-// Skill's primary resolved tier). Score decreases monotonically so
+// real corpus chunk. Tier is hard-coded to "authority" (the authority-role
+// KB slug — the compliance Skill's primary resolved tier; Phase 26 retired
+// the CN tier values from the data layer). Score decreases monotonically so
 // any rank-sensitive metric (ContextPrecision) sees a strict ordering.
 func dryRunHits(query string) []retriever.Hit {
 	hits := make([]retriever.Hit, 0, dryRunHitsCount)
@@ -681,7 +682,7 @@ func dryRunHits(query string) []retriever.Hit {
 		hits = append(hits, retriever.Hit{
 			ID:      int64(dryRunHitBaseID + i),
 			Score:   float32(1.0 - float64(i)*0.1),
-			Tier:    "权威",
+			Tier:    "authority",
 			Content: fmt.Sprintf("[DRY chunk %d] for query %s", dryRunHitBaseID+i, query),
 			Source:  fmt.Sprintf("dry-run/%d.md", dryRunHitBaseID+i),
 		})
@@ -702,7 +703,7 @@ func dryRunVerdict(row SpikeRow) verdict.Verdict {
 		cites = append(cites, verdict.Citation{
 			ChunkID: fmt.Sprintf("%d", dryRunHitBaseID+i),
 			Span:    fmt.Sprintf("[DRY chunk %d] for query %s", dryRunHitBaseID+i, row.Query),
-			Tier:    "权威",
+			Tier:    "authority",
 		})
 	}
 	return verdict.Verdict{

@@ -90,8 +90,11 @@ const smokeToolCallID = "tc-hitl-smoke-000001"
 // smokeToolArgs is the scripted memory_facts_write tool-call payload.
 // The bytes are the HITL-07 anchor: the pending row's frozen_args,
 // the approved row's frozen_args, and the Pass-2 executed bytes MUST
-// all be byte-identical to this constant.
-const smokeToolArgs = `{"key":"employee_count","value":"150","tier":"权威"}`
+// all be byte-identical to this constant. The tier value is the
+// authority-role KB slug (Phase 26 retired CN tier values from the
+// data layer; the smoke run must write a value the live registry
+// actually resolves).
+const smokeToolArgs = `{"key":"employee_count","value":"150","tier":"authority"}`
 
 // smokeSessionID is the E2E session identity. One binary run = one
 // session; the approval flow's cross-session moat is exercised by
@@ -284,7 +287,7 @@ func smokeManifest(skillID string) *skill.Manifest {
 		Agent:       "ChatModelAgent",
 		Writes:      []string{"memory:facts"},
 	}
-	m.SetResolvedTiersForTest([]string{"权威"})
+	m.SetResolvedTiersForTest([]string{"authority"})
 	return m
 }
 

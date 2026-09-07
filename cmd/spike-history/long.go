@@ -51,7 +51,15 @@
 //	  即 8/12/15 条 history 经 Project 截到 6 条。spike 报告
 //	  （Plan 09-05）观察此截断是否仍漂移——若仍漂移则 Phase 10
 //	  必须先做 MEM-05 summary 中间件；若不漂移则 B3 即可。
-//	  TODO(phase-10): 把 B3 替换为 summarization 中间件（MEM-05）。
+//
+//	  Phase 10 处置（事实陈述，HYG-01 / Plan 26-10）：长会话的逃逸
+//	  方案最终是 D10-B3 字符预算窗口——internal/history/projection.go
+//	  的 TruncateToCharBudget 是 PRIMARY 且唯一的窗口（legacy
+//	  6-message pre-cap 已移除）。上面"替换为 summarization 中间件"
+//	  的分支没有发生：MEM-05 摘要中间件未实现，全仓 summariz* 命中
+//	  均为本 spike 自身的 --summarize 报表生成（summary.go），与摘要
+//	  压缩无关。spike 观察结论见 .planning/phases/09-* 与
+//	  .planning/STATE.md 的 Phase 10 记录（D9-V2）。
 //
 // Hard guarantee: this file does NOT introduce a new dependency, does
 // NOT modify spike_row.go / RunEntry / writeResult, and does NOT write
