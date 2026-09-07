@@ -42,8 +42,9 @@ import (
 //
 // checkpoint (Plan 08-02): opaque eino CheckPointStore bytes. INSERT +
 // SELECT passthrough — the store never parses the payload; the only
-// write is the id-keyed upsert (ON CONFLICT(id) DO UPDATE) so a
-// re-interrupted run replaces its own checkpoint. session_id / skill_id
+// write is the id-keyed upsert (INSERT ... ON CONFLICT(id), i.e.
+// replace-on-replay) so a re-interrupted run replaces its own
+// checkpoint. session_id / skill_id
 // / expires_at are reserved for the Phase 11 lifecycle (bind-to-session,
 // TTL) — this phase neither writes nor filters on them (all-NULL rows
 // are indistinguishable from having no filter).
@@ -370,6 +371,104 @@ CREATE TABLE IF NOT EXISTS knowledge_bases (
     created_at        DATETIME NOT NULL,
     updated_at        DATETIME NOT NULL
 );
+
+-- feedback (Phase 29 / Plan 29-02 / FBK-01 / D-29-02): the one-vote-per-
+-- message user-feedback table. UNIQUE(session_id, turn_id) IS the
+-- idempotency mechanism — a replayed vote hits ON CONFLICT DO NOTHING and
+-- the caller reads the FIRST row back (the FE lock state is only a cache;
+-- the DB constraint is the sole source of truth for "one vote per turn").
+--
+-- Schema rationale:
+--   - turn_id is session_turn.id (D-29-01) — the server-side message
+--     identity, never a client-generated uuid.
+--   - verdict CHECK: the closed three-value vocabulary is storage-layer
+--     backstopped the same way knowledge_bases.role is (a typo'd verdict
+--     is refused by sqlite, not merely by Go-side validation).
+--   - comment: the optional D-29-06 outdated note (empty for the other
+--     two verdicts; surfacing it is the review queue's business).
+--   - skill_id / chunk_ids: server-side copies from the turn's audit row
+--     (D-29-05 — never trusted from the FE). chunk_ids is a CSV snapshot
+--     in the audit.chunk_ids precedent; the normalized per-chunk join
+--     column lives in feedback_chunk_refs below.
+--   - INSERT-only discipline: rows are appended by PutFeedback; this
+--     table has no mutation or removal path anywhere (source-grep
+--     structural lock in feedback_test.go).
+CREATE TABLE IF NOT EXISTS feedback (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         DATETIME NOT NULL,
+    session_id TEXT    NOT NULL,
+    turn_id    INTEGER NOT NULL,
+    verdict    TEXT    NOT NULL CHECK (verdict IN ('helpful','unhelpful','outdated')),
+    comment    TEXT    NOT NULL DEFAULT '',
+    skill_id   TEXT    NOT NULL DEFAULT '',
+    chunk_ids  TEXT    NOT NULL DEFAULT '',
+    UNIQUE(session_id, turn_id)
+);
+
+-- feedback_chunk_refs (Phase 29 / Plan 29-02 / FBK-02/03): the
+-- normalization of one vote's cited chunks, one row per (feedback,
+-- chunk). audit.chunk_ids is a CSV and splitting CSV for aggregation
+-- inside sqlite is awkward — writing these rows once at vote time buys
+-- two pure-SQL aggregations forever after: the per-chunk pending-review
+-- queue (GROUP BY chunk_id) and the per-KB metrics (GROUP BY kb_slug).
+--
+--   - kb_slug is the retriever chunk's Tier (Phase 26 semantics: Tier IS
+--     the knowledge_bases registry slug). Populated by the 29-05 write
+--     path; this plan only stores and reads it.
+--   - One vote citing two KBs produces two rows — that is the Open Q2
+--     accounting (per-KB metrics count a multi-KB vote once PER KB; the
+--     per-Skill and total dimensions still count it exactly once).
+CREATE TABLE IF NOT EXISTS feedback_chunk_refs (
+    feedback_id INTEGER NOT NULL,
+    chunk_id    INTEGER NOT NULL,
+    kb_slug     TEXT    NOT NULL DEFAULT '',
+    UNIQUE(feedback_id, chunk_id)
+);
+
+-- feedback_dispositions (Phase 29 / Plan 29-02 / FBK-02 / D-29-07..09):
+-- the INSERT-only review-queue disposition log. Deliberately NO UNIQUE
+-- constraint — multiple dispositions of one chunk are legal and the
+-- NEWEST timestamp wins ("latest-disposition-wins", Open Q1). The
+-- pending view is DERIVED (a chunk is pending when it has an outdated
+-- vote with no later disposition) — there is no second write path and
+-- no status column anywhere.
+CREATE TABLE IF NOT EXISTS feedback_dispositions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          DATETIME NOT NULL,
+    chunk_id    INTEGER NOT NULL,
+    disposition TEXT    NOT NULL CHECK (disposition IN ('updated','false_positive','ignored')),
+    note        TEXT    NOT NULL DEFAULT '',
+    actor       TEXT    NOT NULL DEFAULT 'admin'
+);
+
+-- tickets (Phase 29 / Plan 29-02 / TKT-02 / D-29-14): the one-ticket-per-
+-- message ticket request table. UNIQUE(session_id, turn_id) is the same
+-- idempotency mechanism as feedback — a duplicate click returns the FIRST
+-- row (existing ticket number) instead of a second row.
+--
+--   - INSERT-only: PutTicket appends; there is NO write-back path for
+--     the outbound dispatch outcome (the dispatch result lands in an
+--     action_ticket_dispatch_* audit row instead — TKT-02 keeps the
+--     INSERT-only posture intact, source-grep lock in tickets_test.go).
+--   - dispatch_status CHECK ('none' | 'queued') records the state AT
+--     INSERT TIME only: 'none' = no provider configured (store-only
+--     receipt), 'queued' = handed to the background dispatcher. It is
+--     never flipped afterwards.
+--   - The acceptance number is NOT a column — the 29-06 handler derives
+--     "TKT-{row id}" from the returned TicketRow.ID (INSERT-only
+--     discipline forbids a write-back number column).
+CREATE TABLE IF NOT EXISTS tickets (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts              DATETIME NOT NULL,
+    session_id      TEXT    NOT NULL,
+    turn_id         INTEGER NOT NULL,
+    description     TEXT    NOT NULL,
+    chunk_ids       TEXT    NOT NULL DEFAULT '',
+    skill_id        TEXT    NOT NULL DEFAULT '',
+    provider        TEXT    NOT NULL DEFAULT 'none',
+    dispatch_status TEXT    NOT NULL DEFAULT 'none' CHECK (dispatch_status IN ('none','queued')),
+    UNIQUE(session_id, turn_id)
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
@@ -551,6 +650,48 @@ CREATE INDEX IF NOT EXISTS idx_report_runs_fired_at ON report_runs(fired_at)
 const idxKnowledgeBasesRole = `
 CREATE INDEX IF NOT EXISTS idx_knowledge_bases_role ON knowledge_bases(role)
 `
+
+// feedback / feedback_chunk_refs / feedback_dispositions / tickets
+// read-path indexes (Phase 29 / Plan 29-02 / FBK-01..03 + TKT-02). Six
+// independent consts executed at the TAIL of migrate() — the same shape
+// discipline as idx_kpi_calls_* and idxKnowledgeBasesRole. All four
+// tables are brand-new (additive CREATE TABLE IF NOT EXISTS, zero ALTER
+// dependency), but every post-schemaSQL index stays in the
+// migrate()-tail convention so the D14-E1 ordering contract keeps
+// exactly one shape to remember.
+//
+//   - idx_feedback_session:       per-conversation vote history (29-03
+//                                 VotedVerdictsBySession read).
+//   - idx_feedback_ts:            metrics time-window scans (D-29-10/11).
+//   - idx_feedback_skill:         per-Skill metric aggregation (FBK-03).
+//   - idx_refs_chunk:             per-chunk pending-review queue reads.
+//   - idx_dispositions_chunk:     latest-disposition-wins lookup per chunk.
+//   - idx_tickets_session:        per-conversation ticket lookups.
+const (
+	idxFeedbackSession = `
+CREATE INDEX IF NOT EXISTS idx_feedback_session ON feedback(session_id)
+`
+
+	idxFeedbackTS = `
+CREATE INDEX IF NOT EXISTS idx_feedback_ts ON feedback(ts)
+`
+
+	idxFeedbackSkill = `
+CREATE INDEX IF NOT EXISTS idx_feedback_skill ON feedback(skill_id)
+`
+
+	idxFeedbackChunkRefsChunk = `
+CREATE INDEX IF NOT EXISTS idx_refs_chunk ON feedback_chunk_refs(chunk_id)
+`
+
+	idxFeedbackDispositionsChunk = `
+CREATE INDEX IF NOT EXISTS idx_dispositions_chunk ON feedback_dispositions(chunk_id)
+`
+
+	idxTicketsSession = `
+CREATE INDEX IF NOT EXISTS idx_tickets_session ON tickets(session_id)
+`
+)
 
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
@@ -741,6 +882,30 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	// same migrate()-tail convention as kpi_calls / reports / report_runs.
 	if _, err := s.db.ExecContext(ctx, idxKnowledgeBasesRole); err != nil {
 		return fmtError("migrate.knowledge_bases.role_idx", err)
+	}
+
+	// Phase 29 / Plan 29-02 — feedback / feedback_chunk_refs /
+	// feedback_dispositions / tickets read-path indexes. All four tables
+	// are brand-new (additive, no ALTER dependency); the migrate()-tail
+	// convention is kept so the D14-E1 ordering contract continues to
+	// have exactly one index shape to remember.
+	if _, err := s.db.ExecContext(ctx, idxFeedbackSession); err != nil {
+		return fmtError("migrate.feedback.session_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, idxFeedbackTS); err != nil {
+		return fmtError("migrate.feedback.ts_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, idxFeedbackSkill); err != nil {
+		return fmtError("migrate.feedback.skill_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, idxFeedbackChunkRefsChunk); err != nil {
+		return fmtError("migrate.feedback_chunk_refs.chunk_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, idxFeedbackDispositionsChunk); err != nil {
+		return fmtError("migrate.feedback_dispositions.chunk_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, idxTicketsSession); err != nil {
+		return fmtError("migrate.tickets.session_idx", err)
 	}
 	return nil
 }
