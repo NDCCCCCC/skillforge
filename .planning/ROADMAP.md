@@ -95,7 +95,11 @@
 
 - [x] **Phase 26: 知识库注册表地基** - TierEnum 硬编码 4 值枚举 → 注册表驱动的动态知识库（admin 可建/停用，Skill reads 契约与检索层 fail-closed 校验）+ 里程碑卫生门（TODO 清零 + 结构门）（completed 2026-09-07 — 10/10 plans，verification 54/54 + 3/3 human items resolved，live UAT 5/5 PASS）
 - [x] **Phase 27: 文档上传入库** - /admin 上传 md/pdf/docx/xlsx/pptx → 解析 → 分块 → 向量化 → 入指定知识库；原始文件即弃；入库即审计、即可见（completed 2026-09-07 — 7/7 plans，verify-phase-27.sh 3 stages / 6 sub-checks 全绿，17 upload tests PASS，operator runbook 27-UAT 待执行）
-- [ ] **Phase 28: 知识图谱动态化 + 关系层** - 图谱按注册表输出 N 知识库节点 + 确定性 chunk 关系边 + 邻居/路径查询 API + GraphCanvas 升级 + 性能护栏
+- [x] **Phase 28: 知识图谱动态化 + 关系层** - 图谱按注册表输出 N 知识库节点 + 确定性 chunk 关系边 + 邻居/路径查询 API + GraphCanvas 升级 + 性能护栏
+  - [x] 28-01 — Edge struct + 4 edge-type constants + ComputeEdges pure function (GRF-02) — 2 commits: 5144fae + 858474c
+  - [x] 28-02 — neighborsHandler + pathHandler + graphHandler degraded extension (GRF-03) — 3 commits: 61d6932 + 6b649f7 + 3a67f07
+  - [x] 28-03 — sync.Map TTL cache + invalidation hooks (GRF-05) — 2 commits: 8b6aaa3 + d0369a5
+  - [ ] 28-04..28-07 — pending
 - [ ] **Phase 29: 反馈闭环 + 工单预留** - FeedbackRow 三按钮真实落库（一次一票）+ 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets
 - [ ] **Phase 30: 工程卫生收尾** - 零硬编码魔数抽查 + 全 SDLC 门里程碑级验收 + 信任语义回归证明
 
@@ -162,6 +166,16 @@ Plans:
   4. FE GraphCanvas 渲染动态知识库节点与关系边，并支持邻居展开交互
   5. 节点/边上限、分页与懒加载策略全部配置驱动；超限返回骨架图并明示降级
 **Plans**: 7 plans in 4 waves
+
+Plans:
+- [x] 28-01-PLAN.md — Edge struct + 4 edge-type constants + ComputeEdges pure function (GRF-02) — 5144fae + 858474c
+- [x] 28-02-PLAN.md — neighborsHandler + pathHandler + graphHandler degraded extension (GRF-03) — 61d6932 + 6b649f7 + 3a67f07
+- [x] 28-03-PLAN.md — sync.Map TTL cache + invalidation hooks (GRF-05) — 8b6aaa3 + d0369a5
+- [ ] 28-04-PLAN.md — main.go wiring: SetGraphCacheInvalidateHook boot binding
+- [ ] 28-05-PLAN.md — pending
+- [ ] 28-06-PLAN.md — pending
+- [ ] 28-07-PLAN.md — pending
+
 **UI hint**: yes
 **Notes**: 图谱边保持零 LLM 确定性（可 hash 复现）——LLM 实体关系抽取明确 Out of Scope（未来候选，需评测门）。
 
