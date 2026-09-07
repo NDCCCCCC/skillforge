@@ -151,4 +151,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-07 — v1.2 Phase 26 closed (知识库注册表地基: 10/10 plans, verification 54/54 + 3/3 human items resolved, live UAT 5/5 PASS; 目标功能块 1 交付). Prior: v1.1 shipped 2026-09-06 + v1.1.1 cleanup 2026-09-07.*
+*Last updated: 2026-09-08 — v1.2 Phase 29 closed (反馈闭环 + 工单预留: 9/9 plans, verification 12/12 must-haves passed + 9 operator UAT pending; FBK-05 信任红线成为 source-grep 结构锁). Prior: v1.2 Phase 26 closed 2026-09-07; v1.1 shipped 2026-09-06.*
