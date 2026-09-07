@@ -31,6 +31,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/stretchr/testify/assert"
@@ -40,9 +41,75 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // testAdminToken is declared in import_api_test.go — reuse it here.
+
+// mockStore is a minimal test double for store.Store that implements
+// HasUploadBySHA256 for deduplication tests. All other methods panic.
+type mockStore struct {
+	mu              sync.Mutex
+	hasUploadCalls  []struct{ Slug, SHA256 string }
+	hasUploadResult bool
+	hasUploadErr    error
+	onHasUpload     func(ctx context.Context, slug, sha256 string) (bool, error)
+}
+
+func (m *mockStore) HasUploadBySHA256(ctx context.Context, slug, sha256 string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.hasUploadCalls = append(m.hasUploadCalls, struct{ Slug, SHA256 string }{slug, sha256})
+	if m.onHasUpload != nil {
+		return m.onHasUpload(ctx, slug, sha256)
+	}
+	return m.hasUploadResult, m.hasUploadErr
+}
+
+// Unused store.Store methods — panic if reached.
+func (m *mockStore) PutAudit(_ context.Context, _ store.AuditRow) (int64, error) { panic("not implemented") }
+func (m *mockStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) { panic("not implemented") }
+func (m *mockStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
+func (m *mockStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) { panic("not implemented") }
+func (m *mockStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) error { panic("not implemented") }
+func (m *mockStore) UpdateAuditMetrics(_ context.Context, _ int64, _, _, _, _ *float64) error { panic("not implemented") }
+func (m *mockStore) PutAuditMeta(_ context.Context, _ store.AuditMeta) error { panic("not implemented") }
+func (m *mockStore) ListSessions(_ context.Context) ([]store.SessionSummary, error) { panic("not implemented") }
+func (m *mockStore) RenameSession(_ context.Context, _, _ string) error { panic("not implemented") }
+func (m *mockStore) DeleteSessionTurns(_ context.Context, _ string) error { panic("not implemented") }
+func (m *mockStore) InsertPendingApproval(_ context.Context, _ store.PendingApprovalRow) (int64, error) { panic("not implemented") }
+func (m *mockStore) MarkApproved(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) { panic("not implemented") }
+func (m *mockStore) MarkRejected(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) { panic("not implemented") }
+func (m *mockStore) MarkChangeRequested(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) { panic("not implemented") }
+func (m *mockStore) MarkRuleRevoked(_ context.Context, _ store.RuleRevokeRow) (int64, error) { panic("not implemented") }
+func (m *mockStore) SetCheckpointWithSnapshot(_ context.Context, _ string, _ []byte, _, _ string) error { panic("not implemented") }
+func (m *mockStore) GetCheckpointByVersionFilter(_ context.Context, _, _, _ string) ([]byte, bool, error) { panic("not implemented") }
+func (m *mockStore) Delete(_ context.Context, _ string) error { panic("not implemented") }
+func (m *mockStore) QueryFanoutByRunPath(_ context.Context, _ string) ([]store.FanoutEvent, error) { panic("not implemented") }
+func (m *mockStore) ListFanoutEvents(_ context.Context, _ string, _ int) ([]store.FanoutEvent, error) { panic("not implemented") }
+func (m *mockStore) PutDataset(_ context.Context, _ store.DatasetRow) error { panic("not implemented") }
+func (m *mockStore) ListDatasets(_ context.Context) ([]store.DatasetRow, error) { panic("not implemented") }
+func (m *mockStore) DeleteDataset(_ context.Context, _ string) error { panic("not implemented") }
+func (m *mockStore) PutImportBatch(_ context.Context, _ store.ImportBatchRow) error { panic("not implemented") }
+func (m *mockStore) LatestImportBatch(_ context.Context, _, _ string) (*store.ImportBatchRow, error) { panic("not implemented") }
+func (m *mockStore) ListImportBatches(_ context.Context, _ string) ([]store.ImportBatchRow, error) { panic("not implemented") }
+func (m *mockStore) ListAllImportBatches(_ context.Context) ([]store.ImportBatchRow, error) { panic("not implemented") }
+func (m *mockStore) PutDatasetDelete(_ context.Context, _ store.DatasetDeleteRow) error { panic("not implemented") }
+func (m *mockStore) PutKPICall(_ context.Context, _ store.KPICallRow) error { panic("not implemented") }
+func (m *mockStore) ListKPICalls(_ context.Context, _ store.KPICallsFilter) ([]store.KPICallRow, error) { panic("not implemented") }
+func (m *mockStore) LatestKPICallByFunc(_ context.Context) (map[string]time.Time, error) { panic("not implemented") }
+func (m *mockStore) PutReport(_ context.Context, _ store.ReportRow) error { panic("not implemented") }
+func (m *mockStore) ListReports(_ context.Context, _ string, _ int) ([]store.ReportRow, error) { panic("not implemented") }
+func (m *mockStore) GetReport(_ context.Context, _ string, _ int) (*store.ReportRow, error) { panic("not implemented") }
+func (m *mockStore) GetLatestReport(_ context.Context, _ string) (*store.ReportRow, error) { panic("not implemented") }
+func (m *mockStore) ListReportsBySkill(_ context.Context, _ string, _ int) ([]store.ReportRow, error) { panic("not implemented") }
+func (m *mockStore) PutReportRun(_ context.Context, _ store.ReportRunRow) error { panic("not implemented") }
+func (m *mockStore) ListReportRuns(_ context.Context, _, _ string, _ int) ([]store.ReportRunRow, error) { panic("not implemented") }
+func (m *mockStore) GetReportRun(_ context.Context, _ string) (*store.ReportRunRow, error) { panic("not implemented") }
+func (m *mockStore) GetLatestReportRunBySkill(_ context.Context, _, _ string) (*store.ReportRunRow, error) { panic("not implemented") }
+func (m *mockStore) CountRows(_ context.Context, _ string) (int64, error) { panic("not implemented") }
+func (m *mockStore) Health(_ context.Context) error { panic("not implemented") }
+func (m *mockStore) Close() error { panic("not implemented") }
 
 // mockIndexerBackend is the test double for server.IndexerBackend.
 // It records every Insert call and returns a configurable error.
@@ -498,4 +565,163 @@ func TestVerifyMagicBytesUnknownType(t *testing.T) {
 	err := VerifyMagicBytes(data, "application/unknown")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown format")
+}
+
+// --- Test 13: Milvus/Milvus-Connect backend unavailable → 503 + Retry-After ---
+func TestUploadDegradedMilvusDown(t *testing.T) {
+	idx := &mockIndexerBackend{}
+	deps := uploadTestDeps(t, idx)
+	// Simulate backend being unreachable: Insert returns DeadlineExceeded.
+	idx.err = context.DeadlineExceeded
+
+	content := []byte("# Hello\n\nWorld")
+	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
+	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
+
+	assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
+	// The error message should indicate backend unavailability.
+	var errResp map[string]string
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp["error"], "backend unavailable")
+}
+
+// --- Test 14: SHA-256 deduplication → 409 Conflict ---
+func TestUploadDeduplication(t *testing.T) {
+	idx := &mockIndexerBackend{}
+	deps := uploadTestDeps(t, idx)
+	// Install a mock store that reports duplicate SHA-256.
+	mockStore := &mockStore{hasUploadResult: true}
+	deps.Store = mockStore
+
+	content := []byte("# Authority Document\n\nThis is the content.")
+	body, ct, n := buildUploadMultipart(t, "policy.md", "text/markdown", content)
+	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
+
+	assert.Equal(t, http.StatusConflict, resp.Code)
+	var errResp map[string]string
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp["error"], "duplicate file")
+
+	// Verify HasUploadBySHA256 was called with the correct slug and SHA-256.
+	mockStore.mu.Lock()
+	calls := mockStore.hasUploadCalls
+	mockStore.mu.Unlock()
+	require.Len(t, calls, 1)
+	assert.Equal(t, "authority", calls[0].Slug)
+	assert.NotEmpty(t, calls[0].SHA256)
+}
+
+// --- Test 15: Slug deactivated mid-upload → 409 Conflict ---
+func TestUploadDeactivatedSlugMidUpload(t *testing.T) {
+	idx := &mockIndexerBackend{}
+	deps := uploadTestDeps(t, idx)
+
+	// Build a fresh registry and wrap it to deactivate after first Lookup.
+	inner := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	deps.KBRegistry = &deactivatingKBRegistry{delegate: inner, deactivateAfter: 4}
+
+	content := []byte("# Test\n\nContent here.")
+	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
+	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
+
+	assert.Equal(t, http.StatusConflict, resp.Code)
+	var errResp map[string]string
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp["error"], "slug deactivated during upload")
+}
+
+// deactivatingKBRegistry wraps a kb.Registry and returns false on Lookup
+// after a configurable number of calls, simulating deactivation mid-upload.
+type deactivatingKBRegistry struct {
+	delegate        kb.Registry
+	callCount       int
+	mu              sync.Mutex
+	deactivateAfter int
+}
+
+func (r *deactivatingKBRegistry) Lookup(slug string) (kb.Entry, bool) {
+	r.mu.Lock()
+	r.callCount++
+	after := r.callCount >= r.deactivateAfter
+	entry, ok := r.delegate.Lookup(slug)
+	r.mu.Unlock()
+	if after {
+		return kb.Entry{}, false
+	}
+	return entry, ok
+}
+func (r *deactivatingKBRegistry) List() []kb.Entry         { return r.delegate.List() }
+func (r *deactivatingKBRegistry) ActiveSlugs() []string    { return r.delegate.ActiveSlugs() }
+func (r *deactivatingKBRegistry) SlugsByRole(role kb.Role) []string {
+	return r.delegate.SlugsByRole(role)
+}
+func (r *deactivatingKBRegistry) RetrievalEligible() []string { return r.delegate.RetrievalEligible() }
+func (r *deactivatingKBRegistry) Signature() string            { return r.delegate.Signature() }
+func (r *deactivatingKBRegistry) ResolveReads(reads []string) ([]string, error) {
+	return r.delegate.ResolveReads(reads)
+}
+func (r *deactivatingKBRegistry) Create(in kb.CreateInput) (kb.Entry, error) {
+	return r.delegate.Create(in)
+}
+func (r *deactivatingKBRegistry) Deactivate(slug string) (kb.Entry, error) {
+	return r.delegate.Deactivate(slug)
+}
+
+// --- Test 16: Successful upload after a failed one → single action_doc_uploaded row ---
+func TestUploadSuccessAfterRetry(t *testing.T) {
+	var hookCalls []struct{ Action, Detail string }
+	hook := func(action, detail string) {
+		hookCalls = append(hookCalls, struct{ Action, Detail string }{action, detail})
+	}
+
+	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
+	_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)
+	originalHook := docUploadAuditHook
+	docUploadAuditHook = hook
+	defer func() {
+		docUploadAuditHook = originalHook
+		if prev == "" {
+			_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
+		} else {
+			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev)
+		}
+	}()
+
+	// First upload: Insert fails with DeadlineExceeded.
+	idx := &mockIndexerBackend{err: context.DeadlineExceeded}
+	deps := uploadTestDeps(t, idx)
+
+	content := []byte("# Test\n\nContent here.")
+	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
+	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
+	assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
+	require.Len(t, hookCalls, 1)
+	assert.Equal(t, actionDocUploadRejected, hookCalls[0].Action)
+
+	// Second upload: Insert succeeds.
+	idx.err = nil
+	resp = invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
+	assert.Equal(t, http.StatusOK, resp.Code)
+	// Only the success audit row should be written (no mixing).
+	require.Len(t, hookCalls, 2)
+	// hookCalls[0] = first upload failure, hookCalls[1] = second upload success
+	assert.Equal(t, actionDocUploadRejected, hookCalls[0].Action)
+	assert.Equal(t, actionDocUploaded, hookCalls[1].Action)
+}
+
+// --- Test 17: Generic Insert error (non-backend) → 500 ---
+func TestUploadInsertGenericError(t *testing.T) {
+	idx := &mockIndexerBackend{}
+	deps := uploadTestDeps(t, idx)
+	// Non-backend error: e.g. a business-logic error from Insert.
+	idx.err = fmt.Errorf("some internal indexer error")
+
+	content := []byte("# Hello\n\nWorld")
+	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
+	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
+
+	// Non-backend error should return 500, not 503.
+	assert.Equal(t, http.StatusInternalServerError, resp.Code)
 }

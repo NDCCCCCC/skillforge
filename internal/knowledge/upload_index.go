@@ -68,23 +68,22 @@ func UploadIndex(
 	}
 
 	// Step 2: parse via the document parser registry.
+	// NOTE: parser.Parse strips frontmatter internally and returns the
+	// stripped body in Content. The parser's ParseResult.Frontmatter field
+	// is NOT populated by ParserRegistry.Parse (it is set only by parsers
+	// that call their own frontmatter split internally). We re-extract
+	// frontmatter from the raw bytes below so we can parse effective_*.
 	parserReg := document.NewParserRegistry()
-	pr, err := parserReg.Parse(ctx, mimeType, bytes.NewReader(fileBytes), filename)
+	_, err := parserReg.Parse(ctx, mimeType, bytes.NewReader(fileBytes), filename)
 	if err != nil {
 		return nil, fmt.Errorf("parse failed: %w", err)
 	}
 
-	// Step 3: extract body and frontmatter.
-	// If frontmatter is present, strip it from the body (the frontmatter
-	// metadata is consumed separately below; it must not be embedded).
-	var body []byte
-	if pr.Frontmatter != nil {
-		raw := append(pr.Frontmatter, []byte("\n---\n")...)
-		raw = append(raw, pr.Content...)
-		body, _ = splitFrontmatter(raw)
-	} else {
-		body = pr.Content
-	}
+	// Step 3: extract body and frontmatter from raw bytes.
+	// We re-run splitFrontmatter on the original bytes because the parser
+	// already stripped frontmatter from pr.Content, and ParserRegistry.Parse
+	// does not propagate the frontmatter bytes to ParseResult.Frontmatter.
+	body, fm := splitFrontmatter(fileBytes)
 	if len(body) == 0 {
 		return nil, fmt.Errorf("parse failed: document body is empty")
 	}
@@ -93,7 +92,7 @@ func UploadIndex(
 	chunks := chunkBody(body, maxDocBytes)
 
 	// Step 5: parse effective window from frontmatter (0,0 if absent).
-	ef, et := parseEffectiveWindow(pr.Frontmatter)
+	ef, et := parseEffectiveWindow(fm)
 
 	// Step 6: validate tiers BEFORE embedder (KNOW-02 fail-closed gate).
 	// Build the doc slice with Tier set so validateTiers can check each
@@ -110,7 +109,12 @@ func UploadIndex(
 			EffectiveTo:   et,
 		})
 	}
-	if err := validateTiers(docs, reg); err != nil {
+	if validateTiersHook != nil {
+		err = validateTiersHook(docs, reg)
+	} else {
+		err = validateTiers(docs, reg)
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -146,18 +150,9 @@ func validateSlug(slug string, reg kb.Registry) error {
 	if slug == "" {
 		return errors.New("slug is empty")
 	}
+	// Check whether the slug is known and active using Lookup (fail-closed).
 	if _, ok := reg.Lookup(slug); !ok {
-		// Distinguish unknown vs deactivated by checking the full List().
-		// Lookup returns false for both, so we probe the active set.
-		active := reg.ActiveSlugs()
-		for _, s := range active {
-			if s == slug {
-				// Lookup would have returned true for an active slug.
-				// This branch is defensive; treat as deactivated.
-				return fmt.Errorf("kb %q is deactivated", slug)
-			}
-		}
-		return fmt.Errorf("kb %q is not registered", slug)
+		return fmt.Errorf("kb %q is not registered or deactivated", slug)
 	}
 	return nil
 }
@@ -174,6 +169,10 @@ func getUploadNextID(ctx context.Context, slug string, r retriever.Retriever) (i
 	}
 	return maxID + 1, nil
 }
+
+// validateTiersHook allows tests to inject a failure for KNOW-02 gate testing.
+// When non-nil, called instead of the package-level validateTiers.
+var validateTiersHook func([]retriever.Document, kb.Registry) error
 
 // chunkBody splits body into chunks of at most maxBytes characters, with
 // 200-character overlap between consecutive chunks. Returns a single-element

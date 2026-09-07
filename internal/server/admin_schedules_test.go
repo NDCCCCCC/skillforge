@@ -192,6 +192,9 @@ func (f *fakeAdminSchedulesStore) Health(_ context.Context) error {
 func (f *fakeAdminSchedulesStore) Close() error {
 	panic("not implemented")
 }
+func (f *fakeAdminSchedulesStore) HasUploadBySHA256(_ context.Context, _, _ string) (bool, error) {
+	panic("not implemented")
+}
 
 var _ store.Store = (*fakeAdminSchedulesStore)(nil)
 
@@ -329,6 +332,9 @@ func (s *spyAdminSchedulesStore) Health(_ context.Context) error {
 	panic("not implemented")
 }
 func (s *spyAdminSchedulesStore) Close() error {
+	panic("not implemented")
+}
+func (s *spyAdminSchedulesStore) HasUploadBySHA256(_ context.Context, _, _ string) (bool, error) {
 	panic("not implemented")
 }
 

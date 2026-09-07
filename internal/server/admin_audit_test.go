@@ -193,6 +193,9 @@ func (f *fakeAdminAuditStore) CountRows(_ context.Context, _ string) (int64, err
 func (f *fakeAdminAuditStore) Close() error {
 	panic("not implemented")
 }
+func (f *fakeAdminAuditStore) HasUploadBySHA256(_ context.Context, _, _ string) (bool, error) {
+	panic("not implemented")
+}
 
 var _ store.Store = (*fakeAdminAuditStore)(nil)
 
@@ -332,6 +335,9 @@ func (s *spyAdminAuditStore) CountRows(_ context.Context, _ string) (int64, erro
 	panic("not implemented")
 }
 func (s *spyAdminAuditStore) Close() error {
+	panic("not implemented")
+}
+func (s *spyAdminAuditStore) HasUploadBySHA256(_ context.Context, _, _ string) (bool, error) {
 	panic("not implemented")
 }
 

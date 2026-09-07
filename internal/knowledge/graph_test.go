@@ -57,6 +57,7 @@ func (s *stubMetaRetriever) Search(_ context.Context, _ []float32, _ []string, _
 func (s *stubMetaRetriever) Ensure(_ context.Context) error                         { return nil }
 func (s *stubMetaRetriever) Insert(_ context.Context, _ []retriever.Document) error { return nil }
 func (s *stubMetaRetriever) Disconnect() error                                      { return nil }
+func (s *stubMetaRetriever) GetMaxID(_ context.Context, _ string) (int64, error)   { return 0, nil }
 
 // Compile-time check that *stubMetaRetriever satisfies the full
 // retriever.Retriever interface — required by knowledge.New.
