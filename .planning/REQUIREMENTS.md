@@ -238,12 +238,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 文档上传入库 (DOC)
 
-- [ ] **DOC-01**: 管理员上传文档到指定知识库——multipart 上传端点（admin token 门）+ `/admin` 知识库管理视图；格式支持 Markdown / PDF / Word(docx) / Excel(xlsx) / PowerPoint(pptx)；解析器注册表驱动（扩展名 + MIME 白名单，零硬编码）
-- [ ] **DOC-02**: 解析管线——格式按内容探测（不仅扩展名）；解析 → 既有分块 → 向量化 → 索引入指定知识库；解析失败 fail-closed（不产生半成品入库）
-- [ ] **DOC-03**: 原始文件即弃——上传件仅存于内存/临时区，处理完成即删；持久化的只有解析文本与 chunk（延续 v1.0「不保存原始数据」哲学）
-- [ ] **DOC-04**: 上传防护配置化——单文件大小上限、并发上限、内容哈希去重策略（同 hash 拒绝或替换为新版）全部配置驱动
-- [ ] **DOC-05**: 入库即审计——每次上传审计行：操作者、知识库、文件名、大小、hash、chunk 数、结果（INSERT-only）
-- [ ] **DOC-06**: 上传即可见——成功上传后文档立即出现在知识图谱与检索（无需重启）；失败错误明确回报 UI
+- [x] **DOC-01**: 管理员上传文档到指定知识库——multipart 上传端点（admin token 门）+ `/admin` 知识库管理视图；格式支持 Markdown / PDF / Word(docx) / Excel(xlsx) / PowerPoint(pptx)；解析器注册表驱动（扩展名 + MIME 白名单，零硬编码）
+- [x] **DOC-02**: 解析管线——格式按内容探测（不仅扩展名）；解析 → 既有分块 → 向量化 → 索引入指定知识库；解析失败 fail-closed（不产生半成品入库）
+- [x] **DOC-03**: 原始文件即弃——上传件仅存于内存/临时区，处理完成即删；持久化的只有解析文本与 chunk（延续 v1.0「不保存原始数据」哲学）
+- [x] **DOC-04**: 上传防护配置化——单文件大小上限、并发上限、内容哈希去重策略（同 hash 拒绝或替换为新版）全部配置驱动
+- [x] **DOC-05**: 入库即审计——每次上传审计行：操作者、知识库、文件名、大小、hash、chunk 数、结果（INSERT-only）
+- [x] **DOC-06**: 上传即可见——成功上传后文档立即出现在知识图谱与检索（无需重启）；失败错误明确回报 UI
 
 ### 知识图谱扩展 (GRF)
 
@@ -477,12 +477,12 @@ Which phases cover which requirements.
 | KBM-04 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
 | KBM-05 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
 | KBM-06 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
-| DOC-01 | Phase 27 | Pending |
-| DOC-02 | Phase 27 | Pending |
-| DOC-03 | Phase 27 | Pending |
-| DOC-04 | Phase 27 | Pending |
-| DOC-05 | Phase 27 | Pending |
-| DOC-06 | Phase 27 | Pending |
+| DOC-01 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
+| DOC-02 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
+| DOC-03 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
+| DOC-04 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
+| DOC-05 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
+| DOC-06 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
 | GRF-01 | Phase 28 | Pending |
 | GRF-02 | Phase 28 | Pending |
 | GRF-03 | Phase 28 | Pending |

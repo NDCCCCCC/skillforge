@@ -3,32 +3,38 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 27
-current_plan: 2
-status: phase-complete
-last_updated: "2026-09-07T07:20:00.000Z"
-last_activity: 2026-09-07 -- Phase 27-02 COMPLETE: UploadIndex + GetMaxID interface (ae98265/a011ab1/fbec279)
+current_plan: 0
+status: phase-complete (hermetic; operator runbook pending)
+last_updated: "2026-09-07T12:00:00.000Z"
+last_activity: "2026-09-07 -- Phase 27 CLOSED hermetically (operator runbook 27-UAT pending)"
 progress:
-  total_phases: 5
-  completed_phases: 1
-  total_plans: 10
-  completed_plans: 10
-  percent: 20
+  total_phases: 6
+  completed_phases: 2
+  total_plans: 24
+  completed_plans: 24
+  percent: 33
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 26 (知识库注册表地基) — CLOSED (2026-09-07)
-Plan: 10 of 10
-Status: Phase complete — verification passed, ROADMAP/STATE synced. Next: Phase 27 (文档上传入库) planning.
-Last activity: 2026-09-07 -- Phase 26 close-out: R-1 KnowledgeModal registry-driven fix (05c096c) + browser walkthrough resolving all 3 verifier human items + records sync
+Phase: 27 (文档上传入库) — CLOSED hermetically (2026-09-07)
+Plan: 7 of 7
+Status: Phase complete — verify-phase-27.sh 3 stages / 6 sub-checks all PASS; 17/17 upload tests PASS; FE 68 files / 512 tests PASS. Operator runbook 27-UAT.md at .planning/phases/27-document-upload-pipeline/27-UAT.md pending live execution.
+Last activity: 2026-09-07 -- Phase 27 close-out: 7 plans executed (4 waves), 1 plan iteration-1 fix round (4 blockers + 4 warnings), 3 commits in 27-03 bug-fix round (1c26818)
 
-**Phase 26 closure record (2026-09-07):** 10/10 plans executed (6 waves + orchestrator citability fix 8cbe270) → code review CR-01..04 + WR-01/02 all fixed (e4211c6/adce584/dc05ca7/629590a/d9cb8b4/d67d8a8) → live Milvus re-seed acceptance 5/5 PASS (user-authorized, SKILLFORGE_MILVUS_RECREATE one-shot) → verifier 54/54 must-haves (1 override: D14-B4 byte-freeze outranks SC4 literal wording) → R-1 KnowledgeModal CN→registry residue fixed at 05c096c (FE 67 files / 500 tests + tsc green) → browser walkthrough on the post-CR-fix binary (:8888 process started 13:38 > fixes 13:22): chat cited-verdict smoke, /admin KB tab full round-trip (create with CN display name / invalid-slug server rule text / deactivate with audit dialog), registry labels live everywhere ([权威] modal tree / DocViewer badge / graph center node / citation badge). console clean. Human item 1's HITL half honestly reclassified residue (no shipped skill routes memory:facts today; -race coverage stands). 26-VERIFICATION status → passed.
+**Phase 27 closure record (2026-09-07):** 7/7 plans executed across 4 waves (Wave1:{01,02,03,04} all parallel — no file conflicts after iteration-1 expanded 27-04 files_modified) → 24 atomic commits (0991ca0..ca842fc + 4b38a81 + 12ea50a deps + 1c26818 bug-fix + 179038e ROADMAP/STATE sync) → eino-ext parser submodules fetched via goproxy.cn (env-intranet workaround per env-intranet-service-flakiness memory) → verify-phase-27.sh 3 stages / 6 sub-checks all PASS (TODO clear / streaming-multipart + no-disk + VerifyMagicBytes presence + VerifyMagicBytes-no-disk / validateTiers-before-embedder + kb.Citable-not-at-insert) → 17/17 TestUpload* hermetic tests pass (12 from 27-03 + 5 degraded from 27-07) → FE DocUpload panel vitest 12/12 PASS → FE 68 files / 512 tests + tsc --noEmit all green → STRIDE-27.md threat model (9 threats + T-27-SC, T-27-01..09, 6 trust boundaries) → README "Document Upload (Phase 27)" section. 27-03 fixed 5 real handler bugs surfaced by hermetic test: (1) MIME source moved from form.Metadata form field to part header; (2) text/markdown branch rejects binary signatures; (3) VerifyMagicBytes failure writes HTTP response from inside onFile; (4) buildUploadMultipart uses CreatePart + textproto.MIMEHeader so fixture Content-Type matches declared; (5) mockRetrieverForUpload pointer-embeds mockIndexerBackend so GetMaxID reads the same backend's Insert batches.
 
-Progress: [█░░░░] 20% (v1.2: 1/5 phases complete, 7/29 requirements satisfied — KBM-01..06 + HYG-01)
+Progress: [██░░░] 33% (v1.2: 2/6 phases complete, 13/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06)
 
-**Next action:** `/gsd:plan-phase 27` — 文档上传入库 (DOC-01..06；注意 eino-ext 解析器获取风险 + pure-Go fallback + 不得继承 milvus-coupling)
+**Next action:** `/gsd:plan-phase 28` — 知识图谱动态化 + 关系层 (GRF-01..05；与 Phase 27 已落地验证 — DOC-06 联合验收：上传文档立即出现在图谱中)
+
+**Phase 27 residues (non-blocking):**
+- ParserVersion: "unknown" in DocUploadAudit — parser registry doesn't expose per-parse version (27-03 SUMMARY noted); minor cosmetic, planned to surface via parser registry Name() field lookup in 27-04+ if needed
+- goproxy.cn eino-ext pseudo-version pin: the parser/splitter submodules are pinned to a 2026-09-04 commit hash because eino-ext v0.1.13 was not on the goproxy.cn mirror at planning time; if a real release tag lands, update go.mod with `go get ...@v0.1.13` and re-tidy
+
+**Phase 27 planning record (2026-09-07):** 27-01..27-07 in 4 waves (Wave1:{01,02,03,04} — files disjoint after iteration-1; Wave2:{05,07}; Wave3:{06 — operator checkpoint}) → plan iteration-1 (commit 6b5667c) closed 4 blockers (27-01 CGO doc ownership; 27-02 GetMaxID on Retriever; 27-03 deps.go→server.go; 27-04 MilvusClient.GetMaxID + MongoClient.GetMaxID implementations; 27-07 store/store.go + sqlite/audit.go for HasUploadBySHA256) and 4 warnings (27-03 server.go files_modified; 27-06 Stage 2 grep expanded to 4 sub-checks; 27-05 App.tsx→AdminDashboard.tsx correction; 27-03 D27-03-1 dedup) before execution started. Plan-check → PASS. REQ coverage 6/6 DOC rows satisfied. Nyquist_validation rows: 24/24 with automated verify (27-06 T3 human checkpoint).
 
 **Residues carried (non-blocking, from 26-VERIFICATION):** R-2 hitl.InjectDeps per-request-hook seam（plan_approve/report:publish 单例仍共享 hook；memory:facts 无生产 Skill 路由面）· R-3 pre-existing fanout_tools_test.go -race fixture failure（test-only，先于 Phase 26）· R-5 uat-check + walkthrough-tmp 两个一次性 deactivated 库留在 live sqlite（无 delete verb 是设计）· 服务端排序现为 slug 升序（authority/draft/historical/personal），语义顺序（权威→历史→个人→草稿）如需恢复属 registry 排序字段的服务端演进，不阻塞。
 

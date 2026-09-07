@@ -94,7 +94,7 @@
 **Phases (execution order 26 → 27 → 28 → 29 → 30；28 与 29 可在 26 之后并行)：**
 
 - [x] **Phase 26: 知识库注册表地基** - TierEnum 硬编码 4 值枚举 → 注册表驱动的动态知识库（admin 可建/停用，Skill reads 契约与检索层 fail-closed 校验）+ 里程碑卫生门（TODO 清零 + 结构门）（completed 2026-09-07 — 10/10 plans，verification 54/54 + 3/3 human items resolved，live UAT 5/5 PASS）
-- [ ] **Phase 27: 文档上传入库** - /admin 上传 md/pdf/docx/xlsx/pptx → 解析 → 分块 → 向量化 → 入指定知识库；原始文件即弃；入库即审计、即可见
+- [x] **Phase 27: 文档上传入库** - /admin 上传 md/pdf/docx/xlsx/pptx → 解析 → 分块 → 向量化 → 入指定知识库；原始文件即弃；入库即审计、即可见（completed 2026-09-07 — 7/7 plans，verify-phase-27.sh 3 stages / 6 sub-checks 全绿，17 upload tests PASS，operator runbook 27-UAT 待执行）
 - [ ] **Phase 28: 知识图谱动态化 + 关系层** - 图谱按注册表输出 N 知识库节点 + 确定性 chunk 关系边 + 邻居/路径查询 API + GraphCanvas 升级 + 性能护栏
 - [ ] **Phase 29: 反馈闭环 + 工单预留** - FeedbackRow 三按钮真实落库（一次一票）+ 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets
 - [ ] **Phase 30: 工程卫生收尾** - 零硬编码魔数抽查 + 全 SDLC 门里程碑级验收 + 信任语义回归证明
@@ -141,6 +141,15 @@ Plans:
 **Plans**: 7 plans in 4 waves
 **UI hint**: yes
 **Risks**: eino-ext document parsers 尚不在 go.mod 且内网网络间歇断——plan-phase 必须把「parser 依赖获取」当显式风险处理并预备纯 Go fallback 决策；上传管线不得继承 `knowledge.Index` 的 milvus-coupling（`cmd/server/main.go:730` 的启动期路径 Mongo 后端跑不了，新管线两条后端都要能达）。
+
+Plans:
+- [x] 27-01-PLAN.md — `internal/document` 解析层契约（ParserRegistry + 5 格式：md/pdf/docx/xlsx/pptx）+ CGO 探测 + magic-byte 验证
+- [x] 27-02-PLAN.md — `internal/knowledge/upload_index.go` UploadIndex + GetMaxID 接口声明 + 8 个单元测试 + 验证 slug
+- [x] 27-03-PLAN.md — `POST /api/admin/kb/:slug/upload` multipart streaming + admin-token 门 + 4-stage CHECK ORDER + magic byte + SHA-256 in-memory + INSERT-only audit
+- [x] 27-04-PLAN.md — `internal/retriever/backend.go` IndexerBackend 接口 + Milvus/Mongo adapter + GetMaxID 在两个 client 的真实实现
+- [x] 27-05-PLAN.md — FE `DocUpload` 面板（KB dropdown + 文件选择 + 状态机）+ AdminDashboard 接线 + 12 vitest
+- [x] 27-06-PLAN.md — 卫生门：`scripts/verify-phase-27.sh`（3 stages / 6 sub-checks）+ Makefile phase-27 target + STRIDE-27.md + 27-UAT.md operator runbook
+- [x] 27-07-PLAN.md — 退化模式（503/422/409/500）+ SHA-256 去重（Store.HasUploadBySHA256 on store.go + sqlite/audit.go）+ 5 退化测试
 
 #### Phase 28: 知识图谱动态化 + 关系层 (Dynamic Knowledge Graph)
 **Goal**: 知识图谱反映真实知识结构——按注册表输出 N 个知识库节点、chunk 间确定性关系边可查可展开、性能超限优雅降级，管理员与（未来的）agent 工具都能消费同一张图。
@@ -213,7 +222,7 @@ Plans:
 | 24. 审计链强化 (PROV-O + decision-chain + time-travel) | 4/4 | Complete | 2026-09-06 |
 | 25. 评测信任环闭环 (eval trust-loop closure) | 4/4 | Complete | 2026-09-06 |
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
-| 27. 文档上传入库 (DOC) | 0/TBD | Not started | - |
+| 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 0/TBD | Not started | - |
 | 29. 反馈闭环 + 工单预留 (FBK + TKT) | 0/TBD | Not started | - |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
