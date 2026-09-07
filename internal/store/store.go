@@ -571,6 +571,131 @@ type AuditFilter struct {
 	ActorType string
 }
 
+// FeedbackRow is one user vote on one assistant turn (Phase 29 / Plan
+// 29-02 / FBK-01 / D-29-02). INSERT-only: rows are appended by
+// PutFeedback and never mutated — the UNIQUE(session_id, turn_id)
+// constraint is the one-vote-per-message truth, and a replayed vote
+// surfaces as inserted=false with the FIRST row still in place.
+type FeedbackRow struct {
+	// ID is the assigned auto-increment id (>0). Populated on reads;
+	// ignored by PutFeedback.
+	ID int64
+	// TS is the vote moment (UTC). Zero is stamped server-side by the
+	// store.
+	TS time.Time
+	// SessionID is the conversation partition — every read path binds on
+	// it, never on turn id alone (T-29-06).
+	SessionID string
+	// TurnID is session_turn.id (D-29-01), the server-side message
+	// identity the FE echoes back. Never a client-generated uuid.
+	TurnID int64
+	// Verdict is one of "helpful" | "unhelpful" | "outdated" (the DDL
+	// CHECK backstops the closed vocabulary).
+	Verdict string
+	// Comment is the optional D-29-06 note (non-empty only for
+	// "outdated" reports in practice; the store does not enforce that).
+	Comment string
+	// SkillID is the server-side copy from the turn's audit row (D-29-05
+	// — never trusted from the FE). Empty for unattributed votes.
+	SkillID string
+	// ChunkIDs is the CSV snapshot of the cited chunk ids, in the
+	// audit.chunk_ids precedent. The normalized per-chunk join lives in
+	// feedback_chunk_refs (see ChunkRef).
+	ChunkIDs string
+}
+
+// ChunkRef is one normalized (vote, cited chunk) association row
+// (Phase 29 / Plan 29-02 / FBK-02/03). audit.chunk_ids is a CSV and
+// splitting CSV inside sqlite for aggregation is awkward — these rows
+// are written once per cited chunk at vote time so the pending-review
+// queue and the per-KB metrics stay pure GROUP BYs.
+type ChunkRef struct {
+	// ChunkID is the cited chunk id.
+	ChunkID int64
+	// KBSlug is the knowledge_bases registry slug the chunk belongs to
+	// (retriever chunk Tier, Phase 26 semantics). Written by the 29-05
+	// vote path.
+	KBSlug string
+}
+
+// DispositionRow is one INSERT-only review-queue disposition (Phase 29 /
+// Plan 29-02 / FBK-02 / D-29-07..09). Multiple dispositions of one chunk
+// are legal — the NEWEST timestamp wins ("latest-disposition-wins", Open
+// Q1) and the pending view is derived, so there is no status column to
+// flip anywhere.
+type DispositionRow struct {
+	// ID is the assigned auto-increment id (>0). Populated on reads.
+	ID int64
+	// TS is the disposition moment (UTC); it competes with vote
+	// timestamps in the pending derivation.
+	TS time.Time
+	// ChunkID is the chunk being dispositioned.
+	ChunkID int64
+	// Disposition is one of "updated" | "false_positive" | "ignored"
+	// (DDL CHECK backstops the closed vocabulary). All three are final
+	// states for the queue entry (D-29-09).
+	Disposition string
+	// Note is the optional operator remark.
+	Note string
+	// Actor is the operator identity; the DDL DEFAULT is 'admin'.
+	Actor string
+}
+
+// PendingReviewRow is one DERIVED row of the admin review queue (Phase
+// 29 / Plan 29-02 / FBK-02 / D-29-08). There is no "pending entry"
+// table — a chunk is pending exactly while it has an outdated vote with
+// no disposition at or after that vote's ts.
+type PendingReviewRow struct {
+	// ChunkID is the reported chunk.
+	ChunkID int64
+	// KBSlug is an aggregate-display slug for the chunk (MAX over the
+	// qualifying votes' refs).
+	KBSlug string
+	// ReportCount is the number of qualifying (non-superseded) outdated
+	// votes — itself a priority signal (D-29-08).
+	ReportCount int
+	// LastReportedAt is the newest qualifying vote's ts (UTC).
+	LastReportedAt time.Time
+	// Comments are the qualifying votes' notes in report order, empty
+	// notes kept as empty strings (one placeholder per report).
+	Comments []string
+}
+
+// FeedbackCountRow is one metric aggregation row (Phase 29 / Plan 29-02
+// / FBK-03 / D-29-10). The store returns RAW counts only — the ratio
+// (helpful / (helpful + unhelpful + outdated), the full-vote
+// denominator) is computed on the Go side by the metrics endpoint
+// (29-08), never in SQL, to avoid division-by-zero/precision handling
+// in the storage layer.
+//
+// Key semantics differ by dimension (Open Q2): per-Skill rows count
+// every vote exactly once; per-KB rows count a vote citing N knowledge
+// bases once PER KB, so vote counts may repeat across KB rows while the
+// per-Skill and total dimensions stay strictly once-per-vote.
+type FeedbackCountRow struct {
+	// Key is the aggregation key — skill_id for the per-Skill dimension,
+	// kb_slug for the per-KB dimension.
+	Key string
+	// Helpful / Unhelpful / Outdated are the raw verdict counts. All
+	// three feed the full-vote denominator (D-29-10: outdated is a
+	// negative signal and stays IN the denominator).
+	Helpful   int
+	Unhelpful int
+	Outdated  int
+}
+
+// FeedbackTrendRow is one daily-bucket trend cell (Phase 29 / Plan 29-02
+// / FBK-03 / D-29-11). The backend returns day granularity; the weekly
+// view is a FE-side merge of these buckets.
+type FeedbackTrendRow struct {
+	// Day is the date(ts) bucket, "YYYY-MM-DD" (UTC).
+	Day string
+	// Verdict is the bucketed verdict value.
+	Verdict string
+	// Count is the number of votes in the bucket.
+	Count int
+}
+
 // Store is the abstraction over the audit + session-memory backend.
 //
 // Implementations MUST be safe for concurrent use across goroutines
@@ -840,4 +965,95 @@ type Store interface {
 	// regardless of filename. The slug is the knowledge-base namespace; two
 	// uploads of identical content to different slugs are NOT duplicates.
 	HasUploadBySHA256(ctx context.Context, slug, sha256 string) (bool, error)
+
+	// ------------------------------------------------------------------
+	// Phase 29 / Plan 29-02 — feedback loop storage (FBK-01/02/03).
+	// INSERT-only discipline: the write paths below (PutFeedback,
+	// PutFeedbackChunkRefs, PutDisposition) never mutate or remove an
+	// existing row — idempotency is enforced by UNIQUE constraints with
+	// ON CONFLICT DO NOTHING, and the derived pending view reads the
+	// tables as they are. There is deliberately no verb that rewrites a
+	// vote, a ref, or a disposition.
+	// ------------------------------------------------------------------
+
+	// PutFeedback appends one vote row (FBK-01 / D-29-02). Returns
+	// inserted=false when the UNIQUE(session_id, turn_id) idempotency key
+	// swallowed the insert — the caller must then surface the FIRST row
+	// (via FeedbackByTurn) as "already recorded", never a second vote.
+	PutFeedback(ctx context.Context, row FeedbackRow) (bool, error)
+
+	// FeedbackByTurn reads the vote for (sessionID, turnID). The session
+	// binding is mandatory — a turn id alone never resolves (T-29-06).
+	// Returns ok=false when that session/turn pair has no vote.
+	FeedbackByTurn(ctx context.Context, sessionID string, turnID int64) (FeedbackRow, bool, error)
+
+	// PutFeedbackChunkRefs appends the normalized (vote, cited chunk)
+	// association rows (FBK-02/03 aggregation substrate). Replaying the
+	// same (feedbackID, chunkID) pair is a no-op (ON CONFLICT DO
+	// NOTHING); an empty refs slice is a legal no-op.
+	PutFeedbackChunkRefs(ctx context.Context, feedbackID int64, refs []ChunkRef) error
+
+	// VotedVerdictsBySession returns {turnID: verdict} for one session —
+	// the 29-04 history-echo substrate (voted_verdict rides the history
+	// response so session restore needs zero extra requests, D-29-03).
+	// Contains only the requested session's votes; empty (non-nil) map
+	// when the session has none.
+	VotedVerdictsBySession(ctx context.Context, sessionID string) (map[int64]string, error)
+
+	// PutDisposition appends one review-queue disposition row (FBK-02 /
+	// D-29-09). All three dispositions are final states for the entry;
+	// multiple dispositions of one chunk are legal and the newest
+	// timestamp wins ("latest-disposition-wins", Open Q1). Returns the
+	// assigned row id (>0).
+	PutDisposition(ctx context.Context, row DispositionRow) (int64, error)
+
+	// PendingReviewChunks returns the DERIVED pending view (FBK-02 /
+	// D-29-08): one row per chunk that has an outdated vote with no
+	// disposition at or after that vote's ts, ordered by report_count
+	// then last_reported_at, both descending. A newer outdated report
+	// after a disposition reopens the chunk (Open Q1). Empty (non-nil)
+	// slice when nothing is pending.
+	PendingReviewChunks(ctx context.Context) ([]PendingReviewRow, error)
+
+	// ResolvedDispositions returns the disposition history, newest-first.
+	// An empty disposition string returns every row; otherwise the value
+	// must be a closed-vocabulary disposition ("updated" |
+	// "false_positive" | "ignored") — an unknown value is an error, not
+	// an empty result (an empty result would be read as "no history").
+	ResolvedDispositions(ctx context.Context, disposition string) ([]DispositionRow, error)
+
+	// PendingReviewCount returns the number of chunks currently in the
+	// pending review view — the admin badge counter, computed as ONE
+	// aggregation with the same semantics as PendingReviewChunks.
+	PendingReviewCount(ctx context.Context) (int, error)
+
+	// FeedbackMetricsBySkill returns raw per-skill_id verdict counts for
+	// votes at or after since (FBK-03 / D-29-10). Every vote is counted
+	// exactly once here — these counts ARE the full-vote denominator
+	// (helpful + unhelpful + outdated); the ratio is computed by the
+	// caller, never in SQL. Empty (non-nil) slice when no votes match.
+	FeedbackMetricsBySkill(ctx context.Context, since time.Time) ([]FeedbackCountRow, error)
+
+	// FeedbackMetricsByKB returns raw per-kb_slug verdict counts for
+	// votes at or after since, attributed through feedback_chunk_refs
+	// (FBK-03 / Open Q2). ACCOUNTING CAVEAT (locked by godoc + tests): a
+	// single vote citing chunks from N knowledge bases counts ONCE PER
+	// KB here, so vote counts may repeat across KB rows — the per-Skill
+	// dimension (FeedbackMetricsBySkill) and any total still count every
+	// vote strictly once. Votes without refs (refusal rounds /
+	// no-citation turns) contribute to no KB row — an honest gap, not an
+	// error.
+	FeedbackMetricsByKB(ctx context.Context, since time.Time) ([]FeedbackCountRow, error)
+
+	// FeedbackDailyTrend returns day-bucketed (date(ts)) per-verdict vote
+	// counts at or after since, day ascending (FBK-03 / D-29-11). The
+	// weekly view is a caller-side merge of these buckets.
+	FeedbackDailyTrend(ctx context.Context, since time.Time) ([]FeedbackTrendRow, error)
+
+	// GetSessionTurn resolves one turn of one session (used by the
+	// 29-05/29-06 write endpoints to verify the voted/ticketed turn
+	// exists). The WHERE clause binds BOTH session_id and id — a turn id
+	// from another session never resolves (T-29-06). Returns ok=false
+	// for a miss; callers enforce the role=assistant requirement.
+	GetSessionTurn(ctx context.Context, sessionID string, id int64) (SessionMessage, bool, error)
 }
