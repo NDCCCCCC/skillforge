@@ -383,6 +383,22 @@ type Deps struct {
 	// Default: 100 MiB. Set via SKILLFORGE_UPLOAD_MAX_BYTES env var at boot.
 	// Zero falls back to the default.
 	UploadMaxBodyBytes int64
+
+	// --- Phase 28: Knowledge Graph Limits ---
+	// GraphLimits holds the config-driven limits for the knowledge graph.
+	// Zero values fall back to hardcoded defaults in the handlers
+	// (fail-closed: non-positive values are caught at startup in main.go).
+	GraphLimits GraphLimits
+}
+
+// GraphLimits holds the config-driven limits for the knowledge graph.
+// Zero values fall back to hardcoded defaults in the handlers.
+// Non-positive values cause a fatal log at startup (fail-fast).
+type GraphLimits struct {
+	MaxNodes           int // SKILLFORGE_GRAPH_MAX_NODES (default 50)
+	MaxEdges          int // SKILLFORGE_GRAPH_MAX_EDGES (default 200)
+	NeighborDepthLimit int // SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT (default 2)
+	PathHopsLimit     int // SKILLFORGE_GRAPH_PATH_HOPS_LIMIT (default 4)
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the

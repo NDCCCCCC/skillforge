@@ -176,6 +176,21 @@ func parseBytesEnvOrDefault(name string, def int64) int64 {
 	return n
 }
 
+// parseIntEnvOrDefault parses a base-10 int env var. Non-numeric or
+// non-positive values log a WARN and fall back to def.
+func parseIntEnvOrDefault(name string, def int) int {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		log.Printf("[WARN] cmd/server: %s=%q invalid (expected positive integer); using default %d", name, v, def)
+		return def
+	}
+	return n
+}
+
 // buildKBRegistry assembles the PRODUCTION knowledge-base registry
 // (KBM-01): kb.Open joins the controlled seed file (structure) with the
 // sqlite knowledge_bases table (the runtime switch state), so an admin
@@ -310,6 +325,16 @@ func main() {
 	// SKILLFORGE_UPLOAD_MAX_BYTES tunes the per-upload body-size limit.
 	// Default: 100 MiB. Zero falls back to the default inside the handler.
 	uploadMaxBody := parseBytesEnvOrDefault("SKILLFORGE_UPLOAD_MAX_BYTES", 100*1024*1024)
+
+	// Phase 28 — graph performance limits (GRF-05).
+	graphMaxNodes := parseIntEnvOrDefault("SKILLFORGE_GRAPH_MAX_NODES", 50)
+	graphMaxEdges := parseIntEnvOrDefault("SKILLFORGE_GRAPH_MAX_EDGES", 200)
+	graphNeighborDepth := parseIntEnvOrDefault("SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT", 2)
+	graphPathHops := parseIntEnvOrDefault("SKILLFORGE_GRAPH_PATH_HOPS_LIMIT", 4)
+	if graphMaxNodes <= 0 || graphMaxEdges <= 0 || graphNeighborDepth <= 0 || graphPathHops <= 0 {
+		log.Fatalf("[FAIL] cmd/server: graph limits must be positive (MAX_NODES=%d, MAX_EDGES=%d, NEIGHBOR_DEPTH=%d, PATH_HOPS=%d)",
+			graphMaxNodes, graphMaxEdges, graphNeighborDepth, graphPathHops)
+	}
 	// Phase 16 — KPI aggregation channel (D16-A1). SKILLFORGE_KPIS_DIR is the
 	// directory of controlled KPI definition files (*.yaml) that is the ONLY
 	// source of callable aggregations. The directory lives INSIDE git (.gitignore
@@ -775,6 +800,11 @@ func main() {
 		}
 	})
 
+	// Phase 28 — graph cache invalidation on upload (cross-phase hook, GRF-05).
+	knowledge.SetGraphCacheInvalidateHook(func() {
+		knowledge.InvalidateCache()
+	})
+
 	deps := &server.Deps{
 		Loader:       loader,
 		Registry:     reg,
@@ -832,6 +862,13 @@ func main() {
 		ParserRegistry:       document.NewParserRegistry(),
 		IndexerBackend:       indexerBackend,
 		UploadMaxBodyBytes:   uploadMaxBody,
+		// Phase 28 — graph performance limits (GRF-05).
+		GraphLimits: server.GraphLimits{
+			MaxNodes:           graphMaxNodes,
+			MaxEdges:          graphMaxEdges,
+			NeighborDepthLimit: graphNeighborDepth,
+			PathHopsLimit:     graphPathHops,
+		},
 	}
 
 	// 19. Hertz server (Pattern 1).
