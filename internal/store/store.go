@@ -696,6 +696,44 @@ type FeedbackTrendRow struct {
 	Count int
 }
 
+// TicketRow is one user-created ticket request bound to one assistant
+// turn (Phase 29 / Plan 29-02 / TKT-02 / D-29-14). INSERT-only: the row
+// is appended once and NEVER rewritten — the outbound dispatch outcome
+// lands in an action_ticket_dispatch_* audit row instead, so a later
+// webhook result can never mutate a ticket row. The acceptance number is
+// not a column: the 29-06 handler derives "TKT-{row id}" from the ID
+// returned on reads (INSERT-only discipline forbids a write-back number
+// column — the id is minted at insert time and is already stable).
+type TicketRow struct {
+	// ID is the assigned auto-increment id (>0) — the "TKT-{id}"
+	// acceptance-number source. Populated on reads; ignored by PutTicket.
+	ID int64
+	// TS is the creation moment (UTC). Zero is stamped server-side by
+	// the store.
+	TS time.Time
+	// SessionID is the conversation partition — every read path binds on
+	// it, never on turn id alone (T-29-06).
+	SessionID string
+	// TurnID is session_turn.id (D-29-01), the server-side message
+	// identity the ticket refers to.
+	TurnID int64
+	// Description is the operator-facing problem statement (D-29-13 form
+	// input, required upstream).
+	Description string
+	// ChunkIDs is the CSV snapshot of the cited chunk ids, in the
+	// audit.chunk_ids precedent (server-side copy, D-29-05).
+	ChunkIDs string
+	// SkillID is the Skill that produced the ticketed turn.
+	SkillID string
+	// Provider is the configured provider name at insert time ("none" |
+	// "webhook" per the internal/ticket registry).
+	Provider string
+	// DispatchStatus records the state AT INSERT TIME only: "none" = no
+	// provider outbound (store-only receipt), "queued" = handed to the
+	// background dispatcher. Never flipped afterwards (INSERT-only).
+	DispatchStatus string
+}
+
 // Store is the abstraction over the audit + session-memory backend.
 //
 // Implementations MUST be safe for concurrent use across goroutines
@@ -1056,4 +1094,27 @@ type Store interface {
 	// from another session never resolves (T-29-06). Returns ok=false
 	// for a miss; callers enforce the role=assistant requirement.
 	GetSessionTurn(ctx context.Context, sessionID string, id int64) (SessionMessage, bool, error)
+
+	// ------------------------------------------------------------------
+	// Phase 29 / Plan 29-02 — ticket storage (TKT-02 / D-29-14).
+	// INSERT-only: PutTicket appends once; there is no write-back path
+	// for the outbound dispatch result (it rides an
+	// action_ticket_dispatch_* audit row instead).
+	// ------------------------------------------------------------------
+
+	// PutTicket appends one ticket request row (TKT-02 / D-29-14). The
+	// UNIQUE(session_id, turn_id) constraint is the one-ticket-per-
+	// message truth: a replayed request returns inserted=false and the
+	// caller must surface the FIRST row (via TicketByTurn) — the
+	// existing acceptance number, never a second ticket. Provider and
+	// dispatch_status are recorded as written at insert time; they are
+	// never flipped afterwards.
+	PutTicket(ctx context.Context, row TicketRow) (bool, error)
+
+	// TicketByTurn reads the ticket for (sessionID, turnID). The session
+	// binding is mandatory — a turn id alone never resolves (T-29-06).
+	// Returns ok=false when that session/turn pair has no ticket. The
+	// acceptance number is derived from TicketRow.ID as "TKT-{id}" by
+	// the caller (29-06 handler).
+	TicketByTurn(ctx context.Context, sessionID string, turnID int64) (TicketRow, bool, error)
 }
