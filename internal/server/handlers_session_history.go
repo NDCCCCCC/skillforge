@@ -52,11 +52,22 @@ var sessionIDRegex = regexp.MustCompile(`^[a-zA-Z0-9-]{8,128}$`)
 //	        verdict JSON envelope; nil for user rows AND for refusal /
 //	        non-verdict assistant rows
 //	Ts      epoch ms (FE renders this for stable message IDs)
+//
+// Phase 29 / Plan 29-04 (D-29-03) — the turn-identity echo. TurnID is
+// the row's session_turn.id (the FBK-01 message identity the FE echoes
+// back as the feedback vote key); VotedVerdict is the voter's recorded
+// verdict for THIS session's turn, read in ONE VotedVerdictsBySession
+// batch query per request (zero extra round-trips for session restore).
+// Both are assistant-only + omitempty: user rows and unvoted rows
+// serialize without the keys, and the FE treats a missing turn_id as
+// "feedback disabled for this row" (T-29-06: never fabricate identity).
 type historyEntry struct {
-	Role    string         `json:"role"`
-	Content string         `json:"content"`
-	Verdict *verdict.Verdict `json:"verdict,omitempty"`
-	Ts      int64          `json:"ts"`
+	Role         string           `json:"role"`
+	Content      string           `json:"content"`
+	Verdict      *verdict.Verdict `json:"verdict,omitempty"`
+	Ts           int64            `json:"ts"`
+	TurnID       int64            `json:"turn_id,omitempty"`
+	VotedVerdict string           `json:"voted_verdict,omitempty"`
 }
 
 // historyResponse is the GET /api/session/:id/history wire shape.
@@ -135,10 +146,21 @@ func (s *Deps) sessionHistoryHandler(ctx context.Context, c *app.RequestContext)
 
 	// T-10-11: empty rows (unknown session) returns 200 + empty —
 	// do NOT 404, that would leak session existence.
+	//
+	// 29-04 (D-29-03): ONE batch VotedVerdictsBySession query feeds the
+	// whole response (never per-row queries). A read failure degrades
+	// to rows without voted_verdict + a WARN — history availability
+	// first; the vote echo is an enhancement, not a dependency, so it
+	// must never 500 the restore path.
+	voted, vErr := s.Store.VotedVerdictsBySession(ctx, sessionID)
+	if vErr != nil {
+		log.Printf("[WARN] server: history voted-verdict load (sess=%s) failed: %v (degrading to no voted_verdict; non-fatal)", sessionID, vErr)
+		voted = nil
+	}
 	rendered := make([]historyEntry, 0, len(rows))
 	schemaMsgs := make([]schema.Message, 0, len(rows))
 	for _, m := range rows {
-		entry, sMsg := renderRow(m)
+		entry, sMsg := renderRow(m, voted[m.ID])
 		rendered = append(rendered, entry)
 		schemaMsgs = append(schemaMsgs, sMsg)
 	}
@@ -204,7 +226,12 @@ func (s *Deps) sessionHistoryHandler(ctx context.Context, c *app.RequestContext)
 //     matches the live chat stream's data-policy shape).
 //   - role=="assistant" non-verdict non-refusal → raw content
 //     (debuggable; future-proof for Skills that emit plain prose).
-func renderRow(m store.SessionMessage) (historyEntry, schema.Message) {
+//
+// 29-04 (D-29-03): ALL FOUR assistant branches fill TurnID=m.ID (the
+// session_turn identity — refusal rounds are votable too, Open Q3) and
+// VotedVerdict when the batch query recorded a vote for this turn. The
+// user branch fills neither (omitempty keeps the keys off the wire).
+func renderRow(m store.SessionMessage, votedVerdict string) (historyEntry, schema.Message) {
 	ts := m.Ts.UnixMilli()
 	switch m.Role {
 	case "user":
@@ -227,9 +254,11 @@ func renderRow(m store.SessionMessage) (historyEntry, schema.Message) {
 		if history.IsRefusalContent(m.Content) {
 			rendered := history.RenderRefusal(m.Content)
 			entry := historyEntry{
-				Role:    "assistant",
-				Content: rendered,
-				Ts:      ts,
+				Role:         "assistant",
+				Content:      rendered,
+				Ts:           ts,
+				TurnID:       m.ID,
+				VotedVerdict: votedVerdict,
 			}
 			sMsg := schema.Message{
 				Role:    schema.Assistant,
@@ -251,10 +280,12 @@ func renderRow(m store.SessionMessage) (historyEntry, schema.Message) {
 				// shape was acceptable JSON but lacked a recognized
 				// field. Fall back to the raw content (debuggable).
 				entry := historyEntry{
-					Role:    "assistant",
-					Content: m.Content,
-					Verdict: &v,
-					Ts:      ts,
+					Role:         "assistant",
+					Content:      m.Content,
+					Verdict:      &v,
+					Ts:           ts,
+					TurnID:       m.ID,
+					VotedVerdict: votedVerdict,
 				}
 				sMsg := schema.Message{
 					Role:    schema.Assistant,
@@ -263,10 +294,12 @@ func renderRow(m store.SessionMessage) (historyEntry, schema.Message) {
 				return entry, sMsg
 			}
 			entry := historyEntry{
-				Role:    "assistant",
-				Content: conclusion,
-				Verdict: &v,
-				Ts:      ts,
+				Role:         "assistant",
+				Content:      conclusion,
+				Verdict:      &v,
+				Ts:           ts,
+				TurnID:       m.ID,
+				VotedVerdict: votedVerdict,
 			}
 			sMsg := schema.Message{
 				Role:    schema.Assistant,
@@ -278,9 +311,11 @@ func renderRow(m store.SessionMessage) (historyEntry, schema.Message) {
 		// Non-verdict, non-refusal assistant content — plain prose
 		// (legacy text; future Skills that emit non-structured text).
 		entry := historyEntry{
-			Role:    "assistant",
-			Content: m.Content,
-			Ts:      ts,
+			Role:         "assistant",
+			Content:      m.Content,
+			Ts:           ts,
+			TurnID:       m.ID,
+			VotedVerdict: votedVerdict,
 		}
 		sMsg := schema.Message{
 			Role:    schema.Assistant,

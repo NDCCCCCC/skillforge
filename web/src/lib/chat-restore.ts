@@ -28,7 +28,18 @@ import type { UIMessage } from 'ai';
 import type { Verdict } from '../types/verdict';
 
 /** One rendered session turn from the BE history endpoint. The
- * `ts` field is the session_turn timestamp converted to ms (epoch ms). */
+ * `ts` field is the session_turn timestamp converted to ms (epoch ms).
+ *
+ * Phase 29 / Plan 29-04 (D-29-03): `turn_id` / `voted_verdict` are the
+ * turn-identity echo — snake_case to match the Go server's json tags
+ * (see the header note above; NEVER camelCase on this interface).
+ * `turn_id` is the row's session_turn.id (assistant rows only; user
+ * rows omit it), and `voted_verdict` is present only when THIS session
+ * has recorded a vote for that turn. The FE synthesizes a data-turn
+ * part from them so restored messages share the live stream's
+ * consumption point (29-07 renders the FeedbackRow from it). A missing
+ * or zero turn_id means feedback is disabled for that row — never
+ * fabricate identity (T-29-06). */
 export interface SessionHistoryMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -36,6 +47,13 @@ export interface SessionHistoryMessage {
    *  verdict JSON envelope. Refusal / plain-prose rows omit it. */
   verdict?: Verdict;
   ts: number;
+  /** session_turn.id of the assistant row (29-04 / D-29-01). User rows
+   *  and legacy unattributed rows omit it (omitempty on the BE). */
+  turn_id?: number;
+  /** The voter's recorded verdict for this turn, echoed in the same
+   *  request (29-04 / D-29-03). Omitted when unvoted or when the
+   *  backend's vote read degraded. */
+  voted_verdict?: 'helpful' | 'unhelpful' | 'outdated';
 }
 
 /** Response shape of GET /api/session/:id/history. `skill_id` is the
@@ -101,6 +119,15 @@ export async function fetchHistory(
  *     part (Verdict object) + text part carrying the rendered
  *     conclusion; assistant+refusal → text part carrying the refusal
  *     sentence (refusal text is a plain chat string on the FE side).
+ *   - Plan 29-04 (D-29-03): assistant rows carrying a truthy `turn_id`
+ *     ALSO get a synthesized `{ type: 'data-turn', data: { turnId,
+ *     votedVerdict? } }` part — the same part type the live SSE stream
+ *     emits (wire-types.ts TurnPayload), so the feedback UI consumes
+ *     ONE shape regardless of provenance (29-07). `votedVerdict` is the
+ *     TS-side optional consumption field filled ONLY here; the Go emit
+ *     side never marshals it. A missing/zero turn_id synthesizes no
+ *     part — feedback is disabled for that row rather than wired to a
+ *     fabricated id (T-29-06).
  *
  *  The verdict-DataPolicyPart shape mirrors the live wire shape so
  *  DataPolicyPart renders the restored card identically to a streamed
@@ -119,26 +146,30 @@ export function historyToUIMessages(
         parts: [{ type: 'text', text: m.content }],
       };
     }
-    // Assistant row. If a parsed Verdict is present, emit a
-    // data-policy part so DataPolicyPart → VerdictCard renders it.
-    // The rendered content is the conclusion / refusal sentence
-    // (which is the plain chat surface the user sees for both
-    // verdict + refusal rows).
+    // Assistant row. Synthesize the data-turn part first (turn identity
+    // + voted state) so every votable assistant message carries it,
+    // then the shape-specific parts.
+    const parts: UIMessage['parts'] = [];
+    if (m.turn_id && m.turn_id > 0) {
+      parts.push({
+        type: 'data-turn',
+        data: {
+          turnId: m.turn_id,
+          ...(m.voted_verdict ? { votedVerdict: m.voted_verdict } : {}),
+        },
+      });
+    }
+    // If a parsed Verdict is present, emit a data-policy part so
+    // DataPolicyPart → VerdictCard renders it. The rendered content is
+    // the conclusion / refusal sentence (which is the plain chat
+    // surface the user sees for both verdict + refusal rows).
     if (m.verdict) {
-      return {
-        id,
-        role: 'assistant' as const,
-        parts: [
-          { type: 'text', text: m.content },
-          { type: 'data-policy', data: m.verdict },
-        ],
-      };
+      parts.push({ type: 'text', text: m.content });
+      parts.push({ type: 'data-policy', data: m.verdict });
+      return { id, role: 'assistant' as const, parts };
     }
     // Refusal / plain-prose assistant row — render as plain chat.
-    return {
-      id,
-      role: 'assistant' as const,
-      parts: [{ type: 'text', text: m.content }],
-    };
+    parts.push({ type: 'text', text: m.content });
+    return { id, role: 'assistant' as const, parts };
   });
 }

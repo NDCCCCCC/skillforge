@@ -530,7 +530,6 @@ func TestSessionHistoryAPI_TurnIDAndVotedVerdictEcho(t *testing.T) {
 	addr, cleanup := historyTestHertz(t, deps)
 	defer cleanup()
 
-	ctx := context.Background()
 	// Turn 1 — verdict row, voted helpful.
 	turn1 := seedEchoTurn(t, realStore, "session-echo-12345",
 		"first question",
@@ -563,12 +562,12 @@ func TestSessionHistoryAPI_TurnIDAndVotedVerdictEcho(t *testing.T) {
 	rows := historyRowsAsMaps(t, raw)
 
 	// Row 0 — user: NO turn_id key (omitempty).
-	assert.Equal(t, 0.0, body.Messages[0].TurnID, "user row must not carry a turn id")
+	assert.Equal(t, int64(0), body.Messages[0].TurnID, "user row must not carry a turn id")
 	_, hasTurnID := rows[0]["turn_id"]
 	assert.False(t, hasTurnID, "user row must serialize WITHOUT turn_id (omitempty); raw row=%v", rows[0])
 
 	// Row 1 — assistant verdict row: turn_id + voted_verdict present.
-	assert.Equal(t, float64(turn1), body.Messages[1].TurnID,
+	assert.Equal(t, turn1, body.Messages[1].TurnID,
 		"assistant row must echo its session_turn.id")
 	assert.Equal(t, "helpful", body.Messages[1].VotedVerdict,
 		"voted assistant row must echo the voter's verdict")
@@ -579,7 +578,7 @@ func TestSessionHistoryAPI_TurnIDAndVotedVerdictEcho(t *testing.T) {
 
 	// Row 3 — refusal assistant row: turn_id present, voted_verdict absent
 	// (unvoted → omitempty; refusal rounds are votable, Open Q3).
-	assert.Equal(t, float64(turn2), body.Messages[3].TurnID,
+	assert.Equal(t, turn2, body.Messages[3].TurnID,
 		"refusal row must echo its session_turn.id too")
 	_, hasVerdict := rows[3]["voted_verdict"]
 	assert.False(t, hasVerdict, "unvoted assistant row must serialize WITHOUT voted_verdict; raw row=%v", rows[3])
@@ -603,7 +602,6 @@ func TestSessionHistoryAPI_VotedVerdictSurvivesTruncation(t *testing.T) {
 	addr, cleanup := historyTestHertz(t, deps)
 	defer cleanup()
 
-	ctx := context.Background()
 	// Oldest pair: over-budget content → evicted by the display cap.
 	bigUser := strings.Repeat("a", 10000)
 	seedEchoTurn(t, realStore, "session-cap-vote-1",
@@ -629,7 +627,7 @@ func TestSessionHistoryAPI_VotedVerdictSurvivesTruncation(t *testing.T) {
 		}
 	}
 	require.NotNil(t, survivor, "the surviving pair's assistant row must be present")
-	assert.Equal(t, float64(newerTurn), survivor.TurnID,
+	assert.Equal(t, newerTurn, survivor.TurnID,
 		"surviving assistant row must keep its OWN turn_id after truncation; raw=%s", string(raw))
 	assert.Equal(t, "outdated", survivor.VotedVerdict,
 		"surviving assistant row must keep its OWN voted_verdict after truncation")
@@ -662,7 +660,7 @@ func TestSessionHistoryAPI_VotedVerdictStoreErrorDegrades(t *testing.T) {
 	require.Equal(t, http.StatusOK, status,
 		"voted-verdict read failure must NOT 500 (degrade, don't fail); raw=%s", string(raw))
 	require.Len(t, body.Messages, 2)
-	assert.Equal(t, float64(turnID), body.Messages[1].TurnID,
+	assert.Equal(t, turnID, body.Messages[1].TurnID,
 		"turn_id echo survives the voted-verdict degradation")
 	assert.Empty(t, body.Messages[1].VotedVerdict,
 		"degraded rows carry no voted_verdict")
