@@ -69,7 +69,7 @@
 - [x] Phase 22: Eval CI Wiring + Live UAT (Phase 6b completion) — 含 2026-09-05 竞品格局分析补充项：
   - [x] **Judge 人工校准集**：30-50 例人工标注对齐 + judge-vs-human agreement 报告（MLflow 2026 指南的标准 practice）。现有 `--judge-models` 跨评测只覆盖 judge 间分歧（Pitfall 8 自评偏差），未覆盖 judge-人工一致性——这是行业标准做法中缺口的一半。golden set 已有，成本低。
   - [x] **评测器定位声明**：`cmd/eval` 的 4 指标（faithfulness 等）与 Ragas/DeepEval/TruLens 完全同质（Ragas 口径已兼容），定位明确为 **Skill 晋级闭环的内部基础设施**，不作为独立卖点——README/文档措辞规避"评测器=核心能力"误读。
-- [x] Phase 24: 审计链强化 (Audit Chain Hardening) — 2026-09-06 新增，对标 Semantica 补齐三弱势；**建议先于 Phase 23 执行**（产出直接把 Phase 23 README 里"承认 PROV-O 是行业标准"的弱势措辞翻转为"支持 PROV-O 导出"的正面特性）：
+- [x] Phase 24: 审计链强化 (Audit Chain Hardening) — 2026-09-06 新增，对标 Semantica 补齐三弱势；**建议先于 Phase 23 执行**（产出直接把 Phase 23 README里"承认 PROV-O 是行业标准"的弱势措辞翻转为"支持 PROV-O 导出"的正面特性）：
   - [x] **PROV-O 标准导出**（补弱势①无标准导出）：新 `internal/auditprov` 包，把既有 INSERT-only 审计数据映射为 W3C PROV-JSON——prov:Entity = query/chunk/verdict/规则行，prov:Activity = run/retrieve/approve/revoke，prov:Agent = user/skill/model_version/platform_floor_version；关系 wasGeneratedBy / used / wasDerivedFrom。零 LLM 纯确定性（Semantica 同款哲学），经既有 retention 脱敏规则，导出端点 `GET /api/session/:id/audit/prov` + 行内 sha256 完整性清单。
   - [x] **决策因果链查询**（对标 trace_decision_chain，补弱势②扁平事件无因果链）：`GET /api/session/:id/decision-chain?root=<tool_call_id>`，沿既有 `tool_call_id==approval_id`（D11-C4）+ session_id + approval_rules 审计痕迹行走链：query → retrieve(chunk_ids) → verdict → approve/reject → rule 创建 → auto-pass(last_used) → revoke；FE AuditTimelineTab 增链式视图。
   - [x] **时间点状态重建**（对标 time-travel，补弱势③无历史回放）：`GET /api/session/:id/state?at=<RFC3339>` 从 INSERT-only 数据确定性重建 T 时刻的 turns + 审计事件 + 规则表状态——已撤销规则从 `action_rule_revoked` 的 frozen_args PK 复原（T-3-AUDIT"审计行即证据"设计的终极验证，纯只读实现）。
@@ -192,7 +192,19 @@ Plans:
   3. admin 仪表盘展示 per-Skill / per-知识库帮助率与过时报告数趋势
   4. FeedbackRow 创建工单按钮调用真实 `POST /api/tickets`：工单请求 INSERT-only 落库（session/message 引用、描述、被引 chunk ids），UI 诚实展示受理结果（受理编号 / 排队中 / 未配置 provider）
   5. TicketService Go 接口 + 配置驱动 provider 注册表（`none` / `webhook`）落地；provider 外发失败不影响聊天与反馈主流程（尽力而为 + 配置驱动重试），外发结果（成功/失败/none）进审计
-**Plans**: 7 plans in 4 waves
+**Plans**: 9 plans in 6 waves (planned 2026-09-08)
+
+Plans:
+- [ ] 29-01-PLAN.md — turn id 地基：AppendTurn → (int64, error) 原子涟漪（接口 + sqlite RowsAffected 守卫 + writeAuditAndTurn 返回值 + 13 调用点 + 6 fake）+ turn-id 语义测试（FBK-01/04 地基，D-29-01）
+- [ ] 29-02-PLAN.md — 反馈/复核/工单存储层：4 张 additive 新表（feedback / feedback_chunk_refs / feedback_dispositions / tickets）+ 13 个 Store 方法 + InsertOnly 结构锁 + pending 派生视图（处置后重开口径）+ 全票分母指标 SQL（FBK-01/02/03 + TKT-02 存储面，D-29-02/08/09/10/14 + Open Q1/Q2 resolved）
+- [ ] 29-03-PLAN.md — internal/ticket 包：Provider 窄接口 + none/webhook 配置注册表 + webhook 出站（per-instance client + 有界重试 + body-only payload）（TKT-01）
+- [ ] 29-04-PLAN.md — data-turn wire 帧：ValidTypes + TS union D15 配对 + emitTurnID + 9 发射点（含 5 条拒绝路径的先落库重排，Open Q3 resolved 拒绝轮可投）+ history 内嵌 turn_id/voted_verdict（FBK-01/04，D-29-03）
+- [ ] 29-05-PLAN.md — HTTP 面：POST /api/feedback（幂等投票 + audit 邻近归因服务端真相）+ admin 复核/处置/指标三端点（403 先于 503 + closed_count + 全票分母 null 语义）+ FBK-05 source-grep 结构锁（FBK-01/02/03/05，D-29-05/07）
+- [ ] 29-06-PLAN.md — POST /api/tickets：幂等落库 + TKT-{id} 编号派生 + 异步外发 goroutine（后台 ctx + recover + 总预算）+ dispatch 结果审计行 + main.go 5 个 SKILLFORGE_TICKET_* env 装配（TKT-02/04）
+- [ ] 29-07-PLAN.md — FE 接真：FeedbackRow 重写（服务端驱动锁定态 + outdated 说明框 + 工单 4 态诚实文案）+ MessageBubble data-turn 扫描 + SfToast 全局视口（chat/eval 分支）（FBK-04 + TKT-03，D-29-04/06/13，UI-SPEC 文案逐字）
+- [ ] 29-08-PLAN.md — FE admin：「反馈」第 6 tab（口径注 + 5 汇总卡 0 票「—」+ 日/周趋势 + per-KB 脚注 + 待复核 cross-link）+「复核」第 7 tab（按 chunk 聚合 + 三处置 + 处置历史 + FBK-05 信任横幅）（FBK-02/03 + TKT-03，D-29-10/11/12）
+- [ ] 29-09-PLAN.md — 收尾卫生门：verify-phase-29.sh 4 stages（TODO 清零 / FBK-05 结构锁 / D15 配对 / DO NOTHING 纪律，含负向自证）+ make phase-29 + STRIDE-29.md + 29-UAT.md（含 Phase 27→29 联合验收）（FBK-05 门 + 全 REQ 收口）
+
 **UI hint**: yes
 **Notes**: 真实工单系统对接（Jira/ServiceNow/自建）明确 Out of Scope——本里程碑只预留接口 + webhook provider；起点代码 = `web/src/components/chat/parts/FeedbackRow.tsx`（现为 toast 占位）+ `internal/server/` admin-token 门模式。
 
@@ -241,7 +253,7 @@ Plans:
 | 26. 知识库注册表地基 (KBM + HYG-01) | 10/10 | Complete | 2026-09-07 |
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
-| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 0/TBD | Not started | - |
+| 29. 反馈闭环 + 工单预留 (FBK + TKT) | 0/9 | Not started | - |
 | 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
 
 ---
