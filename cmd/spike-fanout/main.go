@@ -1365,6 +1365,7 @@ func (stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, 
 func (stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
 	return retriever.ChunkContent{}, nil
 }
+func (stubRetriever) GetMaxID(_ context.Context, _ string) (int64, error) { return 0, nil }
 func (stubRetriever) Disconnect() error { return nil }
 
 // Suppress unused-import errors for types referenced only via

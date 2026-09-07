@@ -200,6 +200,7 @@ func (s *stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMet
 func (s *stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
 	return retriever.ChunkContent{}, errors.New("stub: no chunk")
 }
+func (s *stubRetriever) GetMaxID(_ context.Context, _ string) (int64, error) { return 0, nil }
 func (s *stubRetriever) Disconnect() error { return nil }
 
 // e2eReport is the JSON summary emitted to stdout on success. The
