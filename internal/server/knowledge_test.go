@@ -33,6 +33,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -650,3 +651,217 @@ func TestPathHandlerRouteRegistered(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// --- Phase 28 Plan 04 Config Tests (GRF-05) ---
+
+// TestGraphHandler_DegradedWhenNodesExceedConfig asserts that when total
+// chunks exceed the configured MaxNodes, the graph response carries
+// Degraded=true and a Chinese DegradedReason naming SKILLFORGE_GRAPH_MAX_NODES.
+func TestGraphHandler_DegradedWhenNodesExceedConfig(t *testing.T) {
+	// 6 chunks across 2 tiers — exceeds MaxNodes=5.
+	g := &knowledge.Graph{Tiers: []knowledge.TierNode{
+		{Tier: "t1", DocCount: 1, ChunkCount: 3, Docs: []knowledge.DocNode{
+			{ID: "t1::a.md", Filename: "a.md", ChunkCount: 3, Chunks: []knowledge.ChunkNode{
+				{ID: "1", EffectiveFrom: 0, EffectiveTo: 0},
+				{ID: "2", EffectiveFrom: 0, EffectiveTo: 0},
+				{ID: "3", EffectiveFrom: 0, EffectiveTo: 0},
+			}},
+		}},
+		{Tier: "t2", DocCount: 1, ChunkCount: 3, Docs: []knowledge.DocNode{
+			{ID: "t2::b.md", Filename: "b.md", ChunkCount: 3, Chunks: []knowledge.ChunkNode{
+				{ID: "4", EffectiveFrom: 0, EffectiveTo: 0},
+				{ID: "5", EffectiveFrom: 0, EffectiveTo: 0},
+				{ID: "6", EffectiveFrom: 0, EffectiveTo: 0},
+			}},
+		}},
+	}}
+	stub := &stubKnowledgeBuilder{graph: g}
+	deps := &Deps{Knowledge: stub, GraphLimits: GraphLimits{MaxNodes: 5}}
+
+	got := invokeGraphHandler(t, deps)
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var decoded knowledge.Graph
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
+	assert.True(t, decoded.Degraded, "graph should be marked degraded when nodes exceed MaxNodes")
+	assert.Contains(t, decoded.DegradedReason, "SKILLFORGE_GRAPH_MAX_NODES")
+	// DegradedReason must contain Chinese characters.
+	assert.Regexp(t, `[一-龥]`, decoded.DegradedReason, "DegradedReason must be in Chinese")
+}
+
+// TestGraphHandler_UnderLimitNoDegraded asserts that when total chunks are
+// within the configured limit, Degraded is false.
+func TestGraphHandler_UnderLimitNoDegraded(t *testing.T) {
+	g := &knowledge.Graph{Tiers: []knowledge.TierNode{
+		{Tier: "t1", DocCount: 1, ChunkCount: 2, Docs: []knowledge.DocNode{
+			{ID: "t1::a.md", Filename: "a.md", ChunkCount: 2, Chunks: []knowledge.ChunkNode{
+				{ID: "1", EffectiveFrom: 0, EffectiveTo: 0},
+				{ID: "2", EffectiveFrom: 0, EffectiveTo: 0},
+			}},
+		}},
+	}}
+	stub := &stubKnowledgeBuilder{graph: g}
+	deps := &Deps{Knowledge: stub, GraphLimits: GraphLimits{MaxNodes: 5}}
+
+	got := invokeGraphHandler(t, deps)
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var decoded knowledge.Graph
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
+	assert.False(t, decoded.Degraded)
+}
+
+// TestNeighborsHandler_ConfigMaxNodesCap asserts that the configured MaxNodes
+// is passed to EdgeGraph.Neighbors (truncates node list).
+func TestNeighborsHandler_ConfigMaxNodesCap(t *testing.T) {
+	// 5 chunks — MaxNodes=3 should truncate.
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 4, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 5, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub, GraphLimits: GraphLimits{
+		MaxNodes:           3,
+		NeighborDepthLimit: 2,
+	}}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=1&depth=2")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.NeighborResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.LessOrEqual(t, len(result.Nodes), 3, "nodes should be capped at configured MaxNodes")
+	assert.True(t, result.Degraded, "result should be degraded when node limit exceeded")
+}
+
+// TestNeighborsHandler_ConfigMaxEdgesCap asserts that the configured MaxEdges
+// truncates the edge list and sets Degraded=true.
+func TestNeighborsHandler_ConfigMaxEdgesCap(t *testing.T) {
+	// Many chunks in same doc → many section_adjacent edges → exceed MaxEdges=2.
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 4, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub, GraphLimits: GraphLimits{
+		MaxNodes:           50,
+		MaxEdges:          2,
+		NeighborDepthLimit: 2,
+	}}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=1&depth=2")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.NeighborResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.LessOrEqual(t, len(result.Edges), 2, "edges should be capped at configured MaxEdges")
+	// Either edge limit or depth limit set degraded=true (both trigger on this fixture).
+	assert.True(t, result.Degraded, "result should be degraded when edge limit exceeded")
+}
+
+// TestNeighborsHandler_ConfigDepthLimit asserts that the configured
+// NeighborDepthLimit caps the effective depth and sets Degraded=true.
+func TestNeighborsHandler_ConfigDepthLimit(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 4, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub, GraphLimits: GraphLimits{
+		NeighborDepthLimit: 1, // request depth=3 but limit=1
+	}}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=1&depth=3")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.NeighborResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.Equal(t, 1, result.Depth, "effective depth should be capped at configured NeighborDepthLimit")
+	assert.True(t, result.Degraded, "result should be degraded when depth limit applied")
+	assert.Contains(t, result.DegradedReason, "SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT")
+}
+
+// TestPathHandler_ConfigHopsLimit asserts that the configured PathHopsLimit
+// caps max_hops and sets Degraded=true when the original request exceeded it.
+func TestPathHandler_ConfigHopsLimit(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 4, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 5, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub, GraphLimits: GraphLimits{
+		PathHopsLimit: 2, // request max_hops=5 but limit=2
+	}}
+
+	got := invokePathHandler(t, deps, "from=1&to=5&max_hops=5")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.PathResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.Equal(t, 2, result.MaxHops, "MaxHops in response should reflect the configured limit")
+	assert.True(t, result.Degraded, "result should be degraded when hops limit was applied")
+	assert.Contains(t, result.DegradedReason, "SKILLFORGE_GRAPH_PATH_HOPS_LIMIT")
+}
+
+// TestConfigDefaultsFromEnv asserts that zero GraphLimits fields cause
+// handlers to use hardcoded defaults (50/200/2/4).
+func TestConfigDefaultsFromEnv(t *testing.T) {
+	// Zero GraphLimits (unset env vars) — handlers must fall back to defaults.
+	// Build a graph with exactly 60 chunks — exceeds default 50.
+	chunks := make([]knowledge.ChunkNode, 60)
+	for i := range chunks {
+		chunks[i] = knowledge.ChunkNode{ID: fmt.Sprintf("%d", i+1), EffectiveFrom: 0, EffectiveTo: 0}
+	}
+	g := &knowledge.Graph{Tiers: []knowledge.TierNode{
+		{Tier: "t1", DocCount: 1, ChunkCount: 60, Docs: []knowledge.DocNode{
+			{ID: "t1::a.md", Filename: "a.md", ChunkCount: 60, Chunks: chunks},
+		}},
+	}}
+	stub := &stubKnowledgeBuilder{graph: g}
+	deps := &Deps{Knowledge: stub, GraphLimits: GraphLimits{}}
+
+	got := invokeGraphHandler(t, deps)
+	assert.Equal(t, http.StatusOK, got.Code)
+	var decoded knowledge.Graph
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
+	assert.True(t, decoded.Degraded, "60 chunks exceed default 50; should be degraded")
+}
+
+// TestConfigReadsFromEnv asserts that non-zero GraphLimits fields are used
+// instead of defaults.
+func TestConfigReadsFromEnv(t *testing.T) {
+	// Set SKILLFORGE_GRAPH_MAX_NODES=2 via t.Setenv equivalent — GraphLimits.MaxNodes=2.
+	g := &knowledge.Graph{Tiers: []knowledge.TierNode{
+		{Tier: "t1", DocCount: 1, ChunkCount: 5, Docs: []knowledge.DocNode{
+			{ID: "t1::a.md", Filename: "a.md", ChunkCount: 5, Chunks: []knowledge.ChunkNode{
+				{ID: "1"}, {ID: "2"}, {ID: "3"}, {ID: "4"}, {ID: "5"},
+			}},
+		}},
+	}}
+	stub := &stubKnowledgeBuilder{graph: g}
+	deps := &Deps{Knowledge: stub, GraphLimits: GraphLimits{MaxNodes: 2}}
+
+	got := invokeGraphHandler(t, deps)
+	assert.Equal(t, http.StatusOK, got.Code)
+	var decoded knowledge.Graph
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
+	assert.True(t, decoded.Degraded)
+	assert.Contains(t, decoded.DegradedReason, "SKILLFORGE_GRAPH_MAX_NODES")
+}
