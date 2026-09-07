@@ -182,6 +182,11 @@ type Retriever interface {
 	// chunk the caller was already authorized to see.
 	GetChunk(ctx context.Context, id int64) (ChunkContent, error)
 
+	// GetMaxID returns the highest chunk ID currently stored for the given
+	// tier (slug). Returns 0 (no error) when no chunks exist for the tier.
+	// Implemented by MilvusClient and MongoClient (Plan 27-04).
+	GetMaxID(ctx context.Context, tier string) (int64, error)
+
 	// Disconnect closes the underlying client connection. After
 	// Disconnect the instance is unusable.
 	Disconnect() error

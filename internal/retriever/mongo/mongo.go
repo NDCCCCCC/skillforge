@@ -176,6 +176,13 @@ func (c *Client) Disconnect() error {
 	return c.conn.Disconnect(ctx)
 }
 
+// GetMaxID is a stub that returns 0, nil. The real implementation queries
+// the MongoDB collection for the maximum chunk ID for the given tier.
+// Implemented in Plan 27-04.
+func (c *Client) GetMaxID(ctx context.Context, tier string) (int64, error) {
+	return 0, nil
+}
+
 // Ensure creates the collection + a {tier:1} index if absent. Idempotent
 // — safe to call on every startup. The {tier:1} index makes the PRE-
 // similarity tier filter an indexed lookup; for the Phase 2 ~30-row

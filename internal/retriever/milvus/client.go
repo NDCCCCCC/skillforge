@@ -85,6 +85,13 @@ func (m *MilvusClient) Disconnect() error {
 	return m.mc.Close()
 }
 
+// GetMaxID is a stub that returns 0, nil. The real implementation queries
+// the Milvus collection for the maximum chunk ID for the given tier.
+// Implemented in Plan 27-04.
+func (m *MilvusClient) GetMaxID(ctx context.Context, tier string) (int64, error) {
+	return 0, nil
+}
+
 // Ensure creates the collection + IVF_FLAT index if absent. Idempotent.
 // This is the routine boot path — it NEVER drops anything (the only
 // destructive path in this package is RecreateCollection behind the
