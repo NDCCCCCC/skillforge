@@ -1,7 +1,8 @@
 ---
 phase: "29"
 slug: feedback-loop-ticket-interface
-status: draft
+status: approved
+reviewed_at: 2026-09-08
 shadcn_initialized: false
 preset: none
 created: 2026-09-08
@@ -106,7 +107,7 @@ Trend series colors (Sparkline rows): 有帮助 → compliant, 没帮助 → non
 │                  │   others disabled at opacity .45)          │
 │                  └─ outdated → expands inline comment box    │
 │ ┊ 说明（选填）[ textarea 1 row, 可空直接提交 ]                │
-│ ┊ [确认]  (确认提交说明; skipped when submitting empty)       │
+│ ┊ [提交说明]  (submits the optional note; skipped when empty)  │
 │                                                              │
 │ ┊ divider (·)  [🎫 创建工单]  ← independent of vote group    │
 │ ┊ ┌ ticket form (collapsed until clicked) ────────────────┐  │
@@ -268,9 +269,10 @@ All user-facing copy zh-CN; technical identifiers (turn/chunk ids, kb_slug, TKT 
 | Vote group question | 这个回答有用吗？ *(existing, unchanged)* |
 | Vote labels | 有帮助 / 没帮助 / 报告知识过时 *(existing, unchanged)* |
 | outdated comment placeholder | 说明（选填）：例如哪条知识过时了、正确内容是什么 |
+| outdated comment confirm | 提交说明 *(submits the optional note; empty note = clean skip, collapses box)* |
 | Ticket trigger | 创建工单 *(existing)* → after success: 已建单 |
 | Ticket field label | 问题描述（必填） |
-| Ticket submit / cancel | 提交工单 / 收起 |
+| Ticket submit / cancel | 提交工单 / 收起表单 |
 | Vote success toast | 已记录反馈：有帮助 / 已记录反馈：没帮助 |
 | outdated success toast | 已记录反馈：已标记知识可能过时，将进入人工复核 |
 | already_recorded toast | 该消息已反馈过：{有帮助\|没帮助\|报告知识过时} |
@@ -359,11 +361,11 @@ All user-facing copy zh-CN; technical identifiers (turn/chunk ids, kb_slug, TKT 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS (every state of all four surfaces has verbatim zh-CN copy incl. error + empty)
-- [ ] Dimension 2 Visuals: PASS (four surfaces specified with layout, states, data-testids)
-- [ ] Dimension 3 Color: PASS (60/30/10 inherited; accent reserved-for list explicit; status mapping uses existing tokens only)
-- [ ] Dimension 4 Typography: PASS (4 sizes × 2 weights inherited; mono roles declared; no new sub-scale literals)
-- [ ] Dimension 5 Spacing: PASS (all multiples of 4 from --space-*; no new exceptions)
-- [ ] Dimension 6 Registry Safety: PASS (no third-party registries; no new shadcn components; gate documented)
+- [x] Dimension 1 Copywriting: PASS (every state of all four surfaces has verbatim zh-CN copy incl. error + empty)
+- [x] Dimension 2 Visuals: PASS (four surfaces specified with layout, states, data-testids)
+- [x] Dimension 3 Color: PASS (60/30/10 inherited; accent reserved-for list explicit; status mapping uses existing tokens only)
+- [x] Dimension 4 Typography: PASS (4 sizes × 2 weights inherited; mono roles declared; no new sub-scale literals)
+- [x] Dimension 5 Spacing: PASS (all multiples of 4 from --space-*; no new exceptions)
+- [x] Dimension 6 Registry Safety: PASS (no third-party registries; no new shadcn components; gate documented)
 
 **Approval:** pending
