@@ -253,18 +253,21 @@ describe('FeedbackMetricsPanel — 日/周 trend (D-29-11)', () => {
     render(<FeedbackMetricsPanel />);
 
     const helpfulRow = await screen.findByTestId('metrics-trend-helpful');
+    // Daily series spans the UNION day axis (2026-09-01..03) — the
+    // helpful verdict is 0-filled on 09-03.
     expect(within(helpfulRow).getByTestId('sparkline')).toHaveAttribute(
       'aria-label',
-      'sparkline with 2 points',
+      'sparkline with 3 points',
     );
     const callsBefore = fetchMock.mock.calls.length;
 
     fireEvent.click(screen.getByTestId('metrics-gran-week'));
 
     // Same series, re-bucketed to one 7-day bucket — and NOT re-fetched.
+    // (The Phase-17 Sparkline always pluralizes "points" in its label.)
     expect(within(screen.getByTestId('metrics-trend-helpful')).getByTestId('sparkline')).toHaveAttribute(
       'aria-label',
-      'sparkline with 1 point',
+      'sparkline with 1 points',
     );
     expect(fetchMock.mock.calls.length).toBe(callsBefore);
   });
