@@ -34,9 +34,10 @@
 import type { ReactNode } from 'react';
 import type { UIMessage } from 'ai';
 import { Sparkles } from 'lucide-react';
+import { useAppStore } from '../../store/app-store';
 import DataPolicyPart from './parts/DataPolicyPart';
 import DataSubprogressPart from './parts/DataSubprogressPart';
-import FeedbackRow from './parts/FeedbackRow';
+import FeedbackRow, { isVote } from './parts/FeedbackRow';
 import ReasoningPart from './parts/ReasoningPart';
 import RoutingTracePart from './parts/RoutingTracePart';
 import { SourceDocumentPart } from './parts/SourceDocumentPart';
@@ -226,6 +227,11 @@ export interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProps) {
+  // Plan 29-07 Task 2 — the ticket reference strip shows the session the
+  // ticket would be filed under. Read from the store (the ApprovalRules
+  // panels' existing pattern); hooks stay ABOVE the user-role early
+  // return below.
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
   if (role === 'user') {
     // User messages: right-aligned card with the full message text.
     // We render the text parts inline (not via TextPart) so the bubble
@@ -286,6 +292,38 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
     policyData !== undefined && isVerdict(policyData)
       ? policyData.status
       : undefined;
+  // Plan 29-07 Task 2 — turn identity for FeedbackRow. The data-turn
+  // part is the ONE consumption point shared by the live SSE stream
+  // (29-04 emitTurnID) and history restore (chat-restore synthesizes the
+  // same part). Missing / zero / non-numeric turnId → null → the row
+  // renders its honest disabled state, never a fabricated id (T-29-06).
+  const turnPart = message.parts.find((p) => p.type === 'data-turn') as
+    | { data?: { turnId?: unknown; votedVerdict?: unknown } }
+    | undefined;
+  const rawTurnId = turnPart?.data?.turnId;
+  const turnId =
+    typeof rawTurnId === 'number' && Number.isFinite(rawTurnId) && rawTurnId > 0
+      ? rawTurnId
+      : null;
+  const votedVerdict = isVote(turnPart?.data?.votedVerdict)
+    ? turnPart.data.votedVerdict
+    : null;
+  // chunkIds for the ticket reference strip — derived READ-ONLY from the
+  // verdict's citations (Go snake_case chunk_id). Tolerant: non-verdict /
+  // missing citations → []. Never reported back to the server (D-29-05 /
+  // T-29-04 — the server self-attributes from the audit row).
+  const chunkIds: string[] = [];
+  if (policyData !== undefined && isVerdict(policyData) && Array.isArray(policyData.citations)) {
+    for (const citation of policyData.citations) {
+      if (
+        typeof citation?.chunk_id === 'string' &&
+        citation.chunk_id !== '' &&
+        !chunkIds.includes(citation.chunk_id)
+      ) {
+        chunkIds.push(citation.chunk_id);
+      }
+    }
+  }
   return (
     <div
       className="message-assistant"
@@ -300,9 +338,18 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
       </div>
       <div className="message-assistant-body">
         {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
-        {/* Open Design B6 — per-reply feedback strip (vote locks after
-            the first choice; 创建工单 stays independent). */}
-        <FeedbackRow messageId={message.id} />
+        {/* Open Design B6 — per-reply feedback strip. Plan 29-07: the
+            vote lock is server-driven (POST /api/feedback), the ticket
+            form POSTs /api/tickets, and turn identity comes from the
+            data-turn part above. messageId stays DOM-only (Pitfall 7). */}
+        <FeedbackRow
+          messageId={message.id}
+          turnId={turnId}
+          votedVerdict={votedVerdict}
+          sessionId={activeSessionId}
+          chunkIds={chunkIds}
+          messageText={chatText}
+        />
       </div>
     </div>
   );

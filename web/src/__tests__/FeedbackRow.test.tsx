@@ -193,7 +193,8 @@ describe('FeedbackRow', () => {
     await waitFor(() => expect(toasts).toHaveLength(1));
     const bodies = bodiesFor(mock, '/api/feedback');
     expect(bodies[0].comment).toBe('');
-    expect(screen.getByTestId('feedback-outdated').getAttribute('aria-label')).not.toContain('已附说明');
+    // Empty note = nothing attached → no 已附说明 aria-label at all.
+    expect(screen.getByTestId('feedback-outdated')).not.toHaveAttribute('aria-label');
     stop();
   });
 
