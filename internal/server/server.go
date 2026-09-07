@@ -525,6 +525,14 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// badge mapping). No token by design: the payload is minimized to
 	// slug/display_name/role of ACTIVE entries only.
 	h.GET("/api/knowledge/bases", deps.knowledgeBasesHandler)
+	// Phase 29 Plan 29-05 (FBK-01) — the public vote endpoint. One vote
+	// per (session, turn) enforced by the store's UNIQUE key (D-29-02);
+	// the cited chunks + skill are copied SERVER-side from the turn's
+	// audit row (D-29-05), never from the request body. FBK-05 red line:
+	// this path appends vote rows only — it can never mutate knowledge
+	// state (TestFeedbackNoTrustMutation locks that at source level).
+	// Trust model: feedback.go.
+	h.POST("/api/feedback", deps.feedbackHandler)
 	// Phase 20 Plan 20-01 (ADM-01) — admin console capacity monitor.
 	// Returns per-table row counts + thresholds for the capacity bars.
 	h.GET("/api/admin/table-counts", deps.tableCountsHandler)

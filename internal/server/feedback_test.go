@@ -30,8 +30,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -326,9 +324,6 @@ var fbTurnTs = time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
 func newFeedbackHertz(deps *Deps) *server.Hertz {
 	h := server.Default(server.WithHostPorts(":0"))
 	h.POST("/api/feedback", deps.feedbackHandler)
-	h.GET("/api/admin/feedback/review", deps.feedbackReviewHandler)
-	h.POST("/api/admin/feedback/dispositions", deps.feedbackDispositionHandler)
-	h.GET("/api/admin/feedback/metrics", deps.feedbackMetricsHandler)
 	return h
 }
 
@@ -499,7 +494,7 @@ func TestFeedbackHandler(t *testing.T) {
 
 	t.Run("unknown, non-assistant and cross-session turns are a uniform 404", func(t *testing.T) {
 		fake := newFeedbackFakeStore()
-		fake.fbSeedTurn(fbTestSession, 42, "user", fbTurnTs, "", "")          // exists, wrong role
+		fake.fbSeedTurn(fbTestSession, 42, "user", fbTurnTs, "", "")            // exists, wrong role
 		fake.fbSeedTurn("other-session-9999", 7, "assistant", fbTurnTs, "", "") // exists, other session
 		deps := &Deps{Store: fake}
 		h := newFeedbackHertz(deps)
