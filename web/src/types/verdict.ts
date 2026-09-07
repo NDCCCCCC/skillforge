@@ -43,10 +43,16 @@ export type VerdictStatus = typeof VERDICT_STATUSES[number];
 export const COMPLIANCE_STATUSES = ['compliant', 'non_compliant', 'not_applicable'] as const;
 export type ComplianceStatus = typeof COMPLIANCE_STATUSES[number];
 
-// Knowledge tier enum — matches internal/skill/manifest.go ResolveTiers
-// (4-tier system; SKILL.md may declare a subset via `reads`)
-export const TIERS = ['权威', '历史', '个人', '草稿'] as const;
-export type Tier = typeof TIERS[number];
+// Knowledge-base tier slugs — Phase 26 (KBM-02) made the tier vocabulary
+// REGISTRY-DRIVEN: any slug matching internal/kb.ValidateSlug is legal, so
+// `Tier` is a plain string and the FE never assumes a fixed tier count
+// (N knowledge bases are first-class). TIERS below is the SEED FIXTURE list
+// (the four knowledge_bases.yaml baseline slugs), NOT a closed enum — do not
+// switch on it. Display names come from the registry projection
+// (lib/kb-bases.ts); the pre-migration CN values (权威/历史/个人/草稿) are
+// display names only and are no longer identifiers.
+export const TIERS = ['authority', 'historical', 'personal', 'draft'] as const;
+export type Tier = string;
 
 // Verdict struct — mirrors internal/verdict/verdict.go
 //
@@ -78,7 +84,9 @@ export interface Citation {
   chunk_id: string;
   /** verbatim quote from chunk supporting the claim */
   span: string;
-  /** knowledge tier: 权威 / 历史 / 个人 / 草稿 */
+  /** Registry slug of the source knowledge base (e.g. "authority"). A
+   * historical audit replay may carry a pre-migration CN display name —
+   * render it through TierBadge, never compare against it. */
   tier: Tier;
   /** D5-15 (SC-8): null = perpetually valid (backward-compat with versionless chunks). */
   effective_from?: string | null;
@@ -117,6 +125,7 @@ export type SubprogressStepName =
 
 export interface SubprogressStep {
   step: SubprogressStepName;
+  /** Registry slug of the tier being searched; absent = no tier badge. */
   tier?: Tier;
   count?: number;
 }

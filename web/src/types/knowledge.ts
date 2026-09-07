@@ -12,17 +12,18 @@
 // deliberately returns metadata only (threat T-5-22). The chunk
 // verbatim opens separately via ChunkSourceView.
 
-import type { Tier } from './verdict';
-
 /** Top-level response shape returned by GET /api/knowledge/graph. */
 export interface KnowledgeGraph {
   tiers: TierNode[];
 }
 
-/** One tier in the graph. All 4 canonical tiers (权威 / 草稿 / 历史 /
- * 个人) are always emitted, even when the corpus is empty. */
+/** One tier (= one registered knowledge base) in the graph. The BE emits
+ * one entry per registry tier — the fixed 4-tier assumption is gone
+ * (Phase 26 / KBM-02), so the FE lays out N tiers. `tier` is the registry
+ * slug; a corpus replayed from a historical audit row may carry a
+ * pre-migration CN value, which the FE degrades to a bracketed label. */
 export interface TierNode {
-  tier: Tier;
+  tier: string;
   docCount: number;
   chunkCount: number;
   docs: DocNode[];

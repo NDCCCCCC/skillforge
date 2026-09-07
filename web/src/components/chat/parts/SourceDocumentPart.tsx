@@ -57,7 +57,7 @@ export function SourceDocumentPart({ part }: { part: SourceDocumentUIPart }) {
     useAppStore.getState().setCenterView({
       kind: 'chunk-source',
       chunkId,
-      tier: meta.tier,
+      tier: meta.tier ?? '',
       version: meta.version,
       effectiveDate: meta.effectiveDate,
       effectiveTo: null,

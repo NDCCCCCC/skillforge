@@ -13,12 +13,14 @@
 //     full text)
 //
 // MISS policy: a chunk_id not present in the fixture is a development
-// bug (the citation should match a chunk we shipped). Returns
-// `tier: '权威'` as a safe fallback (matches the demo Skill's reads)
-// and `version: null` / `effectiveDate: null` so the ChunkSourceView
-// renders `版本: 未知` / `生效日期: 未知` per 04-UI-SPEC §FEUI-03. A
-// console.warn surfaces the missing chunk so the dev can spot it
-// immediately in the browser console.
+// bug (the citation should match a chunk we shipped). A miss returns
+// `tier: null` — NO hardcoded tier substitution (Phase 26 / 26-08 deleted
+// the old hardcoded authority-tier fallback: after the registry migration
+// that CN literal matches no slug, so inventing a tier would fabricate
+// evidence) — plus `version: null` / `effectiveDate: null` so the
+// ChunkSourceView renders `版本: 未知` / `生效日期: 未知` per 04-UI-SPEC
+// §FEUI-03 and the tier badge stays hidden. A console.warn surfaces the
+// missing chunk so the dev can spot it immediately in the browser console.
 import type { Tier } from '../types/verdict';
 import chunksData from '../__fixtures__/chunks.json';
 
@@ -33,14 +35,16 @@ const CHUNKS: Record<string, ChunkFixtureEntry> = chunksData as Record<string, C
 
 export interface ChunkLookupResult {
   chunkId: string;
-  tier: Tier;
+  /** Registry slug from the fixture; null = no tier data (badge hidden). */
+  tier: Tier | null;
   version: string | null;
   effectiveDate: string | null;
   text: string;
 }
 
 export interface ChunkMetadata {
-  tier: Tier;
+  /** Registry slug from the fixture; null = no tier data (badge hidden). */
+  tier: Tier | null;
   version: string | null;
   effectiveDate: string | null;
 }
@@ -128,7 +132,7 @@ export function lookupChunk(chunkId: string): ChunkLookupResult {
   console.warn('[chunk-lookup] missing chunk:', chunkId);
   return {
     chunkId, // fixture miss 路径保留原文（让 console.warn 打原文便于诊断）
-    tier: '权威',
+    tier: null, // no tier data → the renderer hides the badge (no substitute)
     version: null,
     effectiveDate: null,
     text: NOT_FOUND_TEXT,
@@ -145,7 +149,7 @@ export function extractChunkMetadata(chunkId: string): ChunkMetadata {
       effectiveDate: entry.effective_date,
     };
   }
-  return { tier: '权威', version: null, effectiveDate: null };
+  return { tier: null, version: null, effectiveDate: null };
 }
 
 // Plan 260813-dno / UAT #4 — fetchChunkContent is the on-demand chunk-

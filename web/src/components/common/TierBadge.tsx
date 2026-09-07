@@ -1,28 +1,34 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// TierBadge — KNOW-05 mono-text tier badge. Renders `[权威]` /
-// `[历史]` / `[个人]` / `[草稿]` inside an inline span. Color is the
-// SAME for all tiers (tier is differentiated by TEXT, not color) —
-// tier text color is `--color-primary`. This matches sketch
+// TierBadge — KNOW-05 mono-text tier badge. Renders the REGISTRY display
+// label of a knowledge-base slug (Phase 26 / KBM-02): `[权威]` for the
+// seed authority base, the projection's display_name for any later base,
+// and `[slug]` for anything unknown — a new KB, or a pre-migration CN tier
+// value replayed from an audit row. The unknown-slug degradation is the
+// point (T-26-08-2): a legacy value must not masquerade as a live tier,
+// and a missing slug must never blank the badge or crash the render.
+//
+// Color is the SAME for all tiers (tier is differentiated by TEXT, not
+// color) — tier text color is `--color-primary`. This matches sketch
 // `.citation-chip .tier { color: var(--color-primary); font-weight:
 // 600; }`.
 import { cn } from '../../lib/cn';
-import type { Tier } from '../../types/verdict';
-
-export const TIER_LABELS: Record<Tier, string> = {
-  权威: '[权威]',
-  历史: '[历史]',
-  个人: '[个人]',
-  草稿: '[草稿]',
-};
+import { useTierLabel } from '../../lib/kb-bases';
 
 export interface TierBadgeProps {
-  tier: Tier;
+  /** Registry slug of the knowledge base. Legacy CN values degrade to a
+   * bracketed label; an empty value renders nothing (badge hidden). */
+  tier: string;
   className?: string;
+  /** Pre-resolved bracketed label — short-circuits the async projection
+   * lookup for callers that already hold the display name. */
+  displayName?: string;
 }
 
-export default function TierBadge({ tier, className }: TierBadgeProps) {
+export default function TierBadge({ tier, className, displayName }: TierBadgeProps) {
+  const label = useTierLabel(tier, displayName);
+  if (!tier) return null;
   return (
     <span
       className={cn(
@@ -32,7 +38,7 @@ export default function TierBadge({ tier, className }: TierBadgeProps) {
       data-testid="tier-badge"
       data-tier={tier}
     >
-      {TIER_LABELS[tier]}
+      {label}
     </span>
   );
 }
