@@ -2,27 +2,29 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
-current_phase: 28
-current_plan: 4
-status: plan-complete (28-01/02/03 executed; Phase 28 in progress)
-last_updated: "2026-09-07T15:00:00.000Z"
-last_activity: "2026-09-07 -- Phase 28-03 COMPLETE: graph_cache.go (182L) + graph_cache_test.go (328L); 7/7 cache tests pass; 2 commits: 8b6aaa3 + d0369a5. Phase 28: 28-01 (GRF-02), 28-02 (GRF-03), 28-03 (GRF-05) done; 28-04 wiring next."
+current_phase: 29
+current_plan: 0
+status: ready-for-plan (Phase 28 closed 2026-09-07 hermetically)
+last_updated: "2026-09-07T18:30:00.000Z"
+last_activity: "2026-09-07 -- Phase 28 CLOSED hermetically: 7/7 plans executed across 4 waves (28-01 GRF-02 → 28-02/03/04 parallel → 28-05/06 → 28-07 hygiene gate); 19 atomic commits; mid-execution bug-fix 3766eb5 (Neighbors degraded semantic frontier-cut); verify-phase-28.sh 3 stages / 6 sub-checks all PASS; 23 BE tests + 535 FE tests green; STRIDE-28.md 8 threats + 28-UAT.md (Phase 27→28 联合验收 operator runbook). Next: Phase 29 反馈闭环 + 工单预留 planning."
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 29
-  completed_plans: 28
-  percent: 37
+  completed_phases: 3
+  total_plans: 36
+  completed_plans: 35
+  percent: 47
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 28 (知识图谱动态化 + 关系层) — Plan 04 of ~07
-Plan: 4 of ~7
-Status: Plan 28-03 complete — graph_cache.go (182L) + graph_cache_test.go (328L); 7/7 cache tests pass; 2 commits (8b6aaa3 + d0369a5). Phase 28 in progress.
-Last activity: 2026-09-07 -- Phase 28-03 COMPLETE: sync.Map TTL cache + invalidation hooks; 7/7 tests pass with -race; Phase 28 has 3/7 plans done (28-01 GRF-02, 28-02 GRF-03, 28-03 GRF-05); next: 28-04 main.go wiring.
+Phase: 29 (反馈闭环 + 工单预留) — Plan 00 of ~07 (planning ready)
+Plan: 0 of ~7
+Status: Phase 28 closed 2026-09-07 hermetically. 7/7 plans executed (28-01 GRF-02 + 28-02 GRF-03 + 28-03 GRF-05 + 28-04 wiring + 28-05 FE GraphCanvas + 28-06 FE InspectorRetrieval + 28-07 hygiene gate). 19 atomic commits, mid-execution bug-fix 3766eb5 (Neighbors degraded semantic frontier-cut). verify-phase-28.sh 3 stages / 6 sub-checks PASS; 23 BE tests + 535 FE tests green; tsc --noEmit clean.
+Last activity: 2026-09-07 -- Phase 28 CLOSED: graph_edges.go + graph_cache.go + neighborsHandler/pathHandler + GraphLimits env-var config + FE useGraphNeighbors hook + InspectorRetrieval 「常被一起引用」 面板 + STRIDE-28 + 28-UAT; ready for Phase 29 planning (FeedbackRow 三按钮真实落库 + 过时复核队列 + 仪表盘指标 + TicketService 接口 / webhook provider / POST /api/tickets).
+
+**Phase 28 closure record (2026-09-07):** 7/7 plans executed across 4 waves (Wave 1: 28-01 GRF-02 ComputeEdges pure function + 4 edge-type constants; Wave 2: 28-02 GRF-03 neighborsHandler + pathHandler + graphHandler degraded extension → 28-03 GRF-05 sync.Map TTL cache with cross-phase invalidation hooks → 28-04 GRF-05 4 SKILLFORGE_GRAPH_* env vars + SetGraphCacheInvalidateHook boot binding; Wave 3: 28-05 GRF-04 FE GraphCanvas 边层 + useGraphNeighbors hook + NeighborExpandButton → 28-06 GRF-04 InspectorRetrieval 「常被一起引用」 面板; Wave 4: 28-07 GRF-01..05 hygiene gate verify-phase-28.sh 3 stages / 6 sub-checks + STRIDE-28 + 28-UAT.md（含 Phase 27→28 联合验收 operator runbook）) → 19 atomic commits (5144fae + 858474c + 61d6932 + 6b649f7 + 3a67f07 + 8b6aaa3 + d0369a5 + 6867599 + ef64ffa + fc8cc61 + afc9377 + 028d3b9 + 2c14387 + 1767b1d + 41cebec + c654cd9 + 0fceddc + c0906d1 + d8a881b + 82a7a1e + bug-fix 3766eb5) → 23 BE tests (graph_edges_test.go + graph_cache_test.go + knowledge_test.go NeighborsAtDepth/DepthLimit/TestGraphLimits) + FE 535 tests (useGraphNeighbors + NeighborExpandButton + InspectorRetrieval neighbors panel) all PASS → verify-phase-28.sh 3 stages / 6 sub-checks PASS (TODO clear / Trust invariant kb.Citable defined + graph_edges.go doesn't call it / Doc-nodes-from-registry reg.List() + no hardcoded CN tier literal) → STRIDE-28.md threat model (8 threats T-28-01..06 + T-28-SC + T-28-LLM) → 28-UAT.md operator runbook（5 graph endpoint steps + 5 Phase 27 joint acceptance steps verifying uploaded docs appear in graph immediately via cache invalidation hook）. Mid-execution bug-fix 3766eb5: Neighbors degraded semantic changed from "queue non-empty OR depth exhausted" to "frontier cuts unreached nodes" (depthFrontierCut = len(queue)>0 && depth>=maxDepth && unreached>0) — resolves contradictory TestNeighborsAtDepth/DepthLimit fixtures by aligning degraded semantics to product semantics.
 
 **Phase 27 closure record (2026-09-07):** 7/7 plans executed across 4 waves (Wave1:{01,02,03,04} all parallel — no file conflicts after iteration-1 expanded 27-04 files_modified) → 24 atomic commits (0991ca0..ca842fc + 4b38a81 + 12ea50a deps + 1c26818 bug-fix + 179038e ROADMAP/STATE sync) → eino-ext parser submodules fetched via goproxy.cn (env-intranet workaround per env-intranet-service-flakiness memory) → verify-phase-27.sh 3 stages / 6 sub-checks all PASS (TODO clear / streaming-multipart + no-disk + VerifyMagicBytes presence + VerifyMagicBytes-no-disk / validateTiers-before-embedder + kb.Citable-not-at-insert) → 17/17 TestUpload* hermetic tests pass (12 from 27-03 + 5 degraded from 27-07) → FE DocUpload panel vitest 12/12 PASS → FE 68 files / 512 tests + tsc --noEmit all green → STRIDE-27.md threat model (9 threats + T-27-SC, T-27-01..09, 6 trust boundaries) → README "Document Upload (Phase 27)" section. 27-03 fixed 5 real handler bugs surfaced by hermetic test: (1) MIME source moved from form.Metadata form field to part header; (2) text/markdown branch rejects binary signatures; (3) VerifyMagicBytes failure writes HTTP response from inside onFile; (4) buildUploadMultipart uses CreatePart + textproto.MIMEHeader so fixture Content-Type matches declared; (5) mockRetrieverForUpload pointer-embeds mockIndexerBackend so GetMaxID reads the same backend's Insert batches.
 

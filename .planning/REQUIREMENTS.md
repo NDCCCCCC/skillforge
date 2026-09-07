@@ -247,11 +247,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### 知识图谱扩展 (GRF)
 
-- [ ] **GRF-01**: 图谱动态知识库化——`GET /api/knowledge/graph` 按注册表输出 N 个知识库节点（移除固定 4 tier 假设）
-- [ ] **GRF-02**: chunk 关系层——确定性（零 LLM）关系边：同文档版本继承边 + 跨文档实体/关键词条款共现边；边可确定性重算
-- [ ] **GRF-03**: 图谱查询 API——邻居查询（给定 chunk 的关系边）+ 受限深度路径查询；供 FE 与未来 agent 工具消费
-- [ ] **GRF-04**: FE GraphCanvas 升级——动态知识库渲染 + 关系边可视化 + 邻居展开交互
-- [ ] **GRF-05**: 图谱性能护栏——节点/边上限、分页与懒加载策略配置驱动；超限返回骨架图并明示降级
+- [x] **GRF-01**: 图谱动态知识库化——`GET /api/knowledge/graph` 按注册表输出 N 个知识库节点（移除固定 4 tier 假设）
+- [x] **GRF-02**: chunk 关系层——确定性（零 LLM）关系边：同文档版本继承边 + 跨文档实体/关键词条款共现边；边可确定性重算
+- [x] **GRF-03**: 图谱查询 API——邻居查询（给定 chunk 的关系边）+ 受限深度路径查询；供 FE 与未来 agent 工具消费
+- [x] **GRF-04**: FE GraphCanvas 升级——动态知识库渲染 + 关系边可视化 + 邻居展开交互
+- [x] **GRF-05**: 图谱性能护栏——节点/边上限、分页与懒加载策略配置驱动；超限返回骨架图并明示降级
 
 ### 反馈闭环 (FBK)
 
@@ -483,11 +483,11 @@ Which phases cover which requirements.
 | DOC-04 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
 | DOC-05 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
 | DOC-06 | Phase 27 | Satisfied (Phase 27 closed 2026-09-07) |
-| GRF-01 | Phase 28 | Pending |
-| GRF-02 | Phase 28 | Pending |
-| GRF-03 | Phase 28 | Pending |
-| GRF-04 | Phase 28 | Pending |
-| GRF-05 | Phase 28 | Pending |
+| GRF-01 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
+| GRF-02 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
+| GRF-03 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
+| GRF-04 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
+| GRF-05 | Phase 28 | Satisfied (Phase 28 closed 2026-09-07) |
 | FBK-01 | Phase 29 | Pending |
 | FBK-02 | Phase 29 | Pending |
 | FBK-03 | Phase 29 | Pending |
