@@ -5,7 +5,7 @@ milestone_name: — 知识库运营与反馈闭环
 current_phase: 30
 current_plan: Not started
 status: planning
-last_updated: "2026-09-07T22:44:45.469Z"
+last_updated: "2026-09-07T22:45:46.821Z"
 last_activity: 2026-09-07
 progress:
   total_phases: 6
@@ -191,7 +191,7 @@ Plan: 9 of 9 (16-01..16-09 all complete; 16-05 ROADMAP [/] WIP marker corrected 
 Status: VERIFICATION PASSED (2026-08-27 re-verification after gap closure — 5/5 SC green, 7/7 requirements met, BLOCKER-1/2 closed, WARNING-1/2 closed, 6/6 WSL tests green, cmd/server links on WSL; residual WARNING-3/4/5 bookkeeping + WARNING-6 Windows gate discrimination are non-blocking process debt)
 Last activity: 2026-08-29 -- ROADMAP/STATE synced: 16-05 checkbox fixed, Progress row 16 flipped to Complete, ROADMAP Phase 16 checkbox annotated with verification verdict.
 Next action: none for Phase 16 — residual items tracked in deferred-items.md (WARNING-3 PLAN backfill, WARNING-4 16-VALIDATION draft, WARNING-5 REQUIREMENTS status-row staleness). Phase-level code review (16-REVIEW.md) was not produced; optional retroactive `/gsd:code-review 16` if desired.
-Resume File: .planning/phases/29-feedback-loop-ticket-interface/29-UI-SPEC.md
+Resume File: .planning/phases/29-feedback-loop-ticket-interface/29-VERIFICATION.md
 
 **Plan 16-08 delivery summary (Wave 4, 2026-08-27):**
 
