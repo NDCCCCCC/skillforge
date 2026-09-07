@@ -125,10 +125,16 @@ func TestDecisionChunkType(t *testing.T) {
 // the React UI can render the live planning trace (PLAN-02 BE
 // substrate). The TS mirror ships in 12-06 under the D15 lockstep
 // invariant — this count bump is the BE half of the paired commit.
+//
+// Phase 29 / Plan 29-04 extends to 24 types — adds `data-turn`
+// (FBK-01 server-side message identity). Registered in the SAME commit
+// as the TS union member (D15 paired-commit invariant); the frame is
+// emitted after writeAuditAndTurn and before the terminal frames, so
+// refusal rounds carry a vote key too (Open Q3).
 func TestValidTypes_Twenty(t *testing.T) {
-	const expected = 23
+	const expected = 24
 	assert.Equal(t, expected, len(ValidTypes),
-		"ValidTypes must hold exactly %d entries (22 from 260815-cos, +1 for data-plan-trace per Plan 12-02)", expected)
+		"ValidTypes must hold exactly %d entries (23 through Plan 12-02, +1 for data-turn per Plan 29-04)", expected)
 	assert.True(t, ValidTypes["data-redline"],
 		"data-redline MUST be registered (18th wire type, D5-14)")
 	assert.True(t, ValidTypes["finish"],
@@ -141,6 +147,8 @@ func TestValidTypes_Twenty(t *testing.T) {
 		"text-delta-draft-end MUST be registered (22nd wire type, draft streaming end marker / 260815-cos)")
 	assert.True(t, ValidTypes["data-plan-trace"],
 		"data-plan-trace MUST be registered (23rd wire type, PLAN-02 live todo stream substrate, P12-L6 / Plan 12-02)")
+	assert.True(t, ValidTypes["data-turn"],
+		"data-turn MUST be registered (24th wire type, FBK-01 turn identity, Plan 29-04)")
 	// Snake-case variant rejected — T-1-11 mitigation.
 	assert.False(t, ValidTypes["data_redline"],
 		"snake_case data_redline MUST NOT be in ValidTypes (T-1-11 silent-drop regression)")
@@ -536,8 +544,8 @@ func TestDataDecisionFanoutEnum(t *testing.T) {
 // silently would break the D15 TS mirror (AssertAssignable fails to
 // compile) AND this test would catch the drift at the BE level first.
 func TestValidTypesUnchangedAfterFanout(t *testing.T) {
-	assert.Equal(t, 23, len(ValidTypes),
-		"ValidTypes MUST stay at 23 entries after the 13-03 fanout overload (P13-L7 / D15 lockstep); fanout_* are new VALUES in the Decision string enum, NOT new chunk types")
+	assert.Equal(t, 24, len(ValidTypes),
+		"ValidTypes MUST stay at 24 entries (23 through 13-03 fanout, +1 for data-turn per Plan 29-04); fanout_* are new VALUES in the Decision string enum, NOT new chunk types")
 	assert.True(t, ValidTypes["data-decision"],
 		"data-decision MUST remain in ValidTypes (fanout_* rides it, P13-L7)")
 	// Hypothetical new discriminator like 'data-fanout' must NOT exist.
@@ -559,8 +567,8 @@ func TestValidTypesUnchangedAfterFanout(t *testing.T) {
 // silently would break the D15 TS mirror (AssertAssignable fails to
 // compile) AND this test would catch the drift at the BE level first.
 func TestValidTypesUnchangedAfterBudgetGate(t *testing.T) {
-	assert.Equal(t, len(ValidTypes), 23,
-		"ValidTypes MUST stay at 23 entries after the 12-05 budget gate (P12-L3 / D15 lockstep); forced_stop is a new VALUE in the Decision string enum, NOT a new chunk type")
+	assert.Equal(t, len(ValidTypes), 24,
+		"ValidTypes MUST stay at 24 entries (23 through the 12-05 budget gate, +1 for data-turn per Plan 29-04); forced_stop is a new VALUE in the Decision string enum, NOT a new chunk type")
 	assert.True(t, ValidTypes["data-decision"],
 		"data-decision MUST remain in ValidTypes (forced_stop rides it, P12-L3)")
 	// Budget-trigger chunks would have used a hypothetical new
@@ -614,8 +622,8 @@ func TestDecisionDataRefWireReferences(t *testing.T) {
 	assert.Equal(t, float64(4150), got.References[2].Value)
 
 	// ValidTypes count unchanged (field addition, not union variant).
-	assert.Equal(t, 23, len(ValidTypes),
-		"ValidTypes MUST stay at 23 after D17-B2 References addition (field, not variant)")
+	assert.Equal(t, 24, len(ValidTypes),
+		"ValidTypes MUST stay at 24 after D17-B2 References addition (field, not variant; 23 through Plan 12-02 + data-turn per Plan 29-04)")
 }
 
 // TestDecisionDataRefWire — Phase 16 / Plan 16-04 Task 1: the DecisionPayload
@@ -680,7 +688,8 @@ func TestDecisionDataRefWire(t *testing.T) {
 	require.Contains(t, got.DataRef.Args, "status")
 	assert.Equal(t, "逾期", got.DataRef.Args["status"])
 
-	// 4. ValidTypes count MUST stay at 23 (no new chunk type added).
-	assert.Equal(t, 23, len(ValidTypes),
-		"ValidTypes MUST stay at 23 after D16-B3 DataRef addition (data-decision discriminator unchanged — D16 overload pattern)")
+	// 4. ValidTypes count MUST stay flat here (no new chunk type added
+	//    by D16-B3; the 24th entry is Plan 29-04's data-turn).
+	assert.Equal(t, 24, len(ValidTypes),
+		"ValidTypes MUST stay at 24 after D16-B3 DataRef addition (data-decision discriminator unchanged — D16 overload pattern; 23 through Plan 12-02 + data-turn per Plan 29-04)")
 }

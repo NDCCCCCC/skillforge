@@ -171,6 +171,22 @@ type DecisionPayload struct {
 	ReportCard     *ReportCard     `json:"reportCard,omitempty"`     // P18 — report_published events only; report publication result (D18-B3)
 }
 
+// TurnPayload is the JSON shape carried by data-turn SSE chunks
+// (Phase 29 / Plan 29-04 / FBK-01). One field: the server-assigned
+// session_turn.id of the assistant row writeAuditAndTurn just
+// persisted. The FE echoes it back verbatim as the feedback vote key
+// (D-29-02: PutFeedback UNIQUE(session_id, turn_id)) — never a
+// client-generated uuid.
+//
+// Go emit side STOPS here: the live stream carries turnId only. The
+// optional votedVerdict consumption field exists on the TS mirror
+// (web/src/types/wire-types.ts) alone — it is filled by the history
+// endpoint's synthesized data-turn part (D-29-03 zero-extra-request
+// echo), never marshalled by any Go emitter.
+type TurnPayload struct {
+	TurnID int64 `json:"turnId"`
+}
+
 // ReportCard is the structured payload carried inside
 // DecisionPayload.ReportCard on a "report_published" data-decision
 // chunk (Phase 18 / Plan 18-02 / D18-B3). No new SSE part type is
@@ -399,11 +415,12 @@ const (
 // (web/src/types/wire-types.ts) already declares this variant, so the
 // D15 drift alarm needs no change.
 //
-// Count: 23 types — text(5: text-start/text-delta/text-end +
+// Count: 24 types — text(5: text-start/text-delta/text-end +
 // text-delta-draft/text-delta-draft-end) + reasoning(3) +
 // tool-input(3) + tool-output(1) + source(2) + data-policy(1) +
 // data-decision(1) + data-redline(1) + data-subprogress(1) +
-// data-plan-trace(1) + finish(3: finish / finish-step / finish-message) +
+// data-plan-trace(1) + data-turn(1) +
+// finish(3: finish / finish-step / finish-message) +
 // error(1).
 //
 // Quick plan 260815-cos adds `text-delta-draft` + `text-delta-draft-end`
@@ -425,6 +442,17 @@ const (
 // invariant). snake_case variant `data_plan_trace` MUST stay rejected
 // (T-1-11 silent-drop regression guard, parallel to the data_decision
 // rejection in TestDecisionChunkType).
+//
+// Phase 29 / Plan 29-04 (FBK-01) adds `data-turn` — the server-side
+// message identity frame. It is emitted AFTER writeAuditAndTurn has
+// persisted the (user, assistant) turn pair and BEFORE any terminal
+// frame (text-end / finish-step / finish), so every assistant reply —
+// including all five refusal shapes and the error-terminal shapes —
+// carries its session_turn.id before useChat registers the message.
+// turnID <= 0 (idempotent replay / store degradation) emits NOTHING —
+// the FE falls back to its disabled state rather than a fabricated id
+// (T-29-06). The snake_case variant `data_turn` MUST stay rejected
+// (T-1-11 silent-drop regression guard, same posture as data_decision).
 var ValidTypes = map[string]bool{
 	"text-start":            true,
 	"text-delta":            true,
@@ -445,6 +473,11 @@ var ValidTypes = map[string]bool{
 	"data-redline":          true,
 	"data-subprogress":      true,
 	"data-plan-trace":       true,
+	// Phase 29 / Plan 29-04 (FBK-01) — server-side message identity.
+	// Emitted after writeAuditAndTurn, before the terminal frames. The
+	// TS mirror at web/src/types/wire-types.ts ships in the SAME commit
+	// (D15 paired-commit invariant).
+	"data-turn": true,
 	// `finish` is the message-level terminator in AI SDK v5's
 	// uiMessageChunkSchema (distinct from finish-step / finish-message).
 	// VerdictPipeline emits it as the final chunk; the whitelist gate

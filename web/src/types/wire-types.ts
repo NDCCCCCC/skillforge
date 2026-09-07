@@ -374,6 +374,27 @@ export interface PlanTracePayload {
 }
 
 // ----------------------------------------------------------------------------
+// TurnPayload — Phase 29 / Plan 29-04 (FBK-01), D15 paired commit
+// ----------------------------------------------------------------------------
+
+// Payload of the `data-turn` SSE chunk (mirror of wire.TurnPayload,
+// internal/wire/chunk.go). One live-stream field: the server-assigned
+// session_turn.id of the assistant row the backend just persisted. The
+// FE echoes it back verbatim as the feedback vote key (D-29-02
+// UNIQUE(session_id, turn_id)) — never a client-generated uuid.
+//
+// `votedVerdict` is a TS-side OPTIONAL consumption field only: the Go
+// emit side marshals turnId alone; this field is filled exclusively by
+// the history endpoint's synthesized data-turn part (chat-restore.ts,
+// D-29-03 zero-extra-request echo). Declared here so that synthesized
+// literal passes the TS excess-property check. Values mirror the
+// feedback verdict vocabulary (helpful | unhelpful | outdated).
+export interface TurnPayload {
+  turnId: number;
+  votedVerdict?: 'helpful' | 'unhelpful' | 'outdated';
+}
+
+// ----------------------------------------------------------------------------
 // SkillForgeChunk — the union emitted on the wire
 // ----------------------------------------------------------------------------
 
@@ -421,6 +442,16 @@ export type SkillForgeChunk =
   // snapshot keyed by runId; PlanTracePart renders it. Idempotent —
   // each chunk carries the FULL current todo list.
   | { type: 'data-plan-trace'; id?: string; data: PlanTracePayload }
+  // Plan 29-04 (FBK-01) — server-side message identity (session_turn.id).
+  // Emitted AFTER the backend persists the (user, assistant) turn pair
+  // and BEFORE the terminal frames (text-end / finish-step / finish), so
+  // every assistant reply — all five refusal shapes included — carries
+  // its id before useChat registers the message. Paired commit with BE
+  // internal/wire/chunk.go ValidTypes["data-turn"] (D15 lockstep
+  // invariant). A turnId <= 0 NEVER reaches the wire — the backend
+  // emits nothing on replay/degradation and the FE keeps its disabled
+  // feedback state (T-29-06).
+  | { type: 'data-turn'; id?: string; data: TurnPayload }
   // Plan 03-01 — agent per-hop decisions (ARAG-01 / SC-1 observability).
   // Strict refinement of AI SDK v5 DataUIMessageChunk — assignability
   // holds so the D15 drift alarm stays green.
