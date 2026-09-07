@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 29
-current_plan: 4
+current_plan: 5
 status: executing
-last_updated: "2026-09-07T20:22:54.000Z"
-last_activity: 2026-09-08 -- 29-04 SHIPPED (data-turn wire frame: 24th ValidTypes + emitTurnID x11 + write-first reorder + history turn_id/voted_verdict echo)
+last_updated: "2026-09-07T20:50:00.000Z"
+last_activity: 2026-09-08 -- 29-05 SHIPPED (feedback HTTP surface: idempotent vote endpoint + admin review/disposition/metrics + FBK-05 structural lock)
 progress:
   total_phases: 6
   completed_phases: 3
@@ -20,9 +20,11 @@ progress:
 ## Current Position
 
 Phase: 29 (feedback-loop-ticket-interface) — EXECUTING
-Plan: 4 of 9
-Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 shipped; 29-05 next)
-Last activity: 2026-09-08 -- 29-04 SHIPPED (data-turn wire 帧 + history 双字段回显, commits 271a5bb + 4471b88/affeaa1 + 2f5e032/5ba4cfc)
+Plan: 5 of 9
+Status: Executing Phase 29 (Wave 1: 29-01 + 29-03 shipped; Wave 2: 29-02 shipped; Wave 3: 29-04 + 29-05 shipped; Wave 4: 29-06 + 29-07 next)
+Last activity: 2026-09-08 -- 29-05 SHIPPED (feedback HTTP 面: POST /api/feedback 幂等投票 + admin 复核/处置/指标 + FBK-05 结构锁, commits 14b0e17/e7cfb17 + 046a37c/5898fc7)
+
+**Phase 29 Plan 29-05 delivery summary (Wave 3, 2026-09-08):** FBK-01/02/03/05 的 HTTP 面全部 — 4 个原子 commit（14b0e17 RED/e7cfb17 GREEN + 046a37c RED/5898fc7 GREEN，TDD 双环），WSL `go build ./...` + `go test ./internal/server/... -count=1` 全绿（14.5s）+ vet/gofmt 干净。`internal/server/feedback.go`：`POST /api/feedback` 固定门序（body 解码 → sessionIDRegex → verdict 闭集 → turn_id>0 → 2000-rune comment 上限 → Store nil 503 → GetSessionTurn 存在性+role 绑定）+ D-29-05 服务端归因（`QueryAudit{SessionID, Until: turn.Ts, Limit: 1}` 参数化取 turn 前最近 audit 行，复制 SkillID/ChunkIDs CSV——请求体零参与）+ refs 归一化（CSV 拆分 ParseInt、不可解析/重复段跳过、kb_slug=GetChunk().Tier 且 nil/错误诚实降级空串）+ UNIQUE 重放 `200 already_recorded` 读回首 verdict 零额外写（D-29-02）。admin 三端点首行 isAdminRequest（403 先于 503，Pitfall 8，测试 grep 锁定首语句）：review pending/resolved 双分支 disjoint wire；disposition closed_count 先查后写 + INSERT-only 状态行 + `action_feedback_disposition` 审计行（ActorType admin + JSON 快照 FrozenArgs）；metrics D-29-10 全票分母 Go 侧算、0 票 → JSON null 绝非 0%、per-KB by_key 一票多 KB 各计一次而 totals 恒取 strict 单计聚合（新裁决，锁于 KB 行和 4 > 实际 3 票的用例）+ pending_count cross-link。`TestFeedbackNoTrustMutation` FBK-05 红线成测试事实：feedback.go 零 "UPDATE "/"DELETE "/"Insert("、retriever 唯一引用 GetChunk、三文件（server/feedback.go + store/sqlite/{feedback,tickets}.go）零 Indexer 引用、4 路由各注册恰一次。处置闭环 + 重开（latest-disposition-wins）走真 `:memory:` sqlite（语义是 store 自己的，非测试本地复刻）。3 个 test-side auto-fix：固定 wall-date fixture 漂进 store 未来使 d.ts>=f.ts 反转（改 clock-relative）、结构锁相对路径多退一级、首语句 grep 误杀多行 CHECK ORDER 注释（放行注释行不放行语句）。线形契约四端点 shape 冻结于 29-05-SUMMARY 供 29-07/29-08 消费。REQUIREMENTS 行保持 Pending（phase-close 约定）；FBK-01/05 实质已交付，FBK-02/03 另待 29-08 渲染半面。
 
 **Phase 29 Plan 29-04 delivery summary (Wave 3, 2026-09-08):** FBK-01 turn id 双暴露路径 + D-29-03 history 回显全部 — 5 个原子 commit（271a5bb D15 配对 + 4471b88 RED/affeaa1 GREEN + 2f5e032 RED/5ba4cfc GREEN），WSL `go build ./...` + `go test ./internal/wire/ ./internal/server/...` 全绿，FE wire-contract + chat-restore 15/15 + `tsc --noEmit` 干净。`internal/wire/chunk.go`：`"data-turn"` 注册为第 24 个 ValidTypes（计数注释 23→24，snake_case 持续被拒）+ `wire.TurnPayload{turnId}`；TS 镜像同 commit 落 `TurnPayload {turnId; votedVerdict?}` + union 成员（votedVerdict 是 TS-only 可选消费字段，Go emit 侧永不 marshal——只由 history 合成 part 填充，D-29-04-D）。新 `feedback_wire.go`：`emitTurnID` 对 turnID<=0 零字节输出（冲突/降级绝不编造身份，T-29-06），emit 失败 WARN 不 500。11 个发射点（pipeline 6 / chat 3 / runner 2，grep ==11 精确等式）：5 条拒绝路径重排为 write-first（writeAuditAndTurn → emitTurnID → return emitRefusal，audit 行在发射前必落盘，GEVL-03 只强不变）；verdict 路径 data-turn 位于 counter-evidence/redline 之后、text-end 之前（plan behavior 矩阵优先于 action 措辞的冲突按 D-29-04-A 裁决）；chat.go:449 agent-error 分支刻意不发帧（无 finish → useChat 不注册消息 → 无 FeedbackRow，就地注释锁定）。history：`historyEntry` += `turn_id`/`voted_verdict`（assistant-only omitempty），handler 恰一次 `VotedVerdictsBySession` 批量查询（counting fake 锁 ==1），读失败降级不 500，截断幸存行不串位；FE `chat-restore.ts` 合成 `{type:'data-turn', data:{turnId, votedVerdict?}}` part——live 流与 history 恢复共用同一消费点，29-07 只认这一种形状。2 个 auto-fix 偏差：chunk_test.go 四处 ValidTypes 计数锁 23→24（否则 Task 1 verify 必炸）；Task 3 测试 int64/float64 断言错配修正。诚实覆盖注记：runner drain-error 分支仅在断连/取消后触发、帧序对客户端不可观测，由 ==11 计数 + write-first 锁定（D-29-04-E）。REQUIREMENTS FBK-01/04 保持 Pending（投票端点归 29-05、FE 反馈 UI 归 29-07）。
 
@@ -38,7 +40,7 @@ Last activity: 2026-09-08 -- 29-04 SHIPPED (data-turn wire 帧 + history 双字�
 
 Progress: [██░░░] 37% (v1.2: 2/6 phases complete, 15/29 requirements satisfied — KBM-01..06 + HYG-01 + DOC-01..06 + GRF-02 + GRF-03 + GRF-05)
 
-**Next action:** Continue Phase 29 execution — 29-05 next (feedback + ticket HTTP endpoints; consumes 29-04's data-turn/turn_id exposure and 29-02's store methods).
+**Next action:** Continue Phase 29 execution — Wave 4: 29-06 (POST /api/tickets, mirrors 29-05's vote-endpoint shape) + 29-07 (FE FeedbackRow 接真, consumes the frozen wire contract).
 
 **Phase 27 residues (non-blocking):**
 
