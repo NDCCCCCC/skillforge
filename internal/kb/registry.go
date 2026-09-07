@@ -15,36 +15,52 @@ import (
 	"time"
 )
 
+// snapshotState is the immutable (entry set, signature) pair. It exists
+// so the two values can be swapped as ONE atomic pointer (WR-02,
+// 26-REVIEW): entries and sig are two fields of one struct that is never
+// mutated after publication, so a reader can never observe the new entry
+// map with the previous signature (or vice versa). That pairing is
+// load-bearing: audit rows carry Signature() so "which registry version
+// produced this answer" stays replayable, and a torn read would let an
+// audit row certify a signature that does not match the entry set that
+// served the answer.
+type snapshotState struct {
+	entries map[string]Entry // immutable between swaps; copy-on-write
+	sig     string           // content signature of exactly these entries
+}
+
 // snapshot is the in-memory Registry implementation: an immutable
 // copy-on-write map of entries plus the content signature derived from
 // them, optionally backed by a Store.
 //
 // Concurrency model (copy-on-write, mirrors the skill registry):
 //
-//   - Writers (Create/Deactivate) build a fresh map and atomically swap
-//     it into place. The store write happens BEFORE the swap, so a failed
-//     persistence never leaks into memory state.
-//   - Readers resolve the current map once per call and treat it as
+//   - Writers (Create/Deactivate) build a fresh snapshotState and
+//     atomically swap it into place. The store write happens BEFORE the
+//     swap, so a failed persistence never leaks into memory state.
+//   - Readers load the current state ONCE per call and treat it as
 //     read-only; every returned Entry/slice is a copy, so a caller can
 //     never mutate registry state.
 type snapshot struct {
-	entries atomic.Pointer[map[string]Entry] // immutable between swaps; copy-on-write
-	sig     atomic.Pointer[string]           // content signature; swapped together with entries
-	store   Store                            // nil = read-only: mutators fail closed
+	state atomic.Pointer[snapshotState] // immutable between swaps; copy-on-write
+	store Store                         // nil = read-only: mutators fail closed
+}
+
+// newSnapshotState builds the immutable state for one entry set.
+func newSnapshotState(entries []Entry) *snapshotState {
+	m := make(map[string]Entry, len(entries))
+	for _, e := range entries {
+		m[e.Slug] = e
+	}
+	return &snapshotState{entries: m, sig: computeSignature(entries)}
 }
 
 // newSnapshot builds a snapshot over entries. Duplicate slugs collapse
 // last-wins; every production path (seed loader, Store adapter) enforces
 // uniqueness before reaching here.
 func newSnapshot(entries []Entry, st Store) *snapshot {
-	m := make(map[string]Entry, len(entries))
-	for _, e := range entries {
-		m[e.Slug] = e
-	}
 	s := &snapshot{store: st}
-	s.entries.Store(&m)
-	sig := computeSignature(entries)
-	s.sig.Store(&sig)
+	s.state.Store(newSnapshotState(entries))
 	return s
 }
 
@@ -64,18 +80,15 @@ var _ Registry = (*snapshot)(nil)
 
 // current returns the live entry map. Readers must not mutate it.
 func (s *snapshot) current() map[string]Entry {
-	return *s.entries.Load()
+	return s.state.Load().entries
 }
 
-// swap atomically replaces the entry map and recomputes the signature.
+// swap atomically replaces the entry map and its signature TOGETHER: one
+// immutable snapshotState behind one pointer, so no reader can observe
+// the entry set of one registry version with the signature of another
+// (WR-02, 26-REVIEW).
 func (s *snapshot) swap(entries []Entry) {
-	m := make(map[string]Entry, len(entries))
-	for _, e := range entries {
-		m[e.Slug] = e
-	}
-	s.entries.Store(&m)
-	sig := computeSignature(entries)
-	s.sig.Store(&sig)
+	s.state.Store(newSnapshotState(entries))
 }
 
 // Lookup returns the active entry for slug. A deactivated or unregistered
@@ -151,8 +164,10 @@ func (s *snapshot) RetrievalEligible() []string {
 // sha256 of every entry's identity fields, entries sorted by slug so
 // insertion order never changes the value. Audit rows carry it, which is
 // what makes "which registry version produced this answer" replayable.
+// The value is read from the SAME snapshotState the entry accessors read,
+// so it always describes the entry set a concurrent reader observes.
 func (s *snapshot) Signature() string {
-	return *s.sig.Load()
+	return s.state.Load().sig
 }
 
 // computeSignature hashes the identity fields of every entry. Timestamps

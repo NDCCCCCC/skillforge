@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -405,6 +406,74 @@ func TestSignatureDeterministic(t *testing.T) {
 	if New(renamed).Signature() == a.Signature() {
 		t.Error("Signature() unchanged after DisplayName changed")
 	}
+}
+
+// TestSnapshotSignatureAlwaysMatchesEntrySet is the WR-02 (26-REVIEW)
+// lock: the (entry set, signature) pair must be swapped as ONE atomic
+// unit. Audit rows carry Signature() so "which registry version produced
+// this answer" stays replayable — a torn read lets an audit row certify
+// a signature that does not match the entry set that served the answer.
+//
+// The reader takes ONE atomic load of the state and demands that its
+// signature is exactly the signature of its own entry set: under a
+// single pointer swap those two values are fields of one immutable
+// struct, so the assertion holds for every observation. Under two
+// independent atomics the pair can mix two registry versions (verified
+// failing against the pre-fix two-atomic implementation).
+//
+// NOTE the scope: separate loads (one List() here, one Signature() later)
+// can still straddle a swap — that is inherent to any snapshot scheme and
+// is why the pair itself, not the two accessor calls, is the unit of
+// atomicity this test pins.
+func TestSnapshotSignatureAlwaysMatchesEntrySet(t *testing.T) {
+	reg := newSnapshot(testEntries(), nil)
+
+	const writers = 4
+	const swapsPerWriter = 200
+	const readers = 4
+	const readsPerReader = 200
+
+	var wg sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			base := testEntries()
+			for i := 0; i < swapsPerWriter; i++ {
+				// Toggle one identity field per round so the signature
+				// changes every swap (a swap that leaves the content
+				// identical could pass a torn comparison by accident).
+				round := append([]Entry(nil), base...)
+				for j := range round {
+					if round[j].Slug == "historical" {
+						round[j].RetrievalEnabled = (i+w)%2 == 0
+					}
+				}
+				reg.swap(round)
+			}
+		}(w)
+	}
+	for r := 0; r < readers; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < readsPerReader; i++ {
+				// ONE load: entries and sig come from the same immutable
+				// snapshotState. The entry map is never mutated after
+				// publication, so reading it without a lock is safe.
+				st := reg.state.Load()
+				got := make([]Entry, 0, len(st.entries))
+				for _, e := range st.entries {
+					got = append(got, e)
+				}
+				if want := computeSignature(got); st.sig != want {
+					t.Errorf("torn read: state signature %q does not match its own entry set (want %q)", st.sig, want)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 // TestCreate locks the admin create path: validated input, store write
