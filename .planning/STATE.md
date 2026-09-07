@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: — 知识库运营与反馈闭环
 current_phase: 27
-current_plan: 0
+current_plan: 2
 status: phase-complete
 last_updated: "2026-09-07T07:20:00.000Z"
-last_activity: 2026-09-07 -- Phase 26 CLOSED (verification passed + human items resolved)
+last_activity: 2026-09-07 -- Phase 27-02 COMPLETE: UploadIndex + GetMaxID interface (ae98265/a011ab1/fbec279)
 progress:
   total_phases: 5
   completed_phases: 1
@@ -799,3 +799,18 @@ Resume File: .planning/phases/18-skill-p10-4/18-UI-SPEC.md
 **Deviations**: None. One implementation refinement: `TestPlatformFloorLockSelfConsistent` uses a separate `platformFloorLockCanonical` struct (without `lock_sha256`) to recompute the canonical body hash, matching the literal `_lock_sha256_convention` wording.
 
 **Resumes at**: `.planning/phases/14-p10-0-cgo-trust-floor/14-03-PLAN.md` (Wave 3: mattn/go-sqlite3 CGO migration).
+
+---
+
+## Phase 27-02 Completion Record (2026-09-07)
+
+**Phase:** 27 (文档上传入库)
+**Plan:** 27-02 (UploadIndex + nextID coordination)
+**Commits:** `ae98265` (T2: GetMaxID interface), `a011ab1` (T1: UploadIndex), `fbec279` (T3: 8-case unit tests)
+**Status:** COMPLETE — 3/3 tasks, 10/10 tests green
+
+**Summary:** `UploadIndex(ctx, slug, fileBytes, mimeType, filename, emb, reg, r)` that parses a document via `document.ParserRegistry`, extracts frontmatter via `splitFrontmatter(raw bytes)`, chunks at maxDocBytes with 200-char overlap, embeds each chunk (fail-closed on embed error), and returns `[]retriever.Document` for the caller to Insert. `validateTiers` runs before the embedder (KNOW-02 gate). `GetMaxID` added to `retriever.Retriever` interface; stubs on `*MilvusClient` and `*Client` (real impls in Plan 27-04). Cascade: `cmd/spike-fanout`, `cmd/spike-hitl`, `cmd/server` have `stubRetriever`/`noopRetriever` test doubles needing `GetMaxID` — not in this plan's scope.
+
+**Files:** `internal/knowledge/upload_index.go` (+213), `internal/knowledge/upload_index_test.go` (+457), `internal/retriever/retriever.go` (+5), `internal/retriever/milvus/client.go` (+7), `internal/retriever/mongo/mongo.go` (+7), `internal/knowledge/graph_test.go` (+3 stub fix)
+
+**Next:** Plan 27-03 (upload handler) / Plan 27-04 (GetMaxID implementations on MilvusClient + MongoClient)
