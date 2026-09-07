@@ -413,14 +413,15 @@ func invokePathHandler(t *testing.T, deps *Deps, query string) *ut.ResponseRecor
 }
 
 // --- TestNeighborsAtDepth ---
-// 3 chunks (1,2,3) in same source → section_adjacent edges 1→2, 2→3.
-// depth=1 should return chunk 1 and its immediate neighbor (2).
+// 2 chunks (1,2) — depth=1 BFS terminates cleanly (chunk 2 has no further
+// neighbors), so Degraded=false. (A 3+ chunk chain would leave unreached
+// nodes past the depth frontier and trigger Degraded=true; that's the
+// TestNeighborsDepthLimit case.)
 func TestNeighborsAtDepth(t *testing.T) {
 	stub := &stubMetaRetriever{
 		rows: []retriever.DocumentMeta{
 			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
 			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
-			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
 		},
 	}
 	stubKB := &stubKnowledgeBuilder{}
@@ -471,12 +472,15 @@ func TestNeighborsDepth2(t *testing.T) {
 
 // --- TestNeighborsDepthLimit ---
 // depth=10 exceeds defaultNeighborDepth=2 → actual depth capped to 2.
+// Fixture: 4-chunk linear chain (1→2→3→4); cap at depth=2 leaves chunk 4
+// unreached → frontier truncated → Degraded=true with the depth-limit reason.
 func TestNeighborsDepthLimit(t *testing.T) {
 	stub := &stubMetaRetriever{
 		rows: []retriever.DocumentMeta{
 			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
 			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
 			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 4, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
 		},
 	}
 	stubKB := &stubKnowledgeBuilder{}
@@ -489,7 +493,7 @@ func TestNeighborsDepthLimit(t *testing.T) {
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
 	// Depth should be capped to 2.
 	assert.Equal(t, 2, result.Depth)
-	assert.True(t, result.Degraded, "depth capped should set degraded=true")
+	assert.True(t, result.Degraded, "depth capped with frontier truncation should set degraded=true")
 	assert.Contains(t, result.DegradedReason, "SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT")
 }
 

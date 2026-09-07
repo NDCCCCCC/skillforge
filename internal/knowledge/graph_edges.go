@@ -377,12 +377,22 @@ func (g *EdgeGraph) Neighbors(chunkID string, maxDepth int, maxNodes int) *Neigh
 		depth++
 	}
 
-	degraded := len(visited) >= maxNodes || depth >= maxDepth
+	// Degraded when:
+	//   - the node cap is hit (caller asked for "all reachable within X
+	//     nodes" and we cut it off), OR
+	//   - the depth cap is hit AND there are still unreached nodes elsewhere
+	//     in the graph (caller asked for depth=D but more nodes exist
+	//     at depth > D — a 4-node chain with cap=2 leaves nodes 3 & 4
+	//     unreached because chunk 4 is past the frontier).
+	unreached := len(g.metaIndex) - len(visited)
+	depthFrontierCut := len(queue) > 0 && depth >= maxDepth && unreached > 0
+	degraded := len(visited) >= maxNodes || depthFrontierCut
 	reason := ""
 	if degraded {
-		if len(visited) >= maxNodes {
+		switch {
+		case len(visited) >= maxNodes:
 			reason = fmt.Sprintf("neighbor limit exceeded (%d nodes); returning partial result. see SKILLFORGE_GRAPH_MAX_NODES config.", maxNodes)
-		} else {
+		default:
 			reason = fmt.Sprintf("depth limit reached (depth=%d); some neighbors may exist beyond this frontier. see SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT config.", maxDepth)
 		}
 	}
