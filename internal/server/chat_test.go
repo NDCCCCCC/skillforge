@@ -444,7 +444,7 @@ func TestGroundingCheckerInvoked(t *testing.T) {
 	v := verdict.Verdict{
 		Status:         "合规",
 		Confidence:     0.95,
-		Citations:      []verdict.Citation{{ChunkID: "1", Span: "fabricated span", Tier: "权威"}},
+		Citations:      []verdict.Citation{{ChunkID: "1", Span: "fabricated span", Tier: "authority"}},
 		ReviewRequired: false,
 	}
 	chunksByID := map[string]string{"1": "real chunk text does not contain fabricated"}
@@ -468,7 +468,7 @@ func TestPipelineInvokesGroundingChecker(t *testing.T) {
 	deps := newTestDeps()
 	chunkText := "出差住宿费超标 200 元以内由部门负责人审批"
 	chunks := []retriever.Hit{
-		{ID: 1, Tier: "权威", Content: chunkText, Source: "authority/travel_expense.md", Score: 0.95},
+		{ID: 1, Tier: "authority", Content: chunkText, Source: "authority/travel_expense.md", Score: 0.95},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
 	stubRun := newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95,
@@ -534,7 +534,7 @@ func TestRefusalShape(t *testing.T) {
 	t.Run("low_retrieval_score", func(t *testing.T) {
 		deps := newTestDeps()
 		deps.Retriever = &stubRetriever{chunks: []retriever.Hit{
-			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.10},
+			{ID: 1, Tier: "authority", Content: "x", Source: "authority/x.md", Score: 0.10},
 		}}
 		loader := skill.NewLoader(skillsDirPath(), testKBReg())
 		_, err := loader.Scan()
@@ -694,7 +694,7 @@ func TestChatHandler_EmitsRoutingDecisionBeforePipeline(t *testing.T) {
 	deps := &Deps{
 		Embedder: emb,
 		Retriever: &stubRetriever{chunks: []retriever.Hit{
-			{ID: 1, Tier: "权威", Content: "x", Source: "authority/x.md", Score: 0.92},
+			{ID: 1, Tier: "authority", Content: "x", Source: "authority/x.md", Score: 0.92},
 		}},
 		Runner:   newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, "x", "authority")),
 		Router:   skill.NewRouter(emb),
@@ -865,7 +865,7 @@ func TestVerdictStreamCarriesConclusionText(t *testing.T) {
 	deps := newTestDeps()
 	span := "出差住宿费超标 200 元以内由部门负责人审批"
 	chunks := []retriever.Hit{
-		{ID: 1, Tier: "权威", Content: span, Source: "authority/travel_expense.md", Score: 0.92},
+		{ID: 1, Tier: "authority", Content: span, Source: "authority/travel_expense.md", Score: 0.92},
 	}
 	deps.Retriever = &stubRetriever{chunks: chunks}
 	// confidence 0.85 < 0.9 → ReviewRequired=true, so the conclusion
@@ -922,8 +922,8 @@ func TestVerdictStreamCarriesConclusionText(t *testing.T) {
 // to the bare chunk ID — and must NOT self-repeat ("9 · chunk 9").
 func TestTitleFor(t *testing.T) {
 	chunks := []retriever.Hit{
-		{ID: 3, Tier: "权威", Content: "年假条款甲", Source: "authority/annual_leave.md", Score: 0.9},
-		{ID: 7, Tier: "权威", Content: "年假条款乙", Source: "authority/annual_leave.md", Score: 0.8},
+		{ID: 3, Tier: "authority", Content: "年假条款甲", Source: "authority/annual_leave.md", Score: 0.9},
+		{ID: 7, Tier: "authority", Content: "年假条款乙", Source: "authority/annual_leave.md", Score: 0.8},
 	}
 	cases := []struct {
 		name    string
@@ -1005,7 +1005,7 @@ func TestConclusionTextPunctuationNormalization(t *testing.T) {
 			Status:     "ok",
 			Confidence: 0.97,
 			Answer:     answer,
-			Citations:  []verdict.Citation{{ChunkID: "3", Span: span, Tier: "权威"}},
+			Citations:  []verdict.Citation{{ChunkID: "3", Span: span, Tier: "authority"}},
 		}
 	}
 	citationSuffix := "依据 权威 tier 条款：「" + span + "」。"
@@ -1048,7 +1048,7 @@ func TestConclusionTextPunctuationNormalization(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out := conclusionText(mkVerdict(tc.answer))
+			out := conclusionText(mkVerdict(tc.answer), testKBReg())
 			assert.NotContains(t, out, "。。",
 				"conclusion must never contain a double period")
 			assert.True(t, strings.HasSuffix(out, "。"),
@@ -1062,7 +1062,7 @@ func TestConclusionTextPunctuationNormalization(t *testing.T) {
 	t.Run("review-required note also free of double periods", func(t *testing.T) {
 		v := mkVerdict("50 万元以下由部门负责人审批。")
 		v.ReviewRequired = true
-		out := conclusionText(v)
+		out := conclusionText(v, testKBReg())
 		assert.NotContains(t, out, "。。",
 			"review-required branch must never contain a double period")
 		assert.Equal(t,

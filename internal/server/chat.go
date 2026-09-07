@@ -34,6 +34,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/agent"
+	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/reprohash"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -467,7 +468,7 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	// chunkAccumulator is not exposed across the package boundary; a
 	// future Plan can lift it via an accessor if richer source-document
 	// metadata is needed.
-	_ = emitVerdictStream(c, v, nil)
+	_ = emitVerdictStream(c, v, nil, nil)
 	// Close the AI SDK v5 message lifecycle. emitVerdictStream opens the
 	// text part (text-start + conclusion text-delta) but deliberately
 	// does NOT close it (the VerdictPipeline closes it after its
@@ -719,7 +720,7 @@ func (s *Deps) findSkill(name string) *skill.Manifest {
 // discriminated union has no "tier" field on the source-document
 // variant; stuffing it in Data would not parse through the v5
 // client parser. The Verdict payload is the canonical place.
-func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retriever.Hit) error {
+func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retriever.Hit, reg kb.Registry) error {
 	// text-start anchors the AI SDK v5 assistant message so useChat
 	// registers it in chat.messages. A data-only stream (source-document +
 	// data-policy) creates no message without a content chunk.
@@ -738,7 +739,7 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 	// the backend originally shipped a single-space placeholder, which
 	// left the real backend's chat stream conclusion-less — see
 	// .planning/debug/chat-conclusion-not-in-chat.md).
-	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: conclusionText(v)}); err != nil {
+	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: conclusionText(v, reg)}); err != nil {
 		return fmt.Errorf("emit text-delta: %w", err)
 	}
 	// 1. source-document per citation (SC-6). mediaType is REQUIRED by the
@@ -838,7 +839,7 @@ func emitRefusal(c *app.RequestContext, r verdict.Refusal) error {
 // ("采购合同 50 万元以下由谁审批？") now render the direct answer as the
 // main body, with the compliance-style verdict badge trailing only when
 // relevant.
-func conclusionText(v verdict.Verdict) string {
+func conclusionText(v verdict.Verdict, reg kb.Registry) string {
 	pct := int(v.Confidence*100 + 0.5)
 	var b strings.Builder
 
@@ -858,7 +859,7 @@ func conclusionText(v verdict.Verdict) string {
 			b.WriteString("置信度未达自动采信阈值，需人工复核。")
 		}
 		if len(v.Citations) > 0 {
-			fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", v.Citations[0].Tier, v.Citations[0].Span)
+			fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", tierDisplayName(reg, v.Citations[0].Tier), v.Citations[0].Span)
 		}
 		return normalizeConclusionPunctuation(b.String())
 	}
@@ -873,7 +874,7 @@ func conclusionText(v verdict.Verdict) string {
 	}
 	fmt.Fprintf(&b, "结论：%s（置信度 %d%%）。", mainStatus, pct)
 	if len(v.Citations) > 0 {
-		fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", v.Citations[0].Tier, v.Citations[0].Span)
+		fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", tierDisplayName(reg, v.Citations[0].Tier), v.Citations[0].Span)
 	}
 	if v.ReviewRequired {
 		b.WriteString("置信度未达自动采信阈值，需人工复核。")

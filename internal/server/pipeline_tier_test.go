@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/skillforge/skillforge/internal/kb"
+	"github.com/skillforge/skillforge/internal/retriever"
 )
 
 // TestPipelineSuggestionUsesDisplayName — with no resolved tiers, the
@@ -66,4 +67,31 @@ func TestPipelineNilRegistryGraceful(t *testing.T) {
 		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
 	})
 	assert.Equal(t, "权威制度口径", ruleBasedSuggestion("权威制度口径", nil, reg))
+}
+
+// TestCitableChunksByID — the verdict-pipeline grounding closure keeps
+// only authority-role chunks (KBM-03; the mirror of the agent-side
+// accumulator gate). Nil registry = legacy posture (everything enters).
+// Lookup failure (unregistered / deactivated slug) excludes the chunk —
+// the same fail-closed outcome as a non-citable role.
+func TestCitableChunksByID(t *testing.T) {
+	chunks := []retriever.Hit{
+		{ID: 1, Tier: "authority", Content: "authority clause"},
+		{ID: 2, Tier: "historical", Content: "superseded clause"},
+		{ID: 3, Tier: "unregistered-slug", Content: "ghost clause"},
+	}
+
+	// Nil registry = legacy: everything enters the closure.
+	all := citableChunksByID(nil, chunks)
+	assert.Len(t, all, 3, "legacy posture keeps every chunk")
+
+	reg := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
+		{Slug: "historical", DisplayName: "历史", Role: kb.RoleHistorical, RetrievalEnabled: true},
+	})
+	got := citableChunksByID(reg, chunks)
+	assert.Len(t, got, 1, "only the authority-role chunk survives the gate")
+	assert.Equal(t, "authority clause", got["1"])
+	assert.NotContains(t, got, "2", "historical chunks are presentation-only, never evidence")
+	assert.NotContains(t, got, "3", "unregistered slugs fail closed")
 }

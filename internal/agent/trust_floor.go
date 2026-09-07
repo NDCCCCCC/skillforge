@@ -116,14 +116,7 @@ func (a *ChunkAccumulator) SetKBRegistry(reg kb.Registry) {
 // against a role literal. Lookup failure and non-citable role are the
 // same outcome — the hit is not evidence.
 func (a *ChunkAccumulator) citable(h retriever.Hit) bool {
-	if a.kb == nil {
-		return true // legacy: no registry bound (tests / degraded path)
-	}
-	entry, ok := a.kb.Lookup(h.Tier)
-	if !ok {
-		return false // unregistered or deactivated slug → not evidence
-	}
-	return entry.Role == kb.CitableRole
+	return kb.Citable(a.kb, h.Tier)
 }
 
 // Add records the given hits. Dedups by chunk ID (the D3-01 open

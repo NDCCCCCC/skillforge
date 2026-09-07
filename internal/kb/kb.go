@@ -223,3 +223,22 @@ type CreateInput struct {
 // without a Store: a mutation that could not be persisted must not happen
 // at all, because it would silently vanish on the next restart.
 var ErrReadOnly = errors.New("kb: registry opened read-only (no store wired)")
+
+// Citable reports whether one chunk tier may enter the grounding
+// closure (KBM-03): only entries whose role equals CitableRole are
+// evidence. It is the single source of that predicate — both the
+// agent-side accumulator gate and the server-side verdict pipeline
+// call it, so the two insertion points cannot drift. A nil registry
+// is the legacy posture (tests / degraded paths keep today's
+// behavior); a bound registry with a lookup failure excludes the
+// chunk — unregistered or deactivated means not evidence.
+func Citable(reg Registry, tier string) bool {
+	if reg == nil {
+		return true // legacy: no registry bound
+	}
+	entry, ok := reg.Lookup(tier)
+	if !ok {
+		return false // unregistered or deactivated slug → not evidence
+	}
+	return entry.Role == CitableRole
+}
