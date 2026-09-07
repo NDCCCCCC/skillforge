@@ -44,6 +44,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/retriever"
 )
 
 // stubKnowledgeBuilder is the test double for KnowledgeBuilder. The
@@ -363,3 +364,285 @@ func TestGraphResponseError_ErrorField(t *testing.T) {
 
 // Force the bytes import to remain in use across future refactors.
 var _ = bytes.NewBufferString
+
+// ------------------------------------------------------------------
+// Plan 28-02 — neighborsHandler + pathHandler tests
+// ------------------------------------------------------------------
+
+// stubMetaRetriever is the test double for the Retriever interface used by
+// neighborsHandler and pathHandler. It implements retriever.Retriever
+// so the HTTP handlers can call ListMetadata without a live Milvus/Mongo.
+type stubMetaRetriever struct {
+	rows    []retriever.DocumentMeta
+	listErr error
+}
+
+func (s *stubMetaRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
+	return s.rows, s.listErr
+}
+func (s *stubMetaRetriever) Search(_ context.Context, _ []float32, _ []string, _ int, _ int64) ([]retriever.Hit, error) {
+	return nil, nil
+}
+func (s *stubMetaRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
+	return retriever.ChunkContent{}, errors.New("not implemented")
+}
+func (s *stubMetaRetriever) Health(_ context.Context) error                        { return nil }
+func (s *stubMetaRetriever) Ensure(_ context.Context) error                         { return nil }
+func (s *stubMetaRetriever) Insert(_ context.Context, _ []retriever.Document) error { return nil }
+func (s *stubMetaRetriever) Disconnect() error                                      { return nil }
+func (s *stubMetaRetriever) GetMaxID(_ context.Context, _ string) (int64, error)  { return 0, nil }
+
+var _ retriever.Retriever = (*stubMetaRetriever)(nil)
+
+// --- helpers ---
+
+func invokeNeighborsHandler(t *testing.T, deps *Deps, query string) *ut.ResponseRecorder {
+	t.Helper()
+	h := server.Default(server.WithHostPorts(":0"))
+	h.GET("/api/knowledge/graph/neighbors", deps.neighborsHandler)
+	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/graph/neighbors?"+query, nil)
+	return w
+}
+
+func invokePathHandler(t *testing.T, deps *Deps, query string) *ut.ResponseRecorder {
+	t.Helper()
+	h := server.Default(server.WithHostPorts(":0"))
+	h.GET("/api/knowledge/graph/path", deps.pathHandler)
+	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/graph/path?"+query, nil)
+	return w
+}
+
+// --- TestNeighborsAtDepth ---
+// 3 chunks (1,2,3) in same source → section_adjacent edges 1→2, 2→3.
+// depth=1 should return chunk 1 and its immediate neighbor (2).
+func TestNeighborsAtDepth(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=1&depth=1")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.NeighborResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.Equal(t, "1", result.ChunkID)
+	assert.Equal(t, 1, result.Depth)
+	// Should have nodes 1 and 2 (chunk 1 + depth-1 neighbor).
+	assert.Len(t, result.Nodes, 2)
+	assert.Equal(t, "1", result.Nodes[0].ChunkID)
+	assert.Equal(t, "2", result.Nodes[1].ChunkID)
+	// Should have 1 section_adjacent edge (1→2).
+	assert.Len(t, result.Edges, 1)
+	assert.Equal(t, "1", result.Edges[0].From)
+	assert.Equal(t, "2", result.Edges[0].To)
+	assert.Equal(t, "section_adjacent", result.Edges[0].EdgeType)
+	assert.False(t, result.Degraded)
+}
+
+// --- TestNeighborsDepth2 ---
+// Same 3-chunk fixture, depth=2 expands to all 3 nodes.
+func TestNeighborsDepth2(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=1&depth=2")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.NeighborResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.Equal(t, 2, result.Depth)
+	assert.Len(t, result.Nodes, 3)
+	// 2 edges: 1→2 and 2→3.
+	assert.Len(t, result.Edges, 2)
+}
+
+// --- TestNeighborsDepthLimit ---
+// depth=10 exceeds defaultNeighborDepth=2 → actual depth capped to 2.
+func TestNeighborsDepthLimit(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=1&depth=10")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.NeighborResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	// Depth should be capped to 2.
+	assert.Equal(t, 2, result.Depth)
+	assert.True(t, result.Degraded, "depth capped should set degraded=true")
+	assert.Contains(t, result.DegradedReason, "SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT")
+}
+
+// --- TestNeighborsChunkNotFound ---
+// Empty metadata → 404.
+func TestNeighborsChunkNotFound(t *testing.T) {
+	stub := &stubMetaRetriever{rows: []retriever.DocumentMeta{}}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=999&depth=1")
+	assert.Equal(t, http.StatusNotFound, got.Code)
+	var body graphResponseError
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &body))
+	assert.Equal(t, "chunk not found", body.Error)
+}
+
+// --- TestNeighborsInvalidChunkID ---
+// Garbage chunk_id → 400.
+func TestNeighborsInvalidChunkID(t *testing.T) {
+	stub := &stubMetaRetriever{rows: []retriever.DocumentMeta{{ID: 1, Tier: "authority", Source: "a.md"}}}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=abc&depth=1")
+	assert.Equal(t, http.StatusBadRequest, got.Code)
+	var body graphResponseError
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &body))
+	assert.Equal(t, "invalid chunk id", body.Error)
+}
+
+// --- TestNeighborsRetrieverNil ---
+// Retriever nil → 503.
+func TestNeighborsRetrieverNil(t *testing.T) {
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: nil}
+
+	got := invokeNeighborsHandler(t, deps, "chunk_id=1&depth=1")
+	assert.Equal(t, http.StatusServiceUnavailable, got.Code)
+}
+
+// --- TestPathHopsLimit ---
+// 3-chunk chain 1→2→3, path from 1 to 3 with max_hops=2 should succeed.
+func TestPathHopsLimit(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 3, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokePathHandler(t, deps, "from=1&to=3&max_hops=2")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.PathResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.Equal(t, "1", result.From)
+	assert.Equal(t, "3", result.To)
+	assert.Equal(t, 2, result.Hops)
+	assert.Equal(t, []string{"1", "2", "3"}, result.Path)
+	assert.False(t, result.Degraded)
+}
+
+// --- TestPathNotFound ---
+// 1 and 3 are in different disconnected components → hops=-1, degraded=true.
+func TestPathNotFound(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			{ID: 2, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+			// Chunk 3 is in a different source, no edges connect them.
+			{ID: 3, Tier: "authority", Source: "b.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokePathHandler(t, deps, "from=1&to=3&max_hops=4")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.PathResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.Equal(t, -1, result.Hops)
+	assert.Empty(t, result.Path)
+	assert.True(t, result.Degraded)
+	assert.Contains(t, result.DegradedReason, "no path found")
+}
+
+// --- TestPathSameChunk ---
+// from=1&to=1 → hops=0, path=[1].
+func TestPathSameChunk(t *testing.T) {
+	stub := &stubMetaRetriever{
+		rows: []retriever.DocumentMeta{
+			{ID: 1, Tier: "authority", Source: "a.md", EffectiveFrom: 0, EffectiveTo: 0},
+		},
+	}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokePathHandler(t, deps, "from=1&to=1&max_hops=4")
+	assert.Equal(t, http.StatusOK, got.Code)
+
+	var result knowledge.PathResult
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &result))
+	assert.Equal(t, 0, result.Hops)
+	assert.Equal(t, []string{"1"}, result.Path)
+	assert.Empty(t, result.Edges)
+	assert.False(t, result.Degraded)
+}
+
+// --- TestPathRetrieverNil ---
+// Retriever nil → 503.
+func TestPathRetrieverNil(t *testing.T) {
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: nil}
+
+	got := invokePathHandler(t, deps, "from=1&to=2&max_hops=4")
+	assert.Equal(t, http.StatusServiceUnavailable, got.Code)
+}
+
+// --- TestPathInvalidFrom ---
+// Invalid from → 400.
+func TestPathInvalidFrom(t *testing.T) {
+	stub := &stubMetaRetriever{rows: []retriever.DocumentMeta{{ID: 1, Tier: "authority", Source: "a.md"}}}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+
+	got := invokePathHandler(t, deps, "from=abc&to=2&max_hops=4")
+	assert.Equal(t, http.StatusBadRequest, got.Code)
+}
+
+// --- TestNeighborsHandlerRouteRegistered ---
+func TestNeighborsHandlerRouteRegistered(t *testing.T) {
+	stub := &stubMetaRetriever{rows: []retriever.DocumentMeta{{ID: 1, Tier: "authority", Source: "a.md"}}}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+	h := New(":0", deps)
+	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/graph/neighbors?chunk_id=1&depth=1", nil)
+	assert.NotEqual(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// --- TestPathHandlerRouteRegistered ---
+func TestPathHandlerRouteRegistered(t *testing.T) {
+	stub := &stubMetaRetriever{rows: []retriever.DocumentMeta{{ID: 1, Tier: "authority", Source: "a.md"}}}
+	stubKB := &stubKnowledgeBuilder{}
+	deps := &Deps{Knowledge: stubKB, Retriever: stub}
+	h := New(":0", deps)
+	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/graph/path?from=1&to=1&max_hops=4", nil)
+	assert.NotEqual(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
