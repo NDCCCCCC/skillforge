@@ -59,7 +59,10 @@ findings:
   warning: 7
   info: 10
   total: 21
-status: findings_found
+status: findings_addressed
+fix_round: 2026-09-07T05:20:20Z
+fixed: 6
+skipped: 0
 ---
 
 # Phase 26: Code Review Report
@@ -67,7 +70,7 @@ status: findings_found
 **Reviewed:** 2026-09-07T04:20:00Z
 **Depth:** standard
 **Files Reviewed:** 34 (production scope; ~49 incl. config/docs read for cross-checks)
-**Status:** findings_found
+**Status:** findings_addressed (fix round 2026-09-07: 4/4 Critical + 2/7 Warnings fixed; see Fix Round)
 
 ## Summary
 
@@ -259,3 +262,30 @@ func (s *snapshot) current() *snapshotState { return s.entries.Load() }
 _Reviewed: 2026-09-07T04:20:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+## Fix Round
+
+**Fixed at:** 2026-09-07T05:20:20Z
+**Scope applied:** all 4 Critical findings + WR-01 + WR-02 (the two tractable Warnings). WR-03..WR-07 and IN-01..IN-10 are **open**.
+**Worktree:** fixes were applied on an isolated worktree branch (`gsd-reviewfix/26-*`) and fast-forwarded onto `phase-20-p10-6-admin-console`.
+
+| Finding | Outcome | Commit | How |
+|---|---|---|---|
+| CR-01 | fixed | `e4211c6` | `KBRegistry: kbReg` wired into the boot `data.ImporterConfig` (the only production construction). Added `TestImporterConfigWiresKBRegistry`, a source-grep lock on the literal (the failure is invisible to unit tests). |
+| CR-02 | fixed | `adce584` | Third insertion point gated with the single-source predicate `kb.Citable`: `SharedChunkAccumulator.SetKBRegistry` + insertion-time filter in `Add` (dropped hit frees its chunk ID); `TrustStageInput.KBRegistry` + runtime-local `citableChunksByID` for the `ApplyTrustStage` grounding map; `DispatchConfig.KBRegistry` → `FanOutOrchestrator` → bound on every shared accumulator + threaded into both `ApplyTrustStage` call sites; `BuildRunner` forwards the registry. Behavioral test: a merged verdict whose union holds only a historical hit now hits the trust floor (refusal) instead of grounding; control with an authority hit still grounds. |
+| CR-03 | fixed | `dc05ca7` | `KBRegistry: kbReg` in `cmd/server`'s `agent.AgentConfig`; `buildAgent(ctx, …, kbReg)` threads it in `cmd/eval` (both call sites); `KBRegistry: s.KBRegistry` in the ChatHandler `BuildRunner` (matching approval_api/plan_api). Grep-level wiring locks added for all three: `TestAgentConfigWiresKBRegistry`, `TestEvalBuildAgentWiresKBRegistry`, `TestChatHandlerBuildRunnerWiresKBRegistry`. |
+| CR-04 | fixed (logic changed — human verification recommended) | `629590a` | Request-scoped handlers: new `hitl.HandlerForSession` returns a fresh `MemoryFactsTool` clone per `BuildToolsForSkill` call (`cloneForSession` = value copy + registry rebind + identity), never mutating the shared singletons; `WithContext` deleted; `BindKBRegistry` kept for explicit boot/test construction and documented as off the per-request path. Tests: request-scoping + untouched-singleton assertions, fail-closed nil/unbound registry, and a 16×50 concurrent hammer asserting zero cross-session mis-attribution — clean under `-race`. The T-HITL-07 sha256 body lock was re-ranged 320-422 → 339-441; `InvokableRun`'s body is byte-identical (hash unchanged). |
+| WR-01 | fixed | `d9cb8b4` | `GraphBuilder.Build` adopts the walker's three-state semantics: active slug renders; non-active but non-empty tier → skip + one summed WARN (deactivation no longer 500s `GET /api/knowledge/graph`); EMPTY tier stays a hard `ErrInvalidTier`. Two tests rewritten to the new contract + one added for the empty-tier reject. |
+| WR-02 | fixed | `d67d8a8` | Registry snapshot packs (entry map, signature) into one immutable `snapshotState` behind a single `atomic.Pointer` — writers store once, readers get a self-consistent pair. `TestSnapshotSignatureAlwaysMatchesEntrySet` hammers `swap` from 4 goroutines while readers recompute the signature of the observed entry set; it reproduces the torn read on the pre-fix two-atomic implementation. |
+
+**Residual notes (not blocking, out of this round's scope):**
+
+- `-race ./internal/agent/` also flags `TestDataChannelFanOut*` through the test fixture `stubKPICaller.Call` (`fanout_tools_test.go:185` appends to a slice from errgroup goroutines without a mutex). Reproduced on the base commit `9054cc4` — pre-existing, unrelated to CR-04.
+- `hitl.InjectDeps` still binds the per-request `AuditWriter`/report sink/emit hooks on the shared `plan_approve` + `report:publish` singletons — the same class of race CR-04 fixed for `memory:facts`. The review scoped CR-04 to `BindKBRegistry`/`WithContext`; the remaining seam is documented here for the next round.
+- Environmental: this checkout's `core.autocrlf=true` wrote CRLF into tracked `*.jsonl` (not covered by `.gitattributes`), which flipped `TestPlatformFloorLockSelfConsistent` (a raw-byte sha256 of `eval/golden/platform-floor.jsonl`). The working tree was normalized to LF and the test passes; consider `*.jsonl text eol=lf` in `.gitattributes`.
+
+**Gates after the fix round:** `go build ./...` PASS; `go vet ./...` PASS; `go test ./... -count=1` PASS (40 packages, 0 FAIL, WSL); `scripts/verify-phase-26.sh` 3/3 structural gates PASS; platform floor untouched (no commit touches any `platform_floor*.go` — still byte-frozen at `174ee18`).
+
+---
+
+_Fix round: 2026-09-07T05:20:20Z — Claude (gsd-code-fixer)_
