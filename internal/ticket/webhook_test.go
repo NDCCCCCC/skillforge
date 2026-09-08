@@ -325,26 +325,23 @@ func TestCheckRedirect(t *testing.T) {
 	})
 
 	t.Run("too_many_redirects_is_rejected", func(t *testing.T) {
-		// A single server that loops back to itself 4 times (exceeds cap of 2).
-		redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/next", http.StatusMovedPermanently)
+		// A single server that chains / -> /r1 -> /r2 -> /r3 (3 redirects).
+		// len(via) is 3 on the 4th request, which triggers the >= 3 cap.
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/":
+				http.Redirect(w, r, "/r1", http.StatusMovedPermanently)
+			case "/r1":
+				http.Redirect(w, r, "/r2", http.StatusMovedPermanently)
+			case "/r2":
+				http.Redirect(w, r, "/r3", http.StatusMovedPermanently)
+			default:
+				w.WriteHeader(http.StatusOK)
+			}
 		}))
-		redirectorURL := redirector.URL
+		t.Cleanup(s.Close)
 
-		// Override handler to chain: /next -> /next2 -> /next3 -> 200.
-		redirector.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/next" {
-				http.Redirect(w, r, "/next2", http.StatusMovedPermanently)
-				return
-			}
-			if r.URL.Path == "/next2" {
-				http.Redirect(w, r, "/next3", http.StatusMovedPermanently)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-		})
-
-		p := newWebhookProvider(Config{WebhookURL: redirectorURL, Timeout: 2 * time.Second})
+		p := newWebhookProvider(Config{WebhookURL: s.URL, Timeout: 2 * time.Second})
 		_, err := p.Dispatch(context.Background(), testTicket())
 
 		if err == nil {

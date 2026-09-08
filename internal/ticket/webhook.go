@@ -92,6 +92,15 @@ func newWebhookProvider(cfg Config) *webhookProvider {
 		retries: retries,
 		client: &http.Client{
 			Transport: http.DefaultTransport.(*http.Transport).Clone(),
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 3 {
+					return fmt.Errorf("ticket webhook: too many redirects")
+				}
+				if req.URL.Host != via[0].URL.Host {
+					return fmt.Errorf("ticket webhook: refusing cross-host redirect to %s", req.URL.Host)
+				}
+				return nil
+			},
 		},
 	}
 }
