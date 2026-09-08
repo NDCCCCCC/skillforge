@@ -30,6 +30,12 @@
 //   - TestPlanAPIApproveExpiredCheckpoint — D11-C2: pending row +
 //     checkpoint with mismatched skill_version → 410 Gone +
 //     state="expired" + audit chain preserved.
+//   - TestPlanAPIApproveFreshStateNoCheckpoint — D11-C2 fresh-state
+//     bypass (mirrors approvalPostHandler): pending row's stored
+//     snapshot matches the active Skill's, but no checkpoint row was
+//     written → must NOT 410 (the normal-case for plan_approve
+//     interrupts under current adk.CheckPointStore behavior). Locks
+//     the divergence fix landed 2026-09-08 against silent re-revert.
 //   - TestPlanAPIApproveUnknownRun — non-existent runID → 404 via the
 //     pending-row cross-session moat (mirrors approvalPostHandler).
 //   - TestPlanAPIApproveUnknownApproval — valid runID but approvalId
@@ -377,6 +383,61 @@ func TestPlanAPIApproveExpiredCheckpoint(t *testing.T) {
 	})
 	require.NoError(t, qErr)
 	assert.NotEmpty(t, pendingRows, "the pending audit row must survive the 410 (audit chain preserved)")
+}
+
+// TestPlanAPIApproveFreshStateNoCheckpoint — D11-C2 fresh-state bypass
+// (mirrors approvalPostHandler, landed 2026-09-08 / commit 5992306):
+// when eino's Runner did NOT write a checkpoint row during a
+// plan_approve interrupt (the current adk.CheckPointStore behavior
+// under that interrupt shape), but the audit row's stored
+// (skill_version, prompt_hash) snapshot DOES match the live
+// recomputed snapshot, the approve path must NOT return 410 Gone.
+// Without this bypass the PlanApprovalCard E2E always 410s — the
+// Skill content is identical (no hot-reload drift), so a missing
+// checkpoint row is the NORMAL case for plan_approve interrupts,
+// not evidence of staleness.
+//
+// This is the regression lock for the divergence fix in plan_api.go:
+// the old code treated every missing checkpoint as expired (D11-C2
+// over-firing); the fix mirrors approvalPostHandler's hash-comparison
+// gate so the two endpoints behave identically under the same
+// Skill-snapshot condition.
+func TestPlanAPIApproveFreshStateNoCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	s := historyTestStore(t)
+	manifest := planTestManifest()
+	runID := "run-fresh-nocp-01"
+
+	// Seed ONLY the pending plan_approve row (no checkpoint row) so
+	// the post-fix code hits the `!checkpointValid` branch with
+	// matching hashes and falls through to the resume path.
+	snap := approvalSnapshot(manifest)
+	seedPendingApproval(t, ctx, s, runID, snap, "approval-fresh-1", hitl.PlanApproveTarget,
+		[]byte(`{"planId":"plan-1","steps":[{"id":"step-1","content":"x","status":"pending"}]}`))
+
+	deps := &Deps{
+		Store:          s,
+		ChatModel:      &scriptedApprovalModel{},
+		ActiveManifest: manifest,
+		Embedder:       newStubEmbedder(),
+		Retriever:      &stubRetriever{},
+	}
+	addr, cleanup := planTestHertz(t, deps)
+	defer cleanup()
+
+	status, body := postPlanApprove(t, addr, runID, "approval-fresh-1", map[string]any{
+		"decision":    "approve",
+		"target":      "plan_approve",
+		"approval_id": "approval-fresh-1",
+	})
+	// The bypass MUST NOT return 410 Gone — that would lock
+	// PlanApprovalCard into a permanent expired state whenever the
+	// Runner skips writing a checkpoint. Any other 4xx/5xx is fine;
+	// the gate under test is "expired was not falsely returned".
+	assert.NotEqual(t, http.StatusGone, status,
+		"matching-hash + missing-checkpoint must NOT be 410 expired (D11-C2 fresh-state bypass); body: %s", string(body))
+	assert.NotContains(t, string(body), `"state":"expired"`,
+		"the response body must not carry state=expired; body: %s", string(body))
 }
 
 // TestPlanAPIApproveUnknownRun — POST for a runID with NO pending

@@ -366,9 +366,14 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 	// the pending row carries the skill_id that produced the
 	// interrupt. Resolve the manifest from the loader so the
 	// expire-check matches the row's actual skill, not the boot-time
-	// global Deps.ActiveManifest.
+	// global Deps.ActiveManifest. Snapshot fallback chain: per-row
+	// manifest → global ActiveManifest (mirrors approval_api.go —
+	// tests construct Deps without a Loader; production wires both).
 	cpID := agent.RunnerCheckPointID(runID)
 	rowManifest := manifestForSkill(s.Loader, row.SkillID)
+	if rowManifest == nil {
+		rowManifest = s.ActiveManifest
+	}
 	snap := activeSkillSnapshot(rowManifest)
 	_, checkpointValid, err := s.Store.GetCheckpointByVersionFilter(ctx, cpID, snap.Version, snap.PromptHash)
 	if err != nil {
@@ -379,15 +384,31 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	if !checkpointValid {
-		if dErr := s.Store.Delete(ctx, cpID); dErr != nil {
-			// Delete is idempotent; log but do not change the response.
-			log.Printf("[WARN] server: plan expire-check delete (run=%s cp=%s) failed: %v", runID, cpID, dErr)
+		// No checkpoint row at all (existed=false) → treat as fresh
+		// state, NOT expired. The D11-C2 expire-check is meant to
+		// detect hot-reload drift; an absent checkpoint is the normal
+		// case for runs whose Runner didn't write one (eino's
+		// adk.CheckPointStore behavior under certain interrupt shapes
+		// — plan_approve in particular). Mark expired ONLY on a real
+		// hash mismatch between the audit row's stored snapshot and
+		// the live recomputed snapshot. This mirrors
+		// approvalPostHandler (D11-C2 fix landed 2026-09-08) — prior
+		// to that fix plan_api treated every missing checkpoint as
+		// expired and PlanApprovalCard always 410'd on resume.
+		if snap.PromptHash != "" && row.PromptHash != snap.PromptHash {
+			log.Printf("[INFO] server: plan expire-check (run=%s cp=%s) audit.prompt_hash=%s != snap.prompt_hash=%s → expired",
+				runID, cpID, row.PromptHash, snap.PromptHash)
+			if dErr := s.Store.Delete(ctx, cpID); dErr != nil {
+				log.Printf("[WARN] server: plan expire-check delete (run=%s cp=%s) failed: %v", runID, cpID, dErr)
+			}
+			c.JSON(http.StatusGone, map[string]any{
+				"state":                 approvalStateExpired,
+				"audit_chain_preserved": true,
+			})
+			return
 		}
-		c.JSON(http.StatusGone, map[string]any{
-			"state":                 approvalStateExpired,
-			"audit_chain_preserved": true,
-		})
-		return
+		log.Printf("[INFO] server: plan expire-check (run=%s cp=%s) no checkpoint row + audit snapshot matches → fresh state, proceeding",
+			runID, cpID)
 	}
 
 	// Audit resolution row (D11-C3 fail-closed writer). Mirrors
@@ -456,6 +477,20 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		SessionID:       runID,
 		SkillID:         row.SkillID,
 		CheckPointStore: cpStore,
+		// D16-C3: a data-channel Skill's resume path needs the SAME
+		// executor + registry the chat path passes (runner_setup.go
+		// ChatHandler) — BuildRunner fail-closes without them, which
+		// would break every monthly-report / kpi-dashboard resume.
+		// Mirrors approvalPostHandler (D16-C3 fix landed 2026-09-08);
+		// prior to the mirror plan_api.go returned 500 "runner build
+		// failed" on every data-channel resume.
+		KPIExecutor: s.KPIExecutor,
+		KPIRegistry: s.KPIRegistry,
+		// P12-L2 deep-archetype write_todos substrate (same seams the
+		// chat path passes — the resumed run continues the SAME agent
+		// tree and its write_todos Tool must keep INSERTing).
+		PlanTodoStore: planTodoStoreOf(s.Store),
+		PlanTraceEmit: s.planTraceEmitter(c),
 		// Plan 26-06: the hitl tool construction fails closed without a
 		// registry when the manifest declares memory:facts — thread the
 		// same registry the annotate/KB admin surfaces already use.
@@ -465,7 +500,8 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		// identity-mutated).
 		AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
 			WithIdentity(runID, "", snap),
-		ReportAudit: s.Store,
+		ReportAudit:       s.Store,
+		ReportPublishEmit: s.reportPublishEmitter(c),
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: plan BuildRunner (run=%s) failed: %v", runID, err)
@@ -495,12 +531,55 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 	}
 
 	// Drain the resumed run into the SSE stream.
-	emit := emitChunkClosure(c)
+	//
+	// Re-interrupt self-heal (mirrors approvalPostHandler's pattern,
+	// landed 2026-09-08 via commit 1135c99): when the resume target
+	// missed (the restored-pending-row path has no interrupt_id — the
+	// FE POST fell back to the approvalID, which eino does not match),
+	// the HITL Tool re-interrupts (leaf-contract preservation) and the
+	// drain sees a data-decision {decision: "interrupted"} chunk
+	// carrying the NEW interrupt UUID (runner_sse.go emitInterruptChunks).
+	// The wrapper captures it; after the first drain closes we retry
+	// the resume ONCE with that UUID, which deterministically hits the
+	// Tool's GetResumeContext and unblocks the approved execution
+	// (P12-L2 deep-agent's 4-step plan continues: KPI calls → render →
+	// report_publish → audit). Without this self-heal the resumed
+	// Runner emits plan-approved and exits without ever executing the
+	// plan's 4 steps — the operator sees an empty completed state.
+	var reInterruptID string
+	emit := func(chunk wire.UIMessageChunk) error {
+		if reInterruptID == "" && chunk.Type == "data-decision" && len(chunk.Data) > 0 {
+			var p struct {
+				Decision    string `json:"decision"`
+				InterruptID string `json:"interruptId"`
+			}
+			if json.Unmarshal(chunk.Data, &p) == nil && p.Decision == "interrupted" && p.InterruptID != "" {
+				reInterruptID = p.InterruptID
+				log.Printf("[INFO] server: plan resume (run=%s) target miss → Tool re-interrupted (new interruptId=%s); will self-heal with one retry",
+					runID, p.InterruptID)
+			}
+		}
+		return emitChunkClosure(c)(chunk)
+	}
 	if err := agent.DrainRunnerEvents(ctx, iter, emit); err != nil {
 		log.Printf("[ERROR] server: plan drain (run=%s) failed: %v", runID, err)
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
 		return
+	}
+	if reInterruptID != "" && reInterruptID != resumeTarget {
+		// The re-interrupt persisted a NEW checkpoint (adk/runner.go:330);
+		// resuming against the same cpID with the captured UUID resolves
+		// the Tool's Pass-2. Bounded to ONE retry — a second miss means a
+		// non-target interrupt shape and the operator sees the new card.
+		iter2, err2 := runner.ResumeWithParams(ctx, cpID, &adk.ResumeParams{
+			Targets: map[string]any{reInterruptID: decision},
+		})
+		if err2 != nil {
+			log.Printf("[WARN] server: plan self-heal resume (run=%s id=%s) failed: %v", runID, reInterruptID, err2)
+		} else if err := agent.DrainRunnerEvents(ctx, iter2, emit); err != nil {
+			log.Printf("[WARN] server: plan self-heal drain (run=%s) failed: %v", runID, err)
+		}
 	}
 
 	// D-04 + D15: emit the resolution via the EXISTING data-decision
