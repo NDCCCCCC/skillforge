@@ -63,6 +63,31 @@ import (
 // See eval/README.md for the calibration procedure.
 const retrievalScoreThreshold = 0.3
 
+// pipelineEmitError wraps an SSE emit error and carries a persisted flag
+// indicating whether the audit+turn row was already written before the emit
+// failure. The chat.go error handler branches on this flag to avoid a
+// second write (CR-01 fix).
+type pipelineEmitError struct {
+	err       error
+	persisted bool // true = audit+turn already written; error branch must NOT write again
+}
+
+func (e *pipelineEmitError) Error() string {
+	if e.err == nil {
+		return "pipeline emit error (no underlying error)"
+	}
+	return e.err.Error()
+}
+
+func (e *pipelineEmitError) Unwrap() error {
+	return e.err
+}
+
+// GetPersisted exposes the persisted flag for chat.go's type-switch check.
+func (e *pipelineEmitError) GetPersisted() bool {
+	return e.persisted
+}
+
 // systemPromptTemplate is the production compliance-review system
 // prompt. Differs from scripts/spiked/e2e.go in two material ways:
 //   - The "context" section is injected with retrieved chunks framed
@@ -553,9 +578,10 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// evidence / redline annotation passes and BEFORE text-end /
 	// finish-step / finish (useChat registers the assistant message at
 	// finish, so the FeedbackRow needs the vote key before that point).
-	turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, v, skillID, "", meta)
+	turnID, writeErr := s.writeAuditAndTurn(ctx, sessionID, skillID, query, v, skillID, "", meta)
+	persisted := turnID > 0 && writeErr == nil
 	if emitErr != nil {
-		return fmt.Errorf("verdict pipeline: emit verdict stream: %w", emitErr)
+		return &pipelineEmitError{err: emitErr, persisted: persisted}
 	}
 	//
 	// Step 12: SC-6 / SC-7 post-verdict annotation passes (Plan 05-06).
