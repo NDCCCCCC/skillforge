@@ -338,3 +338,32 @@ func TestReportPublishRejectsUnconvertibleTemplate(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, res)
 }
+
+// TestReportPublishToolDescContainsFinalStepGuard — D18-D5 source-lock
+// regression (2026-09-08 live observation). The LLM occasionally emitted
+// the full monthly report as prose in its final assistant message instead
+// of calling report_publish, producing zero audit + zero published
+// artifact. The tool description is the LLM-visible contract; it MUST
+// carry the "MANDATORY FINAL STEP" / "MUST" / "NEVER ... plain text"
+// phrases so a future edit can't silently weaken it. Test is grep-style:
+// substring assertions on Info().Desc — easy to maintain, hard to bypass.
+func TestReportPublishToolDescContainsFinalStepGuard(t *testing.T) {
+	h := &reportPublishTool{}
+	info, err := h.Info(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	desc := info.Desc
+
+	assert.Contains(t, desc, "MANDATORY FINAL STEP",
+		"tool description must declare report_publish is the mandatory final step (D18-D5)")
+	assert.Contains(t, desc, "MUST",
+		"tool description must use the MUST directive, not may/should/can (D18-D5)")
+	assert.Contains(t, strings.ToLower(desc), "never",
+		"tool description must forbid the alternate path (D18-D5)")
+	assert.Contains(t, strings.ToLower(desc), "plain text",
+		"tool description must call out the text-output anti-pattern explicitly (D18-D5)")
+	assert.Contains(t, strings.ToLower(desc), "hitl",
+		"tool description must surface the HITL approval gate (audit trail contract)")
+	assert.Contains(t, strings.ToLower(desc), "audit",
+		"tool description must surface the auditability rationale so the LLM understands the why")
+}

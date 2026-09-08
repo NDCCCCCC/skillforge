@@ -203,6 +203,17 @@ REJECTED at validation — the snapshot numbers go INSIDE insight/risk_note
 text, never into a new slot type. Copy the manifest template's sections
 and slot types verbatim; fill only the text.
 
+D18-D5 — MANDATORY FINAL STEP: after every section's KPI snapshots are bound
+and every slot text is filled, you MUST call report_publish as your FINAL
+tool call before ending the run. Pass the full template + complete slot
+texts + KPI snapshot for the requested period. NEVER emit the rendered
+report as plain text in your final assistant message — text output is
+un-auditable, un-versioned, un-published, and silently bypasses operator
+HITL approval. The published artifact only exists when report_publish
+succeeds. If your iteration budget is exhausted before report_publish
+fires, the run is incomplete — start fewer kpi_calls per section, batch
+aggressively, do not skip the final publish.
+
 MaxIteration = 10. Plan tightly: batched kpi_call calls, compact todos, no silent expansion.
 `
 	}

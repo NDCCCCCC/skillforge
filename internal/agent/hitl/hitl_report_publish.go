@@ -129,12 +129,26 @@ func (h *reportPublishTool) auditOrDefault() auditWriterHook {
 }
 
 // Info returns the LLM-visible tool schema.
+//
+// D18-D5 (prompt-strengthening — 2026-09-08 live observation): when
+// SkillForge uses monthly-report, the LLM occasionally emitted the full
+// report as prose in its final assistant message instead of calling this
+// tool. That path produces NO audit row, NO versioned artifact, NO HITL
+// approval, NO ReportCard UI — silent dead output. The tool description
+// is the LLM-visible contract; we make the obligation explicit here
+// (MUST / FINAL / never-as-text) and lock it with
+// TestReportPublishToolDescContainsFinalStepGuard so a future edit
+// can't silently weaken it. The prompt prefix in deep_agent.go's
+// deepArchetypePrefix repeats the same directive for redundancy.
 func (h *reportPublishTool) Info(_ context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ReportPublishToolName,
-		Desc: "Submit a rendered report for operator approval and publication. " +
-			"The report is rendered from the template + slot texts + KPI snapshot. " +
-			"Requires human approval before publication.",
+		Desc: "MANDATORY FINAL STEP — submit a rendered report for operator approval and publication. " +
+			"You MUST call this tool exactly once as your FINAL tool call before ending the run, " +
+			"passing the full template + completed slot texts + KPI snapshot for the requested period. " +
+			"NEVER output the rendered report as plain text in your final assistant message — " +
+			"text output is unauditable, not versioned, not published, and silently bypasses HITL approval. " +
+			"Requires human operator approval before the artifact is written; publication is gated on that approval.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"period": {
 				Type:     schema.String,

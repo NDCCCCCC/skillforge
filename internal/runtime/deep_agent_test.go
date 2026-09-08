@@ -257,3 +257,72 @@ func TestRenderDeepSystemPromptPrependsFloor(t *testing.T) {
 			middle)
 	}
 }
+
+// TestDeepArchetypePrefix_DataChannelLocksFinalStepGuard — D18-D5
+// source-lock regression (2026-09-08 live observation). The LLM
+// occasionally emitted the full monthly report as prose in its final
+// assistant message instead of calling report_publish, producing zero
+// audit + zero published artifact. The deep-archetype data-channel
+// prefix is one of two redundant contracts that pin the model to call
+// report_publish as its FINAL tool call (the other contract lives in
+// hitl_report_publish.go's Info().Desc — both are locked by sibling
+// tests). This test constructs a data-channel manifest (HasDataChannel
+// = true + non-nil Template) and asserts the rendered prompt carries
+// the MUST / NEVER / plain-text / final-step phrases.
+//
+// Mirrors the source-grep pattern of TestMaxIterationHardCap_Literal10:
+// we cannot peek at the live ChatModel's instruction directly, so we
+// render the prompt via the same code path the Runner uses and grep
+// the rendered output. A test against runtime state alone would miss
+// a regression where someone softens the prefix wording.
+func TestDeepArchetypePrefix_DataChannelLocksFinalStepGuard(t *testing.T) {
+	m := &skill.Manifest{
+		Name:        "monthly-report",
+		Description: "monthly KPI report",
+		Agent:       "deep",
+		Reads:       []string{"data:aggregated_only"},
+		Writes:      []string{"report:publish"},
+		Template:    &struct{}{}, // non-nil; only the type assertion matters
+	}
+	rendered := renderDeepSystemPrompt(m)
+
+	// Direct contract: the data-channel branch of deepArchetypePrefix
+	// (D18-A4 + D18-D5) MUST tell the model that report_publish is the
+	// mandatory final step. We grep the whole rendered prompt — the
+	// floor wrapper / base body never contain these phrases in this
+	// shape, so a positive hit localizes to the data-channel prefix.
+	// Phrases that span a wrapped newline in the source are split into
+	// separate assertions ("FINAL" + "tool call") to avoid the brittle
+	// mid-line break test.
+	assertContainsAll(t, rendered,
+		[]string{
+			"D18-D5",                       // the contract marker
+			"MANDATORY FINAL STEP",         // declares finality
+			"MUST call report_publish",     // names the tool + obligation
+			"FINAL",                        // position: final step
+			"tool call",                    // position: tool call (newline-agnostic)
+			"NEVER emit",                   // forbids the alternate path
+			"plain text",                   // calls out the text-output anti-pattern
+			"operator",                     // rationalizes the why (HITL)
+			"HITL approval",                // (newline-agnostic)
+		},
+		"renderDeepSystemPrompt must carry the D18-D5 final-step guard in the data-channel branch")
+}
+
+// assertContainsAll is a small helper that fails the test with a single
+// combined message listing every required phrase that was missing — saves
+// the test author (and CI reruns) from chasing one missing phrase at a
+// time.
+func assertContainsAll(t *testing.T, haystack string, needles []string, what string) {
+	t.Helper()
+	var missing []string
+	for _, n := range needles {
+		if !strings.Contains(haystack, n) {
+			missing = append(missing, n)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("%s — missing phrases: %v\n\nrendered prompt (first 2000 chars):\n%s",
+			what, missing, haystack[:min(len(haystack), 2000)])
+	}
+}
