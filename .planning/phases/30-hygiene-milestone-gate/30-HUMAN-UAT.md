@@ -3,7 +3,7 @@ status: partial
 phase: 30-hygiene-milestone-gate
 source: [30-VERIFICATION.md]
 started: 2026-09-08T10:30:00+08:00
-updated: 2026-09-08T16:50:00+08:00
+updated: 2026-09-08T21:05:00+08:00
 ---
 
 ## Current Test
@@ -38,6 +38,16 @@ result: **[PASS — AI 已验]** HYG-02 5-stage gate PASS (verify-phase-30.sh ex
 
 ### 7. [NEW] Phase 12 plan_approve HITL — FE chat 渲染未知 `data-policy` payload
 > **[RESOLVED 2026-09-08 晚 — 14 commits]** 症状消除，全链 live 验证通过：ApprovalCard 渲染 → 批准 → Runner resume 真实执行 plan（write_todos 持久化 + KPI 快照 + 月报全文渲染 + report:publish 第二道 HITL gate + 记忆规则 rule-matched 自动通过 + 刷新恢复 + target-miss 自愈）。修复链：`0af5af2` runner_sse emit interrupted chunk · `8da911c` ActiveManifest wire + per-row manifest + fresh-state bypass · `161d0cf` ReActAgent alias · `5c6f524` CheckPointStore + WithCheckPointID · `89e1e20` DataPolicyPart 兜底改灰提示 · `55c174b` 搜索匹配 id · `86a92ac` per-row resume manifest + interrupt_id 全链透传 · `daec11b` write_todos Tool 注册 + gob 注册 PlanTodo · `13f4d6d` slot 契约 prompt + approve 超时 · `4301442` graph dead code + path degraded 逻辑 · `3e64c78` graph FE 修复 · `1135c99` 恢复路径 target-miss 自愈。测试：Go agent/server/wire/runtime 全 ok，FE 598/598。以下保留原始 root-cause 记录。
+
+### 8. [NEW] D18-D5 LLM 偶尔跳过 report_publish 直接输出报告 — prompt 双锁加固
+**expected**: monthly-report skill 任何一次 chat → 最终必须调用 `report_publish` 工具（触发第二道 HITL gate）→ operator 审批 → 真实写盘 + ReportCard。绝不允许 LLM 把完整月报直接输出到 assistant 消息体（un-auditable / un-versioned / un-published / silently bypasses HITL）。
+**result**: **[PASS — AI 已验]** commit `81f81fa` 双层 prompt 锁：
+1. `internal/agent/hitl/hitl_report_publish.go` Info().Desc — 从模糊的"Submit a rendered report for operator approval and publication"改为指令式 "MANDATORY FINAL STEP — submit a rendered report ... You MUST call this tool exactly once as your FINAL tool call before ending the run ... NEVER output the rendered report as plain text in your final assistant message"。包含 MUST / MANDATORY / NEVER / plain text / HITL / audit 全部关键词。
+2. `internal/runtime/deep_agent.go` deepArchetypePrefix data-channel 分支 — 加 D18-D5 段落："after every section's KPI snapshots are bound ... you MUST call report_publish as your FINAL tool call ... NEVER emit the rendered report as plain text ... The published artifact only exists when report_publish succeeds. If your iteration budget is exhausted before report_publish fires, the run is incomplete"。
+3. 两道锁测试：TestReportPublishToolDescContainsFinalStepGuard（grep Info().Desc）+ TestDeepArchetypePrefix_DataChannelLocksFinalStepGuard（renderDeepSystemPrompt 后 grep 渲染输出）。两道锁冗余，防止单边漂移。
+**live SSE 抓包证据**（session=d18d5-e2e-1788872691, server rebuilt 21:02）：模型在 plan_approve 的 4-step plan 中第 4 步明确写 "Assemble template + completed slot texts from KPI results, copy KPI snapshot verbatim (CR-06), and **call report_publish exactly once as the final tool call** for operator approval" — prompt 指令被模型完整吸收。
+**测试**：Go runtime/agent/hitl/server 全 PASS。锁测试设计为 substring grep 模式，将来若有人软化 Info().Desc 或 deepArchetypePrefix 任一措辞，对应测试立即红。
+**附带发现（未修）**：live 验证过程中发现 `internal/server/plan_api.go:381-390` `planApproveHandler` 的 expire-check 比 `approval_api.go:458-479` 更激进——前者把"checkpoint 不存在"直接判 expired 返 410，后者允许 audit-row hash 匹配即视为 fresh state。PlanApprovalCard.tsx 用的是 `/api/run/:id/plan/:approvalId/approve`（plan_api 路径），而当前 eino Runner 在 plan_approve interrupt 时未写 checkpoint，所以 PlanApprovalCard 触发会稳定 410 expired；approval_api 路径反而能通过。**不在本次 D18-D5 修复范围**，但属同源 bug，建议下次单独 fix（mirror approval_api 的 fresh-state bypass 逻辑）。
 **expected**: monthly-report skill 发「生成 2026-07 月报」→ Runner 触发 plan_approve HITL gate → 审计轨迹「待审批 plan_approve」条目 → 操作员点击「Approve + 记住」→ chat 渲染 plan-approved 完成态（折叠或 toast），不出现红色错误。
 
 **actual**: **FAIL** — chat assistant message body 始终为空（`message-assistant-text` div `text=""`），刷新页面后显示红色框 `Unknown data-policy payload shape`（`DataPolicyPart.tsx:71-78` 兜底）。
@@ -113,8 +123,8 @@ if e.Action != nil && e.Action.Interrupted != nil {
 
 ## Summary
 
-total: 7
-passed: 2 (Item #5 HYG-03 live eval — AI 跑通 + gate passed; Item #7 plan_approve HITL — 2026-09-08 晚 14 commits 全链修复 live 验证)
+total: 8
+passed: 3 (Item #5 HYG-03 live eval — AI 跑通 + gate passed; Item #7 plan_approve HITL — 2026-09-08 晚 14 commits 全链修复 live 验证; Item #8 D18-D5 report_publish final-step prompt 双锁加固 — commit `81f81fa` + SSE 抓包证明模型内部化指令)
 operator-partial: 5 (Items #1-4 + #6 — AI 跑完 API 部分；物理视觉项需 operator 亲验)
 issues: 0
 pending: 0
@@ -135,6 +145,7 @@ blocked: 0
 2. **HANDOFF.json 命令错** —— `cmd/eval --frozen --gate-check` 应改为两步：`--frozen=compliance -skills-dir=examples/skills` + `-gate-check <report>`
 3. **29-UAT.md 文档错** —— chat 用 `X-Session-Id` HTTP header，不是 body `session_id` 字段
 4. **Phase 30 加固修复生效** —— WR-05 local-session-* 反馈/工单被 400 拒绝（防越权）
+5. **D18-D5 report_publish final-step prompt 双锁** —— commit `81f81fa`：Info().Desc + deepArchetypePrefix data-channel 同步加强 MUST/final-step 指令；两道 substring 锁测试 + SSE 抓包验证模型内部化指令
 
 ## Gaps
 
