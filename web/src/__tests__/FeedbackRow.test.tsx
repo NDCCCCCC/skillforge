@@ -68,7 +68,17 @@ const BASE: FeedbackRowProps = {
 };
 
 function renderRow(overrides: Partial<FeedbackRowProps> = {}) {
-  render(<FeedbackRow {...BASE} {...overrides} />);
+  return render(<FeedbackRow {...BASE} {...overrides} />);
+}
+
+/** Returns a rerender function that can be called to update props. */
+function renderRowWithRerender(overrides: Partial<FeedbackRowProps> = {}) {
+  const { rerender } = render(<FeedbackRow {...BASE} {...overrides} />);
+  return {
+    rerender: (newOverrides: Partial<FeedbackRowProps>) => {
+      rerender(<FeedbackRow {...BASE} {...newOverrides} />);
+    },
+  };
 }
 
 afterEach(() => {
@@ -290,6 +300,59 @@ describe('FeedbackRow', () => {
     expect(screen.getByTestId('feedback-row')).toHaveAttribute('data-voted', 'helpful');
     fireEvent.click(screen.getByTestId('feedback-unhelpful'));
     expect(mock.mock.calls).toHaveLength(0);
+    stop();
+  });
+
+  // --- WR-06: useEffect syncs late-arriving votedVerdict ---
+
+  it('votedVerdict arriving after mount via useEffect updates the lock', async () => {
+    // WR-06 Test 1: votedVerdict prop arrives after initial mount — useEffect must adopt it.
+    const { stop } = captureToasts();
+    // Render with no vote initially
+    const { rerender: rr2 } = renderRowWithRerender({ votedVerdict: null });
+    // votedVerdict arrives late (e.g. data-turn part merged in after mount)
+    rr2({ votedVerdict: 'helpful' });
+
+    await waitFor(() => {
+      const helpful = screen.getByTestId('feedback-helpful');
+      expect(helpful).toHaveAttribute('aria-pressed', 'true');
+      expect(helpful).toHaveClass('feedback-row-btn-active');
+      expect(screen.getByTestId('feedback-unhelpful')).toBeDisabled();
+      expect(screen.getByTestId('feedback-row')).toHaveAttribute('data-voted', 'helpful');
+    });
+    stop();
+  });
+
+  it('votedVerdict present at mount (history echo) sets the lock without fetching', () => {
+    // WR-06 Test 2: votedVerdict present at mount (history echo already available).
+    // This is the normal restore path — votedVerdict is known before first render.
+    const { stop } = captureToasts();
+    const mock = stubFetch(() => Promise.resolve(jsonResponse(201, { status: 'recorded' })));
+    // votedVerdict already present at mount time
+    renderRowWithRerender({ votedVerdict: 'unhelpful' });
+    expect(screen.getByTestId('feedback-unhelpful')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('feedback-helpful')).toBeDisabled();
+    expect(screen.getByTestId('feedback-row')).toHaveAttribute('data-voted', 'unhelpful');
+    // Zero fetches — no API call needed when server truth is known at mount
+    expect(mock.mock.calls).toHaveLength(0);
+    stop();
+  });
+
+  it('votedVerdict changing to a new value updates the lock to the new value', async () => {
+    // WR-06 Test 3: if votedVerdict changes to a different value, lock updates.
+    const { stop } = captureToasts();
+    const { rerender: rr2 } = renderRowWithRerender({ votedVerdict: 'helpful' });
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-helpful')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    // votedVerdict changes (e.g. user voted on another device, history refreshed)
+    rr2({ votedVerdict: 'unhelpful' });
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-unhelpful')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('feedback-helpful')).toBeDisabled();
+      expect(screen.getByTestId('feedback-helpful')).toBeDisabled();
+    });
     stop();
   });
 

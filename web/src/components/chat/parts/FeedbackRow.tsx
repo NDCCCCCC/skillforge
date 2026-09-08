@@ -45,7 +45,7 @@
 // never used in this file.
 //
 // All user-facing copy is verbatim from 29-UI-SPEC §Copywriting Contract.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileWarning, ThumbsDown, ThumbsUp, Ticket } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { cn } from '../../../lib/cn';
@@ -165,9 +165,20 @@ export default function FeedbackRow({
   chunkIds,
   messageText,
 }: FeedbackRowProps) {
-  // Server-truth lock (cache only — the DB UNIQUE constraint is the real
-  // idempotency guard). Seeded from the history echo when present.
-  const [locked, setLocked] = useState<Vote | null>(votedVerdict);
+  // WR-06: local optimistic lock — set by post-submit success before history
+  // echo arrives. Null seed so useEffect can adopt server truth on mount.
+  const [localLock, setLocalLock] = useState<Vote | null>(null);
+
+  // WR-06: useEffect syncs server truth (votedVerdict) to lock state,
+  // handling the case where data-turn arrives after initial mount.
+  useEffect(() => {
+    if (votedVerdict) {
+      setLocalLock(votedVerdict);
+    }
+  }, [votedVerdict]);
+
+  // Server-truth lock: local optimistic takes priority, otherwise server truth.
+  const locked = localLock ?? votedVerdict;
   const [hasComment, setHasComment] = useState(false);
   const [submittingVote, setSubmittingVote] = useState<Vote | null>(null);
   const [commentOpen, setCommentOpen] = useState(false);
@@ -197,14 +208,14 @@ export default function FeedbackRow({
     const res = await postJson('/api/feedback', body);
     const payload = res.data as { status?: unknown; verdict?: unknown } | null;
     if (!res.networkError && res.status >= 200 && res.status < 300 && payload?.status === 'recorded') {
-      setLocked(verdict);
+      setLocalLock(verdict);
       setHasComment(verdict === 'outdated' && note.trim() !== '');
       setCommentOpen(false);
       toast('success', VOTE_RECORDED_TOAST[verdict]);
     } else if (!res.networkError && res.status === 200 && payload?.status === 'already_recorded') {
       // Idempotent replay: render the SERVER verdict, never an error.
       const served = isVote(payload.verdict) ? payload.verdict : verdict;
-      setLocked(served);
+      setLocalLock(served);
       setCommentOpen(false);
       toast('info', `该消息已反馈过：${VOTE_LABEL[served]}`);
     } else {
