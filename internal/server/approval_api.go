@@ -608,7 +608,32 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	// cancel lock applies on the resume path too (anchored by
 	// DrainRunnerEvents' select-before-Next; locked by
 	// TestCancelPropagationMidToolRunner's resume case).
-	emit := emitChunkClosure(c)
+	//
+	// Re-interrupt self-heal: when the resume target missed (the
+	// restored-pending-row path has no interrupt_id — the FE POST fell
+	// back to the approvalID, which eino does not match), the HITL Tool
+	// re-interrupts (leaf-contract preservation) and the drain sees a
+	// data-decision {decision: "interrupted"} chunk carrying the NEW
+	// interrupt UUID (runner_sse.go emitInterruptChunks). The wrapper
+	// captures it; after the first drain closes we retry the resume
+	// ONCE with that UUID, which deterministically hits the Tool's
+	// GetResumeContext and unblocks the approved execution (e.g.
+	// report_publish Pass-2 → report.Publish + reports-table row).
+	var reInterruptID string
+	emit := func(chunk wire.UIMessageChunk) error {
+		if reInterruptID == "" && chunk.Type == "data-decision" && len(chunk.Data) > 0 {
+			var p struct {
+				Decision    string `json:"decision"`
+				InterruptID string `json:"interruptId"`
+			}
+			if json.Unmarshal(chunk.Data, &p) == nil && p.Decision == "interrupted" && p.InterruptID != "" {
+				reInterruptID = p.InterruptID
+				log.Printf("[INFO] server: approval resume (sess=%s) target miss → Tool re-interrupted (new interruptId=%s); will self-heal with one retry",
+					sessionID, p.InterruptID)
+			}
+		}
+		return emitChunkClosure(c)(chunk)
+	}
 	if err := agent.DrainRunnerEvents(ctx, iter, emit); err != nil {
 		// The SSE stream is already in flight — mirror ChatHandler:
 		// emit terminal chunks so the client sees a bounded state.
@@ -616,6 +641,20 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
 		return
+	}
+	if reInterruptID != "" && reInterruptID != resumeTarget {
+		// The re-interrupt persisted a NEW checkpoint (adk/runner.go:330);
+		// resuming against the same cpID with the captured UUID resolves
+		// the Tool's Pass-2. Bounded to ONE retry — a second miss means a
+		// non-target interrupt shape and the operator sees the new card.
+		iter2, err2 := runner.ResumeWithParams(ctx, cpID, &adk.ResumeParams{
+			Targets: map[string]any{reInterruptID: decision},
+		})
+		if err2 != nil {
+			log.Printf("[WARN] server: approval self-heal resume (sess=%s id=%s) failed: %v", sessionID, reInterruptID, err2)
+		} else if err := agent.DrainRunnerEvents(ctx, iter2, emit); err != nil {
+			log.Printf("[WARN] server: approval self-heal drain (sess=%s) failed: %v", sessionID, err)
+		}
 	}
 
 	// D-04 + D15: emit the resolution via the EXISTING data-decision
