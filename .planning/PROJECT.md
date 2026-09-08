@@ -151,4 +151,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-08 — v1.2 Phase 29 closed (反馈闭环 + 工单预留: 9/9 plans, verification 12/12 must-haves passed + 9 operator UAT pending; FBK-05 信任红线成为 source-grep 结构锁). Prior: v1.2 Phase 26 closed 2026-09-07; v1.1 shipped 2026-09-06.*
+*Last updated: 2026-09-08 — v1.2 Phase 30 closed (工程卫生收尾: 8/8 plans, HYG-02 5-stage 魔数门常驻 + HYG-03 evidence compilation; CR-01 + WR-01..06 全部修复落地 + 回归锁; 29-REVIEW critical + 6 warnings 全部关闭; 6 operator UAT pending). Prior: v1.2 Phases 26/27/28/29 closed 2026-09-07→2026-09-08; v1.1 shipped 2026-09-06.*
