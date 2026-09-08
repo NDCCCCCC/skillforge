@@ -3,7 +3,7 @@
 **Plans**: 8 plans in 3 waves
 Plans:
 - [x] 30-01-PLAN.md — CR-01: SSE emit failure persisted flag + error branch guard (HYG-02)
-- [ ] 30-02-PLAN.md — WR-01: feedback refs ON CONFLICT DO NOTHING backfill + WR-04: attribution Action filter + ts+id tie-break (HYG-02)
+- [x] 30-02-PLAN.md — WR-01: feedback refs ON CONFLICT DO NOTHING backfill + WR-04: attribution Action filter + ts+id tie-break (HYG-02)
 - [ ] 30-03-PLAN.md — WR-03: webhook CheckRedirect policy (HYG-02)
 - [ ] 30-04-PLAN.md — WR-02: queued ticket startup sweep + WR-05: per-session rate limiter + session ownership (HYG-02)
 - [ ] 30-05-PLAN.md — WR-06: FeedbackRow useEffect for late-arriving votedVerdict (HYG-02)
