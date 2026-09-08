@@ -44,9 +44,11 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 
+	"github.com/skillforge/skillforge/internal/agent/hitl"
 	"github.com/skillforge/skillforge/internal/wire"
 )
 
@@ -91,14 +93,32 @@ func eventToUIMessageChunk(e *adk.AgentEvent) []wire.UIMessageChunk {
 		return []wire.UIMessageChunk{{Type: "error", ErrorText: e.Err.Error(), Data: payload}}
 	}
 
-	// Action.Interrupted — 11-02 will emit the approval-request
-	// data-* chunk here. For 11-01 the adapter only logs the
-	// interrupt context (the chunk sequence is frozen until the
-	// HITL Tool + ApprovalDecision schema land in 11-02).
+	// Action.Interrupted — 11-02 emits the approval-request
+	// data-decision chunk. Each HITL Tool (memory:facts / review_report
+	// / plan_approve) parks the Runner via tool.StatefulInterrupt with
+	// a *hitl.ApprovalInfo as the user-facing Info. We surface the
+	// ApprovalInfo fields as the chunk payload so the FE ApprovalCard
+	// (and PlanApprovalCard for plan_approve) can render the pending
+	// gate.
+	//
+	// Wire shape (consumed by FE RealChatTransport.dispatchApprovalDecision
+	// line 89 `case 'interrupted'`):
+	//   decision, approvalId, toolCallId, toolName, target,
+	//   frozenArgs (object), reason, createdAt, skillVersion,
+	//   promptHash, sessionId, skillId.
+	//
+	// No new SSE chunk type is introduced — this rides the existing
+	// data-decision discriminator (D-04 + D15).
 	if e.Action != nil && e.Action.Interrupted != nil {
-		log.Printf("[INFO] agent: Runner interrupted (InterruptContexts=%d) — 11-02 emits approval-request chunk",
-			len(e.Action.Interrupted.InterruptContexts))
-		return nil
+		chunks := emitInterruptChunks(e.Action.Interrupted.InterruptContexts)
+		if len(chunks) == 0 {
+			log.Printf("[INFO] agent: Runner interrupted (InterruptContexts=%d) — no root-cause ApprovalInfo to surface",
+				len(e.Action.Interrupted.InterruptContexts))
+			return nil
+		}
+		log.Printf("[INFO] agent: Runner interrupted (InterruptContexts=%d) — emitted %d approval-request chunk(s)",
+			len(e.Action.Interrupted.InterruptContexts), len(chunks))
+		return chunks
 	}
 
 	// Output event with a message → text-start + text-delta + text-end
@@ -133,6 +153,67 @@ func eventToUIMessageChunk(e *adk.AgentEvent) []wire.UIMessageChunk {
 	}
 	out = append(out, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 	return out
+}
+
+// emitInterruptChunks turns the Runner's InterruptContexts into the SSE
+// chunk sequence the FE dispatchApprovalDecision expects when it sees
+// decision="interrupted". The wire payload is keyed by ApprovalInfo
+// (the value every HITL Tool passes to tool.StatefulInterrupt) — see
+// hitl_plan_approve.go:250 and hitl_memory_facts.go. The session id
+// and skill id are not on the interrupt ctx so, so the FE fallbacks
+// (`asStr(data.sessionId)` → "") handle the missing fields.
+//
+// Returns an empty slice when no InterruptCtx carries a root-cause
+// ApprovalInfo (caller falls back to the legacy log-only path so the
+// D-04 byte-identity contract is preserved for non-HITL interrupts).
+func emitInterruptChunks(contexts []*adk.InterruptCtx) []wire.UIMessageChunk {
+	if len(contexts) == 0 {
+		return nil
+	}
+	var chunks []wire.UIMessageChunk
+	for _, ctx := range contexts {
+		if ctx == nil || !ctx.IsRootCause {
+			continue
+		}
+		info, ok := ctx.Info.(*hitl.ApprovalInfo)
+		if !ok || info == nil {
+			continue
+		}
+		// FrozenArgs is the verbatim JSON the LLM passed to the tool;
+		// surface as a JSON object so FE's `asObj(data.frozenArgs)`
+		// .length check sees populated keys (otherwise the dispatch
+		// in RealChatTransport line 121 falls back to the empty obj
+		// which loses operator-review context).
+		var frozenArgs any
+		if info.ArgumentsInJSON != "" {
+			if err := json.Unmarshal([]byte(info.ArgumentsInJSON), &frozenArgs); err != nil {
+				log.Printf("[WARN] agent: interrupt %s frozen_args not valid JSON, surfacing as string: %v",
+					info.ToolCallID, err)
+				frozenArgs = info.ArgumentsInJSON
+			}
+		}
+		payload := map[string]any{
+			"step":         0,
+			"decision":     "interrupted",
+			"approvalId":   info.ToolCallID,
+			"toolCallId":   info.ToolCallID,
+			"toolName":     info.ToolName,
+			"target":       info.Target,
+			"frozenArgs":   frozenArgs,
+			"reason":       info.Reason,
+			"createdAt":    time.Now().UnixMilli(),
+			"skillVersion": info.SkillVersion,
+			"promptHash":   info.PromptHash,
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("[WARN] agent: marshal interrupt chunk (tool=%s target=%s) failed: %v",
+				info.ToolName, info.Target, err)
+			continue
+		}
+		chunks = append(chunks, wire.UIMessageChunk{Type: "data-decision", Data: data})
+	}
+	return chunks
 }
 
 // DrainRunnerEvents pulls every event from iter and emits the
