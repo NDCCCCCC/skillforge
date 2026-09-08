@@ -1,18 +1,18 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: — 知识库运营与反馈闭环
+milestone_name: milestone
 current_phase: 30
 current_plan: Not started
-status: planning
-last_updated: "2026-09-08T00:51:59.820Z"
-last_activity: 2026-09-07
+status: executing
+last_updated: "2026-09-08T01:10:01.957Z"
+last_activity: 2026-09-08 -- Phase 30 planning complete
 progress:
-  total_phases: 6
-  completed_phases: 4
-  total_plans: 33
-  completed_plans: 33
-  percent: 67
+  total_phases: 30
+  completed_phases: 22
+  total_plans: 165
+  completed_plans: 160
+  percent: 73
 ---
 
 # State — SkillForge
@@ -21,8 +21,8 @@ progress:
 
 Phase: 30 (hygiene-milestone-gate) — PLANNED (all 9 plans shipped; pending phase closeout/verification)
 Plan: 9 of 9
-Status: Phase 29 fully executed (Wave 1: 29-01 + 29-03; Wave 2: 29-02; Wave 3: 29-04 + 29-05; Wave 4: 29-06 + 29-07; Wave 5: 29-08; Wave 6: 29-09 verify gate — next: /gsd:verify-phase 29 closeout)
-Last activity: 2026-09-07
+Status: Ready to execute
+Last activity: 2026-09-08 -- Phase 30 planning complete
 
 **Phase 29 Plan 29-09 delivery summary (Wave 6, 2026-09-08):** 收尾卫生门（沿 26-10/27-06/28-07 惯例）2 个原子 commit（b6bbf0c Task1 + 3dd2384 Task2）。`scripts/verify-phase-29.sh` 四阶段全 PASS（hermetic grep-only 零 Go 工具链）：Stage 1 TODO 清零沿 verify-phase-26 正则惯例（TODO(/TODO:/FIXME(/FIXME: 才计数；deep.TODO 在本 phase 文件内恰 4 处引用 0 误配，反误伤断言比 28 版更强）+ 覆盖 Go+TS 全 25 个 phase 生产文件；Stage 2 FBK-05 信任红线——feedback.go + store/sqlite/{feedback,tickets}.go 零 `UPDATE `/`DELETE `/`Insert(`、retriever 唯一引用 GetChunk（4 处）、零 Search(/Indexer、三文件零 internal/knowledge 引用；Stage 3 D15 配对双侧存在（wire/chunk.go 5 + wire-types.ts 4）；Stage 4 DDL 纪律——写表面（schema+feedback+tickets）零 DO UPDATE、7 处 DO NOTHING ≥4、4 张 additive 新表各 CREATE TABLE IF NOT EXISTS。负向自证通过：注入真实违禁 token `UPDATE ` 注释 → Stage 2a FAIL 点名文件+行号 exit 1，原样恢复（diff 干净）后 exit 0——计划原稿示例 "UPDATED" 不含尾随空格不会触发门，按原字面执行会假绿。Makefile phase-29 target 镜像 phase-28 + .PHONY；Windows host 无 make → 经 WSL 执行 exit 0（29-UAT Test 9 已记录 operator 指引）。`docs/threat-model/STRIDE-29.md`：7 条信任边界（含「门脚本→代码库」弱化面）+ 10 威胁行全 Disposition（T-29-01..09 + T-29-SC accept），Mitigation 全部指到实测核实的 file:line 锚点（TestFeedbackNoTrustMutation@feedback_test.go:1082、UNIQUE@schema.go:405/470、isAdminRequest 首语句@feedback.go:436/535/663、SecretHeader@webhook.go:39、SKILLFORGE_TICKET_*.env@main.go:354-364）；STRIDE-29 落 docs/threat-model/（计划 artifacts 显式路径 + 主流惯例 6/7；STRIDE-28 落 phase 目录是离群点，计划 read_first 的两个 28 路径系笔误已按真实位置读取）。`29-UAT.md`：9 段编号测试（投票/幂等回显/复核处置/重开/指标/工单 none/工单 webhook/Phase 27→29 联合验收/结构门）每步命令+期望结果+实测记录列，live/webhook 项标 [operator]。3 个 auto-fix 偏差（Stage 4 DO NOTHING 断言位置修正为三文件写表面 7 处、Stage 1 正则防 deep.TODO 误伤、负向自证 token 修正）——无一弱化断言，Stage 4 覆盖面反而更宽。回归：WSL `go test ./... -count=1` exit 0 + FE 74 文件/595 用例全绿 + `tsc --noEmit` 干净（与 29-08 基线零漂移）。REQUIREMENTS FBK-01..05 / TKT-02..04 行留给 phase closeout 翻转。
 
@@ -378,7 +378,7 @@ Resume File: .planning/phases/30-hygiene-milestone-gate/30-CONTEXT.md
 
 ### Phase 14 Plan 14-12 — compliance frozen replay: D14-B4 re-baseline semantics code-locked hermetically; live replay environment-blocked by BGE-M3 no route to host
 
-- **Status:** Ready to plan
+- **Status:** Ready to execute
 - **Blocked since:** 2026-08-22 (initial 14-10 replay FAIL); advanced 2026-08-23 (~03:15 UTC after 14-11 replay completed); advanced again 2026-08-23 (~04:38 UTC after 14-12 hermetic re-baseline landed).
 - **Measurement-layer fix (Gap 1):** `cmd/eval/main.go` now extracts `classifyRunOutcome` (14-11) AND `computeCaseMetrics` (14-12). `computeCaseMetrics` explicitly short-circuits `faithfulness=1.0` when `refused=true`, before calling `eval.Faithfulness`. This makes the D14-B4 re-baseline semantics a code-level contract rather than relying on the implicit empty-answer short-circuit in `internal/eval/faithfulness.go:75-78`. Verified by `TestRefusedCaseFaithExemption` RED→GREEN and full hermetic gates (`verify-phase-14` 11/11 PASS, `verify-phase-13` 9/9 PASS).
 - **Static fixes (Gaps 2 + 3):** `Dockerfile.backend` runtime stage installs `libstdc++ libgcc`; `scripts/verify-phase-13.sh` Stage 7 pin synchronized to `1dc6f148…` (lockstep with verify-phase-14.sh Stage 11).
