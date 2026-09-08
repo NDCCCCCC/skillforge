@@ -1,0 +1,2 @@
+INSERT OR REPLACE INTO approval_rules (target, args_hash, skill_id, scope_session_id, created_at, last_used_at) VALUES
+  ('memory:facts', 'd4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5', 'kpi-dashboard', 'session-2', strftime('%s','now'), strftime('%s','now'));
