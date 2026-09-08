@@ -449,6 +449,14 @@ type Deps struct {
 	// unbounded webhook relay abuse. nil = rate limiting disabled (not recommended
 	// for webhook-enabled deployments).
 	FeedbackRateLimiter *perSessionFeedbackLimiter
+
+	// --- Phase 30 / Admin Token (orchestration visibility) ---
+	// AdminToken is the configured SKILLFORGE_ADMIN_TOKEN value read at startup.
+	// Plumbed through Deps for discoverability and consistency with other
+	// SKILLFORGE_* fields. The actual admin-gate check (isAdminRequest in
+	// audit.go) still reads via os.Getenv directly for fail-closed semantics:
+	// an empty env means isAdminRequest returns false regardless of this field.
+	AdminToken string
 }
 
 // GraphLimits holds the config-driven limits for the knowledge graph.

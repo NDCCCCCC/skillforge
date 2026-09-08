@@ -380,6 +380,13 @@ func main() {
 		log.Fatalf("[FAIL] cmd/server: ticket provider assembly (SKILLFORGE_TICKET_PROVIDER=%q): %v", ticketProviderName, err)
 	}
 	log.Printf("[OK] cmd/server: ticket provider wired (provider=%s, dispatch_budget=%dms)", ticketProviderName, ticketBudgetMS)
+
+	// Phase 30 — admin gate token. Read via envOr (not envRequired) so
+	// an unset value is the legal demo-OOB state (isAdminRequest returns
+	// false when the env is empty, D6-08). Plumbed through server.Deps
+	// for orchestration parity with all other SKILLFORGE_* vars.
+	adminToken := envOr("SKILLFORGE_ADMIN_TOKEN", "")
+
 	// Phase 16 — KPI aggregation channel (D16-A1). SKILLFORGE_KPIS_DIR is the
 	// directory of controlled KPI definition files (*.yaml) that is the ONLY
 	// source of callable aggregations. The directory lives INSIDE git (.gitignore
@@ -927,6 +934,10 @@ func main() {
 		// endpoints. Wired unconditionally — nil FeedbackRateLimiter disables limiting.
 		FeedbackRateLimiter: server.NewPerSessionFeedbackLimiter(
 			rate.Limit(feedbackRateLimitRequests), feedbackRateLimitBurst),
+		// Phase 30 — admin gate token (orchestration visibility). The actual
+		// admin-gate check still uses os.Getenv in isAdminRequest for fail-closed
+		// semantics (empty env → isAdmin returns false regardless of this field).
+		AdminToken: adminToken,
 	}
 
 	// Phase 30 / WR-02 (T-30-03): sweep queued tickets from a prior run
