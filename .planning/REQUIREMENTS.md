@@ -500,6 +500,18 @@ Which phases cover which requirements.
 | HYG-01 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
 | HYG-02 | Phase 30 | Complete |
 | HYG-03 | Phase 30 | Pending |
+| PLAT-01 | Deferred | Deferred |
+| PLAT-02 | Deferred | Deferred |
+| PLAT-03 | Deferred | Deferred |
+| PLAT-06 | Deferred | Deferred |
+| PLAT-07 | Deferred | Deferred |
+| PLAT-08 | Deferred | Deferred |
+| SCALE-01 | Deferred | Deferred |
+| SCALE-02 | Deferred | Deferred |
+| SCALE-03 | Deferred | Deferred |
+| DOMAIN-01 | Deferred | Deferred |
+| DOMAIN-02 | Deferred | Deferred |
+| DOMAIN-03 | Deferred | Deferred |
 
 **Coverage:**
 
