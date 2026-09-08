@@ -68,12 +68,17 @@ export default function DataPolicyPart({
   if (isRefusal(data)) {
     return <RefusalCard refusal={data} />;
   }
+  // Unknown payload shape: degrade to a muted developer note, not a red
+  // alarm. The wire union is append-only (D15) — an unrecognized shape
+  // means an older FE talking to a newer BE, which is a version-skew
+  // hint for the operator, never a user-facing failure. The
+  // data-testid stays stable for tests that assert the fallback fired.
   return (
     <div
-      className="my-2 rounded-md border border-danger bg-surface-2 p-3 text-xs"
+      className="my-2 rounded-md border border-border bg-surface-2 p-2 text-xs text-text-muted"
       data-testid="data-policy-unknown"
     >
-      Unknown data-policy payload shape
+      收到未识别的消息负载（可能是版本差异，不影响其他内容）
     </div>
   );
 }
