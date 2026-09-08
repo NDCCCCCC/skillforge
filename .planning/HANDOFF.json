@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-09-08T10:45:00+08:00",
+  "phase": "30",
+  "phase_name": "hygiene-milestone-gate",
+  "phase_dir": ".planning/phases/30-hygiene-milestone-gate",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "milestone_complete_awaiting_operator_uat",
+  "milestone": "v1.2",
+  "completed_tasks": [
+    {"id": "phase-26", "name": "Knowledge Registry Foundation", "status": "done", "plans": "10/10", "commit_prefix": "3853e1c..HEAD"},
+    {"id": "phase-27", "name": "Document Upload Pipeline", "status": "done", "plans": "7/7"},
+    {"id": "phase-28", "name": "Dynamic Knowledge Graph", "status": "done", "plans": "7/7"},
+    {"id": "phase-29", "name": "Feedback Loop + Ticket Interface", "status": "done", "plans": "9/9"},
+    {"id": "phase-30", "name": "Hygiene & Milestone Gate", "status": "done", "plans": "8/8", "completed_at": "2026-09-08"}
+  ],
+  "remaining_tasks": [],
+  "blockers": [
+    {
+     description": "v1.2 milestone is closed at code level but cannot be marked shipped until operator runs 6 UAT items + live eval frozen replay.",
+      "type": "human_action",
+      "workaround": "Acceptance document `.planning/phases/30-hygiene-milestone-gate/30-ACCEPTANCE.md` has full evidence table; HUMAN-UAT.md tracks the 6 pending items."
+    }
+  ],
+  "human_actions_pending": [
+    {"action": "Run 27-UAT (7 items)", "context": "Phase 27 doc-upload runbook — physical browser upload test", "blocking": false, "file": ".planning/phases/27-document-upload-pipeline/27-UAT.md"},
+    {"action": "Run 28-UAT (18 items)", "context": "Phase 28 dynamic-graph runbook — knowledge base graph visual check", "blocking": false, "file": ".planning/phases/28-dynamic-knowledge-graph/28-UAT.md"},
+    {"action": "Run 29-UAT (7 items)", "context": "Phase 29 feedback/ticket runbook — API level interaction", "blocking": false, "file": ".planning/phases/29-feedback-loop-ticket-interface/29-UAT.md"},
+    {"action": "Run 29-HUMAN-UAT (9 items, includes Phase 27→28→29 joint verification = FBK-05 trust semantics live confirmation)", "context": "Trust semantic regression proof live layer", "blocking": false, "file": ".planning/phases/29-feedback-loop-ticket-interface/29-HUMAN-UAT.md"},
+    {"action": "Run HYG-03 live eval frozen replay", "context": "Pre-flight probe Milvus/BGE/GLM; 断线记环境 STOP 不刷分; target: faithfulness >= 0.9 / refusal_accuracy >= 0.95", "blocking": false, "command": "wsl -e bash -lc \"cd /mnt/d/code/ClaudeCode/ai-agent && go run ./cmd/eval --frozen --gate-check\""},
+    {"action": "Run 30-HUMAN-UAT (6 items — covers 27/28/29 runbook sweep + 30 fixes smoke + HYG-03 live)", "context": "Milestone-closeout operator sweep", "blocking": true, "file": ".planning/phases/30-hygiene-milestone-gate/30-HUMAN-UAT.md"}
+  ],
+  "decisions": [
+    {"decision": "v1.2 milestone completed all 5 phases with code-level evidence", "rationale": "All 8 plans in Phase 30 executed; CR-01 + WR-01..06 fixes verified; HYG-02 5-stage gate green; 30-ACCEPTANCE.md compiled", "phase": "30"},
+    {"decision": "Stop here — wait for operator before running /gsd:complete-milestone", "rationale": "D-30-07 LOCKED — UAT clearance is the hard gate; AI must not auto-sign operator-side UAT", "phase": "30"}
+  ],
+  "uncommitted_files": [
+    ".planning/config.json (pre-existing dirty — Phase 30 NTF)",
+    "internal/server/knowledge.go (pre-existing dirty — Phase 30 NTF, NOT 30-introduced)",
+    "web/src/components/graph/GraphCanvas.tsx (pre-existing dirty)",
+    "web/src/components/inspector/InspectorRetrieval.tsx (pre-existing dirty)"
+  ],
+  "next_action": "Operator runs the 6 pending UAT items in `.planning/phases/30-hygiene-milestone-gate/30-HUMAN-UAT.md`. After all 6 PASS, run `/gsd:complete-milestone` for the milestone closeout ceremony (CHANGELOG / RELEASE-NOTES / milestone-summary).",
+  "context_notes": "v1.2 milestone closed cleanly: 41 plans executed across 5 phases (10+7+7+9+8). HYG-02 magic-number gate + HYG-03 evidence compilation both live. Two false-positive code review findings on internal/server/knowledge.go — file is a pre-existing dirty working-tree modification from prior session, NOT introduced by Phase 30; orchestrator verified by direct file read. Knowledge package parallel-test flake (~30% of full-suite runs) is also pre-existing — isolated package runs 5/5 PASS."
+}
