@@ -523,14 +523,33 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		})
 		return
 	}
+	// Resume-tree correctness: the Runner that interrupted belongs to
+	// the pending row's skill (e.g. monthly-report's deep agent). The
+	// rebuilt Runner MUST use the SAME manifest or eino's resume
+	// agent-tree walk fails with "no child agents leading to
+	// interrupted agent were found" — the global Deps.ActiveManifest
+	// is only the boot-time default (first loaded skill) and is the
+	// WRONG tree for every other skill. Mirrors plan_api.go's
+	// per-row lookup (manifestForSkill).
+	resumeManifest := manifestForSkill(s.Loader, row.SkillID)
+	if resumeManifest == nil {
+		resumeManifest = s.ActiveManifest
+	}
+
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
-		Manifest:        s.ActiveManifest,
+		Manifest:        resumeManifest,
 		Embedder:        s.Embedder,
 		Retriever:       s.Retriever,
 		ChatModel:       s.ChatModel,
 		SessionID:       sessionID,
-		SkillID:         s.ActiveManifest.Name,
+		SkillID:         row.SkillID,
 		CheckPointStore: cpStore,
+		// D16-C3: a data-channel Skill's resume path needs the SAME
+		// executor + registry the chat path passes (runner_setup.go
+		// ChatHandler) — BuildRunner fail-closes without them, which
+		// would break every monthly-report / kpi-dashboard resume.
+		KPIExecutor: s.KPIExecutor,
+		KPIRegistry: s.KPIRegistry,
 		// Plan 26-06: the hitl tool construction fails closed without a
 		// registry when the manifest declares memory:facts — thread the
 		// same registry the annotate/KB admin surfaces already use.

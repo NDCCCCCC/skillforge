@@ -208,6 +208,7 @@ function PendingCardView({
           target: approval.target,
           frozen_args: finalArgs,
           approval_id: approval.approvalId,
+          ...(approval.interruptId ? { interrupt_id: approval.interruptId } : {}),
           ...(remember ? { scope } : {}),
         });
         if (status === 200) {
@@ -238,6 +239,7 @@ function PendingCardView({
         reason,
         target: approval.target,
         approval_id: approval.approvalId,
+        ...(approval.interruptId ? { interrupt_id: approval.interruptId } : {}),
       });
       if (status === 200) {
         settle('denied', reason, approval.frozenArgs);
@@ -263,6 +265,7 @@ function PendingCardView({
         reason,
         target: approval.target,
         approval_id: approval.approvalId,
+        ...(approval.interruptId ? { interrupt_id: approval.interruptId } : {}),
       });
       if (status === 200) {
         settle('change_requested', reason, approval.frozenArgs);

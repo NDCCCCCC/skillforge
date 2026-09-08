@@ -204,6 +204,13 @@ func emitInterruptChunks(contexts []*adk.InterruptCtx) []wire.UIMessageChunk {
 			"createdAt":    time.Now().UnixMilli(),
 			"skillVersion": info.SkillVersion,
 			"promptHash":   info.PromptHash,
+			// interruptId is the eino resume address (InterruptCtx.ID).
+			// ResumeWithParams' Targets key MUST be this UUID — the
+			// approvalID fallback re-interrupts the Tool instead of
+			// resuming it (empirically verified against eino v0.9.14;
+			// see approval_api.go's file-level resume-target note). The
+			// FE echoes it back as the POST body's interrupt_id.
+			"interruptId": ctx.ID,
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {

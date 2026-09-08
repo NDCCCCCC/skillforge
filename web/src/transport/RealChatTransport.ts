@@ -103,6 +103,10 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
         promptHash: asStr(data.promptHash),
         sessionId: asStr(data.sessionId),
         skillId: asStr(data.skillId),
+        // Eino resume address — the pending-card POST forwards it as
+        // interrupt_id. Without it the BE falls back to the approvalID
+        // which re-interrupts the Tool instead of resuming.
+        interruptId: asStr(data.interruptId),
         status: 'pending',
       });
       return true;

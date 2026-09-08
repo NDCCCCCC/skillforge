@@ -116,6 +116,12 @@ export interface PendingApproval {
   promptHash: string;
   sessionId: string;
   skillId: string;
+  /** Eino resume address (InterruptCtx.ID) echoed from the interrupted
+   * data-decision payload. The POST body forwards it as interrupt_id —
+   * ResumeWithParams targets this UUID; the approvalID fallback
+   * re-interrupts the Tool instead of resuming it. May be empty when
+   * the payload predates the field. */
+  interruptId?: string;
   /** Locked — a pending row is always 'pending'. */
   status: 'pending';
 }
