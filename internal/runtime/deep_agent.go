@@ -197,6 +197,12 @@ func deepArchetypePrefix(cfg *DispatchConfig) string {
 - plan_approve (HITL-gated plan confirmation)
 - write_todos (audited task tracking)
 
+report_publish contract (D18-A2): every template slot type MUST be one of
+{narrative, insight, risk_note}. "sparkline" / "chart" / "table" etc. are
+REJECTED at validation — the snapshot numbers go INSIDE insight/risk_note
+text, never into a new slot type. Copy the manifest template's sections
+and slot types verbatim; fill only the text.
+
 MaxIteration = 10. Plan tightly: batched kpi_call calls, compact todos, no silent expansion.
 `
 	}

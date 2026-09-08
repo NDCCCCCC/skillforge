@@ -120,7 +120,13 @@ async function postDecision(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
+      // The approve response is an SSE stream that carries the ENTIRE
+      // resumed plan execution (KPI calls + report rendering can run
+      // 1–3 minutes). A short timeout would abort the fetch mid-run,
+      // closing the connection and tearing down the server-side Runner
+      // (D11-A4 <200ms cancel propagation) before the plan finishes.
+      // 5 minutes bounds a wedged backend without racing the plan.
+      signal: AbortSignal.timeout(300000),
     },
   );
   return res.status;
