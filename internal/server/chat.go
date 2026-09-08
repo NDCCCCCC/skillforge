@@ -308,15 +308,24 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		// calls onError). The readable text is a fixed template (no
 		// internal error detail leaks to the client).
 		log.Printf("[ERROR] server: chatHandler verdict pipeline failed sess=%s: %v", sessionID, err)
-		// 29-04 (T-29-06): persist the audit row + turn pair FIRST, emit
-		// the data-turn vote key, THEN the terminal frames — a client
-		// that registered this error-shaped assistant message (the full
-		// text lifecycle below reaches finish) can vote on it, and the
-		// vote key must precede finish. write-first also guarantees the
-		// audit row survives an emit failure (GEVL-03).
-		turnID, _ := s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
-		if emitErr := emitTurnID(c, turnID); emitErr != nil {
-			log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
+		// 30-01 (CR-01): only write if the pipeline did not already persist.
+		// pipelineEmitError carries persisted=true when audit+turn succeeded
+		// before the SSE emit failure. Guard prevents a second audit/turn pair.
+		var persisted bool
+		var turnID int64
+		// 30-01 (CR-01): pipelineEmitError is returned when the SSE emit
+		// failed but the audit+turn row was already written. Use a type
+		// switch on the error interface chain to extract the persisted flag.
+		if pe, ok := err.(interface{ GetPersisted() bool }); ok {
+			persisted = pe.GetPersisted()
+		}
+		if !persisted {
+			turnID, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
+		}
+		if turnID > 0 {
+			if emitErr := emitTurnID(c, turnID); emitErr != nil {
+				log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
+			}
 		}
 		_ = wire.EmitChunk(c, errorChunk(err.Error()))
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"})
