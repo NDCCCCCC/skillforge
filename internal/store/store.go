@@ -569,6 +569,18 @@ type AuditFilter struct {
 	// ActorType filters by the Phase 20 / Plan 20-06 (ADM-06) admin
 	// audit discriminator. One of "user" | "admin" | "" (empty = all).
 	ActorType string
+	// ActionEmpty, when true, adds `AND action = ''` to the WHERE clause.
+	// Used by the feedback attribution probe (WR-04) to bind attribution
+	// to verdict rows only (empty action = verdict row) while excluding
+	// fanout/pending rows.  The empty-string comparison is a hardcoded
+	// SQL literal, not a parameterized value (T-3-SQLI safe).
+	ActionEmpty bool
+	// OrderIDDesc, when true, changes the ORDER BY from `ts DESC` to
+	// `ts DESC, id DESC`.  Used by the feedback attribution probe to
+	// provide a deterministic tie-break when two audit rows share the
+	// same ts (they will, because writeAuditAndTurn calls time.Now()
+	// twice per request — once for the audit row, once for the turn row).
+	OrderIDDesc bool
 }
 
 // FeedbackRow is one user vote on one assistant turn (Phase 29 / Plan

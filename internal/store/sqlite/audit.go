@@ -194,6 +194,12 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 		clauses = append(clauses, "actor_type = ?")
 		args = append(args, filter.ActorType)
 	}
+	// ActionEmpty: WR-04 mitigation — bind attribution to verdict rows
+	// (empty action) and exclude fanout/pending rows.  The empty-string
+	// literal is hardcoded SQL, not caller input (T-3-SQLI safe).
+	if filter.ActionEmpty {
+		clauses = append(clauses, "action = ''")
+	}
 
 	limit := filter.Limit
 	if limit <= 0 {
@@ -206,7 +212,14 @@ func (s *SQLiteStore) QueryAudit(ctx context.Context, filter store.AuditFilter) 
 		// hardcoded parameterized literals above, NEVER user input.
 		q += " WHERE " + strings.Join(clauses, " AND ")
 	}
-	q += " ORDER BY ts DESC LIMIT ?"
+	// OrderIDDesc: WR-04 tie-break when ts values are equal (two
+	// writeAuditAndTurn calls in one request use different time.Now()
+	// calls, but the tie-break is still needed for exact ts matches).
+	if filter.OrderIDDesc {
+		q += " ORDER BY ts DESC, id DESC LIMIT ?"
+	} else {
+		q += " ORDER BY ts DESC LIMIT ?"
+	}
 	args = append(args, limit)
 	// Phase 6 / D6-05: LIMIT/OFFSET pagination. The OFFSET value is
 	// appended to args as a `?` placeholder — NEVER fmt.Sprintf'd into

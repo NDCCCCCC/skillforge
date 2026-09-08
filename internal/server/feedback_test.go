@@ -128,9 +128,23 @@ func (f *feedbackFakeStore) QueryAudit(_ context.Context, filter store.AuditFilt
 		if !filter.Until.IsZero() && !r.Timestamp.Before(filter.Until) {
 			continue // mirrors the store's `ts < ?` (Until) semantics
 		}
+		// WR-04 ActionEmpty: only verdict rows (empty action) qualify.
+		if filter.ActionEmpty && r.Action != "" {
+			continue
+		}
 		out = append(out, r)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Timestamp.After(out[j].Timestamp) })
+	// WR-04 OrderIDDesc: tie-break by id descending.
+	if filter.OrderIDDesc {
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Timestamp.Equal(out[j].Timestamp) {
+				return out[i].ID > out[j].ID
+			}
+			return out[i].Timestamp.After(out[j].Timestamp)
+		})
+	} else {
+		sort.Slice(out, func(i, j int) bool { return out[i].Timestamp.After(out[j].Timestamp) })
+	}
 	limit := filter.Limit
 	if limit == 0 {
 		limit = 100
@@ -299,7 +313,10 @@ func (f *feedbackFakeStore) fbSeedTurn(sessionID string, turnID int64, role stri
 	}
 	f.turns[sessionID][turnID] = store.SessionMessage{ID: turnID, Role: role, Content: "conclusion", Ts: turnTs}
 	if skillID != "" || chunkIDs != "" {
+		// Assign a deterministic ID for tie-break testing.
+		id := int64(len(f.auditRows) + 1)
 		f.auditRows = append(f.auditRows, store.AuditRow{
+			ID:        id,
 			Timestamp: turnTs.Add(-2 * time.Second),
 			SessionID: sessionID,
 			SkillID:   skillID,
@@ -426,10 +443,14 @@ func TestFeedbackHandler(t *testing.T) {
 
 		// The attribution probe is the parameterized audit-nearby query:
 		// bounded to this session, strictly before the turn ts, LIMIT 1.
+		// WR-04: ActionEmpty binds to verdict rows only; OrderIDDesc
+		// provides a deterministic tie-break.
 		require.Len(t, fake.queryAuditFilter, 1)
 		assert.Equal(t, fbTestSession, fake.queryAuditFilter[0].SessionID)
 		assert.True(t, fake.queryAuditFilter[0].Until.Equal(fbTurnTs), "Until must bind the turn ts")
 		assert.Equal(t, 1, fake.queryAuditFilter[0].Limit)
+		assert.True(t, fake.queryAuditFilter[0].ActionEmpty, "WR-04: attribution must filter to verdict rows (empty action)")
+		assert.True(t, fake.queryAuditFilter[0].OrderIDDesc, "WR-04: attribution must order by ts DESC, id DESC for deterministic tie-break")
 	})
 
 	t.Run("replay returns already_recorded with the first verdict", func(t *testing.T) {

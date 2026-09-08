@@ -266,10 +266,16 @@ func (s *Deps) feedbackAttribution(ctx context.Context, sessionID string, turnTs
 	if s.Store == nil {
 		return "", ""
 	}
+	// WR-04: ActionEmpty binds attribution to verdict rows only (empty
+	// action = verdict rows; fanout/pending rows have non-empty action).
+	// OrderIDDesc provides a deterministic tie-break when two rows share
+	// the same ts (writeAuditAndTurn calls time.Now() twice per request).
 	rows, err := s.Store.QueryAudit(ctx, store.AuditFilter{
-		SessionID: sessionID,
-		Until:     turnTs,
-		Limit:     1,
+		SessionID:   sessionID,
+		Until:       turnTs,
+		Limit:       1,
+		ActionEmpty: true,
+		OrderIDDesc: true,
 	})
 	if err != nil {
 		log.Printf("[WARN] server: feedback attribution probe (sess=%s) failed: %v (recording the vote without attribution; non-fatal)", sessionID, err)
