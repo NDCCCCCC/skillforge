@@ -197,6 +197,11 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		ReportAudit:         reportAudit,
 		ReportPublishEmit:   s.reportPublishEmitter(c),
 		FanOutAudit:         fanOutAudit,
+		// P12-L2 deep-archetype write_todos substrate: the audited Tool
+		// INSERTs plan_todos rows + emits the live data-plan-trace chunk.
+		// Both derive from the same store/emitter seams above.
+		PlanTodoStore:  planTodoStoreOf(s.Store),
+		PlanTraceEmit:  s.planTraceEmitter(c),
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)
@@ -330,6 +335,44 @@ func runnerEmitDecision(c *app.RequestContext, p wire.DecisionPayload) error {
 		return fmt.Errorf("marshal decision: %w", err)
 	}
 	return wire.EmitChunk(c, wire.UIMessageChunk{Type: "data-decision", Data: payload})
+}
+
+// planTraceEmitter returns the per-request write_todos SSE hook: the
+// audited Tool (deep_audit.go) calls EmitDataPlanTrace after each
+// plan_todos INSERT and the payload rides the data-plan-trace chunk
+// the FE planning-trace tab consumes (RealChatTransport's
+// data-plan-trace dispatch). Mirrors dataRefEmitter's shape.
+func (s *Deps) planTraceEmitter(c *app.RequestContext) agent.WriteTodosEmitter {
+	return planTraceEmitFunc(func(_ context.Context, p wire.PlanTracePayload) error {
+		payload, err := json.Marshal(p)
+		if err != nil {
+			return fmt.Errorf("marshal plan trace: %w", err)
+		}
+		return wire.EmitChunk(c, wire.UIMessageChunk{Type: "data-plan-trace", Data: payload})
+	})
+}
+
+// planTraceEmitFunc adapts a plain function to agent.WriteTodosEmitter
+// (the interface carries EmitDataPlanTrace; a bare func literal does
+// not satisfy it).
+type planTraceEmitFunc func(ctx context.Context, p wire.PlanTracePayload) error
+
+func (f planTraceEmitFunc) EmitDataPlanTrace(ctx context.Context, p wire.PlanTracePayload) error {
+	return f(ctx, p)
+}
+
+// planTodoStoreOf narrows store.Store to *sqlite.SQLiteStore for the
+// write_todos audit INSERT target (PutPlanTodo). Same single-point
+// conversion pattern as storeAsCheckPoint; nil-safe.
+func planTodoStoreOf(s store.Store) *sqlite.SQLiteStore {
+	if s == nil {
+		return nil
+	}
+	impl, ok := s.(*sqlite.SQLiteStore)
+	if !ok {
+		return nil
+	}
+	return impl
 }
 
 // compile-time guard: keep the skill + agent imports live so a future

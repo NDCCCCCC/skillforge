@@ -29,7 +29,10 @@
 // and §Pitfall 6 (kebab-case type discriminator) for the contract.
 package wire
 
-import "encoding/json"
+import (
+	"encoding/gob"
+	"encoding/json"
+)
 
 // UIMessageChunk mirrors the Vercel AI SDK v5 discriminated union wire
 // shape. The Type field is a kebab-case discriminator (text-delta,
@@ -326,6 +329,22 @@ type PlanTracePayload struct {
 	RunID string     `json:"runId"`
 	Todos []PlanTodo `json:"todos"`
 	Ts    int64      `json:"ts"`
+}
+
+// gob registration for the eino checkpoint encoder. The deep
+// archetype's write_todos Tool stores []PlanTodo in the adk session
+// (deep.SessionKeyTodos); the Runner's interrupt path gob-encodes the
+// whole run ctx (adk/interrupt.go runnerSaveCheckPointImpl), and gob
+// refuses unregistered interface types — without this init the FIRST
+// interrupt after a write_todos call fails with
+// "gob: type not registered for interface: []wire.PlanTodo" and no
+// checkpoint row is persisted (the approve/resume path then dies with
+// "checkpoint not exist"). Registering in the type's owning package
+// makes every importer safe.
+func init() {
+	gob.Register(PlanTodo{})
+	gob.Register([]PlanTodo{})
+	gob.Register(PlanTracePayload{})
 }
 
 // Phase 10 (Plan 10-02) — history-aware pipeline data-decision

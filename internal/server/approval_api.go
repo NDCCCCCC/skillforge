@@ -436,7 +436,16 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	// default. ActiveManifest stays as the boot-time fallback for the
 	// GET handler's pending-row state hint.
 	cpID := agent.RunnerCheckPointID(sessionID)
+	// Snapshot fallback chain: per-row manifest → global ActiveManifest.
+	// Tests construct Deps without a Loader (rowManifest nil) but WITH
+	// ActiveManifest set; production wires both. Only when BOTH are nil
+	// is the snapshot empty — then the mismatch comparison below would
+	// false-positive, so the empty-snap case falls through as fresh
+	// (the pending row's own audit trail remains the durable record).
 	rowManifest := manifestForSkill(s.Loader, row.SkillID)
+	if rowManifest == nil {
+		rowManifest = s.ActiveManifest
+	}
 	snap := activeSkillSnapshot(rowManifest)
 	checkpointPayload, checkpointValid, err := s.Store.GetCheckpointByVersionFilter(ctx, cpID, snap.Version, snap.PromptHash)
 	if err != nil {
@@ -456,7 +465,7 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		// checkpointValid=true with wrong-hash is not — existed=false
 		// is the only branch we hit, so the conditional is on the
 		// audit row's stored snapshot matching the recomputed one.
-		if row.PromptHash != "" && row.PromptHash != snap.PromptHash {
+		if snap.PromptHash != "" && row.PromptHash != snap.PromptHash {
 			log.Printf("[INFO] server: approval expire-check (sess=%s cp=%s) audit.prompt_hash=%s != snap.prompt_hash=%s → expired",
 				sessionID, cpID, row.PromptHash, snap.PromptHash)
 			c.JSON(http.StatusGone, map[string]any{
@@ -550,6 +559,11 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		// would break every monthly-report / kpi-dashboard resume.
 		KPIExecutor: s.KPIExecutor,
 		KPIRegistry: s.KPIRegistry,
+		// P12-L2 deep-archetype write_todos substrate (same seams the
+		// chat path passes — the resumed run continues the SAME agent
+		// tree and its write_todos Tool must keep INSERTing).
+		PlanTodoStore: planTodoStoreOf(s.Store),
+		PlanTraceEmit: s.planTraceEmitter(c),
 		// Plan 26-06: the hitl tool construction fails closed without a
 		// registry when the manifest declares memory:facts — thread the
 		// same registry the annotate/KB admin surfaces already use.

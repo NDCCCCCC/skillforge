@@ -80,6 +80,7 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/runtime"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 )
 
 // RunnerCheckPointID is the canonical format for per-session Runner
@@ -205,6 +206,23 @@ type RunnerBuildConfig struct {
 	// data-decision{decision: "report_published", reportCard} chunk
 	// through it. nil disables emission (hermetic tests).
 	ReportPublishEmit hitl.ReportPublishEmitFunc
+
+	// PlanTodoStore is the write_todos audit INSERT target (P12-L4).
+	// When non-nil AND the manifest's archetype is deep, BuildRunner
+	// registers the audited write_todos Tool (deep_audit.go) alongside
+	// the archetype tool set — WithoutWriteTodos: true in
+	// runtime/deep_agent.go turns eino's auto-injection OFF, so the
+	// custom Tool is the ONLY write_todos the LLM can see. nil → the
+	// deep archetype runs WITHOUT write_todos (plan_todos stays empty;
+	// the deep system prompt still mentions it — acceptable degraded
+	// posture for hermetic tests).
+	PlanTodoStore *sqlite.SQLiteStore
+
+	// PlanTraceEmit is the write_todos SSE hook (12-06 wiring): the
+	// audited Tool emits a data-plan-trace chunk through it after the
+	// audit INSERT. nil → noop emitter (audit rows still written; live
+	// planning-trace tab gets nothing until the next reload).
+	PlanTraceEmit WriteTodosEmitter
 
 	// KBRegistry is the knowledge-base registry threaded through the
 	// Runner assembly (Plan 26-06): BuildToolsForSkill consumes it for
@@ -391,6 +409,21 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		retrieveTool := agenttools.BuildRetrieveTool(cfg.Embedder, cfg.Retriever, cfg.Manifest)
 		hits = append(hits, retrieveTool)
 		tools = hits
+	}
+
+	// P12-L2 / deep archetype: register the audited write_todos Tool.
+	// runtime/deep_agent.go sets WithoutWriteTodos: true (Option C), so
+	// the custom Tool (deep_audit.go — audit INSERT + data-plan-trace
+	// SSE + session value) is the ONLY write_todos the LLM can see.
+	// Without this registration the deep system prompt advertises
+	// write_todos but no such Tool exists — the LLM skips it and
+	// plan_todos stays empty (the live-verify gap found 2026-09-08).
+	// Chat-archetype Skills never see the Tool (write_todos is a
+	// DeepAgent-idiom task list, meaningless without the deep loop).
+	if cfg.Manifest.Agent == "deep" && cfg.PlanTodoStore != nil {
+		for _, t := range DeepAgentTools(cfg.PlanTodoStore, cfg.SessionID, cfg.PlanTraceEmit) {
+			tools = append(tools, t)
+		}
 	}
 
 	// P12-L1: archetype dispatch funnels through runtime.DispatchAgent.
