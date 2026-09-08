@@ -142,18 +142,20 @@ type PrevRunContext struct {
 }
 
 // Archetype returns the archetype enum for cfg. Empty Agent field or
-// "chat" returns ArchetypeChat (the Phase 11 default path); "deep"
-// returns ArchetypeDeep; "orchestrator" returns ArchetypeOrchestrator
-// (Phase 13 / P13-L1). Other values return empty AgentArchetype —
-// callers should treat empty as "rejected by Validate" (manifest
-// validator guards against unknown agent types at SKILL.md load time,
-// but the dispatch layer is defense-in-depth).
+// "chat" returns ArchetypeChat (the Phase 11 default path); the legacy
+// aliases "ChatModelAgent" and "ReActAgent" map to ArchetypeChat too
+// (see DispatchAgent below); "deep" returns ArchetypeDeep;
+// "orchestrator" returns ArchetypeOrchestrator (Phase 13 / P13-L1).
+// Other values return empty AgentArchetype — callers should treat
+// empty as "rejected by Validate" (manifest validator guards against
+// unknown agent types at SKILL.md load time, but the dispatch layer
+// is defense-in-depth).
 func (c DispatchConfig) Archetype() AgentArchetype {
 	if c.Manifest == nil {
 		return AgentArchetype("")
 	}
 	switch c.Manifest.Agent {
-	case "", "chat":
+	case "", "chat", "ChatModelAgent", "ReActAgent":
 		return ArchetypeChat
 	case "deep":
 		return ArchetypeDeep
@@ -206,11 +208,19 @@ func DispatchAgent(ctx context.Context, cfg DispatchConfig) (adk.Agent, error) {
 	}
 
 	switch cfg.Manifest.Agent {
-	case "", "chat", "ChatModelAgent":
-		// Phase 11 legacy alias — "ChatModelAgent" was the original
-		// Eino ADK constructor name. SKILL.md frontmatter that has
-		// not migrated to the short form ("chat") still works. The
-		// dispatch layer maps all three to the same chat archetype.
+	case "", "chat", "ChatModelAgent", "ReActAgent":
+		// Phase 11 legacy aliases — "ChatModelAgent" and "ReActAgent"
+		// were the original Eino ADK constructor names from the
+		// ChatModelAgent / ReActAgent era. SKILL.md frontmatter that
+		// has not migrated to the short form ("chat") still works.
+		// All three map to the same chat archetype (the previous
+		// adk.NewChatModelAgent call site, lifted into the runtime
+		// package). SequentialAgent / ParallelAgent / LoopAgent /
+		// ConditionalAgent are accepted by the manifest validator
+		// for backward-compat but have no runtime archetype here —
+		// dispatch returns the "unknown agent type" error so the
+		// operator sees the missing migration in logs, not a silent
+		// fall-through.
 		return buildChatModelAgent(ctx, cfg)
 	case "deep":
 		return buildDeepAgent(ctx, cfg)
