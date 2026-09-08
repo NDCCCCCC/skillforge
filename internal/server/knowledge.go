@@ -332,18 +332,14 @@ func (s *Deps) neighborsHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// Cap edge count and tag as degraded if limit exceeded.
+	// Phase 28 (GRF-05): cap edge count first — edge limit reason takes
+	// precedence over depth-limit reason when both trigger.
 	if len(result.Edges) > maxEdges {
 		result.Degraded = true
 		result.DegradedReason = fmt.Sprintf("边数超过 %d（实际 %d），已截断。请调高 SKILLFORGE_GRAPH_MAX_EDGES", maxEdges, len(result.Edges))
 		result.Edges = result.Edges[:maxEdges]
 	}
 
-	c.JSON(http.StatusOK, result)
-	if result == nil {
-		c.JSON(http.StatusNotFound, graphResponseError{Error: "chunk not found"})
-		return
-	}
 	c.JSON(http.StatusOK, result)
 }
 
@@ -390,9 +386,11 @@ func (s *Deps) pathHandler(ctx context.Context, c *app.RequestContext) {
 	}
 	maxHopsStr := string(c.Query("max_hops"))
 	maxHops := maxHopsLimit
+	requestedHops := maxHops
 	if maxHopsStr != "" {
 		if m, err := strconv.Atoi(maxHopsStr); err == nil && m > 0 {
 			maxHops = m
+			requestedHops = m
 		}
 	}
 	// Cap at configured max.
@@ -412,9 +410,9 @@ func (s *Deps) pathHandler(ctx context.Context, c *app.RequestContext) {
 
 	result := eg.ShortestPath(from, to, maxHops)
 	// If max_hops was capped at the configured limit, tag as degraded.
-	if maxHops < maxHopsLimit {
+	if requestedHops > maxHopsLimit {
 		result.Degraded = true
-		result.DegradedReason = fmt.Sprintf("max_hops 超过限制 %d（请求 %d），已截断。请调高 SKILLFORGE_GRAPH_PATH_HOPS_LIMIT", maxHopsLimit, maxHops)
+		result.DegradedReason = fmt.Sprintf("max_hops 超过限制 %d（请求 %d），已截断。请调高 SKILLFORGE_GRAPH_PATH_HOPS_LIMIT", maxHopsLimit, requestedHops)
 	}
 	c.JSON(http.StatusOK, result)
 }
