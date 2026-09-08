@@ -116,7 +116,11 @@ export interface GraphCanvasProps {
   graph: KnowledgeGraph;
   /** Doc-name filter from GraphFilterInput (same behavior as the tree). */
   filter: string;
-  /** Optional edges to overlay on top of the radial layout (from neighbors API, GRF-04). */
+  /** Optional: the full neighbor result to render as a subgraph (GRF-04).
+   * When provided, the canvas switches to neighbor subgraph mode. */
+  neighborResult?: NeighborResult | null;
+  /** Optional edges to render as overlay lines on the radial graph (GRF-04).
+   * These are distinct from the neighbor subgraph mode. */
   overlayEdges?: GraphEdge[];
   /** Called when user clicks a doc node to expand its neighbors. */
   onExpandNeighbors?: (chunkId: string, depth?: number) => void;
@@ -213,15 +217,15 @@ function NeighborSubgraph({
   );
 }
 
-export default function GraphCanvas({ graph, filter, overlayEdges, onExpandNeighbors }: GraphCanvasProps) {
+export default function GraphCanvas({ graph, filter, neighborResult, overlayEdges, onExpandNeighbors }: GraphCanvasProps) {
   const setCenterView = useAppStore((s) => s.setCenterView);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [hovered, setHovered] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
 
-  // Neighbor subgraph: when overlayEdges is provided, render only the subgraph
-  // centered in the canvas. When not provided, render the full radial graph.
-  const isNeighborMode = Boolean(overlayEdges && overlayEdges.length > 0);
+  // Neighbor subgraph mode: only when neighborResult is explicitly provided.
+  // The overlayEdges are rendered on top of the radial graph when in normal mode.
+  const isNeighborMode = Boolean(neighborResult);
 
   const positioned = useMemo(() => {
     if (isNeighborMode) return [];
@@ -263,7 +267,7 @@ export default function GraphCanvas({ graph, filter, overlayEdges, onExpandNeigh
       >
         {/* ── Neighbor subgraph mode ── */}
         {isNeighborMode ? (
-          <NeighborSubgraph result={null as unknown as NeighborResult} centerX={CX} centerY={CY} />
+          <NeighborSubgraph result={neighborResult!} centerX={CX} centerY={CY} />
         ) : (
           <>
             {/* tier→doc edges */}

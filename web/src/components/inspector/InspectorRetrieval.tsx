@@ -59,7 +59,7 @@ export default function InspectorRetrieval({
 
   if (retrievals.length === 0) return null;
 
-  async function handleClick(chunkId: string) {
+  function handleClick(chunkId: string) {
     if (expandedChunkId === chunkId) {
       setExpandedChunkId(null);
       setNeighborsResult(null);
@@ -67,17 +67,8 @@ export default function InspectorRetrieval({
     }
     setExpandedChunkId(chunkId);
     setNeighborsLoading(true);
-    try {
-      const url = `/api/knowledge/graph/neighbors?chunk_id=${encodeURIComponent(chunkId)}&depth=1`;
-      const resp = await fetch(url, { headers: { Accept: 'application/json' } });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const json: NeighborResult = await resp.json();
-      setNeighborsResult(json);
-    } catch {
-      setNeighborsResult(null);
-    } finally {
-      setNeighborsLoading(false);
-    }
+    // Dispatch centerView immediately (synchronously) so callers that do not
+    // await handleClick still see the correct store state.
     useAppStore.getState().setCenterView({
       kind: 'chunk-source',
       chunkId,
@@ -86,6 +77,20 @@ export default function InspectorRetrieval({
       effectiveDate: null,
       effectiveTo: null,
     });
+    // Neighbors fetch is fire-and-forget; it does not block the dispatch.
+    void (async () => {
+      try {
+        const url = `/api/knowledge/graph/neighbors?chunk_id=${encodeURIComponent(chunkId)}&depth=1`;
+        const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json: NeighborResult = await resp.json();
+        setNeighborsResult(json);
+      } catch {
+        setNeighborsResult(null);
+      } finally {
+        setNeighborsLoading(false);
+      }
+    })();
   }
 
   return (
@@ -112,7 +117,7 @@ export default function InspectorRetrieval({
           </li>
         ))}
       </ul>
-      {expandedChunkId && (
+      {expandedChunkId && (neighborsResult || neighborsLoading) && (
         <div data-testid="neighbors-panel" className="mt-2 rounded-md border border-border bg-surface-2 p-2">
           <div className="text-xs font-semibold text-text-muted">
             常被一起引用 {neighborsLoading && <span className="ml-1 text-text-muted">加载中…</span>}
