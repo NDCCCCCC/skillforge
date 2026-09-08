@@ -869,6 +869,17 @@ func main() {
 		Knowledge:    knowledge.New(r, kbReg),
 		EvalReporter: server.NewFilesystemEvalReporter(evalReportsDir, evalFrozenDir),
 		ChatModel:    cm,
+		// Phase 11/12 HITL gate: ActiveManifest backs the D11-C2 expire-check
+		// in approvalPostHandler / planApproveHandler. The proper long-term
+		// shape is per-session (resolved from the pending row's skill_id at
+		// approval time, see approval_api.go:241-256 + plan_api.go:409),
+		// but the global field was never wired in production. Use the first
+		// loaded Skill's manifest as a default so the 404 "approval endpoint
+		// not initialized" gate passes; rows whose pending skill_id differs
+		// still render as state="expired" via the D11-C2 snapshot compare.
+		// TODO(phase-13): resolve ActiveManifest per-approval from
+		// loader.Skills() by row.SkillID — see approval_api.go:241.
+		ActiveManifest: firstManifest(loader),
 		// Plan 260815-cos: PipelineChatModel = cm activates Step 8
 		// streaming (text-delta-draft + text-delta-draft-end per token
 		// before grounding). model.ToolCallingChatModel embeds

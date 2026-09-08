@@ -201,6 +201,13 @@ func (s *Deps) planGetHandler(ctx context.Context, c *app.RequestContext) {
 //  6. Pending-row lookup (404 cross-session moat) + row-target gate
 //     (T-12-04-2: ONLY plan_approve rows are resolvable here).
 //  7. D11-C2 expire-check (skill_version + prompt_hash); expired → 410 Gone.
+//
+// Per-row manifest lookup (mirrors approval_api.go:manifestForSkill):
+// resolve the manifest by the pending row's skill_id rather than the
+// global Deps.ActiveManifest (which main.go only wires from the first
+// loaded Skill). A pending plan_approve row written against, e.g.,
+// monthly-report must use monthly-report's manifest here or the
+// expire-check will mark it stale.
 //  8. AuditWriter.MarkApproved / MarkRejected (D11-C3 fail-closed;
 //     HITL-07 edited FrozenArgs win over the pending row's bytes).
 //  9. Runner.ResumeWithParams (interrupt-UUID target, approvalID
@@ -354,8 +361,15 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 	// the CHECKPOINT row (never the audit row — T-3-AUDIT INSERT-only)
 	// and answer 410 Gone so the FE collapses the PlanApprovalCard
 	// into the expired state.
+	//
+	// Per-row manifest lookup (manifestForSkill in approval_api.go):
+	// the pending row carries the skill_id that produced the
+	// interrupt. Resolve the manifest from the loader so the
+	// expire-check matches the row's actual skill, not the boot-time
+	// global Deps.ActiveManifest.
 	cpID := agent.RunnerCheckPointID(runID)
-	snap := activeSkillSnapshot(s.ActiveManifest)
+	rowManifest := manifestForSkill(s.Loader, row.SkillID)
+	snap := activeSkillSnapshot(rowManifest)
 	_, checkpointValid, err := s.Store.GetCheckpointByVersionFilter(ctx, cpID, snap.Version, snap.PromptHash)
 	if err != nil {
 		log.Printf("[WARN] server: plan expire-check (run=%s) failed: %v", runID, err)
@@ -426,13 +440,21 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		})
 		return
 	}
+	// Resolve the runner manifest: prefer the row's actual skill, fall
+	// back to Deps.ActiveManifest when loader lookup misses (defensive
+	// — BuildRunner requires a non-nil Manifest).
+	resumeManifest := rowManifest
+	if resumeManifest == nil {
+		resumeManifest = s.ActiveManifest
+	}
+
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
-		Manifest:        s.ActiveManifest,
+		Manifest:        resumeManifest,
 		Embedder:        s.Embedder,
 		Retriever:       s.Retriever,
 		ChatModel:       s.ChatModel,
 		SessionID:       runID,
-		SkillID:         s.ActiveManifest.Name,
+		SkillID:         row.SkillID,
 		CheckPointStore: cpStore,
 		// Plan 26-06: the hitl tool construction fails closed without a
 		// registry when the manifest declares memory:facts — thread the

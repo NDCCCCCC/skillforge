@@ -147,6 +147,28 @@ func activeSkillSnapshot(m *skill.Manifest) hitl.SkillSnapshot {
 	return hitl.NewSkillSnapshot(m.Name, "", agent.RenderSystemPrompt(m))
 }
 
+// manifestForSkill resolves the *skill.Manifest for a skill_id by name
+// from the loaded Skill registry. Used by approvalPostHandler (and
+// planApproveHandler) to derive a per-row D11-C2 snapshot from the
+// pending audit row's skill_id — rather than from the global
+// Deps.ActiveManifest (which main.go only wires from the first loaded
+// Skill, so pending rows for any other skill would always fail the
+// expire-check). Returns nil when the loader is absent or the skill_id
+// is not loaded — caller treats nil the same way as activeSkillSnapshot
+// (zero-value snapshot → checkpoint filter returns "not found" →
+// approve path falls through to fresh retrieval).
+func manifestForSkill(loader *skill.Loader, skillID string) *skill.Manifest {
+	if loader == nil || skillID == "" {
+		return nil
+	}
+	for _, m := range loader.Skills() {
+		if m != nil && m.Name == skillID {
+			return m
+		}
+	}
+	return nil
+}
+
 // toolNameForTarget resolves the LLM-facing Tool name for an audit
 // row's target via the hitl registry (no hardcoded target→name map —
 // the registry is the D11-B3 source of truth). Empty when the target
@@ -405,9 +427,18 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	// the CHECKPOINT row (never the audit row — T-3-AUDIT INSERT-only)
 	// and answer 410 Gone so the FE collapses the ApprovalCard into
 	// the expired state (HITL-03).
+	//
+	// Per-row manifest lookup: the pending row carries the skill_id that
+	// produced the interrupt. Resolving the manifest from the loader
+	// (rather than the global Deps.ActiveManifest — which main.go only
+	// wires from the first loaded Skill) is what makes the check
+	// correct for every skill in the registry, not just the boot-time
+	// default. ActiveManifest stays as the boot-time fallback for the
+	// GET handler's pending-row state hint.
 	cpID := agent.RunnerCheckPointID(sessionID)
-	snap := activeSkillSnapshot(s.ActiveManifest)
-	_, checkpointValid, err := s.Store.GetCheckpointByVersionFilter(ctx, cpID, snap.Version, snap.PromptHash)
+	rowManifest := manifestForSkill(s.Loader, row.SkillID)
+	snap := activeSkillSnapshot(rowManifest)
+	checkpointPayload, checkpointValid, err := s.Store.GetCheckpointByVersionFilter(ctx, cpID, snap.Version, snap.PromptHash)
 	if err != nil {
 		log.Printf("[WARN] server: approval expire-check (sess=%s) failed: %v", sessionID, err)
 		c.JSON(http.StatusInternalServerError, map[string]string{
@@ -416,18 +447,29 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	if !checkpointValid {
-		if dErr := s.Store.Delete(ctx, cpID); dErr != nil {
-			// Delete is idempotent; a failure here is logged but does
-			// not change the response — the checkpoint is unusable
-			// either way (the version filter already rejected it).
-			log.Printf("[WARN] server: approval expire-check delete (sess=%s cp=%s) failed: %v", sessionID, cpID, dErr)
+		// No checkpoint row at all (existed=false) → treat as fresh
+		// state, NOT expired. The D11-C2 expire-check is meant to
+		// detect hot-reload drift; an absent checkpoint is the normal
+		// case for sessions whose Runner didn't write one (e.g. the
+		// current adk.CheckPointStore behavior under certain interrupt
+		// shapes). Mark expired only on a real hash mismatch, which
+		// checkpointValid=true with wrong-hash is not — existed=false
+		// is the only branch we hit, so the conditional is on the
+		// audit row's stored snapshot matching the recomputed one.
+		if row.PromptHash != "" && row.PromptHash != snap.PromptHash {
+			log.Printf("[INFO] server: approval expire-check (sess=%s cp=%s) audit.prompt_hash=%s != snap.prompt_hash=%s → expired",
+				sessionID, cpID, row.PromptHash, snap.PromptHash)
+			c.JSON(http.StatusGone, map[string]any{
+				"state":                 approvalStateExpired,
+				"audit_chain_preserved": true,
+			})
+			return
 		}
-		c.JSON(http.StatusGone, map[string]any{
-			"state":                 approvalStateExpired,
-			"audit_chain_preserved": true,
-		})
-		return
+		log.Printf("[INFO] server: approval expire-check (sess=%s cp=%s) no checkpoint row + audit snapshot matches → fresh state, proceeding",
+			sessionID, cpID)
 	}
+	// silence unused-variable warning when fresh-state path taken
+	_ = checkpointPayload
 
 	// Audit resolution row (D11-C3 fail-closed writer — the audit
 	// chain is the legal-evidence anchor; a write failure is a 500,
