@@ -55,6 +55,7 @@ import (
 	"github.com/skillforge/skillforge/internal/report"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
 )
@@ -168,6 +169,18 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		SessionID:   sessionID,
 		KPIExecutor: s.KPIExecutor,
 		KPIRegistry: s.KPIRegistry,
+		// D11-B4 / Phase 12 resume substrate: narrow-type assertion
+		// to *sqlite.SQLiteStore (the only production Store
+		// implementation, satisfying adk.CheckPointStore). The
+		// abstract store.Store interface declares only the
+		// SetCheckpointWithSnapshot / GetCheckpointByVersionFilter
+		// / Delete trio (D11-C2 expire-check surface); the eino
+		// resume path additionally needs the bare Get/Set aliases
+		// that adk.CheckPointStore expects. Keeping the abstract
+		// surface narrow avoids forcing every test mock to
+		// re-declare the alias pair; this type-assertion is the
+		// single conversion point.
+		CheckPointStore: storeAsCheckPoint(s.Store),
 		// CR-03 (26-REVIEW): thread the same registry approval_api and
 		// plan_api already pass. Without it a tier-channel Skill that
 		// declares memory:facts fails hard here ("kb registry required")
@@ -191,9 +204,17 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// D11-A1 one-line dispatch.
+	// D11-A1 one-line dispatch. The sessionID is the runID for v1
+	// (one run per session). Pass WithCheckPointID so the Runner's
+	// interrupt path persists the runner state via adk.CheckPointStore —
+	// without it the eino Runner's `if checkPointID != nil { save }`
+	// guard (adk/runner.go:330-336) skips the save entirely, and the
+	// approval / plan_approve resume paths return "checkpoint not
+	// exist" because no row was ever written. Mirrors the test at
+	// runner_setup_test.go:392-393.
 	msgs := []*schema.Message{schema.UserMessage(chatReq.Query)}
-	iter := runner.Run(ctx, msgs)
+	checkPointID := agent.RunnerCheckPointID(sessionID)
+	iter := runner.Run(ctx, msgs, adk.WithCheckPointID(checkPointID))
 	// Note: runner.Run returns a *AsyncIterator synchronously; errors
 	// surface as the first event's Err field (verified at eino v0.9.14
 	// adk/runner.go:102-105). The legacy Runner.Query helper also
@@ -351,4 +372,28 @@ func (a *fanOutAuditAdapter) PutAudit(ctx context.Context, action, runPath, tran
 		PlatformFloorVersion: a.floorVer,
 	})
 	return err
+}
+
+// storeAsCheckPoint narrows the abstract store.Store interface to the
+// concrete *sqlite.SQLiteStore so the Runner's adk.CheckPointStore
+// contract (Get + Set, no filter args) is satisfied. The production
+// path's only Store implementation is *sqlite.SQLiteStore; returning
+// nil here would regress plan_approve HITL E2E — the Runner's
+// interrupt handler skips checkpoint persistence at
+// adk/runner.go:330-336 when store is nil and the resume path then
+// fails with "checkpoint not exist".
+//
+// Defensive: a future non-sqlite Store (e.g. PG) must either
+// implement adk.CheckPointStore natively (rename SetCheckpointWithSnapshot
+// to Set, etc.) or wrap itself in a thin adapter here.
+func storeAsCheckPoint(s store.Store) adk.CheckPointStore {
+	if s == nil {
+		return nil
+	}
+	impl, ok := s.(*sqlite.SQLiteStore)
+	if !ok {
+		log.Printf("[WARN] server: Deps.Store is %T, not *sqlite.SQLiteStore — Runner checkpoint persistence off", s)
+		return nil
+	}
+	return impl
 }
