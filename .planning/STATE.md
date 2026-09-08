@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: milestone
 current_phase: 30
-current_plan: Not started
+current_plan: 1 of 9
 status: executing
-last_updated: "2026-09-08T01:10:01.957Z"
-last_activity: 2026-09-08 -- Phase 30 planning complete
+last_updated: "2026-09-08T02:45:00Z"
+last_activity: 2026-09-08 -- Phase 30 Plan 01 CR-01 SSE emit failure fix complete (e12fd77 + 588a5ab)
 progress:
   total_phases: 30
   completed_phases: 22
   total_plans: 165
-  completed_plans: 160
+  completed_plans: 161
   percent: 73
 ---
 
@@ -185,6 +185,13 @@ Phase 14 UAT remains 6/6 pass (14-UAT.md status: complete); the 1.1.0 floor beha
 ---
 
 ## Current Position
+
+Phase: 30 (hygiene-milestone-gate) — **EXECUTING** (Wave 1)
+Plan: 1 of 9
+Status: executing
+Last activity: 2026-09-08 -- Phase 30 Plan 01 CR-01 SSE emit failure double-write fix complete
+
+**Phase 30 Plan 30-01 delivery summary (Wave 1, 2026-09-08):** CR-01 fix — 2 atomic commits (e12fd77 Task1 + 588a5ab Task2). `pipelineEmitError{err, persisted bool}` carries a flag from pipeline's verdict path to chatHandler's error branch. When SSE emit fails after audit+turn already wrote, `persisted=true` and the error branch skips `writeAuditAndTurn`, eliminating the double audit/turn pair (GEVL-03 violation + duplicate votable message). `GetPersisted()` interface method used for error type switching (avoids `errors.As` concrete-type edge case). `cr01_test.go` regression tests lock the interface contract. WSL `go build ./internal/server/...` exit 0 + `go test ./internal/server/... -count=1` PASS (14.1s). HYG-02 requirement satisfied.
 
 Phase: 16 (KPI 聚合通道，P10.2) — **CLOSED** (2026-08-29 bookkeeping sync; execution + verification complete)
 Plan: 9 of 9 (16-01..16-09 all complete; 16-05 ROADMAP [/] WIP marker corrected to [x] — its SUMMARY was always complete)
