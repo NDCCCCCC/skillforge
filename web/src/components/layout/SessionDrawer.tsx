@@ -113,8 +113,16 @@ export default function SessionDrawer({ open, onClose }: SessionDrawerProps) {
   const groups = useMemo(() => {
     const now = Date.now();
     const q = query.trim().toLowerCase();
+    // Match EITHER the display name OR the session id. Sessions created
+    // by tests / scripts / UAT flows carry opaque ids (rl-burst-*,
+    // e2e-cp-*, uat-27-*) with identical derived titles ("t"), so a
+    // title-only filter made them undiscoverable — searching the id is
+    // the only way to reach a specific one.
     const filtered = q
-      ? sessions.filter((s) => s.name.toLowerCase().includes(q))
+      ? sessions.filter(
+          (s) =>
+            s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q),
+        )
       : sessions;
     const byGroup = new Map<GroupKey, SessionMeta[]>();
     for (const key of GROUP_ORDER) byGroup.set(key, []);
