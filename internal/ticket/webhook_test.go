@@ -288,3 +288,91 @@ func TestWebhookDispatch(t *testing.T) {
 		}
 	})
 }
+
+// TestCheckRedirect verifies the http.Client denies cross-host redirects and
+// caps redirect depth to prevent secret-header leakage and SSRF pivoting.
+func TestCheckRedirect(t *testing.T) {
+	t.Run("cross_host_redirect_is_rejected", func(t *testing.T) {
+		// The final server records which headers it received.
+		var secretReceived string
+		final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			secretReceived = r.Header.Get(SecretHeader)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer final.Close()
+
+		// The redirector sends a 301 to the final server on a different host.
+		// httptest.NewServer gives each server a different port, so the redirect
+		// is cross-host and CheckRedirect should block it before any secret leaks.
+		redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, final.URL, http.StatusMovedPermanently)
+		}))
+		defer redirector.Close()
+
+		p := newWebhookProvider(Config{WebhookURL: redirector.URL, Timeout: 2 * time.Second, Secret: "ops-secret"})
+		_, err := p.Dispatch(context.Background(), testTicket())
+
+		if err == nil {
+			t.Fatal("Dispatch with cross-host redirect: want error, got nil")
+		}
+		if !strings.Contains(err.Error(), "cross-host redirect") {
+			t.Errorf("error = %v, want error mentioning 'cross-host redirect'", err)
+		}
+		// The secret must never reach the final server.
+		if secretReceived != "" {
+			t.Errorf("secret header reached the redirect target = %q, want empty (leak blocked)", secretReceived)
+		}
+	})
+
+	t.Run("too_many_redirects_is_rejected", func(t *testing.T) {
+		// A single server that loops back to itself 4 times (exceeds cap of 2).
+		redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/next", http.StatusMovedPermanently)
+		}))
+		redirectorURL := redirector.URL
+
+		// Override handler to chain: /next -> /next2 -> /next3 -> 200.
+		redirector.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/next" {
+				http.Redirect(w, r, "/next2", http.StatusMovedPermanently)
+				return
+			}
+			if r.URL.Path == "/next2" {
+				http.Redirect(w, r, "/next3", http.StatusMovedPermanently)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		p := newWebhookProvider(Config{WebhookURL: redirectorURL, Timeout: 2 * time.Second})
+		_, err := p.Dispatch(context.Background(), testTicket())
+
+		if err == nil {
+			t.Fatal("Dispatch with redirect chain > 2: want error, got nil")
+		}
+		if !strings.Contains(err.Error(), "too many redirects") {
+			t.Errorf("error = %v, want error mentioning 'too many redirects'", err)
+		}
+	})
+
+	t.Run("same_host_redirect_is_allowed", func(t *testing.T) {
+		// A single server that redirects to /ok on the same host.
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/" {
+				http.Redirect(w, r, "/ok", http.StatusMovedPermanently)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(s.Close)
+
+		p := newWebhookProvider(Config{WebhookURL: s.URL, Timeout: 2 * time.Second})
+		res, err := p.Dispatch(context.Background(), testTicket())
+		if err != nil {
+			t.Fatalf("Dispatch with same-host redirect: want success, got error: %v", err)
+		}
+		if res.Attempts < 1 {
+			t.Errorf("Attempts = %d, want >= 1", res.Attempts)
+		}
+	})
+}
