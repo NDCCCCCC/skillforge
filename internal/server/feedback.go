@@ -231,6 +231,9 @@ func (s *Deps) feedbackHandler(ctx context.Context, c *app.RequestContext) {
 	if !inserted {
 		// D-29-02: the UNIQUE key swallowed the replay. Surface the FIRST
 		// verdict and write NOTHING — no second vote, no duplicate refs.
+		// WR-01: backfill missing refs from a previously failed write.
+		// ON CONFLICT(feedback_id, chunk_id) DO NOTHING makes this idempotent.
+		_ = s.Store.PutFeedbackChunkRefs(ctx, saved.ID, refs)
 		c.JSON(http.StatusOK, feedbackResponse{Status: "already_recorded", Verdict: saved.Verdict})
 		return
 	}

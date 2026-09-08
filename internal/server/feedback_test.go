@@ -79,6 +79,9 @@ type feedbackFakeStore struct {
 	putFeedbackCalls int
 	refs             map[int64][]store.ChunkRef
 	refRowsWritten   int
+	// putFeedbackChunkRefsCalls counts PutFeedbackChunkRefs invocations —
+	// used to verify the WR-01 replay backfill is called.
+	putFeedbackChunkRefsCalls int
 
 	// admin read models (canned) + disposition capture.
 	putAuditRows  []store.AuditRow
@@ -167,8 +170,21 @@ func (f *feedbackFakeStore) FeedbackByTurn(_ context.Context, sessionID string, 
 func (f *feedbackFakeStore) PutFeedbackChunkRefs(_ context.Context, feedbackID int64, refs []store.ChunkRef) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.putFeedbackChunkRefsCalls++
 	f.refRowsWritten += len(refs)
-	f.refs[feedbackID] = append(f.refs[feedbackID], refs...)
+	// Deduplicate: ON CONFLICT(feedback_id, chunk_id) DO NOTHING means a
+	// replay of the same (feedback_id, chunk_id) pair is a no-op, not a
+	// second row.  The real store enforces this; the fake must mirror it.
+	existing := make(map[int64]bool, len(f.refs[feedbackID]))
+	for _, r := range f.refs[feedbackID] {
+		existing[r.ChunkID] = true
+	}
+	for _, r := range refs {
+		if !existing[r.ChunkID] {
+			f.refs[feedbackID] = append(f.refs[feedbackID], r)
+			existing[r.ChunkID] = true
+		}
+	}
 	return nil
 }
 
@@ -446,6 +462,7 @@ func TestFeedbackHandler(t *testing.T) {
 
 		assert.Len(t, fake.feedbackSnapshot(), 1, "exactly one vote row per (session, turn)")
 		assert.Equal(t, 2, fake.putFeedbackCalls, "the replay still reached the store (DB constraint is the truth)")
+		assert.Equal(t, 2, fake.putFeedbackChunkRefsCalls, "WR-01: replay backfill must call PutFeedbackChunkRefs")
 		assert.Len(t, fake.refsSnapshot(), refsAfterFirst, "a replay must not append a second refs batch")
 	})
 
