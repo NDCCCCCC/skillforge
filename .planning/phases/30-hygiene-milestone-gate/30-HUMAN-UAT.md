@@ -37,6 +37,7 @@ expected: CR-01 SSE emit 不再双写 audit/turn；WR-01 refs 失败重试自动
 result: **[PASS — AI 已验]** HYG-02 5-stage gate PASS (verify-phase-30.sh exit 0)；CR-01 SSE emit PASS (session_turn cr01-verify 各 1 行无双写)；WR-05 local-session 拒绝 400 PASS (feedback + ticket endpoint 都返回 `{"error":"invalid session id"}`)；WR-05 429 rate limit 代码存在但 50/100 reqs 没触发 (burst 阈值较高)。需 operator 跑 WR-06 视觉走查 (迟到 votedVerdict 锁定在 FE 反馈 UI)。
 
 ### 7. [NEW] Phase 12 plan_approve HITL — FE chat 渲染未知 `data-policy` payload
+> **[RESOLVED 2026-09-08 晚 — 14 commits]** 症状消除，全链 live 验证通过：ApprovalCard 渲染 → 批准 → Runner resume 真实执行 plan（write_todos 持久化 + KPI 快照 + 月报全文渲染 + report:publish 第二道 HITL gate + 记忆规则 rule-matched 自动通过 + 刷新恢复 + target-miss 自愈）。修复链：`0af5af2` runner_sse emit interrupted chunk · `8da911c` ActiveManifest wire + per-row manifest + fresh-state bypass · `161d0cf` ReActAgent alias · `5c6f524` CheckPointStore + WithCheckPointID · `89e1e20` DataPolicyPart 兜底改灰提示 · `55c174b` 搜索匹配 id · `86a92ac` per-row resume manifest + interrupt_id 全链透传 · `daec11b` write_todos Tool 注册 + gob 注册 PlanTodo · `13f4d6d` slot 契约 prompt + approve 超时 · `4301442` graph dead code + path degraded 逻辑 · `3e64c78` graph FE 修复 · `1135c99` 恢复路径 target-miss 自愈。测试：Go agent/server/wire/runtime 全 ok，FE 598/598。以下保留原始 root-cause 记录。
 **expected**: monthly-report skill 发「生成 2026-07 月报」→ Runner 触发 plan_approve HITL gate → 审计轨迹「待审批 plan_approve」条目 → 操作员点击「Approve + 记住」→ chat 渲染 plan-approved 完成态（折叠或 toast），不出现红色错误。
 
 **actual**: **FAIL** — chat assistant message body 始终为空（`message-assistant-text` div `text=""`），刷新页面后显示红色框 `Unknown data-policy payload shape`（`DataPolicyPart.tsx:71-78` 兜底）。
@@ -113,12 +114,12 @@ if e.Action != nil && e.Action.Interrupted != nil {
 ## Summary
 
 total: 7
-passed: 1 (Item #5 HYG-03 live eval — AI 跑通 + gate passed)
+passed: 2 (Item #5 HYG-03 live eval — AI 跑通 + gate passed; Item #7 plan_approve HITL — 2026-09-08 晚 14 commits 全链修复 live 验证)
 operator-partial: 5 (Items #1-4 + #6 — AI 跑完 API 部分；物理视觉项需 operator 亲验)
-issues: 1 (Item #7 — Phase 12 plan_approve HITL FE chat 渲染 unknown data-policy payload，blocker for E2E UAT)
+issues: 0
 pending: 0
 skipped: 0
-blocked: 1 (Item #7 — 需要 FE 修 DataPolicyPart 兜底 + 根因定位 + server Deps 完整装配)
+blocked: 0
 
 ## AI 运行摘要 (2026-09-08)
 
