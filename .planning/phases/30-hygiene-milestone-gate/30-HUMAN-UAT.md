@@ -39,40 +39,76 @@ result: **[PASS — AI 已验]** HYG-02 5-stage gate PASS (verify-phase-30.sh ex
 ### 7. [NEW] Phase 12 plan_approve HITL — FE chat 渲染未知 `data-policy` payload
 **expected**: monthly-report skill 发「生成 2026-07 月报」→ Runner 触发 plan_approve HITL gate → 审计轨迹「待审批 plan_approve」条目 → 操作员点击「Approve + 记住」→ chat 渲染 plan-approved 完成态（折叠或 toast），不出现红色错误。
 
-**actual**: **FAIL** — 操作员侧未发现「Approve + 记住」入口（chat assistant message body 始终为空，`message-assistant-text` div `text=""`，无 ApprovalCard / PlanApprovalCard 组件渲染），刷新页面后 chat assistant message 显示红色框：
+**actual**: **FAIL** — chat assistant message body 始终为空（`message-assistant-text` div `text=""`），刷新页面后显示红色框 `Unknown data-policy payload shape`（`DataPolicyPart.tsx:71-78` 兜底）。
 
-> Unknown data-policy payload shape
+**root cause — CONFIRMED via SSE wire capture**（4 次 `curl -sN` 对 monthly-report 抓包）：
 
-`web/src/components/chat/parts/DataPolicyPart.tsx:71-78` 兜底分支。
+`internal/agent/runner_sse.go:94-102`：
+```go
+// Action.Interrupted — 11-02 will emit the approval-request
+// data-* chunk here. For 11-01 the adapter only logs the
+// interrupt context (the chunk sequence is frozen until the
+// HITL Tool + ApprovalDecision schema land in 11-02).
+if e.Action != nil && e.Action.Interrupted != nil {
+    log.Printf("[INFO] agent: Runner interrupted (InterruptContexts=%d) — 11-02 emits approval-request chunk",
+        len(e.Action.Interrupted.InterruptContexts))
+    return nil   // 🚨 TODO 注释说「11-02 emits」但实际从未实现 — return nil 让 chunk 永不流出
+}
+```
 
-**root cause hypothesis** (待根因定位，未深挖 SSE wire 流)：
-1. server `data-decision` chunk `{decision:"plan-approved"}` 走 `RealChatTransport.dispatchApprovalDecision` 正确处理并 return true（应被截留不 enqueue）
-2. 但 chat 仍出现「Unknown data-policy payload shape」——必有另一条路径产生 `data-policy` chunk 且 payload 不是 verdict/refusal
-3. 可能：(a) plan runner 在 resume 后 emit 了 `data-policy` 携带 plan-shaped payload；(b) `data-decision` chunk 实际被误归到 `data-policy` 处理路径；(d) useChat 的 part dispatch 漏判 type
-4. `/api/run/:id/plan/:approvalId/approve` 直调返回 404 `{"error":"plan approval endpoint not initialized"}`（plan_api.go:226-230 — `Store || ChatModel || ActiveManifest || Embedder || Retriever` 之一 nil），说明当前 server binary 的 Deps 未完整装配 Agent path，无法用 API 完成正常 approve 闭环。人工走 chat 端 ApprovalCard 是唯一通路，但 ApprovalCard 未渲染 → 路径断。
+**实际发生**：
+- `tool.StatefulInterrupt(ctx, info, args)` 在 `hitl_plan_approve.go:263` 触发 eino Runner pause
+- `audit_writer.InsertPendingApproval` 在 `hitl_plan_approve.go:260` 同步写 `action_pending_approval` audit row（DB 验证：audit #323/#325/#330/#332 全部写入成功）
+- Runner event 走 `eventToUIMessageChunk` → Interrupt 分支只 `log.Printf` 后 `return nil`
+- 客户端 SSE 流只看到 5 个 chunk（text-start/end + data-turn + finish-step + finish），**没有 `data-decision` chunk**
+- FE 收到 finish 关闭 stream，chat assistant 消息体只有 text-start/end（无 delta）→ body 空
+- 操作员无法看到 ApprovalCard，PlanRulesPanel 永远空（除非 SQL seed 或 chat reload 时残留 chunk 错入 DataPolicyPart）
+
+**触发栈**：
+1. `hitl_plan_approve.go:225 InvokableRun` → Pass 1 路径：`InsertPendingApproval` ✓ + `tool.StatefulInterrupt` ✓
+2. `runner_setup.go` 调 `BuildRunner` 注入工具注册表，eino Runner 收到 interrupt
+3. `runner_sse.go:82 eventToUIMessageChunk` ← 转换点
+4. `runner_sse.go:98 Action.Interrupted` 分支 → `return nil` → SSE emit 跳过
 
 **影响**:
-- 计划审批 UAT 无法走真实 E2E 闭环（仅 audit row + PlanRulesPanel SQL seed 可验证 panel 渲染）
-- 操作员无法通过 chat 内 ApprovalCard 完成 plan_approve → 看不到 plan-approved 完成态 UI
-- 影响所有 plan-mode skill（monthly-report 等）
+- 计划审批 HITL E2E 完全断 — chat 端 ApprovalCard 永远不渲染
+- PlanRulesPanel 仅靠 SQL seed 才能填内容（已提供 `seed_plan_approve_rule.sql`）
+- 操作员无法通过 chat 内 ApprovalCard 完成 plan_approve
+- 影响所有 plan-mode skill（monthly-report、compliance-orchestrator 等含 `writes: plan_approve` 的 skill）
 
 **fix 建议**:
-1. **FE 紧急**：`DataPolicyPart.tsx:71-78` 兜底分支改为更友好的渲染（`InfoBadge + toolTip` 或折叠到底部），避免红色 alarm
-2. **FE 根因**：定位 plan_approve 完成后为什么仍有 `data-policy` chunk 入流；如果是 dispatch 漏判，加 test case
-3. **BE 根因**：检查 `internal/server/plan_api.go` planApproveHandler 全部 SSE emit 路径，确认只有 `data-decision` chunk，无 `data-policy` 误发
-4. **server config**：`/api/run/:id/plan/:approvalId/approve` 返回 404 是因为 ActiveManifest 等 nil——查 server boot 配置，确认所有 Deps 在 main.go 都注入
+1. **BE 紧急**：`internal/agent/runner_sse.go:101` 替换 `return nil` 为 emit `data-decision` chunk：
+   ```go
+   if e.Action != nil && e.Action.Interrupted != nil {
+       // Resolve approval_id + frozen args from the interrupt context,
+       // then emit (mirrors approval_api.go's chunk shape):
+       payload, _ := json.Marshal(map[string]any{
+           "step":        0,
+           "decision":    "interrupted",
+           "toolCallId":  e.Action.Interrupted.ToolCallID,
+           "approvalId":  e.Action.Interrupted.ToolCallID,
+           "target":      "plan_approve", // resolve from interrupt ctx
+           "frozenArgs":  e.Action.Interrupted.ArgumentsInJSON,
+           "reason":      e.Action.Interrupted.Reason,
+       })
+       return []wire.UIMessageChunk{{Type: "data-decision", Data: payload}}
+   }
+   ```
+2. **FE 紧急**：`DataPolicyPart.tsx:71-78` 兜底分支改 InfoBadge（折叠 + 提示开发者），不当 alarm
+3. **server config**：确认 `Deps.ActiveManifest || ChatModel || Embedder || Retriever` 在 `cmd/server/main.go` 都注入（`/api/run/:id/plan/:approvalId/approve` 返 404 的 Deps 检查也修一下，便于 API 兜底闭环）
 
 **evidence**:
-- 审计行 `#321 action_rule_approved scope_session_id=rl-burst-98 skill=monthly-report args_hash=6696b933`
-- `approval_rules: 5`（含 `plan_approve` scope=session，monthly-report skill）
-- `plan_todos: 7`（含 step-1..step-4 monthly-report-2026-07 plan）
-- `ApproveRulesPanel` 渲染 4 行 + `PlanRulesPanel` 渲染 1 行 — panel 渲染 OK
-- chat assistant message body 始终空（`message-assistant-text` text=""），无 ApprovalCard 组件
-- 红色错误在 assistant message body 内（data-testid="data-policy-unknown"）
+- 4 次 SSE 抓包：262/432/262/262 bytes，全部 5 个 chunk，无 data-decision
+- 4 次 audit row 全部成功写入（#323, #325, #330, #332 — action_pending_approval）
+- server log 4 次 `Runner interrupted (InterruptContexts=1) — 11-02 emits approval-request chunk`
+- log 显示每次 interrupt 紧跟 `ChatHandler drain complete`（无更多 emit）
+- `/api/run/rl-burst-98/plan/nwzi4VcS0sF4BILzhhFwcN83NtJnuqfP/approve` 返 404 `plan approval endpoint not initialized`（Deps nil）
+- `approval_rules: 5` + `plan_todos: 7`（SQL seed 后 panel 渲染正常）
+- chat assistant message body 始终空 + 红色 `data-policy-unknown`
 
-**blocker**: 必须修后才能 PASS plan_approve HITL E2E UAT。
+**blocker**: 必须修 `runner_sse.go:101` 后 plan_approve HITL E2E 才能 PASS。
 
-**operator**: 重做测试时跳过 chat 端 ApprovalCard 验证（用 `.planning/uat/30-cycle-run-2026-09-08.md` Item #6 同样的 approval_rules / plan_todos 数据就够 panel 渲染验证）；等待 Phase 12 FE fix。
+**operator**: 重做时跳过 chat 端 ApprovalCard 验证；用 SQL seed 灌 panel 即可证明渲染 OK；等 runner_sse.go fix。
 
 ## Summary
 
