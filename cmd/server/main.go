@@ -107,6 +107,8 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 
+	"golang.org/x/time/rate"
+
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/document"
@@ -128,6 +130,12 @@ import (
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/skillforge/skillforge/internal/ticket"
+)
+
+// Phase 30 / WR-05 (T-30-06): per-session rate limiting constants.
+const (
+	feedbackRateLimitRequests = 10 // requests per session per minute
+	feedbackRateLimitBurst   = 5  // burst size for the per-session rate limiter
 )
 
 // env-or-default helpers. Each required var aborts startup on empty.
@@ -915,6 +923,10 @@ func main() {
 		TicketProvider:       ticketProvider,
 		TicketProviderName:   ticketProviderName,
 		TicketDispatchBudget: time.Duration(ticketBudgetMS) * time.Millisecond,
+		// Phase 30 / WR-05 (T-30-06): per-session rate limiter for feedback/ticket
+		// endpoints. Wired unconditionally — nil FeedbackRateLimiter disables limiting.
+		FeedbackRateLimiter: server.NewPerSessionFeedbackLimiter(
+			rate.Limit(feedbackRateLimitRequests), feedbackRateLimitBurst),
 	}
 
 	// Phase 30 / WR-02 (T-30-03): sweep queued tickets from a prior run

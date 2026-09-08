@@ -40,7 +40,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -64,6 +67,32 @@ import (
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/ticket"
 )
+
+// WR-05 / T-30-06: per-session rate limiting constants.
+const (
+	// feedbackRateLimitRequests is the maximum feedback requests per session per minute.
+	feedbackRateLimitRequests = 10
+	// feedbackRateLimitBurst is the maximum burst size for the per-session rate limiter.
+	feedbackRateLimitBurst = 5
+)
+
+// perSessionFeedbackLimiter manages a rate limiter per session for feedback/ticket
+// endpoints. Thread-safe via sync.Map.
+type perSessionFeedbackLimiter struct {
+	limiters sync.Map
+	limit    rate.Limit
+	burst    int
+}
+
+func NewPerSessionFeedbackLimiter(limit rate.Limit, burst int) *perSessionFeedbackLimiter {
+	return &perSessionFeedbackLimiter{limit: limit, burst: burst}
+}
+
+// Allow returns true if the session is within its rate limit.
+func (m *perSessionFeedbackLimiter) Allow(sessionID string) bool {
+	lim, _ := m.limiters.LoadOrStore(sessionID, rate.NewLimiter(m.limit, m.burst))
+	return lim.(*rate.Limiter).Allow()
+}
 
 // Default body-size limits. Import endpoints need a much larger envelope than
 // chat routes because they carry raw CSV/SQLite-dump payloads; non-import routes
@@ -414,6 +443,12 @@ type Deps struct {
 	// defaultTicketDispatchBudget. cmd/server wires it from
 	// SKILLFORGE_TICKET_DISPATCH_BUDGET_MS.
 	TicketDispatchBudget time.Duration
+
+	// --- Phase 30 / WR-05 (T-30-06): per-session rate limiting ---
+	// FeedbackRateLimiter bounds feedback/ticket requests per session to prevent
+	// unbounded webhook relay abuse. nil = rate limiting disabled (not recommended
+	// for webhook-enabled deployments).
+	FeedbackRateLimiter *perSessionFeedbackLimiter
 }
 
 // GraphLimits holds the config-driven limits for the knowledge graph.

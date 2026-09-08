@@ -156,6 +156,19 @@ func (s *Deps) feedbackHandler(ctx context.Context, c *app.RequestContext) {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid session id"})
 		return
 	}
+	// WR-05 / T-30-06: reject local-session- prefix — these are dev-test
+	// fixtures that are trivially guessable and must never become server-side
+	// partition keys (a caller who guesses a live local-session-N can influence
+	// another user's turns).
+	if strings.HasPrefix(body.SessionID, "local-session-") {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid session id"})
+		return
+	}
+	// WR-05: per-session rate limit on the feedback endpoint.
+	if s.FeedbackRateLimiter != nil && !s.FeedbackRateLimiter.Allow(body.SessionID) {
+		c.JSON(http.StatusTooManyRequests, graphResponseError{Error: "rate limit exceeded"})
+		return
+	}
 	// Closed verdict vocabulary: an unknown value is a typo today and a
 	// metrics-poisoning value tomorrow; the 400 names all three legal
 	// values (kb_admin role-text precedent).
