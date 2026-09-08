@@ -271,7 +271,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### 工程卫生 (HYG)
 
 - [x] **HYG-01**: 代码 TODO 清零——处置 `cmd/spike-history/long.go:54` MEM-05 TODO（核对 summarization 中间件真实落地状态后更新或移除）；全仓非测试 Go 文件 TODO/FIXME 计数归零并纳入结构门
-- [ ] **HYG-02**: 零硬编码不变式——本里程碑新增的格式白名单、大小限额、图深限制、语义角色定义等全部注册表/配置驱动；verify 增加关键字段魔数抽查
+- [x] **HYG-02**: 零硬编码不变式——本里程碑新增的格式白名单、大小限额、图深限制、语义角色定义等全部注册表/配置驱动；verify 增加关键字段魔数抽查
 - [ ] **HYG-03**: 全量 SDLC 门——每 phase 交付含单元测试 + hermetic 集成测试 + WSL 构建验证 + 受影响 verify 门全绿 + FE vitest/tsc（若触 FE）
 
 ### v1.2 Out of Scope（明确不做 + 理由）
@@ -498,7 +498,7 @@ Which phases cover which requirements.
 | TKT-03 | Phase 29 | Complete |
 | TKT-04 | Phase 29 | Complete |
 | HYG-01 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
-| HYG-02 | Phase 30 | Pending |
+| HYG-02 | Phase 30 | Complete |
 | HYG-03 | Phase 30 | Pending |
 
 **Coverage:**
