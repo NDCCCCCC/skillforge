@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: milestone
 current_phase: 30
-current_plan: 6 of 9
+current_plan: 7 of 9
 status: executing
-last_updated: "2026-09-08T03:10:00Z"
-last_activity: 2026-09-08 -- Phase 30 Plan 05 WR-06 useEffect sync votedVerdict complete (362b790 feat + d23dbbe docs)
+last_updated: "2026-09-08T10:10:00Z"
+last_activity: 2026-09-08 -- Phase 30 Plan 07 documentation hygiene: STRIDE-30 threat register + STRIDE-28 relocate + SKILLFORGE_ADMIN_TOKEN wiring (b51e731 + a1bcf63 + 4c5aef3 + d1b6966)
 progress:
   total_phases: 30
   completed_phases: 22
