@@ -66,6 +66,11 @@ const maxTicketDescriptionChars = 4000
 // SKILLFORGE_TICKET_DISPATCH_BUDGET_MS value explicitly).
 const defaultTicketDispatchBudget = 30 * time.Second
 
+// queuedTicketSweepThreshold is how old a queued ticket must be before the
+// startup sweep will re-dispatch it. Prevents re-dispatching a ticket that
+// was just created in this boot cycle (WR-02 / T-30-03).
+const queuedTicketSweepThreshold = 5 * time.Minute
+
 // ticketDispatchQueued is the insert-time dispatch_status that marks a row
 // as handed to the background dispatcher. "none" (the store-only receipt)
 // reuses the ticket.ProviderNone vocabulary — the same closed word list the
@@ -286,6 +291,7 @@ func parseTicketChunkIDs(csv string) []int64 {
 const (
 	actionTicketDispatchSucceeded = "action_ticket_dispatch_succeeded"
 	actionTicketDispatchFailed    = "action_ticket_dispatch_failed"
+	actionTicketDispatchStarted   = "action_ticket_dispatch_started"
 )
 
 // ticketDispatchAudit is the FrozenArgs snapshot of one settled dispatch —
@@ -416,4 +422,44 @@ func (s *Deps) putTicketDispatchAuditRow(action string, payload ticketDispatchAu
 	}); err != nil {
 		log.Printf("[WARN] server: ticket dispatch audit row write (%s ticket=%s): %v (best-effort, dispatch already settled)", action, payload.TicketNumber, err)
 	}
+}
+
+// sweepQueuedTickets re-dispatches all queued tickets older than the sweep
+// threshold on server startup (WR-02 / T-30-03). This runs in a background
+// goroutine so it does not block server startup. The INSERT-only discipline
+// is load-bearing: each re-dispatch emits an action_ticket_dispatch_started
+// audit row and lets the provider's settled outcome (success/failure/panic)
+// emit the corresponding _succeeded or _failed audit row — the ticket row's
+// dispatch_status is never updated.
+func (s *Deps) SweepQueuedTickets() {
+	if s.Store == nil {
+		return
+	}
+	if s.TicketProvider == nil {
+		return // "none" provider: queued state is impossible by construction
+	}
+	go func() {
+		threshold := time.Now().Add(-queuedTicketSweepThreshold)
+		tickets, err := s.Store.QueuedTickets(context.Background(), threshold)
+		if err != nil {
+			log.Printf("[WARN] server: queued ticket sweep: QueuedTickets failed: %v", err)
+			return
+		}
+		if len(tickets) == 0 {
+			return
+		}
+		log.Printf("[OK] server: queued ticket sweep: found %d ticket(s) pending from prior run", len(tickets))
+		for _, t := range tickets {
+			// Emit a "started" audit row so the trail is visible before the
+			// dispatch settles — a lost goroutine (process crash after this
+			// line but before the dispatch completes) leaves a clear "started,
+			// never settled" marker in the audit log.
+			s.putTicketDispatchAuditRow(actionTicketDispatchStarted, ticketDispatchAudit{
+				TicketID:     t.ID,
+				TicketNumber: ticketNumberFor(t.ID),
+				Provider:     t.Provider,
+			})
+			s.dispatchForTicket(*t, t.Description)
+		}
+	}()
 }

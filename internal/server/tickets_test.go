@@ -141,6 +141,18 @@ func (f *ticketsFakeStore) TicketByTurn(_ context.Context, sessionID string, tur
 	return store.TicketRow{}, false, nil
 }
 
+func (f *ticketsFakeStore) QueuedTickets(_ context.Context, _ time.Time) ([]*store.TicketRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*store.TicketRow
+	for _, r := range f.ticketRows {
+		if r.DispatchStatus == "queued" {
+			out = append(out, &r)
+		}
+	}
+	return out, nil
+}
+
 func (f *ticketsFakeStore) PutAudit(_ context.Context, row store.AuditRow) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

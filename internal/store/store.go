@@ -1129,4 +1129,9 @@ type Store interface {
 	// acceptance number is derived from TicketRow.ID as "TKT-{id}" by
 	// the caller (29-06 handler).
 	TicketByTurn(ctx context.Context, sessionID string, turnID int64) (TicketRow, bool, error)
+
+	// QueuedTickets returns all tickets with dispatch_status='queued' created
+	// before olderThan. Used by the startup sweep to re-dispatch tickets that
+	// were pending when the process last exited (WR-02 / T-30-03).
+	QueuedTickets(ctx context.Context, olderThan time.Time) ([]*TicketRow, error)
 }

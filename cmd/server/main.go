@@ -917,6 +917,19 @@ func main() {
 		TicketDispatchBudget: time.Duration(ticketBudgetMS) * time.Millisecond,
 	}
 
+	// Phase 30 / WR-02 (T-30-03): sweep queued tickets from a prior run
+	// before accepting new traffic. Runs in a background goroutine so it does
+	// not block server startup. Only sweeps when the webhook provider is wired
+	// (the "none" provider can never produce queued rows by construction).
+	if ticketProviderName == ticket.ProviderWebhook {
+		sweepDeps := &server.Deps{
+			Store:                st,
+			TicketProvider:       ticketProvider,
+			TicketDispatchBudget: time.Duration(ticketBudgetMS) * time.Millisecond,
+		}
+		sweepDeps.SweepQueuedTickets()
+	}
+
 	// 19. Hertz server (Pattern 1).
 	h := server.New(serverAddr, deps)
 	log.Printf("[OK] cmd/server: SkillForge listening on %s (backend=%s)", serverAddr, backendLabel)

@@ -132,3 +132,38 @@ func (s *SQLiteStore) TicketByTurn(ctx context.Context, sessionID string, turnID
 	}
 	return r, true, nil
 }
+
+// queuedTicketsSQL returns tickets with dispatch_status='queued' created before
+// olderThan. Used by the WR-02 startup sweep: INSERT-only re-dispatch without
+// touching the ticket row's immutable dispatch_status.
+const queuedTicketsSQL = `
+SELECT id, ts, session_id, turn_id, description, chunk_ids, skill_id, provider, dispatch_status
+FROM tickets
+WHERE dispatch_status = 'queued' AND ts < ?
+ORDER BY ts ASC
+`
+
+// QueuedTickets implements store.Store.QueuedTickets.
+// The INSERT-only discipline is load-bearing: the sweep re-dispatches through
+// the provider (emitting action_ticket_dispatch_* audit rows) without ever
+// UPDATE-ing the ticket row's dispatch_status.
+func (s *SQLiteStore) QueuedTickets(ctx context.Context, olderThan time.Time) ([]*store.TicketRow, error) {
+	if s.isClosed() {
+		return nil, sql.ErrConnDone
+	}
+	rows, err := s.db.QueryContext(ctx, queuedTicketsSQL, olderThan)
+	if err != nil {
+		return nil, fmtError("QueuedTickets", err)
+	}
+	defer rows.Close()
+	var out []*store.TicketRow
+	for rows.Next() {
+		var r store.TicketRow
+		if err := rows.Scan(&r.ID, &r.TS, &r.SessionID, &r.TurnID, &r.Description,
+			&r.ChunkIDs, &r.SkillID, &r.Provider, &r.DispatchStatus); err != nil {
+			return nil, fmtError("QueuedTickets.Scan", err)
+		}
+		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
