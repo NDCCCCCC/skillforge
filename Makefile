@@ -6,7 +6,7 @@
 # gate). Run `make` or `make verify-phase-11` to execute the gate;
 # the banner at the end is the operator's pass/fail signal.
 
-.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 verify-phase-26 phase-27 phase-28 phase-29 test-unit test-frontend build clean
+.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 verify-phase-26 phase-27 phase-28 phase-29 phase-30 test-unit test-frontend build clean
 
 # check-cgo fails fast with an actionable message when gcc is missing.
 # mattn/go-sqlite3 and go-duckdb both require CGO; install MSYS2 UCRT64 gcc
@@ -112,6 +112,18 @@ phase-29:
 	@echo "Running Phase 29 verification..."
 	@bash scripts/verify-phase-29.sh
 	@echo "Phase 29 verification passed"
+
+# phase-30 is the Phase 30 hygiene gate (HYG-02 + HYG-03).
+# Invokes scripts/verify-phase-30.sh; exits 0 with the PASS banner on
+# full pass, 1 with [STAGE-NN-FAIL] otherwise. 5 stages: TODO clear /
+# HYG-02 config-driven (14 SKILLFORGE_* fields via envOr) / HYG-02 diff
+# scan (phases 26-29 new Go files) / UAT clearance / HYG-03 evidence
+# compilation (prior verify scripts 26-29 all PASS).
+# NOTE: On Windows hosts, run via WSL: make phase-30 (invoke bash from WSL).
+phase-30:
+	@echo "Running Phase 30 verification..."
+	@bash scripts/verify-phase-30.sh
+	@echo "Phase 30 verification passed"
 
 # test-unit runs the full Go test suite for fast iteration.
 test-unit:
