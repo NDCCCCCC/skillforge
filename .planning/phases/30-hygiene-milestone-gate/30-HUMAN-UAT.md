@@ -3,7 +3,7 @@ status: partial
 phase: 30-hygiene-milestone-gate
 source: [30-VERIFICATION.md]
 started: 2026-09-08T10:30:00+08:00
-updated: 2026-09-08T21:05:00+08:00
+updated: 2026-09-08T21:18:00+08:00
 ---
 
 ## Current Test
@@ -48,6 +48,18 @@ result: **[PASS — AI 已验]** HYG-02 5-stage gate PASS (verify-phase-30.sh ex
 **live SSE 抓包证据**（session=d18d5-e2e-1788872691, server rebuilt 21:02）：模型在 plan_approve 的 4-step plan 中第 4 步明确写 "Assemble template + completed slot texts from KPI results, copy KPI snapshot verbatim (CR-06), and **call report_publish exactly once as the final tool call** for operator approval" — prompt 指令被模型完整吸收。
 **测试**：Go runtime/agent/hitl/server 全 PASS。锁测试设计为 substring grep 模式，将来若有人软化 Info().Desc 或 deepArchetypePrefix 任一措辞，对应测试立即红。
 **附带发现（未修）**：live 验证过程中发现 `internal/server/plan_api.go:381-390` `planApproveHandler` 的 expire-check 比 `approval_api.go:458-479` 更激进——前者把"checkpoint 不存在"直接判 expired 返 410，后者允许 audit-row hash 匹配即视为 fresh state。PlanApprovalCard.tsx 用的是 `/api/run/:id/plan/:approvalId/approve`（plan_api 路径），而当前 eino Runner 在 plan_approve interrupt 时未写 checkpoint，所以 PlanApprovalCard 触发会稳定 410 expired；approval_api 路径反而能通过。**不在本次 D18-D5 修复范围**，但属同源 bug，建议下次单独 fix（mirror approval_api 的 fresh-state bypass 逻辑）。
+
+### 9. [NEW] plan_api 三处 divergence — PlanApprovalCard E2E 全链路打通
+**expected**: PlanApprovalCard.tsx 用 `/api/run/:id/plan/:approvalId/approve`（plan_api.go 路径），operator 点「批准」→ 后端 resume deep agent → 继续执行 plan 的 4 个步骤 → 最终调用 `report_publish` 触发第二道 HITL gate。
+**result**: **[PASS — AI 已验]** commit `8cb3f7a` 修三处 plan_api / approval_api divergence：
+1. **EXPIRE-CHECK too aggressive** — plan_api.go 原 `!checkpointValid` 直接 410，没走 approval_api.go 的 hash 比较 fallback。eino Runner 在 plan_approve interrupt 时不写 checkpoint，所以旧 plan_api 永远 410。mirror approval_api 的 `if snap.PromptHash != "" && row.PromptHash != snap.PromptHash → expired else → fresh` 逻辑（加 rowManifest→ActiveManifest fallback chain）。
+2. **BuildRunner 接线不全** — 旧 plan_api BuildRunner 漏 KPIExecutor+KPIRegistry（D16-C3 fail-closed for data-channel）+ PlanTodoStore+PlanTraceEmit（P12-L2 deep write_todos）+ ReportPublishEmit（WR-02 报告卡 SSE）。每月报 resume 都返 500 "runner build failed"。mirror approval_api 的全套 RunnerBuildConfig。
+3. **Self-heal 缺失** — approval_api 有 data-decision 重捕 interruptId → 重试 ResumeWithParams 一次的逻辑（旧 commit `1135c99` 落地）。plan_api 没这套 wrapper，导致 target-miss 时仅 emit plan-approved 就退出，4-step plan 一步不执行。mirror 同款 wrapper（bounded to ONE retry）。
+**测试**：`TestPlanAPIApproveFreshStateNoCheckpoint` — locks fix #1，pending row + matching hash + 无 checkpoint → 必须 NOT 410（asserts NotEqual Gone + NotContains "state:expired"）。`TestPlanAPIApproveExpiredCheckpoint` 仍 PASS — 真正的 hash mismatch 路径仍正确触发 410。Go internal/... 全 PASS。
+**live E2E**（sess=planfix-e2e-1788873463, server rebuilt 21:17）：
+- POST `/api/run/.../plan/.../approve` 不再 410（之前 100% 失败）
+- approve 后 deep agent 继续执行，data-plan-trace 6 个 todo 中 t6 明确写 "**report_publish 提交发布审批（period=2026-07），作为最终工具调用**" — D18-D5 prompt 在 resume 后也生效
+- 第二轮 plan_approve interrupt 触发（period 从 2026-08 pivot 到 2026-07 触发 plan revision）— 全 plan_approve HITL 循环经 `/api/run/.../plan/.../approve` 路径完全跑通，不再仅走 `/api/session/.../approval/...` 路径
 **expected**: monthly-report skill 发「生成 2026-07 月报」→ Runner 触发 plan_approve HITL gate → 审计轨迹「待审批 plan_approve」条目 → 操作员点击「Approve + 记住」→ chat 渲染 plan-approved 完成态（折叠或 toast），不出现红色错误。
 
 **actual**: **FAIL** — chat assistant message body 始终为空（`message-assistant-text` div `text=""`），刷新页面后显示红色框 `Unknown data-policy payload shape`（`DataPolicyPart.tsx:71-78` 兜底）。
@@ -123,8 +135,8 @@ if e.Action != nil && e.Action.Interrupted != nil {
 
 ## Summary
 
-total: 8
-passed: 3 (Item #5 HYG-03 live eval — AI 跑通 + gate passed; Item #7 plan_approve HITL — 2026-09-08 晚 14 commits 全链修复 live 验证; Item #8 D18-D5 report_publish final-step prompt 双锁加固 — commit `81f81fa` + SSE 抓包证明模型内部化指令)
+total: 9
+passed: 4 (Item #5 HYG-03 live eval — AI 跑通 + gate passed; Item #7 plan_approve HITL — 2026-09-08 晚 14 commits 全链修复 live 验证; Item #8 D18-D5 report_publish final-step prompt 双锁加固 — commit `81f81fa` + SSE 抓包证明模型内部化指令; Item #9 plan_api 三处 divergence 修复 — commit `8cb3f7a` + PlanApprovalCard E2E 完整跑通)
 operator-partial: 5 (Items #1-4 + #6 — AI 跑完 API 部分；物理视觉项需 operator 亲验)
 issues: 0
 pending: 0
@@ -146,6 +158,7 @@ blocked: 0
 3. **29-UAT.md 文档错** —— chat 用 `X-Session-Id` HTTP header，不是 body `session_id` 字段
 4. **Phase 30 加固修复生效** —— WR-05 local-session-* 反馈/工单被 400 拒绝（防越权）
 5. **D18-D5 report_publish final-step prompt 双锁** —— commit `81f81fa`：Info().Desc + deepArchetypePrefix data-channel 同步加强 MUST/final-step 指令；两道 substring 锁测试 + SSE 抓包验证模型内部化指令
+6. **plan_api 三处 divergence 修复** —— commit `8cb3f7a`：EXPIRE-CHECK fresh-state bypass + BuildRunner 补全 KPI/PlanTodo/ReportPublishEmit 接线 + self-heal target-miss wrapper，PlanApprovalCard E2E 完整跑通
 
 ## Gaps
 
