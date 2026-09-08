@@ -153,7 +153,7 @@ Plans:
   4. 超限与重复上传按配置被拒绝或去重：单文件大小上限 / 并发上限 / 内容哈希去重策略（拒绝或替换为新版）全部配置驱动
   5. 每次上传产生 INSERT-only 审计行（操作者 / 知识库 / 文件名 / 大小 / hash / chunk 数 / 结果）；成功上传后文档立即出现在知识图谱与检索（无需重启），失败错误明确回报 UI
 
-**Plans**: 7 plans in 4 waves
+**Plans**: 7 plans in 3 waves
 **UI hint**: yes
 **Risks**: eino-ext document parsers 尚不在 go.mod 且内网网络间歇断——plan-phase 必须把「parser 依赖获取」当显式风险处理并预备纯 Go fallback 决策；上传管线不得继承 `knowledge.Index` 的 milvus-coupling（`cmd/server/main.go:730` 的启动期路径 Mongo 后端跑不了，新管线两条后端都要能达）。
 
@@ -180,7 +180,7 @@ Plans:
   4. FE GraphCanvas 渲染动态知识库节点与关系边，并支持邻居展开交互
   5. 节点/边上限、分页与懒加载策略全部配置驱动；超限返回骨架图并明示降级
 
-**Plans**: 7 plans in 4 waves
+**Plans**: 7 plans in 3 waves
 
 Plans:
 
@@ -253,7 +253,15 @@ Plans:
   3. 触及 FE 的 phase（26-29 均触）均有 vitest + tsc 干净记录
   4. 信任语义回归证明：KNOW-02 fail-closed / D-09 拒答构造 / citation 白名单在注册表重构后由既有冻结 eval 基线与结构门证明未削弱
 
-**Plans**: 7 plans in 4 waves
+**Plans**: 7 plans in 3 waves
+Plans:
+- [ ] 30-01-PLAN.md — CR-01: SSE emit failure persisted flag + error branch guard (HYG-02)
+- [ ] 30-02-PLAN.md — WR-01: feedback refs ON CONFLICT DO NOTHING backfill + WR-04: attribution Action filter + ts+id tie-break (HYG-02)
+- [ ] 30-03-PLAN.md — WR-03: webhook CheckRedirect policy (HYG-02)
+- [ ] 30-04-PLAN.md — WR-02: queued ticket startup sweep + WR-05: per-session rate limiter + session ownership (HYG-02)
+- [ ] 30-05-PLAN.md — WR-06: FeedbackRow useEffect for late-arriving votedVerdict (HYG-02)
+- [ ] 30-06-PLAN.md — HYG-02: verify-phase-30.sh 5-stage gate + Makefile phase-30 target (HYG-02)
+- [ ] 30-07-PLAN.md — Docs: STRIDE-30 + STRIDE-28 relocate + .env.example admin token + REQUIREMENTS traceability backfill + 30-ACCEPTANCE.md (HYG-02/HYG-03)
 
 ---
 
@@ -290,7 +298,7 @@ Plans:
 | 27. 文档上传入库 (DOC) | 7/7 | Complete (hermetic; 27-UAT operator runbook pending) | 2026-09-07 |
 | 28. 知识图谱动态化 + 关系层 (GRF) | 7/7 | Complete (hermetic; 28-UAT operator runbook pending) | 2026-09-07 |
 | 29. 反馈闭环 + 工单预留 (FBK + TKT) | 9/9 | Complete    | 2026-09-07 |
-| 30. 工程卫生收尾 (HYG) | 0/TBD | Not started | - |
+| 30. 工程卫生收尾 (HYG) | 0/7 | Not started | — |
 
 ---
 
