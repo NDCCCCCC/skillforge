@@ -327,6 +327,7 @@ func insertRuleRevokedAuditRow(
 ) error {
 	_, err := tx.ExecContext(ctx, putAuditResolutionSQL,
 		time.Now().UTC(), sessionID, userID, skillID,
+		"action_rule_revoked",
 		target, promptHash, skillVersion,
 		"",                                 // model_version — n/a for a rule revoke
 		"",                                 // verdict_json — n/a

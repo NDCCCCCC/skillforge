@@ -18,12 +18,21 @@ package hitl
 
 import (
 	"sort"
+	"sync"
 
 	"github.com/cloudwego/eino/components/tool"
 
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/report"
 )
+
+// injectDepsOnce enforces the CONCUR-01 contract: InjectDeps MUST be
+// called exactly once per process. Repeated calls (e.g. from test
+// re-init or accidental double-Setup) are a no-op — the LAST WRITE
+// WINS posture of the previous implementation was a footgun that
+// allowed a stale half-initialized handler to overwrite a later
+// fully-initialized one during server reload.
+var injectDepsOnce sync.Once
 
 // AllowedWriteTargets is the D11-B3 SINGLE SOURCE OF TRUTH for the
 // list of write-target names a Skill may declare in its `writes:`
@@ -224,27 +233,29 @@ func BindKBRegistry(reg kb.Registry) error {
 // the SSE emission hook for the report_published card. nil arguments
 // are skipped so unit-test construction without a DB stays a noop.
 func InjectDeps(audit auditWriterHook, reports report.ReportAuditSink, emit ReportPublishEmitFunc) {
-	if audit != nil {
-		for _, h := range hitlHandlers {
-			if b, ok := h.(auditBinder); ok {
-				b.setAudit(audit)
+	injectDepsOnce.Do(func() {
+		if audit != nil {
+			for _, h := range hitlHandlers {
+				if b, ok := h.(auditBinder); ok {
+					b.setAudit(audit)
+				}
 			}
 		}
-	}
-	if reports != nil {
-		for _, h := range hitlHandlers {
-			if b, ok := h.(reportSinkBinder); ok {
-				b.setReportSink(reports)
+		if reports != nil {
+			for _, h := range hitlHandlers {
+				if b, ok := h.(reportSinkBinder); ok {
+					b.setReportSink(reports)
+				}
 			}
 		}
-	}
-	if emit != nil {
-		for _, h := range hitlHandlers {
-			if b, ok := h.(reportEmitBinder); ok {
-				b.setEmit(emit)
+		if emit != nil {
+			for _, h := range hitlHandlers {
+				if b, ok := h.(reportEmitBinder); ok {
+					b.setEmit(emit)
+				}
 			}
 		}
-	}
+	})
 }
 
 // LookupHandler returns the InvokableTool registered for the given

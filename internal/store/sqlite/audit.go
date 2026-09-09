@@ -640,7 +640,7 @@ INSERT INTO audit (
     query, prompt_hash, skill_version, model_version,
     verdict_json, refusal_reason, chunk_ids,
     frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // InsertPendingApproval writes the FIRST row of the HITL-04 lifecycle
@@ -659,6 +659,7 @@ func (s *SQLiteStore) InsertPendingApproval(ctx context.Context, row store.Pendi
 	}
 	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		"action_pending_approval",
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
@@ -685,6 +686,7 @@ func (s *SQLiteStore) MarkApproved(ctx context.Context, row store.ApprovalResolu
 	}
 	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		"action_approved",
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
@@ -710,6 +712,7 @@ func (s *SQLiteStore) MarkRejected(ctx context.Context, row store.ApprovalResolu
 	}
 	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		"action_rejected",
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
@@ -740,6 +743,7 @@ func (s *SQLiteStore) MarkChangeRequested(ctx context.Context, row store.Approva
 	}
 	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		"action_change_requested",
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
@@ -765,6 +769,7 @@ func (s *SQLiteStore) MarkRuleRevoked(ctx context.Context, row store.RuleRevokeR
 	}
 	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
+		"action_rule_revoked",
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
 		row.FrozenArgs, row.ToolCallID, row.ApprovalID, row.ScopeSessionID,
