@@ -15,18 +15,38 @@
 //
 // Allowlist per 04-UI-SPEC §FEUI-03:
 //   - protocol ∈ {https:, http:} (rejects javascript:, data:, vbscript:)
-//   - hostname ∈ {localhost, 127.0.0.1, ::1, spike.local, skillforge.local}
-//     (Phase 4 only renders local fixtures; production swap to the real
-//     Hertz endpoint widens this allowlist in Wave 3 via D-04 swap test.)
+//   - hostname ∈ configurable set (default: localhost, 127.0.0.1, ::1,
+//     spike.local, skillforge.local).  Override via VITE_ALLOWED_HOSTNAMES
+//     env var (comma-separated).  Runtime override via setHostnameAllowlist().
 
-const ALLOWED_PROTOCOLS = new Set(['https:', 'http:']);
-const ALLOWED_HOSTNAMES = new Set([
-  'localhost',
-  '127.0.0.1',
-  '::1',
-  'spike.local',
-  'skillforge.local',
-]);
+const DEFAULT_HOSTNAMES = ['localhost', '127.0.0.1', '::1', 'spike.local', 'skillforge.local'] as const;
+
+let _hostnameAllowlist = new Set([...DEFAULT_HOSTNAMES]);
+
+export function getHostnameAllowlist(): Set<string> {
+  return _hostnameAllowlist;
+}
+
+export function setHostnameAllowlist(hosts: string[]): void {
+  _hostnameAllowlist = new Set(hosts);
+}
+
+export function resetHostnameAllowlist(): void {
+  _hostnameAllowlist = new Set([...DEFAULT_HOSTNAMES]);
+}
+
+// Vitest-only test hook — not callable in production bundles.
+export function __setHostnameAllowlistForTesting(hosts: string[]): void {
+  if (typeof import.meta !== 'undefined' && (import.meta as { vitest?: unknown }).vitest) {
+    _hostnameAllowlist = new Set(hosts);
+  }
+}
+
+// Expand default allowlist from env if set.
+const _envHostnames = (import.meta as { env?: { VITE_ALLOWED_HOSTNAMES?: string } }).env?.VITE_ALLOWED_HOSTNAMES;
+if (typeof _envHostnames === 'string' && _envHostnames.length > 0) {
+  _hostnameAllowlist = new Set(_envHostnames.split(',').map((h: string) => h.trim()));
+}
 
 export type SanitizeResult =
   | { ok: true; href: string }
@@ -44,10 +64,10 @@ export function sanitizeSourceUrl(raw: string): SanitizeResult {
     return { ok: false, reason: 'invalid_url' };
   }
 
-  if (!ALLOWED_PROTOCOLS.has(url.protocol)) {
+  if (!new Set(['https:', 'http:']).has(url.protocol)) {
     return { ok: false, reason: 'blocked_protocol', hostname: url.hostname };
   }
-  if (!ALLOWED_HOSTNAMES.has(url.hostname)) {
+  if (!getHostnameAllowlist().has(url.hostname)) {
     return { ok: false, reason: 'blocked_hostname', hostname: url.hostname };
   }
   return { ok: true, href: url.toString() };

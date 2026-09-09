@@ -75,4 +75,34 @@ describe('sanitizeSourceUrl (T-1-08 acceptance gate)', () => {
       expect(result.hostname ?? '').toBe('');
     }
   });
+
+  it('uses the default allowlist when VITE_ALLOWED_HOSTNAMES is not set', async () => {
+    const result = sanitizeSourceUrl('http://skillforge.local/foo');
+    expect(result.ok).toBe(true);
+  });
+
+  it('overrides the allowlist when VITE_ALLOWED_HOSTNAMES env is set', async () => {
+    const { setHostnameAllowlist, resetHostnameAllowlist } = await import('../lib/sanitize-url');
+    setHostnameAllowlist(['custom.company.com']);
+
+    const result = sanitizeSourceUrl('http://custom.company.com/foo');
+    expect(result.ok).toBe(true);
+
+    const blocked = sanitizeSourceUrl('http://skillforge.local/foo');
+    expect(blocked.ok).toBe(false);
+    expect(blocked.reason).toBe('blocked_hostname');
+
+    resetHostnameAllowlist();
+  });
+
+  it('setHostnameAllowlist and resetHostnameAllowlist work at runtime', async () => {
+    const { setHostnameAllowlist, resetHostnameAllowlist, sanitizeSourceUrl: sanitize } = await import('../lib/sanitize-url');
+
+    setHostnameAllowlist(['ephemeral.local']);
+    expect(sanitize('http://ephemeral.local/foo').ok).toBe(true);
+    expect(sanitize('http://skillforge.local/foo').ok).toBe(false);
+
+    resetHostnameAllowlist();
+    expect(sanitize('http://skillforge.local/foo').ok).toBe(true);
+  });
 });
