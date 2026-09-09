@@ -136,8 +136,7 @@ func newKBAdminEntry(e kb.Entry) kbAdminEntry {
 func (s *Deps) kbAdminHandler(ctx context.Context, c *app.RequestContext) {
 	// CHECK ORDER: admin check FIRST — a 403 must not leak whether the
 	// KB registry is wired.
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.KBRegistry == nil {
@@ -167,8 +166,7 @@ func (s *Deps) kbAdminHandler(ctx context.Context, c *app.RequestContext) {
 func (s *Deps) kbCreateHandler(ctx context.Context, c *app.RequestContext) {
 	// CHECK ORDER: admin check FIRST — a 403 must not leak whether the
 	// KB registry is wired.
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.KBRegistry == nil {
@@ -238,8 +236,7 @@ func (s *Deps) kbCreateHandler(ctx context.Context, c *app.RequestContext) {
 func (s *Deps) kbDeactivateHandler(ctx context.Context, c *app.RequestContext) {
 	// CHECK ORDER: admin check FIRST — a 403 must not leak whether the
 	// KB registry is wired.
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.KBRegistry == nil {

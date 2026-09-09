@@ -114,8 +114,7 @@ type importForm struct {
 //   - bucket_overrides (optional, JSON object mapping column -> width)
 func (s *Deps) importPreviewHandler(ctx context.Context, c *app.RequestContext) {
 	start := time.Now()
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Importer == nil {
@@ -169,8 +168,7 @@ func (s *Deps) importPreviewHandler(ctx context.Context, c *app.RequestContext) 
 //   - file       (required, must match previewed content hash)
 func (s *Deps) importCommitHandler(ctx context.Context, c *app.RequestContext) {
 	start := time.Now()
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Importer == nil {
@@ -216,8 +214,7 @@ func (s *Deps) importCommitHandler(ctx context.Context, c *app.RequestContext) {
 //   - file     (required)
 func (s *Deps) importPushHandler(ctx context.Context, c *app.RequestContext) {
 	start := time.Now()
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Importer == nil {
@@ -282,8 +279,7 @@ func (s *Deps) importPushHandler(ctx context.Context, c *app.RequestContext) {
 // BEFORE os.Remove so the delete succeeds on Windows (Pitfall 9).
 func (s *Deps) importDeleteHandler(ctx context.Context, c *app.RequestContext) {
 	start := time.Now()
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Importer == nil {

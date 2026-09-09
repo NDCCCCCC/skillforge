@@ -128,6 +128,25 @@ func isAdminRequest(c *app.RequestContext) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1
 }
 
+// requireAdmin checks the X-Admin-Token header against
+// SKILLFORGE_ADMIN_TOKEN. On mismatch it writes 403 with the standard
+// graphResponseError envelope and returns false; the caller should
+//   if !requireAdmin(c) { return }
+// Phase 35 (REPEATHTTP-02): replaces the 7+ repeated
+//   if !isAdminRequest(c) {
+//       c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+//       return
+//   }
+// template at every admin-gated handler entry. The 403 MUST NOT
+// leak KB registry state or any store state per D6-03 / T-3-AUDIT.
+func requireAdmin(c *app.RequestContext) bool {
+	if isAdminRequest(c) {
+		return true
+	}
+	c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	return false
+}
+
 // redact applies the SC-5 retention projection to audit rows IN
 // PLACE. Rows older than (now - retention) have Query + VerdictJSON
 // replaced with a "[REDACTED:...]" sentinel that includes the day

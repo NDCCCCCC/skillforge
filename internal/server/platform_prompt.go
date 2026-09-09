@@ -50,10 +50,7 @@ import (
 //
 // Errors: 403 (admin token missing/wrong), 404 (skill not found).
 func (s *Deps) platformPromptHandler(ctx context.Context, c *app.RequestContext) {
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, map[string]string{
-			"error": "admin token required",
-		})
+	if !requireAdmin(c) {
 		return
 	}
 

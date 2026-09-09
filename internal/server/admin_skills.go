@@ -93,8 +93,7 @@ type skillAdminResponse struct {
 // If eval reports are not available (eval not yet run), the
 // corresponding skill carries last_eval_summary: null.
 func (s *Deps) adminSkillsHandler(ctx context.Context, c *app.RequestContext) {
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 

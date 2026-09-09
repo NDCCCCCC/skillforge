@@ -91,10 +91,7 @@ type kpiAdminResponse struct {
 // Errors: 403 (admin token missing/wrong/unset), 503 (KPI pipeline not
 // wired), 500 (audit read failure — the registry half is never guessed at).
 func (s *Deps) kpiAdminHandler(ctx context.Context, c *app.RequestContext) {
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, map[string]string{
-			"error": "admin token required",
-		})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.KPIRegistry == nil {

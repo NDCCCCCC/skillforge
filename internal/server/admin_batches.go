@@ -79,10 +79,7 @@ type importBatchesAdminResponse struct {
 //
 // Errors: 403 (admin token missing/wrong/unset), 503 (store nil), 500 (read failure).
 func (s *Deps) batchesAdminHandler(ctx context.Context, c *app.RequestContext) {
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, map[string]string{
-			"error": "admin token required",
-		})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Store == nil {

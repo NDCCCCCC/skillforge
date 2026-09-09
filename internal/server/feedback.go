@@ -455,8 +455,7 @@ type feedbackDispositionAudit struct {
 func (s *Deps) feedbackReviewHandler(ctx context.Context, c *app.RequestContext) {
 	// CHECK ORDER: admin check FIRST — a 403 must not leak whether the
 	// feedback store is wired.
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Store == nil {
@@ -554,8 +553,7 @@ func (s *Deps) feedbackReviewHandler(ctx context.Context, c *app.RequestContext)
 func (s *Deps) feedbackDispositionHandler(ctx context.Context, c *app.RequestContext) {
 	// CHECK ORDER: admin check FIRST — a 403 must not leak whether the
 	// feedback store is wired.
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Store == nil {
@@ -682,8 +680,7 @@ type feedbackMetricsResponse struct {
 func (s *Deps) feedbackMetricsHandler(ctx context.Context, c *app.RequestContext) {
 	// CHECK ORDER: admin check FIRST — a 403 must not leak whether the
 	// feedback store is wired.
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Store == nil {

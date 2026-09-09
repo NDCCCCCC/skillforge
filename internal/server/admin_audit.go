@@ -60,8 +60,7 @@ import (
 //     retention projection — T-20-06-REDACT).
 //  5. 200 with the filtered rows.
 func (s *Deps) adminAuditHandler(ctx context.Context, c *app.RequestContext) {
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Store == nil {

@@ -102,8 +102,7 @@ func getExternalAuthPending(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc 
 	return func(ctx context.Context, c *app.RequestContext) {
 		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
 		// the channel is configured.
-		if !isAdminRequest(c) {
-			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+		if !requireAdmin(c) {
 			return
 		}
 		if mgr == nil {
@@ -132,8 +131,7 @@ func postExternalAuthApprove(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc
 	return func(ctx context.Context, c *app.RequestContext) {
 		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
 		// the channel is configured.
-		if !isAdminRequest(c) {
-			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+		if !requireAdmin(c) {
 			return
 		}
 		if mgr == nil {
@@ -161,8 +159,7 @@ func postExternalAuthReject(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc 
 	return func(ctx context.Context, c *app.RequestContext) {
 		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
 		// the channel is configured.
-		if !isAdminRequest(c) {
-			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+		if !requireAdmin(c) {
 			return
 		}
 		if mgr == nil {
@@ -191,8 +188,7 @@ func postExternalAuthExecute(_ *Deps, mgr *externalauth.Manager) app.HandlerFunc
 	return func(ctx context.Context, c *app.RequestContext) {
 		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
 		// the channel is configured.
-		if !isAdminRequest(c) {
-			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+		if !requireAdmin(c) {
 			return
 		}
 		if mgr == nil {
@@ -225,8 +221,7 @@ func getExternalAuthAuditReconcile(_ *Deps, mgr *externalauth.Manager) app.Handl
 	return func(ctx context.Context, c *app.RequestContext) {
 		// CHECK ORDER: admin check FIRST — a 403 must not leak whether
 		// the channel is configured.
-		if !isAdminRequest(c) {
-			c.JSON(http.StatusForbidden, map[string]string{"error": "admin token required"})
+		if !requireAdmin(c) {
 			return
 		}
 		if mgr == nil {

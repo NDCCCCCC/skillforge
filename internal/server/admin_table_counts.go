@@ -65,8 +65,7 @@ func capacityThreshold(envKey string, fallback int64) int64 {
 
 // tableCountsHandler implements GET /api/admin/table-counts.
 func (s *Deps) tableCountsHandler(ctx context.Context, c *app.RequestContext) {
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Store == nil {

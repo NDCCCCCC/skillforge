@@ -99,8 +99,7 @@ func getSlugMutex(slug string) *sync.Mutex {
 //   9. action_doc_uploaded audit row on success
 func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 	// STEP 1: admin token gate — 403 must NOT leak KB registry state
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+	if !requireAdmin(c) {
 		return
 	}
 

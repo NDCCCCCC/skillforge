@@ -77,10 +77,7 @@ type schedulesResponse struct {
 // Errors: 403 (admin token missing/wrong/unset), 503 (Store nil), 500
 // (ListReportRuns failed).
 func (s *Deps) adminSchedulesHandler(ctx context.Context, c *app.RequestContext) {
-	if !isAdminRequest(c) {
-		c.JSON(http.StatusForbidden, map[string]string{
-			"error": "admin token required",
-		})
+	if !requireAdmin(c) {
 		return
 	}
 	if s.Store == nil {
