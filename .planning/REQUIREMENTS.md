@@ -282,6 +282,76 @@ Requirements for initial release. Each maps to roadmap phases.
 - **知识库级 RBAC / 多租户**——用户体系仍不存在（v2 PLAT/SCALE 范围）
 - **反馈数据导出 / BI 对接**——admin 仪表盘内呈现即可
 
+## v1.3 Requirements (代码质量修复 Milestone — Code Quality Remediation)
+
+> Added 2026-09-09 via /gsd:new-milestone。审计输入：`.planning/audits/project-audit-2026-09-09.md`（411 个生产文件，18 critical + 27 warning + 14 info；主线程 grep + 4 域并行 agent）。用户锁定标准（继承 v1.2）：**零硬编码**（含 sanitize-url hostname 白名单可配置）、**Go 最佳实践**（禁止新增 `_ = err` 静默吞错 / 子串匹配错误字符串 / panic 在生产路径）、**SRP**（handler ≤ 200 行 / pipeline ≤ 100 行）、**全 SDLC**（每 phase 含 verify-* 脚本 + 回归 + UAT）。**信任语义不削弱**（KNOW-02 fail-closed / D-09 拒答构造 / T-3-AUDIT INSERT-only / D14 wire 字节不变）。
+
+### 真实生产 bug（REALBUG）
+
+- [ ] **REALBUG-01**: 前端 `sanitize-url.ts` hostname 白名单可配置——`ALLOWED_HOSTNAMES` 改为运行时配置（admin API 或 env），默认 dev 白名单保留；新增 hostname 自动写审计；生产部署不依赖代码改动
+- [ ] **REALBUG-02**: `useEvalReports.ts:42` `evalStatus` 切 `'ready'`——成功分支补 `setEvalStatus('ready')`；`EvalDashboard` 显示加载/错误/就绪三态；`vi.spy` 回归断言切换路径
+- [ ] **REALBUG-03**: `upload.go:isBackendUnavailable` 改 typed sentinel——用 `errors.Is(err, syscall.ECONNREFUSED)` / `errors.Is(err, context.DeadlineExceeded)` / `errors.Is(err, context.Canceled)` / `net.Error` 的 `Timeout()`；删 `strings.Contains` 子串匹配；新增单元测试覆盖每条分支
+
+### 性能（PERF）
+
+- [ ] **PERF-01**: `chat.go:joinStrings` O(n²) → `strings.Join(parts, "")`——每次 LLM 响应 `drainFinalContent` 调用路径；Go vet/benchmark 回归确认
+
+### SRP / 长函数拆分（SRP）
+
+- [ ] **SRP-01**: `pipeline.go:VerdictPipeline` 拆分——主线 ≤ 100 行；新增 `handleRefusal()` / `handleVerdict()` / `streamWithRetry()` 子方法；Step 0..12 注释保留
+- [ ] **SRP-02**: `chat.go:chatHandler` 拆分——主线 ≤ 80 行；新增 `runDataChannelPath` / `runAgentPath` / `runRegistryRouterPath` / `runVerdictPipelinePath`；9 个 DEBUG log 块合并为命名 helper
+- [ ] **SRP-03**: `upload.go:uploadHandler` 拆分——主线 ≤ 80 行；`onFile` 闭包拆为 `verifyMagic` / `dedupCheck` / `writeIndex` / `auditHook` 命名函数
+- [ ] **SRP-04**: `approval_api.go:approvalPostHandler` 拆分——主线 ≤ 100 行；新增 `decodeAndValidate` / `lookupPending` / `auditResolution` / `runBuildRunner` / `drainSSE`；自愈重试块独立子方法
+
+### HITL handler 模板抽取（HITL）
+
+- [ ] **HITL-01**: `hitl/{memory_facts,review_report,plan_approve,report_publish}.go` `auditOrDefault()` 抽基类——新增 `baseHITLTool` 嵌入各 handler；4 处模板合并为 1 处
+- [ ] **HITL-02**: Pass-1 `buildPendingAuditAndInterrupt(ctx, info, args, audit)` 共享——`compose.GetToolCallID` → `ApprovalInfo` → `auditOrDefault().InsertPendingApproval` → `tool.StatefulInterrupt` 4 步抽到 `hitl/` 共享包
+- [ ] **HITL-03**: `noopAuditWriter` 集中到 `audit_writer.go`——`hitl_memory_facts.go` 不再单独定义；新增方法时只需更新一处
+
+### 后端 HTTP 重复实现（REPEATHTTP）
+
+- [ ] **REPEATHTTP-01**: `graphResponseError` 抽取——6+ 处复制去重，统一在 `internal/server/server_response.go`；JSON tag 一致
+- [ ] **REPEATHTTP-02**: `isAdminRequest` 模板抽取——admin-gated handler 共享 `requireAdmin(c) error` middleware；403 + audit 写入逻辑单一源
+- [ ] **REPEATHTTP-03**: `sessionIDRegex` 移到 `server.go`——8+ 文件 import 不再依赖 `handlers_session_history.go`
+
+### 前端重复实现（REPEATFE）
+
+- [ ] **REPEATFE-01**: `fetch+JSON+error` 抽到 `lib/api.ts`——`FeedbackRow.postJson` / `useEvalReports.fetchOnce` / `useEvalFrozen.refetch` 等 4 处独立实现合并；提供 `apiFetch<T>(url, opts)` 统一签名
+- [ ] **REPEATFE-02**: `extractReason` 逻辑共享——`FeedbackRow.extractReason` + `useEvalReports.fetchOnce` body.error/status text 重复逻辑抽到 `lib/errors.ts`
+- [ ] **REPEATFE-03**: `useCallback` + `fetchImpl` 注入模式统一——`useEvalReports.fetchOnce` 用 `useCallback` 包裹 + 接收 `fetchImpl` 参数；测试用 `vi.fn()` 注入而非 spy global fetch
+
+### 静默吞审计错（SILENTAUDIT）
+
+- [ ] **SILENTAUDIT-01**: 4 处 audit write `_= ...` 改 WARN log——`fanout_tools.go:363` / `orchestrator.go:816,826` / 其他 audit sink 静默路径；WARN log 包含 session/audit_id/context；保留 "audit hiccup must not fail Run" 不变量（log 不抛错）
+
+### 存储 SQL 卫生（STORE）
+
+- [ ] **STORE-01**: 5 个 `INSERT INTO audit` 抽参数化——`putPendingApprovalSQL` / `putApprovedSQL` / `putRejectedSQL` / `putChangeRequestedSQL` / `putRuleRevokedSQL` 合并为单条 + `action=?` 占位符；新增列只改一处
+- [ ] **STORE-02**: `putKPICallSQL` 加 `ON CONFLICT(func, args_json, ts) DO NOTHING`——同 KPI 重放幂等；新增 UNIQUE 约束（schema migrate 阶段）
+
+### 健壮性（ROBUST）
+
+- [ ] **ROBUST-01**: 11 处 LRU type assertion 加 `ok`——`data/preview.go:121,141,208` / `duckdb/attach_lru.go:124` / `knowledge/graph_cache.go:122,150` / `runtime/fanout_runtime.go:266`；或加注释明示 invariant 由单生产者保证（保留单值返回也行）
+- [ ] **ROBUST-02**: `preview.go:SessionStore.Save` purge 移出 mutex——`purgeExpiredLocked` 改为临界区外异步触发；或 TTL heap O(1)
+- [ ] **ROBUST-03**: `hitl_report_publish.go:234` frozen_args 用原始字节——`args = string(argsBytes)` 而非 `json.Marshal(parsed)`；保持 `sha256(audit_row.frozen_args) == sha256(frozenArgs from interrupt)` 不变量
+- [ ] **ROBUST-04**: `hitl_review_report.go:215` 三路 frozen 比对——补 preview/audit/executed 三路字节相等检查；或注释明示无 operator edit 路径所以两路足够
+- [ ] **ROBUST-05**: FE `wire-types.ts:Decision*` 常量引用——`RealChatTransport.ts` 字符串字面量改用 `DecisionForcedStop` 等常量引用
+
+### 并发（CONCUR）
+
+- [ ] **CONCUR-01**: `hitlHandlers` `InjectDeps` 加 `sync.Once`——`agent/hitl/registry.go:226-248`；明确"进程内只调用一次"不变量由 once 强制；文档同步
+
+### v1.3 Out of Scope（明确不做 + 理由）
+
+- **Eino v0.9.14 → 后续大版本升级**——升级窗口在 v0.7.7/v0.8 后已锁定；本里程碑仅技术债务清理，不引入新框架版本风险
+- **Mongo driver interface{} → generics 全面替换**——driver API 强制要求 `interface{}`；generics 重构影响面超出审计范围
+- **chunkKey / formatChunksAsData 跨包去重**——`tools/retrieve.go` 与 `trust_floor.go` 3 行重复，迁移窗口已在 Phase 11-08；不在 v1.3 范围
+- **ChunkKey 全局去重**——同 11-08 计划
+- **大幅重构 store.go 接口拆分**——1137 行 interface 是 godoc 导航问题，非 SRP 严重违反；通过文档头部方法分组即可
+- **Wire chunk type 三方一致性重构**——审计确认已闭环（agent emit ↔ wire ValidTypes ↔ FE dispatch 一致），无重构需要
+- **chat.go / pipeline.go 大文件拆分到子包**——拆函数即可，不必拆包（包拆分会引入循环依赖风险）
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -561,4 +631,4 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-09-07 — v1.2 milestone requirements (29) mapped to phases 26-30（inline roadmap；v1.2 checkbox 保持未勾选，state 由 phase 执行翻转）; prior: 2026-08-21 v1.0 (44) mapped to phases 14-20, DATA-01..14 归并*
+*Last updated: 2026-09-09 — v1.3 milestone requirements (26) added: REALBUG-01..03 / PERF-01 / SRP-01..04 / HITL-01..03 / REPEATHTTP-01..03 / REPEATFE-01..03 / SILENTAUDIT-01 / STORE-01..02 / ROBUST-01..05 / CONCUR-01. Source: `.planning/audits/project-audit-2026-09-09.md` (18 critical + 27 warning + 14 info across 411 production files). Mapping to phases 31+ 待 gsd-roadmapper inline. Prior: 2026-09-07 v1.2 (29) mapped to phases 26-30; 2026-08-21 v1.0 (44) mapped to phases 14-20.*
