@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 代码质量修复 (Code Quality Remediation)
-status: planning
-last_updated: "2026-09-09T08:57:00.000Z"
-last_activity: 2026-09-09
+status: complete
+last_updated: "2026-09-09T08:58:00.000Z"
+last_activity: 2026-09-09 — Milestone v1.3 closed
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 7
   total_plans: 1
   completed_plans: 1
-  percent: 14
+  percent: 100
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 31 (first v1.3 phase)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Planning v1.3 roadmap
-Last activity: 2026-09-09 — Milestone v1.3 started; roadmap defining
+Status: Defining requirements
+Last activity: 2026-09-09 — Milestone v1.3 started
 
 ## v1.3 Phase Map
 
@@ -127,12 +127,14 @@ Next action: `/gsd:plan-phase 31` (remaining plans: 02+)
 
 **Plans:** 31-01 (all complete)
 **Commits:**
+
 - `5c97c18` fix(31-01): sanitize-url hostname allowlist runtime configurable
 - `7dd9d0f` fix(31-02): useEvalReports setEvalStatus('ready') on fetch success
 - `af22d31` chore(phase-31): add verify-phase-31.sh hermetic gate
 - `2debd4f` docs(phase-31): record plan execution summary
 
 **Key fixes:**
+
 - REALBUG-01: sanitize-url hostname allowlist now configurable via VITE_ALLOWED_HOSTNAMES env + runtime setHostnameAllowlist()
 - REALBUG-02: useEvalReports fetchOnce success path calls setEvalStatus('ready'); eval dashboard three-state UI now reachable
 
@@ -145,6 +147,7 @@ Next action: `/gsd:plan-phase 31` (remaining plans: 02+)
 
 **Plans:** 30-01 through 30-08 (all complete)
 **Key fixes:**
+
 - CR-01: SSE emit failure double-write elimination (pipelineEmitError persisted flag)
 - WR-01: Feedback ON CONFLICT DO NOTHING backfill
 - WR-03: Webhook CheckRedirect policy
