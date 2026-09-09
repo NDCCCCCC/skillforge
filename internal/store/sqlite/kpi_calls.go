@@ -35,14 +35,15 @@ import (
 // (KPI-02 + D16-D4). Column order mirrors the CREATE TABLE DDL in
 // schema.go one-to-one; id is omitted (AUTOINCREMENT assigns it) and
 // signature carries the DEFAULT '' safety net.
+// Phase 37 (STORE-02): ON CONFLICT no-op until UNIQUE(func, args_json, ts)
+// is added to the kpi_calls CREATE TABLE DDL.
 const putKPICallSQL = `
 INSERT INTO kpi_calls (
     ts, session_id, skill_id, func, args_json,
     as_of_period, k_min_applied, result_snapshot, signature
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(func, args_json, ts) DO NOTHING
 `
-
-// PutKPICall appends one INSERT-only KPI-call audit row. Consumed by the
 // 16-06 executor's AuditSink (the audit leg of its three output legs);
 // each invocation freezes {func, args, as_of, result_snapshot,
 // k_min_applied} exactly as observed, never truncated (D16-D3).
@@ -174,34 +175,5 @@ func (s *SQLiteStore) ListKPICalls(ctx context.Context, filter store.KPICallsFil
 const latestKPICallByFuncSQL = `
 SELECT func, ts FROM kpi_calls
 WHERE id IN (SELECT MAX(id) FROM kpi_calls GROUP BY func)
+ON CONFLICT(func, args_json, ts) DO NOTHING
 `
-
-// LatestKPICallByFunc returns, per KPI name, the timestamp of its most
-// recent call. Empty (non-nil) map when kpi_calls has no rows.
-func (s *SQLiteStore) LatestKPICallByFunc(ctx context.Context) (map[string]time.Time, error) {
-	if s.isClosed() {
-		return nil, sql.ErrConnDone
-	}
-	rows, err := s.db.QueryContext(ctx, latestKPICallByFuncSQL)
-	if err != nil {
-		return nil, fmtError("LatestKPICallByFunc", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	out := make(map[string]time.Time)
-	for rows.Next() {
-		var fn, ts string
-		if err := rows.Scan(&fn, &ts); err != nil {
-			return nil, fmtError("LatestKPICallByFunc", err)
-		}
-		parsed, err := time.Parse(time.RFC3339Nano, ts)
-		if err != nil {
-			return nil, fmtError("LatestKPICallByFunc", err)
-		}
-		out[fn] = parsed.UTC()
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmtError("LatestKPICallByFunc", err)
-	}
-	return out, nil
-}
