@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 代码质量修复 (Code Quality Remediation)
 status: planning
-last_updated: "2026-09-09T00:30:00.000Z"
+last_updated: "2026-09-09T08:57:00.000Z"
 last_activity: 2026-09-09
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 1
+  completed_plans: 1
+  percent: 14
 ---
 
 # State — SkillForge
@@ -106,9 +106,9 @@ Items acknowledged and deferred at v1.0/v1.1/v1.2 milestone close:
 ## Current Phase: 31
 
 Phase: 31
-Plan: Not started
+Plan: 01 — COMPLETE
 Status: planning
-Next action: `/gsd:plan-phase 31`
+Next action: `/gsd:plan-phase 31` (remaining plans: 02+)
 
 ---
 
@@ -117,6 +117,24 @@ Next action: `/gsd:plan-phase 31`
 ### Roadmap Evolution
 
 - 2026-09-09: **v1.3 milestone started** — code quality remediation from project-audit-2026-09-09.md (18 critical + 27 warning across 411 production files). Phase 31-37 derived from 26 REQ-IDs. Priority ordering: P0 (3 real bugs) → P1 (SRP + HITL templates) → P2 (HTTP/FE deduplication + SQL hygiene) → P3 (robustness + concurrency).
+
+---
+
+## Phase 31 Closeout Record (2026-09-09)
+
+**Phase:** 31 (FE Real Bugs — REALBUG-01 + REALBUG-02)
+**Status:** CLOSED — VERIFICATION PASSED
+
+**Plans:** 31-01 (all complete)
+**Commits:**
+- `5c97c18` fix(31-01): sanitize-url hostname allowlist runtime configurable
+- `7dd9d0f` fix(31-02): useEvalReports setEvalStatus('ready') on fetch success
+- `af22d31` chore(phase-31): add verify-phase-31.sh hermetic gate
+- `2debd4f` docs(phase-31): record plan execution summary
+
+**Key fixes:**
+- REALBUG-01: sanitize-url hostname allowlist now configurable via VITE_ALLOWED_HOSTNAMES env + runtime setHostnameAllowlist()
+- REALBUG-02: useEvalReports fetchOnce success path calls setEvalStatus('ready'); eval dashboard three-state UI now reachable
 
 ---
 
