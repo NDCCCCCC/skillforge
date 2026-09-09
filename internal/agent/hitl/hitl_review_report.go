@@ -209,6 +209,17 @@ func (h *reviewReportTool) InvokableRun(ctx context.Context, args string, _ ...t
 	if len(writeArgs) == 0 {
 		writeArgs = json.RawMessage(storedArgs)
 	}
+	// ROBUST-04 (Phase 37): 3-way frozen_args byte-equality check.
+	// previewBytes = data.FrozenArgs (the operator-saw-and-edited bytes
+	// in the ApprovalCard). auditFrozen = storedArgs (Pass-1 audit row's
+	// frozen_args column, byte-identical to what we wrote via
+	// InsertPendingApproval). executedBytes = writeArgs (what the Tool
+	// is about to execute). The 3-way assertion catches any drift
+	// between operator intent (previewBytes) and runtime audit
+	// (auditFrozen) and the live execution (executedBytes).
+	if err := assertFrozenArgsEqual([]byte(data.FrozenArgs), []byte(storedArgs), writeArgs); err != nil {
+		return "", fmt.Errorf("review_report_write: %w", err)
+	}
 	var rrArgs ReviewReportArgs
 	if err := json.Unmarshal(writeArgs, &rrArgs); err != nil {
 		return "", fmt.Errorf("review_report_write: parse args: %w", err)
