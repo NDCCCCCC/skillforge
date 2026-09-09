@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloudwego/eino/components/tool"
+
 	"github.com/skillforge/skillforge/internal/store"
 )
 
@@ -593,4 +595,57 @@ func ComputePromptHash(promptBody string) string {
 	}
 	sum := sha256.Sum256([]byte(promptBody))
 	return hex.EncodeToString(sum[:])
+}
+
+// noopAuditWriter is the default audit sink for HITL Tools when no
+// production AuditWriter is wired (tests + degraded construction).
+// Every method is a success no-op; the production runner_setup wires
+// the real AuditWriter via setAudit/setReportAudit hook binders.
+//
+// Phase 34 (HITL-03) — moved here from hitl_memory_facts.go so the
+// single-package location keeps audit-related types co-located.
+type noopAuditWriter struct{}
+
+// InsertPendingApproval satisfies auditWriterHook by returning nil.
+func (noopAuditWriter) InsertPendingApproval(_ context.Context, _ string, _ *ApprovalInfo) error {
+	return nil
+}
+
+// MarkApproved satisfies auditWriterHook by returning (0, nil).
+func (noopAuditWriter) MarkApproved(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
+	return 0, nil
+}
+
+// MarkRejected satisfies auditWriterHook by returning (0, nil).
+func (noopAuditWriter) MarkRejected(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
+	return 0, nil
+}
+
+// MarkAutoPassedRule satisfies auditWriterHook by returning (0, nil).
+func (noopAuditWriter) MarkAutoPassedRule(_ context.Context, _, _ string, _, _ string, _ []byte) (int64, error) {
+	return 0, nil
+}
+
+// auditOrDefault returns the configured audit writer, or a noop if nil.
+// Phase 34 (HITL-01) — shared by all four HITL tools (MemoryFactsTool,
+// planApproveTool, reportPublishTool, reviewReportTool) so the
+// nil-safety invariant lives in exactly one place.
+func auditOrDefault(audit auditWriterHook) auditWriterHook {
+	if audit == nil {
+		return noopAuditWriter{}
+	}
+	return audit
+}
+
+// writePendingAndInterrupt persists the ApprovalInfo audit row then
+// raises tool.StatefulInterrupt. Shared Pass-1 step across all 4 HITL
+// Tools (D11-C3 audit-first invariant). The approvalID + info +
+// per-tool extra setup (frozen args, hasState) is the caller's
+// responsibility; this helper only owns the D11-C3 ordering.
+// Phase 34 (HITL-02).
+func writePendingAndInterrupt(ctx context.Context, audit auditWriterHook, approvalID string, info *ApprovalInfo, args string) (string, error) {
+	if err := auditOrDefault(audit).InsertPendingApproval(ctx, approvalID, info); err != nil {
+		return "", err
+	}
+	return "", tool.StatefulInterrupt(ctx, info, args)
 }

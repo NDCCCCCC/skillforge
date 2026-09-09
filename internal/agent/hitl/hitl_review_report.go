@@ -104,14 +104,7 @@ type reviewReportTool struct {
 	audit auditWriterHook
 }
 
-// auditOrDefault returns the configured audit writer, or a noop if
-// nil (same helper shape as MemoryFactsTool.auditOrDefault).
-func (h *reviewReportTool) auditOrDefault() auditWriterHook {
-	if h.audit == nil {
-		return noopAuditWriter{}
-	}
-	return h.audit
-}
+// auditOrDefault helper moved to audit_writer.go (Phase 34 HITL-01).
 
 // Info returns the LLM-visible tool schema. Both params are REQUIRED:
 // a report without a body is meaningless, and a report without
@@ -173,13 +166,13 @@ func (h *reviewReportTool) InvokableRun(ctx context.Context, args string, _ ...t
 			SkillVersion:    "",
 			PromptHash:      "",
 		}
-		if err := h.auditOrDefault().InsertPendingApproval(ctx, approvalID, info); err != nil {
+		if _, err := writePendingAndInterrupt(ctx, h.audit, approvalID, info, args); err != nil {
 			// D11-C3 fail-closed: audit write failure → return error
 			// BEFORE interrupt. The operator (not the LLM) decides
 			// how to retry.
 			return "", fmt.Errorf("review_report_write: audit INSERT failed (fail-closed): %w", err)
 		}
-		return "", tool.StatefulInterrupt(ctx, info, args)
+		return "", nil
 	}
 
 	// Pass 2 — resumed execution.

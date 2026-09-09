@@ -132,14 +132,7 @@ type planApproveTool struct {
 // auditBinder interface from hitl.InjectDeps.
 func (h *planApproveTool) setAudit(hook auditWriterHook) { h.audit = hook }
 
-// auditOrDefault returns the configured audit writer, or a noop if
-// nil (same helper shape as reviewReportTool.auditOrDefault).
-func (h *planApproveTool) auditOrDefault() auditWriterHook {
-	if h.audit == nil {
-		return noopAuditWriter{}
-	}
-	return h.audit
-}
+// auditOrDefault helper moved to audit_writer.go (Phase 34 HITL-01).
 
 // Info returns the LLM-visible tool schema. PlanID + Steps are
 // REQUIRED; EstimatedIterations and RiskAssessment are optional but
@@ -257,10 +250,10 @@ func (h *planApproveTool) InvokableRun(ctx context.Context, args string, _ ...to
 		// D11-C3 — sync audit INSERT BEFORE StatefulInterrupt. A
 		// fail-closed audit write returns BEFORE the interrupt is
 		// signalled; the Runner never checkpoints, never executes.
-		if err := h.auditOrDefault().InsertPendingApproval(ctx, approvalID, info); err != nil {
+		if _, err := writePendingAndInterrupt(ctx, h.audit, approvalID, info, args); err != nil {
 			return "", fmt.Errorf("plan_approve_review: audit INSERT failed (fail-closed): %w", err)
 		}
-		return "", tool.StatefulInterrupt(ctx, info, args)
+		return "", nil
 	}
 
 	// Pass 2 — resumed execution.

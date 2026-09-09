@@ -112,31 +112,10 @@ type auditWriterHook interface {
 	MarkAutoPassedRule(ctx context.Context, sessionID, userID string, toolCallID, target string, frozenArgs []byte) (int64, error)
 }
 
-// noopAuditWriter is the default when MemoryFactsTool.audit is nil
-// (tests + degraded construction). Every method is a success no-op;
-// the production runner_setup wires the real AuditWriter.
-type noopAuditWriter struct{}
-
-// InsertPendingApproval satisfies auditWriterHook by returning nil.
-func (noopAuditWriter) InsertPendingApproval(_ context.Context, _ string, _ *ApprovalInfo) error {
-	return nil
-}
-
-// MarkApproved satisfies auditWriterHook by returning (0, nil).
-func (noopAuditWriter) MarkApproved(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
-	return 0, nil
-}
-
-// MarkRejected satisfies auditWriterHook by returning (0, nil).
-func (noopAuditWriter) MarkRejected(_ context.Context, _, _ string, _ SkillSnapshot, _, _, _ string, _ []byte, _ string) (int64, error) {
-	return 0, nil
-}
-
-// MarkAutoPassedRule satisfies auditWriterHook by returning (0, nil).
-func (noopAuditWriter) MarkAutoPassedRule(_ context.Context, _, _ string, _, _ string, _ []byte) (int64, error) {
-	return 0, nil
-}
-
+// noopAuditWriter + auditOrDefault helper live in audit_writer.go
+// (Phase 34 HITL-03 / HITL-01 — single source location for the
+// nil-safety invariant shared by all four HITL Tools).
+//
 // MemoryFactsTool is the HITL-06 first write target. The Tool is
 // stateless beyond its wiring fields — every other piece of state
 // (the interrupt JSON, the ApprovalDecision) lives in the eino
@@ -244,16 +223,6 @@ func (t *MemoryFactsTool) cloneForSession(reg kb.Registry, sessionID, skillID st
 	return &c, nil
 }
 
-// auditOrDefault returns the configured audit writer, or a noop if
-// nil. Keeps the call site readable (no `if t.audit != nil { ... }`
-// boilerplate at every InvokableRun call).
-func (t *MemoryFactsTool) auditOrDefault() auditWriterHook {
-	if t.audit == nil {
-		return noopAuditWriter{}
-	}
-	return t.audit
-}
-
 // ruleMatcherOrDefault returns the configured rule matcher, or the
 // NoopRuleMatcher when nil — a nil matcher MUST behave as "no rule
 // matched" so the Tool falls back to the interrupt path (fail-closed
@@ -354,7 +323,7 @@ func (t *MemoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 		argsHash := ComputeFrozenArgsHash([]byte(args))
 		if _, matched := t.ruleMatcherOrDefault().Match(ctx, MemoryFactsTarget, argsHash, t.skillID, t.sessionID); matched {
 			userID := userIDFromCtx(ctx)
-			if _, err := t.auditOrDefault().MarkAutoPassedRule(ctx, t.sessionID, userID, approvalID, MemoryFactsTarget, []byte(args)); err != nil {
+			if _, err := auditOrDefault(t.audit).MarkAutoPassedRule(ctx, t.sessionID, userID, approvalID, MemoryFactsTarget, []byte(args)); err != nil {
 				// Fail-closed, same posture as the pending-row insert:
 				// an audit failure aborts the write.
 				return "", fmt.Errorf("memory_facts_write: MarkAutoPassedRule failed (fail-closed): %w", err)
@@ -374,7 +343,7 @@ func (t *MemoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 			SkillVersion:    "",
 			PromptHash:      "",
 		}
-		if err := t.auditOrDefault().InsertPendingApproval(ctx, approvalID, info); err != nil {
+		if _, err := writePendingAndInterrupt(ctx, t.audit, approvalID, info, args); err != nil {
 			return "", fmt.Errorf("memory_facts_write: audit INSERT failed (fail-closed): %w", err)
 		}
 
@@ -382,7 +351,7 @@ func (t *MemoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 		// the underscore explicitly documents that the stored-args
 		// path is the Pass 2 contract — see below.
 		_ = hasState
-		return "", tool.StatefulInterrupt(ctx, info, args)
+		return "", nil
 	}
 
 	// Pass 2 — resumed execution. Three branches:
@@ -427,14 +396,14 @@ func (t *MemoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 
 	userID := userIDFromCtx(ctx)
 	if data.Decision == "deny" {
-		if _, err := t.auditOrDefault().MarkRejected(ctx, t.sessionID, userID, t.snapshot(), data.ApprovalID, data.ApprovalID, MemoryFactsTarget, []byte(writeArgs), data.Reason); err != nil {
+		if _, err := auditOrDefault(t.audit).MarkRejected(ctx, t.sessionID, userID, t.snapshot(), data.ApprovalID, data.ApprovalID, MemoryFactsTarget, []byte(writeArgs), data.Reason); err != nil {
 			return "", fmt.Errorf("memory_facts_write: MarkRejected failed: %w", err)
 		}
 		return fmt.Sprintf("user denied: %s", data.Reason), nil
 	}
 
 	// Approve path.
-	if _, err := t.auditOrDefault().MarkApproved(ctx, t.sessionID, userID, t.snapshot(), data.ApprovalID, data.ApprovalID, MemoryFactsTarget, []byte(writeArgs), data.Reason); err != nil {
+	if _, err := auditOrDefault(t.audit).MarkApproved(ctx, t.sessionID, userID, t.snapshot(), data.ApprovalID, data.ApprovalID, MemoryFactsTarget, []byte(writeArgs), data.Reason); err != nil {
 		return "", fmt.Errorf("memory_facts_write: MarkApproved failed: %w", err)
 	}
 	return t.executeMemoryFactsWrite(ctx, []byte(writeArgs))

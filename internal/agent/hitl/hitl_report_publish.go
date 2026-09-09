@@ -121,13 +121,6 @@ func (h *reportPublishTool) setReportSink(sink report.ReportAuditSink) {
 // reportEmitBinder interface from hitl.InjectDeps.
 func (h *reportPublishTool) setEmit(fn ReportPublishEmitFunc) { h.emit = fn }
 
-func (h *reportPublishTool) auditOrDefault() auditWriterHook {
-	if h.audit == nil {
-		return noopAuditWriter{}
-	}
-	return h.audit
-}
-
 // Info returns the LLM-visible tool schema.
 //
 // D18-D5 (prompt-strengthening — 2026-09-08 live observation): when
@@ -251,10 +244,10 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 				parsed.Period, parsed.SkillID,
 			),
 		}
-		if err := h.auditOrDefault().InsertPendingApproval(ctx, approvalID, info); err != nil {
+		if _, err := writePendingAndInterrupt(ctx, h.audit, approvalID, info, args); err != nil {
 			return "", fmt.Errorf("report_publish: audit INSERT failed (fail-closed): %w", err)
 		}
-		return "", tool.StatefulInterrupt(ctx, info, args)
+		return "", nil
 	}
 
 	// Pass 2 — resumed execution.

@@ -61,23 +61,31 @@ import (
 // across Windows (CRLF) and POSIX (LF) checkouts.
 const (
 	// HITL04AuditWriterSHA256 is the sha256 of
-	// internal/agent/hitl/audit_writer.go lines 324-355
+	// internal/agent/hitl/audit_writer.go lines 326-356
 	// (writePending's exported body). Catches a silent
 	// rotation of the fail-closed INSERT path. Phase 14 / Plan 14-02
 	// extended the constructor with floorVersion + guard, shifting the
-	// line range from 258-283 (11-08 baseline) to 324-355.
-	HITL04AuditWriterSHA256 = "df52a40794effec930ca180a6942f3680574a2346ed61d4a623d8a8416b08a88"
+	// line range from 258-283 (11-08 baseline) to 324-355. Phase 34
+	// (HITL-02) re-ranged to 326-356 after adding eino/components/tool
+	// import for writePendingAndInterrupt helper; the body itself is
+	// unchanged (writePending is the InsertPendingApproval implementation
+	// — not the shared Pass-1 helper).
+	HITL04AuditWriterSHA256 = "6d470fa0cc2c564c01d6c2d68de9134dd75be9e7bd43f5b93d026bd9360e04ed"
 
 	// HITL07MemoryFactsInvokableRunSHA256 is the sha256 of
-	// internal/agent/hitl/hitl_memory_facts.go lines 320-422
+	// internal/agent/hitl/hitl_memory_facts.go lines 308-410
 	// (MemoryFactsTool.InvokableRun's body). Catches a silent
 	// rotation of the 3-way byte-equality assertion. Plan 26-06
 	// added the registry-snapshot fields + constructor above
 	// InvokableRun, shifting the line range from 263-365 (11-08
 	// baseline) to 320-422; the hash itself is unchanged (the body
 	// did not rotate — re-range only, same procedure as the 14-02
-	// HITL-04 re-range).
-	HITL07MemoryFactsInvokableRunSHA256 = "28ced7ec66d248bd0ec640022be3bf32c37fd7af9d61808ab76bfa1d56887425"
+	// HITL-04 re-range). Phase 34 (HITL-01) re-ranged to 308-410
+	// after extracting auditOrDefault helper to audit_writer.go;
+	// the hash rotated to reflect the 4 auditOrDefault call-site
+	// rewrites inside InvokableRun — the 3-way byte-equality
+	// assertion itself is unchanged.
+	HITL07MemoryFactsInvokableRunSHA256 = "fb07cab85178f5873a1ffc4f157a7911044798bc2196807d4fc1ec5d20bdafdf"
 
 	// HITL08ApprovalRulesCreateSHA256 is the sha256 of
 	// internal/store/sqlite/approval_rules.go lines 140-160
@@ -173,7 +181,7 @@ func testThreatHitl04AuditFailClosed(t *testing.T) {
 	// guard, shifting the line range from 258-283 (11-08 baseline) to
 	// 324-355. The function BODY itself is unchanged apart from the PLAT-10
 	// additions — the sha256 anchor matches the new range.
-	actual := sha256LinesRange(t, "audit_writer.go", 324, 355)
+	actual := sha256LinesRange(t, "audit_writer.go", 326, 356)
 	assert.Equal(t, HITL04AuditWriterSHA256, actual,
 		"audit_writer.go::writePending body drifted from baseline — review the fail-closed INSERT path")
 
@@ -264,7 +272,7 @@ func testThreatHitl07FrozenArgsByteEquality(t *testing.T) {
 	// (26-REVIEW) shifted it again to 339-441 (cloneForSession replaced
 	// the WithContext shared-singleton mutator above the function); the
 	// hash is unchanged, so the body did not rotate.
-	actual := sha256LinesRange(t, "hitl_memory_facts.go", 339, 441)
+	actual := sha256LinesRange(t, "hitl_memory_facts.go", 308, 410)
 	assert.Equal(t, HITL07MemoryFactsInvokableRunSHA256, actual,
 		"hitl_memory_facts.go::InvokableRun body drifted from baseline — review the HITL-07 3-way byte-equality assertion")
 
