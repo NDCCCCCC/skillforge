@@ -44,6 +44,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -360,7 +361,11 @@ func (t *dataChannelFanOutTool) writeAudit(ctx context.Context, action, reason s
 	if t.audit == nil {
 		return
 	}
-	_ = t.audit.PutAudit(ctx, action, dataChannelFanOutRunPath+t.skillID, "", "", reason)
+	if err := t.audit.PutAudit(ctx, action, dataChannelFanOutRunPath+t.skillID, "", "", reason); err != nil {
+		// SILENTAUDIT-01: audit write failures must not abort the Run,
+		// but must surface in WARN log so production gaps are detectable.
+		log.Printf("[WARN] agent: fan-out audit write failed (action=%s skillID=%s): %v", action, t.skillID, err)
+	}
 }
 
 // Info returns the Tool metadata for the LLM.

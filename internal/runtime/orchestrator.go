@@ -61,6 +61,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -813,7 +814,11 @@ func (o *FanOutOrchestrator) emitFailure(ctx context.Context, stage string, err 
 	// Best-effort write — the orchestrator continues even if the audit
 	// write fails (the SSE channel still closes via the deferred gen.Close()).
 	if o.auditWriter != nil {
-		_ = o.auditWriter.PutAudit(ctx, "action_fanout_failed", o.runID, o.runID, stage, reason)
+		if err := o.auditWriter.PutAudit(ctx, "action_fanout_failed", o.runID, o.runID, stage, reason); err != nil {
+			// SILENTAUDIT-01: surface audit write failure at WARN level
+			// so production gaps are detectable in operator logs.
+			log.Printf("[WARN] runtime: orchestrator audit write failed (stage=%s runID=%s): %v", stage, o.runID, err)
+		}
 	}
 }
 
@@ -823,7 +828,11 @@ func (o *FanOutOrchestrator) writeAudit(ctx context.Context, action, runPath, tr
 	if o.auditWriter == nil {
 		return
 	}
-	_ = o.auditWriter.PutAudit(ctx, action, runPath, transferFrom, transferTo, reason)
+	if err := o.auditWriter.PutAudit(ctx, action, runPath, transferFrom, transferTo, reason); err != nil {
+		// SILENTAUDIT-01: audit hiccup must not abort the Run, but must
+		// surface in WARN log so production gaps are detectable.
+		log.Printf("[WARN] runtime: orchestrator audit write failed (action=%s runPath=%s): %v", action, runPath, err)
+	}
 }
 
 // Archetype returns ArchetypeOrchestrator. Convenience accessor for
