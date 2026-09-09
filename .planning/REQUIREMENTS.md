@@ -570,6 +570,32 @@ Which phases cover which requirements.
 | HYG-01 | Phase 26 | Satisfied (Phase 26 closed 2026-09-07) |
 | HYG-02 | Phase 30 | Complete |
 | HYG-03 | Phase 30 | Pending |
+| REALBUG-01 | Phase 31 | Pending |
+| REALBUG-02 | Phase 31 | Pending |
+| REALBUG-03 | Phase 32 | Pending |
+| PERF-01 | Phase 32 | Pending |
+| SRP-01 | Phase 33 | Pending |
+| SRP-02 | Phase 33 | Pending |
+| SRP-03 | Phase 33 | Pending |
+| SRP-04 | Phase 33 | Pending |
+| HITL-01 | Phase 34 | Pending |
+| HITL-02 | Phase 34 | Pending |
+| HITL-03 | Phase 34 | Pending |
+| REPEATHTTP-01 | Phase 35 | Pending |
+| REPEATHTTP-02 | Phase 35 | Pending |
+| REPEATHTTP-03 | Phase 35 | Pending |
+| REPEATFE-01 | Phase 36 | Pending |
+| REPEATFE-02 | Phase 36 | Pending |
+| REPEATFE-03 | Phase 36 | Pending |
+| SILENTAUDIT-01 | Phase 36 | Pending |
+| STORE-01 | Phase 37 | Pending |
+| STORE-02 | Phase 37 | Pending |
+| ROBUST-01 | Phase 37 | Pending |
+| ROBUST-02 | Phase 37 | Pending |
+| ROBUST-03 | Phase 37 | Pending |
+| ROBUST-04 | Phase 37 | Pending |
+| ROBUST-05 | Phase 37 | Pending |
+| CONCUR-01 | Phase 37 | Pending |
 | PLAT-01 | Deferred | Deferred |
 | PLAT-02 | Deferred | Deferred |
 | PLAT-03 | Deferred | Deferred |
