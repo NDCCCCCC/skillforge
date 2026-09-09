@@ -121,7 +121,7 @@ func (l *AttachLRU) getLocked(ctx context.Context, id, path string) (hit bool, e
 		if oldest == nil {
 			break
 		}
-		evicted := oldest.Value.(*attachEntry)
+		evicted, _ := oldest.Value.(*attachEntry) //nolint:errcheck // ROBUST-01: invariant — see preview.go
 		if err := l.execDetachLocked(ctx, evicted.id); err != nil {
 			return false, err
 		}

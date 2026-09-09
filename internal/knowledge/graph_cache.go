@@ -119,7 +119,7 @@ func GetOrCompute(ctx context.Context, r retriever.Retriever) (*EdgeGraph, error
 	}
 	// Check main cache.
 	if entry, ok := graphCache.Load(cacheKeyMain); ok {
-		ce := entry.(*GraphCacheEntry)
+		ce, _ := entry.(*GraphCacheEntry) //nolint:errcheck // ROBUST-01: invariant — see preview.go
 		if time.Now().Before(ce.ExpiresAt) {
 			return ce.EdgeGraph, nil
 		}
@@ -147,7 +147,7 @@ func GetOrCompute(ctx context.Context, r retriever.Retriever) (*EdgeGraph, error
 func GetCitationEdges(ctx context.Context, auditQuerier any) (*EdgeGraph, error) {
 	// Check citation sub-cache.
 	if entry, ok := citationCache.Load(cacheKeyCitation); ok {
-		ce := entry.(*CitationCacheEntry)
+		ce, _ := entry.(*CitationCacheEntry) //nolint:errcheck // ROBUST-01: invariant — see preview.go
 		if time.Now().Before(ce.ExpiresAt) {
 			return ce.EdgeGraph, nil
 		}

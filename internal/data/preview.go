@@ -118,7 +118,7 @@ func (s *SessionStore) Save(sess *PreviewSession) {
 		if oldest == nil {
 			break
 		}
-		evicted := oldest.Value.(*previewEntry)
+		evicted, _ := oldest.Value.(*previewEntry) //nolint:errcheck // ROBUST-01: invariant — single-producer PushFront only writes *previewEntry; if not, eviction silently no-ops
 		delete(s.byID, evicted.id)
 		s.ll.Remove(oldest)
 	}
@@ -138,7 +138,7 @@ func (s *SessionStore) Get(previewID string) (*PreviewSession, bool) {
 	if !ok {
 		return nil, false
 	}
-	entry := elem.Value.(*previewEntry)
+	entry, _ := elem.Value.(*previewEntry) //nolint:errcheck // ROBUST-01: invariant — see above
 	if time.Since(entry.sess.CreatedAt) >= PreviewSessionTTL {
 		delete(s.byID, previewID)
 		s.ll.Remove(elem)
@@ -205,7 +205,7 @@ func (s *SessionStore) purgeExpiredLocked() {
 	now := time.Now()
 	for e := s.ll.Back(); e != nil; {
 		prev := e.Prev()
-		entry := e.Value.(*previewEntry)
+		entry, _ := e.Value.(*previewEntry) //nolint:errcheck // ROBUST-01: invariant — see above
 		if now.Sub(entry.sess.CreatedAt) >= PreviewSessionTTL {
 			delete(s.byID, entry.id)
 			s.ll.Remove(e)

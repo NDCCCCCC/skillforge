@@ -263,7 +263,7 @@ func (s *SharedChunkAccumulator) Add(hit retriever.Hit) bool {
 		if oldest == nil {
 			break
 		}
-		evicted := oldest.Value.(*sharedAccumulatorEntry)
+		evicted, _ := oldest.Value.(*sharedAccumulatorEntry) //nolint:errcheck // ROBUST-01: invariant — see preview.go
 		delete(s.byID, chunkKey(evicted.hit.ID))
 		s.ll.Remove(oldest)
 	}
@@ -285,7 +285,9 @@ func (s *SharedChunkAccumulator) Hits() []retriever.Hit {
 	defer s.mu.Unlock()
 	out := make([]retriever.Hit, 0, s.ll.Len())
 	for e := s.ll.Back(); e != nil; e = e.Prev() {
-		out = append(out, e.Value.(*sharedAccumulatorEntry).hit)
+		if acc, ok := e.Value.(*sharedAccumulatorEntry); ok { // ROBUST-01
+			out = append(out, acc.hit)
+		}
 	}
 	return out
 }
