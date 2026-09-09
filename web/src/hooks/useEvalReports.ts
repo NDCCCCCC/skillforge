@@ -57,6 +57,7 @@ export function useEvalReports(pollIntervalMs = 30_000): UseEvalReportResult {
       const data = (await resp.json()) as EvalIndex;
       setIndexReports(data.runs ?? []);
       setEvalError(null);
+      setEvalStatus('ready');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setEvalError(msg);
