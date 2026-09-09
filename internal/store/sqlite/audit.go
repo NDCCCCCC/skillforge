@@ -625,51 +625,22 @@ var BudgetLayerNames = map[string]bool{
 // posture mirrored in budget.go's BeforeModel hook).
 var ErrInvalidBudgetLayer = errors.New("sqlite.PutAudit: action_budget_triggered requires non-empty budget_layer in BudgetLayerNames (max_iter|token|loop)")
 
-const putPendingApprovalSQL = `
+// putAuditResolutionSQL is the unified audit row INSERT shared by
+// InsertPendingApproval (action_pending_approval), MarkApproved
+// (action_approved), MarkRejected (action_rejected), the
+// D18-D4 third-state resolution (action_change_requested), and
+// MarkRuleRevoked (action_rule_revoked). The action column is
+// parameterized as the 5th placeholder; column list is identical
+// across all 5 callers. Phase 37 (STORE-01) replaced 5 near-identical
+// constants with one parameterized statement so adding a column
+// updates one place instead of five.
+const putAuditResolutionSQL = `
 INSERT INTO audit (
     ts, session_id, user_id, skill_id, action,
     query, prompt_hash, skill_version, model_version,
     verdict_json, refusal_reason, chunk_ids,
     frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
-) VALUES (?, ?, ?, ?, 'action_pending_approval', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-const putApprovedSQL = `
-INSERT INTO audit (
-    ts, session_id, user_id, skill_id, action,
-    query, prompt_hash, skill_version, model_version,
-    verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
-) VALUES (?, ?, ?, ?, 'action_approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-const putRejectedSQL = `
-INSERT INTO audit (
-    ts, session_id, user_id, skill_id, action,
-    query, prompt_hash, skill_version, model_version,
-    verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
-) VALUES (?, ?, ?, ?, 'action_rejected', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-// putChangeRequestedSQL is the D18-D4 third-state resolution INSERT
-// (action_change_requested) — the 要求修改 sibling of approve/reject.
-const putChangeRequestedSQL = `
-INSERT INTO audit (
-    ts, session_id, user_id, skill_id, action,
-    query, prompt_hash, skill_version, model_version,
-    verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
-) VALUES (?, ?, ?, ?, 'action_change_requested', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`
-
-const putRuleRevokedSQL = `
-INSERT INTO audit (
-    ts, session_id, user_id, skill_id, action,
-    query, prompt_hash, skill_version, model_version,
-    verdict_json, refusal_reason, chunk_ids,
-    frozen_args, tool_call_id, approval_id, scope_session_id, platform_floor_version
-) VALUES (?, ?, ?, ?, 'action_rule_revoked', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // InsertPendingApproval writes the FIRST row of the HITL-04 lifecycle
@@ -686,7 +657,7 @@ func (s *SQLiteStore) InsertPendingApproval(ctx context.Context, row store.Pendi
 	if s.isClosed() {
 		return 0, sql.ErrConnDone
 	}
-	res, err := s.db.ExecContext(ctx, putPendingApprovalSQL,
+	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
@@ -712,7 +683,7 @@ func (s *SQLiteStore) MarkApproved(ctx context.Context, row store.ApprovalResolu
 	if s.isClosed() {
 		return 0, sql.ErrConnDone
 	}
-	res, err := s.db.ExecContext(ctx, putApprovedSQL,
+	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
@@ -737,7 +708,7 @@ func (s *SQLiteStore) MarkRejected(ctx context.Context, row store.ApprovalResolu
 	if s.isClosed() {
 		return 0, sql.ErrConnDone
 	}
-	res, err := s.db.ExecContext(ctx, putRejectedSQL,
+	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
@@ -767,7 +738,7 @@ func (s *SQLiteStore) MarkChangeRequested(ctx context.Context, row store.Approva
 	if row.RefusalReason == "" {
 		return 0, fmtError("MarkChangeRequested", errors.New("refusal_reason (change reason) is required (D18-D4)"))
 	}
-	res, err := s.db.ExecContext(ctx, putChangeRequestedSQL,
+	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
@@ -792,7 +763,7 @@ func (s *SQLiteStore) MarkRuleRevoked(ctx context.Context, row store.RuleRevokeR
 	if s.isClosed() {
 		return 0, sql.ErrConnDone
 	}
-	res, err := s.db.ExecContext(ctx, putRuleRevokedSQL,
+	res, err := s.db.ExecContext(ctx, putAuditResolutionSQL,
 		row.Timestamp.UTC(), row.SessionID, row.UserID, row.SkillID,
 		row.Query, row.PromptHash, row.SkillVersion, row.ModelVersion,
 		row.VerdictJSON, row.RefusalReason, row.ChunkIDs,
