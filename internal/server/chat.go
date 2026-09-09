@@ -126,16 +126,12 @@ const defaultSkill = "compliance"
 // Hertz's WithHostPorts(addr) + h.Spin() call shape (cmd/server/main.go)
 // blocks here until SIGINT/SIGTERM — this handler runs on every
 // request concurrently.
-func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
-	// DEBUG (260815-gcw): /api/chat diagnostic logging seam.
-	// Trigger: `curl -X POST :8888/api/chat -H 'Content-Type: application/json' -d '{"query":"...","skill":"compliance"}'`
-	// Expected log sequence (happy path fires all 14 sites):
-	//   1. chatHandler enter  2. routing to VerdictPipeline (Loader)  3. dispatching to VerdictPipeline
-	//   4. VerdictPipeline enter  5. streamAndAssemble entering  6. calling PipelineChatModel.Stream
-	//   7. Stream returned OK  8. about to call first Recv  9. recv token_n=N  10. completed
-	// Hang-location decision: no log 1 = hertz; log 1 only = decode/lookup;
-	// logs 1-3 only = embed/retrieve; logs 1-5 only = Stream() (GLM/endpoint);
-	// logs 1-7 only = first Recv; slow recv N = mid-stream; logs OK but no FE draft = SSE wire.
+// decodeChatRequest decodes and validates the POST /api/chat request body.
+// It enforces UTF-8 validity, binds the JSON, extracts the last user turn
+// from the AI SDK v5 messages array, and applies the default skill.
+// Returns the resolved query and skill name; emits refusal and returns ("", "")
+// on any decoding error.
+func (s *Deps) decodeChatRequest(ctx context.Context, c *app.RequestContext) (query, skillID string, ok bool) {
 	// UTF-8 validity guard (BEFORE BindAndValidate). Sonic — Hertz's JSON
 	// decoder — silently replaces invalid UTF-8 bytes in string values with
 	// U+FFFD, so by the time req.Query is populated the original encoding
@@ -151,18 +147,18 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	if raw := c.Request.Body(); len(raw) > 0 && !utf8.Valid(raw) {
 		c.SetStatusCode(http.StatusBadRequest)
 		_ = wire.EmitChunk(c, errorChunk("request body must be valid UTF-8 (client likely sent a legacy codepage such as GBK/Shift-JIS)"))
-		return
+		return "", "", false
 	}
 
 	var req chatRequest
 	if err := c.BindAndValidate(&req); err != nil {
 		// BindAndValidate decodes the JSON body and validates basic types.
 		// A malformed body is a 400 — Hertz handles status before we get here.
-		emitRefusal(c, verdict.Refusal{
+		_ = emitRefusal(c, verdict.Refusal{
 			Reason:      verdict.RefusalReasonOutOfScope,
 			CanRephrase: false,
 		})
-		return
+		return "", "", false
 	}
 	// AI SDK v5 compatibility: DefaultChatTransport sends {messages:[UIMessage]}
 	// not {query}. Extract the last user turn's text part so the React useChat
@@ -175,11 +171,35 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	if req.Query == "" {
 		c.SetStatusCode(http.StatusBadRequest)
 		_ = wire.EmitChunk(c, errorChunk("query is required"))
-		return
+		return "", "", false
 	}
 	if req.Skill == "" {
 		req.Skill = defaultSkill
 	}
+	return req.Query, req.Skill, true
+}
+
+// resolveChatSession resolves the session ID for the request, writing the
+// X-Session-Id response header. The header is the client's claim; if absent
+// the server generates a fresh crypto/rand ID (T-3-SESSIONID — 32 hex chars
+// = 128 bits of entropy, ASVS V6). The ID is echoed back on the response
+// so a client that did not send one can capture and reuse it for the next turn.
+func (s *Deps) resolveChatSession(c *app.RequestContext) string {
+	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
+	if sessionID == "" {
+		sessionID = newSessionID()
+	}
+	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
+	return sessionID
+}
+
+func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
+	query, skillID, ok := s.decodeChatRequest(ctx, c)
+	if !ok {
+		return
+	}
+
+	sessionID := s.resolveChatSession(c)
 
 	// Phase 17 (DASH-01 live-UAT gap closure): data-channel Skills (reads
 	// declares "data:") ride the Runner path — the VerdictPipeline below is
@@ -189,32 +209,19 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// the request to BuildRunner's channel branch (D16-C3: data →
 	// {kpi_call}), which also carries the dataRefEmitter wiring (16-08).
 	// The body is buffered by hertz (Request.Body() is a peek, and the
-	// runner handler re-binds), so delegation after BindAndValidate is
+	// runner handler re-binds), so delegation after decodeChatRequest is
 	// safe. Tier-channel requests are unaffected.
-	if m := s.findSkill(req.Skill); m != nil && m.HasDataChannel() {
-		log.Printf("[INFO] server: chatHandler delegating data-channel skill=%s to Runner path", req.Skill)
+	if m := s.findSkill(skillID); m != nil && m.HasDataChannel() {
+		log.Printf("[INFO] server: chatHandler delegating data-channel skill=%s to Runner path", skillID)
 		s.runnerChatHandler(ctx, c)
 		return
 	}
-
-	// Phase 3: session_id resolution (AGNT-05 / SC-9). The header is the
-	// client's claim; if absent the server generates a fresh crypto/rand
-	// ID (T-3-SESSIONID — 32 hex chars = 128 bits of entropy, ASVS V6).
-	// The ID is echoed back on the response so a client that did not send
-	// one can capture and reuse it for the next turn. Resolved unconditionally
-	// so both the agent path and the VerdictPipeline default benefit from
-	// session correlation in the audit row.
-	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
-	if sessionID == "" {
-		sessionID = newSessionID()
-	}
-	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
 
 	// DEBUG (260815-gcw): entry log — fires before any routing decision so
 	// operators can confirm /api/chat was reached even if the request hangs
 	// inside VerdictPipeline or LLM. query is truncated to 80 chars to bound
 	// log volume; full query is in the audit row regardless.
-	log.Printf("[INFO] server: chatHandler enter query=%q skill=%s sess=%s", truncate(req.Query, 80), req.Skill, sessionID)
+	log.Printf("[INFO] server: chatHandler enter query=%q skill=%s sess=%s", truncate(query, 80), skillID, sessionID)
 
 	// Agent path (runAgentPath) is OPT-IN via USE_AGENT_PATH=true at
 	// cmd/server/main.go (which gates agent construction). The PRODUCTION
@@ -231,13 +238,11 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// leaves Agent nil unless USE_AGENT_PATH=true. The agent closes over
 	// its own manifest (set at NewAgent construction), so findSkill is
 	// NOT consulted on this branch — findSkill's manifest is used only by
-	// the VerdictPipeline default. req.Skill flows into the audit row's
+	// the VerdictPipeline default. skillID flows into the audit row's
 	// SkillID column on both paths.
-	// DEBUG (260815-gcw): Agent path branch (OPT-IN via USE_AGENT_PATH=true).
-	// Fires only when cmd/server wired s.Agent — the production default leaves
-	// Agent nil and falls through to the VerdictPipeline branch below.
-	log.Printf("[INFO] server: chatHandler routing to runAgentPath (USE_AGENT_PATH=true) skill=%s sess=%s", req.Skill, sessionID)
+	log.Printf("[INFO] server: chatHandler routing to runAgentPath (USE_AGENT_PATH=true) skill=%s sess=%s", skillID, sessionID)
 	if s.Agent != nil {
+		req := chatRequest{Query: query, Skill: skillID}
 		s.runAgentPath(ctx, c, req, sessionID)
 		return
 	}
@@ -248,13 +253,10 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// + Selected + Ambiguous) BEFORE VerdictPipeline. On Ambiguous /
 	// empty-snapshot / embedder-error paths the verdict is NOT invoked —
 	// the FE renders the SkillPicker so the user picks (D5-03).
-	// DEBUG (260815-gcw): Registry+Router branch (D5-05 route-then-run).
-	// Fires when cmd/server wired both Registry + Router; the Router picks a
-	// Skill BEFORE VerdictPipeline runs, emitting data-decision + SkillScores.
-	log.Printf("[INFO] server: chatHandler routing to Registry+Router skill=%s sess=%s", req.Skill, sessionID)
+	log.Printf("[INFO] server: chatHandler routing to Registry+Router skill=%s sess=%s", skillID, sessionID)
 	var manifest *skill.Manifest
 	if s.Registry != nil && s.Router != nil {
-		routed, ok := s.routeThenRun(ctx, c, req)
+		routed, ok := s.routeThenRun(ctx, c, chatRequest{Query: query, Skill: skillID})
 		if !ok {
 			// Router short-circuited (empty snapshot, ambiguous, embedder
 			// error). The SSE stream is already finalized by routeThenRun.
@@ -263,15 +265,9 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 		manifest = routed
 	} else {
 		// Phase 2 fallback: resolve manifest via Loader.
-		manifest = s.findSkill(req.Skill)
-		// DEBUG (260815-gcw): Loader fallback (Phase 2 default). Fires when
-		// the Registry+Router branch above did not take (production cmd/server
-		// leaves Registry nil). findSkill returned a non-nil manifest, so
-		// VerdictPipeline will run below.
-		log.Printf("[INFO] server: chatHandler routing to VerdictPipeline (Loader) skill=%s sess=%s", req.Skill, sessionID)
+		manifest = s.findSkill(skillID)
+		log.Printf("[INFO] server: chatHandler routing to VerdictPipeline (Loader) skill=%s sess=%s", skillID, sessionID)
 		if manifest == nil {
-			// Unknown skill → out_of_scope refusal. The finish-step after the
-			// data-policy is the canonical terminator — clients expect it.
 			_ = emitRefusal(c, verdict.Refusal{
 				Reason:      verdict.RefusalReasonOutOfScope,
 				CanRephrase: false,
@@ -284,43 +280,16 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// to the orchestration that drives embed → retrieve → LLM → grounding.
 	// If this log appears but VerdictPipeline never logs (D-1), the hang is
 	// in the function-call boundary (nil manifest, ctx cancel, etc.).
-	log.Printf("[INFO] server: chatHandler dispatching to VerdictPipeline skill=%s sess=%s", req.Skill, sessionID)
-	if err := s.VerdictPipeline(ctx, c, req.Query, manifest, sessionID, req.Skill); err != nil {
-		// Pipeline returned an error AFTER the first SSE frame was written
-		// (we cannot change status now). Emit an error chunk so the client
-		// sees something meaningful, then finish-step. Persist the audit
-		// row with refusal_reason="internal_error" (GEVL-03: every query
-		// writes one audit row; mirrors runAgentPath's error call site at
-		// the bottom of runAgentPath). Refusal + verdict shapes are already
-		// persisted inside VerdictPipeline at their emit sites — this
-		// branch covers only the true-error returns (embed / retrieve /
-		// LLM drain / verdict parse / validate).
-		//
-		// 260817 verdict-stream-hang: pre-fix this branch did NOT log the
-		// error and emitted only errorChunk + finish-step — the message
-		// never completed its text lifecycle (the Phase-7 unregistered-
-		// message failure mode) and App.tsx does not read useChat's error,
-		// so the FE froze at the 生成结论 node with zero backend logs.
-		// Now: log the full error server-side, then emit a complete text
-		// lifecycle carrying a deterministic readable message so the FE
-		// always reaches a visible terminal state (ai v7 keeps processing
-		// chunks after an error chunk — dist/index.js case "error" only
-		// calls onError). The readable text is a fixed template (no
-		// internal error detail leaks to the client).
+	log.Printf("[INFO] server: chatHandler dispatching to VerdictPipeline skill=%s sess=%s", skillID, sessionID)
+	if err := s.VerdictPipeline(ctx, c, query, manifest, sessionID, skillID); err != nil {
 		log.Printf("[ERROR] server: chatHandler verdict pipeline failed sess=%s: %v", sessionID, err)
-		// 30-01 (CR-01): only write if the pipeline did not already persist.
-		// pipelineEmitError carries persisted=true when audit+turn succeeded
-		// before the SSE emit failure. Guard prevents a second audit/turn pair.
 		var persisted bool
 		var turnID int64
-		// 30-01 (CR-01): pipelineEmitError is returned when the SSE emit
-		// failed but the audit+turn row was already written. Use a type
-		// switch on the error interface chain to extract the persisted flag.
 		if pe, ok := err.(interface{ GetPersisted() bool }); ok {
 			persisted = pe.GetPersisted()
 		}
 		if !persisted {
-			turnID, _ = s.writeAuditAndTurn(ctx, sessionID, req.Skill, req.Query, verdict.Verdict{}, "", "internal_error", nil)
+			turnID, _ = s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", "internal_error", nil)
 		}
 		if turnID > 0 {
 			if emitErr := emitTurnID(c, turnID); emitErr != nil {
