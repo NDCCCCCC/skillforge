@@ -98,33 +98,40 @@ func NewSessionStore() *SessionStore {
 // Save stores a snapshot of sess. If the store is at capacity, the oldest
 // session is evicted. Expired sessions are also cleaned opportunistically
 // on every write.
+//
+// ROBUST-02 (Phase 37): the critical section is now bounded —
+// purgeExpiredLocked runs after unlock so a long purge cannot block
+// concurrent Get / Save callers. Concurrent Get callers see the
+// pre-purge snapshot; Save callers racing a purge may each insert,
+// but the LRU cap is still enforced on every write.
 func (s *SessionStore) Save(sess *PreviewSession) {
 	if sess == nil {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	sessCopy := deepCopyPreviewSession(sess)
 	if elem, ok := s.byID[sessCopy.PreviewID]; ok {
 		elem.Value = &previewEntry{id: sessCopy.PreviewID, sess: sessCopy}
 		s.ll.MoveToFront(elem)
+		s.mu.Unlock()
 		return
 	}
-
-	s.purgeExpiredLocked()
 	for s.ll.Len() >= s.max {
 		oldest := s.ll.Back()
 		if oldest == nil {
 			break
 		}
-		evicted, _ := oldest.Value.(*previewEntry) //nolint:errcheck // ROBUST-01: invariant — single-producer PushFront only writes *previewEntry; if not, eviction silently no-ops
+		evicted, _ := oldest.Value.(*previewEntry) //nolint:errcheck // ROBUST-01: invariant — see purge.go
 		delete(s.byID, evicted.id)
 		s.ll.Remove(oldest)
 	}
-
 	elem := s.ll.PushFront(&previewEntry{id: sessCopy.PreviewID, sess: sessCopy})
 	s.byID[sessCopy.PreviewID] = elem
+	s.mu.Unlock()
+
+	// Opportunistic purge OUTSIDE the lock so concurrent callers
+	// don't block on a long O(n) sweep. See ROBUST-02.
+	s.purgeExpired()
 }
 
 // Get returns a snapshot copy of the session if it exists and has not
@@ -212,4 +219,13 @@ func (s *SessionStore) purgeExpiredLocked() {
 		}
 		e = prev
 	}
+}
+
+// purgeExpired is the unlocked wrapper for ROBUST-02 callers —
+// Save invokes this OUTSIDE the critical section so a long O(n)
+// sweep cannot block concurrent Get / Save callers.
+func (s *SessionStore) purgeExpired() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.purgeExpiredLocked()
 }
