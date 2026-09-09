@@ -1036,18 +1036,7 @@ func drainFinalContent(iter *adk.AsyncIterator[*adk.AgentEvent]) (string, error)
 			}
 		}
 	}
-	return joinStrings(content), firstErr
-}
-
-// joinStrings is the local string-join helper. It avoids importing
-// "strings" just for one call; we already use strings in pipeline.go
-// for the prompt builder. Kept local for clarity.
-func joinStrings(parts []string) string {
-	out := ""
-	for _, p := range parts {
-		out += p
-	}
-	return out
+	return strings.Join(content, ""), firstErr
 }
 
 // errorChunk renders an error UIMessageChunk for the post-pipeline

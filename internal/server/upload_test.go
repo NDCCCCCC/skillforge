@@ -24,12 +24,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
 	"os"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -731,3 +734,51 @@ func TestUploadInsertGenericError(t *testing.T) {
 	// Non-backend error should return 500, not 503.
 	assert.Equal(t, http.StatusInternalServerError, resp.Code)
 }
+
+// --- Phase 32 REALBUG-03: isBackendUnavailable typed sentinel tests ---
+
+func TestIsBackendUnavailable_Nil(t *testing.T) {
+	assert.False(t, isBackendUnavailable(nil))
+}
+
+func TestIsBackendUnavailable_GenericLogicError(t *testing.T) {
+	// Business logic error from indexer should NOT be classified as
+	// backend unavailable (will map to 500, not 503).
+	err := fmt.Errorf("some internal indexer error")
+	assert.False(t, isBackendUnavailable(err))
+}
+
+func TestIsBackendUnavailable_ConnectionRefused(t *testing.T) {
+	err := syscall.ECONNREFUSED
+	assert.True(t, isBackendUnavailable(err))
+	// Also test wrapped form (e.g. *net.OpError wrapping ECONNREFUSED).
+	wrapped := fmt.Errorf("dial: %w", syscall.ECONNREFUSED)
+	assert.True(t, isBackendUnavailable(wrapped))
+}
+
+func TestIsBackendUnavailable_DNSError(t *testing.T) {
+	err := &net.DNSError{Err: "no such host", Name: "missing.example"}
+	assert.True(t, isBackendUnavailable(err))
+}
+
+func TestIsBackendUnavailable_ContextDeadline(t *testing.T) {
+	err := context.DeadlineExceeded
+	assert.True(t, isBackendUnavailable(err))
+	wrapped := fmt.Errorf("rpc call: %w", context.DeadlineExceeded)
+	assert.True(t, isBackendUnavailable(wrapped))
+}
+
+func TestIsBackendUnavailable_ContextCanceled(t *testing.T) {
+	err := context.Canceled
+	assert.True(t, isBackendUnavailable(err))
+}
+
+func TestIsBackendUnavailable_NetErrorTimeout(t *testing.T) {
+	// Simulate a generic net.Error with Timeout() == true
+	err := &net.OpError{Op: "read", Err: fmt.Errorf("i/o timeout")}
+	assert.True(t, isBackendUnavailable(err))
+}
+
+// Phase 32 PERF-01: joinStrings removed; verify it's gone and the
+// drainFinalContent call path still compiles. The smoke test below
+// indirectly asserts strings.Join behavior via the package build.

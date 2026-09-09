@@ -22,12 +22,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -435,15 +438,34 @@ func VerifyMagicBytes(data []byte, declaredType string) error {
 
 // isBackendUnavailable returns true when err is a network-level backend
 // failure that should produce a 503 with Retry-After instead of a generic
-// 500. It checks for connection-level error substrings that indicate the
-// Milvus/Milvus-Connect indexer is unreachable rather than a logic error.
+// 500. It checks for typed network errors that indicate the indexer is
+// unreachable rather than a logic error. Phase 32 (REALBUG-03) replaced
+// the previous strings.Contains-based substring matching with errors.Is
+// + net.Error.Timeout() to avoid breaking on upstream message changes.
 func isBackendUnavailable(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	return strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "context deadline exceeded") ||
-		strings.Contains(msg, "no such host") ||
-		strings.Contains(msg, "context canceled")
+	// DNS resolution failure (caller may have renamed host)
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	// Connection refused / network unreachable / host down
+	if errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) {
+		return true
+	}
+	// Context timeout / cancellation propagates from request lifecycle
+	if errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) {
+		return true
+	}
+	// Generic net.Error timeout (covers *net.OpError wrapping)
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return false
 }
