@@ -107,31 +107,38 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 | **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
 
-## Current Milestone: v1.2 知识库运营与反馈闭环（Knowledge Base Operations & Feedback Loop）
+## Current Milestone: v1.3 代码质量修复（Code Quality Remediation）
 
-**Goal:** 把知识层从「4 个硬编码 tier 的启动期目录」升级为「运营型知识库平台」——管理员上传常用格式文档入库、知识库（tier）动态可建、图谱反映真实知识结构、反馈按钮产生真实数据闭环、工单系统预留标准接口。
+**Goal:** 闭合 `.planning/audits/project-audit-2026-09-09.md` 报告中的全部 18 critical + 27 warning 发现，提升代码可维护性、降低 SRP 违反、消除重复模板、修复真实生产 bug（hostname 白名单、`evalStatus` 卡 loading、错误子串匹配）。
 
-**Target features (5 块):**
+**Target scope (基于 audit 报告 P0-P3 优先级):**
 
-| # | 能力 | 形态 |
+| 优先级 | 类别 | 内容 |
 |---|---|---|
-| 1 | 知识库分层重构 + 动态建库 | 重新定义 权威/历史/个人/草稿 的语义（原 4 tier 变为注册表条目）；管理员可创建/停用新知识库；Skill `reads` 契约按知识库名声明；KNOW-02 fail-closed 语义保留（未注册 = 拒绝）——✅ Delivered by Phase 26 (closed 2026-09-07)：`internal/kb` 注册表 + admin 端点 + /admin 视图 + 全消费面 fail-closed 迁移 |
-| 2 | 管理员文档上传入库 | /admin 知识库管理视图：上传 md/pdf/docx 等 office 文档 → 解析 → 分块 → 向量化 → 入指定知识库；类型/大小/数量防护；入库即审计；原始文件不落盘 |
-| 3 | 知识图谱扩展 | 图谱反映动态知识库（不再硬编码 4 tier）；新增 chunk 间关系层（同实体/引用共现边）+ 邻居/路径查询 API；FE GraphCanvas 升级 |
-| 4 | 反馈闭环 | FeedbackRow 三按钮（有帮助/没帮助/报告知识过时）落库：INSERT-only 反馈表 + 一次一票 + 过时报告进管理台复核队列；反馈指标进 admin 仪表盘 |
-| 5 | 工单系统预留接口 | TicketService Go 接口 + 配置驱动 provider（none/webhook）；POST /api/tickets 预留端点（FeedbackRow 创建工单按钮接真）；工单请求 INSERT-only 审计 |
+| **P0 必修（影响生产）** | 真实 bug | CR-08 前端 `sanitize-url.ts` hostname 白名单硬编码 local；IF-01 `useEvalReports.ts` `evalStatus` 永远卡 `'loading'`；CR-07 `upload.go:isBackendUnavailable` 子串匹配错误字符串 |
+| **P1 高优** | SRP / 性能 | CR-01/02/03/04 长函数拆分（pipeline.go / chat.go / upload.go / approval_api.go）；CR-05 `joinStrings` O(n²)；CR-01-03 HITL handler 4 处模板抽取 |
+| **P2 中优** | 重复实现 | WR-01 `graphResponseError` 6+ 处抽取；WR-02 `isAdminRequest` 模板；WR-01-03 前端 fetch helper；WR-01-04 静默吞 audit error 改为 WARN log |
+| **P3 低优** | 健壮性 | CR-01 LRU type assertion 加 `ok`；WR-05-07 frozen_args 字节不变量；CR-05 Decision* 常量引用；WR-03 `putKPICallSQL` 加 ON CONFLICT |
 
-**Standards（用户锁定 2026-09-07）:**
-- **处理全部 todo**：代码 TODO 清零（当前仅 cmd/spike-history/long.go:54 一处真实 TODO）+ GSD pending todos 清空（现为空）
-- **零硬编码**：格式/扩展名/限额/tier 语义全部配置或注册表驱动
-- **不受向后兼容与既有设计约束**：可破坏性重构 TierEnum → 注册表（信任语义保留，实现自由）
-- **Go 最佳实践，不使用反模式**；全 SDLC：开发 / 验证 / 测试
+**参考产物：**
+- 完整审计报告：`.planning/audits/project-audit-2026-09-09.md`
+- 审计方法：主线程 grep 扫描 + 4 个并行域 agent
+- 范围：411 个生产文件（219 Go + 192 TS/TSX）
 
-**Key decisions:**
-- **v1.0 → v1.1 沿革**：业务数据支撑（数据导入即脱敏 + KPI + 报告门户 + 管理台）已 shipped 2026-08-30；外部授权通道 + 审计链强化 + Eval CI + OSS 叙事重置 shipped 2026-09-06；v1.1.1 清理（Phase 21 接线）shipped 2026-09-07
-- **Phase 26 注册表地基（2026-09-07 closed）**：知识库身份 = registry slug（ASCII，`knowledge/<slug>/` 即目录名），中文显示名只是 seed 数据；`kb.Citable(reg, tier)` 是唯一可引用判定（4 个插入点全部委托，nil registry = legacy 姿态）；「结构归配置、开关归运营」——seed 永不复活 admin 停用；admin 403 先于 503；KB 审计 INSERT-only；平台地板字节不动（D14-B4）。后续 phase（27 上传 / 28 图谱 / 29 反馈指标）一律以 slug 为键，不再出现 CN tier 数据值
-- 合规定位 = 基线，不是 feature 方向（用户角色：金融 IT 部门）
-- 知识库 tier 隔离 + 拒答构造 + 引用白名单 = 平台护城河，重构**不得削弱**信任语义（KNOW-02 fail-closed、D-09 拒答构造原样保留）
+**Standards（继承 v1.2 用户锁定）：**
+- **零硬编码**：sanitize-url hostname 白名单必须可配置（env 或 admin config）
+- **Go 最佳实践，不使用反模式**：不允许新增 `_ = err` 静默吞错、不允许子串匹配错误字符串、不允许 panic 在生产路径
+- **SRP**：handler ≤ 200 行 / pipeline ≤ 100 行；超长函数必须拆分为命名子方法
+- **全 SDLC**：开发 → 单元测试 → 回归 → UAT（每个 phase 必须有 verify-* 脚本）
+- **信任语义不削弱**：audit 修复**不得削弱**既有信任语义（KNOW-02 fail-closed、D-09 拒答构造、T-3-AUDIT INSERT-only、D14 wire 字节不变）
+
+**Phase 编号**：从 phase 31 开始延续。
+
+**Key decisions（v1.2 → v1.3 沿革）：**
+- v1.0 业务数据支撑 shipped 2026-08-30
+- v1.1 外部授权 + 审计链 + Eval CI + OSS shipped 2026-09-06
+- v1.2 知识库运营 + 反馈闭环（Phase 26-30）shipped 2026-09-08
+- v1.3（当前）：基于 2026-09-09 全项目审计的代码质量修复，不引入新 feature，仅技术债务清理
 
 ## Evolution
 
@@ -151,4 +158,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-08 — v1.2 Phase 30 closed (工程卫生收尾: 8/8 plans, HYG-02 5-stage 魔数门常驻 + HYG-03 evidence compilation; CR-01 + WR-01..06 全部修复落地 + 回归锁; 29-REVIEW critical + 6 warnings 全部关闭; 6 operator UAT pending). Prior: v1.2 Phases 26/27/28/29 closed 2026-09-07→2026-09-08; v1.1 shipped 2026-09-06.*
+*Last updated: 2026-09-09 — v1.3 started (技术债务修复: 18 critical + 27 warning 来自 `.planning/audits/project-audit-2026-09-09.md`; 4 域并行 agent 审计完成; phase 31+ 延续; P0=3 必修 / P1=长函数拆分+HITL 模板 / P2=重复实现抽取 / P3=健壮性). Prior: v1.2 Phase 30 closed 2026-09-08 (HYG-02 + HYG-03); v1.1 shipped 2026-09-06.*
