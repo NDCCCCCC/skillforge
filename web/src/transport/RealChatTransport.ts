@@ -41,7 +41,7 @@ import {
 } from './MockChatTransport';
 import { useAppStore } from '../store/app-store';
 import type { JsonObject, TerminalApproval } from '../store/app-store';
-import type { PlanTodo } from '../types/wire-types';
+import { DecisionForcedStop, DecisionPlanApproved, type PlanTodo } from '../types/wire-types';
 
 export type { DraftStatus, DraftUpdate, DraftUpdateHandler, MockChatTransportDraftOptions };
 
@@ -209,14 +209,14 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
     // (no new wire types, only enum extension; D-04 transport-swap
     // byte-identity preserved because the pre-existing decision
     // strings still flow through unchanged).
-    case 'forced_stop': {
+    case DecisionForcedStop: {
       const runId = asStr(data.runId) || asStr(data.toolCallId);
       if (!runId) return false;
-      useAppStore.getState().plan.markPlanStatus(runId, 'forced_stop');
+      useAppStore.getState().plan.markPlanStatus(runId, DecisionForcedStop);
       return true;
     }
 
-    case 'plan-approved': {
+    case DecisionPlanApproved: {
       const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
       const runId = asStr(data.runId);
       if (!approvalId) return false;
@@ -278,7 +278,7 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
         promptHash: prev?.promptHash ?? '',
       });
       if (runId) {
-        useAppStore.getState().plan.markPlanStatus(runId, 'forced_stop');
+        useAppStore.getState().plan.markPlanStatus(runId, DecisionForcedStop);
       }
       return true;
     }
