@@ -24,7 +24,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"mime/multipart"
 	"net"

@@ -93,7 +93,7 @@ func getSlugMutex(slug string) *sync.Mutex {
 //   3. c.Param("slug") → kb.ValidateSlug → 400
 //   4. reg.Lookup(slug) → 404 if deactivated/unknown
 //   5. Content-Length → 413 if > UploadMaxBodyBytes
-//   6. multipart parse + magic byte verify → 400 on mismatch
+//   6. multipart parse + onFile callback → processUploadedFile
 //   7. UploadIndex → 422 with action_doc_upload_rejected on failure
 //   8. IndexerBackend.Insert → 503 with Retry-After on backend failure
 //   9. action_doc_uploaded audit row on success
@@ -135,183 +135,15 @@ func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// STEP 6: parse multipart streaming + onFile callback
-	// SHA-256 is computed on the in-memory buffer; the bytes.Buffer
-	// is never written to disk (DOC-02 / D15-B1 invariant).
+	// STEP 6: parse multipart streaming; onFile delegates to processUploadedFile.
 	var parseErr error
 	onFile := func(form *uploadForm, file io.Reader, filename string) error {
-		// Read entire file into memory for SHA-256 + magic byte check.
-		data, err := io.ReadAll(file)
-		if err != nil {
-			return fmt.Errorf("read file: %w", err)
-		}
-
-		// Compute SHA-256 on the in-memory buffer (never on disk).
-		hash := sha256.Sum256(data)
-		sha256Hex := hex.EncodeToString(hash[:])
-
-		// Magic byte verification: declared MIME must match actual bytes.
-		if err := VerifyMagicBytes(data, form.Metadata); err != nil {
-			parseErr = err
-			// Write the HTTP response from inside the callback — the outer
-			// parseUploadForm wrapper sees parseErr != nil and bails on the
-			// double-write guard without ever sending a response otherwise.
-			if docUploadAuditHook != nil {
-				reject := DocUploadRejectAudit{
-					Slug:     slug,
-					FileName: filename,
-					FileSize: int64(len(data)),
-					Reason:   err.Error(),
-				}
-				payload, _ := json.Marshal(reject)
-				docUploadAuditHook(actionDocUploadRejected, string(payload))
-			}
-			c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
-			return err
-		}
-
-		// Acquire per-slug mutex to serialize ID ranges (D27-03-2).
-		mu := getSlugMutex(slug)
-		mu.Lock()
-		defer mu.Unlock()
-
-		// STEP 7a: SHA-256 deduplication check (DOC-04).
-		// Check BEFORE UploadIndex so we don't waste a parse on a duplicate.
-		if s.Store != nil {
-			dup, dupErr := s.Store.HasUploadBySHA256(ctx, slug, sha256Hex)
-			if dupErr == nil && dup {
-				parseErr = fmt.Errorf("duplicate file")
-				if docUploadAuditHook != nil {
-					reject := DocUploadRejectAudit{
-						Slug:     slug,
-						FileName: filename,
-						FileSize: int64(len(data)),
-						Reason:   "duplicate file (same SHA-256 already uploaded)",
-					}
-					payload, _ := json.Marshal(reject)
-					docUploadAuditHook(actionDocUploadRejected, string(payload))
-				}
-				c.JSON(http.StatusConflict, graphResponseError{Error: "duplicate file (same SHA-256 already uploaded)"})
-				return parseErr
-			}
-			// Non-nil dupErr: best-effort dedup; log and continue.
-			if dupErr != nil {
-				// Best-effort: dedup failed but the file is still eligible for upload.
-				// The store query error is not propagated to the client.
-			}
-		}
-
-		// UploadIndex: parse + chunk + embed. Does NOT call Insert.
-		docs, err := knowledge.UploadIndex(ctx, slug, data, form.Metadata, filename, s.Embedder, s.KBRegistry, s.Retriever)
-		if err != nil {
-			parseErr = err
-			// STEP 7b: UploadIndex failure → 422 with rejection audit
-			if docUploadAuditHook != nil {
-				reject := DocUploadRejectAudit{
-					Slug:     slug,
-					FileName: filename,
-					FileSize: int64(len(data)),
-					Reason:   err.Error(),
-				}
-				payload, _ := json.Marshal(reject)
-				docUploadAuditHook(actionDocUploadRejected, string(payload))
-			}
-			return err
-		}
-
-		// STEP 7c: Re-check slug is still active (fail-closed on race).
-		// Between UploadIndex and Insert, the slug may have been deactivated.
-		if _, ok := s.KBRegistry.Lookup(slug); !ok {
-			parseErr = fmt.Errorf("slug deactivated during upload")
-			if docUploadAuditHook != nil {
-				reject := DocUploadRejectAudit{
-					Slug:     slug,
-					FileName: filename,
-					FileSize: int64(len(data)),
-					Reason:   "slug deactivated during upload",
-				}
-				payload, _ := json.Marshal(reject)
-				docUploadAuditHook(actionDocUploadRejected, string(payload))
-			}
-			c.JSON(http.StatusConflict, graphResponseError{Error: "slug deactivated during upload"})
-			return parseErr
-		}
-
-		// STEP 8: IndexerBackend.Insert → 503 on backend unavailable,
-		// 500 on other Insert errors.
-		if err := s.IndexerBackend.Insert(ctx, docs); err != nil {
-			parseErr = err
-			if isBackendUnavailable(err) {
-				if docUploadAuditHook != nil {
-					reject := DocUploadRejectAudit{
-						Slug:     slug,
-						FileName: filename,
-						FileSize: int64(len(data)),
-						Reason:   "backend unavailable: " + err.Error(),
-					}
-					payload, _ := json.Marshal(reject)
-					docUploadAuditHook(actionDocUploadRejected, string(payload))
-				}
-				c.Response.Header.Set("Retry-After", "30")
-				c.JSON(http.StatusServiceUnavailable, graphResponseError{
-					Error: "backend unavailable: " + err.Error(),
-				})
-				return parseErr
-			}
-			// Generic 500 for other Insert errors.
-			if docUploadAuditHook != nil {
-				reject := DocUploadRejectAudit{
-					Slug:     slug,
-					FileName: filename,
-					FileSize: int64(len(data)),
-					Reason:   "insert failed: " + err.Error(),
-				}
-				payload, _ := json.Marshal(reject)
-				docUploadAuditHook(actionDocUploadRejected, string(payload))
-			}
-			c.JSON(http.StatusInternalServerError, graphResponseError{
-				Error: "indexing failed — see server logs",
-			})
-			return parseErr
-		}
-
-		// STEP 9: success — write action_doc_uploaded audit row
-		idStart := docs[0].ID
-		idEnd := docs[len(docs)-1].ID
-		if docUploadAuditHook != nil {
-			// Determine parser version from the first doc's content length as a proxy.
-			parserVer := ""
-			if len(docs) > 0 {
-				parserVer = "unknown"
-			}
-			success := DocUploadAudit{
-				Slug:          slug,
-				FileName:      filename,
-				FileSize:      int64(len(data)),
-				SHA256:        sha256Hex,
-				ParserVersion: parserVer,
-				ChunkCount:    len(docs),
-				IDRangeStart:  idStart,
-				IDRangeEnd:    idEnd,
-			}
-			payload, _ := json.Marshal(success)
-			docUploadAuditHook(actionDocUploaded, string(payload))
-		}
-
-		// Return 200 with chunk count and ID range.
-		c.JSON(http.StatusOK, struct {
-			Chunks   int    `json:"chunks"`
-			IDRange  []int64 `json:"id_range"`
-		}{
-			Chunks:  len(docs),
-			IDRange: []int64{idStart, idEnd},
-		})
-		return nil
+		return s.processUploadedFile(ctx, slug, form, file, filename, c, &parseErr)
 	}
 
 	if err := parseUploadForm(c, onFile); err != nil {
 		if parseErr != nil {
-			// Already handled inside onFile (wrote audit row, set response).
+			// Already handled inside processUploadedFile (wrote audit row, set response).
 			// Just don't double-write.
 			return
 		}
@@ -323,6 +155,181 @@ func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid form: " + err.Error()})
 		return
 	}
+}
+
+// processUploadedFile handles the per-file processing inside uploadHandler's
+// multipart callback. It reads the file into memory, verifies magic bytes,
+// checks SHA-256 deduplication, calls UploadIndex, inserts into the indexer,
+// and emits the audit row on success.
+//
+// The parseErr pointer lets this method signal an error to the outer
+// multipart parser without double-writing an HTTP response.
+func (s *Deps) processUploadedFile(ctx context.Context, slug string, form *uploadForm, file io.Reader, filename string, c *app.RequestContext, parseErr *error) error {
+	// Read entire file into memory for SHA-256 + magic byte check.
+	data, err := io.ReadAll(file)
+	if err != nil {
+		*parseErr = fmt.Errorf("read file: %w", err)
+		return *parseErr
+	}
+
+	// Compute SHA-256 on the in-memory buffer (never on disk).
+	hash := sha256.Sum256(data)
+	sha256Hex := hex.EncodeToString(hash[:])
+
+	// Magic byte verification: declared MIME must match actual bytes.
+	if err := VerifyMagicBytes(data, form.Metadata); err != nil {
+		*parseErr = err
+		if docUploadAuditHook != nil {
+			reject := DocUploadRejectAudit{
+				Slug:     slug,
+				FileName: filename,
+				FileSize: int64(len(data)),
+				Reason:   err.Error(),
+			}
+			payload, _ := json.Marshal(reject)
+			docUploadAuditHook(actionDocUploadRejected, string(payload))
+		}
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
+		return *parseErr
+	}
+
+	// Acquire per-slug mutex to serialize ID ranges (D27-03-2).
+	mu := getSlugMutex(slug)
+	mu.Lock()
+	defer mu.Unlock()
+
+	// STEP 7a: SHA-256 deduplication check (DOC-04).
+	// Check BEFORE UploadIndex so we don't waste a parse on a duplicate.
+	if s.Store != nil {
+		dup, dupErr := s.Store.HasUploadBySHA256(ctx, slug, sha256Hex)
+		if dupErr == nil && dup {
+			*parseErr = fmt.Errorf("duplicate file")
+			if docUploadAuditHook != nil {
+				reject := DocUploadRejectAudit{
+					Slug:     slug,
+					FileName: filename,
+					FileSize: int64(len(data)),
+					Reason:   "duplicate file (same SHA-256 already uploaded)",
+				}
+				payload, _ := json.Marshal(reject)
+				docUploadAuditHook(actionDocUploadRejected, string(payload))
+			}
+			c.JSON(http.StatusConflict, graphResponseError{Error: "duplicate file (same SHA-256 already uploaded)"})
+			return *parseErr
+		}
+		// Non-nil dupErr: best-effort dedup; log and continue.
+		if dupErr != nil {
+			// Best-effort: dedup failed but the file is still eligible for upload.
+			// The store query error is not propagated to the client.
+		}
+	}
+
+	// UploadIndex: parse + chunk + embed. Does NOT call Insert.
+	docs, err := knowledge.UploadIndex(ctx, slug, data, form.Metadata, filename, s.Embedder, s.KBRegistry, s.Retriever)
+	if err != nil {
+		*parseErr = err
+		// STEP 7b: UploadIndex failure → 422 with rejection audit
+		if docUploadAuditHook != nil {
+			reject := DocUploadRejectAudit{
+				Slug:     slug,
+				FileName: filename,
+				FileSize: int64(len(data)),
+				Reason:   err.Error(),
+			}
+			payload, _ := json.Marshal(reject)
+			docUploadAuditHook(actionDocUploadRejected, string(payload))
+		}
+		return *parseErr
+	}
+
+	// STEP 7c: Re-check slug is still active (fail-closed on race).
+	// Between UploadIndex and Insert, the slug may have been deactivated.
+	if _, ok := s.KBRegistry.Lookup(slug); !ok {
+		*parseErr = fmt.Errorf("slug deactivated during upload")
+		if docUploadAuditHook != nil {
+			reject := DocUploadRejectAudit{
+				Slug:     slug,
+				FileName: filename,
+				FileSize: int64(len(data)),
+				Reason:   "slug deactivated during upload",
+			}
+			payload, _ := json.Marshal(reject)
+			docUploadAuditHook(actionDocUploadRejected, string(payload))
+		}
+		c.JSON(http.StatusConflict, graphResponseError{Error: "slug deactivated during upload"})
+		return *parseErr
+	}
+
+	// STEP 8: IndexerBackend.Insert → 503 on backend unavailable,
+	// 500 on other Insert errors.
+	if err := s.IndexerBackend.Insert(ctx, docs); err != nil {
+		*parseErr = err
+		if isBackendUnavailable(err) {
+			if docUploadAuditHook != nil {
+				reject := DocUploadRejectAudit{
+					Slug:     slug,
+					FileName: filename,
+					FileSize: int64(len(data)),
+					Reason:   "backend unavailable: " + err.Error(),
+				}
+				payload, _ := json.Marshal(reject)
+				docUploadAuditHook(actionDocUploadRejected, string(payload))
+			}
+			c.Response.Header.Set("Retry-After", "30")
+			c.JSON(http.StatusServiceUnavailable, graphResponseError{
+				Error: "backend unavailable: " + err.Error(),
+			})
+			return *parseErr
+		}
+		// Generic 500 for other Insert errors.
+		if docUploadAuditHook != nil {
+			reject := DocUploadRejectAudit{
+				Slug:     slug,
+				FileName: filename,
+				FileSize: int64(len(data)),
+				Reason:   "insert failed: " + err.Error(),
+			}
+			payload, _ := json.Marshal(reject)
+			docUploadAuditHook(actionDocUploadRejected, string(payload))
+		}
+		c.JSON(http.StatusInternalServerError, graphResponseError{
+			Error: "indexing failed — see server logs",
+		})
+		return *parseErr
+	}
+
+	// STEP 9: success — write action_doc_uploaded audit row
+	idStart := docs[0].ID
+	idEnd := docs[len(docs)-1].ID
+	if docUploadAuditHook != nil {
+		// Determine parser version from the first doc's content length as a proxy.
+		parserVer := ""
+		if len(docs) > 0 {
+			parserVer = "unknown"
+		}
+		success := DocUploadAudit{
+			Slug:          slug,
+			FileName:      filename,
+			FileSize:      int64(len(data)),
+			SHA256:        sha256Hex,
+			ParserVersion: parserVer,
+			ChunkCount:    len(docs),
+			IDRangeStart:  idStart,
+			IDRangeEnd:    idEnd,
+		}
+		payload, _ := json.Marshal(success)
+		docUploadAuditHook(actionDocUploaded, string(payload))
+	}
+
+	// Return 200 with chunk count and ID range.
+	c.JSON(http.StatusOK, struct {
+		Chunks  int     `json:"chunks"`
+		IDRange []int64 `json:"id_range"`
+	}{
+		Chunks:  len(docs),
+		IDRange: []int64{idStart, idEnd},
+	})
+	return nil
 }
 
 // uploadForm carries the optional metadata field from the multipart form.
