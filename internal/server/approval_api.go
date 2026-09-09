@@ -54,6 +54,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -323,25 +324,45 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	}
 	sessionID := c.Param("id")
 	if !sessionIDRegex.MatchString(sessionID) {
-		c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid session id",
-		})
+		c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid session id"})
 		return
 	}
 	approvalID := c.Param("approvalId")
 	if !sessionIDRegex.MatchString(approvalID) {
-		c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid approval id",
-		})
+		c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid approval id"})
 		return
 	}
 
+	// decodeApprovalRequest: JSON decode + approvalID reconciliation + Validate
+	decision, err := s.decodeApprovalRequest(ctx, c, sessionID, approvalID)
+	if err != nil {
+		return // error response already written by decodeApprovalRequest
+	}
+
+	// validateAndResolveApproval: idempotency + pending-row lookup + spoof check + expire-check
+	row, err := s.validateAndResolveApproval(ctx, c, sessionID, approvalID, decision)
+	if err != nil {
+		return // error response already written by validateAndResolveApproval
+	}
+
+	// executeApprovalResume: audit resolution + Runner rebuild + ResumeWithParams
+	iter, err := s.executeApprovalResume(ctx, c, sessionID, approvalID, decision, row)
+	if err != nil {
+		return // error response already written by executeApprovalResume
+	}
+
+	// drainResumeEvents: drain SSE + re-interrupt self-heal + decision chunk emit
+	s.drainResumeEvents(ctx, c, sessionID, approvalID, decision, row, iter)
+}
+
+// decodeApprovalRequest decodes the POST body, reconciles the approvalID
+// field, and validates the decision. Returns the validated decision or an
+// error with a response already written to c.
+func (s *Deps) decodeApprovalRequest(ctx context.Context, c *app.RequestContext, sessionID, approvalID string) (*hitl.ApprovalDecision, error) {
 	var req approvalPostRequest
 	if err := json.Unmarshal(c.Request.Body(), &req); err != nil {
-		c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid JSON body",
-		})
-		return
+		c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return nil, fmt.Errorf("invalid JSON")
 	}
 	if req.ApprovalID == "" {
 		req.ApprovalID = approvalID
@@ -350,12 +371,10 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 			"field": "approval_id",
 			"msg":   "body approval_id does not match the URL segment",
 		})
-		return
+		return nil, fmt.Errorf("approval_id mismatch")
 	}
 
-	// HITL-02 / D11-B2: Validate FIRST. A bad decision never reaches
-	// the audit writer or the Runner (the 422 and 200 paths are
-	// mutually exclusive at the HTTP boundary).
+	// HITL-02 / D11-B2: Validate FIRST (422 on failure).
 	decision := &hitl.ApprovalDecision{
 		Decision:   req.Decision,
 		Reason:     req.Reason,
@@ -371,24 +390,23 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 			resp["msg"] = verr.Msg
 		}
 		c.JSON(http.StatusUnprocessableEntity, resp)
-		return
+		return nil, fmt.Errorf("validation failed")
 	}
+	return decision, nil
+}
 
-	// Idempotency (T-11-04-06) FIRST: the audit chain is INSERT-only,
-	// so the pending row never disappears — "already resolved" is
-	// detectable ONLY by the presence of a resolution row. A second
-	// POST for a resolved approval returns 200 already_resolved
-	// rather than re-executing the write.
+// validateAndResolveApproval checks idempotency, looks up the pending row,
+// performs the spoof check, and runs the D11-C2 expire-check. Returns
+// the pending row or an error with a response already written to c.
+func (s *Deps) validateAndResolveApproval(ctx context.Context, c *app.RequestContext, sessionID, approvalID string, decision *hitl.ApprovalDecision) (*store.AuditRow, error) {
+	// Idempotency (T-11-04-06): INSERT-only audit chain means a resolution
+	// row is the only signal that this approval is already handled.
 	if s.approvalAlreadyResolved(ctx, sessionID, approvalID) {
-		c.JSON(http.StatusOK, map[string]string{
-			"state": "already_resolved",
-		})
-		return
+		c.JSON(http.StatusOK, map[string]string{"state": "already_resolved"})
+		return nil, fmt.Errorf("already resolved")
 	}
 
-	// Pending-row lookup (T-3-SQLI ?-parameterized). Wrong session →
-	// no rows → 404 (the cross-session authorization moat,
-	// T-11-04-02).
+	// Pending-row lookup (T-3-SQLI ?-parameterized). Wrong session → no rows → 404.
 	pending, err := s.Store.QueryAudit(ctx, store.AuditFilter{
 		SessionID:  sessionID,
 		Action:     auditActionPending,
@@ -397,153 +415,95 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	})
 	if err != nil {
 		log.Printf("[WARN] server: approval pending lookup (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
-		c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "approval lookup failed",
-		})
-		return
+		c.JSON(http.StatusInternalServerError, map[string]string{"error": "approval lookup failed"})
+		return nil, fmt.Errorf("lookup failed")
 	}
 	if len(pending) == 0 {
-		c.JSON(http.StatusNotFound, map[string]string{
-			"error": "no pending approval for this session",
-		})
-		return
+		c.JSON(http.StatusNotFound, map[string]string{"error": "no pending approval for this session"})
+		return nil, fmt.Errorf("no pending row")
 	}
-	row := pending[0]
+	row := &pending[0]
 
-	// Spoof check: a non-empty FE-claimed target must match the audit
-	// row's target (empty claims are recoverable — see
-	// ApprovalDecision.TargetMatches).
+	// Spoof check: non-empty FE target must match the audit row's target.
 	if !decision.TargetMatches(row.Query) {
 		c.JSON(http.StatusUnprocessableEntity, map[string]string{
 			"field": "target",
 			"msg":   "does not match the pending approval's target",
 		})
-		return
+		return nil, fmt.Errorf("spoof check failed")
 	}
 
-	// D11-C2 EXPIRE-CHECK — before any audit resolution row is
-	// written. A skill_version / prompt_hash mismatch (Skill
-	// hot-reload since the interrupt) expires the checkpoint: Delete
-	// the CHECKPOINT row (never the audit row — T-3-AUDIT INSERT-only)
-	// and answer 410 Gone so the FE collapses the ApprovalCard into
-	// the expired state (HITL-03).
-	//
-	// Per-row manifest lookup: the pending row carries the skill_id that
-	// produced the interrupt. Resolving the manifest from the loader
-	// (rather than the global Deps.ActiveManifest — which main.go only
-	// wires from the first loaded Skill) is what makes the check
-	// correct for every skill in the registry, not just the boot-time
-	// default. ActiveManifest stays as the boot-time fallback for the
-	// GET handler's pending-row state hint.
+	// D11-C2 EXPIRE-CHECK: skill_version / prompt_hash mismatch → 410 Gone.
 	cpID := agent.RunnerCheckPointID(sessionID)
-	// Snapshot fallback chain: per-row manifest → global ActiveManifest.
-	// Tests construct Deps without a Loader (rowManifest nil) but WITH
-	// ActiveManifest set; production wires both. Only when BOTH are nil
-	// is the snapshot empty — then the mismatch comparison below would
-	// false-positive, so the empty-snap case falls through as fresh
-	// (the pending row's own audit trail remains the durable record).
 	rowManifest := manifestForSkill(s.Loader, row.SkillID)
 	if rowManifest == nil {
 		rowManifest = s.ActiveManifest
 	}
 	snap := activeSkillSnapshot(rowManifest)
-	checkpointPayload, checkpointValid, err := s.Store.GetCheckpointByVersionFilter(ctx, cpID, snap.Version, snap.PromptHash)
+	_, checkpointValid, err := s.Store.GetCheckpointByVersionFilter(ctx, cpID, snap.Version, snap.PromptHash)
 	if err != nil {
 		log.Printf("[WARN] server: approval expire-check (sess=%s) failed: %v", sessionID, err)
-		c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "approval expire-check failed",
+		c.JSON(http.StatusInternalServerError, map[string]string{"error": "approval expire-check failed"})
+		return nil, fmt.Errorf("expire-check failed")
+	}
+	if !checkpointValid && snap.PromptHash != "" && row.PromptHash != snap.PromptHash {
+		log.Printf("[INFO] server: approval expire-check (sess=%s cp=%s) audit.prompt_hash=%s != snap.prompt_hash=%s → expired",
+			sessionID, cpID, row.PromptHash, snap.PromptHash)
+		c.JSON(http.StatusGone, map[string]any{
+			"state":                 approvalStateExpired,
+			"audit_chain_preserved": true,
 		})
-		return
+		return nil, fmt.Errorf("expired")
 	}
-	if !checkpointValid {
-		// No checkpoint row at all (existed=false) → treat as fresh
-		// state, NOT expired. The D11-C2 expire-check is meant to
-		// detect hot-reload drift; an absent checkpoint is the normal
-		// case for sessions whose Runner didn't write one (e.g. the
-		// current adk.CheckPointStore behavior under certain interrupt
-		// shapes). Mark expired only on a real hash mismatch, which
-		// checkpointValid=true with wrong-hash is not — existed=false
-		// is the only branch we hit, so the conditional is on the
-		// audit row's stored snapshot matching the recomputed one.
-		if snap.PromptHash != "" && row.PromptHash != snap.PromptHash {
-			log.Printf("[INFO] server: approval expire-check (sess=%s cp=%s) audit.prompt_hash=%s != snap.prompt_hash=%s → expired",
-				sessionID, cpID, row.PromptHash, snap.PromptHash)
-			c.JSON(http.StatusGone, map[string]any{
-				"state":                 approvalStateExpired,
-				"audit_chain_preserved": true,
-			})
-			return
-		}
-		log.Printf("[INFO] server: approval expire-check (sess=%s cp=%s) no checkpoint row + audit snapshot matches → fresh state, proceeding",
-			sessionID, cpID)
-	}
-	// silence unused-variable warning when fresh-state path taken
-	_ = checkpointPayload
+	log.Printf("[INFO] server: approval expire-check (sess=%s cp=%s) fresh state, proceeding", sessionID, cpID)
+	return row, nil
+}
 
-	// Audit resolution row (D11-C3 fail-closed writer — the audit
-	// chain is the legal-evidence anchor; a write failure is a 500,
-	// never a swallow). HITL-07 edit-before-approve: the operator's
-	// edited FrozenArgs win; otherwise the pending row's byte snapshot
-	// is carried verbatim.
+// executeApprovalResume writes the audit resolution row, rebuilds the
+// Runner, and calls ResumeWithParams. Returns the iterator or an error
+// with a response already written to c.
+func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext, sessionID, approvalID string, decision *hitl.ApprovalDecision, row *store.AuditRow) (*adk.AsyncIterator[*adk.AgentEvent], error) {
+	// Audit resolution row (D11-C3 fail-closed writer).
 	frozenArgs := decision.FrozenArgs
 	if len(frozenArgs) == 0 {
 		frozenArgs = row.FrozenArgs
 	}
 	writer := s.auditWriterOrDefault()
-	// CR-03 (18-REVIEW): three-way audit resolution — deny → rejected,
-	// request_change → the D18-D4 change_requested row, everything
-	// else → approved. The old two-way branch would have written
-	// action_approved for a request_change decision.
+	snap := activeSkillSnapshot(manifestForSkill(s.Loader, row.SkillID))
+
 	switch decision.Decision {
 	case "deny":
 		if _, err := writer.MarkRejected(ctx, sessionID, "", snap, approvalID, approvalID, row.Query, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: approval MarkRejected (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
-			c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "audit write failed",
-			})
-			return
+			c.JSON(http.StatusInternalServerError, map[string]string{"error": "audit write failed"})
+			return nil, fmt.Errorf("audit write failed")
 		}
 	case "request_change":
 		if _, err := writer.MarkChangeRequested(ctx, sessionID, "", snap, approvalID, approvalID, row.Query, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: approval MarkChangeRequested (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
-			c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "audit write failed",
-			})
-			return
+			c.JSON(http.StatusInternalServerError, map[string]string{"error": "audit write failed"})
+			return nil, fmt.Errorf("audit write failed")
 		}
 	default:
 		if _, err := writer.MarkApproved(ctx, sessionID, "", snap, approvalID, approvalID, row.Query, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: approval MarkApproved (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
-			c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "audit write failed",
-			})
-			return
+			c.JSON(http.StatusInternalServerError, map[string]string{"error": "audit write failed"})
+			return nil, fmt.Errorf("audit write failed")
 		}
 	}
 
-	// Re-hydrate the per-session Runner (D11-B4: resume is a NEW
-	// Runner instance pointing at the SAME store + same
-	// checkPointID). eino v0.9.14 attaches the CheckPointStore only
-	// via RunnerConfig — surfaced through RunnerBuildConfig (11-04).
+	// Rebuild Runner (D11-B4): resume is a NEW Runner pointing at the SAME
+	// checkPointID. Must use the pending row's skill manifest for correctness.
 	cpStore, ok := s.Store.(adk.CheckPointStore)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "store does not support checkpoints",
-		})
-		return
+		c.JSON(http.StatusInternalServerError, map[string]string{"error": "store does not support checkpoints"})
+		return nil, fmt.Errorf("checkpoint store unavailable")
 	}
-	// Resume-tree correctness: the Runner that interrupted belongs to
-	// the pending row's skill (e.g. monthly-report's deep agent). The
-	// rebuilt Runner MUST use the SAME manifest or eino's resume
-	// agent-tree walk fails with "no child agents leading to
-	// interrupted agent were found" — the global Deps.ActiveManifest
-	// is only the boot-time default (first loaded skill) and is the
-	// WRONG tree for every other skill. Mirrors plan_api.go's
-	// per-row lookup (manifestForSkill).
 	resumeManifest := manifestForSkill(s.Loader, row.SkillID)
 	if resumeManifest == nil {
 		resumeManifest = s.ActiveManifest
 	}
+	cpID := agent.RunnerCheckPointID(sessionID)
 
 	runner, err := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
 		Manifest:        resumeManifest,
@@ -553,26 +513,11 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		SessionID:       sessionID,
 		SkillID:         row.SkillID,
 		CheckPointStore: cpStore,
-		// D16-C3: a data-channel Skill's resume path needs the SAME
-		// executor + registry the chat path passes (runner_setup.go
-		// ChatHandler) — BuildRunner fail-closes without them, which
-		// would break every monthly-report / kpi-dashboard resume.
-		KPIExecutor: s.KPIExecutor,
-		KPIRegistry: s.KPIRegistry,
-		// P12-L2 deep-archetype write_todos substrate (same seams the
-		// chat path passes — the resumed run continues the SAME agent
-		// tree and its write_todos Tool must keep INSERTing).
-		PlanTodoStore: planTodoStoreOf(s.Store),
-		PlanTraceEmit: s.planTraceEmitter(c),
-		// Plan 26-06: the hitl tool construction fails closed without a
-		// registry when the manifest declares memory:facts — thread the
-		// same registry the annotate/KB admin surfaces already use.
-		KBRegistry: s.KBRegistry,
-		// WR-01: the resumed Pass-2 path injects the same session-bound
-		// audit wiring (a fresh writer — the shared Deps.AuditWriter's
-		// ambient identity must not be mutated). The store doubles as
-		// the CR-04 reports audit sink; WR-02 wires the report_published
-		// card emission into the drained resume stream.
+		KPIExecutor:     s.KPIExecutor,
+		KPIRegistry:     s.KPIRegistry,
+		PlanTodoStore:   planTodoStoreOf(s.Store),
+		PlanTraceEmit:   s.planTraceEmitter(c),
+		KBRegistry:      s.KBRegistry,
 		AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
 			WithIdentity(sessionID, "", snap),
 		ReportAudit:       s.Store,
@@ -580,45 +525,30 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: approval BuildRunner (sess=%s) failed: %v", sessionID, err)
-		c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "runner build failed",
-		})
-		return
+		c.JSON(http.StatusInternalServerError, map[string]string{"error": "runner build failed"})
+		return nil, fmt.Errorf("runner build failed")
 	}
 
-	// Resume. The Targets key is the interrupt UUID echoed by the FE
-	// (see the file-level resume-target note); the approvalID is the
-	// D11-C4 plan-literal fallback.
-	resumeTarget := req.InterruptID
-	if resumeTarget == "" {
-		resumeTarget = approvalID
-	}
+	// ResumeWithParams: Targets key is interrupt UUID (FE-echoed) or approvalID fallback.
+	resumeTarget := decision.ApprovalID
 	iter, err := runner.ResumeWithParams(ctx, cpID, &adk.ResumeParams{
 		Targets: map[string]any{resumeTarget: decision},
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: approval ResumeWithParams (sess=%s cp=%s) failed: %v", sessionID, cpID, err)
-		c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "resume failed",
-		})
-		return
+		c.JSON(http.StatusInternalServerError, map[string]string{"error": "resume failed"})
+		return nil, fmt.Errorf("resume failed")
 	}
+	return iter, nil
+}
 
-	// Drain the resumed run into the SSE stream. The D11-A4 <200ms
-	// cancel lock applies on the resume path too (anchored by
-	// DrainRunnerEvents' select-before-Next; locked by
-	// TestCancelPropagationMidToolRunner's resume case).
-	//
-	// Re-interrupt self-heal: when the resume target missed (the
-	// restored-pending-row path has no interrupt_id — the FE POST fell
-	// back to the approvalID, which eino does not match), the HITL Tool
-	// re-interrupts (leaf-contract preservation) and the drain sees a
-	// data-decision {decision: "interrupted"} chunk carrying the NEW
-	// interrupt UUID (runner_sse.go emitInterruptChunks). The wrapper
-	// captures it; after the first drain closes we retry the resume
-	// ONCE with that UUID, which deterministically hits the Tool's
-	// GetResumeContext and unblocks the approved execution (e.g.
-	// report_publish Pass-2 → report.Publish + reports-table row).
+// drainResumeEvents drains the resumed run into the SSE stream, handles
+// the re-interrupt self-heal, and emits the final decision chunk.
+func (s *Deps) drainResumeEvents(ctx context.Context, c *app.RequestContext, sessionID, approvalID string, decision *hitl.ApprovalDecision, row *store.AuditRow, iter *adk.AsyncIterator[*adk.AgentEvent]) {
+	cpID := agent.RunnerCheckPointID(sessionID)
+
+	// Re-interrupt self-heal: captures new interrupt UUID from a target-miss
+	// re-interrupt, then retries once with that UUID.
 	var reInterruptID string
 	emit := func(chunk wire.UIMessageChunk) error {
 		if reInterruptID == "" && chunk.Type == "data-decision" && len(chunk.Data) > 0 {
@@ -634,19 +564,43 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		}
 		return emitChunkClosure(c)(chunk)
 	}
+
+	// DrainRunnerEvents: D11-A4 <200ms cancel lock applies here too.
 	if err := agent.DrainRunnerEvents(ctx, iter, emit); err != nil {
-		// The SSE stream is already in flight — mirror ChatHandler:
-		// emit terminal chunks so the client sees a bounded state.
 		log.Printf("[ERROR] server: approval drain (sess=%s) failed: %v", sessionID, err)
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
 		return
 	}
-	if reInterruptID != "" && reInterruptID != resumeTarget {
-		// The re-interrupt persisted a NEW checkpoint (adk/runner.go:330);
-		// resuming against the same cpID with the captured UUID resolves
-		// the Tool's Pass-2. Bounded to ONE retry — a second miss means a
-		// non-target interrupt shape and the operator sees the new card.
+
+	// Self-heal retry: bounded to ONE retry — a second miss means a non-target
+	// interrupt shape and the operator sees the new card.
+	if reInterruptID != "" && reInterruptID != decision.ApprovalID {
+		// Re-build runner to get a fresh iterator (original iter is exhausted).
+		cpStore, _ := s.Store.(adk.CheckPointStore)
+		resumeManifest := manifestForSkill(s.Loader, row.SkillID)
+		if resumeManifest == nil {
+			resumeManifest = s.ActiveManifest
+		}
+		snap := activeSkillSnapshot(resumeManifest)
+		runner, _ := agent.BuildRunner(ctx, agent.RunnerBuildConfig{
+			Manifest:        resumeManifest,
+			Embedder:        s.Embedder,
+			Retriever:       s.Retriever,
+			ChatModel:       s.ChatModel,
+			SessionID:       sessionID,
+			SkillID:         row.SkillID,
+			CheckPointStore: cpStore,
+			KPIExecutor:     s.KPIExecutor,
+			KPIRegistry:     s.KPIRegistry,
+			PlanTodoStore:   planTodoStoreOf(s.Store),
+			PlanTraceEmit:   s.planTraceEmitter(c),
+			KBRegistry:      s.KBRegistry,
+			AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
+				WithIdentity(sessionID, "", snap),
+			ReportAudit:       s.Store,
+			ReportPublishEmit: s.reportPublishEmitter(c),
+		})
 		iter2, err2 := runner.ResumeWithParams(ctx, cpID, &adk.ResumeParams{
 			Targets: map[string]any{reInterruptID: decision},
 		})
@@ -657,11 +611,7 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		}
 	}
 
-	// D-04 + D15: emit the resolution via the EXISTING data-decision
-	// chunk type — only the decision string is new. D18-D4:
-	// request_change resolves to the plan_change_requested event
-	// (wire.DecisionPlanChangeRequested) so the FE can settle the card
-	// into the change-requested state.
+	// Emit the resolution via the EXISTING data-decision chunk type (D-04 + D15).
 	decisionEvent := decisionEventResumed
 	switch decision.Decision {
 	case "deny":
