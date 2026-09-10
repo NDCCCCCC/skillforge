@@ -21,7 +21,7 @@
 
 const DEFAULT_HOSTNAMES = ['localhost', '127.0.0.1', '::1', 'spike.local', 'skillforge.local'] as const;
 
-let _hostnameAllowlist = new Set([...DEFAULT_HOSTNAMES]);
+let _hostnameAllowlist: Set<string> = new Set([...DEFAULT_HOSTNAMES]);
 
 export function getHostnameAllowlist(): Set<string> {
   return _hostnameAllowlist;

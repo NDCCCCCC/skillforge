@@ -90,7 +90,9 @@ describe('sanitizeSourceUrl (T-1-08 acceptance gate)', () => {
 
     const blocked = sanitizeSourceUrl('http://skillforge.local/foo');
     expect(blocked.ok).toBe(false);
-    expect(blocked.reason).toBe('blocked_hostname');
+    if (!blocked.ok) {
+      expect(blocked.reason).toBe('blocked_hostname');
+    }
 
     resetHostnameAllowlist();
   });
