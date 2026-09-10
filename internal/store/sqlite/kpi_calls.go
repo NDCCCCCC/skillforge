@@ -42,7 +42,6 @@ INSERT INTO kpi_calls (
     ts, session_id, skill_id, func, args_json,
     as_of_period, k_min_applied, result_snapshot, signature
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(func, args_json, ts) DO NOTHING
 `
 // 16-06 executor's AuditSink (the audit leg of its three output legs);
 // each invocation freezes {func, args, as_of, result_snapshot,
@@ -175,5 +174,36 @@ func (s *SQLiteStore) ListKPICalls(ctx context.Context, filter store.KPICallsFil
 const latestKPICallByFuncSQL = `
 SELECT func, ts FROM kpi_calls
 WHERE id IN (SELECT MAX(id) FROM kpi_calls GROUP BY func)
-ON CONFLICT(func, args_json, ts) DO NOTHING
 `
+
+// LatestKPICallByFunc satisfies store.Store by aggregating the
+// latest call timestamp per KPI name. Phase 16 / Plan 16-05 added
+// the SQL constant (latestKPICallByFuncSQL) but the method was
+// forgotten in the wiring — the interface declared the method but
+// the SQLite impl never picked it up. Phase 37 v1.3.1 hygiene
+// closes the gap. Returns empty map when kpi_calls has no rows.
+func (s *SQLiteStore) LatestKPICallByFunc(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.db.QueryContext(ctx, latestKPICallByFuncSQL)
+	if err != nil {
+		return nil, fmtError("LatestKPICallByFunc", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string]time.Time)
+	for rows.Next() {
+		var fn string
+		var ts string
+		if err := rows.Scan(&fn, &ts); err != nil {
+			return nil, fmtError("LatestKPICallByFunc.Scan", err)
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return nil, fmtError("LatestKPICallByFunc.Parse", err)
+		}
+		out[fn] = parsed
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmtError("LatestKPICallByFunc", err)
+	}
+	return out, nil
+}
