@@ -207,7 +207,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 
 	tiers := manifest.ResolvedTiers()
 	if len(tiers) == 0 {
-		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonOutOfScope, "", false)
+		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonOutOfScope, false)
 	}
 
 	retrieveQuery := query
@@ -234,13 +234,13 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 
 	if len(chunks) == 0 {
-		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, "", true)
+		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, true)
 	}
 
 	emitSubprogress(c, wire.SubprogressStep{Step: "found_candidates", Tier: tiers[0], Count: len(chunks)})
 
 	if maxScore(chunks) < retrievalScoreThreshold {
-		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonLowRetrievalScore, "", true)
+		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonLowRetrievalScore, true)
 	}
 
 	if s.RefusalClassifier != nil {
@@ -252,12 +252,19 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			log.Printf("[WARN] server: refusal classifier (sess=%s): %v (continuing with classifier output; non-fatal)", sessionID, classifyErr)
 		}
 		if classifyOut.Decision == "refuse" {
-			turnID, _ := s.writeAuditAndTurn(ctx, sessionID, skillID, query, verdict.Verdict{}, "", classifyOut.Reason, meta)
-			if err := emitTurnID(c, turnID); err != nil {
-				log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", err)
-			}
+			// Debug new-session-shows-old-messages residual #1 (2026-09-12):
+			// this branch previously pre-wrote audit + session turns via
+			// writeAuditAndTurn and THEN returned emitRefusalWithChunks —
+			// which performs the SAME write itself. One POST on the
+			// classifier-refuse path therefore persisted TWO audit rows and
+			// TWO (user, assistant) turn pairs (live evidence: session_turn
+			// ids 693-696, identical content 19ms apart; audit 414/415).
+			// TestVerdictPipeline_ClassifierRefuses went RED with "should
+			// have 1 item(s), but has 2". The write is owned by
+			// emitRefusalWithChunks alone — this branch only emits the
+			// history decision chunk before delegating.
 			s.emitHistoryDecision(c, wire.DecisionPayload{Step: 0, Decision: wire.DecisionHistoryClassifierRefused, Query: classifyOut.Reason})
-			return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, classifyOut.Reason, "", true)
+			return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, classifyOut.Reason, true)
 		}
 	}
 
@@ -290,7 +297,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 
 	if v.Status == "refused" {
-		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, "", true)
+		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, true)
 	}
 
 	return s.emitVerdictWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, v, chunks, chunksByID, qvec, now)
@@ -328,7 +335,7 @@ func (s *Deps) buildAuditMeta(ctx context.Context, c *app.RequestContext, sessio
 
 // emitRefusalWithChunks handles all refusal paths (Steps 1, 5, 6, 7, 10b).
 // It writes the audit row first, emits the vote key, then streams the refusal.
-func (s *Deps) emitRefusalWithChunks(ctx context.Context, c *app.RequestContext, sessionID, skillID, query string, tiers []string, meta *store.AuditMeta, reason, classifierReason string, canRephrase bool) error {
+func (s *Deps) emitRefusalWithChunks(ctx context.Context, c *app.RequestContext, sessionID, skillID, query string, tiers []string, meta *store.AuditMeta, reason string, canRephrase bool) error {
 	suggestion := ""
 	if canRephrase {
 		suggestion = ruleBasedSuggestion(query, tiers, s.KBRegistry)

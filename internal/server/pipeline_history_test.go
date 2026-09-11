@@ -259,6 +259,31 @@ func TestVerdictPipeline_ClassifierRefuses(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "exactly one audit row")
 	assert.Equal(t, verdict.RefusalReasonOutOfScope, rows[0].RefusalReason)
+
+	// (d) Session turns written EXACTLY ONCE (debug new-session-shows-
+	// old-messages residual #1, 2026-09-12): the classifier-refuse
+	// branch used to pre-write the (user, assistant) pair AND delegate
+	// to emitRefusalWithChunks which wrote the pair AGAIN — duplicate
+	// history rows on every classifier refusal. Live evidence:
+	// session_turn 693-696 (one POST, 19ms apart). The harness seeds
+	// one prior pair, so the expected total is seed(2) + new pair(2).
+	// GetSession orders chronologically (the seeded assistant turn
+	// carries a +1s ts), so assert by CONTENT COUNT, not index.
+	turns, err := deps.Store.GetSession(ctx, sessID)
+	require.NoError(t, err)
+	require.Len(t, turns, 4, "seeded pair + exactly ONE new (user, assistant) pair — no duplicate write")
+	newUserTurns := 0
+	newAssistantTurns := 0
+	for _, turn := range turns {
+		if turn.Content == "那第一条呢" {
+			newUserTurns++
+		}
+		if turn.Content == verdict.RefusalReasonOutOfScope {
+			newAssistantTurns++
+		}
+	}
+	assert.Equal(t, 1, newUserTurns, "the user turn must be persisted exactly once")
+	assert.Equal(t, 1, newAssistantTurns, "the assistant (refusal) turn must be persisted exactly once")
 }
 
 // TestVerdictPipeline_RewriterFallback — the rewriter returns an

@@ -8,7 +8,7 @@
 // sessions slice so order is independent. localStorage is a jsdom
 // global — cleared per test to isolate the sf.session.pins mirror.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadSessionPins, useAppStore, type SessionMeta } from './app-store';
 import type { PendingApproval, TerminalApproval } from './app-store';
 import type { PlanTodo } from '../types/wire-types';
@@ -74,6 +74,82 @@ describe('app-store / hydrateSessions', () => {
     const s = useAppStore.getState().sessions;
     expect(s.find((x) => x.id === 'sess-alpha-0001')?.pinned).toBe(true);
     expect(s.find((x) => x.id === 'sess-beta-0002')?.pinned).toBeFalsy();
+  });
+});
+
+// Debug session new-session-shows-old-messages (2026-09-11) — the old
+// reload-resetting in-memory counter re-minted `local-session-2` after
+// every page load; ids reach the server via `x-session-id` (chat POST),
+// so the re-minted id collided with an existing roster session
+// (duplicate React keys + wrong header title/skill). Minted ids must be
+// unique across reloads and must never equal an id already in the
+// roster.
+describe('app-store / createSession id uniqueness (debug new-session-shows-old-messages)', () => {
+  it('mints ids that cannot collide with roster rows or with each other', () => {
+    // Simulate the collision posture: the roster (hydrated from the BE)
+    // already contains the deterministic `local-session-N` ids the old
+    // generator would re-emit after a reload.
+    useAppStore.setState({
+      sessions: [
+        { id: 'local-session-1', name: '会话 1', createdAt: 3_000 },
+        { id: 'local-session-2', name: '生成 2026-08 月报', createdAt: 2_000 },
+        { id: 'local-session-3', name: '你好', createdAt: 1_000 },
+      ],
+      activeSessionId: 'local-session-3',
+    });
+
+    // Two INTENTIONAL creates: step the mock clock past the rapid
+    // double-dispatch guard (CREATE_DOUBLE_DISPATCH_MS) between them.
+    const timeSpy = vi.spyOn(Date, 'now');
+    let now = 10_000_000;
+    timeSpy.mockImplementation(() => now);
+    try {
+      const first = useAppStore.getState().createSession();
+      now += 1_000;
+      const second = useAppStore.getState().createSession();
+
+      expect(first).not.toBe(second);
+      const preExisting = new Set(['local-session-1', 'local-session-2', 'local-session-3']);
+      expect(preExisting.has(first)).toBe(false);
+      expect(preExisting.has(second)).toBe(false);
+
+      const ids = useAppStore.getState().sessions.map((s) => s.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    } finally {
+      timeSpy.mockRestore();
+    }
+  });
+
+  it('swallows a rapid duplicate dispatch (residual #3): same id, one roster row', () => {
+    useAppStore.setState({
+      sessions: [{ id: 'session-1', name: '会话 1', createdAt: 0 }],
+      activeSessionId: 'session-1',
+    });
+
+    // A double-clicked / double-dispatched 新建会话 control invokes
+    // createSession twice within milliseconds. The second call must be
+    // a no-op returning the first mint while it is still active; an
+    // intentional create after the guard window still mints.
+    const timeSpy = vi.spyOn(Date, 'now');
+    let now = 10_000_000;
+    timeSpy.mockImplementation(() => now);
+    try {
+      const first = useAppStore.getState().createSession();
+      const duplicate = useAppStore.getState().createSession(); // same tick
+
+      expect(duplicate).toBe(first);
+      expect(useAppStore.getState().sessions.filter((s) => s.id === first)).toHaveLength(1);
+      expect(useAppStore.getState().activeSessionId).toBe(first);
+
+      now += 300; // past CREATE_DOUBLE_DISPATCH_MS — intentional create
+      const intentional = useAppStore.getState().createSession();
+      expect(intentional).not.toBe(first);
+
+      const duplicateAgain = useAppStore.getState().createSession(); // same tick
+      expect(duplicateAgain).toBe(intentional);
+    } finally {
+      timeSpy.mockRestore();
+    }
   });
 });
 

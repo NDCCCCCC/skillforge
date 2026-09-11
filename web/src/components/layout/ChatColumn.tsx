@@ -41,9 +41,17 @@ export interface ChatColumnProps {
   messages: UIMessage[];
   status: string;
   onSend: (text: string) => void;
+  /** Boot-hydration send gate (debug new-session-shows-old-messages
+   * residual #2): while the mount roster fetch is in flight the active
+   * session may still be the throwaway boot session and the skill is
+   * unresolved — a send now would create a "ghost" session. App passes
+   * false until the fetch settles (fail-open bounded). Gates BOTH the
+   * composer and the empty-state suggested prompts (a prompt click is
+   * a send). */
+  inputDisabled?: boolean;
 }
 
-export default function ChatColumn({ messages, status, onSend }: ChatColumnProps) {
+export default function ChatColumn({ messages, status, onSend, inputDisabled = false }: ChatColumnProps) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastStuckRef = useRef(true);
   const wizardActive = useAppStore((s) => s.wizardMode.active);
@@ -110,6 +118,7 @@ export default function ChatColumn({ messages, status, onSend }: ChatColumnProps
                   type="button"
                   data-testid={`chat-suggested-${i}`}
                   onClick={() => onSend(prompt.text)}
+                  disabled={inputDisabled}
                   className="chat-empty-prompt"
                 >
                   <span className="chat-empty-prompt-icon" aria-hidden>
@@ -145,7 +154,7 @@ export default function ChatColumn({ messages, status, onSend }: ChatColumnProps
         </div>
       )}
 
-      <ChatInput onSend={onSend} />
+      <ChatInput onSend={onSend} disabled={inputDisabled} />
     </div>
   );
 }

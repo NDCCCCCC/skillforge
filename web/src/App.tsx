@@ -58,6 +58,12 @@ interface AppProps {
   initialMessages?: UIMessage[];
 }
 
+/** Upper bound for the boot-hydration send gate (debug residual #2).
+ * The mount GET /api/sessions typically settles in ~200ms; if it hangs
+ * (backend down without a fast RST, proxy stall) the gate FAILS OPEN
+ * after this long so the composer can never be wedged shut. */
+const BOOT_GATE_FAIL_OPEN_MS = 2000;
+
 export default function App({ initialMessages }: AppProps) {
   if (initialMessages) {
     return (
@@ -136,7 +142,17 @@ function LiveApp() {
   // D14 invariant: the message stream lives in the Chat instance
   // (and the per-session chatMapRef), NEVER in the Zustand store. The
   // store only carries session metadata (activeSessionId, sessions[]).
-  const [historySnapshot, setHistorySnapshot] = useState<SessionHistoryResponse | null | undefined>(
+  // Debug new-session-shows-old-messages (2026-09-11) — the snapshot is
+  // KEYED by the session it was fetched for. An un-keyed snapshot let a
+  // session switch inject the PREVIOUS session's history into the newly
+  // active session's empty Chat (and appliedSessionsRef then blocked
+  // the new session's own history permanently). Consumers MUST check
+  // snapshot.sessionId === activeSessionId before acting on it.
+  interface KeyedHistorySnapshot {
+    sessionId: string;
+    resp: SessionHistoryResponse | null;
+  }
+  const [historySnapshot, setHistorySnapshot] = useState<KeyedHistorySnapshot | undefined>(
     undefined,
   );
   const restoredSessionRef = useRef<string | null>(null);
@@ -146,7 +162,7 @@ function LiveApp() {
     let cancelled = false;
     void fetchHistory(activeSessionId).then((resp) => {
       if (cancelled) return;
-      setHistorySnapshot(resp);
+      setHistorySnapshot({ sessionId: activeSessionId, resp });
     });
     return () => {
       cancelled = true;
@@ -155,8 +171,12 @@ function LiveApp() {
   // Skill auto-switch (D10-D2) — the BE returns the session-bound
   // skill_id on the history response; the hook writes it into the
   // Zustand store when present in the loaded skills list. Idempotent
-  // (no-op when already set or when skillId is empty).
-  useSkillAutoSwitch(historySnapshot?.skill_id ?? null);
+  // (no-op when already set or when skillId is empty). Keyed: a stale
+  // snapshot from the previously-active session must NOT switch the
+  // skill for the newly-active one.
+  useSkillAutoSwitch(
+    historySnapshot?.sessionId === activeSessionId ? historySnapshot.resp?.skill_id ?? null : null,
+  );
   // Create the Chat instance once per session. The chatMapRef lookup
   // ensures the same Chat instance survives re-renders; on the first
   // render we build the Chat with the empty initialMessages and let
@@ -192,6 +212,12 @@ function LiveApp() {
   const appliedSessionsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (historySnapshot === undefined) return;
+    // KEYED GUARD (debug new-session-shows-old-messages): only inject a
+    // snapshot that was fetched for the CURRENTLY active session. On a
+    // session switch the state still holds the previous session's
+    // response until the new fetch resolves — injecting it here would
+    // render the old conversation inside the new session.
+    if (historySnapshot.sessionId !== activeSessionId) return;
     if (appliedSessionsRef.current.has(activeSessionId)) return;
     const c = chatMapRef.current.get(activeSessionId);
     if (!c) return;
@@ -204,8 +230,8 @@ function LiveApp() {
     // the history fetch resolves (the chat surface has messages
     // before history arrives).
     if (c.messages.length > 0) return;
-    const restored = historySnapshot
-      ? historyToUIMessages(historySnapshot, activeSessionId)
+    const restored = historySnapshot.resp
+      ? historyToUIMessages(historySnapshot.resp, activeSessionId)
       : [];
     c.messages = restored;
     appliedSessionsRef.current.add(activeSessionId);
@@ -218,21 +244,41 @@ function LiveApp() {
   // keeps the local session-1 posture (mock-dev, fresh install).
   const hydrateSessions = useAppStore((s) => s.hydrateSessions);
   const sessions = useAppStore((s) => s.sessions);
+  // Debug new-session-shows-old-messages residual #2 (2026-09-12) —
+  // boot-hydration send gate. Until the mount roster fetch settles,
+  // activeSessionId still points at the THROWAWAY boot session (a
+  // fresh INITIAL_SESSION_ID mint that hydrateSessions is about to
+  // orphan) and currentSkillId is still null (the BE then resolves
+  // its defaultSkill — compliance). Any send in that window (suggested
+  // prompt click, fast composer Enter) lands in the orphaned boot
+  // session under the default skill and later surfaces at the roster
+  // TOP as a "ghost session nobody created". The gate keeps the
+  // composer + suggested prompts disabled for the settle window; the
+  // timeout is a fail-open bound so a hung fetch can never wedge the
+  // composer permanently.
+  const [bootReady, setBootReady] = useState(false);
   useEffect(() => {
+    const failOpen = setTimeout(() => setBootReady(true), BOOT_GATE_FAIL_OPEN_MS);
     let cancelled = false;
-    void fetchSessions().then((roster) => {
-      if (cancelled || !roster || roster.length === 0) return;
-      hydrateSessions(
-        roster.map((r) => ({
-          id: r.id,
-          name: r.title,
-          createdAt: r.last_active_ms,
-          lastActiveAt: r.last_active_ms,
-        })),
-      );
-    });
+    void fetchSessions()
+      .then((roster) => {
+        if (cancelled || !roster || roster.length === 0) return;
+        hydrateSessions(
+          roster.map((r) => ({
+            id: r.id,
+            name: r.title,
+            createdAt: r.last_active_ms,
+            lastActiveAt: r.last_active_ms,
+          })),
+        );
+      })
+      .finally(() => {
+        clearTimeout(failOpen);
+        setBootReady(true);
+      });
     return () => {
       cancelled = true;
+      clearTimeout(failOpen);
     };
     // Mount-only: a later createSession/deleteSession must NOT be
     // clobbered by a re-fetch (the drawer owns roster mutations after
@@ -373,6 +419,7 @@ function LiveApp() {
             messages={messages}
             status={status}
             onSend={handleSend}
+            inputDisabled={!bootReady}
           />
         }
         detail={

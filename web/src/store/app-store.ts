@@ -556,11 +556,8 @@ export interface AppActions {
 const DEFAULT_DETAIL_OPEN = false;
 const DEFAULT_DETAIL_WIDTH = 380;
 
-// Plan 05-07 — session id generation. Sessions are UI-local and
-// in-memory (D5-IA-03), so a stable monotonic counter is sufficient
-// (we do not need UUID uniqueness across reloads — the page reloads
-// wipe all session state). `INITIAL_SESSION_ID` seeds the boot state
-// so activeSessionId is never empty when the app mounts.
+// Plan 05-07 — session id generation. `INITIAL_SESSION_ID` seeds the
+// boot state so activeSessionId is never empty when the app mounts.
 //
 // UAT 2026-09-06 B3 (P2) — local ids live in the `local-session-`
 // NAMESPACE, structurally disjoint from server roster ids. The old
@@ -569,8 +566,46 @@ const DEFAULT_DETAIL_WIDTH = 380;
 // newly created session could share an id with a hydrated roster row —
 // duplicate React keys (rows rendered with swapped props) and a
 // rename/delete on one row silently targeting the other session.
-let sessionCounter = 1;
-const INITIAL_SESSION_ID = `local-session-${sessionCounter++}`;
+//
+// Debug new-session-shows-old-messages (2026-09-11) — the B3 namespace
+// assumption above turned out to be FALSE: RealChatTransport sends the
+// client-minted id to the BE as `x-session-id` on every chat POST, so
+// `local-session-N` ids DO get persisted server-side. The reload-
+// resetting in-memory counter therefore re-minted `local-session-2`
+// after every page load and collided with the persisted roster session
+// (duplicate React keys + the old session's title/skill in the header).
+// Minted ids are now unique across reloads: UUID v4 suffix, with a
+// time+random fallback for non-secure contexts (crypto.randomUUID
+// requires one). The `local-session-` prefix is retained purely as a
+// readable marker for UI-minted ids; uniqueness comes from the suffix.
+function mintSessionId(): string {
+  const suffix =
+    typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random()
+          .toString(36)
+          .slice(2, 10)}`;
+  return `local-session-${suffix}`;
+}
+
+/** Display-only counter for the 「会话 N」 default names. NOT part of
+ * the id (see mintSessionId) — a name repeat is cosmetic, an id repeat
+ * was the bug. */
+let sessionNameCounter = 1;
+const INITIAL_SESSION_ID = mintSessionId();
+
+// Debug new-session-shows-old-messages residual #3 (2026-09-12) —
+// rapid double-dispatch guard for createSession. A double-clicked
+// 新建会话 control (human double-click, automation double-dispatch)
+// invoked createSession twice within ~20ms and minted TWO roster rows
+// for one intent (live evidence: fd577332 + 71158e9c in one pass).
+// While the LAST mint is still the active session within this window,
+// a create call is treated as a duplicate dispatch and returns the
+// existing id. An intentional create after the window (or after the
+// user moved to another session) mints normally — the guard only ever
+// swallows a call that races the session it just created.
+const CREATE_DOUBLE_DISPATCH_MS = 250;
+let lastMint: { id: string; at: number } = { id: '', at: 0 };
 
 export const useAppStore = create<AppState & AppActions>((set, get) => ({
   currentSkillId: null,
@@ -792,9 +827,20 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // Plan 05-07 actions
   setSkills: (list) => set({ skills: list }),
   createSession: () => {
-    // `local-session-` namespace — see the B3 note above INITIAL_SESSION_ID.
-    const id = `local-session-${sessionCounter++}`;
-    const name = `会话 ${sessionCounter - 1}`;
+    // Duplicate-dispatch guard — see CREATE_DOUBLE_DISPATCH_MS (debug
+    // new-session-shows-old-messages residual #3).
+    const current = get();
+    if (
+      lastMint.id !== '' &&
+      current.activeSessionId === lastMint.id &&
+      Date.now() - lastMint.at < CREATE_DOUBLE_DISPATCH_MS
+    ) {
+      return lastMint.id;
+    }
+    // Unique mint — see mintSessionId (debug new-session-shows-old-messages).
+    const id = mintSessionId();
+    const name = `会话 ${sessionNameCounter++}`;
+    lastMint = { id, at: Date.now() };
     set((state) => ({
       sessions: [...state.sessions, { id, name, createdAt: Date.now() }],
       activeSessionId: id,
@@ -813,8 +859,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       if (remaining.length > 0) {
         active = remaining[0].id;
       } else {
-        const freshId = `local-session-${sessionCounter++}`;
-        const freshName = `会话 ${sessionCounter - 1}`;
+        // Unique mint — see mintSessionId (debug
+        // new-session-shows-old-messages). Tracked in lastMint so a
+        // createSession racing this fallback mint within the duplicate-
+        // dispatch window is swallowed too.
+        const freshId = mintSessionId();
+        const freshName = `会话 ${sessionNameCounter++}`;
+        lastMint = { id: freshId, at: Date.now() };
         remaining.push({ id: freshId, name: freshName, createdAt: Date.now() });
         active = freshId;
       }

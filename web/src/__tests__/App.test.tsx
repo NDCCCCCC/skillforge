@@ -35,6 +35,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import App from '../App';
 import { useAppStore } from '../store/app-store';
+import { MockChatTransport } from '../transport/MockChatTransport';
+import { RealChatTransport } from '../transport/RealChatTransport';
 import type { SessionHistoryResponse } from '../lib/chat-restore';
 
 afterEach(() => {
@@ -72,6 +74,11 @@ describe('App integration (Plan 05-08 CR-01 + D5-IA-03)', () => {
 
   it('(2) sends a message in session A and the bubble renders', async () => {
     render(<App />);
+    // Boot-hydration send gate (debug residual #2): the composer is
+    // disabled until the mount roster fetch settles.
+    await waitFor(() => {
+      expect(screen.getByTestId('chat-input-textarea')).toBeEnabled();
+    });
     const textarea = screen.getByTestId('chat-input-textarea');
     fireEvent.change(textarea, { target: { value: 'SENTINEL-MESSAGE-A' } });
     fireEvent.click(screen.getByTestId('chat-input-send'));
@@ -87,6 +94,11 @@ describe('App integration (Plan 05-08 CR-01 + D5-IA-03)', () => {
     '(3) retains session A messages after switching to session B and back (CR-01)',
     async () => {
       render(<App />);
+      // Boot-hydration send gate (debug residual #2): the composer is
+      // disabled until the mount roster fetch settles.
+      await waitFor(() => {
+        expect(screen.getByTestId('chat-input-textarea')).toBeEnabled();
+      });
 
       // Send the sentinel in session A.
       const textarea = screen.getByTestId('chat-input-textarea');
@@ -227,6 +239,84 @@ describe('App restore (Plan 10-03 MEM-02 / D10-D1 + D10-D2)', () => {
   });
 });
 
+// Debug session new-session-shows-old-messages (2026-09-11) — root
+// cause #2: App's historySnapshot was NOT keyed by session id, so on a
+// session switch the PREVIOUS session's snapshot was injected into the
+// newly-active session's empty Chat (and appliedSessionsRef then
+// blocked the new session's own history). Regression: after creating a
+// new session, the previous session's restored history must NOT leak
+// into the new session's message surface.
+describe('App new-session stale-history guard (debug new-session-shows-old-messages)', () => {
+  it('creating a new session shows an empty surface, not the previous session history', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (typeof url === 'string' && url.includes('/api/sessions')) {
+          return {
+            ok: true,
+            json: async () => ({
+              sessions: [{ id: 'sess-old', title: '旧会话', last_active_ms: 2_000 }],
+            }),
+          } as unknown as Response;
+        }
+        if (typeof url === 'string' && url.includes('/history')) {
+          const isOld = url.includes('/session/sess-old/');
+          return {
+            ok: true,
+            json: async () =>
+              isOld
+                ? {
+                    messages: [
+                      { role: 'user', content: 'OLD-SESSION-MESSAGE', ts: 1700000000000 },
+                    ],
+                    skill_id: '',
+                  }
+                : { messages: [], skill_id: '' },
+          } as unknown as Response;
+        }
+        return {
+          ok: true,
+          json: async () => [],
+        } as unknown as Response;
+      }),
+    );
+
+    render(<App />);
+
+    // Roster hydrate flips the active session to sess-old and its
+    // restored history renders.
+    await waitFor(() => {
+      expect(useAppStore.getState().activeSessionId).toBe('sess-old');
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/OLD-SESSION-MESSAGE/)).toBeInTheDocument();
+    });
+
+    // 新建会话 — the minted session has NO server history.
+    await act(async () => {
+      useAppStore.getState().createSession();
+    });
+    const freshId = useAppStore.getState().activeSessionId;
+    expect(freshId.startsWith('local-session-')).toBe(true);
+    expect(freshId).not.toBe('sess-old');
+
+    // The old session's messages must leave the surface and never come
+    // back (the fresh session's own history is empty).
+    await waitFor(
+      () => {
+        expect(screen.queryByText(/OLD-SESSION-MESSAGE/)).toBeNull();
+      },
+      { timeout: 2000 },
+    );
+    // Settle past the fresh session's history fetch resolution — the
+    // stale snapshot must not be injected late.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(screen.queryByText(/OLD-SESSION-MESSAGE/)).toBeNull();
+  });
+});
+
 describe('App session hydration (session-management phase)', () => {
   it('TestApp_HydrateRoster — GET /api/sessions replaces the local roster + activates newest', async () => {
     vi.stubGlobal(
@@ -281,5 +371,80 @@ describe('App session hydration (session-management phase)', () => {
     const s = useAppStore.getState();
     expect(s.activeSessionId).toBe('session-init');
     expect(s.sessions).toEqual([{ id: 'session-init', name: '会话 1', createdAt: 0 }]);
+  });
+});
+
+// Debug session new-session-shows-old-messages residual #2 (2026-09-12)
+// — the boot-hydration send gate. Until the mount GET /api/sessions
+// settles, activeSessionId still points at the throwaway boot session
+// and currentSkillId is still null (the BE would resolve its default
+// Skill). A send in that window (suggested-prompt click, fast composer
+// Enter) created a "ghost" roster-top session. The composer and the
+// suggested prompts must stay DISABLED until the fetch settles (with a
+// fail-open bound), and no transport send may occur while gated.
+describe('App boot-hydration send gate (debug residual #2)', () => {
+  it('disables composer + prompts until the roster fetch settles, then enables sends', async () => {
+    let resolveRoster: (() => void) | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: unknown) => {
+        const u = String(url);
+        if (u.includes('/api/sessions')) {
+          return new Promise((resolve) => {
+            resolveRoster = () =>
+              resolve({
+                ok: true,
+                json: async () => ({ sessions: [] }),
+              } as unknown as Response);
+          });
+        }
+        if (u.includes('/history')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ messages: [], skill_id: '' }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: true, json: async () => [] } as unknown as Response);
+      }),
+    );
+    // The app's transport is Mock OR Real depending on .env.local's
+    // VITE_REAL_BACKEND (vitest loads it) — spy BOTH so the assertion
+    // is env-independent.
+    const mockSpy = vi.spyOn(MockChatTransport.prototype, 'sendMessages');
+    const realSpy = vi.spyOn(RealChatTransport.prototype, 'sendMessages');
+    const sendCount = () => mockSpy.mock.calls.length + realSpy.mock.calls.length;
+
+    render(<App />);
+
+    // Gate closed: the composer and the empty-state suggested prompts
+    // are disabled while the roster fetch is in flight.
+    expect(screen.getByTestId('chat-input-textarea')).toBeDisabled();
+    expect(screen.getByTestId('chat-input-send')).toBeDisabled();
+    expect(screen.getByTestId('chat-suggested-0')).toBeDisabled();
+
+    // Clicks during the gate must not reach the transport.
+    fireEvent.click(screen.getByTestId('chat-suggested-0'));
+    fireEvent.click(screen.getByTestId('chat-input-send'));
+    expect(sendCount()).toBe(0);
+
+    // The roster fetch settles (empty roster — hydrate no-ops) and the
+    // gate opens.
+    await act(async () => {
+      resolveRoster?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('chat-input-textarea')).toBeEnabled();
+    });
+    expect(screen.getByTestId('chat-suggested-0')).toBeEnabled();
+
+    // A send after the gate opens reaches the transport.
+    fireEvent.change(screen.getByTestId('chat-input-textarea'), {
+      target: { value: 'AFTER-GATE-SEND' },
+    });
+    fireEvent.click(screen.getByTestId('chat-input-send'));
+    await waitFor(() => {
+      expect(sendCount()).toBeGreaterThan(0);
+    });
   });
 });
