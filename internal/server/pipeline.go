@@ -237,6 +237,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, true)
 	}
 
+	emitSubprogress(c, wire.SubprogressStep{Step: "retrieve", Tier: tiers[0]})
 	emitSubprogress(c, wire.SubprogressStep{Step: "found_candidates", Tier: tiers[0], Count: len(chunks)})
 
 	if maxScore(chunks) < retrievalScoreThreshold {
