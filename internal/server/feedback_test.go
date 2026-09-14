@@ -813,15 +813,32 @@ func TestFeedbackDispositionAdminGate(t *testing.T) {
 		// The executable version of the CHECK ORDER review comment: any
 		// handler that grows a pre-gate statement (a nil check, a param
 		// read that 503s first) breaks this grep before it can leak.
+		// Phase 35 (REPEATHTTP-02) extracted the gate BODY into requireAdmin
+		// (audit.go), which writes the standard 403 envelope itself — the
+		// gate CALL is still the handler's first executable statement, and
+		// the second grep below pins requireAdmin's own first statement to
+		// the isAdminRequest token check, so the contract "the token is
+		// verified before any side effect or store access" survives the
+		// extraction intact.
 		src, err := os.ReadFile("feedback.go")
 		require.NoError(t, err)
 		for _, fn := range []string{"feedbackReviewHandler", "feedbackDispositionHandler", "feedbackMetricsHandler"} {
 			// Only COMMENT lines may sit between the brace and the gate —
-			// any executable statement before isAdminRequest breaks the lock.
-			gate := regexp.MustCompile(`func \(s \*Deps\) ` + fn + `\([^)]*\) \{\s*\n(?:\s*//[^\n]*\n)*\s*if !isAdminRequest\(c\) \{`)
+			// any executable statement before requireAdmin breaks the lock.
+			gate := regexp.MustCompile(`func \(s \*Deps\) ` + fn + `\([^)]*\) \{\s*\n(?:\s*//[^\n]*\n)*\s*if !requireAdmin\(c\) \{`)
 			assert.Regexp(t, gate, string(src),
 				"%s must run the admin-token gate as its FIRST statement", fn)
 		}
+
+		// The gate is only as strong as the helper it calls: requireAdmin
+		// must consult isAdminRequest BEFORE writing anything — its 403
+		// envelope is the only side effect, and it is unreachable while
+		// the token check is the first statement.
+		auditSrc, err := os.ReadFile("audit.go")
+		require.NoError(t, err)
+		helper := regexp.MustCompile(`func requireAdmin\([^)]*\) bool \{\s*\n(?:\s*//[^\n]*\n)*\s*if isAdminRequest\(c\) \{`)
+		assert.Regexp(t, helper, string(auditSrc),
+			"requireAdmin must run the isAdminRequest token check before writing the 403")
 	})
 
 	t.Run("no token with a live store is a 403 and a zero-write", func(t *testing.T) {
