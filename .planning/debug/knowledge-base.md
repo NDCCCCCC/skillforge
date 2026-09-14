@@ -28,3 +28,12 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Files changed:** internal/server/feedback_test.go
 - **Pattern:** helper 抽取类重构（gate/body 模板 → helper）必须同步 grep 所有锚定函数体字面量的结构断言（源序 lock、regex 注入类测试）；否则行为测试照常 PASS，只有结构断言 born-fail。
 ---
+
+## sql-guides-needs-input — 纯 personal-role KB 的 Skill 被确定性降级为 needs_input@0.89 + 零引用 + compliance 条款卡片
+- **Date:** 2026-09-15
+- **Error patterns:** needs_input 置信度 89%, compliance_status "needs_input", citations 空, review_required true, 条款修订建议卡片, confidence 0.89, ApplyDowngrade, confidence floor, sql-guides, personal role KB, citableChunksByID, grounding closure empty, 引用被剥空
+- **Root cause:** 双层。主因：VerdictPipeline 的 grounding closure 单一来源 citableChunksByID 只收 authority-role chunk（KBM-03 / 8cbe270 citability gate），而 sql-guides 是首个 reads 全为 personal-role 的 Skill（394c2be）→ 闭包恒为空 → ApplyDowngrade 确定性把任何带引用的 verdict 改写为 needs_input@0.89（恰好 ConfidenceFloor 封顶）+ review_required=true + 引用全部剥空 + compliance_status="needs_input"（提示词禁止 LLM 输出、仅 ApplyDowngrade 传播规则会写入的指纹）。设计缺口：26-06 只对 agent 路径落地"空闭包→干净拒绝"（T-26-06-3 accepted），默认 VerdictPipeline 从未处理该形态，落在最差中间态（检索+生成全跑完 → 静默降级）。次因（级联）：emitRedline 闸门只看 Status==needs_input，无 Skill 维度 → 对 operational 型 Skill 也发 compliance 条款改写卡片。
+- **Fix:** operational-mode 判定（pipeline.go 新增 readsCitableTier + allChunksByID）：Skill 的 resolved reads 不含 citable-role KB 时 grounding closure = 本次检索全部 chunk；含 authority tier 的 Skill 闭包保持 citable-only 字节不变（KBM-03 护城河不动）。emitRedline +operational bool 参数，首行闸门（先于 cost-control gate）：operational Skill 永不触发条款改写。混合读取 Skill 行为不变（TestVerdictPipeline_MixedReadsKeepCitableOnlyClosure 锁定）。
+- **Files changed:** internal/server/pipeline.go, internal/server/redline.go, internal/server/redline_test.go, internal/server/pipeline_operational_test.go
+- **Pattern:** 诊断指纹——audit verdict 里 confidence 恰好等于 ConfidenceFloor（0.89）+ citations=[] + compliance_status 取到提示词禁止的值，三者同时出现 = ApplyDowngrade 确定性降级，非 LLM 行为；用对照组 audit 行（正常 needs_input 是 0.95+有引用）即可区分。环境陷阱：Hertz netpoll 监听 [::]:8888 时不调度 IPv4-mapped 127.0.0.1 连接，curl 探针必须打 http://[::1]:8888 或 localhost，否则零字节挂起。
+---
