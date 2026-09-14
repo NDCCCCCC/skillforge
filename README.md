@@ -243,6 +243,8 @@ Adding a KB is a registry operation, not a code change:
 
 An unregistered directory is skipped with a WARN and an audit row. See ["Add a Knowledge Base"](CONTRIBUTING.md#add-a-knowledge-base) for the full walkthrough.
 
+KB directories may freely contain subdirectories for visual / git organization — the indexer walks recursively (Phase 999.2). Subdirectory paths are preserved in chunk `source` and the graph display, but Milvus retrieval is by tier slug (not by path). Use subdirectories to manage large corpora; use a new KB slug to encode semantic separation. See [CONTRIBUTING.md](CONTRIBUTING.md#organize-a-kb-with-subdirectories-phase-9992).
+
 ---
 
 ## Document Upload (Phase 27)

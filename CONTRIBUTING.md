@@ -248,6 +248,27 @@ and only authority-role chunks can become citations.
 
 On the next `cmd/server` startup, the indexer scans the registered `knowledge/<slug>/` directories, chunks the file, embeds it via BGE-M3, and writes it to Milvus with the `tier` metadata. No code change needed. A directory with no registry entry is skipped with a WARN and an audit row (KBM-06).
 
+### Organize a KB with Subdirectories (Phase 999.2)
+
+KB directories may freely use subdirectories for visual / git / organizational grouping — the indexer walks recursively. Subdirectory structure is preserved in the chunk `source` field (and in `/api/knowledge/graph` filenames) but does **not** influence retrieval: Milvus filtering is by tier slug, not path.
+
+```text
+knowledge/sql-guides/
+├── 汽车险/011_三责险，车损险保费保额__part01.md
+├── 财务对账/013_财务-政保入账清单.md
+├── 操作手册/006_高斯数据库存储过程和定时任务__part01.md
+└── 其他/037_个客综合市场部数据看板__part01.md
+```
+
+Rules of thumb:
+- Walk is **recursive** (Phase 999.2): `*/*.md` at any depth is found.
+- **Hidden directories** (entries whose name starts with `.`) are skipped — `.git`, `.vscode`, `.DS_Store`, etc. are never corpus.
+- File extension must be `.md` (case sensitive). `.MD` / `.markdown` are ignored.
+- Sorted lexicographically per directory for deterministic chunk-ID assignment across restarts.
+- Skill `reads:` patterns still only match the **slug** (e.g. `sql-guides/**`), not subdirectories — open a new KB if you need a Skill that reads only part of one.
+
+Use subdirectories when a KB has many files and you want git diffs / FE navigation / operator review to be manageable. Do **not** use them to encode semantic metadata — that belongs in YAML frontmatter (`owner`, `effective_from`, `tags`) or in a separate KB slug.
+
 ### KNOW-02: Unknown Tiers Are Rejected
 
 `internal/knowledge.validateTiers` rejects any document whose tier is not an **active** registry slug — `fail-closed` default-deny. The same fail-closed posture applies at Skill load time: a `reads` pattern naming an unknown or deactivated slug fails validation with the active slug list in the error message.

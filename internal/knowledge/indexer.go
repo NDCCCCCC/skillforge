@@ -42,9 +42,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"gopkg.in/yaml.v3"
@@ -65,6 +67,44 @@ import (
 // can split the doc manually. (No automatic splitter exists; whether to
 // build one is an open backlog decision.)
 const maxDocBytes = 4000
+
+// walkTier recursively discovers all .md files under absDir and returns
+// their absolute paths sorted in lexical (relative-path) order. Hidden
+// directories (entries whose name starts with '.') are skipped — they are
+// never intended as KB content (e.g. .git). Non-markdown files are skipped.
+//
+// Phase 999.2 addition: KB directories may now contain subdirectories for
+// visual / git organization; the walker descends transparently. Chunk
+// source paths preserve the subdirectory via filepath.Rel(knowledgeDir,
+// path) downstream, so no other indexer logic needs to change.
+//
+// Exposed as a package-private helper so walk_test.go can exercise the
+// walker in isolation without going through the full Index pipeline
+// (which requires a live Embedder, an IndexAuditFn, and a Registry).
+func walkTier(absDir string) ([]string, error) {
+	var matches []string
+	err := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != absDir && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		matches = append(matches, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(matches)
+	return matches, nil
+}
 
 // Index walks the ACTIVE knowledge/<slug>/ directories under knowledgeDir
 // (via WalkRegisteredDirs), embeds the body of each .md file via the
@@ -151,14 +191,12 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 	for _, slug := range dirs {
 		tierAbs := filepath.Join(knowledgeDir, slug)
 
-		// Glob *.md in this slug dir. Files are processed in lexical order
-		// for deterministic nextID assignment across re-runs.
-		pattern := filepath.Join(tierAbs, "*.md")
-		matches, err := filepath.Glob(pattern)
+		// Recursively walk *.md under this slug dir (Phase 999.2 — see
+		// walkTier for the recursion / hidden-dir / sort-stability contract).
+		matches, err := walkTier(tierAbs)
 		if err != nil {
-			return fmt.Errorf("knowledge.Index: glob %s: %w", pattern, err)
+			return fmt.Errorf("knowledge.Index: walk %s: %w", tierAbs, err)
 		}
-		sort.Strings(matches)
 
 		for _, path := range matches {
 			raw, err := os.ReadFile(path)

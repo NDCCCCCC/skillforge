@@ -377,12 +377,24 @@ func docNodeID(tier, source string) string {
 	return tier + "::" + source
 }
 
-// filenameOf returns the basename of the source path (e.g.
-// "authority/travel_expense.md" → "travel_expense.md"). Falls back to
-// the full source if no slash is present.
+// filenameOf renders a Milvus source path for graph display. It strips
+// the tier slug prefix (the first '/'-separated segment, which always
+// equals the tier name) but PRESERVES any subdirectory path so that the
+// graph visually reflects Phase 999.2 nested KB organization.
+//
+// Examples:
+//   "sql-guides/汽车险/004_xxx.md"                  -> "汽车险/004_xxx.md"
+//   "sql-guides/财务对账/013_财务-政保入账清单.md"   -> "财务对账/013_财务-政保入账清单.md"
+//   "authority/annual_leave.md"                     -> "annual_leave.md"
+//   "plain.md"                                      -> "plain.md"
+//
+// Pre-999.2 this function used strings.LastIndex, which returned only the
+// basename and silently flattened any nested KB organization — that
+// undermined the whole point of walker recursion. Using strings.Cut (first
+// slash) keeps subdirectory prefixes visible in the graph.
 func filenameOf(source string) string {
-	if i := strings.LastIndex(source, "/"); i >= 0 {
-		return source[i+1:]
+	if _, rest, ok := strings.Cut(source, "/"); ok {
+		return rest
 	}
 	return source
 }
