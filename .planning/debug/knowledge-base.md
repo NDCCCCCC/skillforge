@@ -4,6 +4,14 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 
 ---
 
+## hitl-approval-snapshot-500 — approval approve 端点 500 "audit write failed"（27db382 重构丢失 snapshot fallback）
+- **Date:** 2026-09-14
+- **Error patterns:** "skill snapshot required (D11-C2)", "audit write failed", TestDataDecisionExtensionNoNewChunkTypes, executeApprovalResume, MarkApproved, manifestForSkill, activeSkillSnapshot, zero snapshot, Loader-less Deps, approval 500
+- **Root cause:** 重构回归 —— 27db382（refactor 33-04）把 approvalPostHandler 拆成 decode/validate/execute/drain 四 helper 时，executeApprovalResume 为 audit 决议行重新推导 snapshot：`activeSkillSnapshot(manifestForSkill(s.Loader, row.SkillID))`，丢了拆分前 expire-check 块中 `rowManifest == nil → s.ActiveManifest` 的 fallback（当时注释明确覆盖「tests construct Deps without a Loader」场景）。测试 Deps 不设 Loader（repo 全部 server 测试既定模式）→ manifestForSkill 返回 nil → 零值 snapshot → AuditWriter.MarkApproved 的 D11-C2 snap.IsZero() 守卫拒绝 → 500。对外文案 "audit write failed" 是下游症状：同一请求 expire-check 用 fallback 判 fresh、audit 写入用零值 snapshot 被拒，两个推导不一致。plan 侧同构测试绿是因为 plan_api.go:365-377 一直有该 fallback。**教训：同一 handler 内同一 manifest 有多处推导时，拆分重构极易在某处丢 fallback 链 —— 新增推导点必须镜像既有 fallback 链，或收敛为单一 helper。**
+- **Fix:** executeApprovalResume 把 fallback 推导上移到 audit 写入之前（snap 从 fallback 后的 manifest 推导，与 expire-check / plan_api.go / 拆分前一致），删除 resume 处重复推导。不改对外错误文案（无测试断言 "audit write failed" 字面量；入口闸门保证 ActiveManifest 非 nil，补 fallback 后零值 snapshot 路径不可达）。commit 93570d7（+14/-5）。
+- **Files changed:** internal/server/approval_api.go
+---
+
 ## subprogress-missing-retrieve — VerdictPipeline 缺失 retrieve subprogress chunk（4-chunk 契约回归）
 - **Date:** 2026-09-14
 - **Error patterns:** data-subprogress, retrieve chunk missing, "should have 4 item(s), but has 3", TestVerdictPipeline_SubprogressOrder, emitSubprogress, subprogress order, [{found_candidates authority 2} {generate 0} {self_verify 0}]
