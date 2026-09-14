@@ -469,7 +469,20 @@ func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext,
 		frozenArgs = row.FrozenArgs
 	}
 	writer := s.auditWriterOrDefault()
-	snap := activeSkillSnapshot(manifestForSkill(s.Loader, row.SkillID))
+	// Per-row manifest + D11-C2 snapshot resolved ONCE with the SAME
+	// fallback chain the expire-check above used (per-row manifest →
+	// global ActiveManifest — tests construct Deps without a Loader;
+	// production wires both). Without the fallback a Loader-less Deps
+	// (or an unregistered row.SkillID) yields a ZERO snapshot and the
+	// fail-closed writer refuses the resolution row with "skill
+	// snapshot required (D11-C2)" — a 500 masked as "audit write
+	// failed" right after this same request deemed the row fresh.
+	// Regression from 27db382 (refactor 33-04); mirrors plan_api.go.
+	resumeManifest := manifestForSkill(s.Loader, row.SkillID)
+	if resumeManifest == nil {
+		resumeManifest = s.ActiveManifest
+	}
+	snap := activeSkillSnapshot(resumeManifest)
 
 	switch decision.Decision {
 	case "deny":
@@ -498,10 +511,6 @@ func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext,
 	if !ok {
 		c.JSON(http.StatusInternalServerError, map[string]string{"error": "store does not support checkpoints"})
 		return nil, fmt.Errorf("checkpoint store unavailable")
-	}
-	resumeManifest := manifestForSkill(s.Loader, row.SkillID)
-	if resumeManifest == nil {
-		resumeManifest = s.ActiveManifest
 	}
 	cpID := agent.RunnerCheckPointID(sessionID)
 
