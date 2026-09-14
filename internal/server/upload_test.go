@@ -773,8 +773,12 @@ func TestIsBackendUnavailable_ContextCanceled(t *testing.T) {
 }
 
 func TestIsBackendUnavailable_NetErrorTimeout(t *testing.T) {
-	// Simulate a generic net.Error with Timeout() == true
-	err := &net.OpError{Op: "read", Err: fmt.Errorf("i/o timeout")}
+	// Simulate a generic net.Error with Timeout() == true: a socket read that
+	// hit its deadline. net.OpError.Timeout() delegates to the wrapped error's
+	// Timeout() method, so the inner error must implement Timeout() bool —
+	// os.ErrDeadlineExceeded does; a plain fmt.Errorf does not (it yields
+	// Timeout() == false and this classification would correctly reject it).
+	err := &net.OpError{Op: "read", Err: os.ErrDeadlineExceeded}
 	assert.True(t, isBackendUnavailable(err))
 }
 
