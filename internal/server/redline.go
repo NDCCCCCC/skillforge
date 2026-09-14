@@ -84,6 +84,13 @@ Rules:
 // immediately.
 //
 // The gate's trigger set is:
+//   - operational=true — NEVER fires. An operational skill (reads
+//     resolve to no authority-role KB, e.g. sql-guides at role=personal)
+//     structurally cannot emit a compliance verdict, so a policy-gap
+//     clause rewrite is undefined for it. Before this condition existed
+//     the pass fired on Status==needs_input for ANY skill and rendered a
+//     compliance rewrite card on SQL 取数 answers
+//     (sql-guides-needs-input, 2026-09-14; audit row 443 session).
 //   - Status=DowngradeStatus ("needs_input") — platform-level downgrade
 //     (grounding failure → GroundingChecker downgraded).
 //   - ComplianceStatus=NonCompliantStatus ("non_compliant") —
@@ -112,7 +119,13 @@ Rules:
 // accepted — the LLM is advisory; the user reviews the rewrite. T-5-28
 // (tampering via dangerouslySetInnerHTML) is FE-side: RedlineCard
 // renders text only.
-func (s *Deps) emitRedline(ctx context.Context, c *app.RequestContext, v verdict.Verdict, chunksByID map[string]string) error {
+func (s *Deps) emitRedline(ctx context.Context, c *app.RequestContext, v verdict.Verdict, chunksByID map[string]string, operational bool) error {
+	// OPERATIONAL GATE — FIRST LINE, ahead of the cost-control gate. An
+	// operational skill returns nil BEFORE any LLM call AND BEFORE any
+	// wire emit. TestRedline_OperationalSkillNeverFires pins count == 0.
+	if operational {
+		return nil
+	}
 	// D5-14 COST-CONTROL GATE — FIRST LINE. A compliant verdict returns nil
 	// BEFORE any LLM call AND BEFORE any wire emit. Moving this gate
 	// after the LLM call is a TRUST-BOUNDARY BREACH (cost blowup).

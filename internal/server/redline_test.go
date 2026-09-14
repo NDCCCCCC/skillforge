@@ -94,10 +94,10 @@ func (m *stubChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatMo
 var _ model.ToolCallingChatModel = (*stubChatModel)(nil)
 
 // runRedlinePass spins a Hertz server with a single POST route that
-// invokes emitRedline directly with the supplied verdict + chunksByID.
-// Returns the parsed SSE frames so the test can assert on the data-redline
-// chunk shape.
-func runRedlinePass(t *testing.T, deps *Deps, v verdict.Verdict, chunksByID map[string]string) []wire.UIMessageChunk {
+// invokes emitRedline directly with the supplied verdict + chunksByID +
+// operational flag. Returns the parsed SSE frames so the test can assert
+// on the data-redline chunk shape.
+func runRedlinePass(t *testing.T, deps *Deps, v verdict.Verdict, chunksByID map[string]string, operational bool) []wire.UIMessageChunk {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err, "bind dynamic listener")
@@ -105,7 +105,7 @@ func runRedlinePass(t *testing.T, deps *Deps, v verdict.Verdict, chunksByID map[
 
 	h := server.Default(server.WithListener(ln))
 	h.POST("/api/test/redline", func(ctx context.Context, c *app.RequestContext) {
-		_ = deps.emitRedline(ctx, c, v, chunksByID)
+		_ = deps.emitRedline(ctx, c, v, chunksByID, operational)
 	})
 
 	errCh := make(chan error, 1)
@@ -173,7 +173,7 @@ func TestRedline_Conditional(t *testing.T) {
 			},
 			ComplianceStatus: verdict.CompliantStatus,
 		}
-		frames := runRedlinePass(t, deps, v, map[string]string{"1": "权威条款"})
+		frames := runRedlinePass(t, deps, v, map[string]string{"1": "权威条款"}, false)
 
 		assert.Equal(t, 0, stubCM.callCount(),
 			"D5-14 cost control: compliant verdict MUST NOT call ChatModel.Generate")
@@ -194,7 +194,7 @@ func TestRedline_Conditional(t *testing.T) {
 			},
 			ComplianceStatus: verdict.NonCompliantStatus,
 		}
-		frames := runRedlinePass(t, deps, v, map[string]string{"1": "违规条款"})
+		frames := runRedlinePass(t, deps, v, map[string]string{"1": "违规条款"}, false)
 
 		assert.Equal(t, 1, stubCM.callCount(),
 			"non_compliant verdict MUST call ChatModel.Generate exactly once")
@@ -214,7 +214,7 @@ func TestRedline_Conditional(t *testing.T) {
 				{ChunkID: "1", Span: "不完整条款", Tier: "权威"},
 			},
 		}
-		frames := runRedlinePass(t, deps, v, map[string]string{"1": "不完整条款"})
+		frames := runRedlinePass(t, deps, v, map[string]string{"1": "不完整条款"}, false)
 
 		assert.Equal(t, 1, stubCM.callCount(),
 			"needs_input verdict MUST call ChatModel.Generate exactly once (D5-14)")
@@ -243,7 +243,7 @@ func TestRedline_PayloadStructure(t *testing.T) {
 		ComplianceStatus: verdict.NonCompliantStatus,
 	}
 
-	frames := runRedlinePass(t, deps, v, map[string]string{"1": "违规原文"})
+	frames := runRedlinePass(t, deps, v, map[string]string{"1": "违规原文"}, false)
 	payload, frame, ok := findRedlineFrame(frames)
 	require.True(t, ok, "expected a data-redline chunk")
 	assert.Equal(t, "data-redline", frame.Type,
@@ -271,7 +271,7 @@ func TestRedline_LLMErrorIsNonFatal(t *testing.T) {
 		},
 	}
 
-	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"})
+	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"}, false)
 	_, _, ok := findRedlineFrame(frames)
 	assert.False(t, ok, "LLM error → no data-redline chunk (verdict stands)")
 }
@@ -292,7 +292,7 @@ func TestRedline_LLMReturnsInvalidJSON(t *testing.T) {
 		},
 	}
 
-	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"})
+	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"}, false)
 	_, _, ok := findRedlineFrame(frames)
 	assert.False(t, ok, "invalid JSON → no data-redline chunk (parse fails; verdict stands)")
 }
@@ -320,8 +320,36 @@ func TestRedline_LLMReturnsFencedJSON(t *testing.T) {
 		},
 	}
 
-	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"})
+	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"}, false)
 	payload, _, ok := findRedlineFrame(frames)
 	require.True(t, ok, "fenced JSON MUST be unwrapped and emitted (strip the ```json fence via llm.ExtractJSON)")
 	assert.Equal(t, "建议改写", payload.ProposedRewrite, "payload fields parse after fence strip")
+}
+
+// TestRedline_OperationalSkillNeverFires — the operational-mode gate
+// (sql-guides-needs-input, 2026-09-14). A skill whose reads resolve to
+// no authority-role KB can never emit a compliance verdict, so a
+// policy-gap clause rewrite is undefined for it. Even a verdict that
+// would fire in evidence mode (Status=needs_input, the strongest
+// trigger) must make ZERO LLM calls and emit NO data-redline chunk when
+// operational=true. Live failure this locks: the pass fired on
+// Status==needs_input for ANY skill and rendered an English compliance
+// rewrite card on a SQL 取数 answer.
+func TestRedline_OperationalSkillNeverFires(t *testing.T) {
+	stubCM := &stubChatModel{cannedJSON: `{"originalClause":"原条款","proposedRewrite":"建议改写","rationale":"修改理由"}`}
+	deps := newTestDeps()
+	deps.ChatModel = stubCM
+	v := verdict.Verdict{
+		Status:     verdict.DowngradeStatus,
+		Confidence: 0.6,
+		Citations: []verdict.Citation{
+			{ChunkID: "1", Span: "x", Tier: "sql-guides"},
+		},
+	}
+
+	frames := runRedlinePass(t, deps, v, map[string]string{"1": "x"}, true)
+	assert.Equal(t, 0, stubCM.callCount(),
+		"operational skill MUST make ZERO redline LLM calls (gate precedes the cost-control gate)")
+	_, _, ok := findRedlineFrame(frames)
+	assert.False(t, ok, "operational skill MUST NOT emit a data-redline chunk")
 }
