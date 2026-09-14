@@ -33,3 +33,8 @@ knowledge_bases:
     role: draft
     description: 未生效；永不进检索，仅入库预览；不可引用
     retrieval_enabled: true   # draft 角色的检索闸由 Role 语义强制关闭（角色优先于条目开关）
+  - slug: sql-guides
+    display_name: SQL 取数操作手册
+    role: personal
+    description: 团队 SQL/取数操作笔记；非合规引用源（不参与 verdict 引用）；需 skills/sql-guides 显式 reads 才可检索
+    retrieval_enabled: true
