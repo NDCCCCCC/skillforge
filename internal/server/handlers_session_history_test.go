@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -471,12 +472,12 @@ func readFile(path string) ([]byte, error) {
 // scripted to fail (the degradation fixture).
 type countedVotedVerdictStore struct {
 	store.Store
-	calls int
+	calls atomic.Int64
 	err   error
 }
 
 func (s *countedVotedVerdictStore) VotedVerdictsBySession(ctx context.Context, sessionID string) (map[int64]string, error) {
-	s.calls++
+	s.calls.Add(1)
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -588,7 +589,7 @@ func TestSessionHistoryAPI_TurnIDAndVotedVerdictEcho(t *testing.T) {
 		"another session's vote must never appear in this session's echo")
 
 	// D-29-03: exactly ONE batch VotedVerdictsBySession call per request.
-	assert.Equal(t, 1, counted.calls,
+	assert.Equal(t, int64(1), counted.calls.Load(),
 		"handler must issue exactly one VotedVerdictsBySession batch query (no per-row queries)")
 }
 
