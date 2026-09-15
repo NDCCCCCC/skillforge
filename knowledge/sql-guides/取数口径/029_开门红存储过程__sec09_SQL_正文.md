@@ -1,0 +1,94 @@
+---
+title: 开门红存储过程
+source_idx: 029
+section: SQL / 正文
+---
+
+## SQL / 正文
+
+```sql
+insert into FR_FGS_KMH_2025_TMP_WANG_004 
+SELECT a.*
+       , nvl(b.rzbf_notax,0) as qbrzbf
+FROM FR_FGS_KMH_2025_TMP_WANG_003 a
+left join (SELECT policy_no,endorsement_no,SUM(rzbf_notax)as rzbf_notax
+           FROM FR_FGS_KMH_2025_TMP_WANG_001
+           GROUP BY policy_no,endorsement_no) b on a.policy_no = b.policy_no and a.endorsement_no = b.endorsement_no;
+
+--起保未入账清单
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_TMP_WANG_005';
+insert into FR_FGS_KMH_2025_TMP_WANG_005 
+SELECT a.*,(a.qbbf-a.qbrzbf) as qbwrz FROM FR_FGS_KMH_2025_TMP_WANG_004 a;
+
+--入账含起保未入账清单
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_TMP_WANG_006';
+insert into FR_FGS_KMH_2025_TMP_WANG_006
+SELECT a.policy_no,a.endorsement_no,a.rzbf_notax bf FROM FR_FGS_KMH_2025_TMP_WANG_001 a
+UNION ALL
+SELECT a.policy_no,a.endorsement_no,a.qbwrz bf FROM FR_FGS_KMH_2025_TMP_WANG_005 a;
+
+
+--入账含起保未入账清单
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_TMP_WANG_007';
+insert into FR_FGS_KMH_2025_TMP_WANG_007 
+SELECT a.policy_no,a.endorsement_no,a.bf,'车险' AS xzdl
+       , b.product_code
+       , b.product_name
+       , b.new_channel AS qd
+       , '' AS kq_new
+       , '个客' as class_name
+       , b.usage_name_b
+       , '0' is_regular
+       , '' label_name
+       , '' AS xzhdlmc
+       , c.department_group_name
+FROM FR_FGS_KMH_2025_TMP_WANG_006 a
+join etl_policy b on a.policy_no = b.policy_no
+left join ids_wuh.bmz_t c on b.department_group_code_original = c.department_group_code
+UNION ALL
+
+SELECT a.policy_no,a.endorsement_no,a.bf,b.xzdl
+       , b.product_code
+       , b.product_name
+       , b.eight_channel AS qd
+       , b.kq_new
+       /*, (CASE WHEN b.xzdl = '农险' then '三农'
+              ELSE
+                CASE WHEN b.kq_new in( '涉车业务','个人客户','0') then '个客'
+                ELSE '团客' END
+         END) class_name*/
+       , (CASE WHEN b.xzdl = '农险' then '三农'
+              ELSE
+                CASE WHEN (b.kq_new not in ('个人客户','涉车业务','涉农业务','0')  or b.product_code in ('11062300','23D59800','23V19800','11063400','23XK9800','23ZB9800','23C49800')) and b.product_code<>'23C19800' then '团客'
+                ELSE '个客' END
+         END) as class_name
+       , '' usage_name_b
+       , (case when b.product_code='13093300' then '0'
+                 when b.kq_new='政保健康' then '0'
+                 when b.kq_new='政保客户' and b.xzhdlmc like '%健康%' then '0'
+                 else '1' END) is_regular
+       , (case when b.xzhdlmc in ('十二、信用保险','十三、保证保险') then '无' else
+             case when b.policy_no in (select policy_no from ybqd_list1)
+                then '银保'
+                  when b.agent_code='09D' and b.product_code<>'13093300'
+                    then '内化'
+                      when b.agent_code='EWC'
+                        then '邮政'
+                          when b.product_code in (select product_code from FGS_FR_INFOWIN_product_list)
+                            then '专属险种'
+                                else case when b.kq_new='渠道管理部'  then
+                                  case WHEN b.selling_channel_name in ('团代产（寿险推荐）','个代产（寿险推荐）','寿险推荐')
+                                    then '无'
+                                      else '渠道管理部标签' end
+                                      else '无' end
+                                        end
+                                        END) label_name
+       , b.xzhdlmc
+       , c.department_group_name
+FROM FR_FGS_KMH_2025_TMP_WANG_006 a
+join etl_nonauto_policy_t b on a.policy_no = b.policy_no
+left join ids_wuh.bmz_t c on b.department_gtoup_code_orial = c.department_group_code;
+
+
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_TMP_WANG_008';
+```

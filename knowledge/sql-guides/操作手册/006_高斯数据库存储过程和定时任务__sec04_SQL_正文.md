@@ -1,0 +1,61 @@
+---
+title: 高斯数据库存储过程和定时任务
+source_idx: 006
+section: SQL / 正文
+---
+
+## SQL / 正文
+
+```sql
+    left join daily_premium ss on ss.branch_headquarters=dm.branch_headquarters
+    CROSS JOIN current_date_cte c
+    WHERE d.sign_year = EXTRACT(YEAR FROM c.calc_date)
+    GROUP BY dm.branch_headquarters, d.sign_year, ss.daily_premium
+),
+-- 计算去年全年保费，用于同比，按分公司本部分组
+yearly_premium_last_year AS (
+    SELECT 
+        dm.branch_headquarters,
+        d.sign_year,
+--        to_char(extract(YEAR FROM calc_date)),
+        SUM(d.bf)/10000 AS yearly_premium_ly
+    FROM date_converted d
+    JOIN department_mapping dm ON d.department_group_name = dm.department_group_name
+    CROSS JOIN current_date_cte c
+    WHERE d.sign_year =EXTRACT(YEAR FROM c.calc_date)-1 and d.dd <= TO_CHAR(c.calc_date- INTERVAL '1 year', 'YYYYMMDD')
+    GROUP BY dm.branch_headquarters, d.sign_year
+--    ,to_char(extract(YEAR FROM calc_date))
+),
+-- 获取所有分公司本部（用于左连接，确保所有分公司本部都显示）
+all_branches AS (
+    SELECT DISTINCT branch_headquarters
+    FROM department_mapping
+)
+-- 最终结果整合，按分公司本部分组并排序
+SELECT 
+    ab.branch_headquarters AS department_group_name,
+--    (SELECT calc_date FROM current_date_cte) AS statistic_date,
+    COALESCE(dp.daily_premium, 0) AS daily_premium,
+    COALESCE(mpc.monthly_premium, 0) AS monthly_premium,
+    COALESCE(mpl.monthly_premium_ly, 0) AS monthly_premium_ly,
+    -- 计算当月同比，处理除零错误
+    CASE 
+        WHEN COALESCE(mpl.monthly_premium_ly, 0) = 0 THEN NULL 
+        ELSE ROUND((COALESCE(mpc.monthly_premium, 0) - COALESCE(mpl.monthly_premium_ly, 0)) / COALESCE(mpl.monthly_premium_ly, 0), 3)
+    END AS monthly_premium_yoy_rate,
+    COALESCE(ypc.yearly_premium, 0) AS yearly_premium,
+    COALESCE(ypl.yearly_premium_ly, 0) AS yearly_premium_ly,
+    -- 计算当年同比，处理除零错误
+    CASE 
+        WHEN COALESCE(ypl.yearly_premium_ly, 0) = 0 THEN NULL 
+        ELSE ROUND((COALESCE(ypc.yearly_premium, 0) - COALESCE(ypl.yearly_premium_ly, 0)) / COALESCE(ypl.yearly_premium_ly, 0), 3)
+    END AS yearly_premium_yoy_rate
+FROM all_branches ab
+LEFT JOIN daily_premium dp ON ab.branch_headquarters = dp.branch_headquarters
+LEFT JOIN monthly_premium_current mpc ON ab.branch_headquarters = mpc.branch_headquarters
+LEFT JOIN monthly_premium_last_year mpl ON ab.branch_headquarters = mpl.branch_headquarters
+LEFT JOIN yearly_premium_current ypc ON ab.branch_headquarters = ypc.branch_headquarters
+LEFT JOIN yearly_premium_last_year ypl ON ab.branch_headquarters = ypl.branch_headquarters
+-- 按分公司本部名称排序
+ORDER BY ab.branch_headquarters;
+```

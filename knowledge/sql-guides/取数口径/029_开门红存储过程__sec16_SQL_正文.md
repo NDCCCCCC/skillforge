@@ -1,0 +1,114 @@
+---
+title: 开门红存储过程
+source_idx: 029
+section: SQL / 正文
+---
+
+## SQL / 正文
+
+```sql
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_sign_tmp_004';
+insert into FR_FGS_KMH_2025_sign_tmp_004 
+SELECT policy_no FROM FR_FGS_KMH_2025_sign_tmp_003 a WHERE xzdl = '非车险'
+AND
+( (lines = '渠道管理部' AND label_name <> '专属险种' AND xzhdlmc='十、短期健康保险') OR (lines = '企业客户部' AND xzhdlmc='十、短期健康保险') );
+
+
+
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_sign_tmp_005';
+
+insert into FR_FGS_KMH_2025_sign_tmp_005 
+SELECT * FROM FR_FGS_KMH_2025_sign_tmp_003 a WHERE not exists (SELECT * FROM FR_FGS_KMH_2025_sign_tmp_004 b where a.policy_no=b.policy_no)
+UNION ALL
+SELECT a.policy_no,
+       a.bf * 0.5,
+       a.xzdl,
+       a.product_code,
+       a.product_name,
+       a.qd,
+       a.kq_new,
+       a.class_name,
+       a.usage_name_b,
+       a.is_regular,
+       a.label_name,
+       a.xzhdlmc,
+       a.department_group_name,
+       a.bmz,
+       a.lines
+FROM FR_FGS_KMH_2025_sign_tmp_003 a WHERE exists (SELECT * FROM FR_FGS_KMH_2025_sign_tmp_004 b where a.policy_no=b.policy_no)
+UNION ALL
+SELECT a.policy_no,
+       a.bf * 0.5,
+       a.xzdl,
+       a.product_code,
+       a.product_name,
+       a.qd,
+       a.kq_new,
+       a.class_name,
+       a.usage_name_b,
+       a.is_regular,
+       a.label_name,
+       a.xzhdlmc,
+       a.department_group_name,
+       a.bmz,
+       '健康险事业部' AS lines
+FROM FR_FGS_KMH_2025_sign_tmp_003 a WHERE exists (SELECT * FROM FR_FGS_KMH_2025_sign_tmp_004 b where a.policy_no=b.policy_no);
+
+
+delete from FR_FGS_KMH_2025_sign_result_wy where workdate=to_char(sysdate-1,'yyyymmdd');
+insert into FR_FGS_KMH_2025_sign_result_wy 
+with v_case as(
+SELECT bmz,'汇总' ,SUM(bf) as bf,'全险种' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 GROUP BY bmz
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'个客整体' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE class_name = '个客' GROUP BY bmz
+UNION ALL
+
+SELECT bmz,'汇总' ,SUM(bf) as bf,'车险整体' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE xzdl = '车险' GROUP BY bmz
+UNION ALL
+SELECT bmz,qd ,SUM(bf) as bf,'车险分渠道' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE xzdl = '车险' GROUP BY bmz,qd
+UNION ALL
+SELECT bmz,usage_name_b ,SUM(bf) as bf,'车险分使用性质' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE xzdl = '车险' GROUP BY bmz,usage_name_b
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'个非车' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE class_name = '个客' AND xzdl <> '车险' GROUP BY bmz
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'团客整体' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE xzdl <> '车险' AND class_name = '团客' GROUP BY bmz
+UNION ALL
+SELECT bmz,lines ,SUM(bf) as bf,'团客分条线' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE xzdl <> '车险' AND class_name = '团客' GROUP BY bmz,lines
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'团客常规业务' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE xzdl <> '车险' AND class_name = '团客' AND IS_REGULAR = '1' GROUP BY bmz
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'三农整体' 
+FROM FR_FGS_KMH_2025_sign_tmp_005 WHERE xzdl = '农险' GROUP BY bmz
+)
+select a.*,to_char(sysdate-1,'yyyymmdd') workdate
+from v_case a;
+
+
+
+
+/*
+ * 当月结果
+*/
+--签单清单
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_sign_tmp_001';
+insert into FR_FGS_KMH_2025_sign_tmp_001 
+SELECT a.policy_no
+            , SUM(bf) bf
+FROM etl_policy_request_issue_t a
+WHERE a.business_date BETWEEN to_char(date_trunc('month',sysdate-1),'yyyymmdd')
+                             AND to_char(SYSDATE-1,'yyyymmdd')
+GROUP BY a.policy_no;
+
+
+--匹配字段
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_sign_tmp_002';
+```

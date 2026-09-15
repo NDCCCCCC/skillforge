@@ -1,0 +1,67 @@
+---
+title: 公司业务部、武汉中支部门组部门科室等信息更新
+source_idx: 001
+section: SQL / 正文
+---
+
+## SQL / 正文
+
+```sql
+create table tmp_ycb_003 as
+select s.*,t.department_group_name 部门组名称,t.department_name 部门名称     ,t.section_office_name 科室名称,t.xzhdlmc 险种分类,t.kq_new 客群,t.tb_name 投保人名称,t.bb_name 被保人名称
+from (
+--已决清单
+select b.claim_folder_no 立案号,b.policy_no 保单号,b.posted_date 赔付日期,
+     b.coinsurance_rate 共保比例,b.department_group_code 部门组代码,
+    b.department_code 部门代码,b.section_office_code 科室代码,
+ sum(b.insured_object_indemnity+b.investigation_fee
+           +b.investigation_agent_fee+b.inside_investigation_agent_fee
+           +b.claim_audit_fee+b.salvage_fee+b.other_fee
+           -b.salvage_recovery) 赔付金额
+from ids_wuh.nonAUTO_CF_INDEMNITY_T b --非车险
+where b.department_code in ('050','06X','C19')
+and b.posted_date BETWEEN to_date('2026-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') AND to_date('2026-06-30 23:59:59','yyyy-mm-dd hh24:mi:ss')
+group by b.claim_folder_no,b.policy_no,b.posted_date,b.coinsurance_rate,b.department_group_code,b.department_code,b.section_office_code
+) s
+left join etl_nonauto_policy_t t on s.保单号=t.policy_no
+union all
+select s.*,t.department_group_name 部门组名称,t.department_name 部门名称,t.section_office_name 科室名称,t.product_name 险种分类,null 客群,t.tb_name 投保人名称,t.bb_name 被保人名称
+from 
+(
+select b.claim_folder_no 立案号,b.policy_no 保单号,b.posted_date 赔付日期,
+     0 共保比例,b.department_group_code 部门组代码,
+    b.department_code 部门代码,b.section_office_code 科室代码,
+ sum(b.insured_object_indemnity+b.investigation_fee
+           +b.investigation_agent_fee+b.inside_investigation_agent_fee
+           +b.claim_audit_fee+b.salvage_fee+b.other_fee
+           -b.salvage_recovery) 赔付金额
+from ids_wuh.AUTO_CF_INDEMNITY_T b --车险
+where b.department_code in ('050','06X','C19')
+and b.posted_date BETWEEN to_date('2026-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') AND to_date('2026-06-30 23:59:59','yyyy-mm-dd hh24:mi:ss')
+group by b.claim_folder_no,b.policy_no,b.posted_date,b.department_group_code,b.department_code,b.section_office_code
+) s
+left join etl_policy t on s.保单号=t.policy_no
+;
+update tmp_ycb_003 a
+set 部门组名称='业务'
+   ,部门代码=(select b.department_code from tmp_ycb_001 b where a.保单号=b.policy_no)
+   ,科室代码=(select b.section_office_code from tmp_ycb_001 b where a.保单号=b.policy_no)
+   ;
+
+update tmp_ycb_003 a
+set 部门组名称='业务'
+   ,部门名称=(select b.department_name from ids_wuh.bm_t b where a.部门代码=b.department_code)
+   ,科室名称=(select b.section_office_name from ids_wuh.ks_t b where a.科室代码=b.section_office_code)
+   ;
+   
+
+select * from tmp_ycb_003 where 赔付金额<>0;
+
+---给一批单子，去匹配其入账保费、已决、未决、逐单未到期等字段
+drop table tmp_ycb_001;
+create table tmp_ycb_001 as 
+select policy_no,department_code,section_office_code from ids_wuh.auto_agreement_t t where t.department_code in ('050','06X','C19')
+union all
+select policy_no,department_code,section_office_code from ids_wuh.nonauto_agreement_t t where t.department_code in ('050','06X','C19')
+drop table tmp_ycb_002;
+```

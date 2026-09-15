@@ -1,0 +1,73 @@
+---
+title: sql示例
+source_idx: 042
+section: SQL / 正文
+---
+
+## SQL / 正文
+
+```sql
+  `jzgcyqxbzqqxy` decimal(15,2) DEFAULT NULL COMMENT '(建筑工程一切险)保证期期限(月)',
+  `jzgcyqxbxqq` datetime DEFAULT NULL COMMENT '(建筑工程一切险)保险起期',
+  `jzgcyqxbxzq` datetime DEFAULT NULL COMMENT '(建筑工程一切险)保险止期',
+  `jzgcyqxbzqx` decimal(15,2) DEFAULT NULL COMMENT '(建筑工程一切险)保证期限',
+  `jzgcyqxgcdz` text COMMENT '(建筑工程一切险)工程地址',
+  `jzgcyqxmp` text COMMENT '(建筑工程一切险)免赔',
+  `jzgcyqxfjtk` text COMMENT '(建筑工程一切险)附加条款',
+  `jzgcyqxtbyd` text COMMENT '(建筑工程一切险)特别约定',
+  `jqshbxqq` datetime DEFAULT NULL COMMENT '(机器损坏)保险起期',
+  `jqshbxzq` datetime DEFAULT NULL COMMENT '(机器损坏)保险止期',
+  `jqshbxqx` bigint(15) DEFAULT NULL COMMENT '(机器损坏)保险期限',
+  `jqshbddz` text COMMENT '(机器损坏)标的地址',
+  `jqshbzmxjbf` text COMMENT '(机器损坏)保障明细及保费',
+  `jqshmp` text COMMENT '(机器损坏)免赔',
+  `jqshfjtk` text COMMENT '(机器损坏)附加条款',
+  `jqshtbydkx` text COMMENT '(机器损坏)特别约定-可选',
+  `jqshtbydzdy` text COMMENT '(机器损坏)特别约定-自定义',
+  `ccxbxqq` datetime DEFAULT NULL COMMENT '(财产险)保险起期',
+  `ccxbxzq` datetime DEFAULT NULL COMMENT '(财产险)保险止期',
+  `ccxbxqx` bigint(15) DEFAULT NULL COMMENT '(财产险)保险期限',
+  `ccxbddz` text COMMENT '(财产险)标的地址',
+  `ccxbzmxjbf` text COMMENT '(财产险)保障明细及保费',
+  `ccxmp` text COMMENT '(财产险)免赔',
+  `ccxfjtk` text COMMENT '(财产险)附加条款',
+  `ccxtbyd` text COMMENT '(财产险)特别约定',
+  `ccxfkbgbh` varchar(300) DEFAULT NULL COMMENT '(财产险)风勘报告编号',
+  `ccxhjbe` decimal(15,2) DEFAULT NULL COMMENT '(财产险)合计保额',
+  `ccxhjbf` decimal(15,2) DEFAULT NULL COMMENT '(财产险)合计保费',
+  `jgxbxqq` datetime DEFAULT NULL COMMENT '(建工险)保险起期',
+  `jgxbxzq` datetime DEFAULT NULL COMMENT '(建工险)保险止期',
+  `jgxbxqx` varchar(15) DEFAULT NULL COMMENT '(建工险)保险期限',
+  `jgxbzmxjbf` text COMMENT '(建工险)保障明细及保费',
+  `jgxmp` text COMMENT '(建工险)免赔',
+  `jgxtbydkx` text COMMENT '(建工险)特别约定-可选',
+  `jgxtbydzdy` text COMMENT '(建工险)特别约定-自定义',
+  `ywxbxqq` datetime DEFAULT NULL COMMENT '(意外险)保险起期',
+  `ywxbxzq` datetime DEFAULT NULL COMMENT '(意外险)保险止期',
+  `ywxbxqx` bigint(15) DEFAULT NULL COMMENT '(意外险)保险期限',
+  `ywxbzmxjbf` text COMMENT '(意外险)保障明细及保费',
+  `ywxmp` text COMMENT '(意外险)免赔',
+  `ywxtbydkx` text COMMENT '(意外险)特别约定-可选',
+  `ywxtbydzdy` text COMMENT '(意外险)特别约定-自定义',
+  `ywxhjbf` decimal(15,2) DEFAULT NULL COMMENT '(意外险)合计保费',
+  `cpzrbxqq` datetime DEFAULT NULL COMMENT '(产品责任)保险起期',
+  `cpzrbxzq` datetime DEFAULT NULL COMMENT '(产品责任)保险止期',
+  `cpzrbxqx` varchar(15) DEFAULT NULL COMMENT '(产品责任)保险期限',
+  `cpzrbzmxjbf` text COMMENT '(产品责任)保障明细及保费',
+  `cpzrmp` text COMMENT '(产品责任)免赔',
+  `cpzrfjtkkx` text COMMENT '(产品责任)附加条款-可选',
+  `cpzrfjtkzdy` text COMMENT '(产品责任)附加条款-自定义',
+  `cpzrtbydkx` text COMMENT '(产品责任)特别约定-可选',
+  `cpzrtbydzdy` text COMMENT '(产品责任)特别约定-自定义',
+  `dlkybxqq` datetime DEFAULT NULL COMMENT '(道路客运)保险起期',
+  `dlkybxzq` datetime DEFAULT NULL COMMENT '(道路客运)保险止期',
+  `dlkybxqx` bigint(15) DEFAULT NULL COMMENT '(道
+
+```
+
+路客运)保险期限',
+
+  `dlkybzmxjbf` text COMMENT '(道路客运)保障明细及保费',
+  `dlkymp` text COMMENT '(道路客运)免赔',
+  `dlkyfjtkkx` text COMMENT '(道路客运)附加条款-可选',
+  `dlkyfjtkzdy` text COMMENT '(道路客运)附加条款-自定义',

@@ -1,0 +1,75 @@
+---
+title: 开门红存储过程
+source_idx: 029
+section: SQL / 正文
+---
+
+## SQL / 正文
+
+```sql
+insert into FR_FGS_KMH_2025_TMP_WANG_Result_dj 
+with v_case as(
+
+SELECT bmz,'汇总' ,SUM(bf) as bf,'全险种'
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 GROUP BY bmz
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'个客整体'
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE class_name = '个客' GROUP BY bmz
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'车险整体'
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE xzdl = '车险' GROUP BY bmz
+UNION ALL
+SELECT bmz,qd ,SUM(bf) as bf,'车险分渠道'
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE xzdl = '车险' GROUP BY bmz,qd
+UNION ALL
+SELECT bmz,usage_name_b ,SUM(bf) as bf,'车险分使用性质' 
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE xzdl = '车险' GROUP BY bmz,usage_name_b
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'个非车' 
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE class_name = '个客' AND xzdl <> '车险' GROUP BY bmz
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'团客整体' 
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE xzdl <> '车险' AND class_name = '团客' GROUP BY bmz
+UNION ALL
+SELECT bmz,lines ,SUM(bf) as bf,'团客分条线' 
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE xzdl <> '车险' AND class_name = '团客' GROUP BY bmz,lines
+UNION ALL
+SELECT bmz,'汇总' ,SUM(bf) as bf,'团客常规业务'
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE xzdl <> '车险' AND class_name = '团客' AND IS_REGULAR = '1' GROUP BY bmz
+UNION ALL
+SELECT bmz,'汇总',SUM(bf) as bf,'三农整体'
+FROM FR_FGS_KMH_2025_TMP_WANG_0010 WHERE xzdl = '农险' GROUP BY bmz
+)
+select a.*,to_char(sysdate-1,'yyyymmdd') workdate
+from v_case a;
+
+
+
+end$$
+/签单口径
+CREATE OR REPLACE FUNCTION wuh_dw.fr_fgs_kmh_2025_sign()
+ RETURNS void
+ LANGUAGE plpgsql
+ NOT FENCED NOT SHIPPABLE
+AS $$ DECLARE 
+
+begin
+
+
+/*
+ * 往月结果
+*/
+--签单清单
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_sign_tmp_001';
+insert into FR_FGS_KMH_2025_sign_tmp_001 
+SELECT a.policy_no
+            , SUM(bf) bf
+FROM etl_policy_request_issue_t a
+WHERE a.business_date BETWEEN to_char(date_trunc('month',sysdate-1-INTERVAL '1' YEAR),'yyyymmdd')
+                             AND to_char(sysdate-1-INTERVAL '1' YEAR,'yyyymmdd')
+GROUP BY a.policy_no;
+
+
+--匹配字段
+EXECUTE IMMEDIATE 'truncate table FR_FGS_KMH_2025_sign_tmp_002';
+```
