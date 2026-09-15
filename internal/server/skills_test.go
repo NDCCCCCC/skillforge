@@ -55,6 +55,11 @@ func testKBReg() kb.Registry {
 		{Slug: "historical", DisplayName: "历史", Role: kb.RoleHistorical, RetrievalEnabled: true},
 		{Slug: "personal", DisplayName: "个人", Role: kb.RolePersonal, RetrievalEnabled: true},
 		{Slug: "draft", DisplayName: "草稿", Role: kb.RoleDraft, RetrievalEnabled: true},
+		// Mirrors knowledge_bases.yaml: the real skills/ tree ships
+		// sql-guides (Phase 20 ad-hoc integration), so any test that
+		// Loader.Scans the on-disk skills dir against this stub registry
+		// must know the slug or Skill validation fails closed.
+		{Slug: "sql-guides", DisplayName: "SQL 取数操作手册", Role: kb.RolePersonal, RetrievalEnabled: true},
 	})
 }
 
