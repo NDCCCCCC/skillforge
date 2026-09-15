@@ -127,9 +127,19 @@ func walkTier(absDir string) ([]string, error) {
 //   - Files exceeding maxDocBytes are logged via fmt.Fprintf(os.Stderr, ...)
 //     and SKIPPED (not silently truncated — the operator needs to see it).
 //   - Documents are assigned numeric IDs starting at 1, monotonically
-//     increasing across slug dirs. Re-running on the same collection
-//     inserts duplicates (Milvus INT64 PK is not auto-deduped); the
-//     startup hook may want to drop+recreate for clean re-seeds.
+//     increasing across slug dirs. The seed is a REPLACE of the tiers in
+//     the batch, not an append: before the insert, seedDocs purges every
+//     row of each seeded tier (milvus.DeleteTierRows). This matters because
+//     Milvus does not deduplicate Insert by primary key — the historical
+//     bare-insert behavior let every reseed of a reshaped corpus stack
+//     another generation of rows into the collection (vector Search ranked
+//     all of them: stale root-path citations + duplicate content; Query
+//     collapsed duplicate PKs so the graph masked the bloat). Re-running on
+//     an unchanged corpus is therefore idempotent at the row level, and a
+//     corpus reshape converges to exactly the on-disk row set on the next
+//     boot. A RecreateCollection re-seed (SKILLFORGE_MILVUS_RECREATE)
+//     remains the door for cross-tier resets (slug vocabulary changes,
+//     deleted tiers).
 //   - KNOW-02 (Phase 3): docs with empty or unknown Tier are rejected at
 //     insert time before any embedder / backend call (see validateTiers).
 //     The valid tier values are the registry's ACTIVE slugs
@@ -378,17 +388,36 @@ func validateEffective(docs []retriever.Document) error {
 	return nil
 }
 
-// seedDocs is the package-internal indirection point that tests use to
-// intercept the Milvus write without standing up a real Milvus server.
+// seedDocs replaces the tiers covered by docs with exactly the docs slice:
+// a tier-scoped purge (milvus.DeleteTierRows) of every tier present in the
+// batch, followed by the insert. This is the seam that makes the boot-time
+// reseed a REPLACE instead of an append — Milvus does not deduplicate
+// Insert by primary key, so the previous bare-insert behavior let stale
+// generations accumulate as searchable entities (2931 physical rows for a
+// 256-row corpus; Query collapsed duplicate PKs so the graph looked clean
+// while vector Search ranked every generation — the sql-guides
+// duplicate-citations bug).
 //
-// Production behavior (indexSeedHook == nil): delegate to
-// milvus.SeedDocuments verbatim.
+// The purge scope is tiersOf(docs) — only tiers this call is about to
+// rewrite — so a purge can never wipe a tier that is not immediately
+// reseeded. The incremental upload path (server upload.go) bypasses this
+// seam entirely (IndexerBackend.Insert → SeedDocuments bare) precisely
+// because it writes a SUBSET of a tier.
+//
+// Failure posture: the purge runs only after every doc is embedded and
+// validated (validateTiers / validateEffective precede this call). If the
+// purge succeeds and the insert fails, the affected tiers are empty until
+// the next successful reseed — retrieval refuses with no_authorized_source
+// (D-09 default-deny), the same posture as an embed outage, and the same
+// trade the Mongo backend makes with its Reset-before-every-seed.
 //
 // Test behavior (indexSeedHook != nil): invoke the hook with the docs;
 // the hook returns the error that production would have surfaced. This
 // keeps the production code path identical to the test path (no mock
 // branch inside Index) while letting unit tests assert on the docs
-// that would have been inserted.
+// that would have been inserted. The purge itself is tested at the milvus
+// layer against a mock client (delete_tier_rows_test.go) and the tier-set
+// derivation purely (seedTiers below).
 var indexSeedHook func(ctx context.Context, mc client.Client, cfg milvus.Config, docs []retriever.Document) error
 
 // indexAuditHook is the audit callback Index hands to WalkRegisteredDirs
@@ -415,7 +444,31 @@ func seedDocs(ctx context.Context, mc client.Client, cfg milvus.Config, docs []r
 	if indexSeedHook != nil {
 		return indexSeedHook(ctx, mc, cfg, docs)
 	}
+	if err := milvus.DeleteTierRows(ctx, mc, cfg, seedTiers(docs)); err != nil {
+		return fmt.Errorf("purge stale tier rows: %w", err)
+	}
 	return milvus.SeedDocuments(ctx, mc, cfg, docs)
+}
+
+// seedTiers returns the deduplicated, ascending set of tier values carried
+// by docs — the purge scope for seedDocs. Ascending order keeps the Milvus
+// delete expression deterministic (a byte-stable expr for the same doc set,
+// which keeps audit trails and mock assertions comparable across runs).
+//
+// Pure function (no I/O); empty docs → empty slice (seedDocs callers never
+// reach it with an empty batch — Index returns early — but the derivation
+// is unit-tested on its own).
+func seedTiers(docs []retriever.Document) []string {
+	seen := make(map[string]bool, len(docs))
+	out := make([]string, 0, 4)
+	for _, d := range docs {
+		if !seen[d.Tier] {
+			seen[d.Tier] = true
+			out = append(out, d.Tier)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // splitFrontmatter extracts the markdown body and the raw YAML

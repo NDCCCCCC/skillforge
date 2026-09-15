@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -114,8 +115,17 @@ func createIndexIfAbsent(ctx context.Context, mc client.Client, cfg Config) erro
 // into memory (Milvus requires LoadCollection before Search). Idempotent at
 // the collection level via EnsureCollection; NOT idempotent at the row level
 // — re-running inserts duplicate IDs (Milvus INT64 PK is not auto-deduped
-// unless upsert is used). The spike drops+recreates between runs by deleting
-// the collection manually if a clean seed is needed.
+// unless upsert is used; each Insert's rows become additional entities, and
+// Search ranks ALL of them while Query collapses duplicate PKs to the newest
+// row — the exact asymmetry behind the sql-guides duplicate-citations bug).
+//
+// Because of that, full-corpus reseeds must NOT call this function bare:
+// knowledge.Index routes through the tier-scoped DeleteTierRows purge first
+// (see knowledge.seedDocs). The incremental upload path (server upload.go →
+// IndexerBackend.Insert) intentionally keeps calling this function bare —
+// it writes a SUBSET of a tier and must never delete the tier's other rows.
+// The spike drops+recreates between runs by deleting the collection manually
+// if a clean seed is needed.
 func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []retriever.Document) error {
 	cfg = cfg.withDefaults()
 	if len(docs) == 0 {
@@ -165,6 +175,78 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 	// blocks until the collection is in memory.
 	if err := mc.LoadCollection(ctx, cfg.CollectionName, false); err != nil {
 		return fmt.Errorf("LoadCollection: %w", err)
+	}
+	return nil
+}
+
+// DeleteTierRows deletes EVERY row whose tier is one of tiers — the
+// tier-scoped purge that makes a boot-time reseed a replace instead of an
+// append. Milvus does not deduplicate Insert by primary key: every reseed
+// of an evolving corpus (file added, path reshaped, file removed) leaves
+// the previous generation's rows behind as searchable entities. The
+// live failure this fixes (sql-guides-duplicate-content, 2026-09-15): the
+// skillforge_knowledge collection held 2931 physical rows for a 256-row
+// corpus — Query collapsed duplicate PKs (so /api/knowledge/graph looked
+// clean) while vector Search ranked all generations, returning the same
+// content twice with stale root-path source citations.
+//
+// Scope rule — the caller must pass exactly the tiers it is about to
+// (re)seed: the delete is intentionally narrow so a purge can never wipe
+// a tier that is not immediately rewritten by the caller's next Insert.
+// Deactivated bases' rows are NOT touched here (KBM-02
+// deactivate-never-destroy; the graph builder skips their stale rows by
+// design). A tier whose corpus has been deleted from disk entirely
+// (zero files left) produces no docs and therefore no purge — its stale
+// rows persist until a RecreateCollection re-seed; that edge is out of
+// scope for this fix.
+//
+// Callers:
+//   - knowledge.Index (the full-corpus boot reseed) — via the seedDocs
+//     seam, ALWAYS paired with a following SeedDocuments of the same tiers.
+//   - NOBODY else. The incremental upload path (server upload.go →
+//     IndexerBackend.Insert → SeedDocuments) writes a subset of a tier and
+//     must NOT purge the tier's remaining rows.
+//
+// Mechanics: a missing collection is a no-op (fresh deploy has nothing to
+// purge); DML requires a loaded collection, so LoadCollection runs before
+// the Delete; the flush afterwards makes the tombstones durable and visible
+// immediately instead of at the next flush boundary (the paired
+// SeedDocuments flushes again after its Insert — the delete is ordered
+// before the insert by Milvus MVCC timestamps either way).
+func DeleteTierRows(ctx context.Context, mc client.Client, cfg Config, tiers []string) error {
+	cfg = cfg.withDefaults()
+	if len(tiers) == 0 {
+		return nil
+	}
+	if mc == nil {
+		// Unreachable in production (knowledge.Index rejects a nil client
+		// unless the test seed hook is bound) — mirrors how SeedDocuments
+		// would nil-deref loudly. Kept as an explicit guard so the error
+		// names the purge, not a panic frame.
+		return errors.New("milvus.DeleteTierRows: milvus client is nil")
+	}
+	has, err := mc.HasCollection(ctx, cfg.CollectionName)
+	if err != nil {
+		return fmt.Errorf("milvus.DeleteTierRows: HasCollection(%q): %w", cfg.CollectionName, err)
+	}
+	if !has {
+		// Fresh deploy: the collection does not exist yet, so there is
+		// nothing stale to purge (the paired SeedDocuments will create it).
+		return nil
+	}
+	if err := mc.LoadCollection(ctx, cfg.CollectionName, false); err != nil {
+		return fmt.Errorf("milvus.DeleteTierRows: LoadCollection(%q): %w", cfg.CollectionName, err)
+	}
+	quoted := make([]string, len(tiers))
+	for i, t := range tiers {
+		quoted[i] = strconv.Quote(t)
+	}
+	expr := "tier in [" + strings.Join(quoted, ",") + "]"
+	if err := mc.Delete(ctx, cfg.CollectionName, "", expr); err != nil {
+		return fmt.Errorf("milvus.DeleteTierRows: Delete(%q, %s): %w", cfg.CollectionName, expr, err)
+	}
+	if err := mc.Flush(ctx, cfg.CollectionName, false); err != nil {
+		return fmt.Errorf("milvus.DeleteTierRows: Flush(%q): %w", cfg.CollectionName, err)
 	}
 	return nil
 }
