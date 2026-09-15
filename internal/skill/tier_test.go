@@ -37,17 +37,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// baselineKBEntries returns the four baseline knowledge bases of the
-// controlled seed (knowledge_bases.yaml), all active. Only Slug / Role /
-// RetrievalEnabled participate in reads resolution; the display names
-// are ASCII here so this package stays free of CN data-layer literals
-// (the structural gate greps the test files too).
+// baselineKBEntries returns the knowledge bases of the controlled seed
+// (knowledge_bases.yaml): the four baseline KBs plus sql-guides, all
+// active. Only Slug / Role / RetrievalEnabled participate in reads
+// resolution; the display names are ASCII here so this package stays free
+// of CN data-layer literals (the structural gate greps the test files
+// too). sql-guides must be listed because the shipped skills/ tree carries
+// skills/sql-guides/SKILL.md declaring reads over it — any test that scans
+// the on-disk skills dir against this stub (TestExistingSkillsLoad) would
+// otherwise fail the KBM-04 registry lookup.
 func baselineKBEntries() []kb.Entry {
 	return []kb.Entry{
 		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
 		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
 		{Slug: "personal", DisplayName: "Personal", Role: kb.RolePersonal, RetrievalEnabled: true},
 		{Slug: "draft", DisplayName: "Draft", Role: kb.RoleDraft, RetrievalEnabled: true},
+		{Slug: "sql-guides", DisplayName: "SQL Guides", Role: kb.RolePersonal, RetrievalEnabled: true},
 	}
 }
 
@@ -90,7 +95,6 @@ func TestResolveTiersDelegatesToRegistry(t *testing.T) {
 		{"deep_path", []string{"authority/policies/anti-bribery/v3"}, []string{"authority"}},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := ResolveTiers(tc.in, reg)
 			require.NoError(t, err)

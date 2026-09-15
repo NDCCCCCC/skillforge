@@ -25,6 +25,10 @@ var (
 	seedDisplayNameHistorical = string([]rune{0x5386, 0x53F2})
 	seedDisplayNamePersonal   = string([]rune{0x4E2A, 0x4EBA})
 	seedDisplayNameDraft      = string([]rune{0x8349, 0x7A3F})
+	// seedDisplayNameSQLGuides follows the same zero-CN-literal convention
+	// as the four baseline names: rune codepoints, so the controlled seed
+	// file stays the single home of the bytes.
+	seedDisplayNameSQLGuides = "SQL " + string([]rune{0x53D6, 0x6570, 0x64CD, 0x4F5C, 0x624B, 0x518C})
 )
 
 // seedBody builds a controlled seed file body from raw entry lines.
@@ -48,17 +52,20 @@ func writeSeedFile(t *testing.T, body string) string {
 }
 
 // TestLoadSeedFileGolden loads the in-repo controlled seed and locks the
-// four baseline entries: slugs, display names (byte-exact — the refusal
-// copy and frozen evals depend on them), one role per entry in the closed
-// vocabulary, every switch on, and load timestamps set.
+// declared entries in declaration order: the four baseline KBs (slugs and
+// display names byte-exact — the refusal copy and frozen evals depend on
+// them) plus the sql-guides base registered later (Phase 20 ad-hoc). Every
+// entry carries a role from the closed vocabulary, its switch on, and load
+// timestamps set. Adding or reordering a seed entry is a deliberate,
+// reviewed change — this test failing is the change detector saying so.
 func TestLoadSeedFileGolden(t *testing.T) {
 	entries, err := LoadSeedFile(repoSeedPath)
 	if err != nil {
 		t.Fatalf("LoadSeedFile(%s) = %v, want nil", repoSeedPath, err)
 	}
-	wantSlugs := []string{"authority", "historical", "personal", "draft"}
-	wantDisplay := []string{seedDisplayNameAuthority, seedDisplayNameHistorical, seedDisplayNamePersonal, seedDisplayNameDraft}
-	wantRoles := []Role{RoleAuthority, RoleHistorical, RolePersonal, RoleDraft}
+	wantSlugs := []string{"authority", "historical", "personal", "draft", "sql-guides"}
+	wantDisplay := []string{seedDisplayNameAuthority, seedDisplayNameHistorical, seedDisplayNamePersonal, seedDisplayNameDraft, seedDisplayNameSQLGuides}
+	wantRoles := []Role{RoleAuthority, RoleHistorical, RolePersonal, RoleDraft, RolePersonal}
 	if len(entries) != len(wantSlugs) {
 		t.Fatalf("seed returned %d entries, want %d: %+v", len(entries), len(wantSlugs), entries)
 	}
@@ -198,11 +205,11 @@ func TestLoadSeedRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSeedRegistry = %v, want nil", err)
 	}
-	wantActive := []string{"authority", "draft", "historical", "personal"}
+	wantActive := []string{"authority", "draft", "historical", "personal", "sql-guides"}
 	if got := reg.ActiveSlugs(); !equalStrings(got, wantActive) {
 		t.Errorf("ActiveSlugs() = %v, want %v", got, wantActive)
 	}
-	wantEligible := []string{"authority", "historical", "personal"}
+	wantEligible := []string{"authority", "historical", "personal", "sql-guides"}
 	if got := reg.RetrievalEligible(); !equalStrings(got, wantEligible) {
 		t.Errorf("RetrievalEligible() = %v, want %v (draft excluded by role)", got, wantEligible)
 	}
