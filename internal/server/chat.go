@@ -528,6 +528,21 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 // not emit a data-turn frame for id 0. Plan 29-04 owns the actual
 // data-turn emission window; this plan only opens the return channel.
 func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason string, meta *store.AuditMeta) (int64, error) {
+	return s.writeAuditAndTurnWithContent(ctx, sessionID, skillID, query, v, skillNameForHash, refusalReason, "", meta)
+}
+
+// writeAuditAndTurnWithContent is writeAuditAndTurn with an explicit
+// assistant turn-content override (greeting-refusal-gate, 2026-09-14).
+// The default derivation stores the verdict JSON on the verdict path
+// and the bare refusal-reason CODE on every refusal path — both render
+// correctly through the restore handler's verdict/refusal branches.
+// The chitchat gate is the one shape that fits neither: its assistant
+// content is the reply TEXT, so the restore handler's plain-prose
+// branch renders it verbatim instead of RenderRefusal's refusal
+// sentence. assistantContent == "" keeps the default derivation, so
+// writeAuditAndTurn's behavior is byte-identical for every existing
+// caller.
+func (s *Deps) writeAuditAndTurnWithContent(ctx context.Context, sessionID, skillID, query string, v verdict.Verdict, skillNameForHash, refusalReason, assistantContent string, meta *store.AuditMeta) (int64, error) {
 	if s.Store == nil {
 		return 0, nil
 	}
@@ -568,9 +583,11 @@ func (s *Deps) writeAuditAndTurn(ctx context.Context, sessionID, skillID, query 
 		meta.QueryID = id
 		writeAuditMeta(ctx, s.Store, meta)
 	}
-	assistantContent := verdictJSON
-	if refusalReason != "" {
-		assistantContent = refusalReason
+	if assistantContent == "" {
+		assistantContent = verdictJSON
+		if refusalReason != "" {
+			assistantContent = refusalReason
+		}
 	}
 	turnID, err := s.Store.AppendTurn(ctx, sessionID,
 		store.SessionMessage{Role: "user", Content: query, Ts: time.Now().UTC()},
