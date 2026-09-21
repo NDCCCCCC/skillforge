@@ -227,14 +227,31 @@ Tier 隔离三条护城河。
 **Plans**: 9 plans / 6 waves (planned 2026-09-21)
 
 Plans:
+**Wave 1**
+
 - [ ] 39-01-PLAN.md — KG store DeleteSubject/InsertUnique primitives + TBox emitter 6→8 classes (D-TBox2-01)
 - [ ] 39-02-PLAN.md — Milvus schema +4 native fields, DeleteByExpr marker purge, collection-wide ID watermark
 - [ ] 39-03-PLAN.md — ECL merge package: 005c walk+merge port, ChunkMeta contract, regex stub, corpus boundary tests
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 39-04-PLAN.md — Extraction layer: Extractor interface (LLM+stub), F1 math, ABox note-level replace
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 39-05-PLAN.md — ecl_failures ledger + section→Document chunking + Manager stage orchestrator (retry×3 → dead-letter)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 39-06-PLAN.md — Indexer routing branch + boot: TBox upgrade trigger, snapshot-first KG restore, ECL manager wiring
 - [ ] 39-07-PLAN.md — Admin pipeline API: run/status/retry routes, 403-before-503 gate, handler test suite
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 39-08-PLAN.md — /admin/pipeline 9th tab per 39-UI-SPEC (Run ECL, progress, failures table, 2s/10s polling)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 39-09-PLAN.md — Golden set (D-GT-01 human review) + F1 harness + verify-phase-39.sh hermetic gate
 
 ---
