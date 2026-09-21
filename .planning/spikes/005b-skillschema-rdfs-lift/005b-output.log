@@ -1,0 +1,24 @@
+=== spike 005b: SKILL.md + KB -> RDFS/OWL TBox lift ===
+[1] loaded 8 Skill(s) from skills/*/SKILL.md
+    - calculator                 reads=[draft/**] writes=[skill_state] agent=ReActAgent
+    - compliance                 reads=[authority/**] writes=[] agent=ChatModelAgent
+    - compliance-orchestrator    reads=[authority/** historical/**] writes=[] agent=orchestrator
+    - external-lookup            reads=[data:external:authorized] writes=[] agent=chat
+    - kpi-dashboard              reads=[data:aggregated_only] writes=[] agent=ChatModelAgent
+    - monthly-report             reads=[data:aggregated_only] writes=[report:publish plan_approve] agent=deep
+    - simple-qa                  reads=[authority/**] writes=[] agent=ChatModelAgent
+    - sql-guides                 reads=[sql-guides/**] writes=[] agent=ChatModelAgent
+[2] walked 5 KB Categories
+    - authority    sub-categories=[]
+    - draft        sub-categories=[]
+    - historical   sub-categories=[]
+    - personal     sub-categories=[]
+    - sql-guides   sub-categories=[其他 取数口径 操作手册 汽车险 理赔与赔付 财务对账 非车险]
+    total SubCategories=7
+[3] emitted skillforge_tbox.ttl (12501 bytes)
+[4a] reloaded: 215 triples
+[4b] owl:Class count=6, owl:ObjectProperty=6, owl:DatatypeProperty=8
+[4c] instances: Tier=5, KBCategory=5, SubCategory=7, Skill=8
+[5] roundtrip: original=215 triples, reparse=215 triples — OK
+
+=== VERDICT: VALIDATED — SKILL.md + KB lift to RDFS/OWL TBox works ===
