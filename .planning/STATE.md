@@ -17,10 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 38 COMPLETE → next 39 (ECL Pipeline)
+Phase: 39 (context gathered, awaiting UI-SPEC + plan)
 Plan: —
-Status: Phase 38 executed + verified (hermetic gate 13/13 PASS)
-Last activity: 2026-09-21 — Phase 38 executed (6 plans, 6 commits 29ad95b..1bd93cc); VERIFICATION passed; ONT-01..09 checked in REQUIREMENTS; rollback UX deferred to Phase 40 per D-TBox-03
+Status: Context gathered; next /gsd:ui-phase 39 (hard constraint) then /gsd:plan-phase 39
+Last activity: 2026-09-21 — Phase 39 discuss-phase completed; 6 decisions locked (D-ECL/Milvus/Run/GT/TBox2/DL/Prog); CONTEXT.md committed
 
 ## v1.4 Phase Map
 
