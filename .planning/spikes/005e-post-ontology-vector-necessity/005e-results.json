@@ -1,0 +1,75 @@
+{
+  "avg_recall": {
+    "HYBRID": 0.7,
+    "PURE_KG": 0.7,
+    "PURE_VEC": 0.6271428571428571
+  },
+  "queries": [
+    {
+      "ID": "Q1",
+      "Query": "所有引用 etl_payment_due_t 表的 SQL",
+      "ExpectedWinner": "KG",
+      "GroundTruthIDs": [
+        "001",
+        "009",
+        "010",
+        "014",
+        "020",
+        "027",
+        "031",
+        "032",
+        "041",
+        "042"
+      ]
+    },
+    {
+      "ID": "Q2",
+      "Query": "公司业务部最新调整",
+      "ExpectedWinner": "VEC",
+      "GroundTruthIDs": [
+        "001"
+      ]
+    },
+    {
+      "ID": "Q3",
+      "Query": "财务对账相关的取数",
+      "ExpectedWinner": "HYBRID",
+      "GroundTruthIDs": [
+        "010",
+        "014",
+        "020",
+        "027"
+      ]
+    },
+    {
+      "ID": "Q4",
+      "Query": "理赔与赔付存储过程",
+      "ExpectedWinner": "HYBRID",
+      "GroundTruthIDs": [
+        "007",
+        "029",
+        "033",
+        "039"
+      ]
+    },
+    {
+      "ID": "Q5",
+      "Query": "etl_NONAUTO_POLICY_T 的 update 语句",
+      "ExpectedWinner": "KG",
+      "GroundTruthIDs": [
+        "007",
+        "011",
+        "015",
+        "026",
+        "028",
+        "033",
+        "036"
+      ]
+    }
+  ],
+  "wins": {
+    "HYBRID": 2,
+    "KG": 1,
+    "VEC": 2
+  }
+}

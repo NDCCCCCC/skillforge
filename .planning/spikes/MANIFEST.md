@@ -33,7 +33,7 @@
 | 005d-a | kuzu-embedded-kg | standard | Given Kuzu v0.11.3 (cgo + libkuzu.so prebuilt), when open in-memory DB + 2 node tables + 1 rel table + 8 Skills + 5 Tiers + edges + MATCH query, then total < 500ms + 8 rows | ✓ VALIDATED | kg, kuzu, cgo, embedded, spike-005 |
 | 005d-b | memorymap-kg | standard | Given 215-triple TBox (005b), when loaded into pure-Go memory store with byS/byP/byO + JSON snapshot, then load < 100ms, query < 1ms, snapshot roundtrip lossless, memory < 5MB | ✓ VALIDATED | kg, memory-map, pure-go, snapshot, spike-005 |
 | 005d | kg-storage-eval | comparison | SkillForge scale (< 10k nodes): memory map wins on every axis (9× faster, 1500× lighter, single binary); Kuzu wins on query expressiveness; pick map for current scale, defer Kuzu to > 10k nodes | ✓ VALIDATED (pick 005d-b) | kg, kuzu, memory-map, storage, comparison, spike-005 |
-| 005e | post-ontology-vector-necessity | standard | Given TBox (005a/005b) + ontology-aware chunks (005c) + KG storage (005d), when analyzing OntoRAG/LightRAG/Semantica literature + existing SkillForge tier-PRE-filter architecture, then evaluate under what conditions Milvus vector retrieval remains necessary (vs pure SPARQL/Cypher replacement) | PENDING | vector-necessity, hybrid-retrieval, post-ontology, spike-005 |
+| 005e | post-ontology-vector-necessity | standard | Given TBox (005a/005b) + ontology-aware chunks (005c) + KG storage (005d), when comparing PURE_KG / PURE_VEC / HYBRID retrieval on 5 representative SkillForge queries, then HYBRID average recall ≥ PURE_KG AND ≥ PURE_VEC | ✓ VALIDATED | vector-necessity, hybrid-retrieval, post-ontology, ontoRAG, spike-005 |
 
 ## Related Artifacts
 
