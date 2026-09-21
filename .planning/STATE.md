@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.4
-milestone_name: — Ontology Layer
-status: "Context gathered; next /gsd:ui-phase 39 (hard constraint) then /gsd:plan-phase 39"
+milestone_name: Ontology Layer (本体层)
+status: "Phase 39 UI-SPEC approved (6/6); next /gsd:plan-phase 39"
 last_updated: "2026-09-21T14:35:48.158Z"
-last_activity: 2026-09-21 — Phase 39 discuss-phase completed; 6 decisions locked (D-ECL/Milvus/Run/GT/TBox2/DL/Prog); CONTEXT.md committed
+last_activity: 2026-09-21 — Phase 39 UI-SPEC approved by gsd-ui-checker (d6abe05); discuss-phase 6 decisions locked earlier same day
 progress:
   total_phases: 11
   completed_phases: 1
@@ -17,10 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 39 (context gathered, awaiting UI-SPEC + plan)
+Phase: 39 (UI-SPEC approved, awaiting plan)
 Plan: —
-Status: Context gathered; next /gsd:ui-phase 39 (hard constraint) then /gsd:plan-phase 39
-Last activity: 2026-09-21 — Phase 39 discuss-phase completed; 6 decisions locked (D-ECL/Milvus/Run/GT/TBox2/DL/Prog); CONTEXT.md committed
+Status: Phase 39 UI-SPEC approved (6/6); next /gsd:plan-phase 39
+Last activity: 2026-09-21 — Phase 39 UI-SPEC approved by gsd-ui-checker (d6abe05); discuss-phase 6 decisions locked earlier same day
 
 ## v1.4 Phase Map
 
