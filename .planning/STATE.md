@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: 代码质量修复 (Code Quality Remediation)
-status: complete
-last_updated: "2026-09-09T08:58:00.000Z"
-last_activity: 2026-09-09 — Milestone v1.3 closed
+milestone: v1.4
+milestone_name: Ontology Layer (本体层)
+status: planning
+last_updated: "2026-09-21T08:00:00.000Z"
+last_activity: 2026-09-21 — Milestone v1.4 started
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 1
-  completed_plans: 1
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # State — SkillForge
@@ -20,74 +20,49 @@ progress:
 Phase: Not started (defining requirements)
 Plan: —
 Status: Defining requirements
-Last activity: 2026-09-09 — Milestone v1.3 started
+Last activity: 2026-09-21 — Milestone v1.4 Ontology Layer started
 
-## v1.3 Phase Map
+## v1.4 Phase Map
 
-| Phase | Domain | Requirements | Priority |
-|-------|--------|--------------|----------|
-| 31 | FE Real Bugs | REALBUG-01, REALBUG-02 | P0 |
-| 32 | BE Real Bug + PERF | REALBUG-03, PERF-01 | P0 |
-| 33 | SRP — BE Long Functions | SRP-01, SRP-02, SRP-03, SRP-04 | P1 |
-| 34 | HITL Template Extraction | HITL-01, HITL-02, HITL-03 | P1 |
-| 35 | HTTP Deduplication | REPEATHTTP-01, REPEATHTTP-02, REPEATHTTP-03 | P2 |
-| 36 | FE Deduplication + SILENTAUDIT | REPEATFE-01, REPEATFE-02, REPEATFE-03, SILENTAUDIT-01 | P2 |
-| 37 | STORE SQL + Robustness + CONCUR | STORE-01, STORE-02, ROBUST-01..05, CONCUR-01 | P2/P3 |
+| Phase | Domain | Key Deliverables | UI-SPEC Target |
+|-------|--------|------------------|----------------|
+| 38 | Foundation (TBox + KG store + auto lift) | internal/ontology/ 目录；TBox emitter (server boot); memory-map KG store + JSON snapshot; auto schema lift (LLM 提议 → human approve) | `/admin/ontology` (TBox 类层次 + KG 三元组浏览器) |
+| 39 | ECL Pipeline (section-aware chunker + entity extraction) | 替换 internal/knowledge/indexer.go byte-cap; LLM 抽 etl_* tables + 关系; ABox 自动写入 + 双向 KG↔Milvus 同步 | `/admin/pipeline` (ECL Pipeline 实时状态) |
+| 40 | Data Governance (SHACL + Provenance) | SHACL shapes 启动校验; Provenance 链 (source_path); TBox 版本号 + 演进日志 | `/admin/governance` (校验报告 + provenance 图 + 版本日志) |
+| 41 | Platform Layer (MCP + SPARQL + Hybrid Retrieval) | MCP server 暴露 KG; SPARQL-like REST /api/sparql; Hybrid Retrieval 1-2 跳 expansion | `/admin/platform` (SPARQL Playground + MCP Inspector + Hybrid 调试) |
 
-## Deferred Items
+## v1.4 Standards
 
-Items acknowledged and deferred at v1.0/v1.1/v1.2 milestone close:
+- **UI consistency hard constraint:** 每个 web 涉及 phase 必须先产 UI-SPEC.md（约定 + 信息架构 + 关键交互 + 验收标准），再进入实现
+- **UI 沿用** shadcn/Tailwind v4 + Vercel AI SDK v5 + `/admin/*` 路由约定
+- **零硬编码**：ontology IRI 命名空间、SHACL shapes 路径必须可配置
+- **Go 最佳实践**：无 cgo；handler ≤ 200 行；不允许静默吞错
+- **三条护城河不可动摇**：Apache-2.0 单 binary + Skill 驱动 + Tier 信任隔离
+- **全 SDLC**：每个 phase 配 verify-phase-NN.sh 验证脚本
+
+## v1.4 Source of Truth
+
+- 005 系列 5 个 spike 全 VALIDATED (`.planning/spikes/005a` 到 `005e`)
+- Spike 005b TBox emitter 215 triples 已可机器生成
+- Spike 005c section-aware chunker 解决 sql-guides 切分痛点
+- Spike 005d-b memory-map KG 比 Kuzu 快 9× 轻 1500×
+- Spike 005e hybrid retrieval: KG 门控 + Milvus 重排
+
+## Deferred Items (carried from v1.3)
 
 | Category | Item | Status |
 |----------|------|--------|
 | operator_gate | BGE-M3 endpoint restore + compliance replay re-sign | Deferred |
 | operator_gate | Docker live build+run verification | Deferred |
 | operator_gate | Phase 18 live E2E | Deferred |
-| operator_gate | Phase 18 FAN-06 operator rerun | Deferred |
 | env_issue | gcc linking (MSYS2 emutls ABI) | Deferred |
-| incomplete | Phase 7 Open-Source Release | Deferred |
-| operator_gate | Phase 10 live 35-case re-run | Deferred |
 
-## v1.2 Summary
+## v1.3 Summary (closed 2026-09-09)
 
-**Phases:** 26-30 (5 phases)
-**Timeline:** 2026-09-07 → 2026-09-08
-**Requirements:** 29/29 v1.2 requirements satisfied
-**Key deliverables:**
-
-- Knowledge base registry refactoring (Phase 26)
-- Document upload and ingestion (Phase 27)
-- Knowledge graph dynamic tier support (Phase 28)
-- Feedback闭环 + ticket interface stub (Phase 29)
-- Engineering hygiene gate (Phase 30)
-
-## v1.1 Summary
-
-**Phases:** 21-25 (5 phases)
-**Timeline:** 2026-09-06
-**Requirements:** All satisfied
-**Key deliverables:**
-
-- External authorized channel (Phase 21)
-- Judge calibration set (Phase 22)
-- README competitive differentiation (Phase 23)
-- PROV-O audit export (Phase 24)
-- Local model baselines (Phase 25)
-
-## v1.0 Summary
-
-**Phases:** 14-20 (7 phases, 53 plans, 418 files, +81,854 LOC)
-**Timeline:** 2026-08-23 → 2026-08-30 (7 days)
-**Requirements:** 44/44 v1.0 requirements satisfied
-**Key deliverables:**
-
-- CGO 地基 + platform floor 1.1.0 (Phase 14)
-- 数据导入即脱敏三通道 (Phase 15)
-- KPI 聚合通道零后门 (Phase 16)
-- 数字问答 + sparkline + 再识别断言 (Phase 17)
-- 业务月报 DeepAgent + fan-out + HITL (Phase 18)
-- /reports 门户 + cron 调度 (Phase 19)
-- /admin 管理台四视图 (Phase 20)
+**Phases:** 31-37 (7 phases, 26 requirements)
+**Audit-driven:** 18 critical + 27 warning + 14 info findings
+**Trust semantics preserved:** KNOW-02 fail-closed, D-09 拒答构造, T-3-AUDIT INSERT-only, D11-C3 audit-first, D14 wire 字节不变, HITL-07 3-way frozen_args
+**Key fixes:** REALBUG-01/02/03, PERF-01, SRP-01..04, HITL-01..03, REPEATHTTP-01..03, REPEATFE-01..03, SILENTAUDIT-01, STORE-01/02, ROBUST-01..05, CONCUR-01
 
 ## Project Reference
 
@@ -101,89 +76,13 @@ Items acknowledged and deferred at v1.0/v1.1/v1.2 milestone close:
 
 **License:** Apache-2.0
 
----
-
-## Current Phase: 31
-
-Phase: 31
-Plan: 01 — COMPLETE
-Status: planning
-Next action: `/gsd:plan-phase 31` (remaining plans: 02+)
-
----
-
 ## Accumulated Context
 
 ### Roadmap Evolution
 
-- 2026-09-09: **v1.3 milestone started** — code quality remediation from project-audit-2026-09-09.md (18 critical + 27 warning across 411 production files). Phase 31-37 derived from 26 REQ-IDs. Priority ordering: P0 (3 real bugs) → P1 (SRP + HITL templates) → P2 (HTTP/FE deduplication + SQL hygiene) → P3 (robustness + concurrency).
+- 2026-09-09: **v1.3 milestone closed** — code quality remediation from project-audit-2026-09-09.md. Phase 31-37 derived from 26 REQ-IDs. 23/26 REQ closed (88%); 4 项 tech debt.
+- 2026-09-21: **v1.4 milestone started** — Ontology Layer based on 005 series (5 spikes all VALIDATED). Phase 38-41 derived from 4 capabilities (Foundation / ECL / Governance / Platform). UI 一致性 hard constraint: 每 web phase 先产 UI-SPEC.md.
 
 ---
 
-## Phase 31 Closeout Record (2026-09-09)
-
-**Phase:** 31 (FE Real Bugs — REALBUG-01 + REALBUG-02)
-**Status:** CLOSED — VERIFICATION PASSED
-
-**Plans:** 31-01 (all complete)
-**Commits:**
-
-- `5c97c18` fix(31-01): sanitize-url hostname allowlist runtime configurable
-- `7dd9d0f` fix(31-02): useEvalReports setEvalStatus('ready') on fetch success
-- `af22d31` chore(phase-31): add verify-phase-31.sh hermetic gate
-- `2debd4f` docs(phase-31): record plan execution summary
-
-**Key fixes:**
-
-- REALBUG-01: sanitize-url hostname allowlist now configurable via VITE_ALLOWED_HOSTNAMES env + runtime setHostnameAllowlist()
-- REALBUG-02: useEvalReports fetchOnce success path calls setEvalStatus('ready'); eval dashboard three-state UI now reachable
-
----
-
-## Phase 30 Closeout Record (2026-09-08)
-
-**Phase:** 30 (工程卫生收尾 — HYG-02 + HYG-03)
-**Status:** CLOSED — VERIFICATION PASSED
-
-**Plans:** 30-01 through 30-08 (all complete)
-**Key fixes:**
-
-- CR-01: SSE emit failure double-write elimination (pipelineEmitError persisted flag)
-- WR-01: Feedback ON CONFLICT DO NOTHING backfill
-- WR-03: Webhook CheckRedirect policy
-- WR-02: Queued ticket startup sweep + per-session rate limiter
-- WR-06: FeedbackRow useEffect for late-arriving votedVerdict
-- HYG-02: verify-phase-30.sh 5-stage gate
-- HYG-03: REQUIREMENTS traceability backfill (12 IDs)
-
----
-
-## Phase 29 Closeout Record (2026-09-07)
-
-**Phase:** 29 (反馈闭环 + 工单预留)
-**Status:** CLOSED — VERIFICATION PASSED
-
----
-
-## Phase 28 Closeout Record (2026-09-07)
-
-**Phase:** 28 (知识图谱扩展)
-**Status:** CLOSED — VERIFICATION PASSED
-
----
-
-## Phase 27 Closeout Record (2026-09-07)
-
-**Phase:** 27 (文档上传入库)
-**Status:** CLOSED — VERIFICATION PASSED
-
----
-
-## Phase 26 Closeout Record (2026-09-07)
-
-**Phase:** 26 (知识库注册表地基 + 卫生门)
-**Status:** CLOSED — VERIFICATION PASSED
-
----
-
-*Last updated: 2026-09-09 — v1.3 roadmap created (7 phases 31-37, 26 requirements)*
+*Last updated: 2026-09-21 — v1.4 milestone initialized*

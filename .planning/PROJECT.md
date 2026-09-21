@@ -107,38 +107,43 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 | **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
 
-## Current Milestone: v1.3 代码质量修复（Code Quality Remediation）
+## Current Milestone: v1.4 Ontology Layer (本体层)
 
-**Goal:** 闭合 `.planning/audits/project-audit-2026-09-09.md` 报告中的全部 18 critical + 27 warning 发现，提升代码可维护性、降低 SRP 违反、消除重复模板、修复真实生产 bug（hostname 白名单、`evalStatus` 卡 loading、错误子串匹配）。
+**Goal:** 在 SkillForge 引入 OWL/RDF 本体层，把"Skill 驱动的 RAG"升级为
+"Skill 驱动的本体操作系统"——保留 Apache-2.0 单 binary + Skill 驱动 +
+Tier 隔离三条护城河。
 
-**Target scope (基于 audit 报告 P0-P3 优先级):**
+**Hard constraint:** 每个 phase 涉及 web 时，必须先产出 UI-SPEC.md 再进实现；UI 沿用 shadcn/Tailwind v4 + Vercel AI SDK v5 现有体系，与 `/admin/*` 四视图路由约定保持一致。
 
-| 优先级 | 类别 | 内容 |
-|---|---|---|
-| **P0 必修（影响生产）** | 真实 bug | CR-08 前端 `sanitize-url.ts` hostname 白名单硬编码 local；IF-01 `useEvalReports.ts` `evalStatus` 永远卡 `'loading'`；CR-07 `upload.go:isBackendUnavailable` 子串匹配错误字符串 |
-| **P1 高优** | SRP / 性能 | CR-01/02/03/04 长函数拆分（pipeline.go / chat.go / upload.go / approval_api.go）；CR-05 `joinStrings` O(n²)；CR-01-03 HITL handler 4 处模板抽取 |
-| **P2 中优** | 重复实现 | WR-01 `graphResponseError` 6+ 处抽取；WR-02 `isAdminRequest` 模板；WR-01-03 前端 fetch helper；WR-01-04 静默吞 audit error 改为 WARN log |
-| **P3 低优** | 健壮性 | CR-01 LRU type assertion 加 `ok`；WR-05-07 frozen_args 字节不变量；CR-05 Decision* 常量引用；WR-03 `putKPICallSQL` 加 ON CONFLICT |
+**Target scope (4 phases, 38-41):**
 
-**参考产物：**
-- 完整审计报告：`.planning/audits/project-audit-2026-09-09.md`
-- 审计方法：主线程 grep 扫描 + 4 个并行域 agent
-- 范围：411 个生产文件（219 Go + 192 TS/TSX）
+| Phase | 主题 | 关键产出 | UI-SPEC 目标 |
+|-------|------|---------|-------------|
+| **38 Foundation** | TBox + KG store | (a) TBox emitter (server boot 自动生成 215 triples) (b) Memory-map KG store (skillforge_kg.json snapshot, 纯 Go 内存 map) (c) Auto schema lift (LLM 提议新 Class/Property → human approve) | `/admin/ontology` — TBox 类层次浏览器 + KG 三元组查询面板 |
+| **39 ECL Pipeline** | Section-aware chunker + 实体抽取 | (a) Section-aware markdown chunker 替代 `maxDocBytes=4000` byte-cap (b) LLM-driven entity extraction (sql-guides 自动抽 etl_* tables) (c) ABox 自动写入 + 双向 KG↔Milvus 同步 | `/admin/pipeline` — ECL Pipeline 实时状态（chunker / extraction / load 进度 + 失败重试）|
+| **40 Governance** | SHACL + Provenance | (a) SHACL shapes 启动校验 (Go 自实现或 PySHACL sidecar) (b) Provenance 链（每条 ABox statement 带 source_path） (c) TBox 版本号 + 演进日志 | `/admin/governance` — SHACL 校验报告 + Provenance 链路图 + TBox 版本演进 |
+| **41 Platform** | MCP + SPARQL + Hybrid Retrieval | (a) MCP server 暴露 KG (外部 agent 可 query) (b) SPARQL-like REST endpoint `/api/sparql` (c) Hybrid Retrieval 完善 (KG 1-2 跳 subgraph expansion) | `/admin/platform` — SPARQL Playground + MCP Inspector + Hybrid Retrieval 调试面板 |
 
-**Standards（继承 v1.2 用户锁定）：**
-- **零硬编码**：sanitize-url hostname 白名单必须可配置（env 或 admin config）
-- **Go 最佳实践，不使用反模式**：不允许新增 `_ = err` 静默吞错、不允许子串匹配错误字符串、不允许 panic 在生产路径
-- **SRP**：handler ≤ 200 行 / pipeline ≤ 100 行；超长函数必须拆分为命名子方法
-- **全 SDLC**：开发 → 单元测试 → 回归 → UAT（每个 phase 必须有 verify-* 脚本）
-- **信任语义不削弱**：audit 修复**不得削弱**既有信任语义（KNOW-02 fail-closed、D-09 拒答构造、T-3-AUDIT INSERT-only、D14 wire 字节不变）
+**Phase 编号**：38-41（接着 v1.3 末 phase 37）。
 
-**Phase 编号**：从 phase 31 开始延续。
+**Source of truth:** 005 系列 5 个 spike 已全部 VALIDATED（`.planning/spikes/005a` 到 `005e`），本 milestone 基于 spike 成果落地生产代码，不重新做研究。
 
-**Key decisions（v1.2 → v1.3 沿革）：**
-- v1.0 业务数据支撑 shipped 2026-08-30
-- v1.1 外部授权 + 审计链 + Eval CI + OSS shipped 2026-09-06
-- v1.2 知识库运营 + 反馈闭环（Phase 26-30）shipped 2026-09-08
-- v1.3（当前）：基于 2026-09-09 全项目审计的代码质量修复，不引入新 feature，仅技术债务清理
+**Standards（继承 v1.3）：**
+- **零硬编码**：ontology IRI 命名空间、SHACL shapes 路径必须可配置
+- **Go 最佳实践**：无 cgo（保留单 binary）；handler ≤ 200 行；不允许静默吞错
+- **UI 一致性**：每个 web 涉及 phase 必须先写 UI-SPEC.md（约定 + 信息架构 + 关键交互 + 验收标准），再进入实现
+- **全 SDLC**：每个 phase 配 verify-phase-NN.sh 验证脚本
+- **信任语义不削弱**：ontology 落地不得引入 KB 内容篡改通道；MCP server 暴露的 KG 自动追加 tier 隔离
+
+**Key decisions（v1.3 → v1.4 沿革）：**
+- v1.3 (Phase 31-37) shipped 2026-09-09 — 代码质量修复（REALBUG / SRP / HITL / REPEAT / STORE / ROBUST / CONCUR）
+- 005 系列研究 2026-09-21 完成 — 5 个 spike 验证本体论 + SkillForge 结合可行性
+- v1.4（当前）：本体层落地，把 RAG 升级为本体操作系统；保留单 binary + Skill 驱动 + Tier 隔离三条护城河
+
+**三条护城河（不可动摇）：**
+1. Apache-2.0 + 单 binary 部署（无 CGO，无独立 server）
+2. Skill 驱动架构（业务通过 SKILL.md 适配，不改代码）
+3. Tier 信任隔离（KG query 自动追加 `belongsToTier`，不破坏 spike 004 的 PRE-filter moat）
 
 ## Evolution
 
@@ -158,4 +163,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-09 — v1.3 started (技术债务修复: 18 critical + 27 warning 来自 `.planning/audits/project-audit-2026-09-09.md`; 4 域并行 agent 审计完成; phase 31+ 延续; P0=3 必修 / P1=长函数拆分+HITL 模板 / P2=重复实现抽取 / P3=健壮性). Prior: v1.2 Phase 30 closed 2026-09-08 (HYG-02 + HYG-03); v1.1 shipped 2026-09-06.*
+*Last updated: 2026-09-21 — v1.4 Ontology Layer started (本体层落地: TBox+KG+ECL+SHACL+MCP, 4 phases 38-41; 基于 005 系列 5 个 spike 全 VALIDATED; 保留单 binary+Skill 驱动+Tier 隔离三条护城河; UI 一致性硬约束: 每 web phase 先产 UI-SPEC.md). Prior: v1.3 closed 2026-09-09 (代码质量修复: 18 critical + 27 warning, phases 31-37); v1.2 Phase 30 closed 2026-09-08.*
