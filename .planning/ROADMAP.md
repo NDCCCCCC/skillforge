@@ -45,7 +45,7 @@
 **Success Criteria** (what must be TRUE):
 
 1. `upload.go:isBackendUnavailable` uses `errors.Is(err, syscall.ECONNREFUSED)`, `errors.Is(err, context.DeadlineExceeded)`, `errors.Is(err, context.Canceled)`, and `net.Error.Timeout()` — no `strings.Contains` substring matching on error messages
-2. `chat.go:joinStrings` is replaced with `strings.Join(parts, "")`; each LLM response drain path calls the fixed version
+2. `chat.go:joinStrings` is replaced with `strings.Join(parts, "")`; every LLM response drain path calls the fixed version
 3. Unit tests cover all branches of `isBackendUnavailable` (connection refused, deadline exceeded, canceled, timeout, other error)
 4. Go vet/benchmark regression confirms no performance degradation on joinStrings path
 
@@ -66,8 +66,7 @@
 1. `pipeline.go:VerdictPipeline` main function ≤ 100 lines; `handleRefusal()`, `handleVerdict()`, `streamWithRetry()` extracted as named methods; Step 0..12 comments preserved
 2. `chat.go:chatHandler` main function ≤ 80 lines; `runDataChannelPath`, `runAgentPath`, `runRegistryRouterPath`, `runVerdictPipelinePath` extracted; 9 DEBUG log blocks merged into named helpers
 3. `upload.go:uploadHandler` main function ≤ 80 lines; `onFile` closure split into `verifyMagic`, `dedupCheck`, `writeIndex`, `auditHook` named functions
-4. `approval_api.go:approvalPostHandler` main function ≤ 100 lines; `decodeAndValidate`, `lookupPending`, `auditResolution`, `runBuildRunner`, `drainSSE` extracted; self-heal retry block is a named submethod
-5. All four files compile with `go vet` zero warnings; no new cyclomatic complexity introduced
+4. All four files compile with `go vet` zero warnings; no new cyclomatic complexity introduced
 
 **Plans**: TBD
 
@@ -86,7 +85,7 @@
 1. New `baseHITLTool` struct is embedded in all four HITL handlers (`memory_facts`, `review_report`, `plan_approve`, `report_publish`); `auditOrDefault()` lives in the base class
 2. `buildPendingAuditAndInterrupt(ctx, info, args, audit)` is a shared function callable by all four handlers; the 4-step sequence (GetToolCallID → ApprovalInfo → InsertPendingApproval → StatefulInterrupt) is no longer duplicated
 3. `noopAuditWriter` is defined in `hitl/audit_writer.go` and imported by `hitl_memory_facts.go`; no duplicate `noopAuditWriter` methods remain
-4. All four handlers continue to pass existing unit tests after refactoring
+4. All four files continue to pass existing unit tests after refactoring
 
 **Plans**: TBD
 
@@ -102,7 +101,7 @@
 
 **Success Criteria** (what must be TRUE):
 
-1. `graphResponseError` struct is defined once in `internal/server/server_response.go`; all six+ duplicated definitions (`knowledge.go`, `feedback.go`, `upload.go`, `tickets.go`, `approval_api.go`, `plan_api.go`) are replaced with imports
+1. `graphResponseError` struct is defined once in `internal/server/server_response.go`; all six+ duplicated definitions (`knowledge.go`, `feedback.go`, `upload.go`, `tickets.go`, `approval_api.go`, `plan_api.go`) are replaced by imports
 2. Admin-gated handlers use a shared `requireAdmin(c) error` middleware function; the 403 response + audit-write logic appears in exactly one place
 3. `sessionIDRegex` is exported from `server.go` and imported by all eight+ files that currently define it locally; `handlers_session_history.go` no longer re-exports a private copy
 4. All affected routes continue to return identical JSON error shapes after refactoring
@@ -122,7 +121,7 @@
 **Success Criteria** (what must be TRUE):
 
 1. `lib/api.ts` exports `apiFetch<T>(url, opts)` used by `FeedbackRow.postJson`, `useEvalReports.fetchOnce`, `useEvalFrozen.refetch`, and other fetch sites — no independent fetch+JSON+error implementations remain
-2. `lib/errors.ts` exports `extractReason` used by both `FeedbackRow` and `useEvalReports` — error text extraction logic appears in exactly one file
+2. `lib/errors.ts` exports `extractReason` used by both `FeedbackRow` and `useEvalReports` — error text extraction logic appears in exactly one place
 3. `useEvalReports.fetchOnce` is wrapped in `useCallback` and accepts `fetchImpl` as an injected parameter; tests use `vi.fn()` injection instead of global fetch spy
 4. Four backend audit write sites that silently swallow errors with `_ = ...` now log at WARN level with session/audit_id/context; the "audit hiccup must not fail Run" invariant is preserved (log does not throw)
 
@@ -225,7 +224,7 @@ Tier 隔离三条护城河。
 5. ECL 失败 → 自动 retry 3 次 → 仍失败入 dead-letter 队列，可手动触发
 6. `verify-phase-39.sh` 全绿：100% chunker boundary + entity extraction F1 ≥ 0.8
 
-**Plans**: 9 plans / 5 waves (planned 2026-09-21)
+**Plans**: 9 plans / 6 waves (planned 2026-09-21)
 
 Plans:
 - [ ] 39-01-PLAN.md — KG store DeleteSubject/InsertUnique primitives + TBox emitter 6→8 classes (D-TBox2-01)

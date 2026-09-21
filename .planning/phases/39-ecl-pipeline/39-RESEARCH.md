@@ -438,19 +438,22 @@ CREATE TABLE IF NOT EXISTS ecl_failures (
 | A6 | Note-level KG replace semantics: "note" = merged logical note (`skf:note_{source_idx}` individual); DeleteWhere targets all triples with that subject (+ TableSchema cleanup only when orphaned) | Architecture / D-Boot-01 | A different note-granularity reading would change the delete primitive's signature; planner pins the exact predicate set |
 | A7 | RETRIEVER_BACKEND=mongo deployments: ECL run answers 503 for the milvus-load stage (ECL is Milvus-schema-bound per D-Milvus-01) | Open Questions | If mongo+KG-only ECL is desired, the milvus-load stage needs a backend abstraction — out of scope by default |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **belongsToNote domain/range (A4)**
    - What we know: D-TBox2-01 adds the property; D-Ext-01's triple shapes never instantiate it.
    - What's unclear: whether any Phase 39 ABox uses it (e.g. section individuals → note) or it is TBox-only this phase.
    - Recommendation: declare it in the emitter (2 classes + 2 props exactly as locked), emit zero belongsToNote triples this phase; note in UI-SPEC-visible docs. Confirm in plan review.
+   - **RESOLVED** (open-question resolution #1): pinned in 39-01-PLAN.md Task 2 (TBox declares `skf:belongsToNote` with domain/range as emitted; zero ABox instances this phase per D-TBox2-01's locked triple list) and 39-04-PLAN.md Task 3 (BuildTriples emits NO belongsToNote triples). Domain/range choice (NoteChunk→NoteChunk, no Note class exists) is noted for the Phase 40 section-level ABox in the 39-01 summary.
 2. **ECL-first-run coverage gap**
    - What we know: with ECL on, boot skips the 185 sec-fragments from legacy seeding; ECL runs only on manual trigger. Until the first Run, sql-guides retrieval covers only the 17 non-sec files.
    - What's unclear: is that acceptable as a documented operator step (RECREATE boot → admin clicks Run ECL), or should the status endpoint surface "never run" prominently (UI-SPEC already renders idle state 「尚未运行」)?
    - Recommendation: document the deploy sequence (RECREATE=1 boot → Run ECL → unset) in `.env.example` comment + verify runbook; the idle UI state already covers discoverability.
+   - **RESOLVED** (open-question resolution #2): pinned in 39-06-PLAN.md Task 3 — `.env.example` gains the SKILLFORGE_ECL_ENABLED row plus a 3-line comment block documenting the deploy sequence (SKILLFORGE_MILVUS_RECREATE=1 first boot after upgrade → admin Run ECL from /admin → unset RECREATE); the idle 「尚未运行」 UI state covers discoverability.
 3. **Where the golden-set review checklist lives**
    - What we know: D-GT-01 requires human review; discretion says "一次性 checklist 文档 vs 分批" is open.
    - Recommendation: single checklist doc under `.planning/phases/39-ecl-pipeline/` (one 26-row review pass), referenced by the plan's golden-set task.
+   - **RESOLVED** (open-question resolution #3): pinned in 39-09-PLAN.md Task 1 — single checklist doc at `.planning/phases/39-ecl-pipeline/golden-review-checklist.md` (one 26-row review pass; becomes the committed human-review record after Task 2's checkpoint).
 
 ## Environment Availability
 
@@ -511,7 +514,7 @@ CREATE TABLE IF NOT EXISTS ecl_failures (
 ### Applicable ASVS Categories
 
 | ASVS Category | Applies | Standard Control |
-|---------------|---------|-----------------|
+|---------------|---------|------------------|
 | V2 Authentication | no | No new identities; admin surface reuses `X-Admin-Token` (`SKILLFORGE_ADMIN_TOKEN`) |
 | V3 Session Management | no | Stateless admin token per request; no sessions introduced |
 | V4 Access Control | yes | `requireAdmin` gate first (403), then nil/ECL-off (503) — 403-before-503 is locked (D-Route-01); `ecl_failures` reads/writes only via server-side store |
