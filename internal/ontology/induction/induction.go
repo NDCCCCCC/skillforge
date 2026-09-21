@@ -82,6 +82,17 @@ type Manager struct {
 	kg      *store.Store
 	queue   []Proposal
 	nextID  int
+	// onChange (when set) fires after every queue/TBox mutation so the
+	// caller can schedule a debounced KG snapshot (D-KG-01/03).
+	onChange func()
+}
+
+// SetOnChange registers the post-mutation callback (idempotent; the boot
+// sequence wires the debounced snapshot writer here).
+func (m *Manager) SetOnChange(fn func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onChange = fn
 }
 
 // NewManager constructs a Manager. dataDir is created if missing; the
@@ -101,6 +112,15 @@ func NewManager(ns, dataDir string, chat Generator, kg *store.Store) (*Manager, 
 		return nil, err
 	}
 	return m, nil
+}
+
+// fireChange invokes the onChange hook if registered (used after every
+// queue/TBox mutation, outside the lock ordering concerns — the hook only
+// schedules a timer).
+func (m *Manager) fireChange() {
+	if m.onChange != nil {
+		m.onChange()
+	}
 }
 
 // Generate produces a pending Proposal from free text. The LLM proposes the
@@ -235,7 +255,9 @@ func (m *Manager) Approve(proposalID, customLocalName string) (Proposal, int, er
 	now := time.Now().UTC()
 	p.Status = StatusApproved
 	p.DecidedAt = &now
-	return *p, next, m.persistLocked()
+	err := m.persistLocked()
+	m.fireChange()
+	return *p, next, err
 }
 
 // Reject marks a proposal rejected; the record is kept (audit trail).
@@ -250,7 +272,9 @@ func (m *Manager) Reject(proposalID string) (Proposal, error) {
 			now := time.Now().UTC()
 			m.queue[i].Status = StatusRejected
 			m.queue[i].DecidedAt = &now
-			return m.queue[i], m.persistLocked()
+			err := m.persistLocked()
+			m.fireChange()
+			return m.queue[i], err
 		}
 	}
 	return Proposal{}, fmt.Errorf("induction: proposal %s not found", proposalID)
@@ -265,6 +289,18 @@ func (m *Manager) List() []Proposal {
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out
 }
+
+// Version reports the current TBox version (reads tbox_version.txt; the
+// admin tbox endpoint surfaces it alongside the TTL text).
+func (m *Manager) Version() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.readVersion()
+}
+
+// DataDir exposes the ontology data directory (pointer TTL path lives
+// there; the snapshot handler writes the KG JSON beside it).
+func (m *Manager) DataDir() string { return m.dataDir }
 
 // PreviewIRI reports whether localName collides with the current TBox
 // (D-Induct-04 drawer rename check).

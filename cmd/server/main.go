@@ -97,6 +97,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -112,6 +113,9 @@ import (
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/document"
+	"github.com/skillforge/skillforge/internal/ontology/emitter"
+	"github.com/skillforge/skillforge/internal/ontology/induction"
+	onstore "github.com/skillforge/skillforge/internal/ontology/store"
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/externalauth"
@@ -857,6 +861,58 @@ func main() {
 		knowledge.InvalidateCache()
 	})
 
+	// Phase 38 — ontology layer boot (v1.4 / ONT-01..09, D-KG-01..04):
+	//   1. Emit the TBox from skills/*/SKILL.md + knowledge/ (first boot
+	//      writes v1 + pointer + version file; later boots reuse the
+	//      pointer file so approved inductions survive restarts).
+	//   2. Load the pointer TTL into the memory-map KG store.
+	//   3. Persist an immediate snapshot (boot write), then keep a 5s
+	//      debounced writer wired to the induction manager's onChange.
+	ontologyNS := envOr("SKILLFORGE_ONTOLOGY_NS", emitter.DefaultNS)
+	ontologyDataDir := envOr("SKILLFORGE_ONTOLOGY_DATA_DIR", filepath.Join("data", "ontology"))
+	if err := os.MkdirAll(ontologyDataDir, 0o755); err != nil {
+		log.Fatalf("[FAIL] cmd/server: ontology data dir: %v", err)
+	}
+	ontologyPointer := filepath.Join(ontologyDataDir, "skillforge_tbox.ttl")
+	if _, err := os.Stat(ontologyPointer); os.IsNotExist(err) {
+		em := emitter.New(envOr("SKILLFORGE_SKILLS_DIR", "skills"), envOr("SKILLFORGE_KB_DIR", "knowledge"), ontologyNS)
+		ttlOut, err := em.Emit()
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: ontology TBox emit: %v", err)
+		}
+		v1 := filepath.Join(ontologyDataDir, "skillforge_tbox.v1.ttl")
+		if err := os.WriteFile(v1, []byte(ttlOut), 0o644); err != nil {
+			log.Fatalf("[FAIL] cmd/server: ontology TBox v1 write: %v", err)
+		}
+		if err := os.WriteFile(ontologyPointer, []byte(ttlOut), 0o644); err != nil {
+			log.Fatalf("[FAIL] cmd/server: ontology TBox pointer write: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(ontologyDataDir, "tbox_version.txt"), []byte("1\n"), 0o644); err != nil {
+			log.Fatalf("[FAIL] cmd/server: ontology version write: %v", err)
+		}
+	}
+	ontologyKG := onstore.New()
+	ttlBytes, err := os.ReadFile(ontologyPointer)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: ontology TBox read: %v", err)
+	}
+	ontologyTriples, err := ontologyKG.LoadFromTurtle(string(ttlBytes))
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: ontology KG load: %v", err)
+	}
+	kgSnapshotPath := envOr("SKILLFORGE_ONTOLOGY_SNAPSHOT_PATH", filepath.Join(ontologyDataDir, "skillforge_kg.json"))
+	if err := ontologyKG.WriteSnapshot(kgSnapshotPath); err != nil {
+		log.Printf("[WARN] cmd/server: ontology boot snapshot (%s): %v", kgSnapshotPath, err)
+	}
+	ontologyManager, err := induction.NewManager(ontologyNS, ontologyDataDir, cm, ontologyKG)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: ontology induction manager: %v", err)
+	}
+	kgDebounce := ontologyKG.SnapshotDebounced(kgSnapshotPath, 5*time.Second)
+	ontologyManager.SetOnChange(kgDebounce)
+	log.Printf("[OK] cmd/server: ontology layer wired (TBox v%d, %d triples, snapshot %s)",
+		ontologyManager.Version(), ontologyTriples, kgSnapshotPath)
+
 	deps := &server.Deps{
 		Loader:       loader,
 		Registry:     reg,
@@ -949,6 +1005,16 @@ func main() {
 		// admin-gate check still uses os.Getenv in isAdminRequest for fail-closed
 		// semantics (empty env → isAdmin returns false regardless of this field).
 		AdminToken: adminToken,
+		// Phase 38 — ontology layer (v1.4). The boot block above emitted the
+		// TBox (or reused the approved pointer), loaded the KG, persisted the
+		// snapshot, and wired the 5s debounced writer to the induction
+		// manager's onChange. nil here is impossible in production (boot
+		// fails fast above), but the field's nil-posture keeps server tests
+		// free to construct Deps without the ontology layer.
+		Ontology: &server.OntologyDeps{
+			Induction: ontologyManager,
+			KG:        ontologyKG,
+		},
 	}
 
 	// Phase 30 / WR-02 (T-30-03): sweep queued tickets from a prior run

@@ -457,6 +457,14 @@ type Deps struct {
 	// audit.go) still reads via os.Getenv directly for fail-closed semantics:
 	// an empty env means isAdminRequest returns false regardless of this field.
 	AdminToken string
+
+	// --- Phase 38: Ontology Layer (v1.4 / ONT-01..09) ---
+	// Ontology bundles the TBox emitter output (already persisted by boot),
+	// the memory-map KG store, and the schema-induction manager. nil = the
+	// server started without the ontology layer: every /api/admin/ontology/*
+	// route answers 503 (same nil-posture as Knowledge / Wizard). cmd/server
+	// wires it at boot: emit TBox → load KG → snapshot → debounce (5s).
+	Ontology *OntologyDeps
 }
 
 // GraphLimits holds the config-driven limits for the knowledge graph.
@@ -638,6 +646,20 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// Phase 20 Plan 20-05 (ADM-05) — admin scheduled task list view.
 	// Returns report run list with cron_expr, status, drift_status via ListReportRuns.
 	h.GET("/api/admin/schedules", deps.adminSchedulesHandler)
+	// Phase 38 Plan 38-04 (v1.4 / D-Route-01) — ontology admin surface.
+	// Eight token-gated routes (403 before the nil-layer 503): the TBox
+	// browser feed, KG stats + pattern query, the schema-induction
+	// proposal queue (generate / list / approve / reject — approve is the
+	// ONLY TBox mutation path, ONT-04 human gate), and a manual snapshot
+	// trigger. Trust model: admin_ontology.go godoc.
+	h.GET("/api/admin/ontology/tbox", deps.adminOntologyTBoxHandler)
+	h.GET("/api/admin/ontology/kg/stats", deps.adminOntologyKGStatsHandler)
+	h.GET("/api/admin/ontology/kg/query", deps.adminOntologyKGQueryHandler)
+	h.POST("/api/admin/ontology/proposals/generate", deps.adminOntologyProposalsGenerateHandler)
+	h.GET("/api/admin/ontology/proposals", deps.adminOntologyProposalsListHandler)
+	h.POST("/api/admin/ontology/proposals/:id/approve", deps.adminOntologyProposalsApproveHandler)
+	h.POST("/api/admin/ontology/proposals/:id/reject", deps.adminOntologyProposalsRejectHandler)
+	h.POST("/api/admin/ontology/snapshot", deps.adminOntologySnapshotHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
 	// turns + the session-bound skill_id so the FE can rebuild the
