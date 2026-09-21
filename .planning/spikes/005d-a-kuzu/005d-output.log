@@ -1,0 +1,16 @@
+=== spike 005d-a: Kuzu embedded KG (cgo binding) ===
+[1] open in-memory DB + connection: 16.07 ms
+[2] created 2 node tables + 1 rel table (35.65 ms total)
+[3] inserted 5 Tiers + 8 Skills (with READS_FROM edges): 60.80 ms total
+[4] MATCH (s)-[:READS_FROM]->(t) results (8 rows, 10.07 ms):
+    - compliance -> authority
+    - compliance-orchestrator -> authority
+    - simple-qa -> authority
+    - calculator -> draft
+    - external-lookup -> personal
+    - kpi-dashboard -> personal
+    - monthly-report -> personal
+    - sql-guides -> sql-guides
+[5] total elapsed: 70.96 ms
+
+=== VERDICT: VALIDATED — Kuzu embedded KG meets SkillForge baseline ===

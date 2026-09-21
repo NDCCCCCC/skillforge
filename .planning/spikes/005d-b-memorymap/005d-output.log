@@ -1,0 +1,11 @@
+=== spike 005d-b: memory-map KG storage (pure Go baseline) ===
+[1] loaded 215 triples in 7.709939ms (7.71 ms)
+[1a] memory estimate: ~43 KB
+[2a] ?x a skf:Skill -> 8 instances in 0.00 ms
+[2b] cat_sql-guides ->belongsToTier-> [http://skillforge.local/ontology#sql-guides] (0.00 ms)
+[2c] ?x hasReadAccess cat_sql-guides -> 1 readers in 0.00 ms
+    - sql-guides
+[3a] snapshot: 40678 bytes in 0.30 ms
+[3b] reload snapshot: 215 triples in 0.42 ms
+
+=== VERDICT: VALIDATED — memory-map KG storage meets SkillForge baseline ===
