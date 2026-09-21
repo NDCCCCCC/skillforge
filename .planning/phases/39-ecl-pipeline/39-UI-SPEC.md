@@ -1,10 +1,11 @@
 ---
 phase: "39"
 slug: ecl-pipeline
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-09-21
+reviewed_at: 2026-09-21
 ---
 
 # Phase 39 — UI Design Contract
@@ -413,11 +414,11 @@ All user-facing copy zh-CN; technical identifiers (note_id, source_idx, stage ke
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS (every state of every element has verbatim zh-CN copy incl. 403/409/503/network + empty + idle)
-- [ ] Dimension 2 Visuals: PASS (tab registration, control/status strips, failures table, all states specified with testids)
-- [ ] Dimension 3 Color: PASS (60/30/10 inherited; accent reserved-for list explicit; status mapping uses existing tokens only)
-- [ ] Dimension 4 Typography: PASS (4 sizes × 2 weights inherited; mono roles declared; badge literals grandfathered verbatim)
-- [ ] Dimension 5 Spacing: PASS (all multiples of 4 from --space-*; no new exceptions)
-- [ ] Dimension 6 Registry Safety: PASS (no third-party registries; no new shadcn components; gate documented)
+- [x] Dimension 1 Copywriting: PASS (every state of every element has verbatim zh-CN copy incl. 403/409/503/network + empty + idle) — FLAG: 「重试」单动词 CTA 已由行上下文 + `aria-label="重试 note {note_id}"` 缓解，非阻塞
+- [x] Dimension 2 Visuals: PASS (tab registration, control/status strips, failures table, all states specified with testids)
+- [x] Dimension 3 Color: PASS (60/30/10 inherited; accent reserved-for list explicit; status mapping uses existing tokens only)
+- [x] Dimension 4 Typography: PASS (4 sizes × 2 weights inherited; mono roles declared; badge literals grandfathered verbatim)
+- [x] Dimension 5 Spacing: PASS (all multiples of 4 from --space-*; no new exceptions)
+- [x] Dimension 6 Registry Safety: PASS (no third-party registries; no new shadcn components; gate documented)
 
-**Approval:** pending
+**Approval:** approved 2026-09-21 by gsd-ui-checker (6/6 dimensions passed; 1 non-blocking recommendation)
