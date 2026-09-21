@@ -669,18 +669,18 @@ Which phases cover which requirements.
 
 ### TBox 自动建模 (ONT)
 
-- [ ] **ONT-01**: System generates RDFS/OWL TBox (`skillforge_tbox.ttl`) at server boot from `SKILL.md` frontmatter + KB directory walk; emitted TTL reloads losslessly via `tggo/goRDFlib v0.1.0`
-- [ ] **ONT-02**: TBox declares 6 Classes (Tier / KBCategory / SubCategory / Skill / SkillAgent / RefusalPhrase) + 6 ObjectProperties (belongsToTier / hasSubCategory / hasReadAccess / hasWriteAccess / poweredBy / requiresRefusal) + 8 DatatypeProperties
-- [ ] **ONT-03**: TBox instance enumeration reproduces the source ground truth (8 Skills + 5 Tiers + 7 SubCategories) when reloaded
-- [ ] **ONT-04**: System supports LLM-driven schema induction — Claude proposes new Class / Property; human approval required before persistence; TBox version increments
-- [ ] **ONT-05**: TBox IRI namespace configurable via env (`SKILLFORGE_ONTOLOGY_NS`); default `http://skillforge.local/ontology#`
+- [x] **ONT-01**: System generates RDFS/OWL TBox (`skillforge_tbox.ttl`) at server boot from `SKILL.md` frontmatter + KB directory walk; emitted TTL reloads losslessly via `tggo/goRDFlib v0.1.0`
+- [x] **ONT-02**: TBox declares 6 Classes (Tier / KBCategory / SubCategory / Skill / SkillAgent / RefusalPhrase) + 6 ObjectProperties (belongsToTier / hasSubCategory / hasReadAccess / hasWriteAccess / poweredBy / requiresRefusal) + 8 DatatypeProperties
+- [x] **ONT-03**: TBox instance enumeration reproduces the source ground truth (8 Skills + 5 Tiers + 7 SubCategories) when reloaded
+- [x] **ONT-04**: System supports LLM-driven schema induction — Claude proposes new Class / Property; human approval required before persistence; TBox version increments
+- [x] **ONT-05**: TBox IRI namespace configurable via env (`SKILLFORGE_ONTOLOGY_NS`); default `http://skillforge.local/ontology#`
 
 ### Memory-map KG Store (ONT)
 
-- [ ] **ONT-06**: System implements pure-Go memory-map KG store with byS/byP/byO indices + JSON snapshot; load 215 triples in < 100ms; query < 1ms; memory < 5MB
-- [ ] **ONT-07**: KG snapshot persists to `skillforge_kg.json` and reloads on server restart without data loss
-- [ ] **ONT-08**: KG query API supports 1-hop and 2-hop adjacency traversal (`Adjacent1`, `Adjacent2`); both forward and reverse direction
-- [ ] **ONT-09**: KG store uses no cgo / no external process — preserves single-binary deployment
+- [x] **ONT-06**: System implements pure-Go memory-map KG store with byS/byP/byO indices + JSON snapshot; load 215 triples in < 100ms; query < 1ms; memory < 5MB
+- [x] **ONT-07**: KG snapshot persists to `skillforge_kg.json` and reloads on server restart without data loss
+- [x] **ONT-08**: KG query API supports 1-hop and 2-hop adjacency traversal (`Adjacent1`, `Adjacent2`); both forward and reverse direction
+- [x] **ONT-09**: KG store uses no cgo / no external process — preserves single-binary deployment
 
 ### ECL Pipeline (ONT)
 

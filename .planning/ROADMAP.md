@@ -181,7 +181,7 @@ Tier 隔离三条护城河。
 
 ---
 
-### Phase 38: Foundation — TBox + Memory-map KG + Auto Schema Lift
+### Phase 38: Foundation — TBox + Memory-map KG + Auto Schema Lift ✅ (2026-09-21)
 
 **Goal:** Server boot 时自动生成 RDFS/OWL TBox；纯 Go 内存 map KG store；LLM 提议新 Class/Property 的人工审批闭环。
 
@@ -202,7 +202,7 @@ Tier 隔离三条护城河。
 7. TBox 版本号自增 1；rollback 到上一版本可一键还原
 8. `verify-phase-38.sh` 全绿：单 binary 启动 + KG query < 1ms + reload lossless
 
-**Plans**: TBD
+**Plans**: 6/6 complete — 38-01 emitter (29ad95b) / 38-02 store (568b819) / 38-03 induction (e47bb23) / 38-04 admin API (14463e5) / 38-05 web tab (0a29a92) / 38-06 verify gate (1bd93cc). Hermetic gate 13/13 PASS. Verification: `38-VERIFICATION.md` (status: passed; 4 recorded non-blocking deviations — triple baseline 176 vs spike 215, rollback UX → Phase 40 per D-TBox-03, Windows cgo env, live-LLM manual gate).
 
 ---
 
