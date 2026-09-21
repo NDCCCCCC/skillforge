@@ -657,4 +657,72 @@ Which phases cover which requirements.
 
 ---
 *Requirements defined: 2026-08-10*
-*Last updated: 2026-09-09 — v1.3 milestone requirements (26) added: REALBUG-01..03 / PERF-01 / SRP-01..04 / HITL-01..03 / REPEATHTTP-01..03 / REPEATFE-01..03 / SILENTAUDIT-01 / STORE-01..02 / ROBUST-01..05 / CONCUR-01. Source: `.planning/audits/project-audit-2026-09-09.md` (18 critical + 27 warning + 14 info across 411 production files). Mapping to phases 31+ 待 gsd-roadmapper inline. Prior: 2026-09-07 v1.2 (29) mapped to phases 26-30; 2026-08-21 v1.0 (44) mapped to phases 14-20.*
+*Last updated: 2026-09-21 — v1.4 milestone requirements (17) added: ONT-01..17. Source: 005 系列 5 spike all VALIDATED (`.planning/spikes/005a` 到 `005e`); V1.4 落地 TBox+KG+ECL+SHACL+MCP 把 RAG 升级为本体操作系统；UI 一致性 hard constraint（每 web phase 先产 UI-SPEC.md）。Prior: 2026-09-09 v1.3 (26) added REALBUG/PERF/SRP/HITL/REPEATHTTP/REPEATFE/SILENTAUDIT/STORE/ROBUST/CONCUR. Mapping to phases 38-41 待 gsd-roadmapper inline. Prior: 2026-09-09 v1.3 (26) mapped to phases 31-37; 2026-09-07 v1.2 (29) mapped to phases 26-30; 2026-08-21 v1.0 (44) mapped to phases 14-20.*
+
+---
+
+## v1.4 Requirements (Ontology Layer)
+
+**Defined:** 2026-09-21
+**Goal:** 在 SkillForge 引入 OWL/RDF 本体层，把"Skill 驱动的 RAG"升级为"Skill 驱动的本体操作系统"——保留 Apache-2.0 单 binary + Skill 驱动 + Tier 隔离三条护城河。
+**Hard constraint:** 每个 web 涉及 phase 必须先产 UI-SPEC.md 再进实现；UI 沿用 shadcn/Tailwind v4 + Vercel AI SDK v5 + `/admin/*` 路由约定。
+
+### TBox 自动建模 (ONT)
+
+- [ ] **ONT-01**: System generates RDFS/OWL TBox (`skillforge_tbox.ttl`) at server boot from `SKILL.md` frontmatter + KB directory walk; emitted TTL reloads losslessly via `tggo/goRDFlib v0.1.0`
+- [ ] **ONT-02**: TBox declares 6 Classes (Tier / KBCategory / SubCategory / Skill / SkillAgent / RefusalPhrase) + 6 ObjectProperties (belongsToTier / hasSubCategory / hasReadAccess / hasWriteAccess / poweredBy / requiresRefusal) + 8 DatatypeProperties
+- [ ] **ONT-03**: TBox instance enumeration reproduces the source ground truth (8 Skills + 5 Tiers + 7 SubCategories) when reloaded
+- [ ] **ONT-04**: System supports LLM-driven schema induction — Claude proposes new Class / Property; human approval required before persistence; TBox version increments
+- [ ] **ONT-05**: TBox IRI namespace configurable via env (`SKILLFORGE_ONTOLOGY_NS`); default `http://skillforge.local/ontology#`
+
+### Memory-map KG Store (ONT)
+
+- [ ] **ONT-06**: System implements pure-Go memory-map KG store with byS/byP/byO indices + JSON snapshot; load 215 triples in < 100ms; query < 1ms; memory < 5MB
+- [ ] **ONT-07**: KG snapshot persists to `skillforge_kg.json` and reloads on server restart without data loss
+- [ ] **ONT-08**: KG query API supports 1-hop and 2-hop adjacency traversal (`Adjacent1`, `Adjacent2`); both forward and reverse direction
+- [ ] **ONT-09**: KG store uses no cgo / no external process — preserves single-binary deployment
+
+### ECL Pipeline (ONT)
+
+- [ ] **ONT-10**: System replaces `internal/knowledge/indexer.go` byte-cap chunker with section-aware markdown chunker for sql-guides; chunks grouped by `source_idx` + `section` frontmatter
+- [ ] **ONT-11**: Section-aware chunker achieves 100% boundary detection across 185 sql-guides `__secNN` fragments → 26 logical notes; preserves complete SQL across sec boundaries
+- [ ] **ONT-12**: System runs LLM-driven entity extraction on merged notes (sql-guides: extract `etl_*` table references + relationships → ABox triples)
+- [ ] **ONT-13**: ECL pipeline writes new ABox triples to memory-map KG + indexes new chunks to Milvus with consistent metadata (tier / source_idx / section / section_idx)
+
+### Data Governance (ONT)
+
+- [ ] **ONT-14**: System validates ABox against SHACL shapes at server boot; reports violations with source file + entity URI; does not silently corrupt
+- [ ] **ONT-15**: Every ABox statement carries provenance metadata (`skf:provenance` → source file path + line range + extraction timestamp)
+- [ ] **ONT-16**: TBox evolves via versioned schema induction log; rollback to previous TBox version is supported via snapshot
+- [ ] **ONT-17**: KG query endpoint auto-appends `belongsToTier` filter based on caller's Skill declaration; tier trust isolation preserved
+
+### Platform Layer (deferred to Phase 41 — listed here for traceability)
+
+- [ ] **PLAT-ONT-18**: MCP server exposes KG query operations to external agents (Tools: `skf_query`, `skf_skills`, `skf_chunk_for`); respects tier isolation
+- [ ] **PLAT-ONT-19**: SPARQL-like REST endpoint `POST /api/sparql` accepts pattern match queries against the KG
+- [ ] **PLAT-ONT-20**: Hybrid Retrieval performs KG 1-2 hop subgraph expansion before Milvus rerank; Q1/Q4-type queries achieve recall ≥ 0.85
+
+### Out of Scope (v1.4)
+
+- **Full OWL 2 RL/DL reasoning engine** — deferred; current implementation is data-only, no inference of new triples from existing ones beyond SHACL validation
+- **Schema induction automatic mode without human approval** — every LLM-proposed Class/Property must be human-reviewed; auto-apply is a future enhancement
+- **Multi-KB federation across SkillForge instances** — single-process KG store only; replication deferred to a later milestone
+- **Leiden community detection** — KB scale (< 500 notes) does not warrant community detection; deferred until > 500 notes
+
+### v1.4 Phase Mapping (placeholder — finalized by gsd-roadmapper)
+
+| Phase | Domain | ONT-IDs | UI-SPEC Target |
+|-------|--------|---------|----------------|
+| 38 | Foundation | ONT-01..09 | `/admin/ontology` (TBox 类层次 + KG 三元组浏览器) |
+| 39 | ECL Pipeline | ONT-10..13 | `/admin/pipeline` (ECL 实时状态 + 失败重试) |
+| 40 | Data Governance | ONT-14..17 | `/admin/governance` (SHACL 报告 + provenance 图 + 版本日志) |
+| 41 | Platform Layer | PLAT-ONT-18..20 | `/admin/platform` (SPARQL Playground + MCP Inspector + Hybrid 调试) |
+
+**Coverage:**
+
+- v1.4 requirements: 17 total (ONT-01..17) + 3 deferred platform items (PLAT-ONT-18..20, listed for traceability)
+- v1.4 mapped to phases: 17 ONT + 3 PLAT-ONT = 20 total, target phase 38-41
+
+---
+
+*Last updated: 2026-09-21 — v1.4 milestone requirements (17) added: ONT-01..17 + PLAT-ONT-18..20 placeholder. Source: 005 系列 5 spike all VALIDATED (`005a` owl-tbox-toolchain / `005b` skillschema-rdfs-lift / `005c` ontology-aware-chunker / `005d` kg-storage-eval / `005e` post-ontology-vector-necessity). UI consistency hard constraint: each web-touched phase must produce UI-SPEC.md before implementation begins.*
