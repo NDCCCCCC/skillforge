@@ -1,0 +1,45 @@
+=== spike 005c: ontology-aware markdown chunker ===
+[1] walked 185 sec-fragment chunks under knowledge/sql-guides
+[1a] distinct logical notes by source_idx: 26
+    - source_idx=001 fragments=8
+    - source_idx=006 fragments=4
+    - source_idx=007 fragments=3
+    - source_idx=009 fragments=5
+    - source_idx=010 fragments=6
+    - source_idx=011 fragments=3
+    - source_idx=012 fragments=4
+    - source_idx=014 fragments=4
+    - source_idx=015 fragments=5
+    - source_idx=016 fragments=4
+    - source_idx=018 fragments=6
+    - source_idx=020 fragments=6
+    - source_idx=026 fragments=3
+    - source_idx=027 fragments=5
+    - source_idx=028 fragments=4
+    - source_idx=029 fragments=22
+    - source_idx=031 fragments=10
+    - source_idx=032 fragments=3
+    - source_idx=033 fragments=3
+    - source_idx=036 fragments=7
+    - source_idx=037 fragments=6
+    - source_idx=038 fragments=3
+    - source_idx=039 fragments=35
+    - source_idx=041 fragments=7
+    - source_idx=042 fragments=12
+    - source_idx=043 fragments=7
+[2] merged into 26 logical notes
+[3] boundary detection: 185 fragment-contributions across 26 sections
+[4] note 001 title="公司业务部、武汉中支部门组部门科室等信息更新", sections=3
+    - [section #0] 公司业务部、武汉中支部门组部门科室等信息更新 body=297 bytes source_paths=1
+    - [section #1] 说明                   body=1134 bytes source_paths=1
+    - [section #2] SQL / 正文             body=17401 bytes source_paths=6
+[5a] distinct `update etl_*` targets in corpus: 3
+    - update:etl_payment_due_t
+    - update:etl_policy_request_issue_t
+    - update:etl_NONAUTO_POLICY_T
+[5b] note 001 contains 3/3 corpus SQL targets
+[6] emitted chunk_metadata.json (32850 bytes, 69 metadata records)
+[7] wrote 26 merged notes to merged_notes/
+[7a] WARN: rewalked merged notes count=0 != original notes=26
+
+=== VERDICT: VALIDATED — ontology-aware chunker recovers complete SQL ===

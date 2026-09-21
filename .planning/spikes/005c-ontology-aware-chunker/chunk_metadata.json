@@ -1,0 +1,877 @@
+[
+  {
+    "source_idx": "001",
+    "title": "公司业务部、武汉中支部门组部门科室等信息更新",
+    "section": "公司业务部、武汉中支部门组部门科室等信息更新",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec01_公司业务部、武汉中支部门组部门科室等信息更新.md"
+    ],
+    "body_bytes": 297
+  },
+  {
+    "source_idx": "001",
+    "title": "公司业务部、武汉中支部门组部门科室等信息更新",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec02_说明.md"
+    ],
+    "body_bytes": 1134
+  },
+  {
+    "source_idx": "001",
+    "title": "公司业务部、武汉中支部门组部门科室等信息更新",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec03_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec04_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec05_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec06_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec07_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/001_公司业务部、武汉中支部门组部门科室等信息更新__sec08_SQL_正文.md"
+    ],
+    "body_bytes": 17401
+  },
+  {
+    "source_idx": "006",
+    "title": "高斯数据库存储过程和定时任务",
+    "section": "高斯数据库存储过程和定时任务",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/006_高斯数据库存储过程和定时任务__sec01_高斯数据库存储过程和定时任务.md"
+    ],
+    "body_bytes": 261
+  },
+  {
+    "source_idx": "006",
+    "title": "高斯数据库存储过程和定时任务",
+    "section": "SQL / 正文",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/006_高斯数据库存储过程和定时任务__sec02_SQL_正文.md",
+      "knowledge/sql-guides/操作手册/006_高斯数据库存储过程和定时任务__sec03_SQL_正文.md",
+      "knowledge/sql-guides/操作手册/006_高斯数据库存储过程和定时任务__sec04_SQL_正文.md"
+    ],
+    "body_bytes": 10689
+  },
+  {
+    "source_idx": "007",
+    "title": "意外伤害医疗保险",
+    "section": "意外伤害医疗保险",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/非车险/007_意外伤害医疗保险__sec01_意外伤害医疗保险.md"
+    ],
+    "body_bytes": 158
+  },
+  {
+    "source_idx": "007",
+    "title": "意外伤害医疗保险",
+    "section": "SQL / 正文",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/非车险/007_意外伤害医疗保险__sec02_SQL_正文.md",
+      "knowledge/sql-guides/非车险/007_意外伤害医疗保险__sec03_SQL_正文.md"
+    ],
+    "body_bytes": 7194
+  },
+  {
+    "source_idx": "009",
+    "title": "农险查询",
+    "section": "农险查询",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/非车险/009_农险查询__sec01_农险查询.md"
+    ],
+    "body_bytes": 245
+  },
+  {
+    "source_idx": "009",
+    "title": "农险查询",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/非车险/009_农险查询__sec02_说明.md"
+    ],
+    "body_bytes": 378
+  },
+  {
+    "source_idx": "009",
+    "title": "农险查询",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/非车险/009_农险查询__sec03_SQL_正文.md",
+      "knowledge/sql-guides/非车险/009_农险查询__sec04_SQL_正文.md",
+      "knowledge/sql-guides/非车险/009_农险查询__sec05_SQL_正文.md"
+    ],
+    "body_bytes": 7845
+  },
+  {
+    "source_idx": "010",
+    "title": "财务现金流小程序实现方案",
+    "section": "财务现金流小程序实现方案",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/010_财务现金流小程序实现方案__sec01_财务现金流小程序实现方案.md"
+    ],
+    "body_bytes": 256
+  },
+  {
+    "source_idx": "010",
+    "title": "财务现金流小程序实现方案",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/010_财务现金流小程序实现方案__sec02_说明.md"
+    ],
+    "body_bytes": 234
+  },
+  {
+    "source_idx": "010",
+    "title": "财务现金流小程序实现方案",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/010_财务现金流小程序实现方案__sec03_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/010_财务现金流小程序实现方案__sec04_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/010_财务现金流小程序实现方案__sec05_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/010_财务现金流小程序实现方案__sec06_SQL_正文.md"
+    ],
+    "body_bytes": 5815
+  },
+  {
+    "source_idx": "011",
+    "title": "三责险，车损险保费保额",
+    "section": "三责险，车损险保费保额",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/011_三责险，车损险保费保额__sec01_三责险，车损险保费保额.md"
+    ],
+    "body_bytes": 142
+  },
+  {
+    "source_idx": "011",
+    "title": "三责险，车损险保费保额",
+    "section": "SQL / 正文",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/011_三责险，车损险保费保额__sec02_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/011_三责险，车损险保费保额__sec03_SQL_正文.md"
+    ],
+    "body_bytes": 4653
+  },
+  {
+    "source_idx": "012",
+    "title": "定时任务桌面程序 - 完整使用手册",
+    "section": "定时任务桌面程序 - 完整使用手册",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/012_定时任务桌面程序 - 完整使用手册__sec01_定时任务桌面程序_-_完整使用手册.md"
+    ],
+    "body_bytes": 112
+  },
+  {
+    "source_idx": "012",
+    "title": "定时任务桌面程序 - 完整使用手册",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/012_定时任务桌面程序 - 完整使用手册__sec02_说明.md",
+      "knowledge/sql-guides/操作手册/012_定时任务桌面程序 - 完整使用手册__sec03_说明.md"
+    ],
+    "body_bytes": 6896
+  },
+  {
+    "source_idx": "012",
+    "title": "定时任务桌面程序 - 完整使用手册",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/012_定时任务桌面程序 - 完整使用手册__sec04_SQL_正文.md"
+    ],
+    "body_bytes": 3261
+  },
+  {
+    "source_idx": "014",
+    "title": "逐单未到期准备金",
+    "section": "逐单未到期准备金",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/014_逐单未到期准备金__sec01_逐单未到期准备金.md"
+    ],
+    "body_bytes": 315
+  },
+  {
+    "source_idx": "014",
+    "title": "逐单未到期准备金",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/014_逐单未到期准备金__sec02_说明.md"
+    ],
+    "body_bytes": 1329
+  },
+  {
+    "source_idx": "014",
+    "title": "逐单未到期准备金",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/014_逐单未到期准备金__sec03_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/014_逐单未到期准备金__sec04_SQL_正文.md"
+    ],
+    "body_bytes": 5311
+  },
+  {
+    "source_idx": "015",
+    "title": "代理业务部车商费用",
+    "section": "代理业务部车商费用",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/015_代理业务部车商费用__sec01_代理业务部车商费用.md"
+    ],
+    "body_bytes": 389
+  },
+  {
+    "source_idx": "015",
+    "title": "代理业务部车商费用",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/015_代理业务部车商费用__sec02_说明.md"
+    ],
+    "body_bytes": 24
+  },
+  {
+    "source_idx": "015",
+    "title": "代理业务部车商费用",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/015_代理业务部车商费用__sec03_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/015_代理业务部车商费用__sec04_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/015_代理业务部车商费用__sec05_SQL_正文.md"
+    ],
+    "body_bytes": 10430
+  },
+  {
+    "source_idx": "016",
+    "title": "视频录制api",
+    "section": "视频录制api",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/016_视频录制api__sec01_视频录制api.md"
+    ],
+    "body_bytes": 18
+  },
+  {
+    "source_idx": "016",
+    "title": "视频录制api",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/016_视频录制api__sec02_说明.md",
+      "knowledge/sql-guides/操作手册/016_视频录制api__sec03_说明.md",
+      "knowledge/sql-guides/操作手册/016_视频录制api__sec04_说明.md"
+    ],
+    "body_bytes": 11947
+  },
+  {
+    "source_idx": "018",
+    "title": "CREATE OR REPLACE FUNCTION wuh...",
+    "section": "CREATE OR REPLACE FUNCTION wuh...",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/018_CREATE OR REPLACE FUNCTION wuh...__sec01_CREATE_OR_REPLACE_FUNCTI.md"
+    ],
+    "body_bytes": 421
+  },
+  {
+    "source_idx": "018",
+    "title": "CREATE OR REPLACE FUNCTION wuh...",
+    "section": "SQL / 正文",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/018_CREATE OR REPLACE FUNCTION wuh...__sec02_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/018_CREATE OR REPLACE FUNCTION wuh...__sec03_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/018_CREATE OR REPLACE FUNCTION wuh...__sec04_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/018_CREATE OR REPLACE FUNCTION wuh...__sec05_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/018_CREATE OR REPLACE FUNCTION wuh...__sec06_SQL_正文.md"
+    ],
+    "body_bytes": 13368
+  },
+  {
+    "source_idx": "020",
+    "title": "财务逐单未到期",
+    "section": "财务逐单未到期",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/020_财务逐单未到期__sec01_财务逐单未到期.md"
+    ],
+    "body_bytes": 368
+  },
+  {
+    "source_idx": "020",
+    "title": "财务逐单未到期",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/020_财务逐单未到期__sec02_说明.md"
+    ],
+    "body_bytes": 21
+  },
+  {
+    "source_idx": "020",
+    "title": "财务逐单未到期",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/020_财务逐单未到期__sec03_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/020_财务逐单未到期__sec04_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/020_财务逐单未到期__sec05_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/020_财务逐单未到期__sec06_SQL_正文.md"
+    ],
+    "body_bytes": 12455
+  },
+  {
+    "source_idx": "026",
+    "title": "投保交强险代收代缴车船税",
+    "section": "投保交强险代收代缴车船税",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/026_投保交强险代收代缴车船税__sec01_投保交强险代收代缴车船税.md"
+    ],
+    "body_bytes": 303
+  },
+  {
+    "source_idx": "026",
+    "title": "投保交强险代收代缴车船税",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/026_投保交强险代收代缴车船税__sec02_说明.md"
+    ],
+    "body_bytes": 283
+  },
+  {
+    "source_idx": "026",
+    "title": "投保交强险代收代缴车船税",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/026_投保交强险代收代缴车船税__sec03_SQL_正文.md"
+    ],
+    "body_bytes": 3765
+  },
+  {
+    "source_idx": "027",
+    "title": "财务税款看板",
+    "section": "财务税款看板",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/027_财务税款看板__sec01_财务税款看板.md"
+    ],
+    "body_bytes": 77
+  },
+  {
+    "source_idx": "027",
+    "title": "财务税款看板",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/027_财务税款看板__sec02_说明.md"
+    ],
+    "body_bytes": 30
+  },
+  {
+    "source_idx": "027",
+    "title": "财务税款看板",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/财务对账/027_财务税款看板__sec03_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/027_财务税款看板__sec04_SQL_正文.md",
+      "knowledge/sql-guides/财务对账/027_财务税款看板__sec05_SQL_正文.md"
+    ],
+    "body_bytes": 8162
+  },
+  {
+    "source_idx": "028",
+    "title": "新能源车签单口径",
+    "section": "新能源车签单口径",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/028_新能源车签单口径__sec01_新能源车签单口径.md"
+    ],
+    "body_bytes": 217
+  },
+  {
+    "source_idx": "028",
+    "title": "新能源车签单口径",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/028_新能源车签单口径__sec02_说明.md"
+    ],
+    "body_bytes": 104
+  },
+  {
+    "source_idx": "028",
+    "title": "新能源车签单口径",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/028_新能源车签单口径__sec03_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/028_新能源车签单口径__sec04_SQL_正文.md"
+    ],
+    "body_bytes": 6204
+  },
+  {
+    "source_idx": "029",
+    "title": "开门红存储过程",
+    "section": "开门红存储过程",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec01_开门红存储过程.md"
+    ],
+    "body_bytes": 286
+  },
+  {
+    "source_idx": "029",
+    "title": "开门红存储过程",
+    "section": "SQL / 正文",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec02_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec03_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec04_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec05_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec06_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec07_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec08_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec09_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec10_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec11_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec12_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec13_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec14_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec15_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec16_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec17_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec18_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec19_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec20_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec21_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/029_开门红存储过程__sec22_SQL_正文.md"
+    ],
+    "body_bytes": 75426
+  },
+  {
+    "source_idx": "031",
+    "title": "取数工作汇总",
+    "section": "取数工作汇总",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec01_取数工作汇总.md"
+    ],
+    "body_bytes": 417
+  },
+  {
+    "source_idx": "031",
+    "title": "取数工作汇总",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec02_说明.md"
+    ],
+    "body_bytes": 269
+  },
+  {
+    "source_idx": "031",
+    "title": "取数工作汇总",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec03_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec04_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec05_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec06_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec07_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec08_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec09_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/031_取数工作汇总__sec10_SQL_正文.md"
+    ],
+    "body_bytes": 28287
+  },
+  {
+    "source_idx": "032",
+    "title": "根据保单号查询支付方式，开户行名称，客户账户",
+    "section": "根据保单号查询支付方式，开户行名称，客户账户",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/032_根据保单号查询支付方式，开户行名称，客户账户__sec01_根据保单号查询支付方式，开户行名称，客户账户.md"
+    ],
+    "body_bytes": 171
+  },
+  {
+    "source_idx": "032",
+    "title": "根据保单号查询支付方式，开户行名称，客户账户",
+    "section": "SQL / 正文",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/032_根据保单号查询支付方式，开户行名称，客户账户__sec02_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/032_根据保单号查询支付方式，开户行名称，客户账户__sec03_SQL_正文.md"
+    ],
+    "body_bytes": 6752
+  },
+  {
+    "source_idx": "033",
+    "title": "分公司自有车辆赔款清单",
+    "section": "分公司自有车辆赔款清单",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/理赔与赔付/033_分公司自有车辆赔款清单__sec01_分公司自有车辆赔款清单.md"
+    ],
+    "body_bytes": 215
+  },
+  {
+    "source_idx": "033",
+    "title": "分公司自有车辆赔款清单",
+    "section": "SQL / 正文",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/理赔与赔付/033_分公司自有车辆赔款清单__sec02_SQL_正文.md",
+      "knowledge/sql-guides/理赔与赔付/033_分公司自有车辆赔款清单__sec03_SQL_正文.md"
+    ],
+    "body_bytes": 5599
+  },
+  {
+    "source_idx": "036",
+    "title": "车险报价清单",
+    "section": "车险报价清单",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/036_车险报价清单__sec01_车险报价清单.md"
+    ],
+    "body_bytes": 162
+  },
+  {
+    "source_idx": "036",
+    "title": "车险报价清单",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/036_车险报价清单__sec02_说明.md"
+    ],
+    "body_bytes": 76
+  },
+  {
+    "source_idx": "036",
+    "title": "车险报价清单",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/汽车险/036_车险报价清单__sec03_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/036_车险报价清单__sec04_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/036_车险报价清单__sec05_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/036_车险报价清单__sec06_SQL_正文.md",
+      "knowledge/sql-guides/汽车险/036_车险报价清单__sec07_SQL_正文.md"
+    ],
+    "body_bytes": 14467
+  },
+  {
+    "source_idx": "037",
+    "title": "个客综合市场部数据看板",
+    "section": "个客综合市场部数据看板",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/其他/037_个客综合市场部数据看板__sec01_个客综合市场部数据看板.md"
+    ],
+    "body_bytes": 397
+  },
+  {
+    "source_idx": "037",
+    "title": "个客综合市场部数据看板",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/其他/037_个客综合市场部数据看板__sec02_说明.md",
+      "knowledge/sql-guides/其他/037_个客综合市场部数据看板__sec03_说明.md",
+      "knowledge/sql-guides/其他/037_个客综合市场部数据看板__sec04_说明.md",
+      "knowledge/sql-guides/其他/037_个客综合市场部数据看板__sec05_说明.md"
+    ],
+    "body_bytes": 12344
+  },
+  {
+    "source_idx": "037",
+    "title": "个客综合市场部数据看板",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/其他/037_个客综合市场部数据看板__sec06_SQL_正文.md"
+    ],
+    "body_bytes": 616
+  },
+  {
+    "source_idx": "038",
+    "title": "帆软升级注意事项",
+    "section": "帆软升级注意事项",
+    "section_idx": 0,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/038_帆软升级注意事项__sec01_帆软升级注意事项.md"
+    ],
+    "body_bytes": 27
+  },
+  {
+    "source_idx": "038",
+    "title": "帆软升级注意事项",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 2,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/038_帆软升级注意事项__sec02_说明.md",
+      "knowledge/sql-guides/操作手册/038_帆软升级注意事项__sec03_说明.md"
+    ],
+    "body_bytes": 6611
+  },
+  {
+    "source_idx": "039",
+    "title": "二层宽表存储过程",
+    "section": "二层宽表存储过程",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec01_二层宽表存储过程.md"
+    ],
+    "body_bytes": 213
+  },
+  {
+    "source_idx": "039",
+    "title": "二层宽表存储过程",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec02_说明.md"
+    ],
+    "body_bytes": 48
+  },
+  {
+    "source_idx": "039",
+    "title": "二层宽表存储过程",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec03_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec04_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec05_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec06_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec07_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec08_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec09_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec10_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec11_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec12_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec13_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec14_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec15_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec16_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec17_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec18_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec19_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec20_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec21_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec22_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec23_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec24_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec25_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec26_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec27_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec28_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec29_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec30_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec31_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec32_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec33_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec34_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/039_二层宽表存储过程__sec35_SQL_正文.md"
+    ],
+    "body_bytes": 93993
+  },
+  {
+    "source_idx": "041",
+    "title": "数据提取字段解读",
+    "section": "数据提取字段解读",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/041_数据提取字段解读__sec01_数据提取字段解读.md"
+    ],
+    "body_bytes": 305
+  },
+  {
+    "source_idx": "041",
+    "title": "数据提取字段解读",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/041_数据提取字段解读__sec02_说明.md"
+    ],
+    "body_bytes": 1196
+  },
+  {
+    "source_idx": "041",
+    "title": "数据提取字段解读",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/041_数据提取字段解读__sec03_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/041_数据提取字段解读__sec04_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/041_数据提取字段解读__sec05_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/041_数据提取字段解读__sec06_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/041_数据提取字段解读__sec07_SQL_正文.md"
+    ],
+    "body_bytes": 12190
+  },
+  {
+    "source_idx": "042",
+    "title": "sql示例",
+    "section": "sql示例",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/042_sql示例__sec01_sql示例.md"
+    ],
+    "body_bytes": 12
+  },
+  {
+    "source_idx": "042",
+    "title": "sql示例",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/042_sql示例__sec02_说明.md"
+    ],
+    "body_bytes": 61
+  },
+  {
+    "source_idx": "042",
+    "title": "sql示例",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/取数口径/042_sql示例__sec03_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec04_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec05_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec06_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec07_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec08_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec09_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec10_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec11_SQL_正文.md",
+      "knowledge/sql-guides/取数口径/042_sql示例__sec12_SQL_正文.md"
+    ],
+    "body_bytes": 32535
+  },
+  {
+    "source_idx": "043",
+    "title": "MongoDB 4.4全面解析：从核心概念到实战应用",
+    "section": "MongoDB 4.4全面解析：从核心概念到实战应用",
+    "section_idx": 0,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/043_MongoDB 4.4全面解析：从核心概念到实战应用__sec01_MongoDB_4.4全面解析：从核心概念到实战.md"
+    ],
+    "body_bytes": 59
+  },
+  {
+    "source_idx": "043",
+    "title": "MongoDB 4.4全面解析：从核心概念到实战应用",
+    "section": "说明",
+    "section_idx": 1,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/043_MongoDB 4.4全面解析：从核心概念到实战应用__sec02_说明.md",
+      "knowledge/sql-guides/操作手册/043_MongoDB 4.4全面解析：从核心概念到实战应用__sec03_说明.md"
+    ],
+    "body_bytes": 6213
+  },
+  {
+    "source_idx": "043",
+    "title": "MongoDB 4.4全面解析：从核心概念到实战应用",
+    "section": "SQL / 正文",
+    "section_idx": 2,
+    "section_count": 3,
+    "source_paths": [
+      "knowledge/sql-guides/操作手册/043_MongoDB 4.4全面解析：从核心概念到实战应用__sec04_SQL_正文.md",
+      "knowledge/sql-guides/操作手册/043_MongoDB 4.4全面解析：从核心概念到实战应用__sec05_SQL_正文.md",
+      "knowledge/sql-guides/操作手册/043_MongoDB 4.4全面解析：从核心概念到实战应用__sec06_SQL_正文.md",
+      "knowledge/sql-guides/操作手册/043_MongoDB 4.4全面解析：从核心概念到实战应用__sec07_SQL_正文.md"
+    ],
+    "body_bytes": 9906
+  }
+]
