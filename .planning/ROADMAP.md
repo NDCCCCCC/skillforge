@@ -9,8 +9,8 @@
 | v1.0 (Business Data) | 14-20 | ✅ SHIPPED 2026-09-06 |
 | v1.1 (Eval Trust-Loop) | 21-25 | ✅ SHIPPED 2026-09-06 |
 | v1.2 (Knowledge Ops) | 26-30 | ✅ SHIPPED 2026-09-08 |
-| **v1.3 (Code Quality)** | **31-37** | **🚧 Planned** |
-| v1.4 (OSS Release) | Future | Planned |
+| v1.3 (Code Quality) | 31-37 | ✅ SHIPPED 2026-09-09 |
+| **v1.4 (Ontology Layer)** | **38-41** | **🚧 Planned** |
 | Backlog | 999.x | Backlog |
 
 ---
@@ -167,4 +167,124 @@
 
 ---
 
-*Last updated: 2026-09-09 — v1.3 roadmap created (7 phases 31-37, 26 requirements mapped)*
+## v1.4 — Ontology Layer (本体层)
+
+**Goal:** 在 SkillForge 引入 OWL/RDF 本体层，把"Skill 驱动的 RAG"升级为
+"Skill 驱动的本体操作系统"——保留 Apache-2.0 单 binary + Skill 驱动 +
+Tier 隔离三条护城河。
+
+**Hard constraint:** 每个 phase 涉及 web 时，必须先产出 UI-SPEC.md，
+再进实现；UI 沿用 shadcn/Tailwind v4 + Vercel AI SDK v5 现有体系，与
+`/admin/*` 四视图路由约定保持一致。
+
+**Source of truth:** 005 系列 5 个 spike 全 VALIDATED（`.planning/spikes/005a` 到 `005e`）
+
+---
+
+### Phase 38: Foundation — TBox + Memory-map KG + Auto Schema Lift
+
+**Goal:** Server boot 时自动生成 RDFS/OWL TBox；纯 Go 内存 map KG store；LLM 提议新 Class/Property 的人工审批闭环。
+
+**Depends on:** Nothing (first v1.4 phase)
+
+**Requirements:** ONT-01, ONT-02, ONT-03, ONT-04, ONT-05, ONT-06, ONT-07, ONT-08, ONT-09
+
+**UI-SPEC Target:** `/admin/ontology` — TBox 类层次浏览器 + KG 三元组查询面板
+
+**Success Criteria** (what must be TRUE):
+
+1. Server boot 生成 `skillforge_tbox.ttl` (215 triples) + `skillforge_kg.json` snapshot；reload 字节级一致
+2. KG query API 在 215 triples 上 < 1ms；memory 估计 < 50KB
+3. `internal/ontology/` 目录无 cgo 依赖；`go build` 单 binary 通过
+4. Admin UI 列出 8 Skills + 5 Tiers + 7 SubCategories（来自 TBox），可点击查看 Class 详情
+5. KG 三元组查询面板支持 `?x a skf:Skill` 模式查询，结果可导出 JSON
+6. LLM schema induction：Claude 提议新 Class/Property 写入 `/admin/ontology/proposals`，需人工点击 approve 才进 TBox
+7. TBox 版本号自增 1；rollback 到上一版本可一键还原
+8. `verify-phase-38.sh` 全绿：单 binary 启动 + KG query < 1ms + reload lossless
+
+**Plans**: TBD
+
+---
+
+### Phase 39: ECL Pipeline — Section-aware Chunker + LLM Entity Extraction
+
+**Goal:** 替换 `internal/knowledge/indexer.go` byte-cap chunker；LLM 自动从 sql-guides markdown 抽取 etl_* 实体 + 关系；ABox 自动写入 KG + Milvus 双向同步。
+
+**Depends on:** Phase 38
+
+**Requirements:** ONT-10, ONT-11, ONT-12, ONT-13
+
+**UI-SPEC Target:** `/admin/pipeline` — ECL Pipeline 实时状态（chunker / extraction / load 进度 + 失败重试）
+
+**Success Criteria** (what must be TRUE):
+
+1. Section-aware chunker 处理 185 sql-guides `__secNN` 片段 → 26 完整 notes；100% 边界识别；note 001 包含 3/3 corpus SQL 目标表
+2. LLM 实体抽取从 sql-guides 自动产出 etl_* table references + 关系（≥ 80% precision@recall vs 005c 手工标注）
+3. 新 ABox triples 自动写入 memory-map KG + Milvus 索引同步
+4. Admin UI 实时显示：chunker 当前文件 / extraction 进度 / load 队列长度 / 失败重试按钮
+5. ECL 失败 → 自动 retry 3 次 → 仍失败入 dead-letter 队列，可手动触发
+6. `verify-phase-39.sh` 全绿：100% chunker boundary + entity extraction F1 ≥ 0.8
+
+**Plans**: TBD
+
+---
+
+### Phase 40: Data Governance — SHACL + Provenance + TBox Versioning
+
+**Goal:** 启动时 SHACL 校验 ABox 一致性；每条 statement 带 source provenance；TBox 版本演进日志。
+
+**Depends on:** Phase 39
+
+**Requirements:** ONT-14, ONT-15, ONT-16, ONT-17
+
+**UI-SPEC Target:** `/admin/governance` — SHACL 校验报告 + Provenance 链路图 + TBox 版本演进
+
+**Success Criteria** (what must be TRUE):
+
+1. Server boot 运行 SHACL validator 校验 ABox，violation 列表清晰（source file + entity URI + 约束）
+2. 每条 ABox triple 带 `skf:provenance` → source file path + line range + extraction timestamp
+3. TBox 版本号 + 演进日志：每次 schema induction 写入一条记录（who / when / what / why）
+4. TBox rollback 到上一版本：snapshot → 验证 → 切换 → KG rebuild in < 5s
+5. KG query endpoint 自动追加 `belongsToTier` 过滤（基于 caller skill 的 `reads` 声明）
+6. Admin UI 展示：SHACL 报告（绿/黄/红）+ provenance graph (Cytoscape.js) + TBox 版本 timeline
+7. `verify-phase-40.sh` 全绿：SHACL violation detection + provenance coverage 100% + rollback < 5s
+
+**Plans**: TBD
+
+---
+
+### Phase 41: Platform Layer — MCP Server + SPARQL Endpoint + Hybrid Retrieval
+
+**Goal:** MCP server 暴露 KG 给外部 agent；SPARQL-like REST endpoint；Hybrid Retrieval 1-2 跳 subgraph expansion。
+
+**Depends on:** Phase 40
+
+**Requirements:** PLAT-ONT-18, PLAT-ONT-19, PLAT-ONT-20
+
+**UI-SPEC Target:** `/admin/platform` — SPARQL Playground + MCP Inspector + Hybrid Retrieval 调试面板
+
+**Success Criteria** (what must be TRUE):
+
+1. MCP server 启动并暴露 Tools: `skf_query(pattern)` / `skf_skills()` / `skf_chunk_for(entity)` — 外部 agent 可直接 query
+2. SPARQL-like REST endpoint `POST /api/sparql` 接受 pattern match queries，response 为 JSON triples
+3. KG query 自动 tier 隔离：MCP + SPARQL 强制按 caller 上下文过滤（不可绕过）
+4. Hybrid Retrieval：query → KG 1-2 跳 subgraph expansion → Milvus rerank；Q1/Q4 类查询召回 ≥ 0.85（vs v1.3 0.70）
+5. Admin UI 提供：SPARQL Playground (代码编辑器 + 结果面板) + MCP Inspector (tools list + 测试调用) + Hybrid 调试 (KG expansion 可视化 + Milvus 命中列表)
+6. `verify-phase-41.sh` 全绿：MCP tools 可调用 + SPARQL endpoint 正常 + Hybrid Q1 召回 ≥ 0.85
+
+**Plans**: TBD
+
+---
+
+### v1.4 Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
+| 39. ECL Pipeline | 0/? | Not started | — |
+| 40. Data Governance | 0/? | Not started | — |
+| 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
+
+---
+
+*Last updated: 2026-09-21 — v1.4 roadmap created (4 phases 38-41, 17 ONT + 3 PLAT-ONT requirements mapped). Source: 005 series 5 spikes all VALIDATED. UI consistency hard constraint: each web-touched phase produces UI-SPEC.md before implementation. Prior: v1.3 shipped 2026-09-09 (phases 31-37, 26 requirements).*
