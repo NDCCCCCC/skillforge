@@ -1,0 +1,26 @@
+=== spike 005a: Go OWL TBox toolchain (tggo/goRDFlib v0.1.0) ===
+[1] parsed graph: 50 triples from example_tbox.ttl
+[2] owl:Class count=6
+    - skf:AuthoritativeSQLNote label="Authoritative SQL Note"
+    - skf:BusinessUnit     label="Business Unit"
+    - skf:KnowledgeNote    label="Knowledge Note"
+    - skf:SQLNote          label="SQL Note"
+    - skf:TableSchema      label="Table Schema"
+    - skf:Tier             label="Tier"
+[2.5] class hierarchy (subClassOf):
+    - skf:AuthoritativeSQLNote subClassOf [_:N0d589b9b22ee4c7dac7a4e8816db1be4 skf:SQLNote]
+    - skf:SQLNote subClassOf [skf:KnowledgeNote]
+[3] owl:ObjectProperty count=3
+    - skf:belongsToTier    domain=skf:KnowledgeNote  range=skf:Tier           label="belongs to tier"
+    - skf:partOf           domain=skf:BusinessUnit   range=skf:BusinessUnit   label="part of (organisational hierarchy)"
+    - skf:referencesTable  domain=skf:SQLNote        range=skf:TableSchema    label="references table"
+[4] owl:DatatypeProperty count=2
+    - skf:noteContent      domain=skf:KnowledgeNote  range=xsd:string         label="note content"
+    - skf:noteTitle        domain=skf:KnowledgeNote  range=xsd:string         label="note title"
+[5] owl:Restriction count=1
+    - skf:belongsToTier some skf:权威
+[6a] serialized back: 50 triples, 2168 bytes
+[6b] reparsed: 50 triples
+[6c] roundtrip lossless: OK (n == n3)
+
+=== VERDICT: VALIDATED — Go OWL TBox toolchain is viable ===

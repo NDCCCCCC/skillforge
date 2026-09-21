@@ -1,0 +1,68 @@
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+
+# === Classes ===
+skf:KnowledgeNote   a owl:Class ;
+    rdfs:label "Knowledge Note" ;
+    rdfs:comment "A single document in the SkillForge knowledge base" .
+
+skf:SQLNote         a owl:Class ;
+    rdfs:subClassOf skf:KnowledgeNote ;
+    rdfs:label "SQL Note" ;
+    rdfs:comment "A knowledge note that contains SQL statements" .
+
+skf:TableSchema     a owl:Class ;
+    rdfs:label "Table Schema" ;
+    rdfs:comment "A database table referenced by a SQL note" .
+
+skf:BusinessUnit    a owl:Class ;
+    rdfs:label "Business Unit" ;
+    rdfs:comment "An organisational unit (e.g. 公司业务部, 武汉中心支公司)" .
+
+skf:Tier            a owl:Class ;
+    rdfs:label "Tier" ;
+    rdfs:comment "Trust tier: 权威 / 历史 / 个人" .
+
+# === Object Properties (relations) ===
+skf:belongsToTier   a owl:ObjectProperty ;
+    rdfs:domain skf:KnowledgeNote ;
+    rdfs:range  skf:Tier ;
+    rdfs:label "belongs to tier" .
+
+skf:partOf          a owl:ObjectProperty ;
+    rdfs:domain skf:BusinessUnit ;
+    rdfs:range  skf:BusinessUnit ;
+    rdfs:label "part of (organisational hierarchy)" .
+
+skf:referencesTable a owl:ObjectProperty ;
+    rdfs:domain skf:SQLNote ;
+    rdfs:range  skf:TableSchema ;
+    rdfs:label "references table" .
+
+# === Datatype Properties ===
+skf:noteTitle       a owl:DatatypeProperty ;
+    rdfs:domain skf:KnowledgeNote ;
+    rdfs:range  xsd:string ;
+    rdfs:label "note title" .
+
+skf:noteContent     a owl:DatatypeProperty ;
+    rdfs:domain skf:KnowledgeNote ;
+    rdfs:range  xsd:string ;
+    rdfs:label "note content" .
+
+# === Class instance (assertion in TBox, used by the spike) ===
+skf:权威   a skf:Tier ; rdfs:label "权威" .
+skf:历史   a skf:Tier ; rdfs:label "历史" .
+skf:个人   a skf:Tier ; rdfs:label "个人" .
+
+# === Restrictions (validate the OWL restriction extractor) ===
+skf:AuthoritativeSQLNote a owl:Class ;
+    rdfs:subClassOf skf:SQLNote ,
+        [ a owl:Restriction ;
+          owl:onProperty skf:belongsToTier ;
+          owl:someValuesFrom skf:权威 ] ;
+    rdfs:label "Authoritative SQL Note" ;
+    rdfs:comment "A SQL note that belongs to the 权威 tier (every instance must have at least one belongsToTier whose value is 权威)." .

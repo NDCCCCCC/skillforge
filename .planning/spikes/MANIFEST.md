@@ -2,7 +2,9 @@
 
 ## Idea
 
-验证 SKILL.md `temperature` 字段在 SkillForge 技术栈（Go + CloudWeGo Eino + Eino ADK + OpenAI 兼容 API）中**能否起作用**。这是"确定性正解"设计哲学（`.planning/notes/skillforge-design-philosophy.md`）的工程化验证 —— 如果 temperature 字段无效，SKILL.md v1.0 第7字段必须降级。
+第一阶段 (001–004)：验证 SKILL.md `temperature` 字段在 SkillForge 技术栈中能否起作用（已 ✓ 部分成立：byte-determinism 不可达，转向 semantic-determinism）。
+
+第二阶段 (005a–005e)：**研究本体论在知识库方面的应用**——回答"使用本体论之后是否还需要 Milvus 向量数据库"这一终极假设，并打通 Go 端的 OWL/RDF 工具链。5 个 spike 顺序：005a TBox 工具链 → 005b SKILL.md 提升 → 005c ontology-aware chunker → 005d 轻量级 KG 存储 → 005e post-ontology 向量必要性。
 
 ## Requirements
 
@@ -25,6 +27,11 @@
 | 002b | temperature-zero-no-reasoning | comparison | Given `temperature:0` + reasoning DISABLED via `thinking:{type:disabled}`, when invoke glm-5.2 via Eino 10 times per query, then token-level unique output rate should drop vs spike 002 (reasoning ON) | ✗ INVALIDATED | temperature, determinism, reasoning-disabled |
 | 003 | structured-output-temperature-zero | standard | Given `temperature:0` + `response_format:{type:json_object}` + 合规 verdict schema, when 跑 10 次 × 5 合规 query, then JSON schema 解析成功率 100% | ✓ VALIDATED | temperature, structured-output, json-schema |
 | 004 | milvus-v3-milvusclient-tier-contract | standard | Given Milvus 3.0 + new milvusclient SDK, when build tier-filter retriever path (dial→create→insert→search), then `tier in ["权威"]` returns only 权威 (server-side PRE-filter, no 个人 leak) & empty tiers → filter `"false"` → 0 hits (D-09) | ✓ VALIDATED | milvus, milvusclient, sdk-migration, tier-contract, v3 |
+| 005a | owl-tbox-toolchain | standard | Given a minimal OWL/Turtle TBox (5 Classes + 3 OP + 2 DP + 1 Restriction), when loaded via tggo/goRDFlib v0.1.0, then (a) all Classes enumerated, (b) subClassOf hierarchy walked incl. BNode parents, (c) ObjectProperty domain/range, (d) DatatypeProperty domain/range, (e) Restriction 'P some D' enumerated, (f) roundtrip lossless | ✓ VALIDATED | owl, rdf, turtle, tbox, goRDFlib, spike-005 |
+| 005b | skillschema-rdfs-lift | standard | Given SKILL.md 7 fields + 5-tier KB + sql-guides directory tree (取数口径/操作手册/...) real sample, when lifted via rdf2go + semantix into RDFS/OWL TBox, then TBox serializes to .ttl and is consumable as Milvus metadata filter | PENDING | skillschema, rdfs, lift, kb-metadata, spike-005 |
+| 005c | ontology-aware-chunker | standard | Given sql-guides/取数口径/_001_..._公司业务部__sec01..sec08.md all 8 split files, when h2/section-aware markdown chunker merges, then (1) boundary detection 100%, (2) concatenated output contains complete SQL (no truncation), (3) chunk.metadata fields (section/title/section_idx) writable to Milvus | PENDING | chunker, semantic, h2-boundary, sql, spike-005 |
+| 005d | kg-storage-eval | comparison | Given SkillForge KB scale assumption (< 10k nodes / < 50k edges), when comparing Kuzu (embedded Go via cgo) vs memory map (Go stdlib), then latency/memory/startup/devX comparable basis | PENDING | kg, kuzu, memory-map, storage, spike-005 |
+| 005e | post-ontology-vector-necessity | standard | Given TBox (005a/005b) + ontology-aware chunks (005c) + KG storage (005d), when analyzing OntoRAG/LightRAG/Semantica literature + existing SkillForge tier-PRE-filter architecture, then evaluate under what conditions Milvus vector retrieval remains necessary (vs pure SPARQL/Cypher replacement) | PENDING | vector-necessity, hybrid-retrieval, post-ontology, spike-005 |
 
 ## Related Artifacts
 
