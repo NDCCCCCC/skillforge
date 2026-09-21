@@ -225,7 +225,18 @@ Tier 隔离三条护城河。
 5. ECL 失败 → 自动 retry 3 次 → 仍失败入 dead-letter 队列，可手动触发
 6. `verify-phase-39.sh` 全绿：100% chunker boundary + entity extraction F1 ≥ 0.8
 
-**Plans**: TBD
+**Plans**: 9 plans / 5 waves (planned 2026-09-21)
+
+Plans:
+- [ ] 39-01-PLAN.md — KG store DeleteSubject/InsertUnique primitives + TBox emitter 6→8 classes (D-TBox2-01)
+- [ ] 39-02-PLAN.md — Milvus schema +4 native fields, DeleteByExpr marker purge, collection-wide ID watermark
+- [ ] 39-03-PLAN.md — ECL merge package: 005c walk+merge port, ChunkMeta contract, regex stub, corpus boundary tests
+- [ ] 39-04-PLAN.md — Extraction layer: Extractor interface (LLM+stub), F1 math, ABox note-level replace
+- [ ] 39-05-PLAN.md — ecl_failures ledger + section→Document chunking + Manager stage orchestrator (retry×3 → dead-letter)
+- [ ] 39-06-PLAN.md — Indexer routing branch + boot: TBox upgrade trigger, snapshot-first KG restore, ECL manager wiring
+- [ ] 39-07-PLAN.md — Admin pipeline API: run/status/retry routes, 403-before-503 gate, handler test suite
+- [ ] 39-08-PLAN.md — /admin/pipeline 9th tab per 39-UI-SPEC (Run ECL, progress, failures table, 2s/10s polling)
+- [ ] 39-09-PLAN.md — Golden set (D-GT-01 human review) + F1 harness + verify-phase-39.sh hermetic gate
 
 ---
 
