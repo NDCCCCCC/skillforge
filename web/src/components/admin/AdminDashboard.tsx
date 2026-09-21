@@ -31,6 +31,7 @@ import {
   Database,
   Inbox,
   MessageSquare,
+  Network,
   RefreshCw,
   Wrench,
 } from 'lucide-react';
@@ -46,6 +47,7 @@ import SkillManagementList from './SkillManagementList';
 import ScheduledTaskList from './ScheduledTaskList';
 import FeedbackMetricsPanel from './FeedbackMetricsPanel';
 import ReviewQueuePanel from './ReviewQueuePanel';
+import OntologyTab from './ontology/OntologyTab';
 
 export default function AdminDashboard() {
   const adminSubroute = useAppStore((s) => s.adminSubroute);
@@ -65,7 +67,7 @@ export default function AdminDashboard() {
   }
 
   function handleSubroute(
-    next: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules' | 'feedback' | 'review',
+    next: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules' | 'feedback' | 'review' | 'ontology',
   ) {
     setAdminSubroute(next);
     // URL is /admin for all subroutes (store-only subroute, no sub-path segment).
@@ -180,6 +182,15 @@ export default function AdminDashboard() {
           label="复核"
           onClick={() => handleSubroute('review')}
         />
+        {/* Plan 38-05 — 本体 (the 8th tab): TBox browser + KG query +
+            schema-proposal approval Drawer (v1.4 Ontology Layer). */}
+        <SubrouteTab
+          active={adminSubroute === 'ontology'}
+          testId="admin-tab-ontology"
+          icon={<Network className="h-3.5 w-3.5" />}
+          label="本体"
+          onClick={() => handleSubroute('ontology')}
+        />
       </nav>
 
       {/* CapacityMonitor */}
@@ -204,6 +215,7 @@ export default function AdminDashboard() {
         {adminSubroute === 'schedules' && <ScheduledTaskList />}
         {adminSubroute === 'feedback' && <FeedbackMetricsPanel />}
         {adminSubroute === 'review' && <ReviewQueuePanel />}
+        {adminSubroute === 'ontology' && <OntologyTab />}
       </main>
 
       {/* Plan 29-08 — the /admin toast viewport. App.tsx early-returns for

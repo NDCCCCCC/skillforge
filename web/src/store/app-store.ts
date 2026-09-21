@@ -470,7 +470,8 @@ export interface AppState {
     | 'skills'
     | 'schedules'
     | 'feedback'
-    | 'review';
+    | 'review'
+    | 'ontology';
   indexReports: IndexRun[];
   auditRows: AuditRow[];
   auditFilter: AuditFilter;
@@ -535,8 +536,17 @@ export interface AppActions {
   setEvalSubroute(sub: EvalSubroute): void;
   // Plan 20-01 (ADM-01) — admin console subroute action.
   // Plan 29-08 (D-29-12) — union widened for the 反馈/复核 tabs.
+  // Plan 38-05 — union widened for the 本体 (ontology) tab.
   setAdminSubroute(
-    sub: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules' | 'feedback' | 'review',
+    sub:
+      | 'batches'
+      | 'bases'
+      | 'kpis'
+      | 'skills'
+      | 'schedules'
+      | 'feedback'
+      | 'review'
+      | 'ontology',
   ): void;
   setIndexReports(runs: IndexRun[]): void;
   setAuditRows(rows: AuditRow[]): void;
