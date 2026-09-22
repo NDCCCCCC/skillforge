@@ -686,7 +686,7 @@ Which phases cover which requirements.
 
 - [x] **ONT-10**: System replaces `internal/knowledge/indexer.go` byte-cap chunker with section-aware markdown chunker for sql-guides; chunks grouped by `source_idx` + `section` frontmatter
 - [x] **ONT-11**: Section-aware chunker achieves 100% boundary detection across 185 sql-guides `__secNN` fragments → 26 logical notes; preserves complete SQL across sec boundaries
-- [ ] **ONT-12**: System runs LLM-driven entity extraction on merged notes (sql-guides: extract `etl_*` table references + relationships → ABox triples)
+- [x] **ONT-12**: System runs LLM-driven entity extraction on merged notes (sql-guides: extract `etl_*` table references + relationships → ABox triples)
 - [ ] **ONT-13**: ECL pipeline writes new ABox triples to memory-map KG + indexes new chunks to Milvus with consistent metadata (tier / source_idx / section / section_idx)
 
 ### Data Governance (ONT)

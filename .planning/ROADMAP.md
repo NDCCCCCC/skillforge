@@ -235,7 +235,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 39-04-PLAN.md — Extraction layer: Extractor interface (LLM+stub), F1 math, ABox note-level replace
+- [x] 39-04-PLAN.md — Extraction layer: Extractor interface (LLM+stub), F1 math, ABox note-level replace
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -308,7 +308,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
-| 39. ECL Pipeline | 3/9 | In Progress|  |
+| 39. ECL Pipeline | 4/9 | In Progress|  |
 | 40. Data Governance | 0/? | Not started | — |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 

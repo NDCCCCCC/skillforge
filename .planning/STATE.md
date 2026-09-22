@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 39 (ecl-pipeline) — EXECUTING
-Plan: 4 of 9 (39-03 complete: ECL chunker core)
+Plan: 5 of 9 (39-04 complete: extraction layer + ABox write path)
 Status: Ready to execute
 Last activity: 2026-09-22
 
@@ -86,7 +86,7 @@ Last activity: 2026-09-22
 
 ---
 
-*Last updated: 2026-09-22 — Phase 39 executing (plan 39-03 complete)*
+*Last updated: 2026-09-22 — Phase 39 executing (plan 39-04 complete)*
 
 ## Decisions
 
@@ -98,3 +98,7 @@ Last activity: 2026-09-22
 - [Phase ?]: 39-03 ECL chunker = 005c spike port verbatim (D-ECL-02): WalkAndMerge/WalkFragments/MergeFragments + IsSecFragment (secRegex AND non-empty section frontmatter, both required) + ChunkMeta 7-tag contract; CRLF-normalized pre-split means body_bytes self-consistent but may differ from spike chunk_metadata.json on CRLF files (counts identical)
 - [Phase ?]: 39-03 stub extractor related-notes anchor pinned strict (参考/见-word + 3-digit source_idx): corpus has ZERO explicit numeric cross-references today (only generic-noun collisions + one title-based ref, cited in stub.go) → drafter emits [], human review owns relations per D-GT-01
 - [Phase ?]: 39-03 stub kind mapping: DELETE FROM / MERGE INTO → "update" (delete not in D-Ext-01 enum), SELECT…INTO → "select"; positional first-seen dedupe by table name; ValidateExtraction exported for Plan 04 LLM-output gating
+- [Phase ?]: 39-04 JSONObjectResponseFormat exported end-of-file in llm/extract.go — below ExtractVerdictJSONWithStructuredOutput so the T-P12-7 sha256 line-range baseline stays byte-stable (insertion above tripped the tamper guard, relocated in 4c0e52f)
+- [Phase ?]: 39-04 NewLLMExtractor(chat, sectionCap ...int) frozen cross-plan contract (Plan 06 calls ecl.NewLLMExtractor(cm)); default cap 40000 runes; over-cap → per-section calls with union (first kind wins, related deduped source_idx+relation)
+- [Phase ?]: 39-04 F1 conventions: zero denominator → 0.0 for that metric; kind secondary check bites only when both sides specify; macro-average counts absent notes as zero rows; LoadGolden errors carry filename:line, never silent
+- [Phase ?]: 39-04 ApplyNote ordering pinned: validate-before-mutate → capture refs → DeleteSubject(note) → orphan sweep → Insert/InsertUnique → onChange exactly once; ONT-13 left unchecked (KG half done, Milvus half = Plans 05/06)

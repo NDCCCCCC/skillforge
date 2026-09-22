@@ -132,6 +132,13 @@ None - no external service configuration required.
 - Plan 06 calls `ecl.NewLLMExtractor(cm)` — signature frozen and tested.
 - Plan 09's golden harness calls LoadGolden/ScoreTables/ScoreRelated/MacroF1 unmodified; golden jsonl does not exist yet (Plan 09 Task 1 drafts it).
 
+## Self-Check: PASSED
+
+- All 6 created files verified on disk (`[ -f ]`)
+- All 8 commits verified in git log (`2dda7e9 32ba95f 4c0e52f fb1e1a7 f251615 7a5290d 5e7540f ed2059a`)
+- Plan verification re-run green: `go test ./internal/knowledge/ecl/ ./internal/llm/ ./internal/ontology/... -count=1` all ok
+- Full-suite sweep `go test ./... -count=1`: zero failures (post 4c0e52f guard fix)
+
 ---
 *Phase: 39-ecl-pipeline*
 *Completed: 2026-09-22*
