@@ -244,7 +244,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 39-06-PLAN.md — Indexer routing branch + boot: TBox upgrade trigger, snapshot-first KG restore, ECL manager wiring
-- [ ] 39-07-PLAN.md — Admin pipeline API: run/status/retry routes, 403-before-503 gate, handler test suite
+- [x] 39-07-PLAN.md — Admin pipeline API: run/status/retry routes, 403-before-503 gate, handler test suite
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -308,7 +308,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
-| 39. ECL Pipeline | 6/9 | In Progress|  |
+| 39. ECL Pipeline | 7/9 | In Progress|  |
 | 40. Data Governance | 0/? | Not started | — |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 

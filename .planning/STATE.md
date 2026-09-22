@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-22T01:12:12.017Z"
+last_updated: "2026-09-22T03:40:28Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 15
-  completed_plans: 7
-  percent: 9
+  completed_plans: 8
+  percent: 10
 ---
 
 # State — SkillForge
@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 39 (ecl-pipeline) — EXECUTING
-Plan: 7 of 9 (39-06 complete: ECL boot integration — indexer routing + marker purge, TBox 6→8 upgrade trigger, snapshot-first KG restore, armed ECL manager)
+Plan: 8 of 9 (39-07 complete: ECL admin API surface — 3 token-gated /api/admin/pipeline/* routes with locked 403-before-503 order, 409 double-run/busy, 404 retry validation, D-Prog-01 status DTO verbatim)
 Status: Ready to execute
 Last activity: 2026-09-22
 
@@ -86,7 +86,7 @@ Last activity: 2026-09-22
 
 ---
 
-*Last updated: 2026-09-22 — Phase 39 executing (plan 39-06 complete)*
+*Last updated: 2026-09-22 — Phase 39 executing (plan 39-07 complete)*
 
 ## Decisions
 
@@ -108,3 +108,4 @@ Last activity: 2026-09-22
 - [Phase ?]: 39-06 indexer ECL mode: routing branch sits BETWEEN splitFrontmatter and maxDocBytes (oversize __secNN must reach the ECL skip — behavioral + static source-order guard); SetECLMode applied BEFORE buildRetriever so the boot-time Index itself routes; sql-guides legacy purge = `tier in ["sql-guides"] and section_count == 0` (%q via purgeExprFor), ECL-off path byte-identical (single DeleteTierRows)
 - [Phase ?]: 39-06 TBox upgrade: UpgradeIfNeeded 3-state (missing pointer → v1; NoteChunk sentinel → strict no-op never re-emits; Phase-38 pointer → one-time v{N+1} + pointer swap + version bump + induction.ApprovedTriples replay); store.Restore = snapshot-first + InsertUnique dedupe merge, corrupt snapshot ERRORS (silent TTL fallback would be the ABox wipe itself); boot WriteSnapshot persists the MERGED store
 - [Phase ?]: 39-06 boot wiring: deps.ECL field pre-added in server.Deps (Rule 3 — Plan 07 registers routes against it, do not re-declare); ecl manager armed with cm + KG + sqlite FailureStore + SeedFunc closure (marker purge section_count > 0, GetMaxIDCollection watermark allocator, shared embedder) + SetOnChange shares induction kgDebounce; mongo/none → nil + WARN (A7); boot never calls Run (D-Run-01, grep-proof)
+- [Phase ?]: 39-07 pipeline routes: run = CASRunning claim → detached goroutine on context.Background() (run outlives request; failed run WARN-logs via log.Printf) → immediate 200 {"status":"started"}; status = StatusDTO marshaled VERBATIM (Plan 05 owns the json tags — no field re-mapping, one source of truth); retry = ^[0-9]{3}$ format gate 400 (T-39-10 layer 2) BEFORE manager, then errors.Is mapping ErrPipelineBusy→409 / ErrUnknownNote→404 with pinned machine-stable strings; all 3 body-less (no BindAndValidate — D-Route-01); server-side test fakes rebuilt in external server_test pkg (unexported backoff never touched — all-succeeding stubs mean zero sleeps)
