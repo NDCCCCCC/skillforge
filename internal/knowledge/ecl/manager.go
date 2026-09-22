@@ -273,13 +273,29 @@ func (m *Manager) fireChange() {
 // note dead in the ledger and CONTINUE the batch (D-RT-01: single-note
 // failure never aborts the run). Only batch-level failures (merge walk,
 // doc build) abort the run with a returned error.
-func (m *Manager) Run(ctx context.Context) error {
+//
+// Terminal-stage discipline (CR-01): every batch-level failure path leaves
+// the stage at a TERMINAL sentinel — a returned error releases the running
+// flag (deferred), and an in-flight stage value paired with a released flag
+// would render 运行中 forever in the admin pipeline UI with the run button
+// disabled until restart (the LOCKED FE mapping treats any non-idle/non-done
+// stage as running).
+func (m *Manager) Run(ctx context.Context) (err error) {
 	defer m.releaseRunning()
+	defer func() {
+		if err != nil {
+			// CR-01: batch-level failure — nil ID allocator (milvus-load
+			// entry), BuildDocuments, or seedWithRetry exhaustion (e.g. the
+			// documented Milvus intranet flakiness). Reset to the idle
+			// terminal sentinel (D-Prog-01) so the FE stays operable: the
+			// operator must be able to simply run again.
+			m.setStatus(StageIdle, "", 0, 0, 0)
+		}
+	}()
 	m.setStatus(StageMerge, "", 0, 0, 0)
 
 	notes, _, err := WalkAndMerge(m.kbDir)
 	if err != nil {
-		m.setStatus(StageIdle, "", 0, 0, 0)
 		return fmt.Errorf("ecl: manager: merge: %w", err)
 	}
 	m.setStatus(StageMerge, "", 0, len(notes), len(notes))
@@ -368,7 +384,15 @@ func (m *Manager) Run(ctx context.Context) error {
 // (ApplyNote deletes the note's old triples first; no stage checkpointing,
 // planner pin). Requires an existing DEAD ledger row (T-39-10) and the
 // idle running flag. Runs synchronously in the caller's goroutine.
-func (m *Manager) RetryNote(ctx context.Context, noteID string) error {
+//
+// Terminal-stage discipline (CR-01): every error path AFTER stage entry
+// (merge walk, corpus miss, extract, kg-load, milvus-load) resets the stage
+// to a terminal sentinel — a returned error releases the running flag, and
+// an in-flight stage value paired with a released flag renders 运行中
+// forever in the admin pipeline UI with the run button disabled until
+// restart. The guard is installed only after the pre-entry DEAD-row check,
+// so a refused retry never touches the previous run's terminal state.
+func (m *Manager) RetryNote(ctx context.Context, noteID string) (err error) {
 	if !m.CASRunning() {
 		return ErrPipelineBusy
 	}
@@ -378,6 +402,14 @@ func (m *Manager) RetryNote(ctx context.Context, noteID string) error {
 	if err != nil || row.Status != FailureDead {
 		return ErrUnknownNote
 	}
+	defer func() {
+		if err != nil {
+			// CR-01: the retry entered the pipeline and failed — reset to
+			// the idle terminal sentinel (D-Prog-01) so the FE stays
+			// operable.
+			m.setStatus(StageIdle, "", 0, 0, 0)
+		}
+	}()
 	// Re-arm the row: pending, attempts reset (D-DL-01 lifecycle).
 	m.recordFailure(Note{SourceIdx: noteID}, row.Stage, 0, nil, FailurePending)
 

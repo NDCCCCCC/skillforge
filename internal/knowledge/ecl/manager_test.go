@@ -464,3 +464,144 @@ func TestManagerExtractConcurrencyCap(t *testing.T) {
 		"extract concurrency must never exceed 3")
 	assert.Len(t, seed.docs, 6)
 }
+
+// --- CR-01 regression: terminal stage after batch-level failure -----------
+
+// claimAfterFailure asserts the post-failure operability contract: the
+// running flag is released, so a new run can be claimed again (this is what
+// re-enables the admin UI's run button; a stuck stage + released flag was
+// the CR-01 brick).
+func claimAfterFailure(t *testing.T, m *Manager) {
+	t.Helper()
+	assert.Equal(t, StageIdle, m.Status().Stage,
+		"error path must reset the stage to the idle terminal sentinel (D-Prog-01)")
+	assert.True(t, m.CASRunning(),
+		"running flag must be claimable after a failed run (the FE run button depends on it)")
+	m.releaseRunning()
+}
+
+// TestManagerRunFailureResetsStage: seedWithRetry exhaustion (the
+// documented Milvus-outage shape) fails the run at milvus-load — the stage
+// must land on a terminal sentinel, not stay at the in-flight milvus-load
+// value while the running flag is released.
+func TestManagerRunFailureResetsStage(t *testing.T) {
+	ex := newFlakyExtractor(nil)
+	fs := newFakeFailureStore()
+	seed := &fakeSeed{failRemaining: maxAttempts} // exhaust the batch budget
+	m, _ := newTestManager(t, threeNoteKBDir(t), ex, fs, seed.seed)
+
+	require.True(t, m.CASRunning())
+	err := m.Run(context.Background())
+	require.Error(t, err, "batch seed exhaustion must fail the run")
+
+	claimAfterFailure(t, m)
+
+	// The batch failure still parked the notes dead in the ledger (that
+	// bookkeeping is unchanged by the stage reset).
+	deadRow(t, fs, "001", StageMilvusLoad)
+}
+
+// TestManagerRunFailureResetsStageNoAllocator: the nil-ID-allocator error
+// path (milvus-load entry, manager.go "no ID allocator wired") also resets
+// the stage — every batch-level exit, not only the seed loop.
+func TestManagerRunFailureResetsStageNoAllocator(t *testing.T) {
+	fs := newFakeFailureStore()
+	m := NewManager("http://skillforge.dev/ns#", threeNoteKBDir(t), store.New(),
+		newFlakyExtractor(nil), fs, (&fakeSeed{}).seed)
+	m.backoff = []time.Duration{0, 0, 0}
+	// Deliberately NO SetIDAllocator.
+
+	require.True(t, m.CASRunning())
+	err := m.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no ID allocator")
+
+	claimAfterFailure(t, m)
+}
+
+// primeDeadRow primes the DEAD ledger row for noteID — the entry state
+// RetryNote requires (T-39-10).
+func primeDeadRow(t *testing.T, fs FailureStore, noteID string) {
+	t.Helper()
+	require.NoError(t, fs.UpsertFailure(Failure{
+		NoteID:       noteID,
+		Stage:        StageExtract,
+		AttemptCount: maxAttempts,
+		LastError:    "primed dead row",
+		Status:       FailureDead,
+		UpdatedAt:    time.Now().UTC().Format(time.RFC3339),
+	}))
+}
+
+// TestManagerRetryNoteFailureResetsStage: EVERY RetryNote error path past
+// stage entry — merge walk failure, corpus miss, extract, kg-load,
+// milvus-load, nil allocator — must reset the stage to the idle terminal
+// sentinel (CR-01; the retry button's failure modes mirror the run's).
+func TestManagerRetryNoteFailureResetsStage(t *testing.T) {
+	t.Run("merge walk failure", func(t *testing.T) {
+		fs := newFakeFailureStore()
+		primeDeadRow(t, fs, "002")
+		// kbDir points at a nonexistent tree → WalkAndMerge errors.
+		m, _ := newTestManager(t, filepath.Join(t.TempDir(), "missing"),
+			newFlakyExtractor(nil), fs, (&fakeSeed{}).seed)
+		require.Error(t, m.RetryNote(context.Background(), "002"))
+		claimAfterFailure(t, m)
+	})
+
+	t.Run("corpus miss", func(t *testing.T) {
+		fs := newFakeFailureStore()
+		primeDeadRow(t, fs, "005") // dead row exists, corpus has no note 005
+		m, _ := newTestManager(t, threeNoteKBDir(t), newFlakyExtractor(nil), fs, (&fakeSeed{}).seed)
+		err := m.RetryNote(context.Background(), "005")
+		require.ErrorIs(t, err, ErrUnknownNote)
+		claimAfterFailure(t, m)
+	})
+
+	t.Run("extract failure", func(t *testing.T) {
+		fs := newFakeFailureStore()
+		primeDeadRow(t, fs, "002")
+		m, _ := newTestManager(t, threeNoteKBDir(t),
+			newFlakyExtractor(map[string]int{"002": maxAttempts}), fs, (&fakeSeed{}).seed)
+		require.Error(t, m.RetryNote(context.Background(), "002"))
+		claimAfterFailure(t, m)
+		deadRow(t, fs, "002", StageExtract)
+	})
+
+	t.Run("kg-load failure", func(t *testing.T) {
+		fs := newFakeFailureStore()
+		primeDeadRow(t, fs, "002")
+		m, _ := newTestManager(t, threeNoteKBDir(t), newFlakyExtractor(nil), fs, (&fakeSeed{}).seed)
+		boom := errors.New("forced kg-load failure")
+		m.applyNote = func(st *store.Store, ns string, note Note, exN Extraction, onChange func()) error {
+			if note.SourceIdx == "002" {
+				return boom
+			}
+			return ApplyNote(st, ns, note, exN, onChange)
+		}
+		require.Error(t, m.RetryNote(context.Background(), "002"))
+		claimAfterFailure(t, m)
+		deadRow(t, fs, "002", StageKGLoad)
+	})
+
+	t.Run("milvus-load failure", func(t *testing.T) {
+		fs := newFakeFailureStore()
+		primeDeadRow(t, fs, "002")
+		m, _ := newTestManager(t, threeNoteKBDir(t), newFlakyExtractor(nil), fs,
+			(&fakeSeed{failRemaining: maxAttempts}).seed)
+		require.Error(t, m.RetryNote(context.Background(), "002"))
+		claimAfterFailure(t, m)
+		deadRow(t, fs, "002", StageMilvusLoad)
+	})
+
+	t.Run("nil allocator", func(t *testing.T) {
+		fs := newFakeFailureStore()
+		primeDeadRow(t, fs, "002")
+		m := NewManager("http://skillforge.dev/ns#", threeNoteKBDir(t), store.New(),
+			newFlakyExtractor(nil), fs, (&fakeSeed{}).seed)
+		m.backoff = []time.Duration{0, 0, 0}
+		// Deliberately NO SetIDAllocator.
+		require.Error(t, m.RetryNote(context.Background(), "002"))
+		claimAfterFailure(t, m)
+		deadRow(t, fs, "002", StageMilvusLoad)
+	})
+}
