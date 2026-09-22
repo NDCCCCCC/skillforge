@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-21T16:05:13.792Z"
-last_activity: 2026-09-21 -- Phase 39 planning complete
+last_updated: "2026-09-22T01:12:12.017Z"
+last_activity: 2026-09-22
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 15
-  completed_plans: 6
+  completed_plans: 7
   percent: 9
 ---
 
@@ -17,10 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 39 (UI-SPEC approved, awaiting plan)
-Plan: —
+Phase: 39 (ecl-pipeline) — EXECUTING
+Plan: 2 of 9
 Status: Ready to execute
-Last activity: 2026-09-21 -- Phase 39 planning complete
+Last activity: 2026-09-22
 
 ## v1.4 Phase Map
 
@@ -87,3 +87,8 @@ Last activity: 2026-09-21 -- Phase 39 planning complete
 ---
 
 *Last updated: 2026-09-21 — Phase 38 complete (1/4 v1.4 phases, 6/6 plans)*
+
+## Decisions
+
+- [Phase ?]: 39-01 store: DeleteSubject rebuilds all three indices; InsertUnique dedupes under one write-lock — Planner-pinned approach from 39-PLAN Task 1
+- [Phase ?]: 39-01 TBox v2: emitter 8 classes / 8 objProps (+NoteChunk +TableSchema +belongsToNote +referencesTable per D-TBox2-01); belongsToNote declared-only, zero ABox instances — D-TBox2-01 locked; NoteChunk sentinel string is the Plan 06 boot upgrade trigger
