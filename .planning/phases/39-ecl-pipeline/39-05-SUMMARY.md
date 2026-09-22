@@ -53,7 +53,7 @@ patterns-established:
   - "Dead-letter ledger pattern: one row per work item, mutable status transitions via single upsert write path, restart-durable via schemaSQL"
   - "Stage orchestrator pattern: CAS running flag + stage sentinels + per-stage status counters + defer release"
 
-requirements-completed: [ONT-12, ONT-13]
+requirements-completed: [ONT-12]
 
 # Metrics
 duration: 28 min
@@ -102,6 +102,7 @@ Each task was committed atomically:
 - **RetryNote claims the running flag** during its synchronous execution so a concurrent admin Run gets the 409 path (plan specified only "requires !running" at entry).
 - **Corpus-missing retry target** → dead row with explanatory error + ErrUnknownNote return (ledger never left pending on a note that cannot re-run).
 - **Empty-bodied sections emit no Document** (mirrors legacy indexer's empty-body skip — blank rows would only pollute retrieval).
+- **ONT-13 left unchecked in REQUIREMENTS.md** (39-04 precedent): this plan delivers the Milvus doc-build half (consistent-metadata Documents, watermark IDs, SeedFunc seam) but actual seeding into Milvus lands when Plan 06 wires the boot SeedFunc; ONT-12 stays checked from 39-04 (the Manager completes the "system runs extraction" machinery).
 
 ## Deviations from Plan
 

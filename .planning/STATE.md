@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 39 (ecl-pipeline) — EXECUTING
-Plan: 5 of 9 (39-04 complete: extraction layer + ABox write path)
+Plan: 6 of 9 (39-05 complete: ecl_failures dead-letter ledger + section→Document chunker + Manager stage orchestrator)
 Status: Ready to execute
 Last activity: 2026-09-22
 
@@ -86,7 +86,7 @@ Last activity: 2026-09-22
 
 ---
 
-*Last updated: 2026-09-22 — Phase 39 executing (plan 39-04 complete)*
+*Last updated: 2026-09-22 — Phase 39 executing (plan 39-05 complete)*
 
 ## Decisions
 
@@ -102,3 +102,6 @@ Last activity: 2026-09-22
 - [Phase ?]: 39-04 NewLLMExtractor(chat, sectionCap ...int) frozen cross-plan contract (Plan 06 calls ecl.NewLLMExtractor(cm)); default cap 40000 runes; over-cap → per-section calls with union (first kind wins, related deduped source_idx+relation)
 - [Phase ?]: 39-04 F1 conventions: zero denominator → 0.0 for that metric; kind secondary check bites only when both sides specify; macro-average counts absent notes as zero rows; LoadGolden errors carry filename:line, never silent
 - [Phase ?]: 39-04 ApplyNote ordering pinned: validate-before-mutate → capture refs → DeleteSubject(note) → orphan sweep → Insert/InsertUnique → onChange exactly once; ONT-13 left unchecked (KG half done, Milvus half = Plans 05/06)
+- [Phase ?]: 39-05 ecl_failures: single upsert write path (INSERT ON CONFLICT(note_id) DO UPDATE — status transitions ARE the point, D-DL-01 sanctioned non-audit); updated_at RFC3339 UTC set by the manager, never SQL default; narrow FailureStore seam means sqlite imports ecl for the conformance check → failures_test.go lives in external ecl_test pkg
+- [Phase ?]: 39-05 chunk: splitter separator ladder terminates with "" (recursive splitter's no-separator-left branch would pass oversized text through unsplit — unreachable by construction); BuildDocuments post-condition errors over 3500 runes (T-39-13); Document.SectionIdx emitted 1-BASED per Plan 39-02 retriever contract (0 = legacy zero-fill), not merge's 0-based index
+- [Phase ?]: 39-05 manager: done/total/queue_len are per-stage counters (done resets at stage entry, total = len(notes)); RetryNote claims the running flag for its synchronous run (concurrent Run → 409 path); corpus-missing retry target parks dead + ErrUnknownNote; milvus-load batch failures park all batch notes dead via individual per-note rows; SeedFunc seam keeps milvus imports out of ecl (grep-verified); extract worker pool ≤ 3 LLM calls (race-detector green)

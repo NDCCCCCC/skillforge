@@ -239,7 +239,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 39-05-PLAN.md — ecl_failures ledger + section→Document chunking + Manager stage orchestrator (retry×3 → dead-letter)
+- [x] 39-05-PLAN.md — ecl_failures ledger + section→Document chunking + Manager stage orchestrator (retry×3 → dead-letter)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -308,7 +308,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
-| 39. ECL Pipeline | 4/9 | In Progress|  |
+| 39. ECL Pipeline | 5/9 | In Progress|  |
 | 40. Data Governance | 0/? | Not started | — |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 
