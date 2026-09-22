@@ -405,3 +405,27 @@ func TestExtractVerdictJSONWithStructuredOutputNonObject(t *testing.T) {
 		t.Errorf("result = %v, want nil for non-object", got)
 	}
 }
+
+// TestJSONObjectResponseFormatOption proves the exported wrapper (added for
+// the Phase 39 ECL extractor) carries the exact same impl-specific payload
+// as the internal withJSONObjectResponseFormat: a single exported entry
+// point, no second copy of the WrapImplSpecificOptFn body.
+func TestJSONObjectResponseFormatOption(t *testing.T) {
+	opt := JSONObjectResponseFormat()
+	if opt == (model.Option{}) {
+		t.Fatal("JSONObjectResponseFormat() returned the zero Option")
+	}
+	impl := model.GetImplSpecificOptions[map[string]any](nil, opt)
+	if impl == nil || (*impl)["response_format"] == nil {
+		t.Fatal("option did not set response_format on the impl-specific channel")
+	}
+	rf, ok := (*impl)["response_format"].(map[string]any)
+	if !ok || rf["type"] != "json_object" {
+		t.Errorf("response_format = %#v, want {type: json_object}", (*impl)["response_format"])
+	}
+
+	common := model.GetCommonOptions(&model.Options{}, opt)
+	if common.Temperature != nil {
+		t.Errorf("response-format option must not touch common options; temperature = %v", *common.Temperature)
+	}
+}
