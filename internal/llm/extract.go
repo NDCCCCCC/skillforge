@@ -191,6 +191,20 @@ func withJSONObjectResponseFormat() model.Option {
 	})
 }
 
+// JSONObjectResponseFormat returns the OpenAI-compatible
+// response_format={"type":"json_object"} call-time option for consumers
+// outside this package (Phase 39 ECL extraction per D-Ext-01). It is a
+// one-line export of withJSONObjectResponseFormat — the single copy of the
+// WrapImplSpecificOptFn body lives there; do not duplicate it.
+//
+// The same documented DEVIATION applies (see withJSONObjectResponseFormat):
+// eino v0.9.14 has no model.WithGenerateConfig, so provider-specific
+// call-time options travel the WrapImplSpecificOptFn channel and adapters
+// that do not honor the flag simply ignore it.
+func JSONObjectResponseFormat() model.Option {
+	return withJSONObjectResponseFormat()
+}
+
 // ExtractVerdictJSONWithStructuredOutput is the RF-5 mitigation (Pitfall 2:
 // DeepAgent final messages are prose-friendly; GLM-5.2 may emit the verdict
 // as prose + tool calls rather than a JSON object). It makes ONE final-step

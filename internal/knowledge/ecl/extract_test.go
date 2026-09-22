@@ -34,9 +34,9 @@ type fakeGenerator struct {
 	nilResponse bool     // when set, Generate returns (nil, nil)
 	err         error    // when set, Generate returns (nil, err)
 
-	calls    int
-	inputs   [][]*schema.Message
-	opts     [][]model.Option
+	calls  int
+	inputs [][]*schema.Message
+	opts   [][]model.Option
 }
 
 func (f *fakeGenerator) Generate(_ context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
@@ -137,7 +137,7 @@ func TestLLMExtractNoteFenceWrappedJSON(t *testing.T) {
 // TestLLMExtractNoteInvalidJSON proves a malformed model response surfaces
 // as an error (never a panic, never a partial Extraction).
 func TestLLMExtractNoteInvalidJSON(t *testing.T) {
-	fake := &fakeGenerator{contents: []string{`{"tables": [{"name":"etl_x_t","kind":`}}
+	fake := &fakeGenerator{contents: []string{`{"tables": [{"name":"etl_x_t","kind":"update"},]}`}}
 	_, err := NewLLMExtractor(fake).ExtractNote(context.Background(), noteWith("001", "body"))
 	if err == nil {
 		t.Fatal("ExtractNote with malformed JSON should fail")
@@ -207,13 +207,14 @@ func TestLLMExtractNoteEmptyResponse(t *testing.T) {
 // table name keeps the first kind; related notes dedupe by source_idx+
 // relation.
 func TestLLMExtractNoteOversizedUnion(t *testing.T) {
-	sectionBody := strings.Repeat("SELECT a FROM b WHERE c = 1;\n", 4) // > 10 runes
+	sectionOne := strings.Repeat("SECTION-ONE-MARKER line of note prose;\n", 4) // > 10 runes
+	sectionTwo := strings.Repeat("SECTION-TWO-MARKER line of note prose;\n", 4) // > 10 runes
 	note := Note{
 		SourceIdx: "001",
 		Title:     "t",
 		Sections: []MergedSection{
-			{Section: "概述", SectionIdx: 0, Body: sectionBody},
-			{Section: "SQL / 正文", SectionIdx: 1, Body: sectionBody},
+			{Section: "概述", SectionIdx: 0, Body: sectionOne},
+			{Section: "SQL / 正文", SectionIdx: 1, Body: sectionTwo},
 		},
 	}
 	fake := &fakeGenerator{contents: []string{
@@ -229,9 +230,11 @@ func TestLLMExtractNoteOversizedUnion(t *testing.T) {
 	if fake.calls != len(note.Sections) {
 		t.Fatalf("calls = %d, want %d (per-section calls, not one full-note call)", fake.calls, len(note.Sections))
 	}
-	if strings.Contains(fake.userContent(0), sectionBody[:len(sectionBody)/2]) &&
-		strings.Count(fake.userContent(0), "SELECT a FROM b") != 1 {
-		t.Errorf("section call 0 should carry only its own body once, got %q", fake.userContent(0))
+	if got := fake.userContent(0); !strings.Contains(got, "SECTION-ONE-MARKER") || strings.Contains(got, "SECTION-TWO-MARKER") {
+		t.Errorf("section call 0 should carry only its own body, got %q", got)
+	}
+	if got := fake.userContent(1); !strings.Contains(got, "SECTION-TWO-MARKER") || strings.Contains(got, "SECTION-ONE-MARKER") {
+		t.Errorf("section call 1 should carry only its own body, got %q", got)
 	}
 
 	wantTables := []ExtractedTable{

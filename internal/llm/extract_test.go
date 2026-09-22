@@ -412,9 +412,6 @@ func TestExtractVerdictJSONWithStructuredOutputNonObject(t *testing.T) {
 // point, no second copy of the WrapImplSpecificOptFn body.
 func TestJSONObjectResponseFormatOption(t *testing.T) {
 	opt := JSONObjectResponseFormat()
-	if opt == (model.Option{}) {
-		t.Fatal("JSONObjectResponseFormat() returned the zero Option")
-	}
 	impl := model.GetImplSpecificOptions[map[string]any](nil, opt)
 	if impl == nil || (*impl)["response_format"] == nil {
 		t.Fatal("option did not set response_format on the impl-specific channel")
