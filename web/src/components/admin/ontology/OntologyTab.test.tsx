@@ -106,11 +106,11 @@ afterEach(() => {
 });
 
 describe('AdminDashboard — ontology tab', () => {
-  it('renders 8 subroute tabs and activates the 本体 tab', async () => {
+  it('renders 9 subroute tabs and activates the 本体 tab', async () => {
     useAppStore.setState({ adminSubroute: 'batches' });
     render(<AdminDashboard />);
     const tabs = screen.getByTestId('admin-subroute-tabs');
-    expect(tabs.querySelectorAll('button')).toHaveLength(8);
+    expect(tabs.querySelectorAll('button')).toHaveLength(9);
     fireEvent.click(screen.getByTestId('admin-tab-ontology'));
     expect(await screen.findByTestId('ontology-tab')).toBeInTheDocument();
   });
