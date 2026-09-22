@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 39 (ecl-pipeline) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9 (39-02 complete: Milvus layer ECL extension)
 Status: Ready to execute
 Last activity: 2026-09-22
 
@@ -86,9 +86,12 @@ Last activity: 2026-09-22
 
 ---
 
-*Last updated: 2026-09-21 — Phase 38 complete (1/4 v1.4 phases, 6/6 plans)*
+*Last updated: 2026-09-22 — Phase 39 executing (plan 39-02 complete)*
 
 ## Decisions
 
 - [Phase ?]: 39-01 store: DeleteSubject rebuilds all three indices; InsertUnique dedupes under one write-lock — Planner-pinned approach from 39-PLAN Task 1
 - [Phase ?]: 39-01 TBox v2: emitter 8 classes / 8 objProps (+NoteChunk +TableSchema +belongsToNote +referencesTable per D-TBox2-01); belongsToNote declared-only, zero ABox instances — D-TBox2-01 locked; NoteChunk sentinel string is the Plan 06 boot upgrade trigger
+- [Phase ?]: 39-02 Milvus schema 11 fields: +source_idx VarChar(64) / section VarChar(256) / section_idx Int64 / section_count Int64 appended after effective_to (D-Milvus-01 native fields, NOT JSON-in-source); widths single-homed in config consts; deploy requires SKILLFORGE_MILVUS_RECREATE=1 once (no new migration code)
+- [Phase ?]: 39-02 DeleteByExpr: caller-built expr passes through VERBATIM (helper never interpolates; %q escaping is caller duty per filter.go precedent); empty/nil expr rejected before any DML; mechanics = DeleteTierRows verbatim (Has no-op → Load → Delete → Flush)
+- [Phase ?]: 39-02 GetMaxIDCollection: always-true `id >= 0` expr watermark — ECL chunk-ID allocation must start above the collection-wide max (per-tier GetMaxID under-estimates; Pitfall 5 duplicate-generation class)
