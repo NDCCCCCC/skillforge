@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 describe('AdminDashboard — 7 tabs (29-08 D-29-12)', () => {
-  it('renders all seven tabs in the locked order — 反馈 6th, 复核 7th', () => {
+  it('renders all tabs in the locked order — 反馈 6th, 复核 7th (order pins updated for the Phase 38 本体 and Phase 39 ECL 管线 tabs)', () => {
     render(<AdminDashboard />);
     expect(tabOrder()).toEqual([
       '导入批次',
@@ -56,6 +56,8 @@ describe('AdminDashboard — 7 tabs (29-08 D-29-12)', () => {
       '定时任务',
       '反馈',
       '复核',
+      '本体',
+      'ECL 管线',
     ]);
     // The locked testids exist exactly once each.
     expect(screen.getAllByTestId('admin-tab-feedback')).toHaveLength(1);

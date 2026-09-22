@@ -34,6 +34,7 @@ import {
   Network,
   RefreshCw,
   Wrench,
+  Workflow,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
@@ -48,6 +49,7 @@ import ScheduledTaskList from './ScheduledTaskList';
 import FeedbackMetricsPanel from './FeedbackMetricsPanel';
 import ReviewQueuePanel from './ReviewQueuePanel';
 import OntologyTab from './ontology/OntologyTab';
+import PipelineTab from './pipeline/PipelineTab';
 
 export default function AdminDashboard() {
   const adminSubroute = useAppStore((s) => s.adminSubroute);
@@ -67,7 +69,16 @@ export default function AdminDashboard() {
   }
 
   function handleSubroute(
-    next: 'batches' | 'bases' | 'kpis' | 'skills' | 'schedules' | 'feedback' | 'review' | 'ontology',
+    next:
+      | 'batches'
+      | 'bases'
+      | 'kpis'
+      | 'skills'
+      | 'schedules'
+      | 'feedback'
+      | 'review'
+      | 'ontology'
+      | 'pipeline',
   ) {
     setAdminSubroute(next);
     // URL is /admin for all subroutes (store-only subroute, no sub-path segment).
@@ -191,6 +202,15 @@ export default function AdminDashboard() {
           label="本体"
           onClick={() => handleSubroute('ontology')}
         />
+        {/* Plan 39-08 — ECL 管线 (the 9th tab): ECL pipeline real-time
+            status + failures/dead-letter table (SC-4 + SC-5, 39-UI-SPEC). */}
+        <SubrouteTab
+          active={adminSubroute === 'pipeline'}
+          testId="admin-tab-pipeline"
+          icon={<Workflow className="h-3.5 w-3.5" />}
+          label="ECL 管线"
+          onClick={() => handleSubroute('pipeline')}
+        />
       </nav>
 
       {/* CapacityMonitor */}
@@ -216,6 +236,7 @@ export default function AdminDashboard() {
         {adminSubroute === 'feedback' && <FeedbackMetricsPanel />}
         {adminSubroute === 'review' && <ReviewQueuePanel />}
         {adminSubroute === 'ontology' && <OntologyTab />}
+        {adminSubroute === 'pipeline' && <PipelineTab />}
       </main>
 
       {/* Plan 29-08 — the /admin toast viewport. App.tsx early-returns for
