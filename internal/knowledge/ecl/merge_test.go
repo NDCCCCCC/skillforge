@@ -101,12 +101,12 @@ func TestStubExtract(t *testing.T) {
 			},
 		},
 		{
-			name: "multi-section merge: statement at start of a later section is visible (merge inserts \\n between fragment bodies)",
+			name: "multi-section merge: statement at start of a later section is visible (merge appends \\n after each fragment body)",
 			note: Note{
 				SourceIdx: "001",
 				Title:     "t",
 				Sections: []MergedSection{
-					{Section: "说明", SectionIdx: 0, Body: "tail text without newline"},
+					{Section: "说明", SectionIdx: 0, Body: "tail text without newline\n"},
 					{Section: "SQL / 正文", SectionIdx: 1, Body: "update etl_payment_due_t set a = 1;\n"},
 				},
 			},
@@ -133,7 +133,7 @@ func TestStubExtract(t *testing.T) {
 // followed by N's 3-digit source_idx. Self-references are excluded and
 // duplicates collapse.
 func TestStubRelatedNotes(t *testing.T) {
-	note := noteWith("001", "背景见 006，字段口径详见 006 与 041。\n")
+	note := noteWith("001", "背景见 006，字段口径详见 006，其余参见 041。\n")
 	got := StubExtract(note)
 	want := []RelatedNote{
 		{SourceIdx: "006", Relation: "mentions-note"},
@@ -146,6 +146,16 @@ func TestStubRelatedNotes(t *testing.T) {
 	self := noteWith("006", "本文档即 006 号说明，自指不算关联。\n")
 	if got := StubExtract(self); len(got.RelatedNotes) != 0 {
 		t.Fatalf("self-reference must be excluded, got %+v", got.RelatedNotes)
+	}
+
+	// End-to-end through the real merge: fragment boundaries must not glue
+	// the reference word into the previous fragment's tail (merge appends
+	// "\n" after each non-blank fragment body).
+	frag1 := Fragment{Path: "a.md", SecOrder: 1, SourceIdx: "001", Section: "说明", Body: "背景说明，参见"}
+	frag2 := Fragment{Path: "b.md", SecOrder: 2, SourceIdx: "001", Section: "说明", Body: "006 的口径。"}
+	merged := MergeFragments([]Fragment{frag1, frag2})
+	if got := StubExtract(merged[0]); len(got.RelatedNotes) != 1 || got.RelatedNotes[0].SourceIdx != "006" {
+		t.Fatalf("merged-note cross-fragment reference not detected: %+v", got.RelatedNotes)
 	}
 }
 
