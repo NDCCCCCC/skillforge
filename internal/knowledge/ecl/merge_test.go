@@ -19,6 +19,7 @@ package ecl
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -215,5 +216,233 @@ func TestValidateExtraction(t *testing.T) {
 	}
 	if err := ValidateExtraction(Extraction{}); err != nil {
 		t.Errorf("empty extraction should validate, got %v", err)
+	}
+}
+
+// ---- Corpus-backed boundary tests (SC-1 proof) ----
+//
+// These run against the REAL in-repo corpus at knowledge/sql-guides,
+// hermetically: file reads only, no network / LLM / Milvus (same posture
+// as scripts/verify-phase-38.sh). The pinned SC numbers (185 fragments /
+// 26 notes / 69 section records) were validated by spike 005c on
+// 2026-09-21; the dynamic contribution-completeness assertion guards
+// against corpus drift turning a real regression into a confusing number
+// mismatch (RESEARCH anti-pattern: never hardcode the SC numbers without
+// the dynamic cross-check).
+
+// testCorpusDir is the sql-guides corpus relative to this package dir
+// (go test runs with cwd = package source dir).
+const testCorpusDir = "../../../knowledge/sql-guides"
+
+// TestMergeBoundary proves the chunker's boundary guarantee:
+//   - (a) DYNAMIC: fragment-contribution completeness — every walked
+//     __secNN fragment contributes to exactly one merged section
+//     (sum of len(SourcePaths) over all notes/sections == fragment count).
+//   - (b) PINNED: the SC-1 corpus shape (185 fragments → 26 notes).
+//   - (c) PINNED: 69 section records (the ChunkMeta count).
+//   - (d) every ChunkMeta is internally consistent.
+func TestMergeBoundary(t *testing.T) {
+	frags, err := WalkFragments(testCorpusDir)
+	if err != nil {
+		t.Fatalf("WalkFragments: %v", err)
+	}
+	notes := MergeFragments(frags)
+	metas := ChunkMetas(notes)
+
+	// (a) DYNAMIC — contribution completeness. The assertion is 100%,
+	// not the constant: every fragment walked must contribute exactly one
+	// SourcePaths entry across the merged output.
+	totalContrib := 0
+	for _, n := range notes {
+		for _, s := range n.Sections {
+			totalContrib += len(s.SourcePaths)
+		}
+	}
+	t.Logf("contribution completeness: %d/%d fragment-contributions across %d notes, %d section records",
+		totalContrib, len(frags), len(notes), len(metas))
+	if totalContrib != len(frags) {
+		t.Fatalf("contribution completeness broken: %d fragments walked but %d fragment-contributions across merged sections (every fragment must map to exactly one merged section)", len(frags), totalContrib)
+	}
+
+	// (b) PINNED — SC-1 corpus shape. If these fail while (a) passes, the
+	// corpus drifted: re-verify counts if knowledge/ changed.
+	if len(frags) != 185 {
+		t.Fatalf("pinned fragment count drifted: got %d, want 185 (corpus drift — re-verify counts if knowledge/ changed)", len(frags))
+	}
+	if len(notes) != 26 {
+		t.Fatalf("pinned note count drifted: got %d, want 26 (corpus drift — re-verify counts if knowledge/ changed)", len(notes))
+	}
+
+	// (c) PINNED — section records.
+	if len(metas) != 69 {
+		t.Fatalf("pinned section-record count drifted: got %d, want 69 (corpus drift — re-verify counts if knowledge/ changed)", len(metas))
+	}
+
+	// (d) ChunkMeta internal consistency.
+	for _, n := range notes {
+		if n.SourceIdx == "" {
+			t.Fatalf("note with empty source_idx (title %q)", n.Title)
+		}
+		for _, s := range n.Sections {
+			if s.Section == "" {
+				t.Fatalf("note %s has a section with empty name", n.SourceIdx)
+			}
+			if s.SectionIdx < 0 || s.SectionIdx >= len(n.Sections) {
+				t.Fatalf("note %s section %q SectionIdx %d outside [0,%d)", n.SourceIdx, s.Section, s.SectionIdx, len(n.Sections))
+			}
+			if len(s.SourcePaths) == 0 {
+				t.Fatalf("note %s section %q has no source paths", n.SourceIdx, s.Section)
+			}
+			for _, p := range s.SourcePaths {
+				if p == "" {
+					t.Fatalf("note %s section %q has an empty source path", n.SourceIdx, s.Section)
+				}
+			}
+			if len(s.Body) == 0 {
+				t.Fatalf("note %s section %q has an empty merged body", n.SourceIdx, s.Section)
+			}
+		}
+	}
+	for _, m := range metas {
+		if m.SourceIdx == "" || m.Section == "" {
+			t.Fatalf("ChunkMeta with empty source_idx/section: %+v", m)
+		}
+		if m.SectionIdx < 0 || m.SectionIdx >= m.Sections {
+			t.Fatalf("ChunkMeta %s/%s SectionIdx %d outside [0,%d)", m.SourceIdx, m.Section, m.SectionIdx, m.Sections)
+		}
+		if len(m.SourcePaths) == 0 {
+			t.Fatalf("ChunkMeta %s/%s has empty source_paths", m.SourceIdx, m.Section)
+		}
+		if m.BodyBytes != bodyBytesFor(t, notes, m) {
+			t.Fatalf("ChunkMeta %s/%s BodyBytes %d != merged body length", m.SourceIdx, m.Section, m.BodyBytes)
+		}
+	}
+}
+
+// bodyBytesFor finds the merged section a ChunkMeta was built from and
+// returns its body byte length, proving BodyBytes == len(Body).
+func bodyBytesFor(t *testing.T, notes []Note, m ChunkMeta) int {
+	t.Helper()
+	for _, n := range notes {
+		if n.SourceIdx != m.SourceIdx {
+			continue
+		}
+		for _, s := range n.Sections {
+			if s.SectionIdx == m.SectionIdx && s.Section == m.Section {
+				return len(s.Body)
+			}
+		}
+	}
+	t.Fatalf("no merged section backs ChunkMeta %s/%s idx %d", m.SourceIdx, m.Section, m.SectionIdx)
+	return 0
+}
+
+// TestNote001SQL proves SC-1's SQL-completeness claim: note 001's merged
+// body (all sections concatenated) contains all 3 corpus SQL target tables.
+func TestNote001SQL(t *testing.T) {
+	notes, _, err := WalkAndMerge(testCorpusDir)
+	if err != nil {
+		t.Fatalf("WalkAndMerge: %v", err)
+	}
+	var note001 *Note
+	for i := range notes {
+		if notes[i].SourceIdx == "001" {
+			note001 = &notes[i]
+			break
+		}
+	}
+	if note001 == nil {
+		t.Fatal("note 001 not found in merged output")
+	}
+	var body strings.Builder
+	for _, s := range note001.Sections {
+		body.WriteString(s.Body)
+	}
+	full := strings.ToLower(body.String())
+	targets := []string{"etl_payment_due_t", "etl_policy_request_issue_t", "etl_NONAUTO_POLICY_T"}
+	found := 0
+	var missing []string
+	for _, tgt := range targets {
+		if strings.Contains(full, strings.ToLower(tgt)) {
+			found++
+		} else {
+			missing = append(missing, tgt)
+		}
+	}
+	if found != len(targets) {
+		t.Fatalf("note 001 contains %d/%d corpus SQL targets, missing: %v", found, len(targets), missing)
+	}
+	t.Logf("note 001 (title %q, %d sections): %d/%d corpus SQL targets present",
+		note001.Title, len(note001.Sections), found, len(targets))
+}
+
+// TestSec01PathologyTolerated documents the known upstream data-quality
+// pathology (README 005c, note 001's sec01 has section == title): the
+// chunker merges the note without error and tolerates the redundant
+// title-section (CONTEXT §specifics: 照常合并, 多一个冗余 section 无害).
+func TestSec01PathologyTolerated(t *testing.T) {
+	notes, _, err := WalkAndMerge(testCorpusDir)
+	if err != nil {
+		t.Fatalf("WalkAndMerge must not error on the sec01 pathology: %v", err)
+	}
+	var note001 *Note
+	for i := range notes {
+		if notes[i].SourceIdx == "001" {
+			note001 = &notes[i]
+			break
+		}
+	}
+	if note001 == nil {
+		t.Fatal("note 001 not found in merged output")
+	}
+	if len(note001.Sections) == 0 {
+		t.Fatal("note 001 merged with zero sections")
+	}
+	// The pathology signature: sec01's section value equals the note title,
+	// producing a redundant first section. Documented non-fix — merging
+	// proceeds anyway.
+	if note001.Sections[0].Section != note001.Title {
+		t.Fatalf("expected sec01 section==title pathology signature on note 001: section %q != title %q", note001.Sections[0].Section, note001.Title)
+	}
+	// README 005c: note 001 merges to 3 sections (title-section / 说明 /
+	// SQL / 正文) with the pathology tolerated.
+	if len(note001.Sections) != 3 {
+		t.Fatalf("note 001 sections = %d, want 3 (title-section pathology tolerated as a redundant section)", len(note001.Sections))
+	}
+}
+
+// TestChunkMetaContractShape asserts the ChunkMeta JSON key set equals the
+// spike 005c contract exactly (D-ECL-02: byte-for-key fidelity with
+// chunk_metadata.json).
+func TestChunkMetaContractShape(t *testing.T) {
+	notes := []Note{
+		{
+			SourceIdx: "001",
+			Title:     "t",
+			Sections: []MergedSection{
+				{Section: "SQL / 正文", SectionIdx: 0, Body: "body", SourcePaths: []string{"a.md"}},
+			},
+		},
+	}
+	meta := ChunkMetas(notes)[0]
+	b, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal ChunkMeta: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatalf("unmarshal ChunkMeta: %v", err)
+	}
+	want := []string{
+		"source_idx", "title", "section", "section_idx",
+		"section_count", "source_paths", "body_bytes",
+	}
+	if len(raw) != len(want) {
+		t.Fatalf("ChunkMeta JSON has %d keys (%v), want exactly %v", len(raw), raw, want)
+	}
+	for _, key := range want {
+		if _, ok := raw[key]; !ok {
+			t.Fatalf("ChunkMeta JSON missing contract key %q: %s", key, b)
+		}
 	}
 }
