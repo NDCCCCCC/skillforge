@@ -46,6 +46,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -53,6 +54,7 @@ import (
 
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/kb"
+	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 )
@@ -218,6 +220,20 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 			if len(body) == 0 {
 				// Empty body (frontmatter-only file or 0-byte file). Skip
 				// silently — the operator probably wrote a placeholder.
+				continue
+			}
+			// Phase 39 ECL routing branch (D-ECL-01 / ONT-10). Placement is
+			// LOAD-BEARING: this check sits BETWEEN splitFrontmatter and the
+			// maxDocBytes guard because merged ECL fragments routinely exceed
+			// the 4000-byte cap — placed after the guard, the guard would
+			// silently starve the ECL path of exactly the files it exists to
+			// re-chunk (RESEARCH 39 Pitfall / anti-pattern list). When
+			// eclMode is on, every __secNN+section fragment drops out of the
+			// legacy doc set (the ECL pipeline owns those files; seeding them
+			// here too would double-index the corpus across two producer
+			// generations). eclMode off → this branch never fires and legacy
+			// behavior is byte-identical to pre-Phase-39.
+			if eclMode && ecl.IsSecFragment(filepath.Base(path), fm) {
 				continue
 			}
 			if len(body) > maxDocBytes {
@@ -440,12 +456,88 @@ var indexAuditHook func(action, detail string)
 // is needed afterwards.
 func SetIndexAuditHook(fn func(action, detail string)) { indexAuditHook = fn }
 
+// eclMode switches Index's per-file routing and seedDocs' purge scope to
+// the Phase 39 ECL posture (mirrors the indexSeedHook package-var seam
+// pattern; set once at boot via SetECLMode, toggled by tests):
+//
+//   - false (default): legacy behavior, byte-identical to pre-Phase-39 —
+//     every .md file indexes through the maxDocBytes path and seedDocs
+//     purges whole tiers (DeleteTierRows). On an ECL→legacy rollback this
+//     tier-level purge also wipes stale ECL rows, which is exactly the
+//     coherent both-directions property RESEARCH 39 Pattern 3 requires.
+//   - true: __secNN+section fragments are excluded from the legacy doc set
+//     (the ECL pipeline owns them) and the ECL-cohabiting tier's legacy
+//     purge becomes marker-scoped (section_count == 0) so boot can no
+//     longer cross-delete the ECL producer's rows (RESEARCH 39 Pitfall 1).
+var eclMode bool
+
+// SetECLMode toggles the ECL routing/purge posture described on eclMode.
+// cmd/server calls it at boot — BEFORE buildRetriever kicks the boot-time
+// knowledge.Index, so the routing branch governs the very first seed —
+// under the SKILLFORGE_ECL_ENABLED gate (default on; disabled only on
+// explicit off/false/0). Not synchronized: boot is single-threaded and
+// tests toggle it sequentially.
+func SetECLMode(enabled bool) { eclMode = enabled }
+
+// eclCohabitationTier is the only KB slug where ECL rows and legacy rows
+// share one tier — D-ECL-01 scopes the ECL pipeline to sql-guides this
+// phase ("非 sql-guides KB 的 ECL 化" is explicitly out of scope), so the
+// cohabitation set is a literal, not registry-derived: seedTiers yields
+// slugs but carries no signal for which ones the ECL pipeline claims.
+const eclCohabitationTier = "sql-guides"
+
+// purgeExprFor decides the purge strategy for ONE seeded tier under the
+// current mode. Returned useExpr=false means "use the legacy tier-level
+// purge" (DeleteTierRows); useExpr=true carries the marker-scoped Milvus
+// expression that deletes only the LEGACY rows of the cohabiting tier —
+// ECL rows are marked section_count > 0 (D-Milvus-02 zero-fills every
+// legacy row), so `section_count == 0` isolates this producer's
+// generation and boot can never wipe the ECL pipeline's rows again
+// (RESEARCH 39 Pattern 3 / Pitfall 1).
+//
+// The tier value is interpolated %q-escaped (strconv.Quote) per the
+// filter.go:55-59 injection-safe precedent — T-39-01 mitigation; the
+// expression is consumed by milvus.DeleteByExpr, which passes caller-built
+// expressions through verbatim by contract.
+//
+// Pure function; table-tested in indexer_test.go.
+func purgeExprFor(tier string, eclMode bool) (useExpr bool, expr string) {
+	if !eclMode || tier != eclCohabitationTier {
+		return false, ""
+	}
+	return true, fmt.Sprintf("tier in [%s] and section_count == 0", strconv.Quote(tier))
+}
+
 func seedDocs(ctx context.Context, mc client.Client, cfg milvus.Config, docs []retriever.Document) error {
 	if indexSeedHook != nil {
 		return indexSeedHook(ctx, mc, cfg, docs)
 	}
-	if err := milvus.DeleteTierRows(ctx, mc, cfg, seedTiers(docs)); err != nil {
-		return fmt.Errorf("purge stale tier rows: %w", err)
+	if !eclMode {
+		// Legacy path — byte-identical to pre-Phase-39: ONE tier-level
+		// purge over the whole batch scope. On an ECL→legacy rollback this
+		// also wipes stale ECL rows of the purged tiers (they share the
+		// tier), which is the rollback property RESEARCH 39 Pattern 3
+		// pins for the disabled direction.
+		if err := milvus.DeleteTierRows(ctx, mc, cfg, seedTiers(docs)); err != nil {
+			return fmt.Errorf("purge stale tier rows: %w", err)
+		}
+		return milvus.SeedDocuments(ctx, mc, cfg, docs)
+	}
+	// ECL mode: per-tier purge. The cohabiting tier purges ONLY its legacy
+	// generation (marker expr); every other tier keeps the legacy contract
+	// untouched (ECL never touches them, so whole-tier replace is still
+	// correct there).
+	for _, tier := range seedTiers(docs) {
+		useExpr, expr := purgeExprFor(tier, eclMode)
+		if useExpr {
+			if err := milvus.DeleteByExpr(ctx, mc, cfg, expr); err != nil {
+				return fmt.Errorf("purge stale legacy rows of tier %s: %w", tier, err)
+			}
+			continue
+		}
+		if err := milvus.DeleteTierRows(ctx, mc, cfg, []string{tier}); err != nil {
+			return fmt.Errorf("purge stale tier rows: %w", err)
+		}
 	}
 	return milvus.SeedDocuments(ctx, mc, cfg, docs)
 }

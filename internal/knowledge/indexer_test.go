@@ -20,6 +20,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -360,4 +361,158 @@ func TestIndexer_ProductionWiresValidateEffective(t *testing.T) {
 	src := string(data)
 	assert.Contains(t, src, "validateEffective(",
 		"internal/knowledge/indexer.go MUST call validateEffective on the built docs slice (Plan 05-02 D5-15)")
+}
+
+// withECLMode toggles the package-level eclMode for one test and restores
+// the previous value on cleanup — every existing test in this package runs
+// with the default (false), which is itself the "default-off leaves legacy
+// behavior byte-identical" regression guard (ONT-10 acceptance).
+func withECLMode(t *testing.T, enabled bool) {
+	t.Helper()
+	prev := eclMode
+	SetECLMode(enabled)
+	t.Cleanup(func() { eclMode = prev })
+}
+
+// secFragmentDoc renders a corpus-shaped __secNN fragment: frontmatter
+// carries title + source_idx + section (all three — the IsSecFragment
+// contract), the body is body repeated repeats times.
+func secFragmentDoc(title, sourceIdx, section, body string, repeats int) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("title: " + title + "\n")
+	b.WriteString("source_idx: \"" + sourceIdx + "\"\n")
+	b.WriteString("section: " + section + "\n")
+	b.WriteString("---\n")
+	b.WriteString(strings.Repeat(body, repeats))
+	return b.String()
+}
+
+// TestIndexer_ECLRoutingSkipsSecFragments — ONT-10 routing branch (a):
+// with eclMode ON, a directory holding a __secNN+section fragment and a
+// normal file seeds ONLY the normal file's doc — the fragment drops out of
+// the legacy doc set because the ECL pipeline owns it (D-ECL-01).
+func TestIndexer_ECLRoutingSkipsSecFragments(t *testing.T) {
+	withECLMode(t, true)
+	dir := makeKnowledgeDir(t)
+	writeDoc(t, dir, "authority", "001_公司业务部__sec01_概述.md",
+		secFragmentDoc("公司业务部", "001", "概述", "概述正文：差旅住宿标准。", 1))
+	writeDoc(t, dir, "authority", "030_承保清单.md", "承保清单正文（非 sec 文件）。")
+
+	cap := withSeedHook(t)
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
+
+	require.Len(t, cap.docs, 1, "ECL-owned __secNN fragment must be excluded from the legacy doc set")
+	assert.Equal(t, "authority/030_承保清单.md", cap.docs[0].Source,
+		"only the non-sec file survives legacy indexing under ECL mode")
+}
+
+// TestIndexer_ECLOffIndexesSecFragments — the inverse contract: with
+// eclMode OFF (the default), the same __secNN fragment passes the routing
+// branch untouched and is legacy-indexed like any other small doc. This
+// pair with TestIndexer_ECLRoutingSkipsSecFragments proves the branch —
+// not some unrelated filter — owns the exclusion.
+func TestIndexer_ECLOffIndexesSecFragments(t *testing.T) {
+	withECLMode(t, false)
+	dir := makeKnowledgeDir(t)
+	writeDoc(t, dir, "authority", "001_公司业务部__sec01_概述.md",
+		secFragmentDoc("公司业务部", "001", "概述", "概述正文：差旅住宿标准。", 1))
+
+	cap := withSeedHook(t)
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
+
+	require.Len(t, cap.docs, 1, "ECL-off legacy path must still index __secNN fragments (rollback contract)")
+	assert.Equal(t, "authority/001_公司业务部__sec01_概述.md", cap.docs[0].Source)
+}
+
+// TestIndexer_ECLBranchPrecedesMaxDocBytes — ONT-10 ordering proof (b) +
+// static guard. Behavioral half: an OVERSIZE __secNN fragment is excluded
+// under ECL mode even though it exceeds maxDocBytes — the ECL branch fires
+// regardless of the size guard. Static half (same pattern as
+// TestIndexer_ProductionWiresValidateEffective): the IsSecFragment call
+// must appear BEFORE the maxDocBytes guard in indexer.go source. Placement
+// after the guard would silently starve the ECL path of exactly the large
+// fragments it exists to re-chunk (RESEARCH 39 anti-pattern list).
+func TestIndexer_ECLBranchPrecedesMaxDocBytes(t *testing.T) {
+	withECLMode(t, true)
+	dir := makeKnowledgeDir(t)
+	big := secFragmentDoc("公司业务部", "001", "SQL_正文", strings.Repeat("update etl_payment_due_t set x = 1;\n", 200), 1)
+	require.Greater(t, len(big), maxDocBytes, "fixture must exceed the cap for this test to mean anything")
+	writeDoc(t, dir, "authority", "001_公司业务部__sec03_SQL_正文.md", big)
+
+	cap := withSeedHook(t)
+	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
+	assert.Empty(t, cap.docs,
+		"oversize __secNN fragment must be excluded under ECL mode by the routing branch (which must sit before the size guard)")
+
+	// ECL-off contrast: the same file is skipped, but by the maxDocBytes
+	// guard (documenting which branch owns the exclusion in each mode).
+	withECLMode(t, false)
+	dir2 := makeKnowledgeDir(t)
+	writeDoc(t, dir2, "authority", "001_公司业务部__sec03_SQL_正文.md", big)
+	cap2 := withSeedHook(t)
+	require.NoError(t, driveIndex(t, dir2, newFakeEmbedder(), baselineRegistry()))
+	assert.Empty(t, cap2.docs, "under ECL-off the same file is excluded by the maxDocBytes guard")
+
+	// Static ordering guard: ECL branch strictly before the size guard.
+	data, err := os.ReadFile("indexer.go")
+	require.NoError(t, err)
+	src := string(data)
+	eclIdx := strings.Index(src, "ecl.IsSecFragment(")
+	guardIdx := strings.Index(src, "len(body) > maxDocBytes")
+	require.GreaterOrEqual(t, eclIdx, 0, "indexer.go must contain the ECL routing branch")
+	require.GreaterOrEqual(t, guardIdx, 0, "indexer.go must contain the maxDocBytes guard")
+	assert.Less(t, eclIdx, guardIdx,
+		"the ECL routing branch MUST precede the maxDocBytes guard — after it, the guard starves ECL of oversize fragments")
+}
+
+// TestPurgeExprFor — ONT-10 purge-mode decision table (c). The ECL-on
+// cohabiting tier purges ONLY legacy rows via the marker expression
+// (section_count == 0, %q-quoted tier — T-39-01); every other tier and
+// every ECL-off combination keeps the legacy tier-level purge.
+func TestPurgeExprFor(t *testing.T) {
+	cases := []struct {
+		name        string
+		tier        string
+		eclMode     bool
+		wantUseExpr bool
+		wantExpr    string
+	}{
+		{
+			name:        "sql_guides_ecl_on_marker_scoped",
+			tier:        "sql-guides",
+			eclMode:     true,
+			wantUseExpr: true,
+			wantExpr:    `tier in ["sql-guides"] and section_count == 0`,
+		},
+		{
+			name:        "other_tier_ecl_on_legacy_purge",
+			tier:        "authority",
+			eclMode:     true,
+			wantUseExpr: false,
+		},
+		{
+			name:        "sql_guides_ecl_off_legacy_purge",
+			tier:        "sql-guides",
+			eclMode:     false,
+			wantUseExpr: false,
+		},
+		{
+			name:        "other_tier_ecl_off_legacy_purge",
+			tier:        "personal",
+			eclMode:     false,
+			wantUseExpr: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			useExpr, expr := purgeExprFor(tc.tier, tc.eclMode)
+			assert.Equal(t, tc.wantUseExpr, useExpr)
+			if tc.wantUseExpr {
+				assert.Equal(t, tc.wantExpr, expr)
+				assert.Contains(t, expr, "section_count == 0", "marker scope must isolate legacy rows only")
+				assert.Contains(t, expr, strconv.Quote(tc.tier), "tier must be %q-escaped (T-39-01)")
+			}
+		})
+	}
 }
