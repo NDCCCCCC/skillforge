@@ -51,32 +51,32 @@ Consequences to scrutinize:
 
 | # | source_idx | 标题 (子目录) | 草稿 tables+kind | 草稿 related | 评审结论 (OK / correction) |
 |---|-----------|---------------|------------------|--------------|---------------------------|
-| 1 | 001 | 公司业务部、武汉中支部门组部门科室等信息更新 (取数口径) | etl_payment_due_t=update; etl_policy_request_issue_t=update; etl_NONAUTO_POLICY_T=update | — | |
-| 2 | 006 | 高斯数据库存储过程和定时任务 (操作手册) | — | — | |
-| 3 | 007 | 意外伤害医疗保险 (非车险) | — | — | |
-| 4 | 009 | 农险查询 (非车险) | — | — | |
-| 5 | 010 | 财务现金流小程序实现方案 (财务对账) | — | — | |
-| 6 | 011 | 三责险，车损险保费保额 (汽车险) | — | — | |
-| 7 | 012 | 定时任务桌面程序 - 完整使用手册 (操作手册) | — | — | |
-| 8 | 014 | 逐单未到期准备金 (财务对账) | — | — | |
-| 9 | 015 | 代理业务部车商费用 (汽车险) | — | — | |
-| 10 | 016 | 视频录制api (操作手册) | — | — | |
-| 11 | 018 | CREATE OR REPLACE FUNCTION wuh... (取数口径) | — | — | |
-| 12 | 020 | 财务逐单未到期 (财务对账) | — | — | |
-| 13 | 026 | 投保交强险代收代缴车船税 (汽车险) | — | — | |
-| 14 | 027 | 财务税款看板 (财务对账) | — | — | |
-| 15 | 028 | 新能源车签单口径 (汽车险) | — | — | |
-| 16 | 029 | 开门红存储过程 (取数口径) | — | — | |
-| 17 | 031 | 取数工作汇总 (取数口径) | — | — | |
-| 18 | 032 | 根据保单号查询支付方式，开户行名称，客户账户 (取数口径) | — | — | |
-| 19 | 033 | 分公司自有车辆赔款清单 (理赔与赔付) | — | — | |
-| 20 | 036 | 车险报价清单 (汽车险) | — | — | |
-| 21 | 037 | 个客综合市场部数据看板 (其他) | — | — | |
-| 22 | 038 | 帆软升级注意事项 (操作手册) | — | — | |
-| 23 | 039 | 二层宽表存储过程 (取数口径) | etl_nonauto_agreement_t=create; etl_nonauto_policy_t=update; etl_auto_agreement_t=create; etl_policy=update; etl_request_issue_t=create; etl_policy_request_issue_t=update; etl_batch_date=create | — | |
-| 24 | 041 | 数据提取字段解读 (取数口径) | — | — | |
-| 25 | 042 | sql示例 (取数口径) | — | — | |
-| 26 | 043 | MongoDB 4.4全面解析：从核心概念到实战应用 (操作手册) | — | — | |
+| 1 | 001 | 公司业务部、武汉中支部门组部门科室等信息更新 (取数口径) | etl_payment_due_t=update; etl_policy_request_issue_t=update; etl_NONAUTO_POLICY_T=update | — | OK |
+| 2 | 006 | 高斯数据库存储过程和定时任务 (操作手册) | — | — | OK |
+| 3 | 007 | 意外伤害医疗保险 (非车险) | — | — | OK |
+| 4 | 009 | 农险查询 (非车险) | — | — | OK |
+| 5 | 010 | 财务现金流小程序实现方案 (财务对账) | — | — | OK |
+| 6 | 011 | 三责险，车损险保费保额 (汽车险) | — | — | OK |
+| 7 | 012 | 定时任务桌面程序 - 完整使用手册 (操作手册) | — | — | OK |
+| 8 | 014 | 逐单未到期准备金 (财务对账) | — | — | OK |
+| 9 | 015 | 代理业务部车商费用 (汽车险) | — | — | OK |
+| 10 | 016 | 视频录制api (操作手册) | — | — | OK |
+| 11 | 018 | CREATE OR REPLACE FUNCTION wuh... (取数口径) | — | — | OK |
+| 12 | 020 | 财务逐单未到期 (财务对账) | — | — | OK |
+| 13 | 026 | 投保交强险代收代缴车船税 (汽车险) | — | — | OK |
+| 14 | 027 | 财务税款看板 (财务对账) | — | — | OK |
+| 15 | 028 | 新能源车签单口径 (汽车险) | — | — | OK |
+| 16 | 029 | 开门红存储过程 (取数口径) | — | — | OK |
+| 17 | 031 | 取数工作汇总 (取数口径) | — | — | OK |
+| 18 | 032 | 根据保单号查询支付方式，开户行名称，客户账户 (取数口径) | — | — | OK |
+| 19 | 033 | 分公司自有车辆赔款清单 (理赔与赔付) | — | — | OK |
+| 20 | 036 | 车险报价清单 (汽车险) | — | — | OK |
+| 21 | 037 | 个客综合市场部数据看板 (其他) | — | — | OK |
+| 22 | 038 | 帆软升级注意事项 (操作手册) | — | — | OK |
+| 23 | 039 | 二层宽表存储过程 (取数口径) | etl_nonauto_agreement_t=create; etl_nonauto_policy_t=update; etl_auto_agreement_t=create; etl_policy=update; etl_request_issue_t=create; etl_policy_request_issue_t=update; etl_batch_date=create | — | 删4函数/参数误报，留3个merge into写目标 |
+| 24 | 041 | 数据提取字段解读 (取数口径) | — | — | OK |
+| 25 | 042 | sql示例 (取数口径) | — | — | OK |
+| 26 | 043 | MongoDB 4.4全面解析：从核心概念到实战应用 (操作手册) | — | — | OK |
 
 Highest-density rows (review first): **039** (7 draft tables — function/parameter false-positive
 candidates above) and **029** (largest note, 16 sections; reads-only → drafts empty).
@@ -85,11 +85,29 @@ candidates above) and **029** (largest note, 16 sections; reads-only → drafts 
 
 | Field | Value |
 |-------|-------|
-| Reviewer | |
-| Date | |
-| Result | (approved / corrections listed below) |
-| Corrections applied to jsonl | |
+| Reviewer | 用户（orchestrator 提取 SQL grep 证据、用户逐项批准；LLM 未参与 golden 内容决定） |
+| Date | 2026-09-22 |
+| Result | approved (policy A — writes-only) |
+| Corrections applied to jsonl | 039 -4 / 其余不变 |
 
 Corrections log (note_idx → change):
 
--
+- **039**: DELETE 4 false positives — all `CREATE OR REPLACE FUNCTION wuh_dw.<name>` artifacts
+  (3 PostgreSQL function names + 1 function parameter): `etl_nonauto_agreement_t` (create),
+  `etl_auto_agreement_t` (create), `etl_request_issue_t` (create), `etl_batch_date` (create).
+  KEEP the 3 real `merge into` write targets as kind update: `etl_nonauto_policy_t`,
+  `etl_policy`, `etl_policy_request_issue_t`. Evidence: deterministic SQL grep over the
+  knowledge/sql-guides corpus, presented to the user, user approved.
+- **All other 25 rows**: unchanged — 001 keeps its 3 write targets (SC-1 anchor); the
+  empty-table rows are confirmed by a corpus-wide write-statement scan (zero missed write
+  targets beyond 001/039); all `related` stay empty (corpus has zero numeric cross-references).
+
+## Policy decision — writes-only (policy A)
+
+The user chose **policy A: writes-only**. Read-only `FROM`/`JOIN etl_*` references
+(~26 across 14 notes) are deliberately NOT added as kind `select`. Accepted implication
+(recorded, not a defect to fix in this phase): the live-LLM F1 operator gate scores
+against this writes-only golden while the extraction prompt uses "touches" semantics —
+a read-touched table the LLM reports will count as a false positive against the
+writes-only yardstick. This is a **documented live-gate risk**; revisit only if the
+live gate's F1 sits uncomfortably close to the 0.8 threshold.
