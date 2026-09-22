@@ -102,6 +102,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
@@ -121,6 +122,7 @@ import (
 	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -460,6 +462,20 @@ func main() {
 	if bgeTLSSkipVerify {
 		log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", bgeURL)
 	}
+
+	// Phase 39 — ECL gate (D-ECL-01 / RESEARCH A3): the pipeline is ON by
+	// default and disabled ONLY on an explicit off/false/0 (case-
+	// insensitive); unset/empty means on. The mode MUST be applied to the
+	// indexer BEFORE buildRetriever kicks the boot-time knowledge.Index —
+	// the routing branch (skips __secNN fragments — the ECL pipeline owns
+	// them) and the marker-scoped sql-guides purge then govern the very
+	// first seed, not just subsequent indexes.
+	eclEnabled := true
+	switch strings.ToLower(envOr("SKILLFORGE_ECL_ENABLED", "")) {
+	case "off", "false", "0":
+		eclEnabled = false
+	}
+	knowledge.SetECLMode(eclEnabled)
 
 	// 7. Construct the configured retriever backend + seed the knowledge
 	// corpus. The default is "milvus" (unchanged historical behavior);
@@ -861,46 +877,45 @@ func main() {
 		knowledge.InvalidateCache()
 	})
 
-	// Phase 38 — ontology layer boot (v1.4 / ONT-01..09, D-KG-01..04):
-	//   1. Emit the TBox from skills/*/SKILL.md + knowledge/ (first boot
-	//      writes v1 + pointer + version file; later boots reuse the
-	//      pointer file so approved inductions survive restarts).
-	//   2. Load the pointer TTL into the memory-map KG store.
-	//   3. Persist an immediate snapshot (boot write), then keep a 5s
-	//      debounced writer wired to the induction manager's onChange.
+	// Phase 38 — ontology layer boot (v1.4 / ONT-01..09, D-KG-01..04),
+	// Phase 39 revised (Plan 39-06):
+	//   1. Reconcile the TBox via emitter.UpgradeIfNeeded: first boot
+	//      emits v1 + pointer + version file (unchanged); a Phase-38
+	//      6-class pointer gets a ONE-TIME v{N+1} upgrade (NoteChunk
+	//      sentinel trigger, approved induction triples replayed); an
+	//      up-to-date pointer is NEVER re-emitted — approved inductions
+	//      and versioned history survive restarts (RESEARCH Pitfall 4).
+	//   2. Restore the KG snapshot-FIRST, then dedupe-merge the TBox TTL
+	//      (D-KG-02 / RESEARCH Pitfall 3 — ABox written by the ECL
+	//      pipeline survives restarts instead of being wiped).
+	//   3. Persist an immediate snapshot of the MERGED store (the boot
+	//      write below), then keep a 5s debounced writer wired to the
+	//      induction manager's onChange.
 	ontologyNS := envOr("SKILLFORGE_ONTOLOGY_NS", emitter.DefaultNS)
 	ontologyDataDir := envOr("SKILLFORGE_ONTOLOGY_DATA_DIR", filepath.Join("data", "ontology"))
 	if err := os.MkdirAll(ontologyDataDir, 0o755); err != nil {
 		log.Fatalf("[FAIL] cmd/server: ontology data dir: %v", err)
 	}
 	ontologyPointer := filepath.Join(ontologyDataDir, "skillforge_tbox.ttl")
-	if _, err := os.Stat(ontologyPointer); os.IsNotExist(err) {
-		em := emitter.New(envOr("SKILLFORGE_SKILLS_DIR", "skills"), envOr("SKILLFORGE_KB_DIR", "knowledge"), ontologyNS)
-		ttlOut, err := em.Emit()
-		if err != nil {
-			log.Fatalf("[FAIL] cmd/server: ontology TBox emit: %v", err)
-		}
-		v1 := filepath.Join(ontologyDataDir, "skillforge_tbox.v1.ttl")
-		if err := os.WriteFile(v1, []byte(ttlOut), 0o644); err != nil {
-			log.Fatalf("[FAIL] cmd/server: ontology TBox v1 write: %v", err)
-		}
-		if err := os.WriteFile(ontologyPointer, []byte(ttlOut), 0o644); err != nil {
-			log.Fatalf("[FAIL] cmd/server: ontology TBox pointer write: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(ontologyDataDir, "tbox_version.txt"), []byte("1\n"), 0o644); err != nil {
-			log.Fatalf("[FAIL] cmd/server: ontology version write: %v", err)
-		}
-	}
-	ontologyKG := onstore.New()
-	ttlBytes, err := os.ReadFile(ontologyPointer)
+	upgraded, tboxVersion, err := emitter.UpgradeIfNeeded(ontologyDataDir, ontologyNS,
+		envOr("SKILLFORGE_SKILLS_DIR", "skills"), envOr("SKILLFORGE_KB_DIR", "knowledge"))
 	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: ontology TBox read: %v", err)
+		// Same fatal posture the pre-Phase-39 emit path had: the operator
+		// must see TBox state problems at startup, not at request time.
+		log.Fatalf("[FAIL] cmd/server: ontology TBox upgrade: %v", err)
 	}
-	ontologyTriples, err := ontologyKG.LoadFromTurtle(string(ttlBytes))
-	if err != nil {
-		log.Fatalf("[FAIL] cmd/server: ontology KG load: %v", err)
+	if upgraded {
+		log.Printf("[OK] cmd/server: ontology TBox written at v%d (fresh emit or one-time NoteChunk upgrade; approved induction triples replayed when present)", tboxVersion)
 	}
 	kgSnapshotPath := envOr("SKILLFORGE_ONTOLOGY_SNAPSHOT_PATH", filepath.Join(ontologyDataDir, "skillforge_kg.json"))
+	ontologyKG, ttlLoaded, err := onstore.Restore(kgSnapshotPath, ontologyPointer)
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: ontology KG restore: %v", err)
+	}
+	// Boot snapshot — this now persists the MERGED store (snapshot-first
+	// restore + TBox dedupe-merge above), which is what makes ABox durable
+	// across restarts. Pre-Phase-39 this same call OVERWROTE the snapshot
+	// with TBox-only content (Pitfall 3).
 	if err := ontologyKG.WriteSnapshot(kgSnapshotPath); err != nil {
 		log.Printf("[WARN] cmd/server: ontology boot snapshot (%s): %v", kgSnapshotPath, err)
 	}
@@ -910,8 +925,63 @@ func main() {
 	}
 	kgDebounce := ontologyKG.SnapshotDebounced(kgSnapshotPath, 5*time.Second)
 	ontologyManager.SetOnChange(kgDebounce)
-	log.Printf("[OK] cmd/server: ontology layer wired (TBox v%d, %d triples, snapshot %s)",
-		ontologyManager.Version(), ontologyTriples, kgSnapshotPath)
+	log.Printf("[OK] cmd/server: ontology layer wired (TBox v%d, %d TTL triples loaded, snapshot %s)",
+		ontologyManager.Version(), ttlLoaded, kgSnapshotPath)
+
+	// Phase 39 — ECL pipeline (ONT-13 / D-Run-01): CONSTRUCTED + ARMED at
+	// boot, NEVER run at boot. Boot-time auto-runs would slam a flaky
+	// intranet LLM with retry storms and block startup (D-Run-01 locked);
+	// runs happen only via POST /api/admin/pipeline/run. Posture:
+	//   - SKILLFORGE_ECL_ENABLED off/false/0 → eclManager stays nil →
+	//     every /api/admin/pipeline/* route answers 503 (nil-posture).
+	//   - RETRIEVER_BACKEND != milvus → nil + WARN (A7/T-39-16: ECL is
+	//     Milvus-schema-bound per D-Milvus-01; mongo deployments answer
+	//     503 — documented disposition).
+	// The SetOnChange hook shares the SAME kgDebounce writer as induction
+	// (D-Boot-01: one snapshot trigger for every KG producer).
+	var eclManager *ecl.Manager
+	switch {
+	case !eclEnabled:
+		log.Printf("[OK] cmd/server: ECL pipeline disabled (SKILLFORGE_ECL_ENABLED=off|false|0) — legacy indexer posture; admin pipeline routes answer 503")
+	case backend != "milvus":
+		log.Printf("[WARN] cmd/server: ECL pipeline unavailable under RETRIEVER_BACKEND=%s (Milvus-schema-bound, D-Milvus-01) — admin pipeline routes answer 503", backend)
+	default:
+		eclMC := r.(*milvus.MilvusClient) // buildRetriever's milvus branch always returns *MilvusClient
+		eclRaw := eclMC.ClientOf()
+		eclCfg := milvus.Config{CollectionName: defaultCollection}
+		// Collection-wide ID watermark (Plan 39-02 / Pitfall 5): ECL chunk
+		// IDs must start ABOVE every boot-seeded row — the INT64 primary
+		// key is collection-wide and Milvus does not dedupe inserts.
+		watermark, werr := eclMC.GetMaxIDCollection(ctx)
+		if werr != nil {
+			log.Printf("[WARN] cmd/server: ECL ID watermark query failed (%v) — allocation restarts at 1; PK collisions with boot rows possible", werr)
+		}
+		var idSeq atomic.Int64
+		idSeq.Store(watermark)
+		eclKBDir := filepath.Join(envOr("SKILLFORGE_KB_DIR", "knowledge"), "sql-guides")
+		eclManager = ecl.NewManager(ontologyNS, eclKBDir, ontologyKG, ecl.NewLLMExtractor(cm),
+			st.(*sqlite.SQLiteStore), // buildStore always returns the sqlite impl; it implements ecl.FailureStore
+			func(sctx context.Context, docs []retriever.Document) error {
+				// ECL owns only its marker generation: purge section_count > 0
+				// (D-Milvus-02 zero-fills legacy rows). The tier literal is a
+				// compile-time constant — no interpolation, no escaping duty.
+				if err := milvus.DeleteByExpr(sctx, eclRaw, eclCfg, `tier in ["sql-guides"] and section_count > 0`); err != nil {
+					return fmt.Errorf("ecl marker purge: %w", err)
+				}
+				// Embed via the SAME embedder instance the boot Index uses.
+				for i := range docs {
+					vec, eerr := emb.Embed(sctx, docs[i].Content)
+					if eerr != nil {
+						return fmt.Errorf("ecl embed %s: %w", docs[i].Source, eerr)
+					}
+					docs[i].Embedding = vec
+				}
+				return milvus.SeedDocuments(sctx, eclRaw, eclCfg, docs)
+			})
+		eclManager.SetIDAllocator(func() int64 { return idSeq.Add(1) })
+		eclManager.SetOnChange(kgDebounce)
+		log.Printf("[OK] cmd/server: ECL pipeline armed (manual trigger via /api/admin/pipeline/run; ID watermark %d)", watermark)
+	}
 
 	deps := &server.Deps{
 		Loader:       loader,
@@ -1015,6 +1085,12 @@ func main() {
 			Induction: ontologyManager,
 			KG:        ontologyKG,
 		},
+		// Phase 39 — ECL pipeline manager (armed above, never auto-run,
+		// D-Run-01). nil when SKILLFORGE_ECL_ENABLED disables the pipeline
+		// or the retrieval backend can't support it: every
+		// /api/admin/pipeline/* route answers 503 (same nil-posture as
+		// Ontology).
+		ECL: eclManager,
 	}
 
 	// Phase 30 / WR-02 (T-30-03): sweep queued tickets from a prior run

@@ -58,6 +58,7 @@ import (
 	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/scheduler"
@@ -465,6 +466,15 @@ type Deps struct {
 	// route answers 503 (same nil-posture as Knowledge / Wizard). cmd/server
 	// wires it at boot: emit TBox → load KG → snapshot → debounce (5s).
 	Ontology *OntologyDeps
+
+	// --- Phase 39: ECL Pipeline (v1.4 / ONT-13) ---
+	// ECL carries the section-aware pipeline manager constructed at boot.
+	// nil = ECL disabled (SKILLFORGE_ECL_ENABLED=off|false|0) or the active
+	// retrieval backend cannot support it (mongo/none — ECL is Milvus-
+	// schema-bound per D-Milvus-01): every /api/admin/pipeline/* route
+	// answers 503 (same nil-posture as Ontology). Boot ARMS the manager but
+	// NEVER runs it (D-Run-01) — runs come from the admin run endpoint only.
+	ECL *ecl.Manager
 }
 
 // GraphLimits holds the config-driven limits for the knowledge graph.
