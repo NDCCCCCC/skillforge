@@ -65,7 +65,8 @@ func New() *Store {
 }
 
 // Insert adds a triple and updates all three indices. O(1).
-// Duplicate triples are stored as-is (caller deduplicates if needed).
+// Duplicate triples are stored as-is — use InsertUnique when the caller
+// cannot guarantee dedupe upstream (e.g. boot-time TBox→KG merges).
 func (s *Store) Insert(t Triple) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -74,6 +75,68 @@ func (s *Store) Insert(t Triple) {
 	s.byS[t.S] = append(s.byS[t.S], idx)
 	s.byP[t.P] = append(s.byP[t.P], idx)
 	s.byO[t.O] = append(s.byO[t.O], idx)
+}
+
+// InsertUnique inserts t only if no identical triple (same S, P and O) is
+// already stored, and reports whether the triple was inserted. The
+// existence check and the append share one write-lock acquisition, so the
+// check-then-insert sequence cannot race (no TOCTOU window): byS[t.S]
+// holds the position of every stored candidate sharing the subject, and an
+// exact match can only live among them.
+//
+// This is the dedupe guard for boot-time merges: replaying the TBox into a
+// snapshot-restored KG must not double-count triples.
+func (s *Store) InsertUnique(t Triple) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, idx := range s.byS[t.S] {
+		if c := s.all[idx]; c.P == t.P && c.O == t.O {
+			return false
+		}
+	}
+	idx := len(s.all)
+	s.all = append(s.all, t)
+	s.byS[t.S] = append(s.byS[t.S], idx)
+	s.byP[t.P] = append(s.byP[t.P], idx)
+	s.byO[t.O] = append(s.byO[t.O], idx)
+	return true
+}
+
+// DeleteSubject removes every triple whose subject equals subject and
+// returns the number of triples removed. This is the note-level replace
+// primitive (D-Boot-01): removing all triples of skf:note_{idx} before
+// re-inserting a refreshed note, and pruning orphaned TableSchema rows.
+//
+// byS/byP/byO hold positions into s.all, so a partial compaction would
+// corrupt the other two indices; the surviving triples are compacted in
+// order and all three indices are rebuilt from scratch in the same pass.
+// O(n) rebuild is fine at KG scale (<10k triples). Removing a subject that
+// owns no triples mutates nothing and returns 0.
+func (s *Store) DeleteSubject(subject string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := make([]Triple, 0, len(s.all))
+	removed := 0
+	for _, t := range s.all {
+		if t.S == subject {
+			removed++
+			continue
+		}
+		kept = append(kept, t)
+	}
+	if removed == 0 {
+		return 0
+	}
+	s.all = kept
+	s.byS = make(map[string][]int, len(s.byS))
+	s.byP = make(map[string][]int, len(s.byP))
+	s.byO = make(map[string][]int, len(s.byO))
+	for idx, t := range s.all {
+		s.byS[t.S] = append(s.byS[t.S], idx)
+		s.byP[t.P] = append(s.byP[t.P], idx)
+		s.byO[t.O] = append(s.byO[t.O], idx)
+	}
+	return removed
 }
 
 // Len returns the number of stored triples.

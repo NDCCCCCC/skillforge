@@ -56,6 +56,125 @@ func TestStoreInsertAndLen(t *testing.T) {
 	}
 }
 
+func TestStoreInsertUnique(t *testing.T) {
+	s := New()
+	tr := Triple{S: ns + "note_001", P: ns + "referencesTable", O: ns + "tbl_etl_payment_due_t"}
+	if !s.InsertUnique(tr) {
+		t.Errorf("first InsertUnique = false, want true")
+	}
+	if s.Len() != 1 {
+		t.Errorf("Len after first insert = %d, want 1", s.Len())
+	}
+	if s.InsertUnique(tr) {
+		t.Errorf("duplicate InsertUnique = true, want false")
+	}
+	if s.Len() != 1 {
+		t.Errorf("Len after duplicate insert = %d, want 1 (grew by 0)", s.Len())
+	}
+	// Same S/P but different O is a distinct triple — must insert.
+	tr2 := Triple{S: tr.S, P: tr.P, O: ns + "tbl_etl_claim_t"}
+	if !s.InsertUnique(tr2) {
+		t.Errorf("InsertUnique(distinct O) = false, want true")
+	}
+	if s.Len() != 2 {
+		t.Errorf("Len = %d, want 2", s.Len())
+	}
+}
+
+func TestStoreInsertUniqueBootMerge(t *testing.T) {
+	// RESEARCH Pitfall 3: snapshot restore + TBox reload must not
+	// double-count triples. Replay the store's own triples through
+	// InsertUnique — Len must stay unchanged.
+	s := New()
+	if _, err := s.LoadFromTurtle(testTTL); err != nil {
+		t.Fatalf("LoadFromTurtle: %v", err)
+	}
+	n := s.Len()
+	data, err := s.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	restored, err := LoadSnapshot(data)
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	for _, tr := range restored.Query("", "", "") {
+		s.InsertUnique(tr)
+	}
+	if s.Len() != n {
+		t.Errorf("Len after boot-merge replay = %d, want %d (no double-count)", s.Len(), n)
+	}
+}
+
+func TestStoreDeleteSubject(t *testing.T) {
+	s := New()
+	if _, err := s.LoadFromTurtle(testTTL); err != nil {
+		t.Fatalf("LoadFromTurtle: %v", err)
+	}
+	before := s.Len()
+	// skf:skill_a owns 3 triples: rdf:type, skillName, hasReadAccess.
+	removed := s.DeleteSubject(ns + "skill_a")
+	if removed != 3 {
+		t.Fatalf("DeleteSubject(skill_a) = %d, want 3", removed)
+	}
+	if s.Len() != before-3 {
+		t.Errorf("Len after delete = %d, want %d", s.Len(), before-3)
+	}
+	// No phantom entries via any index (index symmetry).
+	if got := s.Query(ns+"skill_a", "", ""); len(got) != 0 {
+		t.Errorf("byS kept %d phantom triples for deleted subject", len(got))
+	}
+	// hasReadAccess survivors: skill_b + skill_c (skill_a's copy removed).
+	if got := s.Query("", ns+"hasReadAccess", ""); len(got) != 2 {
+		t.Errorf("byP kept %d hasReadAccess triples, want 2", len(got))
+	}
+	readers := s.Adjacent1Reverse(ns+"hasReadAccess", ns+"cat_authority")
+	if len(readers) != 1 || readers[0] != ns+"skill_b" {
+		t.Errorf("Adjacent1Reverse after delete = %v, want [skill_b] (no phantom)", readers)
+	}
+	// skill_a's hasReadAccess→cat_authority edge gone from byO too.
+	if got := s.Query("", "", ns+"cat_authority"); len(got) != 1 {
+		t.Errorf("byO kept %d triples pointing at cat_authority, want 1 (skill_b only)", len(got))
+	}
+	// Literal-object index stays symmetric (skill_a owned the only skillName).
+	if got := s.Query("", ns+"skillName", ""); len(got) != 0 {
+		t.Errorf("byP kept %d skillName triples, want 0", len(got))
+	}
+	// Wildcard enumeration stays consistent with Len.
+	if got := s.Query("", "", ""); len(got) != s.Len() {
+		t.Errorf("wildcard = %d, Len = %d, want equal", len(got), s.Len())
+	}
+	// Remaining data still queryable through the rebuilt indices.
+	if got := s.Adjacent1(ns+"cat_authority", ns+"belongsToTier"); len(got) != 1 || got[0] != ns+"authority" {
+		t.Errorf("Adjacent1(cat_authority) after delete = %v, want [authority]", got)
+	}
+}
+
+func TestStoreDeleteSubjectUnknown(t *testing.T) {
+	s := New()
+	if _, err := s.LoadFromTurtle(testTTL); err != nil {
+		t.Fatalf("LoadFromTurtle: %v", err)
+	}
+	before := s.Len()
+	snapBefore, err := s.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if got := s.DeleteSubject(ns + "nonexistent"); got != 0 {
+		t.Fatalf("DeleteSubject(unknown) = %d, want 0", got)
+	}
+	if s.Len() != before {
+		t.Errorf("Len changed on no-op delete: %d → %d", before, s.Len())
+	}
+	snapAfter, err := s.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if string(snapBefore) != string(snapAfter) {
+		t.Errorf("no-op delete mutated store contents")
+	}
+}
+
 func TestStoreQueryByType(t *testing.T) {
 	s := New()
 	if _, err := s.LoadFromTurtle(testTTL); err != nil {
