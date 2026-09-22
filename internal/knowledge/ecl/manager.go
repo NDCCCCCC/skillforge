@@ -379,11 +379,33 @@ func (m *Manager) Run(ctx context.Context) (err error) {
 	return nil
 }
 
-// RetryNote re-runs the FULL note pipeline (extract → kg-load →
-// milvus-load) for one dead note — idempotent via note-level replace
-// (ApplyNote deletes the note's old triples first; no stage checkpointing,
-// planner pin). Requires an existing DEAD ledger row (T-39-10) and the
-// idle running flag. Runs synchronously in the caller's goroutine.
+// TryClaimRetry validates that noteID has a DEAD ledger row (T-39-10) and
+// claims the running flag — the synchronous, cheap half of a retry. The
+// admin handler runs it inline so 409/404 still answer before the HTTP
+// response (D-Route-01 mapping); only the long-running pipeline work is
+// detached (WR-01 — a retry's worst case is 3 LLM calls + up to 15s of
+// backoff + a Milvus round-trip, well past proxy timeouts). On success the
+// caller OWNS the running flag and MUST complete the retry with
+// RetryClaimed (which releases it); on failure the claim is released here.
+// Errors: ErrPipelineBusy (a run or another retry holds the flag),
+// ErrUnknownNote (no DEAD row for noteID).
+func (m *Manager) TryClaimRetry(noteID string) error {
+	if !m.CASRunning() {
+		return ErrPipelineBusy
+	}
+	row, err := m.failures.GetFailure(noteID)
+	if err != nil || row.Status != FailureDead {
+		m.releaseRunning()
+		return ErrUnknownNote
+	}
+	return nil
+}
+
+// RetryClaimed runs the FULL note pipeline (extract → kg-load →
+// milvus-load) for one dead note whose running flag was ALREADY claimed via
+// TryClaimRetry — idempotent via note-level replace (ApplyNote deletes the
+// note's old triples first; no stage checkpointing, planner pin). Releases
+// the running flag on every exit.
 //
 // Terminal-stage discipline (CR-01): every error path AFTER stage entry
 // (merge walk, corpus miss, extract, kg-load, milvus-load) resets the stage
@@ -392,14 +414,15 @@ func (m *Manager) Run(ctx context.Context) (err error) {
 // forever in the admin pipeline UI with the run button disabled until
 // restart. The guard is installed only after the pre-entry DEAD-row check,
 // so a refused retry never touches the previous run's terminal state.
-func (m *Manager) RetryNote(ctx context.Context, noteID string) (err error) {
-	if !m.CASRunning() {
-		return ErrPipelineBusy
-	}
+func (m *Manager) RetryClaimed(ctx context.Context, noteID string) (err error) {
 	defer m.releaseRunning()
 
-	row, err := m.failures.GetFailure(noteID)
-	if err != nil || row.Status != FailureDead {
+	// Re-check the DEAD row under the claim: the row may have been
+	// resolved or flipped between the handler's TryClaimRetry and this
+	// call. This runs BEFORE the stage-reset guard installs — a refused
+	// retry must not touch the previous run's terminal state.
+	row, rerr := m.failures.GetFailure(noteID)
+	if rerr != nil || row.Status != FailureDead {
 		return ErrUnknownNote
 	}
 	defer func() {
@@ -470,6 +493,17 @@ func (m *Manager) RetryNote(ctx context.Context, noteID string) (err error) {
 	m.recordFailure(*target, StageMilvusLoad, 1, nil, FailureResolved)
 	m.setStatus(StageDone, "", 1, 1, 0)
 	return nil
+}
+
+// RetryNote is the synchronous claim+work convenience wrapper — the
+// manager-level API for in-process callers and tests. The admin handler
+// splits it: TryClaimRetry inline (409/404 before the response), then
+// RetryClaimed on a detached goroutine (WR-01).
+func (m *Manager) RetryNote(ctx context.Context, noteID string) error {
+	if err := m.TryClaimRetry(noteID); err != nil {
+		return err
+	}
+	return m.RetryClaimed(ctx, noteID)
 }
 
 // extractWithRetry runs ExtractNote with the D-RT-01 retry loop: up to

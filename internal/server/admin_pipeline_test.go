@@ -354,12 +354,31 @@ func TestAdminPipelineStatusShape(t *testing.T) {
 	}
 }
 
+// awaitRowStatus polls the ledger until noteID's row reaches status (the
+// retry work is detached from the request goroutine — WR-01 — so tests
+// poll, same posture as awaitStage).
+func awaitRowStatus(t *testing.T, fs *fakePipelineFailures, noteID, status string) ecl.Failure {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		row, err := fs.GetFailure(noteID)
+		if err == nil && row.Status == status {
+			return row
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("note %s never reached status %q (row %+v, err %v)", noteID, status, row, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // TestAdminPipelineRetryValidation: "abc" → 400 "invalid note id"
 // (format gate fires before the manager is consulted); "999" with no
 // failure row → 404 "unknown or non-dead note"; dead "007" → 200 queued
-// and the synchronous retry actually resolves the row (full-note pipeline);
-// retry while busy → 409 (asserted last — the test-held CAS claim is never
-// released, the flag API is manager-internal).
+// and the DETACHED retry (WR-01) actually resolves the row (full-note
+// pipeline — polled, not synchronous); retry while busy → 409 (asserted
+// last — the test-held CAS claim is never released, the flag API is
+// manager-internal).
 func TestAdminPipelineRetryValidation(t *testing.T) {
 	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "tok")
 	mgr, seed, fs := newPipelineManager(t)
@@ -395,8 +414,8 @@ func TestAdminPipelineRetryValidation(t *testing.T) {
 		t.Fatalf("retry/002 (pending): expected 404, got %d: %s", resp.Code, resp.Body.String())
 	}
 
-	// Dead 007 → 200 queued; RetryNote runs the FULL note pipeline
-	// synchronously in the request goroutine.
+	// Dead 007 → 200 queued; the retry work runs detached (WR-01) and the
+	// full-note pipeline is observed via polling.
 	if err := fs.UpsertFailure(ecl.Failure{
 		NoteID: "007", Stage: ecl.StageExtract, AttemptCount: 3,
 		LastError: "forced extract failure for 007", Status: ecl.FailureDead,
@@ -418,16 +437,19 @@ func TestAdminPipelineRetryValidation(t *testing.T) {
 	if queued.Status != "queued" || queued.NoteID != "007" {
 		t.Errorf("retry response = %+v, want {queued 007}", queued)
 	}
-	row, err := fs.GetFailure("007")
-	if err != nil || row.Status != ecl.FailureResolved {
-		t.Errorf("dead 007 row after retry = %+v (err %v), want resolved", row, err)
+	row := awaitRowStatus(t, fs, "007", ecl.FailureResolved)
+	if row.Stage != ecl.StageMilvusLoad {
+		t.Errorf("resolved row stage = %q, want milvus-load (the final stage)", row.Stage)
 	}
+	// The detached work really seeded 007's documents and the run settled
+	// at the done terminal sentinel.
 	seeded := seed.seeded()
 	if len(seeded) != 1 || seeded[0].SourceIdx != "007" {
 		t.Errorf("retry seeded %+v, want exactly note 007", seeded)
 	}
-	if got := mgr.Status().Stage; got != ecl.StageDone {
-		t.Errorf("stage after retry = %q, want done", got)
+	st := awaitStage(t, mgr, ecl.StageDone)
+	if st.Total != 1 {
+		t.Errorf("status total after retry = %d, want 1 (single-note run)", st.Total)
 	}
 
 	// Busy: claim the flag, retry answers 409 regardless of row state.

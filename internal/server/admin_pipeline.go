@@ -136,10 +136,17 @@ func (s *Deps) adminPipelineStatusHandler(ctx context.Context, c *app.RequestCon
 // Validation layers (T-39-10): the ^[0-9]{3}$ format gate answers 400
 // before the manager is consulted; the manager then requires an existing
 // DEAD ledger row (else ErrUnknownNote → 404). ErrPipelineBusy (a run or
-// another retry holds the running flag) maps to 409. RetryNote runs
-// synchronously in the request goroutine and is idempotent via
-// note-level replace (D-Run-01). All three routes are body-less — no
-// request-body binding exists by design (D-Route-01).
+// another retry holds the running flag) maps to 409. All three gates run
+// INLINE via TryClaimRetry so the D-Route-01 status mapping is preserved;
+// only the long-running pipeline work (RetryClaimed — 3 LLM calls + up to
+// 15s of retry backoff + a Milvus purge/embed/seed round-trip at worst)
+// detaches onto a background-context goroutine (WR-01, mirroring the run
+// handler), because holding the request goroutine that long aborts
+// mid-pipeline at proxy/client timeouts and strands the note's ledger row.
+// The retry is idempotent via note-level replace (D-Run-01); progress
+// flows through the same status polling as run (D-Prog-01). All three
+// routes are body-less — no request-body binding exists by design
+// (D-Route-01).
 func (s *Deps) adminPipelineRetryHandler(ctx context.Context, c *app.RequestContext) {
 	mgr, ok := s.requireECL(c)
 	if !ok {
@@ -150,7 +157,7 @@ func (s *Deps) adminPipelineRetryHandler(ctx context.Context, c *app.RequestCont
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid note id"})
 		return
 	}
-	if err := mgr.RetryNote(ctx, noteID); err != nil {
+	if err := mgr.TryClaimRetry(noteID); err != nil {
 		switch {
 		case errors.Is(err, ecl.ErrPipelineBusy):
 			c.JSON(http.StatusConflict, graphResponseError{Error: "pipeline already running"})
@@ -161,5 +168,10 @@ func (s *Deps) adminPipelineRetryHandler(ctx context.Context, c *app.RequestCont
 		}
 		return
 	}
+	go func() {
+		if err := mgr.RetryClaimed(context.Background(), noteID); err != nil {
+			log.Printf("[WARN] server: ecl pipeline retry %s failed: %v", noteID, err)
+		}
+	}()
 	c.JSON(http.StatusOK, pipelineRetryResponse{Status: "queued", NoteID: noteID})
 }
