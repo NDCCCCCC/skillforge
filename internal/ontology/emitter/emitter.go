@@ -27,6 +27,8 @@
 package emitter
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -334,24 +336,45 @@ func escape(s string) string {
 	return s
 }
 
-// sanitizeLocal turns a refusal phrase into a safe Turtle local name.
+// sanitizeLocal turns a name into a safe Turtle local name: every rune
+// outside [A-Za-z0-9] becomes `_`.
+//
+// COLLISION GUARD (WR-03): the collapse is not injective — distinct inputs
+// ("etl_费率A" vs "etl_精算A", two refusal phrases with the same
+// non-alphanumeric shape) sanitize to the same local name, and merged IRIs
+// silently fuse distinct individuals (a collapsed skf:tbl_ individual
+// conflates two tables and their referencesTable edges). Whenever the
+// rewrite actually changed a non-underscore rune, a stable sha256-derived
+// suffix of the ORIGINAL input is appended, making the mapping injective
+// again. The suffix is deterministic (same input → same IRI across boots
+// and platforms), so boot-time emission stays byte-stable.
 func sanitizeLocal(s string) string {
 	var b strings.Builder
+	rewritten := false
 	for _, r := range s {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
 			b.WriteRune(r)
 		} else {
 			b.WriteRune('_')
+			if r != '_' {
+				rewritten = true
+			}
 		}
 	}
-	return b.String()
+	out := b.String()
+	if !rewritten {
+		return out
+	}
+	sum := sha256.Sum256([]byte(s))
+	return out + "_" + hex.EncodeToString(sum[:4])
 }
 
 // SanitizeLocal is the exported form of sanitizeLocal for packages that
 // must build ABox IRIs from extracted names outside the emitter (Phase 39
 // ECL: skf:tbl_{name} local names come from LLM-extracted table names).
 // Single source of truth — callers must not reimplement the character
-// policy.
+// policy. Collision-free by construction (WR-03): distinct inputs never
+// map to the same local name.
 func SanitizeLocal(s string) string {
 	return sanitizeLocal(s)
 }

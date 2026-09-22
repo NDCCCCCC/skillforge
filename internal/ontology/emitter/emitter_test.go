@@ -207,6 +207,34 @@ func TestEmitECLSchemaDeclarations(t *testing.T) {
 
 // --- helpers ---
 
+// TestSanitizeLocalCollisionFree (WR-03): the non-alnum→`_` collapse is
+// not injective on its own — distinct inputs that share a shape
+// ("etl_费率A" vs "etl_精算A") must NOT map to the same local name, or the
+// merged IRI fuses two distinct individuals. Rewritten names carry a
+// stable hash suffix; already-clean names stay verbatim; the mapping is
+// deterministic across calls (boot emission stays byte-stable).
+func TestSanitizeLocalCollisionFree(t *testing.T) {
+	a := SanitizeLocal("etl_费率A")
+	b := SanitizeLocal("etl_精算A")
+	if a == b {
+		t.Fatalf("SanitizeLocal collision: %q and %q both map to %q", "etl_费率A", "etl_精算A", a)
+	}
+	for _, got := range []string{a, b} {
+		if !strings.HasPrefix(got, "etl___A_") {
+			t.Errorf("SanitizeLocal rewritten name = %q, want the etl___A_<hash> guarded form", got)
+		}
+		if len(got) != len("etl___A_")+8 {
+			t.Errorf("SanitizeLocal rewritten name = %q, want base + 8 hex hash chars", got)
+		}
+	}
+	if a2 := SanitizeLocal("etl_费率A"); a2 != a {
+		t.Errorf("SanitizeLocal not deterministic: %q vs %q", a, a2)
+	}
+	if got := SanitizeLocal("etl_PAYMENT_DUE_T"); got != "etl_PAYMENT_DUE_T" {
+		t.Errorf("SanitizeLocal(clean) = %q, want verbatim (no suffix)", got)
+	}
+}
+
 func projectRoot(t *testing.T) string {
 	t.Helper()
 	// Tests run from package dir; project root is ../../../../

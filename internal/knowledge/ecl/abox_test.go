@@ -18,6 +18,7 @@ package ecl
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/skillforge/skillforge/internal/ontology/emitter"
@@ -38,11 +39,24 @@ func TestABoxNoteAndTableIRI(t *testing.T) {
 		t.Errorf("TableIRI = %q, want emitter-sanitized form", got)
 	}
 
+	// WR-03 collision guard: a name the sanitizer actually rewrites carries
+	// a stable hash suffix of the original input — the sanitized base shape
+	// stays recognizable, but distinct inputs collapsing to the same shape
+	// can no longer merge into one IRI.
 	dirty := "etl_weird name.99"
 	got := TableIRI(testNS, dirty)
-	want := testNS + "tbl_etl_weird_name_99"
-	if got != want {
-		t.Errorf("TableIRI(%q) = %q, want %q (illegal chars sanitized)", dirty, got, want)
+	base := testNS + "tbl_etl_weird_name_99_"
+	if !strings.HasPrefix(got, base) {
+		t.Errorf("TableIRI(%q) = %q, want the %q<hash8> collision-guarded form", dirty, got, base)
+	}
+	if len(got) != len(base)+8 {
+		t.Errorf("TableIRI(%q) = %q, want base + 8 hex hash chars", dirty, got)
+	}
+	// A name that already matches the character policy is verbatim (no
+	// suffix) — the gated LLM path never pays the collision tax.
+	clean := TableIRI(testNS, "etl_weird_name_99")
+	if clean != testNS+"tbl_etl_weird_name_99" {
+		t.Errorf("TableIRI(clean) = %q, want verbatim %q", clean, testNS+"tbl_etl_weird_name_99")
 	}
 }
 

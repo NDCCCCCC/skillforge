@@ -45,10 +45,21 @@ type Extraction struct {
 	RelatedNotes []RelatedNote    `json:"related_notes"`
 }
 
-// ValidateExtraction enforces the D-Ext-01 kind enum on an Extraction.
-// Plan 04's LLM extractor reuses this to gate model output before it can
-// reach the ABox writer or the golden set (defense in depth alongside
-// llm.ExtractJSON).
+// tableNamePattern is the corpus-contract gate for extracted table names
+// (WR-03 / T-39-06 defense in depth): the D-Ext-01 prompt asks only for
+// etl_-prefixed identifiers ("Include only tables whose name starts with
+// etl_") and every detection regex (sqlUpdateRegex etc.) captures
+// `etl_\w+` — so an extraction outside ^etl_\w+$ is a hallucination or
+// injection, and rejecting it here keeps arbitrary LLM strings from
+// minting skf:tbl_ ABox individuals. `\w` is [0-9A-Za-z_] — exactly the
+// characters SanitizeLocal passes through unchanged — so gated names are
+// also collision-free under the sanitizer.
+var tableNamePattern = regexp.MustCompile(`^etl_\w+$`)
+
+// ValidateExtraction enforces the D-Ext-01 contract on an Extraction: the
+// kind enum AND the etl_ table-name corpus contract. Plan 04's LLM
+// extractor reuses this to gate model output before it can reach the ABox
+// writer or the golden set (defense in depth alongside llm.ExtractJSON).
 func ValidateExtraction(ex Extraction) error {
 	for _, t := range ex.Tables {
 		switch t.Kind {
@@ -59,6 +70,9 @@ func ValidateExtraction(ex Extraction) error {
 		}
 		if strings.TrimSpace(t.Name) == "" {
 			return fmt.Errorf("ecl: extraction has empty table name (kind %q)", t.Kind)
+		}
+		if !tableNamePattern.MatchString(t.Name) {
+			return fmt.Errorf("ecl: extraction table name %q violates the corpus contract (want ^etl_\\w+$ — D-Ext-01 gates extractions to etl_-prefixed identifiers)", t.Name)
 		}
 	}
 	return nil

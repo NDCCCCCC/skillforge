@@ -219,6 +219,39 @@ func TestValidateExtraction(t *testing.T) {
 	}
 }
 
+// TestValidateExtractionTableNameGate pins the WR-03 trust-boundary gate:
+// extracted names must match the corpus contract ^etl_\w+$ (the D-Ext-01
+// prompt + every detection regex assume it). Anything else — CJK names,
+// spaces, dashes, wrong prefixes, uppercase prefixes — is a hallucination
+// or injection and must be rejected before it can mint a skf:tbl_
+// individual. \w-names are also exactly the characters SanitizeLocal
+// passes through unchanged, so gated names are collision-free under the
+// sanitizer.
+func TestValidateExtractionTableNameGate(t *testing.T) {
+	for _, name := range []string{"etl_a", "etl_PAYMENT_DUE_T", "etl_x_9", "etl_NONAUTO_POLICY_T"} {
+		ex := Extraction{Tables: []ExtractedTable{{Name: name, Kind: "update"}}}
+		if err := ValidateExtraction(ex); err != nil {
+			t.Errorf("ValidateExtraction name %q: unexpected error %v", name, err)
+		}
+	}
+	for _, name := range []string{
+		"费率A",        // bare CJK (sanitizer would collapse it)
+		"etl_费率A",    // CJK suffix — collides with etl_精算A under a naive sanitizer
+		"etl 精算A",    // space separator
+		"etl-alpha",  // dash
+		"etl.alpha",  // dot
+		"other_t",    // wrong prefix
+		"ETL_X",      // uppercase prefix (prefix is STRICTLY lowercase)
+		"etl_",       // prefix with no body
+		" tbl_etl_x", // leading whitespace
+	} {
+		ex := Extraction{Tables: []ExtractedTable{{Name: name, Kind: "update"}}}
+		if err := ValidateExtraction(ex); err == nil {
+			t.Errorf("ValidateExtraction name %q: want error, got nil", name)
+		}
+	}
+}
+
 // ---- Corpus-backed boundary tests (SC-1 proof) ----
 //
 // These run against the REAL in-repo corpus at knowledge/sql-guides,
