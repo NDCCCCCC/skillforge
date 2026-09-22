@@ -670,6 +670,17 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/admin/ontology/proposals/:id/approve", deps.adminOntologyProposalsApproveHandler)
 	h.POST("/api/admin/ontology/proposals/:id/reject", deps.adminOntologyProposalsRejectHandler)
 	h.POST("/api/admin/ontology/snapshot", deps.adminOntologySnapshotHandler)
+	// Phase 39 Plan 39-07 (v1.4 / D-Route-01) — ECL pipeline admin surface.
+	// Three token-gated routes (403 before the nil-manager 503, LOCKED
+	// order): run (fire-and-forget trigger → 200 started / 409 already
+	// running), status (the D-Prog-01 polling feed: stage / current_file /
+	// done / total / queue_len / failures), and per-note dead-letter retry
+	// (400 malformed id / 404 unknown-or-non-dead / 409 busy / 200 queued).
+	// run + retry trigger LLM spend and KG/Milvus writes. Trust model:
+	// admin_pipeline.go godoc.
+	h.POST("/api/admin/pipeline/run", deps.adminPipelineRunHandler)
+	h.GET("/api/admin/pipeline/status", deps.adminPipelineStatusHandler)
+	h.POST("/api/admin/pipeline/retry/:note_id", deps.adminPipelineRetryHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
 	// turns + the session-bound skill_id so the FE can rebuild the
