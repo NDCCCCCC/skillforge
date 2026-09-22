@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-22T04:09:49Z"
+last_updated: "2026-09-22T05:15:00Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 11
@@ -17,9 +17,9 @@ progress:
 
 ## Current Position
 
-Phase: 39 (ecl-pipeline) — EXECUTING
-Plan: 9 of 9 (39-08 complete: /admin/pipeline 9th admin tab — StatusDTO mirror + typed-error API calls, confirm-gated Run ECL, 2s/10s re-arming poll, dead-only retry table, all per 39-UI-SPEC verbatim)
-Status: Ready to execute
+Phase: 39 (ecl-pipeline) — ALL 9 PLANS EXECUTED (pending phase closeout)
+Plan: 9 of 9 complete (39-09 complete: D-GT-01 human-reviewed 26-row golden set — policy A writes-only, row 039 corrected — + SC-2 F1 harness gate (tables 0.9846 / related 1.0, both >= 0.8) + verify-phase-39.sh hermetic SC-1..6 gate all-green exit 0)
+Status: Awaiting phase closeout (verification/audit)
 Last activity: 2026-09-22
 
 ## v1.4 Phase Map
@@ -86,7 +86,7 @@ Last activity: 2026-09-22
 
 ---
 
-*Last updated: 2026-09-22 — Phase 39 executing (plan 39-08 complete, 9/9)*
+*Last updated: 2026-09-22 — Phase 39 all 9 plans executed (39-09 complete: golden set + F1 harness + hermetic gate)*
 
 ## Decisions
 
@@ -113,3 +113,7 @@ Last activity: 2026-09-22
 - [Phase ?]: 39-08 polling hook co-located in PipelineTab.tsx (UI-SPEC locks 3 new files): cadence (isRunning ? 2000 : 10000) sits in the interval-effect deps → flip re-arms immediately with a same-tick refetch (useEvalReports shape); Run/retry POSTs bypass the poller + trigger immediate fetchOnce; poll errors never stop the loop; inline error line clears on next success
 - [Phase ?]: 39-08 test suite: vi.useFakeTimers tick-by-tick cadence proof (2s while extract → 10s after done flip); stage-shaped makeStatus fixture + statusOverrides for never-run/idle/dead-letter states; object-holder instead of closure-assigned callback (TS CFA narrows `let` to never at the release site)
 - [Phase ?]: 39-08 stale FE pins surfaced by first FE whole-suite gate since Phase 38: OntologyTab count 8→9; AdminFeedbackTabs 7-tab order array extended with 本体 + ECL 管线 (that test had been failing since Phase 38 — 39-07 was Go-only so it never ran); pnpm pre-run hook broken by protected untracked workspace files → FE gates run via direct node tsc/vitest invocation
+- [Phase ?]: 39-09 golden set policy A (writes-only) locked by human review 2026-09-22: read-only FROM/JOIN etl_* refs deliberately NOT golden as select; touch-semantics prompt vs writes-only golden = documented live-gate risk (revisit only if live F1 nears 0.8)
+- [Phase ?]: 39-09 row 039 human-corrected: -4 CREATE OR REPLACE FUNCTION false positives (3 fn names + 1 param), kept 3 merge-into update targets — harness scores 039 F1 0.6 BY DESIGN; macro tables 0.9846 / related 1.0 vs gate >= 0.8
+- [Phase ?]: 39-09 harness scoring convention: empty-vs-empty notes score (1,1,1) agreement at the harness level; ScoreTables/ScoreRelated's pinned 0.0 zero-denominator convention stays LLM-gate-only
+- [Phase ?]: 39-09 verify-phase-39.sh: regex -run stages pair exit code with a minimum --- PASS count (anti-vacuous); FE stage cascade node→pnpm→PHASE39_FE_GATE=skip-external explicit-first override (this box's WSL: no node, interop disabled, broken Windows pnpm shim on PATH; FE suite ran out-of-band Windows-side 628/628 green)

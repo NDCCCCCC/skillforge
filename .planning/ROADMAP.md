@@ -252,7 +252,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 39-09-PLAN.md — Golden set (D-GT-01 human review) + F1 harness + verify-phase-39.sh hermetic gate
+- [x] 39-09-PLAN.md — Golden set (D-GT-01 human review) + F1 harness + verify-phase-39.sh hermetic gate
 
 ---
 
@@ -308,7 +308,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
-| 39. ECL Pipeline | 8/9 | In Progress|  |
+| 39. ECL Pipeline | 9/9 | Complete   | 2026-09-22 |
 | 40. Data Governance | 0/? | Not started | — |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 
