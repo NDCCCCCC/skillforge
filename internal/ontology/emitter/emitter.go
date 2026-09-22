@@ -346,3 +346,12 @@ func sanitizeLocal(s string) string {
 	}
 	return b.String()
 }
+
+// SanitizeLocal is the exported form of sanitizeLocal for packages that
+// must build ABox IRIs from extracted names outside the emitter (Phase 39
+// ECL: skf:tbl_{name} local names come from LLM-extracted table names).
+// Single source of truth — callers must not reimplement the character
+// policy.
+func SanitizeLocal(s string) string {
+	return sanitizeLocal(s)
+}

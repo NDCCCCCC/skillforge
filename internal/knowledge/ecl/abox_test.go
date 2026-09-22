@@ -24,10 +24,7 @@ import (
 	"github.com/skillforge/skillforge/internal/ontology/store"
 )
 
-const (
-	testNS     = "http://skillforge.local/ontology#"
-	rdfTypeIRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-)
+const testNS = "http://skillforge.local/ontology#"
 
 // TestABoxNoteAndTableIRI pins the D-Ext-01 IRI forms: skf:note_{idx} and
 // skf:tbl_{sanitized name}, with the sanitizer coming from the emitter
