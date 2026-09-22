@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 39 (ecl-pipeline) — EXECUTING
-Plan: 6 of 9 (39-05 complete: ecl_failures dead-letter ledger + section→Document chunker + Manager stage orchestrator)
+Plan: 7 of 9 (39-06 complete: ECL boot integration — indexer routing + marker purge, TBox 6→8 upgrade trigger, snapshot-first KG restore, armed ECL manager)
 Status: Ready to execute
 Last activity: 2026-09-22
 
@@ -86,7 +86,7 @@ Last activity: 2026-09-22
 
 ---
 
-*Last updated: 2026-09-22 — Phase 39 executing (plan 39-05 complete)*
+*Last updated: 2026-09-22 — Phase 39 executing (plan 39-06 complete)*
 
 ## Decisions
 
@@ -105,3 +105,6 @@ Last activity: 2026-09-22
 - [Phase ?]: 39-05 ecl_failures: single upsert write path (INSERT ON CONFLICT(note_id) DO UPDATE — status transitions ARE the point, D-DL-01 sanctioned non-audit); updated_at RFC3339 UTC set by the manager, never SQL default; narrow FailureStore seam means sqlite imports ecl for the conformance check → failures_test.go lives in external ecl_test pkg
 - [Phase ?]: 39-05 chunk: splitter separator ladder terminates with "" (recursive splitter's no-separator-left branch would pass oversized text through unsplit — unreachable by construction); BuildDocuments post-condition errors over 3500 runes (T-39-13); Document.SectionIdx emitted 1-BASED per Plan 39-02 retriever contract (0 = legacy zero-fill), not merge's 0-based index
 - [Phase ?]: 39-05 manager: done/total/queue_len are per-stage counters (done resets at stage entry, total = len(notes)); RetryNote claims the running flag for its synchronous run (concurrent Run → 409 path); corpus-missing retry target parks dead + ErrUnknownNote; milvus-load batch failures park all batch notes dead via individual per-note rows; SeedFunc seam keeps milvus imports out of ecl (grep-verified); extract worker pool ≤ 3 LLM calls (race-detector green)
+- [Phase ?]: 39-06 indexer ECL mode: routing branch sits BETWEEN splitFrontmatter and maxDocBytes (oversize __secNN must reach the ECL skip — behavioral + static source-order guard); SetECLMode applied BEFORE buildRetriever so the boot-time Index itself routes; sql-guides legacy purge = `tier in ["sql-guides"] and section_count == 0` (%q via purgeExprFor), ECL-off path byte-identical (single DeleteTierRows)
+- [Phase ?]: 39-06 TBox upgrade: UpgradeIfNeeded 3-state (missing pointer → v1; NoteChunk sentinel → strict no-op never re-emits; Phase-38 pointer → one-time v{N+1} + pointer swap + version bump + induction.ApprovedTriples replay); store.Restore = snapshot-first + InsertUnique dedupe merge, corrupt snapshot ERRORS (silent TTL fallback would be the ABox wipe itself); boot WriteSnapshot persists the MERGED store
+- [Phase ?]: 39-06 boot wiring: deps.ECL field pre-added in server.Deps (Rule 3 — Plan 07 registers routes against it, do not re-declare); ecl manager armed with cm + KG + sqlite FailureStore + SeedFunc closure (marker purge section_count > 0, GetMaxIDCollection watermark allocator, shared embedder) + SetOnChange shares induction kgDebounce; mongo/none → nil + WARN (A7); boot never calls Run (D-Run-01, grep-proof)
