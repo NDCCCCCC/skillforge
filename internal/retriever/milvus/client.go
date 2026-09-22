@@ -85,6 +85,56 @@ func (m *MilvusClient) Disconnect() error {
 	return m.mc.Close()
 }
 
+// maxIDQueryWindow is the per-Query row limit for the watermark scans.
+// Milvus Query has no ORDER BY, so the max is computed client-side over a
+// single window; a collection whose scannable row count fills the window
+// may hide its true max beyond it (tombstoned generations count toward the
+// window until compaction — the 2026-09-15 append-amplification incident
+// left 2931 physical rows over a 256-row corpus).
+const maxIDQueryWindow = 10000
+
+// scanMaxID runs one id-only Query with expr and scans the client-side max.
+// Shared by GetMaxID (per-tier) and GetMaxIDCollection (collection-wide);
+// op names the caller in wrapped errors.
+//
+// TRUNCATION GUARD (WR-02): when the result set fills the window, rows may
+// exist beyond it and the scanned max may under-read the true watermark —
+// ECL chunk allocation starting below existing PKs then resurrects the
+// duplicate-generation incident class (Milvus does not deduplicate Insert,
+// so both generations become searchable). Rather than answer a silently
+// wrong watermark, the scan fails loudly and names the operator remedy.
+func (m *MilvusClient) scanMaxID(ctx context.Context, op, expr string) (int64, error) {
+	rs, err := m.mc.Query(
+		ctx,
+		m.cfg.CollectionName,
+		nil, // partitions (nil = default)
+		expr,
+		[]string{"id"},
+		client.WithLimit(maxIDQueryWindow),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("milvus.%s: Query: %w", op, err)
+	}
+	var maxID, rows int64
+	for _, col := range rs {
+		if col.Name() != "id" {
+			continue
+		}
+		rows = int64(col.Len())
+		for i := 0; i < col.Len(); i++ {
+			if v, e := col.GetAsInt64(i); e == nil && v > maxID {
+				maxID = v
+			}
+		}
+	}
+	if rows >= maxIDQueryWindow {
+		return 0, fmt.Errorf(
+			"milvus.%s: result set filled the %d-row Query window — the true max ID may be higher (a under-read watermark makes ECL reuse primary keys; compact the collection or purge dead generations before running ECL)",
+			op, maxIDQueryWindow)
+	}
+	return maxID, nil
+}
+
 // GetMaxID returns the highest chunk ID currently stored for the given
 // tier. Returns 0 (no error) when no chunks exist for the tier.
 // Implements the retriever.Retriever contract added by Phase 27/Plan 02.
@@ -92,34 +142,12 @@ func (m *MilvusClient) GetMaxID(ctx context.Context, tier string) (int64, error)
 	if m == nil || m.cfg.CollectionName == "" {
 		return 0, nil
 	}
-	// Query the collection filtered by tier, asking only for the id field.
-	// We request a generous limit (10000) and scan client-side for max —
-	// Milvus Query does not support ORDER BY. The Phase 2 corpus has ~30
-	// chunks per tier, so a single round-trip is always sufficient.
-	expr := fmt.Sprintf(`tier == "%s"`, tier)
-	rs, err := m.mc.Query(
-		ctx,
-		m.cfg.CollectionName,
-		nil, // partitions (nil = default)
-		expr,
-		[]string{"id"},
-		client.WithLimit(10000),
-	)
-	if err != nil {
-		return 0, fmt.Errorf("milvus.GetMaxID: Query: %w", err)
-	}
-	var maxID int64
-	for _, col := range rs {
-		if col.Name() != "id" {
-			continue
-		}
-		for i := 0; i < col.Len(); i++ {
-			if v, e := col.GetAsInt64(i); e == nil && v > maxID {
-				maxID = v
-			}
-		}
-	}
-	return maxID, nil
+	// Query the collection filtered by tier, asking only for the id field,
+	// and scan client-side for max — Milvus Query does not support
+	// ORDER BY. The Phase 2 corpus has ~30 chunks per tier, so a single
+	// round-trip is normally sufficient; a window-filling result set fails
+	// loudly instead of under-reading (scanMaxID truncation guard, WR-02).
+	return m.scanMaxID(ctx, "GetMaxID", fmt.Sprintf(`tier == "%s"`, tier))
 }
 
 // GetMaxIDCollection returns the highest chunk ID in the ENTIRE
@@ -136,36 +164,15 @@ func (m *MilvusClient) GetMaxID(ctx context.Context, tier string) (int64, error)
 // The expression is the always-true `id >= 0` (IDs are 1-based and
 // monotonically increasing) instead of a tier filter, so a single
 // round-trip sees every generation. Mechanically this mirrors GetMaxID:
-// a generous limit with a client-side max scan, because Milvus Query has
-// no ORDER BY.
+// a windowed Query with a client-side max scan (Milvus Query has no
+// ORDER BY), plus the scanMaxID truncation guard (WR-02) — a window-
+// filling result set errors instead of silently under-reading the
+// watermark ECL allocates against.
 func (m *MilvusClient) GetMaxIDCollection(ctx context.Context) (int64, error) {
 	if m == nil || m.cfg.CollectionName == "" {
 		return 0, nil
 	}
-	expr := "id >= 0"
-	rs, err := m.mc.Query(
-		ctx,
-		m.cfg.CollectionName,
-		nil, // partitions (nil = default)
-		expr,
-		[]string{"id"},
-		client.WithLimit(10000),
-	)
-	if err != nil {
-		return 0, fmt.Errorf("milvus.GetMaxIDCollection: Query: %w", err)
-	}
-	var maxID int64
-	for _, col := range rs {
-		if col.Name() != "id" {
-			continue
-		}
-		for i := 0; i < col.Len(); i++ {
-			if v, e := col.GetAsInt64(i); e == nil && v > maxID {
-				maxID = v
-			}
-		}
-	}
-	return maxID, nil
+	return m.scanMaxID(ctx, "GetMaxIDCollection", "id >= 0")
 }
 
 // Ensure creates the collection + IVF_FLAT index if absent. Idempotent.

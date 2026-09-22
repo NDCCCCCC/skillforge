@@ -352,3 +352,51 @@ func TestGetMaxIDCollectionEmptyReturnsZero(t *testing.T) {
 		t.Fatalf("GetMaxIDCollection = %d, want 0 for an empty collection", id)
 	}
 }
+
+// TestGetMaxIDCollectionTruncationGuard (WR-02): a result set that fills
+// the 10000-row Query window may hide higher IDs beyond it — the watermark
+// scan must fail loudly instead of answering a silently under-read max
+// (an under-read watermark makes ECL allocate from below existing PKs, and
+// Milvus does not dedupe Insert: the duplicate-generation incident class).
+func TestGetMaxIDCollectionTruncationGuard(t *testing.T) {
+	full := make([]int64, 10000)
+	for i := range full {
+		full[i] = int64(i + 1)
+	}
+	tc := &getMaxIDMockClient{
+		resultRows: []client.ResultSet{client.ResultSet{idCol(full)}},
+	}
+	mc := Wrap(tc, Config{CollectionName: DefaultCollectionName})
+
+	id, err := mc.GetMaxIDCollection(context.Background())
+	if err == nil {
+		t.Fatalf("GetMaxIDCollection on a window-filling result set = %d, want a loud truncation error", id)
+	}
+	if id != 0 {
+		t.Fatalf("under truncation suspicion no watermark may be returned, got %d", id)
+	}
+	if !strings.Contains(err.Error(), "10000") {
+		t.Fatalf("error must carry the window size for the operator, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "GetMaxIDCollection") {
+		t.Fatalf("error must name the scanning op, got: %v", err)
+	}
+}
+
+// TestGetMaxIDTruncationGuard (WR-02): the same guard on the per-tier
+// scan — a tier whose scannable rows fill the window errors instead of
+// under-reporting.
+func TestGetMaxIDTruncationGuard(t *testing.T) {
+	full := make([]int64, 10000)
+	for i := range full {
+		full[i] = int64(i + 1)
+	}
+	tc := &getMaxIDMockClient{
+		resultRows: []client.ResultSet{client.ResultSet{idCol(full)}},
+	}
+	mc := Wrap(tc, Config{CollectionName: DefaultCollectionName})
+
+	if _, err := mc.GetMaxID(context.Background(), "sql-guides"); err == nil {
+		t.Fatal("GetMaxID on a window-filling result set: want a loud truncation error")
+	}
+}
