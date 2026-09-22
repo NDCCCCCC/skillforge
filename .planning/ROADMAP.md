@@ -248,7 +248,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 39-08-PLAN.md — /admin/pipeline 9th tab per 39-UI-SPEC (Run ECL, progress, failures table, 2s/10s polling)
+- [x] 39-08-PLAN.md — /admin/pipeline 9th tab per 39-UI-SPEC (Run ECL, progress, failures table, 2s/10s polling)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -308,7 +308,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
-| 39. ECL Pipeline | 7/9 | In Progress|  |
+| 39. ECL Pipeline | 8/9 | In Progress|  |
 | 40. Data Governance | 0/? | Not started | — |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-22T03:40:28Z"
+last_updated: "2026-09-22T04:09:49Z"
 last_activity: 2026-09-22
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 15
-  completed_plans: 8
+  completed_plans: 9
   percent: 10
 ---
 
@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 39 (ecl-pipeline) — EXECUTING
-Plan: 8 of 9 (39-07 complete: ECL admin API surface — 3 token-gated /api/admin/pipeline/* routes with locked 403-before-503 order, 409 double-run/busy, 404 retry validation, D-Prog-01 status DTO verbatim)
+Plan: 9 of 9 (39-08 complete: /admin/pipeline 9th admin tab — StatusDTO mirror + typed-error API calls, confirm-gated Run ECL, 2s/10s re-arming poll, dead-only retry table, all per 39-UI-SPEC verbatim)
 Status: Ready to execute
 Last activity: 2026-09-22
 
@@ -86,7 +86,7 @@ Last activity: 2026-09-22
 
 ---
 
-*Last updated: 2026-09-22 — Phase 39 executing (plan 39-07 complete)*
+*Last updated: 2026-09-22 — Phase 39 executing (plan 39-08 complete, 9/9)*
 
 ## Decisions
 
@@ -109,3 +109,7 @@ Last activity: 2026-09-22
 - [Phase ?]: 39-06 TBox upgrade: UpgradeIfNeeded 3-state (missing pointer → v1; NoteChunk sentinel → strict no-op never re-emits; Phase-38 pointer → one-time v{N+1} + pointer swap + version bump + induction.ApprovedTriples replay); store.Restore = snapshot-first + InsertUnique dedupe merge, corrupt snapshot ERRORS (silent TTL fallback would be the ABox wipe itself); boot WriteSnapshot persists the MERGED store
 - [Phase ?]: 39-06 boot wiring: deps.ECL field pre-added in server.Deps (Rule 3 — Plan 07 registers routes against it, do not re-declare); ecl manager armed with cm + KG + sqlite FailureStore + SeedFunc closure (marker purge section_count > 0, GetMaxIDCollection watermark allocator, shared embedder) + SetOnChange shares induction kgDebounce; mongo/none → nil + WARN (A7); boot never calls Run (D-Run-01, grep-proof)
 - [Phase ?]: 39-07 pipeline routes: run = CASRunning claim → detached goroutine on context.Background() (run outlives request; failed run WARN-logs via log.Printf) → immediate 200 {"status":"started"}; status = StatusDTO marshaled VERBATIM (Plan 05 owns the json tags — no field re-mapping, one source of truth); retry = ^[0-9]{3}$ format gate 400 (T-39-10 layer 2) BEFORE manager, then errors.Is mapping ErrPipelineBusy→409 / ErrUnknownNote→404 with pinned machine-stable strings; all 3 body-less (no BindAndValidate — D-Route-01); server-side test fakes rebuilt in external server_test pkg (unexported backoff never touched — all-succeeding stubs mean zero sleeps)
+- [Phase ?]: 39-08 FE pipeline tab: PipelineApiError {status, message} — BE error envelope unwrapped VERBATIM (network → {status:0, 网络错误}, never a fabricated status); PipelineTab branches 403/409/503 on .status; unknown stage keys render the raw string AND count as running (isRunning = stage ∉ {idle, done} drives cadence + Run button + pulse badge); no-data poll states render 「—」, never fabricated zeros
+- [Phase ?]: 39-08 polling hook co-located in PipelineTab.tsx (UI-SPEC locks 3 new files): cadence (isRunning ? 2000 : 10000) sits in the interval-effect deps → flip re-arms immediately with a same-tick refetch (useEvalReports shape); Run/retry POSTs bypass the poller + trigger immediate fetchOnce; poll errors never stop the loop; inline error line clears on next success
+- [Phase ?]: 39-08 test suite: vi.useFakeTimers tick-by-tick cadence proof (2s while extract → 10s after done flip); stage-shaped makeStatus fixture + statusOverrides for never-run/idle/dead-letter states; object-holder instead of closure-assigned callback (TS CFA narrows `let` to never at the release site)
+- [Phase ?]: 39-08 stale FE pins surfaced by first FE whole-suite gate since Phase 38: OntologyTab count 8→9; AdminFeedbackTabs 7-tab order array extended with 本体 + ECL 管线 (that test had been failing since Phase 38 — 39-07 was Go-only so it never ran); pnpm pre-run hook broken by protected untracked workspace files → FE gates run via direct node tsc/vitest invocation
