@@ -151,14 +151,57 @@ func TestEmitSchemaCounts(t *testing.T) {
 			}
 		}
 	}
-	if classes != 6 {
-		t.Errorf("owl:Class = %d, want 6", classes)
+	if classes != 8 {
+		t.Errorf("owl:Class = %d, want 8", classes)
 	}
-	if objProps != 6 {
-		t.Errorf("owl:ObjectProperty = %d, want 6", objProps)
+	if objProps != 8 {
+		t.Errorf("owl:ObjectProperty = %d, want 8", objProps)
 	}
 	if dataProps != 8 {
 		t.Errorf("owl:DatatypeProperty = %d, want 8", dataProps)
+	}
+}
+
+// TestEmitECLSchemaDeclarations pins the D-TBox2-01 sentinel lines: the
+// Phase 39 boot upgrade trigger keys on `skf:NoteChunk a owl:Class` — a
+// persisted TBox lacking it is v1 and must be re-emitted.
+func TestEmitECLSchemaDeclarations(t *testing.T) {
+	root := projectRoot(t)
+	e := New(filepath.Join(root, "skills"), filepath.Join(root, "knowledge"), DefaultNS)
+	ttl, err := e.Emit()
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	for _, want := range []string{
+		"skf:NoteChunk a owl:Class",
+		"skf:TableSchema a owl:Class",
+		"skf:belongsToNote a owl:ObjectProperty",
+		"skf:referencesTable a owl:ObjectProperty",
+	} {
+		if !contains(ttl, want) {
+			t.Errorf("emitted TTL missing sentinel %q", want)
+		}
+	}
+	// Domain/range wiring for the two new object properties (exact blocks).
+	for _, want := range []string{
+		"skf:belongsToNote a owl:ObjectProperty ;\n    rdfs:domain skf:NoteChunk ;\n    rdfs:range skf:NoteChunk ;",
+		"skf:referencesTable a owl:ObjectProperty ;\n    rdfs:domain skf:NoteChunk ;\n    rdfs:range skf:TableSchema ;",
+	} {
+		if !contains(ttl, want) {
+			t.Errorf("emitted TTL missing property block:\n%s", want)
+		}
+	}
+	// The emitter declares the ECL classes/properties but emits ZERO ABox
+	// instances for them (ABox comes from the ECL pipeline; belongsToNote
+	// stays declared-only this phase per open-question resolution #1).
+	for _, forbidden := range []string{
+		"a skf:NoteChunk",
+		"a skf:TableSchema",
+		" skf:belongsToNote skf:",
+	} {
+		if contains(ttl, forbidden) {
+			t.Errorf("emitted TTL must not contain ABox usage %q", forbidden)
+		}
 	}
 }
 

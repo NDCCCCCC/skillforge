@@ -19,8 +19,11 @@
 //
 // References:
 //   - spike 005b (skillschema-rdfs-lift): reference algorithm.
-//   - 215 triples, 6 Classes / 6 ObjectProperties / 8 DatatypeProperties,
-//     roundtrip lossless via tggo/goRDFlib.
+//   - Phase 38 baseline: 6 Classes / 6 ObjectProperties / 8
+//     DatatypeProperties, roundtrip lossless via tggo/goRDFlib.
+//   - Phase 39 (D-TBox2-01): +NoteChunk / +TableSchema classes and
+//     +belongsToNote / +referencesTable object properties for the ECL
+//     pipeline ABox.
 package emitter
 
 import (
@@ -76,7 +79,7 @@ func New(skillsRoot, kbRoot, ns string) *Emitter {
 // Emit generates the full TBox Turtle content for the configured roots.
 //
 // The output:
-//   - declares 6 owl:Class, 6 owl:ObjectProperty, 8 owl:DatatypeProperty,
+//   - declares 8 owl:Class, 8 owl:ObjectProperty, 8 owl:DatatypeProperty,
 //   - emits one individual per Skill (8 expected),
 //   - emits one KBCategory per tier (5 expected) and one SubCategory per
 //     sub-directory under sql-guides (7 expected).
@@ -180,8 +183,8 @@ func parseFrontmatter(path string) (Skill, error) {
 // Structure mirrors spike 005b's skillforge_tbox.ttl so the emitted TBox is
 // directly comparable to the validated spike artifact (215 triples):
 //
-//   - 6 owl:Class (type + label + comment)
-//   - 6 owl:ObjectProperty (type + domain + range + label)
+//   - 8 owl:Class (type + label + comment)
+//   - 8 owl:ObjectProperty (type + domain + range + label)
 //   - 8 owl:DatatypeProperty (type + domain + range + label)
 //   - Tier individuals (skf:{tier}), KBCategory individuals (skf:cat_{tier})
 //     linked via belongsToTier, SubCategory individuals (skf:sub_{tier}_{name})
@@ -198,7 +201,7 @@ func (e *Emitter) render(skills []Skill, cats []KBCategory) string {
 	b.WriteString("@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .\n")
 	fmt.Fprintf(&b, "@prefix skf:  <%s> .\n\n", e.NS)
 
-	// 6 owl:Class declarations (type + label + comment).
+	// 8 owl:Class declarations (type + label + comment).
 	classes := []struct{ Name, Label, Comment string }{
 		{"Tier", "Tier", "Trust tier for KB content (权威/历史/个人/sql-guides/draft)."},
 		{"KBCategory", "KB Category", "A top-level category within a Tier."},
@@ -206,12 +209,15 @@ func (e *Emitter) render(skills []Skill, cats []KBCategory) string {
 		{"Skill", "Skill", "A SkillForge skill — a self-contained agent workflow declared by SKILL.md."},
 		{"SkillAgent", "Skill Agent Type", "The agent type that powers a Skill (ChatModelAgent, ReActAgent, Sequential, Parallel, Loop)."},
 		{"RefusalPhrase", "Refusal Phrase", "A refusal phrase a Skill is required to emit under specified conditions."},
+		// Phase 39 (D-TBox2-01): ECL pipeline ABox schema.
+		{"NoteChunk", "Note Chunk", "A merged logical note produced by the ECL pipeline from __secNN source fragments."},
+		{"TableSchema", "Table Schema", "An ETL table whose DML appears in the SQL of a NoteChunk."},
 	}
 	for _, c := range classes {
 		fmt.Fprintf(&b, "skf:%s a owl:Class ;\n    rdfs:label \"%s\" ;\n    rdfs:comment \"%s\" .\n\n", c.Name, c.Label, c.Comment)
 	}
 
-	// 6 owl:ObjectProperty declarations (type + domain + range + label).
+	// 8 owl:ObjectProperty declarations (type + domain + range + label).
 	objProps := []struct{ Name, Label, Domain, Range string }{
 		{"belongsToTier", "category belongs to tier", "KBCategory", "Tier"},
 		{"hasSubCategory", "category has sub-category", "KBCategory", "SubCategory"},
@@ -219,6 +225,11 @@ func (e *Emitter) render(skills []Skill, cats []KBCategory) string {
 		{"hasWriteAccess", "skill writes to category", "Skill", "KBCategory"},
 		{"poweredBy", "skill powered by agent type", "Skill", "SkillAgent"},
 		{"requiresRefusal", "skill requires refusal phrase", "Skill", "RefusalPhrase"},
+		// Phase 39 (D-TBox2-01): note↔table relations. belongsToNote is
+		// declared-only this phase (zero ABox instances — open-question
+		// resolution #1; reserved for section-level ABox, Phase 40+).
+		{"belongsToNote", "section chunk belongs to note", "NoteChunk", "NoteChunk"},
+		{"referencesTable", "note references table", "NoteChunk", "TableSchema"},
 	}
 	for _, p := range objProps {
 		fmt.Fprintf(&b, "skf:%s a owl:ObjectProperty ;\n    rdfs:domain skf:%s ;\n    rdfs:range skf:%s ;\n    rdfs:label \"%s\" .\n\n", p.Name, p.Domain, p.Range, p.Label)
