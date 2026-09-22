@@ -559,5 +559,37 @@ func writeFileAtomic(path string, data []byte) error {
 	return os.Rename(tmpName, path)
 }
 
+// ApprovedTriples returns the ProposedTriples lines of every APPROVED
+// proposal persisted in {dataDir}/proposals.json, in queue file order.
+//
+// This is the replay source for the Phase 39 TBox upgrade (emitter.
+// UpgradeIfNeeded, Plan 39-06 / RESEARCH Pitfall 4): emitting a fresh 8-class
+// TBox must not silently drop triples a human approved under the previous
+// version, so the upgrader appends these lines to the fresh TTL text. The
+// helper lives HERE — not in the emitter — because proposals.json is this
+// package's persistence format and the queue shape must have exactly one
+// owner. A missing queue file is not an error (nil, nil): environments that
+// never used induction have nothing to replay.
+func ApprovedTriples(dataDir string) ([]string, error) {
+	data, err := os.ReadFile(filepath.Join(dataDir, "proposals.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("induction: read proposals.json: %w", err)
+	}
+	var qf queueFile
+	if err := json.Unmarshal(data, &qf); err != nil {
+		return nil, fmt.Errorf("induction: unmarshal proposals.json: %w", err)
+	}
+	var out []string
+	for _, p := range qf.Items {
+		if p.Status == StatusApproved {
+			out = append(out, p.ProposedTriples...)
+		}
+	}
+	return out, nil
+}
+
 // nonWordRE is retained for callers that need to sanity-check identifiers.
 var nonWordRE = regexp.MustCompile(`[^A-Za-z0-9]+`)
