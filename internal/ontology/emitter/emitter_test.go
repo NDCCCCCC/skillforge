@@ -18,6 +18,7 @@ package emitter
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -206,6 +207,67 @@ func TestEmitECLSchemaDeclarations(t *testing.T) {
 }
 
 // --- helpers ---
+
+// TestEscapeNewlines (WR-06): LF/CR inside a literal are replaced with a
+// space — Turtle's STRING_LITERAL_QUOTE production forbids raw line
+// breaks, and quotes/backslashes still get their escapes.
+func TestEscapeNewlines(t *testing.T) {
+	if got, want := escape("a\nb"), "a b"; got != want {
+		t.Errorf("escape LF = %q, want %q", got, want)
+	}
+	if got, want := escape("a\rb"), "a b"; got != want {
+		t.Errorf("escape CR = %q, want %q", got, want)
+	}
+	if got := escape("a\nb\rc\"d\\e"); strings.ContainsAny(got, "\n\r") {
+		t.Fatalf("escape left a raw line break: %q", got)
+	}
+	if got, want := escape("q\"d\\"), `q\"d\\`; got != want {
+		t.Errorf("escape quote/backslash = %q, want %q", got, want)
+	}
+}
+
+// TestEmitMultiLineDescriptionParses (WR-06 regression): a SKILL.md whose
+// description is a YAML block scalar (multi-line, with quotes and a
+// backslash) must Emit Turtle that turtle.Parse accepts — the
+// emit → UpgradeIfNeeded → Restore boot chain must never depend on a
+// SKILL.md author keeping descriptions one-line.
+func TestEmitMultiLineDescriptionParses(t *testing.T) {
+	root := t.TempDir()
+	skills := filepath.Join(root, "skills")
+	kb := filepath.Join(root, "knowledge")
+	if err := os.MkdirAll(filepath.Join(skills, "multi"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(kb, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skill := "---\nname: multi\ndescription: |\n  第一行描述\n  second line with \"quote\" and \\ backslash\nagent: ChatModelAgent\n---\n\nbody\n"
+	if err := os.WriteFile(filepath.Join(skills, "multi", "SKILL.md"), []byte(skill), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e := New(skills, kb, DefaultNS)
+	ttl, err := e.Emit()
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	g, n := loadGraph(t, ttl) // Fatals on parse error — the WR-06 regression
+	if n == 0 {
+		t.Fatal("parsed 0 triples from the emitted TTL")
+	}
+	// The description literal survived as ONE line-joined string: both the
+	// first (CJK) line and the second (quote/backslash) line are present.
+	found := false
+	for tr := range g.Triples(nil, nil, nil) {
+		if strings.Contains(tr.Predicate.String(), "skillDescription") &&
+			strings.Contains(tr.Object.String(), "第一行") &&
+			strings.Contains(tr.Object.String(), "second line") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("multi-line description literal not found intact after roundtrip")
+	}
+}
 
 // TestSanitizeLocalCollisionFree (WR-03): the non-alnum→`_` collapse is
 // not injective on its own — distinct inputs that share a shape

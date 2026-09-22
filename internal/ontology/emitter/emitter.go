@@ -329,10 +329,20 @@ func tierFromGlob(pattern string) string {
 	return strings.TrimSuffix(pattern, "/**")
 }
 
-// escape minimal Turtle string escaping.
+// escape escapes a Go string for a Turtle STRING_LITERAL_QUOTE: backslash
+// and double-quote get backslash escapes, and LF/CR are replaced with a
+// space — the Turtle grammar forbids raw line breaks inside a quoted
+// string, and parseFrontmatter happily yields multi-line strings from YAML
+// block scalars (`description: |`). A multi-line SKILL.md description that
+// reached the pointer unvalidated made the next boot's Restore →
+// LoadFromTurtle → turtle.Parse fail and main.go log.Fatalf (WR-06). The
+// newline→space policy matches induction's escapeTurtle (which handled LF
+// only; CR is equally illegal in the quoted-string production).
 func escape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
 	return s
 }
 
