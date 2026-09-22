@@ -4,26 +4,30 @@ go 1.25.0
 
 require (
 	github.com/cloudwego/eino v0.9.14
+	github.com/cloudwego/eino-ext/components/document/parser/pdf v0.0.0-20260904094655-8d8ff4e79992
+	github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive v0.0.0-20260904094655-8d8ff4e79992
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
 	github.com/cloudwego/hertz v0.10.6
 	github.com/eino-contrib/jsonschema v1.0.3
 	github.com/fsnotify/fsnotify v1.5.4
+	github.com/google/uuid v1.6.0
 	github.com/marcboeker/go-duckdb/v2 v2.4.3
 	github.com/mattn/go-sqlite3 v1.14.50
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/milvus-io/milvus-sdk-go/v2 v2.4.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.11.1
+	github.com/tggo/goRDFlib v0.1.0
+	github.com/xuri/excelize/v2 v2.11.0
 	github.com/yuin/goldmark v1.8.5
 	go.mongodb.org/mongo-driver/v2 v2.8.0
 	golang.org/x/sync v0.21.0
 	golang.org/x/text v0.38.0
+	golang.org/x/time v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.8.1 // indirect
-	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/apache/arrow-go/v18 v18.4.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -33,12 +37,6 @@ require (
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/cloudwego/eino-ext/components/document/parser/docx v0.0.0-20260904094655-8d8ff4e79992 // indirect
-	github.com/cloudwego/eino-ext/components/document/parser/html v0.0.0-20260904094655-8d8ff4e79992 // indirect
-	github.com/cloudwego/eino-ext/components/document/parser/pdf v0.0.0-20260904094655-8d8ff4e79992 // indirect
-	github.com/cloudwego/eino-ext/components/document/transformer/splitter/html v0.0.0-20260904094655-8d8ff4e79992 // indirect
-	github.com/cloudwego/eino-ext/components/document/transformer/splitter/markdown v0.0.0-20260904094655-8d8ff4e79992 // indirect
-	github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive v0.0.0-20260904094655-8d8ff4e79992 // indirect
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17 // indirect
 	github.com/cloudwego/gopkg v0.2.0 // indirect
 	github.com/cloudwego/netpoll v0.7.5 // indirect
@@ -53,7 +51,6 @@ require (
 	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.21 // indirect
 	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.21 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/eino-contrib/docx2md v0.0.1 // indirect
 	github.com/evanphx/json-patch v0.5.2 // indirect
 	github.com/getsentry/sentry-go v0.12.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
@@ -61,7 +58,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/goph/emperror v0.17.2 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
@@ -75,7 +71,6 @@ require (
 	github.com/marcboeker/go-duckdb/arrowmapping v0.0.21 // indirect
 	github.com/marcboeker/go-duckdb/mapping v0.0.21 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/meguminnnnnnnnn/go-openai v0.1.2 // indirect
 	github.com/milvus-io/milvus-proto/go-api/v2 v2.4.10-0.20240819025435-512e3b98866a // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
@@ -87,11 +82,9 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/richardlehane/mscfb v1.0.7 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
-	github.com/tggo/goRDFlib v0.1.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
@@ -102,7 +95,6 @@ require (
 	github.com/xdg-go/scram v1.2.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
-	github.com/xuri/excelize/v2 v2.11.0 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
@@ -113,7 +105,7 @@ require (
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260508192327-42602be52be6 // indirect
 	golang.org/x/tools v0.45.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto v0.0.0-20220503193339-ba3ae3f07e29 // indirect
