@@ -17,6 +17,7 @@
 package ecl
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,9 +152,10 @@ func TestF1ScoreRelated(t *testing.T) {
 		t.Errorf("related F1 = %v, want %v", f1, want)
 	}
 
-	// Duplicate predicted source_idx collapses.
-	if p, _, _ = ScoreRelated([]RelatedNote{{SourceIdx: "006"}, {SourceIdx: "006"}}, golden); p != 0.5 {
-		t.Errorf("dup predicted = P:%v, want 0.5 (set semantics)", p)
+	// Duplicate predicted source_idx collapses: {006,006} → one predicted
+	// entry which IS a golden match → precision 1.0, recall 0.5.
+	if p, r, _ = ScoreRelated([]RelatedNote{{SourceIdx: "006"}, {SourceIdx: "006"}}, golden); p != 1.0 || r != 0.5 {
+		t.Errorf("dup predicted = P:%v R:%v, want 1.0 / 0.5 (set semantics)", p, r)
 	}
 	// Empty sides score 0.0 by convention.
 	if p, r, f1 = ScoreRelated(nil, []string{"006"}); p != 0.0 || r != 0.0 || f1 != 0.0 {
@@ -178,7 +180,7 @@ func TestF1MacroAverage(t *testing.T) {
 	if want := (1.0 + 1.0 + 0.0) / 3.0; gotR != want {
 		t.Errorf("macro R = %v, want %v", gotR, want)
 	}
-	if want := (1.0 + 2.0/3.0 + 0.0) / 3.0; gotF1 != want {
+	if want := (1.0 + 2.0/3.0 + 0.0) / 3.0; math.Abs(gotF1-want) > 1e-12 {
 		t.Errorf("macro F1 = %v, want %v", gotF1, want)
 	}
 
