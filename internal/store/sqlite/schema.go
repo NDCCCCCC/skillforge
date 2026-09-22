@@ -469,6 +469,29 @@ CREATE TABLE IF NOT EXISTS tickets (
     dispatch_status TEXT    NOT NULL DEFAULT 'none' CHECK (dispatch_status IN ('none','queued')),
     UNIQUE(session_id, turn_id)
 );
+
+-- ecl_failures (Phase 39 / Plan 39-05 / ONT-12 / D-DL-01): the ECL
+-- pipeline's dead-letter ledger — one row per note (note_id PRIMARY KEY),
+-- stage records the MOST RECENT failed stage (extract | kg-load |
+-- milvus-load), attempt_count the failed attempts so far, and status the
+-- lifecycle pending | dead | resolved.
+--
+-- MUTABLE STATUS COLUMN IS SANCTIONED HERE — this is NOT an audit table
+-- (CONTEXT D-DL-01 note): retry semantics REQUIRE in-place status
+-- transitions (pending → dead on the 3rd attempt, → resolved on a manual
+-- re-run success), so the T-3-AUDIT INSERT-only discipline deliberately
+-- does not apply. UpsertFailure is the single write path
+-- (INSERT ... ON CONFLICT(note_id) DO UPDATE, ecl_failures.go).
+-- updated_at is an RFC3339 UTC string SET BY THE CALLER (the ecl manager)
+-- — never a SQL default — so retry timing stays testable.
+CREATE TABLE IF NOT EXISTS ecl_failures (
+    note_id       TEXT PRIMARY KEY,
+    stage         TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL DEFAULT 'pending',
+    updated_at    TEXT NOT NULL DEFAULT ''
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
