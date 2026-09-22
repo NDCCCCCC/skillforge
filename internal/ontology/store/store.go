@@ -271,9 +271,18 @@ func (s *Store) SnapshotDebounced(path string, delay time.Duration) func() {
 		timer = time.AfterFunc(delay, func() {
 			data, err := s.Snapshot()
 			if err != nil {
-				return // never silently corrupt; skip this write
+				// WR-04: this debounced writer is the ONLY recurring
+				// durability trigger for ECL ABox writes and induction
+				// mutations — a silent failure turns every later write into
+				// an unexplained no-op, and the triples since the last
+				// successful snapshot are lost on the next crash/restart
+				// with nothing in the operator's log to explain it. The
+				// stderr WARN matches the manager's ledger-write posture.
+				fmt.Fprintf(os.Stderr, "[WARN] ontology: debounced snapshot %s: marshal: %v\n", path, err)
+				return
 			}
 			if err := atomicWriteFile(path, data); err != nil {
+				fmt.Fprintf(os.Stderr, "[WARN] ontology: debounced snapshot %s: write: %v\n", path, err)
 				return
 			}
 		})
