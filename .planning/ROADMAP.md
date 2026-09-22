@@ -308,7 +308,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
-| 39. ECL Pipeline | 9/9 | Complete   | 2026-09-22 |
+| 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
 | 40. Data Governance | 0/? | Not started | — |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 
