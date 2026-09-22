@@ -67,6 +67,17 @@ type Hit struct {
 //
 // KNOWN-02 (extended) at the indexer layer rejects inverted windows
 // (to < from when both nonzero) and negative values (to < 0).
+//
+// Plan 39-02 / D-Milvus-02 — native ECL section metadata. Four fields
+// extend the row schema (Milvus carries them as NATIVE columns, not JSON
+// stuffed into source, so Phase 41 hybrid retrieval can filter on them).
+// The legacy-producer contract is zero values: producers that do not set
+// them seed rows with source_idx="", section="", section_idx=0 and
+// section_count=0, and every existing filter keeps its semantics
+// (D-Milvus-02). section_count > 0 is the OWNERSHIP MARKER: it marks the
+// row as ECL-owned, which is what lets the marker-scoped purge
+// (milvus.DeleteByExpr with `section_count > 0`) remove exactly the ECL
+// rows inside a tier that also holds legacy rows.
 type Document struct {
 	ID            int64
 	Tier          string
@@ -75,6 +86,19 @@ type Document struct {
 	Embedding     []float32
 	EffectiveFrom int64
 	EffectiveTo   int64
+
+	// SourceIdx is the zero-padded logical note number (e.g. "001") the
+	// ECL chunker assigns; "" for legacy (non-ECL) rows.
+	SourceIdx string
+	// Section is the merged logical-section title; "" for legacy rows.
+	Section string
+	// SectionIdx is the 1-based position of this section within its note
+	// (first-seen order); 0 for legacy rows.
+	SectionIdx int64
+	// SectionCount is the number of sections in the owning note. Zero for
+	// legacy rows; > 0 marks the row as ECL-owned (the ownership marker
+	// the marker-scoped purge keys on).
+	SectionCount int64
 }
 
 // DocumentMeta is the metadata-only projection returned by

@@ -38,6 +38,19 @@ import (
 //	embedding     FLOAT_VECTOR(1024)
 //	effective_from INT64   Plan 05-02 D5-15 — policy-version window start
 //	effective_to   INT64   Plan 05-02 D5-15 — policy-version window end (0 = perpetual)
+//	source_idx    VARCHAR(64)   Plan 39-02 D-Milvus-01 — ECL logical note number
+//	section       VARCHAR(256)  Plan 39-02 D-Milvus-01 — ECL logical section title
+//	section_idx   INT64         Plan 39-02 D-Milvus-01 — 1-based section position (0 = legacy)
+//	section_count INT64         Plan 39-02 D-Milvus-01 — sections in note (> 0 = ECL-owned)
+//
+// Plan 39-02 (D-Milvus-01): the four ECL section fields are NATIVE
+// columns, not JSON stuffed into source — Phase 41 hybrid retrieval
+// filters on them server-side. The schema is NOT backward compatible:
+// an existing pre-39 collection lacks the columns, so inserts with the
+// new fields fail until it is rebuilt. Deployment requires the existing
+// one-shot door exactly once — boot with SKILLFORGE_MILVUS_RECREATE=1
+// (drop + re-create + full re-embed via the boot-time knowledge.Index),
+// then unset it. No migration code beyond this gate.
 //
 // Plan 05-02 D5-15: the two effective_* INT64 columns use sentinel-0
 // (NOT nullable). The default value 0 at the schema layer is the
@@ -45,7 +58,9 @@ import (
 // non-nullable by default — the SDK's entity.Field type has no
 // WithNullable method (verified against milvus-sdk-go v2.4.2), so the
 // schema is structurally non-nullable. NULL-evaluates-FALSE is
-// therefore not a concern here.
+// therefore not a concern here. The same non-nullable + sentinel-0
+// design carries over to section_idx / section_count: 0 IS the
+// legacy-row marker (D-Milvus-02).
 //
 // The IVF_FLAT index (nlist=128) is built with COSINE metric, the standard
 // for BGE-M3 dense embeddings (BGE-M3 outputs are meaningful under cosine
@@ -77,7 +92,15 @@ func EnsureCollection(ctx context.Context, mc client.Client, cfg Config) error {
 		// non-nullable by default). Default value 0 = "perpetually valid"
 		// (the legacy / open-ended state).
 		WithField(entity.NewField().WithName("effective_from").WithDataType(entity.FieldTypeInt64)).
-		WithField(entity.NewField().WithName("effective_to").WithDataType(entity.FieldTypeInt64))
+		WithField(entity.NewField().WithName("effective_to").WithDataType(entity.FieldTypeInt64)).
+		// Plan 39-02 (D-Milvus-01) — native ECL section metadata. Widths
+		// derive from the single-home consts (zero-hardcode standard);
+		// VarChar via FieldTypeVarChar + max_length, matching the tier /
+		// content / source columns above.
+		WithField(entity.NewField().WithName("source_idx").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultSourceIdxMaxLen))).
+		WithField(entity.NewField().WithName("section").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultSectionMaxLen))).
+		WithField(entity.NewField().WithName("section_idx").WithDataType(entity.FieldTypeInt64)).
+		WithField(entity.NewField().WithName("section_count").WithDataType(entity.FieldTypeInt64))
 
 	if err := mc.CreateCollection(ctx, schema, 1); err != nil { // shardsNum=1 (spike)
 		return fmt.Errorf("CreateCollection(%q): %w", cfg.CollectionName, err)
@@ -143,6 +166,10 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 	vecs := make([][]float32, len(docs))
 	effectiveFrom := make([]int64, len(docs))
 	effectiveTo := make([]int64, len(docs))
+	sourceIdxs := make([]string, len(docs))
+	sections := make([]string, len(docs))
+	sectionIdxs := make([]int64, len(docs))
+	sectionCounts := make([]int64, len(docs))
 	for i, d := range docs {
 		if len(d.Embedding) != cfg.EmbedDim {
 			return fmt.Errorf("doc (id=%d) embedding dim=%d, want=%d", d.ID, len(d.Embedding), cfg.EmbedDim)
@@ -154,6 +181,13 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 		vecs[i] = d.Embedding
 		effectiveFrom[i] = d.EffectiveFrom
 		effectiveTo[i] = d.EffectiveTo
+		// Plan 39-02 (D-Milvus-01/02): legacy producers leave the zero
+		// values untouched — source_idx="", section="", section_idx=0,
+		// section_count=0 — and the ECL pipeline sets them explicitly.
+		sourceIdxs[i] = truncateRunes(d.SourceIdx, DefaultSourceIdxMaxLen)
+		sections[i] = truncateRunes(d.Section, DefaultSectionMaxLen)
+		sectionIdxs[i] = d.SectionIdx
+		sectionCounts[i] = d.SectionCount
 	}
 
 	idCol := entity.NewColumnInt64("id", ids)
@@ -163,8 +197,14 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 	vecCol := entity.NewColumnFloatVector("embedding", cfg.EmbedDim, vecs)
 	effectiveFromCol := entity.NewColumnInt64("effective_from", effectiveFrom)
 	effectiveToCol := entity.NewColumnInt64("effective_to", effectiveTo)
+	// VarChar columns MUST use NewColumnVarChar, never NewColumnString
+	// (spike-findings: DataType String=20 vs FieldTypeVarChar=21 mismatch).
+	sourceIdxCol := entity.NewColumnVarChar("source_idx", sourceIdxs)
+	sectionCol := entity.NewColumnVarChar("section", sections)
+	sectionIdxCol := entity.NewColumnInt64("section_idx", sectionIdxs)
+	sectionCountCol := entity.NewColumnInt64("section_count", sectionCounts)
 
-	if _, err := mc.Insert(ctx, cfg.CollectionName, "", idCol, tierCol, contentCol, sourceCol, vecCol, effectiveFromCol, effectiveToCol); err != nil {
+	if _, err := mc.Insert(ctx, cfg.CollectionName, "", idCol, tierCol, contentCol, sourceCol, vecCol, effectiveFromCol, effectiveToCol, sourceIdxCol, sectionCol, sectionIdxCol, sectionCountCol); err != nil {
 		return fmt.Errorf("Insert: %w", err)
 	}
 	// async=false + flush so the rows are durable + visible to the next Search.

@@ -51,8 +51,18 @@ const (
 	DefaultTierMaxLen    = kb.MaxSlugLen
 	DefaultContentMaxLen = 8192 // BGE-M3 context is 8192 tokens; content field mirrors that ceiling
 	DefaultSourceMaxLen  = 256  // fixture relative path
-	DefaultIVFNList      = 128  // IVF_FLAT nlist — small dataset, modest cluster count
-	DefaultIVFNProbe     = 10   // search-time nprobe
+	// DefaultSourceIdxMaxLen is the Milvus source_idx (VARCHAR) column width
+	// (Plan 39-02 / D-Milvus-01). source_idx carries the zero-padded logical
+	// note number the ECL chunker assigns (e.g. "001"); 64 leaves room for
+	// non-ECL identifier schemes. Schema widths derive from this single home
+	// (zero-hardcode standard) — no literal widths at use sites.
+	DefaultSourceIdxMaxLen = 64
+	// DefaultSectionMaxLen is the Milvus section (VARCHAR) column width
+	// (Plan 39-02 / D-Milvus-01). section carries the merged logical-section
+	// title (CJK-heavy), the same width class as source paths.
+	DefaultSectionMaxLen = 256
+	DefaultIVFNList      = 128 // IVF_FLAT nlist — small dataset, modest cluster count
+	DefaultIVFNProbe     = 10  // search-time nprobe
 
 	// Network resilience (per Plan 01-01 internal-api strategy).
 	dialTimeout  = 5 * time.Second
