@@ -231,7 +231,7 @@ Plans:
 
 - [x] 39-01-PLAN.md — KG store DeleteSubject/InsertUnique primitives + TBox emitter 6→8 classes (D-TBox2-01)
 - [x] 39-02-PLAN.md — Milvus schema +4 native fields, DeleteByExpr marker purge, collection-wide ID watermark
-- [ ] 39-03-PLAN.md — ECL merge package: 005c walk+merge port, ChunkMeta contract, regex stub, corpus boundary tests
+- [x] 39-03-PLAN.md — ECL merge package: 005c walk+merge port, ChunkMeta contract, regex stub, corpus boundary tests
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -308,7 +308,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 0/? | Not started | — |
-| 39. ECL Pipeline | 2/9 | In Progress|  |
+| 39. ECL Pipeline | 3/9 | In Progress|  |
 | 40. Data Governance | 0/? | Not started | — |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 

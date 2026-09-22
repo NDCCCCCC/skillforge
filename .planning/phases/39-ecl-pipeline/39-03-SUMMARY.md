@@ -107,6 +107,10 @@ None - no external service configuration required.
 - Plan 09 (golden set + verify gate) can drive `StubExtract` over all 26 notes and invoke the corpus tests directly
 - Full package `go test ./internal/knowledge/ecl/ -count=1` exits 0 with no network or env dependencies
 
+## Self-Check: PASSED
+
+All 5 key files exist on disk; all 5 commit hashes (04dc0c1, cf8415e, daaa563, 37e4280, 6e42f57) present in git log; full package `go test ./internal/knowledge/ecl/ -count=1` green with SC numbers printed (185/185, 26 notes, 69 sections, note 001 3/3).
+
 ---
 *Phase: 39-ecl-pipeline*
 *Completed: 2026-09-22*
