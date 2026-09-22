@@ -50,14 +50,17 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // noteIDPattern is the defense-in-depth format gate for the :note_id
@@ -93,6 +96,47 @@ type pipelineRetryResponse struct {
 	NoteID string `json:"note_id"`
 }
 
+// putPipelineAuditRow writes the INSERT-only audit row for one ACCEPTED
+// ECL pipeline trigger — action_ecl_run / action_ecl_retry (WR-05 /
+// T-3-AUDIT). Run and retry are the most expensive and most destructive
+// admin mutations in the system (whole-generation DeleteByExpr purges,
+// ~26 LLM calls per run, TBox-adjacent KG writes); without a row the
+// operator cannot answer "who ran the pipeline when" from the audit table
+// (SC-3 / GET /api/admin/audit filters on ActorType "admin", which this
+// row carries).
+//
+// Emission point is the handler AT ACCEPTANCE, mirroring
+// putKBAdminAuditRow: the auditable fact is the admin's decision to spend
+// the budget, and it must not depend on the async outcome (the work runs
+// detached — WR-01 — and may outlive this request or the process). The
+// work's OUTCOME lives in the ecl_failures ledger (per-note stage/status)
+// and the goroutine's WARN logs; the detail payload here records the
+// trigger identity ({"trigger":"admin_api"} / {"note_id":"NNN"}).
+//
+// Best-effort, mirroring every other audit write in this package (chat.go,
+// kb_admin.go): a failed write is WARN-logged and NEVER rolls the accepted
+// trigger back or fails the request. A nil Store means no audit backend is
+// configured (degraded mode, same as elsewhere).
+func (s *Deps) putPipelineAuditRow(ctx context.Context, action string, detail map[string]string) {
+	if s.Store == nil {
+		return
+	}
+	payload, err := json.Marshal(detail)
+	if err != nil {
+		log.Printf("[WARN] server: ecl pipeline audit row marshal (%s): %v (row skipped)", action, err)
+		return
+	}
+	if _, err := s.Store.PutAudit(ctx, store.AuditRow{
+		Timestamp:  time.Now().UTC(),
+		UserID:     "admin",
+		Action:     action,
+		ActorType:  "admin",
+		FrozenArgs: payload,
+	}); err != nil {
+		log.Printf("[WARN] server: ecl pipeline audit row (%s): %v (best-effort, trigger not rolled back)", action, err)
+	}
+}
+
 // adminPipelineRunHandler implements POST /api/admin/pipeline/run.
 //
 // D-Prog-01: the response is an immediate 200 {"status":"started"} —
@@ -109,6 +153,10 @@ func (s *Deps) adminPipelineRunHandler(ctx context.Context, c *app.RequestContex
 		c.JSON(http.StatusConflict, graphResponseError{Error: "pipeline already running"})
 		return
 	}
+	// WR-05: one INSERT-only admin audit row per ACCEPTED run (the work
+	// itself is detached below; see putPipelineAuditRow for the emission
+	// point rationale).
+	s.putPipelineAuditRow(ctx, "action_ecl_run", map[string]string{"trigger": "admin_api"})
 	go func() {
 		if err := mgr.Run(context.Background()); err != nil {
 			log.Printf("[WARN] server: ecl pipeline run failed: %v", err)
@@ -173,5 +221,8 @@ func (s *Deps) adminPipelineRetryHandler(ctx context.Context, c *app.RequestCont
 			log.Printf("[WARN] server: ecl pipeline retry %s failed: %v", noteID, err)
 		}
 	}()
+	// WR-05: one INSERT-only admin audit row per ACCEPTED retry, with the
+	// note id as the trigger identity.
+	s.putPipelineAuditRow(ctx, "action_ecl_retry", map[string]string{"note_id": noteID})
 	c.JSON(http.StatusOK, pipelineRetryResponse{Status: "queued", NoteID: noteID})
 }

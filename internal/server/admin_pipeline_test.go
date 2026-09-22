@@ -41,6 +41,7 @@ import (
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/ontology/store"
 	"github.com/skillforge/skillforge/internal/retriever"
+	sqlstore "github.com/skillforge/skillforge/internal/store"
 )
 
 // --- fixtures -------------------------------------------------------------
@@ -492,5 +493,101 @@ func TestAdminPipelineRunStarts(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Errorf("failures = %+v, want empty (first-try successes write no rows)", rows)
+	}
+}
+
+// pipelineAuditCapture is a minimal store.Store stub capturing PutAudit
+// rows (embedded nil interface = INSERT-only lock: any other store method
+// the audit path might reach panics, same discipline as the package's
+// other fake stores).
+type pipelineAuditCapture struct {
+	sqlstore.Store
+	mu   sync.Mutex
+	rows []sqlstore.AuditRow
+}
+
+func (f *pipelineAuditCapture) PutAudit(_ context.Context, row sqlstore.AuditRow) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rows = append(f.rows, row)
+	return int64(len(f.rows)), nil
+}
+
+func (f *pipelineAuditCapture) captured() []sqlstore.AuditRow {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]sqlstore.AuditRow(nil), f.rows...)
+}
+
+// TestAdminPipelineAuditRows (WR-05 / T-3-AUDIT): an ACCEPTED run/retry
+// writes exactly one INSERT-only admin audit row (action_ecl_run /
+// action_ecl_retry, ActorType "admin" so ADM-06 surfaces it); refused
+// triggers (404 unknown note) write nothing; the acceptance row is
+// written synchronously before the response, independent of the async
+// outcome.
+func TestAdminPipelineAuditRows(t *testing.T) {
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "tok")
+	mgr, seed, fs := newPipelineManager(t)
+	audit := &pipelineAuditCapture{}
+	deps := &Deps{ECL: mgr, Store: audit}
+
+	// Accepted run → exactly one action_ecl_run row, written at acceptance.
+	resp := invokePipeline(t, deps, http.MethodPost, "/api/admin/pipeline/run", "tok")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("run: expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	rows := audit.captured()
+	if len(rows) != 1 {
+		t.Fatalf("audit rows after accepted run = %d, want 1", len(rows))
+	}
+	if rows[0].Action != "action_ecl_run" || rows[0].ActorType != "admin" || rows[0].UserID != "admin" {
+		t.Errorf("run audit row = action %q actor %q user %q, want action_ecl_run/admin/admin",
+			rows[0].Action, rows[0].ActorType, rows[0].UserID)
+	}
+	if rows[0].Timestamp.IsZero() {
+		t.Error("run audit row timestamp is zero")
+	}
+
+	// Let the detached run finish (so the manager is claimable again).
+	awaitStage(t, mgr, ecl.StageDone)
+
+	// Refused retry (unknown note, 404) writes NO audit row.
+	if err := fs.UpsertFailure(ecl.Failure{
+		NoteID: "007", Stage: ecl.StageExtract, AttemptCount: 3,
+		LastError: "forced extract failure for 007", Status: ecl.FailureDead,
+		UpdatedAt: "2026-09-22T03:04:05Z",
+	}); err != nil {
+		t.Fatalf("prime dead row: %v", err)
+	}
+	resp = invokePipeline(t, deps, http.MethodPost, "/api/admin/pipeline/retry/999", "tok")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("retry/999: expected 404, got %d", resp.Code)
+	}
+	if got := len(audit.captured()); got != 1 {
+		t.Fatalf("audit rows after refused retry = %d, want still 1 (refusals are not audit-worthy)", got)
+	}
+
+	// Accepted retry → one action_ecl_retry row carrying the note id.
+	resp = invokePipeline(t, deps, http.MethodPost, "/api/admin/pipeline/retry/007", "tok")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("retry/007: expected 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	rows = audit.captured()
+	if len(rows) != 2 {
+		t.Fatalf("audit rows after accepted retry = %d, want 2", len(rows))
+	}
+	if rows[1].Action != "action_ecl_retry" || rows[1].ActorType != "admin" {
+		t.Errorf("retry audit row = action %q actor %q, want action_ecl_retry/admin",
+			rows[1].Action, rows[1].ActorType)
+	}
+	if !strings.Contains(string(rows[1].FrozenArgs), "007") {
+		t.Errorf("retry audit detail = %s, want the trigger note id", rows[1].FrozenArgs)
+	}
+
+	// The detached retry work still really runs.
+	select {
+	case <-seed.signal:
+	case <-time.After(5 * time.Second):
+		t.Fatal("retry never seeded — the detached work did not run")
 	}
 }
