@@ -185,3 +185,170 @@ func (m *failingPurgeMock) Delete(_ context.Context, collName string, _ string, 
 // Compile-time guard: the purge tests keep working against the Client
 // interface they mock.
 var _ client.Client = (*purgeMock)(nil)
+
+// TestDeleteByExprPassesExprVerbatim: the Plan 05/06 usage contract at the
+// helper level — the caller-built expression reaches mc.Delete VERBATIM
+// (the helper never interpolates, never rewrites), and the mechanics
+// mirror DeleteTierRows: HasCollection → LoadCollection → Delete → Flush.
+// The expr used here is the ECL ownership-marker purge exactly as the ECL
+// milvus-load stage will issue it (RESEARCH Pattern 3).
+func TestDeleteByExprPassesExprVerbatim(t *testing.T) {
+	mc := &purgeMock{exists: true}
+	expr := `tier in ["sql-guides"] and section_count > 0`
+
+	err := DeleteByExpr(context.Background(), mc, Config{CollectionName: DefaultCollectionName}, expr)
+	if err != nil {
+		t.Fatalf("DeleteByExpr: %v", err)
+	}
+
+	has := false
+	loaded := false
+	deleted := false
+	flushed := false
+	var gotExpr string
+	for _, c := range mc.calls {
+		switch {
+		case strings.HasPrefix(c, "has:"):
+			has = true
+		case strings.HasPrefix(c, "load:"):
+			if !has {
+				t.Fatalf("LoadCollection ran before HasCollection, calls = %v", mc.calls)
+			}
+			loaded = true
+		case c == "delete:"+DefaultCollectionName:
+			if !loaded {
+				t.Fatalf("Delete ran before LoadCollection (DML needs a loaded collection), calls = %v", mc.calls)
+			}
+			deleted = true
+		case strings.HasPrefix(c, "expr:"):
+			gotExpr = strings.TrimPrefix(c, "expr:")
+		case c == "flush:"+DefaultCollectionName:
+			if !deleted {
+				t.Fatalf("Flush ran before Delete, calls = %v", mc.calls)
+			}
+			flushed = true
+		}
+	}
+	if !deleted || !flushed {
+		t.Fatalf("expected delete+flush against %s, calls = %v", DefaultCollectionName, mc.calls)
+	}
+	if gotExpr != expr {
+		t.Fatalf("expr reached Delete as %q, want the caller-built string VERBATIM %q (the helper must never rewrite it)", gotExpr, expr)
+	}
+}
+
+// TestDeleteByExprMissingCollectionNoOp: a fresh deploy has no collection
+// and therefore nothing to purge — the has-only no-op keeps the paired
+// SeedDocuments' EnsureCollection as the only creator.
+func TestDeleteByExprMissingCollectionNoOp(t *testing.T) {
+	mc := &purgeMock{exists: false}
+
+	if err := DeleteByExpr(context.Background(), mc, Config{CollectionName: DefaultCollectionName}, "section_count > 0"); err != nil {
+		t.Fatalf("DeleteByExpr on missing collection: %v", err)
+	}
+	for _, c := range mc.calls {
+		if !strings.HasPrefix(c, "has:") {
+			t.Fatalf("missing collection must be a has-only no-op, calls = %v", mc.calls)
+		}
+	}
+}
+
+// TestDeleteByExprEmptyExprRejected: the caller owns the expression; an
+// empty one must be rejected before any backend call — Milvus would
+// reject it server-side, but the error must name the helper duty instead
+// of surfacing as an SDK failure.
+func TestDeleteByExprEmptyExprRejected(t *testing.T) {
+	mc := &purgeMock{exists: true}
+
+	err := DeleteByExpr(context.Background(), mc, Config{CollectionName: DefaultCollectionName}, "  ")
+	if err == nil {
+		t.Fatal("expected an error for an empty expr")
+	}
+	if !strings.Contains(err.Error(), "DeleteByExpr") {
+		t.Fatalf("error must name DeleteByExpr, got: %v", err)
+	}
+	if len(mc.calls) != 0 {
+		t.Fatalf("no call may run before the expr check, calls = %v", mc.calls)
+	}
+}
+
+// TestDeleteByExprNilClientErrors: the nil-client guard must name the
+// helper instead of panicking in the SDK.
+func TestDeleteByExprNilClientErrors(t *testing.T) {
+	err := DeleteByExpr(context.Background(), nil, Config{CollectionName: DefaultCollectionName}, "section_count > 0")
+	if err == nil {
+		t.Fatal("expected an error for a nil client")
+	}
+	if !strings.Contains(err.Error(), "DeleteByExpr") {
+		t.Fatalf("error must name DeleteByExpr, got: %v", err)
+	}
+}
+
+// TestDeleteByExprPropagatesDeleteError: a failed Delete surfaces wrapped
+// (with the collection + expr named) so the caller aborts before the
+// paired insert — a half-purged tier is worse than an untouched one.
+func TestDeleteByExprPropagatesDeleteError(t *testing.T) {
+	mc := &failingPurgeMock{purgeMock: purgeMock{exists: true}}
+
+	err := DeleteByExpr(context.Background(), mc, Config{CollectionName: DefaultCollectionName}, "section_count > 0")
+	if err == nil {
+		t.Fatal("expected the delete error to propagate")
+	}
+	if !errors.Is(err, errDeleteBoom) {
+		t.Fatalf("error chain must carry the SDK error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), DefaultCollectionName) {
+		t.Fatalf("error must name the collection, got: %v", err)
+	}
+}
+
+// TestGetMaxIDCollectionAlwaysTrueExprAndMax: the watermark is
+// collection-wide — the expr is the always-true `id >= 0` (NOT a tier
+// filter; Pitfall 5) and the returned max spans mock rows that
+// conceptually belong to different tiers (one Query sees them all).
+func TestGetMaxIDCollectionAlwaysTrueExprAndMax(t *testing.T) {
+	tc := &getMaxIDMockClient{
+		resultRows: []client.ResultSet{
+			// Rows from multiple tiers arrive in ONE result set because
+			// there is no tier filter: authority 7, sql-guides 42,
+			// historical 100 — the collection-wide max is 100 even though
+			// the per-tier max of any single tier would under-report it.
+			client.ResultSet{idCol([]int64{7, 42, 100})},
+		},
+	}
+	mc := Wrap(tc, Config{CollectionName: DefaultCollectionName})
+
+	id, err := mc.GetMaxIDCollection(context.Background())
+	if err != nil {
+		t.Fatalf("GetMaxIDCollection: %v", err)
+	}
+	if id != 100 {
+		t.Fatalf("GetMaxIDCollection = %d, want 100 (collection-wide max across mixed-tier rows)", id)
+	}
+	if len(tc.calls) != 1 {
+		t.Fatalf("expected exactly one Query round-trip, calls = %v", tc.calls)
+	}
+	if tc.calls[0].expr != "id >= 0" {
+		t.Fatalf("expr = %q, want the always-true \"id >= 0\" (a tier filter would under-estimate the watermark, Pitfall 5)", tc.calls[0].expr)
+	}
+	if tc.calls[0].coll != DefaultCollectionName {
+		t.Fatalf("Query targeted %q, want %q", tc.calls[0].coll, DefaultCollectionName)
+	}
+}
+
+// TestGetMaxIDCollectionEmptyReturnsZero: an empty collection has no
+// watermark — 0 with no error, matching GetMaxID's empty posture.
+func TestGetMaxIDCollectionEmptyReturnsZero(t *testing.T) {
+	tc := &getMaxIDMockClient{
+		resultRows: []client.ResultSet{client.ResultSet{}},
+	}
+	mc := Wrap(tc, Config{CollectionName: DefaultCollectionName})
+
+	id, err := mc.GetMaxIDCollection(context.Background())
+	if err != nil {
+		t.Fatalf("GetMaxIDCollection on empty collection: %v", err)
+	}
+	if id != 0 {
+		t.Fatalf("GetMaxIDCollection = %d, want 0 for an empty collection", id)
+	}
+}

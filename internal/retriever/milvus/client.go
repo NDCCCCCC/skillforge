@@ -122,6 +122,52 @@ func (m *MilvusClient) GetMaxID(ctx context.Context, tier string) (int64, error)
 	return maxID, nil
 }
 
+// GetMaxIDCollection returns the highest chunk ID in the ENTIRE
+// collection — the watermark ECL chunk-ID allocation must start above
+// (Plan 39-02 / RESEARCH Pitfall 5). GetMaxID is PER-TIER, but the INT64
+// primary key is collection-wide: boot assigns IDs 1..N monotonically
+// ACROSS all tier dirs, so a per-tier max under-estimates whenever ECL
+// inserts into a tier that also holds boot-seeded rows of other tiers.
+// Starting below the true watermark reuses PKs, and Milvus does not
+// deduplicate Insert — both generations become searchable (the exact
+// 2026-09-15 sql-guides duplicate-generation incident class; see
+// seed.go DeleteTierRows' godoc for the Query-vs-Search asymmetry).
+//
+// The expression is the always-true `id >= 0` (IDs are 1-based and
+// monotonically increasing) instead of a tier filter, so a single
+// round-trip sees every generation. Mechanically this mirrors GetMaxID:
+// a generous limit with a client-side max scan, because Milvus Query has
+// no ORDER BY.
+func (m *MilvusClient) GetMaxIDCollection(ctx context.Context) (int64, error) {
+	if m == nil || m.cfg.CollectionName == "" {
+		return 0, nil
+	}
+	expr := "id >= 0"
+	rs, err := m.mc.Query(
+		ctx,
+		m.cfg.CollectionName,
+		nil, // partitions (nil = default)
+		expr,
+		[]string{"id"},
+		client.WithLimit(10000),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("milvus.GetMaxIDCollection: Query: %w", err)
+	}
+	var maxID int64
+	for _, col := range rs {
+		if col.Name() != "id" {
+			continue
+		}
+		for i := 0; i < col.Len(); i++ {
+			if v, e := col.GetAsInt64(i); e == nil && v > maxID {
+				maxID = v
+			}
+		}
+	}
+	return maxID, nil
+}
+
 // Ensure creates the collection + IVF_FLAT index if absent. Idempotent.
 // This is the routine boot path — it NEVER drops anything (the only
 // destructive path in this package is RecreateCollection behind the
