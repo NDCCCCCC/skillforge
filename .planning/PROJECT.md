@@ -138,6 +138,7 @@ Tier 隔离三条护城河。
 **Key decisions（v1.3 → v1.4 沿革）：**
 - v1.3 (Phase 31-37) shipped 2026-09-09 — 代码质量修复（REALBUG / SRP / HITL / REPEAT / STORE / ROBUST / CONCUR）
 - 005 系列研究 2026-09-21 完成 — 5 个 spike 验证本体论 + SkillForge 结合可行性
+- Phase 39 (ECL Pipeline) shipped 2026-09-22 — 185→26 section-aware chunker + LLM 抽取 + ABox 双写 KG/Milvus + `/admin/pipeline` 实时面板（verify-phase-39.sh 8/8 全绿；golden F1 0.9846；code review CR-01+WR-01..06 已修）
 - v1.4（当前）：本体层落地，把 RAG 升级为本体操作系统；保留单 binary + Skill 驱动 + Tier 隔离三条护城河
 
 **三条护城河（不可动摇）：**
