@@ -24,8 +24,8 @@ result: [pending]
 expected: 13-item 39-UI-SPEC.md visual pass across idle/running/done/failed/403/503 states — verbatim copy, stage sentinels, progress bar, failures table, retry button enablement (dead-only)
 result: [pending]
 
-### 4. CR-01 failure-path reproduction + fix decision
-expected: force milvus-load failure (e.g. block Milvus mid-run); observe FE stage badge behavior (documented: stuck 运行中 + disabled Run until a successful RetryNote resets to done — no restart strictly required); decide whether to schedule the minimal fix (deferred setStatus(StageIdle) on Run/RetryNote error paths in manager.go:343/355/358/387-434) as gap-closure or Phase 40 item
+### 4. CR-01 fixed-behavior confirmation (fix shipped: ae84393 + WR-01 9a4e25)
+expected: force milvus-load failure (e.g. block Milvus mid-run); after the fix, Run/RetryNote error paths reset stage to idle (terminal sentinel) — FE returns to idle state with Run button re-enabled; retry claims stay async (WR-01) so the HTTP call returns immediately. Regression tests pin every failure mode (manager suite); this live check confirms the FE badge behavior matches
 result: [pending]
 
 ## Summary
