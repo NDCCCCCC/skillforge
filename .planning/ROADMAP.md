@@ -33,21 +33,25 @@
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+
+- [x] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -70,21 +74,25 @@
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -107,21 +115,25 @@
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -144,21 +156,25 @@
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -181,21 +197,25 @@
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -218,21 +238,25 @@
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -259,21 +283,25 @@
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -405,21 +433,25 @@ Plans:
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -446,21 +478,25 @@ Plans:
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
 **Wave 1**
+
 - [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [ ] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
+- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
 - [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
 
 **Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
 
 ---
@@ -471,7 +507,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
 | 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
-| 40. Data Governance | 0/9 | Planned | — |
+| 40. Data Governance | 1/10 | In Progress|  |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 
 ---

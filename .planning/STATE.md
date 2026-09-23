@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-22T10:10:30.554Z"
-last_activity: 2026-09-22 -- Phase 40 planning complete
+last_updated: "2026-09-23T01:24:27.465Z"
+last_activity: 2026-09-23
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 25
-  completed_plans: 15
+  completed_plans: 17
   percent: 18
 ---
 
@@ -17,10 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 40
-Plan: 9 planned
+Phase: 40 (data-governance-shacl-provenance-tbox-versioning) — EXECUTING
+Plan: 3 of 10
 Status: Ready to execute
-Last activity: 2026-09-22 -- Phase 40 planning complete
+Last activity: 2026-09-23
 
 ## v1.4 Phase Map
 
@@ -86,7 +86,7 @@ Last activity: 2026-09-22 -- Phase 40 planning complete
 
 ---
 
-*Last updated: 2026-09-22 — Phase 39 all 9 plans executed (39-09 complete: golden set + F1 harness + hermetic gate)*
+*Last updated: 2026-09-23 — Phase 40-02 complete: Provenance struct on Triple + QueryResultsWithProvenance*
 
 ## Decisions
 
@@ -117,3 +117,4 @@ Last activity: 2026-09-22 -- Phase 40 planning complete
 - [Phase ?]: 39-09 row 039 human-corrected: -4 CREATE OR REPLACE FUNCTION false positives (3 fn names + 1 param), kept 3 merge-into update targets — harness scores 039 F1 0.6 BY DESIGN; macro tables 0.9846 / related 1.0 vs gate >= 0.8
 - [Phase ?]: 39-09 harness scoring convention: empty-vs-empty notes score (1,1,1) agreement at the harness level; ScoreTables/ScoreRelated's pinned 0.0 zero-denominator convention stays LLM-gate-only
 - [Phase ?]: 39-09 verify-phase-39.sh: regex -run stages pair exit code with a minimum --- PASS count (anti-vacuous); FE stage cascade node→pnpm→PHASE39_FE_GATE=skip-external explicit-first override (this box's WSL: no node, interop disabled, broken Windows pnpm shim on PATH; FE suite ran out-of-band Windows-side 628/628 green)
+- [Phase 40]: 40-02 Provenance struct: Triple.Provenance *Provenance with json omitempty; source_kind/file/emitter/induction enum; line numbers 1-based 0=N/A; pre-40 snapshots load without migration (D-PROV-10); QueryResultsWithProvenance is identical to Query but with compiler-enforced Provenance access seam
