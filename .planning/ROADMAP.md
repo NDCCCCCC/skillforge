@@ -52,7 +52,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -93,7 +93,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -134,7 +134,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -175,7 +175,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -216,7 +216,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -257,7 +257,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -302,7 +302,7 @@
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -452,7 +452,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -497,7 +497,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests
+- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
