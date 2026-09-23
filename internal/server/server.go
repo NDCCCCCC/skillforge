@@ -675,6 +675,11 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// = copy of target, rebuilds KG, re-runs SHACL returning violation count.
 	h.GET("/api/admin/ontology/changelog", deps.adminOntologyChangelogHandler)
 	h.POST("/api/admin/ontology/rollback", deps.adminOntologyRollbackHandler)
+	// Phase 40 Plan 06 (D-SHACL-02 / D-SHACL-03) — governance admin surface:
+	// SHACL validation report (cached from boot or rollback) + provenance graph
+	// including quarantined entities. Both routes are token-gated (403 before 503).
+	h.GET("/api/admin/governance/shacl", deps.adminGovernanceShaclHandler)
+	h.GET("/api/admin/governance/provenance", deps.adminGovernanceProvenanceHandler)
 	// Phase 39 Plan 39-07 (v1.4 / D-Route-01) — ECL pipeline admin surface.
 	// Three token-gated routes (403 before the nil-manager 503, LOCKED
 	// order): run (fire-and-forget trigger → 200 started / 409 already
