@@ -265,6 +265,25 @@ func (m *Manager) fireChange() {
 	}
 }
 
+// RecoverFromPanic resets the manager to a clean idle state after an
+// unexpected panic in a detached goroutine (admin_pipeline.go IN-05).
+// It clears the running flag and resets the stage to StageIdle so the
+// admin UI recovers without a restart.
+func (m *Manager) RecoverFromPanic() {
+	m.mu.Lock()
+	m.running = false
+	m.stage = StageIdle
+	m.currentFile = ""
+	m.done = 0
+	m.total = 0
+	m.queueLen = 0
+	onChange := m.onChange
+	m.mu.Unlock()
+	if onChange != nil {
+		onChange()
+	}
+}
+
 // Run executes the full pipeline: merge → extract → kg-load → milvus-load
 // → done. The caller claims CASRunning() FIRST and launches Run in a
 // goroutine (admin handler posture); Run releases the flag via defer.

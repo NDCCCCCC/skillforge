@@ -55,6 +55,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"runtime/debug"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -158,6 +159,22 @@ func (s *Deps) adminPipelineRunHandler(ctx context.Context, c *app.RequestContex
 	// point rationale).
 	s.putPipelineAuditRow(ctx, "action_ecl_run", map[string]string{"trigger": "admin_api"})
 	go func() {
+		// IN-05: recover from panics inside the LLM adapter, splitter, or SDK.
+		// Without this, a panic in the pipeline kills the entire server process
+		// (Go semantics), converting a pipeline bug into a full outage. The
+		// deferred releaseRunning() fires during panic unwinding (so the flag
+		// is cleared), but the stage stays at its in-flight value — CR-01's
+		// setStatus idle-reset lives in Run's err-branches and does NOT fire
+		// on panic. We reset explicitly here so the FE stays operable.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[ERROR] server: ecl run goroutine panicked: %v\n%s", r, debug.Stack())
+				// The deferred mgr.releaseRunning() fires during panic unwinding,
+				// but the stage may be stuck at an in-flight value (CR-01).
+				// Reset to idle so the admin UI recovers without a restart.
+				mgr.RecoverFromPanic()
+			}
+		}()
 		if err := mgr.Run(context.Background()); err != nil {
 			log.Printf("[WARN] server: ecl pipeline run failed: %v", err)
 		}
