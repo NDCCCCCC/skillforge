@@ -13,6 +13,9 @@ import { useEffect, useState } from 'react';
 import { cn } from '../../../lib/cn';
 import { fetchShaclReport, runPipeline } from './governanceApi';
 import type { ShaclReport } from './types';
+import ShaclReportView from './ShaclReportView';
+import ProvenanceGraphView from './ProvenanceGraphView';
+import TimelineView from './TimelineView';
 
 type GovernanceView = 'shacl' | 'provenance' | 'timeline';
 
@@ -127,16 +130,20 @@ export default function GovernanceTab() {
         ))}
       </div>
 
-      {/* View bodies — stubs for 40-07b; real implementations there */}
+      {/* View bodies — real implementations from 40-07b */}
       {view === 'shacl' && (
-        <div className="text-sm text-text-muted">校验报告加载中...</div>
+        <ShaclReportView
+          report={shaclReport}
+          error={shaclError}
+          onRetry={() => {
+            fetchShaclReport()
+              .then(setShaclReport)
+              .catch((e: unknown) => setShaclError(e instanceof Error ? e.message : String(e)));
+          }}
+        />
       )}
-      {view === 'provenance' && (
-        <div className="text-sm text-text-muted">溯源图谱加载中...</div>
-      )}
-      {view === 'timeline' && (
-        <div className="text-sm text-text-muted">版本演进加载中...</div>
-      )}
+      {view === 'provenance' && <ProvenanceGraphView />}
+      {view === 'timeline' && <TimelineView />}
     </div>
   );
 }
