@@ -10,7 +10,7 @@
 | v1.1 (Eval Trust-Loop) | 21-25 | ✅ SHIPPED 2026-09-06 |
 | v1.2 (Knowledge Ops) | 26-30 | ✅ SHIPPED 2026-09-08 |
 | v1.3 (Code Quality) | 31-37 | ✅ SHIPPED 2026-09-09 |
-| **v1.4 (Ontology Layer)** | **38-41** | **🚧 Planned** |
+| **v1.4 (Ontology Layer)** | **38-41** | **✅ SHIPPED 2026-09-23** |
 | Backlog | 999.x | Backlog |
 
 ---

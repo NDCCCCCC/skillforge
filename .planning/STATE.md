@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
-status: verifying
-last_updated: "2026-09-23T07:12:05.904Z"
-last_activity: 2026-09-23
+status: Awaiting next milestone
+last_updated: "2026-09-23T07:22:06.786Z"
+last_activity: 2026-09-23 — Milestone v1.4 completed and archived
 progress:
   total_phases: 11
   completed_phases: 4
@@ -17,10 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 41
-Plan: Not started
-Status: Phase 41 plan 06 complete — verify-phase-41.sh hermetic gate PASS (6/6 sections)
-Last activity: 2026-09-23
+Phase: Milestone v1.4 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-23 — Milestone v1.4 completed and archived
 
 ## v1.4 Phase Map
 
@@ -56,6 +56,19 @@ Last activity: 2026-09-23
 | operator_gate | Docker live build+run verification | Deferred |
 | operator_gate | Phase 18 live E2E | Deferred |
 | env_issue | gcc linking (MSYS2 emutls ABI) | Deferred |
+
+## v1.4 Close — Acknowledged Open Items (2026-09-23)
+
+Items acknowledged at v1.4 close (audit-open count: 7 debug + 14 UAT-gap files + 8 verification-gap files + 16 quick tasks = 45 total). All are v1.3 cross-phase residue or live-infra-required validations; **none block v1.4 functional ship** (Phase 40 17/17 + Phase 41 20/20 hermetic-verified).
+
+| Category | Count | Notes |
+|----------|-------|-------|
+| debug_session | 7 | agent-llm-query-rewrite [verified-encoding-fix-closed]; chat-column-too-wide [investigating]; greeting-refusal-gate [awaiting_human_verify]; knowledge-base [unknown]; verdict-stream-hang [awaiting_human_verify]; verdict-subject-mismatch [implemented-pending-live-verify]; windows-gcc-emutls-link [awaiting_human_verify] |
+| uat_gap | 14 | v1.3 cross-phase; Phase 39 live LLM F1 + Milvus E2E + UI-SPEC walkthrough + CR-01 fix verification (8 items most prominent) |
+| verification_gap | 8 | human_needed/gaps_found across v1.3 phases; Phase 14/30 gaps_found are historical tech debt |
+| quick_task | 16 | v1.3 quick-task queue (2408-prefix); mostly compliance-wording / FE skill / splitter / gitattributes patches |
+
+See `.planning/debug/`, `.planning/phases/*-HUMAN-UAT.md`, `.planning/quick/` for individual items.
 
 ## v1.3 Summary (closed 2026-09-09)
 
@@ -131,3 +144,7 @@ Last activity: 2026-09-23
 - [Phase 41]: 41-02 SPARQL endpoint: SparqlQueryScoped shared function (tier filter via QueryScoped, filter substring match, offset/limit pagination, 500 cap); POST /api/sparql registered NOT under /api/admin/ (X-Skill-Name header is token, not X-Admin-Token); 401 if X-Skill-Name absent or skill not found; 11 unit tests covering all query shapes, tier filtering, pagination, truncation, error cases
 - [Phase 41]: 41-03 Hybrid Retrieval: HybridSearchScoped pipeline (KG 1-2 hop expansion via Adjacent1+Adjacent2 → Milvus top-50 → optional BGE-reranker → top-5); POST /api/admin/platform/hybrid/search with X-Skill-Name tier isolation; SKILLFORGE_RETRIEVAL_RERANK (default true) + SKILLFORGE_HYBRID_HOPS (default 1) env vars; all KG ops via QueryScoped; reranker errors non-fatal (log + fall back); 8 unit tests
 - [Phase 41]: 41-05 FE platform views: CodeMirror 6 via plain npm (no wrapper lib); mount via useEffect + EditorView.destroy() cleanup; Ctrl+Enter handler re-attaches on skillName/limit deps change to avoid stale closure; skill state lifted to PlatformTab level (passed to SparqlPlaygroundView + HybridDebugView; MCP Inspector is server-scoped only); KG Expansion uses node-list table + detail panel (not Cytoscape) per UI-SPEC discretion resolution; schemaToSkeleton() replaces null with '' for required string fields to ensure valid JSON output
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd:new-milestone
