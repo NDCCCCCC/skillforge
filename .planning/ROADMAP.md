@@ -227,7 +227,7 @@ Tier 隔离三条护城河。
 5. Admin UI 提供：SPARQL Playground (代码编辑器 + 结果面板) + MCP Inspector (tools list + 测试调用) + Hybrid 调试 (KG expansion 可视化 + Milvus 命中列表)
 6. `verify-phase-41.sh` 全绿：MCP tools 可调用 + SPARQL endpoint 正常 + Hybrid Q1 召回 ≥ 0.85
 
-**Plans**: 3/6 complete — 41-01 MCP stdio server / 41-02 SPARQL endpoint / 41-03 Hybrid Retrieval (c6c44dd+f483ae7)
+**Plans**: 4/6 complete — 41-01 MCP stdio server / 41-02 SPARQL endpoint / 41-03 Hybrid Retrieval / 41-04 Platform tab shell (5a1f5ef/bad1210/faf63ab/1807abc)
 
 **Wave 1**
 
@@ -238,9 +238,9 @@ Tier 隔离三条护城河。
 
 - [x] 41-03-PLAN.md — Hybrid Retrieval pipeline (KG 1-2 hop expansion → Milvus hybrid → BGE-reranker → top-5)
 
-**Wave 3** *(blocked on Wave 2 completion)*
+**Wave 3** *(Wave 2 complete)*
 
-- [ ] 41-04-PLAN.md — Platform tab shell (AdminDashboard wiring, store union, 11th SubrouteTab)
+- [x] 41-04-PLAN.md — Platform tab shell (AdminDashboard wiring, store union, 11th SubrouteTab)
 - [ ] 41-05-PLAN.md — Three views (SPARQL Playground + MCP Inspector + Hybrid 调试) + platformApi.ts + types.ts
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -256,8 +256,8 @@ Tier 隔离三条护城河。
 | 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
 | 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
 | 40. Data Governance | 10/10 | Complete    | 2026-09-23 |
-| 41. Platform Layer (MCP + SPARQL + Hybrid) | 3/6 | Wave 2 | — |
+| 41. Platform Layer (MCP + SPARQL + Hybrid) | 4/6 | Wave 3 | — |
 
 ---
 
-*Last updated: 2026-09-23 — Phase 41 3/6 (41-01 MCP stdio server, 41-02 SPARQL endpoint, 41-03 Hybrid Retrieval done). Wave 2 complete. Next: 41-04 Platform tab shell.*
+*Last updated: 2026-09-23 — Phase 41 4/6 (41-01 MCP stdio server, 41-02 SPARQL endpoint, 41-03 Hybrid Retrieval, 41-04 Platform tab shell done). Wave 3 in progress. Next: 41-05 Three views + platformApi.ts + types.ts.*
