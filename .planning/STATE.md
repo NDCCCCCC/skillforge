@@ -9,7 +9,7 @@ progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 25
-  completed_plans: 18
+  completed_plans: 19
   percent: 18
 ---
 
@@ -18,8 +18,8 @@ progress:
 ## Current Position
 
 Phase: 40 (data-governance-shacl-provenance-tbox-versioning) — EXECUTING
-Plan: 4 of 10
-Status: Completed
+Plan: 5 of 10
+Status: Executing
 Last activity: 2026-09-23
 
 ## v1.4 Phase Map
@@ -120,3 +120,4 @@ Last activity: 2026-09-23
 - [Phase 40]: 40-02 Provenance struct: Triple.Provenance *Provenance with json omitempty; source_kind/file/emitter/induction enum; line numbers 1-based 0=N/A; pre-40 snapshots load without migration (D-PROV-10); QueryResultsWithProvenance is identical to Query but with compiler-enforced Provenance access seam
 - [Phase 40]: 40-03 ECL Provenance: source_kind=file; source_path from note.Sections[0].SourcePaths[0]; line_start/line_end from note.StartLine/EndLine (1-based); extracted_at at BuildTriples call time (D-PROV-02/05/11)
 - [Phase 40]: 40-03 belongsToTier: WalkAndMerge sets Note.Tier from kbDir basename; BuildTriples emits belongsToTier for note and tables; orphan cascade removes table's belongsToTier (D-TIER-02/07); multi-tier table accumulates N triples (D-TIER-06)
+- [Phase 40]: 40-04 QueryScoped: entity-level tier filtering; schema layer never filtered (owl:Class/ObjectProperty, Skill/KBCategory/SubCategory/Tier/SkillAgent/RefusalPhrase individuals); ABox note/tbl filtered to allowedTiers; fail-closed on missing belongsToTier; visible subject includes all forward+reverse edges; NoteChunk/TableSchema are ABox data entities (D-TIER-01/03/06/07)
