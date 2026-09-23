@@ -52,6 +52,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -123,16 +124,54 @@ type kgQueryResponse struct {
 	Matches []store.Triple `json:"matches"`
 }
 
+// resolveSkillTiers returns the list of tier names that a skill has read access
+// to, by querying the KG for hasReadAccess edges on the skill individual.
+func (s *Deps) resolveSkillTiers(skillName string) []string {
+	const (
+		rdfType        = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+		skfSkill       = "http://skillforge.local/ontology#Skill"
+		skfHasReadAccess = "http://skillforge.local/ontology#hasReadAccess"
+		ns             = "http://skillforge.local/ontology#"
+	)
+
+	// Find the skill individual by name.
+	skillIRI := ns + "skill_" + skillName
+	triples := s.Ontology.KG.Query(skillIRI, rdfType, skfSkill)
+	if len(triples) == 0 {
+		return nil
+	}
+
+	// Get hasReadAccess edges for this skill.
+	accessTriples := s.Ontology.KG.Query(skillIRI, skfHasReadAccess, "")
+	var tiers []string
+	for _, t := range accessTriples {
+		// Strip namespace prefix to get short tier name.
+		tierName := strings.TrimPrefix(t.O, ns)
+		tiers = append(tiers, tierName)
+	}
+	return tiers
+}
+
 // adminOntologyKGQueryHandler implements GET /api/admin/ontology/kg/query.
 //
 // Query params s / p / o are full IRI strings (or empty = wildcard, the
-// `?x` of SC-5). Literals are matched with the store's `"value"` form.
+// `?x` of SC-5). Optional `skill` param triggers tier-filtered query via
+// QueryScoped (D-TIER-01). Literals are matched with the store's `"value"` form.
 func (s *Deps) adminOntologyKGQueryHandler(ctx context.Context, c *app.RequestContext) {
 	dep, ok := s.requireOntology(c)
 	if !ok {
 		return
 	}
-	matches := dep.KG.Query(c.Query("s"), c.Query("p"), c.Query("o"))
+	subj, pred, obj := c.Query("s"), c.Query("p"), c.Query("o")
+	skill := c.Query("skill")
+
+	var matches []store.Triple
+	if skill != "" {
+		allowedTiers := s.resolveSkillTiers(skill)
+		matches = dep.KG.QueryScoped(subj, pred, obj, allowedTiers)
+	} else {
+		matches = dep.KG.Query(subj, pred, obj)
+	}
 	if matches == nil {
 		matches = []store.Triple{}
 	}
