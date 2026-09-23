@@ -284,7 +284,7 @@ Tier 隔离三条护城河。
 | Plan | Title | Status | Depends |
 |------|-------|--------|---------|
 | 42-01 | Audit-Open Triage Report | 🚧 Pending | — |
-| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09) | 🚧 Pending | 42-01 |
+| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09) | ✅ Complete | 42-01 |
 | 42-03 | Operator Live Verification Bundle (Phase 39 human_needed 4 + Phase 41 hybrid ≥ 0.85 + 42-01 needs-live 项) | 🚧 Pending | 42-01 |
 | 42-04 | v1.4 Closure Doc Update (MILESTONE_SUMMARY CR-01 framing + STATE.md 节替换 + audit-open close report) | 🚧 Pending | 42-02, 42-03 |
 
