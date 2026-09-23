@@ -227,7 +227,7 @@ Tier 隔离三条护城河。
 5. Admin UI 提供：SPARQL Playground (代码编辑器 + 结果面板) + MCP Inspector (tools list + 测试调用) + Hybrid 调试 (KG expansion 可视化 + Milvus 命中列表)
 6. `verify-phase-41.sh` 全绿：MCP tools 可调用 + SPARQL endpoint 正常 + Hybrid Q1 召回 ≥ 0.85
 
-**Plans**: 6/6 planned
+**Plans**: 2/6 complete — 41-01 MCP stdio server / 41-02 SPARQL endpoint (bc02242+5e9c332)
 
 **Wave 1**
 
