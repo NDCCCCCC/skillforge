@@ -17,21 +17,23 @@
 package server
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/skillforge/skillforge/internal/ontology/store"
+	"github.com/skillforge/skillforge/internal/retriever"
 )
 
 const (
-	testNS       = "http://skillforge.local/ontology#"
-	rdfType      = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+	testNS        = "http://skillforge.local/ontology#"
+	rdfType       = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 	belongsToTier = testNS + "belongsToTier"
-	skfSkill     = testNS + "Skill"
-	skfTier      = testNS + "Tier"
-	skfNote      = testNS + "NoteChunk"
-	skfTable     = testNS + "TableSchema"
+	skfSkill      = testNS + "Skill"
+	skfTier       = testNS + "Tier"
+	skfNote       = testNS + "NoteChunk"
+	skfTable      = testNS + "TableSchema"
 )
 
 // fixtureKG builds an in-memory store with known triples for testing
@@ -116,9 +118,9 @@ func TestSparqlQueryScoped_Pagination(t *testing.T) {
 	pattern := SparqlPattern{Limit: 5, Offset: 0}
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 16, resp.Count)   // total before pagination
-	assert.True(t, resp.Truncated)    // 16 > 5
-	assert.Len(t, resp.Results, 5)    // page size = 5
+	assert.Equal(t, 16, resp.Count) // total before pagination
+	assert.True(t, resp.Truncated)  // 16 > 5
+	assert.Len(t, resp.Results, 5)  // page size = 5
 }
 
 // TestSparqlQueryScoped_Truncated results > limit sets Truncated=true.
@@ -234,4 +236,254 @@ func TestSparqlQueryScoped_DefaultLimit(t *testing.T) {
 	assert.Equal(t, 16, resp.Count)
 	assert.False(t, resp.Truncated)
 	assert.Len(t, resp.Results, 16)
+}
+
+// ---------------------------------------------------------------------------
+// Hybrid Retrieval tests
+// ---------------------------------------------------------------------------
+
+// mockEmbedder returns a fixed vector for testing.
+type mockEmbedder struct{}
+
+func (m *mockEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	// Return a 1024-dim zero vector (matching BGE-M3 dimension).
+	return make([]float32, 1024), nil
+}
+
+func (m *mockEmbedder) Dimensions() int { return 1024 }
+
+// mockRetriever returns canned hits for testing.
+type mockRetriever struct {
+	hits []retriever.Hit
+	err  error
+}
+
+func (m *mockRetriever) Search(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]retriever.Hit, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.hits, nil
+}
+func (m *mockRetriever) Health(ctx context.Context) error                            { return nil }
+func (m *mockRetriever) Ensure(ctx context.Context) error                            { return nil }
+func (m *mockRetriever) Insert(ctx context.Context, docs []retriever.Document) error { return nil }
+func (m *mockRetriever) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, error) {
+	return nil, nil
+}
+func (m *mockRetriever) GetChunk(ctx context.Context, id int64) (retriever.ChunkContent, error) {
+	return retriever.ChunkContent{}, retriever.ErrChunkNotFound
+}
+func (m *mockRetriever) GetMaxID(ctx context.Context, tier string) (int64, error) { return 0, nil }
+func (m *mockRetriever) Disconnect() error                                        { return nil }
+
+// TestHybridSearchScoped_OneHop verifies KG expansion with MaxHops=1 returns
+// direct neighbors only (via referencesTable edges).
+func TestHybridSearchScoped_OneHop(t *testing.T) {
+	kg := store.New()
+	kg.Insert(store.Triple{S: testNS + "note_a", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: belongsToTier, O: testNS + "sql-guides"})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: testNS + "referencesTable", O: testNS + "tbl_x"})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: rdfType, O: skfTable})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: belongsToTier, O: testNS + "sql-guides"})
+
+	mr := &mockRetriever{hits: []retriever.Hit{
+		{Score: 0.9, Content: "test content", Source: "authority/test.md"},
+	}}
+	emb := &mockEmbedder{}
+
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 1, Rerank: false}, []string{"sql-guides"}, kg, mr, emb, nil)
+	assert.NoError(t, err)
+	// note_a + tbl_x = 2 KG nodes
+	assert.Len(t, resp.KGNodes, 2)
+	// 1 edge: note_a → tbl_x
+	assert.Len(t, resp.KGEdges, 1)
+	// Milvus called
+	assert.Len(t, resp.MilvusHits, 1)
+}
+
+// TestHybridSearchScoped_TwoHops verifies MaxHops=2 returns 2-hop neighbors.
+func TestHybridSearchScoped_TwoHops(t *testing.T) {
+	kg := store.New()
+	// note_a → tbl_x (1-hop)
+	kg.Insert(store.Triple{S: testNS + "note_a", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: belongsToTier, O: testNS + "sql-guides"})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: testNS + "referencesTable", O: testNS + "tbl_x"})
+	// tbl_x → note_b (2-hop)
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: rdfType, O: skfTable})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: belongsToTier, O: testNS + "sql-guides"})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: testNS + "referencesTable", O: testNS + "note_b"})
+	kg.Insert(store.Triple{S: testNS + "note_b", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_b", P: belongsToTier, O: testNS + "sql-guides"})
+
+	mr := &mockRetriever{hits: []retriever.Hit{}}
+	emb := &mockEmbedder{}
+
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 2, Rerank: false}, []string{"sql-guides"}, kg, mr, emb, nil)
+	assert.NoError(t, err)
+	// note_a + tbl_x + note_b = 3 nodes
+	assert.Len(t, resp.KGNodes, 3)
+}
+
+// TestHybridSearchScoped_TierFilter verifies tier filtering: only entities
+// in allowedTiers appear in KG expansion.
+func TestHybridSearchScoped_TierFilter(t *testing.T) {
+	kg := store.New()
+	// note_sql in sql-guides tier
+	kg.Insert(store.Triple{S: testNS + "note_sql", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_sql", P: belongsToTier, O: testNS + "sql-guides"})
+	kg.Insert(store.Triple{S: testNS + "note_sql", P: testNS + "referencesTable", O: testNS + "tbl_sql"})
+	kg.Insert(store.Triple{S: testNS + "tbl_sql", P: rdfType, O: skfTable})
+	kg.Insert(store.Triple{S: testNS + "tbl_sql", P: belongsToTier, O: testNS + "sql-guides"})
+	// note_auth in authority tier (should be filtered when sql-guides only)
+	kg.Insert(store.Triple{S: testNS + "note_auth", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_auth", P: belongsToTier, O: testNS + "authority"})
+	kg.Insert(store.Triple{S: testNS + "note_auth", P: testNS + "referencesTable", O: testNS + "tbl_auth"})
+	kg.Insert(store.Triple{S: testNS + "tbl_auth", P: rdfType, O: skfTable})
+	kg.Insert(store.Triple{S: testNS + "tbl_auth", P: belongsToTier, O: testNS + "authority"})
+
+	mr := &mockRetriever{hits: []retriever.Hit{}}
+	emb := &mockEmbedder{}
+
+	// Restrict to sql-guides tier only
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 1, Rerank: false}, []string{"sql-guides"}, kg, mr, emb, nil)
+	assert.NoError(t, err)
+	// Only sql-guides entities visible
+	for _, node := range resp.KGNodes {
+		assert.NotEqual(t, testNS+"note_auth", node.ID)
+		assert.NotEqual(t, testNS+"tbl_auth", node.ID)
+	}
+}
+
+// TestHybridSearchScoped_Rerank verifies that with Rerank=true and a reranker
+// function, results are re-ordered.
+func TestHybridSearchScoped_Rerank(t *testing.T) {
+	kg := store.New()
+	kg.Insert(store.Triple{S: testNS + "note_a", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: belongsToTier, O: testNS + "sql-guides"})
+
+	hits := []retriever.Hit{
+		{Score: 0.9, Content: "content A", Source: "a.md"},
+		{Score: 0.8, Content: "content B", Source: "b.md"},
+		{Score: 0.7, Content: "content C", Source: "c.md"},
+	}
+	mr := &mockRetriever{hits: hits}
+	emb := &mockEmbedder{}
+
+	reranker := func(ctx context.Context, query string, hits []HybridMilvusHit) ([]HybridMilvusHit, error) {
+		// Reverse order for test verification
+		out := make([]HybridMilvusHit, len(hits))
+		for i, h := range hits {
+			out[len(hits)-1-i] = h
+		}
+		return out, nil
+	}
+
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 1, Rerank: true}, []string{"sql-guides"}, kg, mr, emb, reranker)
+	assert.NoError(t, err)
+	// After reversing, first hit should be "content C"
+	assert.Equal(t, "content C", resp.MilvusHits[0].Text)
+}
+
+// TestHybridSearchScoped_NoRerank verifies that with Rerank=false, Milvus
+// top-k results are returned directly without reranking.
+func TestHybridSearchScoped_NoRerank(t *testing.T) {
+	kg := store.New()
+	kg.Insert(store.Triple{S: testNS + "note_a", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: belongsToTier, O: testNS + "sql-guides"})
+
+	hits := []retriever.Hit{
+		{Score: 0.9, Content: "top content", Source: "top.md"},
+		{Score: 0.8, Content: "second content", Source: "second.md"},
+	}
+	mr := &mockRetriever{hits: hits}
+	emb := &mockEmbedder{}
+
+	// nil reranker + false rerank flag
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 1, Rerank: false}, []string{"sql-guides"}, kg, mr, emb, nil)
+	assert.NoError(t, err)
+	assert.Len(t, resp.MilvusHits, 2)
+	// Order preserved from Milvus
+	assert.Equal(t, "top content", resp.MilvusHits[0].Text)
+}
+
+// TestHybridSearchScoped_EmptyKGExpansion verifies that when KG returns no
+// matching entities, Milvus is still queried (KG subgraph empty but Milvus works).
+func TestHybridSearchScoped_EmptyKGExpansion(t *testing.T) {
+	kg := store.New()
+	// No ABox triples — KG expansion yields empty node/edge set
+	mr := &mockRetriever{hits: []retriever.Hit{
+		{Score: 0.9, Content: "milvus hit", Source: "test.md"},
+	}}
+	emb := &mockEmbedder{}
+
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 1, Rerank: false}, []string{"sql-guides"}, kg, mr, emb, nil)
+	assert.NoError(t, err)
+	// KG subgraph empty
+	assert.Len(t, resp.KGNodes, 0)
+	assert.Len(t, resp.KGEdges, 0)
+	// Milvus still returned its hits
+	assert.Len(t, resp.MilvusHits, 1)
+	assert.Equal(t, "milvus hit", resp.MilvusHits[0].Text)
+}
+
+// TestHybridSearchScoped_DefaultHops verifies MaxHops defaults to 1 when 0.
+func TestHybridSearchScoped_DefaultHops(t *testing.T) {
+	kg := store.New()
+	kg.Insert(store.Triple{S: testNS + "note_a", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: belongsToTier, O: testNS + "sql-guides"})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: testNS + "referencesTable", O: testNS + "tbl_x"})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: rdfType, O: skfTable})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: belongsToTier, O: testNS + "sql-guides"})
+
+	mr := &mockRetriever{hits: []retriever.Hit{}}
+	emb := &mockEmbedder{}
+
+	// MaxHops = 0 should default to 1
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 0, Rerank: false}, []string{"sql-guides"}, kg, mr, emb, nil)
+	assert.NoError(t, err)
+	assert.Len(t, resp.KGNodes, 2) // note_a + tbl_x (1-hop expansion)
+}
+
+// TestHybridSearchScoped_RerankError verifies reranker errors are non-fatal
+// (falls back to Milvus results).
+func TestHybridSearchScoped_RerankError(t *testing.T) {
+	kg := store.New()
+	kg.Insert(store.Triple{S: testNS + "note_a", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: belongsToTier, O: testNS + "sql-guides"})
+
+	hits := []retriever.Hit{{Score: 0.9, Content: "original", Source: "orig.md"}}
+	mr := &mockRetriever{hits: hits}
+	emb := &mockEmbedder{}
+
+	// Reranker that always returns error
+	badReranker := func(ctx context.Context, query string, hits []HybridMilvusHit) ([]HybridMilvusHit, error) {
+		return nil, assert.AnError
+	}
+
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 1, Rerank: true}, []string{"sql-guides"}, kg, mr, emb, badReranker)
+	assert.NoError(t, err) // error is logged, not returned
+	// Falls back to Milvus results
+	assert.Equal(t, "original", resp.MilvusHits[0].Text)
+}
+
+// TestHybridSearchScoped_MaxHopsCap verifies MaxHops > 2 is capped to 2.
+func TestHybridSearchScoped_MaxHopsCap(t *testing.T) {
+	kg := store.New()
+	kg.Insert(store.Triple{S: testNS + "note_a", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: belongsToTier, O: testNS + "sql-guides"})
+	kg.Insert(store.Triple{S: testNS + "note_a", P: testNS + "referencesTable", O: testNS + "tbl_x"})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: rdfType, O: skfTable})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: belongsToTier, O: testNS + "sql-guides"})
+	kg.Insert(store.Triple{S: testNS + "tbl_x", P: testNS + "referencesTable", O: testNS + "note_b"})
+	kg.Insert(store.Triple{S: testNS + "note_b", P: rdfType, O: skfNote})
+	kg.Insert(store.Triple{S: testNS + "note_b", P: belongsToTier, O: testNS + "sql-guides"})
+
+	mr := &mockRetriever{hits: []retriever.Hit{}}
+	emb := &mockEmbedder{}
+
+	// MaxHops = 99 should be capped to 2
+	resp, err := HybridSearchScoped(HybridQuery{Query: "test", MaxHops: 99, Rerank: false}, []string{"sql-guides"}, kg, mr, emb, nil)
+	assert.NoError(t, err)
+	// With 2-hop cap: note_a + tbl_x + note_b = 3
+	assert.Len(t, resp.KGNodes, 3)
 }
