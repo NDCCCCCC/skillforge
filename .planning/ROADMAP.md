@@ -45,7 +45,7 @@
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -86,7 +86,7 @@
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -127,7 +127,7 @@
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -168,7 +168,7 @@
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -209,7 +209,7 @@
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -250,7 +250,7 @@
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -295,7 +295,7 @@
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -445,7 +445,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
@@ -490,7 +490,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance)
+- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
 - [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [ ] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column
