@@ -117,6 +117,7 @@ import (
 	"github.com/skillforge/skillforge/internal/ontology/emitter"
 	"github.com/skillforge/skillforge/internal/ontology/induction"
 	onstore "github.com/skillforge/skillforge/internal/ontology/store"
+	"github.com/skillforge/skillforge/internal/ontology/shacl"
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/externalauth"
@@ -919,6 +920,35 @@ func main() {
 	if err := ontologyKG.WriteSnapshot(kgSnapshotPath); err != nil {
 		log.Printf("[WARN] cmd/server: ontology boot snapshot (%s): %v", kgSnapshotPath, err)
 	}
+
+	// Phase 40-06 — SHACL validation (D-SHACL-02 / D-PROV-08):
+	// Boot runs SHACL validation after KG snapshot load. Error entities
+	// are moved to quarantine; warnings are recorded but allowed through.
+	// Violations never block boot (D-SHACL-02: internal network teaches
+	// that service availability > data quality enforcement at startup).
+	shaclShapesPath := envOr("SKILLFORGE_SHACL_SHAPES", filepath.Join("internal", "ontology", "shacl", "shapes.ttl"))
+	shaclReport, shaclErr := shacl.Validate(ontologyKG, shaclShapesPath)
+	if shaclErr != nil {
+		// Non-fatal: log and continue. Boot proceeds without blocking on SHACL.
+		log.Printf("[WARN] cmd/server: SHACL validation: %v", shaclErr)
+	} else {
+		// D-SHACL-02: error-level entities → quarantine; warnings stay in KG.
+		for _, q := range shaclReport.Quarantined {
+			for _, t := range ontologyKG.Query(q.Entity, "", "") {
+				ontologyKG.Quarantine(t)
+			}
+		}
+		// Cache the report so GET /api/admin/governance/shacl can serve it.
+		ontologyKG.SetShaclReport(shaclReport)
+		if shaclReport.Health == "ok" {
+			log.Printf("[OK] cmd/server: SHACL validation passed (health=%s, %d triples)",
+				shaclReport.Health, shaclReport.TripleCount)
+		} else {
+			log.Printf("[WARN] cmd/server: SHACL validation: health=%s, errors=%d, warnings=%d, quarantined=%d",
+				shaclReport.Health, shaclReport.ErrorCount, shaclReport.WarningCount, len(shaclReport.Quarantined))
+		}
+	}
+
 	ontologyManager, err := induction.NewManager(ontologyNS, ontologyDataDir, cm, ontologyKG)
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: ontology induction manager: %v", err)

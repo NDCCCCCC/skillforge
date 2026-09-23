@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tggo/goRDFlib/graph"
@@ -75,21 +76,38 @@ type Provenance struct {
 	ExtractedAt string `json:"extracted_at"`            // D-PROV-11: RFC3339 UTC
 }
 
-// Store is a concurrency-safe in-memory triple store with three indices.
+// Store is a concurrency-safe in-memory triple store with three indices and
+// an optional quarantine layer for SHACL error-level entities (D-SHACL-02).
+//
+// Quarantined entities are removed from the main indices (all/byS/byP/byO)
+// and stored in the quarantined map keyed by entity URI. Warning entities
+// remain in the main indices per D-SHACL-02. The cached SHACL report is
+// set by the boot-time validation call and served via the admin API.
 type Store struct {
 	mu  sync.RWMutex
 	all []Triple
 	byS map[string][]int
 	byP map[string][]int
 	byO map[string][]int
+
+	// quarantined maps entity URI → its triples (D-SHACL-02).
+	// Error-level violation entities are moved here from main indices.
+	quarantined map[string][]Triple
+
+	// shaclReport caches the result of the last SHACL validation run
+	// (boot or rollback trigger). Stored as interface{} to avoid importing
+	// the shacl package (shacl imports store). Caller type-asserts to
+	// *shacl.Report.
+	shaclReport atomic.Value
 }
 
 // New returns an empty Store.
 func New() *Store {
 	return &Store{
-		byS: map[string][]int{},
-		byP: map[string][]int{},
-		byO: map[string][]int{},
+		byS:        map[string][]int{},
+		byP:        map[string][]int{},
+		byO:        map[string][]int{},
+		quarantined: map[string][]Triple{},
 	}
 }
 
@@ -166,6 +184,81 @@ func (s *Store) DeleteSubject(subject string) int {
 		s.byO[t.O] = append(s.byO[t.O], idx)
 	}
 	return removed
+}
+
+// Quarantine moves a triple from the main indices to the quarantine map.
+// The triple is removed from all/byS/byP/byO and appended to quarantined[entity].
+// D-SHACL-02: error-level violation entities are quarantined; warning entities
+// remain in the main KG.
+func (s *Store) Quarantine(t Triple) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entity := t.S
+
+	// Remove from all slice (swap-remove pattern).
+	idx := -1
+	for i, tr := range s.all {
+		if tr.S == entity && tr.P == t.P && tr.O == t.O {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return
+	}
+	last := len(s.all) - 1
+	s.all[idx] = s.all[last]
+	s.all = s.all[:last]
+
+	// Rebuild indices.
+	s.byS = make(map[string][]int, len(s.byS))
+	s.byP = make(map[string][]int, len(s.byP))
+	s.byO = make(map[string][]int, len(s.byO))
+	for i, tr := range s.all {
+		s.byS[tr.S] = append(s.byS[tr.S], i)
+		s.byP[tr.P] = append(s.byP[tr.P], i)
+		s.byO[tr.O] = append(s.byO[tr.O], i)
+	}
+
+	// Append to quarantine.
+	s.quarantined[entity] = append(s.quarantined[entity], t)
+}
+
+// QuarantinedEntity is the store-level view of a quarantined entity
+// (Entity URI + triple count). Full violation details live in the
+// cached SHACL report.
+type QuarantinedEntity struct {
+	Entity      string `json:"entity"`
+	TripleCount int    `json:"triple_count"`
+}
+
+// QuarantinedEntities returns all quarantined entities grouped with their triple
+// counts, suitable for the admin API response.
+func (s *Store) QuarantinedEntities() []QuarantinedEntity {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]QuarantinedEntity, 0, len(s.quarantined))
+	for entity, triples := range s.quarantined {
+		out = append(out, QuarantinedEntity{
+			Entity:      entity,
+			TripleCount: len(triples),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Entity < out[j].Entity })
+	return out
+}
+
+// SetShaclReport caches the SHACL validation report on the store.
+// The report is stored as interface{} to avoid a circular import with the
+// shacl package.
+func (s *Store) SetShaclReport(report interface{}) {
+	s.shaclReport.Store(report)
+}
+
+// GetShaclReport returns the cached SHACL report, or nil if validation has
+// not run yet. Caller type-asserts to *shacl.Report.
+func (s *Store) GetShaclReport() interface{} {
+	return s.shaclReport.Load()
 }
 
 // Len returns the number of stored triples.
