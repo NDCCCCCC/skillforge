@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-23T06:21:00.000Z"
-last_activity: 2026-09-23 -- Phase 41-04 complete: 11th tab 平台 wired (5a1f5ef/bad1210/faf63ab/1807abc); PlatformTab placeholder + store union + AdminDashboard + AdminFeedbackTabs 11 entries
+last_updated: "2026-09-23T06:36:00.000Z"
+last_activity: 2026-09-23 -- Phase 41-05 complete: three platform views (6e4cff4/3d23356/3423893); CodeMirror 6 deps + types + API + SparqlPlayground/McpInspector/HybridDebug views
 progress:
   total_phases: 11
   completed_phases: 3
   total_plans: 31
-  completed_plans: 29
-  percent: 29
+  completed_plans: 30
+  percent: 30
 ---
 
 # State — SkillForge
@@ -18,9 +18,9 @@ progress:
 ## Current Position
 
 Phase: 41 (platform-layer-mcp-server-sparql-endpoint-hybrid-retrieval) — EXECUTING
-Plan: 5 of 6
-Status: Executing Phase 41
-Last activity: 2026-09-23 -- Phase 41-04 complete: 11th tab 平台 wired (5a1f5ef/bad1210/faf63ab/1807abc); PlatformTab placeholder + store union + AdminDashboard + AdminFeedbackTabs 11 entries
+Plan: 6 of 6
+Status: Phase 41 plan 05 complete (plan 06 remaining)
+Last activity: 2026-09-23 -- Phase 41-05 complete: three platform views (6e4cff4/3d23356/3423893); CodeMirror 6 deps + types + API + SparqlPlayground/McpInspector/HybridDebug views
 
 ## v1.4 Phase Map
 
@@ -129,4 +129,5 @@ Last activity: 2026-09-23 -- Phase 41-04 complete: 11th tab 平台 wired (5a1f5e
 - [Phase 40]: 40-09 verify-phase-40.sh: MSYS_NO_PATHCONV=1 + BASH_SOURCE[0] for Windows path resolution; targets ./internal/ontology/... only (pre-existing cgo issue in other packages); date +%s for wall-clock timing (not bash SECONDS builtin); TestProvenanceCoverage in store_test.go per D-PROV-07 scope
 - [Phase 41]: 41-01 MCP server: mark3labs/mcp-go v1.1.0 (community standard; eino-ext is client-only); 5 tools: skf_query (QueryScoped triple pattern), skf_skills (Skill enumeration), skf_chunk_for (ECL chunk lookup via Adjacent1+referencesTable), skf_schema (TBox class/property overview), skf_neighbors (N-hop graph expansion); SKILLFORGE_MCP_SERVICE_SKILL mandatory at startup (D-TRUST-02); stdio subprocess runs in goroutine; admin API routes: GET /status, GET /tools, POST /invoke — all token-gated
 - [Phase 41]: 41-02 SPARQL endpoint: SparqlQueryScoped shared function (tier filter via QueryScoped, filter substring match, offset/limit pagination, 500 cap); POST /api/sparql registered NOT under /api/admin/ (X-Skill-Name header is token, not X-Admin-Token); 401 if X-Skill-Name absent or skill not found; 11 unit tests covering all query shapes, tier filtering, pagination, truncation, error cases
-- [Phase 41]: 41-03 Hybrid Retrieval: HybridSearchScoped pipeline (KG 1-2 hop expansion via Adjacent1/Adjacent2 → Milvus top-50 → optional BGE-reranker → top-5); POST /api/admin/platform/hybrid/search with X-Skill-Name tier isolation; SKILLFORGE_RETRIEVAL_RERANK (default true) + SKILLFORGE_HYBRID_HOPS (default 1) env vars; all KG ops via QueryScoped; reranker errors non-fatal (log + fall back); 8 unit tests
+- [Phase 41]: 41-03 Hybrid Retrieval: HybridSearchScoped pipeline (KG 1-2 hop expansion via Adjacent1+Adjacent2 → Milvus top-50 → optional BGE-reranker → top-5); POST /api/admin/platform/hybrid/search with X-Skill-Name tier isolation; SKILLFORGE_RETRIEVAL_RERANK (default true) + SKILLFORGE_HYBRID_HOPS (default 1) env vars; all KG ops via QueryScoped; reranker errors non-fatal (log + fall back); 8 unit tests
+- [Phase 41]: 41-05 FE platform views: CodeMirror 6 via plain npm (no wrapper lib); mount via useEffect + EditorView.destroy() cleanup; Ctrl+Enter handler re-attaches on skillName/limit deps change to avoid stale closure; skill state lifted to PlatformTab level (passed to SparqlPlaygroundView + HybridDebugView; MCP Inspector is server-scoped only); KG Expansion uses node-list table + detail panel (not Cytoscape) per UI-SPEC discretion resolution; schemaToSkeleton() replaces null with '' for required string fields to ensure valid JSON output
