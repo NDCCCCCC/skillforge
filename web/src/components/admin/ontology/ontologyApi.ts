@@ -52,11 +52,12 @@ export function fetchKGStats(): Promise<KGStatsResponse> {
   return getJSON<KGStatsResponse>('/api/admin/ontology/kg/stats');
 }
 
-export function fetchKGQuery(s: string, p: string, o: string): Promise<KGQueryResponse> {
+export function fetchKGQuery(s: string, p: string, o: string, skill?: string): Promise<KGQueryResponse> {
   const params = new URLSearchParams();
   if (s) params.set('s', s);
   if (p) params.set('p', p);
   if (o) params.set('o', o);
+  if (skill) params.set('skill', skill);
   const qs = params.toString();
   return getJSON<KGQueryResponse>(`/api/admin/ontology/kg/query${qs ? `?${qs}` : ''}`);
 }

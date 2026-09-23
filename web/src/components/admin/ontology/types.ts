@@ -41,6 +41,17 @@ export interface KGTriple {
   s: string;
   p: string;
   o: string;
+  provenance?: ProvenanceInfo;
+}
+
+export type ProvenanceKind = 'file' | 'emitter' | 'induction';
+
+export interface ProvenanceInfo {
+  source_kind: ProvenanceKind;
+  source_path: string;
+  line_start?: number;
+  line_end?: number;
+  extracted_at: string;
 }
 
 export interface KGQueryResponse {
