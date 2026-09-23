@@ -1,0 +1,799 @@
+// Copyright 2026 SkillForge Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+// Package shacl implements a pure-Go SHACL validation engine.
+//
+// D-SHACL-01: Zero third-party Go SHACL library dependencies. Shapes are
+// expressed in standard SHACL Turtle syntax and parsed via goRDFlib's
+// turtle.Parse — the same library used for TBox loading in store.go.
+// Seven constraint types are implemented via switch cases: sh:minCount,
+// sh:maxCount, sh:class, sh:datatype, sh:nodeKind, sh:pattern, sh:in.
+// Adding a new constraint type requires only a new case branch.
+//
+// D-SHACL-02: Violations are split into error (structural / quarantined)
+// and warning (optional property missing / provenance-missing). Error
+// entities are added to Quarantined and excluded from the main KG index.
+// Warning entities are allowed through with violations recorded.
+package shacl
+
+import (
+	"fmt"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/tggo/goRDFlib/graph"
+	"github.com/tggo/goRDFlib/term"
+	"github.com/tggo/goRDFlib/turtle"
+
+	"github.com/skillforge/skillforge/internal/ontology/store"
+)
+
+// ViolationSeverity categorises a constraint violation.
+type ViolationSeverity string
+
+const (
+	SeverityError   ViolationSeverity = "error"
+	SeverityWarning ViolationSeverity = "warning"
+)
+
+// Violation records one SHACL constraint violation.
+type Violation struct {
+	Severity    ViolationSeverity `json:"severity"`
+	Entity      string            `json:"entity"`
+	Constraint  string            `json:"constraint"`
+	Detail      string            `json:"detail"`
+	SourcePath  string            `json:"source_path,omitempty"`
+	LineStart   int               `json:"line_start,omitempty"`
+	LineEnd     int               `json:"line_end,omitempty"`
+}
+
+// QuarantinedEntity is an entity that has at least one error-level violation.
+type QuarantinedEntity struct {
+	Entity      string      `json:"entity"`
+	TripleCount int         `json:"triple_count"`
+	Violations  []Violation `json:"violations"`
+}
+
+// Report is the output of a SHACL validation run.
+type Report struct {
+	Health       string            `json:"health"`
+	ErrorCount   int               `json:"error_count"`
+	WarningCount int               `json:"warning_count"`
+	Warnings     []Violation       `json:"warnings"`
+	Quarantined  []QuarantinedEntity `json:"quarantined"`
+	TripleCount  int               `json:"triple_count"`
+	ShapesPath   string            `json:"shapes_path"`
+	ValidatedAt  string            `json:"validated_at"`
+	Trigger      string            `json:"trigger"`
+}
+
+// Validate runs full SHACL validation over the given KG store using
+// shapes parsed from shapesPath. Returns a Report or an error.
+//
+// Health derivation (D-SHACL-03 three-colour mapping):
+//   - "error"  if any error-level violations exist (at least one entity quarantined)
+//   - "warn"   if only warning-level violations exist
+//   - "ok"     if zero violations
+func Validate(kg *store.Store, shapesPath string) (*Report, error) {
+	return ValidateWithTrigger(kg, shapesPath, "boot")
+}
+
+// ValidateWithTrigger is the same as Validate but allows the caller to
+// specify the trigger context ("boot" or "rollback").
+func ValidateWithTrigger(kg *store.Store, shapesPath string, trigger string) (*Report, error) {
+	parsed, err := parseShapes(shapesPath)
+	if err != nil {
+		return nil, fmt.Errorf("shacl: parse shapes: %w", err)
+	}
+
+	report := &Report{
+		ShapesPath:  shapesPath,
+		ValidatedAt: storeNow(),
+		Trigger:     trigger,
+	}
+
+	// Collect all triples for triple-count reporting.
+	report.TripleCount = kg.Len()
+
+	// Collect all quarantined entities and warnings.
+	entityErrors := map[string][]Violation{} // entity → violations (errors only)
+	entityWarnings := map[string][]Violation{} // entity → violations (warnings only)
+
+	// Walk each NodeShape.
+	for _, ns := range parsed.NodeShapes {
+		// Collect all individuals of the target class.
+		individuals := collectIndividuals(kg, ns.TargetClass)
+
+		for _, entity := range individuals {
+			for _, prop := range ns.Properties {
+				violations := evaluateProperty(kg, entity, prop, parsed)
+				for _, v := range violations {
+					v.Entity = entity
+					if v.Severity == SeverityError {
+						entityErrors[entity] = append(entityErrors[entity], v)
+					} else {
+						entityWarnings[entity] = append(entityWarnings[entity], v)
+					}
+				}
+			}
+		}
+	}
+
+	// Global reference integrity: every skf:NoteChunk with skf:referencesTable
+	// must point to an existing skf:TableSchema.
+	globalRefs := checkGlobalReferences(kg, parsed)
+	for _, v := range globalRefs {
+		if v.Severity == SeverityError {
+			entityErrors[v.Entity] = append(entityErrors[v.Entity], v)
+		} else {
+			entityWarnings[v.Entity] = append(entityWarnings[v.Entity], v)
+		}
+	}
+
+	// Build quarantined list from entities that have at least one error.
+	for entity, violations := range entityErrors {
+		tripleCount := len(kg.Query(entity, "", ""))
+		report.Quarantined = append(report.Quarantined, QuarantinedEntity{
+			Entity:      entity,
+			TripleCount: tripleCount,
+			Violations:  violations,
+		})
+		report.ErrorCount += len(violations)
+	}
+
+	// Collect pure warnings (entities with only warnings, no errors).
+	for entity, violations := range entityWarnings {
+		if _, hasError := entityErrors[entity]; !hasError {
+			report.Warnings = append(report.Warnings, violations...)
+			report.WarningCount += len(violations)
+		}
+	}
+
+	// Derive health.
+	switch {
+	case report.ErrorCount > 0:
+		report.Health = "error"
+	case report.WarningCount > 0:
+		report.Health = "warn"
+	default:
+		report.Health = "ok"
+	}
+
+	return report, nil
+}
+
+// tripleRec is a local triple record used during shape parsing.
+type tripleRec struct {
+	S, P, O string
+}
+
+// parsedShapes holds the in-memory representation of a SHACL shapes file.
+type parsedShapes struct {
+	NodeShapes        []nodeShape
+	GlobalRefs        []propertyConstraint // skf:referencesTable → TableSchema
+	GlobalBelongsTo   []propertyConstraint // skf:belongsToTier → Tier
+	GlobalHasRead     []propertyConstraint
+	GlobalHasWrite    []propertyConstraint
+	GlobalPoweredBy   []propertyConstraint
+	GlobalRequires   []propertyConstraint
+	GlobalHasSubCat   []propertyConstraint
+	GlobalBelongsNote []propertyConstraint
+}
+
+type nodeShape struct {
+	TargetClass string
+	Properties  []propertyConstraint
+}
+
+type propertyConstraint struct {
+	Path       string // property IRI (e.g. skf:categoryName)
+	MinCount   *int
+	MaxCount   *int
+	Class      string // sh:class target IRI
+	Datatype   string // XSD datatype IRI
+	NodeKind   string // sh:nodeKind (IRI | BlankNode | Literal)
+	Pattern    string
+	In         []string // sh:in enumeration values
+	HasValue   string   // sh:hasValue
+	Message    string
+	Severity   ViolationSeverity // derived from context; provenance-missing → warning
+}
+
+// parseShapes reads and parses a SHACL TTL file via goRDFlib.
+func parseShapes(path string) (*parsedShapes, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read shapes file: %w", err)
+	}
+
+	g := graph.NewGraph()
+	if err := turtle.Parse(g, strings.NewReader(string(data))); err != nil {
+		return nil, fmt.Errorf("turtle parse: %w", err)
+	}
+
+	parsed := &parsedShapes{}
+
+	// Walk all triples to build shape structures.
+	// We collect sh:NodeShape subjects and their sh:property sh:PropertyShape blank nodes.
+
+	// Build a map of blank-node PropertyShapes by their parent NodeShape.
+	// Strategy: collect all (subject, predicate, object) triples and
+	// assemble structures in-memory.
+	var triplesList []tripleRec
+	for tr := range g.Triples(nil, nil, nil) {
+		triplesList = append(triplesList, tripleRec{
+			S: subjectStr(tr.Subject),
+			P: tr.Predicate.Value(),
+			O: objectStr(tr.Object),
+		})
+	}
+
+	// Index triples by subject.
+	byS := map[string][]tripleRec{}
+	for _, tr := range triplesList {
+		byS[tr.S] = append(byS[tr.S], tr)
+	}
+
+	// Find all sh:NodeShape subjects.
+	for _, subs := range byS {
+		isNodeShape := false
+		for _, tr := range subs {
+			if tr.P == ns("type") && tr.O == sh("NodeShape") {
+				isNodeShape = true
+				break
+			}
+		}
+		if !isNodeShape {
+			continue
+		}
+
+		ns := nodeShape{}
+
+		// Extract targetClass.
+		for _, tr := range subs {
+			if tr.P == sh("targetClass") {
+				ns.TargetClass = tr.O
+				break
+			}
+		}
+
+		// Extract property references (sh:property → blank node or IRI).
+		for _, tr := range subs {
+			if tr.P != sh("property") {
+				continue
+			}
+			propRef := tr.O // blank node ID or IRI
+			constraint := parsePropertyShape(byS, propRef)
+			if constraint.Path != "" {
+				ns.Properties = append(ns.Properties, constraint)
+			}
+		}
+
+		parsed.NodeShapes = append(parsed.NodeShapes, ns)
+	}
+
+	// Extract global property shapes (PropertyShapes attached directly, not via NodeShape).
+	// These encode cross-entity integrity rules like skf:referencesTable → skf:TableSchema.
+	for s, subs := range byS {
+		isPropShape := false
+		for _, tr := range subs {
+			if tr.P == ns("type") && tr.O == sh("PropertyShape") {
+				isPropShape = true
+				break
+			}
+		}
+		if !isPropShape {
+			continue
+		}
+
+		constraint := parsePropertyShape(byS, s)
+		if constraint.Path == "" {
+			continue
+		}
+
+		// Class-based property shapes (global integrity).
+		switch constraint.Path {
+		case pf("referencesTable"):
+			parsed.GlobalRefs = append(parsed.GlobalRefs, constraint)
+		case pf("belongsToTier"):
+			parsed.GlobalBelongsTo = append(parsed.GlobalBelongsTo, constraint)
+		case pf("hasReadAccess"):
+			parsed.GlobalHasRead = append(parsed.GlobalHasRead, constraint)
+		case pf("hasWriteAccess"):
+			parsed.GlobalHasWrite = append(parsed.GlobalHasWrite, constraint)
+		case pf("poweredBy"):
+			parsed.GlobalPoweredBy = append(parsed.GlobalPoweredBy, constraint)
+		case pf("requiresRefusal"):
+			parsed.GlobalRequires = append(parsed.GlobalRequires, constraint)
+		case pf("hasSubCategory"):
+			parsed.GlobalHasSubCat = append(parsed.GlobalHasSubCat, constraint)
+		case pf("belongsToNote"):
+			parsed.GlobalBelongsNote = append(parsed.GlobalBelongsNote, constraint)
+		}
+	}
+
+	return parsed, nil
+}
+
+func parsePropertyShape(byS map[string][]tripleRec, subject string) propertyConstraint {
+	subs := byS[subject]
+	if len(subs) == 0 {
+		return propertyConstraint{}
+	}
+
+	c := propertyConstraint{}
+
+	// Extract sh:path (required).
+	for _, tr := range subs {
+		if tr.P == sh("path") {
+			c.Path = expandPrefixed(tr.O)
+			break
+		}
+	}
+	if c.Path == "" {
+		// No path — skip.
+		return propertyConstraint{}
+	}
+
+	// sh:minCount
+	for _, tr := range subs {
+		if tr.P == sh("minCount") {
+			if v := parseInt(tr.O); v > 0 {
+				c.MinCount = &v
+			}
+			break
+		}
+	}
+
+	// sh:maxCount
+	for _, tr := range subs {
+		if tr.P == sh("maxCount") {
+			if v := parseInt(tr.O); v > 0 {
+				c.MaxCount = &v
+			}
+			break
+		}
+	}
+
+	// sh:class
+	for _, tr := range subs {
+		if tr.P == sh("class") {
+			c.Class = expandPrefixed(tr.O)
+			break
+		}
+	}
+
+	// sh:datatype
+	for _, tr := range subs {
+		if tr.P == sh("datatype") {
+			c.Datatype = expandPrefixed(tr.O)
+			break
+		}
+	}
+
+	// sh:nodeKind
+	for _, tr := range subs {
+		if tr.P == sh("nodeKind") {
+			c.NodeKind = expandPrefixed(tr.O)
+			break
+		}
+	}
+
+	// sh:pattern
+	for _, tr := range subs {
+		if tr.P == sh("pattern") {
+			c.Pattern = strings.Trim(tr.O, `"`)
+			break
+		}
+	}
+
+	// sh:in (list of values).
+	for _, tr := range subs {
+		if tr.P == sh("in") {
+			c.In = append(c.In, expandPrefixed(tr.O))
+		}
+	}
+
+	// sh:hasValue
+	for _, tr := range subs {
+		if tr.P == sh("hasValue") {
+			c.HasValue = expandPrefixed(tr.O)
+			break
+		}
+	}
+
+	// sh:message
+	for _, tr := range subs {
+		if tr.P == sh("message") {
+			c.Message = strings.Trim(tr.O, `"`)
+			break
+		}
+	}
+
+	// D-PROV-10: provenance-missing (skf:sourcePath on NoteChunk/TableSchema) is warning-only.
+	// Detect by path = skf:sourcePath.
+	if c.Path == pf("sourcePath") {
+		c.Severity = SeverityWarning
+	} else {
+		c.Severity = SeverityError
+	}
+
+	return c
+}
+
+// collectIndividuals returns all KG entities that are rdf:type of the given classIRI.
+func collectIndividuals(kg *store.Store, classIRI string) []string {
+	triples := kg.Query("", ns("type"), classIRI)
+	out := make([]string, 0, len(triples))
+	seen := map[string]bool{}
+	for _, tr := range triples {
+		if !seen[tr.S] {
+			seen[tr.S] = true
+			out = append(out, tr.S)
+		}
+	}
+	return out
+}
+
+// evaluateProperty evaluates all constraints of one property shape against one entity.
+// Returns zero or more violations.
+func evaluateProperty(kg *store.Store, entity string, c propertyConstraint, parsed *parsedShapes) []Violation {
+	var violations []Violation
+
+	// Collect all values for this property on this entity.
+	values := kg.Query(entity, c.Path, "")
+
+	// Evaluate each constraint type.
+	if c.MinCount != nil {
+		violations = append(violations, checkMinCount(entity, c, len(values))...)
+	}
+	if c.MaxCount != nil {
+		violations = append(violations, checkMaxCount(entity, c, len(values))...)
+	}
+	if c.Class != "" {
+		for _, val := range values {
+			violations = append(violations, checkClass(kg, entity, c, val.O)...)
+		}
+	}
+	if c.Datatype != "" {
+		for _, val := range values {
+			violations = append(violations, checkDatatype(entity, c, val.O)...)
+		}
+	}
+	if c.NodeKind != "" {
+		for _, val := range values {
+			violations = append(violations, checkNodeKind(entity, c, val.O)...)
+		}
+	}
+	if c.Pattern != "" {
+		for _, val := range values {
+			violations = append(violations, checkPattern(entity, c, val.O)...)
+		}
+	}
+	if len(c.In) > 0 {
+		for _, val := range values {
+			violations = append(violations, checkIn(entity, c, val.O)...)
+		}
+	}
+	if c.HasValue != "" {
+		violations = append(violations, checkHasValue(entity, c, values)...)
+	}
+
+	return violations
+}
+
+// checkMinCount fires when the number of property values is below minCount.
+func checkMinCount(entity string, c propertyConstraint, actualCount int) []Violation {
+	if c.MinCount != nil && actualCount < *c.MinCount {
+		sev := c.Severity
+		return []Violation{{
+			Severity:   sev,
+			Entity:     entity,
+			Constraint: "sh:minCount",
+			Detail:     fmt.Sprintf("property %s has %d value(s), minimum required is %d", c.Path, actualCount, *c.MinCount),
+		}}
+	}
+	return nil
+}
+
+// checkMaxCount fires when the number of property values exceeds maxCount.
+func checkMaxCount(entity string, c propertyConstraint, actualCount int) []Violation {
+	if c.MaxCount != nil && actualCount > *c.MaxCount {
+		return []Violation{{
+			Severity:   c.Severity,
+			Entity:     entity,
+			Constraint: "sh:maxCount",
+			Detail:     fmt.Sprintf("property %s has %d value(s), maximum allowed is %d", c.Path, actualCount, *c.MaxCount),
+		}}
+	}
+	return nil
+}
+
+// checkClass fires when a property value is not an instance of the required class.
+func checkClass(kg *store.Store, entity string, c propertyConstraint, value string) []Violation {
+	// Check if value is rdf:type of the required class.
+	triples := kg.Query(value, ns("type"), c.Class)
+	if len(triples) == 0 {
+		return []Violation{{
+			Severity:   c.Severity,
+			Entity:     entity,
+			Constraint: "sh:class",
+			Detail:     fmt.Sprintf("value <%s> of property %s is not a %s", value, c.Path, c.Class),
+		}}
+	}
+	return nil
+}
+
+// checkDatatype fires when a literal value does not match the required XSD datatype.
+func checkDatatype(entity string, c propertyConstraint, value string) []Violation {
+	// value is a literal string like `"some text"`.
+	lit := strings.Trim(value, `"`)
+	if lit == value {
+		// Not a literal — was an IRI. If datatype is required, this is a violation.
+		return []Violation{{
+			Severity:   c.Severity,
+			Entity:     entity,
+			Constraint: "sh:datatype",
+			Detail:     fmt.Sprintf("value <%s> of property %s is not a literal (expected %s)", value, c.Path, c.Datatype),
+		}}
+	}
+	// Validate XSD datatype.
+	dt := c.Datatype
+	if strings.HasSuffix(dt, "string") || dt == "" {
+		// xsd:string — all strings are valid.
+		return nil
+	}
+	if strings.HasSuffix(dt, "integer") || strings.HasSuffix(dt, "int") || strings.HasSuffix(dt, "long") || strings.HasSuffix(dt, "short") || strings.HasSuffix(dt, "byte") {
+		if _, err := parseInteger(lit); err != nil {
+			return []Violation{{
+				Severity:   c.Severity,
+				Entity:     entity,
+				Constraint: "sh:datatype",
+				Detail:     fmt.Sprintf("value '%s' of property %s is not a valid %s", lit, c.Path, dt),
+			}}
+		}
+		return nil
+	}
+	if strings.HasSuffix(dt, "boolean") || strings.HasSuffix(dt, "bool") {
+		if lit != "true" && lit != "false" && lit != "1" && lit != "0" {
+			return []Violation{{
+				Severity:   c.Severity,
+				Entity:     entity,
+				Constraint: "sh:datatype",
+				Detail:     fmt.Sprintf("value '%s' of property %s is not a valid %s", lit, c.Path, dt),
+			}}
+		}
+		return nil
+	}
+	if strings.HasSuffix(dt, "decimal") || strings.HasSuffix(dt, "float") || strings.HasSuffix(dt, "double") {
+		if _, err := parseFloat(lit); err != nil {
+			return []Violation{{
+				Severity:   c.Severity,
+				Entity:     entity,
+				Constraint: "sh:datatype",
+				Detail:     fmt.Sprintf("value '%s' of property %s is not a valid %s", lit, c.Path, dt),
+			}}
+		}
+		return nil
+	}
+	// Unknown datatype — allow.
+	return nil
+}
+
+// checkNodeKind fires when the node kind of a value does not match the expected kind.
+func checkNodeKind(entity string, c propertyConstraint, value string) []Violation {
+	isIRI := strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "skf:") || strings.Contains(value, ":")
+	isBlank := strings.HasPrefix(value, "_:")
+	isLiteral := strings.HasPrefix(value, `"`)
+
+	var expectedKind string
+	var valid bool
+	switch c.NodeKind {
+	case sh("IRI"):
+		expectedKind = "IRI"
+		valid = isIRI
+	case sh("BlankNode"):
+		expectedKind = "BlankNode"
+		valid = isBlank
+	case sh("Literal"):
+		expectedKind = "Literal"
+		valid = isLiteral
+	case sh("IRIOrLiteral"):
+		expectedKind = "IRIOrLiteral"
+		valid = isIRI || isLiteral
+	default:
+		return nil
+	}
+	if !valid {
+		return []Violation{{
+			Severity:   c.Severity,
+			Entity:     entity,
+			Constraint: "sh:nodeKind",
+			Detail:     fmt.Sprintf("value '%s' of property %s is not a %s", value, c.Path, expectedKind),
+		}}
+	}
+	return nil
+}
+
+// checkPattern fires when a string value does not match the required regex pattern.
+func checkPattern(entity string, c propertyConstraint, value string) []Violation {
+	if c.Pattern == "" {
+		return nil
+	}
+	lit := strings.Trim(value, `"`)
+	if lit == value {
+		// Not a literal — pattern doesn't apply.
+		return nil
+	}
+	matched, err := regexp.MatchString(c.Pattern, lit)
+	if err != nil {
+		return nil // Invalid regex — skip.
+	}
+	if !matched {
+		return []Violation{{
+			Severity:   c.Severity,
+			Entity:     entity,
+			Constraint: "sh:pattern",
+			Detail:     fmt.Sprintf("value '%s' of property %s does not match pattern '%s'", lit, c.Path, c.Pattern),
+		}}
+	}
+	return nil
+}
+
+// checkIn fires when a value is not in the permitted enumeration list.
+func checkIn(entity string, c propertyConstraint, value string) []Violation {
+	if len(c.In) == 0 {
+		return nil
+	}
+	lit := strings.Trim(value, `"`)
+	for _, permitted := range c.In {
+		if permitted == value || strings.Trim(permitted, `"`) == lit {
+			return nil
+		}
+	}
+	return []Violation{{
+		Severity:   c.Severity,
+		Entity:     entity,
+		Constraint: "sh:in",
+		Detail:     fmt.Sprintf("value '%s' of property %s is not in enumeration %v", value, c.Path, c.In),
+	}}
+}
+
+// checkHasValue fires when no property value equals the required hasValue.
+func checkHasValue(entity string, c propertyConstraint, values []store.Triple) []Violation {
+	for _, val := range values {
+		if val.O == c.HasValue {
+			return nil
+		}
+	}
+	return []Violation{{
+		Severity:   c.Severity,
+		Entity:     entity,
+		Constraint: "sh:hasValue",
+		Detail:     fmt.Sprintf("property %s has no value equal to '%s'", c.Path, c.HasValue),
+	}}
+}
+
+// checkGlobalReferences enforces cross-entity integrity:
+// every skf:NoteChunk with skf:referencesTable must point to an existing skf:TableSchema.
+func checkGlobalReferences(kg *store.Store, parsed *parsedShapes) []Violation {
+	var violations []Violation
+
+	// Get all NoteChunks with skf:referencesTable.
+	noteRefs := kg.Query("", pf("referencesTable"), "")
+	seenRef := map[string]bool{}
+	for _, tr := range noteRefs {
+		if seenRef[tr.S] {
+			continue
+		}
+		seenRef[tr.S] = true
+		target := tr.O
+		// Check that target exists as a skf:TableSchema.
+		if !existsType(kg, target, ns("type"), pf("TableSchema")) {
+			violations = append(violations, Violation{
+				Severity:   SeverityError,
+				Entity:     tr.S,
+				Constraint: "sh:class",
+				Detail:     fmt.Sprintf("skf:referencesTable target <%s> is not a skf:TableSchema instance", target),
+			})
+		}
+	}
+
+	return violations
+}
+
+// existsType checks whether an entity has a given rdf:type triple.
+func existsType(kg *store.Store, entity, _, typeIRI string) bool {
+	return len(kg.Query(entity, ns("type"), typeIRI)) > 0
+}
+
+// --- Namespace helpers ---
+
+func sh(rel string) string  { return "http://www.w3.org/ns/shacl#" + rel }
+func ns(rel string) string { return "http://www.w3.org/1999/02/22-rdf-syntax-ns#" + rel }
+func pf(rel string) string { return "http://skillforge.local/ontology#" + rel }
+
+// expandPrefixed converts a prefixed IRI like "skf:categoryName" to its full URI.
+// It handles the common prefixes used in SHACL shapes files.
+func expandPrefixed(value string) string {
+	if strings.HasPrefix(value, "skf:") {
+		return pf(strings.TrimPrefix(value, "skf:"))
+	}
+	if strings.HasPrefix(value, "rdf:") {
+		return ns(strings.TrimPrefix(value, "rdf:"))
+	}
+	if strings.HasPrefix(value, "xsd:") {
+		return "http://www.w3.org/2001/XMLSchema#" + strings.TrimPrefix(value, "xsd:")
+	}
+	if strings.HasPrefix(value, "sh:") {
+		return sh(strings.TrimPrefix(value, "sh:"))
+	}
+	if strings.HasPrefix(value, "rdfs:") {
+		return "http://www.w3.org/2000/01/rdf-schema#" + strings.TrimPrefix(value, "rdfs:")
+	}
+	return value
+}
+
+func subjectStr(s term.Subject) string {
+	switch v := s.(type) {
+	case term.URIRef:
+		return v.Value()
+	case term.BNode:
+		return "_:" + v.Value()
+	default:
+		return s.String()
+	}
+}
+
+func objectStr(o term.Term) string {
+	switch v := o.(type) {
+	case term.URIRef:
+		return v.Value()
+	case term.Literal:
+		if vs, ok := v.Value().(string); ok {
+			return `"` + vs + `"`
+		}
+		return fmt.Sprintf("%v", v.Value())
+	case term.BNode:
+		return "_:" + v.Value()
+	default:
+		return o.String()
+	}
+}
+
+func parseInt(s string) int {
+	var v int
+	fmt.Sscanf(s, "%d", &v)
+	return v
+}
+
+func parseInteger(s string) (int64, error) {
+	var v int64
+	_, err := fmt.Sscanf(s, "%d", &v)
+	return v, err
+}
+
+func parseFloat(s string) (float64, error) {
+	var v float64
+	_, err := fmt.Sscanf(s, "%f", &v)
+	return v, err
+}
+
+func storeNow() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}

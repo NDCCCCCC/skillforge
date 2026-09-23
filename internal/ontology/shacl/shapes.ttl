@@ -1,0 +1,232 @@
+# SHACL Shape Declarations for SkillForge Knowledge Graph
+# D-SHACL-01: Pure-Go SHACL validator using standard TTL shapes (goRDFlib turtle.Parse)
+# D-SHACL-04: 8 NodeShapes covering all classes emitted by Phase 38/39 emitter
+# Configurable path via SKILLFORGE_SHACL_SHAPES env (default data/ontology/shacl.ttl)
+#
+# Provenance shape (D-PROV-10): skf:sourcePath optional on NoteChunk/TableSchema (warning-only)
+# Namespace: http://skillforge.local/ontology# (matches emitter.go DefaultNS)
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ==============================================================================
+# GLOBAL PROPERTY SHAPES
+# ==============================================================================
+
+# skf:referencesTable — O must be a skf:TableSchema
+skf:referencesTableShape a sh:PropertyShape ;
+    sh:path skf:referencesTable ;
+    sh:class skf:TableSchema ;
+    sh:message "skf:referencesTable value must be a skf:TableSchema instance"@en .
+
+# skf:belongsToTier — O must be a skf:Tier
+skf:belongsToTierShape a sh:PropertyShape ;
+    sh:path skf:belongsToTier ;
+    sh:class skf:Tier ;
+    sh:message "skf:belongsToTier value must be a skf:Tier instance"@en .
+
+# skf:hasReadAccess — O must be a skf:KBCategory
+skf:hasReadAccessShape a sh:PropertyShape ;
+    sh:path skf:hasReadAccess ;
+    sh:class skf:KBCategory ;
+    sh:message "skf:hasReadAccess value must be a skf:KBCategory instance"@en .
+
+# skf:hasWriteAccess — O must be a skf:KBCategory
+skf:hasWriteAccessShape a sh:PropertyShape ;
+    sh:path skf:hasWriteAccess ;
+    sh:class skf:KBCategory ;
+    sh:message "skf:hasWriteAccess value must be a skf:KBCategory instance"@en .
+
+# skf:poweredBy — O must be a skf:SkillAgent
+skf:poweredByShape a sh:PropertyShape ;
+    sh:path skf:poweredBy ;
+    sh:class skf:SkillAgent ;
+    sh:message "skf:poweredBy value must be a skf:SkillAgent instance"@en .
+
+# skf:requiresRefusal — O must be a skf:RefusalPhrase
+skf:requiresRefusalShape a sh:PropertyShape ;
+    sh:path skf:requiresRefusal ;
+    sh:class skf:RefusalPhrase ;
+    sh:message "skf:requiresRefusal value must be a skf:RefusalPhrase instance"@en .
+
+# skf:hasSubCategory — O must be a skf:SubCategory
+skf:hasSubCategoryShape a sh:PropertyShape ;
+    sh:path skf:hasSubCategory ;
+    sh:class skf:SubCategory ;
+    sh:message "skf:hasSubCategory value must be a skf:SubCategory instance"@en .
+
+# skf:belongsToNote — O must be a skf:NoteChunk
+skf:belongsToNoteShape a sh:PropertyShape ;
+    sh:path skf:belongsToNote ;
+    sh:class skf:NoteChunk ;
+    sh:message "skf:belongsToNote value must be a skf:NoteChunk instance"@en .
+
+# ==============================================================================
+# skf:Tier — rdf:type check, no optional properties required
+# ==============================================================================
+skf:TierShape a sh:NodeShape ;
+    sh:targetClass skf:Tier ;
+    sh:property skf:tierNameShape .
+
+skf:tierNameShape a sh:PropertyShape ;
+    sh:path skf:tierName ;
+    sh:maxCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "skf:tierName must be an xsd:string (maxCount 1)"@en .
+
+# ==============================================================================
+# skf:KBCategory — must have skf:categoryName + skf:belongsToTier → skf:Tier
+# ==============================================================================
+skf:KBCategoryShape a sh:NodeShape ;
+    sh:targetClass skf:KBCategory ;
+    sh:property skf:KBCategory_name , skf:KBCategory_belongsToTier .
+
+skf:KBCategory_name a sh:PropertyShape ;
+    sh:path skf:categoryName ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "skf:KBCategory must have at least one skf:categoryName (xsd:string)"@en .
+
+skf:KBCategory_belongsToTier a sh:PropertyShape ;
+    sh:path skf:belongsToTier ;
+    sh:class skf:Tier ;
+    sh:message "skf:KBCategory must have skf:belongsToTier pointing to a skf:Tier"@en .
+
+# ==============================================================================
+# skf:SubCategory — must have skf:subCategoryName + skf:belongsToTier → skf:Tier
+# ==============================================================================
+skf:SubCategoryShape a sh:NodeShape ;
+    sh:targetClass skf:SubCategory ;
+    sh:property skf:SubCategory_name , skf:SubCategory_belongsToTier .
+
+skf:SubCategory_name a sh:PropertyShape ;
+    sh:path skf:subCategoryName ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "skf:SubCategory must have at least one skf:subCategoryName (xsd:string)"@en .
+
+skf:SubCategory_belongsToTier a sh:PropertyShape ;
+    sh:path skf:belongsToTier ;
+    sh:class skf:Tier ;
+    sh:message "skf:SubCategory must have skf:belongsToTier pointing to a skf:Tier"@en .
+
+# ==============================================================================
+# skf:Skill — must have skf:skillName + skf:poweredBy → skf:SkillAgent
+#           — may have skf:hasReadAccess/hasWriteAccess → skf:KBCategory
+# ==============================================================================
+skf:SkillShape a sh:NodeShape ;
+    sh:targetClass skf:Skill ;
+    sh:property skf:Skill_name , skf:Skill_poweredBy , skf:Skill_hasReadAccess , skf:Skill_hasWriteAccess .
+
+skf:Skill_name a sh:PropertyShape ;
+    sh:path skf:skillName ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "skf:Skill must have at least one skf:skillName (xsd:string)"@en .
+
+skf:Skill_poweredBy a sh:PropertyShape ;
+    sh:path skf:poweredBy ;
+    sh:class skf:SkillAgent ;
+    sh:message "skf:Skill must have skf:poweredBy pointing to a skf:SkillAgent"@en .
+
+skf:Skill_hasReadAccess a sh:PropertyShape ;
+    sh:path skf:hasReadAccess ;
+    sh:class skf:KBCategory ;
+    sh:message "skf:hasReadAccess value must be a skf:KBCategory instance"@en .
+
+skf:Skill_hasWriteAccess a sh:PropertyShape ;
+    sh:path skf:hasWriteAccess ;
+    sh:class skf:KBCategory ;
+    sh:message "skf:hasWriteAccess value must be a skf:KBCategory instance"@en .
+
+# ==============================================================================
+# skf:SkillAgent — must have skf:agentTypeName (minCount 1, datatype xsd:string)
+# ==============================================================================
+skf:SkillAgentShape a sh:NodeShape ;
+    sh:targetClass skf:SkillAgent ;
+    sh:property skf:SkillAgent_name .
+
+skf:SkillAgent_name a sh:PropertyShape ;
+    sh:path skf:agentTypeName ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "skf:SkillAgent must have at least one skf:agentTypeName (xsd:string)"@en .
+
+# ==============================================================================
+# skf:RefusalPhrase — must have skf:refusalPhraseText (minCount 1, datatype xsd:string)
+# ==============================================================================
+skf:RefusalPhraseShape a sh:NodeShape ;
+    sh:targetClass skf:RefusalPhrase ;
+    sh:property skf:RefusalPhrase_text .
+
+skf:RefusalPhrase_text a sh:PropertyShape ;
+    sh:path skf:refusalPhraseText ;
+    sh:minCount 1 ;
+    sh:datatype xsd:string ;
+    sh:message "skf:RefusalPhrase must have at least one skf:refusalPhraseText (xsd:string)"@en .
+
+# ==============================================================================
+# skf:NoteChunk
+# — must have rdf:type skf:NoteChunk
+# — skf:referencesTable targets must point to existing skf:TableSchema
+# — skf:sourcePath is optional (provenance-missing → warning per D-PROV-10)
+# ==============================================================================
+skf:NoteChunkShape a sh:NodeShape ;
+    sh:targetClass skf:NoteChunk ;
+    sh:property skf:NoteChunk_type , skf:NoteChunk_referencesTable , skf:NoteChunk_sourcePath .
+
+# rdf:type check (should always be present for any individual in KG)
+skf:NoteChunk_type a sh:PropertyShape ;
+    sh:path rdf:type ;
+    sh:hasValue skf:NoteChunk ;
+    sh:message "skf:NoteChunk must have rdf:type skf:NoteChunk"@en .
+
+skf:NoteChunk_referencesTable a sh:PropertyShape ;
+    sh:path skf:referencesTable ;
+    sh:class skf:TableSchema ;
+    sh:message "skf:referencesTable value must be a skf:TableSchema instance"@en .
+
+# D-PROV-10: skf:sourcePath is optional — provenance-missing is a WARNING
+skf:NoteChunk_sourcePath a sh:PropertyShape ;
+    sh:path skf:sourcePath ;
+    sh:maxCount 1 ;
+    sh:nodeKind sh:Literal ;
+    sh:message "skf:sourcePath on skf:NoteChunk is optional; if present must be a literal (warning-level)"@en .
+
+# ==============================================================================
+# skf:TableSchema
+# — must have rdf:type skf:TableSchema
+# — if referenced by a NoteChunk via skf:referencesTable, that NoteChunk must exist
+#   (enforced via inverse property: every skf:TableSchema that is referenced is valid)
+# ==============================================================================
+skf:TableSchemaShape a sh:NodeShape ;
+    sh:targetClass skf:TableSchema ;
+    sh:property skf:TableSchema_type , skf:TableSchema_sourcePath .
+
+# rdf:type check
+skf:TableSchema_type a sh:PropertyShape ;
+    sh:path rdf:type ;
+    sh:hasValue skf:TableSchema ;
+    sh:message "skf:TableSchema must have rdf:type skf:TableSchema"@en .
+
+# D-PROV-10: skf:sourcePath is optional — provenance-missing is a WARNING
+skf:TableSchema_sourcePath a sh:PropertyShape ;
+    sh:path skf:sourcePath ;
+    sh:maxCount 1 ;
+    sh:nodeKind sh:Literal ;
+    sh:message "skf:sourcePath on skf:TableSchema is optional; if present must be a literal (warning-level)"@en .
+
+# ==============================================================================
+# NODE KIND HELPER SHAPES (IRI vs Literal discrimination)
+# ==============================================================================
+
+# Any IRI-valued property should use nodeKind IRI to catch literal spills
+skf:IRIPropertyShape a sh:NodeShape ;
+    sh:property [
+        sh:path skf:referencesTable ;
+        sh:nodeKind sh:IRI ;
+        sh:message "skf:referencesTable must be an IRI, not a literal"@en
+    ] .
