@@ -380,7 +380,9 @@ type Deps struct {
 	// Detacher is the DuckDB AttachLRU for the dataset lifecycle (Phase 19 / DATA-18).
 	// Used by the scheduler's TTL cleanup to DETACH before deleting dataset files.
 	// nil = TTL cleanup is a no-op (detacher is nil-safe in RunTTLCleanup).
-	Detacher interface{ Detach(ctx context.Context, id string) error }
+	Detacher interface {
+		Detach(ctx context.Context, id string) error
+	}
 
 	// ExternalAuthManager is Phase 21 — the External Authorized
 	// Channel orchestrator (DATA-04..14). nil = the channel is
@@ -490,9 +492,9 @@ type Deps struct {
 // Non-positive values cause a fatal log at startup (fail-fast).
 type GraphLimits struct {
 	MaxNodes           int // SKILLFORGE_GRAPH_MAX_NODES (default 50)
-	MaxEdges          int // SKILLFORGE_GRAPH_MAX_EDGES (default 200)
+	MaxEdges           int // SKILLFORGE_GRAPH_MAX_EDGES (default 200)
 	NeighborDepthLimit int // SKILLFORGE_GRAPH_NEIGHBOR_DEPTH_LIMIT (default 2)
-	PathHopsLimit     int // SKILLFORGE_GRAPH_PATH_HOPS_LIMIT (default 4)
+	PathHopsLimit      int // SKILLFORGE_GRAPH_PATH_HOPS_LIMIT (default 4)
 }
 
 // Phase 10 nil-gate table — the load-bearing behavior contract for the
@@ -698,6 +700,10 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// X-Skill-Name header carries caller identity for tier isolation (D-SPARQL-03).
 	// NOT under /api/admin/ — the token is the X-Skill-Name header, not X-Admin-Token.
 	h.POST("/api/sparql", deps.adminPlatformSparqlHandler)
+	// Phase 41 Plan 03 (PLAT-ONT-20) — Hybrid Retrieval endpoint.
+	// X-Skill-Name header carries caller identity for tier isolation (D-HYB-05).
+	// POST body: {query, max_hops, rerank}; response: {kg_nodes, kg_edges, milvus_hits}.
+	h.POST("/api/admin/platform/hybrid/search", deps.adminPlatformHybridSearchHandler)
 	// Phase 39 Plan 39-07 (v1.4 / D-Route-01) — ECL pipeline admin surface.
 	// Three token-gated routes (403 before the nil-manager 503, LOCKED
 	// order): run (fire-and-forget trigger → 200 started / 409 already
