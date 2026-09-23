@@ -434,9 +434,9 @@ Plans:
 
 **Wave 1**
 
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
+- [x] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
 - [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
+- [x] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment (9e2a799 / fd740e5)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
