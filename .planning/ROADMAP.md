@@ -241,11 +241,11 @@ Tier 隔离三条护城河。
 **Wave 3** *(Wave 2 complete)*
 
 - [x] 41-04-PLAN.md — Platform tab shell (AdminDashboard wiring, store union, 11th SubrouteTab)
-- [ ] 41-05-PLAN.md — Three views (SPARQL Playground + MCP Inspector + Hybrid 调试) + platformApi.ts + types.ts
+- [x] 41-05-PLAN.md — Three views (SPARQL Playground + MCP Inspector + Hybrid 调试) + platformApi.ts + types.ts
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 41-06-PLAN.md — verify-phase-41.sh hermetic gate (MCP stdio + SPARQL curl + Hybrid recall >= 0.85)
+- [x] 41-06-PLAN.md — verify-phase-41.sh hermetic gate (MCP stdio + SPARQL curl + Hybrid recall >= 0.85)
 
 ---
 
@@ -256,7 +256,7 @@ Tier 隔离三条护城河。
 | 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
 | 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
 | 40. Data Governance | 10/10 | Complete    | 2026-09-23 |
-| 41. Platform Layer (MCP + SPARQL + Hybrid) | 6/6 | Complete | 2026-09-23 |
+| 41. Platform Layer (MCP + SPARQL + Hybrid) | 6/6 | Complete    | 2026-09-23 |
 
 ---
 

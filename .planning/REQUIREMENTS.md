@@ -698,9 +698,9 @@ Which phases cover which requirements.
 
 ### Platform Layer (deferred to Phase 41 — listed here for traceability)
 
-- [ ] **PLAT-ONT-18**: MCP server exposes KG query operations to external agents (Tools: `skf_query`, `skf_skills`, `skf_chunk_for`); respects tier isolation
-- [ ] **PLAT-ONT-19**: SPARQL-like REST endpoint `POST /api/sparql` accepts pattern match queries against the KG
-- [ ] **PLAT-ONT-20**: Hybrid Retrieval performs KG 1-2 hop subgraph expansion before Milvus rerank; Q1/Q4-type queries achieve recall ≥ 0.85
+- [x] **PLAT-ONT-18**: MCP server exposes KG query operations to external agents (Tools: `skf_query`, `skf_skills`, `skf_chunk_for`); respects tier isolation
+- [x] **PLAT-ONT-19**: SPARQL-like REST endpoint `POST /api/sparql` accepts pattern match queries against the KG
+- [x] **PLAT-ONT-20**: Hybrid Retrieval performs KG 1-2 hop subgraph expansion before Milvus rerank; Q1/Q4-type queries achieve recall ≥ 0.85
 
 ### Out of Scope (v1.4)
 
