@@ -52,6 +52,7 @@ import ReviewQueuePanel from './ReviewQueuePanel';
 import OntologyTab from './ontology/OntologyTab';
 import PipelineTab from './pipeline/PipelineTab';
 import GovernanceTab from './governance/GovernanceTab';
+import PlatformTab from './platform/PlatformTab';
 
 export default function AdminDashboard() {
   const adminSubroute = useAppStore((s) => s.adminSubroute);
@@ -81,7 +82,8 @@ export default function AdminDashboard() {
       | 'review'
       | 'ontology'
       | 'pipeline'
-      | 'governance',
+      | 'governance'
+      | 'platform',
   ) {
     setAdminSubroute(next);
     // URL is /admin for all subroutes (store-only subroute, no sub-path segment).
@@ -223,6 +225,15 @@ export default function AdminDashboard() {
           label="治理"
           onClick={() => handleSubroute('governance')}
         />
+        {/* Plan 41-04 — 平台 (the 11th tab): SPARQL Playground + MCP Inspector
+            + Hybrid 调试 (41-UI-SPEC). */}
+        <SubrouteTab
+          active={adminSubroute === 'platform'}
+          testId="admin-tab-platform"
+          icon={<Network className="h-3.5 w-3.5" />}
+          label="平台"
+          onClick={() => handleSubroute('platform')}
+        />
       </nav>
 
       {/* CapacityMonitor */}
@@ -250,6 +261,7 @@ export default function AdminDashboard() {
         {adminSubroute === 'ontology' && <OntologyTab />}
         {adminSubroute === 'pipeline' && <PipelineTab />}
         {adminSubroute === 'governance' && <GovernanceTab />}
+        {adminSubroute === 'platform' && <PlatformTab />}
       </main>
 
       {/* Plan 29-08 — the /admin toast viewport. App.tsx early-returns for
