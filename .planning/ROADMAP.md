@@ -11,6 +11,7 @@
 | v1.2 (Knowledge Ops) | 26-30 | ✅ SHIPPED 2026-09-08 |
 | v1.3 (Code Quality) | 31-37 | ✅ SHIPPED 2026-09-09 |
 | **v1.4 (Ontology Layer)** | **38-41** | **✅ SHIPPED 2026-09-23** |
+| **v1.5 (Outstanding Closure)** | **42** | **🚧 Planned 2026-09-23 (no new features)** |
 | Backlog | 999.x | Backlog |
 
 ---
@@ -260,4 +261,56 @@ Tier 隔离三条护城河。
 
 ---
 
-*Last updated: 2026-09-23 — Phase 41 COMPLETE (6/6 plans). 41-06 verify-phase-41.sh + verify_main.go hermetic gate PASS.*
+## v1.5 — Outstanding Closure（NOT New Features）
+
+**Goal:** 把 v1.4 close 时挂着的 45 项 acknowledged open items + v1.3 inherited 4 项 = 49 项总账一次性收口。**不引入新功能**。
+
+**Hard constraint:** v1.4 standards 继续生效 — 无 cgo / handler ≤ 200 行 / 无静默吞错 / 全 SDLC。Trust semantics 不削弱 — T-3-AUDIT INSERT-only / KNOW-02 fail-closed / Tier 隔离保留。
+
+**Source of truth:** `.planning/reports/MILESTONE_SUMMARY-v1.4.md` §6 + `STATE.md` § `v1.4 Close — Acknowledged Open Items` + `STATE.md` § `Deferred Items (carried from v1.3)`
+
+---
+
+### Phase 42: v1.4 Outstanding Closure 🚧 (Planned 2026-09-23)
+
+**Goal:** 49 项总账 closure — triage (42-01) → code fixes (42-02) → live runbook (42-03) → doc updates (42-04)
+
+**Depends on:** Nothing (first v1.5 phase)
+
+**Hard constraint:** 0 new features. Pure closure.
+
+**Plans:**
+
+| Plan | Title | Status | Depends |
+|------|-------|--------|---------|
+| 42-01 | Audit-Open Triage Report | 🚧 Pending | — |
+| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09) | 🚧 Pending | 42-01 |
+| 42-03 | Operator Live Verification Bundle (Phase 39 human_needed 4 + Phase 41 hybrid ≥ 0.85 + 42-01 needs-live 项) | 🚧 Pending | 42-01 |
+| 42-04 | v1.4 Closure Doc Update (MILESTONE_SUMMARY CR-01 framing + STATE.md 节替换 + audit-open close report) | 🚧 Pending | 42-02, 42-03 |
+
+**Success Criteria (what must be TRUE):**
+
+1. `42-triage.md` 49 项全部分类入桶，bucket 计数 sum = 49
+2. 42-02 fix scope ≥ 1 项 IN-* fix 每个有 regression test，`go test ./... -count=1` 全绿 + `go vet` clean
+3. 42-03 runbook 5+ live gate，每项有 `[precheck] → [execute] → [verify] → [record]` 模板
+4. 42-04 MILESTONE_SUMMARY-v1.4.md CR-01 行改写 + STATE.md 节替换 + audit-open close report 产出
+5. `verify-phase-42.sh` 全绿（若适用 closure 性质）— closure 不需新 verify，但应复用现有 hermetic gates
+
+**Wave structure (TBD after 42-01 triage):**
+
+- **Wave 1:** 42-01 Triage Report（pure research, 30-60 min）
+- **Wave 2:** 42-02 IN-* Code Fixes（per-fix commits, 2-3 h total）
+- **Wave 3 (operator-only):** 42-03 Live Verification Bundle（intranet access required）
+- **Wave 4:** 42-04 Closure Doc Update（30 min, after Wave 2 + Wave 3 complete）
+
+---
+
+### v1.5 Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 42. v1.4 Outstanding Closure | 0/4 | Planned | — |
+
+---
+
+*Last updated: 2026-09-23 — v1.5 milestone planned (no new features; pure closure of v1.4 + v1.3 inherited 49 项 acknowledged open items). 42-CONTEXT.md + 42-01-PLAN.md drafted.*

@@ -1,26 +1,26 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: — Ontology Layer
-status: Awaiting next milestone
-last_updated: "2026-09-23T07:22:06.786Z"
-last_activity: 2026-09-23 — Milestone v1.4 completed and archived
+milestone: v1.5
+milestone_name: — Outstanding Closure (NOT New Features)
+status: Planned (Wave 1 pending Triage)
+last_updated: "2026-09-23T08:30:00.000Z"
+last_activity: 2026-09-23 — v1.5 P0 (Phase 42) planned: 4-plan structure (42-01 Triage / 42-02 IN-* fixes / 42-03 Live Verify / 42-04 Doc Update). 42-CONTEXT.md + 42-01-PLAN.md + ROADMAP.md v1.5 section committed.
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 4
-  total_plans: 31
+  total_plans: 35
   completed_plans: 31
-  percent: 36
+  percent: 26
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: Milestone v1.4 complete
-Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-23 — Milestone v1.4 completed and archived
+Phase: v1.5 P0 (Phase 42 — v1.4 Outstanding Closure)
+Plan: 42-01 (Audit-Open Triage Report) pending start
+Status: Planned (closure-first, 0 new features)
+Last activity: 2026-09-23 — v1.5 P0 (Phase 42) planned: 4-plan structure. 42-CONTEXT.md + 42-01-PLAN.md + ROADMAP.md v1.5 section committed.
 
 ## v1.4 Phase Map
 
@@ -69,6 +69,19 @@ Items acknowledged at v1.4 close (audit-open count: 7 debug + 14 UAT-gap files +
 | quick_task | 16 | v1.3 quick-task queue (2408-prefix); mostly compliance-wording / FE skill / splitter / gitattributes patches |
 
 See `.planning/debug/`, `.planning/phases/*-HUMAN-UAT.md`, `.planning/quick/` for individual items.
+
+## v1.5 Closure — Open Items in Progress (2026-09-23)
+
+v1.5 P0 (Phase 42 — v1.4 Outstanding Closure) 把上面 45 项 + v1.3 inherited 4 项 = 49 项总账一次性收口。**0 new features**。
+
+| Plan | Title | Status |
+|------|-------|--------|
+| 42-01 | Audit-Open Triage Report (分类 49 项入桶) | 🚧 Pending start |
+| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09 + 42-01 needs-code) | 🚧 Pending 42-01 |
+| 42-03 | Operator Live Verification Bundle (Phase 39 4 human + Phase 41 hybrid ≥ 0.85 + 42-01 needs-live) | 🚧 Pending 42-01 |
+| 42-04 | v1.4 Closure Doc Update (MILESTONE_SUMMARY CR-01 framing + STATE.md 节 + audit-open close report) | 🚧 Pending 42-02 + 42-03 |
+
+**Key correction from milestone summary:** CR-01 (non-terminal stage on batch-level error) **已修于 `ae84393 fix(39): terminal stage on every Run/RetryNote error path (CR-01)`** (2026-09-22, 39-REVIEW-FIX iteration 1, 7/7 fixed)。v1.4 MILESTONE_SUMMARY §6 表中描述为 "待 v1.5 修" 是错误的；实际状态是"已修，待 operator live verify（已 in 42-03 runbook）"。修正将由 42-04 完成。
 
 ## v1.3 Summary (closed 2026-09-09)
 
@@ -147,4 +160,7 @@ See `.planning/debug/`, `.planning/phases/*-HUMAN-UAT.md`, `.planning/quick/` fo
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd:new-milestone
+- **Wave 1**: 启动 42-01 Triage Report（pure research 30-60 min；user 可自己跑也可让 gsd-executor 跑）
+- **Wave 2**: 42-01 输出后启动 42-02 IN-* fixes（per-fix commits，2-3 h）
+- **Wave 3**: operator 跑 42-03 live runbook（需 intranet；不在 Claude 全程）
+- **Wave 4**: 42-04 doc fix（30 min；Wave 2 + 3 都完成后启动）
