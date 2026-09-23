@@ -17,10 +17,13 @@
 package store
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -356,5 +359,254 @@ func TestStoreStats(t *testing.T) {
 	}
 	if st.BySSize == 0 || st.ByPSize == 0 || st.ByOSize == 0 {
 		t.Errorf("Stats index sizes all zero: %+v", st)
+	}
+}
+
+// --- Provenance tests (D-PROV-01, D-PROV-10) ---
+
+func TestProvenanceNilOmitsFromJSON(t *testing.T) {
+	// D-PROV-01: json:"provenance,omitempty" — nil Provenance must not appear
+	// in marshaled JSON so pre-40 snapshots remain valid.
+	tr := Triple{S: ns + "note_001", P: ns + "referencesTable", O: ns + "tbl_x"}
+	data, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("Unmarshal response: %v", err)
+	}
+	if _, ok := m["provenance"]; ok {
+		t.Errorf("nil Provenance appeared in JSON: %s", data)
+	}
+}
+
+func TestProvenanceAllFieldsMarshaled(t *testing.T) {
+	// A Triple with a full Provenance struct must serialize all four fields.
+	tr := Triple{
+		S: ns + "note_001",
+		P: ns + "referencesTable",
+		O: ns + "tbl_etl_payment_due_t",
+		Provenance: &Provenance{
+			SourceKind:  "file",
+			SourcePath:  "skills/calculator/SKILL.md",
+			LineStart:   3,
+			LineEnd:     18,
+			ExtractedAt: "2026-09-22T08:00:03Z",
+		},
+	}
+	data, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("Unmarshal response: %v", err)
+	}
+	pv, ok := m["provenance"].(map[string]any)
+	if !ok {
+		t.Fatalf("provenance field absent or wrong type: %s", data)
+	}
+	assert.Equal(t, "file", pv["source_kind"])
+	assert.Equal(t, "skills/calculator/SKILL.md", pv["source_path"])
+	assert.Equal(t, float64(3), pv["line_start"])
+	assert.Equal(t, float64(18), pv["line_end"])
+	assert.Equal(t, "2026-09-22T08:00:03Z", pv["extracted_at"])
+}
+
+func TestProvenanceLineEndZeroOmitted(t *testing.T) {
+	// line_start=0 and line_end=0 must be omitted (int zero-value with omitempty).
+	tr := Triple{
+		S: ns + "note_001",
+		P: ns + "referencesTable",
+		O: ns + "tbl_x",
+		Provenance: &Provenance{
+			SourceKind:  "emitter",
+			SourcePath:  "emitter:v2",
+			LineStart:   0,
+			LineEnd:     0,
+			ExtractedAt: "2026-09-22T08:00:03Z",
+		},
+	}
+	data, err := json.Marshal(tr)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	pv := m["provenance"].(map[string]any)
+	if _, ok := pv["line_start"]; ok {
+		t.Errorf("line_start=0 must be omitted: %s", data)
+	}
+	if _, ok := pv["line_end"]; ok {
+		t.Errorf("line_end=0 must be omitted: %s", data)
+	}
+}
+
+func TestLoadSnapshotOldFormatNoProvenance(t *testing.T) {
+	// D-PROV-10: pre-40 snapshots (no provenance field) must load cleanly.
+	// This simulates a snapshot written before the Provenance field existed.
+	oldJSON := `[{"s":"http://skillforge.local/ontology#note_001","p":"http://skillforge.local/ontology#referencesTable","o":"http://skillforge.local/ontology#tbl_etl_payment_due_t"}]`
+	restored, err := LoadSnapshot([]byte(oldJSON))
+	if err != nil {
+		t.Fatalf("LoadSnapshot old-format: %v", err)
+	}
+	if restored.Len() != 1 {
+		t.Errorf("Len = %d, want 1", restored.Len())
+	}
+	tr := restored.Query(ns+"note_001", ns+"referencesTable", "")
+	if len(tr) != 1 {
+		t.Fatalf("query returned %d triples, want 1", len(tr))
+	}
+	if tr[0].Provenance != nil {
+		t.Errorf("legacy triple has Provenance set: %+v", tr[0].Provenance)
+	}
+}
+
+func TestLoadSnapshotNewFormatWithProvenance(t *testing.T) {
+	// New-format snapshot with Provenance must roundtrip intact.
+	prov := &Provenance{
+		SourceKind:  "file",
+		SourcePath:  "sql-guides/013__sec03.md",
+		LineStart:   3,
+		LineEnd:     18,
+		ExtractedAt: "2026-09-22T08:00:03Z",
+	}
+	original := Triple{
+		S:          ns + "note_001",
+		P:          ns + "referencesTable",
+		O:          ns + "tbl_etl_payment_due_t",
+		Provenance: prov,
+	}
+	s := New()
+	s.Insert(original)
+	data, err := s.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	restored, err := LoadSnapshot(data)
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	tr := restored.Query(ns+"note_001", ns+"referencesTable", "")
+	if len(tr) != 1 {
+		t.Fatalf("query returned %d triples, want 1", len(tr))
+	}
+	if tr[0].Provenance == nil {
+		t.Fatal("Provenance is nil after roundtrip")
+	}
+	assert.Equal(t, "file", tr[0].Provenance.SourceKind)
+	assert.Equal(t, "sql-guides/013__sec03.md", tr[0].Provenance.SourcePath)
+	assert.Equal(t, 3, tr[0].Provenance.LineStart)
+	assert.Equal(t, 18, tr[0].Provenance.LineEnd)
+	assert.Equal(t, "2026-09-22T08:00:03Z", tr[0].Provenance.ExtractedAt)
+}
+
+func TestSnapshotBackwardCompatibility(t *testing.T) {
+	// Snapshot written with provenance-bearing triples must be valid input
+	// for a store that also handles old-format triples (D-PROV-10).
+	s := New()
+	s.Insert(Triple{S: ns + "note_001", P: ns + "referencesTable", O: ns + "tbl_a"})
+	s.Insert(Triple{
+		S: ns + "note_002",
+		P: ns + "referencesTable",
+		O: ns + "tbl_b",
+		Provenance: &Provenance{
+			SourceKind:  "induction",
+			SourcePath:  "proposal-042",
+			LineStart:   0,
+			LineEnd:     0,
+			ExtractedAt: "2026-09-22T10:00:00Z",
+		},
+	})
+	data, err := s.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	restored, err := LoadSnapshot(data)
+	if err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	if restored.Len() != 2 {
+		t.Errorf("Len after roundtrip = %d, want 2", restored.Len())
+	}
+}
+
+func TestQueryResultsWithProvenanceIdenticalToQuery(t *testing.T) {
+	// QueryResultsWithProvenance returns the same triples as Query;
+	// the distinction is purely the return type (compiler-enforced seam).
+	s := New()
+	s.Insert(Triple{S: ns + "a", P: ns + "p", O: ns + "b"})
+	s.Insert(Triple{
+		S: ns + "c",
+		P: ns + "p",
+		O: ns + "d",
+		Provenance: &Provenance{SourceKind: "file", SourcePath: "x.md"},
+	})
+	q := s.Query("", ns+"p", "")
+	qp := s.QueryResultsWithProvenance("", ns+"p", "")
+	if len(q) != len(qp) {
+		t.Errorf("Query vs QueryResultsWithProvenance length mismatch: %d vs %d", len(q), len(qp))
+	}
+	for i := range q {
+		if q[i].S != qp[i].S || q[i].P != qp[i].P || q[i].O != qp[i].O {
+			t.Errorf("triple %d differs: %+v vs %+v", i, q[i], qp[i])
+		}
+	}
+}
+
+func TestQueryResultsWithProvenanceEmptyResult(t *testing.T) {
+	// Empty result must be an empty slice, not nil (caller must be able to
+	// range over the result without a nil check).
+	s := New()
+	qp := s.QueryResultsWithProvenance(ns+"nonexistent", "", "")
+	if qp == nil {
+		t.Error("QueryResultsWithProvenance returned nil for empty result, want []")
+	}
+	if len(qp) != 0 {
+		t.Errorf("len = %d, want 0", len(qp))
+	}
+}
+
+func TestProvenanceAllSourceKinds(t *testing.T) {
+	// All three source_kind variants (D-PROV-02) roundtrip cleanly.
+	cases := []struct {
+		kind string
+		path string
+	}{
+		{"file", "skills/compliance/SKILL.md"},
+		{"emitter", "emitter:v3"},
+		{"induction", "proposal-007"},
+	}
+	for _, c := range cases {
+		tr := Triple{
+			S: ns + "note_001",
+			P: ns + "referencesTable",
+			O: ns + "tbl_x",
+			Provenance: &Provenance{
+				SourceKind:  c.kind,
+				SourcePath:  c.path,
+				LineStart:   5,
+				LineEnd:     10,
+				ExtractedAt: "2026-09-22T12:00:00Z",
+			},
+		}
+		data, err := json.Marshal(tr)
+		if err != nil {
+			t.Fatalf("Marshal(%s): %v", c.kind, err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(data, &m); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", c.kind, err)
+		}
+		pv := m["provenance"].(map[string]any)
+		if pv["source_kind"] != c.kind {
+			t.Errorf("source_kind = %s, want %s", pv["source_kind"], c.kind)
+		}
+		if pv["source_path"] != c.path {
+			t.Errorf("source_path = %s, want %s", pv["source_path"], c.path)
+		}
 	}
 }
