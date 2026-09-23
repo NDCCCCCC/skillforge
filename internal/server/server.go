@@ -688,6 +688,12 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// including quarantined entities. Both routes are token-gated (403 before 503).
 	h.GET("/api/admin/governance/shacl", deps.adminGovernanceShaclHandler)
 	h.GET("/api/admin/governance/provenance", deps.adminGovernanceProvenanceHandler)
+	// Phase 41 Plan 01 (PLAT-ONT-18) — MCP server inspector surface for the
+	// admin platform tab. All routes are token-gated (403 before nil 503).
+	// MCPServer is nil when SKILLFORGE_MCP_ENABLED=false|0|off.
+	h.GET("/api/admin/platform/mcp/status", deps.adminPlatformMcpStatusHandler)
+	h.GET("/api/admin/platform/mcp/tools", deps.adminPlatformMcpToolsHandler)
+	h.POST("/api/admin/platform/mcp/invoke", deps.adminPlatformMcpInvokeHandler)
 	// Phase 39 Plan 39-07 (v1.4 / D-Route-01) — ECL pipeline admin surface.
 	// Three token-gated routes (403 before the nil-manager 503, LOCKED
 	// order): run (fire-and-forget trigger → 200 started / 409 already
