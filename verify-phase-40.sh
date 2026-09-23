@@ -31,9 +31,9 @@ cd "$PROJECT_ROOT"
 go test ./internal/ontology/shacl/... -v -run "TestShaclViolation|TestShaclQuarantine" 2>&1 | tail -5 || fail "SHACL violation/quarantine tests failed"
 pass "(b) SHACL violation detection"
 
-# (c) Provenance coverage 100%
+# (c) Provenance coverage 100% (TestProvenanceCoverage lives in store_test.go per D-PROV-07)
 info "(c) Provenance coverage"
-go test ./internal/knowledge/ecl/... -v -run TestProvenanceCoverage 2>&1 | tail -5 || fail "provenance coverage test failed"
+go test ./internal/ontology/store/... -v -run TestProvenanceCoverage 2>&1 | tail -5 || fail "provenance coverage test failed"
 pass "(c) provenance coverage 100%"
 
 # (d) Tier filtering unit tests
