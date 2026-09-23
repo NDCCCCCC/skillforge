@@ -41,7 +41,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -82,7 +82,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -123,7 +123,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -164,7 +164,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -205,7 +205,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -246,7 +246,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -291,7 +291,7 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -441,7 +441,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -486,7 +486,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [ ] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes
+- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
