@@ -670,6 +670,11 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/admin/ontology/proposals/:id/approve", deps.adminOntologyProposalsApproveHandler)
 	h.POST("/api/admin/ontology/proposals/:id/reject", deps.adminOntologyProposalsRejectHandler)
 	h.POST("/api/admin/ontology/snapshot", deps.adminOntologySnapshotHandler)
+	// Phase 40 Plan 05 (D-LOG-01 / D-TBox-03) — TBox version evolution log
+	// + rollback. Timeline entries read newest-first; rollback writes v{N+1}
+	// = copy of target, rebuilds KG, re-runs SHACL returning violation count.
+	h.GET("/api/admin/ontology/changelog", deps.adminOntologyChangelogHandler)
+	h.POST("/api/admin/ontology/rollback", deps.adminOntologyRollbackHandler)
 	// Phase 39 Plan 39-07 (v1.4 / D-Route-01) — ECL pipeline admin surface.
 	// Three token-gated routes (403 before the nil-manager 503, LOCKED
 	// order): run (fire-and-forget trigger → 200 started / 409 already

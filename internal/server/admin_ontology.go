@@ -34,6 +34,10 @@
 //	     → 200 {proposal}
 //	POST /api/admin/ontology/snapshot
 //	     → 200 {path, triple_count}
+//	GET  /api/admin/ontology/changelog
+//	     → 200 {current_version, entries: [...]}
+//	POST /api/admin/ontology/rollback
+//	     → 200 {version, new_violations}   body {target_version, reason?}
 //
 // Trust model (ONT-04): generate writes ONLY a pending proposal record;
 // nothing enters the TBox or the KG store without the explicit approve
@@ -246,6 +250,24 @@ type snapshotResponse struct {
 	TripleCount int    `json:"triple_count"`
 }
 
+// changelogResponse is the 200 envelope for GET /api/admin/ontology/changelog.
+type changelogResponse struct {
+	CurrentVersion int                    `json:"current_version"`
+	Entries        []induction.ChangelogEntry `json:"entries"`
+}
+
+// rollbackRequest is the POST body for /api/admin/ontology/rollback.
+type rollbackRequest struct {
+	TargetVersion int    `json:"target_version"`
+	Reason        string `json:"reason,omitempty"`
+}
+
+// rollbackResponse is the 200 envelope for POST /api/admin/ontology/rollback.
+type rollbackResponse struct {
+	Version        int `json:"version"`
+	NewViolations int `json:"new_violations"`
+}
+
 // adminOntologySnapshotHandler implements POST /api/admin/ontology/snapshot.
 //
 // Manual trigger for the debounced persistence path (D-KG-04: debug /
@@ -261,6 +283,53 @@ func (s *Deps) adminOntologySnapshotHandler(ctx context.Context, c *app.RequestC
 		return
 	}
 	c.JSON(http.StatusOK, snapshotResponse{Path: path, TripleCount: dep.KG.Len()})
+}
+
+// adminOntologyChangelogHandler implements GET /api/admin/ontology/changelog.
+func (s *Deps) adminOntologyChangelogHandler(ctx context.Context, c *app.RequestContext) {
+	dep, ok := s.requireOntology(c)
+	if !ok {
+		return
+	}
+	entries, err := dep.Induction.ListChangelog()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "list changelog: " + err.Error()})
+		return
+	}
+	if entries == nil {
+		entries = []induction.ChangelogEntry{}
+	}
+	c.JSON(http.StatusOK, changelogResponse{
+		CurrentVersion: dep.Induction.Version(),
+		Entries:        entries,
+	})
+}
+
+// adminOntologyRollbackHandler implements POST /api/admin/ontology/rollback.
+func (s *Deps) adminOntologyRollbackHandler(ctx context.Context, c *app.RequestContext) {
+	dep, ok := s.requireOntology(c)
+	if !ok {
+		return
+	}
+	var req rollbackRequest
+	if err := c.BindAndValidate(&req); err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid body: " + err.Error()})
+		return
+	}
+	if req.TargetVersion <= 0 {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "target_version must be positive"})
+		return
+	}
+	newVersion, newViolations, err := dep.Induction.RollbackTBox(req.TargetVersion, req.Reason)
+	if err != nil {
+		if os.IsNotExist(errors.Unwrap(err)) || strings.Contains(err.Error(), "no such file") {
+			c.JSON(http.StatusNotFound, graphResponseError{Error: "version not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "rollback: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, rollbackResponse{Version: newVersion, NewViolations: newViolations})
 }
 
 // errorsIsIRIConflict maps induction.ErrIRIConflict to the 409 path.
