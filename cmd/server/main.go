@@ -132,6 +132,7 @@ import (
 	"github.com/skillforge/skillforge/internal/scheduler"
 	"github.com/skillforge/skillforge/internal/server"
 	"github.com/skillforge/skillforge/internal/server/classifier"
+	"github.com/skillforge/skillforge/internal/server/platform/mcp"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
@@ -957,6 +958,32 @@ func main() {
 	ontologyManager.SetOnChange(kgDebounce)
 	log.Printf("[OK] cmd/server: ontology layer wired (TBox v%d, %d TTL triples loaded, snapshot %s)",
 		ontologyManager.Version(), ttlLoaded, kgSnapshotPath)
+
+	// Phase 41-01 — MCP server stdio subprocess (D-MCP-01 / D-MCP-02):
+	// Spawn mark3labs/mcp-go stdio server exposing KG tools to external agents.
+	// All tool calls route through QueryScoped — external agents cannot bypass
+	// tier filtering (D-TRUST-01: no admin baseline bypass).
+	mcpServiceSkill := os.Getenv("SKILLFORGE_MCP_SERVICE_SKILL")
+	if mcpServiceSkill == "" {
+		log.Fatalf("[FAIL] cmd/server: SKILLFORGE_MCP_SERVICE_SKILL is required (D-TRUST-02: no admin baseline bypass)")
+	}
+	mcpEnabled := os.Getenv("SKILLFORGE_MCP_ENABLED")
+	if mcpEnabled == "false" || mcpEnabled == "0" || mcpEnabled == "off" {
+		log.Printf("[OK] cmd/server: MCP server disabled (SKILLFORGE_MCP_ENABLED=%s) — platform routes still respond for debugging", mcpEnabled)
+	} else {
+		log.Printf("[OK] cmd/server: starting MCP stdio server with service_skill=%q", mcpServiceSkill)
+		mcpSrv := mcp.NewServer(ontologyKG, mcpServiceSkill)
+		// Serve blocks — run in a goroutine so boot can continue.
+		// The Go server communicates with the MCP subprocess ONLY via admin HTTP
+		// routes (Task 3), not via in-process calls.
+		go func() {
+			if err := mcpSrv.Serve(context.Background()); err != nil {
+				log.Printf("[WARN] cmd/server: MCP stdio server exited: %v", err)
+			}
+		}()
+		// Store server reference for admin API (Task 3)
+		deps.MCPServer = mcpSrv
+	}
 
 	// Phase 39 — ECL pipeline (ONT-13 / D-Run-01): CONSTRUCTED + ARMED at
 	// boot, NEVER run at boot. Boot-time auto-runs would slam a flaky

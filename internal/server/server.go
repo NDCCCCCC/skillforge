@@ -63,6 +63,7 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/scheduler"
 	"github.com/skillforge/skillforge/internal/server/classifier"
+	"github.com/skillforge/skillforge/internal/server/platform/mcp"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
@@ -475,6 +476,13 @@ type Deps struct {
 	// answers 503 (same nil-posture as Ontology). Boot ARMS the manager but
 	// NEVER runs it (D-Run-01) — runs come from the admin run endpoint only.
 	ECL *ecl.Manager
+
+	// --- Phase 41: Platform Layer MCP server (PLAT-ONT-18) ---
+	// MCPServer is the stdio MCP server exposing KG tools to external agents.
+	// It is constructed in cmd/server/main.go at boot and nil if MCP is disabled
+	// (SKILLFORGE_MCP_ENABLED=false|0|off). Admin API handlers use it to surface
+	// MCP tool status and invocation to the inspector UI panel.
+	MCPServer *mcp.Server
 }
 
 // GraphLimits holds the config-driven limits for the knowledge graph.
