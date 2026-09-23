@@ -32,28 +32,6 @@
 
 **Plans**: 10 plans / 4 waves (planned 2026-09-22)
 
-**Wave 1**
-
-- [x] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [x] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [x] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [x] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
-
 ---
 
 ## Phase 32: BE Real Bug + Performance — Typed Sentinel + O(n²) Fix
@@ -70,30 +48,6 @@
 2. `chat.go:joinStrings` is replaced with `strings.Join(parts, "")`; every LLM response drain path calls the fixed version
 3. Unit tests cover all branches of `isBackendUnavailable` (connection refused, deadline exceeded, canceled, timeout, other error)
 4. Go vet/benchmark regression confirms no performance degradation on joinStrings path
-
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
-
-**Wave 1**
-
-- [x] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -112,30 +66,6 @@
 3. `upload.go:uploadHandler` main function ≤ 80 lines; `onFile` closure split into `verifyMagic`, `dedupCheck`, `writeIndex`, `auditHook` named functions
 4. All four files compile with `go vet` zero warnings; no new cyclomatic complexity introduced
 
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
-
-**Wave 1**
-
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
-
 ---
 
 ## Phase 34: HITL Handler Template Extraction
@@ -145,37 +75,6 @@
 **Depends on**: Phase 33
 
 **Requirements**: HITL-01, HITL-02, HITL-03
-
-**Success Criteria** (what must be TRUE):
-
-1. New `baseHITLTool` struct is embedded in all four HITL handlers (`memory_facts`, `review_report`, `plan_approve`, `report_publish`); `auditOrDefault()` lives in the base class
-2. `buildPendingAuditAndInterrupt(ctx, info, args, audit)` is a shared function callable by all four handlers; the 4-step sequence (GetToolCallID → ApprovalInfo → InsertPendingApproval → StatefulInterrupt) is no longer duplicated
-3. `noopAuditWriter` is defined in `hitl/audit_writer.go` and imported by `hitl_memory_facts.go`; no duplicate `noopAuditWriter` methods remain
-4. All four files continue to pass existing unit tests after refactoring
-
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
-
-**Wave 1**
-
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -187,37 +86,6 @@
 
 **Requirements**: REPEATHTTP-01, REPEATHTTP-02, REPEATHTTP-03
 
-**Success Criteria** (what must be TRUE):
-
-1. `graphResponseError` struct is defined once in `internal/server/server_response.go`; all six+ duplicated definitions (`knowledge.go`, `feedback.go`, `upload.go`, `tickets.go`, `approval_api.go`, `plan_api.go`) are replaced by imports
-2. Admin-gated handlers use a shared `requireAdmin(c) error` middleware function; the 403 response + audit-write logic appears in exactly one place
-3. `sessionIDRegex` is exported from `server.go` and imported by all eight+ files that currently define it locally; `handlers_session_history.go` no longer re-exports a private copy
-4. All affected routes continue to return identical JSON error shapes after refactoring
-
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
-
-**Wave 1**
-
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
-
 ---
 
 ## Phase 36: FE Deduplication + Silent Audit Errors
@@ -228,37 +96,6 @@
 
 **Requirements**: REPEATFE-01, REPEATFE-02, REPEATFE-03, SILENTAUDIT-01
 
-**Success Criteria** (what must be TRUE):
-
-1. `lib/api.ts` exports `apiFetch<T>(url, opts)` used by `FeedbackRow.postJson`, `useEvalReports.fetchOnce`, `useEvalFrozen.refetch`, and other fetch sites — no independent fetch+JSON+error implementations remain
-2. `lib/errors.ts` exports `extractReason` used by both `FeedbackRow` and `useEvalReports` — error text extraction logic appears in exactly one place
-3. `useEvalReports.fetchOnce` is wrapped in `useCallback` and accepts `fetchImpl` as an injected parameter; tests use `vi.fn()` injection instead of global fetch spy
-4. Four backend audit write sites that silently swallow errors with `_ = ...` now log at WARN level with session/audit_id/context; the "audit hiccup must not fail Run" invariant is preserved (log does not throw)
-
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
-
-**Wave 1**
-
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
-
 ---
 
 ## Phase 37: Store SQL Hygiene + Robustness + Concurrency
@@ -268,41 +105,6 @@
 **Depends on**: Phase 36
 
 **Requirements**: STORE-01, STORE-02, ROBUST-01, ROBUST-02, ROBUST-03, ROBUST-04, ROBUST-05, CONCUR-01
-
-**Success Criteria** (what must be TRUE):
-
-1. All five `INSERT INTO audit` statements share a single parameterized SQL statement with `action=?` placeholder; adding a new audit action column requires changes in exactly one place
-2. `putKPICallSQL` includes `ON CONFLICT(func, args_json, ts) DO NOTHING`; re-calling the same KPI with identical args is idempotent
-3. All 11 LRU type assertions (`data/preview.go:121,141,208`, `duckdb/attach_lru.go:124`, `knowledge/graph_cache.go:122,150`, `runtime/fanout_runtime.go:266`) use the `, ok` idiom or have explicit comments documenting why the invariant holds
-4. `SessionStore.Save` purge logic runs outside the mutex critical section (async or TTL-heap)
-5. `hitl_report_publish.go` frozen_args uses raw `argsBytes` string, not `json.Marshal(parsed)` — sha256 hash of frozen_args matches LLM's original input byte-for-byte
-6. `hitl_review_report.go` performs three-way frozen args comparison (preview vs. audit row vs. executed) or documents why two-way is sufficient
-7. `RealChatTransport.ts` uses `DecisionForcedStop` and other `Decision*` constants from `wire-types.ts` instead of string literals
-8. `hitlHandlers` registry uses `sync.Once` during `InjectDeps` to guarantee single initialization; documentation states the process-wide initialization invariant
-
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
-
-**Wave 1**
-
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
 
 ---
 
@@ -355,7 +157,7 @@ Tier 隔离三条护城河。
 7. TBox 版本号自增 1；rollback 到上一版本可一键还原
 8. `verify-phase-38.sh` 全绿：单 binary 启动 + KG query < 1ms + reload lossless
 
-**Plans**: 6/6 complete — 38-01 emitter (29ad95b) / 38-02 store (568b819) / 38-03 induction (e47bb23) / 38-04 admin API (14463e5) / 38-05 web tab (0a29a92) / 38-06 verify gate (1bd93cc). Hermetic gate 13/13 PASS. Verification: `38-VERIFICATION.md` (status: passed; 4 recorded non-blocking deviations — triple baseline 176 vs spike 215, rollback UX → Phase 40 per D-TBox-03, Windows cgo env, live-LLM manual gate).
+**Plans**: 6/6 complete — 38-01 emitter (29ad95b) / 38-02 store (568b819) / 38-03 induction (e47bb23) / 38-04 admin API (14463e5) / 38-05 web tab (0a29a92) / 38-06 verify gate (1bd93cc). Hermetic gate 13/13 PASS.
 
 ---
 
@@ -378,35 +180,7 @@ Tier 隔离三条护城河。
 5. ECL 失败 → 自动 retry 3 次 → 仍失败入 dead-letter 队列，可手动触发
 6. `verify-phase-39.sh` 全绿：100% chunker boundary + entity extraction F1 ≥ 0.8
 
-**Plans**: 9 plans / 6 waves (planned 2026-09-21)
-
-Plans:
-**Wave 1**
-
-- [x] 39-01-PLAN.md — KG store DeleteSubject/InsertUnique primitives + TBox emitter 6→8 classes (D-TBox2-01)
-- [x] 39-02-PLAN.md — Milvus schema +4 native fields, DeleteByExpr marker purge, collection-wide ID watermark
-- [x] 39-03-PLAN.md — ECL merge package: 005c walk+merge port, ChunkMeta contract, regex stub, corpus boundary tests
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 39-04-PLAN.md — Extraction layer: Extractor interface (LLM+stub), F1 math, ABox note-level replace
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 39-05-PLAN.md — ecl_failures ledger + section→Document chunking + Manager stage orchestrator (retry×3 → dead-letter)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 39-06-PLAN.md — Indexer routing branch + boot: TBox upgrade trigger, snapshot-first KG restore, ECL manager wiring
-- [x] 39-07-PLAN.md — Admin pipeline API: run/status/retry routes, 403-before-503 gate, handler test suite
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [x] 39-08-PLAN.md — /admin/pipeline 9th tab per 39-UI-SPEC (Run ECL, progress, failures table, 2s/10s polling)
-
-**Wave 6** *(blocked on Wave 5 completion)*
-
-- [x] 39-09-PLAN.md — Golden set (D-GT-01 human review) + F1 harness + verify-phase-39.sh hermetic gate
+**Plans**: 9/9 complete — 39-01 store primitives / 39-02 Milvus schema / 39-03 ECL merge / 39-04 extraction / 39-05 failures + manager / 39-06 boot wiring / 39-07 admin API / 39-08 web tab / 39-09 verify gate
 
 ---
 
@@ -430,29 +204,7 @@ Plans:
 6. Admin UI 展示：SHACL 报告（绿/黄/红）+ provenance graph (Cytoscape.js) + TBox 版本 timeline
 7. `verify-phase-40.sh` 全绿：SHACL violation detection + provenance coverage 100% + rollback < 5s
 
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
-
-**Wave 1**
-
-- [x] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [x] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment (9e2a799 / fd740e5)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [x] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api) (496bfbd / e3554f3)
-- [x] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep (358cfec / 5044031 / d84557f / 2a0a154)
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
+**Plans**: 10/10 complete — 40-01 SHACL shapes / 40-02 Provenance field / 40-03 ECL provenance / 40-04 QueryScoped / 40-05 TBox changelog / 40-06 Boot SHACL / 40-07a Governance tab shell / 40-07b Three views / 40-08 KGQueryPanel skill selector / 40-09 verify gate. Hermetic gate 17/17 PASS.
 
 ---
 
@@ -471,33 +223,29 @@ Plans:
 1. MCP server 启动并暴露 Tools: `skf_query(pattern)` / `skf_skills()` / `skf_chunk_for(entity)` — 外部 agent 可直接 query
 2. SPARQL-like REST endpoint `POST /api/sparql` 接受 pattern match queries，response 为 JSON triples
 3. KG query 自动 tier 隔离：MCP + SPARQL 强制按 caller 上下文过滤（不可绕过）
-4. Hybrid Retrieval：query → KG 1-2 跳 subgraph expansion → Milvus rerank；Q1/Q4 类查询召回 ≥ 0.85（vs v1.3 0.70）
+4. Hybrid Retrieval：query → KG 1-2 跳 subgraph expansion → Milvus rerank；Q1/Q4 类查询召回 ≥ 0.85（绝对门槛）
 5. Admin UI 提供：SPARQL Playground (代码编辑器 + 结果面板) + MCP Inspector (tools list + 测试调用) + Hybrid 调试 (KG expansion 可视化 + Milvus 命中列表)
 6. `verify-phase-41.sh` 全绿：MCP tools 可调用 + SPARQL endpoint 正常 + Hybrid Q1 召回 ≥ 0.85
 
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
+**Plans**: 6/6 planned
 
 **Wave 1**
 
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
-- [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
+- [ ] 41-01-PLAN.md — MCP server package (mark3labs/mcp-go, stdio transport, 5 tools: skf_query/skf_skills/skf_chunk_for/skf_schema/skf_neighbors)
+- [ ] 41-02-PLAN.md — SPARQL-like REST endpoint (POST /api/sparql, X-Skill-Name header, SparqlQueryScoped shared handler)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [x] 40-04-PLAN.md — QueryScoped tier filtering (schema exempt, fail-closed, entity-level)
-- [x] 40-05-PLAN.md — TBox changelog JSONL + RollbackTBox + admin routes (f753c40 / 8fdcdb5)
+- [ ] 41-03-PLAN.md — Hybrid Retrieval pipeline (KG 1-2 hop expansion → Milvus hybrid → BGE-reranker → top-5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
-- [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
+- [ ] 41-04-PLAN.md — Platform tab shell (AdminDashboard wiring, store union, 11th SubrouteTab)
+- [ ] 41-05-PLAN.md — Three views (SPARQL Playground + MCP Inspector + Hybrid 调试) + platformApi.ts + types.ts
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [x] 40-09-PLAN.md — verify-phase-40.sh hermetic gate + unit tests (ea9d2bf)
+- [ ] 41-06-PLAN.md — verify-phase-41.sh hermetic gate (MCP stdio + SPARQL curl + Hybrid recall >= 0.85)
 
 ---
 
@@ -508,8 +256,8 @@ Plans:
 | 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
 | 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
 | 40. Data Governance | 10/10 | Complete    | 2026-09-23 |
-| 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
+| 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/6 | Not started | — |
 
 ---
 
-*Last updated: 2026-09-21 — v1.4 roadmap created (4 phases 38-41, 17 ONT + 3 PLAT-ONT requirements mapped). Source: 005 series 5 spikes all VALIDATED. UI consistency hard constraint: each web-touched phase produces UI-SPEC.md before implementation. Prior: v1.3 shipped 2026-09-09 (phases 31-37, 26 requirements).*
+*Last updated: 2026-09-23 — Phase 41 planned (6 plans, 4 waves). MCP server via mark3labs/mcp-go stdio transport. SPARQL endpoint POST /api/sparql with X-Skill-Name tier isolation. Hybrid retrieval pipeline KG expansion + Milvus rerank. UI: /admin/platform 11th tab with CodeMirror 6 + three-view switcher.*
