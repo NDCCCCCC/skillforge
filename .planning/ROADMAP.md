@@ -36,7 +36,7 @@
 
 - [x] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
 - [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
-- [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
+- [x] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -46,8 +46,8 @@
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
-- [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
+- [x] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
+- [x] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
 
 **Wave 4** *(blocked on Wave 3 completion)*
@@ -75,7 +75,7 @@
 
 **Wave 1**
 
-- [ ] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
+- [x] 40-01-PLAN.md — SHACL shapes TTL + pure-Go validator (7 constraint types)
 - [x] 40-02-PLAN.md — Triple.Provenance field + backward-compatible JSON snapshot
 - [ ] 40-03-PLAN.md — ECL ABox provenance + belongsToTier attachment
 
@@ -507,7 +507,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
 | 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
-| 40. Data Governance | 1/10 | In Progress|  |
+| 40. Data Governance | 10/10 | Complete    | 2026-09-23 |
 | 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/? | Not started | — |
 
 ---

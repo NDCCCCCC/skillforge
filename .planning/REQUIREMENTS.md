@@ -691,10 +691,10 @@ Which phases cover which requirements.
 
 ### Data Governance (ONT)
 
-- [ ] **ONT-14**: System validates ABox against SHACL shapes at server boot; reports violations with source file + entity URI; does not silently corrupt
-- [ ] **ONT-15**: Every ABox statement carries provenance metadata (`skf:provenance` → source file path + line range + extraction timestamp)
-- [ ] **ONT-16**: TBox evolves via versioned schema induction log; rollback to previous TBox version is supported via snapshot
-- [ ] **ONT-17**: KG query endpoint auto-appends `belongsToTier` filter based on caller's Skill declaration; tier trust isolation preserved
+- [x] **ONT-14**: System validates ABox against SHACL shapes at server boot; reports violations with source file + entity URI; does not silently corrupt
+- [x] **ONT-15**: Every ABox statement carries provenance metadata (`skf:provenance` → source file path + line range + extraction timestamp)
+- [x] **ONT-16**: TBox evolves via versioned schema induction log; rollback to previous TBox version is supported via snapshot
+- [x] **ONT-17**: KG query endpoint auto-appends `belongsToTier` filter based on caller's Skill declaration; tier trust isolation preserved
 
 ### Platform Layer (deferred to Phase 41 — listed here for traceability)
 
