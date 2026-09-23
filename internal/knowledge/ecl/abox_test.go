@@ -267,3 +267,136 @@ func TestABoxApplyNoteErrors(t *testing.T) {
 		t.Errorf("onChange fired on error path (%d times)", fires)
 	}
 }
+
+// TestABoxBelongsToTierApplyNote — ApplyNote emits belongsToTier triples
+// for note and all its tables (D-TIER-02). A note without a Tier field
+// emits no belongsToTier triples.
+func TestABoxBelongsToTierApplyNote(t *testing.T) {
+	st := store.New()
+
+	// Tier = "sql-guides".
+	noteWithTier := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides",
+		Sections: []MergedSection{{Body: "body", SourcePaths: []string{"knowledge/sql-guides/001__sec01.md"}}}}
+	if err := ApplyNote(st, testNS, noteWithTier, Extraction{Tables: []ExtractedTable{
+		{Name: "etl_a", Kind: "update"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	noteIRI := NoteIRI(testNS, "001")
+	tblIRI := TableIRI(testNS, "etl_a")
+
+	// Note has belongsToTier triple.
+	noteTierTriples := st.Query(noteIRI, testNS+"belongsToTier", "")
+	if len(noteTierTriples) != 1 {
+		t.Errorf("note belongsToTier triples = %d, want 1", len(noteTierTriples))
+	}
+	if len(noteTierTriples) > 0 && noteTierTriples[0].O != testNS+"sql-guides" {
+		t.Errorf("note belongsToTier O = %q, want %q", noteTierTriples[0].O, testNS+"sql-guides")
+	}
+
+	// Table has belongsToTier triple.
+	tblTierTriples := st.Query(tblIRI, testNS+"belongsToTier", "")
+	if len(tblTierTriples) != 1 {
+		t.Errorf("table belongsToTier triples = %d, want 1", len(tblTierTriples))
+	}
+	if len(tblTierTriples) > 0 && tblTierTriples[0].O != testNS+"sql-guides" {
+		t.Errorf("table belongsToTier O = %q, want %q", tblTierTriples[0].O, testNS+"sql-guides")
+	}
+
+	// Note without Tier emits no belongsToTier triples.
+	noteNoTier := Note{SourceIdx: "002", Title: "t"}
+	if err := ApplyNote(st, testNS, noteNoTier, Extraction{Tables: []ExtractedTable{
+		{Name: "etl_b", Kind: "insert"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	note2IRI := NoteIRI(testNS, "002")
+	if len(st.Query(note2IRI, testNS+"belongsToTier", "")) != 0 {
+		t.Error("note without Tier should have no belongsToTier triple")
+	}
+}
+
+// TestABoxTierOrphanCleanup — when a note is replaced and drops a table
+// reference, the orphaned table's belongsToTier triple is also removed
+// (D-TIER-07). Tables still referenced by other notes survive with their
+// belongsToTier intact.
+func TestABoxTierOrphanCleanup(t *testing.T) {
+	st := store.New()
+
+	note1 := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides"}
+	note2 := Note{SourceIdx: "002", Title: "t", Tier: "sql-guides"}
+
+	// Note 1 references etl_orphan (will be dropped) and etl_shared.
+	// Note 2 references etl_shared only.
+	if err := ApplyNote(st, testNS, note1, Extraction{Tables: []ExtractedTable{
+		{Name: "etl_shared", Kind: "update"},
+		{Name: "etl_orphan", Kind: "select"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyNote(st, testNS, note2, Extraction{Tables: []ExtractedTable{
+		{Name: "etl_shared", Kind: "update"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	orphanIRI := TableIRI(testNS, "etl_orphan")
+
+	// Orphan should have exactly 1 belongsToTier before replacement
+	// (inherited from note1 via etl_orphan reference).
+	beforeOrphanTier := st.Query(orphanIRI, testNS+"belongsToTier", "")
+	if len(beforeOrphanTier) != 1 {
+		t.Fatalf("before replacement: orphan belongsToTier = %d, want 1", len(beforeOrphanTier))
+	}
+
+	// Replace note 1: drops etl_orphan reference, orphans the table.
+	if err := ApplyNote(st, testNS, note1, Extraction{Tables: []ExtractedTable{
+		{Name: "etl_new", Kind: "create"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// Orphan table itself should be fully gone (referencesTable + type + belongsToTier).
+	if len(st.Query(orphanIRI, "", "")) != 0 {
+		t.Errorf("orphan table still has triples after deletion: %v", st.Query(orphanIRI, "", ""))
+	}
+
+	// etl_shared should still have its belongsToTier (note2 still references it).
+	// note1 had Tier=sql-guides (now deleted) and note2 also has Tier=sql-guides,
+	// so tbl_shared accumulates 2 belongsToTier triples (D-TIER-06: any match = visible).
+	sharedIRI := TableIRI(testNS, "etl_shared")
+	sharedTier := st.Query(sharedIRI, testNS+"belongsToTier", "")
+	if len(sharedTier) != 2 {
+		t.Errorf("shared table belongsToTier after orphan cleanup = %d, want 2 (note1+note2 both sql-guides)", len(sharedTier))
+	}
+}
+
+// TestABoxMultiTierTableInheritance — a table referenced by notes from
+// different tiers gets multiple belongsToTier triples, one per tier
+// (D-TIER-06: any match makes the table visible).
+func TestABoxMultiTierTableInheritance(t *testing.T) {
+	st := store.New()
+
+	noteSqlguides := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides"}
+	noteAnother := Note{SourceIdx: "002", Title: "t", Tier: "another-tier"}
+
+	// Note 1 references etl_cross.
+	if err := ApplyNote(st, testNS, noteSqlguides, Extraction{Tables: []ExtractedTable{
+		{Name: "etl_cross", Kind: "update"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Note 2 also references etl_cross.
+	if err := ApplyNote(st, testNS, noteAnother, Extraction{Tables: []ExtractedTable{
+		{Name: "etl_cross", Kind: "insert"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	tblIRI := TableIRI(testNS, "etl_cross")
+	tierTriples := st.Query(tblIRI, testNS+"belongsToTier", "")
+	if len(tierTriples) != 2 {
+		t.Errorf("cross-tier table belongsToTier count = %d, want 2", len(tierTriples))
+	}
+}

@@ -242,8 +242,9 @@ func TestManagerHappyPath(t *testing.T) {
 		assert.NotEmpty(t, d.SourceIdx)
 		assert.NotEmpty(t, d.Content)
 	}
-	// Per note: rdf:type + referencesTable + TableSchema type = 3 triples.
-	assert.Equal(t, 9, kg.Len(), "KG grew by 3 triples per note")
+	// Per note: rdf:type + belongsToTier + referencesTable + TableSchema type +
+	// tbl-belongsToTier = 5 triples (D-PROV-11 Provenance + D-TIER-02 belongsToTier).
+	assert.Equal(t, 15, kg.Len(), "KG grew by 5 triples per note")
 }
 
 // TestManagerExtractDeadLetterContinues: extractor fails note 002 three
@@ -277,7 +278,8 @@ func TestManagerExtractDeadLetterContinues(t *testing.T) {
 
 	// Batch continued: 2 notes loaded and seeded; KG holds only theirs.
 	assert.Len(t, seed.docs, 2)
-	assert.Equal(t, 6, kg.Len())
+	// 2 notes x 5 triples each = 10 (D-PROV-11 + D-TIER-02)
+	assert.Equal(t, 10, kg.Len())
 
 	// Each forced failure was really attempted 3 times.
 	assert.Equal(t, maxAttempts, ex.calls["002"])
@@ -293,7 +295,7 @@ func TestManagerRetryNoteResolves(t *testing.T) {
 
 	require.True(t, m.CASRunning())
 	require.NoError(t, m.Run(context.Background()))
-	require.Equal(t, 6, kg.Len())
+	require.Equal(t, 10, kg.Len())
 
 	require.NoError(t, m.RetryNote(context.Background(), "002"))
 
@@ -304,7 +306,7 @@ func TestManagerRetryNoteResolves(t *testing.T) {
 	// Full-note re-run converged: KG now holds 002's triples too (idempotent
 	// note-level replace, D-Run-01); the retry seeded only 002's docs — a
 	// single-note re-run never re-seeds the whole batch.
-	assert.Equal(t, 9, kg.Len())
+	assert.Equal(t, 15, kg.Len())
 	require.Len(t, seed.docs, 1)
 	assert.Equal(t, "002", seed.docs[0].SourceIdx)
 	assert.Equal(t, StageDone, m.Status().Stage)
@@ -368,7 +370,7 @@ func TestManagerKGLoadDeadLetter(t *testing.T) {
 	require.NoError(t, m.Run(context.Background()))
 
 	deadRow(t, fs, "002", StageKGLoad)
-	assert.Equal(t, 6, kg.Len(), "KG reflects only the non-failing notes")
+	assert.Equal(t, 10, kg.Len(), "KG reflects only the non-failing notes (2 x 5 triples)")
 	assert.Len(t, seed.docs, 2, "dead note never reaches milvus-load")
 	assert.Equal(t, StageDone, m.Status().Stage)
 }
