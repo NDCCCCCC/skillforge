@@ -1,10 +1,11 @@
 ---
 phase: 41
 slug: platform-layer-mcp-server-sparql-endpoint-hybrid-retrieval
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-09-23
+reviewed_at: 2026-09-23
 ---
 
 # Phase 41 — UI Design Contract
