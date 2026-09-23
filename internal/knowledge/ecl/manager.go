@@ -389,12 +389,13 @@ func (m *Manager) Run(ctx context.Context) (err error) {
 		docs, err := BuildDocuments(batchNotes, alloc)
 		if err != nil {
 			// Batch-level failure: park every note that reached this stage.
+			// IN-03: record attempt 1 (BuildDocuments failed before any seed attempt).
 			for _, ln := range kgLoaded {
-				m.recordFailure(ln.note, StageMilvusLoad, maxAttempts, err, FailureDead)
+				m.recordFailure(ln.note, StageMilvusLoad, 1, err, FailureDead)
 			}
 			return fmt.Errorf("ecl: manager: build documents: %w", err)
 		}
-		if err := m.seedWithRetry(ctx, kgLoaded, docs); err != nil {
+		if _, err := m.seedWithRetry(ctx, kgLoaded, docs); err != nil {
 			return fmt.Errorf("ecl: manager: milvus-load: %w", err)
 		}
 	}
@@ -522,7 +523,7 @@ func (m *Manager) RetryClaimed(ctx context.Context, noteID string) (err error) {
 		return fmt.Errorf("ecl: manager: retry note %s build documents: %w", noteID, err)
 	}
 	loaded := []loadedNote{{note: *target, ex: ex}}
-	if err := m.seedWithRetry(ctx, loaded, docs); err != nil {
+	if _, err := m.seedWithRetry(ctx, loaded, docs); err != nil {
 		return fmt.Errorf("ecl: manager: retry note %s milvus-load: %w", noteID, err)
 	}
 
@@ -596,22 +597,24 @@ func (m *Manager) loadWithRetry(ctx context.Context, note Note, stage string, fn
 // ledger stays per-note (planner pin): each failed attempt writes a
 // pending row per note in the batch; the final failure parks ALL of them
 // dead at milvus-load; success resolves any rows the earlier attempts
-// wrote.
-func (m *Manager) seedWithRetry(ctx context.Context, batch []loadedNote, docs []retriever.Document) error {
+// wrote. It returns the error and the real attempt number at which the
+// seed failed (or 0 if it succeeded).
+func (m *Manager) seedWithRetry(ctx context.Context, batch []loadedNote, docs []retriever.Document) (int, error) {
 	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	var attempt int
+	for attempt = 1; attempt <= maxAttempts; attempt++ {
 		if cerr := ctx.Err(); cerr != nil {
 			lastErr = cerr
 			break
 		}
-		err := m.seedFn(ctx, docs)
+		err := m.seedFn(ctx, docs) // NOTE: intentionally new err var; lastErr = err captures it
 		if err == nil {
 			for _, ln := range batch {
 				m.resolveIfFailed(ln.note, StageMilvusLoad, attempt)
 			}
-			return nil
+			return 0, nil
 		}
-		lastErr = err
+		lastErr = err // assign the loop-level err to outer lastErr
 		if attempt < maxAttempts {
 			for _, ln := range batch {
 				m.recordFailure(ln.note, StageMilvusLoad, attempt, err, FailurePending)
@@ -620,9 +623,11 @@ func (m *Manager) seedWithRetry(ctx context.Context, batch []loadedNote, docs []
 		}
 	}
 	for _, ln := range batch {
-		m.recordFailure(ln.note, StageMilvusLoad, maxAttempts, lastErr, FailureDead)
+		// IN-03: record the REAL attempt number at which seed failed.
+		// After the loop, attempt == maxAttempts+1, so attempt-1 is the real count.
+		m.recordFailure(ln.note, StageMilvusLoad, attempt-1, lastErr, FailureDead)
 	}
-	return lastErr
+	return attempt - 1, lastErr
 }
 
 // recordFailure writes one ledger row. Upsert errors are WARN-logged, not
