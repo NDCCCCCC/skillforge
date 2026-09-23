@@ -153,24 +153,42 @@ func (e LLMExtractor) ExtractNote(ctx context.Context, note Note) (Extraction, e
 	seenTables := map[string]bool{}
 	seenRelated := map[string]bool{}
 	for _, s := range note.Sections {
-		part, err := e.extractBody(ctx, note.SourceIdx, note.Title, s.Body)
-		if err != nil {
-			return Extraction{}, err
-		}
-		for _, t := range part.Tables {
-			if seenTables[t.Name] {
-				continue // first kind wins
+		// IN-02: sections over MinSplitRunes are sub-split so every LLM prompt
+		// stays under the cap. Bodies within the cap go directly to extractBody.
+		var bodies []string
+		if utf8.RuneCountInString(s.Body) > MinSplitRunes {
+			splitter, err := buildSplitter()
+			if err != nil {
+				return Extraction{}, fmt.Errorf("ecl: extract: build splitter: %w", err)
 			}
-			seenTables[t.Name] = true
-			union.Tables = append(union.Tables, t)
-		}
-		for _, r := range part.RelatedNotes {
-			key := r.SourceIdx + "\x00" + r.Relation
-			if seenRelated[key] {
-				continue
+			parts, err := subSplit(splitter, s.Body)
+			if err != nil {
+				return Extraction{}, fmt.Errorf("ecl: extract: sub-split oversize section %s: %w", s.Section, err)
 			}
-			seenRelated[key] = true
-			union.RelatedNotes = append(union.RelatedNotes, r)
+			bodies = parts
+		} else {
+			bodies = []string{s.Body}
+		}
+		for _, body := range bodies {
+			part, err := e.extractBody(ctx, note.SourceIdx, note.Title, body)
+			if err != nil {
+				return Extraction{}, err
+			}
+			for _, t := range part.Tables {
+				if seenTables[t.Name] {
+					continue // first kind wins
+				}
+				seenTables[t.Name] = true
+				union.Tables = append(union.Tables, t)
+			}
+			for _, r := range part.RelatedNotes {
+				key := r.SourceIdx + "\x00" + r.Relation
+				if seenRelated[key] {
+					continue
+				}
+				seenRelated[key] = true
+				union.RelatedNotes = append(union.RelatedNotes, r)
+			}
 		}
 	}
 	return union, nil
