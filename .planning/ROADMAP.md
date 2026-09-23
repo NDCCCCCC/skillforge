@@ -227,16 +227,16 @@ Tier 隔离三条护城河。
 5. Admin UI 提供：SPARQL Playground (代码编辑器 + 结果面板) + MCP Inspector (tools list + 测试调用) + Hybrid 调试 (KG expansion 可视化 + Milvus 命中列表)
 6. `verify-phase-41.sh` 全绿：MCP tools 可调用 + SPARQL endpoint 正常 + Hybrid Q1 召回 ≥ 0.85
 
-**Plans**: 2/6 complete — 41-01 MCP stdio server / 41-02 SPARQL endpoint (bc02242+5e9c332)
+**Plans**: 3/6 complete — 41-01 MCP stdio server / 41-02 SPARQL endpoint / 41-03 Hybrid Retrieval (c6c44dd+f483ae7)
 
 **Wave 1**
 
-- [ ] 41-01-PLAN.md — MCP server package (mark3labs/mcp-go, stdio transport, 5 tools: skf_query/skf_skills/skf_chunk_for/skf_schema/skf_neighbors)
-- [ ] 41-02-PLAN.md — SPARQL-like REST endpoint (POST /api/sparql, X-Skill-Name header, SparqlQueryScoped shared handler)
+- [x] 41-01-PLAN.md — MCP server package (mark3labs/mcp-go, stdio transport, 5 tools: skf_query/skf_skills/skf_chunk_for/skf_schema/skf_neighbors)
+- [x] 41-02-PLAN.md — SPARQL-like REST endpoint (POST /api/sparql, X-Skill-Name header, SparqlQueryScoped shared handler)
 
-**Wave 2** *(blocked on Wave 1 completion)*
+**Wave 2** *(Wave 1 complete)*
 
-- [ ] 41-03-PLAN.md — Hybrid Retrieval pipeline (KG 1-2 hop expansion → Milvus hybrid → BGE-reranker → top-5)
+- [x] 41-03-PLAN.md — Hybrid Retrieval pipeline (KG 1-2 hop expansion → Milvus hybrid → BGE-reranker → top-5)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -256,8 +256,8 @@ Tier 隔离三条护城河。
 | 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
 | 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
 | 40. Data Governance | 10/10 | Complete    | 2026-09-23 |
-| 41. Platform Layer (MCP + SPARQL + Hybrid) | 0/6 | Not started | — |
+| 41. Platform Layer (MCP + SPARQL + Hybrid) | 3/6 | Wave 2 | — |
 
 ---
 
-*Last updated: 2026-09-23 — Phase 41 planned (6 plans, 4 waves). MCP server via mark3labs/mcp-go stdio transport. SPARQL endpoint POST /api/sparql with X-Skill-Name tier isolation. Hybrid retrieval pipeline KG expansion + Milvus rerank. UI: /admin/platform 11th tab with CodeMirror 6 + three-view switcher.*
+*Last updated: 2026-09-23 — Phase 41 3/6 (41-01 MCP stdio server, 41-02 SPARQL endpoint, 41-03 Hybrid Retrieval done). Wave 2 complete. Next: 41-04 Platform tab shell.*

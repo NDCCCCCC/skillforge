@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-23T06:02:39.000Z"
-last_activity: 2026-09-23 -- Phase 41-02 complete: POST /api/sparql with X-Skill-Name tier isolation + SparqlQueryScoped shared function + 11 unit tests
+last_updated: "2026-09-23T06:15:00.000Z"
+last_activity: 2026-09-23 -- Phase 41-03 complete: HybridSearchScoped pipeline + POST /api/admin/platform/hybrid/search + 8 unit tests (c6c44dd+f483ae7)
 progress:
   total_phases: 11
   completed_phases: 3
   total_plans: 31
-  completed_plans: 27
-  percent: 27
+  completed_plans: 28
+  percent: 28
 ---
 
 # State — SkillForge
@@ -18,9 +18,9 @@ progress:
 ## Current Position
 
 Phase: 41 (platform-layer-mcp-server-sparql-endpoint-hybrid-retrieval) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Executing Phase 41
-Last activity: 2026-09-23 -- Phase 41-02 complete: POST /api/sparql with X-Skill-Name tier isolation, SparqlQueryScoped shared function (bc02242+5e9c332)
+Last activity: 2026-09-23 -- Phase 41-03 complete: HybridSearchScoped pipeline + POST /api/admin/platform/hybrid/search + 8 unit tests (c6c44dd+f483ae7)
 
 ## v1.4 Phase Map
 
@@ -129,3 +129,4 @@ Last activity: 2026-09-23 -- Phase 41-02 complete: POST /api/sparql with X-Skill
 - [Phase 40]: 40-09 verify-phase-40.sh: MSYS_NO_PATHCONV=1 + BASH_SOURCE[0] for Windows path resolution; targets ./internal/ontology/... only (pre-existing cgo issue in other packages); date +%s for wall-clock timing (not bash SECONDS builtin); TestProvenanceCoverage in store_test.go per D-PROV-07 scope
 - [Phase 41]: 41-01 MCP server: mark3labs/mcp-go v1.1.0 (community standard; eino-ext is client-only); 5 tools: skf_query (QueryScoped triple pattern), skf_skills (Skill enumeration), skf_chunk_for (ECL chunk lookup via Adjacent1+referencesTable), skf_schema (TBox class/property overview), skf_neighbors (N-hop graph expansion); SKILLFORGE_MCP_SERVICE_SKILL mandatory at startup (D-TRUST-02); stdio subprocess runs in goroutine; admin API routes: GET /status, GET /tools, POST /invoke — all token-gated
 - [Phase 41]: 41-02 SPARQL endpoint: SparqlQueryScoped shared function (tier filter via QueryScoped, filter substring match, offset/limit pagination, 500 cap); POST /api/sparql registered NOT under /api/admin/ (X-Skill-Name header is token, not X-Admin-Token); 401 if X-Skill-Name absent or skill not found; 11 unit tests covering all query shapes, tier filtering, pagination, truncation, error cases
+- [Phase 41]: 41-03 Hybrid Retrieval: HybridSearchScoped pipeline (KG 1-2 hop expansion via Adjacent1/Adjacent2 → Milvus top-50 → optional BGE-reranker → top-5); POST /api/admin/platform/hybrid/search with X-Skill-Name tier isolation; SKILLFORGE_RETRIEVAL_RERANK (default true) + SKILLFORGE_HYBRID_HOPS (default 1) env vars; all KG ops via QueryScoped; reranker errors non-fatal (log + fall back); 8 unit tests
