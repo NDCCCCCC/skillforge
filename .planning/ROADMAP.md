@@ -256,8 +256,8 @@ Tier 隔离三条护城河。
 | 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
 | 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
 | 40. Data Governance | 10/10 | Complete    | 2026-09-23 |
-| 41. Platform Layer (MCP + SPARQL + Hybrid) | 5/6 | Wave 3 | — |
+| 41. Platform Layer (MCP + SPARQL + Hybrid) | 6/6 | Complete | 2026-09-23 |
 
 ---
 
-*Last updated: 2026-09-23 — Phase 41 5/6 done (41-01 MCP stdio server, 41-02 SPARQL endpoint, 41-03 Hybrid Retrieval, 41-04 Platform tab shell, 41-05 Three views done). Wave 3 complete. Next: 41-06 verify-phase-41.sh.*
+*Last updated: 2026-09-23 — Phase 41 COMPLETE (6/6 plans). 41-06 verify-phase-41.sh + verify_main.go hermetic gate PASS.*
