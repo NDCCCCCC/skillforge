@@ -33,6 +33,7 @@ import {
   MessageSquare,
   Network,
   RefreshCw,
+  ShieldCheck,
   Wrench,
   Workflow,
 } from 'lucide-react';
@@ -50,6 +51,7 @@ import FeedbackMetricsPanel from './FeedbackMetricsPanel';
 import ReviewQueuePanel from './ReviewQueuePanel';
 import OntologyTab from './ontology/OntologyTab';
 import PipelineTab from './pipeline/PipelineTab';
+import GovernanceTab from './governance/GovernanceTab';
 
 export default function AdminDashboard() {
   const adminSubroute = useAppStore((s) => s.adminSubroute);
@@ -78,7 +80,8 @@ export default function AdminDashboard() {
       | 'feedback'
       | 'review'
       | 'ontology'
-      | 'pipeline',
+      | 'pipeline'
+      | 'governance',
   ) {
     setAdminSubroute(next);
     // URL is /admin for all subroutes (store-only subroute, no sub-path segment).
@@ -211,6 +214,15 @@ export default function AdminDashboard() {
           label="ECL 管线"
           onClick={() => handleSubroute('pipeline')}
         />
+        {/* Plan 40-07a — 治理 (the 10th tab): SHACL health + provenance graph
+            + TBox version timeline (SC-1..7, 40-UI-SPEC). */}
+        <SubrouteTab
+          active={adminSubroute === 'governance'}
+          testId="admin-tab-governance"
+          icon={<ShieldCheck className="h-3.5 w-3.5" />}
+          label="治理"
+          onClick={() => handleSubroute('governance')}
+        />
       </nav>
 
       {/* CapacityMonitor */}
@@ -237,6 +249,7 @@ export default function AdminDashboard() {
         {adminSubroute === 'review' && <ReviewQueuePanel />}
         {adminSubroute === 'ontology' && <OntologyTab />}
         {adminSubroute === 'pipeline' && <PipelineTab />}
+        {adminSubroute === 'governance' && <GovernanceTab />}
       </main>
 
       {/* Plan 29-08 — the /admin toast viewport. App.tsx early-returns for

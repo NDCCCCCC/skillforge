@@ -465,6 +465,8 @@ export interface AppState {
   // stays 'batches' so deep-links land on 导入批次 unchanged.
   // Plan 38-05 — 'ontology' (第 8 tab). Plan 39-08 — 'pipeline' (第 9
   // tab, ECL 管线) extends the union; default unchanged.
+  // Plan 40-07a — 'governance' (第 10 tab, 治理) extends the union;
+  // default unchanged.
   adminSubroute:
     | 'batches'
     | 'bases'
@@ -474,7 +476,8 @@ export interface AppState {
     | 'feedback'
     | 'review'
     | 'ontology'
-    | 'pipeline';
+    | 'pipeline'
+    | 'governance';
   indexReports: IndexRun[];
   auditRows: AuditRow[];
   auditFilter: AuditFilter;
@@ -541,6 +544,7 @@ export interface AppActions {
   // Plan 29-08 (D-29-12) — union widened for the 反馈/复核 tabs.
   // Plan 38-05 — union widened for the 本体 (ontology) tab.
   // Plan 39-08 — union widened for the ECL 管线 (pipeline) tab.
+  // Plan 40-07a — union widened for the 治理 (governance) tab.
   setAdminSubroute(
     sub:
       | 'batches'
@@ -551,7 +555,8 @@ export interface AppActions {
       | 'feedback'
       | 'review'
       | 'ontology'
-      | 'pipeline',
+      | 'pipeline'
+      | 'governance',
   ): void;
   setIndexReports(runs: IndexRun[]): void;
   setAuditRows(rows: AuditRow[]): void;
