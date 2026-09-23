@@ -4,11 +4,14 @@
 set -euo pipefail
 
 PHASE=40
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # MSYS2: disable path conversion to avoid Windows-style path mangling in go commands
 export MSYS_NO_PATHCONV=1
+
+# Resolve PROJECT_ROOT: script is in the repo root (ai-agent/verify-phase-40.sh)
+# BASH_SOURCE[0] gives the actual script path even when bash itself is $0.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
