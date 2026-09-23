@@ -114,10 +114,6 @@ import (
 	"github.com/skillforge/skillforge/internal/agent"
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/document"
-	"github.com/skillforge/skillforge/internal/ontology/emitter"
-	"github.com/skillforge/skillforge/internal/ontology/induction"
-	onstore "github.com/skillforge/skillforge/internal/ontology/store"
-	"github.com/skillforge/skillforge/internal/ontology/shacl"
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/externalauth"
@@ -126,6 +122,10 @@ import (
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/llm"
+	"github.com/skillforge/skillforge/internal/ontology/emitter"
+	"github.com/skillforge/skillforge/internal/ontology/induction"
+	"github.com/skillforge/skillforge/internal/ontology/shacl"
+	onstore "github.com/skillforge/skillforge/internal/ontology/store"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
@@ -143,7 +143,7 @@ import (
 // Phase 30 / WR-05 (T-30-06): per-session rate limiting constants.
 const (
 	feedbackRateLimitRequests = 10 // requests per session per minute
-	feedbackRateLimitBurst   = 5  // burst size for the per-session rate limiter
+	feedbackRateLimitBurst    = 5  // burst size for the per-session rate limiter
 )
 
 // env-or-default helpers. Each required var aborts startup on empty.
@@ -1011,7 +1011,13 @@ func main() {
 		// key is collection-wide and Milvus does not dedupe inserts.
 		watermark, werr := eclMC.GetMaxIDCollection(ctx)
 		if werr != nil {
-			log.Printf("[WARN] cmd/server: ECL ID watermark query failed (%v) — allocation restarts at 1; PK collisions with boot rows possible", werr)
+			// IN-07: watermark failure means ID allocation would start at 1,
+			// guaranteeing PK collisions with boot-seeded rows. Do NOT arm the
+			// manager — leave eclManager nil so every admin pipeline route
+			// returns 503 (clean nil-posture). The operator must fix the
+			// watermark query before ECL can run.
+			log.Printf("[FAIL] cmd/server: ECL ID watermark query failed (%v) — eclManager NOT armed; admin pipeline routes answer 503", werr)
+			break
 		}
 		var idSeq atomic.Int64
 		idSeq.Store(watermark)
