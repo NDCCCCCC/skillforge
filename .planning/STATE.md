@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-23T03:03:00Z"
+last_updated: "2026-09-23T03:22:00Z"
 last_activity: 2026-09-23
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 18
 ---
 
@@ -17,9 +17,9 @@ progress:
 
 ## Current Position
 
-Phase: 40 (data-governance-shacl-provenance-tbox-versioning) — EXECUTING
-Plan: 9 of 10
-Status: Executing
+Phase: 40 (data-governance-shacl-provenance-tbox-versioning) — COMPLETE
+Plan: 10 of 10
+Status: Complete
 Last activity: 2026-09-23
 
 ## v1.4 Phase Map
@@ -28,7 +28,7 @@ Last activity: 2026-09-23
 |-------|--------|------------------|----------------|
 | 38 | Foundation (TBox + KG store + auto lift) | internal/ontology/ 目录；TBox emitter (server boot); memory-map KG store + JSON snapshot; auto schema lift (LLM 提议 → human approve) | `/admin/ontology` (TBox 类层次 + KG 三元组浏览器) |
 | 39 | ECL Pipeline (section-aware chunker + entity extraction) | 替换 internal/knowledge/indexer.go byte-cap; LLM 抽 etl_* tables + 关系; ABox 自动写入 + 双向 KG↔Milvus 同步 | `/admin/pipeline` (ECL Pipeline 实时状态) |
-| 40 | Data Governance (SHACL + Provenance) | SHACL shapes 启动校验; Provenance 链 (source_path); TBox 版本号 + 演进日志 | `/admin/governance` (校验报告 + provenance 图 + 版本日志) |
+| 40 | Data Governance (SHACL + Provenance) | SHACL shapes 启动校验; Provenance 链 (source_path); TBox 版本号 + 演进日志; /admin/governance 三视图 | `/admin/governance` (校验报告 + provenance 图 + 版本日志) — Wave 3 complete, Wave 4 pending |
 | 41 | Platform Layer (MCP + SPARQL + Hybrid Retrieval) | MCP server 暴露 KG; SPARQL-like REST /api/sparql; Hybrid Retrieval 1-2 跳 expansion | `/admin/platform` (SPARQL Playground + MCP Inspector + Hybrid 调试) |
 
 ## v1.4 Standards
@@ -86,7 +86,7 @@ Last activity: 2026-09-23
 
 ---
 
-*Last updated: 2026-09-23 — Phase 40-07a complete: 10th tab (治理/ShieldCheck) + GovernanceTab shell + HealthBanner + governance types/api*
+*Last updated: 2026-09-23 — Phase 40-07b complete: three governance views (ShaclReportView / ProvenanceGraphView / TimelineView) + cytoscape ^3.34.0; Wave 3 complete (07a+07b+08)*
 
 ## Decisions
 
@@ -125,3 +125,4 @@ Last activity: 2026-09-23
 - [Phase 40]: 40-06 Boot SHACL: Store gets quarantined map + shaclReport cache; Quarantine(t Triple) removes from main indices and appends to quarantined; QuarantinedEntities() returns store-side DTO; boot runs shacl.Validate() then分流 error entities to quarantine via kg.Quarantine(); report cached via SetShaclReport/GetShaclReport; SKILLFORGE_SHACL_SHAPES env var; violations never block boot (D-SHACL-02); governance handlers: GET /shacl returns cached report (503 if nil), GET /provenance returns graph including quarantined nodes (D-SHACL-02/03)
 - [Phase 40]: 40-07a GovernanceTab shell: 10th tab governance registered (ShieldCheck, 治理, data-testid=admin-tab-governance); app-store union widened; GovernanceTab three-view switcher (校验报告/溯源图谱/版本演进) with HealthBanner sub-component (red/warn/ok states per D-SHACL-03); Run ECL 回填 CTA on yellow+provenance-missing; governanceApi.ts with fetchShaclReport/fetchProvenanceGraph/fetchChangelog/rollbackTBox/runPipeline; snake_case types per 40-UI-SPEC §Component 2
 - [Phase 40]: 40-08 KGQueryPanel skill param: resolveSkillTiers maps skill name to hasReadAccess tier names; adminOntologyKGQueryHandler calls QueryScoped when skill= present; FE Skill selector populates from KG rdf:type=skf:Skill enumeration; 来源 column shows source_kind badge + path + line range, muted dash for legacy triples (D-TIER-01, D-PROV-03)
+- [Phase 40]: 40-07b FE governance views: ShaclReportView (quarantine red zone + warnings yellow zone, provenance-missing badge), ProvenanceGraphView (cytoscape breadthfirst, getComputedStyle tokens, search highlight, node detail panel), TimelineView (who badge, rollback lifecycle with new-violation toast per D-PROV-09); cytoscape ^3.34.0 plain npm (no react wrapper, no layout plugins)
