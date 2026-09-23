@@ -446,7 +446,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 40-06-PLAN.md — Boot SHACL + quarantine + governance admin API (shacl/provenance) (584b58b / 156a23e)
-- [ ] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api)
+- [x] 40-07a-PLAN.md — Governance tab shell (tab registration + HealthBanner + types/api) (496bfbd / e3554f3)
 - [ ] 40-07b-PLAN.md — Three views (SHACL report + provenance graph + timeline) + cytoscape dep
 - [x] 40-08-PLAN.md — KGQueryPanel skill selector + 来源 column (5a7520f / c2c1425)
 
