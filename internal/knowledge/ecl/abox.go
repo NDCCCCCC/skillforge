@@ -152,6 +152,17 @@ func BuildTriples(ns string, note Note, ex Extraction) []store.Triple {
 //     snapshot trigger)
 //
 // On any error the store is untouched and onChange does not fire.
+//
+// Bounded Impact (IN-09): steps 3-5 are separate per-op-locked store calls,
+// not one atomic transaction. A concurrent reader — notably the manual
+// POST /api/admin/ontology/snapshot handler — can snapshot the intermediate
+// state (note deleted, orphans swept, fresh triples not yet inserted) and
+// persist it; a crash before step 5 completes leaves that half-replaced
+// state as the restored KG. The impact is bounded: the intermediate state
+// is valid RDF (no dangling references) and the next successful run/retry
+// of the same note converges to the correct state. If hardening is needed
+// in the future, route manual snapshots through the store-level RLock held
+// across Snapshot plus an ApplyNote "in-flight" flag.
 func ApplyNote(st *store.Store, ns string, note Note, ex Extraction, onChange func()) error {
 	if st == nil {
 		return errors.New("ecl: abox: KG store is required")

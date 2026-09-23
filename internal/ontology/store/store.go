@@ -364,6 +364,9 @@ func (s *Store) Adjacent2Reverse(pred2, pred1, obj string) []string {
 }
 
 // Snapshot serializes the store to indented JSON.
+// Snapshot returns a point-in-time JSON snapshot of the entire store under
+// an RLock (concurrent readers are safe). Callers must not call ApplyNote
+// during a Snapshot — see ecl.ApplyNote bounded-impact contract (IN-09).
 func (s *Store) Snapshot() ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
