@@ -7,7 +7,8 @@ PHASE=40
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-cd "$PROJECT_ROOT"
+# MSYS2: disable path conversion to avoid Windows-style path mangling in go commands
+export MSYS_NO_PATHCONV=1
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -28,7 +29,6 @@ pass "(a) build + vet"
 
 # (b) SHACL violation detection (hermetic)
 info "(b) SHACL violation detection"
-cd "$PROJECT_ROOT"
 go test ./internal/ontology/shacl/... -v -run "TestShaclViolation|TestShaclQuarantine" 2>&1 | tail -5 || fail "SHACL violation/quarantine tests failed"
 pass "(b) SHACL violation detection"
 
