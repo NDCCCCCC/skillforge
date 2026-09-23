@@ -743,6 +743,84 @@ func TestQueryScopedSchemaTriplesAlwaysIncluded(t *testing.T) {
 	_ = results
 }
 
+// ---------------------------------------------------------------------------
+// TestProvenanceCoverage — D-PROV-07: all new ABox triples have non-nil
+// Provenance; legacy triples (nil) are expected for pre-40 data (D-PROV-10).
+// ---------------------------------------------------------------------------
+
+func TestProvenanceCoverage(t *testing.T) {
+	st := New()
+
+	// With provenance (new ECL path, D-PROV-02/11).
+	provFile := &Provenance{
+		SourceKind:  "file",
+		SourcePath:  "knowledge/sql-guides/001.md",
+		LineStart:   1,
+		LineEnd:     10,
+		ExtractedAt: "2026-09-22T00:00:00Z",
+	}
+	st.Insert(Triple{S: ns + "note_001", P: ns + "tierName", O: `"note"`, Provenance: provFile})
+
+	provEmitter := &Provenance{
+		SourceKind:  "emitter",
+		SourcePath:  "emitter:v2",
+		LineStart:   0,
+		LineEnd:     0,
+		ExtractedAt: "2026-09-22T01:00:00Z",
+	}
+	st.Insert(Triple{S: ns + "tier_001", P: ns + "tierName", O: `"sql-guides"`, Provenance: provEmitter})
+
+	provInduction := &Provenance{
+		SourceKind:  "induction",
+		SourcePath:  "proposal-042",
+		LineStart:   0,
+		LineEnd:     0,
+		ExtractedAt: "2026-09-22T02:00:00Z",
+	}
+	st.Insert(Triple{S: ns + "class_001", P: ns + "label", O: `"BusinessRule"`, Provenance: provInduction})
+
+	// Without provenance (legacy pre-40 data, D-PROV-10).
+	st.Insert(Triple{S: ns + "note_002", P: ns + "tierName", O: `"legacy"`, Provenance: nil})
+
+	all := st.Query("", "", "")
+
+	// Count new vs legacy triples.
+	newCount := 0
+	legacyCount := 0
+	for _, tr := range all {
+		if tr.Provenance != nil {
+			newCount++
+		} else {
+			legacyCount++
+		}
+	}
+
+	// SC-2 / D-PROV-07: all new triples must carry provenance.
+	if newCount != 3 {
+		t.Errorf("expected 3 triples with provenance, got %d", newCount)
+	}
+	if legacyCount != 1 {
+		t.Errorf("expected 1 legacy triple (nil provenance), got %d", legacyCount)
+	}
+
+	// Verify source_kind coverage across all three kinds.
+	sourceKinds := make(map[string]bool)
+	for _, tr := range all {
+		if tr.Provenance != nil {
+			sourceKinds[tr.Provenance.SourceKind] = true
+		}
+	}
+	if !sourceKinds["file"] {
+		t.Error("expected at least one triple with source_kind=file")
+	}
+	if !sourceKinds["emitter"] {
+		t.Error("expected at least one triple with source_kind=emitter")
+	}
+	if !sourceKinds["induction"] {
+		t.Error("expected at least one triple with source_kind=induction")
+	}
+}
+
 func TestProvenanceAllSourceKinds(t *testing.T) {
 	// All three source_kind variants (D-PROV-02) roundtrip cleanly.
 	cases := []struct {
