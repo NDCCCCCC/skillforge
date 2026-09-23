@@ -45,13 +45,68 @@ package knowledge
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/skillforge/skillforge/internal/kb"
 )
+
+// DocEntry is one markdown corpus file discovered under a KB directory.
+type DocEntry struct {
+	// RelPath is the slash-normalized path relative to the KB directory
+	// root, e.g. "汽车险/011_xxx.md" (Phase 999.2: subdirectories allowed)
+	// or "annual_leave.md" (flat).
+	RelPath string
+	// Bytes is the on-disk file size.
+	Bytes int64
+}
+
+// WalkDocs recursively discovers every .md corpus file under absDir and
+// returns them sorted by slash-normalized relative path. Hidden
+// directories (entries whose name starts with '.') are skipped — they are
+// never intended as KB content (e.g. .git). Non-markdown files are skipped.
+//
+// This is the KBM-06 single-walk contract extended by Phase 999.2: every
+// consumer that lists the corpus from disk (Index via walkTier, the
+// /api/knowledge/docs tree, mongo.SeedFromKnowledgeDir) MUST derive its
+// file set from here — a second hand-rolled enumeration is exactly the
+// drift Pitfall 4 converged the walkers to prevent.
+func WalkDocs(absDir string) ([]DocEntry, error) {
+	var docs []DocEntry
+	err := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != absDir && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(absDir, path)
+		if err != nil {
+			return err
+		}
+		docs = append(docs, DocEntry{RelPath: filepath.ToSlash(rel), Bytes: info.Size()})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(docs, func(i, j int) bool { return docs[i].RelPath < docs[j].RelPath })
+	return docs, nil
+}
 
 // DirAuditFn is the audit callback the walker invokes for every decision
 // that must be reproducibly recorded. nil means "do not audit" (CLI and

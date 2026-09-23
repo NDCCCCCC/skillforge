@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/kb"
@@ -93,14 +92,17 @@ func (c *Client) SeedFromKnowledgeDir(ctx context.Context, knowledgeDir string, 
 	for _, slug := range dirs {
 		tierAbs := filepath.Join(knowledgeDir, slug)
 
-		pattern := filepath.Join(tierAbs, "*.md")
-		matches, err := filepath.Glob(pattern)
+		// Phase 999.2: the corpus listing delegates to knowledge.WalkDocs
+		// (the KBM-06 single-walk core) so the mongo backend sees the same
+		// recursive corpus view as the Milvus indexer — nested KB
+		// subdirectories are seeded, not silently dropped.
+		entries, err := knowledge.WalkDocs(tierAbs)
 		if err != nil {
-			return fmt.Errorf("mongo.SeedFromKnowledgeDir: glob %s: %w", pattern, err)
+			return fmt.Errorf("mongo.SeedFromKnowledgeDir: walk %s: %w", tierAbs, err)
 		}
-		sort.Strings(matches)
 
-		for _, path := range matches {
+		for _, entry := range entries {
+			path := filepath.Join(tierAbs, filepath.FromSlash(entry.RelPath))
 			raw, err := os.ReadFile(path)
 			if err != nil {
 				return fmt.Errorf("mongo.SeedFromKnowledgeDir: read %s: %w", path, err)

@@ -484,24 +484,22 @@ func (s *Deps) docsHandler(ctx context.Context, c *app.RequestContext) {
 // whitelist-validated by the registry (a slug can never carry a separator
 // — kb.ValidateSlug), so joining it into a path is safe by construction.
 //
+// Phase 999.2: the listing delegates to knowledge.WalkDocs (the KBM-06
+// single-walk core) so the docs tree sees the SAME recursive corpus view
+// as the indexer — nested KB subdirectories show up here with their
+// slash-normalized relative paths instead of being silently dropped.
+//
 // A missing directory is an EMPTY tier, not a 500: a base can exist in the
 // registry before its corpus lands on disk (and a fresh checkout may ship
 // no .gitkeep at all). The tree shows 0 docs for it.
 func docsTierFor(slug string) docsTier {
-	entries, err := os.ReadDir(filepath.Join(knowledgeRootDir, slug))
+	entries, err := knowledge.WalkDocs(filepath.Join(knowledgeRootDir, slug))
 	if err != nil {
 		return docsTier{Tier: slug, Docs: []docEntry{}}
 	}
 	docs := make([]docEntry, 0, len(entries))
 	for _, e := range entries {
-		if e.IsDir() || e.Name() == ".gitkeep" || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		docs = append(docs, docEntry{Filename: e.Name(), Bytes: info.Size()})
+		docs = append(docs, docEntry{Filename: e.RelPath, Bytes: e.Bytes})
 	}
 	return docsTier{Tier: slug, Docs: docs}
 }
@@ -522,12 +520,33 @@ func docsTierFor(slug string) docsTier {
 //     base, so unregistered AND deactivated slugs refuse here too (the
 //     400 names the active set, mirroring the reads-contract error form).
 //
-// The file half is unchanged: it must be a bare base name
-// (filepath.Base(file) == file — rejects any separator, so "../" prefixes
-// and nested paths never reach Join).
+// validRelDocPath reports whether file is a safe KB-relative slash path
+// for the doc-content reader. Phase 999.2 relaxed the old bare-base-name
+// rule so nested subdirectories are previewable, but the traversal floor
+// is unchanged: backslashes anywhere, a leading slash, an empty path, or
+// any empty / "." / ".." segment is rejected before the path ever reaches
+// filepath.Join. Everything else is a plain relative lookup under
+// knowledge/<tier>/.
+func validRelDocPath(file string) bool {
+	if file == "" || strings.Contains(file, "\\") || strings.HasPrefix(file, "/") {
+		return false
+	}
+	for seg := range strings.SplitSeq(file, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+// The file half is a KB-relative slash path. Phase 999.2 relaxed the old
+// bare-base-name rule (filepath.Base(file) == file) so nested KB
+// subdirectories are previewable: "汽车险/011_xxx.md" is legal, while any
+// traversal shape ("..", leading "/", backslashes, empty segments) is
+// still rejected before Join.
 //
 //	GET /api/knowledge/doc → 200 { tier, file, content }
-//	                       → 400 { error: "invalid tier or file" }          (regex / bare-name gate)
+//	                       → 400 { error: "invalid tier or file" }          (regex / path gate)
 //	                       → 400 { error: "unknown or deactivated KB …" }   (registry gate)
 //	                       → 404 { error: "doc not found" }
 func (s *Deps) docContentHandler(ctx context.Context, c *app.RequestContext) {
@@ -537,9 +556,9 @@ func (s *Deps) docContentHandler(ctx context.Context, c *app.RequestContext) {
 	}
 	tier := string(c.Query("tier"))
 	file := string(c.Query("file"))
-	// Gate 1 — the whitelist regex + the bare-base-name rule. Same 400
+	// Gate 1 — the whitelist regex + the KB-relative path rule. Same 400
 	// envelope as before, so the FE error handling is unchanged.
-	if kb.ValidateSlug(tier) != nil || file == "" || filepath.Base(file) != file || strings.Contains(file, "\\") {
+	if kb.ValidateSlug(tier) != nil || !validRelDocPath(file) {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid tier or file"})
 		return
 	}

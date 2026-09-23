@@ -139,6 +139,57 @@ func (s *Server) Serve(ctx context.Context) error {
 	return s.stdio.Listen(ctx, os.Stdin, os.Stdout)
 }
 
+// ServiceSkill returns the configured default service skill name.
+func (s *Server) ServiceSkill() string {
+	return s.serviceSkill
+}
+
+// ListTools returns a slice of tool descriptors for the admin inspector panel.
+func (s *Server) ListTools() []mcp.Tool {
+	out := make([]mcp.Tool, 0)
+	tools := s.mcp.ListTools()
+	for _, st := range tools {
+		out = append(out, st.Tool)
+	}
+	return out
+}
+
+// CallTool invokes a named tool with the given JSON params and returns the result.
+// Returns an error if the tool is not found.
+func (s *Server) CallTool(ctx context.Context, name string, params map[string]any) (map[string]any, error) {
+	st := s.mcp.GetTool(name)
+	if st == nil {
+		return nil, fmt.Errorf("tool not found: %s", name)
+	}
+	// Build a minimal MCP request for the handler
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      name,
+			Arguments: params,
+		},
+	}
+	result, err := st.Handler(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	// Extract structured content from result
+	if result.StructuredContent != nil {
+		if m, ok := result.StructuredContent.(map[string]any); ok {
+			return m, nil
+		}
+	}
+	// Fallback: encode content as JSON
+	if len(result.Content) > 0 {
+		var out map[string]any
+		// Try to parse first text content as JSON
+		if tc, ok := result.Content[0].(mcp.TextContent); ok {
+			json.Unmarshal([]byte(tc.Text), &out)
+		}
+		return out, nil
+	}
+	return nil, nil
+}
+
 // ---------------------------------------------------------------------------
 // Tier resolution helpers
 // ---------------------------------------------------------------------------
