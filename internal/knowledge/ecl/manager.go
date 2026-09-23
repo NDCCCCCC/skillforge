@@ -562,7 +562,14 @@ func (m *Manager) extractWithRetry(ctx context.Context, note Note) (Extraction, 
 		lastErr = err
 		if attempt < maxAttempts {
 			m.recordFailure(note, StageExtract, attempt, err, FailurePending)
-			time.Sleep(m.backoffFor(attempt))
+			// IN-06: backoff sleep is ctx-aware — cancellation waits out the full
+			// sleep before, so check ctx after the sleep too.
+			select {
+			case <-ctx.Done():
+				m.recordFailure(note, StageExtract, attempt, ctx.Err(), FailureDead)
+				return Extraction{}, ctx.Err()
+			case <-time.After(m.backoffFor(attempt)):
+			}
 		}
 	}
 	m.recordFailure(note, StageExtract, maxAttempts, lastErr, FailureDead)
@@ -586,7 +593,13 @@ func (m *Manager) loadWithRetry(ctx context.Context, note Note, stage string, fn
 		lastErr = err
 		if attempt < maxAttempts {
 			m.recordFailure(note, stage, attempt, err, FailurePending)
-			time.Sleep(m.backoffFor(attempt))
+			// IN-06: backoff sleep is ctx-aware.
+			select {
+			case <-ctx.Done():
+				m.recordFailure(note, stage, attempt, ctx.Err(), FailureDead)
+				return ctx.Err()
+			case <-time.After(m.backoffFor(attempt)):
+			}
 		}
 	}
 	m.recordFailure(note, stage, maxAttempts, lastErr, FailureDead)
@@ -619,7 +632,17 @@ func (m *Manager) seedWithRetry(ctx context.Context, batch []loadedNote, docs []
 			for _, ln := range batch {
 				m.recordFailure(ln.note, StageMilvusLoad, attempt, err, FailurePending)
 			}
-			time.Sleep(m.backoffFor(attempt))
+			// IN-06: backoff sleep is ctx-aware.
+			select {
+			case <-ctx.Done():
+				lastErr = ctx.Err()
+				// Record dead for remaining batch notes.
+				for _, ln := range batch {
+					m.recordFailure(ln.note, StageMilvusLoad, attempt, ctx.Err(), FailureDead)
+				}
+				return attempt, lastErr
+			case <-time.After(m.backoffFor(attempt)):
+			}
 		}
 	}
 	for _, ln := range batch {
