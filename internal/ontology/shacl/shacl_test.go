@@ -56,6 +56,12 @@ const (
 	skfBelongsToNote     = "http://skillforge.local/ontology#belongsToNote"
 
 	xsdString = "http://www.w3.org/2001/XMLSchema#string"
+
+	// Entity URIs used in tests
+	nsNote001      = "http://skillforge.local/ontology#note_001"
+	nsNote002      = "http://skillforge.local/ontology#note_002"
+	nsSqlGuides    = "http://skillforge.local/ontology#sql-guides"
+	nsNonExistent  = "http://skillforge.local/ontology#nonExistentTable"
 )
 
 // ---------------------------------------------------------------------------
@@ -679,6 +685,144 @@ skf:KBCategoryShape a sh:NodeShape ;
 	}
 	if report.ValidatedAt == "" {
 		t.Error("ValidatedAt should be set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestShaclViolation — SHACL violation detection with quarantine分流
+// D-SHACL-02: error-level violations quarantine the entity; warnings do not.
+// ---------------------------------------------------------------------------
+
+func TestShaclViolation(t *testing.T) {
+	kg := store.New()
+	// Build a KG with a NoteChunk that has a missing required provenance
+	// (provenance-missing = warning, D-PROV-10) — entity should NOT be quarantined.
+	kg.Insert(store.Triple{S: nsSqlGuides, P: rdfType, O: skfTier})
+	kg.Insert(store.Triple{S: nsNote001, P: rdfType, O: skfNoteChunk})
+	// note_001 is missing skf:sourcePath — this triggers a warning-level
+	// minCount violation (provenance-missing path, D-PROV-10).
+
+	fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+skf:TierShape a sh:NodeShape ;
+    sh:targetClass skf:Tier ;
+    sh:property [] .
+
+skf:NoteChunkShape a sh:NodeShape ;
+    sh:targetClass skf:NoteChunk ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue skf:NoteChunk
+    ] ;
+    sh:property [
+        sh:path skf:sourcePath ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "provenance-missing (warning-level, D-PROV-10)"
+    ] .
+`
+	tmp, err := os.CreateTemp("", "shacl-*.ttl")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	tmp.WriteString(fixture)
+	tmpPath := tmp.Name()
+	tmp.Close()
+	defer os.Remove(tmpPath)
+
+	report, err := Validate(kg, tmpPath)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+
+	// Should have 1 warning (provenance-missing on note_001).
+	if report.WarningCount != 1 {
+		t.Errorf("expected 1 warning, got %d", report.WarningCount)
+	}
+	// No quarantined (warning doesn't quarantine per D-SHACL-02).
+	if len(report.Quarantined) != 0 {
+		t.Errorf("expected 0 quarantined, got %d", len(report.Quarantined))
+	}
+	// Health = warn (only warnings, no errors).
+	if report.Health != "warn" {
+		t.Errorf("expected health=warn, got %s", report.Health)
+	}
+}
+
+// TestShaclQuarantine — error-level violation triggers quarantine分流.
+// D-SHACL-02: error entities are removed from the main KG index.
+func TestShaclQuarantine(t *testing.T) {
+	kg := store.New()
+	// note_002 references a non-existent TableSchema — this is an error
+	// (structural integrity violation, D-SHACL-02).
+	kg.Insert(store.Triple{S: nsNote002, P: rdfType, O: skfNoteChunk})
+	kg.Insert(store.Triple{S: nsNote002, P: skfReferencesTable, O: nsNonExistent})
+
+	fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+skf:NoteChunkShape a sh:NodeShape ;
+    sh:targetClass skf:NoteChunk ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue skf:NoteChunk
+    ] ;
+    sh:property [
+        sh:path skf:referencesTable ;
+        sh:class skf:TableSchema ;
+        sh:message "referencesTable must point to a skf:TableSchema instance"
+    ] .
+
+# Global cross-entity integrity check
+skf:referencesTableShape a sh:PropertyShape ;
+    sh:path skf:referencesTable ;
+    sh:class skf:TableSchema .
+`
+	tmp, err := os.CreateTemp("", "shacl-*.ttl")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	tmp.WriteString(fixture)
+	tmpPath := tmp.Name()
+	tmp.Close()
+	defer os.Remove(tmpPath)
+
+	report, err := Validate(kg, tmpPath)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+
+	// Health must be "error" (at least one error-level violation).
+	if report.Health != "error" {
+		t.Errorf("expected health=error, got %s", report.Health)
+	}
+	// note_002 must be in the Quarantined list.
+	found := false
+	for _, q := range report.Quarantined {
+		if q.Entity == nsNote002 {
+			found = true
+			if q.TripleCount == 0 {
+				t.Errorf("quarantined entity note_002 has 0 triples, want 2")
+			}
+			if len(q.Violations) == 0 {
+				t.Errorf("note_002 quarantined with 0 violations")
+			}
+			for _, v := range q.Violations {
+				if v.Severity != SeverityError {
+					t.Errorf("expected error severity, got %s", v.Severity)
+				}
+				if v.Constraint != "sh:class" {
+					t.Errorf("expected sh:class constraint, got %s", v.Constraint)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("note_002 expected in Quarantined list but not found")
 	}
 }
 
