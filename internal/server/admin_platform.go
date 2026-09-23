@@ -32,10 +32,13 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
+	"github.com/skillforge/skillforge/internal/ontology/store"
 	"github.com/skillforge/skillforge/internal/server/platform/mcp"
 )
 
@@ -143,5 +146,183 @@ func requireAdmin(c *app.RequestContext) bool {
 		return false
 	}
 	return true
+}
+
+// ---------------------------------------------------------------------------
+// SPARQL-like REST endpoint types and handler
+// ---------------------------------------------------------------------------
+
+// SparqlPattern is the POST body for /api/sparql (D-SPARQL-01).
+type SparqlPattern struct {
+	S      string `json:"s"`       // subject IRI or "": wildcard
+	P      string `json:"p"`       // predicate IRI or "": wildcard
+	O      string `json:"o"`       // object IRI or "": wildcard
+	Limit  int    `json:"limit"`   // default 50, max 500 (D-MCP-05)
+	Offset int    `json:"offset"`  // default 0
+	Filter string `json:"filter"`  // optional: entity name substring match (case-insensitive)
+}
+
+// ProvenanceFromTriple extracts the Provenance pointer from a store.Triple.
+func ProvenanceFromTriple(t store.Triple) *store.Provenance {
+	return t.Provenance
+}
+
+// SparqlResult is one result triple in the SPARQL response.
+type SparqlResult struct {
+	S          string           `json:"s"`
+	P          string           `json:"p"`
+	O          string           `json:"o"`
+	Provenance *store.Provenance `json:"provenance,omitempty"`
+}
+
+// SparqlResponse is the response body for /api/sparql (D-SPARQL-01).
+type SparqlResponse struct {
+	Results   []SparqlResult `json:"results"`
+	Count     int            `json:"count"`
+	Truncated bool           `json:"truncated"`
+}
+
+// SparqlQueryScoped is the shared SPARQL handler logic used by both the REST
+// endpoint and the MCP skf_query tool (D-SPARQL-01).
+//
+// Steps:
+//  1. If pattern.Filter is non-empty, apply substring match on entity names
+//     after the query returns results (case-insensitive on S/P/O string values).
+//  2. Call kg.QueryScoped(pattern.S, pattern.P, pattern.O, allowedTiers).
+//  3. Apply Offset and Limit pagination.
+//  4. Compute Count (total matches before pagination) and Truncated.
+//  5. Default Limit to 50 if 0; cap Limit at 500 (D-MCP-05).
+//  6. Returns error for negative limit/offset (→ 400).
+func SparqlQueryScoped(pattern SparqlPattern, allowedTiers []string, kg *store.Store) (SparqlResponse, error) {
+	// Validate
+	if pattern.Limit < 0 || pattern.Offset < 0 {
+		return SparqlResponse{}, fmt.Errorf("negative limit or offset")
+	}
+
+	// Default limit to 50; cap at 500
+	limit := pattern.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	offset := pattern.Offset
+
+	// Step 1: Query the KG with tier filtering
+	triples := kg.QueryScoped(pattern.S, pattern.P, pattern.O, allowedTiers)
+
+	// Step 2: Apply filter if specified (case-insensitive substring on S/P/O)
+	if pattern.Filter != "" {
+		lower := strings.ToLower(pattern.Filter)
+		filtered := make([]store.Triple, 0, len(triples))
+		for _, t := range triples {
+			if strings.Contains(strings.ToLower(t.S), lower) ||
+				strings.Contains(strings.ToLower(t.P), lower) ||
+				strings.Contains(strings.ToLower(t.O), lower) {
+				filtered = append(filtered, t)
+			}
+		}
+		triples = filtered
+	}
+
+	// Step 3: Count before pagination
+	count := len(triples)
+
+	// Step 4: Apply pagination
+	start := offset
+	if start > count {
+		start = count
+	}
+	end := start + limit
+	if end > count {
+		end = count
+	}
+	page := triples[start:end]
+
+	// Step 5: Build response
+	results := make([]SparqlResult, 0, len(page))
+	for _, t := range page {
+		results = append(results, SparqlResult{
+			S:          t.S,
+			P:          t.P,
+			O:          t.O,
+			Provenance: t.Provenance,
+		})
+	}
+
+	return SparqlResponse{
+		Results:   results,
+		Count:     count,
+		Truncated: count > offset+limit,
+	}, nil
+}
+
+// adminPlatformSparqlHandler implements POST /api/sparql.
+//
+// D-SPARQL-01: POST body = {s?, p?, o?, limit?, offset?, filter?}
+// D-SPARQL-02: Read-only — no mutation verbs.
+// D-SPARQL-03: X-Skill-Name header carries skill name for tier isolation.
+// Not specified → 401 (no caller context).
+func (s *Deps) adminPlatformSparqlHandler(ctx context.Context, c *app.RequestContext) {
+	// Step 1: Parse body
+	var pattern SparqlPattern
+	if err := c.Bind(&pattern); err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid request body: " + err.Error()})
+		return
+	}
+
+	// Step 2: Extract X-Skill-Name header (D-SPARQL-03)
+	skillName := c.GetHeader("X-Skill-Name")
+	if skillName == "" {
+		c.JSON(http.StatusUnauthorized, graphResponseError{Error: "missing X-Skill-Name header"})
+		return
+	}
+
+	// Step 3: Resolve skill to tiers via KG lookup
+	tiers := resolveSkillTiersFromKG(skillName, s.Ontology)
+	if tiers == nil {
+		// Skill not found in KG → 401 (no silent fallback to admin baseline)
+		c.JSON(http.StatusUnauthorized, graphResponseError{Error: "skill not found in KG"})
+		return
+	}
+
+	// Step 4: Call shared handler
+	resp, err := SparqlQueryScoped(pattern, tiers, s.Ontology.KG)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
+		return
+	}
+
+	// Step 5: Return 200 with direct JSON response (no envelope)
+	c.JSON(http.StatusOK, resp)
+}
+
+// resolveSkillTiersFromKG looks up a skill name in the KG and returns its
+// hasReadAccess tier list. Returns nil if the skill is not found.
+func resolveSkillTiersFromKG(skillName string, ont *OntologyDeps) []string {
+	if ont == nil || ont.KG == nil {
+		return nil
+	}
+	const (
+		rdfType          = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+		skfSkill         = "http://skillforge.local/ontology#Skill"
+		skfHasReadAccess = "http://skillforge.local/ontology#hasReadAccess"
+		ns               = "http://skillforge.local/ontology#"
+		skfSkillPrefix   = ns + "skill_"
+	)
+
+	skillIRI := skfSkillPrefix + skillName
+	triples := ont.KG.Query(skillIRI, rdfType, skfSkill)
+	if len(triples) == 0 {
+		return nil
+	}
+	accessTriples := ont.KG.Query(skillIRI, skfHasReadAccess, "")
+	var tiers []string
+	for _, t := range accessTriples {
+		tierName := strings.TrimPrefix(t.O, ns)
+		tiers = append(tiers, tierName)
+	}
+	return tiers
 }
 

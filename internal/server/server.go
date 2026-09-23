@@ -694,6 +694,10 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/admin/platform/mcp/status", deps.adminPlatformMcpStatusHandler)
 	h.GET("/api/admin/platform/mcp/tools", deps.adminPlatformMcpToolsHandler)
 	h.POST("/api/admin/platform/mcp/invoke", deps.adminPlatformMcpInvokeHandler)
+	// Phase 41 Plan 02 (PLAT-ONT-19) — SPARQL-like endpoint for KG queries.
+	// X-Skill-Name header carries caller identity for tier isolation (D-SPARQL-03).
+	// NOT under /api/admin/ — the token is the X-Skill-Name header, not X-Admin-Token.
+	h.POST("/api/sparql", deps.adminPlatformSparqlHandler)
 	// Phase 39 Plan 39-07 (v1.4 / D-Route-01) — ECL pipeline admin surface.
 	// Three token-gated routes (403 before the nil-manager 503, LOCKED
 	// order): run (fire-and-forget trigger → 200 started / 409 already
