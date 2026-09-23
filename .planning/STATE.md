@@ -77,7 +77,7 @@ v1.5 P0 (Phase 42 — v1.4 Outstanding Closure) 把上面 45 项 + v1.3 inherite
 | Plan | Title | Status |
 |------|-------|--------|
 | 42-01 | Audit-Open Triage Report (分类 49 项入桶) | 🚧 Pending start |
-| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09 + 42-01 needs-code) | 🚧 Pending 42-01 |
+| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09 + 42-01 needs-code) | ✅ Complete (9 IN-* fixes committed) |
 | 42-03 | Operator Live Verification Bundle (Phase 39 4 human + Phase 41 hybrid ≥ 0.85 + 42-01 needs-live) | 🚧 Pending 42-01 |
 | 42-04 | v1.4 Closure Doc Update (MILESTONE_SUMMARY CR-01 framing + STATE.md 节 + audit-open close report) | 🚧 Pending 42-02 + 42-03 |
 
