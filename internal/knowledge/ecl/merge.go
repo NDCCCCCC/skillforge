@@ -269,5 +269,14 @@ func WalkAndMerge(kbDir string) ([]Note, []ChunkMeta, error) {
 		return nil, nil, err
 	}
 	notes := MergeFragments(frags)
+
+	// Tier is the KB subdirectory name (e.g. "sql-guides") — derive from
+	// kbDir by taking the last path component. This is stable and matches
+	// the retriever filter value (D-TIER-02).
+	tier := filepath.Base(kbDir)
+	for i := range notes {
+		notes[i].Tier = tier
+	}
+
 	return notes, ChunkMetas(notes), nil
 }

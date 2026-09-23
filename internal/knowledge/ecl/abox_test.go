@@ -17,7 +17,6 @@
 package ecl
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
@@ -62,10 +61,13 @@ func TestABoxNoteAndTableIRI(t *testing.T) {
 
 // TestABoxBuildTriples pins the exact D-Ext-01 triple forms and order for a
 // two-table extraction: note type, per-table referencesTable, per-table
-// TableSchema type triple. NO belongsToNote triples, NO related_notes
-// triples (D-TBox2-01 property set + open-question resolution #1).
+// TableSchema type triple. Provenance is attached to every triple (D-PROV-11).
+// NO belongsToNote triples, NO related_notes triples (D-TBox2-01 property
+// set + open-question resolution #1).
 func TestABoxBuildTriples(t *testing.T) {
-	note := Note{SourceIdx: "001", Title: "t", Sections: []MergedSection{{Body: "body"}}}
+	note := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides",
+		Sections: []MergedSection{{Body: "body", SourcePaths: []string{"knowledge/sql-guides/001__sec01.md"}}},
+		StartLine: 10, EndLine: 50}
 	ex := Extraction{
 		Tables: []ExtractedTable{
 			{Name: "etl_a", Kind: "update"},
@@ -74,15 +76,60 @@ func TestABoxBuildTriples(t *testing.T) {
 		RelatedNotes: []RelatedNote{{SourceIdx: "006", Relation: "mentions-note"}},
 	}
 	got := BuildTriples(testNS, note, ex)
-	want := []store.Triple{
-		{S: testNS + "note_001", P: rdfTypeIRI, O: testNS + "NoteChunk"},
-		{S: testNS + "note_001", P: testNS + "referencesTable", O: testNS + "tbl_etl_a"},
-		{S: testNS + "tbl_etl_a", P: rdfTypeIRI, O: testNS + "TableSchema"},
-		{S: testNS + "note_001", P: testNS + "referencesTable", O: testNS + "tbl_etl_b"},
-		{S: testNS + "tbl_etl_b", P: rdfTypeIRI, O: testNS + "TableSchema"},
+
+	// Verify we get 8 triples: note-type + belongsToTier + 2x(ref + schema + tbl-belongsToTier)
+	if len(got) != 8 {
+		t.Fatalf("BuildTriples returned %d triples, want 8", len(got))
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("BuildTriples =\n%#v\nwant\n%#v", got, want)
+
+	// Triple 0: note type + provenance
+	tr := got[0]
+	if tr.S != testNS+"note_001" || tr.P != rdfTypeIRI || tr.O != testNS+"NoteChunk" {
+		t.Errorf("triple[0] = %+v, want note type triple", tr)
+	}
+	if tr.Provenance == nil {
+		t.Error("triple[0] provenance is nil, want non-nil")
+	} else {
+		if tr.Provenance.SourceKind != "file" {
+			t.Errorf("provenance source_kind = %q, want file", tr.Provenance.SourceKind)
+		}
+		if tr.Provenance.SourcePath != "knowledge/sql-guides/001__sec01.md" {
+			t.Errorf("provenance source_path = %q, want first source path", tr.Provenance.SourcePath)
+		}
+		if tr.Provenance.LineStart != 10 || tr.Provenance.LineEnd != 50 {
+			t.Errorf("provenance line range = %d-%d, want 10-50", tr.Provenance.LineStart, tr.Provenance.LineEnd)
+		}
+	}
+
+	// Triple 1: note belongsToTier
+	tr1 := got[1]
+	if tr1.S != testNS+"note_001" || tr1.P != testNS+"belongsToTier" || tr1.O != testNS+"sql-guides" {
+		t.Errorf("triple[1] = %+v, want belongsToTier triple", tr1)
+	}
+	if tr1.Provenance == nil {
+		t.Error("triple[1] provenance is nil, want non-nil (shared with note)")
+	}
+
+	// Triples 2-3: etl_a (ref + schema)
+	if got[2].S != testNS+"note_001" || got[2].P != testNS+"referencesTable" || got[2].O != testNS+"tbl_etl_a" {
+		t.Errorf("triple[2] = %+v, want etl_a referencesTable", got[2])
+	}
+	if got[3].S != testNS+"tbl_etl_a" || got[3].P != rdfTypeIRI || got[3].O != testNS+"TableSchema" {
+		t.Errorf("triple[3] = %+v, want etl_a TableSchema type", got[3])
+	}
+
+	// Triple 4: etl_a belongsToTier
+	tr4 := got[4]
+	if tr4.S != testNS+"tbl_etl_a" || tr4.P != testNS+"belongsToTier" || tr4.O != testNS+"sql-guides" {
+		t.Errorf("triple[4] = %+v, want etl_a belongsToTier", tr4)
+	}
+
+	// Triples 5-6: etl_b
+	if got[5].S != testNS+"note_001" || got[5].P != testNS+"referencesTable" || got[5].O != testNS+"tbl_etl_b" {
+		t.Errorf("triple[5] = %+v, want etl_b referencesTable", got[5])
+	}
+	if got[6].S != testNS+"tbl_etl_b" || got[6].P != rdfTypeIRI || got[6].O != testNS+"TableSchema" {
+		t.Errorf("triple[6] = %+v, want etl_b TableSchema type", got[6])
 	}
 
 	// Duplicate table entries dedupe within the note (TableSchema type
@@ -91,8 +138,9 @@ func TestABoxBuildTriples(t *testing.T) {
 		{Name: "etl_a", Kind: "update"},
 		{Name: "etl_a", Kind: "update"},
 	}})
-	if len(dup) != 3 {
-		t.Errorf("dup-name triples = %d, want 3 (type + ref + schema)", len(dup))
+	// 1 note-type + 1 belongsToTier + 1 ref + 1 schema + 1 tbl-belongsToTier = 5
+	if len(dup) != 5 {
+		t.Errorf("dup-name triples = %d, want 5 (type + tier + ref + schema + tbl-tier)", len(dup))
 	}
 }
 

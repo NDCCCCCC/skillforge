@@ -70,4 +70,14 @@ type Note struct {
 	SourceIdx string
 	Title     string
 	Sections  []MergedSection // ordered by first-seen section order
+
+	// Tier is the KB subdirectory name (e.g. "sql-guides") set during
+	// WalkAndMerge. Used for belongsToTier ABox triples (D-TIER-02).
+	Tier string
+
+	// StartLine and EndLine are 1-based line numbers from the original
+	// source file's frontmatter marker, used for Provenance (D-PROV-05).
+	// Zero means unknown/unavailable.
+	StartLine int
+	EndLine   int
 }

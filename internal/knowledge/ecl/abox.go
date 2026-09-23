@@ -19,6 +19,7 @@ package ecl
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/skillforge/skillforge/internal/ontology/emitter"
 	"github.com/skillforge/skillforge/internal/ontology/store"
@@ -50,21 +51,60 @@ func referencesTablePred(ns string) string {
 	return ns + "referencesTable"
 }
 
+// belongsToTierPred returns the skf:belongsToTier predicate IRI for a
+// namespace (D-TIER-02: ABox tier attachment).
+func belongsToTierPred(ns string) string {
+	return ns + "belongsToTier"
+}
+
+// buildProvenance builds a Provenance record for a note's triples (D-PROV-02/05/11).
+// source_kind = "file" for ECL notes; source_path from the note's first section's
+// first SourcePath; line range from note.StartLine/EndLine; extracted_at = now.
+func buildProvenance(note Note) *store.Provenance {
+	var srcPath string
+	if len(note.Sections) > 0 && len(note.Sections[0].SourcePaths) > 0 {
+		srcPath = note.Sections[0].SourcePaths[0]
+	}
+	return &store.Provenance{
+		SourceKind:  "file",
+		SourcePath:  srcPath,
+		LineStart:   note.StartLine,
+		LineEnd:     note.EndLine,
+		ExtractedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
 // BuildTriples derives the D-Ext-01 ABox triples for one extracted note:
 //
 //	{ns}note_{idx}  rdf:type                {ns}NoteChunk
 //	{ns}note_{idx}  {ns}referencesTable     {ns}tbl_{name}     (per table)
 //	{ns}tbl_{name}  rdf:type                {ns}TableSchema    (per table, deduped within the note)
+//	{ns}note_{idx}  {ns}belongsToTier       {ns}{tier}         (per note, if Tier is set)
+//	{ns}tbl_{name}  {ns}belongsToTier       {ns}{tier}         (per table, shares note's tier)
 //
-// NO belongsToNote triples and NO related_notes triples are emitted —
-// D-TBox2-01 declares belongsToNote TBox-only this phase (open-question
-// resolution #1) and related_notes participate in Extraction + F1 only.
-// Table names are sanitized via TableIRI. Global dedupe of TableSchema
-// type triples happens at apply time via InsertUnique.
+// Every triple carries Provenance (D-PROV-02/05/11): source_kind="file",
+// source_path from note's first section source, line range from note's
+// StartLine/EndLine, extracted_at = call time. belongsToNote triples and
+// related_notes triples are NOT emitted (D-TBox2-01). Table names are
+// sanitized via TableIRI. Global dedupe of TableSchema type triples
+// happens at apply time via InsertUnique.
 func BuildTriples(ns string, note Note, ex Extraction) []store.Triple {
 	noteIRI := NoteIRI(ns, note.SourceIdx)
 	pred := referencesTablePred(ns)
-	triples := []store.Triple{{S: noteIRI, P: rdfTypeIRI, O: ns + "NoteChunk"}}
+	tierPred := belongsToTierPred(ns)
+	prov := buildProvenance(note)
+
+	triples := []store.Triple{
+		{S: noteIRI, P: rdfTypeIRI, O: ns + "NoteChunk", Provenance: prov},
+	}
+
+	// belongsToTier for the note itself (D-TIER-02).
+	if note.Tier != "" {
+		triples = append(triples, store.Triple{
+			S: noteIRI, P: tierPred, O: ns + note.Tier, Provenance: prov,
+		})
+	}
+
 	seen := map[string]bool{}
 	for _, t := range ex.Tables {
 		tblIRI := TableIRI(ns, t.Name)
@@ -73,9 +113,15 @@ func BuildTriples(ns string, note Note, ex Extraction) []store.Triple {
 		}
 		seen[tblIRI] = true
 		triples = append(triples,
-			store.Triple{S: noteIRI, P: pred, O: tblIRI},
-			store.Triple{S: tblIRI, P: rdfTypeIRI, O: ns + "TableSchema"},
+			store.Triple{S: noteIRI, P: pred, O: tblIRI, Provenance: prov},
+			store.Triple{S: tblIRI, P: rdfTypeIRI, O: ns + "TableSchema", Provenance: prov},
 		)
+		// Table inherits the note's tier (D-TIER-02/07).
+		if note.Tier != "" {
+			triples = append(triples, store.Triple{
+				S: tblIRI, P: tierPred, O: ns + note.Tier, Provenance: prov,
+			})
+		}
 	}
 	return triples
 }
