@@ -37,6 +37,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/skillforge/skillforge/internal/ontology/shacl"
 	"github.com/skillforge/skillforge/internal/ontology/store"
 
 	"github.com/cloudwego/eino/components/model"
@@ -45,6 +46,27 @@ import (
 
 // ErrIRIConflict reports a local-name collision against the current TBox.
 var ErrIRIConflict = errors.New("induction: local name already exists in TBox")
+
+// ChangelogWho is the trigger enumeration for changelog entries (D-LOG-02).
+type ChangelogWho = string
+
+// ChangelogWhat describes the triple-level change (D-LOG-02).
+type ChangelogWhat struct {
+	Added   []string `json:"added"`   // IRI list — new IRIs introduced
+	Removed []string `json:"removed"` // IRI list — IRIs removed by this operation
+}
+
+// ChangelogEntry is one append-only record in tbox_changelog.jsonl (D-LOG-01).
+// Version is the resulting TBox version number after the operation.
+// Who is one of: "admin", "induction:llm", "system:rollback" (D-LOG-02).
+// Why carries the LLM reasoning text, admin note, or rollback reason.
+type ChangelogEntry struct {
+	Version int           `json:"version"`     // resulting version v{N}
+	Who     string        `json:"who"`        // D-LOG-02 enum
+	When    string        `json:"when"`       // RFC3339 UTC
+	What    ChangelogWhat `json:"what"`       // added/removed IRI lists
+	Why     string        `json:"why"`        // LLM reasoning | admin note | rollback reason
+}
 
 // Generator is the narrow LLM surface induction needs. It is satisfied by
 // Eino's model.ToolCallingChatModel, which lets tests inject a stub.
@@ -257,7 +279,115 @@ func (m *Manager) Approve(proposalID, customLocalName string) (Proposal, int, er
 	p.DecidedAt = &now
 	err := m.persistLocked()
 	m.fireChange()
+
+	// D-LOG-04: append one changelog entry per approve.
+	entry := ChangelogEntry{
+		Version: next,
+		Who:     "induction:llm",
+		When:    now.Format(time.RFC3339),
+		What:    ChangelogWhat{Added: []string{p.ProposedIRI}, Removed: []string{}},
+		Why:     p.SourceText,
+	}
+	if err := m.AppendChangelog(entry); err != nil {
+		// log WARN, don't fail the approve (changelog is audit, not critical path)
+		fmt.Fprintf(os.Stderr, "[WARN] induction: append changelog: %v\n", err)
+	}
+
 	return *p, next, err
+}
+
+// RollbackTBox reverts to a previous TBox version.
+// Returns (new_version, post_rollback_violation_count, error).
+// Writes v{N+1} = copy of target version TTL, updates the pointer file,
+// rebuilds the KG store from the new TTL, and triggers SHACL revalidation
+// per D-LOG-03 + D-PROV-09.
+func (m *Manager) RollbackTBox(targetVersion int, reason string) (int, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if targetVersion < 1 {
+		return 0, 0, fmt.Errorf("induction: target version %d is invalid", targetVersion)
+	}
+
+	current := m.readVersion()
+	if targetVersion >= current {
+		return 0, 0, fmt.Errorf("induction: cannot rollback to version %d (current is %d)", targetVersion, current)
+	}
+
+	// Step 1: Read the target version TTL file.
+	targetPath := filepath.Join(m.dataDir, fmt.Sprintf("skillforge_tbox.v%d.ttl", targetVersion))
+	targetTTL, err := os.ReadFile(targetPath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("induction: read target TTL v%d: %w", targetVersion, err)
+	}
+
+	// Step 2: Compute next = current + 1.
+	next := current + 1
+
+	// Step 3: Write v{next}.ttl = copy of target version TTL.
+	newTTL := string(targetTTL)
+	versioned := filepath.Join(m.dataDir, fmt.Sprintf("skillforge_tbox.v%d.ttl", next))
+	if err := writeFileAtomic(versioned, []byte(newTTL)); err != nil {
+		return 0, 0, fmt.Errorf("induction: write v%d TTL: %w", next, err)
+	}
+
+	// Step 4: Update pointer file.
+	currentTTLPath := filepath.Join(m.dataDir, "skillforge_tbox.ttl")
+	if err := writeFileAtomic(currentTTLPath, []byte(newTTL)); err != nil {
+		return 0, 0, fmt.Errorf("induction: refresh pointer TTL: %w", err)
+	}
+
+	// Step 5: Update version file.
+	if err := writeFileAtomic(filepath.Join(m.dataDir, "tbox_version.txt"), []byte(fmt.Sprintf("%d\n", next))); err != nil {
+		return 0, 0, fmt.Errorf("induction: write version file: %w", err)
+	}
+
+	// Step 6: Clear KG store (delete all triples).
+	allTriples := m.kg.Query("", "", "")
+	seen := map[string]bool{}
+	for _, t := range allTriples {
+		if !seen[t.S] {
+			seen[t.S] = true
+			m.kg.DeleteSubject(t.S)
+		}
+	}
+
+	// Step 7: Reload KG from new TTL.
+	if _, err := m.kg.LoadFromTurtle(newTTL); err != nil {
+		return 0, 0, fmt.Errorf("induction: load new TTL into KG: %w", err)
+	}
+
+	// Step 8: Trigger snapshot write.
+	snapshotPath := filepath.Join(m.dataDir, "skillforge_kg.json")
+	if err := m.kg.WriteSnapshot(snapshotPath); err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] induction: post-rollback snapshot: %v\n", err)
+	}
+
+	// Step 9: Fire change hook (debounced snapshot will also fire, but explicit is fine).
+	m.fireChange()
+
+	// Step 10: Append changelog entry.
+	why := fmt.Sprintf("rollback to v%d: %s", targetVersion, reason)
+	entry := ChangelogEntry{
+		Version: next,
+		Who:     "system:rollback",
+		When:    time.Now().UTC().Format(time.RFC3339),
+		What:    ChangelogWhat{Added: []string{}, Removed: []string{}},
+		Why:     why,
+	}
+	if err := m.AppendChangelog(entry); err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] induction: append rollback changelog: %v\n", err)
+	}
+
+	// Step 11: Run SHACL revalidation and return violation count (D-PROV-09).
+	shapesPath := filepath.Join(m.dataDir, "..", "shacl", "shapes.ttl")
+	report, err := shacl.ValidateWithTrigger(m.kg, shapesPath, "rollback")
+	if err != nil {
+		// SHACL failure is not a rollback failure — log and return 0 violations
+		fmt.Fprintf(os.Stderr, "[WARN] induction: post-rollback SHACL validation: %v\n", err)
+		return next, 0, nil
+	}
+	return next, report.ErrorCount, nil
 }
 
 // Reject marks a proposal rejected; the record is kept (audit trail).
@@ -288,6 +418,50 @@ func (m *Manager) List() []Proposal {
 	copy(out, m.queue)
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	return out
+}
+
+// AppendChangelog atomically appends one JSONL entry to tbox_changelog.jsonl
+// (D-LOG-01). The file is never truncated — only O_APPEND writes occur.
+func (m *Manager) AppendChangelog(entry ChangelogEntry) error {
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(m.dataDir, "tbox_changelog.jsonl"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(data, '\n'))
+	return err
+}
+
+// ListChangelog reads tbox_changelog.jsonl and returns all entries sorted
+// newest-first. Missing file is not an error (returns empty slice).
+func (m *Manager) ListChangelog() ([]ChangelogEntry, error) {
+	path := filepath.Join(m.dataDir, "tbox_changelog.jsonl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []ChangelogEntry{}, nil
+		}
+		return nil, err
+	}
+	var entries []ChangelogEntry
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var e ChangelogEntry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue // skip malformed lines
+		}
+		entries = append(entries, e)
+	}
+	// Newest first
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Version > entries[j].Version })
+	return entries, nil
 }
 
 // Version reports the current TBox version (reads tbox_version.txt; the
