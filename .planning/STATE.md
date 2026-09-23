@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-23T03:10:00Z"
+last_updated: "2026-09-23T02:53:00Z"
 last_activity: 2026-09-23
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 25
-  completed_plans: 21
+  completed_plans: 22
   percent: 18
 ---
 
@@ -18,7 +18,7 @@ progress:
 ## Current Position
 
 Phase: 40 (data-governance-shacl-provenance-tbox-versioning) — EXECUTING
-Plan: 7 of 10
+Plan: 8 of 10
 Status: Executing
 Last activity: 2026-09-23
 
@@ -123,3 +123,4 @@ Last activity: 2026-09-23
 - [Phase 40]: 40-04 QueryScoped: entity-level tier filtering; schema layer never filtered (owl:Class/ObjectProperty, Skill/KBCategory/SubCategory/Tier/SkillAgent/RefusalPhrase individuals); ABox note/tbl filtered to allowedTiers; fail-closed on missing belongsToTier; visible subject includes all forward+reverse edges; NoteChunk/TableSchema are ABox data entities (D-TIER-01/03/06/07)
 - [Phase 40]: 40-05 TBox changelog: ChangelogEntry types (who enum: admin/induction:llm/system:rollback; what: added/removed IRI lists; why: LLM reasoning/admin note/rollback reason); AppendChangelog O_APPEND-only JSONL write; ListChangelog reads + newest-first; Approve hook appends one entry; RollbackTBox reads target TTL, writes v{N+1}=copy, updates pointer+version, clears+reloads KG, fires change, appends rollback entry, runs SHACL returning violation count (D-LOG-01/02/03/04 + D-PROV-09)
 - [Phase 40]: 40-06 Boot SHACL: Store gets quarantined map + shaclReport cache; Quarantine(t Triple) removes from main indices and appends to quarantined; QuarantinedEntities() returns store-side DTO; boot runs shacl.Validate() then分流 error entities to quarantine via kg.Quarantine(); report cached via SetShaclReport/GetShaclReport; SKILLFORGE_SHACL_SHAPES env var; violations never block boot (D-SHACL-02); governance handlers: GET /shacl returns cached report (503 if nil), GET /provenance returns graph including quarantined nodes (D-SHACL-02/03)
+- [Phase 40]: 40-08 KGQueryPanel skill param: resolveSkillTiers maps skill name to hasReadAccess tier names; adminOntologyKGQueryHandler calls QueryScoped when skill= present; FE Skill selector populates from KG rdf:type=skf:Skill enumeration; 来源 column shows source_kind badge + path + line range, muted dash for legacy triples (D-TIER-01, D-PROV-03)
