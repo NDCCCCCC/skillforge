@@ -80,12 +80,6 @@ type llmExtractionShape struct {
 	RelatedNotes []RelatedNote    `json:"related_notes"`
 }
 
-// buildExtractionPrompt renders the D-Ext-01 instruction with the full note
-// body (all section bodies joined). Pure function.
-func buildExtractionPrompt(note Note) string {
-	return promptForBody(note.SourceIdx, note.Title, joinSectionBodies(note))
-}
-
 // promptForBody renders the D-Ext-01 instruction for an arbitrary body
 // (whole note or a single section on the oversized path).
 func promptForBody(sourceIdx, title, body string) string {
