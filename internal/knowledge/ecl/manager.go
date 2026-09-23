@@ -354,10 +354,21 @@ func (m *Manager) Run(ctx context.Context) (err error) {
 	wg.Wait()
 
 	// Deterministic downstream order (stable IDs / stable kg write order).
-	sort.Slice(loaded, func(i, j int) bool {
-		a, _ := strconv.Atoi(loaded[i].note.SourceIdx)
-		b, _ := strconv.Atoi(loaded[j].note.SourceIdx)
-		return a < b
+	// IN-08: sort.SliceStable preserves relative order of equal elements, and
+	// non-numeric SourceIdx values are dead-lettered rather than colliding at 0.
+	sort.SliceStable(loaded, func(i, j int) bool {
+		a, aOK := strconv.Atoi(loaded[i].note.SourceIdx)
+		b, bOK := strconv.Atoi(loaded[j].note.SourceIdx)
+		if aOK == nil && bOK == nil {
+			return a < b // both numeric: ascending order
+		}
+		if aOK != nil && bOK != nil {
+			return false // both non-numeric: stable sort keeps original relative order
+		}
+		if aOK != nil {
+			return false // a non-numeric, b numeric: b (numeric) comes first
+		}
+		return true // a numeric, b non-numeric: a (numeric) comes first
 	})
 
 	// --- kg-load: per successful note, via the applyNote seam ---
