@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/skillforge/skillforge/internal/ontology/store"
 
@@ -229,4 +230,65 @@ func TestQueuePersistsAcrossRestart(t *testing.T) {
 	if _, err := m2.Generate(context.Background(), "second"); err == nil {
 		t.Errorf("Generate without LLM client should fail")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// TestRollbackLatency — SC-4: rollback completes in < 5 seconds.
+// D-LOG-03 + D-PROV-09: rollback writes v{N+1}, updates pointer,
+// clears KG, reloads TTL, runs SHACL revalidation.
+// ---------------------------------------------------------------------------
+
+func TestRollbackLatency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping latency test in short mode")
+	}
+
+	dir := t.TempDir()
+	kg := store.New()
+
+	// Setup: write v1 TTL + v2 TTL + pointer + version + proposals.
+	v1TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+`
+	v2TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+skf:NewClass a owl:Class .
+`
+	os.WriteFile(filepath.Join(dir, "skillforge_tbox.v1.ttl"), []byte(v1TTL), 0o644)
+	os.WriteFile(filepath.Join(dir, "skillforge_tbox.v2.ttl"), []byte(v2TTL), 0o644)
+	os.WriteFile(filepath.Join(dir, "skillforge_tbox.ttl"), []byte(v2TTL), 0o644)
+	os.WriteFile(filepath.Join(dir, "tbox_version.txt"), []byte("2\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "proposals.json"), []byte(`{"next_id":1,"items":[]}`), 0o644)
+
+	// Seed the KG with v2 content.
+	kg.LoadFromTurtle(v2TTL)
+
+	m, err := NewManager(testNS, dir, nil, kg)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	// Measure rollback from v2 → v1.
+	start := time.Now()
+	newVersion, violations, err := m.RollbackTBox(1, "test rollback")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("RollbackTBox: %v", err)
+	}
+	if newVersion != 3 {
+		t.Errorf("expected version 3 after rollback, got %d", newVersion)
+	}
+	if violations < 0 {
+		t.Errorf("violations should be non-negative, got %d", violations)
+	}
+
+	// SC-4: rollback < 5s.
+	if elapsed > 5*time.Second {
+		t.Errorf("rollback took %v, expected < 5s (SC-4)", elapsed)
+	}
+
+	t.Logf("rollback took %v", elapsed)
 }
