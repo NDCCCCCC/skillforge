@@ -53,7 +53,11 @@ type FailureStore interface {
 	UpsertFailure(f Failure) error
 	// ListFailures returns every row, newest-updated first.
 	ListFailures() ([]Failure, error)
-	// GetFailure returns the row for noteID, or a wrapped
-	// ErrNoFailureRecord-class error for unknown notes.
+	// GetFailure returns the row for noteID. It returns ErrUnknownNote when
+	// the ledger has no DEAD row for the requested note, and ErrStoreUnavailable
+	// when the store has an I/O error (IN-04). Callers distinguish with IsNotFound.
 	GetFailure(noteID string) (Failure, error)
+	// IsNotFound returns true when err indicates a missing row (not a store error).
+	// This lets the manager distinguish "unknown note" (404) from store failure (500).
+	IsNotFound(err error) bool
 }

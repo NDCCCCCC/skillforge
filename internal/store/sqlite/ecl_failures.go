@@ -35,7 +35,8 @@ import (
 var _ ecl.FailureStore = (*SQLiteStore)(nil)
 
 // ErrNoFailureRecord is the sentinel wrapped by GetFailure for unknown
-// notes; callers test with errors.Is.
+// notes; callers test with errors.Is. Exported so the ecl manager can
+// distinguish a missing row from a store I/O error (IN-04).
 var ErrNoFailureRecord = errors.New("ecl: no failure record")
 
 // upsertFailureSQL is the single write path for ecl_failures. Status
@@ -138,4 +139,12 @@ func (s *SQLiteStore) GetFailure(noteID string) (ecl.Failure, error) {
 		return ecl.Failure{}, fmtError("GetFailure", err)
 	}
 	return f, nil
+}
+
+// IsNotFound implements ecl.FailureStore. It returns true when err wraps
+// ErrNoFailureRecord — i.e., the ledger has no row for the requested note.
+// Any other error (SQLite I/O failures) returns false, allowing the caller
+// to distinguish "unknown note" (→ 404) from "store unavailable" (→ 500).
+func (s *SQLiteStore) IsNotFound(err error) bool {
+	return errors.Is(err, ErrNoFailureRecord)
 }

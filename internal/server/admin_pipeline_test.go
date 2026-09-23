@@ -116,6 +116,10 @@ func (f *fakePipelineFailures) GetFailure(noteID string) (ecl.Failure, error) {
 	return r, nil
 }
 
+func (f *fakePipelineFailures) IsNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no failure record")
+}
+
 // fakePipelineSeed records seeded docs and signals its channel once per
 // call (deterministic "the run actually executed" witness).
 type fakePipelineSeed struct {

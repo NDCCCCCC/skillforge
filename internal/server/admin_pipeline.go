@@ -228,8 +228,15 @@ func (s *Deps) adminPipelineRetryHandler(ctx context.Context, c *app.RequestCont
 			c.JSON(http.StatusConflict, graphResponseError{Error: "pipeline already running"})
 		case errors.Is(err, ecl.ErrUnknownNote):
 			c.JSON(http.StatusNotFound, graphResponseError{Error: "unknown or non-dead note"})
+		case errors.Is(err, ecl.ErrStoreUnavailable):
+			// IN-04: store I/O error — log detail server-side, send generic
+			// msg to client so internal error text (paths, SQL) never leaks.
+			log.Printf("[WARN] server: ecl retry %s ledger store unavailable: %v", noteID, err)
+			c.JSON(http.StatusInternalServerError, graphResponseError{Error: "retry failed"})
 		default:
-			c.JSON(http.StatusInternalServerError, graphResponseError{Error: "retry: " + err.Error()})
+			// Any other unexpected error: generic msg, no err detail in body.
+			log.Printf("[WARN] server: ecl retry %s unexpected error: %v", noteID, err)
+			c.JSON(http.StatusInternalServerError, graphResponseError{Error: "retry failed"})
 		}
 		return
 	}

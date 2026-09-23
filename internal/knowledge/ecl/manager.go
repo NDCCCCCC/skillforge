@@ -58,7 +58,7 @@ type loadedNote struct {
 	ex   Extraction
 }
 
-// Sentinel errors Plan 07 maps to 409 / 404 (RESEARCH Pattern 2).
+// Sentinel errors Plan 07 maps to 409 / 404 / 500 (RESEARCH Pattern 2).
 var (
 	// ErrPipelineBusy is returned by RetryNote while a run holds the
 	// running flag.
@@ -67,6 +67,11 @@ var (
 	// row for the requested note (T-39-10: retry requires an existing
 	// dead failure row — arbitrary note_ids cannot trigger work).
 	ErrUnknownNote = errors.New("unknown or non-dead note")
+	// ErrStoreUnavailable is returned by TryClaimRetry when the ledger store
+	// has an I/O error (SQLite errors other than a missing row). The handler
+	// maps this to HTTP 500 so the admin knows a real infrastructure problem
+	// occurred rather than confusing it with an unknown note (IN-04).
+	ErrStoreUnavailable = errors.New("ledger store unavailable")
 )
 
 // SeedFunc persists built Documents into the vector store. main.go injects
@@ -400,20 +405,27 @@ func (m *Manager) Run(ctx context.Context) (err error) {
 
 // TryClaimRetry validates that noteID has a DEAD ledger row (T-39-10) and
 // claims the running flag — the synchronous, cheap half of a retry. The
-// admin handler runs it inline so 409/404 still answer before the HTTP
+// admin handler runs it inline so 409/404/500 still answer before the HTTP
 // response (D-Route-01 mapping); only the long-running pipeline work is
 // detached (WR-01 — a retry's worst case is 3 LLM calls + up to 15s of
 // backoff + a Milvus round-trip, well past proxy timeouts). On success the
 // caller OWNS the running flag and MUST complete the retry with
 // RetryClaimed (which releases it); on failure the claim is released here.
 // Errors: ErrPipelineBusy (a run or another retry holds the flag),
-// ErrUnknownNote (no DEAD row for noteID).
+// ErrUnknownNote (no DEAD row for noteID), ErrStoreUnavailable (store I/O error).
 func (m *Manager) TryClaimRetry(noteID string) error {
 	if !m.CASRunning() {
 		return ErrPipelineBusy
 	}
 	row, err := m.failures.GetFailure(noteID)
-	if err != nil || row.Status != FailureDead {
+	if err != nil {
+		m.releaseRunning()
+		if m.failures.IsNotFound(err) {
+			return ErrUnknownNote
+		}
+		return ErrStoreUnavailable
+	}
+	if row.Status != FailureDead {
 		m.releaseRunning()
 		return ErrUnknownNote
 	}
@@ -441,7 +453,13 @@ func (m *Manager) RetryClaimed(ctx context.Context, noteID string) (err error) {
 	// call. This runs BEFORE the stage-reset guard installs — a refused
 	// retry must not touch the previous run's terminal state.
 	row, rerr := m.failures.GetFailure(noteID)
-	if rerr != nil || row.Status != FailureDead {
+	if rerr != nil {
+		if m.failures.IsNotFound(rerr) {
+			return ErrUnknownNote
+		}
+		return ErrStoreUnavailable
+	}
+	if row.Status != FailureDead {
 		return ErrUnknownNote
 	}
 	defer func() {

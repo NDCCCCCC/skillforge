@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -166,6 +167,10 @@ func (f *fakeFailureStore) GetFailure(noteID string) (Failure, error) {
 		return Failure{}, fmt.Errorf("ecl: no failure record for note %s", noteID)
 	}
 	return r, nil
+}
+
+func (f *fakeFailureStore) IsNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no failure record")
 }
 
 // fakeSeed records the seeded docs; failRemaining forces N batch failures.
