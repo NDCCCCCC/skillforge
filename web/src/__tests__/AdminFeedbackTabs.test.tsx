@@ -59,10 +59,17 @@ describe('AdminDashboard — 7 tabs (29-08 D-29-12)', () => {
       '本体',
       'ECL 管线',
       '治理',
+      '平台',
     ]);
     // The locked testids exist exactly once each.
     expect(screen.getAllByTestId('admin-tab-feedback')).toHaveLength(1);
     expect(screen.getAllByTestId('admin-tab-review')).toHaveLength(1);
+  });
+
+  it('has 11 tabs total with 平台 as the 11th entry', () => {
+    render(<AdminDashboard />);
+    expect(tabOrder()).toHaveLength(11);
+    expect(tabOrder()[10]).toBe('平台');
   });
 
   it('defaults to the 批次 tab (store default untouched by the union extension)', () => {
