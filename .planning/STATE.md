@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: — Ontology Layer
 status: executing
-last_updated: "2026-09-23T05:38:42.863Z"
-last_activity: 2026-09-23 -- Phase 41 planning complete
+last_updated: "2026-09-23T06:00:00.000Z"
+last_activity: 2026-09-23 -- Phase 41 execution started
 progress:
   total_phases: 11
   completed_phases: 3
   total_plans: 31
-  completed_plans: 25
+  completed_plans: 26
   percent: 27
 ---
 
@@ -17,10 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 41
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-09-23 -- Phase 41 planning complete
+Phase: 41 (platform-layer-mcp-server-sparql-endpoint-hybrid-retrieval) — EXECUTING
+Plan: 2 of 6
+Status: Executing Phase 41
+Last activity: 2026-09-23 -- Phase 41-01 complete: MCP stdio server with 5 KG tools (skf_query/skf_skills/skf_chunk_for/skf_schema/skf_neighbors), SKILLFORGE_MCP_SERVICE_SKILL mandatory at startup, admin platform API handlers
 
 ## v1.4 Phase Map
 
@@ -127,3 +127,4 @@ Last activity: 2026-09-23 -- Phase 41 planning complete
 - [Phase 40]: 40-08 KGQueryPanel skill param: resolveSkillTiers maps skill name to hasReadAccess tier names; adminOntologyKGQueryHandler calls QueryScoped when skill= present; FE Skill selector populates from KG rdf:type=skf:Skill enumeration; 来源 column shows source_kind badge + path + line range, muted dash for legacy triples (D-TIER-01, D-PROV-03)
 - [Phase 40]: 40-07b FE governance views: ShaclReportView (quarantine red zone + warnings yellow zone, provenance-missing badge), ProvenanceGraphView (cytoscape breadthfirst, getComputedStyle tokens, search highlight, node detail panel), TimelineView (who badge, rollback lifecycle with new-violation toast per D-PROV-09); cytoscape ^3.34.0 plain npm (no react wrapper, no layout plugins)
 - [Phase 40]: 40-09 verify-phase-40.sh: MSYS_NO_PATHCONV=1 + BASH_SOURCE[0] for Windows path resolution; targets ./internal/ontology/... only (pre-existing cgo issue in other packages); date +%s for wall-clock timing (not bash SECONDS builtin); TestProvenanceCoverage in store_test.go per D-PROV-07 scope
+- [Phase 41]: 41-01 MCP server: mark3labs/mcp-go v1.1.0 (community standard; eino-ext is client-only); 5 tools: skf_query (QueryScoped triple pattern), skf_skills (Skill enumeration), skf_chunk_for (ECL chunk lookup via Adjacent1+referencesTable), skf_schema (TBox class/property overview), skf_neighbors (N-hop graph expansion); SKILLFORGE_MCP_SERVICE_SKILL mandatory at startup (D-TRUST-02); stdio subprocess runs in goroutine; admin API routes: GET /status, GET /tools, POST /invoke — all token-gated
