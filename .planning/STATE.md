@@ -57,31 +57,32 @@ Last activity: 2026-09-23 — v1.5 P0 (Phase 42) planned: 4-plan structure. 42-C
 | operator_gate | Phase 18 live E2E | Deferred |
 | env_issue | gcc linking (MSYS2 emutls ABI) | Deferred |
 
-## v1.4 Close — Acknowledged Open Items (2026-09-23)
+## v1.4 Close — Closure Status (2026-09-24)
 
-Items acknowledged at v1.4 close (audit-open count: 7 debug + 14 UAT-gap files + 8 verification-gap files + 16 quick tasks = 45 total). All are v1.3 cross-phase residue or live-infra-required validations; **none block v1.4 functional ship** (Phase 40 17/17 + Phase 41 20/20 hermetic-verified).
+v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknowledged + 4 v1.3 inherited). After v1.5 Phase 42 closure pipeline:
 
-| Category | Count | Notes |
-|----------|-------|-------|
-| debug_session | 7 | agent-llm-query-rewrite [verified-encoding-fix-closed]; chat-column-too-wide [investigating]; greeting-refusal-gate [awaiting_human_verify]; knowledge-base [unknown]; verdict-stream-hang [awaiting_human_verify]; verdict-subject-mismatch [implemented-pending-live-verify]; windows-gcc-emutls-link [awaiting_human_verify] |
-| uat_gap | 14 | v1.3 cross-phase; Phase 39 live LLM F1 + Milvus E2E + UI-SPEC walkthrough + CR-01 fix verification (8 items most prominent) |
-| verification_gap | 8 | human_needed/gaps_found across v1.3 phases; Phase 14/30 gaps_found are historical tech debt |
-| quick_task | 16 | v1.3 quick-task queue (2408-prefix); mostly compliance-wording / FE skill / splitter / gitattributes patches |
+- **49 acknowledged → 30 actual open**（剔除 19 stale/superseded/already-resolved per `42-triage.md`）
+- **30 actual open → 27 closed** by Phase 42 Plan 01 (triage) + Plan 02 (9 IN-* fixes) + 4 LOCKED decision cards (J-1..J-4 per `42-decisions.md`)
+- **11 awaiting** operator live verification (`42-operator-runbook.md` L1..L11)
+- **Forecast post-operator**: 30/30 = 100% closure
 
-See `.planning/debug/`, `.planning/phases/*-HUMAN-UAT.md`, `.planning/quick/` for individual items.
+**Full closure report**: `.planning/reports/v1.4-AUDIT-OPEN-CLOSE.md`
 
-## v1.5 Closure — Open Items in Progress (2026-09-23)
+**Important corrections from v1.4 MILESTONE_SUMMARY (2026-09-23)**:
+- **CR-01 (non-terminal stage on batch-level error)**: 已修于 `ae84393 fix(39): terminal stage on every Run/RetryNote error path (CR-01)` (2026-09-22, 39-REVIEW-FIX iteration 1, 7/7 fixed)。v1.4 MILESTONE_SUMMARY §6 描述为 "待 v1.5 修" 是错误 — 实际状态是 "已修，待 operator live verify（已 in 42-03 runbook L4）"。MILESTONE_SUMMARY-v1.4.md § 6.1 + § 6.2 已 改写。
+- **Phase 41 hybrid recall ≥ 0.85**: live verify 入 42-03 L5（operator-only, 需 live Milvus + seeded KG）。
+- **Phase 39 + 41 status**: 27 of 30 closed by Claude; 11 awaiting operator signatures.
+- **STATE.md § `v1.4 Close — Acknowledged Open Items`** 被本文档替换（同时 v1.5 阶段记录合并）。
+- **Inherit to v1.6**: 2 items per `42-decisions.md` LOCKED — greeting handler 旁路 + cmd/eval 拆分 refactor。
 
-v1.5 P0 (Phase 42 — v1.4 Outstanding Closure) 把上面 45 项 + v1.3 inherited 4 项 = 49 项总账一次性收口。**0 new features**。
+**v1.5 Phase 42 plan status**:
 
 | Plan | Title | Status |
 |------|-------|--------|
-| 42-01 | Audit-Open Triage Report (分类 49 项入桶) | 🚧 Pending start |
-| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09 + 42-01 needs-code) | ✅ Complete (9 IN-* fixes committed) |
-| 42-03 | Operator Live Verification Bundle (Phase 39 4 human + Phase 41 hybrid ≥ 0.85 + 42-01 needs-live) | 🚧 Pending 42-01 |
-| 42-04 | v1.4 Closure Doc Update (MILESTONE_SUMMARY CR-01 framing + STATE.md 节 + audit-open close report) | 🚧 Pending 42-02 + 42-03 |
-
-**Key correction from milestone summary:** CR-01 (non-terminal stage on batch-level error) **已修于 `ae84393 fix(39): terminal stage on every Run/RetryNote error path (CR-01)`** (2026-09-22, 39-REVIEW-FIX iteration 1, 7/7 fixed)。v1.4 MILESTONE_SUMMARY §6 表中描述为 "待 v1.5 修" 是错误的；实际状态是"已修，待 operator live verify（已 in 42-03 runbook）"。修正将由 42-04 完成。
+| 42-01 | Audit-Open Triage Report (49 → 30 items classified) | ✅ Complete |
+| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09) | ✅ Complete (9 atomic commits + 9 regression tests + hermetic gate) |
+| 42-03 | Operator Live Verification Bundle (L1..L11) | ✅ Plan + runbook drafted (awaiting operator execution) |
+| 42-04 | v1.4 Closure Doc Update | ✅ Plan drafted + 2026-09-24 applied (3 doc edits + 1 NEW file) |
 
 ## v1.3 Summary (closed 2026-09-09)
 

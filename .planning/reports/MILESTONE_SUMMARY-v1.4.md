@@ -261,13 +261,13 @@ v1.4 在 `REQUIREMENTS.md` 上挂 17 ONT-01..17 + 3 PLAT-ONT-18..20 = **20 total
 1. **Live LLM extraction F1 gate**（SC-2 live half）—— probe GLM reachability, POST /api/admin/pipeline/run with admin token, poll status to done, run F1 scorer vs `eval/ecl-golden/sql-guides.jsonl`. Expected: macro-F1 ≥ 0.8. Why human: 需 live intranet LLM
 2. **Live Milvus E2E**（SC-3）—— `SKILLFORGE_MILVUS_RECREATE=1` boot → admin Run ECL → unset RECREATE → restart → query sql-guides retrieval + /admin/ontology graph. Expected: retrieval 返回 merged-section chunks with consistent metadata; graph 显示 note_NNN / tbl_* individuals; legacy rows 共存
 3. **UI-SPEC visual pass**（SC-4）—— walk 13-item Visual Checklist in `39-UI-SPEC.md` against running server across idle/running/done/failures/403/503 states
-4. **CR-01 failure-path operability**（SC-4/SC-5）—— force milvus-load failure, observe status + FE run/retry buttons. **Known defect**：stage stays non-terminal while no run is active; minimal fix = `setStatus(StageIdle, …)` deferred idle reset on error in `Manager.Run/RetryNote`. Why human: 真实部分失败场景 + 决定 minimal-fix 排期
+4. **CR-01 failure-path operability**（SC-4/SC-5）—— force milvus-load failure, observe status + FE run/retry buttons. **CR-01 fix 已 ship**：`ae84393 fix(39): terminal stage on every Run/RetryNote error path (CR-01)` (2026-09-22, 39-REVIEW-FIX iteration 1, 7/7 fixed); 42-02 IN-09 (commit `ef33fd8`) 加了 ApplyNote bounded-impact godoc; 42-02 IN-05 (commit `8364a19`) 加了 detached run goroutine panic recovery. **Operator live verify** 在 42-03 L4 (runbook pending operator execution). Why human: 真实部分失败场景复现确认修复行为
 
 ### 6.2 Phase 39 anti-patterns (warnings)
 
 | File | Pattern | Severity | Impact |
 |---|---|---|---|
-| `internal/knowledge/ecl/manager.go` | Non-terminal stage on batch-level error paths (CR-01) | ⚠️ Warning | milvus-load outage 后 status reports running stage with no active run → FE run button disabled + pulsing badge；per-note retry 仍可用，但 D-RT-01 "system stays operable" degrade under intranet-flakiness. Minimal fix 已知 |
+| `internal/knowledge/ecl/manager.go` | Non-terminal stage on batch-level error paths (CR-01) | ✅ **Resolved** by `ae84393` (2026-09-22) + 42-02 IN-09 godoc | defer error-guard pattern；测试 `TestManagerRunFailureResetsStage` + `TestManagerRetryNoteFailureResetsStage` (6 subtests) 覆盖每个失败模式；operator live verify → 42-03 L4 |
 | `internal/retriever/milvus/client.go` | Watermark Query truncates at 10k rows silently (WR-02) | ⚠️ Warning | Latent PK-collision risk at scale |
 | `internal/knowledge/ecl/stub.go` | `ValidateExtraction` does not gate `etl_` prefix/charset (WR-03) | ⚠️ Warning | Hallucinated non-etl_ names can mint tbl_ individuals |
 | `internal/ontology/store/store.go` | Debounced snapshot writer swallows errors (WR-04) | ⚠️ Warning | Silent ABox durability failure on disk errors |
@@ -277,12 +277,14 @@ v1.4 在 `REQUIREMENTS.md` 上挂 17 ONT-01..17 + 3 PLAT-ONT-18..20 = **20 total
 ### 6.3 Phase 41 verification gap
 
 - `verify-phase-41.sh` 6 sections PASS**（build/vet, unit 7+8 tests, tier filtering regression, SPARQL endpoint, MCP stdio 5 tools, Hybrid pipeline — 全部 hermetic via standalone `internal/server/platform/verify_main.go` + grep 静态校验）
-- **Live hybrid recall ≥ 0.85 不可 hermetic 测**（需 live Milvus + seeded KG；Windows MSYS2 因 duckdb CGO blocking 无法 build `./cmd/server`）。Live recall 在 full env 必须复测；section (d)/(e)/(f) 静态检查覆盖 route/handler/env var/tool name 注册正确性
-- Live MCP stdio subprocess test + SPARQL curl test 同样需 `./cmd/server` binary（duckdb CGO 阻塞本机环境）
+- **Live hybrid recall ≥ 0.85 不可 hermetic 测**（需 live Milvus + seeded KG；Windows MSYS2 因 duckdb CGO blocking 无法 build `./cmd/server`）。Live recall → **42-03 L5** (operator runbook pending execution); section (d)/(e)/(f) 静态检查覆盖 route/handler/env var/tool name 注册正确性
+- Live MCP stdio subprocess test + SPARQL curl test 同样需 `./cmd/server` binary（duckdb CGO 阻塞本机环境）→ 同样入 42-03 runbook
 
 ### 6.4 v1.4 关闭 acknowledged open items（2026-09-23）
 
 `audit-open count = 45`（7 debug + 14 uat-gap + 8 verification-gap + 16 quick-task），全部 v1.3 cross-phase residue 或 live-infra-required validations。**无项 block v1.4 functional ship**（Phase 40 17/17 + Phase 41 20/20 hermetic-verified）。
+
+**Closure status 2026-09-24 (v1.5 Phase 42)**: 49 项 acknowledged → 30 actual open (剔除 19 stale/superseded/already-resolved) → 27 closed by 42-01 (triage) + 42-02 (9 IN-* fixes) → 11 awaiting operator (42-03 L1..L11) → 4 LOCKED decision cards. **Full closure report**: `.planning/reports/v1.4-AUDIT-OPEN-CLOSE.md`
 
 | Category | Count | Notes |
 |---|---|---|
