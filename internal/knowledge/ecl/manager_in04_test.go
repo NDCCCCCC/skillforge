@@ -73,13 +73,17 @@ func (s *storeErrorFailureStore) IsNotFound(err error) bool {
 // branch is dropped or swapped, store outages surface as 404 "unknown note"
 // which both leaks semantic confusion and breaks operator scripts that watch
 // the 5xx rate.
+//
+// TryClaimRetry claims the running flag itself on entry (CAS) and releases
+// it on every error path. The test must NOT pre-claim m.running via
+// m.CASRunning() — that would make TryClaimRetry's internal CAS fail and
+// return ErrPipelineBusy (a different contract entirely).
 func TestIN04TryClaimRetryDistinguishesStoreError(t *testing.T) {
 	storeErr := errors.New("ecl: sqlite: database is locked")
 	fs := newStoreErrorFailureStore(storeErr)
 
 	m, _ := newTestManager(t, threeNoteKBDir(t), newFlakyExtractor(nil), fs, nil)
 	require.NotNil(t, m)
-	require.True(t, m.CASRunning(), "TryClaimRetry requires the running flag claimed")
 
 	// Pre-seed a DEAD row so the GetFailure path is exercised (otherwise the
 	// store-error fake's first lookup would return the generic not-found
@@ -108,7 +112,6 @@ func TestIN04TryClaimRetryMapsNotFoundToUnknownNote(t *testing.T) {
 	fs := newFakeFailureStore() // no rows seeded; GetFailure returns "no failure record"
 	m, _ := newTestManager(t, threeNoteKBDir(t), newFlakyExtractor(nil), fs, nil)
 	require.NotNil(t, m)
-	require.True(t, m.CASRunning())
 
 	err := m.TryClaimRetry("999")
 	require.Error(t, err)
