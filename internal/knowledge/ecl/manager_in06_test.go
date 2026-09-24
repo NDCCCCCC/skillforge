@@ -82,8 +82,10 @@ func TestIN06ExtractBackoffRespectsCancellation(t *testing.T) {
 }
 
 // TestIN06LoadBackoffRespectsCancellation pins the same fix for the
-// loadWithRetry retry loop. kg-load failures (per T-32 plane: store apply
-// errors, transient errors) are the second of the three retry loops.
+// loadWithRetry retry loop. kg-load failures (transient store apply errors)
+// are the second of the three retry loops. The fn argument is what
+// loadWithRetry invokes between backoff sleeps; always erroring it forces
+// the loop through all 3 attempts with backoff between them.
 func TestIN06LoadBackoffRespectsCancellation(t *testing.T) {
 	fs := newFakeFailureStore()
 	m, _ := newTestManager(t, threeNoteKBDir(t), newFlakyExtractor(nil), fs, nil)
@@ -99,29 +101,13 @@ func TestIN06LoadBackoffRespectsCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	// applyNote always fails → loadWithRetry retries up to maxAttempts.
-	m.applyNote = func(_ any, _ string, _ Note, _ any, _ func()) error {
-		return errors.New("forced applyNote failure")
-	}
-
-	// Wrap applyNote to satisfy the seam signature; see manager.go:116
-	// — applyNote is `func(*store.Store, string, Note, Extraction, func()) error`.
-	// newTestManager sets it to ApplyNote; override with one that always fails.
-	failingApply := func(_ any, _ string, _ Note, _ any, _ func()) error {
-		return errors.New("forced applyNote failure")
-	}
-	_ = failingApply // kept for documentation; the seam rebinding below is what exercises the loop
-
-	// Reach the load loop via the seam bound at construction. Use
-	// manager's exposed applyNote field by re-binding through a no-op
-	// ApplyNote call wrapped to always error.
-	m.applyNote = func(s any, ns string, n Note, ex any, fireChange func()) error {
-		return errors.New("forced applyNote failure")
+	// fn always fails → loadWithRetry retries up to maxAttempts.
+	fn := func(_ context.Context) error {
+		return errors.New("forced kg-load failure")
 	}
 
 	start := time.Now()
-	err := m.loadWithRetry(ctx, Note{SourceIdx: "001"}, StageKGLoad,
-		func(ctx context.Context) error { return errors.New("unreachable") })
+	err := m.loadWithRetry(ctx, Note{SourceIdx: "001"}, StageKGLoad, fn)
 	elapsed := time.Since(start)
 
 	require.Error(t, err)
