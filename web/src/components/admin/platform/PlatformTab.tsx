@@ -9,8 +9,9 @@
 // aria-selected buttons, local state, no router). skillName state is
 // lifted to tab level and passed to SPARQL Playground and Hybrid views.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '../../../lib/cn';
+import { useAppStore } from '../../../store/app-store';
 import SparqlPlaygroundView from './SparqlPlaygroundView';
 import McpInspectorView from './McpInspectorView';
 import HybridDebugView from './HybridDebugView';
@@ -26,6 +27,19 @@ const VIEWS: Array<{ id: PlatformView; label: string }> = [
 export default function PlatformTab() {
   const [view, setView] = useState<PlatformView>('sparql');
   const [skillName, setSkillName] = useState('');
+  // quick-260928-jxb BUG-2: skillName was initialized '' with NO selector,
+  // so SPARQL/Hybrid always sent X-Skill-Name: '' → 401. Shared selector
+  // below serves both views (MCP Inspector is server-scoped, unaffected).
+  // useSkillReload already polls store.skills from App mount — no new fetch.
+  const skills = useAppStore((s) => s.skills);
+  const skillNames = skills.filter((s) => s.status === 'ok').map((s) => s.name);
+
+  // Empty string = guaranteed 401; auto-default to the first ok skill.
+  useEffect(() => {
+    if (skillName === '' && skillNames.length > 0) {
+      setSkillName(skillNames[0]);
+    }
+  }, [skillName, skillNames]);
 
   return (
     <div className="space-y-4" data-testid="platform-tab">
@@ -47,6 +61,26 @@ export default function PlatformTab() {
             {v.label}
           </button>
         ))}
+      </div>
+
+      {/* Shared Skill selector (SPARQL + Hybrid both consume skillName) */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-text-muted">Skill 视角：</span>
+        <select
+          data-testid="platform-skill-select"
+          value={skillName}
+          onChange={(e) => setSkillName(e.target.value)}
+          className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs"
+        >
+          <option value="" disabled>
+            {skillNames.length === 0 ? '加载中…' : '选择 Skill'}
+          </option>
+          {skillNames.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* View bodies */}
