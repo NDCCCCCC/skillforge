@@ -959,9 +959,9 @@ func main() {
 	log.Printf("[OK] cmd/server: ontology layer wired (TBox v%d, %d TTL triples loaded, snapshot %s)",
 		ontologyManager.Version(), ttlLoaded, kgSnapshotPath)
 
-	// deps is forward-declared so the MCP server setup block above can
-	// stash a back-reference into deps.MCPServer; the full struct is
-	// constructed later (line ~1049) once every dependency is in scope.
+	// deps is assigned below (line ~1059) once every dependency is in
+	// scope; the MCP server (mcpSrv, hoisted below) is wired into the
+	// literal's MCPServer field.
 	var deps *server.Deps
 
 	// Phase 41-01 — MCP server stdio subprocess (D-MCP-01 / D-MCP-02):
@@ -972,12 +972,16 @@ func main() {
 	if mcpServiceSkill == "" {
 		log.Fatalf("[FAIL] cmd/server: SKILLFORGE_MCP_SERVICE_SKILL is required (D-TRUST-02: no admin baseline bypass)")
 	}
+	// quick-260928-jxb BUG-3: hoisted so the deps literal below can wire
+	// MCPServer (the old `if deps != nil` backref ran before deps was
+	// assigned — dead code; admin MCP status 503'd forever).
+	var mcpSrv *mcp.Server
 	mcpEnabled := os.Getenv("SKILLFORGE_MCP_ENABLED")
 	if mcpEnabled == "false" || mcpEnabled == "0" || mcpEnabled == "off" {
 		log.Printf("[OK] cmd/server: MCP server disabled (SKILLFORGE_MCP_ENABLED=%s) — platform routes still respond for debugging", mcpEnabled)
 	} else {
 		log.Printf("[OK] cmd/server: starting MCP stdio server with service_skill=%q", mcpServiceSkill)
-		mcpSrv := mcp.NewServer(ontologyKG, mcpServiceSkill)
+		mcpSrv = mcp.NewServer(ontologyKG, mcpServiceSkill)
 		// Serve blocks — run in a goroutine so boot can continue.
 		// The Go server communicates with the MCP subprocess ONLY via admin HTTP
 		// routes (Task 3), not via in-process calls.
@@ -986,13 +990,6 @@ func main() {
 				log.Printf("[WARN] cmd/server: MCP stdio server exited: %v", err)
 			}
 		}()
-		// Store server reference for admin API (Task 3) — deps is
-		// declared above (line ~960) and assigned at line ~1049; if
-		// the assignment hasn't happened yet we no-op (MCPServer
-		// is wired later via a follow-up patch below).
-		if deps != nil {
-			deps.MCPServer = mcpSrv
-		}
 	}
 
 	// Phase 39 — ECL pipeline (ONT-13 / D-Run-01): CONSTRUCTED + ARMED at
@@ -1164,6 +1161,11 @@ func main() {
 		// /api/admin/pipeline/* route answers 503 (same nil-posture as
 		// Ontology).
 		ECL: eclManager,
+		// Phase 41 — MCP stdio server (quick-260928-jxb BUG-3: the dead
+		// forward-declared backref never ran). nil when SKILLFORGE_MCP_ENABLED
+		// disables MCP → /api/admin/platform/mcp/* answer 503 (same
+		// nil-posture as ECL/Ontology).
+		MCPServer: mcpSrv,
 	}
 
 	// Phase 30 / WR-02 (T-30-03): sweep queued tickets from a prior run
