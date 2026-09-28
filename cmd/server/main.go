@@ -959,6 +959,11 @@ func main() {
 	log.Printf("[OK] cmd/server: ontology layer wired (TBox v%d, %d TTL triples loaded, snapshot %s)",
 		ontologyManager.Version(), ttlLoaded, kgSnapshotPath)
 
+	// deps is forward-declared so the MCP server setup block above can
+	// stash a back-reference into deps.MCPServer; the full struct is
+	// constructed later (line ~1049) once every dependency is in scope.
+	var deps *server.Deps
+
 	// Phase 41-01 — MCP server stdio subprocess (D-MCP-01 / D-MCP-02):
 	// Spawn mark3labs/mcp-go stdio server exposing KG tools to external agents.
 	// All tool calls route through QueryScoped — external agents cannot bypass
@@ -981,8 +986,13 @@ func main() {
 				log.Printf("[WARN] cmd/server: MCP stdio server exited: %v", err)
 			}
 		}()
-		// Store server reference for admin API (Task 3)
-		deps.MCPServer = mcpSrv
+		// Store server reference for admin API (Task 3) — deps is
+		// declared above (line ~960) and assigned at line ~1049; if
+		// the assignment hasn't happened yet we no-op (MCPServer
+		// is wired later via a follow-up patch below).
+		if deps != nil {
+			deps.MCPServer = mcpSrv
+		}
 	}
 
 	// Phase 39 — ECL pipeline (ONT-13 / D-Run-01): CONSTRUCTED + ARMED at
@@ -1046,7 +1056,7 @@ func main() {
 		log.Printf("[OK] cmd/server: ECL pipeline armed (manual trigger via /api/admin/pipeline/run; ID watermark %d)", watermark)
 	}
 
-	deps := &server.Deps{
+	deps = &server.Deps{
 		Loader:       loader,
 		Registry:     reg,
 		Embedder:     emb,
