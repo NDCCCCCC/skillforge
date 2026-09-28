@@ -400,3 +400,316 @@ func TestABoxMultiTierTableInheritance(t *testing.T) {
 		t.Errorf("cross-tier table belongsToTier count = %d, want 2", len(tierTriples))
 	}
 }
+
+// --- D-NZK-05: entity ABox shapes ---
+
+// findTriples is a set-style pattern filter over in-memory triples ("" =
+// wildcard), keeping entity assertions readable without pinning triple
+// indices.
+func findTriples(ts []store.Triple, s, p, o string) []store.Triple {
+	var out []store.Triple
+	for _, t := range ts {
+		if (s == "" || t.S == s) && (p == "" || t.P == p) && (o == "" || t.O == o) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// TestBuildTriplesEntityShapes pins the per-entity triple set (D-NZK-05):
+// rdf:type {ns}{Kind}, rdfs:label, optional entityCode, belongsToTier
+// inherited from the note, the note→entity involves edge per kind, and the
+// parentOrganization edge ONLY for a same-batch exact-name Organization
+// match. The existing table triples stay byte-for-byte in front (index
+// stability for TestABoxBuildTriples).
+func TestBuildTriplesEntityShapes(t *testing.T) {
+	note := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides",
+		Sections: []MergedSection{{Body: "body", SourcePaths: []string{"knowledge/sql-guides/001__sec01.md"}}}}
+	cheXian := EntityIRI(testNS, "车险")
+	wuhan := EntityIRI(testNS, "武汉中支")
+	hubei := EntityIRI(testNS, "湖北分公司")
+	ex := Extraction{
+		Tables: []ExtractedTable{{Name: "etl_a", Kind: "update"}},
+		Entities: []ExtractedEntity{
+			{Name: "车险", Kind: "InsuranceProduct", Code: "01"},
+			{Name: "武汉中支", Kind: "Organization", Parent: "湖北分公司"},
+			{Name: "湖北分公司", Kind: "Organization"},
+			// parent on a non-Organization must be dropped (仅 Organization).
+			{Name: "车险二号", Kind: "InsuranceProduct", Parent: "湖北分公司"},
+		},
+	}
+	got := BuildTriples(testNS, note, ex)
+
+	// Existing table triple count (8, per TestABoxBuildTriples) comes first.
+	if len(findTriples(got, testNS+"note_001", testNS+"referencesTable", testNS+"tbl_etl_a")) != 1 {
+		t.Fatal("table reference triple missing — entities extension broke the table path")
+	}
+
+	// rdf:type per entity kind.
+	if n := len(findTriples(got, cheXian, rdfTypeIRI, testNS+"InsuranceProduct")); n != 1 {
+		t.Errorf("车险 type triples = %d, want 1", n)
+	}
+	if n := len(findTriples(got, wuhan, rdfTypeIRI, testNS+"Organization")); n != 1 {
+		t.Errorf("武汉中支 type triples = %d, want 1", n)
+	}
+	if n := len(findTriples(got, hubei, rdfTypeIRI, testNS+"Organization")); n != 1 {
+		t.Errorf("湖北分公司 type triples = %d, want 1", n)
+	}
+
+	// rdfs:label = exact trimmed name.
+	if n := len(findTriples(got, cheXian, rdfsLabelIRI, "车险")); n != 1 {
+		t.Errorf("车险 label triples = %d, want 1", n)
+	}
+
+	// entityCode only when non-empty.
+	if n := len(findTriples(got, cheXian, testNS+"entityCode", "01")); n != 1 {
+		t.Errorf("车险 entityCode triples = %d, want 1", n)
+	}
+	if n := len(findTriples(got, wuhan, testNS+"entityCode", "")); n != 0 {
+		t.Errorf("武汉中支 entityCode triples = %d, want 0 (no code)", n)
+	}
+
+	// belongsToTier inherited from the note's tier — never LLM-supplied.
+	for name, iri := range map[string]string{"车险": cheXian, "武汉中支": wuhan, "湖北分公司": hubei} {
+		if n := len(findTriples(got, iri, testNS+"belongsToTier", testNS+"sql-guides")); n != 1 {
+			t.Errorf("%s belongsToTier triples = %d, want 1", name, n)
+		}
+	}
+
+	// note→entity edges carry the kind-specific predicate.
+	if n := len(findTriples(got, testNS+"note_001", testNS+"involvesInsuranceProduct", cheXian)); n != 1 {
+		t.Errorf("involvesInsuranceProduct edges = %d, want 1", n)
+	}
+	if n := len(findTriples(got, testNS+"note_001", testNS+"involvesOrganization", wuhan)); n != 1 {
+		t.Errorf("involvesOrganization(武汉中支) edges = %d, want 1", n)
+	}
+	if n := len(findTriples(got, testNS+"note_001", testNS+"involvesOrganization", hubei)); n != 1 {
+		t.Errorf("involvesOrganization(湖北分公司) edges = %d, want 1", n)
+	}
+
+	// parentOrganization only for the same-batch Organization match.
+	if n := len(findTriples(got, wuhan, testNS+"parentOrganization", hubei)); n != 1 {
+		t.Errorf("武汉中支 parentOrganization triples = %d, want 1", n)
+	}
+	if n := len(findTriples(got, cheXian, testNS+"parentOrganization", "")); n != 0 {
+		t.Errorf("车险 parentOrganization triples = %d, want 0 (InsuranceProduct never carries parent)", n)
+	}
+	if n := len(findTriples(got, EntityIRI(testNS, "车险二号"), testNS+"parentOrganization", "")); n != 0 {
+		t.Error("InsuranceProduct parent reference not dropped")
+	}
+
+	// Every entity triple carries provenance (D-PROV-02/05/11).
+	for _, tr := range findTriples(got, cheXian, "", "") {
+		if tr.Provenance == nil {
+			t.Errorf("entity triple missing provenance: %+v", tr)
+		}
+	}
+}
+
+// TestBuildTriplesEntityParentNotInBatchDropped — a parent referencing a
+// non-existent (not-in-batch) name drops the parent triple but KEEPS the
+// entity (D-NZK-04).
+func TestBuildTriplesEntityParentNotInBatchDropped(t *testing.T) {
+	note := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides"}
+	ex := Extraction{Entities: []ExtractedEntity{
+		{Name: "武汉中支", Kind: "Organization", Parent: "不存在的上级"},
+	}}
+	got := BuildTriples(testNS, note, ex)
+	wuhan := EntityIRI(testNS, "武汉中支")
+	if n := len(findTriples(got, wuhan, testNS+"parentOrganization", "")); n != 0 {
+		t.Errorf("unresolvable parent emitted %d triples, want 0", n)
+	}
+	if n := len(findTriples(got, wuhan, rdfTypeIRI, testNS+"Organization")); n != 1 {
+		t.Error("entity itself must survive an unresolvable parent")
+	}
+}
+
+// TestBuildTriplesEntitySameBatchCollisionOrdinals — two DISTINCT names
+// whose local names coincide (ASCII PascalCase fusion) get ordinal suffixes
+// (-2, -3, …) within one BuildTriples call so a batch never collapses two
+// entities into one IRI.
+func TestBuildTriplesEntitySameBatchCollisionOrdinals(t *testing.T) {
+	note := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides"}
+	ex := Extraction{Entities: []ExtractedEntity{
+		{Name: "ab", Kind: "Organization"},
+		{Name: "AB", Kind: "Organization"}, // same PascalCase local "Ab"
+	}}
+	got := BuildTriples(testNS, note, ex)
+	base := EntityIRI(testNS, "ab")
+	first := findTriples(got, base, rdfsLabelIRI, "ab")
+	second := findTriples(got, base+"-2", rdfsLabelIRI, "AB")
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("collision ordinals wrong: base=%v suffixed=%v", first, second)
+	}
+	// Both still get note→entity edges under their assigned IRIs.
+	if n := len(findTriples(got, testNS+"note_001", testNS+"involvesOrganization", base+"-2")); n != 1 {
+		t.Error("suffixed entity missing its note→entity edge")
+	}
+}
+
+// TestApplyNoteEntitiesIdempotent — re-running ApplyNote for the same note
+// with the same extraction adds ZERO new entity triples: entity-owned
+// triples are InsertUnique, note→entity edges are rebuilt via Insert after
+// DeleteSubject. onChange still fires exactly once per apply.
+func TestApplyNoteEntitiesIdempotent(t *testing.T) {
+	st := store.New()
+	note := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides"}
+	ex := Extraction{Entities: []ExtractedEntity{
+		{Name: "车险", Kind: "InsuranceProduct", Code: "01"},
+		{Name: "武汉中支", Kind: "Organization", Parent: "湖北分公司"},
+		{Name: "湖北分公司", Kind: "Organization"},
+	}}
+
+	fires := 0
+	if err := ApplyNote(st, testNS, note, ex, func() { fires++ }); err != nil {
+		t.Fatalf("ApplyNote 1: %v", err)
+	}
+	first := st.Len()
+	if first == 0 {
+		t.Fatal("no triples after first apply")
+	}
+	if err := ApplyNote(st, testNS, note, ex, func() { fires++ }); err != nil {
+		t.Fatalf("ApplyNote 2: %v", err)
+	}
+	if st.Len() != first {
+		t.Errorf("store grew on re-apply: %d → %d (entity apply not idempotent)", first, st.Len())
+	}
+	if fires != 2 {
+		t.Errorf("onChange fired %d times, want exactly once per apply (2)", fires)
+	}
+	cheXian := EntityIRI(testNS, "车险")
+	if n := len(st.Query(cheXian, rdfTypeIRI, testNS+"InsuranceProduct")); n != 1 {
+		t.Errorf("车险 type triples after re-apply = %d, want exactly 1", n)
+	}
+}
+
+// TestApplyNoteEntityOrphanSweep — extended sweep semantics: an entity the
+// replaced note no longer mentions is fully removed UNLESS another note
+// still involves it or references it as a parentOrganization target.
+func TestApplyNoteEntityOrphanSweep(t *testing.T) {
+	st := store.New()
+	note1 := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides"}
+	note2 := Note{SourceIdx: "002", Title: "t", Tier: "sql-guides"}
+
+	// note1: orphan candidate + parent target; note2: shared entity, and a
+	// child whose parent lives only in note1's batch.
+	if err := ApplyNote(st, testNS, note1, Extraction{Entities: []ExtractedEntity{
+		{Name: "孤儿险", Kind: "InsuranceProduct"},
+		{Name: "湖北分公司", Kind: "Organization"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyNote(st, testNS, note2, Extraction{Entities: []ExtractedEntity{
+		{Name: "共享险", Kind: "InsuranceProduct"},
+		{Name: "武汉中支", Kind: "Organization", Parent: "湖北分公司"}, // parent NOT in note2's batch
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	wuhan := EntityIRI(testNS, "武汉中支")
+	hubei := EntityIRI(testNS, "湖北分公司")
+	orphan := EntityIRI(testNS, "孤儿险")
+	shared := EntityIRI(testNS, "共享险")
+
+	// note1 applied first, so 湖北分公司 was NOT in note2's batch — the
+	// second-chance store check must have emitted the parent edge.
+	if n := len(st.Query(wuhan, testNS+"parentOrganization", hubei)); n != 1 {
+		t.Fatalf("second-chance parent edge = %d, want 1", n)
+	}
+
+	// Replace note1 dropping BOTH its entities.
+	if err := ApplyNote(st, testNS, note1, Extraction{Entities: []ExtractedEntity{
+		{Name: "新车险", Kind: "InsuranceProduct"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	// 孤儿险: no remaining involves edge → swept entirely.
+	if got := st.Query(orphan, "", ""); len(got) != 0 {
+		t.Errorf("orphan entity survived: %v", got)
+	}
+	// 湖北分公司: no involves edge remains, but 武汉中支 (note2) still points
+	// at it via parentOrganization → survives (parent-target guard).
+	if n := len(st.Query(hubei, rdfTypeIRI, testNS+"Organization")); n != 1 {
+		t.Errorf("parent-target entity swept: %d type triples, want 1", n)
+	}
+	// 共享险: note2 still involves it → survives.
+	if n := len(st.Query(shared, rdfTypeIRI, testNS+"InsuranceProduct")); n != 1 {
+		t.Errorf("shared entity swept: %d type triples, want 1", n)
+	}
+	// 武汉中支's parent edge survived untouched.
+	if n := len(st.Query(wuhan, testNS+"parentOrganization", hubei)); n != 1 {
+		t.Errorf("parent edge lost during sweep: %d, want 1", n)
+	}
+}
+
+// TestApplyNoteSecondChanceParentGates — the second-chance store check
+// requires the parent to exist as an Organization individual: a parent name
+// absent from batch AND store emits nothing (entity kept).
+func TestApplyNoteSecondChanceParentGates(t *testing.T) {
+	st := store.New()
+	note := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides"}
+	ex := Extraction{Entities: []ExtractedEntity{
+		{Name: "武汉中支", Kind: "Organization", Parent: "湖北分公司"},
+	}}
+	if err := ApplyNote(st, testNS, note, ex, nil); err != nil {
+		t.Fatal(err)
+	}
+	wuhan := EntityIRI(testNS, "武汉中支")
+	hubei := EntityIRI(testNS, "湖北分公司")
+	if n := len(st.Query(wuhan, testNS+"parentOrganization", "")); n != 0 {
+		t.Errorf("parent edge emitted for a store-absent parent: %d, want 0", n)
+	}
+	if n := len(st.Query(wuhan, rdfTypeIRI, testNS+"Organization")); n != 1 {
+		t.Error("entity must survive an unresolvable parent")
+	}
+
+	// Apply 湖北分公司 via another note; re-apply the child note — the
+	// parent now resolves through the store.
+	if err := ApplyNote(st, testNS, Note{SourceIdx: "002", Title: "t", Tier: "sql-guides"}, Extraction{Entities: []ExtractedEntity{
+		{Name: "湖北分公司", Kind: "Organization"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyNote(st, testNS, note, ex, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(st.Query(wuhan, testNS+"parentOrganization", hubei)); n != 1 {
+		t.Errorf("second-chance parent edge = %d, want 1 once the parent exists", n)
+	}
+}
+
+// TestApplyNoteEntityTierFromNoteOnly — entity belongsToTier is ALWAYS the
+// note's tier (server-derived, T-NZK-03): no Tier → no belongsToTier on the
+// entity, and two notes in different tiers accumulate two tier triples on
+// the shared entity individual (D-TIER-06 any-match visibility).
+func TestApplyNoteEntityTierFromNoteOnly(t *testing.T) {
+	st := store.New()
+	if err := ApplyNote(st, testNS, Note{SourceIdx: "001", Title: "t"}, Extraction{Entities: []ExtractedEntity{
+		{Name: "车险", Kind: "InsuranceProduct"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	cheXian := EntityIRI(testNS, "车险")
+	if n := len(st.Query(cheXian, testNS+"belongsToTier", "")); n != 0 {
+		t.Errorf("tier-less note gave the entity %d belongsToTier triples, want 0", n)
+	}
+
+	if err := ApplyNote(st, testNS, Note{SourceIdx: "002", Title: "t", Tier: "sql-guides"}, Extraction{Entities: []ExtractedEntity{
+		{Name: "车险", Kind: "InsuranceProduct"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyNote(st, testNS, Note{SourceIdx: "003", Title: "t", Tier: "other-tier"}, Extraction{Entities: []ExtractedEntity{
+		{Name: "车险", Kind: "InsuranceProduct"},
+	}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	tiers := st.Query(cheXian, testNS+"belongsToTier", "")
+	if len(tiers) != 2 {
+		t.Errorf("cross-tier entity belongsToTier = %d, want 2 (sql-guides + other-tier)", len(tiers))
+	}
+	if n := len(st.Query(cheXian, rdfTypeIRI, testNS+"InsuranceProduct")); n != 1 {
+		t.Errorf("cross-tier entity type triples = %d, want exactly 1 (InsertUnique)", n)
+	}
+}
