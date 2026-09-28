@@ -55,7 +55,6 @@ func fixtureKG() *store.Store {
 	s.Insert(store.Triple{S: testNS + "skill_compliance", P: testNS + "hasReadAccess", O: testNS + "authority"})
 
 	// Tier individuals (schema, D-TIER-03)
-	s.Insert(store.Triple{S: testNS + "Tier", P: rdfType, O: testNS + "owl:Class"})
 	s.Insert(store.Triple{S: testNS + "sql-guides", P: rdfType, O: skfTier})
 	s.Insert(store.Triple{S: testNS + "authority", P: rdfType, O: skfTier})
 
