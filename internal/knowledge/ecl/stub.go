@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // ExtractedTable is one table reference produced by an extractor
@@ -38,11 +39,28 @@ type RelatedNote struct {
 	Relation  string `json:"relation"`
 }
 
+// ExtractedEntity is one business entity (D-NZK-04) a note mentions: an
+// InsuranceProduct (险种) or Organization (机构) individual for the KG ABox.
+// Code and Parent are optional; Parent is a raw NAME reference that only
+// becomes a triple when it resolves against a same-batch Organization or an
+// existing Organization individual — abox.go owns that resolution (it needs
+// store/batch context), so this struct deliberately carries the raw value.
+type ExtractedEntity struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Code   string `json:"code,omitempty"`
+	Parent string `json:"parent,omitempty"`
+}
+
 // Extraction is the D-Ext-01 fixed JSON schema produced per merged note:
-// {"tables":[{"name","kind"}],"related_notes":[{"source_idx","relation"}]}.
+// {"tables":[{"name","kind"}],"related_notes":[{"source_idx","relation"}]}
+// extended with the D-NZK-04 entities field. The json tag is
+// "entities,omitempty" so stub extractions (the D-GT-01 golden-set drafter)
+// stay nil-entities — the golden wire shape is unchanged (D-NZK-06).
 type Extraction struct {
 	Tables       []ExtractedTable `json:"tables"`
 	RelatedNotes []RelatedNote    `json:"related_notes"`
+	Entities     []ExtractedEntity `json:"entities,omitempty"`
 }
 
 // tableNamePattern is the corpus-contract gate for extracted table names
@@ -76,6 +94,56 @@ func ValidateExtraction(ex Extraction) error {
 		}
 	}
 	return nil
+}
+
+// legalEntityKinds is the D-NZK-04 kind enum: exactly the two TBox classes
+// approved through the human proposal gate (prop-0001/prop-0002, TBox v3).
+// Anything else is a hallucination or injection and DROPS the entry.
+var legalEntityKinds = map[string]bool{
+	"InsuranceProduct": true,
+	"Organization":     true,
+}
+
+// maxEntityNameRunes is the D-NZK-04 name cap: entity names in the corpus
+// (车险×211, 健康险×36, 雇主责任险×5…) are short business vocabulary; a
+// longer "name" is a sentence fragment, not an entity.
+const maxEntityNameRunes = 12
+
+// sanitizeEntities applies the D-NZK-04 anti-hallucination gates to raw LLM
+// entities (T-NZK-01). By deliberate design it DROPS illegal entries and
+// never errors — unlike ValidateExtraction's tables hard-error gate, one
+// hallucinated entity must not dead-letter an otherwise-valid extraction:
+//
+//   - kind must be exactly "InsuranceProduct" or "Organization" (the two
+//     human-approved TBox classes); anything else drops the entry
+//   - name must be non-empty after TrimSpace and at most
+//     maxEntityNameRunes (utf8.RuneCountInString, not bytes)
+//   - surviving names are whitespace-trimmed
+//   - duplicates collapse on the exact trimmed name, keep-first (D-NZK-01:
+//     entity identity = exact name; 车险 and 汽车险 stay two entities — no
+//     aliasing)
+//
+// Parent is NOT validated here (needs store/batch context — abox.go owns
+// same-batch and existing-individual resolution); it passes through raw.
+func sanitizeEntities(raw []ExtractedEntity) []ExtractedEntity {
+	seen := map[string]bool{}
+	out := []ExtractedEntity{}
+	for _, e := range raw {
+		if !legalEntityKinds[e.Kind] {
+			continue // T-NZK-01: illegal kind drops the entry, not the extraction
+		}
+		name := strings.TrimSpace(e.Name)
+		if name == "" || utf8.RuneCountInString(name) > maxEntityNameRunes {
+			continue
+		}
+		if seen[name] {
+			continue // D-NZK-01: exact-name identity, keep-first
+		}
+		seen[name] = true
+		e.Name = name
+		out = append(out, e)
+	}
+	return out
 }
 
 // SQL detection regexes. Base patterns are the VALIDATED spike 005c

@@ -58,6 +58,12 @@ const DefaultSectionCap = 40000
 // mirroring induction's generatePrompt const style (induction.go:57-67).
 // The output shape is locked: tables carry the validated kind enum and
 // related_notes carry source_idx + a free-form relation tag.
+//
+// D-NZK-04 entities extension: the original tables line, related_notes
+// line, and all four original Rules bullets are kept BYTE-IDENTICAL (the
+// 39-04 golden-F1 gate scores tables/related — a prompt rewrite there is a
+// regression risk), and the entities spec + entity rules are strictly
+// APPENDED below them.
 const extractionPromptTmpl = `You are a data engineer analyzing a SkillForge knowledge note.
 List every etl_* database table the note's SQL touches, and every other note it cross-references.
 Answer with a JSON object EXACTLY of the shape:
@@ -68,6 +74,14 @@ Rules:
 - Include only tables whose name starts with etl_.
 - If the note touches no etl_ tables or references no other notes, emit empty arrays.
 - Output ONLY the JSON object, no fences, no prose.
+The same JSON object also carries an "entities" array of business entities appearing in the note.
+Each entity is a JSON object EXACTLY of the shape:
+{"name": "<≤12字实体名>", "kind": "InsuranceProduct" | "Organization", "code": "<可选业务代码>", "parent": "<可选上级机构名,仅Organization>"}
+Entity rules:
+- Extract 险种 (insurance product) and 机构 (organization) names appearing in the note; "kind" is exactly "InsuranceProduct" or "Organization".
+- "name" is at most 12 characters, written exactly as it appears in the note.
+- "code" only when the note states a business code for the entity; "parent" only for an Organization and only when the note states its immediate parent organization name.
+- If the note mentions no entities, emit an empty array [].
 
 Note %s (title: %s):
 %s`
@@ -76,8 +90,9 @@ Note %s (title: %s):
 // target — keeps unknown model fields out of the public Extraction type,
 // same discipline as induction's llmProposalShape).
 type llmExtractionShape struct {
-	Tables       []ExtractedTable `json:"tables"`
-	RelatedNotes []RelatedNote    `json:"related_notes"`
+	Tables       []ExtractedTable  `json:"tables"`
+	RelatedNotes []RelatedNote     `json:"related_notes"`
+	Entities     []ExtractedEntity `json:"entities"` // D-NZK-04
 }
 
 // promptForBody renders the D-Ext-01 instruction for an arbitrary body
@@ -146,6 +161,7 @@ func (e LLMExtractor) ExtractNote(ctx context.Context, note Note) (Extraction, e
 	var union Extraction
 	seenTables := map[string]bool{}
 	seenRelated := map[string]bool{}
+	seenEntities := map[string]bool{} // D-NZK-01: entity identity = exact name, keep-first
 	for _, s := range note.Sections {
 		// IN-02: sections over MinSplitRunes are sub-split so every LLM prompt
 		// stays under the cap. Bodies within the cap go directly to extractBody.
@@ -183,6 +199,15 @@ func (e LLMExtractor) ExtractNote(ctx context.Context, note Note) (Extraction, e
 				seenRelated[key] = true
 				union.RelatedNotes = append(union.RelatedNotes, r)
 			}
+			for _, ent := range part.Entities {
+				// part.Entities already passed sanitizeEntities (trimmed),
+				// so the exact trimmed name is the dedupe key (D-NZK-01).
+				if seenEntities[ent.Name] {
+					continue
+				}
+				seenEntities[ent.Name] = true
+				union.Entities = append(union.Entities, ent)
+			}
 		}
 	}
 	return union, nil
@@ -211,7 +236,10 @@ func (e LLMExtractor) extractBody(ctx context.Context, sourceIdx, title, body st
 	if err := json.Unmarshal([]byte(raw), &shape); err != nil {
 		return Extraction{}, fmt.Errorf("ecl: extract: unmarshal llm response: %w (raw: %s)", err, raw)
 	}
-	ex := Extraction{Tables: shape.Tables, RelatedNotes: shape.RelatedNotes}
+	// D-NZK-04: entity drop-gates run BEFORE ValidateExtraction so the
+	// tables hard-error gate semantics stay untouched — sanitizeEntities
+	// cannot fail, it only drops entries (T-NZK-01).
+	ex := Extraction{Tables: shape.Tables, RelatedNotes: shape.RelatedNotes, Entities: sanitizeEntities(shape.Entities)}
 	if err := ValidateExtraction(ex); err != nil {
 		return Extraction{}, fmt.Errorf("ecl: extract: %w", err)
 	}
