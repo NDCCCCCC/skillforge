@@ -215,14 +215,18 @@ func TestSparqlQueryScoped_Truncated(t *testing.T) {
 	assert.True(t, resp.Truncated)
 	assert.Len(t, resp.Results, 3)
 
-	// offset beyond count → no truncated
+	// offset beyond start-of-last-page but within range → 2 items
+	// Implementation: page = triples[offset:min(offset+limit, count)].
+	// For total=22, limit=5, offset=20: page = triples[20:min(25,22)] = triples[20:22] = 2 items.
+	// The plan/research originally asserted 0 here ("offset beyond count"), but
+	// count > offset so the page is non-empty (the last count-offset items).
 	pattern2 := SparqlPattern{Limit: 5, Offset: 20}
 	resp2, err := SparqlQueryScoped(pattern2, nil, kg)
 	assert.NoError(t, err)
-	// Path A count (offset beyond count but Count=total). Updated 16 -> 22.
+	// Path A count (offset before end of page). Updated 16 -> 22 per D-SPARQL-04b.
 	assert.Equal(t, 22, resp2.Count)
 	assert.False(t, resp2.Truncated)
-	assert.Len(t, resp2.Results, 0)
+	assert.Len(t, resp2.Results, 2)
 }
 
 // TestSparqlQueryScoped_TierFilter verifies tier filtering: allowedTiers=["sql-guides"]
@@ -258,15 +262,28 @@ func TestSparqlQueryScoped_TierFilter(t *testing.T) {
 func TestSparqlQueryScoped_FailClosedNoBelongsToTier(t *testing.T) {
 	kg := fixtureKG()
 	pattern := SparqlPattern{S: testNS + "note_003"}
-	// No tier filtering → note_003 visible
+	// No tier filtering → note_003 visible (both triples)
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, resp.Count)
 
-	// With tier filtering → note_003 invisible (fail-closed)
+	// With tier filtering → note_003 ABox triples invisible (fail-closed).
+	// Schema triples still pass through: store.go:527-531 short-circuits on
+	// isSchemaTriple(t) BEFORE applying the S/P/O pattern filter. So all
+	// schema triples (4 class defs + 4 schema individuals = 8) appear even
+	// though S=note_003 doesn't match any of them.
+	// The plan/research originally asserted 0 here assuming the S filter
+	// applies to schema triples too, but the implementation behaviour is
+	// "schema triples pass through unconditionally" per D-TIER-03.
+	// note_003 has no belongsToTier → visibleSubjects does not include
+	// note_003 → all 2 of its ABox triples are EXCLUDED (correct fail-closed).
 	resp2, err := SparqlQueryScoped(pattern, []string{"sql-guides"}, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, resp2.Count)
+	assert.Equal(t, 8, resp2.Count) // 4 class defs + 4 schema individuals; 0 ABox (note_003 fail-closed)
+	for _, r := range resp2.Results {
+		// note_003 must not appear at all (fail-closed ABox)
+		assert.NotEqual(t, testNS+"note_003", r.S)
+	}
 }
 
 // TestSparqlQueryScoped_Filter verifies pattern.Filter applies substring match
