@@ -307,7 +307,7 @@ Tier 隔离三条护城河。
 
 ---
 
-### Phase 44: SPARQL Test Fix 🚧 (Planned 2026-09-28)
+### Phase 44: SPARQL Test Fix ✅ (Complete 2026-09-28)
 
 **Goal:** Turn 8 failing SPARQL tests green — Phase 41 SPARQL endpoint shipped without passing its own test suite. Surfaces only when v1.4 web code built under `CGO_ENABLED=1` (Phase 43-01).
 
@@ -324,7 +324,7 @@ Tier 隔离三条护城河。
 
 | Plan | Title | Status | Depends |
 |------|-------|--------|---------|
-| 44-01 | SPARQL test fix (3 buckets × 7 atomic commits) | 🚧 Planned (2026-09-28) | Phase 43 CGO build |
+| 44-01 | SPARQL test fix (3 buckets × 7 atomic commits) | ✅ Complete (2026-09-28) | Phase 43 CGO build |
 
 **Tasks** (per `44-01-PLAN.md`):
 1. `fix(44-01)` — D-SPARQL-02 Store.Query dedup on nil-tier path
@@ -353,7 +353,7 @@ Tier 隔离三条护城河。
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 43. CGO Build Verification | 3/3 | Complete | 2026-09-28 |
-| 44. SPARQL Test Fix | 1/1 | Planned (2026-09-28) | — |
+| 44. SPARQL Test Fix | 1/1 | **Complete** | 2026-09-28 |
 | 42. v1.4 Outstanding Closure | 2/4 (42-01 triage + 42-02 IN-*) | Planned; 42-03 awaiting operator; 42-04 awaiting Phase 44 execute | — |
 
 ---
@@ -373,4 +373,4 @@ Tier 隔离三条护城河。
 
 ---
 
-*Last updated: 2026-09-28 — v1.5 closure score correction: 28/30 closed (was 27/30 paper), 11 awaiting operator, 8 SPARQL failures (NEW, Phase 44 needed). Phase 43-01 CGO build verification: 3 commits, backend now boots with CGO_ENABLED=1.*
+*Last updated: 2026-09-28 — Phase 44 SPARQL Test Fix COMPLETE: 7/7 atomic commits landed, hermetic gate green (10/10 SPARQL + 9/9 HybridSearchScoped + Phase 40 store gate green + full backend hermetic green). 8 SPARQL test failures closed; D-TIER-03 fail-closed semantics RESTORED. 2 unanticipated runtime assertion miscounts corrected per D-SPARQL-08 policy. v1.5 milestone unblocked pending operator 42-03 runbook execution.*
