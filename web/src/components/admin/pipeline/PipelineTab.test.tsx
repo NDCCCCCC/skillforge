@@ -114,11 +114,11 @@ afterEach(() => {
 });
 
 describe('AdminDashboard — pipeline tab (the 9th tab)', () => {
-  it('renders 9 subroute tabs and activates the ECL 管线 tab; URL stays /admin', async () => {
+  it('renders 11 subroute tabs and activates the ECL 管线 tab; URL stays /admin', async () => {
     useAppStore.setState({ adminSubroute: 'batches' });
     render(<AdminDashboard />);
     const tabs = screen.getByTestId('admin-subroute-tabs');
-    expect(tabs.querySelectorAll('button')).toHaveLength(9);
+    expect(tabs.querySelectorAll('button')).toHaveLength(11);
     fireEvent.click(screen.getByTestId('admin-tab-pipeline'));
     expect(await screen.findByTestId('pipeline-tab')).toBeInTheDocument();
     expect(screen.getByTestId('admin-tab-pipeline')).toHaveTextContent('ECL 管线');
