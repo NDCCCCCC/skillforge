@@ -37,8 +37,81 @@ const (
 )
 
 // fixtureKG builds an in-memory store with known triples for testing
-// SparqlQueryScoped. Schema triples (owl:Class, skf:Skill, etc.) are never
-// filtered; ABox triples (note/tbl) are filtered by tier.
+// SparqlQueryScoped. Schema triples (skf:Class, skf:ObjectProperty, etc.)
+// are never filtered; ABox triples (note/tbl) are filtered by tier.
+//
+// ===========================================================================
+// SPARQL fixture triple inventory (post D-SPARQL-02/03/04 fixes, Phase 44)
+// ===========================================================================
+// fixtureKG() inserts 22 unique S|P|O triples (the original 23 raw inserts
+// minus 1 line-58 duplicate removed by D-SPARQL-04).
+//
+// Breakdown by category:
+//   1. Schema class definitions (4 rdf:type triples): testNS+Class,
+//      testNS+ObjectProperty, testNS+Skill, testNS+Tier -> rdf:type with
+//      object = Class/ObjectProperty. Caught by isSchemaTriple's rdf:type
+//      arm (store.go:570-575) + the owl-IRI fix (D-SPARQL-04).
+//
+//   2. Schema individual types (4 rdf:type triples): skill_sql,
+//      skill_compliance -> rdf:type skf:Skill; sql-guides, authority ->
+//      rdf:type skf:Tier. Caught by isSchemaTriple's schemaClasses arm
+//      (store.go:579-581).
+//
+//   3. Skill hasReadAccess triples (2 triples): skill_sql -> sql-guides,
+//      skill_compliance -> authority. NOT schema (predicate not in schema
+//      list, subject not in visibleSubjects). Subject not in
+//      visibleSubjects because skill_sql/compliance have no belongsToTier.
+//      -> EXCLUDED from Path B tier-filtered queries. INCLUDED on Path A
+//      (nil-tier) admin baseline (no filter applied).
+//
+//   4. ABox note_001 (4 triples, sql-guides tier): rdf:type NoteChunk +
+//      belongsToTier sql-guides + label "SQL指南第一章" +
+//      referencesTable tbl_payment_t. All 4 visible on Path A; on Path B
+//      with sql-guides, subject is visible so ALL 4 included (D-TIER-06:
+//      "if subject is visible, ALL its edges are included").
+//
+//   5. ABox note_002 (3 triples, authority tier): rdf:type + belongsToTier
+//      authority + label "合规政策V2". Visible on Path A. On Path B with
+//      sql-guides, subject NOT visible -> ALL 3 EXCLUDED (D-TIER-03
+//      fail-closed).
+//
+//   6. ABox note_003 (2 triples, NO tier): rdf:type + label "无归属笔记".
+//      Visible on Path A (both triples). On Path B with sql-guides,
+//      subject NOT visible (no belongsToTier) -> ALL 2 EXCLUDED
+//      (D-TIER-03 fail-closed + D-TIER-07).
+//
+//   7. ABox tbl_payment_t (3 triples, sql-guides tier): rdf:type
+//      TableSchema + belongsToTier sql-guides + label "支付表". Visible
+//      on Path A; on Path B with sql-guides, subject is visible so ALL 3
+//      included.
+//
+//   TOTALS:
+//     Path A (nil allowedTiers) - admin baseline, no filtering:
+//       = 4 (schema defs) + 4 (schema individuals) + 2 (hasReadAccess) +
+//         4 (note_001) + 3 (note_002) + 2 (note_003) + 3 (tbl_payment_t)
+//       = 22 unique triples
+//
+//     Path B (allowedTiers=["sql-guides"]):
+//       Schema (always visible, D-TIER-03): 4 + 4 = 8
+//       ABox (subject in visibleSubjects={note_001, tbl_payment_t,
+//             sql-guides, authority, skill_sql, skill_compliance}):
+//         - note_001: 4 (subject visible)
+//         - tbl_payment_t: 3 (subject visible)
+//       = 8 schema + 4 + 3 = 15
+//
+//     Path B (S=note_003, allowedTiers=["sql-guides"]):
+//       Schema: 0 (note_003 is not a schema individual)
+//       ABox: 0 (subject not in visibleSubjects -> fail-closed)
+//       = 0
+//
+//     Path A (S=note_003, nil):
+//       ABox: 2 (rdf:type + label; subject not constrained on Path A)
+//       = 2
+//
+//     Path A (S=note_001, nil):
+//       ABox: 4 (rdf:type + belongsToTier + label + referencesTable)
+//       = 4
+// ===========================================================================
 func fixtureKG() *store.Store {
 	s := store.New()
 
@@ -89,10 +162,13 @@ func TestSparqlQueryScoped_AllWildcard(t *testing.T) {
 	pattern := SparqlPattern{}
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
-	// All triples including schema + ABox
-	assert.Equal(t, 16, resp.Count)
+	// All 22 unique fixture triples on Path A (admin baseline, no filter):
+	// 4 schema defs + 4 schema individuals + 2 hasReadAccess + 4 note_001 +
+	// 3 note_002 + 2 note_003 + 3 tbl_payment_t = 22. See fixtureKG() godoc.
+	// Updated from 16 -> 22 per D-SPARQL-04b (Phase 44 closure).
+	assert.Equal(t, 22, resp.Count)
 	assert.False(t, resp.Truncated)
-	assert.Len(t, resp.Results, 16)
+	assert.Len(t, resp.Results, 22)
 }
 
 // TestSparqlQueryScoped_SubjectFilter tests querying with S specified
@@ -102,8 +178,13 @@ func TestSparqlQueryScoped_SubjectFilter(t *testing.T) {
 	pattern := SparqlPattern{S: testNS + "note_001"}
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 3, resp.Count) // rdf:type + belongsToTier + label + referencesTable
-	assert.Len(t, resp.Results, 3)
+	// note_001 has 4 triples: rdf:type + belongsToTier + label + referencesTable.
+	// Path A (nil allowedTiers) early-returns to s.Query which does NOT
+	// consult isSchemaTriple. Test author's inline comment at original
+	// line 106 already said 4; the 3 assertion was a typo/miscount.
+	// Updated from 3 -> 4 per D-SPARQL-04b (Phase 44 closure).
+	assert.Equal(t, 4, resp.Count)
+	assert.Len(t, resp.Results, 4)
 	for _, r := range resp.Results {
 		assert.Equal(t, testNS+"note_001", r.S)
 	}
@@ -113,12 +194,13 @@ func TestSparqlQueryScoped_SubjectFilter(t *testing.T) {
 // Count reflects total before limit; Truncated is true when results exceed limit.
 func TestSparqlQueryScoped_Pagination(t *testing.T) {
 	kg := fixtureKG()
-	// 16 total triples; limit=5, offset=0
+	// 22 total triples; limit=5, offset=0
 	pattern := SparqlPattern{Limit: 5, Offset: 0}
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 16, resp.Count) // total before pagination
-	assert.True(t, resp.Truncated)  // 16 > 5
+	// Path A total before pagination. Updated from 16 -> 22 per D-SPARQL-04b.
+	assert.Equal(t, 22, resp.Count) // total before pagination
+	assert.True(t, resp.Truncated)  // 22 > 5
 	assert.Len(t, resp.Results, 5)  // page size = 5
 }
 
@@ -128,7 +210,8 @@ func TestSparqlQueryScoped_Truncated(t *testing.T) {
 	pattern := SparqlPattern{Limit: 3, Offset: 0}
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 16, resp.Count)
+	// Path A count. Updated from 16 -> 22 per D-SPARQL-04b.
+	assert.Equal(t, 22, resp.Count)
 	assert.True(t, resp.Truncated)
 	assert.Len(t, resp.Results, 3)
 
@@ -136,25 +219,33 @@ func TestSparqlQueryScoped_Truncated(t *testing.T) {
 	pattern2 := SparqlPattern{Limit: 5, Offset: 20}
 	resp2, err := SparqlQueryScoped(pattern2, nil, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 16, resp2.Count)
+	// Path A count (offset beyond count but Count=total). Updated 16 -> 22.
+	assert.Equal(t, 22, resp2.Count)
 	assert.False(t, resp2.Truncated)
 	assert.Len(t, resp2.Results, 0)
 }
 
 // TestSparqlQueryScoped_TierFilter verifies tier filtering: allowedTiers=["sql-guides"]
 // returns only triples whose subjects have belongsToTier=sql-guides; schema triples
-// (owl:Class, etc.) are never filtered (D-TIER-03).
+// (skf:Class, etc.) are never filtered (D-TIER-03).
 func TestSparqlQueryScoped_TierFilter(t *testing.T) {
 	kg := fixtureKG()
 	pattern := SparqlPattern{}
 	resp, err := SparqlQueryScoped(pattern, []string{"sql-guides"}, kg)
 	assert.NoError(t, err)
-	// Schema triples: Class/ObjectProperty/Skill/Tier individuals + skill_sql + sql-guides tier
-	// + authority tier (schema individual) = 8 schema
-	// ABox: note_001 (3 triples) + tbl_payment_t (2 triples) = 5
-	// note_002 (authority tier) is NOT sql-guides → excluded
-	// note_003 (no tier) → fail-closed → excluded
-	assert.Equal(t, 13, resp.Count)
+	// 8 schema (always visible, D-TIER-03) +
+	//   note_001 visible (sql-guides tier) -> rdf:type + belongsToTier + label +
+	//     referencesTable = 4
+	//   tbl_payment_t visible (sql-guides tier) -> rdf:type + belongsToTier +
+	//     label = 3
+	// = 15
+	// note_002 (authority tier) and note_003 (no tier) MUST NOT appear
+	// (fail-closed; negative assertions preserved and STRONGER after
+	// D-SPARQL-03). Updated from 13 -> 15 per D-SPARQL-04b (Phase 44
+	// closure): the previous 13 reflected the broken mental model that
+	// label-of-visible-ABox is schema; after D-SPARQL-03 label triples
+	// for visible ABox subjects are correctly included (D-TIER-06).
+	assert.Equal(t, 15, resp.Count)
 	for _, r := range resp.Results {
 		// note_002 and note_003 must not appear
 		assert.NotEqual(t, testNS+"note_002", r.S)
@@ -220,21 +311,23 @@ func TestSparqlQueryScoped_LimitCap(t *testing.T) {
 	pattern := SparqlPattern{Limit: 9999}
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 16, resp.Count)
-	assert.False(t, resp.Truncated) // 16 < 500, so not truncated
-	assert.Len(t, resp.Results, 16)
+	// Path A returns all 22. Updated from 16 -> 22 per D-SPARQL-04b.
+	assert.Equal(t, 22, resp.Count)
+	assert.False(t, resp.Truncated) // 22 < 500, so not truncated
+	assert.Len(t, resp.Results, 22)
 }
 
 // TestSparqlQueryScoped_DefaultLimit verifies default limit of 50 when 0.
 func TestSparqlQueryScoped_DefaultLimit(t *testing.T) {
 	kg := fixtureKG()
-	// With nil (admin baseline), all 16 triples returned even with default 50
+	// With nil (admin baseline), all 22 triples returned even with default 50
 	pattern := SparqlPattern{Limit: 0, Offset: 0}
 	resp, err := SparqlQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 16, resp.Count)
+	// Path A returns all 22. Updated from 16 -> 22 per D-SPARQL-04b.
+	assert.Equal(t, 22, resp.Count)
 	assert.False(t, resp.Truncated)
-	assert.Len(t, resp.Results, 16)
+	assert.Len(t, resp.Results, 22)
 }
 
 // ---------------------------------------------------------------------------
