@@ -63,6 +63,20 @@ async function withNetworkGuard<T>(p: Promise<T>): Promise<T> {
 
 // ── SPARQL ────────────────────────────────────────────────────────────────
 
+// The BE matches S/P/O against exact IRIs. The playground accepts compact
+// prefixed names (`rdf:type`, `skf:Skill`) so the default example and
+// hand-typed patterns resolve — without this, a literal `skf:Skill` never
+// matches any IRI and the query silently degrades to schema-only rows
+// (quick-260928-wzl follow-up: the shipped default example never hit).
+const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const SKF_NS = 'http://skillforge.local/ontology#';
+
+function expandIri(value: string): string {
+  if (value.startsWith('rdf:')) return RDF_NS + value.slice(4);
+  if (value.startsWith('skf:')) return SKF_NS + value.slice(4);
+  return value;
+}
+
 export async function sparqlQuery(pattern: SparqlPattern, skill: string): Promise<SparqlResponse> {
   return withNetworkGuard(
     (async () => {
@@ -72,7 +86,12 @@ export async function sparqlQuery(pattern: SparqlPattern, skill: string): Promis
           'Content-Type': 'application/json',
           ...skillHeaders(skill),
         },
-        body: JSON.stringify(pattern),
+        body: JSON.stringify({
+          ...pattern,
+          s: expandIri(pattern.s ?? ''),
+          p: expandIri(pattern.p ?? ''),
+          o: expandIri(pattern.o ?? ''),
+        }),
       });
       if (!resp.ok) throw await toApiError(resp);
       return resp.json() as Promise<SparqlResponse>;
