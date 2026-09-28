@@ -43,10 +43,10 @@ func fixtureKG() *store.Store {
 	s := store.New()
 
 	// Schema triples (never filtered, D-TIER-03)
-	s.Insert(store.Triple{S: testNS + "Class", P: rdfType, O: testNS + "owl:Class"})
-	s.Insert(store.Triple{S: testNS + "ObjectProperty", P: rdfType, O: testNS + "owl:ObjectProperty"})
-	s.Insert(store.Triple{S: testNS + "Skill", P: rdfType, O: testNS + "owl:Class"})
-	s.Insert(store.Triple{S: testNS + "Tier", P: rdfType, O: testNS + "owl:Class"})
+	s.Insert(store.Triple{S: testNS + "Class", P: rdfType, O: testNS + "Class"})
+	s.Insert(store.Triple{S: testNS + "ObjectProperty", P: rdfType, O: testNS + "ObjectProperty"})
+	s.Insert(store.Triple{S: testNS + "Skill", P: rdfType, O: testNS + "Class"})
+	s.Insert(store.Triple{S: testNS + "Tier", P: rdfType, O: testNS + "Class"})
 
 	// Skill individuals (schema, D-TIER-03)
 	s.Insert(store.Triple{S: testNS + "skill_sql", P: rdfType, O: skfSkill})
