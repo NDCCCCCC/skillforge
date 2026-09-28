@@ -320,7 +320,7 @@ Tier 隔离三条护城河。
 - **Bucket B:** `TestSparqlQueryScoped_SubjectFilter` author miscount — assertion expects 3 but `note_001` has 4 triples
 - **Bucket C:** `isSchemaTriple` leaks `label`/`comment` predicates through tier filter → `TierFilter` + `FailClosedNoBelongsToTier` broken. **Real D-TIER-03 violation**, fixed by removing label/comment from always-schema predicate gate
 
-**Plans:** 1 plan / 7 atomic commits
+**Plans:** 1/1 plans complete
 
 | Plan | Title | Status | Depends |
 |------|-------|--------|---------|
@@ -353,7 +353,7 @@ Tier 隔离三条护城河。
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 43. CGO Build Verification | 3/3 | Complete | 2026-09-28 |
-| 44. SPARQL Test Fix | 1/1 | **Complete** | 2026-09-28 |
+| 44. SPARQL Test Fix | 1/1 | Complete    | 2026-09-28 |
 | 42. v1.4 Outstanding Closure | 2/4 (42-01 triage + 42-02 IN-*) | Planned; 42-03 awaiting operator; 42-04 awaiting Phase 44 execute | — |
 
 ---
