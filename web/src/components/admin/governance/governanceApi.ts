@@ -53,7 +53,11 @@ export async function fetchShaclReport(): Promise<ShaclReport> {
     (async () => {
       const resp = await fetch('/api/admin/governance/shacl', { headers: adminHeaders() });
       if (!resp.ok) throw await toApiError(resp);
-      return resp.json() as Promise<ShaclReport>;
+      const data = (await resp.json()) as ShaclReport;
+      // quick-260928-jxb BUG-1: Go nil slices serialize to JSON null while
+      // the FE types claim arrays — normalize at this choke point so view
+      // components never see null (warnings:null white-screened 治理 tab).
+      return { ...data, warnings: data.warnings ?? [], quarantined: data.quarantined ?? [] };
     })(),
   );
 }
@@ -63,7 +67,9 @@ export async function fetchProvenanceGraph(): Promise<ProvenanceGraph> {
     (async () => {
       const resp = await fetch('/api/admin/governance/provenance', { headers: adminHeaders() });
       if (!resp.ok) throw await toApiError(resp);
-      return resp.json() as Promise<ProvenanceGraph>;
+      const data = (await resp.json()) as ProvenanceGraph;
+      // quick-260928-jxb BUG-1: edges:null crashed ProvenanceGraphView.
+      return { ...data, nodes: data.nodes ?? [], edges: data.edges ?? [] };
     })(),
   );
 }
@@ -73,7 +79,9 @@ export async function fetchChangelog(): Promise<{ current_version: number; entri
     (async () => {
       const resp = await fetch('/api/admin/ontology/changelog', { headers: adminHeaders() });
       if (!resp.ok) throw await toApiError(resp);
-      return resp.json() as Promise<{ current_version: number; entries: ChangelogEntry[] }>;
+      const data = (await resp.json()) as { current_version: number; entries: ChangelogEntry[] };
+      // quick-260928-jxb BUG-1: same Go nil-slice class as warnings/edges.
+      return { ...data, entries: data.entries ?? [] };
     })(),
   );
 }
