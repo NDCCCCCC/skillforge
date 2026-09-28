@@ -21,7 +21,13 @@ stopped_at: Milestone complete (Phase 44 was final phase)
 Phase: 44
 Plan: Not started
 Status: Milestone complete
-Last activity: 2026-09-28
+Last activity: 2026-09-28 - Completed quick task 260928-jxb: admin 控制台 3 bug 修复（治理白屏 null-guard + SPARQL Skill selector + MCP deps wiring）+ 启动脚本临时切 GLM
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260928-jxb | admin 控制台 3 bug: 治理白屏 null-guard + SPARQL Skill selector + MCP deps wiring; 启动脚本临时切 GLM | 2026-09-28 | 8390af1 | [260928-jxb-admin-3-bug-null-guard-sparql-skill-sele](./quick/260928-jxb-admin-3-bug-null-guard-sparql-skill-sele/) |
 
 ## v1.4 Phase Map
 
