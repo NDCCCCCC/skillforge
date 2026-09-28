@@ -81,8 +81,54 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 |------|-------|--------|
 | 42-01 | Audit-Open Triage Report (49 → 30 items classified) | ✅ Complete |
 | 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09) | ✅ Complete (9 atomic commits + 9 regression tests + hermetic gate) |
-| 42-03 | Operator Live Verification Bundle (L1..L11) | ✅ Plan + runbook drafted (awaiting operator execution) |
+| 42-03 | Operator Live Verification Bundle (L1..L11) | 🚧 Drafted (42-03 runbook.md ready). Operator execution blocked on **Phase 43 compile fix** + 8 SPARQL failures (see below). |
 | 42-04 | v1.4 Closure Doc Update | ✅ Plan drafted + 2026-09-24 applied (3 doc edits + 1 NEW file) |
+
+## v1.5 Phase 43 Discovery (2026-09-28) — v1.4 web code never CGO-build verified
+
+**Discovery**: Attempting to run 42-03 backend revealed that **v1.4 web code never compiled under `CGO_ENABLED=1`** (the production build path that links go-duckdb). The `env-wsl-backend-runbook` default `CGO_ENABLED=0` masked 6+ compile errors + the missing IN-05 panic recovery. v1.4 shipped without any CGO build verification.
+
+**Closure score correction**:
+
+- **Pre-Phase-43 closure**: 27/30 closed + 11 awaiting operator = 100% on paper
+- **Post-Phase-43 closure**: 27/30 closed + 11 awaiting operator + 8 SPARQL failures (NEW) + IN-05 panic recovery (NEW, now fixed in Phase 43-01)
+- **Actual closure**: 28/30 closed + 11 awaiting operator + 8 SPARQL failures (incomplete)
+
+**Phase 43-01 CGO Build Verification** (commits `cd63ae0` / `e99f06f` / `818bb99`):
+
+| Fix | File | Notes |
+|-----|------|-------|
+| Delete local `graphResponseError` | `internal/server/admin_platform.go` | Canonical at `knowledge.go:66` |
+| Delete local `requireAdmin` | `internal/server/admin_platform.go` | Canonical at `audit.go:142` |
+| Adapt `mcp.ToolInputSchema` API | `internal/server/admin_platform.go` | mark3labs/mcp-go v1.1.0 changed type to struct |
+| `string(c.GetHeader(...))` | `internal/server/admin_platform.go` | Hertz v0.10 changed signature to `[]byte` |
+| Add `"context"` import | `internal/server/admin_governance.go` | Missing since Phase 40 implementation |
+| Hoist `addNode`/`addEdge` closures | `internal/server/admin_governance.go` | qEntities loop below was unreachable |
+| Forward-declare `var deps` | `cmd/server/main.go` | MCP server block needed backref to deps.MCPServer |
+| **Implement IN-05 panic recovery** | `internal/knowledge/ecl/manager.go` | Plan 42-02 claimed "fixed (7/7)" but `defer recover()` was never added. Real bug, now fixed. |
+| Fix IN-05 test (IsNotFound + ReleaseRunning) | `internal/server/admin_pipeline_in05_test.go` | Test was incomplete after Phase 40 refactor |
+
+**Newly discovered v1.4 closures (need Phase 44)**:
+
+- **8 SPARQL test failures** in `internal/server/admin_platform_test.go`:
+  - `TestSparqlQueryScoped_AllWildcard` (expected 16, actual 23)
+  - `TestSparqlQueryScoped_SubjectFilter` / `Truncated` / `TierFilter` / `FailClosedNoBelongsToTier` / `LimitCap` / `DefaultLimit` / `Pagination`
+  - **Cause**: SPARQL `QueryScoped` returns extra triples — root cause TBD. Pre-existing in v1.4 code; never caught because CGO build failed.
+  - **Severity**: Phase 41 SPARQL endpoint shipped without passing its own test suite.
+  - **Recommendation**: Open Phase 44 to investigate + fix. v1.5 milestone closure cannot be marked SHIPPED until these are green.
+
+**Operational impact**:
+
+- ✅ Backend can now boot with `CGO_ENABLED=1` (128 MB binary at `/tmp/sf43`)
+- ✅ IN-05 panic recovery test passes
+- ⚠ Backend still cannot serve requests — intranet infrastructure (LLM/Milvus/BGE) unreachable from current Claude session (per `env-intranet-service-flakiness`); 42-03 L1-L11 still require operator to execute
+- ⚠ SPARQL endpoint fails its own test suite; do not ship as v1.5 done until Phase 44 fixes
+
+**Updated forecast**:
+
+- v1.5 closure (real): 28/30 closed + 11 awaiting operator + 8 SPARQL failures in Phase 44
+- Phase 44 (NEW): fix SPARQL test failures, re-run suite
+- v1.5 milestone SHIPPED only after Phase 44 complete + operator 42-03 runbook complete
 
 ## v1.3 Summary (closed 2026-09-09)
 

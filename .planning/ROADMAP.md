@@ -300,7 +300,9 @@ Tier 隔离三条护城河。
 
 - **Wave 1:** 42-01 Triage Report（pure research, 30-60 min）
 - **Wave 2:** 42-02 IN-* Code Fixes（per-fix commits, 2-3 h total）
-- **Wave 3 (operator-only):** 42-03 Live Verification Bundle（intranet access required）
+- **Wave 2.5:** **43-01 CGO Build Verification** (closure-blocker, 3 atomic commits) — completed 2026-09-28 (`cd63ae0` / `e99f06f` / `818bb99`).
+- **Wave 3 (operator-only):** 42-03 Live Verification Bundle（intranet access required；42-03 runbook ready；operator 执行 after backend CGO build verified）
+- **Wave 3.5:** **44-?? SPARQL Test Fix** (NEW closure item revealed by Phase 43 — 8 SPARQL test failures from v1.4, never caught because v1.4 never built CGO)
 - **Wave 4:** 42-04 Closure Doc Update（30 min, after Wave 2 + Wave 3 complete）
 
 ---
@@ -309,8 +311,24 @@ Tier 隔离三条护城河。
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 42. v1.4 Outstanding Closure | 0/4 | Planned | — |
+| 43. CGO Build Verification | 3/3 | Complete | 2026-09-28 |
+| 42. v1.4 Outstanding Closure | 2/4 (42-01 triage + 42-02 IN-*) | Planned; 42-03 awaiting operator; 42-04 awaiting Phase 44 | — |
 
 ---
 
-*Last updated: 2026-09-23 — v1.5 milestone planned (no new features; pure closure of v1.4 + v1.3 inherited 49 项 acknowledged open items). 42-CONTEXT.md + 42-01-PLAN.md drafted.*
+### v1.5 Phase 43 Status Detail (2026-09-28)
+
+**Closure-blocker found**: v1.4 web code (admin_governance / admin_platform / mcp server / SPARQL endpoint) was never built under `CGO_ENABLED=1` — the production build path that links go-duckdb. env-wsl-backend-runbook default CGO=0 masked 6+ compile errors + the missing IN-05 panic recovery defer. v1.4 shipped without any CGO build verification.
+
+**Phase 43-01** (3 atomic commits) fixed:
+- 5 duplicate declarations / type mismatches / missing imports across `admin_platform.go` / `admin_governance.go` / `main.go`
+- mark3labs/mcp-go v1.1.0 `ToolInputSchema` API drift
+- Hertz v0.10 `GetHeader` `[]byte` return type
+- IN-05 panic recovery defer (Phase 42-02 plan claimed "fixed (7/7)" but the defer was never added — real closure-blocker, now fixed)
+- IN-05 test cross-package access via exported `ReleaseRunning()` + IsNotFound interface method
+
+**Phase 43 NEW discovery**: 8 SPARQL tests fail under CGO build (`TestSparqlQueryScoped_*` — `_AllWildcard` expects 16, gets 23). Pre-existing v1.4 bug never caught because CGO build never ran. Phase 41 SPARQL endpoint shipped without passing its own test suite. **Phase 44 needed.**
+
+---
+
+*Last updated: 2026-09-28 — v1.5 closure score correction: 28/30 closed (was 27/30 paper), 11 awaiting operator, 8 SPARQL failures (NEW, Phase 44 needed). Phase 43-01 CGO build verification: 3 commits, backend now boots with CGO_ENABLED=1.*
