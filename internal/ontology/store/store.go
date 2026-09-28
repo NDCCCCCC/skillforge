@@ -582,12 +582,24 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 //
 // Schema layer = TBox declarations (owl:Class, owl:ObjectProperty,
 // owl:DatatypeProperty, rdf:type declarations for OWL vocabulary) +
-// ontology metadata predicates (rdfs:label, rdfs:comment, etc.) +
-// rdf:type declarations for schema individuals (skf:Skill, skf:Tier, etc.).
+// OWL/RDFS ontology metadata predicates (domain, range, subClassOf,
+// subPropertyOf) + rdf:type declarations for schema individuals
+// (skf:Skill, skf:Tier, etc.).
 //
 // D-TIER-03: "schema layer = TBox declarations + Skill/KBCategory/SubCategory
 // /Tier/SkillAgent/RefusalPhrase individuals." So "skf:skill_a a skf:Skill"
 // is schema (object is a schema individual declared by the emitter).
+//
+// D-SPARQL-03: rdfs:label and rdfs:comment are intentionally EXCLUDED from
+// the always-schema predicate gate. They are ABox annotations subject to
+// D-TIER-03 fail-closed semantics — a label/comment triple for an
+// invisible subject (e.g., note_002 in authority tier when allowedTiers is
+// ["sql-guides"]) MUST NOT be returned. Schema-subject label/comment
+// triples (e.g., skill_sql rdfs:label "...") are caught by the
+// rdf:type+schemaClasses[O] arm above for the rdf:type triple; their
+// label/comment triples are returned via the ABox path when the subject
+// is visible and excluded when fail-closed (correct D-TIER-06 +
+// D-TIER-07 behaviour).
 func isSchemaTriple(t Triple) bool {
 	// rdf:type for OWL vocabulary declarations.
 	if t.P == rdfType {
@@ -604,9 +616,14 @@ func isSchemaTriple(t Triple) bool {
 		}
 	}
 
-	// Ontology metadata predicates — always schema layer.
-	if t.P == ns+"label" || t.P == ns+"comment" ||
-		t.P == ns+"domain" || t.P == ns+"range" ||
+	// OWL/RDFS ontology metadata predicates — always schema layer.
+	// label/comment are intentionally EXCLUDED (D-SPARQL-03): they are ABox
+	// annotations subject to D-TIER-03 fail-closed semantics. Schema-subject
+	// labels (e.g., skill_sql rdfs:label) are caught by the rdf:type+
+	// schemaClasses arm above for the rdf:type triple; their label/comment
+	// triples are returned by the ABox path when the subject is visible
+	// and excluded when fail-closed.
+	if t.P == ns+"domain" || t.P == ns+"range" ||
 		t.P == ns+"subClassOf" || t.P == ns+"subPropertyOf" {
 		return true
 	}
