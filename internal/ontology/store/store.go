@@ -594,12 +594,14 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 // the always-schema predicate gate. They are ABox annotations subject to
 // D-TIER-03 fail-closed semantics — a label/comment triple for an
 // invisible subject (e.g., note_002 in authority tier when allowedTiers is
-// ["sql-guides"]) MUST NOT be returned. Schema-subject label/comment
-// triples (e.g., skill_sql rdfs:label "...") are caught by the
-// rdf:type+schemaClasses[O] arm above for the rdf:type triple; their
-// label/comment triples are returned via the ABox path when the subject
-// is visible and excluded when fail-closed (correct D-TIER-06 +
-// D-TIER-07 behaviour).
+// ["sql-guides"]) MUST NOT be returned.
+//
+// Note: the rdf:type triple that declares a subject as a schema individual
+// (e.g., (skill_sql, rdf:type, skf:Skill)) IS schema (caught by the
+// rdf:type+schemaClasses[O] arm at store.go:605-617). But the SAME
+// subject's label/comment triples are NOT schema — they fall through to
+// the ABox path and are returned only when the subject is in
+// visibleSubjects, otherwise excluded (correct D-TIER-06 + D-TIER-07).
 func isSchemaTriple(t Triple) bool {
 	// rdf:type for OWL vocabulary declarations.
 	if t.P == rdfType {
