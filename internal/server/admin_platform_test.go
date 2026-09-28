@@ -50,12 +50,12 @@ const (
 //   1. Schema class definitions (4 rdf:type triples): testNS+Class,
 //      testNS+ObjectProperty, testNS+Skill, testNS+Tier -> rdf:type with
 //      object = Class/ObjectProperty. Caught by isSchemaTriple's rdf:type
-//      arm (store.go:570-575) + the owl-IRI fix (D-SPARQL-04).
+//      arm (store.go:605-617) + the owl-IRI fix (D-SPARQL-04).
 //
 //   2. Schema individual types (4 rdf:type triples): skill_sql,
 //      skill_compliance -> rdf:type skf:Skill; sql-guides, authority ->
 //      rdf:type skf:Tier. Caught by isSchemaTriple's schemaClasses arm
-//      (store.go:579-581).
+//      (store.go:614-616).
 //
 //   3. Skill hasReadAccess triples (2 triples): skill_sql -> sql-guides,
 //      skill_compliance -> authority. NOT schema (predicate not in schema
