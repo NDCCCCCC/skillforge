@@ -28,6 +28,7 @@ Last activity: 2026-09-28 - Completed quick task 260928-jxb: admin 控制台 3 b
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260928-jxb | admin 控制台 3 bug: 治理白屏 null-guard + SPARQL Skill selector + MCP deps wiring; 启动脚本临时切 GLM | 2026-09-28 | 8390af1 | [260928-jxb-admin-3-bug-null-guard-sparql-skill-sele](./quick/260928-jxb-admin-3-bug-null-guard-sparql-skill-sele/) |
+| 260928-nzk | ECL 抽取器扩展: 业务实体(险种 65/机构 55)批量入 KG ABox; TBox v3→v7(4 属性人工批准); golden F1 0.9846/1.0 保持; D-NZK-DEF-01(SPARQL tier 解析缺陷)deferred → D-SPARQL-05 v1.6 | 2026-09-28 | 01d4a48 | [260928-nzk-ecl-kg-abox](./quick/260928-nzk-ecl-kg-abox/) |
 
 ## v1.4 Phase Map
 
