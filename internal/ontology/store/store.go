@@ -490,6 +490,29 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 
 	// D-TIER-01: empty tiers = no filtering (admin baseline).
 	if len(allowedTiers) == 0 {
+		// D-SPARQL-02: when all wildcards are empty, walk s.all with a
+		// dedup-aware seen map so admin baseline doesn't return raw
+		// duplicates that the tier path would have collapsed via the
+		// seen map below. Insert is no-dedup by design
+		// (audit-trail-preserving, see Insert docstring); dedup belongs
+		// at the query layer so admin baseline is consistent with the
+		// tier-filtered path. Pattern-specific queries (one of
+		// subj,pred,obj non-empty) keep delegating to Query, which has
+		// index-driven narrow returns that rarely see raw duplicates in
+		// practice; if they do, callers can dedup at their own layer.
+		if subj == "" && pred == "" && obj == "" {
+			seen := make(map[string]bool, len(s.all))
+			out := make([]Triple, 0, len(s.all))
+			for _, t := range s.all {
+				key := t.S + "|" + t.P + "|" + t.O
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				out = append(out, t)
+			}
+			return out
+		}
 		return s.Query(subj, pred, obj)
 	}
 
