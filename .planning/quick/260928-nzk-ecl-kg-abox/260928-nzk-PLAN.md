@@ -247,7 +247,7 @@ Eval gate: TestStubVsGoldenF1 in internal/knowledge/ecl/extract_golden_test.go â
   9. Commit sequence with prefix feat(quick-260928-nzk) â€” one commit per task boundary (extractor / abox / e2e artifacts if any).
   </action>
   <verify>
-    <automated>wsl -d Ubuntu-22.04 -- bash -c 'cd /mnt/d/code/ClaudeCode/ai-agent && CGO_ENABLED=1 /usr/local/go/bin/go test ./internal/knowledge/ecl/... -run "TestStubVsGoldenF1" -count=1 -v' && curl -s -X POST http://localhost:8888/api/sparql -H "X-Skill-Name: compliance" -H "Content-Type: application/json" -d '{"p":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","o":"http://skillforge.local/ontology#InsuranceProduct","limit":10}'</automated>
+    <automated>wsl -d Ubuntu-22.04 -- bash -c 'cd /mnt/d/code/ClaudeCode/ai-agent && CGO_ENABLED=1 /usr/local/go/bin/go test ./internal/knowledge/ecl/... -run "TestStubVsGoldenF1" -count=1 -v' && curl -s -X POST http://localhost:8888/api/sparql -H "X-Skill-Name: sql-guides" -H "Content-Type: application/json" -d '{"p":"http://www.w3.org/1999/02/22-rdf-syntax-ns#type","o":"http://skillforge.local/ontology#InsuranceProduct","limit":10}'</automated>
   </verify>
   <done>Entities live in the KG and tier-gated via SPARQL; golden F1 gate green at baseline; SHACL violation count not increased; pipeline completed without new mass failures; work committed</done>
 </task>
