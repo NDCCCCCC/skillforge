@@ -28,6 +28,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -110,28 +111,31 @@ func buildProvenanceGraph(kg *store.Store) ([]GraphNode, []GraphEdge) {
 	var edges []GraphEdge
 	nodeIDs := make(map[string]bool) // deduplicate
 
+	// addNode / addEdge are defined at function scope so the qEntities
+	// loop below can reuse them after the triples loop.
+	addNode := func(id, kind, label string, prov *store.Provenance, tier string) {
+		if id == "" || nodeIDs[id] {
+			return
+		}
+		nodeIDs[id] = true
+		nodes = append(nodes, GraphNode{
+			ID:         id,
+			Kind:       kind,
+			Label:      label,
+			Provenance: prov,
+			Tier:       tier,
+		})
+	}
+	addEdge := func(src, tgt string) {
+		if src == "" || tgt == "" || src == tgt {
+			return
+		}
+		edges = append(edges, GraphEdge{Source: src, Target: tgt})
+	}
+
 	// Walk all main KG triples.
 	triples := kg.Query("", "", "")
 	for _, t := range triples {
-		addNode := func(id, kind, label string, prov *store.Provenance, tier string) {
-			if id == "" || nodeIDs[id] {
-				return
-			}
-			nodeIDs[id] = true
-			nodes = append(nodes, GraphNode{
-				ID:         id,
-				Kind:       kind,
-				Label:      label,
-				Provenance: prov,
-				Tier:       tier,
-			})
-		}
-		addEdge := func(src, tgt string) {
-			if src == "" || tgt == "" || src == tgt {
-				return
-			}
-			edges = append(edges, GraphEdge{Source: src, Target: tgt})
-		}
 
 		// Determine node kind and add nodes based on provenance and entity type.
 		prov := t.Provenance

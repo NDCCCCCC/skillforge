@@ -32,6 +32,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -44,13 +45,7 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/ontology/store"
 	"github.com/skillforge/skillforge/internal/retriever"
-	"github.com/skillforge/skillforge/internal/server/platform/mcp"
 )
-
-// graphResponseError is the standard admin JSON error envelope.
-type graphResponseError struct {
-	Error string `json:"error"`
-}
 
 // mcpStatusResponse is the 200 body for GET /api/admin/platform/mcp/status.
 type mcpStatusResponse struct {
@@ -93,10 +88,13 @@ func (s *Deps) adminPlatformMcpToolsHandler(ctx context.Context, c *app.RequestC
 	out := make([]mcpToolDesc, 0, len(tools))
 	for _, t := range tools {
 		schema := make(map[string]interface{})
-		if t.InputSchema != nil {
-			if m, ok := t.InputSchema.(map[string]interface{}); ok {
-				schema = m
-			}
+		// mark3labs/mcp-go v1.1.0 changed Tool.InputSchema from
+		// map[string]interface{} to a ToolInputSchema type alias.
+		// Marshal through JSON to recover the raw map shape for the
+		// FE inspector (closure-first: no new behaviour, just type
+		// adaptation).
+		if data, err := json.Marshal(t.InputSchema); err == nil {
+			_ = json.Unmarshal(data, &schema)
 		}
 		out = append(out, mcpToolDesc{
 			Name:        t.Name,
@@ -141,16 +139,6 @@ func (s *Deps) adminPlatformMcpInvokeHandler(ctx context.Context, c *app.Request
 		return
 	}
 	c.JSON(http.StatusOK, result)
-}
-
-// requireAdmin returns true and writes 403 if the admin token is missing.
-func requireAdmin(c *app.RequestContext) bool {
-	token := c.GetHeader("X-Admin-Token")
-	if token == "" {
-		c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
-		return false
-	}
-	return true
 }
 
 // ---------------------------------------------------------------------------
@@ -278,14 +266,14 @@ func (s *Deps) adminPlatformSparqlHandler(ctx context.Context, c *app.RequestCon
 	}
 
 	// Step 2: Extract X-Skill-Name header (D-SPARQL-03)
-	skillName := c.GetHeader("X-Skill-Name")
+	skillName := string(c.GetHeader("X-Skill-Name"))
 	if skillName == "" {
 		c.JSON(http.StatusUnauthorized, graphResponseError{Error: "missing X-Skill-Name header"})
 		return
 	}
 
 	// Step 3: Resolve skill to tiers via KG lookup
-	tiers := resolveSkillTiersFromKG(skillName, s.Ontology)
+	tiers := resolveSkillTiersFromKG(string(skillName), s.Ontology)
 	if tiers == nil {
 		// Skill not found in KG → 401 (no silent fallback to admin baseline)
 		c.JSON(http.StatusUnauthorized, graphResponseError{Error: "skill not found in KG"})
@@ -572,14 +560,14 @@ func (s *Deps) adminPlatformHybridSearchHandler(ctx context.Context, c *app.Requ
 	}
 
 	// Step 2: Extract X-Skill-Name header (D-HYB-05)
-	skillName := c.GetHeader("X-Skill-Name")
+	skillName := string(c.GetHeader("X-Skill-Name"))
 	if skillName == "" {
 		c.JSON(http.StatusUnauthorized, graphResponseError{Error: "missing X-Skill-Name header"})
 		return
 	}
 
 	// Step 3: Resolve skill to tiers via KG lookup
-	tiers := resolveSkillTiersFromKG(skillName, s.Ontology)
+	tiers := resolveSkillTiersFromKG(string(skillName), s.Ontology)
 	if tiers == nil {
 		c.JSON(http.StatusUnauthorized, graphResponseError{Error: "skill not found in KG"})
 		return
