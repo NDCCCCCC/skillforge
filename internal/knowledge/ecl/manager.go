@@ -20,8 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"sync"
@@ -102,6 +104,11 @@ type Manager struct {
 	done        int
 	total       int
 	queueLen    int
+	// panicked is set when any extract goroutine recovered from a panic
+	// (IN-05). Sibling goroutines that finish after the panic skip their
+	// own setStatus so the idle sentinel isn't overwritten by their
+	// done-counter update.
+	panicked bool
 
 	ns        string
 	kbDir     string
@@ -185,6 +192,12 @@ func (m *Manager) releaseRunning() {
 	defer m.mu.Unlock()
 	m.running = false
 }
+
+// ReleaseRunning is the exported alias of releaseRunning. Cross-package
+// tests (server/admin_pipeline_in05_test.go IN-05) cannot reach the
+// unexported method, so this thin wrapper exists to keep the test API
+// stable without breaking the existing defer in Run/RetryNote.
+func (m *Manager) ReleaseRunning() { m.releaseRunning() }
 
 // Status is the internal status snapshot. Failures are excluded from JSON
 // (`json:"-"`) — the wire shape is StatusDTO below.
@@ -305,6 +318,12 @@ func (m *Manager) RecoverFromPanic() {
 // disabled until restart (the LOCKED FE mapping treats any non-idle/non-done
 // stage as running).
 func (m *Manager) Run(ctx context.Context) (err error) {
+	// Reset the panic-recovery sentinel so a prior panic doesn't leak
+	// into a fresh run (IN-05 — Run is re-entrant per admin handler).
+	m.mu.Lock()
+	m.panicked = false
+	m.mu.Unlock()
+
 	defer m.releaseRunning()
 	defer func() {
 		if err != nil {
@@ -338,7 +357,33 @@ func (m *Manager) Run(ctx context.Context) (err error) {
 		go func(n Note) {
 			defer wg.Done()
 			sem <- struct{}{}
+			// sem release defer MUST be first (LIFO: runs last) so it
+			// fires even if a panic skips the rest of the body — siblings
+			// waiting on `sem <-` would deadlock otherwise.
 			defer func() { <-sem }()
+			// IN-05 (Phase 42-02): recover from panics in the extract
+			// goroutine so a single bad note (LLM adapter crash, splitter
+			// nil-deref, etc.) cannot kill the server process.
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[FAIL] ecl: panic in extract goroutine for %s: %v\n%s", firstSourcePath(n), r, debug.Stack())
+					// Single Lock+Unlock; inner closure guarantees release
+					// even if a follow-up statement panics. We also signal
+					// the flag atomically inside the lock to avoid racing
+					// with sibling goroutines that are about to check it.
+					func() {
+						m.mu.Lock()
+						defer m.mu.Unlock()
+						m.running = false
+						m.panicked = true
+						m.stage = StageIdle
+						m.currentFile = ""
+						m.done = 0
+						m.total = 0
+						m.queueLen = 0
+					}()
+				}
+			}()
 
 			m.setStatus(StageExtract, firstSourcePath(n), int(done.Load()), len(notes), len(notes)-int(done.Load()))
 			ex, err := m.extractWithRetry(ctx, n)
@@ -348,10 +393,26 @@ func (m *Manager) Run(ctx context.Context) (err error) {
 				loadedMu.Unlock()
 			}
 			done.Add(1)
-			m.setStatus(StageExtract, firstSourcePath(n), int(done.Load()), len(notes), len(notes)-int(done.Load()))
+			// After a sibling goroutine panicked, don't overwrite the
+			// idle sentinel with our done counter (would defeat recovery).
+			// Inline the LockedDecision check to avoid contending m.mu with
+			// the panic-recover defer (which already holds m.mu while
+			// resetting the sentinel).
+			if !m.panicked {
+				m.setStatus(StageExtract, firstSourcePath(n), int(done.Load()), len(notes), len(notes)-int(done.Load()))
+			}
 		}(note)
 	}
 	wg.Wait()
+
+	// IN-05: if any extract goroutine panicked, leave the idle sentinel
+	// in place and skip kg-load / milvus-load — there are no successful
+	// extractions to load, and downstream stages would overwrite the
+	// idle reset that the panic recovery deferred function just installed.
+	if m.panicked {
+		m.setStatus(StageIdle, "", 0, 0, 0)
+		return nil
+	}
 
 	// Deterministic downstream order (stable IDs / stable kg write order).
 	// IN-08: sort.SliceStable preserves relative order of equal elements, and

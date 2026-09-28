@@ -41,7 +41,6 @@ type panickingExtractor struct {
 }
 
 func (p *panickingExtractor) ExtractNote(_ context.Context, _ ecl.Note) (ecl.Extraction, error) {
-	var panicked interface{}
 	p.once.Do(func() {
 		panic("IN-05 panic simulation: LLM adapter crashed")
 	})
@@ -78,6 +77,7 @@ func (fakeFailuresForPanic) ListFailures() ([]ecl.Failure, error) {
 func (fakeFailuresForPanic) GetFailure(_ string) (ecl.Failure, error) {
 	return ecl.Failure{}, nil
 }
+func (fakeFailuresForPanic) IsNotFound(_ error) bool { return false }
 
 // buildPanicManager creates a manager wired with a panicking extractor so
 // that the run goroutine panics as soon as it enters the extract stage.
@@ -111,13 +111,11 @@ func TestAdminPipelineRunGoroutineRecoversFromPanic(t *testing.T) {
 	h := server.Default(server.WithHostPorts(":0"))
 	h.POST("/api/admin/pipeline/run", deps.adminPipelineRunHandler)
 
-	// Claim the manager first to start the run.
-	if !mgr.CASRunning() {
-		t.Fatal("CASRunning claim failed — manager should be free")
-	}
-
 	// Send the run request. The handler starts the goroutine and returns 200.
 	// The goroutine will panic in extractWithRetry.
+	// (Previously: this test manually called mgr.CASRunning() first to pre-claim
+	// the running flag, but that double-claim race caused a 409 instead of
+	// the expected 200. Letting the handler claim once is the correct shape.)
 	resp := ut.PerformRequest(h.Engine, "POST", "/api/admin/pipeline/run", nil,
 		ut.Header{Key: "X-Admin-Token", Value: "tok"})
 	if resp.Code != 200 {
@@ -130,11 +128,11 @@ func TestAdminPipelineRunGoroutineRecoversFromPanic(t *testing.T) {
 
 	// (a) The server process is still alive — t hasn't been fatal'd.
 	// (b) The running flag is cleared: CASRunning now returns true.
-	if mgr.CASRunning() {
-		// Clean up the extra claim we just made.
-		mgr.ReleaseRunning()
-	} else {
+	if !mgr.CASRunning() {
 		t.Error("(a/b) running flag was NOT cleared after panic — manager is stuck")
+	} else {
+		// Cleanup the claim we just made (the test doesn't actually run anything).
+		mgr.ReleaseRunning()
 	}
 
 	// (c) The stage is back to idle (RecoverFromPanic reset it).
