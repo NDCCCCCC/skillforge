@@ -92,12 +92,22 @@ const (
 //       = 22 unique triples
 //
 //     Path B (allowedTiers=["sql-guides"]):
-//       Schema (always visible, D-TIER-03): 4 + 4 = 8
-//       ABox (subject in visibleSubjects={note_001, tbl_payment_t,
-//             sql-guides, authority, skill_sql, skill_compliance}):
-//         - note_001: 4 (subject visible)
-//         - tbl_payment_t: 3 (subject visible)
+//       Schema (always visible via isSchemaTriple short-circuit at
+//               store.go:550-554, D-TIER-03):
+//         - 4 schema class defs (rdf:type+Class/ObjectProperty arm)
+//         - 4 schema individual types (rdf:type+schemaClasses arm)
+//         = 8
+//       ABox (subject in visibleSubjects={note_001, tbl_payment_t}
+//             computed at store.go:528-536 from belongsToTier triples):
+//         - note_001: 4 triples (subject visible, D-TIER-06 includes all edges)
+//         - tbl_payment_t: 3 triples (subject visible)
 //       = 8 schema + 4 + 3 = 15
+//
+//       Subjects NOT in visibleSubjects (excluded by ABox path):
+//         - skill_sql, skill_compliance (no belongsToTier) — their
+//           hasReadAccess triples are ABox and excluded
+//         - note_002 (authority tier not in allowedTiers) — fail-closed
+//         - note_003 (no belongsToTier) — fail-closed (D-TIER-07)
 //
 //     Path B (S=note_003, allowedTiers=["sql-guides"]):
 //       Schema: 0 (note_003 is not a schema individual)
