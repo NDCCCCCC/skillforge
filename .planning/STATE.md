@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: — Outstanding Closure (NOT New Features)
-status: Planned (Wave 1 pending Triage + Wave 3.5 Phase 44 SPARQL fix planned)
-last_updated: "2026-09-28T11:50:00.000Z"
-last_activity: 2026-09-28 — v1.5 Phase 44 SPARQL Test Fix planned: 1 plan / 7 atomic commits / 8 decision locks / verification cycle PASS (after BLOCK→revise). 44-RESEARCH.md + 44-CONTEXT.md + 44-01-PLAN.md + 44-DECISIONS.md + 44-PLAN-REVISION.md committed. ROADMAP v1.5 § Phase 44 added.
+status: executing
+last_updated: "2026-09-28T04:21:42.001Z"
+last_activity: 2026-09-28 -- Phase 44 execution started
 progress:
-  total_phases: 13
-  completed_phases: 4
-  total_plans: 36
-  completed_plans: 31
-  percent: 26
+  total_phases: 2
+  completed_phases: 0
+  total_plans: 5
+  completed_plans: 3
+  percent: 0
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: v1.5 P0 (Phase 42 — v1.4 Outstanding Closure)
-Plan: 42-01 (Audit-Open Triage Report) pending start
-Status: Planned (closure-first, 0 new features)
-Last activity: 2026-09-23 — v1.5 P0 (Phase 42) planned: 4-plan structure. 42-CONTEXT.md + 42-01-PLAN.md + ROADMAP.md v1.5 section committed.
+Phase: 44 (sparql-test-fix) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 44
+Last activity: 2026-09-28 -- Phase 44 execution started
 
 ## v1.4 Phase Map
 
@@ -69,6 +69,7 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 **Full closure report**: `.planning/reports/v1.4-AUDIT-OPEN-CLOSE.md`
 
 **Important corrections from v1.4 MILESTONE_SUMMARY (2026-09-23)**:
+
 - **CR-01 (non-terminal stage on batch-level error)**: 已修于 `ae84393 fix(39): terminal stage on every Run/RetryNote error path (CR-01)` (2026-09-22, 39-REVIEW-FIX iteration 1, 7/7 fixed)。v1.4 MILESTONE_SUMMARY §6 描述为 "待 v1.5 修" 是错误 — 实际状态是 "已修，待 operator live verify（已 in 42-03 runbook L4）"。MILESTONE_SUMMARY-v1.4.md § 6.1 + § 6.2 已 改写。
 - **Phase 41 hybrid recall ≥ 0.85**: live verify 入 42-03 L5（operator-only, 需 live Milvus + seeded KG）。
 - **Phase 39 + 41 status**: 27 of 30 closed by Claude; 11 awaiting operator signatures.
@@ -135,11 +136,13 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 **Goal:** Turn 8 failing SPARQL tests green without weakening D-TIER-03 fail-closed.
 
 **Root cause** (per `44-RESEARCH.md`):
+
 - **Bucket A** (5 tests): `Store.Query` no dedup → 5 nil-tier tests expect 16, get 22 raw (line-58 dup at `admin_platform_test.go:58`)
 - **Bucket B** (1 test): `TestSparqlQueryScoped_SubjectFilter` author miscount (3 vs 4)
 - **Bucket C** (2 tests): `isSchemaTriple` leaks `label`/`comment` predicates through tier filter — **real D-TIER-03 trust-boundary violation**, fixed by removing label/comment from always-schema predicate gate
 
 **Plan:** 7 atomic commits (`44-01-PLAN.md`):
+
 1. `fix(44-01)` — D-SPARQL-02 dedup on nil-tier path
 2. `fix(44-02)` — D-SPARQL-03 Remove label/comment from `isSchemaTriple` (restores D-TIER-03)
 3. `fix(44-03)` — D-SPARQL-04 Fixture IRI fix (`owl:Class`→`Class`)
@@ -153,6 +156,7 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 **Verification cycle:** research → plan → BLOCK (math errors in 6 of 8 tests: 16 vs 22, 3 vs 4) → revise (extended Task 5 to 7 assertion updates, added D-SPARQL-08 policy) → PASS
 
 **Expected post-execution:**
+
 - All 8 SPARQL tests green under `CGO_ENABLED=1`
 - Phase 40 hermetic gate (`TestQueryScoped*`) still green — Bucket C fix **RESTORES** D-TIER-03, doesn't weaken
 - `44-VERIFICATION.md` confirms PASS
