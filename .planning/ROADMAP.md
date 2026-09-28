@@ -302,8 +302,49 @@ Tier 隔离三条护城河。
 - **Wave 2:** 42-02 IN-* Code Fixes（per-fix commits, 2-3 h total）
 - **Wave 2.5:** **43-01 CGO Build Verification** (closure-blocker, 3 atomic commits) — completed 2026-09-28 (`cd63ae0` / `e99f06f` / `818bb99`).
 - **Wave 3 (operator-only):** 42-03 Live Verification Bundle（intranet access required；42-03 runbook ready；operator 执行 after backend CGO build verified）
-- **Wave 3.5:** **44-?? SPARQL Test Fix** (NEW closure item revealed by Phase 43 — 8 SPARQL test failures from v1.4, never caught because v1.4 never built CGO)
-- **Wave 4:** 42-04 Closure Doc Update（30 min, after Wave 2 + Wave 3 complete）
+- **Wave 3.5:** **44 SPARQL Test Fix** ✅ PLANNED 2026-09-28 — see below
+- **Wave 4:** 42-04 Closure Doc Update（30 min, after Wave 2 + Wave 3 complete + 44 implemented）
+
+---
+
+### Phase 44: SPARQL Test Fix 🚧 (Planned 2026-09-28)
+
+**Goal:** Turn 8 failing SPARQL tests green — Phase 41 SPARQL endpoint shipped without passing its own test suite. Surfaces only when v1.4 web code built under `CGO_ENABLED=1` (Phase 43-01).
+
+**Depends on:** Phase 43 (CGO build verified)
+
+**Hard constraint:** 0 new features. Pure closure. Trust semantics preserved (D-TIER-03 fail-closed RESTORED, not weakened).
+
+**Root cause:** 3 independent buckets (per `44-RESEARCH.md`)
+- **Bucket A:** `Store.Query` no dedup → 5 nil-tier tests expect 16, get 22 raw (line-58 dup)
+- **Bucket B:** `TestSparqlQueryScoped_SubjectFilter` author miscount — assertion expects 3 but `note_001` has 4 triples
+- **Bucket C:** `isSchemaTriple` leaks `label`/`comment` predicates through tier filter → `TierFilter` + `FailClosedNoBelongsToTier` broken. **Real D-TIER-03 violation**, fixed by removing label/comment from always-schema predicate gate
+
+**Plans:** 1 plan / 7 atomic commits
+
+| Plan | Title | Status | Depends |
+|------|-------|--------|---------|
+| 44-01 | SPARQL test fix (3 buckets × 7 atomic commits) | 🚧 Planned (2026-09-28) | Phase 43 CGO build |
+
+**Tasks** (per `44-01-PLAN.md`):
+1. `fix(44-01)` — D-SPARQL-02 Store.Query dedup on nil-tier path
+2. `fix(44-02)` — D-SPARQL-03 Remove label/comment from isSchemaTriple (restores D-TIER-03)
+3. `fix(44-03)` — D-SPARQL-04 Fixture IRI fix (`owl:Class`→`Class`)
+4. `fix(44-04)` — D-SPARQL-04 Remove duplicate Tier schema triple
+5. `test(44-05)` — D-SPARQL-04b + D-SPARQL-08 Fix 7 test-author assertion miscounts (Path A 16→22 ×6, SubjectFilter 3→4, TierFilter 13→15) with godoc
+7. `chore(44-06)` — Hermetic gate verification
+8. `test(44-07)` — D-SPARQL-06 Label-passthrough regression test
+
+**Decision locks:** D-SPARQL-01..08 (`44-DECISIONS.md`). D-SPARQL-05 (skill hasReadAccess visibility) DEFERRED to follow-up phase.
+
+**Verification cycle:** research → plan → BLOCK (math errors in 6 of 8 tests) → revise → PASS
+
+**Success Criteria (what must be TRUE):**
+1. `internal/server/admin_platform_test.go::TestSparqlQueryScoped_*` — all 8 tests pass under `CGO_ENABLED=1 go test -count=1`
+2. `internal/ontology/store/store_test.go::TestQueryScoped*` — Phase 40 hermetic gate still green (no regression)
+3. `CGO_ENABLED=1 go test ./... -count=1` — full backend suite green
+4. `go vet ./...` clean; no new warnings
+5. `44-VERIFICATION.md` confirms all 8 success criteria PASS
 
 ---
 
@@ -312,7 +353,8 @@ Tier 隔离三条护城河。
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 43. CGO Build Verification | 3/3 | Complete | 2026-09-28 |
-| 42. v1.4 Outstanding Closure | 2/4 (42-01 triage + 42-02 IN-*) | Planned; 42-03 awaiting operator; 42-04 awaiting Phase 44 | — |
+| 44. SPARQL Test Fix | 1/1 | Planned (2026-09-28) | — |
+| 42. v1.4 Outstanding Closure | 2/4 (42-01 triage + 42-02 IN-*) | Planned; 42-03 awaiting operator; 42-04 awaiting Phase 44 execute | — |
 
 ---
 

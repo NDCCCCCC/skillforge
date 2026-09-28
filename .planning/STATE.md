@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: — Outstanding Closure (NOT New Features)
-status: Planned (Wave 1 pending Triage)
-last_updated: "2026-09-23T08:30:00.000Z"
-last_activity: 2026-09-23 — v1.5 P0 (Phase 42) planned: 4-plan structure (42-01 Triage / 42-02 IN-* fixes / 42-03 Live Verify / 42-04 Doc Update). 42-CONTEXT.md + 42-01-PLAN.md + ROADMAP.md v1.5 section committed.
+status: Planned (Wave 1 pending Triage + Wave 3.5 Phase 44 SPARQL fix planned)
+last_updated: "2026-09-28T11:50:00.000Z"
+last_activity: 2026-09-28 — v1.5 Phase 44 SPARQL Test Fix planned: 1 plan / 7 atomic commits / 8 decision locks / verification cycle PASS (after BLOCK→revise). 44-RESEARCH.md + 44-CONTEXT.md + 44-01-PLAN.md + 44-DECISIONS.md + 44-PLAN-REVISION.md committed. ROADMAP v1.5 § Phase 44 added.
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 4
-  total_plans: 35
+  total_plans: 36
   completed_plans: 31
   percent: 26
 ---
@@ -129,6 +129,35 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - v1.5 closure (real): 28/30 closed + 11 awaiting operator + 8 SPARQL failures in Phase 44
 - Phase 44 (NEW): fix SPARQL test failures, re-run suite
 - v1.5 milestone SHIPPED only after Phase 44 complete + operator 42-03 runbook complete
+
+## v1.5 Phase 44 Status (2026-09-28) — SPARQL Test Fix Planned
+
+**Goal:** Turn 8 failing SPARQL tests green without weakening D-TIER-03 fail-closed.
+
+**Root cause** (per `44-RESEARCH.md`):
+- **Bucket A** (5 tests): `Store.Query` no dedup → 5 nil-tier tests expect 16, get 22 raw (line-58 dup at `admin_platform_test.go:58`)
+- **Bucket B** (1 test): `TestSparqlQueryScoped_SubjectFilter` author miscount (3 vs 4)
+- **Bucket C** (2 tests): `isSchemaTriple` leaks `label`/`comment` predicates through tier filter — **real D-TIER-03 trust-boundary violation**, fixed by removing label/comment from always-schema predicate gate
+
+**Plan:** 7 atomic commits (`44-01-PLAN.md`):
+1. `fix(44-01)` — D-SPARQL-02 dedup on nil-tier path
+2. `fix(44-02)` — D-SPARQL-03 Remove label/comment from `isSchemaTriple` (restores D-TIER-03)
+3. `fix(44-03)` — D-SPARQL-04 Fixture IRI fix (`owl:Class`→`Class`)
+4. `fix(44-04)` — D-SPARQL-04 Remove duplicate Tier schema triple
+5. `test(44-05)` — D-SPARQL-04b + D-SPARQL-08 Fix 7 test-author assertion miscounts with godoc rationale
+6. `chore(44-06)` — Hermetic gate verification
+7. `test(44-07)` — D-SPARQL-06 Label-passthrough regression test
+
+**Decision locks:** D-SPARQL-01..08 (`44-DECISIONS.md`). D-SPARQL-05 (skill `hasReadAccess` visibility in admin baseline) **DEFERRED** to follow-up phase.
+
+**Verification cycle:** research → plan → BLOCK (math errors in 6 of 8 tests: 16 vs 22, 3 vs 4) → revise (extended Task 5 to 7 assertion updates, added D-SPARQL-08 policy) → PASS
+
+**Expected post-execution:**
+- All 8 SPARQL tests green under `CGO_ENABLED=1`
+- Phase 40 hermetic gate (`TestQueryScoped*`) still green — Bucket C fix **RESTORES** D-TIER-03, doesn't weaken
+- `44-VERIFICATION.md` confirms PASS
+
+**Next step:** `gsd-execute-phase 44` (operator runs against Phase 43-01 build environment — Linux gcc + emutls ABI per `env-wsl-backend-runbook`; sandbox `cgo.exe` cannot run these tests).
 
 ## v1.3 Summary (closed 2026-09-09)
 
