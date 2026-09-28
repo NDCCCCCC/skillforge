@@ -19,6 +19,7 @@ package ecl
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/skillforge/skillforge/internal/ontology/emitter"
@@ -28,6 +29,11 @@ import (
 // rdfTypeIRI is the rdf:type predicate (same IRI store.LoadFromTurtle
 // produces for `a` lines in the TBox TTL).
 const rdfTypeIRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+
+// rdfsLabelIRI is the rdfs:label predicate for entity individuals (D-NZK-05):
+// the object is the exact trimmed entity name, stored as a plain literal
+// (same literal discipline as the TBox tierName literals).
+const rdfsLabelIRI = "http://www.w3.org/2000/01/rdf-schema#label"
 
 // NoteIRI renders the ABox subject for a merged note (D-Ext-01):
 // {ns}note_{source_idx}.
@@ -55,6 +61,74 @@ func referencesTablePred(ns string) string {
 // namespace (D-TIER-02: ABox tier attachment).
 func belongsToTierPred(ns string) string {
 	return ns + "belongsToTier"
+}
+
+// involvingInsuranceProductPred returns the skf:involvesInsuranceProduct
+// predicate IRI (TBox v7, prop-0003: NoteChunk → InsuranceProduct).
+func involvingInsuranceProductPred(ns string) string {
+	return ns + "involvesInsuranceProduct"
+}
+
+// involvingOrganizationPred returns the skf:involvesOrganization predicate
+// IRI (TBox v7, prop-0004: NoteChunk → Organization).
+func involvingOrganizationPred(ns string) string {
+	return ns + "involvesOrganization"
+}
+
+// parentOrganizationPred returns the skf:parentOrganization predicate IRI
+// (TBox v7, prop-0005: Organization → Organization).
+func parentOrganizationPred(ns string) string {
+	return ns + "parentOrganization"
+}
+
+// entityCodePred returns the skf:entityCode predicate IRI (TBox v7,
+// prop-0006: entity business code, xsd:string).
+func entityCodePred(ns string) string {
+	return ns + "entityCode"
+}
+
+// entityBatch carries the per-call entity IRI assignment shared by
+// BuildTriples and ApplyNote: one IRI per entity (collision-ordinal
+// suffixed when two DISTINCT names fuse into one local name) plus the
+// same-batch Organization name→IRI index for exact-trimmed-name parent
+// resolution (D-NZK-04).
+type entityBatch struct {
+	iris      []string
+	orgByName map[string]string
+}
+
+// assignEntityIRIs sanitizes raw entities through the same D-NZK-04 gates
+// as extractBody (defense in depth — a hand-built Extraction cannot bypass
+// the kind/name/dedupe gates) and assigns batch IRIs. The returned slice
+// keeps input order; collisions get "-2", "-3", … suffixes in first-seen
+// order.
+func assignEntityIRIs(ns string, raw []ExtractedEntity) entityBatch {
+	entities := sanitizeEntities(raw)
+	batch := entityBatch{iris: make([]string, len(entities)), orgByName: map[string]string{}}
+	seen := map[string]int{}
+	for i, e := range entities {
+		base := EntityIRI(ns, e.Name)
+		n := seen[base]
+		seen[base] = n + 1
+		if n > 0 {
+			batch.iris[i] = base + "-" + fmt.Sprint(n+1)
+		} else {
+			batch.iris[i] = base
+		}
+		if e.Kind == "Organization" {
+			if _, exists := batch.orgByName[e.Name]; !exists {
+				batch.orgByName[e.Name] = batch.iris[i]
+			}
+		}
+	}
+	return batch
+}
+
+// entityEntities returns the sanitized entities behind an assignment —
+// callers re-derive kind/parent from it rather than threading a second
+// slice through every signature.
+func batchEntities(raw []ExtractedEntity) []ExtractedEntity {
+	return sanitizeEntities(raw)
 }
 
 // buildProvenance builds a Provenance record for a note's triples (D-PROV-02/05/11).
@@ -123,6 +197,44 @@ func BuildTriples(ns string, note Note, ex Extraction) []store.Triple {
 			})
 		}
 	}
+
+	// D-NZK-05: business entities. assignEntityIRIs re-runs the D-NZK-04
+	// drop-gates (defense in depth, T-NZK-01) and resolves same-batch
+	// collisions; all entity IRIs are deterministic per D-NZK-01 so the
+	// apply-time InsertUnique split dedupes globally shared individuals.
+	batch := assignEntityIRIs(ns, ex.Entities)
+	entities := batchEntities(ex.Entities)
+	for i, e := range entities {
+		iri := batch.iris[i]
+		triples = append(triples,
+			store.Triple{S: iri, P: rdfTypeIRI, O: ns + e.Kind, Provenance: prov},
+			store.Triple{S: iri, P: rdfsLabelIRI, O: e.Name, Provenance: prov},
+		)
+		if e.Code != "" {
+			triples = append(triples, store.Triple{S: iri, P: entityCodePred(ns), O: e.Code, Provenance: prov})
+		}
+		// belongsToTier is ALWAYS the note's tier (server-derived from the
+		// kbDir basename, never LLM-supplied — T-NZK-03), satisfying the
+		// SHACL global belongsToTierShape (object must be a skf:Tier
+		// individual).
+		if note.Tier != "" {
+			triples = append(triples, store.Triple{S: iri, P: tierPred, O: ns + note.Tier, Provenance: prov})
+		}
+		// note→entity edge with the kind-specific predicate (TBox v7).
+		edge := involvingOrganizationPred(ns)
+		if e.Kind == "InsuranceProduct" {
+			edge = involvingInsuranceProductPred(ns)
+		}
+		triples = append(triples, store.Triple{S: noteIRI, P: edge, O: iri, Provenance: prov})
+		// parentOrganization ONLY for an Organization whose parent
+		// exactly matches another Organization entity in the same batch
+		// (D-NZK-04); a self-parent is meaningless and dropped.
+		if e.Kind == "Organization" && e.Parent != "" && e.Parent != e.Name {
+			if parentIRI, ok := batch.orgByName[e.Parent]; ok {
+				triples = append(triples, store.Triple{S: iri, P: parentOrganizationPred(ns), O: parentIRI, Provenance: prov})
+			}
+		}
+	}
 	return triples
 }
 
@@ -173,30 +285,88 @@ func ApplyNote(st *store.Store, ns string, note Note, ex Extraction, onChange fu
 
 	noteIRI := NoteIRI(ns, note.SourceIdx)
 	pred := referencesTablePred(ns)
+	invIns := involvingInsuranceProductPred(ns)
+	invOrg := involvingOrganizationPred(ns)
+	parentPred := parentOrganizationPred(ns)
+	entPrefix := ns + "ent_"
 
-	// (2) capture currently-referenced table IRIs before deleting.
+	// (2) capture currently-referenced table IRIs AND entity IRIs (both
+	// involves-predicates) before deleting.
 	var captured []string
 	for _, t := range st.Query(noteIRI, pred, "") {
 		captured = append(captured, t.O)
+	}
+	capturedEnts := map[string]bool{}
+	for _, p := range []string{invIns, invOrg} {
+		for _, t := range st.Query(noteIRI, p, "") {
+			capturedEnts[t.O] = true
+		}
 	}
 
 	// (3) note-level delete.
 	st.DeleteSubject(noteIRI)
 
-	// (4) orphan sweep: solely-referenced tables disappear entirely.
+	// (4) orphan sweep: solely-referenced tables disappear entirely; an
+	// entity disappears only when NO involves-edge AND NO
+	// parentOrganization target-edge remains (the parent-target guard —
+	// an entity other entities still point at survives even if no note
+	// currently involves it).
 	for _, tblIRI := range captured {
 		if len(st.Query("", pred, tblIRI)) == 0 {
 			st.DeleteSubject(tblIRI)
 		}
 	}
+	for entIRI := range capturedEnts {
+		if len(st.Query("", invIns, entIRI)) > 0 ||
+			len(st.Query("", invOrg, entIRI)) > 0 ||
+			len(st.Query("", parentPred, entIRI)) > 0 {
+			continue
+		}
+		st.DeleteSubject(entIRI)
+	}
 
-	// (5) insert fresh triples.
+	// (5) insert fresh triples. Entity-owned triples (subject is an ent_
+	// IRI) are InsertUnique — entity individuals are globally shared
+	// across notes and re-runs (D-NZK-01). involves-edges are note-owned
+	// and rebuilt via Insert (the note subject was just deleted).
+	// TableSchema type triples stay InsertUnique (pre-existing pin).
 	for _, tr := range BuildTriples(ns, note, ex) {
+		if tr.P == invIns || tr.P == invOrg {
+			st.Insert(tr)
+			continue
+		}
+		if strings.HasPrefix(tr.S, entPrefix) {
+			st.InsertUnique(tr)
+			continue
+		}
 		if tr.P == rdfTypeIRI && tr.O == ns+"TableSchema" {
 			st.InsertUnique(tr) // tables are globally shared individuals
 			continue
 		}
 		st.Insert(tr)
+	}
+
+	// (5b) second-chance parent resolution: a parent that is not in this
+	// batch but already exists in the store as an Organization individual
+	// still gets its parentOrganization triple (InsertUnique — the edge is
+	// entity-owned). BuildTriples has no store access, so this is the
+	// apply-time complement of the same-batch check.
+	batch := assignEntityIRIs(ns, ex.Entities)
+	entities := batchEntities(ex.Entities)
+	prov := buildProvenance(note)
+	for i, e := range entities {
+		if e.Kind != "Organization" || e.Parent == "" || e.Parent == e.Name {
+			continue
+		}
+		if _, inBatch := batch.orgByName[e.Parent]; inBatch {
+			continue // already emitted by BuildTriples
+		}
+		parentIRI := EntityIRI(ns, e.Parent)
+		if len(st.Query(parentIRI, rdfTypeIRI, ns+"Organization")) > 0 {
+			st.InsertUnique(store.Triple{
+				S: batch.iris[i], P: parentPred, O: parentIRI, Provenance: prov,
+			})
+		}
 	}
 
 	// (6) exactly one snapshot trigger per successful apply.
