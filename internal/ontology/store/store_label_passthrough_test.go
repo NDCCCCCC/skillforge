@@ -158,3 +158,51 @@ func TestStore_LabelAndCommentNotSchemaPassthrough(t *testing.T) {
 	assert.Len(t, out3, 2,
 		"admin baseline sees all labels (Path A has no filter; D-TIER-01)")
 }
+
+// TestStore_SchemaIndividualLabelTierVisibility pins the IN-04
+// integration case: a schema individual (skill entity) carrying a label
+// but NO belongsToTier.
+//
+//   - The rdf:type triple (skill_x, rdf:type, skf:Skill) is schema
+//     (schemaClasses arm) and visible in EVERY view.
+//   - The skill's label triple is an ABox annotation (D-SPARQL-03): the
+//     subject has no belongsToTier → fail-closed invisible in the
+//     tier-filtered view (Path B), visible only in the admin baseline
+//     (Path A / nil allowedTiers).
+//
+// Together these two rows prove the split: schema TYPE declarations
+// pass through, schema-individual LABELS do not leak past the tier gate.
+func TestStore_SchemaIndividualLabelTierVisibility(t *testing.T) {
+	s := New()
+
+	// Skill individual with a label, deliberately NO belongsToTier.
+	s.Insert(Triple{S: testNSLocal + "skill_x", P: rdfTypeLocal, O: skfSkillLocal})
+	s.Insert(Triple{S: testNSLocal + "skill_x", P: testNSLocal + "label", O: `"技能X"`})
+	// A sql-guides note so Path B has a non-empty visible set.
+	s.Insert(Triple{S: testNSLocal + "note_sql", P: rdfTypeLocal, O: skfNoteLocal})
+	s.Insert(Triple{S: testNSLocal + "note_sql", P: belongsLocal, O: testNSLocal + "sql-guides"})
+
+	// Path B — sql-guides view: the skill's rdf:type passes (schema layer),
+	// its label does NOT (fail-closed: no belongsToTier on skill_x).
+	pathB := s.QueryScoped(testNSLocal+"skill_x", "", "", []string{"sql-guides"})
+	assert.Len(t, pathB, 1, "only the rdf:type schema triple is visible from the sql-guides view")
+	assert.Equal(t, rdfTypeLocal, pathB[0].P,
+		"the visible row is the schema rdf:type declaration, not the label")
+
+	// Subject-level leak check: no row returned to the sql-guides viewer
+	// carries the label predicate. (A pred-scoped Path B query still
+	// short-circuits schema triples before the S/P/O pattern filter —
+	// documented D-SPARQL-08 semantics — so the subject-scoped query is
+	// the load-bearing assertion.)
+	for _, row := range pathB {
+		assert.NotEqual(t, testNSLocal+"label", row.P,
+			"schema-individual label must NOT leak into the tier-filtered view (fail-closed, D-TIER-07)")
+	}
+
+	// Path A — admin baseline (nil allowedTiers): both rows visible.
+	pathA := s.QueryScoped(testNSLocal+"skill_x", "", "", nil)
+	assert.Len(t, pathA, 2, "admin baseline sees the rdf:type and the label")
+
+	labelsA := s.QueryScoped(testNSLocal+"skill_x", testNSLocal+"label", "", nil)
+	assert.Len(t, labelsA, 1, "admin baseline sees the schema-individual label (D-TIER-01)")
+}

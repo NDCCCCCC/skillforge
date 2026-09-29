@@ -75,7 +75,7 @@ func entityLocalName(name string) string {
 // → "CheXian", "ABC" → "Abc", "a_b_c" → "ABC".
 func asciiPascalCase(name string) string {
 	var b strings.Builder
-	for _, part := range strings.Split(name, "_") {
+	for part := range strings.SplitSeq(name, "_") {
 		if part == "" {
 			continue
 		}
