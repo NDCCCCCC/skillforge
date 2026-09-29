@@ -24,8 +24,16 @@ const { cyInstance, cytoscapeMock } = vi.hoisted(() => ({
   cyInstance: {
     on: vi.fn(),
     destroy: vi.fn(),
-    elements: vi.fn(() => ({ removeClass: vi.fn() })),
-    $: vi.fn(() => ({ addClass: vi.fn() })),
+    // Neighborhood highlight chains: elements().removeClass().addClass()
+    // and $(sel).removeClass().addClass()
+    elements: vi.fn(() => {
+      const chain = { removeClass: vi.fn(() => chain), addClass: vi.fn(() => chain) };
+      return chain;
+    }),
+    $: vi.fn(() => {
+      const chain = { removeClass: vi.fn(() => chain), addClass: vi.fn(() => chain), neighborhood: vi.fn(() => chain) };
+      return chain;
+    }),
   },
   cytoscapeMock: vi.fn(() => cyInstance),
 }));

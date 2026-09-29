@@ -92,6 +92,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
   const [selected, setSelected] = useState<OntologyNode | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const cyRef = useRef<cytoscape.Core | null>(null);
 
   // Focus → note ids, two complementary paths:
   //   - sources (tolerated future citation field) — sync derivation.
@@ -208,7 +209,9 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
       wheelSensitivity: 0.2,
       userZoomingEnabled: true,
       userPanningEnabled: true,
-      autoungrabify: true,
+      // Nodes ARE grabbable — dragging a node out of the way is the
+      // primary declutter interaction on the dense 全库 graph.
+      autoungrabify: false,
       boxSelectionEnabled: false,
       style: [
         {
@@ -217,39 +220,65 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
             label: 'data(label)',
             'font-family': 'var(--font-sans)',
             'font-size': '11px',
+            'font-weight': 600,
             shape: 'round-rectangle',
             width: 'label',
-            height: 22,
-            padding: '8px',
+            height: 26,
+            padding: '10px',
             'background-color': primary,
-            'border-width': 1.5,
+            'border-width': 2,
             'border-color': primaryHover,
-            color: text,
-            'text-valign': 'bottom',
-            'text-margin-y': 4,
+            // Label inside the pill (white on kind color) — reads far
+            // better at overview zoom than the old bottom-outside text.
+            color: '#ffffff',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-margin-y': 0,
           },
         },
         {
           selector: 'edge',
           style: {
-            width: 1.5,
+            width: 2,
+            'curve-style': 'bezier',
+            'control-point-step-size': 40,
             'line-color': borderMuted,
             'target-arrow-shape': 'triangle',
             'target-arrow-color': borderMuted,
-            'curve-style': 'straight',
           },
+        },
+        // Edge color by relation type (matches the legend semantics).
+        {
+          selector: 'edge[type = "references_table"]',
+          style: { 'line-color': amber, 'target-arrow-color': amber },
+        },
+        {
+          selector: 'edge[type = "involves_product"]',
+          style: { 'line-color': green, 'target-arrow-color': green },
+        },
+        {
+          selector: 'edge[type = "involves_org"]',
+          style: { 'line-color': violet, 'target-arrow-color': violet },
         },
         // parent_org dashed (hierarchy is a weaker, derived relation).
         {
           selector: 'edge[type = "parent_org"]',
           style: {
             'line-style': 'dashed',
+            'line-color': violet,
+            'target-arrow-color': violet,
             'target-arrow-shape': 'triangle',
           },
         },
         {
           selector: 'node[kind = "note"]',
-          style: { 'background-color': primary, 'border-color': primaryHover },
+          style: {
+            'background-color': primary,
+            'border-color': primaryHover,
+            // Notes are the hubs — slightly taller so they read first.
+            height: 30,
+            'font-size': '12px',
+          },
         },
         {
           selector: 'node[kind = "table"]',
@@ -266,25 +295,47 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
         {
           selector: 'node.selected',
           style: {
-            'border-width': 3,
+            'border-width': 4,
             'border-color': text,
+            'overlay-color': primary,
+            'overlay-opacity': 0.18,
+            'overlay-padding': 10,
+          },
+        },
+        {
+          selector: '.faded',
+          style: {
+            opacity: 0.12,
+            'text-opacity': 0.25,
+          },
+        },
+        {
+          selector: 'edge.faded',
+          style: {
+            opacity: 0.06,
           },
         },
       ],
     });
+    cyRef.current = cy;
 
     cy.on('tap', 'node', (e) => {
       const id = e.target.id();
       const node = data.nodes.find((n) => n.id === id);
       if (node) {
-        cy.elements().removeClass('selected');
-        cy.$(`#${CSS.escape(id)}`).addClass('selected');
+        // Neighborhood highlight (mirrors the old document graph's
+        // selected ring, plus neighbor-vs-rest dimming so relations
+        // read at a glance on the 100+ node 全库 graph).
+        cy.elements().removeClass('selected').addClass('faded');
+        const self = cy.$(`#${CSS.escape(id)}`);
+        self.removeClass('faded').addClass('selected');
+        self.neighborhood().removeClass('faded');
         setSelected(node);
       }
     });
     cy.on('tap', (e) => {
       if (e.target === cy) {
-        cy.elements().removeClass('selected');
+        cy.elements().removeClass('selected').removeClass('faded');
         setSelected(null);
       }
     });
@@ -307,6 +358,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
 
     return () => {
       ro.disconnect();
+      cyRef.current = null;
       cy.destroy();
     };
   }, [data]);
@@ -394,6 +446,15 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
           <span>表 {counts.table ?? 0}</span>
           <span>险种 {counts.insurance_product ?? 0}</span>
           <span>机构 {counts.organization ?? 0}</span>
+          <button
+            type="button"
+            data-testid="ontology-fit-btn"
+            onClick={() => cyRef.current?.fit(undefined, 24)}
+            title="重新适配全部节点"
+            className="ml-1 rounded border border-border px-1.5 py-0.5 font-semibold text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          >
+            适应
+          </button>
         </div>
       </div>
 
@@ -446,7 +507,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
 
       <div className="flex flex-none items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-xs text-text-muted">
         <span className="min-w-0 truncate">
-          滚轮缩放 · 拖拽平移 · {EDGE_LABEL.references_table}实线 · {EDGE_LABEL.parent_org}虚线
+          滚轮缩放 · 拖拽平移 · 节点可拖拽 · 点节点高亮邻域 · {EDGE_LABEL.references_table}实线 · {EDGE_LABEL.parent_org}虚线
         </span>
       </div>
     </div>
