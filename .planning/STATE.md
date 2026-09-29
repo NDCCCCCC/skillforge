@@ -32,6 +32,7 @@ Last activity: 2026-09-29 - Completed quick task 260929-d5w: 批量修复 6 项�
 | 260928-wzl | D-NZK-DEF-01 修复: resolveSkillTiersFromKG 归一化 cat_* → Tier(活体回归 6 测试); FE 补 rdf:/skf: 短名展开(默认示例自 Phase 41 起从未真正命中); sql-guides 视角 23→88 行 | 2026-09-29 | e272cd0 | [260928-wzl-d-nzk-def-01-resolveskilltiersfromkg-cat](./quick/260928-wzl-d-nzk-def-01-resolveskilltiersfromkg-cat/) |
 | 260929-d5w | 批量修复 6 项遗留隐藏缺陷: 姊妹 resolver resolveSkillTiers cat_ 缺陷(TDD)+ TBox 卡片动态化(6→10 类)+ data.lock schema 对齐 + FrozenSets 收窄 D6-13 sidecar(/api/eval/frozen 500→200)+ KB uat-check 乱码 + store/entity_iri IN-01/03/04/05+lint; IN-02 不做(rationale in SUMMARY) | 2026-09-29 | 9891375 | [260929-d5w-resolver-tbox-eval-lock-kb-store-go](./quick/260929-d5w-resolver-tbox-eval-lock-kb-store-go/) |
 | 260929-d5w2 | 知识图谱全屏按钮 + prettySourcePath 显示层美化(引用/图谱树/KB 列表) + 测试库清理(uat-check/walkthrough-tmp) + 语料重命名 39 处(失控长名收敛,其他/并入操作手册) + Milvus 重建 + ECL 全量重跑; 备份: ~/sql-guides-pre-rename-backup | 2026-09-29 | 1aaf853 | [260929-d5w2-graph-fullscreen-corpus-cleanup](./quick/260929-d5w2-graph-fullscreen-corpus-cleanup/) |
+| 260929-d5w3 | 知识图谱按当前问题聚焦(citations→焦点高亮/其余淡显/全库切换) + 画布动态 viewBox 自适应 + 滚轮缩放/拖拽平移/双击适应(底弧不再裁剪); 顺手修 chunk-lookup 测试(source 字段对齐) | 2026-09-29 | dafe594 | [260929-d5w3-graph-focus-fit](./quick/260929-d5w3-graph-focus-fit/) |
 
 ## v1.4 Phase Map
 
