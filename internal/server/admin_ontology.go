@@ -332,7 +332,7 @@ type snapshotResponse struct {
 
 // changelogResponse is the 200 envelope for GET /api/admin/ontology/changelog.
 type changelogResponse struct {
-	CurrentVersion int                    `json:"current_version"`
+	CurrentVersion int                        `json:"current_version"`
 	Entries        []induction.ChangelogEntry `json:"entries"`
 }
 
@@ -344,7 +344,7 @@ type rollbackRequest struct {
 
 // rollbackResponse is the 200 envelope for POST /api/admin/ontology/rollback.
 type rollbackResponse struct {
-	Version        int `json:"version"`
+	Version       int `json:"version"`
 	NewViolations int `json:"new_violations"`
 }
 
