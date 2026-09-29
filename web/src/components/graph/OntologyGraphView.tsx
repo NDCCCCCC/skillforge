@@ -207,8 +207,8 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
         idealEdgeLength: 80,
       } as cytoscape.LayoutOptions,
       // 0.2 (cytoscape's conservative default here) felt sluggish on the
-      // dense 全库 graph — 0.6 gives a decisive wheel step.
-      wheelSensitivity: 0.6,
+      // dense 全库 graph — 1.0 gives an aggressive wheel step.
+      wheelSensitivity: 1.0,
       userZoomingEnabled: true,
       userPanningEnabled: true,
       // Nodes ARE grabbable — dragging a node out of the way is the
