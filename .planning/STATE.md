@@ -21,7 +21,7 @@ stopped_at: Milestone complete (Phase 44 was final phase)
 Phase: 44
 Plan: Not started
 Status: Milestone complete
-Last activity: 2026-09-28 - Completed quick task 260928-jxb: admin 控制台 3 bug 修复（治理白屏 null-guard + SPARQL Skill selector + MCP deps wiring）+ 启动脚本临时切 GLM
+Last activity: 2026-09-29 - Completed quick task 260929-d5w: 批量修复 6 项遗留隐藏缺陷（姊妹 resolver cat_ 缺陷 TDD 修复 + TBox 卡片动态化 + frozen 锁 schema 对齐/扫描收窄 + KB 乱码 + store/entity_iri 质量扫描）
 
 ### Quick Tasks Completed
 
@@ -30,6 +30,7 @@ Last activity: 2026-09-28 - Completed quick task 260928-jxb: admin 控制台 3 b
 | 260928-jxb | admin 控制台 3 bug: 治理白屏 null-guard + SPARQL Skill selector + MCP deps wiring; 启动脚本临时切 GLM | 2026-09-28 | 8390af1 | [260928-jxb-admin-3-bug-null-guard-sparql-skill-sele](./quick/260928-jxb-admin-3-bug-null-guard-sparql-skill-sele/) |
 | 260928-nzk | ECL 抽取器扩展: 业务实体(险种 65/机构 55)批量入 KG ABox; TBox v3→v7(4 属性人工批准); golden F1 0.9846/1.0 保持; D-NZK-DEF-01(SPARQL tier 解析缺陷)deferred → D-SPARQL-05 v1.6 | 2026-09-28 | 01d4a48 | [260928-nzk-ecl-kg-abox](./quick/260928-nzk-ecl-kg-abox/) |
 | 260928-wzl | D-NZK-DEF-01 修复: resolveSkillTiersFromKG 归一化 cat_* → Tier(活体回归 6 测试); FE 补 rdf:/skf: 短名展开(默认示例自 Phase 41 起从未真正命中); sql-guides 视角 23→88 行 | 2026-09-29 | e272cd0 | [260928-wzl-d-nzk-def-01-resolveskilltiersfromkg-cat](./quick/260928-wzl-d-nzk-def-01-resolveskilltiersfromkg-cat/) |
+| 260929-d5w | 批量修复 6 项遗留隐藏缺陷: 姊妹 resolver resolveSkillTiers cat_ 缺陷(TDD)+ TBox 卡片动态化(6→10 类)+ data.lock schema 对齐 + FrozenSets 收窄 D6-13 sidecar(/api/eval/frozen 500→200)+ KB uat-check 乱码 + store/entity_iri IN-01/03/04/05+lint; IN-02 不做(rationale in SUMMARY) | 2026-09-29 | 9891375 | [260929-d5w-resolver-tbox-eval-lock-kb-store-go](./quick/260929-d5w-resolver-tbox-eval-lock-kb-store-go/) |
 
 ## v1.4 Phase Map
 
