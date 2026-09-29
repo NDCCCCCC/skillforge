@@ -126,12 +126,35 @@ type kgQueryResponse struct {
 
 // resolveSkillTiers returns the list of tier names that a skill has read access
 // to, by querying the KG for hasReadAccess edges on the skill individual.
+//
+// D-NZK-DEF-01 (sister defect of the admin_platform.go resolver, fixed in
+// 76b5290): the live KG wires skills as
+//
+//	skill_x hasReadAccess cat_x (KBCategory individual)
+//	cat_x   belongsToTier  tier_x   (Tier individual)
+//
+// so each hasReadAccess object is normalized before use:
+//
+//  1. (O, rdf:type, skf:Tier)         → O's stripped local name (legacy
+//     direct-Tier wiring stays backward compatible)
+//  2. (O, skf:belongsToTier, tierIRI) → tierIRI's stripped local name
+//     (KBCategory expanded through its tier edge)
+//  3. neither                         → skipped (fail-closed: unknown
+//     objects contribute no tier)
+//
+// The result is deduplicated preserving first-seen order. Unknown skills
+// resolve to nil, matching resolveSkillTiersFromKG.
 func (s *Deps) resolveSkillTiers(skillName string) []string {
+	if s.Ontology == nil || s.Ontology.KG == nil {
+		return nil
+	}
 	const (
-		rdfType        = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-		skfSkill       = "http://skillforge.local/ontology#Skill"
+		rdfType          = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+		skfSkill         = "http://skillforge.local/ontology#Skill"
 		skfHasReadAccess = "http://skillforge.local/ontology#hasReadAccess"
-		ns             = "http://skillforge.local/ontology#"
+		skfTier          = "http://skillforge.local/ontology#Tier"
+		skfBelongsToTier = "http://skillforge.local/ontology#belongsToTier"
+		ns               = "http://skillforge.local/ontology#"
 	)
 
 	// Find the skill individual by name.
@@ -141,13 +164,31 @@ func (s *Deps) resolveSkillTiers(skillName string) []string {
 		return nil
 	}
 
-	// Get hasReadAccess edges for this skill.
+	// Get hasReadAccess edges for this skill, normalizing each object.
 	accessTriples := s.Ontology.KG.Query(skillIRI, skfHasReadAccess, "")
-	var tiers []string
-	for _, t := range accessTriples {
-		// Strip namespace prefix to get short tier name.
-		tierName := strings.TrimPrefix(t.O, ns)
+	var (
+		tiers []string
+		seen  = make(map[string]bool)
+	)
+	addTier := func(tierIRI string) {
+		tierName := strings.TrimPrefix(tierIRI, ns)
+		if tierName == "" || seen[tierName] {
+			return
+		}
+		seen[tierName] = true
 		tiers = append(tiers, tierName)
+	}
+	for _, t := range accessTriples {
+		// Case 1: object is itself a Tier individual (legacy direct wiring).
+		if len(s.Ontology.KG.Query(t.O, rdfType, skfTier)) > 0 {
+			addTier(t.O)
+			continue
+		}
+		// Case 2: KBCategory-shaped object — expand through belongsToTier.
+		for _, edge := range s.Ontology.KG.Query(t.O, skfBelongsToTier, "") {
+			addTier(edge.O)
+		}
+		// Case 3: unknown object — contributes no tier (fail-closed).
 	}
 	return tiers
 }
