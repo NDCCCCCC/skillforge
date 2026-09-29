@@ -49,7 +49,8 @@ describe('fetchChunkContent', () => {
 
     const got = await fetchChunkContent('1');
     expect(got).not.toBeNull();
-    expect(got).toEqual({ text: '正文内容', tier: '权威' });
+    // quick-260929-d5w2 added `source` to the resolved shape (display layer).
+    expect(got).toEqual({ text: '正文内容', tier: '权威', source: 'authority/x.md' });
   });
 
   it('returns null on 404', async () => {
