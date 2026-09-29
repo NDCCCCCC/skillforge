@@ -24,6 +24,9 @@
 //	     → 200 {triple_count, byS_size, byP_size, byO_size, memory_kb_estimate}
 //	GET  /api/admin/ontology/kg/query?s=&p=&o=
 //	     → 200 {matches: [{s,p,o}, ...]}   (empty param = wildcard)
+//	GET  /api/admin/ontology/graph?notes=note_032,note_033   (260929-g7x)
+//	     → 200 {nodes: [{id,kind,label,tier?}], edges: [{from,to,type}]}
+//	       (absent notes param = project every note)
 //	POST /api/admin/ontology/proposals/generate   body {text}
 //	     → 200 {proposal}
 //	GET  /api/admin/ontology/proposals
@@ -52,6 +55,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -414,3 +418,220 @@ func (s *Deps) adminOntologyRollbackHandler(ctx context.Context, c *app.RequestC
 
 // errorsIsIRIConflict maps induction.ErrIRIConflict to the 409 path.
 func errorsIsIRIConflict(err error) bool { return errors.Is(err, induction.ErrIRIConflict) }
+
+// ─── Quick 260929-g7x — ontology graph projection ──────────────────────
+//
+// GET /api/admin/ontology/graph?notes=note_032,note_033   (optional param)
+//
+// Projects the ABox knowledge graph into a note-centric entity graph for
+// the FE 本体视图: instead of the retrieval-corpus tree (tier→doc→chunk)
+// this surfaces the REAL ontology relationships quick-260928-nzk wrote —
+//
+//	note_XXX --referencesTable-->        tbl_Y     (SQL 笔记 ↔ 数据表)
+//	note_XXX --involvesInsuranceProduct→ ent_Z     (笔记 ↔ 险种)
+//	note_XXX --involvesOrganization→     ent_O     (笔记 ↔ 机构)
+//	ent_O    --parentOrganization→       ent_P     (机构层级, 1-hop)
+//
+// belongsToTier never becomes a node (a Tier node would be a mega-hub
+// dwarfing the business entities) — it attaches as a `tier` field on the
+// nodes that carry the triple. Unknown note names yield 200 with empty
+// arrays (the FE renders its own empty state).
+
+// ontRdfType / ontRdfsLabel — predicate IRIs. Distinct names from the
+// _test.go consts (rdfType etc.) that share this package under test builds.
+const (
+	ontRdfType   = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+	ontRdfsLabel = "http://www.w3.org/2000/01/rdf-schema#label"
+)
+
+// ontologyGraphNode is one projected node. Kind ∈ note|table|
+// insurance_product|organization.
+type ontologyGraphNode struct {
+	ID    string `json:"id"`
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+	Tier  string `json:"tier,omitempty"`
+}
+
+// ontologyGraphEdge is one projected edge. Type ∈ references_table|
+// involves_product|involves_org|parent_org.
+type ontologyGraphEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	Type string `json:"type"`
+}
+
+// ontologyGraphResponse is the 200 envelope for GET /api/admin/ontology/graph.
+type ontologyGraphResponse struct {
+	Nodes []ontologyGraphNode `json:"nodes"`
+	Edges []ontologyGraphEdge `json:"edges"`
+}
+
+// adminOntologyGraphHandler implements GET /api/admin/ontology/graph.
+//
+// `notes` is a comma-separated list of note local names (note_032 or full
+// IRIs — the skfNS prefix is tolerated). Absent/empty = project every note
+// in the store (全库 mode).
+func (s *Deps) adminOntologyGraphHandler(ctx context.Context, c *app.RequestContext) {
+	dep, ok := s.requireOntology(c)
+	if !ok {
+		return
+	}
+	var noteIRIs []string
+	if param := strings.TrimSpace(c.Query("notes")); param != "" {
+		for _, name := range strings.Split(param, ",") {
+			name = strings.TrimPrefix(strings.TrimSpace(name), skfNS)
+			if name != "" {
+				noteIRIs = append(noteIRIs, skf(name))
+			}
+		}
+	} else {
+		noteIRIs = ontologyAllNoteIRIs(dep.KG)
+	}
+	c.JSON(http.StatusOK, projectOntologyGraph(dep.KG, noteIRIs))
+}
+
+// ontologyAllNoteIRIs returns every note subject in the store, deduped and
+// sorted. A subject counts as a note when it is either declared
+// rdf:type skf:NoteChunk or appears as the subject of one of the three
+// note-owned predicates (the type triple alone is not trusted: legacy
+// fixtures and hand-wired KGs may omit it).
+func ontologyAllNoteIRIs(kg *store.Store) []string {
+	seen := make(map[string]bool)
+	var out []string
+	add := func(iri string) {
+		if iri != "" && !seen[iri] {
+			seen[iri] = true
+			out = append(out, iri)
+		}
+	}
+	for _, t := range kg.Query("", ontRdfType, skf("NoteChunk")) {
+		add(t.S)
+	}
+	for _, pred := range []string{skf("referencesTable"), skf("involvesInsuranceProduct"), skf("involvesOrganization")} {
+		for _, t := range kg.Query("", pred, "") {
+			add(t.S)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// graphAccumulator accumulates projection output with node/edge dedupe
+// (the same triple re-read through several notes must yield one node).
+type graphAccumulator struct {
+	nodes    []ontologyGraphNode
+	edges    []ontologyGraphEdge
+	nodeSeen map[string]bool
+	edgeSeen map[string]bool
+}
+
+func (g *graphAccumulator) node(id, kind, label, tier string) {
+	if id == "" || g.nodeSeen[id] {
+		return
+	}
+	g.nodeSeen[id] = true
+	g.nodes = append(g.nodes, ontologyGraphNode{ID: id, Kind: kind, Label: label, Tier: tier})
+}
+
+func (g *graphAccumulator) edge(from, to, typ string) {
+	if from == "" || to == "" || from == to {
+		return
+	}
+	key := from + "|" + to + "|" + typ
+	if g.edgeSeen[key] {
+		return
+	}
+	g.edgeSeen[key] = true
+	g.edges = append(g.edges, ontologyGraphEdge{From: from, To: to, Type: typ})
+}
+
+// projectOntologyGraph builds the note-centric projection for the given
+// note IRIs. Each note expands to: the note node, its table nodes
+// (references_table edges), its entity nodes (involves_product /
+// involves_org edges), and — for every involved organization — its
+// parentOrganization target as a first-class node + parent_org edge, so
+// the 1-hop hierarchy stays complete even when the parent is not directly
+// involved by any projected note.
+func projectOntologyGraph(kg *store.Store, noteIRIs []string) ontologyGraphResponse {
+	acc := &graphAccumulator{nodeSeen: map[string]bool{}, edgeSeen: map[string]bool{}}
+	for _, noteIRI := range noteIRIs {
+		// Unknown note (no triples at all) → skipped entirely: the
+		// response carries empty arrays, not a ghost note node.
+		if len(kg.Query(noteIRI, "", "")) == 0 {
+			continue
+		}
+		acc.node(noteIRI, "note", ontologyNoteLabel(kg, noteIRI), ontologyTierOf(kg, noteIRI))
+		ontologyExpandNote(kg, acc, noteIRI)
+	}
+	if acc.nodes == nil {
+		acc.nodes = []ontologyGraphNode{}
+	}
+	if acc.edges == nil {
+		acc.edges = []ontologyGraphEdge{}
+	}
+	return ontologyGraphResponse{Nodes: acc.nodes, Edges: acc.edges}
+}
+
+// ontologyExpandNote emits one note's tables + entities (+ org parents).
+func ontologyExpandNote(kg *store.Store, acc *graphAccumulator, noteIRI string) {
+	for _, t := range kg.Query(noteIRI, skf("referencesTable"), "") {
+		acc.node(t.O, "table", tableLabel(t.O), ontologyTierOf(kg, t.O))
+		acc.edge(noteIRI, t.O, "references_table")
+	}
+	for _, spec := range []struct{ pred, kind, edgeType string }{
+		{skf("involvesInsuranceProduct"), "insurance_product", "involves_product"},
+		{skf("involvesOrganization"), "organization", "involves_org"},
+	} {
+		for _, t := range kg.Query(noteIRI, spec.pred, "") {
+			acc.node(t.O, spec.kind, entityLabel(kg, t.O), ontologyTierOf(kg, t.O))
+			acc.edge(noteIRI, t.O, spec.edgeType)
+			for _, p := range kg.Query(t.O, skf("parentOrganization"), "") {
+				acc.node(p.O, "organization", entityLabel(kg, p.O), ontologyTierOf(kg, p.O))
+				acc.edge(t.O, p.O, "parent_org")
+			}
+		}
+	}
+}
+
+// literalOf returns the first object of (iri, pred, ?) with the store's
+// `"value"` literal quoting stripped, or "" when absent.
+func literalOf(kg *store.Store, iri, pred string) string {
+	if ts := kg.Query(iri, pred, ""); len(ts) > 0 {
+		return strings.Trim(ts[0].O, `"`)
+	}
+	return ""
+}
+
+// ontologyNoteLabel renders a note node label: rdfs:label when present,
+// else the bare source_idx (note_032 → "032").
+func ontologyNoteLabel(kg *store.Store, noteIRI string) string {
+	if label := literalOf(kg, noteIRI, ontRdfsLabel); label != "" {
+		return label
+	}
+	return strings.TrimPrefix(stripNS(noteIRI), "note_")
+}
+
+// entityLabel renders an entity node label: rdfs:label (the exact trimmed
+// business name per D-NZK-05), else the IRI local name (CJK entities are
+// hash-encoded — e.g. ent_e3f2a1b4c5d6).
+func entityLabel(kg *store.Store, entIRI string) string {
+	if label := literalOf(kg, entIRI, ontRdfsLabel); label != "" {
+		return label
+	}
+	return stripNS(entIRI)
+}
+
+// tableLabel renders a table node label: the local name with the tbl_
+// prefix stripped (tbl_pay_way → "pay_way").
+func tableLabel(tblIRI string) string {
+	return strings.TrimPrefix(stripNS(tblIRI), "tbl_")
+}
+
+// ontologyTierOf returns the subject's belongsToTier short name, or "".
+func ontologyTierOf(kg *store.Store, iri string) string {
+	if ts := kg.Query(iri, skf("belongsToTier"), ""); len(ts) > 0 {
+		return stripNS(ts[0].O)
+	}
+	return ""
+}

@@ -85,6 +85,7 @@ func ontologyRoutes(h *server.Hertz, deps *Deps) {
 	h.GET("/api/admin/ontology/tbox", deps.adminOntologyTBoxHandler)
 	h.GET("/api/admin/ontology/kg/stats", deps.adminOntologyKGStatsHandler)
 	h.GET("/api/admin/ontology/kg/query", deps.adminOntologyKGQueryHandler)
+	h.GET("/api/admin/ontology/graph", deps.adminOntologyGraphHandler)
 	h.POST("/api/admin/ontology/proposals/generate", deps.adminOntologyProposalsGenerateHandler)
 	h.GET("/api/admin/ontology/proposals", deps.adminOntologyProposalsListHandler)
 	h.POST("/api/admin/ontology/proposals/:id/approve", deps.adminOntologyProposalsApproveHandler)
@@ -116,6 +117,7 @@ func TestAdminOntologyRequiresToken(t *testing.T) {
 		{http.MethodGet, "/api/admin/ontology/tbox"},
 		{http.MethodGet, "/api/admin/ontology/kg/stats"},
 		{http.MethodGet, "/api/admin/ontology/kg/query"},
+		{http.MethodGet, "/api/admin/ontology/graph"},
 		{http.MethodPost, "/api/admin/ontology/proposals/generate"},
 		{http.MethodGet, "/api/admin/ontology/proposals"},
 		{http.MethodPost, "/api/admin/ontology/proposals/prop-0001/approve"},

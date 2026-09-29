@@ -675,6 +675,8 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/admin/ontology/tbox", deps.adminOntologyTBoxHandler)
 	h.GET("/api/admin/ontology/kg/stats", deps.adminOntologyKGStatsHandler)
 	h.GET("/api/admin/ontology/kg/query", deps.adminOntologyKGQueryHandler)
+	// Quick 260929-g7x — note-centric ABox projection for the FE 本体视图.
+	h.GET("/api/admin/ontology/graph", deps.adminOntologyGraphHandler)
 	h.POST("/api/admin/ontology/proposals/generate", deps.adminOntologyProposalsGenerateHandler)
 	h.GET("/api/admin/ontology/proposals", deps.adminOntologyProposalsListHandler)
 	h.POST("/api/admin/ontology/proposals/:id/approve", deps.adminOntologyProposalsApproveHandler)
