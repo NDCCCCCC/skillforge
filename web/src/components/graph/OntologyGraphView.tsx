@@ -366,7 +366,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
   return (
     <div
       data-testid="ontology-graph-view"
-      className="flex min-h-[360px] flex-1 flex-col rounded-md border border-border bg-surface"
+      className="flex h-full min-h-[360px] flex-1 flex-col rounded-md border border-border bg-surface"
     >
       {/* Focus toolbar + legend */}
       <div className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-1.5 text-xs">
