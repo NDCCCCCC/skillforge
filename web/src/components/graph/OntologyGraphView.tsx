@@ -40,6 +40,7 @@
 // is held while resolving.
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentType, MutableRefObject } from 'react';
+import type { Object3D, Sprite } from 'three';
 import type {
   ForceGraphMethods,
   ForceGraphProps,
@@ -159,6 +160,23 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
   /** Measured host size — passed explicitly to ForceGraph3D (without
    * explicit width/height it renders at a degenerate default). */
   const [size, setSize] = useState({ w: 0, h: 0 });
+  /** Lazy three.js label factory (kept in the lazy chunk — see
+   * ontology3d-labels.ts). null until the dynamic import settles; the
+   * nodeThreeObject accessor degrades to default-only meanwhile, and the
+   * state flip re-renders so the decorator picks the sprites up. */
+  const [label3d, setLabel3d] = useState<{
+    makeLabelSprite(text: string, sphereRadius: number): Sprite;
+  } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    import('./ontology3d-labels').then((m) => {
+      if (alive) setLabel3d(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const fgRef = useRef<FgMethods | undefined>(undefined);
@@ -469,6 +487,11 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
                 nodeColor={(n) => nodeColorFor(n.kind)}
                 nodeLabel={(n) => `${n.label} · ${KIND_LABEL[n.kind]}`}
                 nodeVal={(n) => (hoverId === n.id ? n.val * 1.8 : n.val)}
+                nodeThreeObjectExtend
+                nodeThreeObject={((n: FgNode) =>
+                  label3d ? label3d.makeLabelSprite(n.label, n.val * 1.2) : null) as unknown as (
+                    obj: NodeObject<FgNode>,
+                  ) => Object3D}
                 linkColor={(l) => linkColorFor(l.type)}
                 linkWidth={1.5}
                 linkDirectionalParticles={3}
