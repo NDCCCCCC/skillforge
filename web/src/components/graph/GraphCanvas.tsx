@@ -16,9 +16,19 @@
 //   - hover a node → highlight its edges + tooltip (filename / chunkCount)
 //   - click a doc node → setCenterView({kind:'doc-view', tier, file})
 //   - click a tier node → collapse / expand its doc fan
+//
+// Quick 260929-d5w3 Task 1 — QUESTION FOCUS. When the caller passes a
+// `focus` (derived from the latest assistant verdict's citations), the
+// canvas defaults to "仅当前问题" mode: cited docs render full-colour,
+// enlarged and ring-highlighted, their tiers stay lit, and everything
+// else fades to opacity 0.12. A toggle (graph-focus-toggle) flips between
+// 仅当前问题 / 全库 and the choice persists (localStorage). An answered
+// turn WITHOUT citations (e.g. a refusal) shows the honest empty note and
+// falls through to the full graph.
 import { useMemo, useState } from 'react';
 import { useAppStore } from '../../store/app-store';
 import { useTierLabel } from '../../lib/kb-bases';
+import { computeFocusMatch, type GraphFocus, type GraphFocusMatch } from '../../lib/graph-focus';
 import { prettySourcePath } from '../../lib/pretty-source';
 import type { GraphEdge, KnowledgeGraph, NeighborResult, TierNode } from '../../types/knowledge';
 
@@ -125,6 +135,34 @@ export interface GraphCanvasProps {
   overlayEdges?: GraphEdge[];
   /** Called when user clicks a doc node to expand its neighbors. */
   onExpandNeighbors?: (chunkId: string, depth?: number) => void;
+  /** Quick 260929-d5w3 — citations of the latest assistant verdict (see
+   * lib/graph-focus). null/undefined = no focus → full-graph mode. */
+  focus?: GraphFocus | null;
+  /** True when ≥1 assistant turn has answered (verdict OR refusal). With
+   * focus === null this drives the "当前回答无引用原文" honest empty note. */
+  hasAnswer?: boolean;
+}
+
+/** Focus-mode preference key. "记住选择" — the toggle persists across
+ * remounts (tab switches unmount the browser). */
+const FOCUS_MODE_STORAGE_KEY = 'skillforge.graph.focusMode';
+
+type FocusMode = 'focus' | 'all';
+
+function loadFocusMode(): FocusMode {
+  try {
+    return window.localStorage.getItem(FOCUS_MODE_STORAGE_KEY) === 'all' ? 'all' : 'focus';
+  } catch {
+    return 'focus';
+  }
+}
+
+function saveFocusMode(mode: FocusMode): void {
+  try {
+    window.localStorage.setItem(FOCUS_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Private-mode / storage-disabled — the preference just doesn't persist.
+  }
 }
 
 /** Sub-component: renders the neighbor subgraph when a node is expanded.
@@ -218,11 +256,14 @@ function NeighborSubgraph({
   );
 }
 
-export default function GraphCanvas({ graph, filter, neighborResult, overlayEdges, onExpandNeighbors }: GraphCanvasProps) {
+export default function GraphCanvas({ graph, filter, neighborResult, overlayEdges, onExpandNeighbors, focus, hasAnswer }: GraphCanvasProps) {
   const setCenterView = useAppStore((s) => s.setCenterView);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [hovered, setHovered] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
+  // Question-focus mode (260929-d5w3): defaults to 仅当前问题 whenever a
+  // focus exists, unless the operator previously chose 全库 (persisted).
+  const [focusMode, setFocusMode] = useState<FocusMode>(loadFocusMode);
 
   // Neighbor subgraph mode: only when neighborResult is explicitly provided.
   // The overlayEdges are rendered on top of the radial graph when in normal mode.
@@ -243,6 +284,26 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
     );
   }, [graph, filter, collapsed, isNeighborMode]);
 
+  // Citations ∩ graph docs. null when the focus misses the current corpus
+  // (stale session vs re-index) — the canvas then stays full-graph instead
+  // of fading everything to invisible.
+  const focusMatch: GraphFocusMatch | null = useMemo(
+    () => computeFocusMatch(graph, focus),
+    [graph, focus],
+  );
+  const focusActive = focusMode === 'focus' && focusMatch !== null;
+  // Answered turn but zero citations (refusal / no_authorized_source) —
+  // the honest empty state from the spec. Note only; mode stays full-graph.
+  const showFocusEmptyNote = Boolean(hasAnswer) && focus == null;
+
+  function toggleFocusMode() {
+    setFocusMode((prev) => {
+      const next: FocusMode = prev === 'focus' ? 'all' : 'focus';
+      saveFocusMode(next);
+      return next;
+    });
+  }
+
   function openDoc(tier: string, filename: string) {
     // tier is a plain registry slug (26-08 widened Tier to string).
     setCenterView({ kind: 'doc-view', tier, file: filename });
@@ -260,6 +321,35 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
 
   return (
     <div data-testid="graph-canvas" className="rounded-md border border-border bg-surface">
+      {/* Question-focus toolbar (260929-d5w3). Renders when a focus matched
+          the graph (toggle) or when an answered turn had no citations (note). */}
+      {(focusMatch !== null || showFocusEmptyNote) && (
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5 text-xs">
+          {focusMatch !== null ? (
+            <>
+              <span className="text-text-muted">
+                {focusActive
+                  ? `已聚焦本次回答引用的 ${focusMatch.docIds.size} 篇文档`
+                  : '当前显示全库'}
+              </span>
+              <button
+                type="button"
+                data-testid="graph-focus-toggle"
+                onClick={toggleFocusMode}
+                aria-pressed={focusActive}
+                title="在「仅当前问题」与「全库」之间切换"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface-1 px-2 py-0.5 font-semibold text-text hover:bg-surface-2"
+              >
+                {focusActive ? '仅当前问题' : '全库'}
+              </button>
+            </>
+          ) : (
+            <span data-testid="graph-focus-empty" className="text-text-muted">
+              当前回答无引用原文 — 显示全库
+            </span>
+          )}
+        </div>
+      )}
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
@@ -282,7 +372,13 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
                   y2={d.y}
                   stroke={hovered === d.key ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #d1d5db)'}
                   strokeWidth={hovered === d.key ? 2 : 1}
-                  strokeOpacity={0.55}
+                  strokeOpacity={
+                    focusActive
+                      ? focusMatch!.docIds.has(d.key)
+                        ? 0.8
+                        : 0.08
+                      : 0.55
+                  }
                 />
               )),
             )}
@@ -309,14 +405,29 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
             {positioned.map((t) =>
               t.docs.map((d) => {
                 const active = hovered === null || hovered === d.key;
+                // Question focus (260929-d5w3): cited docs stay lit and
+                // grow a dashed highlight ring; everything else drops to
+                // 0.12 (hover briefly reveals a faded doc at 0.35 so it
+                // stays discoverable).
+                const isFocusDoc = focusActive ? focusMatch!.docIds.has(d.key) : true;
+                const opacity = focusActive
+                  ? isFocusDoc
+                    ? 1
+                    : hovered === d.key
+                      ? 0.35
+                      : 0.12
+                  : active
+                    ? 1
+                    : 0.35;
                 return (
                   <g
                     key={`n-${d.key}`}
                     data-testid="graph-doc-node"
                     data-tier={d.tier}
                     data-file={d.filename}
+                    data-focus={focusActive ? (isFocusDoc ? 'true' : 'false') : undefined}
                     transform={`translate(${d.x}, ${d.y})`}
-                    opacity={active ? 1 : 0.35}
+                    opacity={opacity}
                     onMouseEnter={() => setHovered(d.key)}
                     onMouseLeave={() => setHovered(null)}
                     onClick={() => {
@@ -328,7 +439,22 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
                     {/* Raw source path stays hoverable (SVG <title> tooltip);
                         the label renders the pretty short form. */}
                     <title>{d.filename}</title>
-                    <circle r={9} fill="var(--color-surface, #fff)" stroke={tierColor(d.tier)} strokeWidth={2} />
+                    {focusActive && isFocusDoc && (
+                      // Dashed highlight ring — the "焦点文档高亮环".
+                      <circle
+                        r={16}
+                        fill="none"
+                        stroke={tierColor(d.tier)}
+                        strokeWidth={1.5}
+                        strokeDasharray="3 3"
+                      />
+                    )}
+                    <circle
+                      r={focusActive && isFocusDoc ? 11 : 9}
+                      fill="var(--color-surface, #fff)"
+                      stroke={tierColor(d.tier)}
+                      strokeWidth={focusActive && isFocusDoc ? 2.5 : 2}
+                    />
                     <text y={-14} textAnchor="middle" fontSize={11} fill="var(--color-text, #111827)">
                       {prettySourcePath(d.filename).slice(0, 18)}
                     </text>
@@ -340,25 +466,31 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
               }),
             )}
             {/* tier nodes */}
-            {positioned.map((t) => (
-              <g
-                key={`t-${t.tier}`}
-                data-testid="graph-tier-node"
-                data-tier={t.tier}
-                transform={`translate(${t.x}, ${t.y})`}
-                onClick={() => setCollapsed((prev) => ({ ...prev, [t.tier]: !prev[t.tier] }))}
-                className="cursor-pointer"
-              >
-                <circle r={26} fill={tierColor(t.tier)} opacity={0.16} />
-                <circle r={26} fill="none" stroke={tierColor(t.tier)} strokeWidth={2} />
-                <text textAnchor="middle" dy={-2} fontSize={14} fontWeight={600} fill="var(--color-text, #111827)">
-                  <TierLabel tier={t.tier} />
-                </text>
-                <text textAnchor="middle" dy={14} fontSize={9} fill="var(--color-text-muted, #6b7280)">
-                  {t.docCount} 文档
-                </text>
-              </g>
-            ))}
+            {positioned.map((t) => {
+              // Focus tiers (owning ≥1 cited doc) stay lit; the rest 淡显.
+              const isFocusTier = focusActive ? focusMatch!.tiers.has(t.tier) : true;
+              return (
+                <g
+                  key={`t-${t.tier}`}
+                  data-testid="graph-tier-node"
+                  data-tier={t.tier}
+                  data-focus={focusActive ? (isFocusTier ? 'true' : 'false') : undefined}
+                  transform={`translate(${t.x}, ${t.y})`}
+                  opacity={focusActive && !isFocusTier ? 0.15 : 1}
+                  onClick={() => setCollapsed((prev) => ({ ...prev, [t.tier]: !prev[t.tier] }))}
+                  className="cursor-pointer"
+                >
+                  <circle r={26} fill={tierColor(t.tier)} opacity={0.16} />
+                  <circle r={26} fill="none" stroke={tierColor(t.tier)} strokeWidth={2} />
+                  <text textAnchor="middle" dy={-2} fontSize={14} fontWeight={600} fill="var(--color-text, #111827)">
+                    <TierLabel tier={t.tier} />
+                  </text>
+                  <text textAnchor="middle" dy={14} fontSize={9} fill="var(--color-text-muted, #6b7280)">
+                    {t.docCount} 文档
+                  </text>
+                </g>
+              );
+            })}
           </>
         )}
         {/* Edge type label tooltip when hovering an overlay edge */}

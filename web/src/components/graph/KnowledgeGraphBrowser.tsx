@@ -25,6 +25,7 @@ import { createPortal } from 'react-dom';
 import GraphCanvas from './GraphCanvas';
 import GraphFilterInput from './GraphFilterInput';
 import { useKnowledgeGraph } from '../../hooks/useKnowledgeGraph';
+import type { GraphFocus } from '../../lib/graph-focus';
 
 export interface KnowledgeGraphBrowserProps {
   /**
@@ -33,10 +34,21 @@ export interface KnowledgeGraphBrowserProps {
    * the public API compatible with the 05-03 placeholder.
    */
   loading?: boolean;
+  /**
+   * Quick 260929-d5w3 — citations of the latest assistant verdict
+   * (DetailPanel extracts them from the chat messages). Passes straight
+   * through to GraphCanvas; the SAME focus drives the fullscreen overlay
+   * because both rails render one shared body.
+   */
+  focus?: GraphFocus | null;
+  /** True when ≥1 assistant turn answered — drives the no-citations note. */
+  hasAnswer?: boolean;
 }
 
 export default function KnowledgeGraphBrowser({
   loading: loadingOverride,
+  focus = null,
+  hasAnswer = false,
 }: KnowledgeGraphBrowserProps = {}) {
   const { graph, status, error, refetch } = useKnowledgeGraph();
   const [filter, setFilter] = useState('');
@@ -149,7 +161,7 @@ export default function KnowledgeGraphBrowser({
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        <GraphCanvas graph={graph} filter={filter} />
+        <GraphCanvas graph={graph} filter={filter} focus={focus} hasAnswer={hasAnswer} />
       </div>
     </div>
   );

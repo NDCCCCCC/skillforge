@@ -15,7 +15,9 @@
 // variant and adds the dp-head (title + close → setDetailPanelOpen).
 import { X } from 'lucide-react';
 import { FileSearch } from 'lucide-react';
+import { useMemo } from 'react';
 import type { UIMessage } from 'ai';
+import { extractGraphFocus, hasAnsweredTurn } from '../../lib/graph-focus';
 import { Tabs } from '../ui/tabs';
 import { useAppStore } from '../../store/app-store';
 import type { CenterView } from '../../store/app-store';
@@ -117,6 +119,13 @@ export default function DetailPanel({
   // to the active session id (chatId === runId for v1).
   const activeSessionId = useAppStore((s) => s.activeSessionId);
 
+  // Quick 260929-d5w3 Task 1 — question focus for the knowledge graph.
+  // Derived READ-ONLY from the streamed messages: the latest assistant
+  // verdict's citations become the graph focus; an answered turn WITHOUT
+  // citations (refusal) becomes the honest empty-focus state.
+  const graphFocus = useMemo(() => extractGraphFocus(messages), [messages]);
+  const answeredTurn = useMemo(() => hasAnsweredTurn(messages), [messages]);
+
   // 7 tabs in document order (Plan 11-07: 审计轨迹 slots between
   // 结论 and 引用原文 per UI-SPEC §Position 3; Plan 12-07: 规划轨迹
   // sits between 审计轨迹 and 引用原文 per PLAN-05 logical flow).
@@ -152,11 +161,12 @@ export default function DetailPanel({
         </div>
       );
     }
-    // Tab-5: Knowledge graph browser (SC-5).
+    // Tab-5: Knowledge graph browser (SC-5). 260929-d5w3: the graph
+    // receives the current answer's citation focus (仅当前问题 mode).
     if (centerView.kind === 'knowledge-graph') {
       return (
         <div className="center-panel-tab-content">
-          <KnowledgeGraphBrowser />
+          <KnowledgeGraphBrowser focus={graphFocus} hasAnswer={answeredTurn} />
         </div>
       );
     }
