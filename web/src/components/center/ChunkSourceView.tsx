@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchChunkContent, lookupChunk, NOT_FOUND_TEXT } from '../../lib/chunk-lookup';
 import { formatEffectiveDate } from '../../lib/format-effective';
+import { prettySourcePath } from '../../lib/pretty-source';
 import TierBadge from '../common/TierBadge';
 import FilteredOutNotice from './FilteredOutNotice';
 import VersionBadge from './VersionBadge';
@@ -58,6 +59,9 @@ export default function ChunkSourceView({
   // graph endpoint is metadata-only per T-5-22, so its chunks have no
   // fixture entry).
   const [asyncText, setAsyncText] = useState<string | null>(null);
+  // Quick 260929-d5w2 — the fetch payload's raw source path, rendered as
+  // the pretty short form in the metadata row (raw path stays on title).
+  const [asyncSource, setAsyncSource] = useState<string | null>(null);
   const [asyncStatus, setAsyncStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
   const isFixtureMiss = result.text === NOT_FOUND_TEXT;
@@ -68,12 +72,14 @@ export default function ChunkSourceView({
     }
     setAsyncStatus('loading');
     setAsyncText(null);
+    setAsyncSource(null);
     let cancelled = false;
     fetchChunkContent(chunkId)
       .then((data) => {
         if (cancelled) return;
         // 404 → null → render the 「片段不存在」 body (soft miss, not an error).
         setAsyncText(data === null ? '（片段不存在）' : data.text);
+        setAsyncSource(data?.source ?? null);
         setAsyncStatus('ready');
       })
       .catch(() => {
@@ -126,6 +132,15 @@ export default function ChunkSourceView({
         {effectiveTo !== null && effectiveTo > 0 && (
           <span data-testid="chunk-effective-to-date">
             失效日期: {formatEffectiveDate(effectiveTo)}
+          </span>
+        )}
+        {asyncSource && (
+          <span
+            data-testid="chunk-source-path"
+            title={asyncSource}
+            className="font-mono"
+          >
+            来源: {prettySourcePath(asyncSource)}
           </span>
         )}
       </div>

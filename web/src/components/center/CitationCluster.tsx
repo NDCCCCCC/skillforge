@@ -30,6 +30,7 @@ import {
   NOT_FOUND_TEXT,
 } from '../../lib/chunk-lookup';
 import { cn } from '../../lib/cn';
+import { prettySourcePath } from '../../lib/pretty-source';
 import { useAppStore } from '../../store/app-store';
 import type { Citation } from '../../types/verdict';
 import TierBadge from '../common/TierBadge';
@@ -48,6 +49,9 @@ interface HoverState {
   version: string | null;
   effectiveDate: string | null;
   notFound: boolean;
+  /** Raw Milvus source path from the async fetch (260929-d5w2); null on
+   * the synchronous fixture path (the fixture carries no source). */
+  source: string | null;
 }
 
 export default function CitationCluster({ citations }: CitationClusterProps) {
@@ -88,6 +92,7 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
       version: sync.version,
       effectiveDate: sync.effectiveDate,
       notFound: sync.text === NOT_FOUND_TEXT,
+      source: null,
     });
     setOpenChunkId(chunkId);
     if (sync.text === NOT_FOUND_TEXT) {
@@ -97,7 +102,7 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
           if (data) {
             setHover((prev) =>
               prev && prev.chunkId === chunkId
-                ? { ...prev, text: data.text, notFound: false }
+                ? { ...prev, text: data.text, notFound: false, source: data.source }
                 : prev,
             );
           }
@@ -166,6 +171,15 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
                   {hover.effectiveDate && (
                     <span className="text-[11px] text-text-muted">
                       生效 {hover.effectiveDate}
+                    </span>
+                  )}
+                  {hover.source && (
+                    <span
+                      data-testid="citation-source"
+                      title={hover.source}
+                      className="truncate font-mono text-[11px] text-text-muted"
+                    >
+                      {prettySourcePath(hover.source)}
                     </span>
                   )}
                 </span>

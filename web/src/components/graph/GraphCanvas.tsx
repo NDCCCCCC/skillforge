@@ -19,6 +19,7 @@
 import { useMemo, useState } from 'react';
 import { useAppStore } from '../../store/app-store';
 import { useTierLabel } from '../../lib/kb-bases';
+import { prettySourcePath } from '../../lib/pretty-source';
 import type { GraphEdge, KnowledgeGraph, NeighborResult, TierNode } from '../../types/knowledge';
 
 const W = 900;
@@ -195,7 +196,7 @@ function NeighborSubgraph({
           >
             <circle r={8} fill="var(--color-surface, #fff)" stroke={tierColor(n.tier)} strokeWidth={2} />
             <text y={-12} textAnchor="middle" fontSize={9} fill="var(--color-text, #111827)">
-              {n.source.replace(/\.md$/, '').slice(0, 12)}
+              {prettySourcePath(n.source).slice(0, 12)}
             </text>
             <text y={20} textAnchor="middle" fontSize={8} fill="var(--color-text-muted, #6b7280)">
               {n.chunk_id}
@@ -324,9 +325,12 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
                     }}
                     className="cursor-pointer"
                   >
+                    {/* Raw source path stays hoverable (SVG <title> tooltip);
+                        the label renders the pretty short form. */}
+                    <title>{d.filename}</title>
                     <circle r={9} fill="var(--color-surface, #fff)" stroke={tierColor(d.tier)} strokeWidth={2} />
                     <text y={-14} textAnchor="middle" fontSize={11} fill="var(--color-text, #111827)">
-                      {d.filename.replace(/\.md$/, '').slice(0, 18)}
+                      {prettySourcePath(d.filename).slice(0, 18)}
                     </text>
                     <text y={22} textAnchor="middle" fontSize={9} fill="var(--color-text-muted, #6b7280)">
                       {d.chunkCount} chunk

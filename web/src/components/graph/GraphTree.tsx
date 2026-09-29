@@ -22,6 +22,7 @@
 
 import GraphChunkNode from './GraphChunkNode';
 import { useTierLabel } from '../../lib/kb-bases';
+import { prettySourcePath } from '../../lib/pretty-source';
 import type { KnowledgeGraph, TierNode } from '../../types/knowledge';
 
 export interface GraphTreeProps {
@@ -93,7 +94,8 @@ function TierSection({
               className="rounded-md bg-bg"
             >
               <summary className="cursor-pointer px-2 py-1 text-xs font-medium text-text">
-                {doc.filename} · {doc.chunkCount} 片段
+                <span title={doc.filename}>{prettySourcePath(doc.filename)}</span> ·{' '}
+                {doc.chunkCount} 片段
               </summary>
               <div
                 data-testid="graph-doc-chunks"

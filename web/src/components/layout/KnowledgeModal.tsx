@@ -35,6 +35,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { prettySourcePath } from '../../lib/pretty-source';
 import DocViewer from '../center/DocViewer';
 import { TIER_FALLBACK_LABELS, useTierLabel } from '../../lib/kb-bases';
 
@@ -241,7 +242,9 @@ function TierSection({
                     )}
                   >
                     <FileText className="h-3 w-3 shrink-0" />
-                    <span className="truncate">{doc.filename}</span>
+                    <span className="truncate" title={doc.filename}>
+                      {prettySourcePath(doc.filename)}
+                    </span>
                   </button>
                 </li>
               );

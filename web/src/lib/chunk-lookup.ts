@@ -160,15 +160,19 @@ export function extractChunkMetadata(chunkId: string): ChunkMetadata {
 // fixture does not carry). The verdict-citation path never reaches here.
 //
 // Return contract:
-//   - 200 → { text: verbatimContent, tier: Tier | null }
+//   - 200 → { text: verbatimContent, tier: Tier | null, source: raw path }
 //   - 404 → null (a soft miss — ChunkSourceView renders 「片段不存在」)
 //   - other !ok → throws (let the caller render the error state; do NOT swallow)
+//
+// Quick 260929-d5w2 — the payload's raw `source` path is surfaced too so
+// the citation / chunk-source views can render the pretty short form
+// (prettySourcePath) while keeping the raw path for title attributes.
 //
 // Mirrors the API-base + Accept-header convention in useKnowledgeGraph.ts
 // (same /api/knowledge/... origin; Vite dev proxy handles :8888 in dev).
 export async function fetchChunkContent(
   chunkId: string,
-): Promise<{ text: string; tier: Tier | null } | null> {
+): Promise<{ text: string; tier: Tier | null; source: string | null } | null> {
   const normalized = normalizeChunkID(chunkId);
   const resp = await fetch(
     `/api/knowledge/chunk/${encodeURIComponent(normalized)}`,
@@ -196,5 +200,9 @@ export async function fetchChunkContent(
     effectiveTo: number;
     version: string;
   };
-  return { text: body.content, tier: (body.tier as Tier) ?? null };
+  return {
+    text: body.content,
+    tier: (body.tier as Tier) ?? null,
+    source: body.source ?? null,
+  };
 }
