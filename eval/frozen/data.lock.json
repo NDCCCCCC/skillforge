@@ -1,6 +1,6 @@
 {
   "lock_id": "data-v1",
-  "model_version": "v0.8",
+  "model_ver": "v0.8",
   "phase": 20,
   "phase_slug": "20-p10-6-admin-console",
   "schema_version": "v1",

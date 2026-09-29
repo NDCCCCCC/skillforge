@@ -291,6 +291,14 @@ func (r *FilesystemEvalReporter) Report(ts string) (eval.Report, error) {
 // FrozenSets scans eval/frozen/*.lock.json sidecars. Each
 // sidecar pins one frozen eval set (D6-13); the JSONL set itself
 // lives next to the .lock.json with the same stem.
+//
+// Milestone acceptance pins (data/fanout/hitl/platform-floor,
+// schema_version v1 integrity files) share this directory WITHOUT a
+// same-stem .jsonl set, and golden-dir rebaselines (deep/kpi) pin
+// sets outside eval/frozen. Those are integrity files, not D6-13
+// sidecars — they are skipped. A lock WITH a same-stem .jsonl
+// (compliance) keeps the STOP-signal semantics: malformed → the
+// whole scan fails loud.
 func (r *FilesystemEvalReporter) FrozenSets() ([]FrozenSetInfo, error) {
 	matches, err := filepath.Glob(filepath.Join(r.FrozenDir, "*.lock.json"))
 	if err != nil {
@@ -299,6 +307,16 @@ func (r *FilesystemEvalReporter) FrozenSets() ([]FrozenSetInfo, error) {
 	sort.Strings(matches)
 	out := make([]FrozenSetInfo, 0, len(matches))
 	for _, p := range matches {
+		// The set's path is the .jsonl with the same stem as the
+		// .lock.json: eval/frozen/compliance.lock.json pins
+		// eval/frozen/compliance.jsonl.
+		base := strings.TrimSuffix(p, ".lock.json")
+		if _, statErr := os.Stat(base + ".jsonl"); statErr != nil {
+			// No same-stem .jsonl → not a D6-13 sidecar (milestone
+			// integrity pin or golden-dir pin). Skip; a malformed one
+			// is caught by its own acceptance gate, not this scan.
+			continue
+		}
 		lock, err := eval.LoadLock(p)
 		if err != nil {
 			// A malformed .lock.json is a STOP signal, not a skip —
@@ -307,10 +325,6 @@ func (r *FilesystemEvalReporter) FrozenSets() ([]FrozenSetInfo, error) {
 			// scores against an un-pinned baseline.
 			return nil, err
 		}
-		// The set's path is the .jsonl with the same stem as the
-		// .lock.json: eval/frozen/compliance.lock.json pins
-		// eval/frozen/compliance.jsonl.
-		base := strings.TrimSuffix(p, ".lock.json")
 		out = append(out, FrozenSetInfo{
 			Skill: lock.SkillName,
 			Path:  base + ".jsonl",
