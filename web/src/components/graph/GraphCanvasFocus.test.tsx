@@ -147,6 +147,71 @@ describe('GraphCanvas — question focus (260929-d5w3)', () => {
   });
 });
 
+describe('GraphCanvas — dynamic viewBox + fit (260929-d5w3 Task 2)', () => {
+  /** 4 tiers × 25 docs = 100 doc nodes fanned on the outer arcs. */
+  function bigGraph(tiers: number, docsPerTier: number): KnowledgeGraph {
+    return {
+      tiers: Array.from({ length: tiers }, (_, t) => ({
+        tier: `tier-${t}`,
+        docCount: docsPerTier,
+        chunkCount: docsPerTier,
+        docs: Array.from({ length: docsPerTier }, (_, d) => ({
+          id: `tier-${t}::doc-${t}-${d}.md`,
+          filename: `doc-${t}-${d}.md`,
+          chunkCount: 1,
+          chunks: [{ id: `c-${t}-${d}`, effectiveFrom: null, effectiveTo: null, version: null }],
+        })),
+      })),
+    };
+  }
+
+  function nodeY(el: Element): number {
+    const m = /translate\((-?[\d.]+),\s*(-?[\d.]+)\)/.exec(el.getAttribute('transform') ?? '');
+    expect(m).not.toBeNull();
+    return Number(m![2]);
+  }
+
+  it('④ fits the viewBox to the real content bbox — bottom arc of 100 docs covered', () => {
+    render(<GraphCanvas graph={bigGraph(4, 25)} filter="" />);
+    const nodes = screen.getAllByTestId('graph-doc-node');
+    expect(nodes).toHaveLength(100);
+    const [vx, vy, vw, vh] = screen
+      .getByRole('img')
+      .getAttribute('viewBox')!
+      .split(/[\s,]+/)
+      .map(Number);
+    expect(vw).toBeGreaterThan(0);
+    // NOT the historical fixed canvas — the fit box grows past 640 to
+    // include the bottom arc + labels.
+    expect(vh).not.toBe(640);
+    // Every node y ± label margin (40) + fit pad (24) is covered.
+    const ys = nodes.map(nodeY);
+    const maxY = Math.max(...ys);
+    const minY = Math.min(...ys);
+    expect(vy).toBeLessThanOrEqual(minY - 40 - 24 + 1e-6);
+    expect(vy + vh).toBeGreaterThanOrEqual(maxY + 40 + 24 - 1e-6);
+    // The old fixed box (y ∈ [0, 640]) could NOT cover the bottom arc —
+    // pin that the fit box extends strictly beyond it.
+    expect(vy + vh).toBeGreaterThan(640);
+    // And the fit button is in the footer.
+    expect(screen.getByTestId('graph-fit-btn')).toBeInTheDocument();
+  });
+
+  it('④ keeps the 3-tier small graph inside a viewBox that also fits it', () => {
+    render(<GraphCanvas graph={TWO_TIER_GRAPH} filter="" />);
+    const [, vy, , vh] = screen
+      .getByRole('img')
+      .getAttribute('viewBox')!
+      .split(/[\s,]+/)
+      .map(Number);
+    for (const el of screen.getAllByTestId('graph-doc-node')) {
+      const y = nodeY(el);
+      expect(y).toBeGreaterThanOrEqual(vy);
+      expect(y).toBeLessThanOrEqual(vy + vh);
+    }
+  });
+});
+
 describe('lib/graph-focus — message scanning', () => {
   function assistantMsg(parts: unknown[]): UIMessage {
     return { id: `m-${Math.random()}`, role: 'assistant', parts } as unknown as UIMessage;

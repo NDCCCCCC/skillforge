@@ -25,7 +25,16 @@
 // 仅当前问题 / 全库 and the choice persists (localStorage). An answered
 // turn WITHOUT citations (e.g. a refusal) shows the honest empty note and
 // falls through to the full graph.
-import { useMemo, useState } from 'react';
+//
+// Quick 260929-d5w3 Task 2 — CANVAS FIT + PAN/ZOOM. The viewBox is no
+// longer the fixed 0 0 900 640: after layout the canvas measures the real
+// bounding box of every node + label and fits it (preserveAspectRatio
+// meet), so the bottom arc is visible at ANY container size — the
+// fullscreen overlay automatically shows the whole graph. Wheel zooms
+// (0.4x–4x, anchored at the cursor), pointer-drag pans, double-click or
+// the 适应 button resets to fit. Zero dependencies — hand-rolled view
+// state, no d3-zoom.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../store/app-store';
 import { useTierLabel } from '../../lib/kb-bases';
 import { computeFocusMatch, type GraphFocus, type GraphFocusMatch } from '../../lib/graph-focus';
@@ -38,6 +47,54 @@ const CX = W / 2;
 const CY = H / 2;
 const TIER_RING = 110; // inner ring radius (tier nodes)
 const DOC_RING_BASE = 260; // outer ring base radius (doc nodes)
+const FIT_PAD = 24; // padding around the content bounding box
+const MIN_ZOOM = 0.4; // max zoom-out relative to the fit box
+const MAX_ZOOM = 4; // max zoom-in relative to the fit box
+
+/** A viewBox rectangle: x/y origin + size. null view state = "fit". */
+interface ViewBoxRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Fallback box (the historical fixed canvas) when nothing is laid out —
+ * e.g. neighbor mode renders its subgraph centered at CX/CY. */
+const FALLBACK_BBOX: ViewBoxRect = { x: 0, y: 0, w: W, h: H };
+
+/**
+ * Measure the real bounding box of the laid-out graph, including label
+ * margins: tier nodes need ±60 x (circle r=26 + CJK label) and ±40 y;
+ * doc nodes need ±80 x (18-char label at fontSize 11 ≈ 108px + ring r=16)
+ * and ±40 y (label above at -14, chunk count below at +22). FIT_PAD is
+ * added on every side. This is what makes the bottom arc visible.
+ */
+function measureContentBBox(positioned: PositionedTier[]): ViewBoxRect {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const t of positioned) {
+    minX = Math.min(minX, t.x - 60);
+    maxX = Math.max(maxX, t.x + 60);
+    minY = Math.min(minY, t.y - 40);
+    maxY = Math.max(maxY, t.y + 40);
+    for (const d of t.docs) {
+      minX = Math.min(minX, d.x - 80);
+      maxX = Math.max(maxX, d.x + 80);
+      minY = Math.min(minY, d.y - 40);
+      maxY = Math.max(maxY, d.y + 40);
+    }
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return FALLBACK_BBOX;
+  return {
+    x: minX - FIT_PAD,
+    y: minY - FIT_PAD,
+    w: maxX - minX + FIT_PAD * 2,
+    h: maxY - minY + FIT_PAD * 2,
+  };
+}
 
 // Palette keyed by registry SLUG (26-08: the tier vocabulary is
 // registry-driven). A slug outside the seed palette falls back to the
@@ -284,6 +341,10 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
     );
   }, [graph, filter, collapsed, isNeighborMode]);
 
+  // Real content bounding box incl. label margins (260929-d5w3 Task 2) —
+  // the fit target for the dynamic viewBox.
+  const contentBBox = useMemo<ViewBoxRect>(() => measureContentBBox(positioned), [positioned]);
+
   // Citations ∩ graph docs. null when the focus misses the current corpus
   // (stale session vs re-index) — the canvas then stays full-graph instead
   // of fading everything to invisible.
@@ -304,6 +365,94 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
     });
   }
 
+  // ── View state (260929-d5w3 Task 2) ─────────────────────────────────
+  // null = "fit to content" — the viewBox auto-tracks the measured bbox
+  // (so filter changes / corpus growth re-fit for free). Any zoom or pan
+  // pins an explicit rect; 适应 / double-click returns to null.
+  const [view, setView] = useState<ViewBoxRect | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  // Render-time mirror so the (mount-once) wheel listener and pan
+  // handlers always read the CURRENT bbox without re-subscribing.
+  const bboxRef = useRef<ViewBoxRect>(contentBBox);
+  bboxRef.current = contentBBox;
+  const activeView = view ?? contentBBox;
+
+  /** Convert client (browser) coordinates to svg user-space coordinates
+   * through the CURRENT viewBox, honoring preserveAspectRatio="meet"
+   * centering. Returns null when the svg has no layout (jsdom / hidden). */
+  function clientToSvgPoint(clientX: number, clientY: number, v: ViewBoxRect): { x: number; y: number } | null {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    const scale = Math.min(rect.width / v.w, rect.height / v.h);
+    const offX = (rect.width - v.w * scale) / 2;
+    const offY = (rect.height - v.h * scale) / 2;
+    return {
+      x: v.x + (clientX - rect.left - offX) / scale,
+      y: v.y + (clientY - rect.top - offY) / scale,
+    };
+  }
+
+  // Wheel zoom — React's root wheel listener is passive, so preventDefault
+  // needs a manual non-passive subscription (otherwise the page scrolls
+  // while zooming).
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      const factor = Math.exp(e.deltaY * 0.0015); // deltaY>0 → zoom out
+      setView((prev) => {
+        const cur = prev ?? bboxRef.current;
+        const base = bboxRef.current;
+        const p = clientToSvgPoint(e.clientX, e.clientY, cur);
+        if (!p || cur.w === 0 || cur.h === 0) return prev;
+        const w = Math.min(base.w / MIN_ZOOM, Math.max(base.w / MAX_ZOOM, cur.w * factor));
+        const h = w * (cur.h / cur.w); // zoom preserves the fit aspect ratio
+        // Keep the svg point under the cursor anchored.
+        const fx = (p.x - cur.x) / cur.w;
+        const fy = (p.y - cur.y) / cur.h;
+        return { x: p.x - fx * w, y: p.y - fy * h, w, h };
+      });
+    }
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Pointer-drag pan — starts ONLY on the background (svg itself or the
+  // pan-surface rect) so doc/tier node clicks stay clean.
+  const panRef = useRef<{ startX: number; startY: number; origin: ViewBoxRect; scale: number } | null>(null);
+
+  function onPanPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const target = e.target as Element;
+    if (!(target === e.currentTarget || target.getAttribute('data-pan-surface') === 'true')) return;
+    const cur = view ?? contentBBox;
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+    panRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origin: cur,
+      scale: Math.min(rect.width / cur.w, rect.height / cur.h),
+    };
+    // jsdom lacks setPointerCapture — guard so pointer-based tests can't
+    // crash on the API itself.
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }
+
+  function onPanPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    const pan = panRef.current;
+    if (!pan) return;
+    // Content follows the mouse → the view window moves opposite.
+    const dx = (e.clientX - pan.startX) / pan.scale;
+    const dy = (e.clientY - pan.startY) / pan.scale;
+    setView({ x: pan.origin.x - dx, y: pan.origin.y - dy, w: pan.origin.w, h: pan.origin.h });
+  }
+
+  function onPanPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    panRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  }
+
   function openDoc(tier: string, filename: string) {
     // tier is a plain registry slug (26-08 widened Tier to string).
     setCenterView({ kind: 'doc-view', tier, file: filename });
@@ -320,7 +469,10 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
   }
 
   return (
-    <div data-testid="graph-canvas" className="rounded-md border border-border bg-surface">
+    <div
+      data-testid="graph-canvas"
+      className="flex h-full min-h-0 flex-col rounded-md border border-border bg-surface"
+    >
       {/* Question-focus toolbar (260929-d5w3). Renders when a focus matched
           the graph (toggle) or when an answered turn had no citations (note). */}
       {(focusMatch !== null || showFocusEmptyNote) && (
@@ -350,12 +502,30 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
           )}
         </div>
       )}
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        role="img"
-        aria-label="知识库关系图：层级与文档节点"
-      >
+      <div className="min-h-0 flex-1">
+        <svg
+          ref={svgRef}
+          viewBox={`${activeView.x} ${activeView.y} ${activeView.w} ${activeView.h}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="h-full w-full cursor-grab select-none"
+          role="img"
+          aria-label="知识库关系图：层级与文档节点"
+          onPointerDown={onPanPointerDown}
+          onPointerMove={onPanPointerMove}
+          onPointerUp={onPanPointerUp}
+          onPointerCancel={onPanPointerUp}
+          onDoubleClick={() => setView(null)}
+        >
+          {/* Pan surface — a transparent rect inflated 3× past the view so
+              empty space stays grabbable even when zoomed in past the bbox. */}
+          <rect
+            data-pan-surface="true"
+            x={activeView.x - activeView.w}
+            y={activeView.y - activeView.h}
+            width={activeView.w * 3}
+            height={activeView.h * 3}
+            fill="transparent"
+          />
         {/* ── Neighbor subgraph mode ── */}
         {isNeighborMode ? (
           <NeighborSubgraph result={neighborResult!} centerX={CX} centerY={CY} />
@@ -499,11 +669,23 @@ export default function GraphCanvas({ graph, filter, neighborResult, overlayEdge
             {EDGE_TYPE_LABEL[overlayEdges?.find((e) => edgeKey(e) === hoveredEdge)?.edge_type ?? ''] ?? hoveredEdge}
           </text>
         )}
-      </svg>
-      <div className="border-t border-border px-3 py-1.5 text-xs text-text-muted">
-        {isNeighborMode
-          ? '邻居视图 · 点击空白处返回全图'
-          : '点击文档节点查看正文 · 点击层级节点折叠/展开 · 悬停边查看类型'}
+        </svg>
+      </div>
+      <div className="flex flex-none items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-xs text-text-muted">
+        <span className="min-w-0 truncate">
+          {isNeighborMode
+            ? '邻居视图 · 点击空白处返回全图'
+            : '滚轮缩放 · 拖拽平移 · 双击适应 · 点击文档查看正文'}
+        </span>
+        <button
+          type="button"
+          data-testid="graph-fit-btn"
+          onClick={() => setView(null)}
+          title="重置视图：缩放/平移恢复适配全图"
+          className="inline-flex shrink-0 items-center rounded-md border border-border bg-surface-1 px-2 py-0.5 font-semibold text-text hover:bg-surface-2"
+        >
+          适应
+        </button>
       </div>
     </div>
   );
