@@ -1,38 +1,56 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Quick 260929-g7x — OntologyGraphView, the 本体视图.
+// Quick 260929-k3m — OntologyGraphView, the 本体视图, now on
+// react-force-graph-3d (true-3D force layout; replaces the 260929-g7x
+// cytoscape rendering). The DATA PIPELINE is untouched: focus resolution
+// (sources sync path + chunk_id→note async path), the
+// GET /api/admin/ontology/graph fetch, the 仅当前问题/全库 toggle with the
+// SHARED localStorage key, stats/legend, and the detail side panel all
+// behave exactly as before — only the RENDERING layer changed.
 //
-// Renders the note-centric ABox projection (GET /api/admin/ontology/graph,
-// see ontologyApi.ts) with Cytoscape.js — the SAME plain-npm posture as
-// governance/ProvenanceGraphView (no React wrapper): mount via container
-// ref + useEffect, destroy on unmount, colors read from CSS variables at
-// mount. cose force layout carries the 全库 mode (200+ nodes); zoom/pan is
-// cytoscape-native.
+// Why react-force-graph-3d (vs cytoscape): d3-force-3d propagates drags
+// through the live simulation (drag a node, its neighbors follow), the
+// wheel orbits/zooms a real 3D camera, and directional particles make
+// relation direction visible without arrowheads. three.js (~600KB) is
+// kept OUT of the main chunk via React.lazy + Suspense (「正在加载三维
+// 引擎…」fallback).
 //
-// Node kind palette (UI-SPEC tokens; no purple token exists in theme.css,
-// so organization hardcodes violet-400 with the token fallback comment):
+// Node kind palette (UI-SPEC tokens; colors are RESOLVED hex — three.js
+// cannot read CSS var strings; no purple token exists in theme.css so
+// organization keeps the g7x hardcoded violet):
 //   note               蓝  --color-primary
 //   table              橙  --color-status-needs-info
 //   insurance_product  绿  --color-status-compliant
 //   organization       紫  #a78bfa (hardcoded — no theme token)
+//
+// Relation color carries over from g7x; parent_org was dashed in 2D —
+// 3D has no dash primitive, so it renders at 0.5 alpha instead.
 //
 // Question focus (260929-d5w3 semantics, 择简 variant): when a focus
 // derives ≥1 note id the view fetches that focused neighborhood; the
 // toggle flips 仅当前问题 ↔ 全库 and persists under the SAME localStorage
 // key GraphCanvas uses, so the two views share one operator preference.
 //
-// Follow-up (same quick) — wire citations carry ONLY chunk_id/span/tier,
-// so note ids resolve ASYNC: focus.chunkIds → fetchChunkContent (existing
-// GET /api/knowledge/chunk/:id, returns the chunk's source path) →
-// basename leading digits → note_XXX (lib/graph-focus
-// resolveFocusNoteIds). Resolution failure is per-chunk; all chunks
-// failing degrades to 全库. The projection fetch is held while resolving.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import cytoscape from 'cytoscape';
+// Citations carry ONLY chunk_id/span/tier, so note ids resolve ASYNC:
+// focus.chunkIds → fetchChunkContent (GET /api/knowledge/chunk/:id,
+// returns the chunk's source path) → basename leading digits → note_XXX
+// (lib/graph-focus resolveFocusNoteIds). Resolution failure is
+// per-chunk; all chunks failing degrades to 全库. The projection fetch
+// is held while resolving.
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentType, MutableRefObject } from 'react';
+import type {
+  ForceGraphMethods,
+  ForceGraphProps,
+  GraphData,
+  LinkObject,
+  NodeObject,
+} from 'react-force-graph-3d';
 import {
   fetchOntologyGraph,
   OntologyGraphApiError,
+  type OntologyEdge,
   type OntologyGraph,
   type OntologyNode,
 } from './ontologyApi';
@@ -41,6 +59,15 @@ import {
   resolveFocusNoteIds,
   type GraphFocus,
 } from '../../lib/graph-focus';
+
+/** three.js is heavy — never let it ride into the main chunk. The cast
+ * pins the accessor generics (FCwithRef's inference degrades NodeType to
+ * {} and would strip the node payload from every accessor). */
+const LazyForceGraph3D = lazy(
+  () => import('react-force-graph-3d'),
+) as unknown as ComponentType<
+  ForceGraphProps<FgNode, FgLink> & { ref?: MutableRefObject<FgMethods | undefined> }
+>;
 
 /** Focus-mode preference key — SHARED with GraphCanvas (d5w3). */
 const FOCUS_MODE_STORAGE_KEY = 'skillforge.graph.focusMode';
@@ -77,6 +104,43 @@ const EDGE_LABEL: Record<string, string> = {
   parent_org: '上级机构',
 };
 
+/** #rrggbb → rgba(...) — three.js material color with alpha. */
+function withAlpha(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/** Resolve a CSS token to a concrete hex (three.js can't read var()). */
+function readToken(name: string, fallback: string): string {
+  try {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Force-graph node payload — the OntologyNode plus engine fields. */
+interface FgNode {
+  id: string;
+  /** react-force-graph's label accessor field. */
+  name: string;
+  kind: OntologyNode['kind'];
+  label: string;
+  tier?: string;
+  /** Relative size: notes are the hubs, everything else smaller. */
+  val: number;
+}
+
+interface FgLink {
+  source: string;
+  target: string;
+  type: OntologyEdge['type'];
+}
+
+type FgMethods = ForceGraphMethods<NodeObject<FgNode>, LinkObject<FgNode, FgLink>>;
+
 export interface OntologyGraphViewProps {
   /** Citations of the latest assistant verdict (same GraphFocus the
    * document canvas consumes). null/undefined = 全库. */
@@ -90,9 +154,17 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<OntologyNode | null>(null);
+  /** Hovered node id — drives the 1.8× magnify. */
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  /** Measured host size — passed explicitly to ForceGraph3D (without
+   * explicit width/height it renders at a degenerate default). */
+  const [size, setSize] = useState({ w: 0, h: 0 });
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<cytoscape.Core | null>(null);
+  const canvasHostRef = useRef<HTMLDivElement>(null);
+  const fgRef = useRef<FgMethods | undefined>(undefined);
+  /** Dataset the auto-fit already ran for (one fit per fetch, not per
+   * engine stop after every drag reheat). */
+  const fittedGraphRef = useRef<OntologyGraph | null>(null);
 
   // Focus → note ids, two complementary paths:
   //   - sources (tolerated future citation field) — sync derivation.
@@ -167,203 +239,113 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notesKey, resolving]);
 
-  // Cytoscape mount — re-init whenever the data changes (the projection
-  // itself is small; a full re-layout is cheaper than incremental sync).
-  useEffect(() => {
-    if (!containerRef.current || !data) return;
-
-    // Read CSS tokens at mount time (ProvenanceGraphView posture).
-    const cs = getComputedStyle(document.documentElement);
-    const token = (name: string) => cs.getPropertyValue(name).trim();
-    const primary = token('--color-primary');
-    const primaryHover = token('--color-primary-hover');
-    const borderMuted = token('--color-border-muted');
-    const text = token('--color-text');
-    const textMuted = token('--color-text-muted');
-    const amber = token('--color-status-needs-info');
-    const green = token('--color-status-compliant');
-    const violet = '#a78bfa'; // organization 紫 — no purple token in theme.css
-
-    const cy = cytoscape({
-      container: containerRef.current,
-      elements: [
-        ...data.nodes.map((n) => ({
-          data: { id: n.id, label: n.label, kind: n.kind, tier: n.tier ?? '' },
-        })),
-        ...data.edges.map((e) => ({
-          data: {
-            id: `${e.from}|${e.to}|${e.type}`,
-            source: e.from,
-            target: e.to,
-            type: e.type,
-          },
-        })),
-      ],
-      layout: {
-        name: 'cose',
-        animate: false,
-        padding: 24,
-        nodeOverlap: 8,
-        idealEdgeLength: 80,
-      } as cytoscape.LayoutOptions,
-      // 0.2 (cytoscape's conservative default here) felt sluggish on the
-      // dense 全库 graph — 1.0 gives an aggressive wheel step.
-      wheelSensitivity: 1.0,
-      userZoomingEnabled: true,
-      userPanningEnabled: true,
-      // Nodes ARE grabbable — dragging a node out of the way is the
-      // primary declutter interaction on the dense 全库 graph.
-      autoungrabify: false,
-      boxSelectionEnabled: false,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            label: 'data(label)',
-            'font-family': 'var(--font-sans)',
-            'font-size': '11px',
-            'font-weight': 600,
-            shape: 'round-rectangle',
-            width: 'label',
-            height: 26,
-            padding: '10px',
-            'background-color': primary,
-            'border-width': 2,
-            'border-color': primaryHover,
-            // Label inside the pill (white on kind color) — reads far
-            // better at overview zoom than the old bottom-outside text.
-            color: '#ffffff',
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-margin-y': 0,
-          },
-        },
-        {
-          selector: 'edge',
-          style: {
-            width: 2,
-            'curve-style': 'bezier',
-            'control-point-step-size': 40,
-            'line-color': borderMuted,
-            'target-arrow-shape': 'triangle',
-            'target-arrow-color': borderMuted,
-          },
-        },
-        // Edge color by relation type (matches the legend semantics).
-        {
-          selector: 'edge[type = "references_table"]',
-          style: { 'line-color': amber, 'target-arrow-color': amber },
-        },
-        {
-          selector: 'edge[type = "involves_product"]',
-          style: { 'line-color': green, 'target-arrow-color': green },
-        },
-        {
-          selector: 'edge[type = "involves_org"]',
-          style: { 'line-color': violet, 'target-arrow-color': violet },
-        },
-        // parent_org dashed (hierarchy is a weaker, derived relation).
-        {
-          selector: 'edge[type = "parent_org"]',
-          style: {
-            'line-style': 'dashed',
-            'line-color': violet,
-            'target-arrow-color': violet,
-            'target-arrow-shape': 'triangle',
-          },
-        },
-        {
-          selector: 'node[kind = "note"]',
-          style: {
-            'background-color': primary,
-            'border-color': primaryHover,
-            // Notes are the hubs — slightly taller so they read first.
-            height: 30,
-            'font-size': '12px',
-          },
-        },
-        {
-          selector: 'node[kind = "table"]',
-          style: { 'background-color': amber, 'border-color': amber },
-        },
-        {
-          selector: 'node[kind = "insurance_product"]',
-          style: { 'background-color': green, 'border-color': green },
-        },
-        {
-          selector: 'node[kind = "organization"]',
-          style: { 'background-color': violet, 'border-color': violet },
-        },
-        {
-          selector: 'node.selected',
-          style: {
-            'border-width': 4,
-            'border-color': text,
-            'overlay-color': primary,
-            'overlay-opacity': 0.18,
-            'overlay-padding': 10,
-          },
-        },
-        {
-          selector: '.faded',
-          style: {
-            opacity: 0.12,
-            'text-opacity': 0.25,
-          },
-        },
-        {
-          selector: 'edge.faded',
-          style: {
-            opacity: 0.06,
-          },
-        },
-      ],
-    });
-    cyRef.current = cy;
-
-    cy.on('tap', 'node', (e) => {
-      const id = e.target.id();
-      const node = data.nodes.find((n) => n.id === id);
-      if (node) {
-        // Neighborhood highlight (mirrors the old document graph's
-        // selected ring, plus neighbor-vs-rest dimming so relations
-        // read at a glance on the 100+ node 全库 graph).
-        cy.elements().removeClass('selected').addClass('faded');
-        const self = cy.$(`#${CSS.escape(id)}`);
-        self.removeClass('faded').addClass('selected');
-        self.neighborhood().removeClass('faded');
-        setSelected(node);
-      }
-    });
-    cy.on('tap', (e) => {
-      if (e.target === cy) {
-        cy.elements().removeClass('selected').removeClass('faded');
-        setSelected(null);
-      }
-    });
-
-    // Zero-height guard: the tab body sizes by content, so the container
-    // can be 0px tall at init (blank-canvas bug). Re-measure on every
-    // size change; fit once the canvas first gains real height.
-    let sawHeight = false;
-    const ro = new ResizeObserver(() => {
-      const h = containerRef.current?.clientHeight ?? 0;
-      if (h > 0 && !sawHeight) {
-        sawHeight = true;
-        cy.resize();
-        cy.fit(undefined, 24);
-      } else if (h > 0) {
-        cy.resize();
-      }
-    });
-    ro.observe(containerRef.current);
-
-    return () => {
-      ro.disconnect();
-      cyRef.current = null;
-      cy.destroy();
+  // Node/link engine payloads. Fresh objects per fetch — the engine
+  // re-seeds positions (a full re-layout, same posture as the old
+  // cytoscape re-init).
+  const graphData = useMemo<GraphData<FgNode, FgLink>>(() => {
+    if (!data) return { nodes: [], links: [] };
+    return {
+      nodes: data.nodes.map((n) => ({
+        ...n,
+        name: n.label,
+        val: n.kind === 'note' ? 6 : 3,
+      })),
+      links: data.edges.map((e) => ({
+        source: e.from,
+        target: e.to,
+        type: e.type,
+      })),
     };
   }, [data]);
+
+  // Colors are RESOLVED once per mount — three.js needs concrete rgba
+  // strings, not var() references.
+  const palette = useMemo(() => ({
+    note: readToken('--color-primary', '#2563eb'),
+    table: readToken('--color-status-needs-info', '#f59e0b'),
+    product: readToken('--color-status-compliant', '#16a34a'),
+    // organization 紫 — no purple token in theme.css (g7x posture kept).
+    org: '#a78bfa',
+    muted: readToken('--color-border-muted', '#64748b'),
+  }), []);
+
+  const linkColorFor = useCallback(
+    (type: OntologyEdge['type']): string => {
+      switch (type) {
+        case 'references_table':
+          return palette.table;
+        case 'involves_product':
+          return palette.product;
+        case 'involves_org':
+          return palette.org;
+        case 'parent_org':
+          // Hierarchy is a weaker derived relation — 2D dashed it; 3D has
+          // no dash primitive, so half-alpha plays the same role.
+          return withAlpha(palette.org, 0.5);
+        default:
+          return palette.muted;
+      }
+    },
+    [palette],
+  );
+
+  const nodeColorFor = useCallback(
+    (kind: OntologyNode['kind']): string => {
+      switch (kind) {
+        case 'note':
+          return palette.note;
+        case 'table':
+          return palette.table;
+        case 'insurance_product':
+          return palette.product;
+        case 'organization':
+          return palette.org;
+        default:
+          return palette.muted;
+      }
+    },
+    [palette],
+  );
+
+  /** zoomToFit(800ms transition, 40px padding) — once per dataset. */
+  const fitOnce = useCallback((graph: OntologyGraph) => {
+    if (fittedGraphRef.current === graph) return;
+    fittedGraphRef.current = graph;
+    fgRef.current?.zoomToFit(800, 40);
+  }, []);
+
+  // Zero-height guard (same posture as the cytoscape version): the tab
+  // body sizes by content, so the host can be 0px tall when data first
+  // lands. Measure via ResizeObserver → explicit width/height props
+  // (without them ForceGraph3D renders at a degenerate default size);
+  // fit once the canvas first gains real height.
+  useEffect(() => {
+    const el = canvasHostRef.current;
+    if (!data || !el) return;
+    let sawReal = false;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+      if (!sawReal) {
+        sawReal = true;
+        fitOnce(data);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [data, fitOnce]);
+
+  // Layout density for the ~160-node 全库 graph: tighter repulsion +
+  // 60px link distance keeps labels readable without exploding the
+  // cluster. Re-applied per dataset (covers engine re-init on refetch).
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    fg.d3Force('charge')?.strength(-120);
+    fg.d3Force('link')?.distance(60);
+  }, [graphData]);
 
   function toggleFocusMode() {
     setFocusMode((prev) => {
@@ -451,7 +433,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
           <button
             type="button"
             data-testid="ontology-fit-btn"
-            onClick={() => cyRef.current?.fit(undefined, 24)}
+            onClick={() => fgRef.current?.zoomToFit(800, 40)}
             title="重新适配全部节点"
             className="ml-1 rounded border border-border px-1.5 py-0.5 font-semibold text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
           >
@@ -461,15 +443,46 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* Cytoscape container */}
+        {/* 3D force-graph canvas (lazy three.js chunk) */}
         <div className="min-h-0 flex-1">
           <div
-            ref={containerRef}
+            ref={canvasHostRef}
             data-testid="ontology-graph-canvas"
             className="h-full w-full min-h-[300px]"
             role="img"
             aria-label={`本体图谱：${data.nodes.length} 个实体、${data.edges.length} 条关系`}
-          />
+          >
+            <Suspense
+              fallback={
+                <div className="flex h-full min-h-[300px] items-center justify-center text-sm text-text-muted">
+                  正在加载三维引擎…
+                </div>
+              }
+            >
+              <LazyForceGraph3D
+                ref={fgRef}
+                graphData={graphData}
+                width={size.w || undefined}
+                height={size.h || undefined}
+                backgroundColor="rgba(0,0,0,0)"
+                showNavInfo={false}
+                nodeColor={(n) => nodeColorFor(n.kind)}
+                nodeLabel={(n) => `${n.label} · ${KIND_LABEL[n.kind]}`}
+                nodeVal={(n) => (hoverId === n.id ? n.val * 1.8 : n.val)}
+                linkColor={(l) => linkColorFor(l.type)}
+                linkWidth={1.5}
+                linkDirectionalParticles={3}
+                linkDirectionalParticleSpeed={0.006}
+                onNodeClick={(n) => {
+                  const found = data.nodes.find((x) => x.id === n.id);
+                  if (found) setSelected(found);
+                }}
+                onBackgroundClick={() => setSelected(null)}
+                onNodeHover={(n) => setHoverId(n ? n.id : null)}
+                onEngineStop={() => fitOnce(data)}
+              />
+            </Suspense>
+          </div>
         </div>
         {/* Detail side panel (governance posture) */}
         <div
@@ -509,7 +522,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
 
       <div className="flex flex-none items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-xs text-text-muted">
         <span className="min-w-0 truncate">
-          滚轮缩放 · 拖拽平移 · 节点可拖拽 · 点节点高亮邻域 · {EDGE_LABEL.references_table}实线 · {EDGE_LABEL.parent_org}虚线
+          左键旋转 · 右键平移 · 滚轮缩放 · 节点可拖拽（力学联动） · 粒子流向=关系方向 · {EDGE_LABEL.parent_org}为半透明
         </span>
       </div>
     </div>

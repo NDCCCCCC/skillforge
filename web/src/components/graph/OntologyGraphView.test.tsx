@@ -1,44 +1,50 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Quick 260929-g7x — OntologyGraphView pins.
+// Quick 260929-k3m — OntologyGraphView pins (react-force-graph-3d era).
 //
-// Cytoscape is mocked (the governance ProvenanceGraphView has no test
-// precedent; jsdom has no canvas, so a real mount would explode). The
-// mock records the init config so the assertions run against the REAL
-// element/style payloads the component builds:
-//   ① 全库 fetch (no notes param) + cytoscape init with all node kinds
-//   ② focus → notes=note_032 wire param (sync source path + async
-//     chunk_id resolution through fetchChunkContent; all-fail → 全库)
-//   ③ node tap → detail panel (kind/label/tier)
-//   ④ 仅当前问题 ↔ 全库 toggle refetches
-//   ⑤ 403 → readable admin-token error, never a blank canvas
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+// react-force-graph-3d is mocked (jsdom has no WebGL; three.js would
+// explode on mount). The stub renders a probe div carrying the node/link
+// counts and records every props object it receives, so assertions run
+// against the REAL graphData/accessor payloads the component builds:
+//   ① 全库 fetch (no notes param) + graphData with all node kinds,
+//     note-hub sizing, and the directional-particle wiring
+//   ② focus → notes=note_032 wire param (sync source path)
+//   ③ chunk_ids → fetchChunkContent async resolution → notes param
+//     (projection fetch held during resolution — loading state visible)
+//   ④ all chunks failing resolution degrades to the full projection
+//   ⑤ node click → detail panel (kind/label/tier); background click clears
+//   ⑥ 仅当前问题 ↔ 全库 toggle refetches + persists the shared pref key
+//   ⑦ honest empty state
+//   ⑧ 403 → readable admin-token error, never a blank canvas
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import OntologyGraphView from './OntologyGraphView';
 import type { GraphFocus } from '../../lib/graph-focus';
 import type { OntologyGraph } from './ontologyApi';
 
-const { cyInstance, cytoscapeMock } = vi.hoisted(() => ({
-  cyInstance: {
-    on: vi.fn(),
-    destroy: vi.fn(),
-    // Neighborhood highlight chains: elements().removeClass().addClass()
-    // and $(sel).removeClass().addClass()
-    elements: vi.fn(() => {
-      const chain = { removeClass: vi.fn(() => chain), addClass: vi.fn(() => chain) };
-      return chain;
-    }),
-    $: vi.fn(() => {
-      const chain = { removeClass: vi.fn(() => chain), addClass: vi.fn(() => chain), neighborhood: vi.fn(() => chain) };
-      return chain;
-    }),
-  },
-  cytoscapeMock: vi.fn(() => cyInstance),
+const { fgProps } = vi.hoisted(() => ({
+  fgProps: [] as Array<Record<string, unknown>>,
 }));
 
-vi.mock('cytoscape', () => ({ default: cytoscapeMock }));
+vi.mock('react-force-graph-3d', () => ({
+  default: function ForceGraph3DStub(props: Record<string, unknown>) {
+    fgProps.push(props);
+    const gd = props.graphData as
+      | { nodes: unknown[]; links: unknown[] }
+      | undefined;
+    return (
+      <div
+        data-testid="force-graph-3d"
+        data-graph={JSON.stringify({
+          nodes: gd?.nodes.length ?? 0,
+          links: gd?.links.length ?? 0,
+        })}
+      />
+    );
+  },
+}));
 
 const ONTOLOGY_GRAPH: OntologyGraph = {
   nodes: [
@@ -114,13 +120,18 @@ function chunkWireBody(source: string) {
   };
 }
 
-/** The cytoscape 'tap node' handler the component registered. */
-function registeredTapNodeHandler(): (e: unknown) => void {
-  const call = cyInstance.on.mock.calls.find(
-    (c) => c[0] === 'tap' && c[1] === 'node',
-  );
-  if (!call) throw new Error('component never registered cy.on("tap", "node")');
-  return call[2] as (e: unknown) => void;
+/** Props the stub received on its most recent render. */
+function lastFgProps(): Record<string, unknown> {
+  const props = fgProps.at(-1);
+  if (!props) throw new Error('ForceGraph3D stub never rendered');
+  return props;
+}
+
+function fgGraphData(): { nodes: Array<Record<string, unknown>>; links: Array<Record<string, unknown>> } {
+  return lastFgProps().graphData as {
+    nodes: Array<Record<string, unknown>>;
+    links: Array<Record<string, unknown>>;
+  };
 }
 
 beforeEach(() => {
@@ -132,41 +143,41 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.removeItem('skillforge.graph.focusMode');
-  cytoscapeMock.mockClear();
-  cyInstance.on.mockClear();
-  cyInstance.destroy.mockClear();
+  fgProps.length = 0;
 });
 
 describe('OntologyGraphView', () => {
-  it('fetches 全库 (no notes param) on mount and mounts cytoscape with all node kinds', async () => {
+  it('fetches 全库 (no notes param) on mount and feeds force-graph-3d all node kinds', async () => {
     const fetchMock = mockFetchRouter([{ match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH }]);
     render(<OntologyGraphView />);
-    const view = await screen.findByTestId('ontology-graph-view');
-    expect(view).toBeInTheDocument();
+    expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/ontology/graph',
       expect.objectContaining({ headers: expect.objectContaining({ 'X-Admin-Token': '' }) }),
     );
 
-    expect(cytoscapeMock).toHaveBeenCalledTimes(1);
-    const initArg = (cytoscapeMock.mock.calls as unknown as Array<[unknown]>)[0]?.[0] ?? {};
-    const config = initArg as {
-      elements: Array<{ data: Record<string, unknown> }>;
-      layout: { name: string };
-    };
-    const kinds = config.elements
-      .filter((el) => 'kind' in el.data)
-      .map((el) => el.data.kind);
-    expect(kinds).toEqual(
+    // The 3D engine stub mounts with the full projection.
+    const stub = await screen.findByTestId('force-graph-3d');
+    expect(stub).toHaveAttribute('data-graph', JSON.stringify({ nodes: 5, links: 4 }));
+
+    const { nodes, links } = fgGraphData();
+    expect(nodes.map((n) => n.kind)).toEqual(
       expect.arrayContaining(['note', 'table', 'insurance_product', 'organization']),
     );
-    const product = config.elements.find((el) => el.data.kind === 'insurance_product');
-    expect(product?.data.label).toBe('车险');
-    const parentEdge = config.elements.find(
-      (el) => el.data.type === 'parent_org',
-    );
-    expect(parentEdge).toBeDefined();
-    expect(config.layout.name).toBe('cose');
+    const product = nodes.find((n) => n.kind === 'insurance_product');
+    expect(product?.label).toBe('车险');
+    // Notes are the hubs (bigger), everything else smaller.
+    expect(nodes.find((n) => n.kind === 'note')?.val).toBe(6);
+    expect(nodes.find((n) => n.kind === 'table')?.val).toBe(3);
+    expect(product?.name).toBe('车险');
+    // Direction flows: parent_org edge survives the mapping.
+    expect(links.find((l) => l.type === 'parent_org')).toMatchObject({
+      source: 'http://skillforge.local/ontology#ent_hubei',
+      target: 'http://skillforge.local/ontology#ent_hq',
+    });
+    // Flowing particles are the dynamic-signature wiring.
+    expect(lastFgProps().linkDirectionalParticles).toBe(3);
+    expect(lastFgProps().linkDirectionalParticleSpeed).toBe(0.006);
 
     // Legend counts the four kinds.
     expect(screen.getByTestId('ontology-legend')).toHaveTextContent('笔记 1');
@@ -180,7 +191,7 @@ describe('OntologyGraphView', () => {
     };
     const fetchMock = mockFetchRouter([{ match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH }]);
     render(<OntologyGraphView focus={focus} />);
-    await screen.findByTestId('ontology-graph-view');
+    await screen.findByTestId('force-graph-3d');
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/ontology/graph?notes=note_032',
       expect.anything(),
@@ -203,7 +214,7 @@ describe('OntologyGraphView', () => {
     render(<OntologyGraphView focus={focus} />);
     // Resolution loading is visible before the projection fetch lands.
     expect(screen.getByTestId('ontology-graph-loading')).toBeInTheDocument();
-    await screen.findByTestId('ontology-graph-view');
+    await screen.findByTestId('force-graph-3d');
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/knowledge/chunk/1032',
       expect.anything(),
@@ -226,7 +237,7 @@ describe('OntologyGraphView', () => {
       { match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH },
     ]);
     render(<OntologyGraphView focus={focus} />);
-    await screen.findByTestId('ontology-graph-view');
+    await screen.findByTestId('force-graph-3d');
     // No notes resolved → 全库 fetch (no notes param), no focus toggle.
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/ontology/graph',
@@ -236,23 +247,33 @@ describe('OntologyGraphView', () => {
     expect(screen.getByTestId('ontology-legend')).toBeInTheDocument();
   });
 
-  it('tapping a node opens the detail panel with kind/label/tier', async () => {
+  it('clicking a node opens the detail panel; background click clears it', async () => {
     mockFetchRouter([{ match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH }]);
     render(<OntologyGraphView />);
-    await screen.findByTestId('ontology-graph-view');
+    await screen.findByTestId('force-graph-3d');
     expect(screen.getByTestId('ontology-node-detail')).toHaveTextContent(
       '点击节点查看本体明细',
     );
 
-    const handler = registeredTapNodeHandler();
+    // The stub receives the mapped node payload — click the product node.
+    const node = fgGraphData().nodes.find((n) => n.kind === 'insurance_product');
+    expect(node).toBeDefined();
     await act(async () => {
-      handler({ target: { id: () => 'http://skillforge.local/ontology#ent_car' } });
+      (lastFgProps().onNodeClick as (n: unknown) => void)(node);
     });
 
     const detail = screen.getByTestId('ontology-node-detail');
     expect(detail).toHaveTextContent('险种');
     expect(detail).toHaveTextContent('车险');
     expect(detail).toHaveTextContent('sql-guides');
+
+    // Background click deselects (detail back to the hint).
+    await act(async () => {
+      (lastFgProps().onBackgroundClick as () => void)();
+    });
+    expect(screen.getByTestId('ontology-node-detail')).toHaveTextContent(
+      '点击节点查看本体明细',
+    );
   });
 
   it('the 仅当前问题/全库 toggle refetches the full projection', async () => {
@@ -262,7 +283,7 @@ describe('OntologyGraphView', () => {
     };
     const fetchMock = mockFetchRouter([{ match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH }]);
     render(<OntologyGraphView focus={focus} />);
-    await screen.findByTestId('ontology-graph-view');
+    await screen.findByTestId('force-graph-3d');
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/ontology/graph?notes=note_032',
       expect.anything(),
@@ -270,15 +291,15 @@ describe('OntologyGraphView', () => {
 
     fireEvent.click(screen.getByTestId('ontology-focus-toggle'));
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/admin/ontology/graph',
-        expect.anything(),
-      );
-    });
+    // The toggle flips to 全库 and the full projection refetch lands.
+    await screen.findByTestId('force-graph-3d');
     // Preference persists under the shared GraphCanvas key.
     expect(localStorage.getItem('skillforge.graph.focusMode')).toBe('all');
     expect(screen.getByTestId('ontology-focus-toggle')).toHaveTextContent('全库');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/ontology/graph',
+      expect.anything(),
+    );
   });
 
   it('renders the honest empty state when the projection has no nodes', async () => {

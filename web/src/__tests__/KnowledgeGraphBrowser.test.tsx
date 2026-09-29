@@ -26,19 +26,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
-const { cyInstance, cytoscapeMock } = vi.hoisted(() => ({
-  cyInstance: {
-    on: vi.fn(),
-    destroy: vi.fn(),
-    elements: vi.fn(() => ({ removeClass: vi.fn() })),
-    $: vi.fn(() => ({ addClass: vi.fn() })),
-  },
-  cytoscapeMock: vi.fn(() => cyInstance),
-}));
-
 // The browser mounts OntologyGraphView (default mode) — jsdom has no
-// canvas, so cytoscape is mocked here exactly as in OntologyGraphView.test.
-vi.mock('cytoscape', () => ({ default: cytoscapeMock }));
+// WebGL, so react-force-graph-3d is mocked here (260929-k3m: was the
+// cytoscape mock). The browser tests never touch graph internals; a
+// null-rendering stub is enough to satisfy the lazy import.
+vi.mock('react-force-graph-3d', () => ({
+  default: () => null,
+}));
 
 import KnowledgeGraphBrowser from '../components/graph/KnowledgeGraphBrowser';
 import { useAppStore } from '../store/app-store';
@@ -50,8 +44,6 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.removeItem('skillforge.graph.focusMode');
-  cytoscapeMock.mockClear();
-  cyInstance.on.mockClear();
   useAppStore.setState({ centerView: { kind: 'knowledge-graph' } });
 });
 
