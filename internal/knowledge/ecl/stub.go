@@ -109,6 +109,34 @@ var legalEntityKinds = map[string]bool{
 // longer "name" is a sentence fragment, not an entity.
 const maxEntityNameRunes = 12
 
+// orgAliasSuffixes / orgAliasSuffixRe are the extraction-side copy of the
+// quick-260929-h8k organization-alias rule (KEEP IN SYNC with
+// internal/server/entity_alias.go — orgSuffixes/orgSuffixRe — the
+// projection-side merge). Rationale lives in full over there; the short
+// form:
+//
+//   - ORG-ONLY: org designations are a closed administrative grammar
+//     (中心支公司/支公司/分公司/分部/部门组/科室) where the bare geographic name
+//     is a conventional abbreviation of the designation-bearing form.
+//     Product names have no such grammar (责任险 vs 雇主责任险 differ by a
+//     modifier, not a designation) — the rule never touches
+//     InsuranceProduct entries.
+//   - CANON = LONG NAME: the suffixed form is the specific legal
+//     institution; the short form is its everyday abbreviation.
+//   - DETERMINISTIC, NOT FUZZY: this is a trust layer on top of D-NZK-01's
+//     exact-name identity — no edit distance, no embedding guesses. A
+//     closed suffix grammar cannot speculatively fuse distinct
+//     institutions.
+//
+// Scope: BATCH-INTERNAL only (one note's extraction). Cross-batch splits
+// converge through the store's InsertUnique plus the server-side
+// projection merge (entity_alias.go mergeOrgAliases).
+var orgAliasSuffixes = []string{"中心支公司", "支公司", "分公司", "分部", "部门组", "科室"}
+
+// orgAliasSuffixRe matches a name that ALREADY ends with an org
+// designation — terminal, i.e. already the specific institution name.
+var orgAliasSuffixRe = regexp.MustCompile(`(中心支公司|支公司|分公司|分部|部门组|科室)$`)
+
 // sanitizeEntities applies the D-NZK-04 anti-hallucination gates to raw LLM
 // entities (T-NZK-01). By deliberate design it DROPS illegal entries and
 // never errors — unlike ValidateExtraction's tables hard-error gate, one
@@ -122,9 +150,14 @@ const maxEntityNameRunes = 12
 //   - duplicates collapse on the exact trimmed name, keep-first (D-NZK-01:
 //     entity identity = exact name; 车险 and 汽车险 stay two entities — no
 //     aliasing)
+//   - quick-260929-h8k exception to exact-name identity, org-kind only:
+//     within the batch, a bare org name equal to another org name minus its
+//     designation suffix (武汉 vs 武汉中心支公司) is dropped in favor of the
+//     long form, with Parent references re-pointed (normalizeOrgAliases)
 //
 // Parent is NOT validated here (needs store/batch context — abox.go owns
-// same-batch and existing-individual resolution); it passes through raw.
+// same-batch and existing-individual resolution); it passes through raw
+// except for the org-alias rewrite above.
 func sanitizeEntities(raw []ExtractedEntity) []ExtractedEntity {
 	seen := map[string]bool{}
 	out := []ExtractedEntity{}
@@ -143,7 +176,65 @@ func sanitizeEntities(raw []ExtractedEntity) []ExtractedEntity {
 		e.Name = name
 		out = append(out, e)
 	}
-	return out
+	// Quick 260929-h8k: batch-internal org-alias normalization, AFTER the
+	// gates (a >12-rune long form can never be a merge target — it was
+	// already dropped above).
+	return normalizeOrgAliases(out)
+}
+
+// normalizeOrgAliases implements the batch-internal half of the
+// quick-260929-h8k rule (see orgAliasSuffixes for the rationale): when the
+// batch contains both 武汉 and 武汉中心支公司 as Organizations, the short form
+// is dropped — its note→entity edge collapses onto the long form's own
+// edge, which is exactly the "edge points at the canonical entity" outcome
+// — and every surviving entity's Parent naming the short form is rewritten
+// so abox.go's exact-name orgByName index still resolves the parent edge.
+// Suffix-ending names are terminal and never dropped; a short name with no
+// long form in the batch survives untouched.
+func normalizeOrgAliases(entities []ExtractedEntity) []ExtractedEntity {
+	orgNames := map[string]bool{}
+	for _, e := range entities {
+		if e.Kind == "Organization" {
+			orgNames[e.Name] = true
+		}
+	}
+	if len(orgNames) == 0 {
+		return entities
+	}
+	// short org name → canonical long name (longest suffix hit wins).
+	alias := map[string]string{}
+	for _, e := range entities {
+		if e.Kind != "Organization" || orgAliasSuffixRe.MatchString(e.Name) {
+			continue // org-kind only; terminal names are never aliases
+		}
+		for _, suffix := range orgAliasSuffixes {
+			if long := e.Name + suffix; orgNames[long] {
+				if cur, ok := alias[e.Name]; !ok || len(long) > len(cur) {
+					alias[e.Name] = long
+				}
+			}
+		}
+	}
+	if len(alias) == 0 {
+		return entities
+	}
+	// Rewrite Parent references BEFORE dropping, so a child of the short
+	// form resolves against the long form in abox.go's orgByName lookup.
+	// A long form whose own Parent named the short form degrades to a
+	// self-reference, which BuildTriples already drops as meaningless.
+	for i := range entities {
+		if long, ok := alias[entities[i].Parent]; ok {
+			entities[i].Parent = long
+		}
+	}
+	res := make([]ExtractedEntity, 0, len(entities))
+	for _, e := range entities {
+		if _, isShort := alias[e.Name]; isShort {
+			continue // the long form carries the entity from here on
+		}
+		res = append(res, e)
+	}
+	return res
 }
 
 // SQL detection regexes. Base patterns are the VALIDATED spike 005c

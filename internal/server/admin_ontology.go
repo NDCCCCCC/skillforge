@@ -435,7 +435,9 @@ func errorsIsIRIConflict(err error) bool { return errors.Is(err, induction.ErrIR
 // belongsToTier never becomes a node (a Tier node would be a mega-hub
 // dwarfing the business entities) — it attaches as a `tier` field on the
 // nodes that carry the triple. Unknown note names yield 200 with empty
-// arrays (the FE renders its own empty state).
+// arrays (the FE renders its own empty state). Since quick-260929-h8k the
+// projection also merges organization alias pairs (武汉 vs 武汉中心支公司) —
+// see entity_alias.go for the rule and its rationale.
 
 // ontRdfType / ontRdfsLabel — predicate IRIs. Distinct names from the
 // _test.go consts (rdfType etc.) that share this package under test builds.
@@ -564,6 +566,9 @@ func projectOntologyGraph(kg *store.Store, noteIRIs []string) ontologyGraphRespo
 		acc.node(noteIRI, "note", ontologyNoteLabel(kg, noteIRI), ontologyTierOf(kg, noteIRI))
 		ontologyExpandNote(kg, acc, noteIRI)
 	}
+	// Quick 260929-h8k: collapse org alias pairs (武汉 vs 武汉中心支公司) into
+	// their canonical long-name node before the response is built.
+	mergeOrgAliases(kg, acc)
 	if acc.nodes == nil {
 		acc.nodes = []ontologyGraphNode{}
 	}
