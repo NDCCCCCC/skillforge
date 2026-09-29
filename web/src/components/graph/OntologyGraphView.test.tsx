@@ -8,7 +8,8 @@
 // mock records the init config so the assertions run against the REAL
 // element/style payloads the component builds:
 //   ① 全库 fetch (no notes param) + cytoscape init with all node kinds
-//   ② focus → notes=note_032 wire param (basename leading digits)
+//   ② focus → notes=note_032 wire param (sync source path + async
+//     chunk_id resolution through fetchChunkContent; all-fail → 全库)
 //   ③ node tap → detail panel (kind/label/tier)
 //   ④ 仅当前问题 ↔ 全库 toggle refetches
 //   ⑤ 403 → readable admin-token error, never a blank canvas
@@ -92,6 +93,19 @@ function mockFetchRouter(handlers: Array<{ match: string; status?: number; body:
   return fn;
 }
 
+/** BE wire shape of GET /api/knowledge/chunk/:id (fetchChunkContent). */
+function chunkWireBody(source: string) {
+  return {
+    id: 'x',
+    tier: 'sql-guides',
+    source,
+    content: 'SELECT 1',
+    effectiveFrom: 0,
+    effectiveTo: 0,
+    version: 'v1',
+  };
+}
+
 /** The cytoscape 'tap node' handler the component registered. */
 function registeredTapNodeHandler(): (e: unknown) => void {
   const call = cyInstance.on.mock.calls.find(
@@ -151,9 +165,9 @@ describe('OntologyGraphView', () => {
     expect(screen.getByTestId('ontology-legend')).toHaveTextContent('机构 2');
   });
 
-  it('focus narrows the fetch to the cited notes (basename leading digits)', async () => {
+  it('focus narrows the fetch via the tolerated source field (sync path)', async () => {
     const focus: GraphFocus = {
-      chunkIds: new Set(['pk-1']),
+      chunkIds: new Set(),
       sources: ['D:/corpus/032_保单号查支付方式与开户行.md'],
     };
     const fetchMock = mockFetchRouter([{ match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH }]);
@@ -164,6 +178,54 @@ describe('OntologyGraphView', () => {
       expect.anything(),
     );
     expect(screen.getByTestId('ontology-focus-toggle')).toHaveTextContent('仅当前问题');
+  });
+
+  it('resolves chunk_ids through fetchChunkContent to notes (the wire path)', async () => {
+    // The wire verdict carries ONLY chunk_id/span/tier — the note id comes
+    // from the chunk's source path, resolved per-chunk before the fetch.
+    const focus: GraphFocus = {
+      chunkIds: new Set(['1032', '1007']),
+      sources: [],
+    };
+    const fetchMock = mockFetchRouter([
+      { match: '/api/knowledge/chunk/1032', body: chunkWireBody('D:/corpus/032_保单.md') },
+      { match: '/api/knowledge/chunk/1007', body: chunkWireBody('/kb/007_机构.md') },
+      { match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH },
+    ]);
+    render(<OntologyGraphView focus={focus} />);
+    // Resolution loading is visible before the projection fetch lands.
+    expect(screen.getByTestId('ontology-graph-loading')).toBeInTheDocument();
+    await screen.findByTestId('ontology-graph-view');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/knowledge/chunk/1032',
+      expect.anything(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/ontology/graph?notes=note_032%2Cnote_007',
+      expect.anything(),
+    );
+    expect(screen.getByTestId('ontology-focus-toggle')).toHaveTextContent('仅当前问题');
+  });
+
+  it('every chunk failing resolution degrades to the full projection', async () => {
+    const focus: GraphFocus = {
+      chunkIds: new Set(['404', 'boom']),
+      sources: [],
+    };
+    const fetchMock = mockFetchRouter([
+      { match: '/api/knowledge/chunk/404', status: 404, body: { error: 'nope' } },
+      { match: '/api/knowledge/chunk/boom', status: 500, body: { error: 'kaboom' } },
+      { match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH },
+    ]);
+    render(<OntologyGraphView focus={focus} />);
+    await screen.findByTestId('ontology-graph-view');
+    // No notes resolved → 全库 fetch (no notes param), no focus toggle.
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/ontology/graph',
+      expect.anything(),
+    );
+    expect(screen.queryByTestId('ontology-focus-toggle')).toBeNull();
+    expect(screen.getByTestId('ontology-legend')).toBeInTheDocument();
   });
 
   it('tapping a node opens the detail panel with kind/label/tier', async () => {
@@ -187,7 +249,7 @@ describe('OntologyGraphView', () => {
 
   it('the 仅当前问题/全库 toggle refetches the full projection', async () => {
     const focus: GraphFocus = {
-      chunkIds: new Set(['pk-1']),
+      chunkIds: new Set(),
       sources: ['D:/corpus/032_保单.md'],
     };
     const fetchMock = mockFetchRouter([{ match: '/api/admin/ontology/graph', body: ONTOLOGY_GRAPH }]);

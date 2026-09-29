@@ -18,11 +18,16 @@
 //   organization       紫  #a78bfa (hardcoded — no theme token)
 //
 // Question focus (260929-d5w3 semantics, 择简 variant): when a focus
-// derives ≥1 note id (citation source basename leading digits → note_XXX,
-// see lib/graph-focus noteIdsFromFocus), the view fetches that focused
-// neighborhood; the toggle flips 仅当前问题 ↔ 全库 and persists under the
-// SAME localStorage key GraphCanvas uses, so the two views share one
-// operator preference.
+// derives ≥1 note id the view fetches that focused neighborhood; the
+// toggle flips 仅当前问题 ↔ 全库 and persists under the SAME localStorage
+// key GraphCanvas uses, so the two views share one operator preference.
+//
+// Follow-up (same quick) — wire citations carry ONLY chunk_id/span/tier,
+// so note ids resolve ASYNC: focus.chunkIds → fetchChunkContent (existing
+// GET /api/knowledge/chunk/:id, returns the chunk's source path) →
+// basename leading digits → note_XXX (lib/graph-focus
+// resolveFocusNoteIds). Resolution failure is per-chunk; all chunks
+// failing degrades to 全库. The projection fetch is held while resolving.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import {
@@ -31,7 +36,11 @@ import {
   type OntologyGraph,
   type OntologyNode,
 } from './ontologyApi';
-import { noteIdsFromFocus, type GraphFocus } from '../../lib/graph-focus';
+import {
+  noteIdsFromFocus,
+  resolveFocusNoteIds,
+  type GraphFocus,
+} from '../../lib/graph-focus';
 
 /** Focus-mode preference key — SHARED with GraphCanvas (d5w3). */
 const FOCUS_MODE_STORAGE_KEY = 'skillforge.graph.focusMode';
@@ -77,11 +86,6 @@ export interface OntologyGraphViewProps {
 export default function OntologyGraphView({ focus = null }: OntologyGraphViewProps = {}) {
   // 仅当前问题 / 全库 — same preference key as the document canvas.
   const [focusMode, setFocusMode] = useState<FocusMode>(loadFocusMode);
-  const focusNoteIds = useMemo(() => noteIdsFromFocus(focus), [focus]);
-  // Wire param string — the fetch effect keys on THIS (array identity
-  // would refetch on every render).
-  const notesKey = focusMode === 'focus' ? focusNoteIds.join(',') : '';
-
   const [data, setData] = useState<OntologyGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,12 +93,58 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Focus → note ids, two complementary paths:
+  //   - sources (tolerated future citation field) — sync derivation.
+  //   - chunk_ids (what the wire actually carries) — ASYNC resolution:
+  //     each chunk_id goes through fetchChunkContent to learn its source
+  //     path, then basename leading digits → note_XXX. null = resolving
+  //     (the projection fetch is HELD until this settles; every chunk
+  //     failing yields [] = degrade to 全库, per resolveFocusNoteIds).
+  const sourceNoteIds = useMemo(() => noteIdsFromFocus(focus), [focus]);
+  // Lazy init: a focus that carries chunk ids starts in the resolving
+  // state; anything else starts already settled (nothing to resolve).
+  const [chunkNoteIds, setChunkNoteIds] = useState<string[] | null>(() =>
+    focus && focus.chunkIds.size > 0 ? null : [],
+  );
+
   useEffect(() => {
+    let cancelled = false;
+    const chunkIds = focus ? Array.from(focus.chunkIds) : [];
+    if (chunkIds.length === 0) {
+      setChunkNoteIds([]);
+      return;
+    }
+    setChunkNoteIds(null);
+    resolveFocusNoteIds(chunkIds).then((ids) => {
+      if (!cancelled) setChunkNoteIds(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [focus]);
+
+  const focusNoteIds = useMemo(() => {
+    const merged = [...sourceNoteIds];
+    for (const id of chunkNoteIds ?? []) {
+      if (!merged.includes(id)) merged.push(id);
+    }
+    return merged;
+  }, [sourceNoteIds, chunkNoteIds]);
+  const resolving = chunkNoteIds === null;
+
+  // Wire param string — the fetch effect keys on THIS (array identity
+  // would refetch on every render).
+  const notesKey = focusMode === 'focus' ? focusNoteIds.join(',') : '';
+
+  useEffect(() => {
+    // Hold the projection fetch until chunk→note resolution settles —
+    // fetching 全库 in the interim would flash the wrong neighborhood.
+    if (resolving) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
     setSelected(null);
-    fetchOntologyGraph(focusMode === 'focus' ? focus : null)
+    fetchOntologyGraph(focusMode === 'focus' ? focusNoteIds : [])
       .then((graph) => {
         if (!cancelled) {
           setData(graph);
@@ -114,7 +164,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
     };
     // notesKey is the stable wire-shape of the (focusMode, focus) pair.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notesKey]);
+  }, [notesKey, resolving]);
 
   // Cytoscape mount — re-init whenever the data changes (the projection
   // itself is small; a full re-layout is cheaper than incremental sync).
@@ -270,7 +320,9 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
         data-testid="ontology-graph-loading"
         className="flex min-h-0 flex-1 items-center justify-center"
       >
-        <div className="text-sm text-text-muted">正在加载本体关系…</div>
+        <div className="text-sm text-text-muted">
+          {resolving ? '正在解析引用来源…' : '正在加载本体关系…'}
+        </div>
       </div>
     );
   }

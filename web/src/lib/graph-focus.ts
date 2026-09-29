@@ -22,6 +22,7 @@
 import type { UIMessage } from 'ai';
 import { isVerdict } from '../types/verdict';
 import type { KnowledgeGraph } from '../types/knowledge';
+import { fetchChunkContent } from './chunk-lookup';
 
 /** The citation-derived focus passed DetailPanel → Browser → Canvas. */
 export interface GraphFocus {
@@ -102,30 +103,67 @@ export function hasAnsweredTurn(messages: UIMessage[]): boolean {
 }
 
 /**
- * Quick 260929-g7x — citation sources → ontology note local names for the
- * 本体视图's focused neighborhood fetch (GET /api/admin/ontology/graph?notes=).
+ * Quick 260929-g7x — one source path → ontology note local name, or null.
  *
  * ECL note identity is the corpus file's leading index: the sql-guides
  * corpus is merged into logical notes keyed by frontmatter source_idx, and
  * the file naming convention prefixes it — "032_保单号查支付方式与开户行.md"
  * → source_idx "032" → KG subject skf:note_032. So the derivation is:
  * basename → leading digits → note_XXX.
+ */
+export function noteIdFromSource(source: string): string | null {
+  const match = /^(\d+)/.exec(basenameOf(source));
+  return match ? `note_${match[1]}` : null;
+}
+
+/**
+ * Quick 260929-g7x — citation sources → ontology note local names for the
+ * 本体视图's focused neighborhood fetch (GET /api/admin/ontology/graph?notes=).
  *
- * chunk_ids (Milvus PKs) are opaque and cannot be mapped, and the `source`
- * citation field is tolerated-but-not-yet-on-the-wire — so an empty result
- * is the COMMON case today and means "no focused neighborhood available;
- * render 全库". When the BE enriches citations with source paths this
- * lights up without further FE change (same tolerance contract as
- * computeFocusMatch above).
+ * The `source` citation field is tolerated-but-not-yet-on-the-wire (same
+ * tolerance contract as computeFocusMatch above), so an empty result is
+ * common and means "no focused neighborhood from source paths". The chunk_id
+ * path is covered by resolveFocusNoteIds below.
  */
 export function noteIdsFromFocus(focus: GraphFocus | null | undefined): string[] {
   if (!focus) return [];
   const out: string[] = [];
   for (const source of focus.sources) {
-    const match = /^(\d+)/.exec(basenameOf(source));
-    if (!match) continue;
-    const noteId = `note_${match[1]}`;
-    if (!out.includes(noteId)) out.push(noteId);
+    const noteId = noteIdFromSource(source);
+    if (noteId && !out.includes(noteId)) out.push(noteId);
+  }
+  return out;
+}
+
+/**
+ * Quick 260929-g7x follow-up — chunk_ids → ontology note local names.
+ *
+ * Verdict citations carry ONLY {chunk_id, span, tier} on the wire — chunk
+ * ids are opaque Milvus PKs that cannot be mapped to ECL source_idx without
+ * a lookup. This resolves each chunk_id through the EXISTING
+ * fetchChunkContent endpoint (GET /api/knowledge/chunk/:id, which returns
+ * the chunk's raw `source` path), then applies the same basename
+ * leading-digits → note_XXX derivation as noteIdFromFocus.
+ *
+ * Failure policy (per-chunk isolation, never fail the whole resolution):
+ *   - fetchChunkContent resolves null (404 soft-miss)        → skip
+ *   - fetchChunkContent rejects (network / 5xx)             → skip
+ *   - resolved source is null or has no leading digits      → skip
+ * When EVERY chunk fails the result is [] — the caller degrades to 全库.
+ * Dedup + first-seen chunk order preserved.
+ */
+export async function resolveFocusNoteIds(chunkIds: string[]): Promise<string[]> {
+  if (chunkIds.length === 0) return [];
+  const results = await Promise.allSettled(
+    chunkIds.map((id) => fetchChunkContent(id)),
+  );
+  const out: string[] = [];
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue; // fetch threw → skip
+    const source = result.value?.source;
+    if (!source) continue; // 404 soft-miss / sourceless chunk → skip
+    const noteId = noteIdFromSource(source);
+    if (noteId && !out.includes(noteId)) out.push(noteId);
   }
   return out;
 }

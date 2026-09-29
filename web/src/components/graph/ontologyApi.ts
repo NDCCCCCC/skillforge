@@ -11,8 +11,10 @@
 // (sf_admin_token — set by the admin console login). A 403 surfaces as a
 // readable error, never a blank canvas.
 
-import type { GraphFocus } from '../../lib/graph-focus';
-import { noteIdsFromFocus } from '../../lib/graph-focus';
+// NOTE: note-id derivation (sources path + chunk_id resolution) lives in
+// lib/graph-focus; the caller passes resolved ids in — this module is a
+// pure wire client.
+
 
 /** One node of the projected ontology graph (BE ontologyGraphNode). */
 export interface OntologyNode {
@@ -48,14 +50,14 @@ export class OntologyGraphApiError extends Error {
 }
 
 /**
- * Fetch the ontology graph projection.
+ * Fetch the ontology graph projection for the given note local names.
  *
- * `focus` (when in 仅当前问题 mode) narrows the projection to the cited
- * notes via noteIdsFromFocus; an empty notes list fetches 全库 (the whole
- * ABox projection).
+ * The CALLER owns note-id derivation (the view merges the sync
+ * source-path path with the async chunk_id resolution — see
+ * OntologyGraphView); an empty list fetches 全库 (the whole ABox
+ * projection).
  */
-export async function fetchOntologyGraph(focus?: GraphFocus | null): Promise<OntologyGraph> {
-  const notes = noteIdsFromFocus(focus);
+export async function fetchOntologyGraph(notes: string[] = []): Promise<OntologyGraph> {
   const qs = notes.length > 0 ? `?notes=${encodeURIComponent(notes.join(','))}` : '';
   let resp: Response;
   try {

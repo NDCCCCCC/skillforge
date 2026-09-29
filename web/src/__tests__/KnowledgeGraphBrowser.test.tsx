@@ -166,7 +166,7 @@ describe('KnowledgeGraphBrowser', () => {
     const fetchMock = mockFetchRouter(POPULATED_GRAPH);
     render(
       <KnowledgeGraphBrowser
-        focus={{ chunkIds: new Set(['pk-1']), sources: ['D:/corpus/032_保单.md'] }}
+        focus={{ chunkIds: new Set(), sources: ['D:/corpus/032_保单.md'] }}
       />,
     );
     await screen.findByTestId('ontology-graph-view');
