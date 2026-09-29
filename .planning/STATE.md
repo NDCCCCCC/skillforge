@@ -34,6 +34,7 @@ Last activity: 2026-09-29 - Completed quick task 260929-d5w: 批量修复 6 项�
 | 260929-d5w2 | 知识图谱全屏按钮 + prettySourcePath 显示层美化(引用/图谱树/KB 列表) + 测试库清理(uat-check/walkthrough-tmp) + 语料重命名 39 处(失控长名收敛,其他/并入操作手册) + Milvus 重建 + ECL 全量重跑; 备份: ~/sql-guides-pre-rename-backup | 2026-09-29 | 1aaf853 | [260929-d5w2-graph-fullscreen-corpus-cleanup](./quick/260929-d5w2-graph-fullscreen-corpus-cleanup/) |
 | 260929-d5w3 | 知识图谱按当前问题聚焦(citations→焦点高亮/其余淡显/全库切换) + 画布动态 viewBox 自适应 + 滚轮缩放/拖拽平移/双击适应(底弧不再裁剪); 顺手修 chunk-lookup 测试(source 字段对齐) | 2026-09-29 | dafe594 | [260929-d5w3-graph-focus-fit](./quick/260929-d5w3-graph-focus-fit/) |
 | 260929-g7x | 知识图谱「本体视图」(默认): BE /api/admin/ontology/graph 投影(note→表/险种/机构 + parent_org 层级,notes= 聚焦参数) + FE cytoscape 力导向(note 蓝/table 橙/product 绿/org 紫,层级虚线) + chunk_id→note 聚焦解析;全库实测 26 笔记/8 表/70 险种/56 机构; 修复 cytoscape 0 高空白画布; 图形美化: 关系边按类型着色 + 标签内嵌 + 邻域高亮(选中淡其余) + 节点可拖拽 + 适应按钮 | 2026-09-29 | 2ea7bdb | [260929-g7x-ontology-graph-view](./quick/260929-g7x-ontology-graph-view/) |
+| 260929-h8k | 机构实体别名消解: canonicalOrgLabel 确定性规则(短名+机构后缀→长名,仅 org kind) + 投影合并 + sanitizeEntities 抽取期同规则; 活体 机构 56→38(武汉→武汉中心支公司 等 16 对), 0 悬空边 | 2026-09-29 | ee1b10f | [260929-h8k-org-alias-resolution](./quick/260929-h8k-org-alias-resolution/) |
 
 ## v1.4 Phase Map
 
