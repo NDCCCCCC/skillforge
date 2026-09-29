@@ -102,6 +102,35 @@ export function hasAnsweredTurn(messages: UIMessage[]): boolean {
 }
 
 /**
+ * Quick 260929-g7x — citation sources → ontology note local names for the
+ * 本体视图's focused neighborhood fetch (GET /api/admin/ontology/graph?notes=).
+ *
+ * ECL note identity is the corpus file's leading index: the sql-guides
+ * corpus is merged into logical notes keyed by frontmatter source_idx, and
+ * the file naming convention prefixes it — "032_保单号查支付方式与开户行.md"
+ * → source_idx "032" → KG subject skf:note_032. So the derivation is:
+ * basename → leading digits → note_XXX.
+ *
+ * chunk_ids (Milvus PKs) are opaque and cannot be mapped, and the `source`
+ * citation field is tolerated-but-not-yet-on-the-wire — so an empty result
+ * is the COMMON case today and means "no focused neighborhood available;
+ * render 全库". When the BE enriches citations with source paths this
+ * lights up without further FE change (same tolerance contract as
+ * computeFocusMatch above).
+ */
+export function noteIdsFromFocus(focus: GraphFocus | null | undefined): string[] {
+  if (!focus) return [];
+  const out: string[] = [];
+  for (const source of focus.sources) {
+    const match = /^(\d+)/.exec(basenameOf(source));
+    if (!match) continue;
+    const noteId = `note_${match[1]}`;
+    if (!out.includes(noteId)) out.push(noteId);
+  }
+  return out;
+}
+
+/**
  * Match a focus against the graph: a doc is a FOCUS DOC when ≥1 of its
  * chunks' ids appears in focus.chunkIds, or (when the citation carries a
  * source path) the source's basename equals the doc's filename.

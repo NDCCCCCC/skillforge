@@ -19,13 +19,32 @@
 // the controlled Tabs indicator). Click 引用原文 from a verdict
 // citation follows the same dispatcher (reuses the CitationCluster
 // path).
+//
+// Quick 260929-g7x — the browser is now a two-mode host: 本体 (default,
+// OntologyGraphView — the note↔table/product/org ABox entity graph) and
+// 文档 (this historical retrieval-corpus tree, kept verbatim). The mode
+// chips sit beside the fullscreen trigger and both modes render inside
+// the fullscreen overlay.
 import { Maximize2, Network, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import GraphCanvas from './GraphCanvas';
 import GraphFilterInput from './GraphFilterInput';
+import OntologyGraphView from './OntologyGraphView';
 import { useKnowledgeGraph } from '../../hooks/useKnowledgeGraph';
 import type { GraphFocus } from '../../lib/graph-focus';
+
+/**
+ * Quick 260929-g7x — view mode. 本体 (default) renders the note-centric
+ * ABox entity graph (OntologyGraphView); 文档 keeps the retrieval-corpus
+ * radial tree (GraphCanvas) as the backward-compatible second mode.
+ */
+type GraphViewMode = 'ontology' | 'document';
+
+const MODE_CHIP_BASE =
+  'inline-flex shrink-0 items-center rounded-md px-2 py-1 text-xs font-semibold transition-colors';
+const MODE_CHIP_ON = 'bg-primary-dim text-primary';
+const MODE_CHIP_OFF = 'text-text-muted hover:bg-surface-2 hover:text-text';
 
 export interface KnowledgeGraphBrowserProps {
   /**
@@ -37,7 +56,8 @@ export interface KnowledgeGraphBrowserProps {
   /**
    * Quick 260929-d5w3 — citations of the latest assistant verdict
    * (DetailPanel extracts them from the chat messages). Passes straight
-   * through to GraphCanvas; the SAME focus drives the fullscreen overlay
+   * through to BOTH views (GraphCanvas highlight + OntologyGraphView
+   * focused neighborhood); the SAME focus drives the fullscreen overlay
    * because both rails render one shared body.
    */
   focus?: GraphFocus | null;
@@ -52,9 +72,10 @@ export default function KnowledgeGraphBrowser({
 }: KnowledgeGraphBrowserProps = {}) {
   const { graph, status, error, refetch } = useKnowledgeGraph();
   const [filter, setFilter] = useState('');
+  const [mode, setMode] = useState<GraphViewMode>('ontology');
   // Quick 260929-d5w2 — the detail-panel rail is too narrow for the
   // radial graph; 全屏 swaps the body for a fixed inset-0 overlay that
-  // renders the SAME graph body (filter + canvas) at viewport size.
+  // renders the SAME graph body (mode chips + canvas) at viewport size.
   // Portal to document.body (KnowledgeModal B7 posture): ancestors
   // carrying backdrop-filter/transform would otherwise become the
   // containing block and clip the fixed overlay to the panel.
@@ -81,7 +102,34 @@ export default function KnowledgeGraphBrowser({
     [graph],
   );
 
-  if (status === 'error') {
+  // Quick 260929-g7x — mode chips (本体 default / 文档). The document-
+  // corpus states below (loading/error/empty heroes) are DOCUMENT-mode
+  // concerns; the ontology view owns its own data lifecycle and renders
+  // regardless of the /api/knowledge/graph corpus state.
+  const modeChips = (
+    <div className="flex flex-none items-center gap-1" role="group" aria-label="图谱视图切换">
+      <button
+        type="button"
+        data-testid="graph-mode-ontology"
+        aria-pressed={mode === 'ontology'}
+        onClick={() => setMode('ontology')}
+        className={`${MODE_CHIP_BASE} ${mode === 'ontology' ? MODE_CHIP_ON : MODE_CHIP_OFF}`}
+      >
+        本体
+      </button>
+      <button
+        type="button"
+        data-testid="graph-mode-document"
+        aria-pressed={mode === 'document'}
+        onClick={() => setMode('document')}
+        className={`${MODE_CHIP_BASE} ${mode === 'document' ? MODE_CHIP_ON : MODE_CHIP_OFF}`}
+      >
+        文档
+      </button>
+    </div>
+  );
+
+  if (mode === 'document' && status === 'error') {
     return (
       <div
         data-testid="knowledge-graph-error"
@@ -108,7 +156,7 @@ export default function KnowledgeGraphBrowser({
     );
   }
 
-  if (isLoading) {
+  if (mode === 'document' && isLoading) {
     return (
       <div
         data-testid="knowledge-graph-loading"
@@ -122,7 +170,7 @@ export default function KnowledgeGraphBrowser({
     );
   }
 
-  if (!graph || totalDocs === 0) {
+  if (mode === 'document' && (!graph || totalDocs === 0)) {
     return (
       <div
         data-testid="knowledge-graph-empty"
@@ -140,15 +188,21 @@ export default function KnowledgeGraphBrowser({
   }
 
   // Shared render block — the narrow rail and the fullscreen overlay both
-  // render exactly this (filter input + fullscreen trigger + canvas).
-  // flex-1 min-h-0 gives the canvas the full container height in
-  // fullscreen mode while the narrow rail keeps its scroll behavior.
+  // render exactly this (mode chips + [filter] + fullscreen trigger +
+  // active view). flex-1 min-h-0 gives the canvas the full container
+  // height in fullscreen mode while the narrow rail keeps its scroll
+  // behavior.
   const graphBody = (
     <div data-testid="knowledge-graph" className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-none items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <GraphFilterInput value={filter} onChange={setFilter} />
-        </div>
+        {modeChips}
+        {mode === 'document' ? (
+          <div className="min-w-0 flex-1">
+            <GraphFilterInput value={filter} onChange={setFilter} />
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
         <button
           type="button"
           data-testid="graph-fullscreen-btn"
@@ -161,7 +215,13 @@ export default function KnowledgeGraphBrowser({
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        <GraphCanvas graph={graph} filter={filter} focus={focus} hasAnswer={hasAnswer} />
+        {mode === 'ontology' ? (
+          <OntologyGraphView focus={focus} />
+        ) : graph ? (
+          // Unreachable-null guard: the document-mode early returns above
+          // guarantee a populated corpus graph before this branch renders.
+          <GraphCanvas graph={graph} filter={filter} focus={focus} hasAnswer={hasAnswer} />
+        ) : null}
       </div>
     </div>
   );

@@ -7,24 +7,51 @@
 // implementation that replaced the 05-03 placeholder:
 //
 //   - Empty corpus (all 4 tiers present with 0 docs) renders the
-//     知识库为空 hero.
+//     知识库为空 hero.                                   [文档 mode]
 //   - Loading prop override renders 正在加载知识层级... and suppresses
-//     the empty hero.
+//     the empty hero.                                    [文档 mode]
 //   - Error from the BE renders 无法加载知识图谱 + 重试 button.
+//                                                        [文档 mode]
 //   - Populated corpus renders the 3-level tree (tier -> doc -> chunk)
-//     and the filter narrows visible docs by filename.
+//     and the filter narrows visible docs by filename.   [文档 mode]
 //   - Clicking a chunk dispatches setCenterView({kind:"chunk-source", ...}).
+//
+// Quick 260929-d5w2 — fullscreen overlay pins ( SAME body, Esc close).
+//
+// Quick 260929-g7x — the browser is a two-mode host: 本体 (OntologyGraphView)
+// is the DEFAULT mode; the corpus heroes + GraphCanvas tree all live behind
+// the 文档 chip. The ontology view must render regardless of the document
+// corpus state, and focus flows into the ontology fetch (?notes=).
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+
+const { cyInstance, cytoscapeMock } = vi.hoisted(() => ({
+  cyInstance: {
+    on: vi.fn(),
+    destroy: vi.fn(),
+    elements: vi.fn(() => ({ removeClass: vi.fn() })),
+    $: vi.fn(() => ({ addClass: vi.fn() })),
+  },
+  cytoscapeMock: vi.fn(() => cyInstance),
+}));
+
+// The browser mounts OntologyGraphView (default mode) — jsdom has no
+// canvas, so cytoscape is mocked here exactly as in OntologyGraphView.test.
+vi.mock('cytoscape', () => ({ default: cytoscapeMock }));
+
 import KnowledgeGraphBrowser from '../components/graph/KnowledgeGraphBrowser';
 import { useAppStore } from '../store/app-store';
 import type { KnowledgeGraph } from '../types/knowledge';
+import type { OntologyGraph } from '../components/graph/ontologyApi';
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  localStorage.removeItem('skillforge.graph.focusMode');
+  cytoscapeMock.mockClear();
+  cyInstance.on.mockClear();
   useAppStore.setState({ centerView: { kind: 'knowledge-graph' } });
 });
 
@@ -61,12 +88,33 @@ const POPULATED_GRAPH: KnowledgeGraph = {
   ],
 };
 
-function mockFetchOk(body: unknown, status = 200): ReturnType<typeof vi.fn> {
-  const fn = vi.fn().mockImplementation(async () => ({
-    ok: status >= 200 && status < 300,
-    status,
+const ONTOLOGY_GRAPH: OntologyGraph = {
+  nodes: [
+    {
+      id: 'http://skillforge.local/ontology#note_032',
+      kind: 'note',
+      label: '032',
+      tier: 'sql-guides',
+    },
+    { id: 'http://skillforge.local/ontology#tbl_pay_way', kind: 'table', label: 'pay_way' },
+  ],
+  edges: [
+    {
+      from: 'http://skillforge.local/ontology#note_032',
+      to: 'http://skillforge.local/ontology#tbl_pay_way',
+      type: 'references_table',
+    },
+  ],
+};
+
+/** Route-style fetch stub: ontology URLs → ontology body, else doc body. */
+function mockFetchRouter(docBody: unknown, ontologyBody: unknown = ONTOLOGY_GRAPH): ReturnType<typeof vi.fn> {
+  const fn = vi.fn().mockImplementation(async (url: string) => ({
+    ok: true,
+    status: 200,
     statusText: 'OK',
-    json: async () => body,
+    json: async () =>
+      url.includes('/api/admin/ontology/graph') ? ontologyBody : docBody,
   } as unknown as Response));
   vi.stubGlobal('fetch', fn);
   return fn;
@@ -83,39 +131,115 @@ function mockFetchError(message: string): ReturnType<typeof vi.fn> {
   return fn;
 }
 
+/** Render, then flip to the 文档 mode (corpus tree + heroes live there). */
+function renderAndSwitchToDocument(props: Parameters<typeof KnowledgeGraphBrowser>[0] = {}) {
+  mockFetchRouter(POPULATED_GRAPH);
+  render(<KnowledgeGraphBrowser {...props} />);
+  fireEvent.click(screen.getByTestId('graph-mode-document'));
+}
+
 describe('KnowledgeGraphBrowser', () => {
-  it('renders the empty-state hero when the BE returns an empty corpus (all 4 tiers, 0 docs)', async () => {
-    mockFetchOk(EMPTY_GRAPH);
+  // ── Quick 260929-g7x: 本体 default mode ──────────────────────────────
+  it('defaults to the 本体 view and fetches the ontology projection', async () => {
+    const fetchMock = mockFetchRouter(POPULATED_GRAPH);
     render(<KnowledgeGraphBrowser />);
+    expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/ontology/graph',
+      expect.anything(),
+    );
+    // The corpus tree is NOT rendered in ontology mode.
+    expect(screen.queryByTestId('graph-canvas')).toBeNull();
+    // Mode chips: 本体 active, 文档 available.
+    expect(screen.getByTestId('graph-mode-ontology')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('graph-mode-document')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('the ontology view renders even when the document corpus is empty', async () => {
+    mockFetchRouter(EMPTY_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('knowledge-graph-empty')).toBeNull();
+  });
+
+  it('focus flows into the ontology fetch (?notes= derived from citations)', async () => {
+    const fetchMock = mockFetchRouter(POPULATED_GRAPH);
+    render(
+      <KnowledgeGraphBrowser
+        focus={{ chunkIds: new Set(['pk-1']), sources: ['D:/corpus/032_保单.md'] }}
+      />,
+    );
+    await screen.findByTestId('ontology-graph-view');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/ontology/graph?notes=note_032',
+      expect.anything(),
+    );
+  });
+
+  it('mode chips switch between 本体 and 文档 both ways', async () => {
+    mockFetchRouter(POPULATED_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    await screen.findByTestId('ontology-graph-view');
+
+    fireEvent.click(screen.getByTestId('graph-mode-document'));
+    expect(await screen.findByTestId('graph-canvas')).toBeInTheDocument();
+    expect(screen.getByTestId('graph-mode-document')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('ontology-graph-view')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('graph-mode-ontology'));
+    expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('graph-canvas')).toBeNull();
+  });
+
+  it('the fullscreen overlay renders the ACTIVE mode (ontology) and Esc exits', async () => {
+    mockFetchRouter(POPULATED_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    await screen.findByTestId('ontology-graph-view');
+
+    fireEvent.click(screen.getByTestId('graph-fullscreen-btn'));
+    const overlay = await screen.findByTestId('graph-fullscreen-overlay');
+    expect(overlay.parentElement).toBe(document.body);
+    expect(within(overlay).getByTestId('ontology-graph-view')).toBeInTheDocument();
+    expect(within(overlay).getByTestId('graph-mode-ontology')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('graph-fullscreen-overlay')).toBeNull();
+    expect(screen.getByTestId('knowledge-graph')).toBeInTheDocument();
+  });
+
+  // ── 文档 mode: corpus tree (backward-compatible second mode) ────────
+  it('renders the empty-state hero in 文档 mode when the corpus has 0 docs', async () => {
+    mockFetchRouter(EMPTY_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    fireEvent.click(screen.getByTestId('graph-mode-document'));
     const empty = await screen.findByTestId('knowledge-graph-empty');
     expect(empty).toBeInTheDocument();
     expect(empty).toHaveTextContent('知识库为空');
   });
 
-  it('renders the loading state when loading=true and suppresses the empty hero', () => {
-    // Stub fetch to a never-resolving promise so the hook's useEffect
-    // doesn't throw on `fetch(...)` being undefined in jsdom.
+  it('renders the loading state in 文档 mode when loading=true', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(() => new Promise(() => {})),
     );
     render(<KnowledgeGraphBrowser loading />);
+    fireEvent.click(screen.getByTestId('graph-mode-document'));
     expect(screen.getByTestId('knowledge-graph-loading')).toBeInTheDocument();
     expect(screen.queryByTestId('knowledge-graph-empty')).toBeNull();
   });
 
-  it('renders the error state with a retry button when the BE returns 500', async () => {
+  it('renders the error state with a retry button in 文档 mode when the BE returns 500', async () => {
     mockFetchError('upstream mongo timeout');
     render(<KnowledgeGraphBrowser />);
+    fireEvent.click(screen.getByTestId('graph-mode-document'));
     const errorNode = await screen.findByTestId('knowledge-graph-error');
     expect(errorNode).toBeInTheDocument();
     expect(errorNode).toHaveTextContent('upstream mongo timeout');
     expect(screen.getByTestId('graph-refresh')).toBeInTheDocument();
   });
 
-  it('renders the relation graph (tier nodes + doc nodes) for a populated corpus', async () => {
-    mockFetchOk(POPULATED_GRAPH);
-    render(<KnowledgeGraphBrowser />);
+  it('renders the relation graph (tier nodes + doc nodes) in 文档 mode', async () => {
+    renderAndSwitchToDocument();
     const graphRoot = await screen.findByTestId('knowledge-graph');
     expect(graphRoot).toBeInTheDocument();
     expect(screen.getByTestId('graph-canvas')).toBeInTheDocument();
@@ -133,9 +257,8 @@ describe('KnowledgeGraphBrowser', () => {
   });
 
   it('the filter input narrows visible doc nodes by filename (case-insensitive)', async () => {
-    mockFetchOk(POPULATED_GRAPH);
-    render(<KnowledgeGraphBrowser />);
-    await screen.findByTestId('knowledge-graph');
+    renderAndSwitchToDocument();
+    await screen.findByTestId('graph-canvas');
 
     const input = screen.getByTestId('graph-filter-input').querySelector('input') as HTMLInputElement;
 
@@ -153,9 +276,8 @@ describe('KnowledgeGraphBrowser', () => {
   });
 
   it('clicking a doc node dispatches setCenterView({kind:"doc-view", tier, file})', async () => {
-    mockFetchOk(POPULATED_GRAPH);
-    render(<KnowledgeGraphBrowser />);
-    await screen.findByTestId('knowledge-graph');
+    renderAndSwitchToDocument();
+    await screen.findByTestId('graph-canvas');
 
     const docNode = screen.getByTestId('graph-doc-node');
     fireEvent.click(docNode);
@@ -171,12 +293,10 @@ describe('KnowledgeGraphBrowser', () => {
   });
 
   // Quick 260929-d5w2 — 全屏 opens a fixed inset-0 overlay (portal to
-  // document.body) rendering the SAME graph body; the close button exits
-  // back to the narrow rail.
-  it('fullscreen button opens the overlay with the same graph and the close button exits', async () => {
-    mockFetchOk(POPULATED_GRAPH);
-    render(<KnowledgeGraphBrowser />);
-    await screen.findByTestId('knowledge-graph');
+  // document.body) rendering the SAME document-mode body; close button exits.
+  it('fullscreen in 文档 mode shows the same tree and the close button exits', async () => {
+    renderAndSwitchToDocument();
+    await screen.findByTestId('graph-canvas');
 
     fireEvent.click(screen.getByTestId('graph-fullscreen-btn'));
 
@@ -191,20 +311,6 @@ describe('KnowledgeGraphBrowser', () => {
     expect(document.querySelectorAll('[data-testid="graph-canvas"]').length).toBe(1);
 
     fireEvent.click(within(overlay).getByTestId('graph-fullscreen-close'));
-
-    expect(screen.queryByTestId('graph-fullscreen-overlay')).toBeNull();
-    expect(screen.getByTestId('knowledge-graph')).toBeInTheDocument();
-  });
-
-  it('Escape closes the fullscreen overlay', async () => {
-    mockFetchOk(POPULATED_GRAPH);
-    render(<KnowledgeGraphBrowser />);
-    await screen.findByTestId('knowledge-graph');
-
-    fireEvent.click(screen.getByTestId('graph-fullscreen-btn'));
-    expect(screen.getByTestId('graph-fullscreen-overlay')).toBeInTheDocument();
-
-    fireEvent.keyDown(window, { key: 'Escape' });
 
     expect(screen.queryByTestId('graph-fullscreen-overlay')).toBeNull();
     expect(screen.getByTestId('knowledge-graph')).toBeInTheDocument();
