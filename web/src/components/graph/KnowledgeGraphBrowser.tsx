@@ -19,8 +19,9 @@
 // the controlled Tabs indicator). Click 引用原文 from a verdict
 // citation follows the same dispatcher (reuses the CitationCluster
 // path).
-import { Network } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Maximize2, Network, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import GraphCanvas from './GraphCanvas';
 import GraphFilterInput from './GraphFilterInput';
 import { useKnowledgeGraph } from '../../hooks/useKnowledgeGraph';
@@ -39,8 +40,25 @@ export default function KnowledgeGraphBrowser({
 }: KnowledgeGraphBrowserProps = {}) {
   const { graph, status, error, refetch } = useKnowledgeGraph();
   const [filter, setFilter] = useState('');
+  // Quick 260929-d5w2 — the detail-panel rail is too narrow for the
+  // radial graph; 全屏 swaps the body for a fixed inset-0 overlay that
+  // renders the SAME graph body (filter + canvas) at viewport size.
+  // Portal to document.body (KnowledgeModal B7 posture): ancestors
+  // carrying backdrop-filter/transform would otherwise become the
+  // containing block and clip the fixed overlay to the panel.
+  const [fullscreen, setFullscreen] = useState(false);
 
   const isLoading = loadingOverride ?? status === 'loading';
+
+  // Esc exits fullscreen — mirror of KnowledgeModal's Esc-close posture.
+  useEffect(() => {
+    if (!fullscreen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setFullscreen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullscreen]);
 
   // Empty-state hero: render when the corpus has 0 docs across all
   // tiers. The BE emits one tier entry per REGISTERED knowledge base
@@ -109,10 +127,56 @@ export default function KnowledgeGraphBrowser({
     );
   }
 
-  return (
-    <div data-testid="knowledge-graph" className="flex flex-col gap-3">
-      <GraphFilterInput value={filter} onChange={setFilter} />
-      <GraphCanvas graph={graph} filter={filter} />
+  // Shared render block — the narrow rail and the fullscreen overlay both
+  // render exactly this (filter input + fullscreen trigger + canvas).
+  // flex-1 min-h-0 gives the canvas the full container height in
+  // fullscreen mode while the narrow rail keeps its scroll behavior.
+  const graphBody = (
+    <div data-testid="knowledge-graph" className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-none items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <GraphFilterInput value={filter} onChange={setFilter} />
+        </div>
+        <button
+          type="button"
+          data-testid="graph-fullscreen-btn"
+          onClick={() => setFullscreen(true)}
+          title="全屏查看知识图谱"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface-1 px-2 py-1.5 text-xs font-semibold text-text hover:bg-surface-2"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+          全屏
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <GraphCanvas graph={graph} filter={filter} />
+      </div>
     </div>
   );
+
+  if (fullscreen) {
+    return createPortal(
+      <div
+        data-testid="graph-fullscreen-overlay"
+        className="fixed inset-0 z-50 flex flex-col bg-bg"
+      >
+        <div className="flex h-12 flex-none items-center justify-between border-b border-border px-4">
+          <span className="text-sm font-semibold tracking-wide text-text">知识图谱</span>
+          <button
+            type="button"
+            data-testid="graph-fullscreen-close"
+            onClick={() => setFullscreen(false)}
+            aria-label="退出全屏"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col p-4">{graphBody}</div>
+      </div>,
+      document.body,
+    );
+  }
+
+  return graphBody;
 }

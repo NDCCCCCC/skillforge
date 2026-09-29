@@ -14,7 +14,7 @@
 //   - Populated corpus renders the 3-level tree (tier -> doc -> chunk)
 //     and the filter narrows visible docs by filename.
 //   - Clicking a chunk dispatches setCenterView({kind:"chunk-source", ...}).
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import KnowledgeGraphBrowser from '../components/graph/KnowledgeGraphBrowser';
@@ -168,5 +168,45 @@ describe('KnowledgeGraphBrowser', () => {
         expect(cv.file).toBe('员工差旅管理办法.md');
       }
     });
+  });
+
+  // Quick 260929-d5w2 — 全屏 opens a fixed inset-0 overlay (portal to
+  // document.body) rendering the SAME graph body; the close button exits
+  // back to the narrow rail.
+  it('fullscreen button opens the overlay with the same graph and the close button exits', async () => {
+    mockFetchOk(POPULATED_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    await screen.findByTestId('knowledge-graph');
+
+    fireEvent.click(screen.getByTestId('graph-fullscreen-btn'));
+
+    const overlay = screen.getByTestId('graph-fullscreen-overlay');
+    expect(overlay).toBeInTheDocument();
+    // Portaled to document.body so no panel ancestor clips the fixed box.
+    expect(overlay.parentElement).toBe(document.body);
+    // Same graph content renders inside the overlay (canvas + filter).
+    expect(within(overlay).getByTestId('graph-canvas')).toBeInTheDocument();
+    expect(within(overlay).getByTestId('graph-filter-input')).toBeInTheDocument();
+    // The narrow body is replaced — no duplicate canvas outside the overlay.
+    expect(document.querySelectorAll('[data-testid="graph-canvas"]').length).toBe(1);
+
+    fireEvent.click(within(overlay).getByTestId('graph-fullscreen-close'));
+
+    expect(screen.queryByTestId('graph-fullscreen-overlay')).toBeNull();
+    expect(screen.getByTestId('knowledge-graph')).toBeInTheDocument();
+  });
+
+  it('Escape closes the fullscreen overlay', async () => {
+    mockFetchOk(POPULATED_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    await screen.findByTestId('knowledge-graph');
+
+    fireEvent.click(screen.getByTestId('graph-fullscreen-btn'));
+    expect(screen.getByTestId('graph-fullscreen-overlay')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(screen.queryByTestId('graph-fullscreen-overlay')).toBeNull();
+    expect(screen.getByTestId('knowledge-graph')).toBeInTheDocument();
   });
 });
