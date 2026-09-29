@@ -289,7 +289,24 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
       }
     });
 
+    // Zero-height guard: the tab body sizes by content, so the container
+    // can be 0px tall at init (blank-canvas bug). Re-measure on every
+    // size change; fit once the canvas first gains real height.
+    let sawHeight = false;
+    const ro = new ResizeObserver(() => {
+      const h = containerRef.current?.clientHeight ?? 0;
+      if (h > 0 && !sawHeight) {
+        sawHeight = true;
+        cy.resize();
+        cy.fit(undefined, 24);
+      } else if (h > 0) {
+        cy.resize();
+      }
+    });
+    ro.observe(containerRef.current);
+
     return () => {
+      ro.disconnect();
       cy.destroy();
     };
   }, [data]);
@@ -349,7 +366,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
   return (
     <div
       data-testid="ontology-graph-view"
-      className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-surface"
+      className="flex min-h-[360px] flex-1 flex-col rounded-md border border-border bg-surface"
     >
       {/* Focus toolbar + legend */}
       <div className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-1.5 text-xs">
@@ -386,7 +403,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
           <div
             ref={containerRef}
             data-testid="ontology-graph-canvas"
-            className="h-full w-full"
+            className="h-full w-full min-h-[300px]"
             role="img"
             aria-label={`本体图谱：${data.nodes.length} 个实体、${data.edges.length} 条关系`}
           />
