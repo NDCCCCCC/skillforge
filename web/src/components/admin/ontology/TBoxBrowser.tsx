@@ -1,11 +1,17 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Plan 38-05 — TBox class-hierarchy browser (SC-4). Six class cards
-// (Tier / KBCategory / SubCategory / Skill / SkillAgent / RefusalPhrase);
-// clicking a card lists its instances live from the KG pattern query
-// (?x rdf:type skf:<Class>). Instances render the local-name tail so
-// CJK sub-category IRIs stay readable.
+// Plan 38-05 — TBox class-hierarchy browser (SC-4). Class cards seed
+// from the static Phase 38 metadata (Tier / KBCategory / SubCategory /
+// Skill / SkillAgent / RefusalPhrase) and extend at mount time with
+// every owl:Class discovered live from the KG (?x rdf:type owl:Class) —
+// TBox v7 grew past the original six (InsuranceProduct / Organization /
+// NoteChunk / TableSchema), and static-only cards would hide new
+// classes on every TBox revision. Static cards keep their curated
+// labels; discovered extras render the local name as the label and sort
+// to the tail. Clicking a card lists its instances live from the KG
+// pattern query (?x rdf:type skf:<Class>). Instances render the
+// local-name tail so CJK sub-category IRIs stay readable.
 
 import { useEffect, useState } from 'react';
 import { Boxes } from 'lucide-react';
@@ -14,10 +20,13 @@ import { fetchKGQuery, fetchTBox } from './ontologyApi';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
+/** Class tier of the TBox hierarchy (must mirror the emitter's owl:Class). */
+const OWL_CLASS = 'http://www.w3.org/2002/07/owl#Class';
+
 /** Default namespace (must mirror emitter.DefaultNS). */
 const DEFAULT_NS = 'http://skillforge.local/ontology#';
 
-/** The six TBox classes (ONT-02). */
+/** The Phase 38 static TBox classes (ONT-02) — curated Chinese labels. */
 const TBOX_CLASSES: Array<{ local: string; label: string }> = [
   { local: 'Tier', label: '信任层级' },
   { local: 'KBCategory', label: '知识类目' },
@@ -26,6 +35,12 @@ const TBOX_CLASSES: Array<{ local: string; label: string }> = [
   { local: 'SkillAgent', label: 'Agent 类型' },
   { local: 'RefusalPhrase', label: '拒答短语' },
 ];
+
+/** Local-name tail of any IRI (wildcard: split at the last # or /). */
+function iriLocalName(iri: string): string {
+  const cut = Math.max(iri.lastIndexOf('#'), iri.lastIndexOf('/'));
+  return cut >= 0 ? iri.slice(cut + 1) : iri;
+}
 
 /** Strip the namespace prefix for readable instance labels. */
 function localTail(iri: string, ns: string): string {
@@ -40,6 +55,7 @@ export default function TBoxBrowser() {
   const [ns, setNS] = useState(DEFAULT_NS);
   const [version, setVersion] = useState<number | null>(null);
   const [tripleCount, setTripleCount] = useState<number | null>(null);
+  const [classes, setClasses] = useState<Array<{ local: string; label: string }>>(TBOX_CLASSES);
   const [selected, setSelected] = useState<string>('Skill');
   const [instances, setInstances] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,6 +74,35 @@ export default function TBoxBrowser() {
         if (m) setNS(m[1]);
       })
       .catch((e) => !cancelled && setError(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Discover classes beyond the static Phase 38 metadata: every
+  // owl:Class individual in the KG that TBOX_CLASSES does not already
+  // cover becomes a fallback card (local name as label), sorted to the
+  // tail. Best-effort — on failure the static card set stays.
+  useEffect(() => {
+    let cancelled = false;
+    fetchKGQuery('', RDF_TYPE, OWL_CLASS)
+      .then((r) => {
+        if (cancelled) return;
+        const seen = new Set(TBOX_CLASSES.map((c) => c.local));
+        const extra: Array<{ local: string; label: string }> = [];
+        for (const t of r.matches) {
+          const local = iriLocalName(t.s);
+          if (!local || seen.has(local)) continue;
+          seen.add(local);
+          extra.push({ local, label: local });
+        }
+        if (extra.length === 0) return;
+        extra.sort((a, b) => a.local.localeCompare(b.local));
+        setClasses([...TBOX_CLASSES, ...extra]);
+      })
+      .catch(() => {
+        // class discovery is an enhancement, never a render blocker
+      });
     return () => {
       cancelled = true;
     };
@@ -97,7 +142,7 @@ export default function TBoxBrowser() {
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
-        {TBOX_CLASSES.map((c) => (
+        {classes.map((c) => (
           <button
             key={c.local}
             type="button"
