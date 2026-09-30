@@ -73,8 +73,10 @@ start_server() {
   local extra_env="$1"
   pkill -x skillforge-serv 2>/dev/null || true
   sleep 2
-  bash -c "set -a; source $REPO/.env; set +a; $extra_env /tmp/skillforge-server-42 > /tmp/sf-42.log 2>&1 &"
-  for i in {1..30}; do
+  # D-TRUST-02 (Phase 41): MCP service skill is REQUIRED at boot — the
+  # server fail-fasts without it.
+  bash -c "set -a; source $REPO/.env; set +a; export SKILLFORGE_MCP_SERVICE_SKILL=\${SKILLFORGE_MCP_SERVICE_SKILL:-simple-qa}; $extra_env /tmp/skillforge-server-42 > /tmp/sf-42.log 2>&1 &"
+  for i in {1..60}; do
     if curl -sS -m 1 http://localhost:8888/healthz >/dev/null 2>&1; then
       echo "  server ready after ${i}s"
       return 0
