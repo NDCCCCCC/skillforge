@@ -153,6 +153,12 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
   const [focusMode, setFocusMode] = useState<FocusMode>(loadFocusMode);
   const [data, setData] = useState<OntologyGraph | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** 403 → inline admin-token gate (the console token was likely lost with
+   * the browser profile — nothing in the app ever WRITES sf_admin_token). */
+  const [needsToken, setNeedsToken] = useState(false);
+  const [tokenDraft, setTokenDraft] = useState('');
+  /** Bumped by the 403 token gate to re-run the fetch effect. */
+  const [retryTick, setRetryTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<OntologyNode | null>(null);
   /** Hovered node id — drives the 1.8× magnify. */
@@ -244,6 +250,9 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
       })
       .catch((e: unknown) => {
         if (!cancelled) {
+          if (e instanceof OntologyGraphApiError && e.status === 403) {
+            setNeedsToken(true);
+          }
           setError(
             e instanceof OntologyGraphApiError ? e.message : String(e),
           );
@@ -255,7 +264,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
     };
     // notesKey is the stable wire-shape of the (focusMode, focus) pair.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notesKey, resolving]);
+  }, [notesKey, resolving, retryTick]);
 
   // Node/link engine payloads. Fresh objects per fetch — the engine
   // re-seeds positions (a full re-layout, same posture as the old
@@ -381,6 +390,36 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
       >
         <div className="text-sm font-semibold text-text">无法加载本体视图</div>
         <p className="max-w-md text-xs text-text-muted">{error}</p>
+        {needsToken && (
+          <form
+            data-testid="ontology-token-gate"
+            className="flex items-center gap-2"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              const t = tokenDraft.trim();
+              if (!t) return;
+              localStorage.setItem('sf_admin_token', t);
+              setNeedsToken(false);
+              setError(null);
+              setLoading(true);
+              setRetryTick((v) => v + 1);
+            }}
+          >
+            <input
+              type="password"
+              value={tokenDraft}
+              onChange={(e) => setTokenDraft(e.target.value)}
+              placeholder="管理员令牌"
+              className="w-48 rounded border border-border bg-surface px-2 py-1 text-xs"
+            />
+            <button
+              type="submit"
+              className="rounded bg-primary px-3 py-1 text-xs font-semibold text-primary-fg"
+            >
+              保存并重试
+            </button>
+          </form>
+        )}
       </div>
     );
   }
