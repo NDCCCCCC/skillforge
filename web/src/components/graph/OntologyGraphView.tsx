@@ -142,6 +142,18 @@ interface FgLink {
 
 type FgMethods = ForceGraphMethods<NodeObject<FgNode>, LinkObject<FgNode, FgLink>>;
 
+/** fg mutates link.source/target from id strings into node object refs
+ * after init — normalize back to ids for lookups against projection data. */
+function linkIds(l: { source: unknown; target: unknown }): { fromId: string; toId: string } {
+  const fromId = typeof l.source === 'object' && l.source !== null
+    ? (l.source as FgNode).id
+    : String(l.source);
+  const toId = typeof l.target === 'object' && l.target !== null
+    ? (l.target as FgNode).id
+    : String(l.target);
+  return { fromId, toId };
+}
+
 export interface OntologyGraphViewProps {
   /** Citations of the latest assistant verdict (same GraphFocus the
    * document canvas consumes). null/undefined = 全库. */
@@ -163,6 +175,10 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
   const [selected, setSelected] = useState<OntologyNode | null>(null);
   /** Hovered node id — drives the 1.8× magnify. */
   const [hoverId, setHoverId] = useState<string | null>(null);
+  /** Click-selected node id — drives the neighborhood highlight (the
+   * cytoscape-era behavior: selected + neighbors full, everything else
+   * faded). null = no selection. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Measured host size — passed explicitly to ForceGraph3D (without
    * explicit width/height it renders at a degenerate default). */
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -250,6 +266,7 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
       })
       .catch((e: unknown) => {
         if (!cancelled) {
+          setSelectedId(null);
           if (e instanceof OntologyGraphApiError && e.status === 403) {
             setNeedsToken(true);
           }
@@ -296,6 +313,33 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
     muted: readToken('--color-border-muted', '#64748b'),
   }), []);
 
+  // Adjacency for the click-highlight (from the PROJECTION edges, not the
+  // engine-mutated graphData — fg rewrites link.source/target into node
+  // object refs after init).
+  const adjacency = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of data?.edges ?? []) {
+      if (!m.has(e.from)) m.set(e.from, new Set());
+      if (!m.has(e.to)) m.set(e.to, new Set());
+      m.get(e.from)!.add(e.to);
+      m.get(e.to)!.add(e.from);
+    }
+    return m;
+  }, [data]);
+
+  /** Selection semantics: no selection = everything normal; with one,
+   * only the selected node + its direct neighbors stay vivid. */
+  const inNeighborhood = useCallback(
+    (id: string): boolean =>
+      !selectedId || id === selectedId || (adjacency.get(selectedId)?.has(id) ?? false),
+    [selectedId, adjacency],
+  );
+
+  const isEdgeInNeighborhood = useCallback(
+    (l: OntologyEdge): boolean => !selectedId || (inNeighborhood(l.from) && inNeighborhood(l.to)),
+    [selectedId, inNeighborhood],
+  );
+
   const linkColorFor = useCallback(
     (type: OntologyEdge['type']): string => {
       switch (type) {
@@ -316,6 +360,24 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
     [palette],
   );
 
+  /** fg rewrites link.source/target into node object refs after init —
+   * normalize back to ids for the neighborhood lookup. */
+  const linkStyleFor = useCallback(
+    (l: { type: OntologyEdge['type']; fromId: string; toId: string }): {
+      color: string;
+      width: number;
+      particles: number;
+    } => {
+      const color = linkColorFor(l.type);
+      if (!selectedId) return { color, width: 1.5, particles: 3 };
+      if (isEdgeInNeighborhood({ from: l.fromId, to: l.toId, type: l.type })) {
+        return { color, width: 2.5, particles: 4 };
+      }
+      return { color: withAlpha(palette.muted, 0.08), width: 0.5, particles: 0 };
+    },
+    [selectedId, isEdgeInNeighborhood, linkColorFor, palette.muted],
+  );
+
   const nodeColorFor = useCallback(
     (kind: OntologyNode['kind']): string => {
       switch (kind) {
@@ -332,6 +394,21 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
       }
     },
     [palette],
+  );
+
+  const nodeStyleFor = useCallback(
+    (n: FgNode): { color: string; val: number } => {
+      const base = nodeColorFor(n.kind);
+      if (!selectedId) {
+        return { color: base, val: hoverId === n.id ? n.val * 1.8 : n.val };
+      }
+      if (n.id === selectedId) return { color: base, val: n.val * 2.2 };
+      if (inNeighborhood(n.id)) {
+        return { color: base, val: hoverId === n.id ? n.val * 1.8 : n.val };
+      }
+      return { color: withAlpha(base, 0.15), val: n.val * 0.7 };
+    },
+    [selectedId, hoverId, inNeighborhood, nodeColorFor],
   );
 
   /** zoomToFit(800ms transition, 40px padding) — once per dataset. */
@@ -531,15 +608,23 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
                   label3d ? label3d.makeLabelSprite(n.label, n.val * 1.2) : null) as unknown as (
                     obj: NodeObject<FgNode>,
                   ) => Object3D}
-                linkColor={(l) => linkColorFor(l.type)}
-                linkWidth={1.5}
-                linkDirectionalParticles={3}
+                linkColor={(l) => linkStyleFor({ type: l.type, ...linkIds(l) }).color}
+                linkWidth={(l) => linkStyleFor({ type: l.type, ...linkIds(l) }).width}
+                linkDirectionalParticles={(l) =>
+                  linkStyleFor({ type: l.type, ...linkIds(l) }).particles
+                }
                 linkDirectionalParticleSpeed={0.006}
                 onNodeClick={(n) => {
                   const found = data.nodes.find((x) => x.id === n.id);
-                  if (found) setSelected(found);
+                  if (found) {
+                    setSelected(found);
+                    setSelectedId((prev) => (prev === n.id ? null : n.id));
+                  }
                 }}
-                onBackgroundClick={() => setSelected(null)}
+                onBackgroundClick={() => {
+                  setSelected(null);
+                  setSelectedId(null);
+                }}
                 onNodeHover={(n) => setHoverId(n ? n.id : null)}
                 onEngineStop={() => fitOnce(data)}
               />

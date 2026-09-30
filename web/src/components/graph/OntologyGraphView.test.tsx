@@ -175,8 +175,17 @@ describe('OntologyGraphView', () => {
       source: 'http://skillforge.local/ontology#ent_hubei',
       target: 'http://skillforge.local/ontology#ent_hq',
     });
-    // Flowing particles are the dynamic-signature wiring.
-    expect(lastFgProps().linkDirectionalParticles).toBe(3);
+    // Flowing particles are the dynamic-signature wiring. With no
+    // selection every link flows at the default rate.
+    const particles = lastFgProps().linkDirectionalParticles;
+    expect(typeof particles).toBe('function');
+    expect(
+      (particles as (l: unknown) => number)({
+        source: 'http://skillforge.local/ontology#note_032',
+        target: 'http://skillforge.local/ontology#tbl_pay_way',
+        type: 'references_table',
+      }),
+    ).toBe(3);
     expect(lastFgProps().linkDirectionalParticleSpeed).toBe(0.006);
 
     // Legend counts the four kinds.
