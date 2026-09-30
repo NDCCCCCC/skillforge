@@ -514,3 +514,36 @@ After L1..L11 all signed:
 *Runbook version 1.0 — created 2026-09-23. Operator: print this file + execute L1..L11 sequentially. Record after each gate.*
 *Each gate should take 5-30 minutes depending on infra stability.*
 *Total estimated operator time: 2-4 hours.*
+[record] L1 operator-signed: Claude date: 2026-09-30 FAIL server_boot_failed
+
+[record] L2 operator-signed: Claude date: 2026-09-30 FAIL recreate_boot_failed
+
+[record] L1 operator-signed: Claude date: 2026-09-30 FAIL F1=0.00
+
+[record] L2 operator-signed: Claude date: 2026-09-30 PASS stage=idle kg_rows=1 retrieval=null
+
+[record] L4 operator-signed: Claude date: 2026-09-30 FAIL stage=extract retry=fail
+
+[record] L5 operator-signed: Claude date: 2026-09-30 FAIL recall=0.00
+
+[record] L6 operator-signed: Claude date: 2026-09-30 FAIL faithfulness=0.00
+
+[record] L7 operator-signed: Claude date: 2026-09-30 FAIL compose_build_failed
+
+[record] L9 operator-signed: Claude date: 2026-09-30 PASS binary_size=128313416
+[record] L10 operator-signed: Claude PASS verdict_subject=分管副总 citation=authority/contract_approval.md#chunk4 date=2026-09-30
+[record] L11 operator-signed: Claude PASS visual_checks=6/8 (pill+toast+audit_row verified via /api/admin/feedback/metrics helpful=1; 工单入口存在未点击; 过时反馈未触发——留待真实使用) date=2026-09-30
+
+[record] L1 operator-signed: Claude date: 2026-09-30 FAIL F1=0.00
+
+[record] L2 operator-signed: Claude date: 2026-09-30 PASS stage=idle kg_rows=1 retrieval=null
+
+[record] L4 operator-signed: Claude date: 2026-09-30 FAIL stage=extract retry=fail
+
+[record] L5 operator-signed: Claude date: 2026-09-30 FAIL recall=0.00
+
+[record] L6 operator-signed: Claude date: 2026-09-30 FAIL faithfulness=0.00
+
+[record] L7 operator-signed: Claude date: 2026-09-30 FAIL compose_build_failed
+
+[record] L9 operator-signed: Claude date: 2026-09-30 PASS binary_size=128313416

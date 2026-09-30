@@ -1,0 +1,154 @@
+[11:10:18] 0. Precheck start
+[11:10:18] .env injected
+[11:10:18] 0.1 Connectivity probe
+[11:10:19]   GLM probe: HTTP 401
+[11:10:19]   BGE probe: HTTP 405
+[11:10:19]   LLM probe: HTTP 000
+[11:10:19]   Milvus probe: HTTP 404
+[11:10:19] 0.2 Backend build (WSL)
+[11:12:13] 0. Precheck start
+[11:12:14] .env injected
+[11:12:14] 0.1 Connectivity probe
+[11:12:14]   GLM probe: HTTP 401
+[11:12:14]   BGE probe: HTTP 405
+[11:12:14]   LLM probe: HTTP 000
+[11:12:14]   Milvus probe: HTTP 404
+[11:12:14] 0.2 Backend build (WSL)
+[11:12:44] L1 start
+[11:13:37] L1 FAIL server_boot_failed
+[11:13:37] L2 start
+[11:14:31] L2 FAIL recreate_boot_failed
+[11:14:31] L3 manual-only — operator must inspect browser
+
+  ## L3 manual step
+  1. Open browser http://localhost:5173/admin
+  2. Click "ECL 管线" tab
+  3. Walk 13-item visual checklist per 39-UI-SPEC.md
+  4. Append "[record] L3 operator-signed: <name> PASS visual 13/13" to runbook
+
+[11:14:31] L4 start
+[11:15:17] 0. Precheck start
+[11:15:18] .env injected
+[11:15:18] 0.1 Connectivity probe
+[11:15:18]   GLM probe: HTTP 401
+[11:15:18]   BGE probe: HTTP 405
+[11:15:18]   LLM probe: HTTP 000
+[11:15:18]   Milvus probe: HTTP 404
+[11:15:18] 0.2 Backend build (WSL)
+[11:15:45] L1 start
+[11:19:37] 0. Precheck start
+[11:19:37] .env injected
+[11:19:37] 0.1 Connectivity probe
+[11:19:38]   GLM probe: HTTP 401
+[11:19:38]   BGE probe: HTTP 405
+[11:19:38]   LLM probe: HTTP 000
+[11:19:38]   Milvus probe: HTTP 404
+[11:19:38] 0.2 Backend build (WSL)
+[11:19:54] L1 start
+[11:21:15] L1 FAIL F1=0.00
+[11:21:17] L2 start
+[11:22:54] L2 PASS stage=idle kg_rows=1 retrieval=null
+[11:22:56] L3 manual-only — operator must inspect browser
+
+  ## L3 manual step
+  1. Open browser http://localhost:5173/admin
+  2. Click "ECL 管线" tab
+  3. Walk 13-item visual checklist per 39-UI-SPEC.md
+  4. Append "[record] L3 operator-signed: <name> PASS visual 13/13" to runbook
+
+[11:22:56] L4 start
+{"status":"started"}.planning/phases/42-v1-4-outstanding-closure/42-operator-bootstrap.sh: line 180: docker: command not found
+[11:24:20] L4 FAIL stage=extract retry=fail
+[11:24:22] L5 start
+[11:24:59] L5 FAIL recall=0.00
+[11:25:01] L6 start
+[11:25:38] L6 FAIL faithfulness=0.00
+[11:25:38] L7 start
+[11:25:39] L7 FAIL compose_build_failed
+[11:25:39] L8 manual-only — operator browser walkthrough
+
+  ## L8 manual step
+  1. Open browser http://localhost:5173/chat
+  2. Input "出 2026-08 月报"
+  3. Walk Phase 18 E2E per 18-HUMAN-UAT.md Test 1-2
+  4. Append "[record] L8 operator-signed: <name> PASS reports=v1,v2"
+
+[11:25:39] L9 start
+[11:25:54] L9 PASS binary_size=128313416
+[11:25:54] L10 manual-only — operator browser verdict check
+
+  ## L10 manual step
+  1. Open browser http://localhost:5173/chat
+  2. Input "采购合同 50 万元以下由谁审批？"
+  3. Verify verdict subject = 审批人, not 合规/不合规
+  4. Append "[record] L10 operator-signed: <name> PASS verdict_subject=<approver>"
+
+[11:25:54] L11 manual-only — operator visual walkthrough
+
+  ## L11 manual step
+  1. Open browser http://localhost:5173/chat
+  2. Initiate question, observe verdict + citations
+  3. Click FeedbackRow: "有帮助" / "没帮助" / "报告知识过时"
+  4. Verify pill state, toast, audit row written
+  5. Click "创建工单" if available
+  6. Append "[record] L11 operator-signed: <name> PASS visual_checks=N/8"
+
+[11:25:54] Bootstrap complete
+[11:40:02] 0. Precheck start
+[11:40:02] .env injected
+[11:40:02] 0.1 Connectivity probe
+[11:40:03]   GLM probe: HTTP 401
+[11:40:03]   BGE probe: HTTP 405
+[11:40:03]   LLM probe: HTTP 000
+[11:40:03]   Milvus probe: HTTP 404
+[11:40:03] 0.2 Backend build (WSL)
+[11:40:28] L1 start
+[11:46:16] L1 FAIL F1=0.00
+[11:46:18] L2 start
+[11:48:05] L2 PASS stage=idle kg_rows=1 retrieval=null
+[11:48:07] L3 manual-only — operator must inspect browser
+
+  ## L3 manual step
+  1. Open browser http://localhost:5173/admin
+  2. Click "ECL 管线" tab
+  3. Walk 13-item visual checklist per 39-UI-SPEC.md
+  4. Append "[record] L3 operator-signed: <name> PASS visual 13/13" to runbook
+
+[11:48:07] L4 start
+{"status":"started"}.planning/phases/42-v1-4-outstanding-closure/42-operator-bootstrap.sh: line 180: docker: command not found
+[11:49:31] L4 FAIL stage=extract retry=fail
+[11:49:33] L5 start
+[11:50:11] L5 FAIL recall=0.00
+[11:50:13] L6 start
+[11:50:45] L6 FAIL faithfulness=0.00
+[11:50:45] L7 start
+[11:50:45] L7 FAIL compose_build_failed
+[11:50:45] L8 manual-only — operator browser walkthrough
+
+  ## L8 manual step
+  1. Open browser http://localhost:5173/chat
+  2. Input "出 2026-08 月报"
+  3. Walk Phase 18 E2E per 18-HUMAN-UAT.md Test 1-2
+  4. Append "[record] L8 operator-signed: <name> PASS reports=v1,v2"
+
+[11:50:45] L9 start
+[11:51:05] L9 PASS binary_size=128313416
+[11:51:05] L10 manual-only — operator browser verdict check
+
+  ## L10 manual step
+  1. Open browser http://localhost:5173/chat
+  2. Input "采购合同 50 万元以下由谁审批？"
+  3. Verify verdict subject = 审批人, not 合规/不合规
+  4. Append "[record] L10 operator-signed: <name> PASS verdict_subject=<approver>"
+
+[11:51:05] L11 manual-only — operator visual walkthrough
+
+  ## L11 manual step
+  1. Open browser http://localhost:5173/chat
+  2. Initiate question, observe verdict + citations
+  3. Click FeedbackRow: "有帮助" / "没帮助" / "报告知识过时"
+  4. Verify pill state, toast, audit row written
+  5. Click "创建工单" if available
+  6. Append "[record] L11 operator-signed: <name> PASS visual_checks=N/8"
+
+[11:51:05] Bootstrap complete
