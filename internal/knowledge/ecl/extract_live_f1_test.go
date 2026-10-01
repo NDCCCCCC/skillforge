@@ -133,7 +133,10 @@ func TestLiveLLMExtractionF1(t *testing.T) {
 		relatedScores = append(relatedScores, rs)
 
 		if ts.F1 < 1.0 {
-			t.Logf("note %s: tables P=%.4f R=%.4f F1=%.4f (live %d tables vs golden %d)",
+			// Lowercase "f1=" on per-note lines: the bootstrap L1 gate
+			// greps the FIRST "F1=" token as THE macro score, so the
+			// per-note transparency log must not emit that token.
+			t.Logf("note %s: tables P=%.4f R=%.4f f1=%.4f (live %d tables vs golden %d)",
 				row.SourceIdx, ts.P, ts.R, ts.F1, len(pred.Tables), len(row.Tables))
 		}
 	}
