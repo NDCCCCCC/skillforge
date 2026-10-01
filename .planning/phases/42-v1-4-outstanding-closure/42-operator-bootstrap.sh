@@ -118,7 +118,7 @@ if start_server ""; then
   # (quick-261001-cz7); without it the test skips and the gate would
   # score a skip, not a measurement. A skip (LLM env down) records SKIP,
   # not FAIL (env-STOP semantics).
-  L1_OUT=$(SKILLFORGE_LIVE_F1=1 /usr/local/go/bin/go test ./internal/knowledge/ecl/ -run TestLiveLLMExtractionF1 -count=1 -v 2>&1) || true
+  L1_OUT=$(SKILLFORGE_LIVE_F1=1 /usr/local/go/bin/go test ./internal/knowledge/ecl/ -run TestLiveLLMExtractionF1 -count=1 -v -timeout 40m 2>&1) || true
   echo "$L1_OUT" | grep -E "F1=|SKIP|FAIL" | head -5 >> "$LOG"
   if echo "$L1_OUT" | grep -q -- "--- SKIP"; then
     record_gate "L1" "SKIP" "live_f1_skipped_env"
@@ -225,7 +225,7 @@ if start_server "SKILLFORGE_RETRIEVAL_RERANK=true SKILLFORGE_HYBRID_HOPS=2 "; th
   # SKILLFORGE_LIVE_HYBRID=1 opens the live gate inside the test
   # (quick-261001-cz7). A skip (Milvus/BGE down) records SKIP, not FAIL
   # (env-STOP semantics, env-intranet-service-flakiness).
-  L5_OUT=$(SKILLFORGE_LIVE_HYBRID=1 /usr/local/go/bin/go test ./internal/server/ -run TestHybridSearchRecall -count=1 -v 2>&1) || true
+  L5_OUT=$(SKILLFORGE_LIVE_HYBRID=1 /usr/local/go/bin/go test ./internal/server/ -run TestHybridSearchRecall -count=1 -v -timeout 10m 2>&1) || true
   echo "$L5_OUT" | grep -E "recall=|SKIP|FAIL" | head -10 >> "$LOG"
   if echo "$L5_OUT" | grep -q -- "--- SKIP"; then
     record_gate "L5" "SKIP" "live_hybrid_skipped_env"
