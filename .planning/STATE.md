@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: SPARQL Schema Detection + Entity SHACL Shapes
-status: planning
+status: roadmap_complete
 last_updated: "2026-10-02T00:00:00.000Z"
-last_activity: 2026-10-02 — Milestone v1.6 started
+last_activity: 2026-10-02 — v1.6 ROADMAP created (Phases 45-46)
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,10 +17,12 @@ progress:
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-10-02 — Milestone v1.6 started
+Phase: 45 of 46 (SPARQL Schema Visibility — D-SPARQL-05)
+Plan: 0 of TBD in current phase
+Status: Ready to plan (`/gsd:plan-phase 45`)
+Last activity: 2026-10-02 — v1.6 ROADMAP created (Phase 45 SPARQL + Phase 46 Entity SHACL; 6/6 requirements mapped)
+
+Progress: [░░░░░░░░░░] 0%
 
 ### Quick Tasks Completed
 
@@ -97,7 +99,7 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 |------|-------|--------|
 | 42-01 | Audit-Open Triage Report (49 → 30 items classified) | ✅ Complete |
 | 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09) | ✅ Complete (9 atomic commits + 9 regression tests + hermetic gate) |
-| 42-03 | Operator Live Verification Bundle (L1..L11) | 🚧 Drafted (42-03 runbook.md ready). Operator execution blocked on **Phase 43 compile fix** + 8 SPARQL failures (see below). |
+| 42-03 | Operator Live Verification Bundle (L1..L11) | ✅ Executed by Claude 2026-09-30/10-01 (8 PASS + L8 PARTIAL + L4/L7 env-SKIP; live 抽取 F1 0.39→0.87; L5 recall 1.0; L6 faithfulness 0.9036) |
 | 42-04 | v1.4 Closure Doc Update | ✅ Plan drafted + 2026-09-24 applied (3 doc edits + 1 NEW file) |
 
 ## v1.5 Phase 43 Discovery (2026-09-28) — v1.4 web code never CGO-build verified
@@ -126,25 +128,12 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 
 **Newly discovered v1.4 closures (need Phase 44)**:
 
-- **8 SPARQL test failures** in `internal/server/admin_platform_test.go`:
-  - `TestSparqlQueryScoped_AllWildcard` (expected 16, actual 23)
-  - `TestSparqlQueryScoped_SubjectFilter` / `Truncated` / `TierFilter` / `FailClosedNoBelongsToTier` / `LimitCap` / `DefaultLimit` / `Pagination`
-  - **Cause**: SPARQL `QueryScoped` returns extra triples — root cause TBD. Pre-existing in v1.4 code; never caught because CGO build failed.
-  - **Severity**: Phase 41 SPARQL endpoint shipped without passing its own test suite.
-  - **Recommendation**: Open Phase 44 to investigate + fix. v1.5 milestone closure cannot be marked SHIPPED until these are green.
+- **8 SPARQL test failures** in `internal/server/admin_platform_test.go` — resolved in Phase 44 (see below).
 
 **Operational impact**:
 
 - ✅ Backend can now boot with `CGO_ENABLED=1` (128 MB binary at `/tmp/sf43`)
-- ✅ IN-05 panic recovery test passes
-- ⚠ Backend still cannot serve requests — intranet infrastructure (LLM/Milvus/BGE) unreachable from current Claude session (per `env-intranet-service-flakiness`); 42-03 L1-L11 still require operator to execute
-- ⚠ SPARQL endpoint fails its own test suite; do not ship as v1.5 done until Phase 44 fixes
-
-**Updated forecast**:
-
-- v1.5 closure (real): 28/30 closed + 11 awaiting operator + 8 SPARQL failures in Phase 44
-- Phase 44 (NEW): fix SPARQL test failures, re-run suite — **COMPLETE 2026-09-28** (44-01-SUMMARY.md)
-- v1.5 milestone SHIPPED only after Phase 44 complete + operator 42-03 runbook complete — Phase 44 ✅ done; 42-03 runbook L1..L11 unblocked
+- ⚠ Backend live requests require intranet infrastructure (LLM/Milvus/BGE) per `env-intranet-service-flakiness` — live gates run operator-side or via runbook
 
 ## v1.5 Phase 44 Status (2026-09-28) — SPARQL Test Fix COMPLETE
 
@@ -166,7 +155,7 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 6. `chore(44-06)` — `75c9fd1` — Hermetic gate verification + 2 additional runtime assertion corrections
 7. `test(44-07)` — `5fa5747` — D-SPARQL-06 Label-passthrough regression test (TestIsSchemaTriple_LabelAndCommentAreABox + TestStore_LabelAndCommentNotSchemaPassthrough)
 
-**Decision locks:** D-SPARQL-01..08 (`44-DECISIONS.md`). D-SPARQL-05 (skill `hasReadAccess` visibility in admin baseline) **DEFERRED** to follow-up phase.
+**Decision locks:** D-SPARQL-01..08 (`44-DECISIONS.md`). D-SPARQL-05 (skill `hasReadAccess` visibility in admin baseline) **DEFERRED → v1.6 Phase 45**.
 
 **Hermetic gate (CGO_ENABLED=1, WSL Ubuntu-22.04 with gcc 11.4.0 + go1.25.5 linux/amd64):**
 
@@ -180,7 +169,7 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - Truncated 2nd case (limit=5, offset=20): 0→2 — page = triples[20:min(25,22)] = 2 items
 - FailClosedNoBelongsToTier sql-guides branch (S=note_003): 0→8 — schema triples short-circuit before S/P/O pattern filter
 
-**Next step:** Operator runs `42-03 runbook.md` L1..L11 against the Phase 43-01 build environment (Linux gcc + emutls ABI per `env-wsl-backend-runbook`). Phase 44 hermetic green unblocks the v1.5 SHIPPED gate.
+**Next step:** v1.5 SHIPPED 2026-10-02 (42-03 runbook executed). D-SPARQL-05 defer lands as v1.6 Phase 45.
 
 ## v1.3 Summary (closed 2026-09-09)
 
@@ -207,11 +196,12 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 
 - 2026-09-09: **v1.3 milestone closed** — code quality remediation from project-audit-2026-09-09.md. Phase 31-37 derived from 26 REQ-IDs. 23/26 REQ closed (88%); 4 项 tech debt.
 - 2026-09-21: **v1.4 milestone started** — Ontology Layer based on 005 series (5 spikes all VALIDATED). Phase 38-41 derived from 4 capabilities (Foundation / ECL / Governance / Platform). UI 一致性 hard constraint: 每 web phase 先产 UI-SPEC.md.
-- 2026-09-21: **Phase 38 COMPLETE** — Foundation (TBox + memory-map KG + induction). 6 plans / 6 commits (29ad95b..1bd93cc); hermetic gate 13/13; ONT-01..09 verified; `internal/ontology/{emitter,store,induction}` + 8 admin routes + 本体 tab. Notables: triple baseline 176 (源演化, spike 快照 215); rollback UX → Phase 40 (D-TBox-03); approve 闭环含 v{N+1}.ttl 归档 + 5s debounce snapshot.
+- 2026-10-02: **v1.5 milestone SHIPPED** — Outstanding Closure (Phases 42-44). 42-03 runbook executed; Phase 44 SPARQL 10/10 green; D-TIER-03 restored.
+- 2026-10-02: **v1.6 roadmap created** — Phase 45 (SPARQL Schema Visibility, D-SPARQL-05 Option α) + Phase 46 (Entity SHACL Shapes); 6/6 REQ mapped; D-TIER-03 fail-closed 不削弱为硬约束。
 
 ---
 
-*Last updated: 2026-09-23 — Phase 40-07b complete: three governance views (ShaclReportView / ProvenanceGraphView / TimelineView) + cytoscape ^3.34.0; Wave 3 complete (07a+07b+08)*
+*Last updated: 2026-10-02 — v1.6 roadmap created (Phases 45-46)*
 
 ## Decisions
 
@@ -259,7 +249,7 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 45 via `/gsd:plan-phase 45`
 
 ## Deferred Items
 
@@ -272,4 +262,4 @@ Items acknowledged and deferred at v1.5 milestone close on 2026-10-02:
 | uat_gaps | 14 | 历史 HUMAN-UAT 未闭环项(42-03 operator 域为主) |
 | verification_gaps | 8 | 历史验证缺口(L1/L5 测量工具已在 261001-cz7 补齐) |
 
-v1.6 重点积压(非上述残留,为真实后续项): D-SPARQL-05 citation source 补全、实体类 SHACL shapes、双 resolver 去重、server 包 lint 清扫、live 抽取 prompt 对齐 writes-only 的残余微调、DetailPanel/emitter 两个 deferred 测试。
+v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation source 补全~~(→ Phase 45)、~~实体类 SHACL shapes~~(→ Phase 46)、双 resolver 去重、server 包 lint 清扫、live 抽取 prompt 对齐 writes-only 的残余微调、DetailPanel/emitter 两个 deferred 测试。

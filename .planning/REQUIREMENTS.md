@@ -47,18 +47,18 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SPARQL-01 | — | Pending |
-| SPARQL-02 | — | Pending |
-| SPARQL-03 | — | Pending |
-| SHACL-01 | — | Pending |
-| SHACL-02 | — | Pending |
-| SHACL-03 | — | Pending |
+| SPARQL-01 | Phase 45 | Pending |
+| SPARQL-02 | Phase 45 | Pending |
+| SPARQL-03 | Phase 45 | Pending |
+| SHACL-01 | Phase 46 | Pending |
+| SHACL-02 | Phase 46 | Pending |
+| SHACL-03 | Phase 46 | Pending |
 
 **Coverage:**
 - v1.6 requirements: 6 total
-- Mapped to phases: 0
-- Unmapped: 6 ⚠️（roadmap 创建后归零）
+- Mapped to phases: 6
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-02*
-*Last updated: 2026-10-02 after v1.6 milestone start*
+*Last updated: 2026-10-02 — roadmap created; 6/6 requirements mapped to Phases 45-46*

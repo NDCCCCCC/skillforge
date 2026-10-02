@@ -10,266 +10,111 @@
 | v1.1 (Eval Trust-Loop) | 21-25 | ✅ SHIPPED 2026-09-06 |
 | v1.2 (Knowledge Ops) | 26-30 | ✅ SHIPPED 2026-09-08 |
 | v1.3 (Code Quality) | 31-37 | ✅ SHIPPED 2026-09-09 |
-| **v1.4 (Ontology Layer)** | **38-41** | **✅ SHIPPED 2026-09-23** |
-| **v1.5 (Outstanding Closure)** | **42, 44** | **✅ SHIPPED 2026-10-02 (closure-only)** |
+| v1.4 (Ontology Layer) | 38-41 | ✅ SHIPPED 2026-09-23 |
+| v1.5 (Outstanding Closure) | 42-44 | ✅ SHIPPED 2026-10-02 (closure-only) |
+| **v1.6 (SPARQL Schema Detection + Entity SHACL Shapes)** | **45-46** | **🚧 IN PROGRESS** |
 | Backlog | 999.x | Backlog |
 
 ---
 
-## Phase 31: FE Real Bugs — Hostname Config + evalStatus Ready
+## ✅ Shipped Milestones (v0.7.7 – v1.5)
 
-**Goal**: Fix two production-impacting frontend bugs — hardcoded hostname whitelist and stuck loading state
+- **v0.7.7** Phases 1-7 — spike / compliance slice / agentic retrieval / streaming UI / skill platform / eval dashboard / OSS release
+- **v0.8** Phases 8-13 — deps upgrade / history injection / multi-turn memory / write tools + approval gate / planning layer / sub-agent fan-out
+- **v1.0** Phases 14-20 — CGO trust floor / KPI aggregation / dashboard / reports / scheduler / admin
+- **v1.1** Phases 21-25 — 外部授权 + 审计链 + Eval CI + OSS
+- **v1.2** Phases 26-30 — KBM / DOC / GRF / FBK / TKT (knowledge ops + feedback loop)
+- **v1.3** Phases 31-37 — code quality remediation (23/26 REQ closed; trust semantics preserved)
+- **v1.4** Phases 38-41 — Ontology Layer (TBox + KG store + ECL pipeline + SHACL governance + MCP/SPARQL/Hybrid platform). Phase detail records preserved below.
+- **v1.5** Phases 42-44 — Outstanding Closure (42-03 operator runbook executed 2026-09-30/10-01: 8 PASS + L8 PARTIAL + L4/L7 env-SKIP; live 抽取 F1 0.39→0.87; Phase 44 SPARQL test fix 10/10 green, D-TIER-03 restored). Full details: `.planning/milestones/v1.5-ROADMAP.md`
 
-**Depends on**: Nothing (first v1.3 phase)
+<details>
+<summary>v1.4 phase records (38-41) — archived reference for v1.6 work</summary>
 
-**Requirements**: REALBUG-01, REALBUG-02
+### Phase 38: Foundation — TBox + Memory-map KG + Auto Schema Lift ✅ (2026-09-21)
+6/6 plans. `internal/ontology/{emitter,store,induction}` + 8 admin routes + 本体 tab. Hermetic gate 13/13.
+
+### Phase 39: ECL Pipeline — Section-aware Chunker + LLM Entity Extraction ✅ (2026-09-22)
+9/9 plans. Section-aware chunker + LLM 抽取 + ABox 双写 KG/Milvus + /admin/pipeline tab. Golden F1 tables 0.9846 / related 1.0.
+
+### Phase 40: Data Governance — SHACL + Provenance + TBox Versioning ✅ (2026-09-23)
+10/10 plans. **D-SHACL-02: violations never block boot**（boot SHACL → quarantine 分流 → report cache → `/admin/governance` 三视图）; QueryScoped tier 隔离 (D-TIER-01/03/06/07); provenance 链; TBox changelog/rollback. Hermetic gate 17/17. **This is the quarantine flow Phase 46 wires entity shapes into.**
+
+### Phase 41: Platform Layer — MCP Server + SPARQL Endpoint + Hybrid Retrieval ✅ (2026-09-23)
+6/6 plans. MCP stdio (5 tools) + `POST /api/sparql` (X-Skill-Name tier isolation) + Hybrid Retrieval (KG 1-2 hop → Milvus → BGE-rerank) + /admin/platform 三视图.
+
+</details>
+
+---
+
+## 🚧 v1.6 — SPARQL Schema Detection + Entity SHACL Shapes (In Progress)
+
+**Milestone Goal:** 闭合 v1.5 两项信任/治理积压——D-SPARQL-05（skill `hasReadAccess` 经 subject-based schema detection 在 SPARQL/admin baseline 可见）+ 实体类 SHACL shapes（实体 ABox 纳入启动校验 + 既有 quarantine 流）——同时不削弱 D-TIER-03 fail-closed。
+
+**Standards（继承 v1.4/v1.5）:**
+
+- **零硬编码**：ontology IRI 命名空间、SHACL shapes 路径可配置
+- **Go 最佳实践**：无 cgo（单 binary）；handler ≤ 200 行；不允许静默吞错
+- **UI 一致性**：涉 web 的 phase 必须先产 UI-SPEC.md（shadcn/Tailwind v4 + `/admin/*` 路由约定）
+- **全 SDLC**：每个 phase 配 verify-phase-NN.sh 验证脚本
+- **三条护城河不可动摇**：Apache-2.0 单 binary / Skill 驱动 / Tier 信任隔离（D-TIER-03 fail-closed 不削弱）
+
+**Source of truth:** `.planning/phases/44-sparql-test-fix/44-DECISIONS.md`（D-SPARQL-05 defer 记录）+ `44-RESEARCH.md` §5 Option α + Phase 40 SHACL quarantine 既有实现。
+
+**Scope boundary:** STATE.md 积压其余 4 项（resolver 去重 / server lint 清扫 / live 抽取 prompt 微调 / DetailPanel+emitter deferred 测试）不进 v1.6，留 quick task。D-SPARQL-07（comment predicate hardening）默认不在范围，discuss-phase 可再议。
+
+### Phases
+
+- [ ] **Phase 45: SPARQL Schema Visibility (D-SPARQL-05)** - Subject-based schema detection：skill 个体与 hasReadAccess triples 在 admin baseline 可见，D-TIER-03 fail-closed 不回退，schema 判定单点化
+- [ ] **Phase 46: Entity SHACL Shapes** - 实体类 ABox SHACL shapes 交付（路径可配置）+ 启动校验接入既有 quarantine 流 + /admin/governance 报告呈现实体违规
+
+### Phase 45: SPARQL Schema Visibility (D-SPARQL-05)
+
+**Goal**: Admin/operator 可以在 SPARQL 与 admin baseline 中看到 skill 访问元数据（skill 个体 + `hasReadAccess` triples），而实体 ABox 仍严格 fail-closed——schema 可见性的扩张不打开任何 tier 泄漏面。
+
+**Depends on**: Nothing（v1.6 首 phase；落地 Phase 44 D-SPARQL-05 defer）
+
+**Requirements**: SPARQL-01, SPARQL-02, SPARQL-03
 
 **Success Criteria** (what must be TRUE):
 
-1. `sanitize-url.ts` reads hostname whitelist from a runtime-configurable source (env or admin API), not hardcoded list; production deployment domains work without code changes
-2. `useEvalReports.ts` calls `setEvalStatus('ready')` on successful fetch; `EvalDashboard` transitions through loading/error/ready states correctly
-3. Existing vitest suite for `sanitize-url.ts` passes with the new configurable whitelist
-4. `vi.spy` regression test for `evalStatus` state transitions is green
+1. Admin baseline（无 tier 过滤的 `QueryScoped`）查询返回 skill 个体（如 `skill_sql`）及其 `hasReadAccess` triples——此前这些 triples 对 admin baseline 不可见（44-RESEARCH §5 Option α：`schemaSubjects` 集合 Insert 时填充，`isSchemaTriple` 按 subject ∈ schemaSubjects 判定）
+2. Skill-scoped 查询（X-Skill-Name tier 隔离）仍然排除所有无 `belongsToTier` 的 ABox 实体——Phase 44 既有 fail-closed 回归测试（`TestSparqlQueryScoped_FailClosedNoBelongsToTier`、label/comment passthrough、Phase 40 store tier 套件）在 CGO_ENABLED=1 下全绿，D-TIER-03 无回退
+3. Schema 可见性判定单点化：`/api/sparql` 与 `/api/admin`（KG query / governance 数据面）对同一 triple 的 schema/ABox 判定一致——服务端仅存在一处 `isSchemaTriple` 实现，判定修改一次即同时作用于两个端点
+4. `verify-phase-45.sh` 全绿：subject-based detection 新增回归测试 + Phase 40/44 既有 SPARQL 套件在 CGO 构建环境（WSL gcc + emutls ABI）通过
 
-**Plans**: 10 plans / 4 waves (planned 2026-09-22)
+**Plans**: TBD
 
----
+### Phase 46: Entity SHACL Shapes
 
-## Phase 32: BE Real Bug + Performance — Typed Sentinel + O(n²) Fix
+**Goal**: 实体类 ABox（险种 Product / 机构 Org / TableSchema 等）在启动时按可配置的 SHACL shapes 接受约束校验：违规实体进入既有 quarantine 流而不阻断 boot（D-SHACL-02 保持），并在 governance 报告中可见。
 
-**Goal**: Fix backend production bug (string-substring error matching) and a performance regression (O(n²) string concat in hot path)
+**Depends on**: Nothing（与 Phase 45 相互独立；按序排第二）
 
-**Depends on**: Phase 31
-
-**Requirements**: REALBUG-03, PERF-01
+**Requirements**: SHACL-01, SHACL-02, SHACL-03
 
 **Success Criteria** (what must be TRUE):
 
-1. `upload.go:isBackendUnavailable` uses `errors.Is(err, syscall.ECONNREFUSED)`, `errors.Is(err, context.DeadlineExceeded)`, `errors.Is(err, context.Canceled)`, and `net.Error.Timeout()` — no `strings.Contains` substring matching on error messages
-2. `chat.go:joinStrings` is replaced with `strings.Join(parts, "")`; every LLM response drain path calls the fixed version
-3. Unit tests cover all branches of `isBackendUnavailable` (connection refused, deadline exceeded, canceled, timeout, other error)
-4. Go vet/benchmark regression confirms no performance degradation on joinStrings path
+1. 仓库交付实体类 SHACL shapes 文件（险种 Product / 机构 Org / TableSchema 等类的必填属性 + cardinality 级约束），shapes 加载路径经 env 可配置（延伸既有 `SKILLFORGE_SHACL_SHAPES` 机制，零硬编码路径、零硬编码 IRI 命名空间）
+2. 启动校验覆盖实体 shapes：注入一个违规实体（如缺必填属性的 Product）→ 该实体进入既有 quarantine 流、不出现在正常 KG 查询结果中，server 携违规正常 boot（D-SHACL-02 violations never block boot 保持）
+3. `/admin/governance` 校验报告可呈现实体类违规，且与 TBox 层违规可区分；涉 UI 改动先产出 UI-SPEC.md
+4. `verify-phase-46.sh` 全绿：shapes 加载 + quarantine 分流 + boot 存活 + governance 报告测试
 
----
+**Plans**: TBD
 
-## Phase 33: SRP — BE Long Function Split
-
-**Goal**: Split four oversized Go handlers to meet SRP constraints (handler ≤ 200 lines, pipeline ≤ 100 lines)
-
-**Depends on**: Phase 32
-
-**Requirements**: SRP-01, SRP-02, SRP-03, SRP-04
-
-**Success Criteria** (what must be TRUE):
-
-1. `pipeline.go:VerdictPipeline` main function ≤ 100 lines; `handleRefusal()`, `handleVerdict()`, `streamWithRetry()` extracted as named methods; Step 0..12 comments preserved
-2. `chat.go:chatHandler` main function ≤ 80 lines; `runDataChannelPath`, `runAgentPath`, `runRegistryRouterPath`, `runVerdictPipelinePath` extracted; 9 DEBUG log blocks merged into named helpers
-3. `upload.go:uploadHandler` main function ≤ 80 lines; `onFile` closure split into `verifyMagic`, `dedupCheck`, `writeIndex`, `auditHook` named functions
-4. All four files compile with `go vet` zero warnings; no new cyclomatic complexity introduced
-
----
-
-## Phase 34: HITL Handler Template Extraction
-
-**Goal**: Eliminate copy-paste duplication across four HITL handlers by extracting shared base class and audit builder
-
-**Depends on**: Phase 33
-
-**Requirements**: HITL-01, HITL-02, HITL-03
-
----
-
-## Phase 35: HTTP Layer Deduplication
-
-**Goal**: Remove copy-paste HTTP error structs and admin-request middleware from backend handlers
-
-**Depends on**: Phase 34
-
-**Requirements**: REPEATHTTP-01, REPEATHTTP-02, REPEATHTTP-03
-
----
-
-## Phase 36: FE Deduplication + Silent Audit Errors
-
-**Goal**: Extract shared frontend fetch/error helpers and fix silent audit write failures in backend
-
-**Depends on**: Phase 35
-
-**Requirements**: REPEATFE-01, REPEATFE-02, REPEATFE-03, SILENTAUDIT-01
-
----
-
-## Phase 37: Store SQL Hygiene + Robustness + Concurrency
-
-**Goal**: Fix SQL parameterization, add missing constraints, strengthen type-safety invariants, and add concurrency guarantees
-
-**Depends on**: Phase 36
-
-**Requirements**: STORE-01, STORE-02, ROBUST-01, ROBUST-02, ROBUST-03, ROBUST-04, ROBUST-05, CONCUR-01
+**UI hint**: yes
 
 ---
 
 ## Progress
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 31. FE Real Bugs | 0/2 | Not started | — |
-| 32. BE Real Bug + PERF | 0/2 | Not started | — |
-| 33. SRP Split | 0/4 | Not started | — |
-| 34. HITL Template | 0/3 | Not started | — |
-| 35. HTTP Deduplication | 0/3 | Not started | — |
-| 36. FE Deduplication + SILENTAUDIT | 0/4 | Not started | — |
-| 37. STORE + Robustness + CONCUR | 0/8 | Not started | — |
+**Execution Order:** 45 → 46
+
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 0/TBD | Not started | — |
+| 46. Entity SHACL Shapes | v1.6 | 0/TBD | Not started | — |
 
 ---
 
-## v1.4 — Ontology Layer (本体层)
-
-**Goal:** 在 SkillForge 引入 OWL/RDF 本体层，把"Skill 驱动的 RAG"升级为
-"Skill 驱动的本体操作系统"——保留 Apache-2.0 单 binary + Skill 驱动 +
-Tier 隔离三条护城河。
-
-**Hard constraint:** 每个 phase 涉及 web 时，必须先产出 UI-SPEC.md，
-再进实现；UI 沿用 shadcn/Tailwind v4 + Vercel AI SDK v5 现有体系，与
-`/admin/*` 四视图路由约定保持一致。
-
-**Source of truth:** 005 系列 5 个 spike 全 VALIDATED（`.planning/spikes/005a` 到 `005e`）
-
----
-
-### Phase 38: Foundation — TBox + Memory-map KG + Auto Schema Lift ✅ (2026-09-21)
-
-**Goal:** Server boot 时自动生成 RDFS/OWL TBox；纯 Go 内存 map KG store；LLM 提议新 Class/Property 的人工审批闭环。
-
-**Depends on:** Nothing (first v1.4 phase)
-
-**Requirements:** ONT-01, ONT-02, ONT-03, ONT-04, ONT-05, ONT-06, ONT-07, ONT-08, ONT-09
-
-**UI-SPEC Target:** `/admin/ontology` — TBox 类层次浏览器 + KG 三元组查询面板
-
-**Success Criteria** (what must be TRUE):
-
-1. Server boot 生成 `skillforge_tbox.ttl` (215 triples) + `skillforge_kg.json` snapshot；reload 字节级一致
-2. KG query API 在 215 triples 上 < 1ms；memory 估计 < 50KB
-3. `internal/ontology/` 目录无 cgo 依赖；`go build` 单 binary 通过
-4. Admin UI 列出 8 Skills + 5 Tiers + 7 SubCategories（来自 TBox），可点击查看 Class 详情
-5. KG 三元组查询面板支持 `?x a skf:Skill` 模式查询，结果可导出 JSON
-6. LLM schema induction：Claude 提议新 Class/Property 写入 `/admin/ontology/proposals`，需人工点击 approve 才进 TBox
-7. TBox 版本号自增 1；rollback 到上一版本可一键还原
-8. `verify-phase-38.sh` 全绿：单 binary 启动 + KG query < 1ms + reload lossless
-
-**Plans**: 6/6 complete — 38-01 emitter (29ad95b) / 38-02 store (568b819) / 38-03 induction (e47bb23) / 38-04 admin API (14463e5) / 38-05 web tab (0a29a92) / 38-06 verify gate (1bd93cc). Hermetic gate 13/13 PASS.
-
----
-
-### Phase 39: ECL Pipeline — Section-aware Chunker + LLM Entity Extraction
-
-**Goal:** 替换 `internal/knowledge/indexer.go` byte-cap chunker；LLM 自动从 sql-guides markdown 抽取 etl_* 实体 + 关系；ABox 自动写入 KG + Milvus 双向同步。
-
-**Depends on:** Phase 38
-
-**Requirements:** ONT-10, ONT-11, ONT-12, ONT-13
-
-**UI-SPEC Target:** `/admin/pipeline` — ECL Pipeline 实时状态（chunker / extraction / load 进度 + 失败重试）
-
-**Success Criteria** (what must be TRUE):
-
-1. Section-aware chunker 处理 185 sql-guides `__secNN` 片段 → 26 完整 notes；100% 边界识别；note 001 包含 3/3 corpus SQL 目标表
-2. LLM 实体抽取从 sql-guides 自动产出 etl_* table references + 关系（≥ 80% precision@recall vs 005c 手工标注）
-3. 新 ABox triples 自动写入 memory-map KG + Milvus 索引同步
-4. Admin UI 实时显示：chunker 当前文件 / extraction 进度 / load 队列长度 / 失败重试按钮
-5. ECL 失败 → 自动 retry 3 次 → 仍失败入 dead-letter 队列，可手动触发
-6. `verify-phase-39.sh` 全绿：100% chunker boundary + entity extraction F1 ≥ 0.8
-
-**Plans**: 9/9 complete — 39-01 store primitives / 39-02 Milvus schema / 39-03 ECL merge / 39-04 extraction / 39-05 failures + manager / 39-06 boot wiring / 39-07 admin API / 39-08 web tab / 39-09 verify gate
-
----
-
-### Phase 40: Data Governance — SHACL + Provenance + TBox Versioning
-
-**Goal:** 启动时 SHACL 校验 ABox 一致性；每条 statement 带 source provenance；TBox 版本演进日志。
-
-**Depends on:** Phase 39
-
-**Requirements:** ONT-14, ONT-15, ONT-16, ONT-17
-
-**UI-SPEC Target:** `/admin/governance` — SHACL 校验报告 + Provenance 链路图 + TBox 版本演进
-
-**Success Criteria** (what must be TRUE):
-
-1. Server boot 运行 SHACL validator 校验 ABox，violation 列表清晰（source file + entity URI + 约束）
-2. 每条 ABox triple 带 `skf:provenance` → source file path + line range + extraction timestamp
-3. TBox 版本号 + 演进日志：每次 schema induction 写入一条记录（who / when / what / why）
-4. TBox rollback 到上一版本：snapshot → 验证 → 切换 → KG rebuild in < 5s
-5. KG query endpoint 自动追加 `belongsToTier` 过滤（基于 caller skill 的 `reads` 声明）
-6. Admin UI 展示：SHACL 报告（绿/黄/红）+ provenance graph (Cytoscape.js) + TBox 版本 timeline
-7. `verify-phase-40.sh` 全绿：SHACL violation detection + provenance coverage 100% + rollback < 5s
-
-**Plans**: 10/10 complete — 40-01 SHACL shapes / 40-02 Provenance field / 40-03 ECL provenance / 40-04 QueryScoped / 40-05 TBox changelog / 40-06 Boot SHACL / 40-07a Governance tab shell / 40-07b Three views / 40-08 KGQueryPanel skill selector / 40-09 verify gate. Hermetic gate 17/17 PASS.
-
----
-
-### Phase 41: Platform Layer — MCP Server + SPARQL Endpoint + Hybrid Retrieval
-
-**Goal:** MCP server 暴露 KG 给外部 agent；SPARQL-like REST endpoint；Hybrid Retrieval 1-2 跳 subgraph expansion。
-
-**Depends on:** Phase 40
-
-**Requirements:** PLAT-ONT-18, PLAT-ONT-19, PLAT-ONT-20
-
-**UI-SPEC Target:** `/admin/platform` — SPARQL Playground + MCP Inspector + Hybrid Retrieval 调试面板
-
-**Success Criteria** (what must be TRUE):
-
-1. MCP server 启动并暴露 Tools: `skf_query(pattern)` / `skf_skills()` / `skf_chunk_for(entity)` — 外部 agent 可直接 query
-2. SPARQL-like REST endpoint `POST /api/sparql` 接受 pattern match queries，response 为 JSON triples
-3. KG query 自动 tier 隔离：MCP + SPARQL 强制按 caller 上下文过滤（不可绕过）
-4. Hybrid Retrieval：query → KG 1-2 跳 subgraph expansion → Milvus rerank；Q1/Q4 类查询召回 ≥ 0.85（绝对门槛）
-5. Admin UI 提供：SPARQL Playground (代码编辑器 + 结果面板) + MCP Inspector (tools list + 测试调用) + Hybrid 调试 (KG expansion 可视化 + Milvus 命中列表)
-6. `verify-phase-41.sh` 全绿：MCP tools 可调用 + SPARQL endpoint 正常 + Hybrid Q1 召回 ≥ 0.85
-
-**Plans**: 5/6 complete — 41-01 MCP stdio server / 41-02 SPARQL endpoint / 41-03 Hybrid Retrieval / 41-04 Platform tab shell / 41-05 Three views + platformApi.ts + types.ts (6e4cff4/3d23356/3423893)
-
-**Wave 1**
-
-- [x] 41-01-PLAN.md — MCP server package (mark3labs/mcp-go, stdio transport, 5 tools: skf_query/skf_skills/skf_chunk_for/skf_schema/skf_neighbors)
-- [x] 41-02-PLAN.md — SPARQL-like REST endpoint (POST /api/sparql, X-Skill-Name header, SparqlQueryScoped shared handler)
-
-**Wave 2** *(Wave 1 complete)*
-
-- [x] 41-03-PLAN.md — Hybrid Retrieval pipeline (KG 1-2 hop expansion → Milvus hybrid → BGE-reranker → top-5)
-
-**Wave 3** *(Wave 2 complete)*
-
-- [x] 41-04-PLAN.md — Platform tab shell (AdminDashboard wiring, store union, 11th SubrouteTab)
-- [x] 41-05-PLAN.md — Three views (SPARQL Playground + MCP Inspector + Hybrid 调试) + platformApi.ts + types.ts
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 41-06-PLAN.md — verify-phase-41.sh hermetic gate (MCP stdio + SPARQL curl + Hybrid recall >= 0.85)
-
----
-
-### v1.4 Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 38. Foundation (TBox + KG + Auto Lift) | 6/6 | Complete | 2026-09-21 |
-| 39. ECL Pipeline | 9/9 | Complete    | 2026-09-22 |
-| 40. Data Governance | 10/10 | Complete    | 2026-09-23 |
-| 41. Platform Layer (MCP + SPARQL + Hybrid) | 6/6 | Complete    | 2026-09-23 |
-
----
-
-## ✅ v1.5 — Outstanding Closure (SHIPPED 2026-10-02)
-
-**Phases 42 + 44 · 5 plans · 100% complete** — full details: `.planning/milestones/v1.5-ROADMAP.md`
-
-- [x] Phase 42: v1.4 Outstanding Closure (4/4 plans; 42-03 runbook executed by Claude 2026-09-30/10-01 — 8 PASS + L8 PARTIAL + L4/L7 env-SKIP; 42-04 SUMMARY backfilled)
-- [x] Phase 43: CGO Build Discovery (absorbed into 42/44 — CGO=1 mandate + IN-05)
-- [x] Phase 44: SPARQL Test Fix (1/1 plan; 10/10 SPARQL + D-TIER-03 restored + prompt writes-only 对齐)
-
-Known deferred at close: 63 open-artifact items (see STATE.md § Deferred Items); live 抽取 prompt 残余微调 + DetailPanel/emitter deferred 测试 → v1.6。
-
-
-*Last updated: 2026-10-02 — v1.5 milestone SHIPPED (42-03 runbook executed by Claude: 8 PASS + L8 PARTIAL + L4/L7 env-SKIP; live 抽取 F1 0.39→0.87 writes-only 对齐; L5 recall 1.0; L6 faithfulness 0.9036; L4/L7 env-SKIP)。v1.6 pending。*
+*Last updated: 2026-10-02 — v1.6 roadmap created (Phases 45-46; 6/6 requirements mapped). Phase 编号从 45 继续（v1.5 末 phase 44）。*
