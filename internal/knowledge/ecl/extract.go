@@ -246,6 +246,13 @@ func (e LLMExtractor) extractBody(ctx context.Context, sourceIdx, title, body st
 	return ex, nil
 }
 
+// stripSchemaPrefix de-qualifies an LLM-extracted table name before the
+// corpus-contract gate (RED-state identity stub — implementation lands
+// with the GREEN commit).
+func stripSchemaPrefix(name string) string {
+	return name
+}
+
 // StubExtractFunc adapts the Plan 03 regex stub function (StubExtract) to
 // the Extractor interface, keeping Plan 03's public surface untouched while
 // letting it share the seam (compile-time pin: var _ Extractor =
