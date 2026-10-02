@@ -1,0 +1,45 @@
+[
+  {
+    "id": "simple-qa",
+    "name": "通用问答",
+    "description": "通用问答 / general Q&A。基于权威知识层回答事实性问题（如“制度对 X 是怎么规定的”“总结 Y 的规则”）。",
+    "agent": "ChatModelAgent",
+    "reads": ["权威"],
+    "writes": [],
+    "temperature": 0.3,
+    "steps": [
+      "1. 通过 reads.tier 过滤检索权威 tier 中最相关的 chunks",
+      "2. 仅基于检索到的 chunks 组织简洁回答；每条主张引用 chunk_id",
+      "3. 若未检索到权威 chunks，以 no_relevant_source 拒答"
+    ],
+    "guardrails": {
+      "prohibitions": [
+        "Never answer without at least one retrieved citation",
+        "Never fabricate sources or chunk ids",
+        "Never reveal personal/contact information of any individual"
+      ],
+      "required_refusal_phrases": ["no_relevant_source"]
+    }
+  },
+  {
+    "id": "general-qa",
+    "name": "通用问答",
+    "description": "通用问答 Skill，覆盖全部 4 个知识层。",
+    "agent": "ChatModelAgent",
+    "reads": ["权威", "历史", "个人", "草稿"],
+    "writes": [],
+    "temperature": 0.3,
+    "steps": [
+      "1. 检索所有 tier 的相关文档",
+      "2. 综合多 tier 答案",
+      "3. 输出"
+    ],
+    "guardrails": {
+      "prohibitions": [
+        "Never invent sources",
+        "Never bypass tier filter"
+      ],
+      "required_refusal_phrases": ["no_authorized_source"]
+    }
+  }
+]

@@ -1,0 +1,82 @@
+// Copyright 2026 SkillForge Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// Plan 04-03 Task 1 — DataSubprogressPart tests.
+//
+// Pins the FEUI-06 5-step copy mapping per 04-UI-SPEC §Copywriting
+// Contract (Phase 4 visual upgrade — modernized to timeline style):
+//   - retrieve + tier=权威 → 检索 [权威] 知识层
+//   - found_candidates + count=12 → 找到 12 条候选
+//   - rerank → 重排序
+//   - self_verify → 自校验
+//   - generate → 生成结论
+// Plus the data-testid="data-subprogress" wrapper + data-step attribute.
+//
+// Plan 26-08 Task 3 adds the no-tier pin: a retrieve step WITHOUT a tier
+// renders NO badge (检索知识层) — the old hardcoded tier default was
+// deleted because that CN literal is no longer a registry slug.
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import '@testing-library/jest-dom/vitest';
+import DataSubprogressPart from '../components/chat/parts/DataSubprogressPart';
+import type { SubprogressStep } from '../types/verdict';
+
+afterEach(cleanup);
+
+interface DataSubprogressPartType {
+  type: 'data-subprogress';
+  id?: string;
+  data: SubprogressStep;
+}
+
+function makePart(data: SubprogressStep): DataSubprogressPartType {
+  return { type: 'data-subprogress', id: 'sub-1', data };
+}
+
+describe('DataSubprogressPart', () => {
+  it('retrieves [权威] knowledge layer for step="retrieve" + tier="权威"', () => {
+    render(<DataSubprogressPart part={makePart({ step: 'retrieve', tier: '权威' })} />);
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveAttribute('data-step', 'retrieve');
+    expect(node).toHaveTextContent('检索 [权威] 知识层');
+  });
+
+  it('renders no tier badge for step="retrieve" without a tier (26-08 residual sweep)', () => {
+    render(<DataSubprogressPart part={makePart({ step: 'retrieve' })} />);
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveAttribute('data-step', 'retrieve');
+    expect(node).toHaveTextContent('检索知识层');
+    // No fabricated tier anywhere in the row copy.
+    expect(node.textContent).not.toContain('[');
+  });
+
+  it('renders "找到 12 条候选" for step="found_candidates" + count=12', () => {
+    render(
+      <DataSubprogressPart part={makePart({ step: 'found_candidates', count: 12 })} />,
+    );
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveAttribute('data-step', 'found_candidates');
+    expect(node).toHaveTextContent('找到 12 条候选');
+  });
+
+  it('renders "重排序" for step="rerank"', () => {
+    render(<DataSubprogressPart part={makePart({ step: 'rerank' })} />);
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveAttribute('data-step', 'rerank');
+    expect(node).toHaveTextContent('重排序');
+  });
+
+  it('renders "自校验" for step="self_verify"', () => {
+    render(<DataSubprogressPart part={makePart({ step: 'self_verify' })} />);
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveAttribute('data-step', 'self_verify');
+    expect(node).toHaveTextContent('自校验');
+  });
+
+  it('renders "生成结论" for step="generate"', () => {
+    render(<DataSubprogressPart part={makePart({ step: 'generate' })} />);
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveAttribute('data-step', 'generate');
+    expect(node).toHaveTextContent('生成结论');
+  });
+});

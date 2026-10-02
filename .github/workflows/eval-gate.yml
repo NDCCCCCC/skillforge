@@ -1,0 +1,111 @@
+# Eval Gate — Phase 22 Task 22-01
+#
+# Runs the frozen compliance golden set (50 cases) on every PR + push to
+# main, then applies the per-Skill threshold gate from
+# examples/skills/<skill>/eval-gate.json. This is the GEVL-07 / SC-2
+# promotion gate (D6-11).
+#
+# Behaviour:
+#   - PR + push to main: run frozen replay + gate check
+#   - workflow_dispatch: run as "manual" with optional judge-model override
+#
+# Gates:
+#   - faithfulness  >=  0.90 (cross-Skill floor)
+#   - refusal_accuracy derived from per-category refusal-required refusal
+#     rate; Skill-specific thresholds live in eval-gate.json.
+#
+# What this workflow DOES NOT do (out of scope for Phase 22):
+#   - It does not pin the production LLM (production gates stay on
+#     GLM_CODING via --frozen + AssertPin; CI uses the ambient
+#     JUDGE_MODEL / GLM_API_KEY secrets). A pinned run is a manual
+#     nightly job.
+#   - It does not backfill live eval reports (separate cron).
+#
+# Required secrets (set in repo Settings → Secrets):
+#   - GLM_API_KEY    — Coding Plan key (the live judge LLM)
+#   - BGE_M3_URL     — internal BGE-M3 endpoint
+#   - MILVUS_ADDRESS — internal Milvus (RETRIEVER_BACKEND=milvus)
+#   - SKILLFORGE_DATA_SALT (optional, only if Skill author salt differs)
+
+name: eval-gate
+
+on:
+  pull_request:
+    branches: [main, phase-*]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      judge_model:
+        description: 'Judge model id (overrides $JUDGE_MODEL). Defaults to glm-5.2.'
+        required: false
+        default: 'glm-5.2'
+
+permissions:
+  contents: read
+
+jobs:
+  eval-gate:
+    name: Frozen compliance replay + gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Secrets → env (only place that reads them; not echoed in logs).
+      GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+      BGE_M3_URL: ${{ secrets.BGE_M3_URL }}
+      MILVUS_ADDRESS: ${{ secrets.MILVUS_ADDRESS }}
+      # CI never pins the production model; the live gate uses the
+      # ambient JUDGE_MODEL. workflow_dispatch can override.
+      JUDGE_MODEL: ${{ github.event.inputs.judge_model || 'glm-5.2' }}
+      BGE_M3_MODEL: bge-m3
+      RETRIEVER_BACKEND: milvus
+      SQLITE_DSN: ':memory:'
+      # Pin platform floor so the audit row carries the same
+      # platform-floor version the local UAT produces (Phase 24 / PLAT-10).
+      PLATFORM_FLOOR_VERSION: 1.1.0
+      SKIP_HISTORY_PIPELINE: 'true'
+      GOCACHE: ${{ github.workspace }}/.gocache
+      GOMODCACHE: ${{ github.workspace }}/.gomodcache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Build cmd/eval
+        working-directory: ${{ github.workspace }}
+        run: go build -o ./bin/eval ./cmd/eval
+
+      - name: Run frozen compliance replay
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p eval/reports/ci
+          ./bin/eval \
+            --frozen compliance \
+            --report eval/reports/ci/compliance.json \
+            --calibration eval/reports/ci/compliance-calibration.json \
+            2>&1 | tee eval/reports/ci/run.log
+
+      - name: Gate check
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Exit code != 0 fails the workflow. Threshold comes from
+          # examples/skills/compliance/eval-gate.json.
+          ./bin/eval \
+            --gate-check eval/reports/ci/compliance.json \
+            --skills-dir examples/skills
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-gate-report-${{ github.run_id }}
+          path: |
+            eval/reports/ci/compliance.json
+            eval/reports/ci/compliance-calibration.json
+            eval/reports/ci/run.log
+          retention-days: 14

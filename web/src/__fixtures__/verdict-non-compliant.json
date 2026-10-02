@@ -1,0 +1,24 @@
+[
+  { "type": "start", "messageId": "m-noncompliant-001" },
+  { "type": "step-start" },
+
+  { "type": "reasoning-start", "id": "r-1" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "检测到用户描述的离职条款与《反不正当竞争协议》第 3 条冲突。" },
+  { "type": "reasoning-end", "id": "r-1" },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "该条款要求员工离职后 3 年内不得加入竞争对手公司，超出《反不正当竞争协议》第 3 条规定的 2 年上限，不合规。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "source-url", "sourceId": "c-003", "url": "http://skillforge.local/chunks/authority/non-compete.md#L3", "title": "反不正当竞争协议 §3" },
+
+  { "type": "data-policy", "id": "p-003", "data": {
+    "status": "ok",
+    "confidence": 0.88,
+    "citations": [{ "chunk_id": "c-003", "span": "竞业限制不得超过 2 年", "tier": "权威" }],
+    "review_required": true,
+    "compliance_status": "non_compliant"
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]

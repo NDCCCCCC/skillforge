@@ -1,0 +1,12 @@
+# datarules/loans.yaml —— 数据人员可写；loader 加载期 fail-closed 校验
+dataset: loans          # 必须与注册名 __ 前缀一致（禁 "__" 子串）
+tier: historical        # 注册表 slug（internal/kb.Registry 活跃条目，且角色非 draft；KBM-04）
+k_min: 10               # 可选 override（缺省 0 = 用全局 KMinDefault=5）
+columns:
+  customer_name: { rule: hash, profile: person_name }
+  mobile:        { rule: hash, profile: phone_cn }
+  cert_no:       { rule: hash, profile: id_card_cn }
+  balance:       { rule: bucket_fixed, width: 1000 }   # D15-D1 默认形态
+  overdue_days:  { rule: bucket_fixed, width: 30 }
+  update_ts:     { rule: passthrough }                  # D15-A2 显式白名单
+  status:        { rule: passthrough }

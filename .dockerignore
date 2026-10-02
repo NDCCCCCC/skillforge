@@ -1,0 +1,36 @@
+# SkillForge Docker build-context boundary
+# Keeps the build context lean: backend source + skills/ + knowledge/ + web/ only.
+# Plan 07-01 / D7-04 (source-build images). Anything sensitive or non-runtime goes here.
+
+# --- Planning / workflow / VCS artifacts (never in the image) ---
+.planning/
+.git/
+.gitignore
+.claude/
+
+# --- Local runtime data / secrets ---
+.env
+.env.local
+skillforge.db
+skillforge.db-shm
+skillforge.db-wal
+
+# --- Build artifacts (host-built; the image builds its own) ---
+*.exe
+eval.exe
+spike-*trace.json
+web/dist/
+web/node_modules/
+node_modules/
+
+# --- README assets (not a runtime dependency) ---
+docs/demo*.gif
+
+# --- Docker / compose definitions (avoid recursive context surprises) ---
+Dockerfile
+Dockerfile.*
+docker-compose.yml
+docker-compose.*.yml
+
+# --- OS noise ---
+.DS_Store

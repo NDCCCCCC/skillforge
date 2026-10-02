@@ -1,0 +1,124 @@
+// Copyright 2026 SkillForge Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+// Package wire — types.go is Phase 12 / Plan 12-05 Task 4: the home of
+// the decision VALUE constants for the DecisionPayload.Decision string
+// enum (D16 overload pattern, extended from Phase 3 / Phase 11).
+//
+// P12-L3 lock: forced_stop rides on the EXISTING `data-decision`
+// discriminator. It is a NEW VALUE in the Decision string enum, NOT a
+// new wire chunk type — the ValidTypes count stays unchanged (23;
+// the chunk_test.go counter asserts this — the discriminator-count
+// grep lock lives there), the wire union is untouched, and the TS
+// mirror (web/src/types/wire-types.ts) needs only a new case in its
+// decision switch. 12-07 ships the FE half of the paired commit under
+// the D15 lockstep invariant.
+//
+// Why a wire-level constant when internal/agent/callbacks.go already
+// declares agent.DecisionForcedStop? The wire package is the
+// wire-contract single source of truth; internal/agent stays
+// decoupled from Hertz-aware code (see callbacks.go's DecisionRecord
+// rationale). The two constants carry the same string value — the
+// agent-side emitter copies the wire constant at its 12-07 wiring
+// site (an in-package wire test cannot import internal/agent to lock
+// the equality directly: agent imports wire, which would be a
+// test-only import cycle).
+package wire
+
+// Decision enum values — the `decision` string field on
+// DecisionPayload. The field is string-typed on purpose: extending
+// the catalog is additive (old consumers ignore unknown values; new
+// consumers switch on the ones they know). NEVER repurpose an
+// existing value; add a new constant + a FE mirror case instead.
+//
+// Current catalog (emit sites in parentheses):
+//
+//	retrieve                — agent retrieve hop (Phase 3)
+//	answer                  — agent final answer hop (Phase 3)
+//	refuse                  — refusal classifier (Phase 3)
+//	forced_stop             — MaxStep / budget gate (Phase 3 + 12-05)
+//	route                   — skill router (D5-04)
+//	counter_evidence        — 历史-tier conflicts (D5-13)
+//	history_projected       — Phase 10 D10-B4
+//	history_budget_truncated— Phase 10 D10-B4
+//	history_query_rewritten — Phase 10 D10-C3
+//	history_classifier_refused — Phase 10 D10-C3
+//	tool-resumed            — HITL-04 approval resolution (Phase 11)
+//	tool-denied             — HITL-04 approval resolution (Phase 11)
+//
+// 12-05 consumers: the budget middleware's emitter seam
+// (agentcallbacks.BudgetEmitter) writes
+// DecisionPayload{Step: 0, Decision: DecisionForcedStop, Query: <the
+// "PLAN-04 budget exhausted: <layer>" reason>} — the reason rides the
+// Query field per the Phase 10 transparency convention (Query carries
+// human-readable context for non-retrieve decisions), NOT a new
+// Reason field (adding one would churn the D15 TS mirror for no
+// parsing gain).
+const (
+	// DecisionForcedStop is the PLAN-04 budget-gate terminal decision.
+	// Emitted when ANY of the 3 layers trips (budget_layer: max_iter |
+	// token | loop, mirrored on the action_budget_triggered audit
+	// row). Conservative by contract: the gate fires BEFORE the run
+	// reaches exhaustion, never after.
+	DecisionForcedStop = "forced_stop"
+
+	// Phase 13 / Plan 13-03 — FAN-01 SC-1 sub-agent lifecycle events
+	// (D16 overload on the data-decision discriminator; no new wire
+	// chunk types — P13-L7 invariant). The orchestrator emits one
+	// data-decision chunk per sub-agent per phase:
+	//
+	//   - DecisionFanoutDispatched fires BEFORE the sub-agent's Run
+	//     method is invoked. The audit row is written first
+	//     (action_fanout_dispatched, INSERT-only per T-3-AUDIT); the
+	//     SSE chunk follows. The chunk's RunPath/TransferFrom/TransferTo
+	//     fields carry the slash-separated path that the FE agent
+	//     inspector displays inline (D14 invariant — existing UI
+	//     timeline, no new components).
+	//   - DecisionFanoutCompleted fires AFTER the sub-agent's Run
+	//     returns successfully AND per-sub-agent ApplyTrustStage
+	//     grounded the verdict. The chunk carries the sub-agent's
+	//     final verdict (ComplianceStatus, Confidence, Citations) so
+	//     the timeline can render the per-sub-agent summary inline.
+	//   - DecisionFanoutFailed fires when the sub-agent's Run returns
+	//     an error, panics, or times out (Pitfall 4 mitigation —
+	//     context.WithTimeout(30s) fires → Status: faulted). The
+	//     merger (internal/runtime/merge.go) treats faulted as
+	//     refusal-equivalent per P13-L5 (D2-14 conservative partial-
+	//     failure posture).
+	//
+	// The discriminator (kebab-case data-decision) is unchanged. The
+	// DecisionPayload.Decision string enum widens by 3 literals — same
+	// D16 overload pattern as Phase 12 12-05 (forced_stop) and 12-07
+	// (plan-approved / plan-denied). The TS mirror at
+	// web/src/types/wire-types.ts adds the matching 3 string literals
+	// under D15 lockstep.
+	DecisionFanoutDispatched = "fanout_dispatched"
+	DecisionFanoutCompleted  = "fanout_completed"
+	DecisionFanoutFailed     = "fanout_failed"
+
+	// DecisionKPIReference is the Phase 16 / D16-B3 kpi_call data-citation
+	// decision. When kpi_call produces a structured snapshot, the decision
+	// callback emits a data-decision chunk with Decision=kpi_reference and
+	// DataRef carrying the aggregation metadata (func/args/asOf/rowCount/
+	// suppressed/kMinApplied). The data-decision discriminator is unchanged —
+	// this is a new VALUE in the Decision string enum, NOT a new wire chunk
+	// type (D16 overload pattern, same as P13-L7 fanout_*). The TS mirror at
+	// web/src/types/wire-types.ts adds the matching literal under D15 lockstep.
+	// rows body is NOT carried on SSE (volume control + agent already has the
+	// full snapshot from tool result; FE Phase 17 sparkline reads from
+	// kpi_calls audit rows — admin read-only surface).
+	DecisionKPIReference = "kpi_reference"
+)

@@ -1,0 +1,11 @@
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+CREATE TABLE u(id INTEGER PRIMARY KEY, name TEXT);
+INSERT INTO u VALUES(1,'alice');
+CREATE INDEX idx_u_name ON u(name);
+PRAGMA writable_schema=ON;
+CREATE TABLE IF NOT EXISTS sqlite_sequence(name,seq);
+DELETE FROM sqlite_sequence;
+INSERT INTO sqlite_sequence VALUES('u',2);
+PRAGMA writable_schema=OFF;
+COMMIT;

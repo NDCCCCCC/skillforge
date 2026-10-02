@@ -1,0 +1,356 @@
+// Copyright 2026 SkillForge Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// MessageBubble — modernized chat layout (Phase 4 visual upgrade).
+//
+// Layout strategy:
+//   - User messages: right-aligned card with subtle blue gradient +
+//     rounded-2xl (one corner tighter for "tail" feel) + max-78% width
+//   - Assistant messages: full-width column with breathing room —
+//     text gets no chrome, only child parts (tool/reasoning/citations)
+//     get elevated cards
+//   - Reasoning parts (DOM order per D-08): positioned ABOVE text
+//   - Tool parts: distinct elevated cards with status indicators
+//   - Citations: pill-style chips
+//
+// The MessageBubble.test.tsx assertions still hold:
+//   - reasoning renders BEFORE text in DOM order (D-08)
+//   - all 7 part types render without crash
+//   - tool-${name} and dynamic-tool both render
+//   - unknown part types silently drop
+//
+// 260817-hck: the assistant branch concatenates all text parts into
+// `chatText` and passes it to DataPolicyPart, so VerdictCard can hide
+// a verdict-answer block that duplicates the chat body conclusion.
+// Prop drilling (not the Zustand store) per D14 — useChat owns the
+// message stream; three-level optional-prop drilling is the cheap fix.
+//
+// 260817-i36 (①): the assistant branch also extracts the Verdict status
+// from the message's data-policy part (`verdictStatus`) and passes it
+// to TextPart, which renders it as a small corner badge on the
+// conclusion text — the large in-card StatusBadge is gone from the
+// chat stream (260817-i36 ②).
+
+import type { ReactNode } from 'react';
+import type { UIMessage } from 'ai';
+import { Sparkles } from 'lucide-react';
+import { useAppStore } from '../../store/app-store';
+import DataPolicyPart from './parts/DataPolicyPart';
+import DataSubprogressPart from './parts/DataSubprogressPart';
+import FeedbackRow, { isVote } from './parts/FeedbackRow';
+import ReasoningPart from './parts/ReasoningPart';
+import RoutingTracePart from './parts/RoutingTracePart';
+import { SourceDocumentPart } from './parts/SourceDocumentPart';
+import { SourceUrlPart } from './parts/SourceUrlPart';
+import { StepStartPart } from './parts/StepStartPart';
+import { TextPart } from './parts/TextPart';
+import { ToolPart } from './parts/ToolPart';
+// Plan 05-06 Task 2 — SC-6 / SC-7 post-verdict annotation cards.
+import CounterEvidenceCard from '../verdict/CounterEvidenceCard';
+import RedlineCard from '../verdict/RedlineCard';
+// Plan 10-03 Task 2 — D10-C3 transparency caption above the user
+// bubble when the history-pipeline rewriter fired.
+import HistoryRewriteHint from './HistoryRewriteHint';
+import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
+import { DataReferenceChip } from './parts/DataReferenceChip';
+import { isVerdict, type VerdictStatus } from '../../types/verdict';
+
+function renderPart(
+  part: UIMessage['parts'][number],
+  i: number,
+  chatText?: string,
+  verdictStatus?: VerdictStatus,
+): ReactNode {
+  switch (part.type) {
+    case 'reasoning':
+      return (
+        <ReasoningPart
+          key={i}
+          part={part as Extract<UIMessage['parts'][number], { type: 'reasoning' }>}
+        />
+      );
+    case 'text':
+      return (
+        <TextPart
+          key={i}
+          part={part as Parameters<typeof TextPart>[0]['part']}
+          verdictStatus={verdictStatus}
+        />
+      );
+    case 'source-url':
+      return <SourceUrlPart key={i} part={part as Parameters<typeof SourceUrlPart>[0]['part']} />;
+    case 'source-document':
+      return <SourceDocumentPart key={i} part={part as Parameters<typeof SourceDocumentPart>[0]['part']} />;
+    case 'dynamic-tool':
+      return <ToolPart key={i} part={part as Parameters<typeof ToolPart>[0]['part']} />;
+    case 'data-policy':
+      return (
+        <DataPolicyPart
+          key={i}
+          part={part as Parameters<typeof DataPolicyPart>[0]['part']}
+          chatText={chatText}
+        />
+      );
+    case 'data-subprogress':
+      return (
+        <DataSubprogressPart
+          key={i}
+          part={part as Parameters<typeof DataSubprogressPart>[0]['part']}
+        />
+      );
+    case 'step-start':
+      return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
+    case 'data-decision': {
+      const dp = (part as { data?: { decision?: string; conflictChunks?: ConflictChunk[]; dataRef?: import('../../types/wire-types').DataReference; reportCard?: import('../../types/wire-types').ReportCard } }).data;
+      const decision = dp?.decision;
+      if (decision === 'counter_evidence') {
+        return <CounterEvidenceCard key={i} conflictChunks={dp?.conflictChunks} />;
+      }
+      if (decision === 'kpi_reference' && dp?.dataRef) {
+        return <DataReferenceChip key={i} dataRef={dp.dataRef} />;
+      }
+      // Plan 18-02 / WR-02 (18-REVIEW): the report card rides the
+      // data-decision channel (DecisionPayload.reportCard) — the old
+      // `{type:'report_published'}` chunk variant was a wire shape the
+      // BE can never emit (no ValidTypes entry, T-1-11 pre-write gate).
+      if (decision === 'report_published' && dp?.reportCard) {
+        return <ReportCardView key={i} card={dp.reportCard} />;
+      }
+      if (decision !== 'route') return null;
+      return (
+        <RoutingTracePart
+          key={i}
+          part={part as Parameters<typeof RoutingTracePart>[0]['part']}
+        />
+      );
+    }
+    case 'data-redline': {
+      const data = (part as { data?: RedlinePayload }).data;
+      if (!data) return null;
+      return <RedlineCard key={i} data={data} />;
+    }
+    default:
+      if (part.type.startsWith('tool-')) {
+        return <ToolPart key={i} part={part as Parameters<typeof ToolPart>[0]['part']} />;
+      }
+      return null;
+  }
+}
+
+// ReportCardView renders the published-report card from the
+// data-decision payload (D18-B3 / WR-02 lockstep shape:
+// {title, period, version, url}).
+function ReportCardView({ card }: { card: import('../../types/wire-types').ReportCard }): ReactNode {
+  const period = card.period;
+  const versionBadge = `v${card.version}`;
+  // WR-10 hardening: the href comes from wire data — only a same-origin
+  // /reports/... path renders as a link; anything else degrades to text.
+  const safeUrl = card.url.startsWith('/reports/') ? card.url : null;
+  return (
+    <div
+      className="mt-3 p-3 rounded-md border"
+      style={{
+        backgroundColor: 'var(--color-report-bg, #14171e)',
+        borderColor: 'var(--color-report-border, #242833)',
+      }}
+    >
+      {/* Header */}
+      <div className="flex justify-between items-center mb-2">
+        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-text)' }}>
+          {card.title || `${period} 业务月报`}
+        </span>
+        <span
+          style={{
+            backgroundColor: 'var(--color-report-badge-bg)',
+            borderColor: 'var(--color-report-badge-border)',
+            color: 'var(--color-text-muted)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.75rem',
+            padding: '0.125rem 0.5rem',
+            borderRadius: '0.25rem',
+            border: '1px solid',
+          }}
+        >
+          {versionBadge}
+        </span>
+      </div>
+
+      {/* Action row */}
+      <div className="flex justify-between items-center">
+        {safeUrl ? (
+          <a
+            href={safeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-sm"
+            style={{ color: 'var(--color-primary)' }}
+          >
+            查看报告
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+          </a>
+        ) : (
+          <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            {card.url}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            const prefillText = `请重新生成报告（基于 ${period}），修改意见：`;
+            document.dispatchEvent(new CustomEvent('chat-input-prefill', { detail: prefillText }));
+          }}
+          style={{
+            backgroundColor: 'var(--color-regen-chip-bg)',
+            borderColor: 'var(--color-regen-chip-border)',
+            color: 'var(--color-regen-chip-text)',
+            cursor: 'pointer',
+            padding: '0.125rem 0.5rem',
+            borderRadius: '0.25rem',
+            border: '1px solid',
+            fontSize: '0.75rem',
+          }}
+        >
+          带修改重生成
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export interface MessageBubbleProps {
+  message: UIMessage;
+  role?: 'assistant' | 'user';
+}
+
+export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProps) {
+  // Plan 29-07 Task 2 — the ticket reference strip shows the session the
+  // ticket would be filed under. Read from the store (the ApprovalRules
+  // panels' existing pattern); hooks stay ABOVE the user-role early
+  // return below.
+  const activeSessionId = useAppStore((s) => s.activeSessionId);
+  if (role === 'user') {
+    // User messages: right-aligned card with the full message text.
+    // We render the text parts inline (not via TextPart) so the bubble
+    // owns its typography — bubble padding/font/line-height is set
+    // here, not in the part renderer. The data-testid stays the same
+    // for backward compat with the existing test suite.
+    //
+    // Plan 10-03 / D10-C3 — when the message carries a data-decision
+    // part with decision="history_query_rewritten", render the
+    // HistoryRewriteHint caption ABOVE the bubble so the user sees
+    // what the rewriter understood. The caption is co-located with the
+    // bubble (inside the same message container) so it travels with
+    // the message through re-renders / virtualization.
+    const rewriteDecision = message.parts.find(
+      (p) =>
+        p.type === 'data-decision' &&
+        (p as { data?: { decision?: string; query?: string } }).data?.decision ===
+          'history_query_rewritten',
+    ) as { data?: { decision: string; query?: string } } | undefined;
+    const rewriteText = rewriteDecision?.data?.query;
+    return (
+      <div
+        className="message-user"
+        data-testid="message-bubble"
+        data-role="user"
+      >
+        {rewriteText ? <HistoryRewriteHint rewrite={rewriteText} /> : null}
+        <div className="message-user-card">
+          {message.parts.map((part, i) => {
+            if (part.type === 'text') {
+              return <span key={i}>{part.text}</span>;
+            }
+            return null;
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant messages: full-width column with breathing room.
+  // 260817-hck: aggregate all text parts into chatText so VerdictCard
+  // (via DataPolicyPart) can suppress a verdict-answer block that the
+  // chat body already renders verbatim.
+  const chatText = message.parts
+    .filter((p) => p.type === 'text')
+    .map((p) => (p as { text: string }).text)
+    .join('');
+  // 260817-i36 (①): lift the Verdict status off the data-policy part so
+  // TextPart can render it as the corner badge on the conclusion text.
+  // Streaming: data-policy arrives after text — the badge appears once
+  // the verdict lands (locked decision, acceptable timing).
+  const policyData = (
+    message.parts.find((p) => p.type === 'data-policy') as
+      | { data?: unknown }
+      | undefined
+  )?.data;
+  const verdictStatus =
+    policyData !== undefined && isVerdict(policyData)
+      ? policyData.status
+      : undefined;
+  // Plan 29-07 Task 2 — turn identity for FeedbackRow. The data-turn
+  // part is the ONE consumption point shared by the live SSE stream
+  // (29-04 emitTurnID) and history restore (chat-restore synthesizes the
+  // same part). Missing / zero / non-numeric turnId → null → the row
+  // renders its honest disabled state, never a fabricated id (T-29-06).
+  const turnPart = message.parts.find((p) => p.type === 'data-turn') as
+    | { data?: { turnId?: unknown; votedVerdict?: unknown } }
+    | undefined;
+  const rawTurnId = turnPart?.data?.turnId;
+  const turnId =
+    typeof rawTurnId === 'number' && Number.isFinite(rawTurnId) && rawTurnId > 0
+      ? rawTurnId
+      : null;
+  const votedVerdict = isVote(turnPart?.data?.votedVerdict)
+    ? turnPart.data.votedVerdict
+    : null;
+  // chunkIds for the ticket reference strip — derived READ-ONLY from the
+  // verdict's citations (Go snake_case chunk_id). Tolerant: non-verdict /
+  // missing citations → []. Never reported back to the server (D-29-05 /
+  // T-29-04 — the server self-attributes from the audit row).
+  const chunkIds: string[] = [];
+  if (policyData !== undefined && isVerdict(policyData) && Array.isArray(policyData.citations)) {
+    for (const citation of policyData.citations) {
+      if (
+        typeof citation?.chunk_id === 'string' &&
+        citation.chunk_id !== '' &&
+        !chunkIds.includes(citation.chunk_id)
+      ) {
+        chunkIds.push(citation.chunk_id);
+      }
+    }
+  }
+  return (
+    <div
+      className="message-assistant"
+      data-testid="message-bubble"
+      data-role="assistant"
+    >
+      {/* Open Design B4 — 30px Sparkles 方标 anchoring the assistant
+          column; parts live in the body (D-08 reasoning-before-text
+          order is preserved inside .message-assistant-body). */}
+      <div className="assistant-mark" data-testid="assistant-mark" aria-hidden="true">
+        <Sparkles className="h-4 w-4" />
+      </div>
+      <div className="message-assistant-body">
+        {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
+        {/* Open Design B6 — per-reply feedback strip. Plan 29-07: the
+            vote lock is server-driven (POST /api/feedback), the ticket
+            form POSTs /api/tickets, and turn identity comes from the
+            data-turn part above. messageId stays DOM-only (Pitfall 7). */}
+        <FeedbackRow
+          messageId={message.id}
+          turnId={turnId}
+          votedVerdict={votedVerdict}
+          sessionId={activeSessionId}
+          chunkIds={chunkIds}
+          messageText={chatText}
+        />
+      </div>
+    </div>
+  );
+}

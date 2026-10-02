@@ -1,0 +1,44 @@
+# kpis/loans.yaml — KPI definitions for the loans dataset
+# CONTROLLED FILE: versioned in git, changed via PR review (D16-A1).
+# Data staff author this file; the server loads it fail-closed at startup.
+# Signature = content hash rides every kpi_calls audit row so "which KPI
+# version produced this result" is always provable (KPI-02).
+#
+# Table reference form: ds_loans.data (staging table name is always "data",
+# internal/data/importer.go:1049; ATTACH alias is ds_{id},
+# internal/duckdb/attach_lru.go:91-94).
+# v1 has no period parameter — latest period is selected by the system from
+# the datasets registry; historical replay uses kpi_calls audit rows (D16-B4).
+
+dataset: loans           # must match datasets registry name; "__" forbidden (composite name separator)
+description: 贷款业务核心指标（数据组维护）
+k_min: 0                 # 0 = use dataset k_min_override; still 0 = use KMinDefault=5
+                          # three-tier chain: file > dataset > global (internal/data/desensitize.go:28-39)
+
+kpis:
+  - name: loan_overdue_rate_by_status
+    description: 各状态贷款逾期率（百分比，分母为贷款笔数）
+    sql: |
+      SELECT status AS status,
+             count(*) AS row_count,
+             round(100.0 * sum(CASE WHEN overdue_days > 0 THEN 1 ELSE 0 END) / count(*), 2) AS overdue_rate
+      FROM ds_loans.data
+      WHERE (:status IS NULL OR status = :status)
+      GROUP BY status
+    count_column: row_count
+    params:
+      status:
+        type: enum
+        values: [正常, 逾期]     # differential whitelist (D16-D2): data staff control granularity
+        required: false           # omitted = all statuses (WHERE clause uses IS NULL guard)
+
+  - name: loan_balance_bucket_distribution
+    description: 贷款余额桶分布（balance 列导入时已按 width 1000 桶化，D15-D1 定宽桶跨期可比；稀疏高桶由 k_min 行级抑制兜底——两防线各司其职）
+    sql: |
+      SELECT balance AS balance_bucket,
+             count(*) AS row_count
+      FROM ds_loans.data
+      GROUP BY balance
+      ORDER BY balance_bucket
+    count_column: row_count
+    params: {}                    # empty params = no parameters (loader treats as no-param KPI)

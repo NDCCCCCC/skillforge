@@ -1,0 +1,48 @@
+.env
+*.exe
+/spiked
+/spiked.exe
+/scripts/spiked/spiked
+/scripts/spiked/spiked.exe
+spike-*trace.json
+.DS_Store
+node_modules/
+web/dist/
+
+# Local SQLite audit store (Phase 3 / Plan 03-02). Must never be committed —
+# audit rows may carry query text. Plan 07-01 closes the .gitignore gap before
+# the repo goes public (T-7-OSS-SECRET).
+skillforge.db
+skillforge.db-shm
+skillforge.db-wal
+
+# GBK/UTF-8 chat-body debug dumps written by spike-era request-body probes
+# (see scripts/spiked) — likely to reappear during local debugging.
+/body_gbk_*
+/body_quantum.json
+
+# Phase 9 spike reports (一次性产物，不入 git 历史)
+# ROOT-ANCHORED (same class of fix as /data/ below): the bare `reports/`
+# pattern also swallowed .planning/reports/ planning artifacts and
+# eval/reports/ runtime output. The repo-root spike dir is the only target.
+/reports/
+/eval/reports/
+
+# Data-support runtime state (D14-D4): staging batches + committed datasets.
+# ROOT-ANCHORED (Phase 15 / Plan 15-01): the bare `data/` pattern matched at
+# any depth and silently ignored the internal/data import-pipeline package;
+# the runtime state this rule protects is the repo-root data/ tree only
+# (DefaultStagingDir / DefaultDatasetsDir, staging.go:34-42).
+/data/
+
+# WSL-built dev server binaries (Phase 16/18/19 verification builds, ~119MB
+# ELF with debug_info) — build artifacts, never commit.
+/skillforge-server*
+
+# Sensitive / internal data — never publish (企业内部数据与项目管理)
+knowledge/
+eval/
+.planning/
+screenshots/
+*.db
+*.log

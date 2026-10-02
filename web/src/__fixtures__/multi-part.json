@@ -1,0 +1,44 @@
+[
+  { "type": "start", "messageId": "m-multipart-001" },
+  { "type": "step-start" },
+
+  { "type": "reasoning-start", "id": "r-1" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "用户询问合同审批流程的合规性。需要检索权威 tier 中关于合同审批的文档。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "检测到合同金额较大，需要触发 multi-step 工具调用流程。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "工具调用流程：先检索相关文档 → 提取关键条款 → 自校验 → 生成结论。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "步骤一：在权威知识层中搜索「合同审批」。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "步骤二：找到 12 条候选条款，进入重排序阶段。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "步骤三：使用 BGE-reranker 重排序，取 top-5。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "步骤四：自校验 — 验证每条引用的支撑文本是否真的出现在 chunk 里。" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "步骤五：生成结论并附引用。" },
+  { "type": "reasoning-end", "id": "r-1" },
+
+  { "type": "tool-input-start", "toolCallId": "tc-1", "toolName": "search_authority" },
+  { "type": "tool-input-delta", "toolCallId": "tc-1", "inputTextDelta": "{\"tier\":\"权威\",\"query\":\"合同审批\"" },
+  { "type": "tool-input-delta", "toolCallId": "tc-1", "inputTextDelta": ",\"limit\":12}" },
+  { "type": "tool-input-available", "toolCallId": "tc-1", "input": { "tier": "权威", "query": "合同审批", "limit": 12 } },
+  { "type": "tool-output-available", "toolCallId": "tc-1", "output": { "candidates": ["c-001", "c-002", "c-003", "c-004", "c-005"] } },
+
+  { "type": "step-start" },
+
+  { "type": "tool-input-start", "toolCallId": "tc-2", "toolName": "rerank_bge" },
+  { "type": "tool-input-available", "toolCallId": "tc-2", "input": { "candidates": ["c-001", "c-002", "c-003", "c-004", "c-005"], "top_k": 5 } },
+  { "type": "tool-output-available", "toolCallId": "tc-2", "output": { "ranked": ["c-001", "c-004", "c-002", "c-003", "c-005"] } },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "依据《合同审批管理办法》第 5 条，单笔金额超过 100 万元的合同需经法务部会签。" },
+  { "type": "text-delta", "id": "t-1", "delta": "当前流程符合该制度。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "source-url", "sourceId": "c-001", "url": "http://skillforge.local/chunks/authority/contract-approval.md#L5", "title": "合同审批管理办法 §5" },
+
+  { "type": "data-policy", "id": "p-001", "data": {
+    "status": "ok",
+    "confidence": 0.93,
+    "citations": [{ "chunk_id": "c-001", "span": "单笔金额超过 100 万元的合同需经法务部会签", "tier": "权威" }],
+    "review_required": false,
+    "compliance_status": "compliant"
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]

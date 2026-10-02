@@ -1,0 +1,15 @@
+[
+  { "type": "start", "messageId": "m-subprogress-001" },
+
+  { "type": "data-subprogress", "data": { "step": "retrieve", "tier": "权威" } },
+  { "type": "data-subprogress", "data": { "step": "found_candidates", "tier": "权威", "count": 12 } },
+  { "type": "data-subprogress", "data": { "step": "rerank" } },
+  { "type": "data-subprogress", "data": { "step": "self_verify" } },
+  { "type": "data-subprogress", "data": { "step": "generate" } },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "审查完成。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "finish", "finishReason": "stop" }
+]

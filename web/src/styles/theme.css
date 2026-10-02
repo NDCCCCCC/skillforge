@@ -1,0 +1,1815 @@
+/* Copyright 2026 SkillForge Authors
+   SPDX-License-Identifier: Apache-2.0 */
+
+/* Tailwind v4 theme directives — design tokens for the SkillForge
+   streaming trust UI. Mirrors `.planning/phases/04-streaming-trust-ui/
+   04-UI-SPEC.md` §Color / §Spacing / §Typography / §Layout Contract.
+
+   Tailwind v4 uses CSS-first config — all tokens live in @theme and
+   auto-generate utility classes (bg-primary, text-base, etc.). No
+   tailwind.config.js needed.
+
+   Pinned at this exact set per 04-UI-SPEC §Forbidden list:
+   - Typography: 4 sizes (12/14/18/24) x 2 weights (400/600)
+   - Spacing: 7-step scale (4/8/12/16/20/24/32/48), all multiples of 4
+   - Status tokens: 4 verdict + 1 out-of-scope; visually distinct
+*/
+
+@import "tailwindcss";
+
+@theme {
+  /* ===== Colors (60/30/10 — enterprise deep-space, Open Design
+     redesign 260819: indigo accent, deeper bg, softer surfaces).
+     Light theme mirrors every token in the :root[data-theme="light"]
+     override block at the bottom of this file. ===== */
+  --color-bg: #0c0e12;               /* Dominant 60% — app background */
+  --color-surface: #14171e;          /* Secondary 30% — panels + cards */
+  --color-surface-2: #1c2029;       /* Hover state, tool-call bg */
+  --color-surface-3: #242833;       /* Pressed state, reasoning bg */
+  --color-border: #242833;           /* Default borders */
+  --color-border-muted: #333a48;    /* Strong line — resize handle, pre inner border */
+
+  /* Accent (10%) — indigo, reserved for CTA / focus / streaming dot */
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+  --color-primary-dim: #1e1b4b;
+  --color-primary-fg: #ffffff;
+
+  /* Destructive — Button destructive variant + wizard cancel CTA */
+  --color-danger: #ef4444;
+
+  /* Text scale */
+  --color-text: #f0f0f3;
+  --color-text-muted: #7c8494;
+  --color-text-dim: #5b6478;
+
+  /* Status semantic group (separate from accent). Per the redesign,
+     unanswered and out-of-scope intentionally share the neutral gray
+     (both are terminal "no answer" states of equal valence; the label
+     text differentiates them). */
+  --color-status-compliant: #34d399;        /* green — ComplianceStatus=compliant */
+  --color-status-needs-info: #fbbf24;       /* yellow — needs_input / review badge */
+  --color-status-non-compliant: #f87171;    /* red — ComplianceStatus=non_compliant */
+  --color-status-unanswered: #8b95a3;       /* gray — refused (legacy unanswered) */
+  --color-status-out-of-scope: #8b95a3;     /* gray — out-of-scope (shares unanswered) */
+  --color-status-error: #dc2626;            /* deeper red — internal error */
+
+  /* Chat bubble backgrounds — indigo gradient user card */
+  --color-user-bubble: #1e1b4b;
+  --color-user-bubble-end: #312e81;       /* gradient terminus */
+  --color-message-area: #10131a;          /* slightly lifted from app bg for depth */
+
+  /* Tool call cards — "agent at work" surface, indigo accent */
+  --color-tool-bg: #171b24;
+  --color-tool-border: #242833;
+  --color-tool-accent: #6366f1;           /* indigo — agent at work */
+  --color-tool-accent-dim: rgba(99, 102, 241, 0.12);
+  --color-tool-accent-glow: rgba(99, 102, 241, 0.5);
+  --color-tool-accent-border: rgba(99, 102, 241, 0.3);
+  --color-tool-body-bg: rgba(5, 7, 12, 0.3);   /* inset I/O block (was raw black) */
+
+  /* Reasoning preview — warm amber "thinking" surface */
+  --color-reasoning: #2a2317;             /* warm tinted bg */
+  --color-reasoning-border: #fbbf24;      /* amber-400 left bar */
+  --color-reasoning-accent: #fbbf24;      /* amber-400 */
+  --color-reasoning-tint: rgba(251, 191, 36, 0.05);
+  --color-reasoning-tint-end: rgba(251, 191, 36, 0.015);
+  --color-reasoning-line: rgba(251, 191, 36, 0.2);
+  --color-reasoning-icon-bg: rgba(251, 191, 36, 0.16);
+  --color-reasoning-hover: rgba(251, 191, 36, 0.1);
+
+  /* Citation chips — pill style (indigo translucent) */
+  --color-citation-bg: rgba(99, 102, 241, 0.12);
+  --color-citation-border: rgba(99, 102, 241, 0.3);
+  --color-citation-text: #a5b4fc;
+
+  /* Composer — floating card */
+  --color-composer-bg: #1a1f29;
+  --color-composer-border: #2b3140;
+  --color-composer-focus: rgba(99, 102, 241, 0.4);
+  --color-composer-shadow: rgba(4, 6, 12, 0.4);
+
+  /* Activity pulse — used for the "agent is working" status dots */
+  --color-pulse: #6366f1;
+  --color-pulse-glow: rgba(99, 102, 241, 0.6);
+
+  /* Sub-progress timeline (DataSubprogressPart) */
+  --color-timeline-dot: #6366f1;
+  --color-timeline-dot-active: #818cf8;
+  --color-timeline-track: #242833;
+
+  /* Indigo glow family — chip hover / send button / focus rings.
+     Tokenized (was ~8 raw rgba literals) so the light theme can
+     retint every glow at once. */
+  --color-glow-soft: rgba(99, 102, 241, 0.15);
+  --color-glow: rgba(99, 102, 241, 0.25);
+  --color-glow-strong: rgba(99, 102, 241, 0.35);
+  --color-glow-faint: rgba(99, 102, 241, 0.06);
+
+  /* Routing trace card (RoutingTracePart) */
+  --color-routing-bg: rgba(99, 102, 241, 0.05);
+  --color-routing-border: rgba(99, 102, 241, 0.16);
+
+  /* Neutral elevation shadows (theme-aware via the light mirror) */
+  --color-shadow-card: rgba(4, 6, 12, 0.2);
+  --color-shadow-card-strong: rgba(4, 6, 12, 0.32);
+  --color-shadow-overlay: rgba(4, 6, 12, 0.45);
+
+  /* Status tints — blocked citations, error blocks, draft chips */
+  --color-bad-tint: rgba(248, 113, 113, 0.08);
+  --color-ok-tint: rgba(52, 211, 153, 0.08);
+  --color-ok-border: rgba(52, 211, 153, 0.3);
+  --color-ok-glow: rgba(52, 211, 153, 0.4);
+
+  /* Terminal surface — cmd-block code blocks (markdown answers) */
+  --color-terminal-bg: #0a0c10;
+  --color-terminal-fg: #d2d6e0;
+  --color-terminal-comment: #6b7280;
+  --color-terminal-prompt: #818cf8;
+
+  /* ===== Plan 05-06 annotation tokens (SC-6 + SC-7) =====
+     Reserved SCOPED palette — these are the ONLY teal/redline surfaces
+     in the app. The 05-05 SUMMARY's GraphTree deliberately does NOT use
+     teal for the tier text ("teal reserved for SC-6 counter-evidence")
+     — keep that line bright by routing every teal request through this
+     single token. */
+  --color-annotation: #2dd4bf;            /* teal-400 — counter-evidence left-border + 历史 tier badge + redline rationale left-border */
+  --color-annotation-dim: #134e4a;        /* teal-900 — counter-evidence badge bg / hover */
+  --color-redline-removed: rgba(248, 113, 113, 0.10);   /* red-tinted bg block for 原条款 (D5-14 redline original) */
+  --color-redline-added: rgba(52, 211, 153, 0.10);      /* green-tinted bg block for 建议改写 (D5-14 redline rewrite) */
+
+  /* ===== Spacing scale (multiples of 4) ===== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;    /* EXCEPTION — verdict card padding-x */
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* ===== Typography (4 sizes x 2 weights) ===== */
+  --text-xs: 12px;       /* 0.75rem — tier badges, statusbar, meta */
+  --text-base: 14px;     /* 0.875rem — body */
+  --text-lg: 18px;       /* 1.125rem — headings */
+  --text-2xl: 24px;      /* 1.5rem — display (down from sketch 1.75rem) */
+
+  /* Font families — Plus Jakarta Sans primary (Open Design redesign) */
+  --font-sans: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* ===== Layout dimensions ===== */
+  --topbar-height: 56px;
+  --statusbar-height: 26px;
+  /* Chat column max widths — Open Design B8: reading-measure study puts
+     the comfortable line length at 45-75 chars (~768-840px on the 15-16px
+     base font with 1.6-1.75 line-height). Matches Claude.ai / Gemini /
+     ChatGPT visual density; keeps the chat centered when both sidebars
+     collapse instead of stretching to viewport width. */
+  --chat-col-max-width: 840px;
+  --chat-composer-max-width: 768px;
+
+  /* ===== Transitions ===== */
+  --transition-fast: 120ms;
+  --transition-base: 300ms;
+  /* Spring easing for panel/verdict motion (redesign §3.4) */
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.5, 1);
+
+  /* ===== Radii (softer, enterprise-modern) ===== */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-composer: 16px;
+  --radius-full: 9999px;
+}
+
+/* Body-level baseline — dark background + default text color + font */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Citation chip — modern pill style (used by SourceUrlPart + SourceDocumentPart) */
+.citation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px 10px;
+  background-color: var(--color-citation-bg);
+  border: 1px solid var(--color-citation-border);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-decoration: none;
+  color: var(--color-citation-text);
+  cursor: pointer;
+  transition: all var(--transition-fast) cubic-bezier(0.4, 0, 0.2, 1);
+  line-height: 1.4;
+}
+
+.citation-chip:hover {
+  background-color: var(--color-primary-dim);
+  border-color: var(--color-primary);
+  color: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px var(--color-glow-soft);
+}
+
+.citation-chip .tier {
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Open Design B5 — tier 药丸徽章 on citation chips:
+   权威=靛蓝 / 历史=琥珀 / 个人=青 / 草稿=灰. */
+.citation-tier-pill {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  background: var(--color-primary-dim);
+  color: var(--color-primary-hover);
+}
+
+.citation-tier-pill[data-tier="历史"] {
+  background: var(--color-bad-tint);
+  color: var(--color-status-needs-info);
+}
+
+.citation-tier-pill[data-tier="个人"] {
+  background: var(--color-ok-tint);
+  color: var(--color-status-compliant);
+}
+
+.citation-tier-pill[data-tier="草稿"] {
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+}
+
+/* Blocked citation (T-1-08 hard reject) */
+.citation-blocked {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px 10px;
+  background-color: var(--color-bad-tint);
+  border: 1px dashed var(--color-status-non-compliant);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  color: var(--color-status-non-compliant);
+  font-family: var(--font-mono);
+}
+
+/* Step divider between tool-call steps */
+.step-divider {
+  border: 0;
+  border-top: 1px dashed var(--color-border-muted);
+  margin: var(--space-2) 0;
+}
+
+/* Three-panel grid */
+.app-shell {
+  display: grid;
+  grid-template-rows: var(--topbar-height) 1fr var(--statusbar-height);
+  height: 100vh;
+}
+
+/* Center panel tab content area — ensures tab bodies have a stable
+   minimum height so empty states (chunk-source / SKILL.md tabs) don't
+   collapse when only a heading is rendered. */
+.center-panel-tab-content {
+  min-height: 100%;
+  padding: var(--space-6);
+}
+
+/* Resize handles — B9: rendered INSIDE their panel wrap and pinned to
+   its inner edge via the `.xxx-panel-wrap > .resize-handle` rules in
+   the chat-layout section below (absolute, 8px hit area). The visible
+   1px line turns primary on hover/drag; the in-wrap rules re-center it
+   with left:50% + translateX. */
+.resize-handle {
+  position: relative;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 5;
+  margin: 0 -2px;
+  flex-shrink: 0;
+}
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  /* Seamless canvas: no resting boundary line — the affordance only
+     fades in on hover/drag (the hover rule below paints it
+     primary). */
+  background-color: transparent;
+  transition: background-color var(--transition-fast);
+}
+.resize-handle:hover::before,
+.resize-handle.dragging::before {
+  background-color: var(--color-primary);
+  width: 2px;
+  left: 1px;
+}
+body[data-dragging="true"] {
+  cursor: col-resize;
+  user-select: none;
+}
+body[data-dragging="true"] * {
+  pointer-events: none;
+}
+
+/* Chat input dragging visual feedback (per sketch chat-input-attach-skill.md) */
+.chat-input-dragging {
+  background-color: var(--color-primary-dim);
+  border: 2px dashed var(--color-primary);
+}
+
+/* ====================================================================
+   Modern chat layout — Phase 4 visual upgrade
+   ====================================================================
+   Design tenets:
+   - User messages: right-aligned cards with subtle gradient
+   - Assistant messages: full-width text with breathing room
+   - Tool/reasoning parts: distinct elevated cards with status indicator
+   - Composer: floating rounded card with focus glow
+   - "Transparency bar": pulsing activity dots on working surfaces
+*/
+
+/* Chat messages container — seamless: no backdrop lift, the chat
+   column and the overlay panels share the app background as one
+   canvas (user ask: 融为一体，不要有边界). */
+.chat-messages-modern {
+  background: transparent;
+}
+
+/* ---------- User message bubble (right-aligned card) ---------- */
+.message-user {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--space-4) 0;
+  animation: message-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.message-user-card {
+  max-width: 75%;
+  padding: 10px 16px;
+  background: linear-gradient(135deg,
+    var(--color-user-bubble) 0%,
+    var(--color-user-bubble-end) 100%);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  border-radius: 20px 20px 6px 20px;
+  box-shadow: 0 1px 2px var(--color-shadow-card);
+  word-wrap: break-word;
+}
+
+/* ---------- Assistant message (full-width, no chrome) ---------- */
+/* Open Design B4 — row layout: 30px Sparkles 方标 + body column. */
+.message-assistant {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: var(--space-5) 0;
+  padding: 0;
+  animation: message-in 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.assistant-mark {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  background: var(--color-primary-dim);
+  color: var(--color-primary);
+  border: 1px solid var(--color-tool-accent-border);
+  box-shadow: 0 0 12px var(--color-glow-faint);
+}
+
+.message-assistant-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.message-assistant-text {
+  color: var(--color-text);
+  font-size: var(--text-base);
+  line-height: 1.75;
+  letter-spacing: 0.005em;
+}
+
+/* ---------- B4: markdown rich answer body ---------- */
+.markdown-body {
+  color: var(--color-text);
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body p {
+  margin: 0 0 10px;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 18px 0 8px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+.markdown-body h1 { font-size: 1.25em; }
+.markdown-body h2 { font-size: 1.15em; }
+.markdown-body h3 { font-size: 1.05em; }
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 10px;
+  padding-left: 1.35em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.markdown-body li > p {
+  margin: 0;
+}
+
+.markdown-body blockquote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--color-border-muted);
+  color: var(--color-text-muted);
+}
+
+.markdown-body a {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 14px 0;
+}
+
+.markdown-body table {
+  width: 100%;
+  margin: 0 0 10px;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--color-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.markdown-body p code,
+.markdown-body li code,
+.markdown-body td code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  color: var(--color-terminal-prompt);
+}
+
+/* ---------- B4: cmd-block — fenced-code terminal card ---------- */
+.cmd-block {
+  margin: 12px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-terminal-bg);
+}
+
+.cmd-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-terminal-bg) 55%, var(--color-surface-2));
+}
+
+.cmd-block-lang {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-terminal-prompt);
+}
+
+.cmd-block-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.cmd-block-copy:hover {
+  color: var(--color-text);
+  background: var(--color-surface-3);
+}
+
+.cmd-block-body {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--color-terminal-fg);
+}
+
+.cmd-block-body code {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- Tool call card (modern elevated card) ---------- */
+.tool-card {
+  position: relative;
+  margin: var(--space-3) 0;
+  padding: 12px 14px;
+  background-color: var(--color-tool-bg);
+  border: 1px solid var(--color-tool-border);
+  border-left: 3px solid var(--color-tool-accent);
+  border-radius: 10px;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  overflow: hidden;
+  transition: border-color var(--transition-fast);
+}
+
+.tool-card[data-state="output-available"] {
+  border-left-color: var(--color-status-compliant);
+}
+
+.tool-card[data-state="output-error"],
+.tool-card[data-state="output-denied"] {
+  border-left-color: var(--color-status-non-compliant);
+}
+
+.tool-card[data-state="input-streaming"],
+.tool-card[data-state="input-available"] {
+  border-left-color: var(--color-tool-accent);
+  background: linear-gradient(90deg,
+    var(--color-tool-accent-dim) 0%,
+    var(--color-tool-bg) 60%);
+}
+
+.tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.tool-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--color-tool-accent-dim);
+  color: var(--color-tool-accent);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.tool-card-name {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.tool-card-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.tool-card-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.tool-card[data-state="output-available"] .tool-card-status-dot {
+  background: var(--color-status-compliant);
+}
+
+.tool-card[data-state="output-error"] .tool-card-status-dot,
+.tool-card[data-state="output-denied"] .tool-card-status-dot {
+  background: var(--color-status-non-compliant);
+}
+
+.tool-card[data-state="input-streaming"] .tool-card-status-dot,
+.tool-card[data-state="input-available"] .tool-card-status-dot {
+  background: var(--color-tool-accent);
+  animation: tool-pulse 1.4s ease-in-out infinite;
+  box-shadow: 0 0 0 0 var(--color-tool-accent);
+}
+
+@keyframes tool-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--color-tool-accent-glow); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 6px transparent; }
+}
+
+.tool-card-body {
+  margin-top: var(--space-2);
+  padding: 10px 12px;
+  background: var(--color-tool-body-bg);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow-x: auto;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-card-body code {
+  font-family: inherit;
+  color: var(--color-text);
+}
+
+.tool-card-error {
+  margin-top: var(--space-2);
+  padding: 8px 10px;
+  background: var(--color-bad-tint);
+  border-left: 2px solid var(--color-status-non-compliant);
+  border-radius: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-status-non-compliant);
+}
+
+/* ---------- Reasoning card (warm "thinking" surface) ---------- */
+.reasoning-card {
+  position: relative;
+  margin: var(--space-3) 0;
+  background: linear-gradient(180deg,
+    var(--color-reasoning-tint) 0%,
+    var(--color-reasoning-tint-end) 100%);
+  border: 1px solid var(--color-reasoning-line);
+  border-left: 3px solid var(--color-reasoning-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.reasoning-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast);
+}
+
+.reasoning-card-header:hover {
+  background-color: var(--color-reasoning-hover);
+}
+
+.reasoning-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--color-reasoning-icon-bg);
+  color: var(--color-reasoning-accent);
+  flex-shrink: 0;
+}
+
+.reasoning-card-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-reasoning-accent);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.reasoning-card-suffix {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.reasoning-card-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  border-radius: 6px;
+  transition: all var(--transition-fast);
+}
+
+.reasoning-card-toggle:hover {
+  background-color: var(--color-reasoning-hover);
+  color: var(--color-reasoning-accent);
+}
+
+/* Open Design B5 — the body only renders when expanded (collapsed =
+   header-only), so the 180px cap + fade mask is retired. The expanded
+   body scrolls if very long. */
+.reasoning-card-body {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 0 14px 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- Sub-progress timeline (DataSubprogressPart) ---------- */
+.subprogress-timeline {
+  position: relative;
+  margin: var(--space-3) 0;
+  padding: var(--space-3) 0;
+}
+
+.subprogress-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
+.subprogress-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 6px 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  position: relative;
+}
+
+.subprogress-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-timeline-dot);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 0 3px var(--color-bg);
+}
+
+.subprogress-step[data-pending="true"] .subprogress-step-dot {
+  background: var(--color-timeline-dot-active);
+  animation: step-blink 1.6s ease-in-out infinite;
+}
+
+.subprogress-step[data-pending="true"] {
+  color: var(--color-text);
+}
+
+.subprogress-step-line {
+  position: absolute;
+  left: 3.5px;
+  top: 16px;
+  bottom: -8px;
+  width: 1px;
+  background: var(--color-timeline-track);
+}
+
+.subprogress-step:last-child .subprogress-step-line {
+  display: none;
+}
+
+@keyframes step-blink {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* ---------- DraftStreamChip (modern inline status card) ---------- */
+.draft-chip-modern {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: 8px 14px;
+  background: var(--color-tool-bg);
+  border: 1px solid var(--color-tool-border);
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.draft-chip-modern[data-status="pending"] {
+  background: linear-gradient(90deg,
+    var(--color-tool-accent-dim) 0%,
+    var(--color-tool-bg) 100%);
+  border-color: var(--color-tool-accent-border);
+  color: var(--color-text);
+}
+
+.draft-chip-modern[data-status="verified"] {
+  background: var(--color-ok-tint);
+  border-color: var(--color-ok-border);
+  color: var(--color-status-compliant);
+}
+
+.draft-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-tool-accent);
+}
+
+.draft-chip-modern[data-status="pending"] .draft-chip-dot {
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes typing-dot {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.draft-chip-text {
+  font-style: italic;
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Composer (floating rounded card) ---------- */
+.composer-modern {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: transparent;
+  /* Open Design B8 — keep the composer visually aligned with the message
+     column. Slightly narrower cap (768px) gives the rounded composer
+     card breathing room on either side rather than abutting the chat-col
+     edge. */
+  max-width: var(--chat-composer-max-width, 768px);
+  margin-inline: auto;
+  width: 100%;
+}
+
+.composer-card {
+  position: relative;
+  background: var(--color-composer-bg);
+  border: 1px solid var(--color-composer-border);
+  border-radius: var(--radius-composer);
+  box-shadow: 0 4px 16px var(--color-shadow-card-strong),
+              0 1px 3px var(--color-shadow-card);
+  transition: all var(--transition-base) cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.composer-card:focus-within {
+  border-color: var(--color-composer-focus);
+  box-shadow: 0 4px 20px var(--color-glow-soft),
+              0 1px 3px var(--color-shadow-card);
+}
+
+.composer-card[data-dragging="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-dim);
+}
+
+.composer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+
+.composer-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--color-text);
+}
+
+.composer-file-chip-size {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+}
+
+.composer-file-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  background: transparent;
+  transition: all var(--transition-fast);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.composer-file-remove:hover {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.composer-skill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 12px 0;
+  padding: 4px 10px;
+  background: var(--color-primary-dim);
+  border: 1px solid var(--color-citation-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.composer-skill-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 6px var(--color-pulse-glow);
+}
+
+.composer-textarea {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  max-height: 200px;
+  padding: 12px 56px 12px 14px;
+  background: transparent;
+  border: 0;
+  outline: none;
+  resize: none;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+
+.composer-textarea::placeholder {
+  color: var(--color-text-dim);
+}
+
+.composer-send {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+  transition: all var(--transition-fast) cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px var(--color-glow);
+}
+
+.composer-send:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--color-glow-strong);
+}
+
+.composer-send:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.composer-send:disabled {
+  background: var(--color-surface-3);
+  color: var(--color-text-dim);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* Open Design B6 — dual hint row: Enter affordances left, retrieval
+   scope right (stacked centered on narrow widths). */
+.composer-hint {
+  margin-top: 6px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--color-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  letter-spacing: 0.01em;
+}
+
+/* ---------- B6: per-reply feedback row ---------- */
+.feedback-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border);
+}
+
+.feedback-row-q {
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  margin-right: var(--space-1);
+}
+
+.feedback-row-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.feedback-row-btn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-border-muted);
+}
+
+.feedback-row-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.feedback-row-btn-active {
+  background: var(--color-primary-dim);
+  border-color: var(--color-primary);
+  color: var(--color-primary-hover);
+  opacity: 1;
+}
+
+.feedback-row-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 var(--space-1);
+  background: var(--color-border);
+}
+
+.composer-skill-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  margin: 0 12px;
+  background: var(--color-composer-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px var(--color-shadow-overlay);
+  overflow: hidden;
+  animation: menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes message-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Right chat panel header (modernized) ---------- */
+.chat-header-modern {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.chat-header-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.chat-header-divider {
+  color: var(--color-text-dim);
+  font-size: var(--text-xs);
+}
+
+.chat-header-skill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.chat-header-skill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-status-compliant);
+  box-shadow: 0 0 4px var(--color-ok-glow);
+}
+
+.chat-header-skill-missing {
+  font-style: italic;
+  color: var(--color-text-dim);
+}
+
+/* ---------- Empty state hero ---------- */
+.chat-empty-modern {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.chat-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: linear-gradient(135deg,
+    var(--color-primary-dim) 0%,
+    var(--color-glow-faint) 100%);
+  color: var(--color-primary);
+  margin-bottom: 20px;
+  box-shadow: 0 4px 16px var(--color-glow-soft);
+}
+
+/* Open Design B5 — brand-gradient variant (the empty-state hero mark):
+   same square as the TopBar logo, indigo→indigo-hover fill. */
+.chat-empty-icon-gradient {
+  background: linear-gradient(135deg,
+    var(--color-primary) 0%,
+    var(--color-primary-hover) 100%);
+  color: #fff;
+}
+
+.chat-empty-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.chat-empty-subtitle {
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+  max-width: 360px;
+  line-height: 1.6;
+  margin-bottom: 28px;
+}
+
+.chat-empty-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.chat-empty-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-align: left;
+  transition: all var(--transition-fast) cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chat-empty-prompt:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-primary);
+  color: var(--color-text);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--color-shadow-card);
+}
+
+.chat-empty-prompt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--color-primary-dim);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+/* ---------- Routing trace (modernized) ---------- */
+.routing-trace-modern {
+  margin: var(--space-3) 0;
+  padding: 10px 14px;
+  background: var(--color-routing-bg);
+  border: 1px solid var(--color-routing-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 8px;
+  font-size: var(--text-xs);
+}
+
+/* Open Design B5 — compact horizontal bar: one glanceable summary
+   line; candidate pills wrap inline below. */
+.routing-trace-modern-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.routing-trace-modern-summary {
+  margin-left: 4px;
+  color: var(--color-text);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.routing-trace-modern-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+
+.routing-trace-modern-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-muted);
+}
+
+.routing-trace-modern-row[data-selected="true"] {
+  background: var(--color-primary-dim);
+  color: var(--color-primary-hover);
+  font-weight: 600;
+}
+
+.routing-trace-modern-score {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+/* ---------- B5: tool-card expand toggle ---------- */
+.tool-card-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tool-card-toggle:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-muted);
+}
+
+/* ---------- B5: chat-stream verdict inline card (≤340px stripe) ---------- */
+@keyframes verdict-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--color-glow-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--color-glow-faint);
+  }
+}
+
+.verdict-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 340px;
+  padding: 7px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  animation: verdict-pulse 2.4s ease-in-out 3;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.verdict-inline:hover {
+  border-color: var(--color-border-muted);
+  box-shadow: 0 2px 10px var(--color-glow-soft);
+}
+
+.verdict-inline-status {
+  font-weight: 600;
+  flex: none;
+}
+
+.verdict-inline-conf {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.verdict-inline-cta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--color-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- Custom thin scrollbar (chat) ---------- */
+.chat-messages-modern::-webkit-scrollbar,
+.reasoning-card-body::-webkit-scrollbar,
+.tool-card-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.chat-messages-modern::-webkit-scrollbar-track,
+.reasoning-card-body::-webkit-scrollbar-track,
+.tool-card-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-messages-modern::-webkit-scrollbar-thumb,
+.reasoning-card-body::-webkit-scrollbar-thumb,
+.tool-card-body::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+.chat-messages-modern::-webkit-scrollbar-thumb:hover,
+.reasoning-card-body::-webkit-scrollbar-thumb:hover,
+.tool-card-body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-dim);
+}
+
+/* ====================================================================
+   Chat-first layout (Open Design redesign B2 → B9 overlay). chat-body
+   owns ONE in-flow child — the chat column — plus two absolutely
+   positioned overlay panels floating ABOVE the chat. Toggling a panel
+   slides it in/out via transform (GPU-composited, zero layout) so the
+   centered chat column never moves. A "safety cap" max-width keeps the
+   panels from covering the chat column on mid-size viewports; below
+   1280px they degrade to scrim-backed sheets (B7). Width transitions
+   apply to nothing except while dragging (inline width must track 1:1).
+   ==================================================================== */
+.chat-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  /* Containing block for the overlay panels (they span this box,
+     top:0 → bottom:0, i.e. exactly between TopBar and StatusBar). */
+  position: relative;
+  /* Clip the closed panels' translated boxes — they'd otherwise count
+     into the DOCUMENT scrollable overflow (visibility:hidden doesn't
+     remove boxes, and transforms are included), spawning scrollbars
+     that shift the centered chat column by half a scrollbar width.
+     `clip` (not `hidden`) avoids creating a scroll container; the
+     panels' shadows point inward so nothing visible is cut. */
+  overflow: clip;
+}
+
+.chat-col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  /* Open Design B8/B9 — the chat column is the only in-flow child, so
+     it centers against the FULL chat-body width. Sidebar toggles can
+     never shift it: panels are absolute overlays above it, not flex
+     siblings. max-width keeps the reading measure; the app paints
+     empty surface-2 gutters wherever panels don't reach. */
+  max-width: var(--chat-col-max-width, 840px);
+  margin-inline: auto;
+  width: 100%;
+}
+
+/* Right overlay panel — floats above the chat (B9). Open state is the
+   base (transform:none, fully visible); [data-open='false'] slides it
+   off-screen. The visibility transition is DELAYED by the slide
+   duration so the panel stays painted while it exits; the open state
+   omits visibility from transition-property entirely, making it
+   visible again the instant it starts sliding back in. `inert` on the
+   wrap (React) blocks focus/AT during the exit window. */
+.detail-panel-wrap {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  min-width: 0;
+  overflow: hidden;
+  /* Seamless canvas (user ask): the panel shares the app background —
+     no border, no shadow, no distinct surface. The panel content's
+     own affordances delineate it; the chat and both panels read as
+     one continuous surface. */
+  background: var(--color-bg);
+  /* Safety cap (user-selected): the panel may never intrude into the
+     centered chat column. Below ~1612px viewports the cap trims the
+     stored/dragged width; at wider viewports it exceeds the 320–520
+     drag clamp and is a no-op. <1280px the media query swaps this for
+     a viewport-relative 92vw cap. */
+  max-width: calc((100vw - var(--chat-col-max-width, 840px)) / 2 - 16px);
+  transition: transform var(--transition-base) var(--ease-spring);
+}
+
+.detail-panel-wrap[data-open='false'] {
+  transform: translateX(100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform var(--transition-base) var(--ease-spring),
+              visibility 0s linear var(--transition-base);
+}
+
+.detail-panel-wrap.no-transition {
+  transition: none;
+}
+
+body[data-dragging="true"] .detail-panel-wrap {
+  transition: none;
+}
+
+.detail-panel-body {
+  padding: 0;
+}
+
+/* TopBar — 56px frosted-glass strip (redesign §4.3). backdrop-filter
+   makes this a stacking context, so its dropdowns (z-10/z-20 inside)
+   would otherwise be trumped by the z-30 overlay panels. Lift the
+   whole bar above them. */
+.topbar {
+  position: relative;
+  z-index: 40;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background-color: color-mix(in srgb, var(--color-surface) 88%, transparent);
+}
+
+/* ====================================================================
+   Responsive (Open Design redesign B7 → B9).
+   The panels are overlays at every size; below 1280px they turn
+   modal-ish: a fixed scrim (z 20, under the panels, under the TopBar)
+   closes them on click, drag-resize is disabled (handle hidden) and
+   the width caps go viewport-relative (92vw/85vw) instead of the
+   chat-column safety cap.
+   <768px: full-width phones — user bubbles and the inline verdict
+   card drop their max-width caps (SessionPicker is already
+   `hidden md:block` in the TopBar; suggested prompts are single
+   column by default).
+   ==================================================================== */
+.dp-scrim {
+  display: none;
+}
+
+@media (max-width: 1279px) {
+  .dp-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background-color: color-mix(in srgb, var(--color-bg) 60%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .resize-handle {
+    display: none;
+  }
+
+  .detail-panel-wrap {
+    /* inline store width (320–520) applies, capped by viewport */
+    max-width: 92vw;
+  }
+}
+
+@media (max-width: 767px) {
+  .message-user-card {
+    max-width: 100%;
+  }
+
+  .verdict-inline {
+    max-width: 100%;
+  }
+}
+
+/* ====================================================================
+   SessionDrawer (session-management phase) — the LEFT session panel,
+   mirroring .detail-panel-wrap's overlay form exactly (B9): absolute,
+   left-anchored, slides via transform, safety-capped away from the
+   chat column. Geometry lives HERE; the component renders content
+   only. `.sp-scrim` mirrors `.dp-scrim` (display:none by default,
+   block under the <1280px media query).
+   ==================================================================== */
+.sp-scrim {
+  display: none;
+}
+
+.session-panel-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  min-width: 0;
+  overflow: hidden;
+  /* Seamless canvas — mirror of .detail-panel-wrap (see its
+     comment). */
+  background: var(--color-bg);
+  /* Safety cap — mirror of .detail-panel-wrap (see its comment). */
+  max-width: calc((100vw - var(--chat-col-max-width, 840px)) / 2 - 16px);
+  transition: transform var(--transition-base) var(--ease-spring);
+}
+
+.session-panel-wrap[data-open='false'] {
+  transform: translateX(-100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform var(--transition-base) var(--ease-spring),
+              visibility 0s linear var(--transition-base);
+}
+
+.session-panel-wrap.no-transition {
+  transition: none;
+}
+
+/* Symmetry fix: the detail side always had this drag override; the
+   session side was missing it, so mid-drag width writes fought the
+   spring transition. */
+body[data-dragging="true"] .session-panel-wrap {
+  transition: none;
+}
+
+/* Resize handles live INSIDE their panel wrap, absolutely pinned to
+   the inner edge (session → right edge, detail → left edge). Widened
+   to 8px since the hit area no longer straddles the old flex boundary.
+   The visible 1px line centers via left:50% + translateX. */
+.session-panel-wrap > .resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
+  width: 8px;
+}
+
+.detail-panel-wrap > .resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  margin: 0;
+  width: 8px;
+}
+
+.session-panel-wrap > .resize-handle::before,
+.detail-panel-wrap > .resize-handle::before {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.session-panel-wrap > .resize-handle:hover::before,
+.session-panel-wrap > .resize-handle.dragging::before,
+.detail-panel-wrap > .resize-handle:hover::before,
+.detail-panel-wrap > .resize-handle.dragging::before {
+  left: 50%;
+}
+
+@media (max-width: 1279px) {
+  .sp-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background-color: color-mix(in srgb, var(--color-bg) 60%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .session-panel-wrap {
+    max-width: 85vw;
+  }
+}
+
+/* ====================================================================
+   Light theme — :root[data-theme="light"] mirror (Open Design redesign).
+   Every @theme token that paints a surface is re-declared here. This
+   block is UNLAYERED, so it wins over Tailwind's @layer theme :root
+   emission; utilities resolve var(--color-*) at use time and pick up
+   these values automatically. Set via <html data-theme="light"> —
+   useTheme (hooks/useTheme.ts) owns the attribute, index.html sets it
+   pre-paint to avoid FOUC.
+   ==================================================================== */
+:root[data-theme="light"] {
+  --color-bg: #f5f6f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2f7;
+  --color-surface-3: #e6e9f2;
+  --color-border: #e3e7ef;
+  --color-border-muted: #d0d6e2;
+
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-dim: #eef2ff;
+  --color-primary-fg: #ffffff;
+
+  --color-danger: #b91c1c;
+
+  --color-text: #14171e;
+  --color-text-muted: #5b6478;
+  --color-text-dim: #8a93a6;
+
+  --color-status-compliant: #059669;
+  --color-status-needs-info: #b45309;
+  --color-status-non-compliant: #b91c1c;
+  --color-status-unanswered: #6b7280;
+  --color-status-out-of-scope: #6b7280;
+  --color-status-error: #b91c1c;
+
+  --color-user-bubble: #eef2ff;
+  --color-user-bubble-end: #c7d2fe;
+  --color-message-area: #f5f6f9;
+
+  --color-tool-bg: #ffffff;
+  --color-tool-border: #e3e7ef;
+  --color-tool-accent: #4f46e5;
+  --color-tool-accent-dim: rgba(79, 70, 229, 0.08);
+  --color-tool-accent-glow: rgba(79, 70, 229, 0.4);
+  --color-tool-accent-border: rgba(79, 70, 229, 0.28);
+  --color-tool-body-bg: rgba(15, 23, 42, 0.05);
+
+  --color-reasoning: #fdf6e9;
+  --color-reasoning-border: #d97706;
+  --color-reasoning-accent: #b45309;
+  --color-reasoning-tint: rgba(180, 83, 9, 0.05);
+  --color-reasoning-tint-end: rgba(180, 83, 9, 0.015);
+  --color-reasoning-line: rgba(180, 83, 9, 0.22);
+  --color-reasoning-icon-bg: rgba(180, 83, 9, 0.12);
+  --color-reasoning-hover: rgba(180, 83, 9, 0.08);
+
+  --color-citation-bg: rgba(79, 70, 229, 0.08);
+  --color-citation-border: rgba(79, 70, 229, 0.28);
+  --color-citation-text: #4338ca;
+
+  --color-composer-bg: #ffffff;
+  --color-composer-border: #d0d6e2;
+  --color-composer-focus: rgba(79, 70, 229, 0.4);
+  --color-composer-shadow: rgba(15, 23, 42, 0.12);
+
+  --color-pulse: #4f46e5;
+  --color-pulse-glow: rgba(79, 70, 229, 0.45);
+
+  --color-timeline-dot: #4f46e5;
+  --color-timeline-dot-active: #4338ca;
+  --color-timeline-track: #d0d6e2;
+
+  --color-glow-soft: rgba(79, 70, 229, 0.14);
+  --color-glow: rgba(79, 70, 229, 0.22);
+  --color-glow-strong: rgba(79, 70, 229, 0.3);
+  --color-glow-faint: rgba(79, 70, 229, 0.05);
+
+  --color-routing-bg: rgba(79, 70, 229, 0.05);
+  --color-routing-border: rgba(79, 70, 229, 0.16);
+
+  --color-shadow-card: rgba(15, 23, 42, 0.08);
+  --color-shadow-card-strong: rgba(15, 23, 42, 0.14);
+  --color-shadow-overlay: rgba(15, 23, 42, 0.2);
+
+  --color-bad-tint: rgba(185, 28, 28, 0.07);
+  --color-ok-tint: rgba(5, 150, 105, 0.08);
+  --color-ok-border: rgba(5, 150, 105, 0.3);
+  --color-ok-glow: rgba(5, 150, 105, 0.35);
+
+  --color-terminal-bg: #eef0f5;
+  --color-terminal-fg: #1f2533;
+  --color-terminal-comment: #6b7280;
+  --color-terminal-prompt: #4338ca;
+
+  --color-annotation: #0d9488;
+  --color-annotation-dim: #ccfbf1;
+  --color-redline-removed: rgba(185, 28, 28, 0.08);
+  --color-redline-added: rgba(5, 150, 105, 0.08);
+}

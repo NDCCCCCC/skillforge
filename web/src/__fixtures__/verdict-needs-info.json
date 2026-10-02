@@ -1,0 +1,24 @@
+[
+  { "type": "start", "messageId": "m-needsinfo-001" },
+  { "type": "step-start" },
+
+  { "type": "reasoning-start", "id": "r-1" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "用户询问商务礼品赠送限额。检索到相关条款，但缺少员工级别信息。" },
+  { "type": "reasoning-end", "id": "r-1" },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "商务礼品赠送限额取决于员工级别。请补充员工级别信息。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "source-url", "sourceId": "c-002", "url": "http://skillforge.local/chunks/authority/business-gift-prohibition.md#L4", "title": "商务礼品管理办法 §4" },
+
+  { "type": "data-policy", "id": "p-002", "data": {
+    "status": "needs_input",
+    "confidence": 0.65,
+    "citations": [{ "chunk_id": "c-002", "span": "商务礼品赠送限额", "tier": "权威" }],
+    "review_required": true,
+    "compliance_status": "not_applicable"
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]

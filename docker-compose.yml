@@ -1,0 +1,115 @@
+# SkillForge full-stack topology — one-command `docker compose up`.
+#
+# Brings up Milvus standalone (v2.4.x, matching go.mod milvus-sdk-go/v2
+# v2.4.2 = RocksMQ embedded, 3-container topology) + the Go backend
+# (source-built via Dockerfile.backend) + the nginx frontend (source-built
+# via Dockerfile.frontend). External dependencies = the embedding endpoint
+# (BGE_M3_URL) + GLM API key = are declared via ${VAR:?} so compose itself
+# refuses to start without them (DIST-03 two-layer fail-fast: layer 1 is
+# envRequired() in cmd/server/main.go, layer 2 is this compose interpolation).
+#
+# Decisions honored: D7-01 (Milvus standalone full topology), D7-02
+# (external embedding = no embedding service container in this file),
+# D7-03 (SC-1 pluggable embedding endpoint), D7-04 (source-built images
+# via Dockerfile.*).
+#
+# Stranger flow: clone, cp .env.example .env, fill GLM_API_KEY + BGE_M3_URL
+# (see .env.example for the local embedding minimum), docker compose up,
+# open http://localhost:8080.
+
+name: skillforge
+
+services:
+  etcd:
+    container_name: milvus-etcd
+    image: quay.io/coreos/etcd:v3.5.16
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio:
+    container_name: milvus-minio
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"       # minio console; S3 API on 9000 stays internal
+    volumes:
+      - minio-data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.4.17    # PIN: must match milvus-sdk-go/v2 v2.4.2 (go.mod). v2.4.x = RocksMQ embedded. NOT v3.x (Woodpecker, incompatible).
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"    # gRPC (MILVUS_ADDRESS points here)
+      - "9091:9091"      # metrics / healthz / webui
+    volumes:
+      - milvus-data:/var/lib/milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      RETRIEVER_BACKEND: milvus
+      MILVUS_ADDRESS: milvus:19530    # compose service DNS, not localhost
+      BGE_M3_URL: ${BGE_M3_URL:?BGE_M3_URL is required — see .env.example}
+      BGE_M3_MODEL: ${BGE_M3_MODEL:-bge-m3}
+      GLM_API_KEY: ${GLM_API_KEY:?GLM_API_KEY is required — see .env.example}
+      GLM_BASE_URL: ${GLM_BASE_URL:-https://open.bigmodel.cn/api/coding/paas/v4}
+      SQLITE_DSN: /data/skillforge.db    # volume-backed so audit rows survive restarts
+    ports:
+      - "8888:8888"
+    volumes:
+      - backend-data:/data
+    depends_on:
+      milvus:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8080:80"          # browser → http://localhost:8080
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  etcd-data:
+  minio-data:
+  milvus-data:
+  backend-data:

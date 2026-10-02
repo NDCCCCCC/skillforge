@@ -1,0 +1,20 @@
+[
+  { "type": "start", "messageId": "m-outofscope-001" },
+  { "type": "step-start" },
+
+  { "type": "reasoning-start", "id": "r-1" },
+  { "type": "reasoning-delta", "id": "r-1", "delta": "用户询问 CEO 个人邮箱——这超出本 Skill（合规审查）的范围。" },
+  { "type": "reasoning-end", "id": "r-1" },
+
+  { "type": "text-start", "id": "t-1" },
+  { "type": "text-delta", "id": "t-1", "delta": "该请求超出本 Skill 范围，请提交联系工单系统处理。" },
+  { "type": "text-end", "id": "t-1" },
+
+  { "type": "data-policy", "id": "p-005", "data": {
+    "reason": "out_of_scope",
+    "can_user_rephrase": false,
+    "suggested_alternative_query": ""
+  }},
+
+  { "type": "finish", "finishReason": "stop" }
+]
