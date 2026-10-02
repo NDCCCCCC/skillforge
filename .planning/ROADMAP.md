@@ -11,7 +11,7 @@
 | v1.2 (Knowledge Ops) | 26-30 | ✅ SHIPPED 2026-09-08 |
 | v1.3 (Code Quality) | 31-37 | ✅ SHIPPED 2026-09-09 |
 | **v1.4 (Ontology Layer)** | **38-41** | **✅ SHIPPED 2026-09-23** |
-| **v1.5 (Outstanding Closure)** | **42** | **🚧 Planned 2026-09-23 (no new features)** |
+| **v1.5 (Outstanding Closure)** | **42, 44** | **✅ SHIPPED 2026-10-02 (closure-only)** |
 | Backlog | 999.x | Backlog |
 
 ---
@@ -261,116 +261,15 @@ Tier 隔离三条护城河。
 
 ---
 
-## v1.5 — Outstanding Closure（NOT New Features）
+## ✅ v1.5 — Outstanding Closure (SHIPPED 2026-10-02)
 
-**Goal:** 把 v1.4 close 时挂着的 45 项 acknowledged open items + v1.3 inherited 4 项 = 49 项总账一次性收口。**不引入新功能**。
+**Phases 42 + 44 · 5 plans · 100% complete** — full details: `.planning/milestones/v1.5-ROADMAP.md`
 
-**Hard constraint:** v1.4 standards 继续生效 — 无 cgo / handler ≤ 200 行 / 无静默吞错 / 全 SDLC。Trust semantics 不削弱 — T-3-AUDIT INSERT-only / KNOW-02 fail-closed / Tier 隔离保留。
+- [x] Phase 42: v1.4 Outstanding Closure (4/4 plans; 42-03 runbook executed by Claude 2026-09-30/10-01 — 8 PASS + L8 PARTIAL + L4/L7 env-SKIP; 42-04 SUMMARY backfilled)
+- [x] Phase 43: CGO Build Discovery (absorbed into 42/44 — CGO=1 mandate + IN-05)
+- [x] Phase 44: SPARQL Test Fix (1/1 plan; 10/10 SPARQL + D-TIER-03 restored + prompt writes-only 对齐)
 
-**Source of truth:** `.planning/reports/MILESTONE_SUMMARY-v1.4.md` §6 + `STATE.md` § `v1.4 Close — Acknowledged Open Items` + `STATE.md` § `Deferred Items (carried from v1.3)`
+Known deferred at close: 63 open-artifact items (see STATE.md § Deferred Items); live 抽取 prompt 残余微调 + DetailPanel/emitter deferred 测试 → v1.6。
 
----
 
-### Phase 42: v1.4 Outstanding Closure 🚧 (Planned 2026-09-23)
-
-**Goal:** 49 项总账 closure — triage (42-01) → code fixes (42-02) → live runbook (42-03) → doc updates (42-04)
-
-**Depends on:** Nothing (first v1.5 phase)
-
-**Hard constraint:** 0 new features. Pure closure.
-
-**Plans:**
-
-| Plan | Title | Status | Depends |
-|------|-------|--------|---------|
-| 42-01 | Audit-Open Triage Report | 🚧 Pending | — |
-| 42-02 | Deferred IN-* Code Fixes (39-REVIEW IN-01..09) | ✅ Complete | 42-01 |
-| 42-03 | Operator Live Verification Bundle (Phase 39 human_needed 4 + Phase 41 hybrid ≥ 0.85 + 42-01 needs-live 项) | 🚧 Pending | 42-01 |
-| 42-04 | v1.4 Closure Doc Update (MILESTONE_SUMMARY CR-01 framing + STATE.md 节替换 + audit-open close report) | 🚧 Pending | 42-02, 42-03 |
-
-**Success Criteria (what must be TRUE):**
-
-1. `42-triage.md` 49 项全部分类入桶，bucket 计数 sum = 49
-2. 42-02 fix scope ≥ 1 项 IN-* fix 每个有 regression test，`go test ./... -count=1` 全绿 + `go vet` clean
-3. 42-03 runbook 5+ live gate，每项有 `[precheck] → [execute] → [verify] → [record]` 模板
-4. 42-04 MILESTONE_SUMMARY-v1.4.md CR-01 行改写 + STATE.md 节替换 + audit-open close report 产出
-5. `verify-phase-42.sh` 全绿（若适用 closure 性质）— closure 不需新 verify，但应复用现有 hermetic gates
-
-**Wave structure (TBD after 42-01 triage):**
-
-- **Wave 1:** 42-01 Triage Report（pure research, 30-60 min）
-- **Wave 2:** 42-02 IN-* Code Fixes（per-fix commits, 2-3 h total）
-- **Wave 2.5:** **43-01 CGO Build Verification** (closure-blocker, 3 atomic commits) — completed 2026-09-28 (`cd63ae0` / `e99f06f` / `818bb99`).
-- **Wave 3 (operator-only):** 42-03 Live Verification Bundle（intranet access required；42-03 runbook ready；operator 执行 after backend CGO build verified）
-- **Wave 3.5:** **44 SPARQL Test Fix** ✅ PLANNED 2026-09-28 — see below
-- **Wave 4:** 42-04 Closure Doc Update（30 min, after Wave 2 + Wave 3 complete + 44 implemented）
-
----
-
-### Phase 44: SPARQL Test Fix ✅ (Complete 2026-09-28)
-
-**Goal:** Turn 8 failing SPARQL tests green — Phase 41 SPARQL endpoint shipped without passing its own test suite. Surfaces only when v1.4 web code built under `CGO_ENABLED=1` (Phase 43-01).
-
-**Depends on:** Phase 43 (CGO build verified)
-
-**Hard constraint:** 0 new features. Pure closure. Trust semantics preserved (D-TIER-03 fail-closed RESTORED, not weakened).
-
-**Root cause:** 3 independent buckets (per `44-RESEARCH.md`)
-- **Bucket A:** `Store.Query` no dedup → 5 nil-tier tests expect 16, get 22 raw (line-58 dup)
-- **Bucket B:** `TestSparqlQueryScoped_SubjectFilter` author miscount — assertion expects 3 but `note_001` has 4 triples
-- **Bucket C:** `isSchemaTriple` leaks `label`/`comment` predicates through tier filter → `TierFilter` + `FailClosedNoBelongsToTier` broken. **Real D-TIER-03 violation**, fixed by removing label/comment from always-schema predicate gate
-
-**Plans:** 1/1 plans complete
-
-| Plan | Title | Status | Depends |
-|------|-------|--------|---------|
-| 44-01 | SPARQL test fix (3 buckets × 7 atomic commits) | ✅ Complete (2026-09-28) | Phase 43 CGO build |
-
-**Tasks** (per `44-01-PLAN.md`):
-1. `fix(44-01)` — D-SPARQL-02 Store.Query dedup on nil-tier path
-2. `fix(44-02)` — D-SPARQL-03 Remove label/comment from isSchemaTriple (restores D-TIER-03)
-3. `fix(44-03)` — D-SPARQL-04 Fixture IRI fix (`owl:Class`→`Class`)
-4. `fix(44-04)` — D-SPARQL-04 Remove duplicate Tier schema triple
-5. `test(44-05)` — D-SPARQL-04b + D-SPARQL-08 Fix 7 test-author assertion miscounts (Path A 16→22 ×6, SubjectFilter 3→4, TierFilter 13→15) with godoc
-7. `chore(44-06)` — Hermetic gate verification
-8. `test(44-07)` — D-SPARQL-06 Label-passthrough regression test
-
-**Decision locks:** D-SPARQL-01..08 (`44-DECISIONS.md`). D-SPARQL-05 (skill hasReadAccess visibility) DEFERRED to follow-up phase.
-
-**Verification cycle:** research → plan → BLOCK (math errors in 6 of 8 tests) → revise → PASS
-
-**Success Criteria (what must be TRUE):**
-1. `internal/server/admin_platform_test.go::TestSparqlQueryScoped_*` — all 8 tests pass under `CGO_ENABLED=1 go test -count=1`
-2. `internal/ontology/store/store_test.go::TestQueryScoped*` — Phase 40 hermetic gate still green (no regression)
-3. `CGO_ENABLED=1 go test ./... -count=1` — full backend suite green
-4. `go vet ./...` clean; no new warnings
-5. `44-VERIFICATION.md` confirms all 8 success criteria PASS
-
----
-
-### v1.5 Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 43. CGO Build Verification | 3/3 | Complete | 2026-09-28 |
-| 44. SPARQL Test Fix | 1/1 | Complete    | 2026-09-28 |
-| 42. v1.4 Outstanding Closure | 2/4 (42-01 triage + 42-02 IN-*) | Planned; 42-03 awaiting operator; 42-04 awaiting Phase 44 execute | — |
-
----
-
-### v1.5 Phase 43 Status Detail (2026-09-28)
-
-**Closure-blocker found**: v1.4 web code (admin_governance / admin_platform / mcp server / SPARQL endpoint) was never built under `CGO_ENABLED=1` — the production build path that links go-duckdb. env-wsl-backend-runbook default CGO=0 masked 6+ compile errors + the missing IN-05 panic recovery defer. v1.4 shipped without any CGO build verification.
-
-**Phase 43-01** (3 atomic commits) fixed:
-- 5 duplicate declarations / type mismatches / missing imports across `admin_platform.go` / `admin_governance.go` / `main.go`
-- mark3labs/mcp-go v1.1.0 `ToolInputSchema` API drift
-- Hertz v0.10 `GetHeader` `[]byte` return type
-- IN-05 panic recovery defer (Phase 42-02 plan claimed "fixed (7/7)" but the defer was never added — real closure-blocker, now fixed)
-- IN-05 test cross-package access via exported `ReleaseRunning()` + IsNotFound interface method
-
-**Phase 43 NEW discovery**: 8 SPARQL tests fail under CGO build (`TestSparqlQueryScoped_*` — `_AllWildcard` expects 16, gets 23). Pre-existing v1.4 bug never caught because CGO build never ran. Phase 41 SPARQL endpoint shipped without passing its own test suite. **Phase 44 needed.**
-
----
-
-*Last updated: 2026-09-28 — Phase 44 SPARQL Test Fix COMPLETE: 7/7 atomic commits landed, hermetic gate green (10/10 SPARQL + 9/9 HybridSearchScoped + Phase 40 store gate green + full backend hermetic green). 8 SPARQL test failures closed; D-TIER-03 fail-closed semantics RESTORED. 2 unanticipated runtime assertion miscounts corrected per D-SPARQL-08 policy. v1.5 milestone unblocked pending operator 42-03 runbook execution.*
+*Last updated: 2026-10-02 — v1.5 milestone SHIPPED (42-03 runbook executed by Claude: 8 PASS + L8 PARTIAL + L4/L7 env-SKIP; live 抽取 F1 0.39→0.87 writes-only 对齐; L5 recall 1.0; L6 faithfulness 0.9036; L4/L7 env-SKIP)。v1.6 pending。*

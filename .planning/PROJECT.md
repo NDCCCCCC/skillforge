@@ -1,5 +1,10 @@
 # SkillForge
 
+## Current State
+
+- ✅ **v1.5 SHIPPED 2026-10-02** — Outstanding Closure: 8 SPARQL 测试修复 + D-TIER-03 恢复 + 42-03 runbook 全门执行(live 抽取 F1 0.87)+ 3D 知识图谱 + ECL 实体图谱(65 险种/38 机构)+ admin 11-tab 全可用
+- 📋 **v1.6 pending** — 积压: D-SPARQL-05 citation source、实体 SHACL shapes、resolver 去重、live 抽取 prompt 残余微调、server lint 清扫
+
 ## What This Is
 
 SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 agent 工程能力。技术栈为 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端）。核心创新是"**Skill 驱动**"：企业通过编写或更新 Skill 文件（`SKILL.md`）让同一个 agent 内核适配不同业务需求，无需改代码。**v1.0 起增加「数据维度」**：业务敏感数据导入即脱敏（不保存原始数据），通过聚合 KPI 函数接口为 agent 提供数据支撑；合规（脱敏、审计、拒答）作为基线约束贯穿所有能力。
@@ -164,4 +169,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-21 — v1.4 Ontology Layer started (本体层落地: TBox+KG+ECL+SHACL+MCP, 4 phases 38-41; 基于 005 系列 5 个 spike 全 VALIDATED; 保留单 binary+Skill 驱动+Tier 隔离三条护城河; UI 一致性硬约束: 每 web phase 先产 UI-SPEC.md). Prior: v1.3 closed 2026-09-09 (代码质量修复: 18 critical + 27 warning, phases 31-37); v1.2 Phase 30 closed 2026-09-08.*
+*Last updated: 2026-10-02 after v1.5 milestone*

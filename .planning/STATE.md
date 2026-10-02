@@ -2,26 +2,25 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: — Outstanding Closure (NOT New Features)
-status: milestone_complete
-last_updated: 2026-09-28T04:31:50.417Z
-last_activity: 2026-09-28 -- Phase 44 Plan 01 complete (hermetic gate green)
+status: Awaiting next milestone
+last_updated: "2026-10-02T05:47:00.470Z"
+last_activity: 2026-10-02 — Milestone v1.5 completed and archived
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 204
-  percent: 50
-stopped_at: Milestone complete (Phase 44 was final phase)
+  completed_plans: 5
+  percent: 100
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 44
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-09-29 - Completed quick task 260929-d5w: 批量修复 6 项遗留隐藏缺陷（姊妹 resolver cat_ 缺陷 TDD 修复 + TBox 卡片动态化 + frozen 锁 schema 对齐/扫描收窄 + KB 乱码 + store/entity_iri 质量扫描）
+Phase: Milestone v1.5 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-10-02 — Milestone v1.5 completed and archived
 
 ### Quick Tasks Completed
 
@@ -177,6 +176,7 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - Full internal/... backend hermetic gate green (no regressions)
 
 **Deviations:** 2 unanticipated test-author assertion miscounts surfaced at runtime (per D-SPARQL-08 policy, corrected with godoc rationale):
+
 - Truncated 2nd case (limit=5, offset=20): 0→2 — page = triples[20:min(25,22)] = 2 items
 - FailClosedNoBelongsToTier sql-guides branch (S=note_003): 0→8 — schema triples short-circuit before S/P/O pattern filter
 
@@ -259,7 +259,17 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 
 ## Operator Next Steps
 
-- **Wave 1**: 启动 42-01 Triage Report（pure research 30-60 min；user 可自己跑也可让 gsd-executor 跑）
-- **Wave 2**: 42-01 输出后启动 42-02 IN-* fixes（per-fix commits，2-3 h）
-- **Wave 3**: operator 跑 42-03 live runbook（需 intranet；不在 Claude 全程）
-- **Wave 4**: 42-04 doc fix（30 min；Wave 2 + 3 都完成后启动）
+- Start the next milestone with /gsd-new-milestone
+
+## Deferred Items
+
+Items acknowledged and deferred at v1.5 milestone close on 2026-10-02:
+
+| Category | Count | Note |
+|----------|-------|------|
+| debug_sessions | 7 | 历史调试会话残留状态(多数已 resolved/verified,标记未翻转) |
+| quick_tasks | 34 | .planning/quick/ 目录累计(含 v1.5 全部已完成任务) |
+| uat_gaps | 14 | 历史 HUMAN-UAT 未闭环项(42-03 operator 域为主) |
+| verification_gaps | 8 | 历史验证缺口(L1/L5 测量工具已在 261001-cz7 补齐) |
+
+v1.6 重点积压(非上述残留,为真实后续项): D-SPARQL-05 citation source 补全、实体类 SHACL shapes、双 resolver 去重、server 包 lint 清扫、live 抽取 prompt 对齐 writes-only 的残余微调、DetailPanel/emitter 两个 deferred 测试。

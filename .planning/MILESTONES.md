@@ -1,5 +1,16 @@
 # Milestones
 
+## v1.5 Outstanding Closure (Shipped: 2026-10-02)
+
+**Phases completed:** 2 phases, 5 plans, 13 tasks
+
+**Key accomplishments:**
+
+- One-liner:
+- One-liner:
+
+---
+
 ## v1.4 Ontology Layer (Shipped: 2026-09-23)
 
 **Phases completed:** 4 phases, 31 plans, 59 tasks
