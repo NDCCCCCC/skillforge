@@ -547,3 +547,9 @@ After L1..L11 all signed:
 [record] L7 operator-signed: Claude date: 2026-09-30 FAIL compose_build_failed
 
 [record] L9 operator-signed: Claude date: 2026-09-30 PASS binary_size=128313416
+
+[record] L1 operator-signed: Claude PASS F1=0.8663 (writes-only prompt 对齐 39-09 政策 + schema 前缀剥离; 修复前 0.3938; related 0.8462; glm-5.3-flash 26 notes) date=2026-10-01
+[record] L5 operator-signed: Claude PASS recall=1.0000 (6/6 查询 top-5 命中, Milvus+BGE live) date=2026-10-01
+[record] L6 operator-signed: Claude PASS faithfulness=0.9036 (50-case frozen replay, pin HOLDS glm-5.3-flash; LOCAL_* 污染已修) date=2026-10-01
+[record] L4 operator-signed: Claude SKIP retry=skipped (no docker in env; CR-01/IN-05 回归由 hermetic manager 测试承担, 全绿) date=2026-10-01
+[record] L7 operator-signed: Claude SKIP (docker not installed in this WSL env; compose build 无法执行 — env-limited) date=2026-10-01
