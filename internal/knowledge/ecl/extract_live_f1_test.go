@@ -80,12 +80,19 @@ func TestLiveLLMExtractionF1(t *testing.T) {
 		byIdx[n.SourceIdx] = n
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
 	defer cancel()
+	// Per-call timeout is load-bearing: the GLM Coding Plan endpoint
+	// occasionally wedges an HTTP/2 stream indefinitely (observed in the
+	// quick-261001-cz7 live runs — the default here is NO timeout, so one
+	// wedged call froze the whole measurement). A wedged call becomes a
+	// retriable error, not a frozen run.
+	const perCallTimeout = 2 * time.Minute
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		BaseURL: baseURL,
 		APIKey:  apiKey,
 		Model:   modelName,
+		Timeout: perCallTimeout,
 	})
 	if err != nil {
 		t.Fatalf("live F1 gate: chat model construction (%s@%s): %v", modelName, baseURL, err)
@@ -110,6 +117,13 @@ func TestLiveLLMExtractionF1(t *testing.T) {
 			t.Fatalf("golden row %q has no matching corpus note (corpus drift)", row.SourceIdx)
 		}
 		pred, err := ext.ExtractNote(ctx, note)
+		if err != nil && ctx.Err() == nil {
+			// One retry per note: a per-call timeout / transient 5xx is
+			// infra flake, not extractor quality — retry once so the
+			// measurement measures the extractor, not the network.
+			t.Logf("note %s: extraction attempt failed (%v) — retrying once", row.SourceIdx, err)
+			pred, err = ext.ExtractNote(ctx, note)
+		}
 		if err != nil {
 			// A live extraction error scores as a zero row (honest: the
 			// gate measures what actually happened) and is logged — but
