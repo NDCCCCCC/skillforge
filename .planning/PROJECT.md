@@ -3,7 +3,7 @@
 ## Current State
 
 - ✅ **v1.5 SHIPPED 2026-10-02** — Outstanding Closure: 8 SPARQL 测试修复 + D-TIER-03 恢复 + 42-03 runbook 全门执行(live 抽取 F1 0.87)+ 3D 知识图谱 + ECL 实体图谱(65 险种/38 机构)+ admin 11-tab 全可用
-- 📋 **v1.6 pending** — 积压: D-SPARQL-05 citation source、实体 SHACL shapes、resolver 去重、live 抽取 prompt 残余微调、server lint 清扫
+- 🚧 **v1.6 IN PROGRESS** — SPARQL Schema Detection + Entity SHACL Shapes（D-SPARQL-05 + 实体 SHACL shapes 两项核心积压）
 
 ## What This Is
 
@@ -112,44 +112,41 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 | **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
 
-## Current Milestone: v1.4 Ontology Layer (本体层)
+## Current Milestone: v1.6 SPARQL Schema Detection + Entity SHACL Shapes
 
-**Goal:** 在 SkillForge 引入 OWL/RDF 本体层，把"Skill 驱动的 RAG"升级为
-"Skill 驱动的本体操作系统"——保留 Apache-2.0 单 binary + Skill 驱动 +
-Tier 隔离三条护城河。
+**Goal:** 闭合 v1.5 两项信任/治理积压——D-SPARQL-05（skill `hasReadAccess`
+经 subject-based schema detection 在 SPARQL/admin baseline 可见）+ 实体类
+SHACL shapes（实体 ABox 纳入启动校验），同时不削弱 D-TIER-03 fail-closed。
 
-**Hard constraint:** 每个 phase 涉及 web 时，必须先产出 UI-SPEC.md 再进实现；UI 沿用 shadcn/Tailwind v4 + Vercel AI SDK v5 现有体系，与 `/admin/*` 四视图路由约定保持一致。
+**Target features:**
 
-**Target scope (4 phases, 38-41):**
+- **D-SPARQL-05**：`isSchemaTriple` 切换为 subject-based detection
+  （44-RESEARCH §5 Option α）；skill `hasReadAccess` triples 在 admin
+  baseline 可见；不引入新的 tier 泄漏面
+- **实体 SHACL shapes**：险种/机构/table 等实体类 ABox 约束定义 + 启动
+  校验接入现有 quarantine 流（D-SHACL-02 violations never block boot）
 
-| Phase | 主题 | 关键产出 | UI-SPEC 目标 |
-|-------|------|---------|-------------|
-| **38 Foundation** | TBox + KG store | (a) TBox emitter (server boot 自动生成 215 triples) (b) Memory-map KG store (skillforge_kg.json snapshot, 纯 Go 内存 map) (c) Auto schema lift (LLM 提议新 Class/Property → human approve) | `/admin/ontology` — TBox 类层次浏览器 + KG 三元组查询面板 |
-| **39 ECL Pipeline** | Section-aware chunker + 实体抽取 | (a) Section-aware markdown chunker 替代 `maxDocBytes=4000` byte-cap (b) LLM-driven entity extraction (sql-guides 自动抽 etl_* tables) (c) ABox 自动写入 + 双向 KG↔Milvus 同步 | `/admin/pipeline` — ECL Pipeline 实时状态（chunker / extraction / load 进度 + 失败重试）|
-| **40 Governance** | SHACL + Provenance | (a) SHACL shapes 启动校验 (Go 自实现或 PySHACL sidecar) (b) Provenance 链（每条 ABox statement 带 source_path） (c) TBox 版本号 + 演进日志 | `/admin/governance` — SHACL 校验报告 + Provenance 链路图 + TBox 版本演进 |
-| **41 Platform** | MCP + SPARQL + Hybrid Retrieval | (a) MCP server 暴露 KG (外部 agent 可 query) (b) SPARQL-like REST endpoint `/api/sparql` (c) Hybrid Retrieval 完善 (KG 1-2 跳 subgraph expansion) | `/admin/platform` — SPARQL Playground + MCP Inspector + Hybrid Retrieval 调试面板 |
-
-**Phase 编号**：38-41（接着 v1.3 末 phase 37）。
-
-**Source of truth:** 005 系列 5 个 spike 已全部 VALIDATED（`.planning/spikes/005a` 到 `005e`），本 milestone 基于 spike 成果落地生产代码，不重新做研究。
-
-**Standards（继承 v1.3）：**
-- **零硬编码**：ontology IRI 命名空间、SHACL shapes 路径必须可配置
-- **Go 最佳实践**：无 cgo（保留单 binary）；handler ≤ 200 行；不允许静默吞错
-- **UI 一致性**：每个 web 涉及 phase 必须先写 UI-SPEC.md（约定 + 信息架构 + 关键交互 + 验收标准），再进入实现
+**Standards（继承 v1.4/v1.5）：**
+- **零硬编码**：ontology IRI 命名空间、SHACL shapes 路径可配置
+- **Go 最佳实践**：无 cgo（单 binary）；handler ≤ 200 行；不允许静默吞错
+- **UI 一致性**：涉 web 的 phase 必须先产 UI-SPEC.md（shadcn/Tailwind v4
+  + `/admin/*` 路由约定）
 - **全 SDLC**：每个 phase 配 verify-phase-NN.sh 验证脚本
-- **信任语义不削弱**：ontology 落地不得引入 KB 内容篡改通道；MCP server 暴露的 KG 自动追加 tier 隔离
-
-**Key decisions（v1.3 → v1.4 沿革）：**
-- v1.3 (Phase 31-37) shipped 2026-09-09 — 代码质量修复（REALBUG / SRP / HITL / REPEAT / STORE / ROBUST / CONCUR）
-- 005 系列研究 2026-09-21 完成 — 5 个 spike 验证本体论 + SkillForge 结合可行性
-- Phase 39 (ECL Pipeline) shipped 2026-09-22 — 185→26 section-aware chunker + LLM 抽取 + ABox 双写 KG/Milvus + `/admin/pipeline` 实时面板（verify-phase-39.sh 8/8 全绿；golden F1 0.9846；code review CR-01+WR-01..06 已修）
-- v1.4（当前）：本体层落地，把 RAG 升级为本体操作系统；保留单 binary + Skill 驱动 + Tier 隔离三条护城河
 
 **三条护城河（不可动摇）：**
 1. Apache-2.0 + 单 binary 部署（无 CGO，无独立 server）
 2. Skill 驱动架构（业务通过 SKILL.md 适配，不改代码）
-3. Tier 信任隔离（KG query 自动追加 `belongsToTier`，不破坏 spike 004 的 PRE-filter moat）
+3. Tier 信任隔离（D-TIER-03 fail-closed 不削弱）
+
+**Phase 编号**：从 45 继续（v1.5 末 phase 44）。
+
+**Source of truth:** Phase 44 `44-DECISIONS.md` D-SPARQL-05 defer 记录 +
+`44-RESEARCH.md` §5 Option α + Phase 40 SHACL quarantine 既有实现。
+
+**Scope boundary:** STATE.md 积压其余 4 项（resolver 去重 / server lint
+清扫 / live 抽取 prompt 微调 / DetailPanel+emitter deferred 测试）明确不进
+v1.6，留 quick task。同区域 D-SPARQL-07（comment predicate hardening）默认
+不在范围，discuss-phase 可再议。
 
 ## Evolution
 
@@ -169,4 +166,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-02 after v1.5 milestone*
+*Last updated: 2026-10-02 after v1.6 milestone start*

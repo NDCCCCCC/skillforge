@@ -1,26 +1,26 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: — Outstanding Closure (NOT New Features)
-status: Awaiting next milestone
-last_updated: "2026-10-02T05:47:00.470Z"
-last_activity: 2026-10-02 — Milestone v1.5 completed and archived
+milestone: v1.6
+milestone_name: SPARQL Schema Detection + Entity SHACL Shapes
+status: planning
+last_updated: "2026-10-02T00:00:00.000Z"
+last_activity: 2026-10-02 — Milestone v1.6 started
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: Milestone v1.5 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-10-02 — Milestone v1.5 completed and archived
+Status: Defining requirements
+Last activity: 2026-10-02 — Milestone v1.6 started
 
 ### Quick Tasks Completed
 
