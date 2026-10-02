@@ -59,20 +59,25 @@ const DefaultSectionCap = 40000
 // The output shape is locked: tables carry the validated kind enum and
 // related_notes carry source_idx + a free-form relation tag.
 //
-// D-NZK-04 entities extension: the original tables line, related_notes
-// line, and all four original Rules bullets are kept BYTE-IDENTICAL (the
-// 39-04 golden-F1 gate scores tables/related — a prompt rewrite there is a
-// regression risk), and the entities spec + entity rules are strictly
-// APPENDED below them.
+// quick-261001-cz7 (2026-10-01 orchestrator decision "修 prompt 再归档"):
+// the tables scope line + kind/range Rules bullets were rewritten from
+// the original "every table the SQL touches" to the 39-09 golden policy-A
+// WRITES-ONLY semantics — the live L1 gate measured the over-broad scope
+// as the main F1 killer (read-only FROM/JOIN references extracted against
+// a writes-only golden). The kind convention mirrors the stub's pinned
+// mapping (39-03 Task 2): DELETE FROM / MERGE INTO normalize to "update",
+// SELECT INTO to "select". The D-NZK-04 entities spec + entity rules
+// remain strictly APPENDED below the tables/related contract.
 const extractionPromptTmpl = `You are a data engineer analyzing a SkillForge knowledge note.
-List every etl_* database table the note's SQL touches, and every other note it cross-references.
+List every etl_* database table the note's SQL WRITES to, and every other note it cross-references.
+WRITES-ONLY scope: list only DML TARGET tables — the table written by INSERT INTO, UPDATE, DELETE FROM, MERGE INTO, CREATE, or SELECT INTO. Tables that are only READ (appearing in SELECT, FROM, JOIN, or WHERE clauses without any write against them) MUST NOT be listed. If the note only queries tables and writes none, emit an empty tables array [].
 Answer with a JSON object EXACTLY of the shape:
 {"tables": [{"name": "<etl table name>", "kind": "update" | "select" | "insert" | "create"}],
  "related_notes": [{"source_idx": "<note id>", "relation": "<short relation tag>"}]}
 Rules:
-- "kind" is the DML type the note performs against the table: "update", "select", "insert", or "create".
-- Include only tables whose name starts with etl_.
-- If the note touches no etl_ tables or references no other notes, emit empty arrays.
+- "kind" is the DML type the note performs against the table, normalized: UPDATE → "update"; INSERT INTO → "insert"; CREATE → "create"; DELETE FROM or MERGE INTO → "update"; SELECT INTO → "select".
+- Include only tables whose name starts with etl_. Report the BARE name without any schema/database prefix (e.g. "wuh_dw.etl_policy" → "etl_policy").
+- If the note writes no etl_ tables or references no other notes, emit empty arrays.
 - Output ONLY the JSON object, no fences, no prose.
 The same JSON object also carries an "entities" array of business entities appearing in the note.
 Each entity is a JSON object EXACTLY of the shape:
@@ -239,6 +244,12 @@ func (e LLMExtractor) extractBody(ctx context.Context, sourceIdx, title, body st
 	// D-NZK-04: entity drop-gates run BEFORE ValidateExtraction so the
 	// tables hard-error gate semantics stay untouched — sanitizeEntities
 	// cannot fail, it only drops entries (T-NZK-01).
+	// quick-261001-cz7: schema-qualified names are de-qualified BEFORE the
+	// gate — the ^etl_\w+$ contract still rejects anything that fails
+	// after the strip (contract not relaxed, only de-qualified).
+	for i := range shape.Tables {
+		shape.Tables[i].Name = stripSchemaPrefix(shape.Tables[i].Name)
+	}
 	ex := Extraction{Tables: shape.Tables, RelatedNotes: shape.RelatedNotes, Entities: sanitizeEntities(shape.Entities)}
 	if err := ValidateExtraction(ex); err != nil {
 		return Extraction{}, fmt.Errorf("ecl: extract: %w", err)
@@ -247,9 +258,17 @@ func (e LLMExtractor) extractBody(ctx context.Context, sourceIdx, title, body st
 }
 
 // stripSchemaPrefix de-qualifies an LLM-extracted table name before the
-// corpus-contract gate (RED-state identity stub — implementation lands
-// with the GREEN commit).
+// corpus-contract gate: "wuh_dw.etl_policy" → "etl_policy". The gate
+// itself (^etl_\w+$) is NOT relaxed — a name that still fails after the
+// strip is rejected as before. LastIndexByte (not strings.Split) so
+// multi-part qualifiers ("a.b.etl_c") reduce to the bare local name.
+// (quick-261001-cz7: the live L1 run showed glm-5.3-flash qualifying
+// names with the wuh_dw schema even when told not to — strip, don't
+// trust.)
 func stripSchemaPrefix(name string) string {
+	if i := strings.LastIndexByte(name, '.'); i >= 0 {
+		return name[i+1:]
+	}
 	return name
 }
 

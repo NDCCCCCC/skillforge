@@ -105,17 +105,23 @@ func TestSanitizeEntitiesParentNotValidatedHere(t *testing.T) {
 // --- Prompt stability (D-NZK-04 prompt-stability requirement) ---
 
 // TestExtractionPromptTablesAndRelatedByteIdentical pins that the entities
-// extension APPENDED to extractionPromptTmpl left the original D-Ext-01
-// contract byte-identical: the tables shape line, the related_notes shape
-// line, and all four original Rules bullets — with the entities spec
-// strictly AFTER the original block (append, never rewrite).
+// extension APPENDED to extractionPromptTmpl left the D-Ext-01 contract
+// byte-identical: the tables shape line, the related_notes shape line, and
+// the Rules bullets — with the entities spec strictly AFTER the contract
+// block (append, never rewrite).
+//
+// quick-261001-cz7 (2026-10-01): the scope line + three Rules bullets were
+// REWRITTEN by the sanctioned 39-09 policy-A change (writes-only semantics
+// — the live L1 gate measured the old "touches" scope at F1=0.3938). The
+// fragments below pin the NEW contract wording; a future edit must update
+// them deliberately, not silently.
 func TestExtractionPromptTablesAndRelatedByteIdentical(t *testing.T) {
 	originals := []string{
 		`{"tables": [{"name": "<etl table name>", "kind": "update" | "select" | "insert" | "create"}],`,
 		` "related_notes": [{"source_idx": "<note id>", "relation": "<short relation tag>"}]}`,
-		`- "kind" is the DML type the note performs against the table: "update", "select", "insert", or "create".`,
-		"- Include only tables whose name starts with etl_.",
-		"- If the note touches no etl_ tables or references no other notes, emit empty arrays.",
+		`- "kind" is the DML type the note performs against the table, normalized: UPDATE → "update"; INSERT INTO → "insert"; CREATE → "create"; DELETE FROM or MERGE INTO → "update"; SELECT INTO → "select".`,
+		"- Include only tables whose name starts with etl_. Report the BARE name without any schema/database prefix (e.g. \"wuh_dw.etl_policy\" → \"etl_policy\").",
+		"- If the note writes no etl_ tables or references no other notes, emit empty arrays.",
 		"- Output ONLY the JSON object, no fences, no prose.",
 	}
 	lastOriginal := 0
