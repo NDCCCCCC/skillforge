@@ -125,7 +125,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 2/2 | Complete   | 2026-10-03 |
+| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 2/2 | Complete    | 2026-10-03 |
 | 46. Entity SHACL Shapes | v1.6 | 0/TBD | Not started | — |
 
 ---
