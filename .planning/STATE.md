@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
 status: executing
-last_updated: "2026-10-03T02:17:59.627Z"
-last_activity: 2026-10-03 -- Phase 45 planning complete
+last_updated: "2026-10-03T02:32:13.020Z"
+last_activity: 2026-10-03
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -17,13 +17,13 @@ progress:
 
 ## Current Position
 
-Phase: 45 of 46 (SPARQL Schema Visibility — D-SPARQL-05)
-Plan: 0 of TBD in current phase
-Status: Ready to execute
+Phase: 45 (SPARQL Schema Visibility (D-SPARQL-05)) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute 45-02 (wave 2)
 Resume: .planning/phases/45-sparql-schema-visibility-d-sparql-05/45-CONTEXT.md
-Last activity: 2026-10-03 -- Phase 45 planning complete
+Last activity: 2026-10-03 -- 45-01 complete (β arm landed; admin counts 17/10; 45-01-SUMMARY.md)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ### Quick Tasks Completed
 
@@ -247,10 +247,14 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - [Phase 41]: 41-02 SPARQL endpoint: SparqlQueryScoped shared function (tier filter via QueryScoped, filter substring match, offset/limit pagination, 500 cap); POST /api/sparql registered NOT under /api/admin/ (X-Skill-Name header is token, not X-Admin-Token); 401 if X-Skill-Name absent or skill not found; 11 unit tests covering all query shapes, tier filtering, pagination, truncation, error cases
 - [Phase 41]: 41-03 Hybrid Retrieval: HybridSearchScoped pipeline (KG 1-2 hop expansion via Adjacent1+Adjacent2 → Milvus top-50 → optional BGE-reranker → top-5); POST /api/admin/platform/hybrid/search with X-Skill-Name tier isolation; SKILLFORGE_RETRIEVAL_RERANK (default true) + SKILLFORGE_HYBRID_HOPS (default 1) env vars; all KG ops via QueryScoped; reranker errors non-fatal (log + fall back); 8 unit tests
 - [Phase 41]: 41-05 FE platform views: CodeMirror 6 via plain npm (no wrapper lib); mount via useEffect + EditorView.destroy() cleanup; Ctrl+Enter handler re-attaches on skillName/limit deps change to avoid stale closure; skill state lifted to PlatformTab level (passed to SparqlPlaygroundView + HybridDebugView; MCP Inspector is server-scoped only); KG Expansion uses node-list table + detail panel (not Cytoscape) per UI-SPEC discretion resolution; schemaToSkeleton() replaces null with '' for required string fields to ensure valid JSON output
+- [Phase 45]: 45-01 D-45-01 beta arm landed — isSchemaTriple 4th arm schemaSubjects x metaPredicates; 13-predicate allowlist excludes label/comment (D-SPARQL-03 authoritative); Option alpha rejected (breaks pinned red-line tests)
+- [Phase ?]: 45-01 D-45-02 query-time schemaSubjects derivation (byP[rdfType] intersect schemaClasses) — no persistent Store state, zero write-path hooks; deviates from ROADMAP SC1 Insert-time wording by design; admin counts now TierFilter=17 / FailClosed PathB=10
+- [Phase ?]: 45-01 REQUIREMENTS checkboxes SPARQL-01/02 left unchecked — 45-02 (wave 2) claims same IDs + SPARQL-03; requirements mark-complete deferred to 45-02 close
 
 ## Operator Next Steps
 
-- Plan Phase 45 via `/gsd:plan-phase 45`
+- Execute 45-02 (wave 2: emitter conformance test + parity test + verify-phase-45.sh) via `/gsd:execute-phase 45`; at its close run `requirements mark-complete SPARQL-01 SPARQL-02 SPARQL-03`
+- Note: D-45-DEF-01 (pre-existing emitter test failure `TestEmitSubCategoryInstanceCount` 6 vs 7) will surface in `go test ./internal/ontology/...` — triage recorded in `.planning/phases/45-sparql-schema-visibility-d-sparql-05/deferred-items.md`
 
 ## Deferred Items
 
@@ -264,3 +268,9 @@ Items acknowledged and deferred at v1.5 milestone close on 2026-10-02:
 | verification_gaps | 8 | 历史验证缺口(L1/L5 测量工具已在 261001-cz7 补齐) |
 
 v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation source 补全~~(→ Phase 45)、~~实体类 SHACL shapes~~(→ Phase 46)、双 resolver 去重、server 包 lint 清扫、live 抽取 prompt 对齐 writes-only 的残余微调、DetailPanel/emitter 两个 deferred 测试。
+
+## Performance Metrics
+
+| Phase | Plan | Duration | Notes |
+|-------|------|----------|-------|
+| Phase 45 P45-01 | 9m | - tasks | - files |

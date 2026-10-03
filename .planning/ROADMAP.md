@@ -92,7 +92,7 @@
 Plans:
 **Wave 1**
 
-- [ ] 45-01-PLAN.md — β schema-visibility landing（isSchemaTriple subject∩predicate arm + query-time schemaSubjects derivation + admin 断言 17/10 + store 双断言回归）
+- [x] 45-01-PLAN.md — β schema-visibility landing（isSchemaTriple subject∩predicate arm + query-time schemaSubjects derivation + admin 断言 17/10 + store 双断言回归）
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -125,7 +125,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 0/2 | Not started | — |
+| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 1/2 | In Progress|  |
 | 46. Entity SHACL Shapes | v1.6 | 0/TBD | Not started | — |
 
 ---
