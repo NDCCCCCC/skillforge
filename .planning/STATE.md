@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
 status: verifying
-last_updated: "2026-10-03T03:29:08.672Z"
+last_updated: "2026-10-03T23:56:47.430Z"
 last_activity: 2026-10-03
 progress:
   total_phases: 2
