@@ -83,7 +83,11 @@
 3. Schema 可见性判定单点化：`/api/sparql` 与 `/api/admin`（KG query / governance 数据面）对同一 triple 的 schema/ABox 判定一致——服务端仅存在一处 `isSchemaTriple` 实现，判定修改一次即同时作用于两个端点
 4. `verify-phase-45.sh` 全绿：subject-based detection 新增回归测试 + Phase 40/44 既有 SPARQL 套件在 CGO 构建环境（WSL gcc + emutls ABI）通过
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 45-01-PLAN.md — β schema-visibility landing（isSchemaTriple subject∩predicate arm + query-time schemaSubjects derivation + admin 断言 17/10 + store 双断言回归）
+- [ ] 45-02-PLAN.md — 验证层（emitter conformance anti-drift 门 + SC3 handler 级 parity 测试 + verify-phase-45.sh SC4 门禁）
 
 ### Phase 46: Entity SHACL Shapes
 
@@ -112,9 +116,9 @@
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 0/TBD | Not started | — |
+| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 0/2 | Not started | — |
 | 46. Entity SHACL Shapes | v1.6 | 0/TBD | Not started | — |
 
 ---
 
-*Last updated: 2026-10-02 — v1.6 roadmap created (Phases 45-46; 6/6 requirements mapped). Phase 编号从 45 继续（v1.5 末 phase 44）。*
+*Last updated: 2026-10-03 — Phase 45 planned (2 plans / 2 waves: 45-01 β semantics landing, 45-02 verification layer + SC4 gate).*
