@@ -8,9 +8,9 @@
 
 ### SPARQL Schema Visibility（D-SPARQL-05 落地）
 
-- [ ] **SPARQL-01**: `isSchemaTriple` 切换为 subject-based detection（44-RESEARCH §5 Option α）——skill 个体及其 `hasReadAccess` triples 在 admin baseline 可见
-- [ ] **SPARQL-02**: D-TIER-03 fail-closed 不回退：无 `belongsToTier` 的 ABox 实体仍被过滤，既有 tier 回归测试全绿
-- [ ] **SPARQL-03**: schema 可见性规则单点化——`/api/sparql` 与 `/api/admin` 共享同一 `isSchemaTriple` 判定
+- [x] **SPARQL-01**: `isSchemaTriple` 切换为 subject-based detection（44-RESEARCH §5 Option α）——skill 个体及其 `hasReadAccess` triples 在 admin baseline 可见
+- [x] **SPARQL-02**: D-TIER-03 fail-closed 不回退：无 `belongsToTier` 的 ABox 实体仍被过滤，既有 tier 回归测试全绿
+- [x] **SPARQL-03**: schema 可见性规则单点化——`/api/sparql` 与 `/api/admin` 共享同一 `isSchemaTriple` 判定
 
 ### Entity SHACL Validation（实体 shapes 落地）
 
@@ -47,14 +47,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SPARQL-01 | Phase 45 | Pending |
-| SPARQL-02 | Phase 45 | Pending |
-| SPARQL-03 | Phase 45 | Pending |
+| SPARQL-01 | Phase 45 | Complete |
+| SPARQL-02 | Phase 45 | Complete |
+| SPARQL-03 | Phase 45 | Complete |
 | SHACL-01 | Phase 46 | Pending |
 | SHACL-02 | Phase 46 | Pending |
 | SHACL-03 | Phase 46 | Pending |
 
 **Coverage:**
+
 - v1.6 requirements: 6 total
 - Mapped to phases: 6
 - Unmapped: 0 ✓

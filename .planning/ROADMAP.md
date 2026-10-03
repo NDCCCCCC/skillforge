@@ -69,7 +69,7 @@
 
 ### Phases
 
-- [ ] **Phase 45: SPARQL Schema Visibility (D-SPARQL-05)** - Subject-based schema detection：skill 个体与 hasReadAccess triples 在 admin baseline 可见，D-TIER-03 fail-closed 不回退，schema 判定单点化
+- [x] **Phase 45: SPARQL Schema Visibility (D-SPARQL-05)** - Subject-based schema detection：skill 个体与 hasReadAccess triples 在 admin baseline 可见，D-TIER-03 fail-closed 不回退，schema 判定单点化 (completed 2026-10-03)
 - [ ] **Phase 46: Entity SHACL Shapes** - 实体类 ABox SHACL shapes 交付（路径可配置）+ 启动校验接入既有 quarantine 流 + /admin/governance 报告呈现实体违规
 
 ### Phase 45: SPARQL Schema Visibility (D-SPARQL-05)
@@ -96,7 +96,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 45-02-PLAN.md — 验证层（emitter conformance anti-drift 门 + SC3 handler 级 parity 测试 + verify-phase-45.sh SC4 门禁）
+- [x] 45-02-PLAN.md — 验证层（emitter conformance anti-drift 门 + SC3 handler 级 parity 测试 + verify-phase-45.sh SC4 门禁）
 
 ### Phase 46: Entity SHACL Shapes
 
@@ -125,7 +125,7 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 1/2 | In Progress|  |
+| 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 2/2 | Complete   | 2026-10-03 |
 | 46. Entity SHACL Shapes | v1.6 | 0/TBD | Not started | — |
 
 ---

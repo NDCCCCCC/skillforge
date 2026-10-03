@@ -2,28 +2,28 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
-status: executing
-last_updated: "2026-10-03T02:32:13.020Z"
+status: verifying
+last_updated: "2026-10-03T03:03:14.284Z"
 last_activity: 2026-10-03
 progress:
   total_phases: 2
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 50
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 45 (SPARQL Schema Visibility (D-SPARQL-05)) — EXECUTING
+Phase: 45 (SPARQL Schema Visibility (D-SPARQL-05)) — COMPLETE, ready for verification
 Plan: 2 of 2
-Status: Ready to execute 45-02 (wave 2)
-Resume: .planning/phases/45-sparql-schema-visibility-d-sparql-05/45-CONTEXT.md
-Last activity: 2026-10-03 -- 45-01 complete (β arm landed; admin counts 17/10; 45-01-SUMMARY.md)
+Status: Phase complete — ready for verification (45-02 executed 2026-10-03: conformance gate + parity test + verify-phase-45.sh all green)
+Resume: .planning/phases/45-sparql-schema-visibility-d-sparql-05/45-02-SUMMARY.md
+Last activity: 2026-10-03 -- 45-02 complete (D-45-01 anti-drift gate + SC3 parity + SC4 gate; SPARQL-01/02/03 marked complete; 45-02-SUMMARY.md)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ### Quick Tasks Completed
 
@@ -250,11 +250,14 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - [Phase 45]: 45-01 D-45-01 beta arm landed — isSchemaTriple 4th arm schemaSubjects x metaPredicates; 13-predicate allowlist excludes label/comment (D-SPARQL-03 authoritative); Option alpha rejected (breaks pinned red-line tests)
 - [Phase ?]: 45-01 D-45-02 query-time schemaSubjects derivation (byP[rdfType] intersect schemaClasses) — no persistent Store state, zero write-path hooks; deviates from ROADMAP SC1 Insert-time wording by design; admin counts now TierFilter=17 / FailClosed PathB=10
 - [Phase ?]: 45-01 REQUIREMENTS checkboxes SPARQL-01/02 left unchecked — 45-02 (wave 2) claims same IDs + SPARQL-03; requirements mark-complete deferred to 45-02 close
+- [Phase ?]: 45-02 D-45-01 anti-drift gate landed — TestEmitterPredicatesWithinAllowlist pins emitter predicates on schema individuals to {rdf:type} + 13 metaPredicates; skf:/rdfs: label+comment negative-pinned out (D-SPARQL-03 authoritative)
+- [Phase ?]: 45-02 conformance test uses external package store_test + store_export_test.go seam — emitter transitively imports store via induction (plan's cycle-free premise wrong at depth 2); SPARQL-03 parity test observes both real handlers on one fixtureKG (Induction wired via newOntologyDeps, KG swapped to fixtureKG)
+- [Phase ?]: 45-02 verify-phase-45.sh SC4 green with D-45-DEF-01 named waiver — P2/P4 pass only when unique --- FAIL set is empty or exactly TestEmitSubCategoryInstanceCount; P3 pairs exit code with >= 19 --- PASS (anti-vacuous); verify_main.go excluded per D-45-DEF-02 (BL-05 backlog)
 
 ## Operator Next Steps
 
-- Execute 45-02 (wave 2: emitter conformance test + parity test + verify-phase-45.sh) via `/gsd:execute-phase 45`; at its close run `requirements mark-complete SPARQL-01 SPARQL-02 SPARQL-03`
-- Note: D-45-DEF-01 (pre-existing emitter test failure `TestEmitSubCategoryInstanceCount` 6 vs 7) will surface in `go test ./internal/ontology/...` — triage recorded in `.planning/phases/45-sparql-schema-visibility-d-sparql-05/deferred-items.md`
+- Phase 45 executed complete (45-01 + 45-02): run `/gsd:verify-phase 45` — gate entry point is `bash verify-phase-45.sh` (exit 0 expected; P2/P4 carry the D-45-DEF-01 named waiver). SPARQL-01/02/03 already marked complete in REQUIREMENTS.md.
+- Note: D-45-DEF-01 (pre-existing emitter test failure `TestEmitSubCategoryInstanceCount` 6 vs 7) surfaces in every P2/P4 run as a WAIVED line — triage recorded in `.planning/phases/45-sparql-schema-visibility-d-sparql-05/deferred-items.md`; BL-05 backlog candidate: `internal/server/platform/verify_main.go` (D-45-DEF-02, stale Phase-44 harness, excluded from the gate).
 
 ## Deferred Items
 
@@ -274,3 +277,4 @@ v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation so
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
 | Phase 45 P45-01 | 9m | - tasks | - files |
+| Phase 45 P45-02 | 24 min | 3 tasks | 4 files |
