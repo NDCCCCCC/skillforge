@@ -1,10 +1,10 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.6
-milestone_name: SPARQL Schema Detection + Entity SHACL Shapes
-status: roadmap_complete
-last_updated: "2026-10-02T00:00:00.000Z"
-last_activity: 2026-10-02 — v1.6 ROADMAP created (Phases 45-46)
+milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
+status: planning
+last_updated: "2026-10-03T01:01:56.533Z"
+last_activity: 2026-10-02 — v1.6 ROADMAP created (Phase 45 SPARQL + Phase 46 Entity SHACL; 6/6 requirements mapped)
 progress:
   total_phases: 2
   completed_phases: 0
@@ -19,8 +19,9 @@ progress:
 
 Phase: 45 of 46 (SPARQL Schema Visibility — D-SPARQL-05)
 Plan: 0 of TBD in current phase
-Status: Ready to plan (`/gsd:plan-phase 45`)
-Last activity: 2026-10-02 — v1.6 ROADMAP created (Phase 45 SPARQL + Phase 46 Entity SHACL; 6/6 requirements mapped)
+Status: Phase 45 context gathered → ready to plan (`/gsd:plan-phase 45`)
+Resume: .planning/phases/45-sparql-schema-visibility-d-sparql-05/45-CONTEXT.md
+Last activity: 2026-10-03 — Phase 45 discuss-phase complete (advisor mode, 4 gray areas locked: β allowlist / query-time derivation / parity test / dual-layer regression; b93cb0c)
 
 Progress: [░░░░░░░░░░] 0%
 
