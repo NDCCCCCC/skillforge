@@ -535,6 +535,13 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 		}
 	}
 
+	// D-45-02: derive schema-individual subjects once per invocation (never
+	// inside the s.all loop — one byP[rdfType] bucket walk vs the full scan
+	// below). Query-time derivation keeps every write path
+	// (InsertUnique/DeleteSubject/Quarantine/rollback/LoadSnapshot) correct
+	// by construction.
+	schemaSubjects := s.schemaSubjectSet()
+
 	// D-TIER-03: schema triples pass through unconditionally.
 	// D-TIER-06: visible ABox subject triples (all edges, forward+reverse).
 	seen := make(map[string]bool, len(s.all)) // deduplicate by S+P+O string key
@@ -547,7 +554,7 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 		}
 
 		// Schema layer check: never filtered.
-		if isSchemaTriple(t) {
+		if isSchemaTriple(t, schemaSubjects) {
 			seen[key] = true
 			out = append(out, t)
 			continue
@@ -601,7 +608,18 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 // subject's label/comment triples are NOT schema — they fall through to
 // the ABox path and are returned only when the subject is in
 // visibleSubjects, otherwise excluded (correct D-TIER-06 + D-TIER-07).
-func isSchemaTriple(t Triple) bool {
+//
+// D-45-01 (Phase 45 / D-SPARQL-05, β — subject ∩ predicate allowlist): the
+// fourth arm classifies a triple as schema when its subject is a schema
+// individual (carries rdf:type → schemaClasses) AND its predicate is in the
+// metaPredicates allowlist. This makes skill-individual metadata (notably
+// hasReadAccess) tier-visible in skill-scoped views. Literal Option α
+// (subject ∈ schemaSubjects → ALL its triples schema) was rejected: it would
+// make label/comment on schema individuals pass through, silently breaking
+// the D-SPARQL-03 pinned red-line tests. label/comment remain DELIBERATELY
+// EXCLUDED (D-SPARQL-03 stays authoritative). schemaSubjects may be nil
+// (nil map lookups are false) — pinned-test call sites pass nil mechanically.
+func isSchemaTriple(t Triple, schemaSubjects map[string]bool) bool {
 	// rdf:type for OWL vocabulary declarations.
 	if t.P == rdfType {
 		if t.O == ns+"Class" || t.O == ns+"ObjectProperty" ||
@@ -626,6 +644,13 @@ func isSchemaTriple(t Triple) bool {
 	// and excluded when fail-closed.
 	if t.P == ns+"domain" || t.P == ns+"range" ||
 		t.P == ns+"subClassOf" || t.P == ns+"subPropertyOf" {
+		return true
+	}
+
+	// D-45-01 β arm (Phase 45 / D-SPARQL-05): allowlisted metadata predicate
+	// on a schema-individual subject is schema layer — tier-visible
+	// unconditionally. label/comment are excluded via metaPredicates.
+	if schemaSubjects[t.S] && metaPredicates[t.P] {
 		return true
 	}
 
@@ -656,6 +681,58 @@ var schemaClasses = map[string]bool{
 	ns + "NamedIndividual":  true,
 	// Note: NoteChunk and TableSchema are ECL ABox data entities, NOT
 	// schema individuals. They are filtered by tier (D-TIER-03).
+}
+
+// metaPredicates is the allowlist of metadata predicates the TBox emitter
+// emits on schema-individual subjects (Skill/KBCategory/SubCategory/Tier/
+// SkillAgent/RefusalPhrase individuals). D-45-01 (Phase 45 / D-SPARQL-05):
+// a triple whose subject is a schema individual AND whose predicate is
+// allowlisted here passes tier filtering unconditionally (β arm of
+// isSchemaTriple).
+//
+// label and comment are DELIBERATELY EXCLUDED: D-SPARQL-03 stays
+// authoritative — schema-individual labels/comments are ABox annotations
+// and remain fail-closed under tier filtering.
+//
+// The set is pinned by the emitter conformance test (landing in plan 45-02):
+// if emitter render() starts emitting a new predicate on schema-individual
+// subjects, that test fails until this allowlist is consciously extended.
+var metaPredicates = map[string]bool{
+	ns + "skillName":         true,
+	ns + "skillDescription":  true,
+	ns + "skillTemperature":  true,
+	ns + "poweredBy":         true,
+	ns + "hasReadAccess":     true,
+	ns + "hasWriteAccess":    true,
+	ns + "requiresRefusal":   true,
+	ns + "tierName":          true,
+	ns + "categoryName":      true,
+	ns + "subCategoryName":   true,
+	ns + "agentTypeName":     true,
+	ns + "refusalPhraseText": true,
+	ns + "belongsToTier":     true,
+}
+
+// schemaSubjectSet derives the set of subjects carrying an
+// (rdf:type, schemaClasses[O]) triple — the schema individuals.
+//
+// D-45-02 (query-time derivation, no persistent state): deriving at query
+// time means InsertUnique (snapshot boot TBox merge), DeleteSubject
+// (TBox rollback + ApplyNote replace), SHACL Quarantine, and LoadSnapshot
+// (Insert replay) all stay correct by construction — zero write-path hooks
+// to forget, eliminating the derived-state-drift class.
+//
+// Cost: one walk of the byP[rdfType] bucket, sub-ms at KG scale.
+//
+// Caller must hold at least RLock.
+func (s *Store) schemaSubjectSet() map[string]bool {
+	out := make(map[string]bool)
+	for _, idx := range s.byP[rdfType] {
+		if schemaClasses[s.all[idx].O] {
+			out[s.all[idx].S] = true
+		}
+	}
+	return out
 }
 
 // --- helpers ---

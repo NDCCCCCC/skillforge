@@ -42,6 +42,11 @@ const (
 // classified as schema via the rdf:type+schemaClasses[O] arm.
 //
 // OWL predicates (domain/range) still classify as schema.
+//
+// D-45-04 red-line policy: the isSchemaTriple calls below pass nil as the
+// schemaSubjects argument. These assertions are pinned semantics —
+// intentionally NOT exercised against a populated set. If any fails, the
+// implementation is wrong, not this test.
 func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 	// (note_x, label, "y") with note_x rdf:type skf:Note — ABox, not schema.
 	noteWithLabel := Triple{
@@ -49,7 +54,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: testNSLocal + "label",
 		O: `"y"`,
 	}
-	assert.False(t, isSchemaTriple(noteWithLabel),
+	assert.False(t, isSchemaTriple(noteWithLabel, nil),
 		"label predicate on ABox subject must NOT be schema (D-SPARQL-03)")
 
 	// (skill_a, label, "y") with skill_a rdf:type skf:Skill — ABox too.
@@ -61,7 +66,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: testNSLocal + "label",
 		O: `"y"`,
 	}
-	assert.False(t, isSchemaTriple(skillLabel),
+	assert.False(t, isSchemaTriple(skillLabel, nil),
 		"label predicate on schema individual subject must NOT be schema (D-SPARQL-03)")
 
 	// (skill_a, rdf:type, skf:Skill) — schema via the schemaClasses arm.
@@ -70,7 +75,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: rdfTypeLocal,
 		O: skfSkillLocal,
 	}
-	assert.True(t, isSchemaTriple(skillType),
+	assert.True(t, isSchemaTriple(skillType, nil),
 		"rdf:type with skf:Skill object must be schema (schemaClasses arm)")
 
 	// (prop_x, domain, Class) — OWL predicate still schema.
@@ -79,7 +84,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: testNSLocal + "domain",
 		O: testNSLocal + "Class",
 	}
-	assert.True(t, isSchemaTriple(domainTriple),
+	assert.True(t, isSchemaTriple(domainTriple, nil),
 		"domain predicate must remain schema (OWL/RDFS ontology metadata)")
 
 	// (prop_x, range, Class) — OWL predicate still schema.
@@ -88,7 +93,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: testNSLocal + "range",
 		O: testNSLocal + "Class",
 	}
-	assert.True(t, isSchemaTriple(rangeTriple),
+	assert.True(t, isSchemaTriple(rangeTriple, nil),
 		"range predicate must remain schema (OWL/RDFS ontology metadata)")
 
 	// (prop_x, subClassOf, Skill) — OWL predicate still schema.
@@ -97,7 +102,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: testNSLocal + "subClassOf",
 		O: skfSkillLocal,
 	}
-	assert.True(t, isSchemaTriple(subClassTriple),
+	assert.True(t, isSchemaTriple(subClassTriple, nil),
 		"subClassOf predicate must remain schema (OWL/RDFS ontology metadata)")
 
 	// (prop_x, subPropertyOf, ...) — OWL predicate still schema.
@@ -106,7 +111,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: testNSLocal + "subPropertyOf",
 		O: testNSLocal + "prop_parent",
 	}
-	assert.True(t, isSchemaTriple(subPropTriple),
+	assert.True(t, isSchemaTriple(subPropTriple, nil),
 		"subPropertyOf predicate must remain schema (OWL/RDFS ontology metadata)")
 
 	// (note_x, comment, "y") — ABox, not schema (same as label).
@@ -115,7 +120,7 @@ func TestIsSchemaTriple_LabelAndCommentAreABox(t *testing.T) {
 		P: testNSLocal + "comment",
 		O: `"y"`,
 	}
-	assert.False(t, isSchemaTriple(commentTriple),
+	assert.False(t, isSchemaTriple(commentTriple, nil),
 		"comment predicate on ABox subject must NOT be schema (D-SPARQL-03)")
 }
 
