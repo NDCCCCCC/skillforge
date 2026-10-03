@@ -41,7 +41,8 @@ const (
 // are never filtered; ABox triples (note/tbl) are filtered by tier.
 //
 // ===========================================================================
-// SPARQL fixture triple inventory (post D-SPARQL-02/03/04 fixes, Phase 44)
+// SPARQL fixture triple inventory (post D-SPARQL-02/03/04 fixes, Phase 44;
+// Path B counts updated per D-SPARQL-05 β — v1.6 Phase 45, D-45-04)
 // ===========================================================================
 // fixtureKG() inserts 22 unique S|P|O triples (the original 23 raw inserts
 // minus 1 line-58 duplicate removed by D-SPARQL-04).
@@ -58,11 +59,15 @@ const (
 //      (store.go:614-616).
 //
 //   3. Skill hasReadAccess triples (2 triples): skill_sql -> sql-guides,
-//      skill_compliance -> authority. NOT schema (predicate not in schema
-//      list, subject not in visibleSubjects). Subject not in
-//      visibleSubjects because skill_sql/compliance have no belongsToTier.
-//      -> EXCLUDED from Path B tier-filtered queries. INCLUDED on Path A
-//      (nil-tier) admin baseline (no filter applied).
+//      skill_compliance -> authority. Schema under D-SPARQL-05 (v1.6
+//      Phase 45, β arm / D-45-04): both subjects carry
+//      rdf:type -> skf:Skill (skf:Skill is in schemaClasses) and
+//      hasReadAccess is in the metaPredicates allowlist, so
+//      isSchemaTriple's subject∩predicate arm classifies both triples as
+//      schema. -> INCLUDED in EVERY Path B tier-filtered view (schema
+//      passthrough is tier-agnostic) and on Path A (nil-tier) admin
+//      baseline. skill_compliance->authority is included alongside
+//      skill_sql->sql-guides regardless of allowedTiers.
 //
 //   4. ABox note_001 (4 triples, sql-guides tier): rdf:type NoteChunk +
 //      belongsToTier sql-guides + label "SQL指南第一章" +
@@ -93,26 +98,30 @@ const (
 //
 //     Path B (allowedTiers=["sql-guides"]):
 //       Schema (always visible via isSchemaTriple short-circuit at
-//               store.go:550-554, D-TIER-03):
+//               store.go:550-554, D-TIER-03 + D-SPARQL-05 β):
 //         - 4 schema class defs (rdf:type+Class/ObjectProperty arm)
 //         - 4 schema individual types (rdf:type+schemaClasses arm)
-//         = 8
+//         - 2 hasReadAccess (β subject∩predicate arm, D-SPARQL-05:
+//           skill_sql/skill_compliance carry rdf:type skf:Skill ∈
+//           schemaClasses and hasReadAccess ∈ metaPredicates; schema
+//           passthrough is tier-agnostic, so both appear in every tier view)
+//         = 10
 //       ABox (subject in visibleSubjects={note_001, tbl_payment_t}
 //             computed at store.go:528-536 from belongsToTier triples):
 //         - note_001: 4 triples (subject visible, D-TIER-06 includes all edges)
 //         - tbl_payment_t: 3 triples (subject visible)
-//       = 8 schema + 4 + 3 = 15
+//       = 10 schema + 4 + 3 = 17
 //
 //       Subjects NOT in visibleSubjects (excluded by ABox path):
-//         - skill_sql, skill_compliance (no belongsToTier) — their
-//           hasReadAccess triples are ABox and excluded
 //         - note_002 (authority tier not in allowedTiers) — fail-closed
 //         - note_003 (no belongsToTier) — fail-closed (D-TIER-07)
 //
 //     Path B (S=note_003, allowedTiers=["sql-guides"]):
-//       Schema: 0 (note_003 is not a schema individual)
+//       Schema: 10 (8 schema + 2 hasReadAccess — schema passthrough
+//               precedes the S/P/O filter at store.go:543-554, so all 10
+//               appear even though S=note_003 matches none of them)
 //       ABox: 0 (subject not in visibleSubjects -> fail-closed)
-//       = 0
+//       = 10
 //
 //     Path A (S=note_003, nil):
 //       ABox: 2 (rdf:type + label; subject not constrained on Path A)
@@ -247,19 +256,28 @@ func TestSparqlQueryScoped_TierFilter(t *testing.T) {
 	pattern := SparqlPattern{}
 	resp, err := SparqlQueryScoped(pattern, []string{"sql-guides"}, kg)
 	assert.NoError(t, err)
-	// 8 schema (always visible, D-TIER-03) +
+	// D-SPARQL-05 (v1.6 Phase 45) / D-45-04 (45-CONTEXT): intended behavior
+	// change — the β subject∩predicate arm makes the 2 hasReadAccess triples
+	// schema-visible (skill_sql->sql-guides AND skill_compliance->authority;
+	// schema passthrough is tier-agnostic). Count derivation:
+	// 8 schema (always visible, D-TIER-03) + 2 hasReadAccess (β arm) +
 	//   note_001 visible (sql-guides tier) -> rdf:type + belongsToTier + label +
 	//     referencesTable = 4
 	//   tbl_payment_t visible (sql-guides tier) -> rdf:type + belongsToTier +
 	//     label = 3
-	// = 15
+	// = 17
 	// note_002 (authority tier) and note_003 (no tier) MUST NOT appear
-	// (fail-closed; negative assertions preserved and STRONGER after
-	// D-SPARQL-03). Updated from 13 -> 15 per D-SPARQL-04b (Phase 44
-	// closure): the previous 13 reflected the broken mental model that
-	// label-of-visible-ABox is schema; after D-SPARQL-03 label triples
-	// for visible ABox subjects are correctly included (D-TIER-06).
-	assert.Equal(t, 15, resp.Count)
+	// (fail-closed; D-SPARQL-03 red line preserved under β).
+	assert.Equal(t, 17, resp.Count)
+	// D-SPARQL-05 positive: skill_sql's hasReadAccess triple is tier-visible.
+	found := false
+	for _, r := range resp.Results {
+		if r.S == testNS+"skill_sql" && r.P == testNS+"hasReadAccess" && r.O == testNS+"sql-guides" {
+			found = true
+		}
+	}
+	assert.True(t, found,
+		"skill_sql hasReadAccess must be tier-visible under D-SPARQL-05 β (D-45-04 positive assertion)")
 	for _, r := range resp.Results {
 		// note_002 and note_003 must not appear
 		assert.NotEqual(t, testNS+"note_002", r.S)
@@ -278,18 +296,28 @@ func TestSparqlQueryScoped_FailClosedNoBelongsToTier(t *testing.T) {
 	assert.Equal(t, 2, resp.Count)
 
 	// With tier filtering → note_003 ABox triples invisible (fail-closed).
-	// Schema triples still pass through: store.go:527-531 short-circuits on
-	// isSchemaTriple(t) BEFORE applying the S/P/O pattern filter. So all
-	// schema triples (4 class defs + 4 schema individuals = 8) appear even
-	// though S=note_003 doesn't match any of them.
-	// The plan/research originally asserted 0 here assuming the S filter
-	// applies to schema triples too, but the implementation behaviour is
-	// "schema triples pass through unconditionally" per D-TIER-03.
+	// D-SPARQL-05 (v1.6 Phase 45) / D-45-04 (45-CONTEXT): intended behavior
+	// change — schema passthrough short-circuits on isSchemaTriple BEFORE
+	// applying the S/P/O pattern filter (store.go:543-554). Under β the
+	// 2 hasReadAccess triples are schema too (subject∩predicate arm), so
+	// ALL 8 schema triples PLUS 2 hasReadAccess = 10 appear even though
+	// S=note_003 matches none of them. Schema passthrough is tier-agnostic:
+	// skill_compliance->authority rides along with skill_sql->sql-guides.
 	// note_003 has no belongsToTier → visibleSubjects does not include
 	// note_003 → all 2 of its ABox triples are EXCLUDED (correct fail-closed).
 	resp2, err := SparqlQueryScoped(pattern, []string{"sql-guides"}, kg)
 	assert.NoError(t, err)
-	assert.Equal(t, 8, resp2.Count) // 4 class defs + 4 schema individuals; 0 ABox (note_003 fail-closed)
+	assert.Equal(t, 10, resp2.Count) // 8 schema + 2 hasReadAccess (β); 0 ABox (note_003 fail-closed)
+	// D-SPARQL-05 positive: the hasReadAccess row rides schema passthrough
+	// (which precedes the S/P/O filter) into this S=note_003 query.
+	found := false
+	for _, r := range resp2.Results {
+		if r.S == testNS+"skill_sql" && r.P == testNS+"hasReadAccess" && r.O == testNS+"sql-guides" {
+			found = true
+		}
+	}
+	assert.True(t, found,
+		"skill_sql hasReadAccess must appear in Path B even when S=note_003 (schema passthrough precedes pattern filter; D-SPARQL-05, D-45-04)")
 	for _, r := range resp2.Results {
 		// note_003 must not appear at all (fail-closed ABox)
 		assert.NotEqual(t, testNS+"note_003", r.S)
