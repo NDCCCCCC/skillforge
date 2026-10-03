@@ -51,12 +51,12 @@ const (
 //   1. Schema class definitions (4 rdf:type triples): testNS+Class,
 //      testNS+ObjectProperty, testNS+Skill, testNS+Tier -> rdf:type with
 //      object = Class/ObjectProperty. Caught by isSchemaTriple's rdf:type
-//      arm (store.go:605-617) + the owl-IRI fix (D-SPARQL-04).
+//      arm (store.go:623-635) + the owl-IRI fix (D-SPARQL-04).
 //
 //   2. Schema individual types (4 rdf:type triples): skill_sql,
 //      skill_compliance -> rdf:type skf:Skill; sql-guides, authority ->
 //      rdf:type skf:Tier. Caught by isSchemaTriple's schemaClasses arm
-//      (store.go:614-616).
+//      (store.go:633-635).
 //
 //   3. Skill hasReadAccess triples (2 triples): skill_sql -> sql-guides,
 //      skill_compliance -> authority. Schema under D-SPARQL-05 (v1.6
@@ -98,7 +98,7 @@ const (
 //
 //     Path B (allowedTiers=["sql-guides"]):
 //       Schema (always visible via isSchemaTriple short-circuit at
-//               store.go:550-554, D-TIER-03 + D-SPARQL-05 β):
+//               store.go:556-561, D-TIER-03 + D-SPARQL-05 β):
 //         - 4 schema class defs (rdf:type+Class/ObjectProperty arm)
 //         - 4 schema individual types (rdf:type+schemaClasses arm)
 //         - 2 hasReadAccess (β subject∩predicate arm, D-SPARQL-05:
@@ -118,7 +118,7 @@ const (
 //
 //     Path B (S=note_003, allowedTiers=["sql-guides"]):
 //       Schema: 10 (8 schema + 2 hasReadAccess — schema passthrough
-//               precedes the S/P/O filter at store.go:543-554, so all 10
+//               precedes the S/P/O filter at store.go:568-577, so all 10
 //               appear even though S=note_003 matches none of them)
 //       ABox: 0 (subject not in visibleSubjects -> fail-closed)
 //       = 10
@@ -298,7 +298,7 @@ func TestSparqlQueryScoped_FailClosedNoBelongsToTier(t *testing.T) {
 	// With tier filtering → note_003 ABox triples invisible (fail-closed).
 	// D-SPARQL-05 (v1.6 Phase 45) / D-45-04 (45-CONTEXT): intended behavior
 	// change — schema passthrough short-circuits on isSchemaTriple BEFORE
-	// applying the S/P/O pattern filter (store.go:543-554). Under β the
+	// applying the S/P/O pattern filter (store.go:568-577). Under β the
 	// 2 hasReadAccess triples are schema too (subject∩predicate arm), so
 	// ALL 8 schema triples PLUS 2 hasReadAccess = 10 appear even though
 	// S=note_003 matches none of them. Schema passthrough is tier-agnostic:

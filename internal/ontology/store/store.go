@@ -604,7 +604,7 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 //
 // Note: the rdf:type triple that declares a subject as a schema individual
 // (e.g., (skill_sql, rdf:type, skf:Skill)) IS schema (caught by the
-// rdf:type+schemaClasses[O] arm at store.go:605-617). But the SAME
+// rdf:type+schemaClasses[O] arm at store.go:623-635). But the SAME
 // subject's label/comment triples are NOT schema — they fall through to
 // the ABox path and are returned only when the subject is in
 // visibleSubjects, otherwise excluded (correct D-TIER-06 + D-TIER-07).
