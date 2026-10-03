@@ -1,9 +1,9 @@
 ---
 phase: 45
 slug: sparql-schema-visibility-d-sparql-05
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-10-03
 ---
 
@@ -37,16 +37,16 @@ created: 2026-10-03
 
 ## Per-Task Verification Map
 
-> Task ID 由 planner 在 PLAN.md 落定后对应；Req→Test 映射已由 RESEARCH 钉死。
+> Task ID 已对齐 PLAN.md（plan-checker 2026-10-03 验证 6/6 任务含 automated verify）；Req→Test 映射已由 RESEARCH 钉死。
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| (planner) | 01 | 1 | SPARQL-01 | — | skill 个体 hasReadAccess tier-可见 | unit (store) | `CGO_ENABLED=1 go test ./internal/ontology/store/ -run TestStoreSchemaSubject -v -count=1` | ❌ new (`store_schema_subject_test.go`) | ⬜ pending |
-| (planner) | 01 | 1 | SPARQL-01 | — | admin 层计数 17/10 + 正向断言 | unit (server) | `CGO_ENABLED=1 go test ./internal/server/ -run "TestSparqlQueryScoped_TierFilter\|TestSparqlQueryScoped_FailClosedNoBelongsToTier" -v -count=1` | ✅ (update admin_platform_test.go) | ⬜ pending |
-| (planner) | 01 | 1 | SPARQL-01 (anti-drift) | — | emitter 谓词 ⊆ allowlist | unit (store, conformance) | `CGO_ENABLED=1 go test ./internal/ontology/store/ -run TestEmitterPredicatesWithinAllowlist -v -count=1` | ❌ new (`store_emitter_conformance_test.go`) | ⬜ pending |
-| (planner) | 01 | 1 | SPARQL-02 | — | fail-closed 不回退（负向断言 + Path A 冻结 + 红线三测试） | unit (regression) | `CGO_ENABLED=1 go test ./internal/ontology/store/... -count=1` + `./internal/server/ -run "TestSparqlQueryScoped\|TestHybridSearchScoped" -count=1` | ✅ (existing, must stay green unchanged) | ⬜ pending |
-| (planner) | 01 | 1 | SPARQL-03 | — | 双端点 schema 判定一致 | integration (handler, hermetic) | `CGO_ENABLED=1 go test ./internal/server/ -run TestSchemaJudgmentParity -v -count=1` | ❌ new (placement per RESEARCH Open Q3) | ⬜ pending |
-| (planner) | 01 | 1 | SC4 | — | verify-phase-45.sh 全绿 | gate script | `bash verify-phase-45.sh`（WSL CGO chain, 4 fail-fast partitions） | ❌ new | ⬜ pending |
+| 45-01 T1 | 01 | 1 | SPARQL-01/02 | T-45-01 | admin 层计数 17/10 + 正向断言（RED） | unit (server) | `CGO_ENABLED=1 go test ./internal/server/ -run "TestSparqlQueryScoped_TierFilter\|TestSparqlQueryScoped_FailClosedNoBelongsToTier" -v -count=1` | ✅ (update admin_platform_test.go) | ⬜ pending |
+| 45-01 T2 | 01 | 1 | SPARQL-01/02 | T-45-01/T-45-04 | β 臂 + schemaSubjects 查询时派生 + 8 处 nil ripple（GREEN） | unit (store+server) | `CGO_ENABLED=1 go test ./internal/ontology/store/... ./internal/server/ -run "TestSparqlQueryScoped" -count=1` | ✅ (modify store.go + 8 ripple lines) | ⬜ pending |
+| 45-01 T3 | 01 | 1 | SPARQL-01/02 | T-45-01 | skill 个体 hasReadAccess tier-可见 且同 subject label 仍不可见（一测双断言） | unit (store) | `CGO_ENABLED=1 go test ./internal/ontology/store/ -run TestStoreSchemaSubject -v -count=1` | ❌ new (`store_schema_subject_test.go`) | ⬜ pending |
+| 45-02 T1 | 02 | 2 | SPARQL-01 (anti-drift) | T-45-02 | emitter 谓词 ⊆ {rdf:type} ∪ metaPredicates | unit (store, conformance) | `CGO_ENABLED=1 go test ./internal/ontology/store/ -run TestEmitterPredicatesWithinAllowlist -v -count=1` | ❌ new (`store_emitter_conformance_test.go`) | ⬜ pending |
+| 45-02 T2 | 02 | 2 | SPARQL-03 | T-45-06 | 双端点 schema 判定一致（/api/sparql vs /api/admin） | integration (handler, hermetic) | `CGO_ENABLED=1 go test ./internal/server/ -run TestSchemaJudgmentParity -v -count=1` | ❌ new (扩展 admin_ontology_test.go) | ⬜ pending |
+| 45-02 T3 | 02 | 2 | SC4 | T-45-07 | verify-phase-45.sh 全绿 | gate script | `bash verify-phase-45.sh`（WSL CGO chain, 4 fail-fast partitions, P3 ≥19 PASS） | ❌ new | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -66,11 +66,11 @@ All phase behaviors have automated verification.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies（6/6，plan-checker 验证）
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references（无 Wave-0 缺口——既有基建全覆盖）
+- [x] No watch-mode flags
+- [x] Feedback latency < 30s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-10-03（plan-checker Dimension 8 通过后签署）

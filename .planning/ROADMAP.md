@@ -32,15 +32,19 @@
 <summary>v1.4 phase records (38-41) — archived reference for v1.6 work</summary>
 
 ### Phase 38: Foundation — TBox + Memory-map KG + Auto Schema Lift ✅ (2026-09-21)
+
 6/6 plans. `internal/ontology/{emitter,store,induction}` + 8 admin routes + 本体 tab. Hermetic gate 13/13.
 
 ### Phase 39: ECL Pipeline — Section-aware Chunker + LLM Entity Extraction ✅ (2026-09-22)
+
 9/9 plans. Section-aware chunker + LLM 抽取 + ABox 双写 KG/Milvus + /admin/pipeline tab. Golden F1 tables 0.9846 / related 1.0.
 
 ### Phase 40: Data Governance — SHACL + Provenance + TBox Versioning ✅ (2026-09-23)
+
 10/10 plans. **D-SHACL-02: violations never block boot**（boot SHACL → quarantine 分流 → report cache → `/admin/governance` 三视图）; QueryScoped tier 隔离 (D-TIER-01/03/06/07); provenance 链; TBox changelog/rollback. Hermetic gate 17/17. **This is the quarantine flow Phase 46 wires entity shapes into.**
 
 ### Phase 41: Platform Layer — MCP Server + SPARQL Endpoint + Hybrid Retrieval ✅ (2026-09-23)
+
 6/6 plans. MCP stdio (5 tools) + `POST /api/sparql` (X-Skill-Name tier isolation) + Hybrid Retrieval (KG 1-2 hop → Milvus → BGE-rerank) + /admin/platform 三视图.
 
 </details>
@@ -86,7 +90,12 @@
 **Plans**: 2 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 45-01-PLAN.md — β schema-visibility landing（isSchemaTriple subject∩predicate arm + query-time schemaSubjects derivation + admin 断言 17/10 + store 双断言回归）
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 45-02-PLAN.md — 验证层（emitter conformance anti-drift 门 + SC3 handler 级 parity 测试 + verify-phase-45.sh SC4 门禁）
 
 ### Phase 46: Entity SHACL Shapes

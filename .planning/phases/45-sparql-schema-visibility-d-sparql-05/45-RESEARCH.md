@@ -483,15 +483,17 @@ wsl 'CGO_ENABLED=1 go test ./internal/... -count=1'
 
 All other claims in this research are code-verified (see Code-Verified Fact Base) — no user confirmation needed beyond the locked CONTEXT decisions.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should the conformance test also pin the emitter's class-declaration IRI mismatch (owl:Class vs skf:Class)?**
+> Resolution recorded 2026-10-03 by plan-checker: all three adopted into plans per RESEARCH's own recommendations.
+
+1. **Should the conformance test also pin the emitter's class-declaration IRI mismatch (owl:Class vs skf:Class)?** (RESOLVED → 45-02 T1 comment-only quirk note)
    - What we know: production class-def triples are currently tier-invisible (Corrections #2); fixing this is out of scope but a conformance comment should note it so Phase 46 doesn't "discover" it as new.
    - Recommendation: comment only; no assertion (would fail today).
-2. **verify_main.go / verify-phase-41.sh staleness — repair now, backlog, or leave?**
+2. **verify_main.go / verify-phase-41.sh staleness** (RESOLVED → excluded from gate; record BL-05 candidate in 45 SUMMARY, do not fix)
    - What we know: runtime-broken since Phase 44; not in any active gate; compiles clean.
    - Recommendation: record as backlog item (BL-05 candidate) in the phase SUMMARY; do not fix in 45 (scope discipline).
-3. **Parity test file placement — new file vs extending admin_ontology_test.go.**
+3. **Parity test file placement** (RESOLVED → extend admin_ontology_test.go, 45-02 T2)
    - Recommendation: extend the existing ontology test file (reuses `invokeOntology`, `newOntologyDeps`, token env helpers) with a parity test that uses `fixtureKG()`; either placement is acceptable per CONTEXT discretion.
 
 ## Environment Availability
