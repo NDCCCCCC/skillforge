@@ -113,9 +113,21 @@ Plans:
 3. `/admin/governance` 校验报告可呈现实体类违规，且与 TBox 层违规可区分；涉 UI 改动先产出 UI-SPEC.md
 4. `verify-phase-46.sh` 全绿：shapes 加载 + quarantine 分流 + boot 存活 + governance 报告测试
 
-**Plans**: TBD
+**Plans**: 5 plans / 3 waves
 
-**UI hint**: yes
+**Wave 1**
+
+- [ ] 46-01-PLAN.md — SHACL 引擎机制：severity 政策归位（sourcePath 特例退役）+ shapes 路径列表化（variadic + ShapesPathsFromEnv + Layer 源文件追踪）
+
+**Wave 2** *(并行：零文件重叠)*
+
+- [ ] 46-02-PLAN.md — 分层盖戳 + dangling_edge_count + entities.ttl 交付 + SC2 隔离语义测试组
+- [ ] 46-03-PLAN.md — boot/rollback 装配统一 env 列表（induction.go:383 硬编码修复）+ rollback parity 回归
+
+**Wave 3** *(并行：零文件重叠)*
+
+- [ ] 46-04-PLAN.md — governance FE 分层呈现（46-UI-SPEC delta：徽章/区头计数/悬挂边列/组件测试）
+- [ ] 46-05-PLAN.md — verify-phase-46.sh 门禁（P1-P4 照 45 模式，anti-vacuous）
 
 ---
 
@@ -126,8 +138,8 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 2/2 | Complete    | 2026-10-03 |
-| 46. Entity SHACL Shapes | v1.6 | 0/TBD | Not started | — |
+| 46. Entity SHACL Shapes | v1.6 | 0/5 | Not started | — |
 
 ---
 
-*Last updated: 2026-10-03 — Phase 45 planned (2 plans / 2 waves: 45-01 β semantics landing, 45-02 verification layer + SC4 gate).*
+*Last updated: 2026-10-04 — Phase 46 planned (5 plans / 3 waves: 46-01 引擎机制, 46-02 实体 shapes+分层 ∥ 46-03 装配, 46-04 FE ∥ 46-05 verify 门禁).*
