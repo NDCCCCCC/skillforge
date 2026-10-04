@@ -453,6 +453,8 @@ skf:InsuranceProduct_tier a sh:PropertyShape ;
 
 ## Open Questions
 
+> **RESOLVED 2026-10-04（用户决策，已落进 plans）：** Q1 entityCode → 本 phase 零约束（对 D-46-01 字面清单的有意收窄，偏离记录 + 防顺手加强验收）；Q2 layer 派生 → parse 期源文件追踪；Q3 join 分隔符 → `string(filepath.ListSeparator)`。
+
 1. **entityCode 的 if-present 检查形态（需用户确认）**
    - What we know: CONTEXT 写「datatype/class if-present」，但 live 数据字面量裸表示 + 引擎 `"` 前缀启发式 + TestDatatypeViolation pinned 断言三者夹击，datatype 检查必然误隔离 16 个带码实体（Pitfall 2）。
    - What's unclear: 用户是否接受本 phase 的 entityCode「零约束」（仅 message 说明）或 prefers 改发射表示。

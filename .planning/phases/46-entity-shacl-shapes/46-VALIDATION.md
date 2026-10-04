@@ -1,9 +1,9 @@
 ---
 phase: 46
 slug: entity-shacl-shapes
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-10-04
 ---
 
@@ -37,20 +37,22 @@ created: 2026-10-04
 
 ## Per-Task Verification Map
 
-> Task/Plan/Wave 列在 planning 产出的 PLAN.md 定稿后对号入座；此处按 requirement 粒度锁定验证面。
+> 已按 plan-phase 定稿的 12 个 task 回填（2026-10-04，与 plan-checker Dimension 8 核验表一致）。
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | 0 | SHACL-01 | T-SHACL 路径注入 | env 路径 parse 失败即整体 error 不静默 | unit（shacl 包，纯 Go） | `go test ./internal/ontology/shacl/... -run TestShapesPaths -count=1`（未设置/空串/单/多路径四态 + 默认双文件 + errors.Join 不吞缺失路径） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-01 | — | N/A | unit | `go test ./internal/ontology/shacl/... -run TestEntitiesShapesParse -count=1`（2 NodeShapes、type hasValue / label minCount / if-present 无 minCount 逐条断言） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-01 | — | N/A | unit（induction 包） | `go test ./internal/ontology/induction/... -run TestRollbackShaclParity -count=1`（rollback 真读 env，induction.go:383 修复回归） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-02 | — | N/A | unit | `go test ./internal/ontology/shacl/... -run TestSeverity -count=1`（Warning/Info→放行，未声明/Violation→error 隔离） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-02 | D-TIER-03 隔离绕过 | 违规实体 subject 不可见（Query 为空） | unit（fixture KG，hermetic） | `go test ./internal/ontology/shacl/... -run TestEntityQuarantine -count=1`（缺 label Product → Quarantined + Query 空 + 再 Validate 报告稳定） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-02 | — | 携违规 boot 存活（D-SHACL-02） | unit 间接 | P4 全量套件 + 既有 main 链路回归（Discretion 授权 fixture 路线，无 boot 级集成测试） | ✅ 既有 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-03 | — | N/A | unit | `go test ./internal/ontology/shacl/... -run TestViolationLayer -count=1`（entity/tbox/global 三层盖戳） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-03 | — | N/A | unit | `go test ./internal/ontology/shacl/... -run TestDanglingEdges -count=1`（involves/parent 入边计数；0 边渲染 0） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | SHACL-03 | XSS（报告注入） | detail/constraint 文本节点渲染，无 dangerouslySetInnerHTML | FE unit（vitest，可选：planner 权衡组件测试 vs 目检 checklist） | `cd web && npx vitest run src/components/admin/governance`（Windows 侧） | ❌ Wave 0 | ⬜ pending |
-| TBD | TBD | 0 | 回归红线 | — | N/A | unit 回归 | P2/P4（既有 13 shacl 测试全绿；TestShaclViolation fixture 补 `sh:severity sh:Warning` 后断言不变） | ✅ 既有（1 处 fixture 单行补丁） | ⬜ pending |
+| 46-01-T1 severity/sourcePath retrofit | 01 | 1 | SHACL-01/02 + 回归红线 | T-SHACL-01 | sourcePath 特例退役，severity 单点政策 | unit | `CGO_ENABLED=0 go test ./internal/ontology/shacl/... -count=1` | ❌ Wave 0（fixture 单行补丁随 task） | ⬜ pending |
+| 46-01-T2 variadic + ShapesPathsFromEnv | 01 | 1 | SHACL-01 | T-SHACL 路径注入 | parse 失败即整体 error 不静默 | unit + build | `CGO_ENABLED=1 go build ./... && CGO_ENABLED=0 go test ./internal/ontology/shacl/... ./internal/ontology/induction/... -count=1` | ❌ Wave 0 | ⬜ pending |
+| 46-01-T3 TestShapesPaths/TestSeverity (tdd) | 01 | 1 | SHACL-01, SHACL-02 | — | N/A | unit | `go test ./internal/ontology/shacl/... -run 'TestShapesPaths\|TestSeverity' -v -count=1` | ❌ Wave 0 | ⬜ pending |
+| 46-02-T1 盖戳 + dangling_edge_count | 02 | 2 | SHACL-02, SHACL-03 | D-TIER-03 隔离绕过 | layer/target_class/global 哨兵；入边计数披露 | unit | `CGO_ENABLED=1 go build ./... && CGO_ENABLED=0 go test ./internal/ontology/shacl/... -count=1` | ❌ Wave 0 | ⬜ pending |
+| 46-02-T2 entities.ttl 交付 | 02 | 2 | SHACL-01 | T-46-01 防顺手加强 | entityCode 零约束（grep 验收 == 0） | unit | `go test ./internal/ontology/shacl/... -run TestEntitiesShapesParse -v -count=1` | ❌ Wave 0 | ⬜ pending |
+| 46-02-T3 四测试组 (tdd) | 02 | 2 | SHACL-02, SHACL-03 | D-TIER-03 | 违规实体 subject 不可见（Query 空） | unit（fixture KG，hermetic） | targeted `-run`（TestEntityQuarantine 等四名）`-v -count=1` | ❌ Wave 0 | ⬜ pending |
+| 46-03-T1 main.go 切 env 列表 | 03 | 2 | SHACL-01, SHACL-02 | — | 携违规 boot 存活（D-SHACL-02）；快照 :921 先于 :931 时序零改动 | build + vet | `CGO_ENABLED=1 go build ./... && CGO_ENABLED=1 go vet ./...` | ✅ 既有链路 | ⬜ pending |
+| 46-03-T2 rollback parity (tdd) | 03 | 2 | SHACL-01 | — | rollback 真读 env（induction.go:383 修复回归） | unit | `go test ./internal/ontology/induction/... -run TestRollbackShaclParity -v -count=1` | ❌ Wave 0 | ⬜ pending |
+| 46-04-T1 types.ts 镜像 | 04 | 3 | SHACL-03 | XSS | optional 字段契约镜像 | tsc | `cd web && npx tsc --noEmit` | ❌ Wave 0 | ⬜ pending |
+| 46-04-T2 ShaclReportView 徽章/区头/悬挂边 | 04 | 3 | SHACL-03 | XSS（报告注入） | detail/constraint 文本节点渲染，无 dangerouslySetInnerHTML | tsc + vitest | `cd web && npx tsc --noEmit && npx vitest run src/components/admin/governance` | ❌ Wave 0 | ⬜ pending |
+| 46-04-T3 GovernanceTab + 组件测试 (tdd) | 04 | 3 | SHACL-03 | — | N/A | FE unit（vitest） | `cd web && npx vitest run src/components/admin/governance` | ❌ Wave 0 | ⬜ pending |
+| 46-05-T1 verify-phase-46.sh | 05 | 3 | SHACL-01/02/03 | — | phase gate（P3 anti-vacuous pass_lines≥7） | script | `bash verify-phase-46.sh` | ❌ Wave 0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -58,11 +60,11 @@ created: 2026-10-04
 
 ## Wave 0 Requirements
 
-- [ ] `internal/ontology/shacl/` 新增 severity / layer / 列表化 / entities.ttl / dangling 测试组（或独立 `entities_test.go`，照包内单文件惯例）
-- [ ] `internal/ontology/induction` rollback SHACL parity 回归测试（新建）
-- [ ] TestShaclViolation fixture 单行补丁（`sh:severity sh:Warning`）——断言不动
-- [ ] FE 组件测试（可选）——若加，照 governanceApi.test.ts 的 vitest 惯例
-- [ ] 框架安装：无需（Go testing + vitest 既有）
+- [x] `internal/ontology/shacl/` 新增 severity / layer / 列表化 / entities.ttl / dangling 测试组（或独立 `entities_test.go`，照包内单文件惯例）→ 46-01-T3 + 46-02-T3 认领
+- [x] `internal/ontology/induction` rollback SHACL parity 回归测试（新建）→ 46-03-T2 认领
+- [x] TestShaclViolation fixture 单行补丁（`sh:severity sh:Warning`）——断言不动 → 46-01-T1 认领
+- [x] FE 组件测试（可选）——若加，照 governanceApi.test.ts 的 vitest 惯例 → 46-04-T3 认领（组件测试路线）
+- [x] 框架安装：无需（Go testing + vitest 既有）
 
 ---
 
@@ -76,11 +78,11 @@ created: 2026-10-04
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 1s（quick run）
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references（Wave 0 gaps 已全部被 46-01..46-05 的 TDD task 认领，无外置缺口）
+- [x] No watch-mode flags
+- [x] Feedback latency < 1s（quick run）
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-10-04（plan-checker 12/12 task 核验 + 0 blocker）
