@@ -1,10 +1,11 @@
 ---
 phase: 46
 slug: entity-shacl-shapes
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-10-04
+reviewed_at: 2026-10-04
 ---
 
 # Phase 46 — UI Design Contract
@@ -308,11 +309,11 @@ Tab 注册、view switcher、HealthBanner 三态文案与 Run ECL 回填 CTA、�
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS（pass-with-flag：grandfathered `px-1.5 py-0.5` / `px-3 py-1.5` 为 40-UI-SPEC 已批准 idiom 逐字复用，非新发明；未来 phase 净新间距须走 4px grid 或 `--space-*` token）
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved（gsd-ui-checker 2026-10-04，APPROVED 5 PASS + 1 FLAG 非阻塞）
