@@ -126,7 +126,7 @@ Plans:
 
 **Wave 3** *(并行：零文件重叠)*
 
-- [ ] 46-04-PLAN.md — governance FE 分层呈现（46-UI-SPEC delta：徽章/区头计数/悬挂边列/组件测试）
+- [x] 46-04-PLAN.md — governance FE 分层呈现（46-UI-SPEC delta：徽章/区头计数/悬挂边列/组件测试）✅ (2026-10-08, 5eeaa01/efc0f4a/3969a38/a440ffe)
 - [ ] 46-05-PLAN.md — verify-phase-46.sh 门禁（P1-P4 照 45 模式，anti-vacuous）
 
 ---
@@ -138,8 +138,8 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 2/2 | Complete    | 2026-10-03 |
-| 46. Entity SHACL Shapes | v1.6 | 3/5 | In progress | — |
+| 46. Entity SHACL Shapes | v1.6 | 4/5 | In progress | — |
 
 ---
 
-*Last updated: 2026-10-08 — Phase 46 executing (Wave 1 done: 46-01 引擎机制; Wave 2 done: 46-02 实体语义层 + 46-03 boot/rollback 装配收口; Wave 3 pending: 46-04 FE ∥ 46-05 verify 门禁).*
+*Last updated: 2026-10-08 — Phase 46 executing (Wave 1 done: 46-01 引擎机制; Wave 2 done: 46-02 实体语义层 + 46-03 boot/rollback 装配收口; Wave 3 half done: 46-04 FE 分层呈现 ✅; pending: 46-05 verify 门禁).*

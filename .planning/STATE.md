@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
 status: executing
-last_updated: "2026-10-08T02:42:00.000Z"
-last_activity: 2026-10-08 -- Phase 46 Plan 03 executed (3 commits)
+last_updated: "2026-10-08T03:05:00.000Z"
+last_activity: 2026-10-08 -- Phase 46 Plan 04 executed (4 commits)
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 86
 ---
 
 # State — SkillForge
@@ -18,12 +18,12 @@ progress:
 ## Current Position
 
 Phase: 46 (Entity SHACL Shapes) — EXECUTING
-Plan: 4 of 5 (Wave 2 complete：46-02 + 46-03 done；Wave 3 pending：46-04 ∥ 46-05)
+Plan: 5 of 5 (Wave 3 half done：46-04 done；pending：46-05 verify 门禁)
 Status: Executing Phase 46
-Resume: .planning/phases/46-entity-shacl-shapes/46-03-SUMMARY.md
-Last activity: 2026-10-08 -- Phase 46 Plan 03 executed (be1db74 / 0f13b47 / 35a24bc)
+Resume: .planning/phases/46-entity-shacl-shapes/46-04-SUMMARY.md
+Last activity: 2026-10-08 -- Phase 46 Plan 04 executed (5eeaa01 / efc0f4a / 3969a38 / a440ffe)
 
-Progress: [███████░░░] 71%
+Progress: [████████░░] 86%
 
 ### Quick Tasks Completed
 
@@ -265,6 +265,10 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - [Phase 46]: 46-03 D-46-02 consumption points closed — boot (main.go :930-931) and rollback (induction Step 11) both consume shacl.ShapesPathsFromEnv(); zero path literals at either call site, default list lives solely in the shacl package (combination drift type-impossible)
 - [Phase 46]: 46-03 D-PROV-09 parity gap closed with regression — induction.go:383 hard-coded data/shacl/shapes.ttl join (never resolvable → revalidation was a permanent silent no-op) retired; TestRollbackShaclParity pins env-consumed violations > 0 (case 1, genuine RED pre-fix — WARN line exposed the no-op path) + missing-shapes warn-and-return-0 (case 2)
 - [Phase 46]: 46-03 Pitfall 6 red line held via git diff line-level audit — :921 WriteSnapshot timing, :937-941 subject-only quarantine loop, :943 SetShaclReport all byte-identical; zero new post-quarantine snapshot triggers; env-unset case deliberately unpinned (cwd-dependent; covered by TestShapesPaths in shacl pkg)
+- [Phase 46]: 46-04 FE 零推导落地 — LAYER_BADGE 纯查表渲染 BE 盖戳（tbox=indigo/entity=neutral/global=dashed 无 chip 哨兵），未知 layer 值渲染原值 + entity 同色（console honesty，46-UI-SPEC §Color 第 4 行）；红线全守：governanceApi.ts 零改动、零新分区/tab/token/依赖、detail/constraint 全文本节点
+- [Phase 46]: 46-04 Honesty 红线 8/9 组件级钉死 — ShaclReportView.test.tsx 9 回归：悬挂边 0 渲染 0/缺失渲染 —（getAllByRole('cell')[2] 列序断言）、legacy 无徽章不炸且计数 span 不渲染、区头计数仅非零固定顺序、XSS 元字符文本化（元素查询 + 无 title 复制列的 innerHTML 负断言；detail 列 title 属性复制使字符串级断言必假阳，理由按 D-SPARQL-08 写进测试头）
+- [Phase 46]: 46-04 Task 3 RED-first 不适用（46-02 同款）— plan 排序实现先于钉子测试，保持 test(46-04)→feat(46-04) 提交序满足 TDD gate git log 序；test commit 曾夹带 TS2353 fixture 错误（vitest 不跑 tsc），amend 修入同一 commit
+- [Phase 46]: 46-04 先存失败 D-46-DEF-01 记录不修 — DetailPanel.test.tsx SC-5（knowledge-graph 空态 hero）确定性失败，与 governance 零 import 交集，归属 v1.6 积压既有「DetailPanel/emitter 两个 deferred 测试」条目（.planning/phases/46-entity-shacl-shapes/deferred-items.md）
 
 ## Operator Next Steps
 
@@ -293,3 +297,4 @@ v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation so
 | Phase 46 P46-01 | 10 min | 3 tasks | 4 files |
 | Phase 46 P46-02 | 11 min | 3 tasks | 3 files |
 | Phase 46 P46-03 | 11 min | 2 tasks | 3 files |
+| Phase 46 P46-04 | 16 min | 3 tasks | 4 files |
