@@ -202,9 +202,11 @@ func (m *Manager) Generate(ctx context.Context, text string) (Proposal, error) {
 	if err := p.Validate(); err != nil {
 		return Proposal{}, err
 	}
-	if err := m.persistLocked(); err != nil {
-		return Proposal{}, err
-	}
+	// WR-08: single persist, AFTER the append. The removed pre-append persist
+	// wrote an intermediate queue file (next_id already advanced by allocID,
+	// proposal missing) whenever the post-append persist later failed — an
+	// on-disk state whose only reader-facing effect was a silently lost
+	// proposal on restart, i.e. pure crash window with no upside.
 	m.queue = append(m.queue, p)
 	return p, m.persistLocked()
 }
