@@ -33,8 +33,10 @@
 # throwaway worktree (see .planning/phases/45-sparql-schema-visibility-
 # d-sparql-05/deferred-items.md) and RE-PROBED at Phase 46 HEAD 2026-10-08:
 # still failing. Fixing it is out of Phase 46 scope. P2/P4 therefore pass
-# ONLY when their unique --- FAIL set is empty or EXACTLY that one
-# documented test; any other failure red-lights the gate immediately.
+# ONLY when the command exits 0 (empty --- FAIL set) or exits non-zero with
+# a unique --- FAIL set of EXACTLY that one documented test; an empty log or
+# any other failure red-lights the gate immediately (WR-06: the exit code is
+# authoritative, grep-only judgment let infrastructure failures pass).
 
 set -uo pipefail
 
@@ -91,16 +93,26 @@ fail_detail() {
 # ---------------------------------------------------------------------------
 # P2: ontology suite (shacl + store + induction + emitter)
 # ---------------------------------------------------------------------------
+# WR-06: the exit code is authoritative. A grep-only --- FAIL judgment let
+# infrastructure failures pass as "zero failures found": a toolchain crash,
+# a bad test flag, an OOM kill, or an empty log from a WSL spawn failure all
+# produce no --- FAIL lines. Now: an empty log fails outright, and a
+# non-zero exit code passes only when the unique --- FAIL set is exactly
+# the D-45-DEF-01 waiver.
 info "P2: ontology suite (./internal/ontology/...)"
 wsl "CGO_ENABLED=1 $GO test ./internal/ontology/... -count=1" >"$WORK/p2.log" 2>&1
-if ! waiver_ok "$WORK/p2.log"; then
-  fail_detail "$WORK/p2.log" "P2"
-  fail "P2 ontology suite failed (beyond the D-45-DEF-01 waiver)"
+p2_rc=$?
+if [ ! -s "$WORK/p2.log" ]; then
+  fail "P2 produced no output (rc=$p2_rc) — infrastructure failure, no evidence of a test run"
+fi
+if [ "$p2_rc" -ne 0 ]; then
+  if ! waiver_ok "$WORK/p2.log"; then
+    fail_detail "$WORK/p2.log" "P2"
+    fail "P2 ontology suite failed (rc=$p2_rc, beyond the D-45-DEF-01 waiver)"
+  fi
+  waived "P2: rc=$p2_rc, unique --- FAIL set matches the D-45-DEF-01 waiver (TestEmitSubCategoryInstanceCount, deferred-items.md)"
 fi
 tail -5 "$WORK/p2.log"
-if grep -q -- '--- FAIL' "$WORK/p2.log"; then
-  waived "P2: 1 known pre-existing failure waived (D-45-DEF-01 TestEmitSubCategoryInstanceCount, deferred-items.md)"
-fi
 pass "P2 ontology suite"
 
 # ---------------------------------------------------------------------------
@@ -128,16 +140,21 @@ pass "P3 targeted shacl+induction ($(pass_lines "$WORK/p3.log") --- PASS, thresh
 # ---------------------------------------------------------------------------
 # P4: full hermetic internal suite
 # ---------------------------------------------------------------------------
+# WR-06: same exit-code + empty-log discipline as P2.
 info "P4: full internal suite (./internal/...)"
 wsl "CGO_ENABLED=1 $GO test ./internal/... -count=1" >"$WORK/p4.log" 2>&1
-if ! waiver_ok "$WORK/p4.log"; then
-  fail_detail "$WORK/p4.log" "P4"
-  fail "P4 full internal suite failed (beyond the D-45-DEF-01 waiver)"
+p4_rc=$?
+if [ ! -s "$WORK/p4.log" ]; then
+  fail "P4 produced no output (rc=$p4_rc) — infrastructure failure, no evidence of a test run"
+fi
+if [ "$p4_rc" -ne 0 ]; then
+  if ! waiver_ok "$WORK/p4.log"; then
+    fail_detail "$WORK/p4.log" "P4"
+    fail "P4 full internal suite failed (rc=$p4_rc, beyond the D-45-DEF-01 waiver)"
+  fi
+  waived "P4: rc=$p4_rc, unique --- FAIL set matches the D-45-DEF-01 waiver (TestEmitSubCategoryInstanceCount, deferred-items.md)"
 fi
 tail -3 "$WORK/p4.log"
-if grep -q -- '--- FAIL' "$WORK/p4.log"; then
-  waived "P4: 1 known pre-existing failure waived (D-45-DEF-01 TestEmitSubCategoryInstanceCount, deferred-items.md)"
-fi
 pass "P4 full internal suite"
 
 echo ""
