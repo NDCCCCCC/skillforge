@@ -17,7 +17,10 @@
 package shacl
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/skillforge/skillforge/internal/ontology/store"
@@ -873,5 +876,236 @@ skf:referencesTableShape a sh:PropertyShape ;
 
 	if report.Health != "error" {
 		t.Errorf("expected health 'error', got '%s'", report.Health)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// writeTempShapes — temp-file fixture helper for the D-46-01/D-46-02 test
+// group (os.CreateTemp("", "shacl-*.ttl") idiom shared with the tests above).
+// ---------------------------------------------------------------------------
+
+func writeTempShapes(t *testing.T, fixture string) string {
+	t.Helper()
+	tmp, err := os.CreateTemp("", "shacl-*.ttl")
+	if err != nil {
+		t.Fatalf("create temp: %v", err)
+	}
+	if _, err := tmp.WriteString(fixture); err != nil {
+		tmp.Close()
+		t.Fatalf("write fixture: %v", err)
+	}
+	if err := tmp.Close(); err != nil {
+		t.Fatalf("close temp: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(tmp.Name()) })
+	return tmp.Name()
+}
+
+// ---------------------------------------------------------------------------
+// TestShapesPaths — SKILLFORGE_SHACL_SHAPES path-list semantics (D-46-02).
+// Covers VALIDATION Test Map SHACL-01 rows: env three-state (empty / single /
+// multi) + default-list content + missing-path fail-closed (Pitfall 4/5:
+// SplitList("") is [] not [""], and a missing path must never be silently
+// skipped).
+// ---------------------------------------------------------------------------
+
+func TestShapesPaths(t *testing.T) {
+	t.Run("empty env falls back to default two-file list", func(t *testing.T) {
+		t.Setenv("SKILLFORGE_SHACL_SHAPES", "")
+		got := ShapesPathsFromEnv()
+		if len(got) != 2 {
+			t.Fatalf("expected 2 default paths, got %d: %v", len(got), got)
+		}
+		if !strings.HasSuffix(got[0], "shapes.ttl") {
+			t.Errorf("default[0] should end with shapes.ttl, got %q", got[0])
+		}
+		if !strings.HasSuffix(got[1], "entities.ttl") {
+			t.Errorf("default[1] should end with entities.ttl, got %q", got[1])
+		}
+	})
+
+	t.Run("single path env returns one-element list", func(t *testing.T) {
+		one := filepath.Join(t.TempDir(), "custom.ttl")
+		t.Setenv("SKILLFORGE_SHACL_SHAPES", one)
+		got := ShapesPathsFromEnv()
+		if len(got) != 1 || got[0] != one {
+			t.Fatalf("expected [%s], got %v", one, got)
+		}
+	})
+
+	t.Run("multi-path env splits on OS list separator", func(t *testing.T) {
+		dir := t.TempDir()
+		a := filepath.Join(dir, "a.ttl")
+		b := filepath.Join(dir, "b.ttl")
+		// Construct the env value with the OS list separator — never a
+		// hard-coded ":" or ";" (the dual of filepath.SplitList).
+		t.Setenv("SKILLFORGE_SHACL_SHAPES", strings.Join([]string{a, b}, string(filepath.ListSeparator)))
+		got := ShapesPathsFromEnv()
+		if len(got) != 2 || got[0] != a || got[1] != b {
+			t.Fatalf("expected [%s %s], got %v", a, b, got)
+		}
+	})
+
+	t.Run("missing single path fails validation", func(t *testing.T) {
+		kg := store.New()
+		missing := filepath.Join(t.TempDir(), "missing.ttl")
+		report, err := Validate(kg, missing)
+		if err == nil {
+			t.Fatalf("expected error for missing shapes path %s, got report %+v", missing, report)
+		}
+	})
+
+	t.Run("missing path in multi-file list fails whole validation", func(t *testing.T) {
+		kg := store.New()
+		kg.Insert(store.Triple{S: "http://skillforge.local/ontology#kb1", P: rdfType, O: skfKBCategory})
+		kg.Insert(store.Triple{S: "http://skillforge.local/ontology#kb1", P: skfCategoryName, O: `"测试类别"`})
+
+		valid := writeTempShapes(t, `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+skf:KBCategoryShape a sh:NodeShape ;
+    sh:targetClass skf:KBCategory ;
+    sh:property [
+        sh:path skf:categoryName ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string
+    ] .
+`)
+		missing := filepath.Join(t.TempDir(), "missing.ttl")
+		// Pitfall 5: one bad path fails the WHOLE validation — a
+		// half-populated shape set (missing path silently skipped) would
+		// validate against incomplete rules.
+		report, err := Validate(kg, valid, missing)
+		if err == nil {
+			t.Fatalf("expected error when one path in the list is missing, got report %+v", report)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestSeverity — sh:severity three-value mapping (D-46-01, W3C SHACL §2.1.4).
+// Covers VALIDATION Test Map SHACL-02 row: sh:Warning / sh:Info → warning
+// (allowed through, 0 quarantined, health=warn); unspecified / sh:Violation →
+// error (quarantined, health=error). Severity is read at PropertyShape
+// granularity; the engine derives nothing from the property path.
+// ---------------------------------------------------------------------------
+
+func TestSeverity(t *testing.T) {
+	// One KBCategory individual missing its required skf:categoryName —
+	// the sh:minCount 1 constraint fires under every severity variant.
+	// Literals are quoted per the :204-206 KG-construction idiom.
+	kg := store.New()
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#kb1", P: rdfType, O: skfKBCategory})
+
+	fixtureFmt := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+skf:KBCategoryShape a sh:NodeShape ;
+    sh:targetClass skf:KBCategory ;
+    sh:property [
+        sh:path skf:categoryName ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        %s
+        sh:message "severity probe (D-46-01)"
+    ] .
+`
+
+	cases := []struct {
+		name              string
+		severityDirective string
+		wantQuarantined   bool
+		wantHealth        string
+	}{
+		{name: "sh:Warning passes through unquarantined", severityDirective: "sh:severity sh:Warning ;", wantQuarantined: false, wantHealth: "warn"},
+		{name: "sh:Info passes through unquarantined", severityDirective: "sh:severity sh:Info ;", wantQuarantined: false, wantHealth: "warn"},
+		{name: "unspecified defaults to error", severityDirective: "", wantQuarantined: true, wantHealth: "error"},
+		{name: "sh:Violation is error", severityDirective: "sh:severity sh:Violation ;", wantQuarantined: true, wantHealth: "error"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTempShapes(t, fmt.Sprintf(fixtureFmt, tc.severityDirective))
+			report, err := Validate(kg, path)
+			if err != nil {
+				t.Fatalf("Validate failed: %v", err)
+			}
+			if report.Health != tc.wantHealth {
+				t.Errorf("expected health %q, got %q", tc.wantHealth, report.Health)
+			}
+			if tc.wantQuarantined {
+				if report.ErrorCount < 1 {
+					t.Errorf("expected at least 1 error, got %d", report.ErrorCount)
+				}
+				found := false
+				for _, q := range report.Quarantined {
+					if q.Entity == "http://skillforge.local/ontology#kb1" {
+						found = true
+					}
+				}
+				if !found {
+					t.Error("expected kb1 in Quarantined (error-level violation)")
+				}
+			} else {
+				if report.ErrorCount != 0 {
+					t.Errorf("expected 0 errors, got %d", report.ErrorCount)
+				}
+				if report.WarningCount != 1 {
+					t.Errorf("expected exactly 1 warning, got %d", report.WarningCount)
+				}
+				if len(report.Quarantined) != 0 {
+					t.Errorf("expected 0 quarantined, got %d", len(report.Quarantined))
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestSeveritySourcePathRetired — retirement nail for the D-PROV-10 engine
+// special case (D-46-01). A sh:path skf:sourcePath PropertyShape WITHOUT an
+// explicit sh:severity must produce an ERROR-level violation: behaviour is
+// decided by shapes data alone, never by the engine's former path-name
+// hard-coding (path==sourcePath → warning).
+// ---------------------------------------------------------------------------
+
+func TestSeveritySourcePathRetired(t *testing.T) {
+	kg := store.New()
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#note1", P: rdfType, O: skfNoteChunk})
+
+	fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+skf:NoteChunkShape a sh:NodeShape ;
+    sh:targetClass skf:NoteChunk ;
+    sh:property [
+        sh:path skf:sourcePath ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "sourcePath missing — no explicit severity declared"
+    ] .
+`
+	path := writeTempShapes(t, fixture)
+	report, err := Validate(kg, path)
+	if err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+	if report.Health != "error" {
+		t.Errorf("expected health=error (sourcePath engine special case retired), got %s", report.Health)
+	}
+	if report.ErrorCount < 1 {
+		t.Errorf("expected at least 1 error, got %d", report.ErrorCount)
+	}
+	found := false
+	for _, q := range report.Quarantined {
+		if q.Entity == "http://skillforge.local/ontology#note1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected note1 quarantined (unspecified severity on a sourcePath shape = error)")
 	}
 }
