@@ -1,0 +1,104 @@
+# SHACL Entity Shapes for SkillForge ABox Business Entities (D-NZK-05)
+#
+# D-46-01: the constraint list is locked by user decision 2026-10-04 —
+#   required (@error minCount) constraints cover ONLY the properties the
+#   extractor emits unconditionally (abox.go BuildTriples :210-211:
+#   rdf:type + rdfs:label); if-present properties carry sh:class only and
+#   never sh:minCount. Any minCount beyond the unconditional emission set
+#   would quarantine 112/127 legal live entities on first run (rejected —
+#   the first validation run must produce zero quarantine).
+# D-46-02: this file is a member of the SKILLFORGE_SHACL_SHAPES path LIST
+#   (single read point ShapesPathsFromEnv; default list = shapes.ttl +
+#   entities.ttl joined by the OS path-list separator). Violations sourced
+#   from this file are stamped layer=entity by the engine, derived from
+#   this file's basename — no class-name hard-coding.
+#
+# ENTITYCODE ZERO-CONSTRAINT DEVIATION (user decision 2026-10-04):
+#   skf:entityCode deliberately gets NO PropertyShape in this file. This is
+#   an intentional narrowing of the D-46-01 constraint menu's datatype/class
+#   letter: the engine's checkDatatype / checkNodeKind classify literalness
+#   by the leading double-quote, while BuildTriples (abox.go :211/:214)
+#   emits entity labels and entity codes as BARE strings (live snapshot
+#   evidence 2026-10-04: 126/126 labels and 16/16 entity codes are bare).
+#   A datatype/nodeKind constraint would therefore misclassify every value
+#   as an IRI and quarantine all 16 coded entities on the first run,
+#   breaking the zero-quarantine red line; regex constraints are a silent
+#   no-op on bare values (no quoted literal → skipped), so they would be
+#   decoration, not enforcement. Fixing the emission representation stays in
+#   backlog; shapes must not fake protection the engine cannot deliver.
+#
+# TableSchema and the other TBox-layer shapes stay in shapes.ttl (same
+#   directory) — this file carries ABox entity shapes only.
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ==============================================================================
+# skf:InsuranceProduct (TBox v7 prop-0003; extractor kind enum: stub.go
+# legalEntityKinds = {InsuranceProduct, Organization})
+# — rdf:type + rdfs:label are unconditional (abox.go :210-211) → required
+# — skf:belongsToTier if-present (abox.go :220-222, note.Tier != "") →
+#   class-only check against the Tier class (live: every belongsToTier
+#   target is a Tier individual, 0 violations)
+# ==============================================================================
+skf:InsuranceProductShape a sh:NodeShape ;
+    sh:targetClass skf:InsuranceProduct ;
+    sh:property skf:InsuranceProduct_type , skf:InsuranceProduct_label , skf:InsuranceProduct_tier .
+
+skf:InsuranceProduct_type a sh:PropertyShape ;
+    sh:path rdf:type ;
+    sh:hasValue skf:InsuranceProduct ;
+    sh:severity sh:Violation ;
+    sh:message "skf:InsuranceProduct must have rdf:type skf:InsuranceProduct"@en .
+
+# Emitted unconditionally (abox.go :211) → minCount 1 @error; live 126/126
+# satisfied. NO datatype constraint — Pitfall 2 (bare strings would be
+# misclassified as IRIs and quarantine every labelled entity).
+skf:InsuranceProduct_label a sh:PropertyShape ;
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+    sh:severity sh:Violation ;
+    sh:message "skf:InsuranceProduct must have at least one rdfs:label"@en .
+
+# if-present → sh:class only, no minCount.
+skf:InsuranceProduct_tier a sh:PropertyShape ;
+    sh:path skf:belongsToTier ;
+    sh:class skf:Tier ;
+    sh:severity sh:Violation ;
+    sh:message "skf:belongsToTier value must be a skf:Tier instance"@en .
+
+# ==============================================================================
+# skf:Organization (TBox v7 prop-0004/0005)
+# — type/label/tier isomorphic to InsuranceProduct
+# — skf:parentOrganization if-present (same-batch exact-name match only,
+#   abox.go :232-236) → class-only check against Organization
+# ==============================================================================
+skf:OrganizationShape a sh:NodeShape ;
+    sh:targetClass skf:Organization ;
+    sh:property skf:Organization_type , skf:Organization_label , skf:Organization_tier , skf:Organization_parent .
+
+skf:Organization_type a sh:PropertyShape ;
+    sh:path rdf:type ;
+    sh:hasValue skf:Organization ;
+    sh:severity sh:Violation ;
+    sh:message "skf:Organization must have rdf:type skf:Organization"@en .
+
+skf:Organization_label a sh:PropertyShape ;
+    sh:path rdfs:label ;
+    sh:minCount 1 ;
+    sh:severity sh:Violation ;
+    sh:message "skf:Organization must have at least one rdfs:label"@en .
+
+skf:Organization_tier a sh:PropertyShape ;
+    sh:path skf:belongsToTier ;
+    sh:class skf:Tier ;
+    sh:severity sh:Violation ;
+    sh:message "skf:belongsToTier value must be a skf:Tier instance"@en .
+
+skf:Organization_parent a sh:PropertyShape ;
+    sh:path skf:parentOrganization ;
+    sh:class skf:Organization ;
+    sh:severity sh:Violation ;
+    sh:message "skf:parentOrganization value must be a skf:Organization instance"@en .
