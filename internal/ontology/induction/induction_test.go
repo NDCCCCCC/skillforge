@@ -209,6 +209,30 @@ func TestPreviewIRIConflictDetection(t *testing.T) {
 	}
 }
 
+// TestPreviewIRINoPrefixSubstringFalsePositive — WR-04 regression nail:
+// a local name must not be reported as taken because it is a prefix
+// substring of a different existing IRI (Note vs NoteChunk).
+func TestPreviewIRINoPrefixSubstringFalsePositive(t *testing.T) {
+	m := newTestManager(t, `{"kind":"Class","description_zh":"业务规则","description_en":"business rule"}`)
+	ttl := "@prefix skf: <http://skillforge.local/ontology#> .\n" +
+		"skf:NoteChunk a owl:Class .\n" +
+		"<http://skillforge.local/ontology#NoteChunkProperty> a owl:ObjectProperty .\n"
+	if err := os.WriteFile(filepath.Join(m.dataDir, "skillforge_tbox.ttl"), []byte(ttl), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// "Note" is free: skf:NoteChunk / …#NoteChunkProperty are different IRIs.
+	if err := m.PreviewIRI("Note"); err != nil {
+		t.Errorf("PreviewIRI(Note) should be free (prefix substring is not a conflict): %v", err)
+	}
+	// The exact existing names still conflict (prefixed and full-IRI forms).
+	if err := m.PreviewIRI("NoteChunk"); err == nil {
+		t.Errorf("PreviewIRI(NoteChunk) should conflict")
+	}
+	if err := m.PreviewIRI("NoteChunkProperty"); err == nil {
+		t.Errorf("PreviewIRI(NoteChunkProperty) should conflict (full-IRI form)")
+	}
+}
+
 func TestQueuePersistsAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
 	kg := store.New()

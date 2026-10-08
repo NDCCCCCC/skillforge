@@ -635,8 +635,13 @@ func (m *Manager) previewIRILocked(localName string) error {
 		return errors.New("induction: local name is empty")
 	}
 	if data, err := os.ReadFile(m.currentTTLPath()); err == nil {
-		if strings.Contains(string(data), "skf:"+localName+" ") ||
-			strings.Contains(string(data), fmt.Sprintf("%s%s", m.ns, localName)) {
+		text := string(data)
+		// WR-04: both probes require standalone-token boundaries. The pre-fix
+		// full-IRI Contains matched prefix substrings (…#Note inside
+		// …#NoteChunk), falsely rejecting free local names and pushing
+		// uniqueLocalName to unnecessary suffixes (BusinessRule → BusinessRule2).
+		if containsStandaloneToken(text, "skf:"+localName) ||
+			containsStandaloneToken(text, m.ns+localName) {
 			return fmt.Errorf("%w: skf:%s", ErrIRIConflict, localName)
 		}
 	}
@@ -646,6 +651,40 @@ func (m *Manager) previewIRILocked(localName string) error {
 		}
 	}
 	return nil
+}
+
+// containsStandaloneToken reports whether needle occurs in text as a
+// standalone Turtle token: neither the byte before nor the byte after may
+// continue a name (the leading check also rejects longer prefixes like
+// "myskf:"; the trailing check rejects longer local names like NoteChunk).
+// Best-effort textual check, matching the rest of this file's TTL handling.
+func containsStandaloneToken(text, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	for i := 0; i < len(text); {
+		j := strings.Index(text[i:], needle)
+		if j < 0 {
+			return false
+		}
+		pos := i + j
+		if !nameContinues(text, pos-1) && !nameContinues(text, pos+len(needle)) {
+			return true
+		}
+		i = pos + 1
+	}
+	return false
+}
+
+// nameContinues reports whether the byte at i extends a Turtle name
+// (out-of-range positions never continue).
+func nameContinues(text string, i int) bool {
+	if i < 0 || i >= len(text) {
+		return false
+	}
+	c := text[i]
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' ||
+		c >= '0' && c <= '9' || c == '_' || c == '-' || c == ':'
 }
 
 // uniqueLocalName derives a free PascalCase name from the English description.
