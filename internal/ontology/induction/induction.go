@@ -380,13 +380,15 @@ func (m *Manager) RollbackTBox(targetVersion int, reason string) (int, int, erro
 	}
 
 	// Step 11: Run SHACL revalidation and return violation count (D-PROV-09).
-	shapesPath := filepath.Join(m.dataDir, "..", "shacl", "shapes.ttl")
-	// TODO(46-03): switch to shacl.ShapesPathsFromEnv() — this hard-coded path
-	// (never resolvable: the directory does not exist) is the D-46-02 fix
-	// point; the []string adaptation here is mechanical signature-only.
-	report, err := shacl.ValidateWithTrigger(m.kg, []string{shapesPath}, "rollback")
+	// D-46-02: rollback consumes the same env-driven shapes path list as
+	// boot (the single read point lives in the shacl package) — the former
+	// hard-coded data/shacl/shapes.ttl join never resolved and reduced this
+	// revalidation to a silent no-op.
+	report, err := shacl.ValidateWithTrigger(m.kg, shacl.ShapesPathsFromEnv(), "rollback")
 	if err != nil {
-		// SHACL failure is not a rollback failure — log and return 0 violations
+		// SHACL failure is not a rollback failure — log and return 0
+		// violations (D-PROV-09 warn-and-return-0 posture; boot/rollback
+		// shapes parity per D-46-02).
 		fmt.Fprintf(os.Stderr, "[WARN] induction: post-rollback SHACL validation: %v\n", err)
 		return next, 0, nil
 	}
