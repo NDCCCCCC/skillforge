@@ -438,3 +438,96 @@ skf:NewClass a owl:Class .
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// TestRollbackPreservesABox — CR-01 regression nail: RollbackTBox replaces
+// ONLY the TBox layer of the KG store. The pre-fix behavior iterated
+// Query("","","") and DeleteSubject'ed EVERY subject, wiping the ECL ABox
+// triples (note/table/entity, D-KG-02: must survive restarts) — and the
+// post-rollback snapshot persisted that wipe to disk. After the fix an ABox
+// note seeded before the rollback must still be present, a TBox subject
+// removed by the rollback must be gone, and the changelog entry must report
+// the removed TBox subject instead of an empty Removed list.
+// ---------------------------------------------------------------------------
+
+func TestRollbackPreservesABox(t *testing.T) {
+	dir := t.TempDir()
+	kg := store.New()
+
+	v1TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+`
+	v2TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+skf:NewClass a owl:Class .
+`
+	for name, content := range map[string]string{
+		"skillforge_tbox.v1.ttl": v1TTL,
+		"skillforge_tbox.v2.ttl": v2TTL,
+		"skillforge_tbox.ttl":    v2TTL,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tbox_version.txt"), []byte("2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "proposals.json"), []byte(`{"next_id":1,"items":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kg.LoadFromTurtle(v2TTL); err != nil {
+		t.Fatalf("LoadFromTurtle: %v", err)
+	}
+
+	// Seed ABox triples the way the ECL pipeline does: note/entity IRIs that
+	// never appear in any TBox TTL (D-KG-02).
+	aboxNote := testNS + "note_001"
+	aboxEntity := testNS + "org_acme"
+	kg.Insert(store.Triple{S: aboxNote, P: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", O: testNS + "NoteChunk"})
+	kg.Insert(store.Triple{S: aboxNote, P: testNS + "involvesOrganization", O: aboxEntity})
+	kg.Insert(store.Triple{S: aboxEntity, P: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", O: testNS + "Organization"})
+
+	m, err := NewManager(testNS, dir, nil, kg)
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	if _, _, err := m.RollbackTBox(1, "cr-01 regression test"); err != nil {
+		t.Fatalf("RollbackTBox: %v", err)
+	}
+
+	// ABox triples must have survived the rollback.
+	if got := len(m.kg.Query(aboxNote, "", "")); got != 2 {
+		t.Errorf("ABox note triples = %d, want 2 (ABox must survive rollback)", got)
+	}
+	if got := len(m.kg.Query(aboxEntity, "", "")); got != 1 {
+		t.Errorf("ABox entity triples = %d, want 1", got)
+	}
+	// TBox subject removed by the rollback must be gone from the KG.
+	if got := len(m.kg.Query(testNS+"NewClass", "", "")); got != 0 {
+		t.Errorf("removed TBox subject NewClass still in KG (%d triples), want 0", got)
+	}
+	// TBox subject kept by the rollback must be present exactly once.
+	if got := len(m.kg.Query(testNS+"Thing", "", "")); got != 1 {
+		t.Errorf("kept TBox subject Thing = %d triples, want 1", got)
+	}
+
+	// Changelog honesty: the rollback entry must report the removed TBox
+	// subject (the pre-fix entry wrote Removed: []string{} unconditionally).
+	entries, err := m.ListChangelog()
+	if err != nil {
+		t.Fatalf("ListChangelog: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("no changelog entries after rollback")
+	}
+	if len(entries[0].What.Removed) != 1 || entries[0].What.Removed[0] != testNS+"NewClass" {
+		t.Errorf("changelog Removed = %v, want [%sNewClass]", entries[0].What.Removed, testNS)
+	}
+	if len(entries[0].What.Added) != 0 {
+		t.Errorf("changelog Added = %v, want empty", entries[0].What.Added)
+	}
+}

@@ -321,6 +321,35 @@ func (m *Manager) RollbackTBox(targetVersion int, reason string) (int, int, erro
 		return 0, 0, fmt.Errorf("induction: read target TTL v%d: %w", targetVersion, err)
 	}
 
+	currentTTLPath := filepath.Join(m.dataDir, "skillforge_tbox.ttl")
+
+	// Step 1b (CR-01): capture the CURRENT TBox subject set from the pointer
+	// TTL BEFORE it is overwritten. Rollback must replace only the TBox
+	// layer: the pre-fix behavior deleted EVERY subject in the store, wiping
+	// the ECL ABox triples (note/table/entity) that D-KG-02 requires to
+	// survive restarts — and Step 8's immediate snapshot persisted that wipe
+	// to disk, making the deletion permanent.
+	// ABox subjects never appear in a TBox TTL, so subject-set diffing on the
+	// pointer TTL is the exact boundary between the two layers. The throwaway
+	// store reuses the same Turtle parser as LoadFromTurtle — no text-level
+	// re-parsing of TTL lines.
+	prevTBox := store.New()
+	prevData, prevErr := os.ReadFile(currentTTLPath)
+	switch {
+	case prevErr == nil:
+		if _, err := prevTBox.LoadFromTurtle(string(prevData)); err != nil {
+			return 0, 0, fmt.Errorf("induction: parse current pointer TTL: %w", err)
+		}
+	case os.IsNotExist(prevErr):
+		// Fresh deployment without a pointer TTL: nothing to delete.
+	default:
+		return 0, 0, fmt.Errorf("induction: read current pointer TTL: %w", prevErr)
+	}
+	oldSubjects := make(map[string]bool, len(prevTBox.Query("", "", "")))
+	for _, t := range prevTBox.Query("", "", "") {
+		oldSubjects[t.S] = true
+	}
+
 	// Step 2: Compute next = current + 1.
 	next := current + 1
 
@@ -332,7 +361,6 @@ func (m *Manager) RollbackTBox(targetVersion int, reason string) (int, int, erro
 	}
 
 	// Step 4: Update pointer file.
-	currentTTLPath := filepath.Join(m.dataDir, "skillforge_tbox.ttl")
 	if err := writeFileAtomic(currentTTLPath, []byte(newTTL)); err != nil {
 		return 0, 0, fmt.Errorf("induction: refresh pointer TTL: %w", err)
 	}
@@ -342,14 +370,13 @@ func (m *Manager) RollbackTBox(targetVersion int, reason string) (int, int, erro
 		return 0, 0, fmt.Errorf("induction: write version file: %w", err)
 	}
 
-	// Step 6: Clear KG store (delete all triples).
-	allTriples := m.kg.Query("", "", "")
-	seen := map[string]bool{}
-	for _, t := range allTriples {
-		if !seen[t.S] {
-			seen[t.S] = true
-			m.kg.DeleteSubject(t.S)
-		}
+	// Step 6 (CR-01): delete ONLY the previous TBox subjects. Every ABox
+	// triple — including edges FROM ABox entities INTO TBox class IRIs — has
+	// an ABox subject and therefore survives. Quarantine-zone triples are
+	// store-keyed separately from the main indices and are not touched by
+	// DeleteSubject.
+	for s := range oldSubjects {
+		m.kg.DeleteSubject(s)
 	}
 
 	// Step 7: Reload KG from new TTL.
@@ -366,13 +393,38 @@ func (m *Manager) RollbackTBox(targetVersion int, reason string) (int, int, erro
 	// Step 9: Fire change hook (debounced snapshot will also fire, but explicit is fine).
 	m.fireChange()
 
-	// Step 10: Append changelog entry.
+	// Step 10: Append changelog entry. Added/Removed are the TBox subject
+	// sets that differ between the replaced version and the rolled-back-to
+	// version (CR-01: both were hardcoded to empty lists before, which
+	// misreported the operation's actual footprint).
+	newTBox := store.New()
+	if _, err := newTBox.LoadFromTurtle(newTTL); err != nil {
+		return 0, 0, fmt.Errorf("induction: reparse new TTL for changelog: %w", err)
+	}
+	newSubjects := make(map[string]bool)
+	for _, t := range newTBox.Query("", "", "") {
+		newSubjects[t.S] = true
+	}
+	added := make([]string, 0, len(newSubjects))
+	for s := range newSubjects {
+		if !oldSubjects[s] {
+			added = append(added, s)
+		}
+	}
+	removed := make([]string, 0)
+	for s := range oldSubjects {
+		if !newSubjects[s] {
+			removed = append(removed, s)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
 	why := fmt.Sprintf("rollback to v%d: %s", targetVersion, reason)
 	entry := ChangelogEntry{
 		Version: next,
 		Who:     "system:rollback",
 		When:    time.Now().UTC().Format(time.RFC3339),
-		What:    ChangelogWhat{Added: []string{}, Removed: []string{}},
+		What:    ChangelogWhat{Added: added, Removed: removed},
 		Why:     why,
 	}
 	if err := m.AppendChangelog(entry); err != nil {
