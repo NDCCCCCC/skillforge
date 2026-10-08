@@ -17,6 +17,18 @@
 
 # ==============================================================================
 # GLOBAL PROPERTY SHAPES
+#
+# WR-05 disclosure (enforcement scope, read before adding rules here):
+# the engine (internal/ontology/shacl/validate.go) executes ONLY the
+# skf:referencesTableShape below, as a hard-coded cross-entity check
+# (checkGlobalReferences). The other global PropertyShapes in this section
+# (belongsToTier / hasReadAccess / hasWriteAccess / poweredBy /
+# requiresRefusal / hasSubCategory / belongsToNote) are DECLARATION-ONLY —
+# they are not parsed into any executed structure. The same constraints are
+# enforced per-class via the sh:targetClass NodeShapes further down, but an
+# edge with these predicates from a NON-target-class subject is NOT checked.
+# Do not rely on global enforcement of those shapes until a generic
+# global-shape executor lands in the engine.
 # ==============================================================================
 
 # skf:referencesTable — O must be a skf:TableSchema

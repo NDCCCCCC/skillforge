@@ -172,14 +172,6 @@ func ValidateWithTrigger(kg *store.Store, shapesPaths []string, trigger string) 
 			fileParsed.NodeShapes[i].Layer = layer
 		}
 		parsed.NodeShapes = append(parsed.NodeShapes, fileParsed.NodeShapes...)
-		parsed.GlobalRefs = append(parsed.GlobalRefs, fileParsed.GlobalRefs...)
-		parsed.GlobalBelongsTo = append(parsed.GlobalBelongsTo, fileParsed.GlobalBelongsTo...)
-		parsed.GlobalHasRead = append(parsed.GlobalHasRead, fileParsed.GlobalHasRead...)
-		parsed.GlobalHasWrite = append(parsed.GlobalHasWrite, fileParsed.GlobalHasWrite...)
-		parsed.GlobalPoweredBy = append(parsed.GlobalPoweredBy, fileParsed.GlobalPoweredBy...)
-		parsed.GlobalRequires = append(parsed.GlobalRequires, fileParsed.GlobalRequires...)
-		parsed.GlobalHasSubCat = append(parsed.GlobalHasSubCat, fileParsed.GlobalHasSubCat...)
-		parsed.GlobalBelongsNote = append(parsed.GlobalBelongsNote, fileParsed.GlobalBelongsNote...)
 	}
 	if len(parseErrs) > 0 {
 		return nil, fmt.Errorf("shacl: parse shapes: %w", errors.Join(parseErrs...))
@@ -228,7 +220,7 @@ func ValidateWithTrigger(kg *store.Store, shapesPaths []string, trigger string) 
 
 	// Global reference integrity: every skf:NoteChunk with skf:referencesTable
 	// must point to an existing skf:TableSchema.
-	globalRefs := checkGlobalReferences(kg, parsed)
+	globalRefs := checkGlobalReferences(kg)
 	for _, v := range globalRefs {
 		if v.Severity == SeverityError {
 			entityErrors[v.Entity] = append(entityErrors[v.Entity], v)
@@ -302,16 +294,16 @@ type tripleRec struct {
 }
 
 // parsedShapes holds the in-memory representation of a SHACL shapes file.
+//
+// WR-05: standalone (non-NodeShape-attached) PropertyShapes are deliberately
+// NOT collected here. The previous eight per-predicate Global* buckets were
+// write-only — parsed and merged per file, but never executed by any engine
+// path — which made shapes.ttl declare global enforcement it did not have.
+// The ONE global rule the engine executes (referencesTable → TableSchema)
+// lives in checkGlobalReferences, intentionally hard-coded. Reintroduce
+// collection only together with a generic global-shape executor.
 type parsedShapes struct {
-	NodeShapes        []nodeShape
-	GlobalRefs        []propertyConstraint // skf:referencesTable → TableSchema
-	GlobalBelongsTo   []propertyConstraint // skf:belongsToTier → Tier
-	GlobalHasRead     []propertyConstraint
-	GlobalHasWrite    []propertyConstraint
-	GlobalPoweredBy   []propertyConstraint
-	GlobalRequires   []propertyConstraint
-	GlobalHasSubCat   []propertyConstraint
-	GlobalBelongsNote []propertyConstraint
+	NodeShapes []nodeShape
 }
 
 type nodeShape struct {
@@ -407,45 +399,10 @@ func parseShapes(path string) (*parsedShapes, error) {
 		parsed.NodeShapes = append(parsed.NodeShapes, ns)
 	}
 
-	// Extract global property shapes (PropertyShapes attached directly, not via NodeShape).
-	// These encode cross-entity integrity rules like skf:referencesTable → skf:TableSchema.
-	for s, subs := range byS {
-		isPropShape := false
-		for _, tr := range subs {
-			if tr.P == ns("type") && tr.O == sh("PropertyShape") {
-				isPropShape = true
-				break
-			}
-		}
-		if !isPropShape {
-			continue
-		}
-
-		constraint := parsePropertyShape(byS, s)
-		if constraint.Path == "" {
-			continue
-		}
-
-		// Class-based property shapes (global integrity).
-		switch constraint.Path {
-		case pf("referencesTable"):
-			parsed.GlobalRefs = append(parsed.GlobalRefs, constraint)
-		case pf("belongsToTier"):
-			parsed.GlobalBelongsTo = append(parsed.GlobalBelongsTo, constraint)
-		case pf("hasReadAccess"):
-			parsed.GlobalHasRead = append(parsed.GlobalHasRead, constraint)
-		case pf("hasWriteAccess"):
-			parsed.GlobalHasWrite = append(parsed.GlobalHasWrite, constraint)
-		case pf("poweredBy"):
-			parsed.GlobalPoweredBy = append(parsed.GlobalPoweredBy, constraint)
-		case pf("requiresRefusal"):
-			parsed.GlobalRequires = append(parsed.GlobalRequires, constraint)
-		case pf("hasSubCategory"):
-			parsed.GlobalHasSubCat = append(parsed.GlobalHasSubCat, constraint)
-		case pf("belongsToNote"):
-			parsed.GlobalBelongsNote = append(parsed.GlobalBelongsNote, constraint)
-		}
-	}
+	// WR-05: standalone sh:PropertyShape subjects (attached to no NodeShape)
+	// are intentionally not parsed into any execution structure — see the
+	// parsedShapes doc comment. shapes.ttl's global PropertyShapes other than
+	// the hard-coded referencesTable check are declaration-only today.
 
 	return parsed, nil
 }
@@ -822,7 +779,12 @@ func checkHasValue(entity string, c propertyConstraint, values []store.Triple) [
 
 // checkGlobalReferences enforces cross-entity integrity:
 // every skf:NoteChunk with skf:referencesTable must point to an existing skf:TableSchema.
-func checkGlobalReferences(kg *store.Store, parsed *parsedShapes) []Violation {
+//
+// WR-05: this check is intentionally hard-coded (it does not read the parsed
+// shapes) — it is the ONLY global-layer rule the engine executes. The other
+// global PropertyShapes in shapes.ttl are declaration-only until a generic
+// global-shape executor exists; see the parsedShapes doc comment.
+func checkGlobalReferences(kg *store.Store) []Violation {
 	var violations []Violation
 
 	// Get all NoteChunks with skf:referencesTable.
