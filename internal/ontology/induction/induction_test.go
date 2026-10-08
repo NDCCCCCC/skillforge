@@ -233,6 +233,46 @@ func TestQueuePersistsAcrossRestart(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// WR-03 regression nails: the rdfs:label line of a proposal must never be
+// text-split into a garbage rdf:type triple, end-to-end and unit level.
+// ---------------------------------------------------------------------------
+
+func TestParseTripleLineSkipsLabelLine(t *testing.T) {
+	label := `    rdfs:label "规则"@zh , "representing a business concept"@en .`
+	if trip, ok := parseTripleLine(label, testNS); ok {
+		t.Errorf("label line parsed as a triple (WR-03): %+v", trip)
+	}
+	typeLine := "<" + testNS + "BusinessRule> a owl:Class ;"
+	trip, ok := parseTripleLine(typeLine, testNS)
+	if !ok {
+		t.Fatalf("type line failed to parse")
+	}
+	if trip.S != testNS+"BusinessRule" || trip.O != "http://www.w3.org/2002/07/owl#Class" {
+		t.Errorf("type line parsed wrong: %+v", trip)
+	}
+}
+
+func TestApproveDescriptionContainingAWordInsertsNoGarbage(t *testing.T) {
+	// description_en contains " a " — pre-fix the label line was split on
+	// " a " and a garbage rdf:type triple was inserted into the KG.
+	m := newTestManager(t, `{"kind":"Class","description_zh":"业务概念","description_en":"representing a business concept"}`)
+	p, err := m.Generate(context.Background(), "src")
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if _, _, err := m.Approve(p.ID, ""); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	hits := m.kg.Query(p.ProposedIRI, "", "")
+	if len(hits) != 1 {
+		t.Fatalf("KG has %d triples for %s, want exactly 1 (label line must not produce garbage): %+v", len(hits), p.ProposedIRI, hits)
+	}
+	if hits[0].O != "http://www.w3.org/2002/07/owl#Class" {
+		t.Errorf("unexpected triple: %+v", hits[0])
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestRollbackLatency — SC-4: rollback completes in < 5 seconds.
 // D-LOG-03 + D-PROV-09: rollback writes v{N+1}, updates pointer,
 // clears KG, reloads TTL, runs SHACL revalidation.

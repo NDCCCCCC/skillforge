@@ -729,6 +729,14 @@ func parseTripleLine(line, ns string) (store.Triple, bool) {
 	s = strings.TrimSuffix(s, ";")
 	s = strings.TrimSuffix(s, ".")
 	s = strings.TrimSpace(s)
+	// WR-03: skip the rdfs:label line emitted by proposedTriples. Text-
+	// splitting it on " a " produced a garbage type triple whenever the
+	// bilingual description contained " a " (e.g. "representing a business
+	// concept" — extremely common in single-sentence LLM output), and that
+	// garbage was kg.Insert'ed and persisted via snapshots.
+	if strings.HasPrefix(s, "rdfs:label ") {
+		return store.Triple{}, false
+	}
 	parts := strings.SplitN(s, " a ", 2)
 	if len(parts) != 2 {
 		return store.Triple{}, false
