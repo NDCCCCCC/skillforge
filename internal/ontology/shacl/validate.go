@@ -27,6 +27,15 @@
 // and warning (optional property missing / provenance-missing). Error
 // entities are added to Quarantined and excluded from the main KG index.
 // Warning entities are allowed through with violations recorded.
+//
+// D-46-01: sh:severity is data, not engine policy. A PropertyShape declaring
+// sh:severity sh:Warning or sh:Info yields warning-level violations (allowed
+// through); sh:Violation, any unknown IRI, or no declaration at all yields
+// error-level violations (W3C SHACL §2.1.4: "sh:Violation is the default if
+// sh:severity is unspecified"). Defaulting to error keeps the pre-existing
+// TBox shapes behaviour byte-identical; the former sourcePath→warning engine
+// special case (D-PROV-10) retired into explicit sh:severity declarations in
+// shapes.ttl.
 package shacl
 
 import (
@@ -425,12 +434,23 @@ func parsePropertyShape(byS map[string][]tripleRec, subject string) propertyCons
 		}
 	}
 
-	// D-PROV-10: provenance-missing (skf:sourcePath on NoteChunk/TableSchema) is warning-only.
-	// Detect by path = skf:sourcePath.
-	if c.Path == pf("sourcePath") {
-		c.Severity = SeverityWarning
-	} else {
-		c.Severity = SeverityError
+	// D-46-01: sh:severity is parsed from the shapes data, not derived by the
+	// engine (W3C SHACL §2.1.4: "sh:Violation is the default if sh:severity
+	// is unspecified"). sh:Warning / sh:Info → warning-level (allowed through,
+	// recorded); sh:Violation, any unknown IRI, or an unspecified value →
+	// error-level (quarantined). Severity is read at PropertyShape granularity
+	// only — the engine does not read NodeShape-level sh:severity.
+	// D-PROV-10 semantics are preserved: the sourcePath→warning policy moved
+	// from this (retired) hard-coded engine special case into the shapes data
+	// (shapes.ttl declares sh:severity sh:Warning on both sourcePath shapes).
+	c.Severity = SeverityError
+	for _, tr := range subs {
+		if tr.P == sh("severity") {
+			if sev := expandPrefixed(tr.O); sev == sh("Warning") || sev == sh("Info") {
+				c.Severity = SeverityWarning
+			}
+			break
+		}
 	}
 
 	return c

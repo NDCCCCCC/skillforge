@@ -1,7 +1,10 @@
 # SHACL Shape Declarations for SkillForge Knowledge Graph
 # D-SHACL-01: Pure-Go SHACL validator using standard TTL shapes (goRDFlib turtle.Parse)
-# D-SHACL-04: 8 NodeShapes covering all classes emitted by Phase 38/39 emitter
-# Configurable path via SKILLFORGE_SHACL_SHAPES env (default data/ontology/shacl.ttl)
+# D-SHACL-04: 9 sh:NodeShape declarations covering all classes emitted by the
+#   Phase 38/39 emitter (8 class-targeted via sh:targetClass + the
+#   skf:IRIPropertyShape helper, which has no sh:targetClass)
+# Configurable path list via SKILLFORGE_SHACL_SHAPES env
+#   (default: internal/ontology/shacl/shapes.ttl + entities.ttl, D-46-02)
 #
 # Provenance shape (D-PROV-10): skf:sourcePath optional on NoteChunk/TableSchema (warning-only)
 # Namespace: http://skillforge.local/ontology# (matches emitter.go DefaultNS)
@@ -190,10 +193,12 @@ skf:NoteChunk_referencesTable a sh:PropertyShape ;
     sh:message "skf:referencesTable value must be a skf:TableSchema instance"@en .
 
 # D-PROV-10: skf:sourcePath is optional — provenance-missing is a WARNING
+# D-46-01: severity declared here in shapes data (engine special case retired)
 skf:NoteChunk_sourcePath a sh:PropertyShape ;
     sh:path skf:sourcePath ;
     sh:maxCount 1 ;
     sh:nodeKind sh:Literal ;
+    sh:severity sh:Warning ;
     sh:message "skf:sourcePath on skf:NoteChunk is optional; if present must be a literal (warning-level)"@en .
 
 # ==============================================================================
@@ -213,10 +218,12 @@ skf:TableSchema_type a sh:PropertyShape ;
     sh:message "skf:TableSchema must have rdf:type skf:TableSchema"@en .
 
 # D-PROV-10: skf:sourcePath is optional — provenance-missing is a WARNING
+# D-46-01: severity declared here in shapes data (engine special case retired)
 skf:TableSchema_sourcePath a sh:PropertyShape ;
     sh:path skf:sourcePath ;
     sh:maxCount 1 ;
     sh:nodeKind sh:Literal ;
+    sh:severity sh:Warning ;
     sh:message "skf:sourcePath on skf:TableSchema is optional; if present must be a literal (warning-level)"@en .
 
 # ==============================================================================

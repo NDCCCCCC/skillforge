@@ -721,6 +721,7 @@ skf:NoteChunkShape a sh:NodeShape ;
         sh:path skf:sourcePath ;
         sh:minCount 1 ;
         sh:datatype xsd:string ;
+        sh:severity sh:Warning ;
         sh:message "provenance-missing (warning-level, D-PROV-10)"
     ] .
 `
