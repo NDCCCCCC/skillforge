@@ -39,8 +39,10 @@
 package shacl
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -58,6 +60,15 @@ type ViolationSeverity string
 const (
 	SeverityError   ViolationSeverity = "error"
 	SeverityWarning ViolationSeverity = "warning"
+)
+
+// Layer classification stamped on nodeShape at parse time (D-46-02):
+// source-file tracking, zero class-name hard-coding. The enum strings are
+// locked by the 46-UI-SPEC ViolationLayer type.
+const (
+	LayerTBox   = "tbox"   // shapes from any file other than entities.ttl
+	LayerEntity = "entity" // shapes from entities.ttl (ABox entities)
+	LayerGlobal = "global" // cross-entity integrity violations (checkGlobalReferences)
 )
 
 // Violation records one SHACL constraint violation.
@@ -91,27 +102,64 @@ type Report struct {
 	Trigger      string            `json:"trigger"`
 }
 
-// Validate runs full SHACL validation over the given KG store using
-// shapes parsed from shapesPath. Returns a Report or an error.
+// Validate runs full SHACL validation over the given KG store using shapes
+// parsed from the given shapes path list (variadic — single-path callers
+// compile unchanged). Returns a Report or an error.
 //
 // Health derivation (D-SHACL-03 three-colour mapping):
 //   - "error"  if any error-level violations exist (at least one entity quarantined)
 //   - "warn"   if only warning-level violations exist
 //   - "ok"     if zero violations
-func Validate(kg *store.Store, shapesPath string) (*Report, error) {
-	return ValidateWithTrigger(kg, shapesPath, "boot")
+func Validate(kg *store.Store, shapesPaths ...string) (*Report, error) {
+	return ValidateWithTrigger(kg, shapesPaths, "boot")
 }
 
 // ValidateWithTrigger is the same as Validate but allows the caller to
 // specify the trigger context ("boot" or "rollback").
-func ValidateWithTrigger(kg *store.Store, shapesPath string, trigger string) (*Report, error) {
-	parsed, err := parseShapes(shapesPath)
-	if err != nil {
-		return nil, fmt.Errorf("shacl: parse shapes: %w", err)
+//
+// D-46-02: shapesPaths is a path list. Every path is parsed and merged into
+// one shape set; if ANY path fails to read/parse the whole validation fails
+// (errors.Join aggregates all failures — a half-populated shape set silently
+// skipping missing paths would validate against incomplete rules). The
+// single production read point for the path list is ShapesPathsFromEnv.
+func ValidateWithTrigger(kg *store.Store, shapesPaths []string, trigger string) (*Report, error) {
+	parsed := &parsedShapes{}
+	var parseErrs []error
+	for _, path := range shapesPaths {
+		fileParsed, err := parseShapes(path)
+		if err != nil {
+			parseErrs = append(parseErrs, err)
+			continue
+		}
+		// D-46-02: layer is derived at parse time from the source file name —
+		// entities.ttl → entity, everything else → tbox (user decision
+		// 2026-10-04: no TargetClass-name hard-coding).
+		layer := LayerTBox
+		if filepath.Base(path) == "entities.ttl" {
+			layer = LayerEntity
+		}
+		for i := range fileParsed.NodeShapes {
+			fileParsed.NodeShapes[i].Layer = layer
+		}
+		parsed.NodeShapes = append(parsed.NodeShapes, fileParsed.NodeShapes...)
+		parsed.GlobalRefs = append(parsed.GlobalRefs, fileParsed.GlobalRefs...)
+		parsed.GlobalBelongsTo = append(parsed.GlobalBelongsTo, fileParsed.GlobalBelongsTo...)
+		parsed.GlobalHasRead = append(parsed.GlobalHasRead, fileParsed.GlobalHasRead...)
+		parsed.GlobalHasWrite = append(parsed.GlobalHasWrite, fileParsed.GlobalHasWrite...)
+		parsed.GlobalPoweredBy = append(parsed.GlobalPoweredBy, fileParsed.GlobalPoweredBy...)
+		parsed.GlobalRequires = append(parsed.GlobalRequires, fileParsed.GlobalRequires...)
+		parsed.GlobalHasSubCat = append(parsed.GlobalHasSubCat, fileParsed.GlobalHasSubCat...)
+		parsed.GlobalBelongsNote = append(parsed.GlobalBelongsNote, fileParsed.GlobalBelongsNote...)
+	}
+	if len(parseErrs) > 0 {
+		return nil, fmt.Errorf("shacl: parse shapes: %w", errors.Join(parseErrs...))
 	}
 
 	report := &Report{
-		ShapesPath:  shapesPath,
+		// D-46-02: join with the OS path-list separator — the dual of
+		// filepath.SplitList (single path → no separator, unchanged legacy
+		// display; FE type stays a single string).
+		ShapesPath:  strings.Join(shapesPaths, string(filepath.ListSeparator)),
 		ValidatedAt: storeNow(),
 		Trigger:     trigger,
 	}
@@ -186,6 +234,26 @@ func ValidateWithTrigger(kg *store.Store, shapesPath string, trigger string) (*R
 	return report, nil
 }
 
+// ShapesPathsFromEnv resolves the SHACL shapes path list from the
+// SKILLFORGE_SHACL_SHAPES environment variable (D-46-02). This is the SINGLE
+// read point for that env — boot (cmd/server) and rollback (induction) both
+// consume it, so the two call sites can never drift apart.
+//
+// A non-empty value is split on the OS path-list separator
+// (filepath.SplitList). An unset or empty value falls back to the default
+// two-file list (shapes.ttl + entities.ttl). The emptiness check must come
+// first: filepath.SplitList("") returns an empty slice (not [""]) and an
+// empty list would silently validate against zero shapes.
+func ShapesPathsFromEnv() []string {
+	if v := os.Getenv("SKILLFORGE_SHACL_SHAPES"); v != "" {
+		return filepath.SplitList(v)
+	}
+	return []string{
+		filepath.Join("internal", "ontology", "shacl", "shapes.ttl"),
+		filepath.Join("internal", "ontology", "shacl", "entities.ttl"),
+	}
+}
+
 // tripleRec is a local triple record used during shape parsing.
 type tripleRec struct {
 	S, P, O string
@@ -207,6 +275,7 @@ type parsedShapes struct {
 type nodeShape struct {
 	TargetClass string
 	Properties  []propertyConstraint
+	Layer       string // D-46-02: parse-time source-file tracking (LayerTBox | LayerEntity)
 }
 
 type propertyConstraint struct {
