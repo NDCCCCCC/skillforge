@@ -1,5 +1,52 @@
 # Retrospective — SkillForge
 
+## Milestone: v1.6 — SPARQL Schema Detection + Entity SHACL Shapes
+
+**Shipped:** 2026-10-08
+**Phases:** 2 (45, 46) | **Plans:** 7 | **Tasks:** 12+ | **Commits:** 61（2026-10-03 → 10-08）
+
+### What Was Built
+
+- D-SPARQL-05 β 语义：isSchemaTriple subject∩predicate arm（13 metaPredicates，label/comment fail-closed），skill `hasReadAccess` admin 双面可见（17/10），查询时派生零持久态
+- SPARQL-03 单点化：isSchemaTriangle 全仓单调用点 + handler 级 parity 测试 + emitter anti-drift gate
+- 实体 SHACL：severity 数据驱动归位（sourcePath 特例退役）+ entities.ttl（Product/Org）+ 三层盖戳 + dangling_edge_count 恒下发
+- Shapes 路径 env 列表化：ShapesPathsFromEnv 单点，boot/rollback 双消费点收口（rollback 曾是恒 no-op，TDD 真 RED→GREEN 钉死）
+- governance FE 三层呈现（46-UI-SPEC 逐字落地，FE 零推导）+ verify-phase-45/46.sh 双门禁
+- 46-REVIEW 9 项 Critical/Warning 修复（含 CR-01 Phase 40 遗留 rollback ABox wipe）
+
+### What Worked
+
+- **研究先行钉死红线**：researcher 用 live 快照实证裸字面量问题，把「entityCode datatype 检查会隔离 16 实体」在 planning 前变成用户决策——执行期零返工
+- **PATTERNS.md 行锚传递**：12/12 analog 映射让 5 个 executor 零盲飞；wave 间 SUMMARY 契约传递（46-01 引擎签名 → 46-02/03 消费）无断链
+- **post-context 用户决策闭环**：研究 Open Questions 当场问、当场写进 plan 的 acceptance_criteria（含防顺手加强的 grep 验收）
+- **审计驱动收口**：milestone audit 的 3 源交叉 + integration checker 11 条接线逐一核对，2 条 WARNING 全部定位到行级
+
+### What Was Inefficient
+
+- MSYS→WSL 双层 shell 的 `$?` 转义被吃——退出码读数两次假象（GATE_EXIT/RC=0），要文件中转才可信
+- gsd-sdk 不在 PATH：CLI 版本用 gsd-tools.cjs，workflow 里的 `gsd-sdk query` 调用全部要手工映射（每个 agent 都重复发现这一点）
+- flaky 测试（TestDeriveEdgesDeterministic）在门禁收尾才暴露——P4 waiver 机制没预演「非 waiver 失败」路径
+- TestShaclViolation 回归冲突是研究期才发现——引擎改 severity 的 plan 若先落会翻红 13 个测试（好在 research→plan 顺序保住了）
+
+### Patterns Established
+
+- verify-phase-NN.sh 的 named-waiver 口径（waiver_ok 精确匹配单个 pre-existing 失败）跨 phase 复用（45→46）
+- shapes 资产「必填=无条件发射 / if-present=sh:class only」约束清单模式（裸字面量安全的唯一形态）
+- plan 间依赖经 SUMMARY 传递签名契约（46-01 mechanical adaptation → 46-03 replacement 两跳改造）
+
+### Key Lessons
+
+1. 引擎语义改动（severity/sourcePath）必须先 grep 全部测试依赖再定 fixture 策略——pinned 断言是红线
+2. 字面量表示（裸 vs 引号）是 KG 校验的隐形契约——engineer 启发式前先 dump live 数据
+3. 门禁退出码要经文件中转读，跨 shell 层的 `$?` 不可信
+4. rollback 等低频路径的「静默 no-op」要靠回归测试真 RED 才能暴露（induction.go:383 存在两个 milestone 无人知）
+
+### Cost Observations
+
+- Model mix: glm-5.3-flash 全程（orchestrator + 5 executor + researcher/planner/checker/verifier/fixer/reviewer）
+- Sessions: 1（单会话连续：plan-phase → execute-phase → code-review --fix → audit → complete-milestone）
+- Notable: executor 平均 ~11 min/plan（46-01 10m / 46-02 11m / 46-03 11m / 46-04 16m / 46-05 8m）；fixer 最重（38 min, 9 commits）
+
 ## Milestone: v1.5 — Outstanding Closure
 
 **Shipped:** 2026-10-02
