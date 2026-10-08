@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
 status: executing
-last_updated: "2026-10-08T02:25:00.000Z"
-last_activity: 2026-10-08 -- Phase 46 Plan 02 executed (3 commits)
+last_updated: "2026-10-08T02:42:00.000Z"
+last_activity: 2026-10-08 -- Phase 46 Plan 03 executed (3 commits)
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 71
 ---
 
 # State — SkillForge
@@ -18,12 +18,12 @@ progress:
 ## Current Position
 
 Phase: 46 (Entity SHACL Shapes) — EXECUTING
-Plan: 3 of 5 (Wave 2 收尾：46-03 pending；46-02 done)
+Plan: 4 of 5 (Wave 2 complete：46-02 + 46-03 done；Wave 3 pending：46-04 ∥ 46-05)
 Status: Executing Phase 46
-Resume: .planning/phases/46-entity-shacl-shapes/46-02-SUMMARY.md
-Last activity: 2026-10-08 -- Phase 46 Plan 02 executed (bcf67ea / 120b110 / b2a5b41)
+Resume: .planning/phases/46-entity-shacl-shapes/46-03-SUMMARY.md
+Last activity: 2026-10-08 -- Phase 46 Plan 03 executed (be1db74 / 0f13b47 / 35a24bc)
 
-Progress: [██████░░░░] 57%
+Progress: [███████░░░] 71%
 
 ### Quick Tasks Completed
 
@@ -262,6 +262,9 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - [Phase 46]: 46-02 entities.ttl constraint strength sourced from BuildTriples emission contract — required = unconditional emission only (rdf:type hasValue + rdfs:label minCount 1 @error), if-present = sh:class without minCount, 7 PropertyShapes all explicit sh:severity sh:Violation; header comments deliberately avoid constraint-keyword literal sequences so grep gates stay zero-noise
 - [Phase 46]: 46-02 SC2 formal semantics pinned by TestEntityQuarantine — quarantined entity invisible in subject position, incoming edge visible in object position, main.go:937-941 boot loop replicated verbatim, cross-boot stable re-validation (Pitfall 6); entity fixtures must be named exactly entities.ttl (basename-derived layer)
 - [Phase 46]: 46-02 REQUIREMENTS SHACL-01/02/03 checkboxes left unchecked — closing plans mark-complete (45-01/46-01 precedent)
+- [Phase 46]: 46-03 D-46-02 consumption points closed — boot (main.go :930-931) and rollback (induction Step 11) both consume shacl.ShapesPathsFromEnv(); zero path literals at either call site, default list lives solely in the shacl package (combination drift type-impossible)
+- [Phase 46]: 46-03 D-PROV-09 parity gap closed with regression — induction.go:383 hard-coded data/shacl/shapes.ttl join (never resolvable → revalidation was a permanent silent no-op) retired; TestRollbackShaclParity pins env-consumed violations > 0 (case 1, genuine RED pre-fix — WARN line exposed the no-op path) + missing-shapes warn-and-return-0 (case 2)
+- [Phase 46]: 46-03 Pitfall 6 red line held via git diff line-level audit — :921 WriteSnapshot timing, :937-941 subject-only quarantine loop, :943 SetShaclReport all byte-identical; zero new post-quarantine snapshot triggers; env-unset case deliberately unpinned (cwd-dependent; covered by TestShapesPaths in shacl pkg)
 
 ## Operator Next Steps
 
@@ -289,3 +292,4 @@ v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation so
 | Phase 45 P45-02 | 24 min | 3 tasks | 4 files |
 | Phase 46 P46-01 | 10 min | 3 tasks | 4 files |
 | Phase 46 P46-02 | 11 min | 3 tasks | 3 files |
+| Phase 46 P46-03 | 11 min | 2 tasks | 3 files |
