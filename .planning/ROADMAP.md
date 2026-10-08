@@ -121,7 +121,7 @@ Plans:
 
 **Wave 2** *(并行：零文件重叠)*
 
-- [ ] 46-02-PLAN.md — 分层盖戳 + dangling_edge_count + entities.ttl 交付 + SC2 隔离语义测试组
+- [x] 46-02-PLAN.md — 分层盖戳 + dangling_edge_count + entities.ttl 交付 + SC2 隔离语义测试组 ✅ (2026-10-08, bcf67ea/120b110/b2a5b41)
 - [ ] 46-03-PLAN.md — boot/rollback 装配统一 env 列表（induction.go:383 硬编码修复）+ rollback parity 回归
 
 **Wave 3** *(并行：零文件重叠)*
@@ -138,8 +138,8 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 2/2 | Complete    | 2026-10-03 |
-| 46. Entity SHACL Shapes | v1.6 | 0/5 | Not started | — |
+| 46. Entity SHACL Shapes | v1.6 | 2/5 | In progress | — |
 
 ---
 
-*Last updated: 2026-10-04 — Phase 46 planned (5 plans / 3 waves: 46-01 引擎机制, 46-02 实体 shapes+分层 ∥ 46-03 装配, 46-04 FE ∥ 46-05 verify 门禁).*
+*Last updated: 2026-10-08 — Phase 46 executing (Wave 1 done: 46-01 引擎机制; Wave 2 in progress: 46-02 实体语义层 done, 46-03 装配 pending; Wave 3: 46-04 FE ∥ 46-05 verify 门禁).*

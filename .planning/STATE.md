@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
 status: executing
-last_updated: "2026-10-08T02:00:30.000Z"
-last_activity: 2026-10-08 -- Phase 46 Plan 01 executed (3 commits)
+last_updated: "2026-10-08T02:25:00.000Z"
+last_activity: 2026-10-08 -- Phase 46 Plan 02 executed (3 commits)
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 7
-  completed_plans: 3
-  percent: 43
+  completed_plans: 4
+  percent: 57
 ---
 
 # State — SkillForge
@@ -18,12 +18,12 @@ progress:
 ## Current Position
 
 Phase: 46 (Entity SHACL Shapes) — EXECUTING
-Plan: 2 of 5 (Wave 2: 46-02 + 46-03 并行，零文件重叠)
+Plan: 3 of 5 (Wave 2 收尾：46-03 pending；46-02 done)
 Status: Executing Phase 46
-Resume: .planning/phases/46-entity-shacl-shapes/46-01-SUMMARY.md
-Last activity: 2026-10-08 -- Phase 46 Plan 01 executed (52ca61e / 2c8369b / 1bfe9a8)
+Resume: .planning/phases/46-entity-shacl-shapes/46-02-SUMMARY.md
+Last activity: 2026-10-08 -- Phase 46 Plan 02 executed (bcf67ea / 120b110 / b2a5b41)
 
-Progress: [████░░░░░░] 43%
+Progress: [██████░░░░] 57%
 
 ### Quick Tasks Completed
 
@@ -256,6 +256,12 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - [Phase 46]: 46-01 D-46-01 engine side landed — sh:severity parsed at PropertyShape granularity only (Warning/Info→warning, Violation/unknown/unspecified→error per W3C §2.1.4); sourcePath engine special case retired; shapes.ttl retrofitted with explicit severity, TestShaclViolation assertions byte-unchanged
 - [Phase 46]: 46-01 D-46-02 engine side landed — Validate variadic + ValidateWithTrigger([]string); per-file parse errors.Join-aggregated, whole-validation failure on ANY missing path (never half-shapes); nodeShape.Layer stamped from source-file basename (entities.ttl→entity, else tbox, LayerGlobal const ready); ShapesPathsFromEnv() is the single SKILLFORGE_SHACL_SHAPES read point (empty/unset → default two-file list; emptiness checked before SplitList)
 - [Phase 46]: 46-01 induction.go:384 mechanical []string adaptation only — hard-coded path kept with TODO(46-03); env-list switch + rollback parity regression deferred to 46-03; REQUIREMENTS SHACL-01/02 checkboxes deferred to closing plans (45-01 precedent)
+- [Phase 46]: 46-02 D-46-03 backend side landed — every violation carries layer/target_class stamped once in the Validate loop from parse-time nodeShape metadata; global violations carry LayerGlobal with empty TargetClass (omitempty = FE no-chip sentinel, 46-UI-SPEC §Component 2)
+- [Phase 46]: 46-02 D-46-04 landed — dangling_edge_count has NO omitempty (0 must reach the FE, Honesty red line 8); counted via countDanglingEdges (involvesInsuranceProduct/involvesOrganization/parentOrganization byO reverse lookups) during validation BEFORE any quarantine (A4); cascade quarantine still not implemented (store.go/admin_governance.go zero-change red line held)
+- [Phase 46]: 46-02 entityCode zero-constraint deviation recorded in entities.ttl header (user decision 2026-10-04): engine literal detection is quote-prefix based while BuildTriples emits bare strings (live 126/126 label, 16/16 entityCode) — datatype/nodeKind would mis-quarantine all coded entities, regex is a silent no-op on bare values; emission-representation fix stays in backlog
+- [Phase 46]: 46-02 entities.ttl constraint strength sourced from BuildTriples emission contract — required = unconditional emission only (rdf:type hasValue + rdfs:label minCount 1 @error), if-present = sh:class without minCount, 7 PropertyShapes all explicit sh:severity sh:Violation; header comments deliberately avoid constraint-keyword literal sequences so grep gates stay zero-noise
+- [Phase 46]: 46-02 SC2 formal semantics pinned by TestEntityQuarantine — quarantined entity invisible in subject position, incoming edge visible in object position, main.go:937-941 boot loop replicated verbatim, cross-boot stable re-validation (Pitfall 6); entity fixtures must be named exactly entities.ttl (basename-derived layer)
+- [Phase 46]: 46-02 REQUIREMENTS SHACL-01/02/03 checkboxes left unchecked — closing plans mark-complete (45-01/46-01 precedent)
 
 ## Operator Next Steps
 
@@ -282,3 +288,4 @@ v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation so
 | Phase 45 P45-01 | 9m | - tasks | - files |
 | Phase 45 P45-02 | 24 min | 3 tasks | 4 files |
 | Phase 46 P46-01 | 10 min | 3 tasks | 4 files |
+| Phase 46 P46-02 | 11 min | 3 tasks | 3 files |
