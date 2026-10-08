@@ -80,7 +80,14 @@ export function HealthBanner({ report }: { report: ShaclReport }) {
       )}
       <div className="ml-auto text-xs text-text-muted font-mono">
         校验时点 {new Date(report.validated_at).toLocaleString()}
-        （{report.trigger === 'boot' ? '启动时' : '回滚后'}）· shapes {report.shapes_path}
+        （{report.trigger === 'boot' ? '启动时' : '回滚后'}）· shapes{' '}
+        {/* D-46-02: shapes_path is a join list post-46 — truncate guard keeps the banner one line (46-UI-SPEC §Component 5) */}
+        <span
+          className="inline-block max-w-[280px] truncate align-bottom"
+          title={report.shapes_path}
+        >
+          {report.shapes_path}
+        </span>
       </div>
     </div>
   );
