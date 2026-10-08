@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
-status: executing
-last_updated: "2026-10-08T03:25:00.000Z"
-last_activity: 2026-10-08 -- Phase 46 Plan 05 executed (1 commit); Phase 46 COMPLETE (5/5)
+status: verifying
+last_updated: "2026-10-08T03:50:55.291Z"
+last_activity: 2026-10-08
 progress:
   total_phases: 2
   completed_phases: 2
@@ -17,11 +17,11 @@ progress:
 
 ## Current Position
 
-Phase: 46 (Entity SHACL Shapes) — COMPLETE (5/5 plans)
-Plan: 5 of 5 done (46-05 verify-phase-46.sh gate landed, exit 0)
+Phase: 46
+Plan: Not started
 Status: Phase 46 executed complete — next: `/gsd:verify-phase 46` then v1.6 milestone close
 Resume: .planning/phases/46-entity-shacl-shapes/46-05-SUMMARY.md
-Last activity: 2026-10-08 -- Phase 46 Plan 05 executed (1220882)
+Last activity: 2026-10-08
 
 Progress: [██████████] 100%
 

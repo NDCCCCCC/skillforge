@@ -3,8 +3,9 @@
 ## Current State
 
 - ✅ **v1.5 SHIPPED 2026-10-02** — Outstanding Closure: 8 SPARQL 测试修复 + D-TIER-03 恢复 + 42-03 runbook 全门执行(live 抽取 F1 0.87)+ 3D 知识图谱 + ECL 实体图谱(65 险种/38 机构)+ admin 11-tab 全可用
-- 🚧 **v1.6 IN PROGRESS** — SPARQL Schema Detection + Entity SHACL Shapes（D-SPARQL-05 + 实体 SHACL shapes 两项核心积压）
+- ✅ **v1.6 EXECUTED 2026-10-08** — SPARQL Schema Detection + Entity SHACL Shapes 两项核心积压全部落地（待 milestone 收口）
 - ✅ **Phase 45 COMPLETE 2026-10-03** — D-SPARQL-05 落地（β 语义：schemaSubjects ∩ 13 谓词 allowlist，查询时派生零持久态；verify-phase-45.sh 4 分区全绿；D-45-DEF-01/02/03 deferred 记录在案）
+- ✅ **Phase 46 COMPLETE 2026-10-08** — 实体 SHACL shapes 落地（severity 归位 shapes 数据 + entities.ttl Product/Org shapes + boot/rollback 双消费点 env 列表化 + governance 分层呈现；verify-phase-46.sh 全绿 16/16 must-haves；entityCode 零约束为用户决策 2026-10-04；46-REVIEW CR-01 [Phase 40 遗留 rollback ABox wipe] 待修）
 
 ## What This Is
 
@@ -167,4 +168,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-03 after Phase 45 (D-SPARQL-05) complete*
+*Last updated: 2026-10-08 after Phase 46 (Entity SHACL Shapes) complete — v1.6 all phases executed*
