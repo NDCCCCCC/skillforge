@@ -3,27 +3,27 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
 status: executing
-last_updated: "2026-10-08T03:05:00.000Z"
-last_activity: 2026-10-08 -- Phase 46 Plan 04 executed (4 commits)
+last_updated: "2026-10-08T03:25:00.000Z"
+last_activity: 2026-10-08 -- Phase 46 Plan 05 executed (1 commit); Phase 46 COMPLETE (5/5)
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 46 (Entity SHACL Shapes) — EXECUTING
-Plan: 5 of 5 (Wave 3 half done：46-04 done；pending：46-05 verify 门禁)
-Status: Executing Phase 46
-Resume: .planning/phases/46-entity-shacl-shapes/46-04-SUMMARY.md
-Last activity: 2026-10-08 -- Phase 46 Plan 04 executed (5eeaa01 / efc0f4a / 3969a38 / a440ffe)
+Phase: 46 (Entity SHACL Shapes) — COMPLETE (5/5 plans)
+Plan: 5 of 5 done (46-05 verify-phase-46.sh gate landed, exit 0)
+Status: Phase 46 executed complete — next: `/gsd:verify-phase 46` then v1.6 milestone close
+Resume: .planning/phases/46-entity-shacl-shapes/46-05-SUMMARY.md
+Last activity: 2026-10-08 -- Phase 46 Plan 05 executed (1220882)
 
-Progress: [████████░░] 86%
+Progress: [██████████] 100%
 
 ### Quick Tasks Completed
 
@@ -269,11 +269,12 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - [Phase 46]: 46-04 Honesty 红线 8/9 组件级钉死 — ShaclReportView.test.tsx 9 回归：悬挂边 0 渲染 0/缺失渲染 —（getAllByRole('cell')[2] 列序断言）、legacy 无徽章不炸且计数 span 不渲染、区头计数仅非零固定顺序、XSS 元字符文本化（元素查询 + 无 title 复制列的 innerHTML 负断言；detail 列 title 属性复制使字符串级断言必假阳，理由按 D-SPARQL-08 写进测试头）
 - [Phase 46]: 46-04 Task 3 RED-first 不适用（46-02 同款）— plan 排序实现先于钉子测试，保持 test(46-04)→feat(46-04) 提交序满足 TDD gate git log 序；test commit 曾夹带 TS2353 fixture 错误（vitest 不跑 tsc），amend 修入同一 commit
 - [Phase 46]: 46-04 先存失败 D-46-DEF-01 记录不修 — DetailPanel.test.tsx SC-5（knowledge-graph 空态 hero）确定性失败，与 governance 零 import 交集，归属 v1.6 积压既有「DetailPanel/emitter 两个 deferred 测试」条目（.planning/phases/46-entity-shacl-shapes/deferred-items.md）
+- [Phase 46]: 46-05 verify-phase-46.sh SC4 落地 — 45 骨架照搬（fail-fast P1 build+vet / P2 ontology 套件 / P3 anti-vacuous / P4 全量，全门 WSL CGO_ENABLED=1）；P3 双门 = exit code + >= 7 --- PASS（7 具名测试：shacl 6 + induction 1，与测试文件逐一核对；实测 22 --- PASS，TestSeveritySourcePathRetired 由前缀匹配附带）；D-45-DEF-01 waiver 执行时点复探（2026-10-08 HEAD 仍失败）→ 照 45 收录 waiver_ok；FE vitest 不进脚本（46-04 Windows direct node 先例），D-46-DEF-01 在门禁范围外
 
 ## Operator Next Steps
 
-- Phase 45 executed complete (45-01 + 45-02): run `/gsd:verify-phase 45` — gate entry point is `bash verify-phase-45.sh` (exit 0 expected; P2/P4 carry the D-45-DEF-01 named waiver). SPARQL-01/02/03 already marked complete in REQUIREMENTS.md.
-- Note: D-45-DEF-01 (pre-existing emitter test failure `TestEmitSubCategoryInstanceCount` 6 vs 7) surfaces in every P2/P4 run as a WAIVED line — triage recorded in `.planning/phases/45-sparql-schema-visibility-d-sparql-05/deferred-items.md`; BL-05 backlog candidate: `internal/server/platform/verify_main.go` (D-45-DEF-02, stale Phase-44 harness, excluded from the gate).
+- Phase 46 executed complete (46-01..46-05): run `/gsd:verify-phase 46` — gate entry point is `bash verify-phase-46.sh` (exit 0 expected; P2/P4 carry the D-45-DEF-01 named waiver, re-probed still-failing at Phase 46 HEAD 2026-10-08). SHACL-01/02/03 marked complete in REQUIREMENTS.md at 46-05 close; v1.6 milestone (Phase 45 + 46) is now fully executed — milestone close is the next step.
+- Note: D-45-DEF-01 (pre-existing emitter test failure `TestEmitSubCategoryInstanceCount` 6 vs 7) surfaces in every P2/P4 run of BOTH phase gates as a WAIVED line — triage recorded in `.planning/phases/45-sparql-schema-visibility-d-sparql-05/deferred-items.md`; BL-05 backlog candidate: `internal/server/platform/verify_main.go` (D-45-DEF-02, stale Phase-44 harness, excluded from the 45 gate). FE-side D-46-DEF-01 (DetailPanel SC-5) sits outside the Go gates, recorded in `.planning/phases/46-entity-shacl-shapes/deferred-items.md`.
 
 ## Deferred Items
 
@@ -298,3 +299,4 @@ v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation so
 | Phase 46 P46-02 | 11 min | 3 tasks | 3 files |
 | Phase 46 P46-03 | 11 min | 2 tasks | 3 files |
 | Phase 46 P46-04 | 16 min | 3 tasks | 4 files |
+| Phase 46 P46-05 | 8 min | 1 task | 1 file |

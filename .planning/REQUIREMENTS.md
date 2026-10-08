@@ -14,9 +14,9 @@
 
 ### Entity SHACL Validation（实体 shapes 落地）
 
-- [ ] **SHACL-01**: 实体类 ABox（险种/机构/TableSchema 等）SHACL shapes 文件随仓库交付，路径可配置（零硬编码）
-- [ ] **SHACL-02**: 启动校验覆盖实体 shapes；违规进入现有 quarantine 流；boot 不被阻断（D-SHACL-02 保持）
-- [ ] **SHACL-03**: `/admin/governance` 校验报告可呈现实体类违规（若涉 UI 改动，先 UI-SPEC）
+- [x] **SHACL-01**: 实体类 ABox（险种/机构/TableSchema 等）SHACL shapes 文件随仓库交付，路径可配置（零硬编码）— entities.ttl（46-02 120b110）+ ShapesPathsFromEnv env 列表单点（46-01 2c8369b，boot/rollback 消费点收口 46-03）
+- [x] **SHACL-02**: 启动校验覆盖实体 shapes；违规进入现有 quarantine 流；boot 不被阻断（D-SHACL-02 保持）— main.go 消费 ShapesPathsFromEnv（46-03 be1db74）+ TestEntityQuarantine 钉 subject 不可见/对象位披露/跨 boot 稳定（46-02 b2a5b41）
+- [x] **SHACL-03**: `/admin/governance` 校验报告可呈现实体类违规（若涉 UI 改动，先 UI-SPEC）— 46-UI-SPEC delta 先产 + layer 徽章/target_class chip/dangling_edge_count 列渲染（46-04 5eeaa01..a440ffe）；门禁 verify-phase-46.sh exit 0（46-05 1220882）
 
 ## Future Requirements
 
@@ -50,9 +50,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SPARQL-01 | Phase 45 | Complete |
 | SPARQL-02 | Phase 45 | Complete |
 | SPARQL-03 | Phase 45 | Complete |
-| SHACL-01 | Phase 46 | Pending |
-| SHACL-02 | Phase 46 | Pending |
-| SHACL-03 | Phase 46 | Pending |
+| SHACL-01 | Phase 46 | Complete |
+| SHACL-02 | Phase 46 | Complete |
+| SHACL-03 | Phase 46 | Complete |
 
 **Coverage:**
 
@@ -62,4 +62,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-02*
-*Last updated: 2026-10-02 — roadmap created; 6/6 requirements mapped to Phases 45-46*
+*Last updated: 2026-10-08 — Phase 46 closed; SHACL-01/02/03 marked complete at 46-05 close (6/6 v1.6 requirements complete)*

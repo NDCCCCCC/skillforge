@@ -70,7 +70,7 @@
 ### Phases
 
 - [x] **Phase 45: SPARQL Schema Visibility (D-SPARQL-05)** - Subject-based schema detection：skill 个体与 hasReadAccess triples 在 admin baseline 可见，D-TIER-03 fail-closed 不回退，schema 判定单点化 (completed 2026-10-03)
-- [ ] **Phase 46: Entity SHACL Shapes** - 实体类 ABox SHACL shapes 交付（路径可配置）+ 启动校验接入既有 quarantine 流 + /admin/governance 报告呈现实体违规
+- [x] **Phase 46: Entity SHACL Shapes** - 实体类 ABox SHACL shapes 交付（路径可配置）+ 启动校验接入既有 quarantine 流 + /admin/governance 报告呈现实体违规 ✅ (2026-10-08; SC4 verify-phase-46.sh exit 0)
 
 ### Phase 45: SPARQL Schema Visibility (D-SPARQL-05)
 
@@ -127,7 +127,7 @@ Plans:
 **Wave 3** *(并行：零文件重叠)*
 
 - [x] 46-04-PLAN.md — governance FE 分层呈现（46-UI-SPEC delta：徽章/区头计数/悬挂边列/组件测试）✅ (2026-10-08, 5eeaa01/efc0f4a/3969a38/a440ffe)
-- [ ] 46-05-PLAN.md — verify-phase-46.sh 门禁（P1-P4 照 45 模式，anti-vacuous）
+- [x] 46-05-PLAN.md — verify-phase-46.sh 门禁（P1-P4 照 45 模式，anti-vacuous）✅ (2026-10-08, 1220882; 实跑 exit 0, P3 22 --- PASS ≥ 7)
 
 ---
 
@@ -138,8 +138,8 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 45. SPARQL Schema Visibility (D-SPARQL-05) | v1.6 | 2/2 | Complete    | 2026-10-03 |
-| 46. Entity SHACL Shapes | v1.6 | 4/5 | In progress | — |
+| 46. Entity SHACL Shapes | v1.6 | 5/5 | Complete | 2026-10-08 |
 
 ---
 
-*Last updated: 2026-10-08 — Phase 46 executing (Wave 1 done: 46-01 引擎机制; Wave 2 done: 46-02 实体语义层 + 46-03 boot/rollback 装配收口; Wave 3 half done: 46-04 FE 分层呈现 ✅; pending: 46-05 verify 门禁).*
+*Last updated: 2026-10-08 — Phase 46 COMPLETE（Wave 1: 46-01 引擎机制; Wave 2: 46-02 实体语义层 + 46-03 boot/rollback 装配收口; Wave 3: 46-04 FE 分层呈现 + 46-05 verify 门禁）。SC1-SC4 全过；门禁 bash verify-phase-46.sh exit 0（D-45-DEF-01 named waiver 保持）。*
