@@ -3,27 +3,27 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
 status: executing
-last_updated: "2026-10-04T01:24:44.824Z"
-last_activity: 2026-10-04 -- Phase 46 planning complete
+last_updated: "2026-10-08T02:00:30.000Z"
+last_activity: 2026-10-08 -- Phase 46 Plan 01 executed (3 commits)
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 7
-  completed_plans: 2
-  percent: 29
+  completed_plans: 3
+  percent: 43
 ---
 
 # State — SkillForge
 
 ## Current Position
 
-Phase: 46
-Plan: Not started
-Status: Ready to execute
-Resume: .planning/phases/45-sparql-schema-visibility-d-sparql-05/45-02-SUMMARY.md
-Last activity: 2026-10-04 -- Phase 46 planning complete
+Phase: 46 (Entity SHACL Shapes) — EXECUTING
+Plan: 2 of 5 (Wave 2: 46-02 + 46-03 并行，零文件重叠)
+Status: Executing Phase 46
+Resume: .planning/phases/46-entity-shacl-shapes/46-01-SUMMARY.md
+Last activity: 2026-10-08 -- Phase 46 Plan 01 executed (52ca61e / 2c8369b / 1bfe9a8)
 
-Progress: [██████████] 100%
+Progress: [████░░░░░░] 43%
 
 ### Quick Tasks Completed
 
@@ -253,6 +253,9 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 - [Phase ?]: 45-02 D-45-01 anti-drift gate landed — TestEmitterPredicatesWithinAllowlist pins emitter predicates on schema individuals to {rdf:type} + 13 metaPredicates; skf:/rdfs: label+comment negative-pinned out (D-SPARQL-03 authoritative)
 - [Phase ?]: 45-02 conformance test uses external package store_test + store_export_test.go seam — emitter transitively imports store via induction (plan's cycle-free premise wrong at depth 2); SPARQL-03 parity test observes both real handlers on one fixtureKG (Induction wired via newOntologyDeps, KG swapped to fixtureKG)
 - [Phase ?]: 45-02 verify-phase-45.sh SC4 green with D-45-DEF-01 named waiver — P2/P4 pass only when unique --- FAIL set is empty or exactly TestEmitSubCategoryInstanceCount; P3 pairs exit code with >= 19 --- PASS (anti-vacuous); verify_main.go excluded per D-45-DEF-02 (BL-05 backlog)
+- [Phase 46]: 46-01 D-46-01 engine side landed — sh:severity parsed at PropertyShape granularity only (Warning/Info→warning, Violation/unknown/unspecified→error per W3C §2.1.4); sourcePath engine special case retired; shapes.ttl retrofitted with explicit severity, TestShaclViolation assertions byte-unchanged
+- [Phase 46]: 46-01 D-46-02 engine side landed — Validate variadic + ValidateWithTrigger([]string); per-file parse errors.Join-aggregated, whole-validation failure on ANY missing path (never half-shapes); nodeShape.Layer stamped from source-file basename (entities.ttl→entity, else tbox, LayerGlobal const ready); ShapesPathsFromEnv() is the single SKILLFORGE_SHACL_SHAPES read point (empty/unset → default two-file list; emptiness checked before SplitList)
+- [Phase 46]: 46-01 induction.go:384 mechanical []string adaptation only — hard-coded path kept with TODO(46-03); env-list switch + rollback parity regression deferred to 46-03; REQUIREMENTS SHACL-01/02 checkboxes deferred to closing plans (45-01 precedent)
 
 ## Operator Next Steps
 
@@ -278,3 +281,4 @@ v1.6 重点积压(非上述残留,为真实后续项): ~~D-SPARQL-05 citation so
 |-------|------|----------|-------|
 | Phase 45 P45-01 | 9m | - tasks | - files |
 | Phase 45 P45-02 | 24 min | 3 tasks | 4 files |
+| Phase 46 P46-01 | 10 min | 3 tasks | 4 files |

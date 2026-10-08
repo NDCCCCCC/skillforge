@@ -117,7 +117,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 46-01-PLAN.md — SHACL 引擎机制：severity 政策归位（sourcePath 特例退役）+ shapes 路径列表化（variadic + ShapesPathsFromEnv + Layer 源文件追踪）
+- [x] 46-01-PLAN.md — SHACL 引擎机制：severity 政策归位（sourcePath 特例退役）+ shapes 路径列表化（variadic + ShapesPathsFromEnv + Layer 源文件追踪）
 
 **Wave 2** *(并行：零文件重叠)*
 
