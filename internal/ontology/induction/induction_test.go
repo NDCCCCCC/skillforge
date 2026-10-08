@@ -292,3 +292,149 @@ skf:NewClass a owl:Class .
 
 	t.Logf("rollback took %v", elapsed)
 }
+
+// ---------------------------------------------------------------------------
+// TestRollbackShaclParity — D-46-02 + D-PROV-09: post-rollback SHACL
+// revalidation must consume the SAME shapes path list as boot, i.e. the
+// SKILLFORGE_SHACL_SHAPES env list via shacl.ShapesPathsFromEnv(). Before
+// this fix the rollback side hard-coded data/shacl/shapes.ttl (a directory
+// that never exists), so revalidation was a silent no-op returning 0
+// violations forever — this path had ZERO test coverage (case 1 below is
+// the regression nail: it fails against the hard-coded pre-fix behavior).
+//
+// Case 2 pins the D-PROV-09 posture: a shapes load failure is NOT a
+// rollback failure (warn-and-return-0, never an error).
+//
+// The env-UNSET case is deliberately not pinned: the default list is
+// relative to the repo root while package tests run with the package dir
+// as cwd, so the behavior would depend on the process cwd — asserting it
+// here would make the suite environment-dependent. TestShapesPaths in the
+// shacl package covers the default-list fallback instead.
+// ---------------------------------------------------------------------------
+
+func TestRollbackShaclParity(t *testing.T) {
+	// Subtests are sequential (no t.Parallel) — t.Setenv forbids parallel
+	// parents, and each case needs its own env value.
+	t.Run("env_list_consumed_violations_reported", func(t *testing.T) {
+		dir := t.TempDir()
+		kg := store.New()
+
+		// v1 TTL carries a dangling cross-entity reference: BadNote points
+		// at skf:MissingTable, which is not a skf:TableSchema instance.
+		v1TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+skf:BadNote a skf:NoteChunk .
+skf:BadNote skf:referencesTable skf:MissingTable .
+`
+		v2TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+skf:GoodNote a skf:NoteChunk .
+`
+		// Rollback assembly mirrors TestRollbackLatency: v1/v2 TTL + pointer
+		// + version + proposals, KG seeded with v2, manager without LLM.
+		if err := os.WriteFile(filepath.Join(dir, "skillforge_tbox.v1.ttl"), []byte(v1TTL), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "skillforge_tbox.v2.ttl"), []byte(v2TTL), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "skillforge_tbox.ttl"), []byte(v2TTL), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "tbox_version.txt"), []byte("2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "proposals.json"), []byte(`{"next_id":1,"items":[]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := kg.LoadFromTurtle(v2TTL); err != nil {
+			t.Fatalf("LoadFromTurtle: %v", err)
+		}
+
+		// Shapes fixture: the global referencesTable PropertyShape — the
+		// rule that flags BadNote's dangling reference as an error.
+		shapesTTL := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+
+skf:referencesTableShape a sh:PropertyShape ;
+    sh:path skf:referencesTable ;
+    sh:class skf:TableSchema .
+`
+		shapesPath := filepath.Join(dir, "parity-shapes.ttl")
+		if err := os.WriteFile(shapesPath, []byte(shapesTTL), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("SKILLFORGE_SHACL_SHAPES", shapesPath)
+
+		m, err := NewManager(testNS, dir, nil, kg)
+		if err != nil {
+			t.Fatalf("NewManager: %v", err)
+		}
+
+		newVersion, violations, err := m.RollbackTBox(1, "test rollback")
+		if err != nil {
+			t.Fatalf("RollbackTBox: %v", err)
+		}
+		if newVersion != 3 {
+			t.Errorf("expected version 3 after rollback, got %d", newVersion)
+		}
+		// THE regression nail: pre-fix the revalidation read a hard-coded
+		// non-existent path and always returned 0. If env is truly consumed
+		// the dangling reference must surface as >= 1 violation.
+		if violations <= 0 {
+			t.Errorf("expected violations > 0 for dangling reference after rollback (env list must be consumed), got %d", violations)
+		}
+	})
+
+	t.Run("missing_shapes_warn_and_return_zero", func(t *testing.T) {
+		dir := t.TempDir()
+		kg := store.New()
+
+		v1TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+`
+		v2TTL := `@prefix skf: <http://skillforge.local/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+skf:Thing a owl:Class .
+skf:NewClass a owl:Class .
+`
+		if err := os.WriteFile(filepath.Join(dir, "skillforge_tbox.v1.ttl"), []byte(v1TTL), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "skillforge_tbox.v2.ttl"), []byte(v2TTL), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "skillforge_tbox.ttl"), []byte(v2TTL), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "tbox_version.txt"), []byte("2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "proposals.json"), []byte(`{"next_id":1,"items":[]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := kg.LoadFromTurtle(v2TTL); err != nil {
+			t.Fatalf("LoadFromTurtle: %v", err)
+		}
+
+		// Env points at a path that does not exist — D-PROV-09: SHACL
+		// failure is not a rollback failure (warn-and-return-0).
+		t.Setenv("SKILLFORGE_SHACL_SHAPES", filepath.Join(dir, "no-such-shapes.ttl"))
+
+		m, err := NewManager(testNS, dir, nil, kg)
+		if err != nil {
+			t.Fatalf("NewManager: %v", err)
+		}
+
+		_, violations, err := m.RollbackTBox(1, "test rollback")
+		if err != nil {
+			t.Errorf("RollbackTBox must not fail on SHACL load error (D-PROV-09), got: %v", err)
+		}
+		if violations != 0 {
+			t.Errorf("expected 0 violations on shapes load failure (warn-and-return-0), got %d", violations)
+		}
+	})
+}
