@@ -267,28 +267,44 @@ func (m *Manager) Approve(proposalID, customLocalName string) (Proposal, int, er
 	for _, t := range p.ProposedTriples {
 		newTTL += t + "\n"
 	}
-	versioned := filepath.Join(m.dataDir, fmt.Sprintf("skillforge_tbox.v%d.ttl", next))
-	if err := writeFileAtomic(versioned, []byte(newTTL)); err != nil {
-		return *p, 0, fmt.Errorf("induction: write %s: %w", versioned, err)
-	}
-	if err := writeFileAtomic(current, []byte(newTTL)); err != nil {
-		return *p, 0, fmt.Errorf("induction: refresh pointer %s: %w", current, err)
-	}
-	if err := writeFileAtomic(filepath.Join(m.dataDir, "tbox_version.txt"), []byte(fmt.Sprintf("%d\n", next))); err != nil {
-		return *p, 0, fmt.Errorf("induction: write version file: %w", err)
-	}
 
-	// Insert new triples into the KG store so queries see them immediately.
-	for _, t := range p.ProposedTriples {
-		if trip, ok := parseTripleLine(t, m.ns); ok {
-			m.kg.Insert(trip)
-		}
-	}
-
+	// WR-02 ordering: persist the approved queue state FIRST. If this fails,
+	// nothing on disk changed and the proposal is still pending — a retry is
+	// clean. (The pre-fix order flipped the status in memory first and ran
+	// persistLocked LAST: a persist failure returned an error while TBox/KG
+	// had already mutated and memory said approved vs disk pending — after a
+	// restart the still-pending disk queue allowed a duplicate approve with
+	// duplicate KG inserts and a second version bump.)
 	now := time.Now().UTC()
 	p.Status = StatusApproved
 	p.DecidedAt = &now
-	err = m.persistLocked()
+	if err := m.persistLocked(); err != nil {
+		// Revert the in-memory flip so memory matches disk (still pending).
+		p.Status = StatusPending
+		p.DecidedAt = nil
+		return *p, 0, fmt.Errorf("induction: persist approved state (nothing written, proposal still pending): %w", err)
+	}
+
+	versioned := filepath.Join(m.dataDir, fmt.Sprintf("skillforge_tbox.v%d.ttl", next))
+	if err := writeFileAtomic(versioned, []byte(newTTL)); err != nil {
+		return *p, 0, fmt.Errorf("induction: write %s (approved state persisted, TBox NOT updated — triples remain in proposals.json for ApprovedTriples replay): %w", versioned, err)
+	}
+	if err := writeFileAtomic(current, []byte(newTTL)); err != nil {
+		return *p, 0, fmt.Errorf("induction: refresh pointer %s (v%d written, pointer NOT updated): %w", current, next, err)
+	}
+	if err := writeFileAtomic(filepath.Join(m.dataDir, "tbox_version.txt"), []byte(fmt.Sprintf("%d\n", next))); err != nil {
+		return *p, 0, fmt.Errorf("induction: write version file (v%d and pointer written, version file NOT updated): %w", next, err)
+	}
+
+	// Insert new triples into the KG store so queries see them immediately.
+	// InsertUnique (WR-02): a re-approve after a partial failure must not
+	// duplicate triples in the store.
+	for _, t := range p.ProposedTriples {
+		if trip, ok := parseTripleLine(t, m.ns); ok {
+			m.kg.InsertUnique(trip)
+		}
+	}
+
 	m.fireChange()
 
 	// D-LOG-04: append one changelog entry per approve.
@@ -304,7 +320,7 @@ func (m *Manager) Approve(proposalID, customLocalName string) (Proposal, int, er
 		fmt.Fprintf(os.Stderr, "[WARN] induction: append changelog: %v\n", err)
 	}
 
-	return *p, next, err
+	return *p, next, nil
 }
 
 // RollbackTBox reverts to a previous TBox version.
