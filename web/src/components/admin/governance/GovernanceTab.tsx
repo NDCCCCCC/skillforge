@@ -143,8 +143,15 @@ export default function GovernanceTab() {
           report={shaclReport}
           error={shaclError}
           onRetry={() => {
+            // WR-07: a successful retry must clear the stale error —
+            // ShaclReportView renders the failure branch whenever error is
+            // truthy, so leaving it set kept the view stuck on
+            // 「校验报告加载失败」 even after the refetch succeeded.
             fetchShaclReport()
-              .then(setShaclReport)
+              .then((r) => {
+                setShaclError(null);
+                setShaclReport(r);
+              })
               .catch((e: unknown) => setShaclError(e instanceof Error ? e.message : String(e)));
           }}
         />
