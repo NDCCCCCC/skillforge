@@ -243,8 +243,19 @@ func (m *Manager) Approve(proposalID, customLocalName string) (Proposal, int, er
 	// Read current TBox, append proposal triples, write as v{N+1}.
 	current := m.currentTTLPath()
 	base := ""
-	if data, err := os.ReadFile(current); err == nil {
+	data, err := os.ReadFile(current)
+	switch {
+	case err == nil:
 		base = string(data)
+	case os.IsNotExist(err):
+		// Fresh deployment: the first approve bootstraps the TBox.
+		base = ""
+	default:
+		// WR-01: a read ERROR (permissions, IO) is not the same as an absent
+		// file. Proceeding with an empty base would make newTTL contain ONLY
+		// this proposal's triples, and the atomic pointer overwrite below
+		// would silently truncate the entire existing TBox.
+		return *p, 0, fmt.Errorf("induction: read current TBox %s: %w", current, err)
 	}
 	version := m.readVersion()
 	next := version + 1
@@ -277,7 +288,7 @@ func (m *Manager) Approve(proposalID, customLocalName string) (Proposal, int, er
 	now := time.Now().UTC()
 	p.Status = StatusApproved
 	p.DecidedAt = &now
-	err := m.persistLocked()
+	err = m.persistLocked()
 	m.fireChange()
 
 	// D-LOG-04: append one changelog entry per approve.
