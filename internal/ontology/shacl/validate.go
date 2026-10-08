@@ -844,7 +844,7 @@ func checkGlobalReferences(kg *store.Store, parsed *parsedShapes) []Violation {
 				// belong to no single NodeShape class — LayerGlobal is set
 				// and TargetClass stays empty (omitempty drops it in JSON),
 				// which is the FE's dashed "cross-entity" badge signal.
-				Layer: LayerGlobal,
+				Layer:  LayerGlobal,
 				Detail: fmt.Sprintf("skf:referencesTable target <%s> is not a skf:TableSchema instance", target),
 			})
 		}

@@ -58,6 +58,16 @@ const (
 	skfHasSubCategory    = "http://skillforge.local/ontology#hasSubCategory"
 	skfBelongsToNote     = "http://skillforge.local/ontology#belongsToNote"
 
+	// D-46-03/D-46-04 constants: ABox business entities (D-NZK-04/05) and
+	// the dangling-edge predicate family (abox.go:66-82, TBox v7).
+	skfInsuranceProduct = "http://skillforge.local/ontology#InsuranceProduct"
+	skfOrganization     = "http://skillforge.local/ontology#Organization"
+
+	rdfsLabel                   = "http://www.w3.org/2000/01/rdf-schema#label"
+	skfParentOrganization       = "http://skillforge.local/ontology#parentOrganization"
+	skfInvolvesInsuranceProduct = "http://skillforge.local/ontology#involvesInsuranceProduct"
+	skfInvolvesOrganization     = "http://skillforge.local/ontology#involvesOrganization"
+
 	xsdString = "http://www.w3.org/2001/XMLSchema#string"
 
 	// Entity URIs used in tests
@@ -1107,5 +1117,472 @@ skf:NoteChunkShape a sh:NodeShape ;
 	}
 	if !found {
 		t.Error("expected note1 quarantined (unspecified severity on a sourcePath shape = error)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// writeTempEntities — entity-shapes fixture helper (46-02 test group). The
+// fixture lands in a temp dir under the EXACT name entities.ttl: the engine
+// derives the violation layer from the file basename (D-46-02), so a
+// randomly named file would silently flip layer assertions to tbox.
+// ---------------------------------------------------------------------------
+
+func writeTempEntities(t *testing.T, fixture string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "shacl-entity-*")
+	if err != nil {
+		t.Fatalf("create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	path := filepath.Join(dir, "entities.ttl")
+	if err := os.WriteFile(path, []byte(fixture), 0o644); err != nil {
+		t.Fatalf("write entities.ttl fixture: %v", err)
+	}
+	return path
+}
+
+// ---------------------------------------------------------------------------
+// TestViolationLayer — three-layer violation stamping (D-46-03).
+// VALIDATION Test Map rows 46-02-T1/T3: tbox violations carry Layer=tbox +
+// the NodeShape's target class; entity violations carry Layer=entity
+// (fixture MUST be named entities.ttl — layer derives from the basename);
+// global cross-entity violations carry LayerGlobal with an EMPTY
+// TargetClass (omitempty → absent in JSON = FE dashed-badge sentinel,
+// 46-UI-SPEC §Component 2).
+// ---------------------------------------------------------------------------
+
+func TestViolationLayer(t *testing.T) {
+	t.Run("tbox layer stamped from non-entities shapes file", func(t *testing.T) {
+		kg := store.New()
+		kg.Insert(store.Triple{S: nsNote001, P: rdfType, O: skfNoteChunk})
+
+		fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+skf:NoteChunkShape a sh:NodeShape ;
+    sh:targetClass skf:NoteChunk ;
+    sh:property [
+        sh:path skf:sourcePath ;
+        sh:minCount 1 ;
+        sh:datatype xsd:string ;
+        sh:message "sourcePath missing (error-level, unspecified severity)"
+    ] .
+`
+		// writeTempShapes → random basename ≠ entities.ttl → LayerTBox.
+		path := writeTempShapes(t, fixture)
+		report, err := Validate(kg, path)
+		if err != nil {
+			t.Fatalf("Validate failed: %v", err)
+		}
+		stamped := false
+		for _, q := range report.Quarantined {
+			for _, v := range q.Violations {
+				if v.Layer != LayerTBox {
+					t.Errorf("expected layer %q, got %q", LayerTBox, v.Layer)
+				}
+				if v.TargetClass != skfNoteChunk {
+					t.Errorf("expected target_class %q, got %q", skfNoteChunk, v.TargetClass)
+				}
+				stamped = true
+			}
+		}
+		if !stamped {
+			t.Error("expected at least one stamped violation (note_001 missing sourcePath)")
+		}
+	})
+
+	t.Run("entity layer stamped from entities.ttl basename", func(t *testing.T) {
+		kg := store.New()
+		kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod1", P: rdfType, O: skfInsuranceProduct})
+
+		fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+skf:InsuranceProductShape a sh:NodeShape ;
+    sh:targetClass skf:InsuranceProduct ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "skf:InsuranceProduct must have at least one rdfs:label"@en
+    ] .
+`
+		// File name must be exactly entities.ttl — basename-derived layer.
+		path := writeTempEntities(t, fixture)
+		report, err := Validate(kg, path)
+		if err != nil {
+			t.Fatalf("Validate failed: %v", err)
+		}
+		stamped := false
+		for _, q := range report.Quarantined {
+			for _, v := range q.Violations {
+				if v.Layer != LayerEntity {
+					t.Errorf("expected layer %q, got %q", LayerEntity, v.Layer)
+				}
+				if v.TargetClass != skfInsuranceProduct {
+					t.Errorf("expected target_class %q, got %q", skfInsuranceProduct, v.TargetClass)
+				}
+				stamped = true
+			}
+		}
+		if !stamped {
+			t.Error("expected at least one stamped violation (prod1 missing label)")
+		}
+	})
+
+	t.Run("global sentinel has no target class", func(t *testing.T) {
+		kg := store.New()
+		kg.Insert(store.Triple{S: nsNote001, P: rdfType, O: skfNoteChunk})
+		kg.Insert(store.Triple{S: nsNote001, P: skfReferencesTable, O: nsNonExistent})
+
+		fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+
+# Global cross-entity integrity PropertyShape only — no NodeShape here.
+skf:referencesTableShape a sh:PropertyShape ;
+    sh:path skf:referencesTable ;
+    sh:class skf:TableSchema .
+`
+		path := writeTempShapes(t, fixture)
+		report, err := Validate(kg, path)
+		if err != nil {
+			t.Fatalf("Validate failed: %v", err)
+		}
+		stamped := false
+		for _, q := range report.Quarantined {
+			for _, v := range q.Violations {
+				if v.Layer != LayerGlobal {
+					t.Errorf("expected layer %q, got %q", LayerGlobal, v.Layer)
+				}
+				// Sentinel semantics: global violations belong to no single
+				// NodeShape class — TargetClass stays "" (omitempty drops it
+				// in JSON, which is the FE's no-chip signal).
+				if v.TargetClass != "" {
+					t.Errorf("expected empty target_class (global sentinel), got %q", v.TargetClass)
+				}
+				stamped = true
+			}
+		}
+		if !stamped {
+			t.Error("expected at least one global violation (referencesTable → non-existent TableSchema)")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestDanglingEdges — dangling_edge_count per quarantined entity (D-46-04).
+// VALIDATION Test Map rows 46-02-T1/T3: incoming edges across the
+// involvesInsuranceProduct / involvesOrganization / parentOrganization
+// family are counted per quarantined entity (reverse byO lookup, A4 timing:
+// counted during validation, BEFORE any quarantine), and an isolated
+// entity with zero in-edges reports 0 (field has no omitempty — BE always
+// ships it).
+// ---------------------------------------------------------------------------
+
+func TestDanglingEdges(t *testing.T) {
+	kg := store.New()
+	prodX := "http://skillforge.local/ontology#prod_x"
+	orgY := "http://skillforge.local/ontology#org_y"
+	orgZ := "http://skillforge.local/ontology#org_z"
+
+	// All three entities lack rdfs:label → each violates the entities.ttl
+	// minCount and is quarantined; only their in-edge counts differ.
+	kg.Insert(store.Triple{S: prodX, P: rdfType, O: skfInsuranceProduct})
+	kg.Insert(store.Triple{S: orgY, P: rdfType, O: skfOrganization})
+	kg.Insert(store.Triple{S: orgZ, P: rdfType, O: skfOrganization})
+	kg.Insert(store.Triple{S: nsNote001, P: rdfType, O: skfNoteChunk})
+	// In-edges: note_001 → prodX, note_001 → orgY, orgZ → orgY.
+	kg.Insert(store.Triple{S: nsNote001, P: skfInvolvesInsuranceProduct, O: prodX})
+	kg.Insert(store.Triple{S: nsNote001, P: skfInvolvesOrganization, O: orgY})
+	kg.Insert(store.Triple{S: orgZ, P: skfParentOrganization, O: orgY})
+
+	fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+skf:InsuranceProductShape a sh:NodeShape ;
+    sh:targetClass skf:InsuranceProduct ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "label required"@en
+    ] .
+
+skf:OrganizationShape a sh:NodeShape ;
+    sh:targetClass skf:Organization ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "label required"@en
+    ] .
+`
+	path := writeTempEntities(t, fixture)
+	report, err := Validate(kg, path)
+	if err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+
+	wantDangling := map[string]int{
+		prodX: 1, // note_001 involvesInsuranceProduct
+		orgY:  2, // note_001 involvesOrganization + orgZ parentOrganization
+		orgZ:  0, // no in-edges — count must still be reported (no omitempty)
+	}
+	seen := map[string]bool{}
+	for _, q := range report.Quarantined {
+		want, tracked := wantDangling[q.Entity]
+		if !tracked {
+			t.Errorf("unexpected quarantined entity %s", q.Entity)
+			continue
+		}
+		seen[q.Entity] = true
+		if q.DanglingEdgeCount != want {
+			t.Errorf("%s: expected DanglingEdgeCount %d, got %d", q.Entity, want, q.DanglingEdgeCount)
+		}
+	}
+	for entity := range wantDangling {
+		if !seen[entity] {
+			t.Errorf("expected %s in Quarantined (all three lack labels)", entity)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestEntitiesShapesParse — the shipped entities.ttl asset (D-46-01).
+// VALIDATION Test Map row 46-02-T2: exactly 2 NodeShapes
+// (InsuranceProduct/Organization); type PropertyShape hasValue, label
+// minCount 1 with NO datatype constraint (Pitfall 2), tier/parent
+// if-present class checks with no minCount; every PropertyShape at error
+// severity; zero entityCode PropertyShapes (zero-constraint deviation).
+// Then the constructive first-run-green assertion: a KG of legal entities
+// validates with health=ok, 0 errors, 0 quarantined (hermetic — no live
+// snapshot counts, Pitfall 7).
+// ---------------------------------------------------------------------------
+
+func TestEntitiesShapesParse(t *testing.T) {
+	// go test runs with cwd = package dir, so the relative path resolves.
+	parsed, err := parseShapes("entities.ttl")
+	if err != nil {
+		t.Fatalf("parseShapes(entities.ttl) failed: %v", err)
+	}
+	if len(parsed.NodeShapes) != 2 {
+		t.Fatalf("expected exactly 2 NodeShapes, got %d", len(parsed.NodeShapes))
+	}
+
+	byTarget := map[string]nodeShape{}
+	for _, s := range parsed.NodeShapes {
+		byTarget[s.TargetClass] = s
+	}
+	product, ok := byTarget[skfInsuranceProduct]
+	if !ok {
+		t.Fatalf("expected a NodeShape targeting skf:InsuranceProduct, got %d shapes", len(byTarget))
+	}
+	org, ok := byTarget[skfOrganization]
+	if !ok {
+		t.Fatalf("expected a NodeShape targeting skf:Organization, got %d shapes", len(byTarget))
+	}
+
+	propByPath := func(s nodeShape, path string) *propertyConstraint {
+		for i := range s.Properties {
+			if s.Properties[i].Path == path {
+				return &s.Properties[i]
+			}
+		}
+		return nil
+	}
+
+	// type PropertyShape: hasValue matches the target class.
+	if p := propByPath(product, rdfType); p == nil || p.HasValue != skfInsuranceProduct {
+		t.Errorf("InsuranceProduct rdf:type shape missing or wrong hasValue: %+v", p)
+	}
+	if p := propByPath(org, rdfType); p == nil || p.HasValue != skfOrganization {
+		t.Errorf("Organization rdf:type shape missing or wrong hasValue: %+v", p)
+	}
+
+	// label PropertyShape: minCount 1, and NO datatype constraint (Pitfall 2).
+	for name, s := range map[string]nodeShape{"InsuranceProduct": product, "Organization": org} {
+		p := propByPath(s, rdfsLabel)
+		if p == nil {
+			t.Fatalf("%s label PropertyShape missing", name)
+		}
+		if p.MinCount == nil || *p.MinCount != 1 {
+			t.Errorf("%s label: expected MinCount 1, got %v", name, p.MinCount)
+		}
+		if p.Datatype != "" {
+			t.Errorf("%s label: expected no datatype constraint (Pitfall 2), got %q", name, p.Datatype)
+		}
+	}
+
+	// tier PropertyShape: if-present class check against skf:Tier, no minCount.
+	if p := propByPath(product, skfBelongsToTier); p == nil || p.Class != skfTier || p.MinCount != nil {
+		t.Errorf("InsuranceProduct tier shape wrong: %+v", p)
+	}
+	if p := propByPath(org, skfBelongsToTier); p == nil || p.Class != skfTier || p.MinCount != nil {
+		t.Errorf("Organization tier shape wrong: %+v", p)
+	}
+
+	// parent PropertyShape: Organization only, class skf:Organization, no minCount.
+	if p := propByPath(product, skfParentOrganization); p != nil {
+		t.Errorf("InsuranceProduct must not constrain parentOrganization: %+v", p)
+	}
+	if p := propByPath(org, skfParentOrganization); p == nil || p.Class != skfOrganization || p.MinCount != nil {
+		t.Errorf("Organization parent shape wrong: %+v", p)
+	}
+
+	// Every PropertyShape in the file is error severity (explicit
+	// sh:severity sh:Violation per Pitfall 3).
+	for _, s := range parsed.NodeShapes {
+		for i := range s.Properties {
+			if s.Properties[i].Severity != SeverityError {
+				t.Errorf("%s property %s: expected error severity, got %s",
+					s.TargetClass, s.Properties[i].Path, s.Properties[i].Severity)
+			}
+		}
+	}
+
+	// Zero-constraint deviation: NO PropertyShape targets entityCode.
+	for _, s := range parsed.NodeShapes {
+		for i := range s.Properties {
+			if s.Properties[i].Path == pf("entityCode") {
+				t.Errorf("entityCode PropertyShape found on %s — zero-constraint deviation violated", s.TargetClass)
+			}
+		}
+	}
+
+	// Constructive first-run-green: legal Tier individual + legal Product
+	// (type+label+tier) + legal Org → zero quarantine. Hermetic fixture
+	// only — never live snapshot counts (Pitfall 7).
+	kg := store.New()
+	kg.Insert(store.Triple{S: nsSqlGuides, P: rdfType, O: skfTier})
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod_legal", P: rdfType, O: skfInsuranceProduct})
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod_legal", P: rdfsLabel, O: `"产品甲"`})
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod_legal", P: skfBelongsToTier, O: nsSqlGuides})
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#org_legal", P: rdfType, O: skfOrganization})
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#org_legal", P: rdfsLabel, O: `"机构乙"`})
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#org_legal", P: skfBelongsToTier, O: nsSqlGuides})
+
+	report, err := Validate(kg, "entities.ttl")
+	if err != nil {
+		t.Fatalf("Validate(entities.ttl) failed: %v", err)
+	}
+	if report.Health != "ok" {
+		t.Errorf("expected health ok for constructive legal entities, got %s", report.Health)
+	}
+	if report.ErrorCount != 0 {
+		t.Errorf("expected 0 errors, got %d", report.ErrorCount)
+	}
+	if len(report.Quarantined) != 0 {
+		t.Errorf("expected 0 quarantined, got %d", len(report.Quarantined))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestEntityQuarantine — SC2 formal semantics (D-46-04): a quarantined
+// entity becomes invisible in SUBJECT position, while its incoming edges
+// remain visible in OBJECT position (subject-only quarantine; cascading
+// quarantine rejected — store.Quarantine is subject-keyed and snapshots
+// serialize only the main store). Also pins the cross-boot stable loop
+// (Pitfall 6: boot snapshot is written BEFORE validate, so every boot
+// re-validates the same graph and reports the same violations) and the
+// dangling-edge disclosure (DanglingEdgeCount 1 for prod2).
+// VALIDATION Test Map rows 46-02-T3 / SHACL-02.
+// ---------------------------------------------------------------------------
+
+func TestEntityQuarantine(t *testing.T) {
+	fixture := `@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix skf:  <http://skillforge.local/ontology#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+skf:InsuranceProductShape a sh:NodeShape ;
+    sh:targetClass skf:InsuranceProduct ;
+    sh:property [
+        sh:path rdf:type ;
+        sh:hasValue skf:InsuranceProduct
+    ] ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:message "skf:InsuranceProduct must have at least one rdfs:label"@en
+    ] .
+`
+	buildKG := func() *store.Store {
+		kg := store.New()
+		// Tier individual (prod1's belongsToTier target must type-check).
+		kg.Insert(store.Triple{S: nsSqlGuides, P: rdfType, O: skfTier})
+		// prod1: healthy (type + label + tier).
+		kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod1", P: rdfType, O: skfInsuranceProduct})
+		kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod1", P: rdfsLabel, O: `"产品一"`})
+		kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod1", P: skfBelongsToTier, O: nsSqlGuides})
+		// prod2: violates (type only, missing label).
+		kg.Insert(store.Triple{S: "http://skillforge.local/ontology#prod2", P: rdfType, O: skfInsuranceProduct})
+		// note_001 —involvesInsuranceProduct→ prod2.
+		kg.Insert(store.Triple{S: nsNote001, P: rdfType, O: skfNoteChunk})
+		kg.Insert(store.Triple{S: nsNote001, P: skfInvolvesInsuranceProduct, O: "http://skillforge.local/ontology#prod2"})
+		return kg
+	}
+
+	path := writeTempEntities(t, fixture)
+	kg := buildKG()
+	report, err := Validate(kg, path)
+	if err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+
+	prod1 := "http://skillforge.local/ontology#prod1"
+	prod2 := "http://skillforge.local/ontology#prod2"
+	var prod2Count int
+	for _, q := range report.Quarantined {
+		if q.Entity == prod2 {
+			prod2Count++
+			if q.DanglingEdgeCount != 1 {
+				t.Errorf("prod2: expected DanglingEdgeCount 1 (note_001 in-edge), got %d", q.DanglingEdgeCount)
+			}
+			for _, v := range q.Violations {
+				if v.Layer != LayerEntity {
+					t.Errorf("prod2 violation: expected layer %q, got %q", LayerEntity, v.Layer)
+				}
+			}
+		}
+		if q.Entity == prod1 {
+			t.Error("prod1 is healthy and must NOT be quarantined")
+		}
+	}
+	if prod2Count != 1 {
+		t.Fatalf("expected prod2 in Quarantined exactly once, got %d", prod2Count)
+	}
+
+	// Boot-style quarantine loop — main.go:937-941 replicated verbatim
+	// (Query(q.Entity,"","") → Quarantine(t); the inner t shadows the
+	// testing var exactly as in main).
+	for _, q := range report.Quarantined {
+		for _, t := range kg.Query(q.Entity, "", "") {
+			kg.Quarantine(t)
+		}
+	}
+
+	// SC2: subject position — prod2 is invisible.
+	if got := kg.Query(prod2, "", ""); len(got) != 0 {
+		t.Errorf("expected prod2 invisible in subject position after quarantine, got %d triples", len(got))
+	}
+	// SC2: object position — the incoming edge is intentionally disclosed.
+	if got := kg.Query("", skfInvolvesInsuranceProduct, prod2); len(got) != 1 {
+		t.Errorf("expected the note_001→prod2 edge visible in object position, got %d", len(got))
+	}
+
+	// Cross-boot stable loop (Pitfall 6): rebuild from the same fixture and
+	// re-validate — prod2 must be quarantined again (each boot validates
+	// the full snapshot, so quarantine never converges the graph clean).
+	report2, err := Validate(buildKG(), path)
+	if err != nil {
+		t.Fatalf("re-Validate failed: %v", err)
+	}
+	stable := false
+	for _, q := range report2.Quarantined {
+		if q.Entity == prod2 {
+			stable = true
+		}
+	}
+	if !stable {
+		t.Error("expected prod2 quarantined again on rebuild (stable cross-boot loop)")
 	}
 }
