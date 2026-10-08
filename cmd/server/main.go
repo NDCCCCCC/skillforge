@@ -927,8 +927,12 @@ func main() {
 	// are moved to quarantine; warnings are recorded but allowed through.
 	// Violations never block boot (D-SHACL-02: internal network teaches
 	// that service availability > data quality enforcement at startup).
-	shaclShapesPath := envOr("SKILLFORGE_SHACL_SHAPES", filepath.Join("internal", "ontology", "shacl", "shapes.ttl"))
-	shaclReport, shaclErr := shacl.Validate(ontologyKG, shaclShapesPath)
+	// D-46-02: shapes load via the shacl package's env-driven path-list
+	// helper (default two-file list) — the single env read point lives in
+	// the shacl package, and rollback revalidation consumes the same list
+	// so boot and rollback can never drift apart.
+	shaclShapesPaths := shacl.ShapesPathsFromEnv()
+	shaclReport, shaclErr := shacl.Validate(ontologyKG, shaclShapesPaths...)
 	if shaclErr != nil {
 		// Non-fatal: log and continue. Boot proceeds without blocking on SHACL.
 		log.Printf("[WARN] cmd/server: SHACL validation: %v", shaclErr)
