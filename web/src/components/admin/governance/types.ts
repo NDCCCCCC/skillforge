@@ -8,6 +8,8 @@
 
 export type ShaclHealth = 'ok' | 'warn' | 'error';
 export type ViolationSeverity = 'error' | 'warning';
+/** D-46-03: layer stamped by validate.go; locked by 46-UI-SPEC §Color */
+export type ViolationLayer = 'tbox' | 'entity' | 'global';
 
 export interface ShaclViolation {
   severity: ViolationSeverity;
@@ -22,11 +24,17 @@ export interface ShaclViolation {
   /** D-PROV-05: 1-based line number */
   line_start?: number;
   line_end?: number;
+  /** D-46-03: validate.go stamping 点盖戳；legacy/未盖戳 violation 缺省 */
+  layer?: ViolationLayer;
+  /** NodeShape TargetClass（skf:InsuranceProduct / skf:Organization / skf:NoteChunk …）；layer=global 时缺省 */
+  target_class?: string;
 }
 
 export interface QuarantinedEntity {
   entity: string;
   triple_count: number;
+  /** D-46-04: 只读计数——指向该隔离实体的入边数量（对象位可见）；BE 恒下发，未下发时缺省 */
+  dangling_edge_count?: number;
   violations: ShaclViolation[];
 }
 
