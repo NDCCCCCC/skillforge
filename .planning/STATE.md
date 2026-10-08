@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: — SPARQL Schema Detection + Entity SHACL Shapes
-status: verifying
-last_updated: "2026-10-08T03:50:55.291Z"
-last_activity: 2026-10-08
+status: Awaiting next milestone
+last_updated: "2026-10-08T06:50:39.445Z"
+last_activity: 2026-10-08 — Milestone v1.6 completed and archived
 progress:
   total_phases: 2
   completed_phases: 2
@@ -17,13 +17,10 @@ progress:
 
 ## Current Position
 
-Phase: 46
-Plan: Not started
-Status: Phase 46 executed complete — next: `/gsd:verify-phase 46` then v1.6 milestone close
-Resume: .planning/phases/46-entity-shacl-shapes/46-05-SUMMARY.md
-Last activity: 2026-10-08
-
-Progress: [██████████] 100%
+Phase: Milestone v1.6 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-10-08 — Milestone v1.6 completed and archived
 
 ### Quick Tasks Completed
 
@@ -273,10 +270,22 @@ v1.4 milestone closed 2026-09-23 with 49 acknowledged open items (45 v1.4 acknow
 
 ## Operator Next Steps
 
-- Phase 46 executed complete (46-01..46-05): run `/gsd:verify-phase 46` — gate entry point is `bash verify-phase-46.sh` (exit 0 expected; P2/P4 carry the D-45-DEF-01 named waiver, re-probed still-failing at Phase 46 HEAD 2026-10-08). SHACL-01/02/03 marked complete in REQUIREMENTS.md at 46-05 close; v1.6 milestone (Phase 45 + 46) is now fully executed — milestone close is the next step.
-- Note: D-45-DEF-01 (pre-existing emitter test failure `TestEmitSubCategoryInstanceCount` 6 vs 7) surfaces in every P2/P4 run of BOTH phase gates as a WAIVED line — triage recorded in `.planning/phases/45-sparql-schema-visibility-d-sparql-05/deferred-items.md`; BL-05 backlog candidate: `internal/server/platform/verify_main.go` (D-45-DEF-02, stale Phase-44 harness, excluded from the 45 gate). FE-side D-46-DEF-01 (DetailPanel SC-5) sits outside the Go gates, recorded in `.planning/phases/46-entity-shacl-shapes/deferred-items.md`.
+- Start the next milestone with /gsd:new-milestone
 
 ## Deferred Items
+
+Items acknowledged and deferred at v1.6 milestone close on 2026-10-08 (per v1.6-MILESTONE-AUDIT.md, tech_debt 无 blocker):
+
+| Category | Item | Status |
+|----------|------|--------|
+| test_deferred | D-45-DEF-01 TestEmitSubCategoryInstanceCount（named waiver in verify-phase-45/46.sh） | Deferred |
+| test_deferred | D-46-DEF-01 DetailPanel.test.tsx SC-5 先存失败 | Deferred |
+| flaky_test | D-46-DEF-02 TestDeriveEdgesDeterministic（浮点 Weight，6 跑 1 败；quick task 最佳候选） | Deferred |
+| governance_gap | audit WARNING-1: rollback 后治理报告缓存不刷新（SetShaclReport 仅 boot 调用；toast 已披露缓解） | Backlog |
+| schema_quirk | audit WARNING-2: owl:Class-vs-skf:Class 声明 quirk（45-02 已文档化） | Backlog |
+| docs_traceability | BL-01..04 REQUIREMENTS 正文缺 Traceability 表行 | Backlog |
+| review_info | 46-REVIEW Info 级 7 项未修（--fix 范围=Critical+Warning） | Backlog |
+| human_verify | CR-01 rollback ABox 保全修复（2682982）待人工验证 | Pending |
 
 Items acknowledged and deferred at v1.5 milestone close on 2026-10-02:
 

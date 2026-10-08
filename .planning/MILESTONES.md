@@ -1,5 +1,21 @@
 # Milestones
 
+## v1.6 SPARQL Schema Detection + Entity SHACL Shapes (Shipped: 2026-10-08)
+
+**Phases completed:** 2 phases, 7 plans, 12 tasks
+
+**Key accomplishments:**
+
+- Landed D-SPARQL-05 Option β in the store — `isSchemaTriple` gained a subject∩predicate allowlist arm (13 metaPredicates, label/comment fail-closed) with query-time `schemaSubjects` derivation, making skill individuals' `hasReadAccess` triples tier-visible (admin counts 17/10) while all D-SPARQL-03 red lines pass with zero assertion edits.
+- Landed the phase verification layer on 45-01's β semantics — D-45-01 emitter conformance gate (13-family fixture, label/comment negative pin), SPARQL-03 handler-level parity test proving /api/sparql and /api/admin make identical schema/ABox judgments on one fixtureKG, and verify-phase-45.sh (SC4, 4 fail-fast partitions under WSL CGO_ENABLED=1, exit 0 with the D-45-DEF-01 named waiver).
+- `sh:severity` 政策从引擎硬编码归位 shapes 数据（W3C §2.1.4 三值映射，sourcePath 特例退役）+ shapes 路径列表化基建（variadic Validate、ShapesPathsFromEnv env 单点、errors.Join 多文件聚合、nodeShape.Layer 源文件追踪），既有 13 测试断言零改动全绿。
+- Violation 三层盖戳（layer/target_class，global 无 chip 哨兵）+ 每隔离实体如实下发 dangling_edge_count（隔离前反查 involves*/parentOrganization 入边，0 也恒发）+ `entities.ttl` 资产交付（必填=无条件发射、if-present=sh:class、entityCode 零约束偏离记录在头）+ SC2 隔离语义四测试组全绿（subject 不可见 / 对象位披露 / 跨 boot 稳定循环 / 构造性首跑零隔离）。
+- boot（main.go）与 rollback（induction.go Step 11）两个 shapes 消费点统一到 `shacl.ShapesPathsFromEnv()` 单点——induction.go:383 从未生效的硬编码路径（静默 no-op）退役，D-PROV-09 rollback/boot shapes parity 缺口闭合，并由真 RED→GREEN 的 TestRollbackShaclParity 双 case 钉死（修复前 rollback SHACL 重校验零覆盖）；boot 链时序与隔离语义零改动。
+- 46-02 盖的 layer/target_class 戳与恒下发的 dangling_edge_count 在 /admin/governance 渲染为三态徽章（tbox indigo / entity neutral / global dashed 无 chip 哨兵）、红黄区头 per-layer 计数 chips 与隔离区第 7 列「悬挂边」（0 渲染 0 / 缺失渲染 —）——46-UI-SPEC 冲突优先级 5 条取代项全部落地，FE 零推导（Honesty 红线 8/9），governanceApi.ts 咽喉点零改动，legacy 报告无徽章不炸，9 组件回归全绿。
+- 照 verify-phase-45.sh 骨架逐段交付 `verify-phase-46.sh`——P1 CGO=1 build+vet → P2 ontology 四包套件 → P3 targeted shacl+induction 双门（7 个具名测试 + >= 7 --- PASS，实测 22）→ P4 ./internal/... 全量，D-45-DEF-01 waiver 执行时点复探后照 45 收录；本地 `bash verify-phase-46.sh` 两次实跑 exit 0 全绿，SC4 机器可执行。
+
+---
+
 ## v1.5 Outstanding Closure (Shipped: 2026-10-02)
 
 **Phases completed:** 2 phases, 5 plans, 13 tasks

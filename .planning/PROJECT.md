@@ -3,9 +3,10 @@
 ## Current State
 
 - ✅ **v1.5 SHIPPED 2026-10-02** — Outstanding Closure: 8 SPARQL 测试修复 + D-TIER-03 恢复 + 42-03 runbook 全门执行(live 抽取 F1 0.87)+ 3D 知识图谱 + ECL 实体图谱(65 险种/38 机构)+ admin 11-tab 全可用
-- ✅ **v1.6 EXECUTED 2026-10-08** — SPARQL Schema Detection + Entity SHACL Shapes 两项核心积压全部落地（待 milestone 收口）
+- ✅ **v1.6 SHIPPED 2026-10-08** — SPARQL Schema Detection + Entity SHACL Shapes：D-SPARQL-05 β 语义落地 + 实体 ABox 纳入 SHACL 启动校验；milestone audit 6/6 需求 + 11/11 wiring + E2E 完整（tech_debt 无 blocker，已 ack 至 backlog）
 - ✅ **Phase 45 COMPLETE 2026-10-03** — D-SPARQL-05 落地（β 语义：schemaSubjects ∩ 13 谓词 allowlist，查询时派生零持久态；verify-phase-45.sh 4 分区全绿；D-45-DEF-01/02/03 deferred 记录在案）
-- ✅ **Phase 46 COMPLETE 2026-10-08** — 实体 SHACL shapes 落地（severity 归位 shapes 数据 + entities.ttl Product/Org shapes + boot/rollback 双消费点 env 列表化 + governance 分层呈现；verify-phase-46.sh 全绿 16/16 must-haves；entityCode 零约束为用户决策 2026-10-04；46-REVIEW CR-01 [Phase 40 遗留 rollback ABox wipe] 待修）
+- ✅ **Phase 46 COMPLETE 2026-10-08** — 实体 SHACL shapes 落地（severity 归位 shapes 数据 + entities.ttl Product/Org shapes + boot/rollback 双消费点 env 列表化 + governance 分层呈现；verify-phase-46.sh 全绿 16/16 must-haves；entityCode 零约束为用户决策 2026-10-04；46-REVIEW 9 项 Critical/Warning 已修含 CR-01 rollback ABox wipe）
+- 📋 **Next** — 运行 `/gsd-new-milestone` 定义下一里程碑（v1.6 遗留：D-46-DEF-02 flaky 修复、rollback 报告缓存刷新、BL-01..04 补录均为 quick task 候选）
 
 ## What This Is
 
@@ -113,8 +114,11 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 | **状态边界：Zustand 不存 `messages`**（Pitfall 7，Phase 4） | `useChat` 独占消息流；`app-store.ts` 文件级注释禁止 `messages` 字段，杜绝双真值源 | ✅ Validated — Phase 4 |
 | **wire-type 编译期漂移报警**（Phase 4） | TS `AssertAssignable<SkillForgeChunk, UIMessageChunk>` 让 SDK 上游改名任何 discriminator 时编译失败——编译器即漂移报警 | ✅ Validated — Phase 4 |
 | **D6 Reversed — Go-native trust evaluator**（Phase 3 / Plan 03-06） | **2026-08-12 锁定决策反转**（原 D6："Ragas as Python sidecar for eval"）。改为单语言 Go 栈：`internal/eval` 包 + `cmd/eval` 二进制，4 个指标（faithfulness / answer_relevancy / context_precision / context_recall）全部通过 GLM-as-judge + 现有 BGE-M3 embedder 计算。**只有 faithfulness 逐字移植 Ragas v0.1.21 的 claim-extraction + entailment prompts**（Apache-2.0，`eval/NOTICE` 署名），保证 headline 数字行业可比（"Ragas 口径"）；其余 3 个指标用简单 Go-authored yes/no judge prompts。理由：研究自评（03-RESEARCH.md line 132）估算"全量移植 faithfulness 约 2000 行"，但成本集中在 prompt——只有 claim extraction 真正校准敏感（处理否定 / 模态 / 时序 / 多句答案）。决策：只移植 faithfulness prompt；其余 3 个指标 Go 自建；栈保持单语言。**消除 T-3-SC 供应链 checkpoint**（无 PyPI 审计）、砍掉 ragas/langchain-openai 依赖树、规避 ragas 0.1.21 ↔ Python 3.13 安装摩擦。原始 Python 草案保留在 git 历史。 | ✅ Validated — Phase 3 / Plan 03-06 |
+| **D-45-01/02 — SPARQL schema 可见性 β 语义**（Phase 45） | isSchemaTriple 增 subject∩predicate arm（schemaSubjects 查询时派生 ∩ 13 metaPredicates allowlist，label/comment fail-closed 排除）；Option α（Insert 期填 schemaSubjects）被否——破坏 pinned 红线测试；零持久态派生使 D-TIER-03 无新泄漏面 | ✅ Validated — Phase 45（milestone audit 11/11 wiring） |
+| **D-46-01..04 — 实体 SHACL 语义**（Phase 46） | severity 从引擎硬编码归位 shapes 数据（W3C §2.1.4 默认 sh:Violation）；Violation 三层盖戳（entity/tbox/global 哨兵）；dangling_edge_count 隔离前反查恒下发（无 omitempty）；entityCode 零约束（用户决策 2026-10-04：裸字面量 × `"` 前缀启发式必误隔离 16 实体，发射表示修复留 backlog） | ✅ Validated — Phase 46（16/16 must-haves） |
+| **Shapes 路径 env 列表化单点**（Phase 46） | `ShapesPathsFromEnv()` 单点（未设置回退默认双文件 [shapes.ttl, entities.ttl]，errors.Join 不吞缺失路径），boot/rollback 双消费点收口；rollback 曾是恒 no-op 的硬编码——由真 RED→GREEN TestRollbackShaclParity 钉死 | ✅ Validated — Phase 46 |
 
-## Current Milestone: v1.6 SPARQL Schema Detection + Entity SHACL Shapes
+## Shipped Milestone: v1.6 SPARQL Schema Detection + Entity SHACL Shapes (2026-10-08)
 
 **Goal:** 闭合 v1.5 两项信任/治理积压——D-SPARQL-05（skill `hasReadAccess`
 经 subject-based schema detection 在 SPARQL/admin baseline 可见）+ 实体类
@@ -168,4 +172,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-08 after Phase 46 (Entity SHACL Shapes) complete — v1.6 all phases executed*
+*Last updated: 2026-10-08 after v1.6 milestone shipped（Phases 45-46 archived；audit 6/6 reqs + 11/11 wiring，tech_debt ack）*
