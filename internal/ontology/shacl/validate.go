@@ -36,6 +36,23 @@
 // TBox shapes behaviour byte-identical; the former sourcePath→warning engine
 // special case (D-PROV-10) retired into explicit sh:severity declarations in
 // shapes.ttl.
+//
+// D-46-03: every violation is stamped with the layer it was validated
+// against ("tbox" | "entity") plus the target class of the NodeShape that
+// produced it, both copied deterministically from parse-time shape metadata
+// in the Validate stamping loop. Cross-entity integrity violations
+// (checkGlobalReferences) carry LayerGlobal and no target class — they
+// belong to no single NodeShape class, and the absent target_class
+// (omitempty) is the FE sentinel for the dashed "cross-entity" badge
+// (46-UI-SPEC §Component 2).
+//
+// D-46-04: quarantine stays subject-only (store.Quarantine is keyed by
+// t.S — SC2 formal semantics: a quarantined entity is invisible in subject
+// position, while its incoming edges remain visible in object position and
+// are disclosed honestly via per-entity dangling_edge_count). Cascading
+// quarantine was rejected: Quarantine is subject-keyed and snapshots
+// serialize only the main store, so cascade would corrupt healthy notes and
+// permanently persist the deletion.
 package shacl
 
 import (
@@ -73,20 +90,33 @@ const (
 
 // Violation records one SHACL constraint violation.
 type Violation struct {
-	Severity    ViolationSeverity `json:"severity"`
-	Entity      string            `json:"entity"`
-	Constraint  string            `json:"constraint"`
-	Detail      string            `json:"detail"`
-	SourcePath  string            `json:"source_path,omitempty"`
-	LineStart   int               `json:"line_start,omitempty"`
-	LineEnd     int               `json:"line_end,omitempty"`
+	Severity   ViolationSeverity `json:"severity"`
+	Entity     string            `json:"entity"`
+	Constraint string            `json:"constraint"`
+	Detail     string            `json:"detail"`
+	SourcePath string            `json:"source_path,omitempty"`
+	LineStart  int               `json:"line_start,omitempty"`
+	LineEnd    int               `json:"line_end,omitempty"`
+	// D-46-03: layer/target_class are stamped in the Validate loop from
+	// parse-time nodeShape metadata (deterministic derivation, testable).
+	// omitempty keeps legacy reports wire-compatible; LayerGlobal violations
+	// carry no TargetClass — the missing field IS the FE sentinel
+	// (46-UI-SPEC §Component 2).
+	TargetClass string `json:"target_class,omitempty"`
+	Layer       string `json:"layer,omitempty"`
 }
 
 // QuarantinedEntity is an entity that has at least one error-level violation.
 type QuarantinedEntity struct {
-	Entity      string      `json:"entity"`
-	TripleCount int         `json:"triple_count"`
-	Violations  []Violation `json:"violations"`
+	Entity      string `json:"entity"`
+	TripleCount int    `json:"triple_count"`
+	// D-46-04: incoming-edge count at validation time — counted BEFORE any
+	// quarantine happens (the store indices still hold the full graph, A4).
+	// No omitempty: the BE must always ship this field so a count of 0
+	// reaches the FE and renders as 0, never as "—" (46-UI-SPEC §Component 4
+	// Honesty red line 8).
+	DanglingEdgeCount int         `json:"dangling_edge_count"`
+	Violations        []Violation `json:"violations"`
 }
 
 // Report is the output of a SHACL validation run.
@@ -181,6 +211,11 @@ func ValidateWithTrigger(kg *store.Store, shapesPaths []string, trigger string) 
 				violations := evaluateProperty(kg, entity, prop, parsed)
 				for _, v := range violations {
 					v.Entity = entity
+					// D-46-03: stamp layer + target class from the parse-time
+					// nodeShape record (the loop variable ns shadows the ns()
+					// namespace helper in this scope — existing loop idiom).
+					v.TargetClass = ns.TargetClass
+					v.Layer = ns.Layer
 					if v.Severity == SeverityError {
 						entityErrors[entity] = append(entityErrors[entity], v)
 					} else {
@@ -208,7 +243,14 @@ func ValidateWithTrigger(kg *store.Store, shapesPaths []string, trigger string) 
 		report.Quarantined = append(report.Quarantined, QuarantinedEntity{
 			Entity:      entity,
 			TripleCount: tripleCount,
-			Violations:  violations,
+			// D-46-04: counted during validation, BEFORE any quarantine —
+			// the store indices still hold the full graph here. SC2 formal
+			// semantics: after the caller quarantines (subject-keyed), the
+			// entity vanishes from subject position while these incoming
+			// edges stay visible in object position and this count
+			// discloses them honestly.
+			DanglingEdgeCount: countDanglingEdges(kg, entity),
+			Violations:        violations,
 		})
 		report.ErrorCount += len(violations)
 	}
@@ -798,7 +840,12 @@ func checkGlobalReferences(kg *store.Store, parsed *parsedShapes) []Violation {
 				Severity:   SeverityError,
 				Entity:     tr.S,
 				Constraint: "sh:class",
-				Detail:     fmt.Sprintf("skf:referencesTable target <%s> is not a skf:TableSchema instance", target),
+				// D-46-03 global sentinel: cross-entity integrity violations
+				// belong to no single NodeShape class — LayerGlobal is set
+				// and TargetClass stays empty (omitempty drops it in JSON),
+				// which is the FE's dashed "cross-entity" badge signal.
+				Layer: LayerGlobal,
+				Detail: fmt.Sprintf("skf:referencesTable target <%s> is not a skf:TableSchema instance", target),
 			})
 		}
 	}
@@ -809,6 +856,27 @@ func checkGlobalReferences(kg *store.Store, parsed *parsedShapes) []Violation {
 // existsType checks whether an entity has a given rdf:type triple.
 func existsType(kg *store.Store, entity, _, typeIRI string) bool {
 	return len(kg.Query(entity, ns("type"), typeIRI)) > 0
+}
+
+// danglingEdgePredicates enumerates the ABox predicates whose edges can be
+// left pointing at a quarantined entity (abox.go:66-82 predicate family,
+// TBox v7 prop-0003/0004/0005).
+var danglingEdgePredicates = []string{
+	pf("involvesInsuranceProduct"),
+	pf("involvesOrganization"),
+	pf("parentOrganization"),
+}
+
+// countDanglingEdges counts incoming edges to entity across the dangling
+// predicates (reverse lookup via the store's byO index — same idiom as
+// store.Adjacent1Reverse). Called from the quarantine list build, i.e.
+// during validation and BEFORE quarantine moves any triple (D-46-04).
+func countDanglingEdges(kg *store.Store, entity string) int {
+	n := 0
+	for _, pred := range danglingEdgePredicates {
+		n += len(kg.Query("", pred, entity))
+	}
+	return n
 }
 
 // --- Namespace helpers ---
