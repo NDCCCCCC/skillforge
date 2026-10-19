@@ -16,6 +16,12 @@ verified: "2026-10-19"
 # open are now re-closed on the per-file / normalized-expression / sentinel / begin-marker
 # assertions landed by plans 48-05..48-09, each citing the mutation that proves it (see the
 # register rows and "Why these closures changed" § Re-closure).
+# threats_open corrected again 2026-10-20 by plan 48-14 (gap-closure round 3): the register had
+# been silent on a shipped surface its own plan had flagged — 48-11-SUMMARY.md § Threat Flags
+# carried `threat_flag: supply-chain` for the verify job's `curl | sh` bootstrap while this
+# frontmatter said 0 open. The row (T-48-47) lands only now that the fix (48-12: module-proxy
+# install) and its mutation-proof pin (48-13: P3 assertion + reintroduction drills) exist; 0 open
+# is truthful again.
 ---
 
 # Phase 48 — Security
@@ -63,6 +69,7 @@ verified: "2026-10-19"
 | T-48-18 | Information Disclosure / Availability | later fork-gate edits | high | mitigate | P9's normalized-expression equality has no substring fallback — an overall negation of the `if:` changes the normalized string and fails with both expressions printed (48-08 Task 1) | closed |
 | T-48-19 | Denial of Service | unrelated later edits | medium | mitigate | P9's directory-wide `go-version:` ban plus the trigger-shape assertion | closed |
 | T-48-20 | Repudiation | the partitions this phase adds | high | mitigate | P11 half 2 pushes the adversarial fixtures (`two-files`, `yaml-ext`, `lowercase-registry`, `stray-secret`) through **the same per-file `scan_trust_surface` P8 runs**, each required to fail for its named rule; half 1a requires registry == call sites == body-written begin markers == 11, so a body that did not run cannot reach `ALL PASSED` (48-05 Task 3 + 48-09 Task 3) | closed |
+| T-48-47 | Tampering | `.github/workflows/ci.yml` verify job install step | critical | mitigate | Module-proxy install, not a pipe: the verify job runs `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` with an in-step `[ -x "$LINT_BIN/golangci-lint" ]` postcondition before the gate runs (48-12 Task 1); the mechanism is pinned by the same P2/P3 probe that judges the `go` job — install shape, `[ -x ]`, and two banned fetch/script tokens asserted (48-13 Task 2) — and re-adding a curl-piped install reds P3 naming the tokens (48-13 Task 3 drill). Origin: `48-11-SUMMARY.md` § Threat Flags recorded `threat_flag: supply-chain` against the then-shipped `curl …/HEAD/install.sh \| sh` step while this register stayed silent — the flag finally lands here | closed |
 
 *Status: open · closed · open — below `high` threshold (non-blocking)*
 *Severity: critical > high > medium > low — only open threats at or above `workflow.security_block_on` count toward `threats_open`*
@@ -128,9 +135,23 @@ and already covered `.yaml`; only P1's parse loop and P8's enumeration were exte
 finding is narrowed — and the narrowed part is now fixed anyway (both extensions are enumerated
 everywhere a workflow file is counted or parsed, 48-05 Task 2).
 
-Arithmetic: the register carries 20 rows; 0 rows are `open` at or above `block_on: high`
-(`threats_open: 0`), 19 are `closed`, and 1 is `closed (accepted)` (T-48-14, gated decision A).
-Because the open count is 0, the frontmatter sets `status: verified`.
+### Re-closure (plan 48-14, 2026-10-20 — round-2 gap closure)
+
+The round-2 gap-closure wave reintroduced the defect class it was fixing: 48-11's new `verify` job
+bootstrapped its linter with `curl …/HEAD/install.sh | sh` (R2-CR-01), and `threats_open: 0` had
+been recorded while `48-11-SUMMARY.md` § Threat Flags carried `threat_flag: supply-chain` against
+that same step — the same frontmatter-vs-prose contradiction class this file's header comment block
+already documents once. 48-12 replaced the install shape and 48-13 pinned it; the row lands here,
+now that the fix and its mutation proof both exist:
+
+| Falsified closure | Rows | Now proven by | Mutation that bites |
+|-------------------|------|---------------|---------------------|
+| Round-2 gap-closure wave reintroduced the defect class it was fixing (R2-CR-01) | T-48-47 | 48-12 Task 1 (fix) + 48-13 Tasks 2-3 (pin + drill) | re-adding a curl-piped install or any network fetch-and-execute step to ci.yml reds P3 with the fetch/script tokens named |
+
+Arithmetic: the register carries 21 rows; 0 rows are `open` at or above `block_on: high`
+(`threats_open: 0`), 20 are `closed`, and 1 is `closed (accepted)` (T-48-14, gated decision A).
+Because the open count is 0, the frontmatter sets `status: verified`. The 21st row (T-48-47) was
+added by plan 48-14 on 2026-10-20, after 48-12 fixed the surface and 48-13 pinned it.
 
 ---
 
@@ -142,14 +163,17 @@ mutation probe named in its Mitigation cell. That establishes the gates bite on 
 files; it does not establish runner-side runtime behavior. Two classes of proof remain open and
 are tracked as Manual-Only M1–M5 in `48-VALIDATION.md`:
 
-- **No CI runner has executed these workflows — M1: BLOCKED (recorded by plan 48-11).** `ci.yml`
-  has never been on the remote default branch, and git transport to github.com is unreachable from
-  the executing host (connect timeout on 443; a TLS handshake failure on a second attempt), so
-  `go` / `fe` / `docker` (and the new `verify` job) have never reported a conclusion. Every
-  "mitigated" claim above is a claim about *declaration*, not about *a run*. `origin/main` is also
-  an unrelated single commit (`369b08a`) with an empty merge-base, so no PR can be opened from
-  this branch. The verbatim run recipe is persisted in `48-11-SUMMARY.md`; until a host with git
-  transport produces one run with all jobs `success`, CICD-01/02/03 stay Pending.
+- **No CI runner has executed these workflows — M1: BLOCKED (recorded by plan 48-11; cause
+  corrected 2026-10-20).** `ci.yml` has never been on the remote default branch, so `go` / `fe` /
+  `docker` (and the new `verify` job) have never reported a conclusion. Every "mitigated" claim
+  above is a claim about *declaration*, not about *a run*. The "git transport unreachable" cause
+  recorded by 48-11 no longer holds: `git ls-remote origin HEAD` succeeds from the executing host
+  (exit 0, `369b08a` — 48-VERIFICATION.md round 2, Environment Facts). What remains is the
+  repository-owner history decision (`origin/main` is still a single unrelated commit with an
+  empty merge-base, so no PR can be opened from this branch) plus one push from this
+  transport-capable host — owned by plan 48-15, which executes the run recipe persisted verbatim
+  in `48-11-SUMMARY.md`. Until that run exists with all jobs `success`, CICD-01/02/03 stay
+  Pending.
 - **No image was built.** Docker is absent from this host, so `T-48-09`'s `push: false` and the two
   per-image cache scopes are statically asserted only.
 
@@ -179,6 +203,7 @@ that the `-test.shuffle` seed prints only under `-v`.
 | 2026-10-19 | 20 | 11 | 9 | gsd execute-phase → secure-phase (ASVS L1, register authored at plan time; auditor skipped per the L1 short-circuit) |
 | 2026-10-19 | 20 | 11 | 9 | corrected after `48-REVIEW.md` + `48-VERIFICATION.md` reproduced the mutations — the first row's `0 open` verdict is superseded, not deleted |
 | 2026-10-19 | 20 | 20 | 0 | gsd gap-closure (plans 48-05…48-09) — re-closed on mutation evidence; see 48-10-SUMMARY.md |
+| 2026-10-20 | 21 | 21 | 0 | gsd gap-closure round 3 (plans 48-12..48-13) — supply-chain row recorded after fix+pin landed |
 
 ---
 
@@ -186,10 +211,10 @@ that the `-test.shuffle` seed prints only under `-v`.
 
 - [x] All threats have a disposition (mitigate / accept / transfer)
 - [x] Accepted risks documented in Accepted Risks Log
-- [x] `threats_open: 0` confirmed — the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09
+- [x] `threats_open: 0` confirmed — the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, and the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill)
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
-**Approval:** APPROVED — 20/20 closed, 0 open. Class A (no real CI run, no image build) remains honestly recorded under "What this audit does NOT establish" and in `48-VALIDATION.md` M1–M5; it is a recorded environment block, not an open threat.
+**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-14). Class A (no real CI run, no image build) remains honestly recorded under "What this audit does NOT establish" and in `48-VALIDATION.md` M1–M5; it is a recorded environment block, not an open threat.
 
 ## Security Audit 2026-10-19
 
