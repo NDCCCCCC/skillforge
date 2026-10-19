@@ -450,7 +450,45 @@ p4_c_rc=$?
 [ "$p4_c_rc" -eq 0 ] || { tail -20 "$WORK/p4-sentinel-c.log"; fail "P4 sentinel C: an unused parameter was reported — the revive rule is not disabled (D-03)"; }
 pass "P4 sentinel C: an ignored parameter stays quiet (revive rule disabled)"
 
-done_partition "P4 lint-teeth (config verify + sentinel A fires, sentinels B and C stay quiet)"
+# Sentinel D — the positive revive probe (WR-04). A/B/C together cannot tell
+# "revive is configured" from "revive is absent": C's unused parameter stays
+# quiet for the trivial reason that no revive rule ran. This module carries a
+# missing package comment, the one violation only revive's `package-comments`
+# rule reports. Deleting `linters.enable: [revive]` strips that attribution and
+# turns the gate red here.
+#
+# The unchecked json.Unmarshal is load-bearing, not decoration. With revive
+# removed the errcheck finding keeps BOTH the exit code non-zero and the log
+# non-empty, so lint_run's empty-log guard can never abort ahead of sentinel D's
+# own attribution check. A package-comment-only module goes silent (rc 0, no
+# output) the instant revive disappears, and which branch then surfaces the
+# failure is a formatting detail of the binary — this shape guarantees the
+# branch that runs names revive.
+SD="$WORK/sentinel-d"
+mkdir -p "$SD"
+printf 'module sentinel-d\n\ngo 1.21\n' > "$SD/go.mod"
+cat > "$SD/main.go" <<'GOEOF'
+package main
+
+import "encoding/json"
+
+func main() {
+	var v any
+	json.Unmarshal([]byte("{}"), &v)
+}
+GOEOF
+lint_run "p4-sentinel-d.log" "$SD" run --config "$ROOT/.golangci.yml" ./...
+p4_d_rc=$?
+if [ "$p4_d_rc" -eq 0 ]; then
+  fail "P4 sentinel D: a missing package comment stayed quiet — revive is not running (WR-04)"
+fi
+if ! grep -q 'revive' "$WORK/p4-sentinel-d.log"; then
+  tail -20 "$WORK/p4-sentinel-d.log"
+  fail "P4 sentinel D: the run failed but did not name revive — a different cause is failing, not the revive rule (WR-04)"
+fi
+pass "P4 sentinel D: a missing package comment is reported as revive"
+
+done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet)"
 
 # ---------------------------------------------------------------------------
 # P5: composite
@@ -1271,7 +1309,7 @@ echo "Partitions verified:"
 echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target"
 echo "  P2 go-line        — the 5 CI command fragments, CGO_ENABLED=1 and nothing else, shuffle seed recoverable under -v"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact"
-echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinels B and C silent"
+echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first"
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"

@@ -11,9 +11,11 @@
 # ineffassign + staticcheck + unused. `run.timeout` is mandatory because v2's
 # default is 0 (disabled).
 #
-# D-03: `std-error-handling` absorbs the ~102 bare `defer X.Close()` sites and
-# the print noise as a *preset*, not as a hand-written suppression list; errcheck
-# is off in _test.go because test assertions are not production error paths;
+# D-03: `std-error-handling` absorbs the ~102 bare `defer X.Close()` sites, the
+# `fmt.Fprint*` print noise, `os.Remove`, and the other std-lib cleanup calls as
+# a *preset* (a named upstream noise class), not as a hand-written suppression
+# list; errcheck is off in _test.go because test assertions are not production
+# error paths;
 # revive's `unused-parameter` is off because it false-fires on MCP-shaped
 # handlers, where an interface-shaped handler legitimately takes parameters the
 # implementation ignores.
