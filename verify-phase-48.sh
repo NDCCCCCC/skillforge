@@ -1147,14 +1147,6 @@ if not any("::notice::" in (s.get("run") or "") for s in (notice.get("steps") or
 # occurs EXACTLY once and the offline `Gate check` step carries no `env:` key
 # at all. A re-widened env block is dead credential surface; a duplicated grant
 # is a widened one.
-for secret in ("secrets.GLM_API_KEY", "secrets.BGE_M3_URL", "secrets.MILVUS_ADDRESS"):
-    n = src.count(secret)
-    if n != 1:
-        raise SystemExit(
-            "P9 eval-gate.yml references %s %d time(s), want exactly 1 - a duplicated grant widens the secret surface, a missing one fakes the live gate (R2-WR-05)"
-            % (secret, n)
-        )
-
 GATE_CHECK = "Gate check"
 gate_step = next(
     (s for s in ((jobs.get("eval-gate") or {}).get("steps") or []) if s.get("name") == GATE_CHECK),
@@ -1167,6 +1159,14 @@ if "env" in gate_step:
         "P9 the %r step carries an env: key - the offline threshold comparison consumes no secret, so any env block there is dead credential surface (R2-WR-05)"
         % GATE_CHECK
     )
+
+for secret in ("secrets.GLM_API_KEY", "secrets.BGE_M3_URL", "secrets.MILVUS_ADDRESS"):
+    n = src.count(secret)
+    if n != 1:
+        raise SystemExit(
+            "P9 eval-gate.yml references %s %d time(s), want exactly 1 - a duplicated grant widens the secret surface, a missing one fakes the live gate (R2-WR-05)"
+            % (secret, n)
+        )
 
 # --- the trigger block, normalized for PyYAML's YAML-1.1 boolean `on:` ------
 triggers = doc.get("on", doc.get(True))
