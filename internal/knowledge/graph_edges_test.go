@@ -56,36 +56,56 @@ func TestDeriveEdgesDeterministic(t *testing.T) {
 		{ID: 5, Tier: "historical", Source: "old_policy.md", EffectiveFrom: 0, EffectiveTo: 1720137600},
 	}
 
-	edges1, err := ComputeEdges(metas, nil)
-	require.NoError(t, err)
-	edges2, err := ComputeEdges(metas, nil)
-	require.NoError(t, err)
-
-	require.Len(t, edges1, len(edges2), "both calls must produce same edge count")
-
-	// Sort by (From, To, EdgeType) for byte-for-byte comparison.
+	// Sort by (From, To, EdgeType, Weight) — the same four keys the
+	// implementation's final comparator uses (graph_edges.go). Mirroring the
+	// comparator is not optional: sorting on fewer keys would mask a Weight
+	// divergence between two otherwise identical edges.
 	sorted := func(e []Edge) []Edge {
-		sorted := make([]Edge, len(e))
-		copy(sorted, e)
-		sort.Slice(sorted, func(i, j int) bool {
-			if sorted[i].From != sorted[j].From {
-				return sorted[i].From < sorted[j].From
+		out := make([]Edge, len(e))
+		copy(out, e)
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].From != out[j].From {
+				return out[i].From < out[j].From
 			}
-			if sorted[i].To != sorted[j].To {
-				return sorted[i].To < sorted[j].To
+			if out[i].To != out[j].To {
+				return out[i].To < out[j].To
 			}
-			return sorted[i].EdgeType < sorted[j].EdgeType
+			if out[i].EdgeType != out[j].EdgeType {
+				return out[i].EdgeType < out[j].EdgeType
+			}
+			return out[i].Weight < out[j].Weight
 		})
-		return sorted
+		return out
 	}
 
-	a := sorted(edges1)
-	b := sorted(edges2)
-	for i := range a {
-		assert.Equal(t, a[i].From, b[i].From, "From must match at index %d", i)
-		assert.Equal(t, a[i].To, b[i].To, "To must match at index %d", i)
-		assert.Equal(t, a[i].EdgeType, b[i].EdgeType, "EdgeType must match at index %d", i)
-		assert.InDelta(t, a[i].Weight, b[i].Weight, 0, "Weight must match at index %d", i)
+	ref, err := ComputeEdges(metas, nil)
+	require.NoError(t, err)
+	refSorted := sorted(ref)
+
+	// Root cause this test used to miss: ComputeEdges built its `sources` slice
+	// by ranging over a Go map, so the `i < j` Jaccard pairing loop emitted
+	// keyword_cooccur edges with a randomly flipped From/To. Because
+	// EdgeGraph.Neighbors is a DIRECTED traversal, a flip changes the reachable
+	// node set — a real production nondeterminism, not a test artifact. The
+	// GRF-02 contract (same input → byte-identical []Edge output) now covers
+	// direction, not only the final sort order.
+	//
+	// 100 iterations, because the pre-fix failure rate was ~17-25% per call:
+	// two consecutive runs proved almost nothing. Deliberately NOT a t.Run loop
+	// — the gate's anti-vacuous --- PASS floor is calibrated against top-level
+	// test names, so this must stay a single emitting test.
+	//
+	// FORBIDDEN to "fix" a red run here: widening an InDelta tolerance, or
+	// switching to an order-insensitive / count-based comparison. Both would
+	// launder a genuine implementation nondeterminism into a green test, which
+	// is exactly the failure mode GRF-02 exists to prevent. If this test goes
+	// red, the fix belongs in graph_edges.go.
+	for run := 0; run < 100; run++ {
+		got, err := ComputeEdges(metas, nil)
+		require.NoError(t, err)
+		gotSorted := sorted(got)
+		assert.Equal(t, refSorted, gotSorted,
+			"run %d: ComputeEdges output must be byte-identical for identical input (GRF-02)", run)
 	}
 }
 
