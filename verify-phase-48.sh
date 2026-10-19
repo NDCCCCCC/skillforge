@@ -23,6 +23,15 @@
 #                         unchecked json.Unmarshal is really reported, while
 #                         the two noise classes the config is meant to absorb
 #                         stay quiet
+#   P5  composite       — the toolchain action carries the three pinned majors
+#                         and no checkout; every ci.yml job checks out first
+#   P6  fe-line         — the fe job runs the three exact frontend commands
+#                         under web/, with no hard-coded test count
+#   P7  docker-line     — both Dockerfiles build with push: false and
+#                         per-image GHA cache scopes; no publish path
+#   P8  trust-surface   — the whole workflow directory: read-only permissions,
+#                         zero registry surface, zero path filters, zero
+#                         secrets beyond the runner token
 #
 # NO WAIVERS. Unlike Phase 47 — whose frontend partition P6 may exit 0 as
 # PARTIAL because a WSL-only host has no Node — every partition here is
@@ -75,7 +84,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Partition registry. The closing banner compares RAN against
 # EXPECTED_PARTITIONS; a shortfall exits non-zero.
-EXPECTED_PARTITIONS=4
+EXPECTED_PARTITIONS=8
 RAN=0
 RAN_LIST=()
 done_partition() {
@@ -400,6 +409,221 @@ pass "P4 sentinel C: an ignored parameter stays quiet (revive rule disabled)"
 done_partition "P4 lint-teeth (config verify + sentinel A fires, sentinels B and C stay quiet)"
 
 # ---------------------------------------------------------------------------
+# P5: composite
+# ---------------------------------------------------------------------------
+info "P5: composite resolution order"
+
+[ -f "$COMPOSITE" ] || fail "P5 composite toolchain action missing: $COMPOSITE"
+
+python - "$(native "$COMPOSITE")" "$(native "$CI")" <<'PY' > "$WORK/p5.log" 2>&1
+import sys, yaml
+
+composite_path, ci_path = sys.argv[1], sys.argv[2]
+composite = yaml.safe_load(open(composite_path, encoding="utf-8"))
+src = open(composite_path, encoding="utf-8").read()
+
+if (composite.get("runs") or {}).get("using") != "composite":
+    raise SystemExit("P5: .github/actions/setup/action.yml is not `runs.using: composite`")
+
+# D-22: the three toolchain majors live in exactly one place.
+for action in ("actions/setup-go@v7", "actions/setup-node@v7", "docker/setup-buildx-action@v4"):
+    n = src.count(action)
+    if n != 1:
+        raise SystemExit("P5: composite contains %s %d time(s), want exactly 1" % (action, n))
+
+# D-30: a repository-local action resolves from github.workspace, so the
+# composite cannot bootstrap its own checkout — a second checkout would also
+# reset the caller's workspace.
+if "actions/checkout" in src:
+    raise SystemExit("P5: composite contains a checkout — callers must check out first (D-30)")
+
+ci = yaml.safe_load(open(ci_path, encoding="utf-8"))
+jobs = ci.get("jobs") or {}
+if not jobs:
+    raise SystemExit("P5: ci.yml has no jobs")
+
+for name, job in jobs.items():
+    steps = job.get("steps") or []
+    uses = [s.get("uses") for s in steps]
+    if not uses or uses[0] != "actions/checkout@v7":
+        raise SystemExit("P5: job %r does not check out first (D-30)" % name)
+    if "./.github/actions/setup" not in uses[1:]:
+        raise SystemExit("P5: job %r never calls the composite after checkout" % name)
+
+print("COMPOSITE-ORDER-OK")
+PY
+p5_rc=$?
+cat "$WORK/p5.log"
+[ "$p5_rc" -ne 0 ] && fail "P5 composite resolution order is violated (see the line above)"
+
+done_partition "P5 composite (three pinned majors, no checkout, every job checks out before setup)"
+
+# ---------------------------------------------------------------------------
+# P6: fe-line
+# ---------------------------------------------------------------------------
+info "P6: fe line"
+
+python - "$(native "$CI")" <<'PY' > "$WORK/p6.log" 2>&1
+import sys, yaml
+
+path = sys.argv[1]
+src = open(path, encoding="utf-8").read()
+doc = yaml.safe_load(src)
+jobs = doc.get("jobs") or {}
+
+if "fe" not in jobs:
+    raise SystemExit("P6: ci.yml has no `fe` job (CICD-02)")
+
+steps = jobs["fe"].get("steps") or []
+runs = {(s.get("run") or "").strip(): s.get("working-directory") for s in steps if "run" in s}
+for cmd in ("npm ci", "npx tsc --noEmit", "npx vitest run"):
+    if cmd not in runs:
+        raise SystemExit("P6: fe job is missing the step: %s" % cmd)
+    if runs[cmd] != "web":
+        raise SystemExit("P6: fe step %r has working-directory %r, want 'web'" % (cmd, runs[cmd]))
+
+# A test count in a gate is a future silent-drift failure: the suite grows,
+# the literal does not, and the gate starts asserting a stale fact.
+for literal in ("666", "689", "84 "):
+    if literal in src:
+        raise SystemExit("P6: ci.yml hard-codes an FE test-count literal: %r" % literal)
+
+print("FE-LINE-OK")
+PY
+p6_rc=$?
+cat "$WORK/p6.log"
+[ "$p6_rc" -ne 0 ] && fail "P6 the fe line is violated (see the line above)"
+
+done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals)"
+
+# ---------------------------------------------------------------------------
+# P7: docker-line
+# ---------------------------------------------------------------------------
+info "P7: docker line"
+
+python - "$(native "$CI")" <<'PY' > "$WORK/p7.log" 2>&1
+import sys, yaml
+
+path = sys.argv[1]
+src = open(path, encoding="utf-8").read()
+doc = yaml.safe_load(src)
+jobs = doc.get("jobs") or {}
+
+if "docker" not in jobs:
+    raise SystemExit("P7: ci.yml has no `docker` job (CICD-03)")
+
+steps = jobs["docker"].get("steps") or []
+builds = [s for s in steps if (s.get("uses") or "").startswith("docker/build-push-action")]
+if len(builds) != 2:
+    raise SystemExit("P7: expected exactly 2 docker build steps, found %d" % len(builds))
+
+files = [(b.get("with") or {}).get("file") for b in builds]
+if files != ["Dockerfile.backend", "Dockerfile.frontend"]:
+    raise SystemExit("P7: build step Dockerfiles are %r, want backend then frontend" % (files,))
+
+for b in builds:
+    with_ = b.get("with") or {}
+    if with_.get("context") != ".":
+        raise SystemExit("P7: build step %r context is %r, want '.'" % (b.get("name"), with_.get("context")))
+    # D-24: CI never publishes an image and never produces a local one.
+    if with_.get("push") is not False:
+        raise SystemExit("P7: build step %r does not carry push: false" % (b.get("name"),))
+
+for bad in ("load: true", "docker compose build"):
+    if bad in src:
+        raise SystemExit("P7: ci.yml contains %r (D-24/D-25)" % bad)
+
+# D-23: per-image scopes. A duplicate is how the second image starts evicting
+# the first, and a missing one falls back to the shared default scope.
+for scope in (
+    "cache-from: type=gha,scope=backend",
+    "cache-from: type=gha,scope=frontend",
+    "cache-to: type=gha,mode=max,scope=backend",
+    "cache-to: type=gha,mode=max,scope=frontend",
+):
+    n = src.count(scope)
+    if n != 1:
+        raise SystemExit("P7: ci.yml contains %r %d time(s), want exactly 1" % (scope, n))
+
+print("DOCKER-LINE-OK")
+PY
+p7_rc=$?
+cat "$WORK/p7.log"
+[ "$p7_rc" -ne 0 ] && fail "P7 the docker line is violated (see the line above)"
+
+done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes)"
+
+# ---------------------------------------------------------------------------
+# P8: trust-surface — the whole workflow directory
+# ---------------------------------------------------------------------------
+info "P8: trust surface (permissions / registry / path filters / secrets)"
+
+find "$WF_DIR" -maxdepth 1 -type f -name '*.yml' -print | sort > "$WORK/p8-list.txt"
+P8_COUNT=$(wc -l < "$WORK/p8-list.txt" | tr -d ' ')
+[ "$P8_COUNT" -ge 1 ] || fail "P8 matched zero *.yml files under $WF_DIR — a partition that finds zero files must not pass"
+
+p8_args=()
+while IFS= read -r f; do p8_args+=("$(native "$f")"); done < "$WORK/p8-list.txt"
+
+python - "$(native "$CI")" "${p8_args[@]}" <<'PY' > "$WORK/p8.log" 2>&1
+import sys, re, yaml
+
+ci_path = sys.argv[1]
+paths = sys.argv[2:]
+if not paths:
+    raise SystemExit("P8: zero workflow files to scan — a partition that finds nothing must not pass")
+
+for p in paths:
+    src = open(p, encoding="utf-8").read()
+
+    # D-26 / D-29: read-only ceiling. The raw scan also catches a write scope
+    # in a shape PyYAML might normalize away.
+    if "write" in src:
+        raise SystemExit("P8: %s contains a write scope (D-26/D-29)" % p)
+
+    doc = yaml.safe_load(src)
+    maps = []
+    if isinstance(doc.get("permissions"), dict):
+        maps.append(("workflow-level", doc["permissions"]))
+    for name, job in (doc.get("jobs") or {}).items():
+        if isinstance(job.get("permissions"), dict):
+            maps.append(("job %r" % name, job["permissions"]))
+    for where, mapping in maps:
+        for scope, value in mapping.items():
+            if value not in ("read", "none"):
+                raise SystemExit(
+                    "P8: %s in %s grants %r=%r; only read/none are allowed (D-26/D-29)"
+                    % (p, where, scope, value)
+                )
+
+    # T-48-10: no image-publication capability anywhere in the directory.
+    for bad in ("docker/login-action", "registry:", "GHCR", "DOCKERHUB", "packages: write"):
+        if bad in src:
+            raise SystemExit("P8: %s contains forbidden registry surface: %s (T-48-10)" % (p, bad))
+
+ci_src = open(ci_path, encoding="utf-8").read()
+
+# T-48-03: a path-filtered required check sits Pending forever on a PR that
+# touches no matched path. Per-line skipping must use a job-level `if:`.
+for bad in ("paths:", "paths-ignore:"):
+    if bad in ci_src:
+        raise SystemExit("P8: ci.yml contains %s — a path-filtered required check sits Pending (T-48-03)" % bad)
+
+# T-48-04 / D-14: a public fork PR must never need or see a secret. The only
+# permitted reference is the runner-provided token.
+for name in re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", ci_src):
+    if name != "GITHUB_TOKEN":
+        raise SystemExit("P8: ci.yml references secrets.%s; only secrets.GITHUB_TOKEN is allowed (T-48-04)" % name)
+
+print("TRUST-SURFACE-OK (%d workflow file(s))" % len(paths))
+PY
+p8_rc=$?
+cat "$WORK/p8.log"
+[ "$p8_rc" -ne 0 ] && fail "P8 the trust surface is violated (see the line above)"
+
+done_partition "P8 trust-surface (${P8_COUNT} workflow(s): read-only permissions, no registry/path/secret surface)"
+
+# ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
 # ---------------------------------------------------------------------------
 echo ""
@@ -408,7 +632,7 @@ if [ "$RAN" -eq "$EXPECTED_PARTITIONS" ]; then
 else
   echo -e "${YELLOW}=== Phase 48 Gate: NOT VERIFIED ===${NC}"
   echo -e "${YELLOW}=== ${RAN} of ${EXPECTED_PARTITIONS} partitions ran. This gate did NOT pass. ===${NC}"
-  for p in P1 P2 P3 P4; do
+  for p in P1 P2 P3 P4 P5 P6 P7 P8; do
     seen=0
     for r in ${RAN_LIST[@]+"${RAN_LIST[@]}"}; do
       case "$r" in "$p "*) seen=1 ;; esac
@@ -424,3 +648,7 @@ echo "  P1 workflow-parse — every .github/workflows/*.yml + the composite acti
 echo "  P2 go-line        — the 5 CI command fragments, CGO_ENABLED=1 and nothing else, shuffle seed recoverable under -v"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinels B and C silent"
+echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first"
+echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals"
+echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"
+echo "  P8 trust-surface  — read-only permissions, zero registry/path-filter/secret references (directory-wide)"
