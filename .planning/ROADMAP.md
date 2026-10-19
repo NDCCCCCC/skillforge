@@ -118,7 +118,7 @@ Plans:
   1. PR/push 触发 Go CI 并全绿：golangci-lint + `go test ./...` + CGO_ENABLED=1 build+vet（ubuntu runner 原生 gcc 即 WSL CGO=1 惯例的 CI 等价物）
   2. PR/push 触发 FE CI 并全绿：`tsc --noEmit` + `vitest run` 全量
   3. CI 中 backend/frontend 双 Dockerfile 构建成功
-  4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 hermetic 先例，保持不回归），CI 不因内网断连闪红
+  4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
 **Plans**: 1/4 plans executed
