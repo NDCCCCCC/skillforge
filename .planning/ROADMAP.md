@@ -80,10 +80,10 @@
 **Requirements**: REL-01, REL-02, REL-04
 **Success Criteria** (what must be TRUE):
 
-  1. `TestDeriveEdgesDeterministic` 连续 6 次运行全绿（浮点 Weight 确定性化，不再受求值顺序/精度抖动影响）——D-46-DEF-02 闭合
+  1. `TestDeriveEdgesDeterministic` **边方向**确定性化，`-count=100` 全绿 + 一次 `-shuffle=on` 全绿——D-46-DEF-02 闭合。实测根因**不是**求值顺序/精度问题，而是 `keyword_cooccur` **边方向非确定性**：`internal/knowledge/graph_edges.go::ComputeEdges` 的 `sources` 由 `sourceTokens` 的 **map 迭代序**构造，`i<j` 配对把 `From` 取自 `sources[i]`、`To` 取自 `sources[j]`，切片顺序即决定边方向，而 `EdgeGraph.Neighbors` 是**有向**遍历；测试末尾的排序键 `(From, To, EdgeType)` 无法把 `(1→4)` 与 `(4→1)` 归一。修复 = 配对前对 `sources` 确定性排序（沿用同文件 `computeCitationEdges` 的既有做法）+ 最终比较器补 `Weight` 作第四排序键（`sort.Slice` 不稳定，`citation_cooccur` 同一 `(From,To)` 可因不同 audit 行产生不同 Weight）。证据分布：修复前 `-count=200` 实测两次分别 34 败 / 50 败（**17–25%**，非早期记录的「连续 6 次」）且失败**全部**落在 `From`/`To`/`EdgeType` 错位断言，`Weight` 断言 **0 次失败**——测试的严格比较是对的，不允许用放宽 `InDelta` 容差或改无序比较来换取绿灯（原「连续 6 次」门槛在 ~20% flake 率下仅约 47–67% 置信度，**不足以**作为确定性证据）
   2. rollback 成功后 `/admin/governance` 的 SHACL 报告与重校验结果一致：`GovernanceTab.tsx` 的 `trigger==='rollback'` 死分支收到真实缓存数据并正确渲染，与 `TimelineView.tsx` toast 披露的事实相符——audit WARNING-1 闭合（FE 死分支恢复复用 Phase 46 governance UI 既有契约与数据 shape，非新 UI 建设）
   3. v1.6 全部遗留项（D-45-DEF-01/02/03、D-46-DEF-01、owl:Class quirk WARNING-2、BL-01..04）在处置记录中各有明确去向（v1.7 修复 / 延期+理由 / ack backlog），v1.7 Traceability 表 100% 填充——不改 `.planning/milestones/` 归档
-  4. `bash verify-phase-47.sh` 在 WSL CGO_ENABLED=1 下 exit 0，其中全量门（P4 `./internal/...`）连续两跑无 flake
+  4. `bash verify-phase-47.sh` 在 WSL CGO_ENABLED=1 下 exit 0，其中全量门（P4 `./internal/...`）**连续两跑无 flake（仅作冒烟门槛，不充分）**，且门内含一段**确定性强度段**并全绿：① `./internal/knowledge/` 的 `go test -run '^TestDeriveEdgesDeterministic$' -count=100` 全绿；② 对本 phase 触及的包跑一次 `go test -shuffle=on`。该门**必须空 waiver**（不得用 `t.Skip` / `WAIVED` 维持表面绿灯——CI 裸跑 `go test ./...` 不读本地 waiver 机制，残余失败只能落成显式记录而非 shell 放行）
 
 **Plans:** 8 plans
 
