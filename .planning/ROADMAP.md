@@ -123,7 +123,7 @@ Plans:
 
 **Plans**: 12/15 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 round-1 `gaps_found` 之后的 7 个 gap-closure 计划）+ 4 个 round-2 再验证 `gaps_found`（5/9）的 gap-closure 计划（48-12..48-15，待执行）
 
-**Blocked on**: Class-B 硬化缺口已全部闭合且经变异证明——48-05..48-09 落地 per-file 信任面扫描、step 级 `if:` 拒绝、归一化 fork-gate 表达式、补集 notice、正向 revive sentinel（D）与 begin-marker 分区账目；48-10 据此重闭 9 行 open threat（`threats_open: 0`，19 条 review findings = 18 fixed / 1 deferred）。但 **`ci.yml` 仍然没有任何运行**（Class A）：git 传输到 github.com 不通（`git push --dry-run` → `Failed to connect to github.com port 443`），`push.branches: [main]` 按设计不可放宽，`origin/main`（单 commit `369b08a`）与本分支无共同历史、无法开 PR——48-11 记录 `M1: BLOCKED`，run recipe 已持久化。CICD-01/02/03 保持 Pending，直到一台 git 传输可达的机器按该 recipe 产出一次 `go`/`fe`/`docker`（含 `verify`）全 `success` 的运行。
+**Blocked on**: Class-B 硬化缺口已全部闭合且经变异证明——48-05..48-09 落地 per-file 信任面扫描、step 级 `if:` 拒绝、归一化 fork-gate 表达式、补集 notice、正向 revive sentinel（D）与 begin-marker 分区账目；48-10 据此重闭 9 行 open threat（`threats_open: 0`，19 条 review findings = 18 fixed / 1 deferred）。但 **`ci.yml` 仍然没有任何运行**（Class A）：git 传输已恢复（`git ls-remote origin HEAD` → exit 0, `369b08a`；48-VERIFICATION round 2 环境事实），`push.branches: [main]` 按设计不可放宽，`origin/main`（单 commit `369b08a`）与本分支无共同历史、无法开 PR——48-11 记录 `M1: BLOCKED`，run recipe 已持久化。CICD-01/02/03 保持 Pending，直到一台 git 传输可达的机器按该 recipe 产出一次 `go`/`fe`/`docker`（含 `verify`）全 `success` 的运行。
 
 **Wave 1** — tracer slice
 

@@ -183,7 +183,7 @@ All versions verified on 2026-10-19 via `gh api repos/<owner>/<repo>/releases/la
 
 ## Package Legitimacy Audit
 
-**No npm / PyPI / crates packages are installed by this phase.** The supply-chain units are GitHub Actions. There is no registry verdict to compute; instead the upstreams were verified against GitHub's release API.
+**Registry packages: one.** The supply-chain units below are GitHub Actions, verified against GitHub's release API; the single registry package this phase installs (pip `pyyaml`, added to the CI `verify` job by 48-11) is row-listed in the same table.
 
 | Unit | Source Repo | Latest | Official Org | Verdict | Disposition |
 |------|-------------|--------|--------------|---------|-------------|
@@ -195,6 +195,7 @@ All versions verified on 2026-10-19 via `gh api repos/<owner>/<repo>/releases/la
 | `docker/build-push-action` | github.com/docker/build-push-action | v7.4.0 | Yes | OK | Approved `@v7` |
 | `golangci/golangci-lint-action` | github.com/golangci/golangci-lint-action | v9.3.0 | Yes | OK | Approved `@v9` |
 | `golangci-lint` binary | github.com/golangci/golangci-lint | v2.12.2 pinned | Yes | OK | Approved |
+| `pyyaml` | github.com/yaml/pyyaml | 6.0.3 | Yes | OK | Pinned `==6.0.3` in ci.yml's gate job (48-12 Task 2) — the version already validated by every local verifier run |
 
 **Packages removed due to SLOP verdict:** none.
 **Packages flagged suspicious:** none.
@@ -667,27 +668,31 @@ grep -q 'errcheck' "$WORK/lint-sentinel.log" || fail "lint sentinel: failure was
 | A6 | No branch protection is configured (verified 404), so job names are free choices | Runtime State Inventory | If protection is enabled later, renaming `go`/`fe`/`docker` would require a settings update |
 | A7 | The first Docker build succeeds despite `golang:1.25-alpine` potentially lagging 1.25.5 | Pitfalls | Toolchain auto-download adds time; GOTOOLCHAIN default (auto) handles it inside the image |
 
-## Open Questions
+## Open Questions (RESOLVED 2026-10-20 — dispositions below; see 48-CONTEXT.md)
 
 1. **Approve the D-26 amendment (`pull-requests: read`)?**
    - What we know: `only-new-issues` requires the PR diff API; without it, the action silently degrades.
    - What's unclear: whether the user considers any non-`contents` permission a violation of D-26's intent.
    - Recommendation: amend D-26 to "read-only scopes only; `pull-requests: read` permitted for the lint job; zero write scopes." This preserves the security invariant.
+   - **RESOLVED** (2026-10-20) — decided by **D-29** (48-CONTEXT.md): read-only scopes only, `pull-requests: read` permitted for the lint job, zero write scopes; P3 asserts the `go` job's permissions map is exactly `{contents: read, pull-requests: read}` and P8 asserts every value is `read`/`none`.
 
 2. **Approve the D-22 amendment (checkout outside the composite)?**
    - What we know: local actions cannot bootstrap checkout.
    - What's unclear: whether "版本升级只落一处" is intended to include checkout.
    - Recommendation: keep setup-go/node/buildx in the composite; checkout at job top. Phase 51 copies the same three lines.
+   - **RESOLVED** (2026-10-20) — decided by **D-30** (48-CONTEXT.md): checkout moves to the top of each job; the composite keeps setup-go/setup-node/buildx only, and no job carries a redundant second checkout. Phase 51 copies the same three composite lines.
 
 3. **Should `verify-phase-48.sh` also run the full local Go/FE gates?**
    - What we know: Phase 47 already owns those suites; rerunning `go test ./...` takes ~2.5 min locally.
    - What's unclear: whether SC-5 means "CI config is correct" or "the same suites pass locally".
    - Recommendation: the script asserts CI invariants + lint teeth by default; add an opt-in `--full` mode that delegates to `verify-phase-47.sh` and greps `ALL PASSED`. Do not make the default path depend on WSL+node+Docker.
+   - **RESOLVED** (2026-10-20) — decided under **Discretion** as shipped: `verify-phase-48.sh` asserts CI invariants + lint teeth by default, the Go/FE suites are the `go`/`fe` jobs' own subject matter in CI, and no `--full` delegation mode was built.
 
 4. **Should eval-gate's `checkout`/`upload-artifact` be upgraded to v7 in this phase?**
    - What we know: v4 is node20 and currently force-upgraded with a warning annotation.
    - What's unclear: scope appetite for files beyond the secret gate.
    - Recommendation: upgrade both while touching the file; it is a two-line change that removes deprecation noise.
+   - **RESOLVED** (2026-10-20) — decided by the shipped tree: `.github/workflows/eval-gate.yml` carries `actions/checkout@v7` (line 83) and `actions/upload-artifact@v7` (line 130), both upgraded while the file was touched.
 
 ## Environment Availability
 
