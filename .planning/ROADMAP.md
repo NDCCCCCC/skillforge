@@ -121,11 +121,11 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 hermetic 先例，保持不回归），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 **Wave 1** — tracer slice
 
-- [ ] 48-01-PLAN.md — tracer: checkout-first composite action (D-22/D-30) + v2 `.golangci.yml` (D-01..D-08) + `ci.yml` `go` job (CICD-01) + runnable zero-waiver `verify-phase-48.sh` 分片 P1–P4
+- [x] 48-01-PLAN.md — tracer: checkout-first composite action (D-22/D-30) + v2 `.golangci.yml` (D-01..D-08) + `ci.yml` `go` job (CICD-01) + runnable zero-waiver `verify-phase-48.sh` 分片 P1–P4
 
 **Wave 2** — remaining gates (parallel; disjoint file ownership)
 
@@ -188,7 +188,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 0/TBD | Not started | - |
+| 48. CI 矩阵 | v1.7 | 1/4 | In Progress | - |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |

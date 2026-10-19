@@ -4,12 +4,12 @@ milestone: v1.7
 milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
-status: Ready for discuss/plan
-stopped_at: context exhaustion at 76% (2026-10-19)
-last_updated: "2026-10-19T08:01:50.377Z"
+status: executing
+stopped_at: Completed 48-01-PLAN.md
+last_updated: "2026-10-19T08:38:21.350Z"
 last_activity: 2026-10-19
-last_activity_desc: Phase 47 verified 26/28 must-haves (0 FAILED, 2 PARTIAL)
-state_head: ad24bc75a750804b1b5a3702423c8e276ca76ef8
+last_activity_desc: Phase 48 execution started
+state_head: c13f463ad1a2303033200d0c5e0a9551b4e4289e
 progress:
   total_phases: 5
   completed_phases: 1
@@ -25,7 +25,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-13)
 
 **Core value:** 同一个 agent 内核，通过可插拔的 Skill 文件被任意企业快速定制，无需改代码
-**Current focus:** Phase 47 清债与可复现基线（v1.7 Open-Source Readiness 首个 phase）
+**Current focus:** Phase 48 — CI 矩阵
 
 ## Current Milestone
 
@@ -35,10 +35,10 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
-Phase: 48 (CI 矩阵) — READY TO EXECUTE
-Plan: —
-Status: Ready for discuss/plan
-Last activity: 2026-10-19 -- Phase 47 verified 26/28 must-haves (0 FAILED, 2 PARTIAL)
+Phase: 48 (CI 矩阵) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-10-19 — Phase 48 execution started
 
 Progress: [██░░░░░░░░] 20%
 
@@ -57,6 +57,11 @@ Progress: [██░░░░░░░░] 20%
 | 47 清债与可复现基线 | 8 | — | — |
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 48 P01 | 13min | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -71,6 +76,9 @@ Recent decisions affecting current work:
 - **REL-04 对象**: v1.7 Traceability 100% 填充（roadmap 时已填）+ v1.6 遗留警告处置记录；不改 `.planning/milestones/` 归档
 - **文档与构建现实一致**: CGO_ENABLED=1 是 go-duckdb 生产构建现实路径，README/goreleaser 表述必须如实（v1.4 前的"无 cgo 单 binary"标准已被现实路径取代）
 - **Phase 46 遗留（D-45/46-01..04）**: severity 归位 shapes 数据 + ShapesPathsFromEnv 单点（详见 PROJECT.md Key Decisions）
+- [Phase 48]: P3 比较 go job permissions map 用「精确相等」而非包含：一个多余的 scope 和一个缺失的 scope 同样是 scope 变更（D-29）
+- [Phase 48]: P2/P3 共用一个 Python 探针判定：两个探针读同一个文件可能给出不一致结论，而两份「工作流没问题」的断言之间的分歧无法与「工作流确实没问题」区分
+- [Phase 48]: verify-phase-48.sh 在运行时拼接被禁的 CI 关键字：校验脚本自身源码若写出该关键字，全仓 grep 就无法区分工作流文本与校验器文本；ALL PASSED 与 LINT NOT VERIFIED 各只出现一次同理
 
 ### Pending Todos
 
@@ -113,7 +121,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T08:01:50.377Z
-Stopped at: Phase 48 planning complete — checker PASSED (iteration 3), commit `68149ae`
-Resume file: .planning/phases/48-ci/48-CONTEXT.md
+Last session: 2026-10-19T08:38:20.852Z
+Stopped at: Completed 48-01-PLAN.md
+Resume file: None
 Resume command: `/gsd-execute-phase 48` — 4 plans / 3 waves (48-01 tracer → 48-02 ∥ 48-03 → 48-04). Iteration-3 issue list is closed; see `48-PLAN-REVISION-3.md` for the audit trail.
