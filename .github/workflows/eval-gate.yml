@@ -91,8 +91,14 @@ jobs:
         run: go build -o ./bin/eval ./cmd/eval
 
       - name: Run frozen compliance replay
+        # WR-03: without `shell: bash` GitHub runs `bash -e {0}` (no pipefail),
+        # so the pipeline reports tee's status and a non-zero ./bin/eval exit
+        # is discarded. `set -o pipefail` stays in the body as belt-and-braces
+        # so the intent survives a later removal of the `shell:` key.
+        shell: bash
         working-directory: ${{ github.workspace }}
         run: |
+          set -o pipefail
           mkdir -p eval/reports/ci
           ./bin/eval \
             --frozen compliance \
