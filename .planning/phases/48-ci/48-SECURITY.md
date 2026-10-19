@@ -190,3 +190,11 @@ that the `-test.shuffle` seed prints only under `-v`.
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
 **Approval:** APPROVED — 20/20 closed, 0 open. Class A (no real CI run, no image build) remains honestly recorded under "What this audit does NOT establish" and in `48-VALIDATION.md` M1–M5; it is a recorded environment block, not an open threat.
+
+## Security Audit 2026-10-19
+
+| Metric | Count |
+|---|---|
+| Threats found | 20 |
+| Closed | 20 |
+| Open | 0 |
