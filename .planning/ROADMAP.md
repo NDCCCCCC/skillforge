@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/11 plans executed（48-01..48-04 已执行；48-05..48-11 为 verifier `gaps_found` 之后的 gap-closure 计划）
 
 **Blocked on**: SC-1/2/3 的真实 GitHub Actions 绿灯尚未取得——CI 三条线的 workflow 与本地门（`verify-phase-48.sh` 11 分片全绿）都已就位，但**没有任何 `ci.yml` 运行存在**，且本机无法触发：git 传输到 github.com 不通（`git push --dry-run` → `Failed to connect to github.com port 443`），`push.branches: [main]` 按设计不可放宽，PR-to-main 路径因 `origin/main`（单 commit `369b08a`）与本分支无共同历史而无法开 PR。CICD-01/02/03 因此保持 Pending；需要一台 git 传输可达的机器 push 后开 PR 或落到 `main`。
 
@@ -137,6 +137,16 @@ Plans:
 **Wave 3** — full coverage + CI-run proof
 
 - [ ] 48-04-PLAN.md — 分片 P9–P11（eval-gate 门禁 / SC-4 措辞 / verifier 自证 P23）**已落地**；branch protection one-way door checkpoint **已决策 = Option A（不加保护）**；**真实 GitHub Actions run 三 job 全绿未取得**（本机 git 传输到 github.com 不通，PR-to-main 路径因 `origin/main` 与本分支无共同历史而封闭）→ CICD-01/02/03 保持 Pending
+
+**Gap closure**（48-VERIFICATION.md `gaps_found`：3/9 must-haves；19 条 review findings 全部 open）
+
+- [ ] 48-05-PLAN.md — 周界分片按文件扫描（CR-01/WR-05/IN-02/IN-03）：P8 的 `paths:`/`secrets.` 规则下沉到逐文件循环、枚举 `*.yml` + `*.yaml`、registry token 大小写不敏感、显式 secret 白名单 + 变异探针
+- [ ] 48-06-PLAN.md — eval-gate live 门完整性（WR-03/WR-08）：replay step 加 `shell: bash` + `set -o pipefail`；三条 live secret 由 job 级 env 收到两个消费 step
+- [ ] 48-07-PLAN.md — step 级 `if:` 拒绝（WR-01）覆盖 P2/P3/P6/P7；P2 env 并集（IN-05）；计数锚定正则（IN-04）；go job checkout `persist-credentials: false`（IN-10）
+- [ ] 48-08-PLAN.md — P9 断言归一化表达式（WR-07）并把 skip-notice 改成 gate 的真补集（WR-02），两者关系由 P9 机械断言
+- [ ] 48-09-PLAN.md — P4 sentinel D 正向 revive 探针（WR-04）；sentinel A 证据改为归因匹配（IN-01）；分区账目改由 body 自写 begin 标记（IN-06）；preset 注释补全（IN-09）
+- [ ] 48-10-PLAN.md — 以变异证据重闭 9 行 open threat；19 条 findings 终态处置 + deferred 清单；ROADMAP/REQUIREMENTS 与 M1 状态对齐
+- [ ] 48-11-PLAN.md — WR-06/IN-08（push 路径 lint 范围与 base 过滤）与 IN-07（verifier 接入 CI）决策 checkpoint + Class A 首次真实 CI run 的可行 recipe（human-action，不伪造运行）
 
 ### Phase 49: Hermetic Demo
 
