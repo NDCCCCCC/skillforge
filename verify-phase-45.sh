@@ -19,13 +19,15 @@
 # CGO_ENABLED=1 — the Windows cgo.exe exits 2, so no gate command may run
 # outside WSL (45-RESEARCH Pitfall 6; 44-01-PLAN WSL CGO chain).
 #
-# D-45-DEF-01 waiver: TestEmitSubCategoryInstanceCount
-# (internal/ontology/emitter, "SubCategory instances = 6, want 7") fails
-# PRE-EXISTING — proven at pre-phase commit 5bf9c35 via throwaway worktree
-# (see .planning/phases/45-sparql-schema-visibility-d-sparql-05/deferred-items.md).
-# Fixing it is out of Phase 45 scope. P2/P4 therefore pass ONLY when their
-# unique --- FAIL set is empty or EXACTLY that one documented test; any
-# other failure red-lights the gate immediately.
+# D-45-DEF-01: the waiver this gate used to carry is RETIRED as of Phase 47
+# (plan 47-08). The underlying test was fixed by hermeticizing its fixture in
+# plan 47-03, so the waiver could never fire again, and leaving a "known
+# failure" allowlist in a gate inverts the meaning of its green light — it
+# also let this gate disagree with a bare `go test ./internal/...` in CI,
+# which never reads it. P2/P4 are now strictly exit-code-authoritative with
+# an empty-log guard (WR-06: a grep-only judgment let infrastructure failures
+# pass as "zero failures found"). Disposition: row `D-45-DEF-01` in
+# .planning/phases/47-debt-cleanup-reproducible-baseline/47-DEBT-DISPOSITION.md.
 
 set -uo pipefail
 
@@ -41,7 +43,6 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 pass()    { echo -e "${GREEN}PASS${NC} $1"; }
 fail()    { echo -e "${RED}FAIL${NC} $1"; exit 1; }
 info()    { echo -e "${YELLOW}INFO${NC} $1"; }
-waived()  { echo -e "${YELLOW}WAIVED${NC} $1"; }
 
 WORK="$(mktemp -d /tmp/verify45-XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
@@ -49,16 +50,6 @@ trap 'rm -rf "$WORK"' EXIT
 # pass_lines <log> — number of --- PASS lines in a -v go test log
 # (verify-phase-39.sh anti-vacuous pattern).
 pass_lines() { grep -c -- '--- PASS' "$1" || true; }
-
-# waiver_ok <log> → 0 iff the log's unique --- FAIL set is empty or EXACTLY
-# the D-45-DEF-01 pre-existing failure. Package-level FAIL lines (no "---")
-# are ignored by the pattern; a second --- FAIL anywhere red-lights.
-WAIVED_FAIL='--- FAIL: TestEmitSubCategoryInstanceCount'
-waiver_ok() {
-  local fails
-  fails=$(grep -o -- '--- FAIL: [^[:space:]]*' "$1" | sort -u)
-  [ -z "$fails" ] || [ "$fails" = "$WAIVED_FAIL" ]
-}
 
 echo "=== Phase 45 Verification (WSL Ubuntu-22.04, CGO_ENABLED=1) ==="
 
@@ -71,7 +62,7 @@ wsl "CGO_ENABLED=1 $GO build ./... && CGO_ENABLED=1 $GO vet ./internal/ontology/
 pass "P1 build + vet"
 
 # fail_detail <log> <label> — print the log tail AND the unique --- FAIL set
-# so a waiver mismatch names the exact offending test(s).
+# so a red light names the exact offending test(s).
 fail_detail() {
   echo "--- $2 log tail ---"
   tail -30 "$1"
@@ -84,14 +75,15 @@ fail_detail() {
 # ---------------------------------------------------------------------------
 info "P2: ontology suite (./internal/ontology/...)"
 wsl "CGO_ENABLED=1 $GO test ./internal/ontology/... -count=1" >"$WORK/p2.log" 2>&1
-if ! waiver_ok "$WORK/p2.log"; then
+p2_rc=$?
+if [ ! -s "$WORK/p2.log" ]; then
+  fail "P2 produced no output (rc=$p2_rc) — infrastructure failure, no evidence of a test run"
+fi
+if [ "$p2_rc" -ne 0 ]; then
   fail_detail "$WORK/p2.log" "P2"
-  fail "P2 ontology suite failed (beyond the D-45-DEF-01 waiver)"
+  fail "P2 ontology suite failed (rc=$p2_rc)"
 fi
 tail -5 "$WORK/p2.log"
-if grep -q -- '--- FAIL' "$WORK/p2.log"; then
-  waived "P2: 1 known pre-existing failure waived (D-45-DEF-01 TestEmitSubCategoryInstanceCount, deferred-items.md)"
-fi
 pass "P2 ontology suite"
 
 # ---------------------------------------------------------------------------
@@ -118,14 +110,15 @@ pass "P3 targeted SPARQL+Hybrid ($(pass_lines "$WORK/p3.log") --- PASS, threshol
 # ---------------------------------------------------------------------------
 info "P4: full internal suite (./internal/...)"
 wsl "CGO_ENABLED=1 $GO test ./internal/... -count=1" >"$WORK/p4.log" 2>&1
-if ! waiver_ok "$WORK/p4.log"; then
+p4_rc=$?
+if [ ! -s "$WORK/p4.log" ]; then
+  fail "P4 produced no output (rc=$p4_rc) — infrastructure failure, no evidence of a test run"
+fi
+if [ "$p4_rc" -ne 0 ]; then
   fail_detail "$WORK/p4.log" "P4"
-  fail "P4 full internal suite failed (beyond the D-45-DEF-01 waiver)"
+  fail "P4 full internal suite failed (rc=$p4_rc)"
 fi
 tail -3 "$WORK/p4.log"
-if grep -q -- '--- FAIL' "$WORK/p4.log"; then
-  waived "P4: 1 known pre-existing failure waived (D-45-DEF-01 TestEmitSubCategoryInstanceCount, deferred-items.md)"
-fi
 pass "P4 full internal suite"
 
 echo ""
@@ -135,4 +128,4 @@ echo "Partitions verified:"
 echo "  P1 build + vet            — CGO_ENABLED=1 ./... + ./internal/{ontology,server}/..."
 echo "  P2 ontology suite         — red lines + D-45-01 conformance + dual test"
 echo "  P3 targeted SPARQL+Hybrid — TestSparqlQueryScoped|TestHybridSearchScoped, >= 19 --- PASS"
-echo "  P4 full internal suite    — ./internal/... hermetic (D-45-DEF-01 named waiver)"
+echo "  P4 full internal suite    — ./internal/... hermetic (strict since Phase 47)"
