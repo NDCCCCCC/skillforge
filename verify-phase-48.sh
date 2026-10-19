@@ -41,7 +41,8 @@
 #                         hermetic-precedent wording is gone and the
 #                         live-workflow replacement is present
 #   P11 self-probe      — the registry matches the done_partition call sites,
-#                         the passing banner has exactly one RAN-gated print
+#                         the begin markers AND the success tokens, the
+#                         passing banner has exactly one RAN-gated print
 #                         site, and an empty partition is proven to FAIL
 #
 # NO WAIVERS. Unlike Phase 47 — whose frontend partition P6 may exit 0 as
@@ -93,13 +94,22 @@ trap 'rm -rf "$WORK"' EXIT
 # repo root is both an untracked artefact and a sign that a relative path
 # leaked past the temp dir.
 
-# Body-emitted partition markers (IN-06). A `done_partition` call site is not
-# evidence that its partition body ran: commenting out a body while leaving the
-# call site used to satisfy both the call-site count and the RAN counter. Each
-# body now creates its own marker as its first statement, and done_partition
-# refuses without the matching marker.
+# Body-emitted partition markers (IN-06) and probe-emitted success tokens
+# (R2-WR-03). A `done_partition` call site is not evidence that its partition
+# body ran: commenting out a body while leaving the call site used to satisfy
+# both the call-site count and the RAN counter. Each body now creates its own
+# begin marker as its first statement, and done_partition refuses without it.
+#
+# A begin marker alone is still not enough: it proves a body STARTED, not that
+# the probe the body certifies RAN. M8 (48-VERIFICATION) commented out P8's
+# scan_trust_surface call, kept both markers' bookkeeping, and printed
+# `PASS P8 trust-surface (0 workflow(s) ...)` under the green banner. So every
+# probe deposits a success token — ok_partition — immediately after its own
+# decisive exit-code assertion, and done_partition refuses without begin AND
+# ok. The deposit never precedes the assertion it certifies.
 mkdir -p "$WORK/ran"
 begin_partition() { : > "$WORK/ran/$1.begin"; }
+ok_partition() { : > "$WORK/ran/$1.ok"; }
 
 # Partition registry. The closing banner compares RAN against
 # EXPECTED_PARTITIONS; a shortfall exits non-zero.
@@ -110,6 +120,9 @@ done_partition() {
   local pn="${1%% *}"
   if [ ! -f "$WORK/ran/$pn.begin" ]; then
     fail "P11 partition ${pn} reached done_partition without a begin marker — its body did not run (IN-06)"
+  fi
+  if [ ! -f "$WORK/ran/$pn.ok" ]; then
+    fail "P11 partition ${pn} reached done_partition without a success token — its probe did not run to success (R2-WR-03)"
   fi
   RAN=$((RAN + 1))
   RAN_LIST+=("$1")
@@ -182,6 +195,8 @@ if grep -rn 'pull_request_target' "$WF_DIR" > "$WORK/p1-prt.txt" 2>/dev/null; th
   sed 's/^/    /' "$WORK/p1-prt.txt"
   fail "P1 pull_request_target found (D-11) — listed above with file:line"
 fi
+
+ok_partition "P1"
 
 done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target)"
 
@@ -307,6 +322,11 @@ PY
 p23_rc=$?
 cat "$WORK/p23.log"
 [ "$p23_rc" -ne 0 ] && fail "P2/P3: the go job's structural contract is violated (see the line above)"
+
+# One shared probe certifies two partitions (D-29/P2/P3 disagree-proof), so
+# both success tokens deposit at the same decisive exit-code assertion.
+ok_partition "P2"
+ok_partition "P3"
 
 done_partition "P2 go-line (5 command fragments, CGO_ENABLED=1 only, shuffle seed under -v)"
 done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact)"
@@ -507,6 +527,8 @@ if ! grep -q 'revive' "$WORK/p4-sentinel-d.log"; then
 fi
 pass "P4 sentinel D: a missing package comment is reported as revive"
 
+ok_partition "P4"
+
 done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet)"
 
 # ---------------------------------------------------------------------------
@@ -557,6 +579,8 @@ PY
 p5_rc=$?
 cat "$WORK/p5.log"
 [ "$p5_rc" -ne 0 ] && fail "P5 composite resolution order is violated (see the line above)"
+
+ok_partition "P5"
 
 done_partition "P5 composite (three pinned majors, no checkout, every job checks out before setup)"
 
@@ -632,6 +656,8 @@ p6_rc=$?
 cat "$WORK/p6.log"
 [ "$p6_rc" -ne 0 ] && fail "P6 the fe line is violated (see the line above)"
 
+ok_partition "P6"
+
 done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals)"
 
 # ---------------------------------------------------------------------------
@@ -700,6 +726,8 @@ PY
 p7_rc=$?
 cat "$WORK/p7.log"
 [ "$p7_rc" -ne 0 ] && fail "P7 the docker line is violated (see the line above)"
+
+ok_partition "P7"
 
 done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes)"
 
@@ -936,7 +964,13 @@ p8_rc=$?
 cat "$WORK/trust-surface.log"
 [ "$p8_rc" -ne 0 ] && fail "P8 the trust surface is violated (see the line above)"
 
-done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT:-0} workflow(s) per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface)"
+ok_partition "P8"
+
+# R2-WR-03 / A2: TRUST_SURFACE_COUNT is set by the probe under test, so it
+# carries NO `:-` default. A default would print a plausible zero and pass the
+# partition after the probe was deleted (the M8 mutation); under
+# `set -uo pipefail` (header) the bare unbound variable aborts instead.
+done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT} workflow(s) per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface)"
 
 # ---------------------------------------------------------------------------
 # P9: eval-gate-gate — the fork boundary, the visible skip, and the Go version
@@ -1077,6 +1111,8 @@ p9_rc=$?
 cat "$WORK/p9.log"
 [ "$p9_rc" -ne 0 ] && fail "P9 the eval-gate gate or the Go version source is violated (see the line above)"
 
+ok_partition "P9"
+
 done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact, one Go version source)"
 
 # ---------------------------------------------------------------------------
@@ -1111,40 +1147,35 @@ if [ "$sc4_new_state" != present ]; then
   fail "P10 ROADMAP.md is missing the replacement SC-4 wording『${SC4_NEW}』(D-12/P22)"
 fi
 
+ok_partition "P10"
+
 done_partition "P10 sc4-wording (old hermetic-precedent phrase absent, live-workflow wording present)"
 
 # ---------------------------------------------------------------------------
 # P11: self-probe — the partition that proves the other ten are not decorative
 #
-# Half 1: the registry is real. EXPECTED_PARTITIONS is recomputed against the
-#         done_partition call sites actually present, and the passing banner is
-#         pinned to exactly one site inside the RAN-gated branch. Phase 47's
-#         first verifier shipped its green banner unconditionally with zero
-#         partitions run; a second print site is precisely how that recurs.
-# Half 2: an empty partition is NOT VERIFIED, not PASS. The synthetic fixtures
-#         run through scan_trust_surface — the SAME function P8 runs — and are
-#         required to FAIL.
+# Execution order is deliberate (registry count LAST):
+#   Half 1: the passing banner is pinned to exactly one site inside the
+#           RAN-gated branch. Phase 47's first verifier shipped its green
+#           banner unconditionally with zero partitions run; a second print
+#           site is precisely how that recurs.
+#   Half 2: an empty partition is NOT VERIFIED, not PASS. The synthetic
+#           fixtures run through scan_trust_surface — the SAME function P8
+#           runs — and are required to FAIL.
+#   Half 3: the registry is real. EXPECTED_PARTITIONS is recomputed against
+#           the done_partition call sites, the begin markers and the success
+#           tokens — all four numbers must agree. This half runs LAST because
+#           it demands P11's own success token, deposited above.
 #
-# Both halves run on every invocation. There is no flag, argument or environment
-# variable that disables them.
+# All three halves run on every invocation. There is no flag, argument or
+# environment variable that disables them.
 # ---------------------------------------------------------------------------
-info "P11: self-probe (registry truth + begin markers + non-vacuity)"
+info "P11: self-probe (banner truth + non-vacuity + registry/token accounting)"
 begin_partition "P11"
 
 SELF="$ROOT/$(basename "${BASH_SOURCE[0]}")"
 
-# --- Half 1a: the registry, the call sites and the bodies agree -------------
-# A call-site count is source text: a body commented out while its call site
-# survives still counts. BEGIN_COUNT is the observable effect — one marker per
-# partition body that actually executed — so the green banner requires both.
-CALL_SITES=$(grep -cE '^done_partition "' "$SELF")
-BEGIN_COUNT=$(find "$WORK/ran" -maxdepth 1 -name '*.begin' | wc -l | tr -d ' ')
-if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECTED_PARTITIONS" ]; then
-  fail "P11 the registry, the call sites and the begin markers disagree: EXPECTED_PARTITIONS=${EXPECTED_PARTITIONS}, done_partition call sites=${CALL_SITES}, begin markers=${BEGIN_COUNT} — a partition whose body did not run, or a call site added without a registry entry, fails here"
-fi
-info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}"
-
-# --- Half 1b: exactly one print site, and it is RAN-gated -------------------
+# --- Half 1: exactly one print site, and it is RAN-gated -------------------
 # The token is assembled at runtime: spelling it here would make the count see
 # the checker's own text, and the count would always be one too high.
 BANNER_TOKEN="$(printf '%s %s' 'ALL' 'PASSED')"
@@ -1167,7 +1198,7 @@ fi
 if sed -n "$((GATE_LINE + 1)),${BANNER_LINE}p" "$SELF" | grep -qE '^[[:space:]]*else[[:space:]]*$'; then
   fail "P11 the passing banner sits after an else: it is no longer inside the RAN-gated branch"
 fi
-info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, banner print sites ${BANNER_SITES} (line ${BANNER_LINE}, RAN gate line ${GATE_LINE})"
+info "P11: banner print sites ${BANNER_SITES} (line ${BANNER_LINE}, RAN gate line ${GATE_LINE})"
 
 # --- Half 2: an empty partition must fail, not pass vacuously ---------------
 # The fixtures live under $WORK and are never written into the repository.
@@ -1314,7 +1345,29 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   head -1 "$WORK/trust-surface.log" | sed 's/^/       /'
 done
 
-done_partition "P11 self-probe (registry == call sites == begin markers, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
+# P11's own success token deposits right after its last decisive assertion —
+# BEFORE the registry count below, which demands that token to exist. The
+# reverse order would be a self-failing gate.
+ok_partition "P11"
+
+# --- Half 3 (LAST): the registry, the call sites, the markers and the tokens
+# agree -----------------------------------------------------------------------
+# All three counts are observable effects, and each catches a different lie:
+#   CALL_SITES  — source text (a call site can survive a commented-out body)
+#   BEGIN_COUNT — one marker per body that STARTED
+#   OK_COUNT    — one token per probe that RAN to a passed exit-code assertion
+# The count is deliberately the partition's LAST act: by now every other
+# partition has deposited both of its markers, so a four-way agreement here is
+# a statement about the whole run, not about what has happened so far.
+CALL_SITES=$(grep -cE '^done_partition "' "$SELF")
+BEGIN_COUNT=$(find "$WORK/ran" -maxdepth 1 -name '*.begin' | wc -l | tr -d ' ')
+OK_COUNT=$(find "$WORK/ran" -maxdepth 1 -name '*.ok' | wc -l | tr -d ' ')
+if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECTED_PARTITIONS" ] || [ "$OK_COUNT" -ne "$EXPECTED_PARTITIONS" ]; then
+  fail "P11 the registry, the done_partition call sites, the begin markers and the success tokens disagree: registry=${EXPECTED_PARTITIONS}, call sites=${CALL_SITES}, begin markers=${BEGIN_COUNT}, success tokens=${OK_COUNT} — a partition whose body did not run, whose probe did not run to success, or a call site added without a registry entry, fails here"
+fi
+info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}, success tokens ${OK_COUNT}/${EXPECTED_PARTITIONS}"
+
+done_partition "P11 self-probe (registry == call sites == begin markers == success tokens, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
@@ -1347,4 +1400,4 @@ echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cac
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface"
 echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact, one Go version source"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present"
-echo "  P11 self-probe    — registry == call sites == begin markers, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
+echo "  P11 self-probe    — registry == call sites == begin markers == success tokens, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
