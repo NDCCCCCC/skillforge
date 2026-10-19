@@ -32,7 +32,7 @@ key-files:
     - web/src/components/admin/governance/GovernanceTab.tsx
 
 key-decisions:
-  - "Callback fires after the changelog refetch, inside the success path but outside any awaited chain — it must not delay setRollingBack(null)"
+  - "Callback fires after the changelog refetch, inside the success path but outside any awaited chain — it must not delay setRollingBack(null)"  # SUPERSEDED 2026-10-19 by MEDIUM-1 (47-REVIEW.md): the awaited refetch made the callback unreachable whenever that refetch rejected. The callback now fires immediately after the success toast, before the refetch is issued, so REL-02 no longer depends on the changelog at all. The intent behind the decision ("it must not delay setRollingBack(null)") still holds.
   - "refreshShaclReport is a plain arrow function in the component body (no useCallback): it closes over the two setState setters, which are stable, and no lint rule in this repo requires memoization"
   - "GovernanceTab.tsx has no HealthBanner diff by design — the trigger === 'rollback' branch already existed and only needed a fresh report to become reachable"
 
@@ -62,6 +62,9 @@ completed: 2026-10-19
 
 - **Closed the hand-off that made 47-02's backend write invisible.** `RollbackTBox` has been republishing its revalidation report into the store cache since `e7ca19a`, but `TimelineView` only refetched the changelog and `GovernanceTab` fetched the report once on mount — switching to the 版本演进 view does not remount the tab, so the fresh report never reached the banner. `onRollbackComplete` closes that gap with one optional prop and no new UI.
 - **A completed rollback can no longer be reported as a failed one.** The callback invocation is wrapped in `try { onRollbackComplete?.(); } catch {}`, so a throwing parent handler cannot reach the outer `catch` that renders `回滚失败：…` (threat T-47-14). This is mutation-verified, not merely asserted — see below.
+  > **CORRECTION (2026-10-19, advisory source review `47-REVIEW.md` MEDIUM-1).** As originally written, this bullet was **false of the committed code**. The `try`/`catch` wrapped only the callback, but the guard sat *after* `await fetchChangelog().then(setChangelog)`, which was inside the same outer `try`. A rejection from that refetch therefore reached the outer `catch` and rendered `回滚失败：…` for a rollback that had genuinely succeeded — and, because the callback sat below the await, `onRollbackComplete` never fired either, so the REL-02 banner refresh was lost on exactly the path where it mattered. The bullet above is kept rather than deleted because the record of the original claim — and of its being wrong — is the useful part.
+  >
+  > **True statement of the invariant, as of the MEDIUM-1 fix:** the POST result alone decides the rollback's outcome. Everything after it is a secondary refresh that runs outside the classification: `onRollbackComplete?.()` is invoked first (inside its own `try`/`catch`), and the changelog refetch is a fire-and-forget `void … .catch(() => {})`. A completed rollback can no longer be reported as a failed one by *either* a throwing parent handler *or* a failing changelog refetch, and the REL-02 callback fires regardless of the refetch. Pinned by a fourth `TimelineView.test.tsx` case (rollback POST 200 + changelog refetch 500), mutation-verified in `47-REVIEW-FIXES-SUMMARY.md`.
 - **One refresh implementation, two call sites.** The body previously inlined in `onRetry` moved verbatim into `refreshShaclReport`, WR-07 comment included, and now also serves the post-rollback path. It never rethrows: a failed refresh becomes `shaclError` state, which is exactly the "stale-but-honest report plus an error state" posture SC-3 asks for.
 - **No render change was needed, and none was made.** `HealthBanner`'s `report.trigger === 'boot' ? '启动时' : '回滚后'` expression and the `VIEWS` array are byte-identical in `git diff`. The branch was never wrong — it was unreachable, because nothing ever delivered a `trigger: 'rollback'` report to it.
 - **No dependency change.** `git diff 77a2b95..HEAD -- web/package.json web/package-lock.json` is empty; the new test uses only `vitest`, `@testing-library/react` and `@testing-library/jest-dom/vitest`, all already in devDependencies (T-47-SC).
@@ -78,9 +81,9 @@ Each task was committed atomically, by explicit path (never `git add -A`):
 
 ## Files Created/Modified
 
-- `web/src/components/admin/governance/TimelineView.tsx` — new exported `TimelineViewProps` with optional `onRollbackComplete`, component signature now `TimelineView({ onRollbackComplete }: TimelineViewProps = {})` (defaulted so an unwired parent still mounts). The success path invokes it inside a `try`/`catch` after the changelog refetch. The success toast literal and the `window.confirm` literal (including its 隔离区 sentence) are untouched — confirmed by `git diff 197421e`.
+- `web/src/components/admin/governance/TimelineView.tsx` — new exported `TimelineViewProps` with optional `onRollbackComplete`, component signature now `TimelineView({ onRollbackComplete }: TimelineViewProps = {})` (defaulted so an unwired parent still mounts). The success path invokes it inside a `try`/`catch`; **as originally written** it did so *after* the changelog refetch, which the MEDIUM-1 correction (above) changed to *before* it. The success toast literal and the `window.confirm` literal (including its 隔离区 sentence) are untouched — confirmed by `git diff 197421e`.
 - `web/src/components/admin/governance/GovernanceTab.tsx` — `refreshShaclReport` defined once in the component body (one `fetchShaclReport()` call site inside it; the mount `useEffect` keeps its own), passed as `ShaclReportView.onRetry` and `TimelineView.onRollbackComplete`. `HealthBanner`, `VIEWS`, the view switcher and the mount effect are unchanged.
-- `web/src/components/admin/governance/TimelineView.test.tsx` (new, tracked) — three cases: callback fired exactly once on success with the unchanged toast text; callback never fired on rollback failure; a throwing parent handler still leaves the success toast and no error toast, and the button re-enables (proving `finally` still runs). Drives only the pre-existing `governance-rollback-${version}` testids — no production component gained a `data-testid`.
+- `web/src/components/admin/governance/TimelineView.test.tsx` (new, tracked) — **three cases as originally shipped** (callback fired exactly once on success with the unchanged toast text; callback never fired on rollback failure; a throwing parent handler still leaves the success toast and no error toast, and the button re-enables), **plus a fourth added by the MEDIUM-1 fix**: rollback POST resolves 200 while the follow-up changelog refetch 500s — the callback still fires and no `回滚失败：…` appears. Drives only the pre-existing `governance-rollback-${version}` testids — no production component gained a `data-testid`.
 
 ## Banner-flip trace (mandatory — SC-2's central evidence)
 
@@ -140,6 +143,8 @@ The `try`/`catch` around `onRollbackComplete?.()` was temporarily removed and th
 ```
 
 Without the guard, the user's completed rollback is reported as `回滚失败`. The mutation was reverted immediately (`git diff --stat` on `TimelineView.tsx` returned empty, i.e. byte-identical to commit `197421e`) and the suite returned to 3/3. The committed tree contains no probe code.
+
+**What this mutation check did not cover** (found by `47-REVIEW.md` MEDIUM-1): all three cases answered the changelog URL successfully, so no case ever made the refetch reject. The mutation proved the guard was load-bearing for the *throwing-parent* case only; it could not detect that the same `回滚失败` repudiation was reachable one line above the guard. The MEDIUM-1 fix adds a fourth case that closes that hole.
 
 ## Deviations from Plan
 

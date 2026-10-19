@@ -150,18 +150,30 @@ export default function TimelineView({ onRollbackComplete }: TimelineViewProps =
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 5000);
 
-      // Refetch the changelog + notify the parent so it can refetch the cached
-      // SHACL report (REL-02 / D-02b: the rollback's revalidation report only
-      // reaches the banner if someone re-reads it).
-      await fetchChangelog().then(setChangelog);
+      // The POST above is the ONLY thing that decides success. Everything
+      // below it is a secondary refresh and runs outside the rollback's
+      // outcome classification: a changelog refetch failure or a throwing
+      // parent handler must never repurpose a rollback that genuinely
+      // happened into `回滚失败：…` (T-47-14 — repudiation, MEDIUM-1 in
+      // 47-REVIEW.md, where the awaited refetch sat inside this try and its
+      // rejection reached the catch).
 
-      // Guarded: a parent refetch failure must never mask a rollback that
-      // actually happened (T-47-14 — repudiation).
+      // Notify the parent FIRST and unconditionally so the REL-02 contract
+      // (the post-rollback SHACL report must reach the banner) does not
+      // depend on the changelog refetch's fate. Guarded: this handler may not
+      // throw into the caller either.
       try {
         onRollbackComplete?.();
       } catch {
         // swallowed — see comment above
       }
+
+      // Fire-and-forget changelog refresh. A rejection here is swallowed:
+      // the changelog view is stale, but the rollback succeeded, and the
+      // stale list is honest feedback rather than a false failure toast.
+      void fetchChangelog().then(setChangelog).catch(() => {
+        /* secondary refresh only — never a rollback outcome */
+      });
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e);
       const toast = document.createElement('div');
