@@ -121,7 +121,20 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 hermetic 先例，保持不回归），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+**Wave 1** — tracer slice
+
+- [ ] 48-01-PLAN.md — tracer: checkout-first composite action (D-22/D-30) + v2 `.golangci.yml` (D-01..D-08) + `ci.yml` `go` job (CICD-01) + runnable zero-waiver `verify-phase-48.sh` 分片 P1–P4
+
+**Wave 2** — remaining gates (parallel; disjoint file ownership)
+
+- [ ] 48-02-PLAN.md — `fe` job (CICD-02) + `docker` job 双 Dockerfile build / `push: false` / 分离 GHA cache scope (CICD-03) + 分片 P5–P8
+- [ ] 48-03-PLAN.md — `eval-gate.yml` fork-PR/Dependabot 门禁 + `::notice::` skip-notice (D-09/D-10/D-11) + `go-version-file: go.mod` 迁移 (D-17) + ROADMAP SC-4 措辞更正 (D-12)
+
+**Wave 3** — full coverage + CI-run proof
+
+- [ ] 48-04-PLAN.md — 分片 P9–P11（eval-gate 门禁 / SC-4 措辞 / verifier 自证 P23）+ 真实 GitHub Actions run 三 job 全绿 + branch protection one-way door checkpoint
 
 ### Phase 49: Hermetic Demo
 
