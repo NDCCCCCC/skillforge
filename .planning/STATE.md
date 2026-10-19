@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.7
+milestone_name: Open-Source Readiness
+status: executing
+stopped_at: context exhaustion at 76% (2026-10-19)
+last_updated: "2026-10-19T03:39:48.066Z"
+last_activity: 2026-10-19 -- Phase 47 planning complete
+progress:
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 8
+  completed_plans: 0
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -11,20 +27,21 @@ See: .planning/PROJECT.md (updated 2026-10-13)
 
 **v1.7 Open-Source Readiness** — 外部用户 clone→跑通→看懂→信任。
 Phases: 47 清债基线 → (48 CI 矩阵 ∥ 49 Hermetic Demo) → 50 开源门面 → 51 发布工程
-Coverage: 14/14 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
+Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
 Phase: 47 of 51 (清债与可复现基线)
 Plan: 0 of TBD
-Status: Context gathered — ready to plan
-Last activity: 2026-10-19 — Phase 47 context gathered（47-CONTEXT.md + 47-DISCUSSION-LOG.md；advisor 模式 4 灰区并行研究后全部按推荐锁定）
+Status: Ready to execute
+Last activity: 2026-10-19 -- Phase 47 planning complete
 
 Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0 (v1.7)
 - Average duration: —
 - Total execution time: —
@@ -74,6 +91,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-19
-Stopped at: Phase 47 context gathered（4 灰区决议锁定：REL-01 实现确定化+测试加固 / REL-02 域层刷新+FE refetch / 单文件处置主表 / 全量门归零边界）
-Resume file: .planning/phases/47-debt-cleanup-reproducible-baseline/47-CONTEXT.md
+Last session: 2026-10-19T03:39:32.009Z
+Stopped at: context exhaustion at 76% (2026-10-19)
+Resume file: None

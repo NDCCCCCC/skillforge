@@ -116,8 +116,8 @@
 - `.planning/phases/40-data-governance-shacl-provenance-tbox-versioning/40-UI-SPEC.md` — governance UI 既有契约与数据 shape（REL-02 复用前提）
 
 ### 全量门与 waiver 机制
-- `scripts/verify-phase-45.sh` / `scripts/verify-phase-46.sh` — P1..P4 分段结构 + `waiver_ok` 本地白名单机制的现状（本 phase 要归零/清理）
-- `scripts/verify-phase-46.sh` P4 waiver 白名单 — 现状只认 D-45-DEF-01 一项
+- 仓库根目录的 `verify-phase-45.sh` / `verify-phase-46.sh`（**不在 `scripts/` 下**，与 40/41 的既有位置一致）— P1..P4 分段结构 + `waiver_ok` 本地白名单机制的现状（本 phase 要归零/清理）
+- 仓库根目录的 `verify-phase-46.sh` P4 waiver 白名单 — 现状只认 D-45-DEF-01 一项
 - `internal/ontology/emitter/emitter_test.go` — D-45-DEF-01 与 `TestEmitSkillInstanceCount` 的 repo-root 依赖
 - `internal/ontology/store/store_emitter_conformance_test.go` — temp fixture 合成目录的先例
 
@@ -151,7 +151,7 @@
 ### Integration Points
 - REL-01 只触 `internal/knowledge`（`graph_edges.go` + 其测试）— 不跨包
 - REL-02 触 `internal/ontology/induction`（写缓存）+ `web/src/components/admin/governance`（refetch）— 不新增 UI 组件、不改 wire shape
-- D-04 触 `internal/ontology/emitter`（测试 hermeticize）+ `scripts/`（新 verify-phase-47.sh + 清理 45/46 的 waiver 引用）
+- D-04 触 `internal/ontology/emitter`（测试 hermeticize）+ 仓库根目录（新建 `verify-phase-47.sh`，与 40/41/45/46 一致；清理 45/46 的 waiver 引用）
 - REL-04 只触 `.planning/REQUIREMENTS.md`（Traceability 补录）— 不改 `.planning/milestones/` 归档
 
 </code_context>
