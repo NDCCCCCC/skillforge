@@ -12,6 +12,13 @@
 #      Branch protection matches the job name; a path-filtered workflow leaves
 #      a required check Pending forever on a PR that touches no matched path.
 #      A per-line skip must be a job-level `if:`, never a trigger filter.
+#      IN-08 (48-11, option F): the BASE branch carries the same
+#      Pending-forever hazard, and it is handled as a documented closed set —
+#      pull_request runs exist only for bases [main, 'phase-*'] (the trigger
+#      block below). A PR based on any other long-lived branch — release/*, a
+#      hotfix/* line — starts no CI at all, so widening the set is a deliberate
+#      trade (runner minutes on every base), decided by editing this header and
+#      the trigger together, never by dropping the filter silently.
 #
 #   2. NO SECRET-CONTEXT REFERENCES ANYWHERE IN THIS FILE (no repository or
 #      organisation secret interpolation).
