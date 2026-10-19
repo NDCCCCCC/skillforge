@@ -2,10 +2,11 @@
 phase: "48"
 slug: "ci"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-10-19"
+validated: "2026-10-19"
 ---
 
 # Phase 48 — Validation Strategy
@@ -43,31 +44,48 @@ authoritative list from `48-RESEARCH.md` § "Concrete verifiable predicates".
 
 | Predicate | Req | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |-----------|-----|------------|-----------------|-----------|-------------------|-------------|--------|
-| P1 all workflow YAML parses | — | — | N/A | static | `python -c "import yaml,glob;[yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml')]"` | ❌ W0 | ⬜ pending |
-| P2 no `pull_request_target` | D-11 | T-48-01 | fork code never runs with repo secrets | static | `! grep -rn 'pull_request_target' .github/workflows/` | ❌ W0 | ⬜ pending |
-| P3 eval-gate `if` has all three gates | D-09 | T-48-02 | fork/Dependabot PR cannot reach live eval | static | `grep -c "head.repo.full_name == github.repository" .github/workflows/eval-gate.yml` | ❌ W0 | ⬜ pending |
-| P4 skip-notice job exists with `::notice::` | D-10 | T-48-15 | a skipped job is never reported as PASS | static | `grep -c '::notice::' .github/workflows/eval-gate.yml` | ❌ W0 | ⬜ pending |
-| P5 `ci.yml` has zero `secrets.*` beyond `GITHUB_TOKEN` | D-14 | T-48-04 | CI cannot leak or require a secret | static | `! grep -n 'secrets\.' .github/workflows/ci.yml \| grep -v GITHUB_TOKEN` | ❌ W0 | ⬜ pending |
-| P6 `go-version-file: go.mod` everywhere, zero `go-version:` literal | D-17 | T-48-05 | one Go version source of truth | static | `! grep -rn "go-version:" .github/workflows/` | ❌ W0 | ⬜ pending |
-| P7 `go` job has `CGO_ENABLED: "1"`, no live-service env | D-05/D-16 | T-48-06 | go job is hermetic | static | `grep -c 'CGO_ENABLED' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P8 Go commands match `verify-phase-47.sh` P1/P4/P5 | D-20/D-15/D-18 | — | local gate and CI gate say the same thing | static | `bash verify-phase-48.sh` (internal diff) | ❌ W0 | ⬜ pending |
-| P9 shuffle step carries `-v` | D-19 | — | a failing seed is recoverable from CI logs | static | `grep -c 'shuffle=on.*-v\|-v.*shuffle=on' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P10 lint is blocking + pinned | D-04/D-06 | T-48-07 | lint cannot be silently skipped | static | `grep -c 'golangci-lint-action@v9' .github/workflows/ci.yml && ! grep -rn 'continue-on-error' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P11 `go` job grants `pull-requests: read`, no write scope | D-29 | T-48-08 | `only-new-issues` cannot silently degrade to whole-repo | static | `bash verify-phase-48.sh` (permissions partition) | ❌ W0 | ⬜ pending |
-| P12 FE job runs `npm ci` + `tsc --noEmit` + `vitest run` | CICD-02 | — | type + test gates both fire | static | `grep -c 'npx vitest run' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P13 both Dockerfiles build, `push: false`, no `load: true` | CICD-03/D-24 | T-48-09 | CI never publishes an image | static | `grep -c 'push: false' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P14 cache scopes differ per image | D-23 | — | second image does not evict the first's cache | static | `grep -c 'scope=backend' .github/workflows/ci.yml && grep -c 'scope=frontend' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P15 zero registry surface | D-26 | T-48-10 | no publish path exists in CI | static | `! grep -rnE 'docker/login-action|registry:|GHCR|DOCKERHUB|packages: write' .github/workflows/` | ❌ W0 | ⬜ pending |
-| P16 every permissions value is read/none | D-26/D-29 | T-48-08 | CI holds no write capability | static | `bash verify-phase-48.sh` (permissions partition) | ❌ W0 | ⬜ pending |
-| P17 no `paths` / `paths-ignore` filters | D-24 | T-48-03 | a required check never sits Pending forever | static | `! grep -rn 'paths' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P18 composite action exists + callers checkout first | D-22/D-30 | — | local action resolves; toolchain versions stay single-sourced | static | `test -f .github/actions/setup/action.yml && grep -c 'uses: ./.github/actions/setup' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |
-| P19 `golangci-lint config verify` exit 0 | D-01/D-02 | — | the v2 config schema is real | static | `golangci-lint config verify --config .golangci.yml` | ❌ W0 | ⬜ pending |
-| P20 sentinel unchecked `json.Unmarshal` exits non-zero naming `errcheck` | D-01/D-03 | — | the lint gate has teeth | sentinel | `bash verify-phase-48.sh` (sentinel partition) | ❌ W0 | ⬜ pending |
-| P21 sentinel `defer f.Close()` exits 0; unused parameter not reported | D-03 | — | noise is absorbed, not waived by suppression hacks | sentinel | `bash verify-phase-48.sh` (sentinel partition) | ❌ W0 | ⬜ pending |
-| P22 SC-4 old wording gone, new wording present | D-12 | — | docs match build reality | static | `! grep -q '既有 hermetic 先例' .planning/ROADMAP.md && grep -q '既有 \*\*live\*\* workflow' .planning/ROADMAP.md` | ❌ W0 | ⬜ pending |
-| P23 verifier is honest: empty partition ⇒ NOT VERIFIED + non-zero | D-06/WR-06 | T-48-11 | an unrun check never folds into PASS | sentinel | `bash verify-phase-48.sh` (self-probe partition) | ❌ W0 | ⬜ pending |
+| P1 all workflow YAML parses | — | — | N/A | static | `python -c "import yaml,glob;[yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml')]"` | ✅ | ✅ green |
+| P2 no `pull_request_target` | D-11 | T-48-01 | fork code never runs with repo secrets | static | `! grep -rn 'pull_request_target' .github/workflows/` | ✅ | ✅ green |
+| P3 eval-gate `if` has all three gates | D-09 | T-48-02 | fork/Dependabot PR cannot reach live eval | static | `grep -c "head.repo.full_name == github.repository" .github/workflows/eval-gate.yml` | ✅ | ✅ green |
+| P4 skip-notice job exists with `::notice::` | D-10 | T-48-15 | a skipped job is never reported as PASS | static | `grep -c '::notice::' .github/workflows/eval-gate.yml` | ✅ | ✅ green |
+| P5 `ci.yml` has zero `secrets.*` beyond `GITHUB_TOKEN` | D-14 | T-48-04 | CI cannot leak or require a secret | static | `! grep -n 'secrets\.' .github/workflows/ci.yml \| grep -v GITHUB_TOKEN` | ✅ | ✅ green |
+| P6 `go-version-file: go.mod` everywhere, zero `go-version:` literal | D-17 | T-48-05 | one Go version source of truth | static | `! grep -rn "go-version:" .github/workflows/` | ✅ | ✅ green |
+| P7 `go` job has `CGO_ENABLED: "1"`, no live-service env | D-05/D-16 | T-48-06 | go job is hermetic | static | `grep -c 'CGO_ENABLED' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P8 Go commands match `verify-phase-47.sh` P1/P4/P5 | D-20/D-15/D-18 | — | local gate and CI gate say the same thing | static | `bash verify-phase-48.sh` (internal diff) | ✅ | ✅ green |
+| P9 shuffle step carries `-v` | D-19 | — | a failing seed is recoverable from CI logs | static | `grep -c 'shuffle=on.*-v\|-v.*shuffle=on' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P10 lint is blocking + pinned | D-04/D-06 | T-48-07 | lint cannot be silently skipped | static | `grep -c 'golangci-lint-action@v9' .github/workflows/ci.yml && ! grep -rn 'continue-on-error' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P11 `go` job grants `pull-requests: read`, no write scope | D-29 | T-48-08 | `only-new-issues` cannot silently degrade to whole-repo | static | `bash verify-phase-48.sh` (permissions partition) | ✅ | ✅ green |
+| P12 FE job runs `npm ci` + `tsc --noEmit` + `vitest run` | CICD-02 | — | type + test gates both fire | static | `grep -c 'npx vitest run' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P13 both Dockerfiles build, `push: false`, no `load: true` | CICD-03/D-24 | T-48-09 | CI never publishes an image | static | `grep -c 'push: false' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P14 cache scopes differ per image | D-23 | — | second image does not evict the first's cache | static | `grep -c 'scope=backend' .github/workflows/ci.yml && grep -c 'scope=frontend' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P15 zero registry surface | D-26 | T-48-10 | no publish path exists in CI | static | `! grep -rnE 'docker/login-action|registry:|GHCR|DOCKERHUB|packages: write' .github/workflows/` | ✅ | ✅ green |
+| P16 every permissions value is read/none | D-26/D-29 | T-48-08 | CI holds no write capability | static | `bash verify-phase-48.sh` (permissions partition) | ✅ | ✅ green |
+| P17 no `paths` / `paths-ignore` filters | D-24 | T-48-03 | a required check never sits Pending forever | static | `! grep -rn 'paths' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P18 composite action exists + callers checkout first | D-22/D-30 | — | local action resolves; toolchain versions stay single-sourced | static | `test -f .github/actions/setup/action.yml && grep -c 'uses: ./.github/actions/setup' .github/workflows/ci.yml` | ✅ | ✅ green |
+| P19 `golangci-lint config verify` exit 0 | D-01/D-02 | — | the v2 config schema is real | static | `golangci-lint config verify --config .golangci.yml` | ✅ | ✅ green |
+| P20 sentinel unchecked `json.Unmarshal` exits non-zero naming `errcheck` | D-01/D-03 | — | the lint gate has teeth | sentinel | `bash verify-phase-48.sh` (sentinel partition) | ✅ | ✅ green |
+| P21 sentinel `defer f.Close()` exits 0; unused parameter not reported | D-03 | — | noise is absorbed, not waived by suppression hacks | sentinel | `bash verify-phase-48.sh` (sentinel partition) | ✅ | ✅ green |
+| P22 SC-4 old wording gone, new wording present | D-12 | — | docs match build reality | static | `! grep -q '既有 hermetic 先例' .planning/ROADMAP.md && grep -q '既有 \*\*live\*\* workflow' .planning/ROADMAP.md` | ✅ | ✅ green |
+| P23 verifier is honest: empty partition ⇒ NOT VERIFIED + non-zero | D-06/WR-06 | T-48-11 | an unrun check never folds into PASS | sentinel | `bash verify-phase-48.sh` (self-probe partition) | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+
+**Nyquist audit 2026-10-19 — every predicate has automated verification; none MISSING.**
+`verify-phase-48.sh` runs 11 partitions covering all 23 predicates (P1→part.1, P2/P8/P9→part.2,
+P10/P11→part.3, P19/P20/P21→part.4, P18→part.5, P12→part.6, P13/P14→part.7, P5/P15/P16/P17→part.8,
+P3/P4/P6→part.9, P22→part.10, P23→part.11). All 11 report PASS on a clean HEAD, so the ✅ marks
+above are observed results, not projections. **No test files were generated**: this phase adds no
+runtime Go or FE code — its verification surface *is* the shell gate plus the three CI jobs — so
+the Nyquist gap axis (a requirement with no automated check) is empty by construction rather than
+by omission. No requirement is PARTIAL either.
+
+**What ✅ does NOT mean here (read before closing CICD-01/02/03):** the green marks are
+*static and sentinel* proofs. P7/P13 prove the `docker` job is declared with `push: false`, both
+Dockerfiles referenced and per-image cache scopes — **no image was built**: Docker is absent from
+this host. P12 proves the `fe` job *declares* `npm ci` / `tsc --noEmit` / `vitest run`; the suites
+themselves were run separately and passed (Go build+test exit 0; Vitest 85 files / 689 tests
+exit 0), but no CI runner has yet executed them. The remaining proofs are Manual-Only M1–M5 and
+stay open until a real GitHub Actions run exists.
 
 ---
 
@@ -127,3 +145,11 @@ authoritative list from `48-RESEARCH.md` § "Concrete verifiable predicates".
 
 *Phase: 48-CI 矩阵*
 *Seeded from 48-RESEARCH.md § Validation Architecture, 2026-10-19*
+
+## Validation Audit 2026-10-19
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 5 |
