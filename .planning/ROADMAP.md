@@ -65,7 +65,7 @@
 
 ## Phases
 
-- [ ] **Phase 47: 清债与可复现基线** - v1.6 遗留债务闭合或显式处置：flaky 测试修复 + rollback 治理缓存 + 警告处置记录，为 CI 全量门与 hermetic 套件铺平不闪红的地基
+- [x] **Phase 47: 清债与可复现基线** - v1.6 遗留债务闭合或显式处置：flaky 测试修复 + rollback 治理缓存 + 警告处置记录，为 CI 全量门与 hermetic 套件铺平不闪红的地基
 - [ ] **Phase 48: CI 矩阵** - Go / FE / Docker 三线质量门进 GitHub Actions，每次 PR 公开可见绿灯
 - [ ] **Phase 49: Hermetic Demo** - embedded 向量兜底 + stub LLM 路径，clone 后零内网依赖、零 API key 跑通全链
 - [ ] **Phase 50: 开源门面** - README 修真 + 架构图 + vs Dify/RAGFlow 对比表 + 社区设施，门面与仓库实况零失真
@@ -174,7 +174,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 47. 清债与可复现基线 | v1.7 | 0/TBD | Not started | - |
+| 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
 | 48. CI 矩阵 | v1.7 | 0/TBD | Not started | - |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |

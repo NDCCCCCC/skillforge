@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Open-Source Readiness
 status: executing
-stopped_at: context exhaustion at 76% (2026-10-19)
-last_updated: "2026-10-19T03:39:48.066Z"
-last_activity: 2026-10-19 -- Phase 47 planning complete
+stopped_at: Phase 47 verified + closed (2026-10-19)
+last_updated: "2026-10-19T00:00:00.000Z"
+last_activity: 2026-10-19 -- Phase 47 executed + verified (26/28 must-haves, 0 FAILED)
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 0
-  percent: 0
+  completed_plans: 8
+  percent: 20
 ---
 
 # Project State
@@ -31,18 +31,18 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
-Phase: 47 of 51 (清债与可复现基线)
-Plan: 0 of TBD
-Status: Ready to execute
-Last activity: 2026-10-19 -- Phase 47 planning complete
+Phase: 48 of 51 (CI 矩阵) — Phase 47 已完成并验证
+Plan: —
+Status: Ready for discuss/plan
+Last activity: 2026-10-19 -- Phase 47 verified 26/28 must-haves (0 FAILED, 2 PARTIAL)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0 (v1.7)
+- Total plans completed: 8 (v1.7, Phase 47)
 - Average duration: —
 - Total execution time: —
 
@@ -50,7 +50,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 47 清债与可复现基线 | 8 | — | — |
 
 *Updated after each plan completion*
 
@@ -76,6 +76,12 @@ None yet.
 
 - **内网服务间歇断**（Milvus/BGE/GLM）: live verify 沿用"探测先行、断线记 env-SKIP"惯例；v1.7 的 hermetic 化正是为降低此依赖
 - **Phase 49 是最大工作量 phase**: 真实代码改动（embedded 向量兜底 + stub LLM chat），建议 plan-phase 时重点拆分
+- **【A2 → Phase 48 必读】`verify-phase-47.sh` 前端分区被跳过时仍 exit 0**: 输出已无歧义（`PARTIAL PASS — FRONTEND PARTITION NOT VERIFIED`、P6 不在已验证列表、零 `ALL PASSED`），但退出码仍是 0。Phase 48 的 CI **不得**只看退出码，必须同时 grep `PARTIAL PASS`。runner 上没有 node 的那一刻就会踩到。
+- **【A3】P4 覆盖 `./internal/...`，但仓库另有 18 个已跟踪测试文件在其外**: `go test ./...` 实测 exit 0（8 包全绿），所以**当前没有任何东西被藏起来**；但这是偶然而非结构性保证——明天在 `cmd/` 下加一个测试，它会被 CI 跑却不被本门覆盖。非 SC-4 违规（SC-4 字面定义 P4 为 `./internal/...`）。
+- **MEDIUM-2（已裁定接受，`graph_edges.go:232-241`）**: 边方向已确定化，但 `keyword_cooccur` 边的**挂载**仍取 `docs` 的首命中 per-source 代表 chunk；Milvus `ListMetadata` 返回行序未定义且不去重 → 同一语料可能挂到不同节点。验证者复核确认这是**输入置换敏感**（不是固定切片上的跑间不确定），因此 `-count=100`/`-shuffle=on` 门的作用域是诚实的。
+- **LOW-1（已裁定接受，`GovernanceTab.tsx:167`）**: REL-02 的 FE 连线本身无直测（删掉 prop 三个新测试照样过）。
+- **D-05 已知限制（明确接受，非隐式修复）**: 启动校验会 quarantine 坏实体、rollback 不会，故回滚确认框与横幅的 `N 个实体已隔离` 都夸大了 rollback 的实际行为。三处显式记录，从未作为已修复呈现。
+- **既有 flake（非 Phase 47 引入，`audit_writer_test.go:59`）**: `TestAuditWriterPreconditions` 对文件型 SQLite store 开库时套 5s `context.WithTimeout`，CPU 超卖下会超时。串行全量 8/8 绿（Phase 47 验证者自行复跑 3/3 绿），8 份并发则全红。`git log -S` 定源于 `9613d4d`（2026-08-20, Phase 11）。Phase 48 每线单 job 不会触发。
 
 ## Deferred Items
 
@@ -103,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T03:39:32.009Z
-Stopped at: context exhaustion at 76% (2026-10-19)
-Resume file: None
+Last session: 2026-10-19
+Stopped at: Phase 47 complete + verified (26/28 must-haves, 0 FAILED)
+Resume file: .planning/phases/47-debt-cleanup-reproducible-baseline/47-VERIFICATION.md

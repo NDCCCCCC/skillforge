@@ -72,10 +72,10 @@ v1.6 遗留 backlog（继承进 v1.7 Traceability 表，REL-04 补录）。定�
 | DEMO-01 | Phase 49 | Pending |
 | DEMO-02 | Phase 49 | Pending |
 | DEMO-03 | Phase 49 | Pending |
-| REL-01 | Phase 47 | Pending |
-| REL-02 | Phase 47 | Pending |
+| REL-01 | Phase 47 | Complete |
+| REL-02 | Phase 47 | Complete |
 | REL-03 | Phase 51 | Pending |
-| REL-04 | Phase 47 | Pending |
+| REL-04 | Phase 47 | Complete |
 | BL-01 | Backlog（无 owner phase） | Deferred |
 | BL-02 | Backlog（Phase 48 lint 落地后立项） | Deferred |
 | BL-03 | Backlog（needs-live） | Deferred |
