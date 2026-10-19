@@ -99,17 +99,62 @@ func TestEmitTierInstanceCount(t *testing.T) {
 	}
 }
 
+// TestEmitSubCategoryInstanceCount pins the emitter contract itself — one
+// SubCategory individual per sub-directory of `sql-guides` (emitter.go
+// loadKBCategories, `if ent.Name() == "sql-guides"`) — against a fixture this
+// test builds under t.TempDir(). The previous version asserted 7, a count
+// pinned to the repository corpus: commit 1aaf853 moved six files from
+// `其他/` into `操作手册/`, taking knowledge/sql-guides from 7 sub-directories
+// to 6 while the assertion still claimed 7. The assertion is therefore now
+// derived from the fixture, not from the corpus (D-04b: do not "fix" it by
+// changing 7 to 6, and do not change the implementation to emit an extra
+// SubCategory).
+//
+// The `authority` control category deliberately carries a nested
+// sub-directory: a regression that dropped the `sql-guides` scoping guard
+// would yield 3 SubCategories and turn this assertion red. A childless
+// control would yield 2 either way and prove nothing.
 func TestEmitSubCategoryInstanceCount(t *testing.T) {
-	root := projectRoot(t)
-	e := New(filepath.Join(root, "skills"), filepath.Join(root, "knowledge"), DefaultNS)
+	root := t.TempDir()
+	skills := filepath.Join(root, "skills")
+	kb := filepath.Join(root, "knowledge")
+	skillDir := filepath.Join(skills, "fixture-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := "---\nname: fixture-skill\ndescription: hermetic fixture skill\nagent: ChatModelAgent\n---\n\nbody\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Exactly 2 sub-directories under sql-guides (the names mirror the
+	// conformance-test fixture in internal/ontology/store).
+	subDirs := []string{"取数口径", "操作手册"}
+	for _, name := range subDirs {
+		if err := os.MkdirAll(filepath.Join(kb, "sql-guides", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A non-sql-guides top-level category with its own nested sub-directory:
+	// it becomes a KBCategory but must NOT contribute a SubCategory.
+	if err := os.MkdirAll(filepath.Join(kb, "authority", "nested-control"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(skills, kb, DefaultNS)
 	ttl, err := e.Emit()
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	g, _ := loadGraph(t, ttl)
 	subs := countByType(t, g, DefaultNS+"SubCategory")
-	if subs != 7 {
-		t.Errorf("SubCategory instances = %d, want 7", subs)
+	if subs != len(subDirs) {
+		t.Errorf("SubCategory instances = %d, want %d (only sub-directories of sql-guides)", subs, len(subDirs))
+	}
+	// Both top-level KB directories become categories — the fixture feeds both
+	// branches of loadKBCategories; the nested control adds no third category.
+	cats := countByType(t, g, DefaultNS+"KBCategory")
+	if cats != 2 {
+		t.Errorf("KBCategory instances = %d, want 2", cats)
 	}
 }
 
