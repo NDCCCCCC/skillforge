@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-13-PLAN.md
-last_updated: "2026-10-19T23:47:32.933Z"
+stopped_at: Completed 48-14-PLAN.md
+last_updated: "2026-10-19T23:58:54.371Z"
 last_activity: 2026-10-20
 last_activity_desc: Phase 48 execution started
-state_head: e5695ec20c9d90e537d64c8d8922d5d93905ad7c
+state_head: 57d294f78bf08167d4423f5be047569e5f1a374c
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 23
-  completed_plans: 20
+  completed_plans: 21
   percent: 20
 ---
 
@@ -36,7 +36,7 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 14 of 15
+Plan: 15 of 15
 Status: Ready to execute
 Last activity: 2026-10-20 — Phase 48 execution started
 
@@ -73,6 +73,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P10 | 12 min | 3 tasks | 4 files |
 | Phase 48 P12 | 10min | 3 tasks | 2 files |
 | Phase 48 P13 | 16 min | 3 tasks | 1 files |
+| Phase 48 P14 | 5 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,8 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-13: no :- default on a variable whose setter is the probe under test — TRUST_SURFACE_COUNT aborts under set -u instead of printing a plausible zero (M8 now bites); success tokens deposit only after each probe's exit-code assertion, and done_partition requires begin + ok
 - [Phase 48]: 48-13: the verify job is pinned by the same P2/P3 probe that judges the go job (existence, if-freeness, gate terminus, persist-credentials false, module-proxy install); the banned fetch/script tokens are printf-assembled argv, never spelled joined — M9/M10 and both 48-12-fix reintroductions now red with the partition named
 - [Phase 48]: 48-13: CICD-01/02/03 stay Pending — hardening the verifier does not substitute for the first real GitHub Actions run (48-15); requirements mark-complete deliberately not run
+- [Phase 48]: 48-14: supply-chain surface re-recorded as closed register row T-48-47 (Tampering/ci.yml verify job install step/critical/mitigate) citing 48-12's module-proxy install + 48-13's P2/P3 pin and reintroduction drill — 48-11-SUMMARY's threat_flag: supply-chain finally lands; register 21 rows, 0 open, status verified
+- [Phase 48]: 48-14: transport-truth refresh in 48-SECURITY.md + ROADMAP Blocked-on — git ls-remote origin HEAD succeeds (exit 0, 369b08a); remaining path is the origin/main unrelated-history decision + one push from this host, owned by 48-15; CICD-01/02/03 deliberately stay Pending (no run exists)
 
 ### Pending Todos
 
@@ -165,7 +168,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T23:47:13.382Z
-Stopped at: Completed 48-13-PLAN.md
+Last session: 2026-10-19T23:58:53.835Z
+Stopped at: Completed 48-14-PLAN.md
 Resume file: None
 Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.
