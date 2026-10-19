@@ -46,7 +46,7 @@ authoritative list from `48-RESEARCH.md` § "Concrete verifiable predicates".
 | P1 all workflow YAML parses | — | — | N/A | static | `python -c "import yaml,glob;[yaml.safe_load(open(f)) for f in glob.glob('.github/workflows/*.yml')]"` | ❌ W0 | ⬜ pending |
 | P2 no `pull_request_target` | D-11 | T-48-01 | fork code never runs with repo secrets | static | `! grep -rn 'pull_request_target' .github/workflows/` | ❌ W0 | ⬜ pending |
 | P3 eval-gate `if` has all three gates | D-09 | T-48-02 | fork/Dependabot PR cannot reach live eval | static | `grep -c "head.repo.full_name == github.repository" .github/workflows/eval-gate.yml` | ❌ W0 | ⬜ pending |
-| P4 skip-notice job exists with `::notice::` | D-10 | T-48-03 | a skipped job is never reported as PASS | static | `grep -c '::notice::' .github/workflows/eval-gate.yml` | ❌ W0 | ⬜ pending |
+| P4 skip-notice job exists with `::notice::` | D-10 | T-48-15 | a skipped job is never reported as PASS | static | `grep -c '::notice::' .github/workflows/eval-gate.yml` | ❌ W0 | ⬜ pending |
 | P5 `ci.yml` has zero `secrets.*` beyond `GITHUB_TOKEN` | D-14 | T-48-04 | CI cannot leak or require a secret | static | `! grep -n 'secrets\.' .github/workflows/ci.yml \| grep -v GITHUB_TOKEN` | ❌ W0 | ⬜ pending |
 | P6 `go-version-file: go.mod` everywhere, zero `go-version:` literal | D-17 | T-48-05 | one Go version source of truth | static | `! grep -rn "go-version:" .github/workflows/` | ❌ W0 | ⬜ pending |
 | P7 `go` job has `CGO_ENABLED: "1"`, no live-service env | D-05/D-16 | T-48-06 | go job is hermetic | static | `grep -c 'CGO_ENABLED' .github/workflows/ci.yml` | ❌ W0 | ⬜ pending |

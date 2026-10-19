@@ -18,44 +18,44 @@
 ## Implementation Decisions
 
 ### Lint 基线策略
-- **D-01：** lint 门禁采用「全量 linter 集 + changed-lines 过滤」——不引入 baseline 文件，也不留任何长期豁免清单。
-- **D-02：** `.golangci.yml` 用 v2 格式：`default: standard`（含 govet / errcheck / staticcheck / ineffassign / unused）+ `revive` 配**显式规则表**（用户指定的 revive 规则会替换默认集，须显式列出）；`run.timeout` 必设（v2 默认无超时）。
-- **D-03：** 启用 `std-error-handling` preset 吸收 `defer X.Close()` / print / `os.Setenv` 类噪声；`_test.go` 内排除 errcheck。**排除 `revive:unused-parameter`**——它已在 MCP 形 handler 上误报（实测 5 次），接口形 handler 天然如此。
-- **D-04：** CI 侧用 `golangci-lint-action@v9` + `only-new-issues: true` + pin linter 版本（当前建议 v2.12.x）。**不得**开 `--whole-files`：`internal/server/chat.go` 之类千行文件会把陈年问题漏进来。
-- **D-05：** lint job 必须设 `CGO_ENABLED=1` 并在有 gcc 的环境跑（实测 CGO 依赖 go-sqlite3 / go-duckdb 会让 Windows 宿主上的 lint 在 `internal/server/` cgo 预处理阶段直接失败）。
-- **D-06：** lint 是**阻断门**，不得使用 `continue-on-error` 或跳过式 `if:`。建议型 job 已被明确否决。
-- **D-07：** Go 版本走 `go-version-file: go.mod`（解析出精确 `1.25.5`，符合"零硬编码"标准），不用字面量。
-- **D-08：** 仓库实测无 `Code generated ... DO NOT EDIT` 文件，Eino 的泛型密集代码类型检查无需特殊处理——**不引入 generated-code 排除规则**。
+- **D-01:** lint 门禁采用「全量 linter 集 + changed-lines 过滤」——不引入 baseline 文件，也不留任何长期豁免清单。
+- **D-02:** `.golangci.yml` 用 v2 格式：`default: standard`（含 govet / errcheck / staticcheck / ineffassign / unused）+ `revive` 配**显式规则表**（用户指定的 revive 规则会替换默认集，须显式列出）；`run.timeout` 必设（v2 默认无超时）。
+- **D-03:** 启用 `std-error-handling` preset 吸收 `defer X.Close()` / print / `os.Setenv` 类噪声；`_test.go` 内排除 errcheck。**排除 `revive:unused-parameter`**——它已在 MCP 形 handler 上误报（实测 5 次），接口形 handler 天然如此。
+- **D-04:** CI 侧用 `golangci-lint-action@v9` + `only-new-issues: true` + pin linter 版本（当前建议 v2.12.x）。**不得**开 `--whole-files`：`internal/server/chat.go` 之类千行文件会把陈年问题漏进来。
+- **D-05:** lint job 必须设 `CGO_ENABLED=1` 并在有 gcc 的环境跑（实测 CGO 依赖 go-sqlite3 / go-duckdb 会让 Windows 宿主上的 lint 在 `internal/server/` cgo 预处理阶段直接失败）。
+- **D-06:** lint 是**阻断门**，不得使用 `continue-on-error` 或跳过式 `if:`。建议型 job 已被明确否决。
+- **D-07:** Go 版本走 `go-version-file: go.mod`（解析出精确 `1.25.5`，符合"零硬编码"标准），不用字面量。
+- **D-08:** 仓库实测无 `Code generated ... DO NOT EDIT` 文件，Eino 的泛型密集代码类型检查无需特殊处理——**不引入 generated-code 排除规则**。
 
 ### eval-gate 与 fork PR 的 secret 缺口
-- **D-09：** `eval-gate.yml` 加 **job 级 `if:` 门禁**：仅在非 `pull_request` 事件，或 `head.repo.full_name == github.repository` 时运行；同时显式排除 `github.actor == 'dependabot[bot]'`（Dependabot 的分支在同仓，但同样拿不到 secrets）。
-- **D-10：** 因**跳过的 job 在 GitHub 上报 "Success"**，必须另配一个可见的 `::notice::` skip-notice job 打破沉默，避免 required check 假绿。这是 Phase 47 HIGH-1（"没跑却报绿"）同类反模式在 CI 侧的对应防线。
-- **D-11：** **显式禁止 `pull_request_target`**——它会用仓库 secrets + write token 去执行 fork 可控的 workflow 代码。任何触发器改动都不得引入它。
-- **D-12：** ROADMAP SC-4 的措辞更正属**本 phase 内的文档修正**（非范围蔓延）：SC-4 前半句"live 门禁不进 CI"成立，后半句须从「eval-gate.yml 的 frozen-replay + faithfulness gate 是既有 hermetic 先例」改为「既有 **live** workflow，保持维护者 / 同仓行为不回归」。
-- **D-13：** 上述 SC-4 更正的依据是已实测的代码事实：`cmd/eval` 的 `--frozen` 路径在打分**之前**就 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf` 致命退出（`cmd/eval/main.go` 中 `envRequired("BGE_M3_URL")` 一带）；只有 `--gate-check` 阶段 hermetic，而 replay 先崩时根本走不到。**`--frozen` 不是 hermetic 门。**
-- **D-14：** 三条新线（Go / FE / Docker）**零 secret 引用**，除 `GITHUB_TOKEN` 外不得出现任何 `secrets.*`。
+- **D-09:** `eval-gate.yml` 加 **job 级 `if:` 门禁**：仅在非 `pull_request` 事件，或 `head.repo.full_name == github.repository` 时运行；同时显式排除 `github.actor == 'dependabot[bot]'`（Dependabot 的分支在同仓，但同样拿不到 secrets）。
+- **D-10:** 因**跳过的 job 在 GitHub 上报 "Success"**，必须另配一个可见的 `::notice::` skip-notice job 打破沉默，避免 required check 假绿。这是 Phase 47 HIGH-1（"没跑却报绿"）同类反模式在 CI 侧的对应防线。
+- **D-11:** **显式禁止 `pull_request_target`**——它会用仓库 secrets + write token 去执行 fork 可控的 workflow 代码。任何触发器改动都不得引入它。
+- **D-12:** ROADMAP SC-4 的措辞更正属**本 phase 内的文档修正**（非范围蔓延）：SC-4 前半句"live 门禁不进 CI"成立，后半句须从「eval-gate.yml 的 frozen-replay + faithfulness gate 是既有 hermetic 先例」改为「既有 **live** workflow，保持维护者 / 同仓行为不回归」。
+- **D-13:** 上述 SC-4 更正的依据是已实测的代码事实：`cmd/eval` 的 `--frozen` 路径在打分**之前**就 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf` 致命退出（`cmd/eval/main.go` 中 `envRequired("BGE_M3_URL")` 一带）；只有 `--gate-check` 阶段 hermetic，而 replay 先崩时根本走不到。**`--frozen` 不是 hermetic 门。**
+- **D-14:** 三条新线（Go / FE / Docker）**零 secret 引用**，除 `GITHUB_TOKEN` 外不得出现任何 `secrets.*`。
 
 ### Go 门禁范围与版本
-- **D-15：** 门禁范围取**字面 `go test ./...`**（CICD-01 / SC-1 不改），已实测无 secret 下 hermetic 通过（exit 0，39 包 ok / 7 包无测试文件；`integration/contract` 受 `//go:build contract` 门控、`internal/eval` 真实测试受 `//go:build liveeval` 门控）。
-- **D-16：** **Go job 绝不声明 `MILVUS_ADDRESS` / `BGE_M3_URL` / `GLM_API_KEY` 任何入口**——`cmd/spike-deep` / `cmd/spike-fanout` 仅在这三者未设置时才 `t.Skip`，一旦设置就改走 live 路径。这是 D-15 成立的前提，两者不可拆。
-- **D-17：** Go 版本统一走 `go-version-file: go.mod`；**`eval-gate.yml` 的 `setup-go@v5` + `go-version: '1.23'` 在同一 phase 内迁走**。理由是实测硬破坏：`setup-go@v6+` 会导出 `GOTOOLCHAIN=local`，于是 `go.mod` 的 `go 1.25.5` 直接报错 `go.mod requires go >= 1.25.5 (running go 1.23.x; GOTOOLCHAIN=local)`。
-- **D-18：** 把 Phase 47 的确定性强度段搬进 CI：`-run '^TestDeriveEdgesDeterministic$' -count=100` + 对 knowledge / ontology 一次 `-shuffle=on`。实测合计约 11s（7.2s + 3.9s）。这是唯一能挡住"已修复的 flake 悄悄回归"的机制——Phase 47-01 测得修复前 flake 率 **17–25%**，且 `router_test` / fsnotify 防抖测试天然时序敏感、不响应 `-short`。
-- **D-19：** `-shuffle=on` 的 seed 必须从 CI 日志捕获（失败不可复现即等于无价值）。
-- **D-20：** CI 的 Go 门命令形态应**复刻 `verify-phase-47.sh` 的 P1 / P4 / P5**（本地门与 CI 门说同一件事，正是 Phase 47-08 的设计意图）。
+- **D-15:** 门禁范围取**字面 `go test ./...`**（CICD-01 / SC-1 不改），已实测无 secret 下 hermetic 通过（exit 0，39 包 ok / 7 包无测试文件；`integration/contract` 受 `//go:build contract` 门控、`internal/eval` 真实测试受 `//go:build liveeval` 门控）。
+- **D-16:** **Go job 绝不声明 `MILVUS_ADDRESS` / `BGE_M3_URL` / `GLM_API_KEY` 任何入口**——`cmd/spike-deep` / `cmd/spike-fanout` 仅在这三者未设置时才 `t.Skip`，一旦设置就改走 live 路径。这是 D-15 成立的前提，两者不可拆。
+- **D-17:** Go 版本统一走 `go-version-file: go.mod`；**`eval-gate.yml` 的 `setup-go@v5` + `go-version: '1.23'` 在同一 phase 内迁走**。理由是实测硬破坏：`setup-go@v6+` 会导出 `GOTOOLCHAIN=local`，于是 `go.mod` 的 `go 1.25.5` 直接报错 `go.mod requires go >= 1.25.5 (running go 1.23.x; GOTOOLCHAIN=local)`。
+- **D-18:** 把 Phase 47 的确定性强度段搬进 CI：`-run '^TestDeriveEdgesDeterministic$' -count=100` + 对 knowledge / ontology 一次 `-shuffle=on`。实测合计约 11s（7.2s + 3.9s）。这是唯一能挡住"已修复的 flake 悄悄回归"的机制——Phase 47-01 测得修复前 flake 率 **17–25%**，且 `router_test` / fsnotify 防抖测试天然时序敏感、不响应 `-short`。
+- **D-19:** `-shuffle=on` 的 seed 必须从 CI 日志捕获（失败不可复现即等于无价值）。
+- **D-20:** CI 的 Go 门命令形态应**复刻 `verify-phase-47.sh` 的 P1 / P4 / P5**（本地门与 CI 门说同一件事，正是 Phase 47-08 的设计意图）。
 
 ### Docker 门与工作流组织
-- **D-21：** 采用**单个 `.github/workflows/ci.yml` + 三个 job（go / fe / docker）**，不拆三个 workflow 文件。理由：branch protection 匹配的是 **job 名而非 workflow 文件名**；单文件已能通过 UI 按 job 重跑与 `gh run rerun --job` 给到按线重跑；拆文件会带来三份触发器/concurrency/版本同步负担与 job 名全局唯一约束。
-- **D-22：** 抽出仓内 composite action（`.github/actions/setup`，含 checkout + setup-go + setup-node + setup-buildx），供 **Phase 51 的 release workflow 复用**（Phase 51 SC 明确依赖 Phase 48 的构建矩阵为基础）。版本升级只落一处。
-- **D-23：** Docker job 用 buildx + `cache-from: type=gha` / `cache-to: type=gha,mode=max`，**按镜像分 `scope=`（如 `backend` / `frontend`）**——默认 scope `buildkit` 会让第二个镜像挤掉第一个的缓存。
-- **D-24：** `push: false` 且不 `load`：CI 永不发布镜像，也永不产出本地镜像。**任何按线跳过都必须用 job 级 `if:`，绝不能用 `paths:`**——后者会让 required check 卡在 expected 阻塞 PR。
-- **D-25：** **不使用 `docker compose build`**。已核实：compose 内含 `${GLM_API_KEY:?}` / `${BGE_M3_URL:?}` 插值，一旦解析 CI 就必须伪造 secret；且 etcd / minio / milvus 是 `image:` 引用、从来不可 build。
-- **D-26：** `permissions:` 仅授 `contents: read`；`.github/workflows/` 下**零出现** `docker/login-action`、`registry:`、`GHCR` / `DOCKERHUB`、`packages: write`。
-- **D-27：** 已知缓存收益边界（写给 planner 省一轮试错）：两个 Dockerfile 都是 `COPY . .`，每次提交都让编译层失效，故 GHA 缓存**只对 `go mod download` / `npm ci` 层有效**；且 `type=gha` 不保留 `RUN --mount=type=cache` 的内容。
-- **D-28：** `Dockerfile.backend` 的 `golang:1.25-alpine` 是浮动 tag，落后补丁时 go.mod 的 `go 1.25.5` 会触发工具链下载——CI 冷构建耗时需按此预期（Go job 整体预期 5–10 分钟；`./...` 本地 warm ≈146s vs `./internal/...` ≈52s，差额主因 `cmd/spike-deep` 37.7s）。
+- **D-21:** 采用**单个 `.github/workflows/ci.yml` + 三个 job（go / fe / docker）**，不拆三个 workflow 文件。理由：branch protection 匹配的是 **job 名而非 workflow 文件名**；单文件已能通过 UI 按 job 重跑与 `gh run rerun --job` 给到按线重跑；拆文件会带来三份触发器/concurrency/版本同步负担与 job 名全局唯一约束。
+- **D-22:** 抽出仓内 composite action（`.github/actions/setup`，含 checkout + setup-go + setup-node + setup-buildx），供 **Phase 51 的 release workflow 复用**（Phase 51 SC 明确依赖 Phase 48 的构建矩阵为基础）。版本升级只落一处。
+- **D-23:** Docker job 用 buildx + `cache-from: type=gha` / `cache-to: type=gha,mode=max`，**按镜像分 `scope=`（如 `backend` / `frontend`）**——默认 scope `buildkit` 会让第二个镜像挤掉第一个的缓存。
+- **D-24:** `push: false` 且不 `load`：CI 永不发布镜像，也永不产出本地镜像。**任何按线跳过都必须用 job 级 `if:`，绝不能用 `paths:`**——后者会让 required check 卡在 expected 阻塞 PR。
+- **D-25:** **不使用 `docker compose build`**。已核实：compose 内含 `${GLM_API_KEY:?}` / `${BGE_M3_URL:?}` 插值，一旦解析 CI 就必须伪造 secret；且 etcd / minio / milvus 是 `image:` 引用、从来不可 build。
+- **D-26:** `permissions:` 仅授 `contents: read`；`.github/workflows/` 下**零出现** `docker/login-action`、`registry:`、`GHCR` / `DOCKERHUB`、`packages: write`。
+- **D-27:** 已知缓存收益边界（写给 planner 省一轮试错）：两个 Dockerfile 都是 `COPY . .`，每次提交都让编译层失效，故 GHA 缓存**只对 `go mod download` / `npm ci` 层有效**；且 `type=gha` 不保留 `RUN --mount=type=cache` 的内容。
+- **D-28:** `Dockerfile.backend` 的 `golang:1.25-alpine` 是浮动 tag，落后补丁时 go.mod 的 `go 1.25.5` 会触发工具链下载——CI 冷构建耗时需按此预期（Go job 整体预期 5–10 分钟；`./...` 本地 warm ≈146s vs `./internal/...` ≈52s，差额主因 `cmd/spike-deep` 37.7s）。
 
 ### Research-driven amendments (2026-10-19, 48-RESEARCH.md §Decision Conflicts，用户已批准)
-- **D-29（修订 D-26）：** `permissions` 允许 `contents: read` + `pull-requests: read`，**仍禁止任何 write scope**。理由：`golangci-lint-action@v9` 的 `only-new-issues` 依赖 `pulls.get`，需 `pull-requests: read`；GitHub 语义下未声明的 scope 一律 `none`，而该 action 拿到 403 后只 `console.warn` 并静默退化为全仓 lint——正是 D-01/D-06 禁止的"把未跑折叠成 PASS"。GitHub 明确允许为 fork PR 增删 **read** 权限（只阻断 write），故 fork 兼容性不受影响。`verify-phase-48.sh` 须断言：`.github/workflows/` 下出现的每个 permissions scope ∈ {`contents: read`, `pull-requests: read`}，且全目录零 `write`。
-- **D-30（修订 D-22）：** `actions/checkout@v7` 移出 composite，由三个 job 各自执行；`.github/actions/setup` 只含 setup-go / setup-node / setup-buildx。理由：本地 action 从 `github.workspace` 解析，仓库未 checkout 时 runner 直接抛错退出；composite 无法 bootstrap 自己的 checkout。**不得**在 composite 内保留冗余 checkout（第二次 checkout 会重置工作区并浪费时间）。D-22 的目的（工具链版本单点维护 + Phase 51 复用）完全保留。
+- **D-29（修订 D-26）:** `permissions` 允许 `contents: read` + `pull-requests: read`，**仍禁止任何 write scope**。理由：`golangci-lint-action@v9` 的 `only-new-issues` 依赖 `pulls.get`，需 `pull-requests: read`；GitHub 语义下未声明的 scope 一律 `none`，而该 action 拿到 403 后只 `console.warn` 并静默退化为全仓 lint——正是 D-01/D-06 禁止的"把未跑折叠成 PASS"。GitHub 明确允许为 fork PR 增删 **read** 权限（只阻断 write），故 fork 兼容性不受影响。`verify-phase-48.sh` 须断言：`.github/workflows/` 下出现的每个 permissions scope ∈ {`contents: read`, `pull-requests: read`}，且全目录零 `write`。
+- **D-30（修订 D-22）:** `actions/checkout@v7` 移出 composite，由三个 job 各自执行；`.github/actions/setup` 只含 setup-go / setup-node / setup-buildx。理由：本地 action 从 `github.workspace` 解析，仓库未 checkout 时 runner 直接抛错退出；composite 无法 bootstrap 自己的 checkout。**不得**在 composite 内保留冗余 checkout（第二次 checkout 会重置工作区并浪费时间）。D-22 的目的（工具链版本单点维护 + Phase 51 复用）完全保留。
 
 ### 前提更正（非决策，研究证伪）
 - CONTEXT `<specifics>` 称 "GHA 缓存需 `actions: write` 权限，若与 D-26 的'仅 contents: read'冲突，planner 须显式取舍"——**该前提为假**。Docker 与 GitHub 文档按**事件与 ref** 限定缓存访问（常规 `pull_request` merge-ref 保留读写缓存访问；`issue_comment` / `pull_request_target` / `pull_request [closed]` 为只读），`permissions` 块管不着；`actions: write` 是缓存**管理/删除** API（如 `gh cache delete`）的权限。故 D-26 与 Docker `cache-to: type=gha` **不冲突**，planner 无需放宽任何权限。若首次运行出现 `failed to reserve cache`，先查事件/ref，不要先动 `permissions`。
