@@ -688,8 +688,11 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/admin/ontology/changelog", deps.adminOntologyChangelogHandler)
 	h.POST("/api/admin/ontology/rollback", deps.adminOntologyRollbackHandler)
 	// Phase 40 Plan 06 (D-SHACL-02 / D-SHACL-03) — governance admin surface:
-	// SHACL validation report (cached from boot or rollback) + provenance graph
-	// including quarantined entities. Both routes are token-gated (403 before 503).
+	// SHACL validation report + provenance graph including quarantined
+	// entities. The report is a cache with exactly two writers — boot
+	// (cmd/server/main.go) and RollbackTBox
+	// (internal/ontology/induction/induction.go); there is no live
+	// re-validation on GET. Both routes are token-gated (403 before 503).
 	h.GET("/api/admin/governance/shacl", deps.adminGovernanceShaclHandler)
 	h.GET("/api/admin/governance/provenance", deps.adminGovernanceProvenanceHandler)
 	// Phase 41 Plan 01 (PLAT-ONT-18) — MCP server inspector surface for the

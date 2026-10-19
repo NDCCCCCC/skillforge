@@ -20,7 +20,8 @@
 //
 //	GET /api/admin/governance/shacl
 //	     → 200 {health, error_count, warning_count, quarantined:[...], ...}
-//	       (cached report from boot or post-rollback)
+//	       (cached report; written by cmd/server/main.go at boot or by
+//	        induction.Manager.RollbackTBox after a rollback)
 //	       503 "report not available" if validation has not run yet
 //	GET /api/admin/governance/provenance
 //	     → 200 {nodes:[...], edges:[...]}  (full graph including quarantined)
@@ -39,9 +40,18 @@ import (
 
 // adminGovernanceShaclHandler implements GET /api/admin/governance/shacl.
 //
-// Returns the cached SHACL validation report from boot or post-rollback.
-// No live re-validation — the report reflects the state at the time
-// validation last ran (D-SHACL-02: boot runs validation every boot).
+// Returns the cached SHACL validation report. Exactly two call sites write
+// that cache: the boot path in cmd/server/main.go (D-SHACL-02: validation
+// runs every boot) and RollbackTBox in internal/ontology/induction/induction.go,
+// which republishes the report its post-rollback revalidation produced
+// (D-02a/REL-02).
+//
+// There is no live re-validation on GET — the report reflects the state at the
+// time validation last ran. If a post-rollback validation FAILS, the previous
+// (boot-triggered) report deliberately stays cached rather than being cleared
+// (D-02c: rolling back is not failed by a SHACL error, and clearing would need
+// a store Clear API). `trigger` and `validated_at` must therefore be read as
+// properties of the last SUCCESSFUL validation, not of the last rollback.
 func (s *Deps) adminGovernanceShaclHandler(ctx context.Context, c *app.RequestContext) {
 	dep, ok := s.requireOntology(c)
 	if !ok {
