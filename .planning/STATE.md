@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-11-PLAN.md
-last_updated: "2026-10-19T14:41:54.510Z"
+stopped_at: Completed 48-10-PLAN.md
+last_updated: "2026-10-19T15:10:38.660Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 48 execution started
-state_head: e112488a3ed15296c2067eda74d812967157c0a1
+state_head: db1c2bb38545e76805ab2b874940255b67f1672d
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 18
   percent: 20
 ---
 
@@ -36,7 +36,7 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 10 of 11
+Plan: 11 of 11
 Status: Ready to execute
 Last activity: 2026-10-19 — Phase 48 execution started
 
@@ -70,6 +70,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P07 | 13 min | 3 tasks | 2 files |
 | Phase 48 P08 | 7 min | 2 tasks | 2 files |
 | Phase 48 P11 | 8 min | 3 tasks | 4 files |
+| Phase 48 P10 | 12 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,8 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-11: IN-08 = option F (document the closed pull_request base set [main, phase-*] in the ci.yml header next to invariant 1) — No trigger behavior change; the Pending-forever hazard for PRs based outside the closed set is now a documented decision, and widening it is a deliberate header+trigger edit, never a silent filter drop.
 - [Phase 48]: 48-11: IN-07 = option A (new independent verify job running bash verify-phase-48.sh in CI) — Checkout first, composite with go true, pinned golangci-lint v2.12.2 via the official install script, PyYAML, then the gate script. No job-level permissions (inherits contents: read ceiling), no step-level if, no continue-on-error. The lint action is deliberately not reused so the verify job never inherits the push-run whole-repo fallback.
 - [Phase 48]: 48-11: M1 = BLOCKED (no git transport to github.com from this host; origin/main unrelated history, merge-base empty; ci.yml never on the remote default branch) — CICD-01/02/03 stay Pending honestly. The full run recipe (history decision, transport-capable host push, gate-preserving trigger, gh run watch, red-run classification, report format) is persisted in 48-11-SUMMARY.md for a future host, and the deferral handoff to plan 48-10 (48-SECURITY.md What this audit does NOT establish) is recorded there.
+- [Phase 48]: Phase 48 register re-closed on mutation evidence: threats_open 9->0, status verified; all nine falsified-hold rows cite the 48-05..48-09 assertion plus the mutation that proves it — Every mutation re-closure cites a named partition assertion plus its mutation probe; string-absence alone no longer closes a row
+- [Phase 48]: Review dispositions final: 18 fixed, 1 deferred (WR-06 option D — push-path lint scope unmeasured, decision re-opens on the first real ci.yml run) — IN-07/IN-08 recorded as implemented (48-11 options A/F), not deferred; CICD-01/02/03 stay Pending on M1 BLOCKED
 
 ### Pending Todos
 
@@ -153,7 +156,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T14:41:30.400Z
-Stopped at: Completed 48-11-PLAN.md
+Last session: 2026-10-19T15:09:00.017Z
+Stopped at: Completed 48-10-PLAN.md
 Resume file: None
 Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.
