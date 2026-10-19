@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/skillforge/skillforge/internal/ontology/shacl"
 	"github.com/skillforge/skillforge/internal/ontology/store"
 
 	"github.com/cloudwego/eino/components/model"
@@ -450,11 +451,37 @@ skf:referencesTableShape a sh:PropertyShape ;
 		if violations <= 0 {
 			t.Errorf("expected violations > 0 for dangling reference after rollback (env list must be consumed), got %d", violations)
 		}
+
+		// SC-2: the served report and the rollback response must come from the
+		// SAME ValidateWithTrigger result. Pre-fix the report was discarded
+		// and the admin surface kept serving the boot report.
+		cached := kg.GetShaclReport()
+		if cached == nil {
+			t.Fatalf("GetShaclReport() == nil after a successful rollback; the rollback revalidation report was not cached")
+		}
+		cr, ok := cached.(*shacl.Report)
+		if !ok {
+			t.Fatalf("cached report has type %T, want *shacl.Report", cached)
+		}
+		if cr.Trigger != "rollback" {
+			t.Errorf("cached report Trigger = %q, want %q", cr.Trigger, "rollback")
+		}
+		if cr.ErrorCount != violations {
+			t.Errorf("cached report ErrorCount = %d, but the rollback response reported %d violations; they must come from the same validation", cr.ErrorCount, violations)
+		}
 	})
 
 	t.Run("missing_shapes_warn_and_return_zero", func(t *testing.T) {
 		dir := t.TempDir()
 		kg := store.New()
+
+		// Seed a BOOT report so the failed-revalidation branch has something
+		// to preserve. Against a store that never held a report,
+		// `GetShaclReport() == nil` holds whether or not the failure branch
+		// wrote anything — the assertion would be vacuous and could not
+		// detect a regression that cleared or overwrote the cache (D-02c).
+		seed := &shacl.Report{Trigger: "boot", Health: "ok", ValidatedAt: "seeded-boot-report"}
+		kg.SetShaclReport(seed)
 
 		v1TTL := `@prefix skf: <http://skillforge.local/ontology#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -499,6 +526,24 @@ skf:NewClass a owl:Class .
 		}
 		if violations != 0 {
 			t.Errorf("expected 0 violations on shapes load failure (warn-and-return-0), got %d", violations)
+		}
+
+		// D-02c: a failed post-rollback validation must neither write a new
+		// report nor clear the cached one. The seeded boot report must still
+		// be there — same pointer, trigger untouched.
+		got := kg.GetShaclReport()
+		if got == nil {
+			t.Fatalf("GetShaclReport() == nil after a failed revalidation; the seeded boot report was cleared (D-02c forbids Store(nil))")
+		}
+		gr, ok := got.(*shacl.Report)
+		if !ok {
+			t.Fatalf("cached report has type %T, want *shacl.Report", got)
+		}
+		if gr != seed {
+			t.Errorf("cached report pointer = %p, want the seeded boot report %p; a failed revalidation must not overwrite the cache", gr, seed)
+		}
+		if gr.Trigger != "boot" {
+			t.Errorf("cached report Trigger = %q after a failed revalidation, want %q", gr.Trigger, "boot")
 		}
 	})
 }
