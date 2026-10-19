@@ -500,6 +500,19 @@ if "fe" not in jobs:
     raise SystemExit("P6: ci.yml has no `fe` job (CICD-02)")
 
 steps = jobs["fe"].get("steps") or []
+
+# WR-01 / T-48-07: same rule as P2/P3 — any step-level `if:` can disable a gate
+# step while its command text stays intact. No allowlist: neither the fe job nor
+# the docker job needs a conditional step (artifact-upload `if: always()` lives
+# in eval-gate.yml, which neither partition judges).
+for s in steps:
+    if "if" in s:
+        label = s.get("name") or s.get("uses") or s.get("run") or "<unnamed step>"
+        raise SystemExit(
+            "P6: the fe job's step %r carries a step-level if: %r - the gate is skippable (WR-01)"
+            % (label, s.get("if"))
+        )
+
 runs = {(s.get("run") or "").strip(): s.get("working-directory") for s in steps if "run" in s}
 for cmd in ("npm ci", "npx tsc --noEmit", "npx vitest run"):
     if cmd not in runs:
@@ -538,6 +551,17 @@ if "docker" not in jobs:
     raise SystemExit("P7: ci.yml has no `docker` job (CICD-03)")
 
 steps = jobs["docker"].get("steps") or []
+
+# WR-01: the two Docker image builds are the docker line's gate steps. A
+# step-level `if:` on either one makes CICD-03 silently unverified.
+for s in steps:
+    if "if" in s:
+        label = s.get("name") or s.get("uses") or s.get("run") or "<unnamed step>"
+        raise SystemExit(
+            "P7: the docker job's step %r carries a step-level if: %r - the gate is skippable (WR-01)"
+            % (label, s.get("if"))
+        )
+
 builds = [s for s in steps if (s.get("uses") or "").startswith("docker/build-push-action")]
 if len(builds) != 2:
     raise SystemExit("P7: expected exactly 2 docker build steps, found %d" % len(builds))
