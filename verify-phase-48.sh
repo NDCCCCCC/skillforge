@@ -396,7 +396,10 @@ p4_a_rc=$?
 if [ "$p4_a_rc" -eq 0 ]; then
   fail "P4 sentinel A: the linter exited 0 on an unchecked json.Unmarshal — the gate has no teeth"
 fi
-if ! grep -q 'errcheck' "$WORK/p4-sentinel-a.log"; then
+# The word alone is not evidence: a config diagnostic, a deprecation warning or
+# another linter's header can all contain it. Evidence is the attribution the
+# linter emits for the finding under test (IN-01).
+if ! grep -qE 'is not checked \(errcheck\)' "$WORK/p4-sentinel-a.log"; then
   tail -20 "$WORK/p4-sentinel-a.log"
   fail "P4 sentinel A: the run failed but did not name errcheck — a different cause is failing, not the gate"
 fi
