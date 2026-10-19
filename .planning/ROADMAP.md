@@ -59,7 +59,7 @@
 
 **Source:** 2026-10-13 缺口审查（vs Dify/RAGFlow/FastGPT 等明星项目 + 商业标准）。
 
-**Scope:** 14 项需求（FACE-01..03 / CICD-01..03 / DEMO-01..03 / REL-01..04）→ 5 phases（47-51），coverage 14/14。v1.6 遗留债务中的 D-46-DEF-02、audit WARNING-1、BL-01..04 由 REL 需求吸收进 Phase 47/51；其余遗留项（D-45-DEF-01/02/03、D-46-DEF-01、owl:Class quirk WARNING-2）在 Phase 47 逐项落处置记录。
+**Scope:** 13 项需求（FACE-01..03 / CICD-01..03 / DEMO-01..03 / REL-01..04）→ 5 phases（47-51），coverage 13/13。v1.6 遗留债务中的 D-46-DEF-02、audit WARNING-1、BL-01..04 由 REL 需求吸收进 Phase 47/51；其余遗留项（D-45-DEF-01/02/03、D-46-DEF-01、owl:Class quirk WARNING-2）在 Phase 47 逐项落处置记录。
 
 **Standards（继承 v1.4–v1.6）：** 零硬编码；Go handler ≤200 行；不静默吞错；涉 web 先产 UI-SPEC；每 phase 配 `verify-phase-NN.sh`；文档表述与构建现实一致（CGO_ENABLED=1 是 go-duckdb 生产构建现实路径）。
 
@@ -182,4 +182,4 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 
 ---
 
-*Last updated: 2026-10-13 — v1.7 roadmap created（14 REQ → Phases 47-51，coverage 14/14）*
+*Last updated: 2026-10-13 — v1.7 roadmap created（13 REQ → Phases 47-51，coverage 13/13）*

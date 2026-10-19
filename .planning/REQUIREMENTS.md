@@ -48,6 +48,17 @@
 
 ---
 
+## Backlog Items Carried From v1.6
+
+v1.6 遗留 backlog（继承进 v1.7 Traceability 表，REL-04 补录）。定义逐字引自 `.planning/milestones/v1.6-REQUIREMENTS.md` § Accumulated Backlog（第 40-43 行）——归档只读，本文件仅引用不改动归档。
+
+- **BL-01**: 双 resolver 去重（`resolveSkillTiers` vs `resolveSkillTiersFromKG`） — 来源 `.planning/milestones/v1.6-REQUIREMENTS.md:40`
+- **BL-02**: server 包 lint 清扫 — 来源 `.planning/milestones/v1.6-REQUIREMENTS.md:41`
+- **BL-03**: live 抽取 prompt 对齐 writes-only 的残余微调 — 来源 `.planning/milestones/v1.6-REQUIREMENTS.md:42`
+- **BL-04**: DetailPanel/emitter 两个 deferred 测试 — 来源 `.planning/milestones/v1.6-REQUIREMENTS.md:43`
+
+去向（与 `47-DEBT-DISPOSITION.md` 主表一致）：BL-04 = v1.7 修复（plans 47-03 + 47-05）；BL-01/BL-02/BL-03 = 延期+理由（分别是行为语义重构需单独立项、需 Phase 48 的 `golangci-lint` 报告才有可定义范围、needs-live 内网 LLM/BGE）。
+
 ## Traceability
 
 | Requirement | Phase | Status |
@@ -65,5 +76,9 @@
 | REL-02 | Phase 47 | Pending |
 | REL-03 | Phase 51 | Pending |
 | REL-04 | Phase 47 | Pending |
+| BL-01 | Backlog（无 owner phase） | Deferred |
+| BL-02 | Backlog（Phase 48 lint 落地后立项） | Deferred |
+| BL-03 | Backlog（needs-live） | Deferred |
+| BL-04 | Phase 47 | Complete |
 
-Coverage: 14/14 v1.7 requirements mapped（v1.6 遗留项 D-46-DEF-02 / WARNING-1 / BL-01..04 由 REL-01/02/04 吸收；D-45-DEF-01/02/03、D-46-DEF-01、WARNING-2 在 Phase 47 逐项落处置记录）
+Coverage: 17/17 mapped items（13 项 v1.7 requirements：FACE-01..03 / CICD-01..03 / DEMO-01..03 / REL-01..04，+ 4 项 v1.6 遗留 backlog BL-01..04，由 REL-04 补录；BL-01..03 维持 Deferred 并附理由，BL-04 在 Phase 47 闭合 = Complete）。其余 v1.6 遗留项 D-46-DEF-02 / WARNING-1 由 REL-01/02 吸收；D-45-DEF-01/02/03、D-46-DEF-01、WARNING-2 在 Phase 47 逐项落处置记录（`47-DEBT-DISPOSITION.md`）。
