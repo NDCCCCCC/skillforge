@@ -93,12 +93,24 @@ trap 'rm -rf "$WORK"' EXIT
 # repo root is both an untracked artefact and a sign that a relative path
 # leaked past the temp dir.
 
+# Body-emitted partition markers (IN-06). A `done_partition` call site is not
+# evidence that its partition body ran: commenting out a body while leaving the
+# call site used to satisfy both the call-site count and the RAN counter. Each
+# body now creates its own marker as its first statement, and done_partition
+# refuses without the matching marker.
+mkdir -p "$WORK/ran"
+begin_partition() { : > "$WORK/ran/$1.begin"; }
+
 # Partition registry. The closing banner compares RAN against
 # EXPECTED_PARTITIONS; a shortfall exits non-zero.
 EXPECTED_PARTITIONS=11
 RAN=0
 RAN_LIST=()
 done_partition() {
+  local pn="${1%% *}"
+  if [ ! -f "$WORK/ran/$pn.begin" ]; then
+    fail "P11 partition ${pn} reached done_partition without a begin marker — its body did not run (IN-06)"
+  fi
   RAN=$((RAN + 1))
   RAN_LIST+=("$1")
   pass "$1"
@@ -123,6 +135,7 @@ echo "=== Phase 48 Verification (static CI gate self-proof) ==="
 # P1: workflow-parse
 # ---------------------------------------------------------------------------
 info "P1: workflow parse + trigger safety"
+begin_partition "P1"
 WF_DIR="$ROOT/.github/workflows"
 COMPOSITE="$ROOT/.github/actions/setup/action.yml"
 
@@ -177,6 +190,8 @@ done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + compos
 #          two partitions cannot disagree about what the file says.
 # ---------------------------------------------------------------------------
 info "P2/P3: go line + lint line structure"
+begin_partition "P2"
+begin_partition "P3"
 CI="$ROOT/.github/workflows/ci.yml"
 [ -f "$CI" ] || fail "P2 ci.yml missing: $CI"
 
@@ -300,6 +315,7 @@ done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact)"
 # P4: lint-teeth
 # ---------------------------------------------------------------------------
 info "P4: lint has teeth (config verify + sentinels)"
+begin_partition "P4"
 
 # TOOLING PREFLIGHT FIRST, and it depends on nothing but the shell — no Python,
 # no Node, no Go, no Docker. If the linter is off PATH this partition must
@@ -497,6 +513,7 @@ done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel 
 # P5: composite
 # ---------------------------------------------------------------------------
 info "P5: composite resolution order"
+begin_partition "P5"
 
 [ -f "$COMPOSITE" ] || fail "P5 composite toolchain action missing: $COMPOSITE"
 
@@ -547,6 +564,7 @@ done_partition "P5 composite (three pinned majors, no checkout, every job checks
 # P6: fe-line
 # ---------------------------------------------------------------------------
 info "P6: fe line"
+begin_partition "P6"
 
 python - "$(native "$CI")" <<'PY' > "$WORK/p6.log" 2>&1
 import re, sys, yaml
@@ -620,6 +638,7 @@ done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no coun
 # P7: docker-line
 # ---------------------------------------------------------------------------
 info "P7: docker line"
+begin_partition "P7"
 
 python - "$(native "$CI")" <<'PY' > "$WORK/p7.log" 2>&1
 import sys, yaml
@@ -910,6 +929,7 @@ PY
 # P8: trust-surface — the whole workflow directory
 # ---------------------------------------------------------------------------
 info "P8: trust surface (permissions / registry / path filters / secrets)"
+begin_partition "P8"
 
 scan_trust_surface "$ROOT/.github/workflows"
 p8_rc=$?
@@ -922,6 +942,7 @@ done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT:-0} workflow(s) per file
 # P9: eval-gate-gate — the fork boundary, the visible skip, and the Go version
 # ---------------------------------------------------------------------------
 info "P9: eval-gate gate + the directory-wide Go version source"
+begin_partition "P9"
 
 EVAL_GATE="$ROOT/.github/workflows/eval-gate.yml"
 [ -f "$EVAL_GATE" ] || fail "P9 no eval-gate workflow at $EVAL_GATE — a partition with no subject is NOT VERIFIED, never a pass"
@@ -1062,6 +1083,7 @@ done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, comple
 # P10: sc4-wording — the ROADMAP's SC-4 sentence, resolved through $ROOT
 # ---------------------------------------------------------------------------
 info "P10: ROADMAP SC-4 wording (D-12/P22)"
+begin_partition "P10"
 
 ROADMAP="$ROOT/.planning/ROADMAP.md"
 [ -f "$ROADMAP" ] || fail "P10 no ROADMAP at $ROADMAP — a partition with no subject is NOT VERIFIED, never a pass"
@@ -1106,15 +1128,21 @@ done_partition "P10 sc4-wording (old hermetic-precedent phrase absent, live-work
 # Both halves run on every invocation. There is no flag, argument or environment
 # variable that disables them.
 # ---------------------------------------------------------------------------
-info "P11: self-probe (registry truth + non-vacuity)"
+info "P11: self-probe (registry truth + begin markers + non-vacuity)"
+begin_partition "P11"
 
 SELF="$ROOT/$(basename "${BASH_SOURCE[0]}")"
 
-# --- Half 1a: the registry matches the call sites ---------------------------
+# --- Half 1a: the registry, the call sites and the bodies agree -------------
+# A call-site count is source text: a body commented out while its call site
+# survives still counts. BEGIN_COUNT is the observable effect — one marker per
+# partition body that actually executed — so the green banner requires both.
 CALL_SITES=$(grep -cE '^done_partition "' "$SELF")
-if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ]; then
-  fail "P11 the registry and the call sites disagree: EXPECTED_PARTITIONS=${EXPECTED_PARTITIONS}, done_partition call sites=${CALL_SITES} — a partition written but never reached, or a call site added without a registry entry, fails here"
+BEGIN_COUNT=$(find "$WORK/ran" -maxdepth 1 -name '*.begin' | wc -l | tr -d ' ')
+if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECTED_PARTITIONS" ]; then
+  fail "P11 the registry, the call sites and the begin markers disagree: EXPECTED_PARTITIONS=${EXPECTED_PARTITIONS}, done_partition call sites=${CALL_SITES}, begin markers=${BEGIN_COUNT} — a partition whose body did not run, or a call site added without a registry entry, fails here"
 fi
+info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}"
 
 # --- Half 1b: exactly one print site, and it is RAN-gated -------------------
 # The token is assembled at runtime: spelling it here would make the count see
@@ -1286,7 +1314,7 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   head -1 "$WORK/trust-surface.log" | sed 's/^/       /'
 done
 
-done_partition "P11 self-probe (registry == call sites, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
+done_partition "P11 self-probe (registry == call sites == begin markers, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
@@ -1319,4 +1347,4 @@ echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cac
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface"
 echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact, one Go version source"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present"
-echo "  P11 self-probe    — registry == call sites, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
+echo "  P11 self-probe    — registry == call sites == begin markers, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
