@@ -41,21 +41,50 @@ func loadGraph(t *testing.T, ttl string) (*graph.Graph, int) {
 	return g, g.Len()
 }
 
+// TestEmitSkillInstanceCount builds its own fixture under t.TempDir() instead
+// of walking the repository working tree: the previous version asserted the
+// count of skill directories the developer happened to have on disk (8 locally
+// vs 3 git-tracked), so it could not be green on a clean `git archive HEAD`
+// checkout. Asserting the fixture's own count keeps the test hermetic — the
+// expected value is derived from the tree this test constructs, not from the
+// corpus.
 func TestEmitSkillInstanceCount(t *testing.T) {
-	root := projectRoot(t)
-	e := New(filepath.Join(root, "skills"), filepath.Join(root, "knowledge"), DefaultNS)
+	root := t.TempDir()
+	skills := filepath.Join(root, "skills")
+	kb := filepath.Join(root, "knowledge")
+	// Fixture skill names deliberately do not collide with the repo's skills.
+	fixtureSkills := []string{"fixture-a", "fixture-b", "fixture-c"}
+	for _, name := range fixtureSkills {
+		dir := filepath.Join(skills, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		doc := "---\nname: " + name + "\ndescription: hermetic fixture skill\nagent: ChatModelAgent\n---\n\nbody\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(kb, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e := New(skills, kb, DefaultNS)
 	ttl, err := e.Emit()
 	if err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	g, n := loadGraph(t, ttl)
 	t.Logf("emitted %d triples", n)
-	skills := countByType(t, g, DefaultNS+"Skill")
-	if skills != 8 {
-		t.Errorf("Skill instances = %d, want 8", skills)
+	skills2 := countByType(t, g, DefaultNS+"Skill")
+	if skills2 != len(fixtureSkills) {
+		t.Errorf("Skill instances = %d, want %d", skills2, len(fixtureSkills))
 	}
 }
 
+// TestEmitTierInstanceCount deliberately stays corpus-pinned: its expected 5
+// is the number of top-level directories committed under knowledge/, so the
+// assertion holds on a clean clone (unlike the skill/sub-category counts,
+// which reflected untracked working-tree-only directories — see
+// TestEmitSkillInstanceCount / TestEmitSubCategoryInstanceCount).
 func TestEmitTierInstanceCount(t *testing.T) {
 	root := projectRoot(t)
 	e := New(filepath.Join(root, "skills"), filepath.Join(root, "knowledge"), DefaultNS)
