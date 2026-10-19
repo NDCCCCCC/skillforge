@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 11/11 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 verifier `gaps_found` 之后的 7 个 gap-closure 计划，全部执行完毕）
+**Plans**: 11/11 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 round-1 `gaps_found` 之后的 7 个 gap-closure 计划）+ 4 个 round-2 再验证 `gaps_found`（5/9）的 gap-closure 计划（48-12..48-15，待执行）
 
 **Blocked on**: Class-B 硬化缺口已全部闭合且经变异证明——48-05..48-09 落地 per-file 信任面扫描、step 级 `if:` 拒绝、归一化 fork-gate 表达式、补集 notice、正向 revive sentinel（D）与 begin-marker 分区账目；48-10 据此重闭 9 行 open threat（`threats_open: 0`，19 条 review findings = 18 fixed / 1 deferred）。但 **`ci.yml` 仍然没有任何运行**（Class A）：git 传输到 github.com 不通（`git push --dry-run` → `Failed to connect to github.com port 443`），`push.branches: [main]` 按设计不可放宽，`origin/main`（单 commit `369b08a`）与本分支无共同历史、无法开 PR——48-11 记录 `M1: BLOCKED`，run recipe 已持久化。CICD-01/02/03 保持 Pending，直到一台 git 传输可达的机器按该 recipe 产出一次 `go`/`fe`/`docker`（含 `verify`）全 `success` 的运行。
 
@@ -147,6 +147,13 @@ Plans:
 - [x] 48-09-PLAN.md — P4 sentinel D 正向 revive 探针（WR-04）；sentinel A 证据改为归因匹配（IN-01）；分区账目改由 body 自写 begin 标记（IN-06）；preset 注释补全（IN-09）
 - [x] 48-10-PLAN.md — 以变异证据重闭 9 行 open threat（`threats_open: 0` / `status: verified`）；19 条 findings 终态处置 + deferred 清单；ROADMAP/REQUIREMENTS 与 48-11 记录的 M1 状态对齐
 - [x] 48-11-PLAN.md — WR-06/IN-08/IN-07 三项决策已记录（option D / F / A，IN-08+IN-07 已实现）+ Class A 首次真实 CI run 的 run recipe（M1: BLOCKED，不伪造运行）
+
+**Gap closure round 3**（48-VERIFICATION.md round-2 再验证 `gaps_found` 5/9：R2-CR-01 supply-chain、R2-WR-01/03 verifier 两处 vacuous PASS、R2-WR-05 Gate-check secrets、四条 advisory；48-12..48-15）
+
+- [ ] 48-12-PLAN.md — ci.yml `curl|sh` bootstrap → module-proxy `go install` + `[ -x ]` postcondition（R2-CR-01/WR-02）；PyYAML pin、verify checkout `persist-credentials: false`、四 job header、P5a `-list` 防改名 guard（R2-IN-01/02/03、R2-WR-04）；eval-gate `Gate check` 撤除三个不可消费 secret（R2-WR-05）
+- [ ] 48-13-PLAN.md — verifier 成功 token 账目：`done_partition` 要求 begin+ok、去掉 `:-0` 默认、P11 四方计数（R2-WR-03，M8 变异转红）；P2/P3 pin verify job 契约与 48-12 各修复（R2-WR-01，M9/M10 变异转红）；五项沙箱变异演练
+- [ ] 48-14-PLAN.md — 48-SECURITY.md 补录 supply-chain 行 T-48-47（引用 48-11 threat_flag）+ round-2 closure 段 + audit trail；传输事实更正（ROADMAP Blocked-on / SECURITY "does NOT establish"）；PyYAML 行补进 Package Legitimacy Audit
+- [ ] 48-15-PLAN.md — Class A：执行 48-11 持久化的 M1 run recipe（历史决策 checkpoint〔one-way〕→ 本机 push → `go=fe=docker=verify=success` → REQUIREMENTS CICD-01/02/03 凭 run 证据翻转；`autonomous: false`）
 
 ### Phase 49: Hermetic Demo
 

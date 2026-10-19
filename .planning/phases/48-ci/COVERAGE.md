@@ -1,0 +1,3 @@
+# API Coverage — Phase 48 (CI 矩阵, gap closure round 3)
+
+No external API integration: this phase configures GitHub Actions workflows (`.github/workflows/ci.yml`, `.github/workflows/eval-gate.yml`) and the local verifier `verify-phase-48.sh`. The detector's two signals are prose false-positives — "GitHub API call" describes `golangci-lint-action`'s internal `pulls.get` behavior (a third-party action's implementation detail recorded in the D-29 permissions decision, not a surface this phase builds), and "consuming steps" is matched against the live-secret `env:` grant in `eval-gate.yml`, which is secret plumbing, not an API client. No endpoints are consumed, no SDK is wrapped, no client code is written by this phase's deliverables.
