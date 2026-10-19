@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-12-PLAN.md
-last_updated: "2026-10-19T23:22:56.742Z"
+stopped_at: Completed 48-13-PLAN.md
+last_updated: "2026-10-19T23:47:32.933Z"
 last_activity: 2026-10-20
 last_activity_desc: Phase 48 execution started
-state_head: 2eae368bd6c51ca94adadcd0455a8f09ac3d4045
+state_head: e5695ec20c9d90e537d64c8d8922d5d93905ad7c
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 23
-  completed_plans: 19
+  completed_plans: 20
   percent: 20
 ---
 
@@ -36,7 +36,7 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 13 of 15
+Plan: 14 of 15
 Status: Ready to execute
 Last activity: 2026-10-20 — Phase 48 execution started
 
@@ -72,6 +72,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P11 | 8 min | 3 tasks | 4 files |
 | Phase 48 P10 | 12 min | 3 tasks | 4 files |
 | Phase 48 P12 | 10min | 3 tasks | 2 files |
+| Phase 48 P13 | 16 min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,10 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-12: R2-CR-01 closed with the module-proxy install shape (go install @v2.12.2 + [ -x ] postcondition), not SHA-pinned install.sh — single command means no pipe and R2-WR-02 closes by construction, so no pipefail is cargo-culted in
 - [Phase 48]: 48-12: P5a determinism guard (-list | grep -qx) runs under shell: bash + explicit pipefail because GitHub default bash -e {0} has none; both P2-pinned fragments stay byte-present (D-18/D-19)
 - [Phase 48]: 48-12: Gate check documented as the offline threshold comparison holding zero secret surface — cmd/eval --gate-check short-circuits before bootstrap (main.go:463-467); the three live mappings stay on the replay step only (R2-WR-05)
+- [Phase 48]: 48-13: P11's registry count runs LAST (banner checks -> fixtures -> P11 token -> four-way count); the count demands P11's own success token, so the reverse order would be a self-failing gate
+- [Phase 48]: 48-13: no :- default on a variable whose setter is the probe under test — TRUST_SURFACE_COUNT aborts under set -u instead of printing a plausible zero (M8 now bites); success tokens deposit only after each probe's exit-code assertion, and done_partition requires begin + ok
+- [Phase 48]: 48-13: the verify job is pinned by the same P2/P3 probe that judges the go job (existence, if-freeness, gate terminus, persist-credentials false, module-proxy install); the banned fetch/script tokens are printf-assembled argv, never spelled joined — M9/M10 and both 48-12-fix reintroductions now red with the partition named
+- [Phase 48]: 48-13: CICD-01/02/03 stay Pending — hardening the verifier does not substitute for the first real GitHub Actions run (48-15); requirements mark-complete deliberately not run
 
 ### Pending Todos
 
@@ -160,7 +165,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T23:22:38.181Z
-Stopped at: Completed 48-12-PLAN.md
+Last session: 2026-10-19T23:47:13.382Z
+Stopped at: Completed 48-13-PLAN.md
 Resume file: None
 Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.
