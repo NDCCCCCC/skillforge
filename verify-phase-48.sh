@@ -36,6 +36,12 @@
 #                         its visible skip notice, its intact secret wiring,
 #                         its un-widened trigger, and the directory-wide
 #                         single Go version source
+#   P10 sc4-wording     — ROADMAP SC-4's corrected sentence: the old
+#                         hermetic-precedent wording is gone and the
+#                         live-workflow replacement is present
+#   P11 self-probe      — the registry matches the done_partition call sites,
+#                         the passing banner has exactly one RAN-gated print
+#                         site, and an empty partition is proven to FAIL
 #
 # NO WAIVERS. Unlike Phase 47 — whose frontend partition P6 may exit 0 as
 # PARTIAL because a WSL-only host has no Node — every partition here is
@@ -88,7 +94,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Partition registry. The closing banner compares RAN against
 # EXPECTED_PARTITIONS; a shortfall exits non-zero.
-EXPECTED_PARTITIONS=9
+EXPECTED_PARTITIONS=11
 RAN=0
 RAN_LIST=()
 done_partition() {
@@ -558,52 +564,101 @@ cat "$WORK/p7.log"
 done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes)"
 
 # ---------------------------------------------------------------------------
-# P8: trust-surface — the whole workflow directory
+# scan_trust_surface <workflow-dir> — ONE implementation, two callers.
+#
+# P8 calls it with the real .github/workflows; P11 half 2 calls it with
+# synthetic fixtures. Sharing the function is the whole point: a private probe
+# copy could drift from what P8 actually runs, and then the probe would prove
+# nothing about the real scan. Every rule P8 has always had lives here, and the
+# four vacuity rules (zero files / empty jobs / absent permissions / empty
+# permissions) are failure conditions in their own right — `every value is
+# read-or-none` is satisfied VACUOUSLY by a mapping with no values, which is
+# exactly the "found nothing, reported green" class this phase exists to close.
+#
+# Returns non-zero and writes its reason to $WORK/trust-surface.log. It never
+# calls fail(): P11 must observe the failure rather than abort on it. Callers
+# keep the exit-code-authoritative failure at their own site.
+#
+# The fixture files are named ci.yml, so the path-filter and secret rules are
+# decided by the same code path for the real directory and for the probe.
 # ---------------------------------------------------------------------------
-info "P8: trust surface (permissions / registry / path filters / secrets)"
+scan_trust_surface() {
+  local dir="$1"
+  local log="$WORK/trust-surface.log"
+  local list="$WORK/trust-surface-list.txt"
+  local ci="$dir/ci.yml"
+  : > "$log"
 
-find "$WF_DIR" -maxdepth 1 -type f -name '*.yml' -print | sort > "$WORK/p8-list.txt"
-P8_COUNT=$(wc -l < "$WORK/p8-list.txt" | tr -d ' ')
-[ "$P8_COUNT" -ge 1 ] || fail "P8 matched zero *.yml files under $WF_DIR — a partition that finds zero files must not pass"
+  find "$dir" -maxdepth 1 -type f -name '*.yml' -print 2>/dev/null | sort > "$list"
+  TRUST_SURFACE_COUNT=$(wc -l < "$list" | tr -d ' ')
+  if [ "$TRUST_SURFACE_COUNT" -lt 1 ]; then
+    echo "trust-surface: zero *.yml files under $dir — a partition that finds nothing must not pass" >> "$log"
+    return 1
+  fi
+  if [ ! -f "$ci" ]; then
+    echo "trust-surface: no ci.yml under $dir — the path-filter and secret rules have no subject" >> "$log"
+    return 1
+  fi
 
-p8_args=()
-while IFS= read -r f; do p8_args+=("$(native "$f")"); done < "$WORK/p8-list.txt"
+  local -a args=()
+  local f
+  while IFS= read -r f; do args+=("$(native "$f")"); done < "$list"
 
-python - "$(native "$CI")" "${p8_args[@]}" <<'PY' > "$WORK/p8.log" 2>&1
+  python - "$(native "$ci")" "${args[@]}" >> "$log" 2>&1 <<'PY'
 import sys, re, yaml
 
 ci_path = sys.argv[1]
 paths = sys.argv[2:]
 if not paths:
-    raise SystemExit("P8: zero workflow files to scan — a partition that finds nothing must not pass")
+    raise SystemExit("trust-surface: zero workflow files to scan — a partition that finds nothing must not pass")
 
 for p in paths:
     src = open(p, encoding="utf-8").read()
+    doc = yaml.safe_load(src)
+    if not isinstance(doc, dict):
+        raise SystemExit("trust-surface: %s does not parse as a mapping" % p)
+
+    # Vacuity rule 1: an empty workflow has no permissions to be wrong about,
+    # so "zero write scopes" must not be satisfied by having no scopes at all.
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict) or not jobs:
+        raise SystemExit(
+            "trust-surface: %s has an empty or absent jobs: mapping — an empty partition must not pass" % p
+        )
 
     # D-26 / D-29: read-only ceiling. The raw scan also catches a write scope
     # in a shape PyYAML might normalize away.
     if "write" in src:
-        raise SystemExit("P8: %s contains a write scope (D-26/D-29)" % p)
+        raise SystemExit("trust-surface: %s contains a write scope (D-26/D-29)" % p)
 
-    doc = yaml.safe_load(src)
-    maps = []
-    if isinstance(doc.get("permissions"), dict):
-        maps.append(("workflow-level", doc["permissions"]))
-    for name, job in (doc.get("jobs") or {}).items():
-        if isinstance(job.get("permissions"), dict):
+    # Vacuity rules 2 and 3: a workflow with no permissions key has not
+    # declared a read-only ceiling, and an empty mapping declares nothing.
+    perms = doc.get("permissions")
+    if not isinstance(perms, dict):
+        raise SystemExit(
+            "trust-surface: %s declares no permissions: mapping — an undeclared ceiling is not a read-only ceiling (D-26/D-29)" % p
+        )
+    if not perms:
+        raise SystemExit(
+            "trust-surface: %s declares an empty permissions: mapping — an empty ceiling must not pass vacuously (D-26/D-29)" % p
+        )
+
+    maps = [("workflow-level", perms)]
+    for name, job in jobs.items():
+        if isinstance(job, dict) and isinstance(job.get("permissions"), dict):
             maps.append(("job %r" % name, job["permissions"]))
     for where, mapping in maps:
         for scope, value in mapping.items():
             if value not in ("read", "none"):
                 raise SystemExit(
-                    "P8: %s in %s grants %r=%r; only read/none are allowed (D-26/D-29)"
+                    "trust-surface: %s in %s grants %r=%r; only read/none are allowed (D-26/D-29)"
                     % (p, where, scope, value)
                 )
 
     # T-48-10: no image-publication capability anywhere in the directory.
     for bad in ("docker/login-action", "registry:", "GHCR", "DOCKERHUB", "packages: write"):
         if bad in src:
-            raise SystemExit("P8: %s contains forbidden registry surface: %s (T-48-10)" % (p, bad))
+            raise SystemExit("trust-surface: %s contains forbidden registry surface: %s (T-48-10)" % (p, bad))
 
 ci_src = open(ci_path, encoding="utf-8").read()
 
@@ -611,21 +666,30 @@ ci_src = open(ci_path, encoding="utf-8").read()
 # touches no matched path. Per-line skipping must use a job-level `if:`.
 for bad in ("paths:", "paths-ignore:"):
     if bad in ci_src:
-        raise SystemExit("P8: ci.yml contains %s — a path-filtered required check sits Pending (T-48-03)" % bad)
+        raise SystemExit("trust-surface: ci.yml contains %s — a path-filtered required check sits Pending (T-48-03)" % bad)
 
 # T-48-04 / D-14: a public fork PR must never need or see a secret. The only
 # permitted reference is the runner-provided token.
 for name in re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", ci_src):
     if name != "GITHUB_TOKEN":
-        raise SystemExit("P8: ci.yml references secrets.%s; only secrets.GITHUB_TOKEN is allowed (T-48-04)" % name)
+        raise SystemExit("trust-surface: ci.yml references secrets.%s; only secrets.GITHUB_TOKEN is allowed (T-48-04)" % name)
 
 print("TRUST-SURFACE-OK (%d workflow file(s))" % len(paths))
 PY
+  return $?
+}
+
+# ---------------------------------------------------------------------------
+# P8: trust-surface — the whole workflow directory
+# ---------------------------------------------------------------------------
+info "P8: trust surface (permissions / registry / path filters / secrets)"
+
+scan_trust_surface "$ROOT/.github/workflows"
 p8_rc=$?
-cat "$WORK/p8.log"
+cat "$WORK/trust-surface.log"
 [ "$p8_rc" -ne 0 ] && fail "P8 the trust surface is violated (see the line above)"
 
-done_partition "P8 trust-surface (${P8_COUNT} workflow(s): read-only permissions, no registry/path/secret surface)"
+done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT:-0} workflow(s): read-only permissions, no registry/path/secret surface)"
 
 # ---------------------------------------------------------------------------
 # P9: eval-gate-gate — the fork boundary, the visible skip, and the Go version
@@ -750,6 +814,146 @@ cat "$WORK/p9.log"
 done_partition "P9 eval-gate-gate (3-clause fork gate, visible skip notice, secrets intact, one Go version source)"
 
 # ---------------------------------------------------------------------------
+# P10: sc4-wording — the ROADMAP's SC-4 sentence, resolved through $ROOT
+# ---------------------------------------------------------------------------
+info "P10: ROADMAP SC-4 wording (D-12/P22)"
+
+ROADMAP="$ROOT/.planning/ROADMAP.md"
+[ -f "$ROADMAP" ] || fail "P10 no ROADMAP at $ROADMAP — a partition with no subject is NOT VERIFIED, never a pass"
+
+# Both phrases are named separately: "the correction is missing" and "the
+# correction is wrong" are different failures, and a single boolean would
+# collapse them into one indistinguishable red.
+# Nothing is asserted about test counts. ROADMAP's Goal line carries a stale
+# count that D-12 explicitly leaves alone, and a gate that pinned a count would
+# be a future silent-drift failure.
+SC4_OLD='既有 hermetic 先例'
+SC4_NEW='既有 **live** workflow'
+
+sc4_old_state=absent
+grep -qF "$SC4_OLD" "$ROADMAP" && sc4_old_state=present
+sc4_new_state=absent
+grep -qF "$SC4_NEW" "$ROADMAP" && sc4_new_state=present
+info "P10: SC-4 old wording『${SC4_OLD}』= ${sc4_old_state} (want absent) · replacement『${SC4_NEW}』= ${sc4_new_state} (want present)"
+
+if [ "$sc4_old_state" = present ]; then
+  grep -nF "$SC4_OLD" "$ROADMAP" | sed 's/^/    /'
+  fail "P10 ROADMAP.md still carries the corrected-away SC-4 phrase『${SC4_OLD}』(D-12/P22)"
+fi
+if [ "$sc4_new_state" != present ]; then
+  fail "P10 ROADMAP.md is missing the replacement SC-4 wording『${SC4_NEW}』(D-12/P22)"
+fi
+
+done_partition "P10 sc4-wording (old hermetic-precedent phrase absent, live-workflow wording present)"
+
+# ---------------------------------------------------------------------------
+# P11: self-probe — the partition that proves the other ten are not decorative
+#
+# Half 1: the registry is real. EXPECTED_PARTITIONS is recomputed against the
+#         done_partition call sites actually present, and the passing banner is
+#         pinned to exactly one site inside the RAN-gated branch. Phase 47's
+#         first verifier shipped its green banner unconditionally with zero
+#         partitions run; a second print site is precisely how that recurs.
+# Half 2: an empty partition is NOT VERIFIED, not PASS. The synthetic fixtures
+#         run through scan_trust_surface — the SAME function P8 runs — and are
+#         required to FAIL.
+#
+# Both halves run on every invocation. There is no flag, argument or environment
+# variable that disables them.
+# ---------------------------------------------------------------------------
+info "P11: self-probe (registry truth + non-vacuity)"
+
+SELF="$ROOT/$(basename "${BASH_SOURCE[0]}")"
+
+# --- Half 1a: the registry matches the call sites ---------------------------
+CALL_SITES=$(grep -cE '^done_partition "' "$SELF")
+if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ]; then
+  fail "P11 the registry and the call sites disagree: EXPECTED_PARTITIONS=${EXPECTED_PARTITIONS}, done_partition call sites=${CALL_SITES} — a partition written but never reached, or a call site added without a registry entry, fails here"
+fi
+
+# --- Half 1b: exactly one print site, and it is RAN-gated -------------------
+# The token is assembled at runtime: spelling it here would make the count see
+# the checker's own text, and the count would always be one too high.
+BANNER_TOKEN="$(printf '%s %s' 'ALL' 'PASSED')"
+RAN_GATE_HEAD='if [ "$RAN" -eq "$EXPECTED_PARTITIONS" ]'
+GATE_TOKEN="${RAN_GATE_HEAD}; then"
+
+BANNER_SITES=$(grep -cF "$BANNER_TOKEN" "$SELF")
+if [ "$BANNER_SITES" -ne 1 ]; then
+  fail "P11 the passing banner has ${BANNER_SITES} print sites; exactly one is allowed — a second, unconditional site is how a green banner ships with zero partitions run"
+fi
+
+BANNER_LINE=$(grep -nF "$BANNER_TOKEN" "$SELF" | head -1 | cut -d: -f1)
+GATE_LINE=$(grep -nF "$GATE_TOKEN" "$SELF" | head -1 | cut -d: -f1)
+if [ -z "$GATE_LINE" ]; then
+  fail "P11 the RAN-gated branch is missing — the banner is not gated on RAN vs EXPECTED_PARTITIONS"
+fi
+if [ "$BANNER_LINE" -le "$GATE_LINE" ]; then
+  fail "P11 the passing banner is printed at line ${BANNER_LINE}, at or before the RAN gate at line ${GATE_LINE} — it is not inside the gated branch"
+fi
+if sed -n "$((GATE_LINE + 1)),${BANNER_LINE}p" "$SELF" | grep -qE '^[[:space:]]*else[[:space:]]*$'; then
+  fail "P11 the passing banner sits after an else: it is no longer inside the RAN-gated branch"
+fi
+info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, banner print sites ${BANNER_SITES} (line ${BANNER_LINE}, RAN gate line ${GATE_LINE})"
+
+# --- Half 2: an empty partition must fail, not pass vacuously ---------------
+# The fixtures live under $WORK and are never written into the repository.
+P11_FIX="$WORK/p11-fixtures"
+mkdir -p "$P11_FIX/empty-jobs" "$P11_FIX/empty-perms" "$P11_FIX/no-perms" "$P11_FIX/empty-dir"
+
+cat > "$P11_FIX/empty-jobs/ci.yml" <<'YEOF'
+name: fixture-empty-jobs
+on:
+  push:
+    branches: [main]
+permissions: {}
+jobs: {}
+YEOF
+
+cat > "$P11_FIX/empty-perms/ci.yml" <<'YEOF'
+name: fixture-empty-perms
+on:
+  push:
+    branches: [main]
+permissions: {}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+YEOF
+
+cat > "$P11_FIX/no-perms/ci.yml" <<'YEOF'
+name: fixture-no-perms
+on:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+YEOF
+
+for fixture in empty-jobs empty-perms no-perms empty-dir; do
+  scan_trust_surface "$P11_FIX/$fixture"
+  p11_fixture_rc=$?
+  if [ "$p11_fixture_rc" -eq 0 ]; then
+    cat "$WORK/trust-surface.log"
+    fail "P11 verifier is vacuous on an empty partition: scan_trust_surface returned success on the '${fixture}' fixture"
+  fi
+  # The reason is rendered through sed rather than interpolated into info():
+  # info() uses `echo -e`, and the probe's message quotes a NATIVE Windows path
+  # whose backslashes would be read as escape sequences (\t, \e, \c …) — which
+  # mangles the evidence and can swallow the newline. Output that is never
+  # re-interpreted cannot be mangled.
+  echo "  P11: fixture '${fixture}' rejected (rc=${p11_fixture_rc}):"
+  head -1 "$WORK/trust-surface.log" | sed 's/^/       /'
+done
+
+done_partition "P11 self-probe (registry == call sites, one RAN-gated banner site, 4 empty fixtures rejected)"
+
+# ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
 # ---------------------------------------------------------------------------
 echo ""
@@ -758,7 +962,7 @@ if [ "$RAN" -eq "$EXPECTED_PARTITIONS" ]; then
 else
   echo -e "${YELLOW}=== Phase 48 Gate: NOT VERIFIED ===${NC}"
   echo -e "${YELLOW}=== ${RAN} of ${EXPECTED_PARTITIONS} partitions ran. This gate did NOT pass. ===${NC}"
-  for p in P1 P2 P3 P4 P5 P6 P7 P8 P9; do
+  for p in P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11; do
     seen=0
     for r in ${RAN_LIST[@]+"${RAN_LIST[@]}"}; do
       case "$r" in "$p "*) seen=1 ;; esac
@@ -779,3 +983,5 @@ echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"
 echo "  P8 trust-surface  — read-only permissions, zero registry/path-filter/secret references (directory-wide)"
 echo "  P9 eval-gate-gate — 3-clause fork/Dependabot gate, visible ::notice:: skip, secrets intact, one Go version source"
+echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present"
+echo "  P11 self-probe    — registry == call sites, one RAN-gated banner site, empty partitions proven to fail"
