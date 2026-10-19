@@ -32,6 +32,10 @@
 #   P8  trust-surface   — the whole workflow directory: read-only permissions,
 #                         zero registry surface, zero path filters, zero
 #                         secrets beyond the runner token
+#   P9  eval-gate-gate  — the eval-gate workflow's fork/Dependabot boundary,
+#                         its visible skip notice, its intact secret wiring,
+#                         its un-widened trigger, and the directory-wide
+#                         single Go version source
 #
 # NO WAIVERS. Unlike Phase 47 — whose frontend partition P6 may exit 0 as
 # PARTIAL because a WSL-only host has no Node — every partition here is
@@ -84,7 +88,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Partition registry. The closing banner compares RAN against
 # EXPECTED_PARTITIONS; a shortfall exits non-zero.
-EXPECTED_PARTITIONS=8
+EXPECTED_PARTITIONS=9
 RAN=0
 RAN_LIST=()
 done_partition() {
@@ -624,6 +628,128 @@ cat "$WORK/p8.log"
 done_partition "P8 trust-surface (${P8_COUNT} workflow(s): read-only permissions, no registry/path/secret surface)"
 
 # ---------------------------------------------------------------------------
+# P9: eval-gate-gate — the fork boundary, the visible skip, and the Go version
+# ---------------------------------------------------------------------------
+info "P9: eval-gate gate + the directory-wide Go version source"
+
+EVAL_GATE="$ROOT/.github/workflows/eval-gate.yml"
+[ -f "$EVAL_GATE" ] || fail "P9 no eval-gate workflow at $EVAL_GATE — a partition with no subject is NOT VERIFIED, never a pass"
+
+python - "$(native "$EVAL_GATE")" "$(native "$WF_DIR")" "$(native "$ROOT/.github/actions")" <<'PY' > "$WORK/p9.log" 2>&1
+import os, sys, yaml
+
+gate_path, wf_dir, actions_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+src = open(gate_path, encoding="utf-8").read()
+doc = yaml.safe_load(src)
+
+# --- the two job keys -------------------------------------------------------
+jobs = doc.get("jobs") or {}
+want = ["eval-gate", "eval-gate-skip-notice"]
+if sorted(jobs) != want:
+    raise SystemExit(
+        "P9 eval-gate.yml job keys are %r, want exactly %r (D-09/D-10)"
+        % (sorted(jobs), want)
+    )
+
+# --- the fork / Dependabot gate, asserted clause by clause (D-09 / P3) ------
+# A gate that loses any ONE clause re-opens the fork hole, so a substring
+# search for the whole expression would pass on two clauses out of three.
+gate_if = str((jobs.get("eval-gate") or {}).get("if") or "")
+for clause in (
+    "github.event_name != 'pull_request'",
+    "head.repo.full_name == github.repository",
+    "github.actor != 'dependabot[bot]'",
+):
+    if clause not in gate_if:
+        raise SystemExit(
+            "P9 the `eval-gate` job's if: is missing the clause: %s (D-09/P3)" % clause
+        )
+
+# --- the visible skip notice (D-10 / P4) ------------------------------------
+# A skipped job reports "Success" on GitHub, so the notice job is what keeps a
+# skip from being read as a live-gate pass.
+notice = jobs.get("eval-gate-skip-notice") or {}
+notice_if = str(notice.get("if") or "")
+for clause in ("github.event_name == 'pull_request'", "dependabot[bot]"):
+    if clause not in notice_if:
+        raise SystemExit(
+            "P9 the `eval-gate-skip-notice` job's if: is missing: %s (D-10/P4)" % clause
+        )
+if not any("::notice::" in (s.get("run") or "") for s in (notice.get("steps") or [])):
+    raise SystemExit(
+        "P9 eval-gate-skip-notice has no run: step containing the literal ::notice:: (D-10/P4)"
+    )
+
+# --- the live wiring stays intact -------------------------------------------
+# Deleting the three secret mappings would make the workflow green while
+# silently ceasing to be a live gate — the opposite of the D-09 intent.
+for secret in ("secrets.GLM_API_KEY", "secrets.BGE_M3_URL", "secrets.MILVUS_ADDRESS"):
+    if secret not in src:
+        raise SystemExit(
+            "P9 eval-gate.yml no longer references %s — removing the wiring turns a live gate into a fake one"
+            % secret
+        )
+
+# --- the trigger block, normalized for PyYAML's YAML-1.1 boolean `on:` ------
+triggers = doc.get("on", doc.get(True))
+if not isinstance(triggers, dict):
+    raise SystemExit(
+        "P9 eval-gate.yml has no readable trigger block (PyYAML reads the bare `on:` key as True)"
+    )
+for event in ("pull_request", "push"):
+    branches = (triggers.get(event) or {}).get("branches")
+    if not isinstance(branches, list) or "main" not in branches:
+        raise SystemExit(
+            "P9 eval-gate.yml %s.branches is %r, want a list containing 'main'" % (event, branches)
+        )
+
+# --- one Go version source for the whole directory (D-17 / P6) --------------
+targets = []
+for base in (wf_dir, actions_dir):
+    for dirpath, _dirnames, filenames in os.walk(base):
+        for fn in filenames:
+            if fn.endswith((".yml", ".yaml")):
+                targets.append(os.path.join(dirpath, fn))
+if not targets:
+    raise SystemExit(
+        "P9 scanned zero workflow/action files — a partition that finds nothing must not pass"
+    )
+
+for path in sorted(targets):
+    text = open(path, encoding="utf-8").read()
+    for lineno, line in enumerate(text.splitlines(), 1):
+        # `go-version:` (the literal) and `go-version-file:` are different keys;
+        # only the former carries a version that can drift from go.mod.
+        if "go-version:" in line:
+            raise SystemExit(
+                "P9 %s:%d carries a `go-version:` literal — a hard build break under GOTOOLCHAIN=local (D-17/P6)"
+                % (path, lineno)
+            )
+    data = yaml.safe_load(text) or {}
+    steps = []
+    for job in (data.get("jobs") or {}).values():
+        steps.extend(job.get("steps") or [])
+    steps.extend(((data.get("runs") or {}).get("steps")) or [])
+    for step in steps:
+        if (step.get("uses") or "").startswith("actions/setup-go"):
+            if (step.get("with") or {}).get("go-version-file") != "go.mod":
+                raise SystemExit(
+                    "P9 %s: a setup-go step does not carry `go-version-file: go.mod` (D-17/P6)"
+                    % path
+                )
+
+print(
+    "EVALGATE-OK (%d jobs, 3-clause gate, notice present) + GOVERSION-OK (%d file(s))"
+    % (len(jobs), len(targets))
+)
+PY
+p9_rc=$?
+cat "$WORK/p9.log"
+[ "$p9_rc" -ne 0 ] && fail "P9 the eval-gate gate or the Go version source is violated (see the line above)"
+
+done_partition "P9 eval-gate-gate (3-clause fork gate, visible skip notice, secrets intact, one Go version source)"
+
+# ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
 # ---------------------------------------------------------------------------
 echo ""
@@ -632,7 +758,7 @@ if [ "$RAN" -eq "$EXPECTED_PARTITIONS" ]; then
 else
   echo -e "${YELLOW}=== Phase 48 Gate: NOT VERIFIED ===${NC}"
   echo -e "${YELLOW}=== ${RAN} of ${EXPECTED_PARTITIONS} partitions ran. This gate did NOT pass. ===${NC}"
-  for p in P1 P2 P3 P4 P5 P6 P7 P8; do
+  for p in P1 P2 P3 P4 P5 P6 P7 P8 P9; do
     seen=0
     for r in ${RAN_LIST[@]+"${RAN_LIST[@]}"}; do
       case "$r" in "$p "*) seen=1 ;; esac
@@ -652,3 +778,4 @@ echo "  P5 composite      — three pinned majors in one file, zero checkout, ev
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"
 echo "  P8 trust-surface  — read-only permissions, zero registry/path-filter/secret references (directory-wide)"
+echo "  P9 eval-gate-gate — 3-clause fork/Dependabot gate, visible ::notice:: skip, secrets intact, one Go version source"
