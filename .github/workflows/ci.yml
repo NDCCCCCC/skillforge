@@ -113,3 +113,43 @@ jobs:
       - name: unit tests
         working-directory: web
         run: npx vitest run
+
+  # CICD-03 / SC-3: both images build from the repository root, and neither is
+  # ever published or loaded. Each image gets its own GHA cache scope — the
+  # default `buildkit` scope makes the second build evict the first's cache.
+  # The compose-driven build path is deliberately absent: the compose file
+  # interpolates required live-service variables, so building through it would
+  # force CI to fake secrets for a build that does not need them.
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    # 45 minutes: `golang:1.25-alpine` is a floating tag that can lag the
+    # go.mod patch level (forcing an in-image toolchain download), and the
+    # CGO compile layer is invalidated by `COPY . .` on every commit.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+        with:
+          go: "false"
+          node: "false"
+          buildx: "true"
+
+      - name: build backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: build frontend image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.frontend
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
