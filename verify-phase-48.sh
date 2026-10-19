@@ -580,8 +580,9 @@ done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache s
 # calls fail(): P11 must observe the failure rather than abort on it. Callers
 # keep the exit-code-authoritative failure at their own site.
 #
-# The fixture files are named ci.yml, so the path-filter and secret rules are
-# decided by the same code path for the real directory and for the probe.
+# Every fixture file is scanned by the same per-file rules the real directory
+# runs — the path-filter, secret, permission and publication-token rules are
+# evaluated once per enumerated workflow, never against one privileged name.
 # ---------------------------------------------------------------------------
 scan_trust_surface() {
   local dir="$1"
@@ -795,7 +796,7 @@ p8_rc=$?
 cat "$WORK/trust-surface.log"
 [ "$p8_rc" -ne 0 ] && fail "P8 the trust surface is violated (see the line above)"
 
-done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT:-0} workflow(s): read-only permissions, no registry/path/secret surface)"
+done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT:-0} workflow(s) per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface)"
 
 # ---------------------------------------------------------------------------
 # P9: eval-gate-gate — the fork boundary, the visible skip, and the Go version
@@ -1005,7 +1006,8 @@ info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, banner print sites ${B
 # --- Half 2: an empty partition must fail, not pass vacuously ---------------
 # The fixtures live under $WORK and are never written into the repository.
 P11_FIX="$WORK/p11-fixtures"
-mkdir -p "$P11_FIX/empty-jobs" "$P11_FIX/empty-perms" "$P11_FIX/no-perms" "$P11_FIX/empty-dir"
+mkdir -p "$P11_FIX/empty-jobs" "$P11_FIX/empty-perms" "$P11_FIX/no-perms" "$P11_FIX/empty-dir" \
+  "$P11_FIX/two-files" "$P11_FIX/yaml-ext" "$P11_FIX/lowercase-registry" "$P11_FIX/stray-secret"
 
 cat > "$P11_FIX/empty-jobs/ci.yml" <<'YEOF'
 name: fixture-empty-jobs
@@ -1041,7 +1043,96 @@ jobs:
       - run: "true"
 YEOF
 
-for fixture in empty-jobs empty-perms no-perms empty-dir; do
+# The four fixtures below exercise the rules Task 1 hoisted into the per-file
+# loop. Each directory contains a valid ci.yml subject plus exactly one
+# offending surface, so the ONLY reason it can be rejected is the rule named
+# in the fixture. A clean, D-29-compliant ci.yml subject, shared by the
+# multi-file fixtures.
+clean_ci_fixture() {
+  cat > "$1" <<'YEOF'
+name: fixture-ci
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+YEOF
+}
+
+# two-files/ — a SECOND file (not ci.yml) carries a path filter (T-48-03).
+clean_ci_fixture "$P11_FIX/two-files/ci.yml"
+cat > "$P11_FIX/two-files/release.yml" <<'YEOF'
+name: fixture-two-files-release
+on:
+  push:
+    branches: [main]
+    paths:
+      - "internal/**"
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+YEOF
+
+# yaml-ext/ — the offending file has the OTHER valid extension (T-48-10 /
+# WR-05), and the offending surface is a write permission.
+clean_ci_fixture "$P11_FIX/yaml-ext/ci.yml"
+cat > "$P11_FIX/yaml-ext/other.yaml" <<'YEOF'
+name: fixture-yaml-ext
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - run: "true"
+YEOF
+
+# lowercase-registry/ — a publication command in lowercase (IN-02).
+cat > "$P11_FIX/lowercase-registry/ci.yml" <<'YEOF'
+name: fixture-lowercase-registry
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: docker push ghcr.io/org/img:latest
+YEOF
+
+# stray-secret/ — a non-runner secret reference in ci.yml itself (T-48-04).
+cat > "$P11_FIX/stray-secret/ci.yml" <<'YEOF'
+name: fixture-stray-secret
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ secrets.DEPLOY_KEY }}"
+YEOF
+
+for fixture in empty-jobs empty-perms no-perms empty-dir \
+               two-files yaml-ext lowercase-registry stray-secret; do
   scan_trust_surface "$P11_FIX/$fixture"
   p11_fixture_rc=$?
   if [ "$p11_fixture_rc" -eq 0 ]; then
@@ -1057,7 +1148,7 @@ for fixture in empty-jobs empty-perms no-perms empty-dir; do
   head -1 "$WORK/trust-surface.log" | sed 's/^/       /'
 done
 
-done_partition "P11 self-probe (registry == call sites, one RAN-gated banner site, 4 empty fixtures rejected)"
+done_partition "P11 self-probe (registry == call sites, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
@@ -1087,7 +1178,7 @@ echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errch
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first"
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"
-echo "  P8 trust-surface  — read-only permissions, zero registry/path-filter/secret references (directory-wide)"
+echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface"
 echo "  P9 eval-gate-gate — 3-clause fork/Dependabot gate, visible ::notice:: skip, secrets intact, one Go version source"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present"
-echo "  P11 self-probe    — registry == call sites, one RAN-gated banner site, empty partitions proven to fail"
+echo "  P11 self-probe    — registry == call sites, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
