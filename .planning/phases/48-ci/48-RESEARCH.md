@@ -580,7 +580,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
 ```
 
-**Do not add** `workflow_dispatch` unless the planner accepts a full-repo lint run on manual invocation (the action has no diff for that event). **Do not add** `paths:` (D-24).
+**Do not add** `workflow_dispatch` unless the planner accepts a full-repo lint run on manual invocation (the action has no diff for that event). **Do not add** `paths:` (D-24). If this repo opens PRs whose **base** is a `phase-*` branch, widen `pull_request.branches` to `[main, 'phase-*']` to match the existing eval-gate trigger (line 34); a PR targeting a base not listed here would never start CI.
 
 ### 4. eval-gate fork gate + skip notice
 
