@@ -47,6 +47,16 @@ permissions:
 jobs:
   eval-gate:
     name: Frozen compliance replay + gate
+    # D-09: live secrets are withheld from fork PRs and Dependabot runs, so
+    # the live gate must not be reached by either. Non-pull_request events
+    # (push to main, workflow_dispatch) stay enabled; same-repository PRs
+    # keep the live gate. The trigger itself is deliberately unchanged —
+    # widening it would hand fork-controlled workflow code base-repo
+    # secrets (D-11 forbids that trigger class outright).
+    if: >
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository) &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -109,3 +119,20 @@ jobs:
             eval/reports/ci/compliance-calibration.json
             eval/reports/ci/run.log
           retention-days: 14
+
+  # D-10: a skipped job still reports "Success" on GitHub, so without this
+  # sibling the fork / Dependabot skip would be indistinguishable from a real
+  # live-gate pass (the CI-side twin of Phase 47 HIGH-1). This job runs on
+  # exactly the complement of the gate above and says out loud what happened.
+  eval-gate-skip-notice:
+    name: eval-gate skipped (fork / Dependabot)
+    if: >
+      github.event_name == 'pull_request' &&
+      (github.event.pull_request.head.repo.full_name != github.repository ||
+       github.actor == 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Announce the skip
+        run: |
+          echo "::notice::eval-gate skipped: live secrets are unavailable to fork and Dependabot PRs, so the live compliance gate did not run. This is NOT a live-gate pass (D-09/D-10)."
