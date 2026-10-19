@@ -11,9 +11,10 @@
 # skipped partition that still reports green is the Phase 47 HIGH-1 class.
 #
 # Partitions (fail-fast, in order):
-#   P1  workflow-parse  — every .github/workflows/*.yml plus the composite
-#                         action parses under PyYAML; the trigger block is
-#                         reachable; no workflow targets pull_request_target
+#   P1  workflow-parse  — every .github/workflows/*.yml and *.yaml plus the
+#                         composite action parses under PyYAML; the trigger
+#                         block is reachable; no workflow targets
+#                         pull_request_target
 #   P2  go-line         — the go job carries the exact command strings the
 #                         local gate runs, is hermetic (CGO_ENABLED only, no
 #                         live-service env), and captures its shuffle seed
@@ -129,9 +130,9 @@ COMPOSITE="$ROOT/.github/actions/setup/action.yml"
 
 # Enumerate to a list file first: a glob evaluated inline is indistinguishable
 # from an empty result, and an empty result must fail rather than pass silently.
-find "$WF_DIR" -maxdepth 1 -type f -name '*.yml' -print | sort > "$WORK/p1-list.txt"
+find "$WF_DIR" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print | sort > "$WORK/p1-list.txt"
 WF_COUNT=$(wc -l < "$WORK/p1-list.txt" | tr -d ' ')
-[ "$WF_COUNT" -ge 1 ] || fail "P1 matched zero *.yml files under $WF_DIR — a partition that finds zero files must not pass"
+[ "$WF_COUNT" -ge 1 ] || fail "P1 matched zero *.yml / *.yaml files under $WF_DIR — a partition that finds zero files must not pass"
 
 # PyYAML implements YAML 1.1, where the bare key `on:` loads as the boolean
 # True. A parser that reaches only for d["on"] sees a workflow with no trigger
@@ -169,7 +170,7 @@ if grep -rn 'pull_request_target' "$WF_DIR" > "$WORK/p1-prt.txt" 2>/dev/null; th
   fail "P1 pull_request_target found (D-11) — listed above with file:line"
 fi
 
-done_partition "P1 workflow-parse ($WF_COUNT workflow(s) + composite parse, zero pull_request_target)"
+done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target)"
 
 # ---------------------------------------------------------------------------
 # P2 + P3: the go job's structural contract, decided by one Python probe so the
@@ -1079,7 +1080,7 @@ fi
 
 echo ""
 echo "Partitions verified:"
-echo "  P1 workflow-parse — every .github/workflows/*.yml + the composite action parse; trigger block read; zero pull_request_target"
+echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target"
 echo "  P2 go-line        — the 5 CI command fragments, CGO_ENABLED=1 and nothing else, shuffle seed recoverable under -v"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinels B and C silent"
