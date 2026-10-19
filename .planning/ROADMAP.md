@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 **Wave 1** — tracer slice
 
@@ -130,7 +130,7 @@ Plans:
 **Wave 2** — remaining gates (parallel; disjoint file ownership)
 
 - [ ] 48-02-PLAN.md — `fe` job (CICD-02) + `docker` job 双 Dockerfile build / `push: false` / 分离 GHA cache scope (CICD-03) + 分片 P5–P8
-- [ ] 48-03-PLAN.md — `eval-gate.yml` fork-PR/Dependabot 门禁 + `::notice::` skip-notice (D-09/D-10/D-11) + `go-version-file: go.mod` 迁移 (D-17) + ROADMAP SC-4 措辞更正 (D-12)
+- [x] 48-03-PLAN.md — `eval-gate.yml` fork-PR/Dependabot 门禁 + `::notice::` skip-notice (D-09/D-10/D-11) + `go-version-file: go.mod` 迁移 (D-17) + ROADMAP SC-4 措辞更正 (D-12)
 
 **Wave 3** — full coverage + CI-run proof
 
@@ -188,7 +188,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 1/4 | In Progress | - |
+| 48. CI 矩阵 | v1.7 | 2/4 | In Progress | - |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |

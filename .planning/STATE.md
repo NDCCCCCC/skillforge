@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-01-PLAN.md
-last_updated: "2026-10-19T08:38:21.350Z"
+stopped_at: Completed 48-03-PLAN.md
+last_updated: "2026-10-19T09:10:30.733Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 48 execution started
-state_head: c13f463ad1a2303033200d0c5e0a9551b4e4289e
+state_head: 6a9013bde68ffe08ec09e7f697594ab608dc5841
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 20
 ---
 
@@ -36,7 +36,7 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-10-19 — Phase 48 execution started
 
@@ -62,6 +62,7 @@ Progress: [██░░░░░░░░] 20%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 48 P01 | 13min | 4 tasks | 4 files |
+| Phase 48 P03 | 2min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase 48]: P3 比较 go job permissions map 用「精确相等」而非包含：一个多余的 scope 和一个缺失的 scope 同样是 scope 变更（D-29）
 - [Phase 48]: P2/P3 共用一个 Python 探针判定：两个探针读同一个文件可能给出不一致结论，而两份「工作流没问题」的断言之间的分歧无法与「工作流确实没问题」区分
 - [Phase 48]: verify-phase-48.sh 在运行时拼接被禁的 CI 关键字：校验脚本自身源码若写出该关键字，全仓 grep 就无法区分工作流文本与校验器文本；ALL PASSED 与 LINT NOT VERIFIED 各只出现一次同理
+- [Phase 48]: Phase 48-03: fork/Dependabot exclusion is a job-level if: — the on: trigger block stays byte-identical, so no pull_request_target can slip in (D-09/D-11).
+- [Phase 48]: Phase 48-03: eval-gate-skip-notice runs on the complement and emits ::notice::; the three secret mappings stay asserted, so hardening cannot silently turn the live gate into a non-live one (D-10).
+- [Phase 48]: Phase 48-03: ROADMAP SC-4 now states --frozen bootstraps BGE-M3 / Milvus / GLM before scoring; only --gate-check is hermetic (D-12/D-13).
 
 ### Pending Todos
 
@@ -121,7 +125,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T08:38:20.852Z
-Stopped at: Completed 48-01-PLAN.md
+Last session: 2026-10-19T09:10:30.220Z
+Stopped at: Completed 48-03-PLAN.md
 Resume file: None
 Resume command: `/gsd-execute-phase 48` — 4 plans / 3 waves (48-01 tracer → 48-02 ∥ 48-03 → 48-04). Iteration-3 issue list is closed; see `48-PLAN-REVISION-3.md` for the audit trail.
