@@ -60,10 +60,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      # Secrets → env (only place that reads them; not echoed in logs).
-      GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
-      BGE_M3_URL: ${{ secrets.BGE_M3_URL }}
-      MILVUS_ADDRESS: ${{ secrets.MILVUS_ADDRESS }}
+      # WR-08: the three live secrets are deliberately NOT job-level. Job-level
+      # env is visible to every step — including tag-pinned third-party actions
+      # that never need a credential. They are scoped to the two consuming
+      # steps below (`Run frozen compliance replay` and `Gate check`).
       # CI never pins the production model; the live gate uses the
       # ambient JUDGE_MODEL. workflow_dispatch can override.
       JUDGE_MODEL: ${{ github.event.inputs.judge_model || 'glm-5.2' }}
@@ -91,6 +91,10 @@ jobs:
         run: go build -o ./bin/eval ./cmd/eval
 
       - name: Run frozen compliance replay
+        env:
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+          BGE_M3_URL: ${{ secrets.BGE_M3_URL }}
+          MILVUS_ADDRESS: ${{ secrets.MILVUS_ADDRESS }}
         # WR-03: without `shell: bash` GitHub runs `bash -e {0}` (no pipefail),
         # so the pipeline reports tee's status and a non-zero ./bin/eval exit
         # is discarded. `set -o pipefail` stays in the body as belt-and-braces
@@ -107,6 +111,10 @@ jobs:
             2>&1 | tee eval/reports/ci/run.log
 
       - name: Gate check
+        env:
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+          BGE_M3_URL: ${{ secrets.BGE_M3_URL }}
+          MILVUS_ADDRESS: ${{ secrets.MILVUS_ADDRESS }}
         working-directory: ${{ github.workspace }}
         run: |
           # Exit code != 0 fails the workflow. Threshold comes from
