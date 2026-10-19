@@ -123,6 +123,8 @@ Plans:
 
 **Plans**: 3/4 plans executed
 
+**Blocked on**: SC-1/2/3 的真实 GitHub Actions 绿灯尚未取得——CI 三条线的 workflow 与本地门（`verify-phase-48.sh` 11 分片全绿）都已就位，但**没有任何 `ci.yml` 运行存在**，且本机无法触发：git 传输到 github.com 不通（`git push --dry-run` → `Failed to connect to github.com port 443`），`push.branches: [main]` 按设计不可放宽，PR-to-main 路径因 `origin/main`（单 commit `369b08a`）与本分支无共同历史而无法开 PR。CICD-01/02/03 因此保持 Pending；需要一台 git 传输可达的机器 push 后开 PR 或落到 `main`。
+
 **Wave 1** — tracer slice
 
 - [x] 48-01-PLAN.md — tracer: checkout-first composite action (D-22/D-30) + v2 `.golangci.yml` (D-01..D-08) + `ci.yml` `go` job (CICD-01) + runnable zero-waiver `verify-phase-48.sh` 分片 P1–P4
@@ -134,7 +136,7 @@ Plans:
 
 **Wave 3** — full coverage + CI-run proof
 
-- [ ] 48-04-PLAN.md — 分片 P9–P11（eval-gate 门禁 / SC-4 措辞 / verifier 自证 P23）+ 真实 GitHub Actions run 三 job 全绿 + branch protection one-way door checkpoint
+- [ ] 48-04-PLAN.md — 分片 P9–P11（eval-gate 门禁 / SC-4 措辞 / verifier 自证 P23）**已落地**；branch protection one-way door checkpoint **已决策 = Option A（不加保护）**；**真实 GitHub Actions run 三 job 全绿未取得**（本机 git 传输到 github.com 不通，PR-to-main 路径因 `origin/main` 与本分支无共同历史而封闭）→ CICD-01/02/03 保持 Pending
 
 ### Phase 49: Hermetic Demo
 

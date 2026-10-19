@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-02-PLAN.md
-last_updated: "2026-10-19T09:29:07.515Z"
+stopped_at: "48-04 attempted: P9/P10/P11 landed and the branch-protection decision recorded; BLOCKED on the CI-run criterion (no GitHub Actions run obtainable from this host)"
+last_updated: "2026-10-19T09:58:45.138Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 48 execution started
-state_head: 6d50abb9d5411d41b7d6c8c84a913619383a1b06
+state_head: 308fc5770cce7bf7cd3f20537c21b4ea320f0754
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 20
 ---
 
@@ -64,6 +64,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P01 | 13min | 4 tasks | 4 files |
 | Phase 48 P03 | 2min | 3 tasks | 2 files |
 | Phase 48 P02 | 5 min | 3 tasks | 2 files |
+| Phase 48 P04 | 16min | 4 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,7 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-02: the fe and docker jobs inherit the workflow-level contents: read ceiling — neither declares job-level permissions, so the mutable-scope surface stays exactly the go job's pull-requests: read.
 - [Phase 48]: 48-02: the forbidden 'docker compose' literal is kept out of ci.yml even in prose, so a raw-text ban in P7/P8 can distinguish the workflow from commentary about it.
 - [Phase 48]: 48-02: Docker is statically asserted only on this host (absent from Git Bash and WSL); CICD-03 closes on the first real CI run (VALIDATION M1), not on a local build claim.
+- [Phase 48]: Branch protection required status checks: Option A — leave protection off. The three CI jobs run and are publicly visible; enforcement is deferred until they have been stable for a few merges, and the absence of enforcement is a recorded decision rather than an oversight.
 
 ### Pending Todos
 
@@ -102,6 +104,7 @@ None yet.
 - **LOW-1（已裁定接受，`GovernanceTab.tsx:167`）**: REL-02 的 FE 连线本身无直测（删掉 prop 三个新测试照样过）。
 - **D-05 已知限制（明确接受，非隐式修复）**: 启动校验会 quarantine 坏实体、rollback 不会，故回滚确认框与横幅的 `N 个实体已隔离` 都夸大了 rollback 的实际行为。三处显式记录，从未作为已修复呈现。
 - **既有 flake（非 Phase 47 引入，`audit_writer_test.go:59`）**: `TestAuditWriterPreconditions` 对文件型 SQLite store 开库时套 5s `context.WithTimeout`，CPU 超卖下会超时。串行全量 8/8 绿（Phase 47 验证者自行复跑 3/3 绿），8 份并发则全红。`git log -S` 定源于 `9613d4d`（2026-08-20, Phase 11）。Phase 48 每线单 job 不会触发。
+- CICD-01/02/03 unproven: no GitHub Actions run exists for ci.yml, and none can be triggered from this host — git transport to github.com is unreachable (push --dry-run: 'Failed to connect to github.com port 443'), push.branches is [main] by design, and the PR-to-main path is closed because origin/main shares no history with this branch (merge-base empty). Needs a host with working git transport.
 
 ## Deferred Items
 
@@ -129,7 +132,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T09:29:07.034Z
-Stopped at: Completed 48-02-PLAN.md
+Last session: 2026-10-19T09:58:44.637Z
+Stopped at: 48-04 attempted: P9/P10/P11 landed and the branch-protection decision recorded; BLOCKED on the CI-run criterion (no GitHub Actions run obtainable from this host)
 Resume file: None
 Resume command: `/gsd-execute-phase 48` — 4 plans / 3 waves (48-01 tracer → 48-02 ∥ 48-03 → 48-04). Iteration-3 issue list is closed; see `48-PLAN-REVISION-3.md` for the audit trail.
