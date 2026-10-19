@@ -138,12 +138,18 @@ jobs:
   # sibling the fork / Dependabot skip would be indistinguishable from a real
   # live-gate pass (the CI-side twin of Phase 47 HIGH-1). This job runs on
   # exactly the complement of the gate above and says out loud what happened.
+  #
+  # WR-02: the condition is the verbatim negation of the gate expression, not
+  # the narrower "PR && (fork || dependabot)" form. That narrower form omitted
+  # a Dependabot-attributed push to main, where the gate is also skipped and
+  # the notice was silent. P9 asserts `notice == "!(" + gate + ")"` so the two
+  # expressions cannot drift apart again.
   eval-gate-skip-notice:
     name: eval-gate skipped (fork / Dependabot)
     if: >
-      github.event_name == 'pull_request' &&
-      (github.event.pull_request.head.repo.full_name != github.repository ||
-       github.actor == 'dependabot[bot]')
+      !((github.event_name != 'pull_request' ||
+         github.event.pull_request.head.repo.full_name == github.repository) &&
+        github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

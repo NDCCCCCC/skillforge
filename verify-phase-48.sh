@@ -926,13 +926,23 @@ if actual != expected:
 # --- the visible skip notice (D-10 / P4) ------------------------------------
 # A skipped job reports "Success" on GitHub, so the notice job is what keeps a
 # skip from being read as a live-gate pass.
+#
+# WR-02 / T-48-15: the notice must be the exact logical complement of the gate,
+# normalized the same way. The old `event == 'pull_request' && (fork ||
+# dependabot)` form omitted the region where a Dependabot-attributed push skips
+# the gate silently, so the relationship is asserted structurally rather than
+# as two independent texts. A non-complement notice, a bare (un-negated) gate,
+# or an appended `|| true` all fail this equality.
 notice = jobs.get("eval-gate-skip-notice") or {}
 notice_if = str(notice.get("if") or "")
-for clause in ("github.event_name == 'pull_request'", "dependabot[bot]"):
-    if clause not in notice_if:
-        raise SystemExit(
-            "P9 the `eval-gate-skip-notice` job's if: is missing: %s (D-10/P4)" % clause
-        )
+notice_actual = " ".join(notice_if.split())
+notice_expected = "!(" + expected + ")"
+if notice_actual != notice_expected:
+    raise SystemExit(
+        "P9 the eval-gate-skip-notice job's if: is %r, want the exact complement %r "
+        "(D-10; WR-02 - a non-complement notice leaves a skipped gate invisible)"
+        % (notice_actual, notice_expected)
+    )
 if not any("::notice::" in (s.get("run") or "") for s in (notice.get("steps") or [])):
     raise SystemExit(
         "P9 eval-gate-skip-notice has no run: step containing the literal ::notice:: (D-10/P4)"
@@ -997,7 +1007,7 @@ for path in sorted(targets):
                 )
 
 print(
-    "EVALGATE-OK (%d jobs, exact gate expression, notice present) + GOVERSION-OK (%d file(s))"
+    "EVALGATE-OK (%d jobs, exact gate expression, complement notice present) + GOVERSION-OK (%d file(s))"
     % (len(jobs), len(targets))
 )
 PY
@@ -1005,7 +1015,7 @@ p9_rc=$?
 cat "$WORK/p9.log"
 [ "$p9_rc" -ne 0 ] && fail "P9 the eval-gate gate or the Go version source is violated (see the line above)"
 
-done_partition "P9 eval-gate-gate (3-clause fork gate, visible skip notice, secrets intact, one Go version source)"
+done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact, one Go version source)"
 
 # ---------------------------------------------------------------------------
 # P10: sc4-wording — the ROADMAP's SC-4 sentence, resolved through $ROOT
@@ -1266,6 +1276,6 @@ echo "  P5 composite      — three pinned majors in one file, zero checkout, ev
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface"
-echo "  P9 eval-gate-gate — 3-clause fork/Dependabot gate, visible ::notice:: skip, secrets intact, one Go version source"
+echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact, one Go version source"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present"
 echo "  P11 self-probe    — registry == call sites, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
