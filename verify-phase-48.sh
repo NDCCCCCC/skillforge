@@ -16,10 +16,15 @@
 #                         block is reachable; no workflow targets
 #                         pull_request_target
 #   P2  go-line         — the go job carries the exact command strings the
-#                         local gate runs, is hermetic (CGO_ENABLED only, no
-#                         live-service env), and captures its shuffle seed
+#                         local gate runs (the determinism step keeps its
+#                         -list existence guard under pipefail), is hermetic
+#                         (CGO_ENABLED only, no live-service env), captures
+#                         its shuffle seed, and the verify job it shares the
+#                         file with ends at the gate script
 #   P3  lint-line       — lint is pinned, blocking, and holds the permission
-#                         its changed-lines mode needs to not silently widen
+#                         its changed-lines mode needs to not silently widen;
+#                         the verify job is if-free with a module-proxy
+#                         install and a credential-free checkout
 #   P4  lint-teeth      — the config verifies AND a sentinel module with an
 #                         unchecked json.Unmarshal is really reported, while
 #                         the two noise classes the config is meant to absorb
@@ -34,8 +39,9 @@
 #                         zero registry surface, zero path filters, zero
 #                         secrets beyond the runner token
 #   P9  eval-gate-gate  — the eval-gate workflow's fork/Dependabot boundary,
-#                         its visible skip notice, its intact secret wiring,
-#                         its un-widened trigger, and the directory-wide
+#                         its visible skip notice, its secret wiring intact
+#                         exactly once with a secret-free Gate check, its
+#                         un-widened trigger, and the directory-wide
 #                         single Go version source
 #   P10 sc4-wording     — ROADMAP SC-4's corrected sentence: the old
 #                         hermetic-precedent wording is gone and the
@@ -142,6 +148,15 @@ LINT_VERSION="2.12.2"
 SOFT_KEY="$(printf '%s%s' "continue" "-on-error")"
 WHOLE_FILES_FLAG="--whole-files"
 
+# Two more banned ci.yml tokens (R2-WR-01 / R2-CR-01), assembled under the same
+# rule as SOFT_KEY: the fetch-and-pipe bootstrap prefix and the install-script
+# name. The verify job must install its linter through the Go module proxy, so
+# neither joined literal may appear anywhere in the workflow's source — and
+# neither may appear joined here, or the same repo-wide-grep argument above
+# would apply to this file too.
+FETCH_TOKEN="$(printf '%s %s' "curl" "-sSfL")"
+SCRIPT_TOKEN="$(printf '%s%s' "install" ".sh")"
+
 echo "=== Phase 48 Verification (static CI gate self-proof) ==="
 
 # ---------------------------------------------------------------------------
@@ -210,10 +225,11 @@ begin_partition "P3"
 CI="$ROOT/.github/workflows/ci.yml"
 [ -f "$CI" ] || fail "P2 ci.yml missing: $CI"
 
-python - "$(native "$CI")" "$SOFT_KEY" "$WHOLE_FILES_FLAG" <<'PY' > "$WORK/p23.log" 2>&1
+python - "$(native "$CI")" "$SOFT_KEY" "$WHOLE_FILES_FLAG" "$FETCH_TOKEN" "$SCRIPT_TOKEN" <<'PY' > "$WORK/p23.log" 2>&1
 import re, sys, yaml
 
 path, soft_key, whole_flag = sys.argv[1], sys.argv[2], sys.argv[3]
+fetch_token, script_token = sys.argv[4], sys.argv[5]
 src = open(path, encoding="utf-8").read()
 doc = yaml.safe_load(src)
 
@@ -247,6 +263,25 @@ for frag in (
 ):
     if frag not in runs:
         raise SystemExit("P2: go job is missing the command fragment: %s" % frag)
+
+# R2-WR-04: `go test -run` with zero matching tests exits 0, so a renamed test
+# makes the determinism step pass vacuously. The step carrying -count=100 must
+# also prove the pinned test still exists (-list | grep -qx) under an explicit
+# pipefail — 48-12's guard, now pinned here so its removal reds this gate.
+det_steps = [s for s in steps if "-count=100" in (s.get("run") or "")]
+if len(det_steps) != 1:
+    raise SystemExit(
+        "P2: expected exactly one -count=100 determinism step, found %d" % len(det_steps)
+    )
+det_run = det_steps[0]["run"]
+if "-list '^TestDeriveEdgesDeterministic$'" not in det_run:
+    raise SystemExit(
+        "P2: the -count=100 determinism step lost the -list existence guard - a renamed test would pass vacuously (R2-WR-04)"
+    )
+if "set -o pipefail" not in det_run:
+    raise SystemExit(
+        "P2: the -count=100 determinism step lost `set -o pipefail` - grep's exit would no longer gate the step (R2-WR-04)"
+    )
 
 shuffled = [s for s in steps if "-shuffle=on" in (s.get("run") or "")]
 if not shuffled:
@@ -317,6 +352,66 @@ if (steps[0].get("with") or {}).get("persist-credentials") is not False:
         "P3: the go job's checkout persists credentials - fork-authored code runs in this job (IN-10)"
     )
 
+# --- R2-WR-01: the verify job is pinned by the probe that judges the go job --
+# The IN-07 fix (wire this verifier into CI) was itself unpinned: deleting the
+# job, or conditioning it on an `if:`, used to keep every partition green
+# (mutations M9/M10). The contract below lives in THIS probe, so the two
+# partitions cannot disagree about the fourth job either.
+if "verify" not in jobs:
+    raise SystemExit(
+        "P2: ci.yml has no `verify` job (IN-07) - the phase gate is not wired into CI"
+    )
+v = jobs["verify"]
+vsteps = v.get("steps") or []
+
+# The 48-07 rule extended to the fourth job: a job-level or step-level `if:`
+# neutralises the gate while leaving its command text intact (M9's shape).
+if "if" in v:
+    raise SystemExit(
+        "P3: the verify job carries a job-level `if:` (%r) - the phase gate is skippable (R2-WR-01)"
+        % (v.get("if"),)
+    )
+for s in vsteps:
+    if "if" in s:
+        label = s.get("name") or s.get("uses") or s.get("run") or "<unnamed step>"
+        raise SystemExit(
+            "P3: the verify job's step %r carries a step-level if: %r - the phase gate is skippable (R2-WR-01)"
+            % (label, s.get("if"))
+        )
+
+# The gate is the job's terminus: moving it behind any other step reds here.
+if not vsteps or "bash verify-phase-48.sh" not in (vsteps[-1].get("run") or ""):
+    last_label = vsteps[-1].get("name") if vsteps else "<no steps>"
+    raise SystemExit(
+        "P2: the verify job's last step must run the phase gate (bash verify-phase-48.sh); the last step is %r"
+        % (last_label,)
+    )
+
+# IN-10 extended: this job executes the very script that audits fork-reachable
+# content, so its checkout must not persist the runner token either.
+if (vsteps[0].get("uses") or "") != "actions/checkout@v7" or (
+    vsteps[0].get("with") or {}
+).get("persist-credentials") is not False:
+    raise SystemExit(
+        "P3: the verify job's first step must be actions/checkout@v7 with persist-credentials: false (IN-10)"
+    )
+
+# R2-CR-01: the linter is installed through the Go module proxy (checksum-DB
+# verified), never by fetching and executing a bootstrap script — and the two
+# fetch/script tokens are runtime-assembled in the caller, so this probe never
+# spells them joined either.
+vruns = "\n".join(s.get("run", "") for s in vsteps)
+if "go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2" not in vruns:
+    raise SystemExit(
+        "P3: the verify job does not install golangci-lint through the pinned module-proxy line (go install .../cmd/golangci-lint@v2.12.2) (R2-CR-01)"
+    )
+for token in (fetch_token, script_token):
+    if token in src:
+        raise SystemExit(
+            "P3: ci.yml contains the fetch/script bootstrap token %r - the install surface must be the module proxy (R2-CR-01)"
+            % token
+        )
+
 print("STRUCT-OK")
 PY
 p23_rc=$?
@@ -328,8 +423,8 @@ cat "$WORK/p23.log"
 ok_partition "P2"
 ok_partition "P3"
 
-done_partition "P2 go-line (5 command fragments, CGO_ENABLED=1 only, shuffle seed under -v)"
-done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact)"
+done_partition "P2 go-line (5 command fragments, determinism -list guard + pipefail, CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate)"
+done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install)"
 
 # ---------------------------------------------------------------------------
 # P4: lint-teeth
@@ -1044,15 +1139,34 @@ if not any("::notice::" in (s.get("run") or "") for s in (notice.get("steps") or
         "P9 eval-gate-skip-notice has no run: step containing the literal ::notice:: (D-10/P4)"
     )
 
-# --- the live wiring stays intact -------------------------------------------
+# --- the live wiring stays intact, and stays minimal ------------------------
 # Deleting the three secret mappings would make the workflow green while
 # silently ceasing to be a live gate — the opposite of the D-09 intent.
+# R2-WR-05 tightens the other direction: the replay step is the ONLY consumer
+# (cmd/eval short-circuits --gate-check before any bootstrap), so each mapping
+# occurs EXACTLY once and the offline `Gate check` step carries no `env:` key
+# at all. A re-widened env block is dead credential surface; a duplicated grant
+# is a widened one.
 for secret in ("secrets.GLM_API_KEY", "secrets.BGE_M3_URL", "secrets.MILVUS_ADDRESS"):
-    if secret not in src:
+    n = src.count(secret)
+    if n != 1:
         raise SystemExit(
-            "P9 eval-gate.yml no longer references %s — removing the wiring turns a live gate into a fake one"
-            % secret
+            "P9 eval-gate.yml references %s %d time(s), want exactly 1 - a duplicated grant widens the secret surface, a missing one fakes the live gate (R2-WR-05)"
+            % (secret, n)
         )
+
+GATE_CHECK = "Gate check"
+gate_step = next(
+    (s for s in ((jobs.get("eval-gate") or {}).get("steps") or []) if s.get("name") == GATE_CHECK),
+    None,
+)
+if gate_step is None:
+    raise SystemExit("P9 eval-gate.yml has no %r step" % GATE_CHECK)
+if "env" in gate_step:
+    raise SystemExit(
+        "P9 the %r step carries an env: key - the offline threshold comparison consumes no secret, so any env block there is dead credential surface (R2-WR-05)"
+        % GATE_CHECK
+    )
 
 # --- the trigger block, normalized for PyYAML's YAML-1.1 boolean `on:` ------
 triggers = doc.get("on", doc.get(True))
@@ -1113,7 +1227,7 @@ cat "$WORK/p9.log"
 
 ok_partition "P9"
 
-done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact, one Go version source)"
+done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact exactly once with a secret-free Gate check, one Go version source)"
 
 # ---------------------------------------------------------------------------
 # P10: sc4-wording — the ROADMAP's SC-4 sentence, resolved through $ROOT
@@ -1391,13 +1505,13 @@ fi
 echo ""
 echo "Partitions verified:"
 echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target"
-echo "  P2 go-line        — the 5 CI command fragments, CGO_ENABLED=1 and nothing else, shuffle seed recoverable under -v"
-echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact"
+echo "  P2 go-line        — the 5 CI command fragments + determinism -list guard under pipefail, CGO_ENABLED=1 and nothing else, verify job ends at the gate"
+echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first"
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface"
-echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact, one Go version source"
+echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present"
 echo "  P11 self-probe    — registry == call sites == begin markers == success tokens, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
