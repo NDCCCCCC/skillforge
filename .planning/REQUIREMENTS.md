@@ -14,7 +14,7 @@
 
 ## CI 矩阵 (CICD)
 
-- [ ] **CICD-01**: Go CI 进 GitHub Actions——golangci-lint + `go test ./...` + CGO_ENABLED=1 build+vet，PR/push 触发
+- [x] **CICD-01**: Go CI 进 GitHub Actions——golangci-lint + `go test ./...` + CGO_ENABLED=1 build+vet，PR/push 触发
 - [ ] **CICD-02**: FE CI——`tsc --noEmit` + `vitest run` 全量
 - [ ] **CICD-03**: Docker 镜像构建验证——backend/frontend 双 Dockerfile 在 CI 中可构建
 
@@ -66,7 +66,7 @@ v1.6 遗留 backlog（继承进 v1.7 Traceability 表，REL-04 补录）。定�
 | FACE-01 | Phase 50 | Pending |
 | FACE-02 | Phase 50 | Pending |
 | FACE-03 | Phase 50 | Pending |
-| CICD-01 | Phase 48 | Pending |
+| CICD-01 | Phase 48 | Complete |
 | CICD-02 | Phase 48 | Pending |
 | CICD-03 | Phase 48 | Pending |
 | DEMO-01 | Phase 49 | Pending |

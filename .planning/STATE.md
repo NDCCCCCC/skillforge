@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-10-PLAN.md
-last_updated: "2026-10-19T18:06:44.794Z"
-last_activity: 2026-10-19
+stopped_at: Completed 48-12-PLAN.md
+last_updated: "2026-10-19T23:22:56.742Z"
+last_activity: 2026-10-20
 last_activity_desc: Phase 48 execution started
-state_head: c3f7560e46aa0c950a0d759b8b8bd0580909638d
+state_head: 2eae368bd6c51ca94adadcd0455a8f09ac3d4045
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 23
-  completed_plans: 18
+  completed_plans: 19
   percent: 20
 ---
 
@@ -35,10 +35,10 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
-Phase: 48 (CI 矩阵) — READY TO EXECUTE
-Plan: 11 of 11
+Phase: 48 (CI 矩阵) — EXECUTING
+Plan: 13 of 15
 Status: Ready to execute
-Last activity: 2026-10-19 — Phase 48 execution started
+Last activity: 2026-10-20 — Phase 48 execution started
 
 Progress: [██░░░░░░░░] 20%
 
@@ -71,6 +71,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P08 | 7 min | 2 tasks | 2 files |
 | Phase 48 P11 | 8 min | 3 tasks | 4 files |
 | Phase 48 P10 | 12 min | 3 tasks | 4 files |
+| Phase 48 P12 | 10min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,9 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-11: M1 = BLOCKED (no git transport to github.com from this host; origin/main unrelated history, merge-base empty; ci.yml never on the remote default branch) — CICD-01/02/03 stay Pending honestly. The full run recipe (history decision, transport-capable host push, gate-preserving trigger, gh run watch, red-run classification, report format) is persisted in 48-11-SUMMARY.md for a future host, and the deferral handoff to plan 48-10 (48-SECURITY.md What this audit does NOT establish) is recorded there.
 - [Phase 48]: Phase 48 register re-closed on mutation evidence: threats_open 9->0, status verified; all nine falsified-hold rows cite the 48-05..48-09 assertion plus the mutation that proves it — Every mutation re-closure cites a named partition assertion plus its mutation probe; string-absence alone no longer closes a row
 - [Phase 48]: Review dispositions final: 18 fixed, 1 deferred (WR-06 option D — push-path lint scope unmeasured, decision re-opens on the first real ci.yml run) — IN-07/IN-08 recorded as implemented (48-11 options A/F), not deferred; CICD-01/02/03 stay Pending on M1 BLOCKED
+- [Phase 48]: 48-12: R2-CR-01 closed with the module-proxy install shape (go install @v2.12.2 + [ -x ] postcondition), not SHA-pinned install.sh — single command means no pipe and R2-WR-02 closes by construction, so no pipefail is cargo-culted in
+- [Phase 48]: 48-12: P5a determinism guard (-list | grep -qx) runs under shell: bash + explicit pipefail because GitHub default bash -e {0} has none; both P2-pinned fragments stay byte-present (D-18/D-19)
+- [Phase 48]: 48-12: Gate check documented as the offline threshold comparison holding zero secret surface — cmd/eval --gate-check short-circuits before bootstrap (main.go:463-467); the three live mappings stay on the replay step only (R2-WR-05)
 
 ### Pending Todos
 
@@ -156,7 +160,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T15:09:00.017Z
-Stopped at: Completed 48-10-PLAN.md
+Last session: 2026-10-19T23:22:38.181Z
+Stopped at: Completed 48-12-PLAN.md
 Resume file: None
 Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.
