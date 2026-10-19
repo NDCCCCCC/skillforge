@@ -26,9 +26,10 @@
 #      CGO_ENABLED, so the spike commands stay on their t.Skip path and
 #      `go test ./...` needs no live Milvus / BGE-M3 / GLM.
 #
-# Three independent jobs: `go` (CICD-01), `fe` (CICD-02), and `docker`
-# (CICD-03). Every job checks out first and then calls the repository-local
-# composite toolchain action.
+# Four independent jobs: `go` (CICD-01), `fe` (CICD-02), `docker` (CICD-03),
+# and `verify` (IN-07 — the phase gate itself, running verify-phase-48.sh).
+# Every job checks out first and then calls the repository-local composite
+# toolchain action.
 
 name: CI
 
@@ -93,7 +94,16 @@ jobs:
         run: go test ./... -count=1
 
       - name: determinism -count=100 (P5a)
-        run: go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
+        # D-18/D-19 (R2-WR-04): `go test -run` with zero matching tests exits 0,
+        # so a renamed test would pass vacuously. The -list guard proves the
+        # pinned test still exists before the 100-repeat run; GitHub's default
+        # `bash -e {0}` has no pipefail, so `shell: bash` + an explicit
+        # pipefail make grep's exit the step's exit.
+        shell: bash
+        run: |
+          set -o pipefail
+          go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' | grep -qx 'TestDeriveEdgesDeterministic'
+          go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
 
       - name: determinism -shuffle=on with seed (P5b)
         # The trailing -v is mandatory (D-19): Go prints -test.shuffle <seed>
@@ -186,6 +196,11 @@ jobs:
   # No job-level permissions: the workflow ceiling (`contents: read`) is all
   # the script touches, strictly narrower than the go job's surface (D-29).
   # No step-level `if:` anywhere (the 48-07 rule) and no non-blocking escape.
+  # Fork-PR caveat this job cannot remove (IN-07/IN-10): on a fork PR the green
+  # `verify` check is self-attested — the script audits the same checkout it
+  # executes from — so it proves the fork's own tree, not a
+  # maintainer-reviewed one. persist-credentials: false keeps the runner token
+  # out of the checkout's local git config regardless of whose tree that is.
   verify:
     name: verify
     runs-on: ubuntu-latest
@@ -196,7 +211,11 @@ jobs:
     steps:
       # Checkout FIRST (D-30), then the repository-local composite — P5's
       # checkout-before-setup rule covers every job in this file.
+      # IN-10 mirrored from the go job: the script executes checked-out
+      # content, so the runner token is not persisted into the checkout.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup
         with:
@@ -212,7 +231,9 @@ jobs:
           echo "$LINT_BIN" >> "$GITHUB_PATH"
 
       - name: python deps for the gate (PyYAML)
-        run: python -m pip install --quiet --disable-pip-version-check pyyaml
+        # R2-IN-03: pinned to the locally validated version (48-RESEARCH.md) so
+        # an unreviewed upstream release cannot reach the gate job.
+        run: python -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"
 
       - name: phase gate self-proof
         run: bash verify-phase-48.sh
