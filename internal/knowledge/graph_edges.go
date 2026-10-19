@@ -154,7 +154,15 @@ func ComputeEdges(docs []retriever.DocumentMeta, auditQuerier any) ([]Edge, erro
 	var edges []Edge
 
 	// 1. SectionAdjacent + VersionChain: iterate over each (tier, source) group.
-	for _, chunks := range groups {
+	// Iterate over an explicitly sorted key slice — Go map iteration order is
+	// randomized, which would make edge emission order nondeterministic.
+	groupKeys := make([]string, 0, len(groups))
+	for key := range groups {
+		groupKeys = append(groupKeys, key)
+	}
+	sort.Strings(groupKeys)
+	for _, key := range groupKeys {
+		chunks := groups[key]
 		// Stable sort by ID ascending.
 		sort.Slice(chunks, func(i, j int) bool { return chunks[i].ID < chunks[j].ID })
 
@@ -232,6 +240,14 @@ func ComputeEdges(docs []retriever.DocumentMeta, auditQuerier any) ([]Edge, erro
 		sources = append(sources, srcInfo{source: src, chunkID: representativeID, tokens: tokens})
 	}
 
+	// Sort sources by name before the O(n²) pairing loop below. The `i < j`
+	// pairing assigns From from sources[i] and To from sources[j], so the slice
+	// order decides edge DIRECTION — leaving it to Go's randomized map iteration
+	// made the same input produce a different keyword_cooccur orientation on
+	// every call, which flipped the reachable node set of the directed
+	// EdgeGraph.Neighbors traversal.
+	sort.Slice(sources, func(i, j int) bool { return sources[i].source < sources[j].source })
+
 	threshold := jaccardThreshold()
 	for i := 0; i < len(sources); i++ {
 		for j := i + 1; j < len(sources); j++ {
@@ -266,7 +282,14 @@ func ComputeEdges(docs []retriever.DocumentMeta, auditQuerier any) ([]Edge, erro
 		if edges[i].To != edges[j].To {
 			return edges[i].To < edges[j].To
 		}
-		return edges[i].EdgeType < edges[j].EdgeType
+		if edges[i].EdgeType != edges[j].EdgeType {
+			return edges[i].EdgeType < edges[j].EdgeType
+		}
+		// Fourth tie-break: citation_cooccur can emit duplicate
+		// (From, To, EdgeType) tuples with different weights across audit rows,
+		// and sort.Slice is not stable — without this, tied elements keep
+		// insertion order, which is only as stable as the audit scan order.
+		return edges[i].Weight < edges[j].Weight
 	})
 
 	return edges, nil
