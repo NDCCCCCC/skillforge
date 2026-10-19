@@ -173,8 +173,12 @@ jobs:
   # renaming `verify` later would strand any rule that references it.
   #
   # The script demands golangci-lint exactly v2.12.2 on PATH (its own preflight
-  # refuses any other binary), so the job installs that one version from the
-  # official install script. Reusing the go job's lint action here would drag
+  # refuses any other binary), so the job installs that one version through the
+  # Go module proxy (`go install`, checksum-DB verified) — no network
+  # fetch-and-execute surface remains anywhere in this file. The version
+  # literal in the install step must stay in sync with LINT_VERSION in
+  # verify-phase-48.sh: the gate's preflight refuses any other binary. Reusing
+  # the go job's lint action here would drag
   # in its push-run whole-repo fallback — the exact unmeasured surface WR-06
   # leaves open — which this job must not inherit: it lints the script's
   # sentinel modules, never the repository.
@@ -185,7 +189,10 @@ jobs:
   verify:
     name: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 25 minutes: `go install` builds golangci-lint v2 from source on a cold
+    # runner (minutes, not seconds), and the gate script's own P4 sentinel
+    # runs must still fit inside the budget.
+    timeout-minutes: 25
     steps:
       # Checkout FIRST (D-30), then the repository-local composite — P5's
       # checkout-before-setup rule covers every job in this file.
@@ -200,7 +207,8 @@ jobs:
         run: |
           LINT_BIN="$(go env GOPATH)/bin"
           mkdir -p "$LINT_BIN"
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$LINT_BIN" v2.12.2
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          [ -x "$LINT_BIN/golangci-lint" ] || { echo "FATAL: golangci-lint v2.12.2 not executable at $LINT_BIN/golangci-lint after go install" >&2; exit 1; }
           echo "$LINT_BIN" >> "$GITHUB_PATH"
 
       - name: python deps for the gate (PyYAML)
