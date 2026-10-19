@@ -42,7 +42,7 @@ issues:
       real directory and **P8 is not modified**". Acceptance line 115: "P11 half 2 probes a
       **parameterized scan function of its own**; P8's body is **byte-identical** to plan 48-02's
       version". Those cannot all hold: P8 either calls the new function (body changes) or it does
-      not (then the probe is P11-private and proves nothing about the real scan — T-48-11 half 2
+      not (then the probe is P11-private and proves nothing about the real scan — T-48-20 half 2
       becomes decorative, and P8's `every value ∈ {read, none}` stays vacuously satisfiable, which
       is the exact defect the partition exists to catch). Additionally, line 100 forbids touching P8
       by citing "48-02's `P1–P9 unchanged` invariant", which does not exist: 48-02 line 175 says
@@ -146,6 +146,28 @@ issues:
 - **D-29** — `permissions: contents: read` + `pull-requests: read` on the `go` job; still zero `write` anywhere. `only-new-issues` silently degrades to whole-repo lint on 403.
 - **D-30** — `actions/checkout@v7` lives in each job, not in the composite. A local composite cannot bootstrap its own checkout.
 - **Premise falsified** — "GHA cache needs `actions: write`" is false; cache access is scoped by event/ref, not by the `permissions` block. A `failed to reserve cache` is an event/ref question.
+
+---
+
+## Post-review threat-ID renumbering (2026-10-19, pre-execution)
+
+`init.execute-phase` raised a hard-stop threat-ID collision gate (#4683): four `T-48-NN` IDs were
+claimed by more than one live PLAN file, so `SECURITY.md` rows and `48-VALIDATION.md`'s Threat Ref
+column would be ambiguous. The earliest plan in dependency order keeps each canonical ID; the later
+plan's register row — a plan-local instance of the same threat family — was renumbered past the
+phase's highest in-use ID (`T-48-15`):
+
+| ID before | Claimed by | Canonical holder | Renumbered ID | Scope of the renumbered row |
+|-----------|------------|-----------------|---------------|------------------------------|
+| `T-48-01` | 48-01, 48-03 | 48-01 (repository-wide `pull_request_target` scan) | `T-48-16` (48-03) | the same string reintroduced by this plan's own fork-gate hardening edit |
+| `T-48-05` | 48-01, 48-03, 48-04 | 48-01 (Go toolchain drift, Repudiation) | `T-48-17` (48-03), `T-48-19` (48-04) | the `eval-gate`-scoped literal (DoS) / the same literal reintroduced by an unrelated later edit |
+| `T-48-02` | 48-03, 48-04 | 48-03 (the fork gate's *design*) | `T-48-18` (48-04) | the fork gate *later weakened* by a subsequent edit |
+| `T-48-11` | 48-01, 48-04 | 48-01 (P1 empty-file-list guard, P4 `LINT NOT VERIFIED`) | `T-48-20` (48-04) | the same vacuity class in the partitions this plan adds (P11) |
+
+Each renumbered row carries an `**ID note:**` in its Mitigation cell, following the convention the
+`T-48-03` → `T-48-15` renumbering already used. `48-VALIDATION.md` was left untouched: its Threat
+Ref column already points at the canonical holders (`T-48-01` P2, `T-48-02` P3, `T-48-05` P6,
+`T-48-11` P23), which is exactly the intent of the canonical-holder rule.
 
 ---
 
