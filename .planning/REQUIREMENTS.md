@@ -52,4 +52,18 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| *(由 roadmap 填充)* | | |
+| FACE-01 | Phase 50 | Pending |
+| FACE-02 | Phase 50 | Pending |
+| FACE-03 | Phase 50 | Pending |
+| CICD-01 | Phase 48 | Pending |
+| CICD-02 | Phase 48 | Pending |
+| CICD-03 | Phase 48 | Pending |
+| DEMO-01 | Phase 49 | Pending |
+| DEMO-02 | Phase 49 | Pending |
+| DEMO-03 | Phase 49 | Pending |
+| REL-01 | Phase 47 | Pending |
+| REL-02 | Phase 47 | Pending |
+| REL-03 | Phase 51 | Pending |
+| REL-04 | Phase 47 | Pending |
+
+Coverage: 14/14 v1.7 requirements mapped（v1.6 遗留项 D-46-DEF-02 / WARNING-1 / BL-01..04 由 REL-01/02/04 吸收；D-45-DEF-01/02/03、D-46-DEF-01、WARNING-2 在 Phase 47 逐项落处置记录）
