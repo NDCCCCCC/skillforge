@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-07-PLAN.md
-last_updated: "2026-10-19T13:18:55.097Z"
+stopped_at: Completed 48-08-PLAN.md
+last_updated: "2026-10-19T13:34:50.804Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 48 execution started
-state_head: 2100035442f6aa93a0e1b0f5df5beb7f7055c687
+state_head: 36e6618422b3fa68611564d39cdb318ec607ee68
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 19
-  completed_plans: 14
+  completed_plans: 15
   percent: 20
 ---
 
@@ -36,7 +36,7 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 8 of 11
+Plan: 9 of 11
 Status: Ready to execute
 Last activity: 2026-10-19 — Phase 48 execution started
 
@@ -68,6 +68,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P05 | 6 min | 3 tasks | 1 files |
 | Phase 48 P06 | 3 min | 2 tasks | 1 files |
 | Phase 48 P07 | 13 min | 3 tasks | 2 files |
+| Phase 48 P08 | 7 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-07: the count rule constrains the gap between the count word and the number, not the digits; a loose newline-bounded window matches the file own `go test ./... (CICD-01 / D-15)` step name.
 - [Phase 48]: 48-07: persist-credentials: false is scoped to the go checkout (the only job with an extra scope), and P3 asserts the parsed value is exactly False.
 - [Phase 48]: 48-07: CICD-01/02/03 remain unmarked - hardening the verifier does not substitute for the first real GitHub Actions run owned by 48-11.
+- [Phase 48]: 48-08: P9 compares the whitespace-normalized eval-gate if: to the exact D-09 literal with no substring fallback, so || true, outer negation and clause removal all fail.
+- [Phase 48]: 48-08: the skip notice is asserted structurally as notice == '!(' + gate + ')', so the two expressions cannot drift apart.
 
 ### Pending Todos
 
@@ -145,7 +148,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T13:17:20.739Z
-Stopped at: Completed 48-07-PLAN.md
+Last session: 2026-10-19T13:34:49.417Z
+Stopped at: Completed 48-08-PLAN.md
 Resume file: None
 Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.
