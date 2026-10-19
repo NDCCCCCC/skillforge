@@ -1,0 +1,87 @@
+# CI — SkillForge public quality gate (Phase 48, CICD-01)
+#
+# Pinned action majors: actions/checkout@v7, golangci/golangci-lint-action@v9,
+# and the toolchain majors behind .github/actions/setup (setup-go@v7,
+# setup-node@v7, setup-buildx-action@v4). The Go version itself is never a
+# literal — it comes from go.mod through the composite.
+#
+# TWO INVARIANTS THAT ARE EASY TO UNDO BY ACCIDENT:
+#
+#   1. NO PATH-TRIGGER FILTERS ANYWHERE IN THIS FILE (no `on:`-block path keys,
+#      and no ignore-list variant of them either).
+#      Branch protection matches the job name; a path-filtered workflow leaves
+#      a required check Pending forever on a PR that touches no matched path.
+#      A per-line skip must be a job-level `if:`, never a trigger filter.
+#
+#   2. NO SECRET-CONTEXT REFERENCES ANYWHERE IN THIS FILE (no repository or
+#      organisation secret interpolation).
+#      The whole go line is hermetic by construction — it declares only
+#      CGO_ENABLED, so the spike commands stay on their t.Skip path and
+#      `go test ./...` needs no live Milvus / BGE-M3 / GLM.
+#
+# This plan defines the `go` job only; `fe` and `docker` land with plan 48-02.
+
+name: CI
+
+on:
+  pull_request:
+    # Widened to match eval-gate.yml's existing base set: a PR targeting a
+    # `phase-*` base must not silently never start CI.
+    branches: [main, 'phase-*']
+  push:
+    # push is limited to main for the same reason as above — the lint action
+    # has no diff on a manual/push run and would fall back to whole-repo lint
+    # over ~175 legacy findings.
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: go
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # Required by only-new-issues (D-29): the action fetches the PR diff via
+      # pulls.get. Without this scope it only console.warns and silently
+      # degrades to whole-repo lint — the "reported green but did not run"
+      # class. No mutating scope is granted anywhere in this workflow.
+      pull-requests: read
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      # Checkout FIRST (D-30): a repo-local composite action resolves from
+      # github.workspace and cannot bootstrap its own checkout.
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+        with:
+          node: "false"
+
+      - name: build + vet (P1)
+        run: |
+          go build ./...
+          go vet ./internal/ontology/... ./internal/server/... ./internal/knowledge/...
+
+      - name: lint (changed lines)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          only-new-issues: true
+
+      - name: go test ./... (CICD-01 / D-15)
+        run: go test ./... -count=1
+
+      - name: determinism -count=100 (P5a)
+        run: go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
+
+      - name: determinism -shuffle=on with seed (P5b)
+        # The trailing -v is mandatory (D-19): Go prints -test.shuffle <seed>
+        # only under -v, so without it a red run is unreproducible.
+        run: go test ./internal/knowledge/ ./internal/ontology/... -count=1 -shuffle=on -v
