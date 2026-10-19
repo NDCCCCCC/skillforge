@@ -165,3 +165,46 @@ jobs:
           push: false
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+  # IN-07 (48-11, option A): the phase verifier itself runs in CI. Drift
+  # between verify-phase-48.sh and the workflows it guards now turns a push or
+  # PR red instead of rotting silently on a maintainer's host. This is a
+  # FOURTH published job name (D-21): branch protection matches job names, so
+  # renaming `verify` later would strand any rule that references it.
+  #
+  # The script demands golangci-lint exactly v2.12.2 on PATH (its own preflight
+  # refuses any other binary), so the job installs that one version from the
+  # official install script. Reusing the go job's lint action here would drag
+  # in its push-run whole-repo fallback — the exact unmeasured surface WR-06
+  # leaves open — which this job must not inherit: it lints the script's
+  # sentinel modules, never the repository.
+  #
+  # No job-level permissions: the workflow ceiling (`contents: read`) is all
+  # the script touches, strictly narrower than the go job's surface (D-29).
+  # No step-level `if:` anywhere (the 48-07 rule) and no non-blocking escape.
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Checkout FIRST (D-30), then the repository-local composite — P5's
+      # checkout-before-setup rule covers every job in this file.
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+        with:
+          go: "true"
+          node: "false"
+
+      - name: install pinned golangci-lint
+        run: |
+          LINT_BIN="$(go env GOPATH)/bin"
+          mkdir -p "$LINT_BIN"
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b "$LINT_BIN" v2.12.2
+          echo "$LINT_BIN" >> "$GITHUB_PATH"
+
+      - name: python deps for the gate (PyYAML)
+        run: python -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: phase gate self-proof
+        run: bash verify-phase-48.sh
