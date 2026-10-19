@@ -901,19 +901,27 @@ if sorted(jobs) != want:
         % (sorted(jobs), want)
     )
 
-# --- the fork / Dependabot gate, asserted clause by clause (D-09 / P3) ------
-# A gate that loses any ONE clause re-opens the fork hole, so a substring
-# search for the whole expression would pass on two clauses out of three.
+# --- the fork / Dependabot gate, asserted as the normalized expression ------
+# WR-07 / T-48-02 / T-48-18: three independent substring checks pass on an
+# expression that still contains every clause but no longer gates anything.
+# Appending a top-level `|| true` or wrapping the whole expression in a
+# negation keeps all three texts present. The assertion is therefore exact
+# equality against the normalized expected literal (D-09), with the Dependabot
+# clause kept inside it so the failure message still shows an auditor the full
+# approved shape. No substring fallback: equality is the assertion.
 gate_if = str((jobs.get("eval-gate") or {}).get("if") or "")
-for clause in (
-    "github.event_name != 'pull_request'",
-    "head.repo.full_name == github.repository",
-    "github.actor != 'dependabot[bot]'",
-):
-    if clause not in gate_if:
-        raise SystemExit(
-            "P9 the `eval-gate` job's if: is missing the clause: %s (D-09/P3)" % clause
-        )
+actual = " ".join(gate_if.split())
+expected = (
+    "(github.event_name != 'pull_request' || "
+    "github.event.pull_request.head.repo.full_name == github.repository) "
+    "&& github.actor != 'dependabot[bot]'"
+)
+if actual != expected:
+    raise SystemExit(
+        "P9 the eval-gate job's if: is %r, want exactly %r "
+        "(D-09; WR-07 - a neutralising || true or outer negation must not pass)"
+        % (actual, expected)
+    )
 
 # --- the visible skip notice (D-10 / P4) ------------------------------------
 # A skipped job reports "Success" on GitHub, so the notice job is what keeps a
@@ -989,7 +997,7 @@ for path in sorted(targets):
                 )
 
 print(
-    "EVALGATE-OK (%d jobs, 3-clause gate, notice present) + GOVERSION-OK (%d file(s))"
+    "EVALGATE-OK (%d jobs, exact gate expression, notice present) + GOVERSION-OK (%d file(s))"
     % (len(jobs), len(targets))
 )
 PY
