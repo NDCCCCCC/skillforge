@@ -89,6 +89,23 @@ Manual-Only M1–M5 in `48-VALIDATION.md`:
 The local substitutes that *were* observed green: `bash verify-phase-48.sh` → 11/11 partitions PASS,
 exit 0; Go `build ./...` + `test ./...` exit 0; Vitest 85 files / 689 tests exit 0.
 
+### Mutation evidence later falsified five of these closures (2026-10-19, code review)
+
+The `closed` statuses above are L1 results. The subsequent `standard`-depth code review
+(`48-REVIEW.md`) ran adversarial mutations against copies of the workflow files — broke the input,
+then checked whether the partition actually went red. Five closures did **not** survive:
+
+| Threat | Reviewer finding | What the mutation showed |
+|--------|------------------|--------------------------|
+| `T-48-03`, `T-48-04`, `T-48-10` | CR-01, WR-05 | P8 reads only a file literally named `ci.yml`, yet its header and banner claim directory-wide coverage. A fixture directory holding a second workflow with `paths:`, `${{ secrets.DEPLOY_KEY }}` and `docker push ghcr.io/...` returned `TRUST-SURFACE-OK (2 workflow file(s))`, rc=0. `.yaml` extensions are invisible to P1 and P8 entirely (WR-05). |
+| `T-48-02`, `T-48-18` | WR-07 | P9 asserts the three fork-gate clauses as independent substrings; appending `\|\| true` to the gate's `if:` still yields `EVALGATE-OK ... 3-clause gate`, exit 0. |
+| `T-48-11`, `T-48-20` | WR-04 | P4 has no positive `revive` sentinel — deleting `enable: [revive]` passes `config verify`, still fails sentinel A, and leaves sentinel C quiet, so P4 reports green with `revive` absent. |
+
+The gates are therefore **narrower than their own headers claim**. No shipped evidence is wrong and
+nothing is a live vulnerability today, but these five rows are not honestly `closed` until the
+mutations are folded in. `48-REVIEW-DISPOSITION.md` carries the full per-finding record; all of it
+is `open`, nothing was waived.
+
 ---
 
 ## Security Audit Trail
