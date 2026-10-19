@@ -169,6 +169,16 @@ describe('DetailPanel', () => {
     // implementation. The browser reaches 'idle' on mount, fires a
     // fetch, and renders 知识库为空 when the BE returns a corpus with
     // 0 docs across all 4 tiers.
+    //
+    // Root cause of D-46-DEF-01: since quick-260929-g7x the browser
+    // defaults to 本体/ontology mode (`useState<GraphViewMode>('ontology')`
+    // in KnowledgeGraphBrowser.tsx), and the document-corpus empty-state
+    // hero is rendered ONLY under `mode === 'document'`. The old
+    // assertion relied on an implicit default that has since changed, so
+    // it observed `ontology-graph-empty` / 本体暂无数据 instead. The SC-5
+    // contract is still implemented — it now lives in 文档 mode, so the
+    // test must select that mode (same shape as KnowledgeGraphBrowser's
+    // own `renders the empty-state hero in 文档 mode` case) before asserting.
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async () => ({
@@ -190,9 +200,14 @@ describe('DetailPanel', () => {
     render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByRole('tab', { name: '知识图谱' })).toHaveAttribute('aria-selected', 'true');
 
+    // Select 文档 mode — the empty-state hero is a document-mode concern
+    // (KnowledgeGraphBrowser.tsx: `mode === 'document' && (!graph || totalDocs === 0)`).
+    fireEvent.click(screen.getByTestId('graph-mode-document'));
+
     await waitFor(() => {
       expect(screen.getByTestId('knowledge-graph-empty')).toBeInTheDocument();
     });
+    expect(screen.getByTestId('knowledge-graph-empty')).toHaveTextContent('知识库为空');
   });
 
   // Plan 12-07 Task 3 — 规划轨迹 tab between 审计轨迹 + 引用原文.
