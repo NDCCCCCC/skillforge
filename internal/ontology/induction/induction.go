@@ -469,10 +469,32 @@ func (m *Manager) RollbackTBox(targetVersion int, reason string) (int, int, erro
 	if err != nil {
 		// SHACL failure is not a rollback failure — log and return 0
 		// violations (D-PROV-09 warn-and-return-0 posture; boot/rollback
-		// shapes parity per D-46-02).
+		// shapes parity per D-46-02). Steps 3-5 already persisted v{N+1},
+		// the pointer TTL and the version file, so failing closed here would
+		// lie to the client about a rollback that DID happen.
+		//
+		// The previously cached report is deliberately left in place (D-02c):
+		// its `trigger` + `validated_at` honestly describe the last
+		// SUCCESSFUL validation. Never call SetShaclReport(nil) on this path
+		// — atomic.Value.Store panics on an untyped nil, and a typed nil
+		// would make GET /api/admin/governance/shacl answer 200 null instead
+		// of 503. A real Clear/sentinel API is out of scope for this phase.
 		fmt.Fprintf(os.Stderr, "[WARN] induction: post-rollback SHACL validation: %v\n", err)
 		return next, 0, nil
 	}
+	// Republish the report we just computed (D-02a / REL-02). Three facts
+	// make this the right place:
+	//   (a) it is the very report ValidateWithTrigger(..., "rollback")
+	//       produced one line above — zero extra validation cost;
+	//   (b) it happens inside the same m.mu critical section as the
+	//       v{N+1} / pointer / version-file writes (Steps 3-5), so there is
+	//       no window where the served report disagrees with the on-disk TBox;
+	//   (c) HTTP, tests and any future CLI/MCP caller therefore observe the
+	//       same cache with no new plumbing (store.SetShaclReport exists).
+	// This is the second of exactly two writers; boot is the first
+	// (cmd/server/main.go). Note the deliberate asymmetry: boot executes
+	// Quarantine, rollback does not — recorded as a known limitation (D-05).
+	m.kg.SetShaclReport(report)
 	return next, report.ErrorCount, nil
 }
 
