@@ -62,8 +62,10 @@ jobs:
     env:
       # WR-08: the three live secrets are deliberately NOT job-level. Job-level
       # env is visible to every step — including tag-pinned third-party actions
-      # that never need a credential. They are scoped to the two consuming
-      # steps below (`Run frozen compliance replay` and `Gate check`).
+      # that never need a credential. They are scoped to the single consuming
+      # step below (`Run frozen compliance replay`); the `Gate check` step is
+      # the offline threshold comparison and consumes no secret — `--gate-check`
+      # short-circuits before any bootstrap (cmd/eval/main.go).
       # CI never pins the production model; the live gate uses the
       # ambient JUDGE_MODEL. workflow_dispatch can override.
       JUDGE_MODEL: ${{ github.event.inputs.judge_model || 'glm-5.2' }}
@@ -111,10 +113,10 @@ jobs:
             2>&1 | tee eval/reports/ci/run.log
 
       - name: Gate check
-        env:
-          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
-          BGE_M3_URL: ${{ secrets.BGE_M3_URL }}
-          MILVUS_ADDRESS: ${{ secrets.MILVUS_ADDRESS }}
+        # R2-WR-05: no env block here — the threshold read is an offline file
+        # comparison (`--gate-check` short-circuits before any bootstrap), so
+        # granting live secrets to it was dead credential surface. The three
+        # mappings live on the replay step above, the only consumer.
         working-directory: ${{ github.workspace }}
         run: |
           # Exit code != 0 fails the workflow. Threshold comes from
