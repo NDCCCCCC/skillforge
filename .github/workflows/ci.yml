@@ -60,7 +60,12 @@ jobs:
     steps:
       # Checkout FIRST (D-30): a repo-local composite action resolves from
       # github.workspace and cannot bootstrap its own checkout.
+      # IN-10: this job runs `go test ./...` over fork-authored content and is
+      # the only job with an extra scope, so the runner token is not persisted
+      # into the checkout's local git config.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup
         with:

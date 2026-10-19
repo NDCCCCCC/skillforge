@@ -181,7 +181,7 @@ CI="$ROOT/.github/workflows/ci.yml"
 [ -f "$CI" ] || fail "P2 ci.yml missing: $CI"
 
 python - "$(native "$CI")" "$SOFT_KEY" "$WHOLE_FILES_FLAG" <<'PY' > "$WORK/p23.log" 2>&1
-import sys, yaml
+import re, sys, yaml
 
 path, soft_key, whole_flag = sys.argv[1], sys.argv[2], sys.argv[3]
 src = open(path, encoding="utf-8").read()
@@ -227,9 +227,20 @@ if "-v" not in shuffled[0]["run"].split("-shuffle=on")[1]:
 env = j.get("env") or {}
 if str(env.get("CGO_ENABLED")) != "1":
     raise SystemExit("P2: go job CGO_ENABLED is %r, want \"1\"" % (env.get("CGO_ENABLED"),))
-extra = [k for k in env if k != "CGO_ENABLED"]
+
+# IN-05: hermeticity is the union of the job-level map and every step-level
+# `env:` map. A step can add RETRIEVER_BACKEND / JUDGE_MODEL / BGE_M3_MODEL
+# without touching the job map, which is exactly the live-path flip D-16
+# forbids — so the claim is judged on the union, never on the job map alone.
+keys = set(env)
+for s in steps:
+    keys |= set(s.get("env") or {})
+extra = [k for k in keys if k != "CGO_ENABLED"]
 if extra:
-    raise SystemExit("P2: go job declares env beyond CGO_ENABLED: %s" % ", ".join(sorted(extra)))
+    raise SystemExit(
+        "P2: go job declares env beyond CGO_ENABLED (job or step level): %s"
+        % ", ".join(sorted(extra))
+    )
 
 # D-16: naming any of these flips cmd/spike-* off its t.Skip onto the live
 # path, which is exactly what makes the go line non-hermetic.
@@ -267,6 +278,14 @@ if j.get("permissions") != {"contents": "read", "pull-requests": "read"}:
 # has to precede it — the composite cannot bootstrap its own checkout.
 if len(steps) < 2 or steps[0].get("uses") != "actions/checkout@v7" or steps[1].get("uses") != "./.github/actions/setup":
     raise SystemExit("P3: checkout must precede the local composite action (D-30)")
+
+# IN-10: this job executes checked-out fork content (`go test ./...`) and is
+# the only job carrying an extra scope. The runner token must not be persisted
+# into the checkout's local git config, where fork-run code can read it.
+if (steps[0].get("with") or {}).get("persist-credentials") is not False:
+    raise SystemExit(
+        "P3: the go job's checkout persists credentials - fork-authored code runs in this job (IN-10)"
+    )
 
 print("STRUCT-OK")
 PY
@@ -489,7 +508,7 @@ done_partition "P5 composite (three pinned majors, no checkout, every job checks
 info "P6: fe line"
 
 python - "$(native "$CI")" <<'PY' > "$WORK/p6.log" 2>&1
-import sys, yaml
+import re, sys, yaml
 
 path = sys.argv[1]
 src = open(path, encoding="utf-8").read()
@@ -522,9 +541,31 @@ for cmd in ("npm ci", "npx tsc --noEmit", "npx vitest run"):
 
 # A test count in a gate is a future silent-drift failure: the suite grows,
 # the literal does not, and the gate starts asserting a stale fact.
-for literal in ("666", "689", "84 "):
-    if literal in src:
-        raise SystemExit("P6: ci.yml hard-codes an FE test-count literal: %r" % literal)
+#
+# IN-04: anchor to how a count is actually written, in both orders:
+#   digits-first  `689 tests`
+#   word-first    `Tests  84 passed`   (the Vitest summary line)
+# The gap between the count word and the number is spaces/tabs with at most one
+# `:` or `=`. It is deliberately not `[^\n]{0,40}`: this file's own step name
+# `go test ./... (CICD-01 / D-15)` puts `test` 19 characters before `15`, and a
+# loose gap would red the gate on its own baseline. Confining the gap to
+# `[ \t]` (not `\s`) also keeps it from spanning the newline between a
+# `timeout-minutes: 45` line and a following step name. Ports (8084) and years
+# (1984) match neither shape.
+count_phrase = re.compile(
+    r"(?:\b\d{2,}[ \t]+(?:tests?|suites?|files?|passed)\b)"
+    r"|(?:\b(?:tests?|suites?|files?|passed)\b[ \t]*[:=]?[ \t]*\d{2,}\b)",
+    re.IGNORECASE,
+)
+m = count_phrase.search(src)
+if m:
+    raise SystemExit("P6: ci.yml hard-codes a test-count phrase: %r" % m.group(0))
+
+# The two Go-test totals this file must never pin, as standalone tokens.
+for literal in (r"\b666\b", r"\b689\b"):
+    m = re.search(literal, src)
+    if m:
+        raise SystemExit("P6: ci.yml hard-codes a test-count literal: %r" % m.group(0))
 
 print("FE-LINE-OK")
 PY
