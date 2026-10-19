@@ -19,7 +19,9 @@
 #      CGO_ENABLED, so the spike commands stay on their t.Skip path and
 #      `go test ./...` needs no live Milvus / BGE-M3 / GLM.
 #
-# This plan defines the `go` job only; `fe` and `docker` land with plan 48-02.
+# Three independent jobs: `go` (CICD-01), `fe` (CICD-02), and `docker`
+# (CICD-03). Every job checks out first and then calls the repository-local
+# composite toolchain action.
 
 name: CI
 
@@ -85,3 +87,29 @@ jobs:
         # The trailing -v is mandatory (D-19): Go prints -test.shuffle <seed>
         # only under -v, so without it a red run is unreproducible.
         run: go test ./internal/knowledge/ ./internal/ontology/... -count=1 -shuffle=on -v
+
+  # CICD-02 / SC-2: the frontend gate. Checks out first, then installs the
+  # lockfile, typechecks, and runs the whole Vitest suite. No job-level
+  # permissions block: the workflow ceiling (`contents: read`) is all it needs.
+  fe:
+    name: fe
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+        with:
+          go: "false"
+
+      - name: install
+        working-directory: web
+        run: npm ci
+
+      - name: typecheck
+        working-directory: web
+        run: npx tsc --noEmit
+
+      - name: unit tests
+        working-directory: web
+        run: npx vitest run
