@@ -5,11 +5,11 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: "48-04 attempted: P9/P10/P11 landed and the branch-protection decision recorded; BLOCKED on the CI-run criterion (no GitHub Actions run obtainable from this host)"
-last_updated: "2026-10-19T12:08:35.506Z"
+stopped_at: Completed 48-05-PLAN.md
+last_updated: "2026-10-19T12:33:59.594Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 48 execution started
-state_head: 4e335cbe258c278ee20a4666bc963baf1a963ecc
+state_head: 11a3974c3f6d76b9059c893610504a0aef812ebf
 progress:
   total_phases: 5
   completed_phases: 1
@@ -35,9 +35,9 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
-Phase: 48 (CI 矩阵) — READY TO EXECUTE
-Plan: 4 of 4
-Status: GAPS FOUND — plan gap closure
+Phase: 48 (CI 矩阵) — EXECUTING
+Plan: 6 of 11
+Status: Ready to execute
 Last activity: 2026-10-19 — Phase 48 execution started
 
 Progress: [██░░░░░░░░] 20%
@@ -65,6 +65,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P03 | 2min | 3 tasks | 2 files |
 | Phase 48 P02 | 5 min | 3 tasks | 2 files |
 | Phase 48 P04 | 16min | 4 tasks | 1 files |
+| Phase 48 P05 | 6 min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,9 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-02: the forbidden 'docker compose' literal is kept out of ci.yml even in prose, so a raw-text ban in P7/P8 can distinguish the workflow from commentary about it.
 - [Phase 48]: 48-02: Docker is statically asserted only on this host (absent from Git Bash and WSL); CICD-03 closes on the first real CI run (VALIDATION M1), not on a local build claim.
 - [Phase 48]: Branch protection required status checks: Option A — leave protection off. The three CI jobs run and are publicly visible; enforcement is deferred until they have been stable for a few merges, and the absence of enforcement is a recorded decision rather than an oversight.
+- [Phase 48]: 48-05: the secret allowlist is explicit and named — secrets.GITHUB_TOKEN anywhere; GLM_API_KEY, BGE_M3_URL and MILVUS_ADDRESS only in eval-gate.yml.
+- [Phase 48]: 48-05: read-all stays rejected — D-29 enumerates the ceiling as exactly {contents: read, pull-requests: read}; accepting read-all would be a D-29 amendment first and a code change second.
+- [Phase 48]: 48-05: every mutation probe writes under a trap and asserts git status --porcelain -- .github/workflows is empty, so a leaked fixture fails the probe rather than passing it.
 
 ### Pending Todos
 
@@ -132,7 +136,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T09:58:44.637Z
-Stopped at: 48-04 attempted: P9/P10/P11 landed and the branch-protection decision recorded; BLOCKED on the CI-run criterion (no GitHub Actions run obtainable from this host)
-Resume file: .planning/phases/48-ci/48-VERIFICATION.md
+Last session: 2026-10-19T12:33:58.982Z
+Stopped at: Completed 48-05-PLAN.md
+Resume file: None
 Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.

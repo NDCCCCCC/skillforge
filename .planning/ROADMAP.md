@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 4/11 plans executed（48-01..48-04 已执行；48-05..48-11 为 verifier `gaps_found` 之后的 gap-closure 计划）
+**Plans**: 3/11 plans executed（48-01..48-04 已执行；48-05..48-11 为 verifier `gaps_found` 之后的 gap-closure 计划）
 
 **Blocked on**: SC-1/2/3 的真实 GitHub Actions 绿灯尚未取得——CI 三条线的 workflow 与本地门（`verify-phase-48.sh` 11 分片全绿）都已就位，但**没有任何 `ci.yml` 运行存在**，且本机无法触发：git 传输到 github.com 不通（`git push --dry-run` → `Failed to connect to github.com port 443`），`push.branches: [main]` 按设计不可放宽，PR-to-main 路径因 `origin/main`（单 commit `369b08a`）与本分支无共同历史而无法开 PR。CICD-01/02/03 因此保持 Pending；需要一台 git 传输可达的机器 push 后开 PR 或落到 `main`。
 
@@ -136,7 +136,7 @@ Plans:
 
 **Wave 3** — full coverage + CI-run proof
 
-- [ ] 48-04-PLAN.md — 分片 P9–P11（eval-gate 门禁 / SC-4 措辞 / verifier 自证 P23）**已落地**；branch protection one-way door checkpoint **已决策 = Option A（不加保护）**；**真实 GitHub Actions run 三 job 全绿未取得**（本机 git 传输到 github.com 不通，PR-to-main 路径因 `origin/main` 与本分支无共同历史而封闭）→ CICD-01/02/03 保持 Pending
+- [x] 48-04-PLAN.md — 分片 P9–P11（eval-gate 门禁 / SC-4 措辞 / verifier 自证 P23）**已落地**；branch protection one-way door checkpoint **已决策 = Option A（不加保护）**；**真实 GitHub Actions run 三 job 全绿未取得**（本机 git 传输到 github.com 不通，PR-to-main 路径因 `origin/main` 与本分支无共同历史而封闭）→ CICD-01/02/03 保持 Pending
 
 **Gap closure**（48-VERIFICATION.md `gaps_found`：3/9 must-haves；19 条 review findings 全部 open）
 
@@ -200,7 +200,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 3/4 | In Progress | - |
+| 48. CI 矩阵 | v1.7 | 3/11 | In Progress | - |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
