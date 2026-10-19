@@ -194,6 +194,20 @@ j = jobs["go"]
 steps = j.get("steps") or []
 runs = "\n".join(s.get("run", "") for s in steps)
 
+# WR-01 / T-48-07: a step-level `if:` disables a gate step without changing its
+# command text. `false`, `always()`, `success()` and a negated expression all
+# change whether the step runs, so the key itself is the violation. No
+# allowlist: this job needs no conditional step (the composite action's own
+# `if: inputs.X == 'true'` conditions live in .github/actions/setup/action.yml,
+# not here, and are not the subject of this rule).
+for s in steps:
+    if "if" in s:
+        label = s.get("name") or s.get("uses") or s.get("run") or "<unnamed step>"
+        raise SystemExit(
+            "P3: the go job's step %r carries a step-level if: %r - the gate is skippable (WR-01/T-48-07)"
+            % (label, s.get("if"))
+        )
+
 # --- P2 --------------------------------------------------------------------
 for frag in (
     "go build ./...",
