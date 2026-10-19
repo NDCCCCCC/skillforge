@@ -586,34 +586,99 @@ scan_trust_surface() {
   local dir="$1"
   local log="$WORK/trust-surface.log"
   local list="$WORK/trust-surface-list.txt"
-  local ci="$dir/ci.yml"
   : > "$log"
 
-  find "$dir" -maxdepth 1 -type f -name '*.yml' -print 2>/dev/null | sort > "$list"
+  # GitHub Actions accepts both extensions. Enumerating only *.yml made a
+  # *.yaml workflow invisible to every rule below (WR-05).
+  find "$dir" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) -print 2>/dev/null | sort > "$list"
   TRUST_SURFACE_COUNT=$(wc -l < "$list" | tr -d ' ')
   if [ "$TRUST_SURFACE_COUNT" -lt 1 ]; then
-    echo "trust-surface: zero *.yml files under $dir — a partition that finds nothing must not pass" >> "$log"
+    echo "trust-surface: zero *.yml/*.yaml files under $dir — a partition that finds nothing must not pass" >> "$log"
     return 1
   fi
-  if [ ! -f "$ci" ]; then
-    echo "trust-surface: no ci.yml under $dir — the path-filter and secret rules have no subject" >> "$log"
+
+  # The phase's three-job matrix must exist under its known name — P2/P5/P9
+  # reference ci.yml directly. Keep a subject guard, but do not privilege
+  # that one filename for the rules themselves: they are now per-file.
+  local ci_subject=0
+  local f
+  while IFS= read -r f; do
+    case "$(basename "$f")" in
+      ci.yml|ci.yaml) ci_subject=1 ;;
+    esac
+  done < "$list"
+  if [ "$ci_subject" -ne 1 ]; then
+    echo "trust-surface: no ci.yml or ci.yaml under $dir — the path-filter and secret rules have no subject" >> "$log"
     return 1
   fi
 
   local -a args=()
-  local f
   while IFS= read -r f; do args+=("$(native "$f")"); done < "$list"
 
-  python - "$(native "$ci")" "${args[@]}" >> "$log" 2>&1 <<'PY'
-import sys, re, yaml
+  python - "${args[@]}" >> "$log" 2>&1 <<'PY'
+import os, sys, re, yaml
 
-ci_path = sys.argv[1]
-paths = sys.argv[2:]
+paths = sys.argv[1:]
 if not paths:
     raise SystemExit("trust-surface: zero workflow files to scan — a partition that finds nothing must not pass")
 
+# Secret allowlist (T-48-04 / D-14). GITHUB_TOKEN is the runner-provided
+# token and is available everywhere. The three live-service names are
+# permitted ONLY in the one workflow that legitimately consumes them (P9
+# independently asserts those three mappings stay intact). This replaces the
+# old "whatever ci.yml happens to contain is fine" accident with an explicit,
+# named exception.
+ALLOWED_ANYWHERE = {"GITHUB_TOKEN"}
+ALLOWED_IN_EVAL_GATE = {"GLM_API_KEY", "BGE_M3_URL", "MILVUS_ADDRESS"}
+EVAL_GATE_BASENAME = "eval-gate.yml"
+
+# T-48-10: matched case-insensitively against comment-stripped text. The old
+# uppercase-only list could not see a real publication command.
+PUBLICATION_TOKENS = (
+    "ghcr.io",
+    "docker.io",
+    "quay.io",
+    "docker/login-action",
+    "registry:",
+    "dockerhub",
+    "docker push",
+    "packages: write",
+    "push: true",
+)
+
+# D-26/D-29: a value-shaped write scope. Line-anchored so prose such as
+# "this workflow writes the PR comment" is not mistaken for a permission.
+WRITE_VALUE = re.compile(r"^\s*[A-Za-z0-9_-]+:\s*write(-all)?\s*$")
+SECRET_REF = re.compile(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def judge_permissions_string(p, where, value):
+    # IN-03: GitHub accepts string shorthand. `none` grants nothing and is
+    # inside D-29's ceiling. `read-all` is DELIBERATELY rejected: it grants
+    # every read scope (actions, checks, packages, id-token, …), which is
+    # wider than D-29's recorded two-scope enumeration
+    # ({contents: read, pull-requests: read}). Accepting it would require a
+    # D-29 amendment, not a code change.
+    if value == "none":
+        return
+    if value in ("read-all", "write-all"):
+        raise SystemExit(
+            "trust-surface: %s %s permissions grants %r; %r exceeds D-29's "
+            "{contents: read, pull-requests: read} ceiling (D-26/D-29)"
+            % (p, where, value, value)
+        )
+    raise SystemExit(
+        "trust-surface: %s %s permissions grants unknown string %r; only `none` is allowed (D-26/D-29)"
+        % (p, where, value)
+    )
+
+
 for p in paths:
     src = open(p, encoding="utf-8").read()
+    # Every rule below judges comment-stripped text: a comment that mentions
+    # a path filter, a secret or a publication token is not the surface
+    # itself (IN-02).
+    nocomment = re.sub(r"(?m)#.*$", "", src)
     doc = yaml.safe_load(src)
     if not isinstance(doc, dict):
         raise SystemExit("trust-surface: %s does not parse as a mapping" % p)
@@ -626,55 +691,95 @@ for p in paths:
             "trust-surface: %s has an empty or absent jobs: mapping — an empty partition must not pass" % p
         )
 
-    # D-26 / D-29: read-only ceiling. The raw scan also catches a write scope
-    # in a shape PyYAML might normalize away.
-    if "write" in src:
-        raise SystemExit("trust-surface: %s contains a write scope (D-26/D-29)" % p)
+    # T-48-10: no image-publication capability in ANY workflow file.
+    lower = nocomment.lower()
+    for bad in PUBLICATION_TOKENS:
+        if bad in lower:
+            raise SystemExit(
+                "trust-surface: %s contains forbidden registry/publication token %r "
+                "(case-insensitive match, T-48-10)" % (p, bad)
+            )
+
+    # D-26 / D-29: value-shaped write detection over comment-stripped lines.
+    for lineno, line in enumerate(nocomment.splitlines(), 1):
+        if WRITE_VALUE.match(line):
+            raise SystemExit(
+                "trust-surface: %s:%d contains a write scope (D-26/D-29)" % (p, lineno)
+            )
 
     # Vacuity rules 2 and 3: a workflow with no permissions key has not
     # declared a read-only ceiling, and an empty mapping declares nothing.
     perms = doc.get("permissions")
-    if not isinstance(perms, dict):
+    if perms is None:
         raise SystemExit(
             "trust-surface: %s declares no permissions: mapping — an undeclared ceiling is not a read-only ceiling (D-26/D-29)" % p
         )
-    if not perms:
-        raise SystemExit(
-            "trust-surface: %s declares an empty permissions: mapping — an empty ceiling must not pass vacuously (D-26/D-29)" % p
-        )
-
-    maps = [("workflow-level", perms)]
-    for name, job in jobs.items():
-        if isinstance(job, dict) and isinstance(job.get("permissions"), dict):
-            maps.append(("job %r" % name, job["permissions"]))
-    for where, mapping in maps:
-        for scope, value in mapping.items():
+    if isinstance(perms, str):
+        judge_permissions_string(p, "workflow-level", perms)
+    elif isinstance(perms, dict):
+        if not perms:
+            raise SystemExit(
+                "trust-surface: %s declares an empty permissions: mapping — an empty ceiling must not pass vacuously (D-26/D-29)" % p
+            )
+        for scope, value in perms.items():
             if value not in ("read", "none"):
                 raise SystemExit(
-                    "trust-surface: %s in %s grants %r=%r; only read/none are allowed (D-26/D-29)"
-                    % (p, where, scope, value)
+                    "trust-surface: %s in workflow-level grants %r=%r; only read/none are allowed (D-26/D-29)"
+                    % (p, scope, value)
                 )
+    else:
+        raise SystemExit(
+            "trust-surface: %s workflow-level permissions is %r, expected a mapping or string (D-26/D-29)"
+            % (p, perms)
+        )
 
-    # T-48-10: no image-publication capability anywhere in the directory.
-    for bad in ("docker/login-action", "registry:", "GHCR", "DOCKERHUB", "packages: write"):
-        if bad in src:
-            raise SystemExit("trust-surface: %s contains forbidden registry surface: %s (T-48-10)" % (p, bad))
+    # Job-level permissions. The old isinstance(..., dict) branch silently
+    # skipped string forms — `write-all` was judged only by the raw text scan
+    # and `read-all` was not judged at all (IN-03).
+    for name, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        job_perms = job.get("permissions")
+        if job_perms is None:
+            continue
+        if isinstance(job_perms, str):
+            judge_permissions_string(p, "job %r" % name, job_perms)
+        elif isinstance(job_perms, dict):
+            for scope, value in job_perms.items():
+                if value not in ("read", "none"):
+                    raise SystemExit(
+                        "trust-surface: %s in job %r grants %r=%r; only read/none are allowed (D-26/D-29)"
+                        % (p, name, scope, value)
+                    )
+        else:
+            raise SystemExit(
+                "trust-surface: %s job %r permissions is %r, expected a mapping or string (D-26/D-29)"
+                % (p, name, job_perms)
+            )
 
-ci_src = open(ci_path, encoding="utf-8").read()
+    # T-48-03: a path-filtered required check sits Pending forever on a PR
+    # that touches no matched path. Per-file: a second workflow does not get
+    # an exemption just because it is not named ci.yml.
+    for bad in ("paths:", "paths-ignore:"):
+        if bad in nocomment:
+            raise SystemExit(
+                "trust-surface: %s contains %s — a path-filtered required check sits Pending (T-48-03)"
+                % (p, bad)
+            )
 
-# T-48-03: a path-filtered required check sits Pending forever on a PR that
-# touches no matched path. Per-line skipping must use a job-level `if:`.
-for bad in ("paths:", "paths-ignore:"):
-    if bad in ci_src:
-        raise SystemExit("trust-surface: ci.yml contains %s — a path-filtered required check sits Pending (T-48-03)" % bad)
+    # T-48-04 / D-14: a public fork PR must never need or see a secret.
+    basename = os.path.basename(p)
+    for name in SECRET_REF.findall(nocomment):
+        if name in ALLOWED_ANYWHERE:
+            continue
+        if basename == EVAL_GATE_BASENAME and name in ALLOWED_IN_EVAL_GATE:
+            continue
+        raise SystemExit(
+            "trust-surface: %s references secrets.%s; only secrets.GITHUB_TOKEN is allowed outside eval-gate.yml (T-48-04)"
+            % (p, name)
+        )
 
-# T-48-04 / D-14: a public fork PR must never need or see a secret. The only
-# permitted reference is the runner-provided token.
-for name in re.findall(r"secrets\.([A-Za-z_][A-Za-z0-9_]*)", ci_src):
-    if name != "GITHUB_TOKEN":
-        raise SystemExit("trust-surface: ci.yml references secrets.%s; only secrets.GITHUB_TOKEN is allowed (T-48-04)" % name)
-
-print("TRUST-SURFACE-OK (%d workflow file(s))" % len(paths))
+print("TRUST-SURFACE-OK (%d workflow file(s), path filters and secret references checked per file)" % len(paths))
 PY
   return $?
 }
