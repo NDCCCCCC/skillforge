@@ -104,7 +104,16 @@ function TimelineEntry({
   );
 }
 
-export default function TimelineView() {
+export interface TimelineViewProps {
+  /**
+   * Fired after a successful rollback so GovernanceTab can refetch the cached
+   * SHACL report (REL-02 / D-02b). Optional — the rollback path must not depend
+   * on a parent being wired.
+   */
+  onRollbackComplete?: () => void;
+}
+
+export default function TimelineView({ onRollbackComplete }: TimelineViewProps = {}) {
   const [changelog, setChangelog] = useState<{
     current_version: number;
     entries: ChangelogEntry[];
@@ -141,8 +150,18 @@ export default function TimelineView() {
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 5000);
 
-      // Refetch all three surfaces + switch view to shacl
+      // Refetch the changelog + notify the parent so it can refetch the cached
+      // SHACL report (REL-02 / D-02b: the rollback's revalidation report only
+      // reaches the banner if someone re-reads it).
       await fetchChangelog().then(setChangelog);
+
+      // Guarded: a parent refetch failure must never mask a rollback that
+      // actually happened (T-47-14 — repudiation).
+      try {
+        onRollbackComplete?.();
+      } catch {
+        // swallowed — see comment above
+      }
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e);
       const toast = document.createElement('div');
