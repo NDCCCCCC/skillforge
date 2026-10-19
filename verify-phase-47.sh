@@ -43,13 +43,24 @@
 # script's working directory is unchanged for every later partition — P7 resolves
 # its record from "$ROOT", and a shell left inside web/ would break that path.
 #
-# P6's ONLY non-fatal branch: if `command -v npx` fails, print an explicit info
-# line naming npx as absent and continue. That guard keys on a TOOL CHECK alone,
-# never on a test name, a waivable failure, or a test outcome. Every other
-# command in this script is exit-code-authoritative: a non-zero rc fails the gate
+# P6 is the ONLY partition with a non-fatal branch: if `command -v npx` fails,
+# the frontend segment cannot run. That guard keys on a TOOL CHECK alone, never
+# on a test name, a waivable failure, or a test outcome. Every other command in
+# this script is exit-code-authoritative: a non-zero rc fails the gate
 # immediately, and an empty log fails it too (WR-06 — a grep-only judgment lets a
 # toolchain crash, a bad flag, an OOM kill, or a failed WSL spawn pass as "zero
 # failures found").
+#
+# A non-fatal branch is NOT the same as a silent one (HIGH-1, 47-REVIEW.md). The
+# first version of this script printed `ALL PASSED` and listed P6 under
+# "Partitions verified" even when P6 never ran, so a host without Node shipped a
+# green gate that had executed zero of the 688 frontend tests. P6_ran is now the
+# single source of truth for the closing banner: when it is not 1 the banner
+# changes to `PARTIAL PASS — FRONTEND NOT VERIFIED`, P6 is printed under a
+# separate `NOT VERIFIED` heading instead of `Partitions verified`, and the exit
+# code stays 0 so a WSL-only host — where every Go partition needs WSL and node
+# does not exist inside it — can still run this gate at all. The skip can no
+# longer be read as a pass by either an operator or an auditor.
 
 set -uo pipefail
 
@@ -186,9 +197,19 @@ pass "P5 determinism strength (100x + shuffle)"
 # ---------------------------------------------------------------------------
 # P6: frontend line (Windows side — this box's WSL has no node)
 # ---------------------------------------------------------------------------
+# P6_ran — 1 only after BOTH P6a (tsc) and P6b (vitest) actually ran and
+# exited 0. Any other value means the frontend partition produced no evidence,
+# and the closing banner must say so (HIGH-1).
+P6_ran=0
+P6_skip_reason=''
 info "P6: frontend (tsc --noEmit + vitest run)"
 if ! command -v npx >/dev/null 2>&1; then
-  info "P6: npx is absent from PATH on this host — FE segment not run (environment guard on a tool check, not on a test outcome)"
+  if [ "${SKIP_FE:-0}" = "1" ]; then
+    P6_skip_reason="npx absent from PATH — SKIPPED BY OPERATOR (SKIP_FE=1)"
+  else
+    P6_skip_reason="npx absent from PATH on this host — frontend partition was NEVER RUN (re-run with node on PATH, or set SKIP_FE=1 to record this as an operator decision)"
+  fi
+  info "P6: ${P6_skip_reason}"
 else
   # No empty-log guard here, unlike the Go segments: `tsc --noEmit` prints
   # nothing on success, so silence is its normal pass signal. The exit code is
@@ -212,6 +233,7 @@ else
   fi
   tail -12 "$WORK/p6-vitest.log"
   pass "P6b frontend vitest run"
+  P6_ran=1
 fi
 
 # ---------------------------------------------------------------------------
@@ -250,7 +272,13 @@ done
 pass "P7 disposition record (19 IDs, each one row, closed 去向, non-empty 证据)"
 
 echo ""
-echo -e "${GREEN}=== Phase 47 Gate: ALL PASSED ===${NC}"
+if [ "$P6_ran" -eq 1 ]; then
+  echo -e "${GREEN}=== Phase 47 Gate: ALL PASSED ===${NC}"
+else
+  echo -e "${YELLOW}=== Phase 47 Gate: PARTIAL PASS — FRONTEND PARTITION NOT VERIFIED ===${NC}"
+  echo -e "${YELLOW}=== This gate did NOT pass in full. P6 did not run: ${P6_skip_reason} ===${NC}"
+  echo -e "${YELLOW}=== No frontend evidence was produced — neither a pass nor a failure. ===${NC}"
+fi
 echo ""
 echo "Partitions verified:"
 echo "  P1 build + vet            — CGO_ENABLED=1 build ./... + vet ./internal/{ontology,server,knowledge}/..."
@@ -258,5 +286,12 @@ echo "  P2 ontology suite         — shacl/store/induction/emitter, exit-code a
 echo "  P3 targeted repairs       — 4 repaired tests, >= 6 --- PASS (floor measured 2026-10-19)"
 echo "  P4 full internal suite    — ./internal/... hermetic, exit-code authoritative"
 echo "  P5 determinism strength   — TestDeriveEdgesDeterministic -count=100 + one -shuffle=on run"
-echo "  P6 frontend line          — tsc --noEmit + vitest run (Windows side; npx-absent guard is a tool check)"
+if [ "$P6_ran" -eq 1 ]; then
+  echo "  P6 frontend line          — tsc --noEmit + vitest run (Windows side)"
+fi
 echo "  P7 disposition record     — 19 v1.6 leftover IDs, closed 去向 vocabulary, non-empty 证据"
+if [ "$P6_ran" -ne 1 ]; then
+  echo ""
+  echo -e "${YELLOW}NOT VERIFIED (no evidence either way — this is NOT a pass and NOT a fail):${NC}"
+  echo "  P6 frontend line          — ${P6_skip_reason}"
+fi
