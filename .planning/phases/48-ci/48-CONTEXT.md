@@ -53,6 +53,13 @@
 - **D-27：** 已知缓存收益边界（写给 planner 省一轮试错）：两个 Dockerfile 都是 `COPY . .`，每次提交都让编译层失效，故 GHA 缓存**只对 `go mod download` / `npm ci` 层有效**；且 `type=gha` 不保留 `RUN --mount=type=cache` 的内容。
 - **D-28：** `Dockerfile.backend` 的 `golang:1.25-alpine` 是浮动 tag，落后补丁时 go.mod 的 `go 1.25.5` 会触发工具链下载——CI 冷构建耗时需按此预期（Go job 整体预期 5–10 分钟；`./...` 本地 warm ≈146s vs `./internal/...` ≈52s，差额主因 `cmd/spike-deep` 37.7s）。
 
+### Research-driven amendments (2026-10-19, 48-RESEARCH.md §Decision Conflicts，用户已批准)
+- **D-29（修订 D-26）：** `permissions` 允许 `contents: read` + `pull-requests: read`，**仍禁止任何 write scope**。理由：`golangci-lint-action@v9` 的 `only-new-issues` 依赖 `pulls.get`，需 `pull-requests: read`；GitHub 语义下未声明的 scope 一律 `none`，而该 action 拿到 403 后只 `console.warn` 并静默退化为全仓 lint——正是 D-01/D-06 禁止的"把未跑折叠成 PASS"。GitHub 明确允许为 fork PR 增删 **read** 权限（只阻断 write），故 fork 兼容性不受影响。`verify-phase-48.sh` 须断言：`.github/workflows/` 下出现的每个 permissions scope ∈ {`contents: read`, `pull-requests: read`}，且全目录零 `write`。
+- **D-30（修订 D-22）：** `actions/checkout@v7` 移出 composite，由三个 job 各自执行；`.github/actions/setup` 只含 setup-go / setup-node / setup-buildx。理由：本地 action 从 `github.workspace` 解析，仓库未 checkout 时 runner 直接抛错退出；composite 无法 bootstrap 自己的 checkout。**不得**在 composite 内保留冗余 checkout（第二次 checkout 会重置工作区并浪费时间）。D-22 的目的（工具链版本单点维护 + Phase 51 复用）完全保留。
+
+### 前提更正（非决策，研究证伪）
+- CONTEXT `<specifics>` 称 "GHA 缓存需 `actions: write` 权限，若与 D-26 的'仅 contents: read'冲突，planner 须显式取舍"——**该前提为假**。Docker 与 GitHub 文档按**事件与 ref** 限定缓存访问（常规 `pull_request` merge-ref 保留读写缓存访问；`issue_comment` / `pull_request_target` / `pull_request [closed]` 为只读），`permissions` 块管不着；`actions: write` 是缓存**管理/删除** API（如 `gh cache delete`）的权限。故 D-26 与 Docker `cache-to: type=gha` **不冲突**，planner 无需放宽任何权限。若首次运行出现 `failed to reserve cache`，先查事件/ref，不要先动 `permissions`。
+
 ### Claude's Discretion
 - 单个 `ci.yml` 内的 job 命名与 `concurrency` 组的具体写法（只要 job 名全局唯一、且并发取消不破坏 required check 语义）。
 - `.golangci.yml` 中 `std-error-handling` 之外是否额外加少量 preset。
