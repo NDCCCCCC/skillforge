@@ -1,0 +1,55 @@
+# golangci-lint v2 configuration for SkillForge.
+#
+# Phase 48 / D-01, D-02, D-03, D-08.
+#
+# D-01: full linter set + a changed-lines filter on the CI side. There is NO
+# baseline file and NO permanent exemption allowlist here — a finding is either
+# a finding or it is not reported at all. Never add a long-lived exemption
+# list of named findings under `linters.exclusions`.
+#
+# D-02: v2 schema. `linters.default: standard` resolves to errcheck + govet +
+# ineffassign + staticcheck + unused. `run.timeout` is mandatory because v2's
+# default is 0 (disabled).
+#
+# D-03: `std-error-handling` absorbs the ~102 bare `defer X.Close()` sites and
+# the print noise as a *preset*, not as a hand-written suppression list; errcheck
+# is off in _test.go because test assertions are not production error paths;
+# revive's `unused-parameter` is off because it false-fires on MCP-shaped
+# handlers, where an interface-shaped handler legitimately takes parameters the
+# implementation ignores.
+#
+# D-08: the repo has zero `Code generated ... DO NOT EDIT` files, so no
+# generated-code exclusion is configured. If that ever changes, add it here
+# rather than in the workflow.
+#
+# NOTE (revive `package-comments`): it is NOT in the disabled list below. Every
+# NEW Go file in this repo must therefore carry a `// Package <name>` comment
+# — verify-phase-48.sh P4's `golangci-lint run` over a sentinel module asserts
+# the current tree still configures cleanly under this rule.
+#
+# `formatters:` is deliberately absent: `run` does not check formatting, so the
+# absence means standard gofmt behaviour and no formatter churn.
+
+version: "2"
+
+run:
+  timeout: 10m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - revive
+  settings:
+    revive:
+      # Default rules stay on; an explicit rule entry below overrides one.
+      enable-default-rules: true
+      rules:
+        - name: unused-parameter
+          disabled: true
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
