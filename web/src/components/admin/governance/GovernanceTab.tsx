@@ -104,6 +104,24 @@ export default function GovernanceTab() {
       .catch((e: unknown) => setShaclError(e instanceof Error ? e.message : String(e)));
   }, []);
 
+  // Single refetch implementation shared by the manual retry button and the
+  // post-rollback notification (REL-02 / D-02b). It never rethrows: a failed
+  // refresh is surfaced through shaclError, because the caller (TimelineView's
+  // success path) has no way to handle a rejection — the rollback itself
+  // already succeeded at that point.
+  const refreshShaclReport = () => {
+    // WR-07: a successful refetch must clear the stale error —
+    // ShaclReportView renders the failure branch whenever error is
+    // truthy, so leaving it set kept the view stuck on
+    // 「校验报告加载失败」 even after the refetch succeeded.
+    fetchShaclReport()
+      .then((r) => {
+        setShaclError(null);
+        setShaclReport(r);
+      })
+      .catch((e: unknown) => setShaclError(e instanceof Error ? e.message : String(e)));
+  };
+
   const healthBanner = shaclReport ? (
     <HealthBanner report={shaclReport} />
   ) : shaclError ? (
@@ -142,22 +160,11 @@ export default function GovernanceTab() {
         <ShaclReportView
           report={shaclReport}
           error={shaclError}
-          onRetry={() => {
-            // WR-07: a successful retry must clear the stale error —
-            // ShaclReportView renders the failure branch whenever error is
-            // truthy, so leaving it set kept the view stuck on
-            // 「校验报告加载失败」 even after the refetch succeeded.
-            fetchShaclReport()
-              .then((r) => {
-                setShaclError(null);
-                setShaclReport(r);
-              })
-              .catch((e: unknown) => setShaclError(e instanceof Error ? e.message : String(e)));
-          }}
+          onRetry={refreshShaclReport}
         />
       )}
       {view === 'provenance' && <ProvenanceGraphView />}
-      {view === 'timeline' && <TimelineView />}
+      {view === 'timeline' && <TimelineView onRollbackComplete={refreshShaclReport} />}
     </div>
   );
 }
