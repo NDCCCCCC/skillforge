@@ -5,11 +5,11 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-03-PLAN.md
-last_updated: "2026-10-19T09:10:30.733Z"
+stopped_at: Completed 48-02-PLAN.md
+last_updated: "2026-10-19T09:29:07.515Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 48 execution started
-state_head: 6a9013bde68ffe08ec09e7f697594ab608dc5841
+state_head: 6d50abb9d5411d41b7d6c8c84a913619383a1b06
 progress:
   total_phases: 5
   completed_phases: 1
@@ -36,7 +36,7 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-10-19 — Phase 48 execution started
 
@@ -63,6 +63,7 @@ Progress: [██░░░░░░░░] 20%
 |------|----------|-------|-------|
 | Phase 48 P01 | 13min | 4 tasks | 4 files |
 | Phase 48 P03 | 2min | 3 tasks | 2 files |
+| Phase 48 P02 | 5 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 48]: Phase 48-03: fork/Dependabot exclusion is a job-level if: — the on: trigger block stays byte-identical, so no pull_request_target can slip in (D-09/D-11).
 - [Phase 48]: Phase 48-03: eval-gate-skip-notice runs on the complement and emits ::notice::; the three secret mappings stay asserted, so hardening cannot silently turn the live gate into a non-live one (D-10).
 - [Phase 48]: Phase 48-03: ROADMAP SC-4 now states --frozen bootstraps BGE-M3 / Milvus / GLM before scoring; only --gate-check is hermetic (D-12/D-13).
+- [Phase 48]: 48-02: the fe and docker jobs inherit the workflow-level contents: read ceiling — neither declares job-level permissions, so the mutable-scope surface stays exactly the go job's pull-requests: read.
+- [Phase 48]: 48-02: the forbidden 'docker compose' literal is kept out of ci.yml even in prose, so a raw-text ban in P7/P8 can distinguish the workflow from commentary about it.
+- [Phase 48]: 48-02: Docker is statically asserted only on this host (absent from Git Bash and WSL); CICD-03 closes on the first real CI run (VALIDATION M1), not on a local build claim.
 
 ### Pending Todos
 
@@ -125,7 +129,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T09:10:30.220Z
-Stopped at: Completed 48-03-PLAN.md
+Last session: 2026-10-19T09:29:07.034Z
+Stopped at: Completed 48-02-PLAN.md
 Resume file: None
 Resume command: `/gsd-execute-phase 48` — 4 plans / 3 waves (48-01 tracer → 48-02 ∥ 48-03 → 48-04). Iteration-3 issue list is closed; see `48-PLAN-REVISION-3.md` for the audit trail.
