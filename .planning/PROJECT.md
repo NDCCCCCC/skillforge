@@ -6,6 +6,7 @@
 - ✅ **v1.6 SHIPPED 2026-10-08** — SPARQL Schema Detection + Entity SHACL Shapes：D-SPARQL-05 β 语义落地 + 实体 ABox 纳入 SHACL 启动校验；milestone audit 6/6 需求 + 11/11 wiring + E2E 完整（tech_debt 无 blocker，已 ack 至 backlog）
 - ✅ **Phase 45 COMPLETE 2026-10-03** — D-SPARQL-05 落地（β 语义：schemaSubjects ∩ 13 谓词 allowlist，查询时派生零持久态；verify-phase-45.sh 4 分区全绿；D-45-DEF-01/02/03 deferred 记录在案）
 - ✅ **Phase 46 COMPLETE 2026-10-08** — 实体 SHACL shapes 落地（severity 归位 shapes 数据 + entities.ttl Product/Org shapes + boot/rollback 双消费点 env 列表化 + governance 分层呈现；verify-phase-46.sh 全绿 16/16 must-haves；entityCode 零约束为用户决策 2026-10-04；46-REVIEW 9 项 Critical/Warning 已修含 CR-01 rollback ABox wipe）
+- ✅ **Phase 47 COMPLETE 2026-10-19** — 清债与可复现基线（REL-01 边方向确定性化，真实根因是 map 迭代序而非浮点 Weight，修复前实测 17–25% flake；REL-02 rollback 后 SHACL 报告后端写缓存 + FE 共享 refetch，audit WARNING-1 闭合；REL-04 BL-01..04 补录 + 19 项遗留处置记录；verify-phase-47.sh 零 waiver 门 WSL exit 0，验证 26/28 must-haves、0 FAILED）
 - 🚧 **v1.7 IN PROGRESS** — Open-Source Readiness（门面/CI/Hermetic Demo/清债+发布工程；定义见下方 Current Milestone）
 
 ## Current Milestone: v1.7 Open-Source Readiness
@@ -185,4 +186,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-13 — v1.7 Open-Source Readiness milestone started（基于缺口审查）*
+*Last updated: 2026-10-19 — Phase 47 清债与可复现基线完成（v1.7 首个 phase）*
