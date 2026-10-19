@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-05-PLAN.md
-last_updated: "2026-10-19T12:33:59.594Z"
+stopped_at: Completed 48-06-PLAN.md
+last_updated: "2026-10-19T12:49:48.465Z"
 last_activity: 2026-10-19
 last_activity_desc: Phase 48 execution started
-state_head: 11a3974c3f6d76b9059c893610504a0aef812ebf
+state_head: 10d46643f1336d9f79aacf49cdb3be66a0d01344
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 19
-  completed_plans: 11
+  completed_plans: 13
   percent: 20
 ---
 
@@ -36,7 +36,7 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 6 of 11
+Plan: 7 of 11
 Status: Ready to execute
 Last activity: 2026-10-19 — Phase 48 execution started
 
@@ -66,6 +66,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P02 | 5 min | 3 tasks | 2 files |
 | Phase 48 P04 | 16min | 4 tasks | 1 files |
 | Phase 48 P05 | 6 min | 3 tasks | 1 files |
+| Phase 48 P06 | 3 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-05: the secret allowlist is explicit and named — secrets.GITHUB_TOKEN anywhere; GLM_API_KEY, BGE_M3_URL and MILVUS_ADDRESS only in eval-gate.yml.
 - [Phase 48]: 48-05: read-all stays rejected — D-29 enumerates the ceiling as exactly {contents: read, pull-requests: read}; accepting read-all would be a D-29 amendment first and a code change second.
 - [Phase 48]: 48-05: every mutation probe writes under a trap and asserts git status --porcelain -- .github/workflows is empty, so a leaked fixture fails the probe rather than passing it.
+- [Phase 48]: 48-06: keep `set -o pipefail` in the replay run body even though `shell: bash` implies it, so the exit-code intent survives a later removal of the shell key (WR-03).
+- [Phase 48]: 48-06: live credentials live on the two consuming steps (replay + gate check), not job-level env; job-level keeps configuration only (WR-08).
+- [Phase 48]: 48-06: no waiver token added — zero continue-on-error, `|| true`, or `exit 0`; the phase gate stays fully enforcing (T-48-28).
 
 ### Pending Todos
 
@@ -136,7 +140,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-19T12:33:58.982Z
-Stopped at: Completed 48-05-PLAN.md
+Last session: 2026-10-19T12:49:47.973Z
+Stopped at: Completed 48-06-PLAN.md
 Resume file: None
 Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.
