@@ -762,7 +762,18 @@ jobs = doc.get("jobs") or {}
 if "fe" not in jobs:
     raise SystemExit("P6: ci.yml has no `fe` job (CICD-02)")
 
-steps = jobs["fe"].get("steps") or []
+fe_job = jobs["fe"]
+steps = fe_job.get("steps") or []
+
+# R2-WR-01 class, extended to the fe line (D10): a job-level `if:` makes the
+# whole gate skippable while its command text stays intact. P3 already applies
+# this rule to the go and verify jobs; the key's presence is the violation, and
+# there is no allowlist.
+if "if" in fe_job:
+    raise SystemExit(
+        "P6: the fe job carries a job-level if: %r - the gate is skippable (R2-WR-01)"
+        % (fe_job.get("if"),)
+    )
 
 # WR-01 / T-48-07: same rule as P2/P3 — any step-level `if:` can disable a gate
 # step while its command text stays intact. No allowlist: neither the fe job nor
@@ -819,7 +830,7 @@ cat "$WORK/p6.log"
 
 ok_partition "P6" "$WORK/p6.log" "FE-LINE-OK"
 
-done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals; evidence-bound success token FE-LINE-OK)"
+done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals, rejects both job- and step-level if:; evidence-bound success token FE-LINE-OK)"
 
 # ---------------------------------------------------------------------------
 # P7: docker-line
@@ -838,7 +849,17 @@ jobs = doc.get("jobs") or {}
 if "docker" not in jobs:
     raise SystemExit("P7: ci.yml has no `docker` job (CICD-03)")
 
-steps = jobs["docker"].get("steps") or []
+docker_job = jobs["docker"]
+steps = docker_job.get("steps") or []
+
+# R2-WR-01 class, extended to the docker line (D11): a job-level `if:` makes
+# the whole gate skippable while its build steps stay intact. Same rule P3
+# applies to the go and verify jobs; no allowlist.
+if "if" in docker_job:
+    raise SystemExit(
+        "P7: the docker job carries a job-level if: %r - the gate is skippable (R2-WR-01)"
+        % (docker_job.get("if"),)
+    )
 
 # WR-01: the two Docker image builds are the docker line's gate steps. A
 # step-level `if:` on either one makes CICD-03 silently unverified.
@@ -890,7 +911,7 @@ cat "$WORK/p7.log"
 
 ok_partition "P7" "$WORK/p7.log" "DOCKER-LINE-OK"
 
-done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes; evidence-bound success token DOCKER-LINE-OK)"
+done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes, rejects both job- and step-level if:; evidence-bound success token DOCKER-LINE-OK)"
 
 # ---------------------------------------------------------------------------
 # scan_trust_surface <workflow-dir> — ONE implementation, two callers.
@@ -1594,8 +1615,8 @@ echo "  P2 go-line        — the 5 CI command fragments + determinism -list gua
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; evidence-bound success token"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; evidence-bound success token revive"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
-echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals; evidence-bound success token"
-echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface; evidence-bound success token"
+echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; evidence-bound success token"
+echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface, rejects both job- and step-level if:; evidence-bound success token"
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface; evidence-bound success token"
 echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source; evidence-bound success token"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present; evidence-bound success token"
