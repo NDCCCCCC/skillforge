@@ -5,17 +5,17 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-14-PLAN.md
-last_updated: "2026-10-19T23:58:54.371Z"
+stopped_at: Completed 48-15-PLAN.md (blocked-branch reconciliation; Run outcome: blocked on three classified persistent real reds)
+last_updated: "2026-10-20T01:50:00.000Z"
 last_activity: 2026-10-20
-last_activity_desc: Phase 48 execution started
-state_head: 57d294f78bf08167d4423f5be047569e5f1a374c
+last_activity_desc: Phase 48 plan 15 executed end-to-end: owner history decision recorded (option a), force-pushed to public main, ci.yml ran four times on the runner, three classified real reds documented per recipe step 5, WR-06 closed-by-evidence on run-3, all seven reconciliation files updated consistently
+state_head: bb91f83
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 23
-  completed_plans: 21
-  percent: 20
+  completed_plans: 22
+  percent: 22
 ---
 
 # Project State
@@ -37,10 +37,10 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 Phase: 48 (CI 矩阵) — EXECUTING
 Plan: 15 of 15
-Status: Ready to execute
-Last activity: 2026-10-20 — Phase 48 execution started
+Status: complete (blocked-branch reconciliation; Run outcome: blocked on three classified persistent real reds; ready for `/gsd-verify-work`)
+Last activity: 2026-10-20 — Phase 48 plan 15 executed end-to-end
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 22%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P12 | 10min | 3 tasks | 2 files |
 | Phase 48 P13 | 16 min | 3 tasks | 1 files |
 | Phase 48 P14 | 5 min | 2 tasks | 3 files |
+| Phase 48 P15 | 53 min | 3 tasks | 7 files (blocked-branch: 4 ci.yml runs on the public runner; 7 planning files reconciled; WR-06 closes on run-3) |
 
 ## Accumulated Context
 
@@ -145,7 +146,7 @@ None yet.
 - **LOW-1（已裁定接受，`GovernanceTab.tsx:167`）**: REL-02 的 FE 连线本身无直测（删掉 prop 三个新测试照样过）。
 - **D-05 已知限制（明确接受，非隐式修复）**: 启动校验会 quarantine 坏实体、rollback 不会，故回滚确认框与横幅的 `N 个实体已隔离` 都夸大了 rollback 的实际行为。三处显式记录，从未作为已修复呈现。
 - **既有 flake（非 Phase 47 引入，`audit_writer_test.go:59`）**: `TestAuditWriterPreconditions` 对文件型 SQLite store 开库时套 5s `context.WithTimeout`，CPU 超卖下会超时。串行全量 8/8 绿（Phase 47 验证者自行复跑 3/3 绿），8 份并发则全红。`git log -S` 定源于 `9613d4d`（2026-08-20, Phase 11）。Phase 48 每线单 job 不会触发。
-- CICD-01/02/03 unproven: no GitHub Actions run exists for ci.yml, and none can be triggered from this host — git transport to github.com is unreachable (push --dry-run: 'Failed to connect to github.com port 443'), push.branches is [main] by design, and the PR-to-main path is closed because origin/main shares no history with this branch (merge-base empty). Needs a host with working git transport.
+- **CICD-01/02/03 status as of plan 48-15 (2026-10-20):** Runner executed ci.yml four times on the public default branch (run-1 id 39350901689, run-2 id 39352480525, run-3 id 39353593172, run-4 id 39355131431; all `head=branch/main`, event `push`); three classified persistent real reds persist on every run — go job's `determinism -count=100 (P5a)` exits 141 (SIGPIPE) on the runner before any test output (no `-test.shuffle` seed recoverable because D-19 keeps `-v` off the P5a command), fe job's `Sparkline.test.tsx:79 TestSparklineNoDeps` hardcodes an absolute Windows path that doesn't exist on the Linux runner (ENOENT; 1 of 689 tests fails), docker job's `Dockerfile.backend` alpine-musl base lacks glibc symbols `backtrace` / `malloc_trim` / `__res_init` required by the static duckdb archive. Per the recipe blocked-branch rule (`do NONE of the flips`), CICD-01/02/03 stay `Pending`; the next host only needs to fix these three source-side issues and re-push `main` to obtain four-green in a single run. WR-06 closes positively on run-3 evidence (lint step green with `only-new-issues: true` alone on the fast-forward push).
 
 ## Deferred Items
 
@@ -174,6 +175,6 @@ Items acknowledged and carried forward from previous milestone close.
 ## Session Continuity
 
 Last session: 2026-10-19T23:58:53.835Z
-Stopped at: Completed 48-14-PLAN.md
-Resume file: None
-Resume command: `/gsd-plan-phase 48 --gaps` — all 4 plans executed (48-01/02/03 complete, 48-04 Task 3 environment-blocked on an unobtainable CI run); verification returned `gaps_found` 3/9 must-haves with 19 open review findings, 9 of them high-severity threat closures falsified by mutation. See 48-VERIFICATION.md, 48-REVIEW-DISPOSITION.md, 48-SECURITY.md.
+Stopped at: Completed 48-15-PLAN.md (final executor; tasks 1/2/3 — first two via continuation agent that resumed from Task 1's decision checkpoint, third from a fresh agent re-running the recipe end-to-end)
+Resume file: 48-15-SUMMARY.md
+Resume command: `/gsd-verify-work` — plan 48-15 is in blocked-branch: ci.yml ran four times on the public default branch (run-1 force-push, run-2 candidate-A attempt, run-3 recipe-revert lint green, run-4 supplementary) and finished with `Run outcome: blocked` because three classified persistent real reds (P5a SIGPIPE on go, Sparkline test path hardcoded to a Windows path on fe, Dockerfile.backend alpine-musl base missing glibc symbols on docker) prevent the four-green run conclusion required to flip CICD-01/02/03. WR-06 closes positively on run-3 evidence; full verification will check the seven reconciliation files for consistency (RECIPE blocked-branch rule: do NONE of the flips). See 48-15-SUMMARY.md, 48-VALIDATION.md M1 / M1a / M1b / M1c, 48-SECURITY.md M1 paragraph + WR-06 paragraph, both 48-REVIEW-DISPOSITION-R1.md WR-06 rows + 48-REVIEW-DISPOSITION.md line 51 pointer, ROADMAP.md Blocked-on paragraph + 48-15 plan list entry, STATE.md 48-15 entries appended to the 48-11 / 48-14 historical lines.
