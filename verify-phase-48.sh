@@ -473,7 +473,7 @@ cat "$WORK/p23.log"
 ok_partition "P2" "$WORK/p23.log" "STRUCT-OK"
 ok_partition "P3" "$WORK/p23.log" "STRUCT-OK"
 
-done_partition "P2 go-line (5 command fragments, determinism -list guard on a materialised list, CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate; evidence-bound success token STRUCT-OK)"
+done_partition "P2 go-line (5 command fragments, materialised-list determinism shape: -list redirects to go-test-list.txt, grep -qx reads the file, a pipe directly after -list is rejected; CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate; evidence-bound success token STRUCT-OK)"
 done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install; evidence-bound success token STRUCT-OK)"
 
 # ---------------------------------------------------------------------------
@@ -1611,7 +1611,7 @@ fi
 echo ""
 echo "Partitions verified:"
 echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; evidence-bound success token"
-echo "  P2 go-line        — the 5 CI command fragments + determinism -list guard on a materialised list, CGO_ENABLED=1 and nothing else, verify job ends at the gate; evidence-bound success token"
+echo "  P2 go-line        — the 5 CI command fragments + determinism materialised-list shape (list file, grep -qx on the file, no pipe after -list), CGO_ENABLED=1 and nothing else, verify job ends at the gate; evidence-bound success token"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; evidence-bound success token"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; evidence-bound success token revive"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
