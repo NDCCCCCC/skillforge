@@ -170,7 +170,7 @@ Plans:
 
 **Gap closure round 6**（48-VERIFICATION.md round-5 再验证 `gaps_found` 13/15：truth 12 P11 fixture 循环把删除折叠成 PASS〔WR-R5-01，R11/R12 复现〕、truth 9 install env 无 pin 且 T-48-78 条款失实〔WR-R5-02，R13/R14 复现〕；6 条 advisory；48-23..48-26 planned）
 
-- [ ] 48-23-PLAN.md — 两个 must-have gap：P11 fixture 循环按 fixture 断言拒绝理由 + file-presence guard + 五个 per-class token（WR-R5-01，R11/R12 转红）；publication token 引号变体 + dyn-secrets fixture（IN-R5-01 / IN-R5-02a，fixtures 12→14）；P3-VERIFYJOB 精确相等断言 install-step env map + P3-INSTENV-OK token（WR-R5-02，R13/R14/断言删除均转红）
+- [x] 48-23-PLAN.md — 两个 must-have gap：P11 fixture 循环按 fixture 断言拒绝理由 + file-presence guard + 五个 per-class token（WR-R5-01，R11/R12 转红）；publication token 引号变体 + dyn-secrets fixture（IN-R5-01 / IN-R5-02a，fixtures 12→14）；P3-VERIFYJOB 精确相等断言 install-step env map + P3-INSTENV-OK token（WR-R5-02，R13/R14/断言删除均转红）
 - [ ] 48-24-PLAN.md — advisory 硬化：P4 config-verify 组自有证据 P4-CONFIG-OK（IN-R5-02b）；P1 `pull_request_target` 扫描改注释剥离文本、双向演练（IN-R5-03）；死代码清理（IN-R5-05）+ 全量 R1-R14/G1-G4 演练回归记录
 - [ ] 48-25-PLAN.md — 记录半场：ci.yml push 触发注释更正为 run-3 实证（IN-R5-04，comment-only、job spans 不变）；48-SECURITY.md T-48-78 失实条款更正为 P3-INSTENV-OK pin + T-48-80..T-48-82 注册（34 行 0 open）；48-REVIEW-DISPOSITION.md 对账（15 条 round-4 rows 终态 + 7 条 round-5 rows）；COVERAGE.md round 标注
 - [ ] 48-26-PLAN.md — Class-A：快进推送 main 重立 round-6 verify job 公共绿灯（闭合 round-5 的 local-green-only 记录边界），go/fe/docker job spans 断言不变、CICD 状态不重翻；VALIDATION/SECURITY/ROADMAP/STATE 四处 run 记录对账（total 由 gh run list 现读，first all-green 保持 39380373930）
@@ -227,7 +227,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 21/22 | In Progress |  |
+| 48. CI 矩阵 | v1.7 | 22/26 | In Progress |  |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
