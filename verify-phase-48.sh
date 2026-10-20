@@ -170,6 +170,18 @@ done_partition() {
 
 # The linter version this gate is written against. A different binary is an
 # unverified gate, not a passing one.
+#
+# COORDINATED BUMP (IN-01 / 48-VERIFICATION advisory 4): the pinned version is
+# deliberately duplicated across ci.yml, because a workflow `with:` value
+# cannot read this script. Bump together with LINT_VERSION in verify-phase-48.sh whenever the pinned golangci-lint version changes:
+#   1. the go job's `golangci-lint-action` `version:` literal in
+#      .github/workflows/ci.yml, and
+#   2. the verify job's `go install .../cmd/golangci-lint@v...` line in the
+#      same file.
+# Drift is caught loudly at both ends: this gate's P4 preflight refuses any
+# binary whose version is not LINT_VERSION, and ci.yml's P3 assertion pins the
+# action's `version:` and the install line byte-for-byte — a half-bumped pair
+# reds the gate instead of silently passing.
 LINT_VERSION="2.12.2"
 
 # Two tokens this gate asserts the ABSENCE of, in ci.yml. They are assembled at

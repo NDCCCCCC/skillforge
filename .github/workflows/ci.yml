@@ -189,11 +189,18 @@ jobs:
   #
   # The script demands golangci-lint exactly v2.12.2 on PATH (its own preflight
   # refuses any other binary), so the job installs that one version through the
-  # Go module proxy (`go install`, checksum-DB verified) — no network
-  # fetch-and-execute surface remains anywhere in this file. The version
-  # literal in the install step must stay in sync with LINT_VERSION in
-  # verify-phase-48.sh: the gate's preflight refuses any other binary. Reusing
-  # the go job's lint action here would drag
+  # Go module proxy (`go install`, checksum-DB verified). The install is a
+  # module-proxy fetch of the pinned version — `GOPROXY` and `GOSUMDB` are
+  # declared on the step below, and `GOTOOLCHAIN: local` prevents `go install`
+  # from downloading and executing a different toolchain; no install script is
+  # fetched or executed. `GOTOOLCHAIN=local` is satisfiable: this job's
+  # `./.github/actions/setup` step (with `go: "true"`) installs Go through
+  # actions/setup-go with `go-version-file: go.mod`, go.mod pins `go 1.25.5`,
+  # and golangci-lint v2.12.2 requires `go 1.25.0` — so the toolchain already
+  # on the runner needs no download (IN-01, 48-22). The version literal in the
+  # install step must stay in sync with LINT_VERSION in verify-phase-48.sh:
+  # the gate's preflight refuses any other binary. Reusing the go job's lint
+  # action here would drag
   # in its push-run whole-repo fallback — the exact unmeasured surface WR-06
   # leaves open — which this job must not inherit: it lints the script's
   # sentinel modules, never the repository.
@@ -228,6 +235,14 @@ jobs:
           node: "false"
 
       - name: install pinned golangci-lint
+        # IN-01 (48-22): declare the install surface instead of inheriting it
+        # from the runner image. GOTOOLCHAIN=local keeps `go install` from
+        # downloading another toolchain (satisfiable — see the job comment);
+        # GOSUMDB pins the checksum database; GOPROXY pins the module proxy.
+        env:
+          GOTOOLCHAIN: local
+          GOSUMDB: sum.golang.org
+          GOPROXY: "https://proxy.golang.org,direct"
         run: |
           LINT_BIN="$(go env GOPATH)/bin"
           mkdir -p "$LINT_BIN"
