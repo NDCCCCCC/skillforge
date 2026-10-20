@@ -163,11 +163,12 @@ mutation probe named in its Mitigation cell. That establishes the gates bite on 
 files; it does not establish runner-side runtime behavior. Two classes of proof remain open and
 are tracked as Manual-Only M1–M5 in `48-VALIDATION.md`:
 
-- **A CI runner has executed these workflows — three times (recorded by plan 48-15; M1 partial
-  close, full close blocked).** `ci.yml` has run on the public default branch three times since
+- **A CI runner has executed these workflows — four times (recorded by plan 48-15; M1 partial
+  close, full close blocked).** `ci.yml` has run on the public default branch four times since
   `plan 48-15` force-pushed the local branch to public `main` on 2026-10-20. Run evidence
   (recorded in `48-15-SUMMARY.md`): run-1 (head `d168512`, run id 39350901689), run-2 (head
-  `62b6663`, run id 39352480525), run-3 (head `a2a4c86`, run id 39353593172). Every "mitigated"
+  `62b6663`, run id 39352480525), run-3 (head `a2a4c86`, run id 39353593172), run-4 (head
+  `304dcc4`, run id 39355131431). Every "mitigated"
   claim above is now a claim about a run, not about a declaration — that is the production
   difference between "declared green" and "executed green". The history-decision constraint
   recorded by plan 48-11 (`origin/main` was a single unrelated commit with empty merge-base) has
@@ -176,8 +177,12 @@ are tracked as Manual-Only M1–M5 in `48-VALIDATION.md`:
   by plan 48-11 was already falsified by 48-VERIFICATION.md round 2. What remains is three
   classified persistent real reds (recipe step 5; not a CI-matrix defect, but each requires a
   separate source-side fix to land four-green): **(a)** the go job's `determinism -count=100
-  (P5a)` guard exits 141 (SIGPIPE) on the runner at the test binary before any output
-  captures — the seed is non-recoverable because `-v` is omitted per D-19; **(b)** the fe job's
+  (P5a)` guard is a **workflow pipeline shape**, not a runner-environment artefact: `go test …
+  -list … | grep -qx …` under `set -o pipefail` lets `grep -q` close the pipe at the first match
+  while `go test -list` still writes its trailing `ok <pkg> <time>` line, so the producer takes
+  SIGPIPE and the pipeline exits 141 (reproduced on WSL Ubuntu 22.04 / go1.25.5: 6/6 exit 141
+  with the exact `ci.yml` line, exit 0 once the list is materialised); the fix actually applied
+  by 48-16 materialises the list to `$RUNNER_TEMP/go-test-list.txt` before grep; **(b)** the fe job's
   `Sparkline.test.tsx:79` test (`TestSparklineNoDeps`) hardcodes a Windows absolute path that
   does not exist on the Linux runner (ENOENT); **(c)** the docker job's `Dockerfile.backend`
   builds on an alpine-musl base, which lacks the glibc symbols (`backtrace`, `malloc_trim`,
@@ -239,7 +244,7 @@ that the `-test.shuffle` seed prints only under `-v`.
 - [x] `threats_open: 0` confirmed — the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, and the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill)
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
-**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-15 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14; on plan 48-15 the runner executed ci.yml three times on the public default branch and the run evidence is recorded in `48-15-SUMMARY.md` and `48-VALIDATION.md`. WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). Three classified persistent real reds (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) prevent the four-green run conclusion required to flip CICD-01/02/03; those three are not threats on the register — they are recorded source-side fixes pending, in the same "What this audit does NOT establish" section above and in the new Manual-Only rows.
+**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-15 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14; on plan 48-15 the runner executed ci.yml four times on the public default branch (run-1 id `39350901689` / head `d168512`, run-2 id `39352480525` / head `62b6663`, run-3 id `39353593172` / head `a2a4c86`, run-4 id `39355131431` / head `304dcc4`) and the run evidence is recorded in `48-15-SUMMARY.md` and `48-VALIDATION.md`. WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). Three classified persistent real reds (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) prevent the four-green run conclusion required to flip CICD-01/02/03; those three are not threats on the register — they are recorded source-side fixes pending, in the same "What this audit does NOT establish" section above and in the new Manual-Only rows.
 
 ## Security Audit 2026-10-19
 
