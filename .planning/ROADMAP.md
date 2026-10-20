@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 22/22 executed (48-01..48-15 original + gap closures; 48-16..48-19 round-4 gap closure; 48-20..48-22 round-5 gap closure)
+**Plans**: 22/22 executed + 4 planned for round-6 gap closure (48-01..48-15 original + gap closures; 48-16..48-19 round-4; 48-20..48-22 round-5; 48-23..48-26 round-6)
 
 **Blocked on**: Resolved — the four-green run was obtained. Run 39380373930 on head `630f875` (2026-10-20, public `main`) concluded `go=fe=docker=verify=success`; canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The three source fixes cleared the three classified reds: 48-16 materialised the `-list` output to `$RUNNER_TEMP/go-test-list.txt` (P5a SIGPIPE), resolved the Sparkline test subject through `import.meta.url` (Windows-path ENOENT on Linux), and moved the backend image to a glibc base and runtime (duckdb's `backtrace` / `malloc_trim` / `__res_init`). The earlier runs (runs 1-5) were all red — the first four on those classified build causes, and run 5 on a load-sensitive DuckDB reader-block ratio flake that was fixed at the source (best-of-5 minimum sampling) so run 6 could land. CICD-01/02/03 are Complete against run 39380373930. WR-06 remains closed-by-evidence on run-3 (lint green with `only-new-issues: true` alone on a fast-forward push).
 
@@ -167,6 +167,13 @@ Plans:
 - [x] 48-20-PLAN.md — verifier 断言级 token 第一部分：`ok_partition` 接受 token 列表；P2/P3 拆为 4+4 个 per-assertion token，P1 拆为 3 个，P4 拆为 4 个；四个删除演练必须 red 并点名分区
 - [x] 48-21-PLAN.md — verifier 断言级 token 第二部分：P6/P7/P9 各拆为 per-assertion token；P11 else-detector 改为先消费 range 再 grep（WR-01）；删除演练 + banner-in-else 演练
 - [x] 48-22-PLAN.md — trust-surface 规则改为解析后文档驱动（quoted `"paths":` / `paths :` / `toJSON(secrets)` / quoted-hash secret，P11 fixtures 12 个）；ci.yml linter install 声明 GOTOOLCHAIN/GOSUMDB/GOPROXY；版本双写说明；R1 ledger 历史标注 + T-48-70..T-48-79 注册
+
+**Gap closure round 6**（48-VERIFICATION.md round-5 再验证 `gaps_found` 13/15：truth 12 P11 fixture 循环把删除折叠成 PASS〔WR-R5-01，R11/R12 复现〕、truth 9 install env 无 pin 且 T-48-78 条款失实〔WR-R5-02，R13/R14 复现〕；6 条 advisory；48-23..48-26 planned）
+
+- [ ] 48-23-PLAN.md — 两个 must-have gap：P11 fixture 循环按 fixture 断言拒绝理由 + file-presence guard + 五个 per-class token（WR-R5-01，R11/R12 转红）；publication token 引号变体 + dyn-secrets fixture（IN-R5-01 / IN-R5-02a，fixtures 12→14）；P3-VERIFYJOB 精确相等断言 install-step env map + P3-INSTENV-OK token（WR-R5-02，R13/R14/断言删除均转红）
+- [ ] 48-24-PLAN.md — advisory 硬化：P4 config-verify 组自有证据 P4-CONFIG-OK（IN-R5-02b）；P1 `pull_request_target` 扫描改注释剥离文本、双向演练（IN-R5-03）；死代码清理（IN-R5-05）+ 全量 R1-R14/G1-G4 演练回归记录
+- [ ] 48-25-PLAN.md — 记录半场：ci.yml push 触发注释更正为 run-3 实证（IN-R5-04，comment-only、job spans 不变）；48-SECURITY.md T-48-78 失实条款更正为 P3-INSTENV-OK pin + T-48-80..T-48-82 注册（34 行 0 open）；48-REVIEW-DISPOSITION.md 对账（15 条 round-4 rows 终态 + 7 条 round-5 rows）；COVERAGE.md round 标注
+- [ ] 48-26-PLAN.md — Class-A：快进推送 main 重立 round-6 verify job 公共绿灯（闭合 round-5 的 local-green-only 记录边界），go/fe/docker job spans 断言不变、CICD 状态不重翻；VALIDATION/SECURITY/ROADMAP/STATE 四处 run 记录对账（total 由 gh run list 现读，first all-green 保持 39380373930）
 
 ### Phase 49: Hermetic Demo
 
