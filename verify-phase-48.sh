@@ -1463,7 +1463,17 @@ fi
 if [ "$BANNER_LINE" -le "$GATE_LINE" ]; then
   fail "P11 the passing banner is printed at line ${BANNER_LINE}, at or before the RAN gate at line ${GATE_LINE} — it is not inside the gated branch"
 fi
-if sed -n "$((GATE_LINE + 1)),${BANNER_LINE}p" "$SELF" | grep -qE '^[[:space:]]*else[[:space:]]*$'; then
+# The printed range is materialised BEFORE the grep consumes it. Under the
+# header's `set -o pipefail`, a quiet `grep -q` closes the pipe at its first
+# match; if the printed range ever outgrows the pipe buffer, sed takes EPIPE
+# and the pipeline reports 141 — read as "no else found" in exactly the
+# scenario this check exists for, a banner moved further down (48-VERIFICATION
+# advisory 1 / WR-01). Capturing the range into BANNER_RANGE and feeding
+# printf from it keeps the consumer a non-quiet grep that reads to
+# end-of-input, so the detector cannot silently stop detecting as the range
+# grows.
+BANNER_RANGE="$(sed -n "$((GATE_LINE + 1)),${BANNER_LINE}p" "$SELF")"
+if printf '%s\n' "$BANNER_RANGE" | grep -E '^[[:space:]]*else[[:space:]]*$' >/dev/null; then
   fail "P11 the passing banner sits after an else: it is no longer inside the RAN-gated branch"
 fi
 info "P11: banner print sites ${BANNER_SITES} (line ${BANNER_LINE}, RAN gate line ${GATE_LINE})"
