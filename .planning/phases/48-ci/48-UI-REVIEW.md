@@ -94,4 +94,32 @@ Skipped — no `components.json` exists at the repo root or under `web/`, and no
 
 ---
 
+## Re-Audit 2026-10-20 — Gap-Closure Round 3 (plans 48-12…48-15)
+
+**Verdict unchanged: Phase 48 still has no UI surface. No pillar score is issued.**
+
+The round-3 gap closure changed the phase's *workflow* files and its *records* — it did not change
+the phase's UI surface. File-union evidence over the round-3 commit range (`4a8e4c9..HEAD`):
+
+| File | UI-relevant? |
+|------|--------------|
+| `.github/workflows/ci.yml` (linter bootstrap, PyYAML pin, verify checkout, P5a guard) | No — YAML workflow, not UI source |
+| `.github/workflows/eval-gate.yml` (secret scoping) | No — YAML workflow, not UI source |
+| `verify-phase-48.sh` (success-token accounting, verify-job contract) | No — shell gate |
+| `.planning/phases/48-ci/48-SECURITY.md`, `48-VALIDATION.md`, `48-RESEARCH.md`, `48-REVIEW-DISPOSITION*.md`, `48-*-SUMMARY.md`, `.planning/ROADMAP.md`, `.planning/STATE.md`, `.planning/WINDOWS.md` | No — planning records |
+
+A grep of that union for `*.tsx|*.jsx|*.css|*.scss|*.html` and for any path under `web/` returns
+**zero files**. The round-3 plans also produced no new UI-SPEC.md (correctly — the phase has no
+UI design contract to write).
+
+One round-3 finding touches the *frontend gate* rather than the frontend: plan 48-13's P12/P2
+probes pin that the `fe` job still declares `npm ci` + `npx tsc --noEmit` + `npx vitest run`, and
+plan 48-15's run-1 evidence recorded that the `fe` job's `Sparkline.test.tsx:79` fails on a Linux
+runner (1/689). That is a **test-portability defect in existing frontend code** (hardcoded Windows
+absolute path), not a UI design or implementation change — and it is tracked as M1a in
+`48-VALIDATION.md` § Manual-Only, not as a pillar finding here. The `fe` job's own typecheck
+(`tsc --noEmit`) passed on every run.
+
+---
+
 *Recommended reviewer for this phase's actual quality surface: `/gsd-code-review` (CI/infra) — the phase already self-proofs via `verify-phase-48.sh` and carries a completed `48-SECURITY.md` / `48-REVIEW-DISPOSITION.md` cycle (plan 48-10).*
