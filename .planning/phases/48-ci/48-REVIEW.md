@@ -1,230 +1,76 @@
 ---
 phase: 48-ci
-reviewed: 2026-10-20T00:00:00Z
+reviewed: 2026-10-20T07:02:18Z
 depth: standard
-files_reviewed: 3
+files_reviewed: 5
 files_reviewed_list:
   - .github/workflows/ci.yml
-  - .github/workflows/eval-gate.yml
+  - Dockerfile.backend
+  - internal/duckdb/connector_test.go
   - verify-phase-48.sh
+  - web/src/components/chat/parts/Sparkline.test.tsx
 findings:
-  critical: 2
+  critical: 0
   warning: 3
-  info: 5
-  total: 10
+  info: 8
+  total: 11
 status: issues_found
 ---
 
-# Phase 48: Code Review Report (gap-closure round 3)
+# Phase 48: Code Review Report (gap-closure round 4)
 
-**Reviewed:** 2026-10-20
+**Reviewed:** 2026-10-20T07:02:18Z
 **Depth:** standard
-**Files Reviewed:** 3
+**Files Reviewed:** 5
 **Status:** issues_found
 
 ## Summary
 
-Three files reviewed: `.github/workflows/ci.yml`, `.github/workflows/eval-gate.yml`,
-`verify-phase-48.sh`. The phase's own gate (`bash verify-phase-48.sh`, 11 partitions, exit 0)
-was executed locally as a baseline, and the script was then **mutation-tested** against its own
-claims. The linter bootstrap was re-verified against the Go module proxy metadata.
+Round-4 delta reviewed at standard depth: `.github/workflows/ci.yml`, `Dockerfile.backend`,
+`internal/duckdb/connector_test.go`, `verify-phase-48.sh`, and
+`web/src/components/chat/parts/Sparkline.test.tsx` (diff base `d1c7d5d`).
 
-**Headline: the tracked M1c red has a root cause inside `ci.yml`, and it is deterministic — not a
-runner-environment flake.** `ci.yml:105` runs
+**The three targeted fixes are correct.** I re-checked each against the code and, where possible,
+against executables:
 
-```
-go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' | grep -qx 'TestDeriveEdgesDeterministic'
-```
+* **SC-1 / P5a SIGPIPE (`ci.yml:106-111`)** — correct. The `-list` output is now redirected to
+  `$RUNNER_TEMP/go-test-list.txt` and `grep -qx` reads the file; there is no pipe left to close
+  early, so the trailing `ok <pkg> <time>` line cannot EPIPE. The rename-proof guard is intact
+  (`grep -qx` fails the step under GitHub's `bash -eo pipefail`, and `go test -run` with zero
+  matches still exits 0). `TestDeriveEdgesDeterministic` exists at
+  `internal/knowledge/graph_edges_test.go:50`.
+* **Sparkline path (`Sparkline.test.tsx:77-95`)** — correct. `new NodeURL('./Sparkline.tsx',
+  import.meta.url)` resolves against the test module on every platform, and importing the
+  constructor from `node:url` avoids jsdom's replacement of the global `URL` (Node's `fs` accepts
+  only its own `URL` instances).
+* **glibc bases (`Dockerfile.backend`)** — structurally correct: the build stage is
+  `golang:1.25-bookworm` (matches go.mod `go 1.25.5`), the runtime is `debian:bookworm-slim` with
+  `libstdc++6`/`libgcc-s1` installed, and the source-build flags are unchanged.
 
-under `set -o pipefail`. `grep -q` closes the pipe at the first match; the `go` command's
-subsequent write (the `ok <pkg> <time>` line that `go test -list` always prints after the list)
-gets `EPIPE` → the process dies of SIGPIPE → exit 141 → `pipefail` propagates 141 → the step dies.
-Reproduced on Linux with go1.25.5 (the exact version the runner installs from `go.mod`): **exit
-141, 0-byte step log** — the identical fingerprint recorded for all four runner runs
-(`48-15-SUMMARY.md:209`: "exit 141 (SIGPIPE) … Captured step log: empty … ≈0.78 s"). The
-`grep`-without-`-q` variant and the "capture to a variable" variant both exit 0. **The `go` job
-can never be green with this step as written**, and the phase's disposition of M1c ("runner
-environment … not a code-side bug", `48-VALIDATION.md` M1c) is wrong; the runner-side remedies it
-proposes would not help. This is *not* a restatement of the tracked red — it is the cause, and the
-cause is in one of the three in-scope files.
+**The round-4 evidence binding materially narrows round-3 CR-02 but does not close it.** Deleting
+or replacing a whole probe now fails (the log is absent/empty, or the token is missing), which is
+the mutation class the comment names. What remains open is *partial* neutering: a partition can
+lose all of its own assertions inside a shared/multi-assertion probe while the probe's single
+success token is still printed. P2/P3 are the sharpest case — they share one `STRUCT-OK` token
+produced by one probe, so either partition's entire assertion set can be deleted and both still
+deposit PASS. Details and mutation table in WR-03.
 
-Second headline: **the gate's partition accounting does not establish that a probe ran.** The
-`ok_partition` success token is deposited by the partition body *at a hand-chosen line*, so
-deleting or neutralising a probe while leaving the token in place still prints
-`=== Phase 48 Gate: ALL PASSED ===` with exit 0. Four such mutations were run and all four
-survived (P9, P6, P5, P2/P3 probe neutered; plus P4's decisive `fail` downgraded to `info`).
-Only P8 has a mechanical backstop (the unbound `TRUST_SURFACE_COUNT`, `verify-phase-48.sh:1064`),
-and the recorded M8 drill covered only P8.
+The two round-3 advisories still present in these files are re-raised (WR-01, WR-02), with an
+additional replicated evasion shape for WR-02. The two known stale comments in this script
+(P2 header, probe comment) were checked and are **not** re-raised, per the phase record.
 
-Answering the three focus questions directly:
-
-* **Linter bootstrap (R2-CR-01)** — the supply-chain surface it replaced is materially gone:
-  `go install …@v2.12.2` is checksum-DB verified, needs no fetched executable, and the failure
-  surfaces as a **step failure, not a swallowed one** (`bash -e` aborts on a failed `go install`;
-  the `[ -x … ]` postcondition catches a `GOBIN`-mismatch install with a loud `FATAL`). All four
-  runner runs executed this exact shape and the `verify` job was green in every one. One residual:
-  `GOTOOLCHAIN`/`GOSUMDB`/`GOPROXY` are inherited from the runner image rather than declared, so
-  the file's "no network fetch-and-execute surface remains anywhere in this file" claim is
-  overstated (IN-01).
-* **Secret scoping in `eval-gate.yml`** — correct. The three live secrets are step-scoped to the
-  only consumer, and `cmd/eval --gate-check` genuinely short-circuits before any bootstrap
-  (`cmd/eval/main.go:463-466`, `runGateCheck` at `main.go:186-213` is a pure file comparison), so
-  the `Gate check` step needs no credential. **No secret is reachable by a step that does not
-  consume it.** One related gap: the job's checkout still persists the runner token (WR-03).
-* **Partition accounting** — yes, a probe can be deleted or neutralised while the gate prints
-  PASS (CR-02).
-* **Shell correctness** — one *live* instance of the pipefail/`grep -q` SIGPIPE class (CR-01) and
-  one *latent* instance in the gate's own else-detector (WR-01).
-
-## Critical Issues
-
-### CR-01: The P5a determinism guard SIGPIPEs deterministically on every Linux runner — the root cause of the tracked M1c red lives in `ci.yml`
-
-**File:** `.github/workflows/ci.yml:103-106`
-**Issue:** The step added by this phase (commit `05803d5`, "rename-proof P5a") is:
-
-```yaml
-      - name: determinism -count=100 (P5a)
-        shell: bash
-        run: |
-          set -o pipefail
-          go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' | grep -qx 'TestDeriveEdgesDeterministic'
-          go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
-```
-
-`grep -q` exits at the first match and closes the pipe's read end. `go test -list` always prints
-the test list **and then** a second line `ok <pkg> <time>`, so the `go` command performs a second
-write into a pipe whose reader is gone → `EPIPE` → SIGPIPE → the `go` command exits 141 →
-`pipefail` makes the pipeline's status 141 → `bash -e` aborts the step. The step log is empty
-because `grep -q` prints nothing and the `go` command's output was lost to the broken pipe.
-
-Evidence (WSL Ubuntu 22.04, go1.25.5 linux/amd64 — the same Go version `go-version-file: go.mod`
-installs on the runner):
-
-```
---- current ci.yml P5a line 1 under pipefail (real package) ---
-exit=141  log_bytes=0
---- with the proposed fix (grep without -q) ---
-exit=0  log_bytes=0
---- P5a second command: go test -run ... -count=100 ---
-ok  	github.com/skillforge/skillforge/internal/knowledge	0.170s
-exit=0
-```
-
-6/6 iterations of a minimal reproduction (`go test -list` + `grep -qx` + `pipefail`) returned 141.
-The fingerprint matches the runner exactly: **exit 141, empty log, ~0.78 s** (the second command
-never ran — it would have printed an `ok` line). The guard was present in all four runs
-(`git merge-base --is-ancestor 05803d5 <run-head>` is true for `d168512`, `62b6663`, `a2a4c86`,
-`304dcc4`), so this single line explains the red in every one of them.
-
-Consequences:
-1. The `go` job is **permanently red** → the phase's CICD-01 conclusion is unreachable.
-2. `48-VALIDATION.md` M1c and `48-15-SUMMARY.md:209` classify this as "runner environment …
-   not a code-side bug" and propose runner-side remedies (capture step output, abort early on
-   output-buffer close, add `-v`). None of those address the cause; the red is 100 % reproducible
-   in 0.2 s on any Linux host.
-3. The gate cannot catch it: the P2 probe (`verify-phase-48.sh:271-284`) only greps the *text* of
-   the step for `"-list '^TestDeriveEdgesDeterministic$'"` and `"set -o pipefail"`. It never
-   executes the pipeline, so a step that is textually correct and behaviourally guaranteed to fail
-   passes the gate. The same applies to the "48-07 rule" probes — they are text checks.
-
-**Fix:** remove the early pipe close. Either variant is verified exit 0:
-
-```yaml
-        run: |
-          set -o pipefail
-          go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' | grep -x 'TestDeriveEdgesDeterministic' >/dev/null
-          go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
-```
-
-or, with no pipe at all (most robust — nothing can SIGPIPE a file):
-
-```yaml
-        run: |
-          set -o pipefail
-          go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' > "$RUNNER_TEMP/testlist.txt"
-          grep -qx 'TestDeriveEdgesDeterministic' "$RUNNER_TEMP/testlist.txt"
-          go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
-```
-
-Note `grep -x` without `-q` reads the whole input, so the producer never sees a closed pipe, and
-its exit status is still 0-on-match / 1-on-no-match, so the "renamed test must red the gate"
-intent is preserved. The P2 probe's textual assertions still pass with either form (the
-`-list '…'` fragment and `set -o pipefail` both remain), so no gate change is required for the fix
-itself — but the P2 probe should be extended with a *behavioural* assertion so this class is
-caught in future (see CR-02).
-
-### CR-02: The success-token accounting does not prove a probe ran — a neutered partition still prints `ALL PASSED`
-
-**File:** `verify-phase-48.sh:103-136` (the mechanism), and every partition body it is meant to
-protect (`:214`, `:423-424`, `:525-624`, `:637-673`, `:688-749`, `:764-820`, `:882-1047`,
-`:1079-1223`)
-**Issue:** The header (`:103-115`) states the design goal: "A `done_partition` call site is not
-evidence that its partition body ran … every probe deposits a success token — `ok_partition` —
-immediately after its own decisive exit-code assertion, and `done_partition` refuses without
-begin AND ok. The deposit never precedes the assertion it certifies."
-
-The token is deposited by a **hand-placed line in the partition body**, not derived from the
-probe's outcome. `done_partition` therefore proves only that a line reading `ok_partition "P9"`
-was reached — not that P9's probe ran, and not that P9's assertion fired. The M8 mutation class
-("delete the probe, keep the bookkeeping") is closed only where a probe-owned *variable* happens
-to be interpolated afterwards: P8 (`TRUST_SURFACE_COUNT`, `:1064-1068`) and, incidentally, P1
-(`WF_COUNT`). The recorded drill (48-13 Task 1) exercised **P8 only**.
-
-Mutation tests run against the shipped script (each mutation applied to a copy, the copy
-executed, the copy deleted):
-
-| Mutation | Result |
-|---|---|
-| M-A: P9 probe invocation neutered (`python … <<'PY'` → `: <<'PY'`) | **exit 0, `ALL PASSED` printed** |
-| M-C: P6 probe invocation neutered | **exit 0, `ALL PASSED` printed** |
-| M-F: P5 probe invocation neutered | **exit 0, `ALL PASSED` printed** |
-| M-G: P2/P3 probe invocation neutered | **exit 0, `ALL PASSED` printed** |
-| M-E: P4's decisive `fail` (sentinel A) downgraded to `info` | **exit 0, `ALL PASSED` printed** |
-| M-B: P8's `scan_trust_surface` call deleted (the recorded M8 drill) | exit 1 — caught by the unbound `TRUST_SURFACE_COUNT` |
-| M-D: P9's `ok_partition` token deleted | exit 1 — caught by the P11 registry count |
-
-So: deleting the *token* is caught; deleting or neutering the *probe* is not, for 8 of the 11
-partitions. Because the neutered probe's log file is then empty, the partition prints its normal
-`PASS P9 eval-gate-gate (…)` line with no evidence behind it — the exact "found nothing, reported
-green" class this phase exists to close (Phase 47 HIGH-1), reproduced inside the phase's own gate.
-
-This matters beyond the script itself: the `verify` job in `ci.yml` runs this script, and the
-script's purpose is to be the evidence that the CI gate "will really run and really bite"
-(header `:4-6`). A green `verify` check currently does not carry that meaning for P2/P3, P4, P5,
-P6, P7, P9, P10, P11.
-
-**Fix:** make the token's deposit a function of the probe's exit status, so the bookkeeping cannot
-outlive the evidence. A minimal, mechanical shape:
-
-```bash
-# probe <partition-name> <command...> — runs the probe, deposits the token only on rc 0,
-# and never lets a failure be swallowed.
-probe() {
-  local pn="$1"; shift
-  local log="$WORK/${pn}.log"
-  "$@" > "$log" 2>&1
-  local rc=$?
-  [ "$rc" -eq 0 ] || { cat "$log"; fail "$pn probe failed (rc=$rc)"; }
-  ok_partition "$pn"
-}
-```
-
-and route every partition through it (the P2/P3 shared probe already has a single decisive
-assertion at `:419`; P4's four sentinels each have one at `:527/:533/:559/:584/:616/:619`; P5/P6/P7/P9
-each have one at `:676/:752/:823/:1226`). The additional belt-and-braces that P8 already has —
-a probe-owned variable interpolated into the `done_partition` message — is worth adding to the
-other partitions, because it converts "the probe was deleted" from a silent green into an
-unbound-variable abort. Concretely: have each probe set a partition-owned variable
-(`P9_EVIDENCE="…"`) and interpolate it in the `done_partition` message, exactly as P8 does with
-`TRUST_SURFACE_COUNT`.
+Verification method: code reading plus execution of the P4 sentinels against the real pinned
+linter (`golangci-lint 2.12.2` — sentinels B/C report `0 issues.`, D reports `revive`), and a
+sandbox execution of the exact P8 rule logic against four fixtures. `internal/duckdb` could not be
+compiled on this host (no C toolchain for CGO on Windows); its assessment is code review plus the
+recorded WSL run.
 
 ## Warnings
 
-### WR-01: The P11 else-detector uses the same SIGPIPE-prone idiom and can silently stop detecting
+### WR-01: The P11 else-detector still uses the SIGPIPE-prone `sed | grep -q` idiom and can silently stop detecting
 
-**File:** `verify-phase-48.sh:1312`
-**Issue:**
+**File:** `verify-phase-48.sh:1409-1411`
+**Issue:** (Round-3 WR-01, still open — the round-4 delta did not touch this line.)
 
 ```bash
 if sed -n "$((GATE_LINE + 1)),${BANNER_LINE}p" "$SELF" | grep -qE '^[[:space:]]*else[[:space:]]*$'; then
@@ -232,192 +78,180 @@ if sed -n "$((GATE_LINE + 1)),${BANNER_LINE}p" "$SELF" | grep -qE '^[[:space:]]*
 fi
 ```
 
-Under the file's `set -uo pipefail`, `grep -q` closes the pipe early; if the printed range is
-larger than the pipe buffer, `sed` is SIGPIPE'd and the pipeline's status becomes 141 — a
-*non-match* result, even though the `else` was found. Demonstrated on Linux:
-
-```
---- A: sed | grep -q  (current P11 Half-1 shape), LARGE range ---
-  exit=141  (0 = else-detector FIRED)
---- B: sed | grep (no -q), LARGE range ---
-  exit=0    (0 = else-detector FIRED)
---- C: sed | grep -q, 1-line range (shape live today) ---
-  exit=1    (1 = correctly not found)
-```
-
-Today the range is one line (gate at 1490, banner at 1491), so the defect is latent. It becomes
-active precisely in the scenario the check exists for: the range grows when the banner is moved
-down, which is the mutation the check is meant to catch — at which point the check silently
-reports "no else found" and the mutation is not caught.
-
-**Fix:** drop `-q` so grep consumes the whole range, or materialise the range first:
+Under the file's `set -uo pipefail`, `grep -q` closes the pipe at the first match. If the printed
+range ever exceeds the pipe buffer, `sed` takes EPIPE and the pipeline status becomes 141 — read
+as "no `else` found" even when one was printed. Today the range is one line (gate `:1596`, banner
+`:1597`), so the defect is latent; it becomes live exactly in the scenario the check exists for
+(a banner moved further down), at which point the mutation is silently accepted.
+**Fix:** consume the whole range before grepping:
 
 ```bash
 BANNER_RANGE="$(sed -n "$((GATE_LINE + 1)),${BANNER_LINE}p" "$SELF")"
 if printf '%s\n' "$BANNER_RANGE" | grep -E '^[[:space:]]*else[[:space:]]*$' >/dev/null; then
 ```
 
-### WR-02: The trust-surface secret and path-filter rules are regex-scanned over text and miss three evasion shapes
+### WR-02: The trust-surface path-filter and secret rules are still text scans and accept four valid-YAML evasion shapes
 
-**File:** `verify-phase-48.sh:940-1044` (specifically `:945` comment stripping, `:1027-1032` path
-filter, `:1036-1044` secret reference)
-**Issue:** The P8 rules run over `nocomment = re.sub(r"(?m)#.*$", "", src)` — a textual strip, not
-a YAML-aware one — and the path-filter rule is a plain substring test (`"paths:" in nocomment`).
-The already-parsed `doc` is loaded at `:946` but is not used for either rule. Three shapes are
-therefore accepted by the partition (each fixture run through the real `scan_trust_surface`
-function, extracted from the shipped script, against a temp directory):
+**File:** `verify-phase-48.sh:1003` (`SECRET_REF`), `:1032` (`nocomment` strip), `:1114-1119`
+(path filters), `:1122-1131` (secret walk)
+**Issue:** (Round-3 WR-02, still open.) Both rules run over
+`nocomment = re.sub(r"(?m)#.*$", "", src)`, a textual comment strip, not the parsed document. I
+executed the exact rule logic from the shipped function against four fixtures; all four returned
+**ACCEPT**:
 
-| Fixture | `scan_trust_surface` result |
-|---|---|
-| `on: pull_request: "paths": ["internal/**"]` (quoted key) | **rc=0 — TRUST-SURFACE-OK** |
-| `run: echo "${{ toJSON(secrets) }}"` | **rc=0 — TRUST-SURFACE-OK** |
-| `run: "audit note # ${{ secrets.DEPLOY_KEY }}"` | **rc=0 — TRUST-SURFACE-OK** |
+| Fixture | Rule it defeats | Result |
+|---|---|---|
+| `on: pull_request: "paths": ["internal/**"]` | T-48-03 path filter | accepted |
+| `on: pull_request: paths : ["internal/**"]` | T-48-03 path filter | accepted |
+| `run: echo "${{ toJSON(secrets) }}"` | T-48-04 secret reference | accepted |
+| `run: "echo x# ${{ secrets.DEPLOY_KEY }}"` | T-48-04 secret reference | accepted (stripped as a "comment") |
 
-Concretely:
-* `toJSON(secrets)` expands the whole `secrets` context — i.e. **every repository secret** — and
-  the `SECRET_REF` regex (`secrets\.([A-Za-z_][A-Za-z0-9_]*)`) requires a dot, so the bare context
-  is not matched. This is the T-48-04 hazard in its most direct form.
-* A path filter written with a quoted key (`"paths":`) or with a space before the colon
-  (`paths :`) is valid YAML and is honoured by GitHub, but neither contains the literal `paths:`,
-  so the T-48-03 "required check sits Pending forever" rule does not fire.
-* A secret reference after a `#` **inside a quoted string** is stripped by the textual
-  comment-stripper, even though it is not a comment.
+`toJSON(secrets)` expands the entire secrets context, which is the direct T-48-04 hazard; the
+quoted/space-before-colon path keys are valid YAML that GitHub honours, so the "required check
+sits Pending forever" class the rule exists to prevent is still reachable. The permissions walk
+(`:1075-1109`) is the one rule already driven from the parsed `doc` and is not affected.
+**Fix:** make the parsed document primary. For path filters, walk
+`doc.get("on", doc.get(True))` for `paths` / `paths-ignore` keys on every event. For secrets,
+recursively walk every string value in the document for `secrets.`, `secrets[`, and
+`toJSON(secrets` (and `toJSON( secrets`), then keep the textual scan only as a second layer that
+does not strip `#` from quoted strings.
 
-(A quoted write scope — `"packages": write` — is *not* a gap: it is caught by the structural
-permissions walk at `:988-993` / `:1012-1017`, which reads the parsed mapping. That is the
-strength the two rules above lack.)
+### WR-03: Success tokens are per-probe, not per-assertion — a partition can be fully neutered inside a shared probe and still deposit PASS (residual of round-3 CR-02)
 
-**Fix:** drive both rules from the parsed document instead of the raw text. The secret rule
-should walk the parsed structure for any string containing a `secrets` context reference
-(`secrets.`, `toJSON(secrets`, `secrets[`) rather than regexing the source; the path-filter rule
-should inspect `doc["on"]` (and `doc[True]` under PyYAML 1.1) for `paths` / `paths-ignore` keys
-on any event. The textual scan can stay as a belt-and-braces second layer, but the parsed check
-must be the primary one, and the `nocomment` strip must not be used to justify skipping strings.
+**File:** `verify-phase-48.sh:268-474` (P2/P3 shared probe and tokens), `:190-256` (P1),
+`:558-691` (P4), `:754-833` (P6), `:841-914` (P7), `:1166-1317` (P9)
+**Issue:** `ok_partition` (`:125-142`) now refuses when the log is missing, empty, or lacks the
+token, which correctly kills the "delete the probe invocation, keep the bookkeeping" mutation.
+But the token is one per *probe*, and several partitions have many assertions behind one token:
 
-### WR-03: `eval-gate.yml` persists the runner token in the one job that holds the three live secrets
+* **P2 and P3 share `STRUCT-OK`** (`:465`, `:473-474`). Deleting the whole P2 command-fragment
+  block (`:298-334`) or the whole P3 lint/permissions/verify block (`:366-463`) leaves
+  `print("STRUCT-OK")` intact, so **both** partitions still deposit PASS. This is the cleanest
+  reproduction of the residual hole: two named gates, one evidence token.
+* **P1** (`:190-256`): the token count proves every workflow file was parsed, but deleting the
+  composite parse (`:230-236`) or the `pull_request_target` scan (`:241-252`) leaves the
+  `P1-PARSED` tokens intact.
+* **P4** (`:558-689`): the deposited evidence is sentinel D's log only. Deleting sentinel A, B, or
+  C (and their `fail` paths) leaves `revive` in `p4-sentinel-d.log`, so P4 still passes.
+* **P6/P7/P9**: each probe ends with a single `print("...-OK")`; deleting any individual
+  assertion block (e.g. the new job-level `if:` checks at `:772-789` / `:858-872`) still leaves
+  the success print.
 
-**File:** `.github/workflows/eval-gate.yml:83-84`
-**Issue:**
-
-```yaml
-      - uses: actions/checkout@v7
-```
-
-No `persist-credentials: false`. `actions/checkout` defaults to persisting the job token into
-the repository's local git config (`.git/config` `http.https://github.com/.extraheader`), so the
-token is readable by anything the job executes for the whole job lifetime — and this job
-(a) builds `./bin/eval` from the checked-out tree and (b) runs it in the step that has
-`GLM_API_KEY`, `BGE_M3_URL` and `MILVUS_ADDRESS` in its environment.
-
-The phase's own IN-10 rule is applied in `ci.yml` for both jobs that execute checked-out content
-(`ci.yml:74-76` for `go`, `ci.yml:216-218` for `verify`), but neither P8 nor P9 checks it, so
-`eval-gate.yml` — the only workflow that holds live secrets — is the one workflow where the rule
-is silently absent. Impact is bounded (same-repo PRs and pushes only, `contents: read`), but the
-inconsistency is invisible to the gate: a reviewer reading P8/P9 would reasonably conclude the
-token is never persisted anywhere.
-
-**Fix:**
-
-```yaml
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-```
-
-and extend the P8 or P9 probe to assert that every workflow in `.github/workflows/` that
-executes checked-out content uses `persist-credentials: false`, so the rule is enforced rather
-than documented.
+The header comment (`:114-122`) claims "a neutralised or deleted probe cannot deposit PASS". That
+is true for whole-probe replacement, not for the assertion-level mutation it was introduced to
+close. Severity is warning rather than critical because the round-4 mechanism did remove the
+whole-probe case and the P11 registry still catches deleted tokens.
+**Fix:** emit one distinct token per assertion group and require each at deposit time, e.g.
+`print("P2-CMDS-OK")` at the end of the P2 section and `print("P3-LINT-OK")` at the end of the P3
+section, then `ok_partition "P2" "$WORK/p23.log" "P2-CMDS-OK"` and
+`ok_partition "P3" "$WORK/p23.log" "P3-LINT-OK"`. Apply the same split to P1
+(`P1-PARSED`, `P1-COMPOSITE-OK`, `P1-NO-PRT`), P4 (one token per sentinel), and the single-print
+probes in P6/P7/P9. `ok_partition` can accept a list of required tokens to keep the interface
+small.
 
 ## Info
 
-### IN-01: The linter install's integrity guarantees are inherited from the runner image, not declared — the "no network fetch-and-execute surface" comment is overstated
+### IN-01: The linter install's integrity settings are inherited from the runner image, not declared (round-3 IN-01, still open)
 
-**File:** `.github/workflows/ci.yml:186-189` (the claim), `.github/workflows/ci.yml:225-231` (the step)
-**Issue:** The R2-CR-01 fix is a real improvement and I could not find a fetch-and-execute
-surface in it: `go install …@v2.12.2` resolves through the module proxy, verifies every module
-against the checksum database, compiles from source (no fetched executable is run), and the
-failure path is loud — `bash -e` aborts the step on a failed `go install`, and the
-`[ -x "$LINT_BIN/golangci-lint" ] || { …; exit 1; }` postcondition catches the `GOBIN`-mismatch
-case with a `FATAL` message rather than a silent skip. All four runner runs used this exact shape
-and the `verify` job was green in every one, so the path is empirically proven on a real runner.
+**File:** `.github/workflows/ci.yml:186-195` (the claim), `:230-236` (the step)
+**Issue:** The file states "no network fetch-and-execute surface remains anywhere in this file",
+but `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` inherits
+`GOTOOLCHAIN`, `GOSUMDB`, `GOPROXY`, and `GOFLAGS` from the runner image. With `GOTOOLCHAIN=auto`
+(the default), a module whose `go` directive exceeds the local toolchain causes `go install` to
+download and run another toolchain. Today it is safe (golangci-lint requires `go 1.25.0`, go.mod
+pins `1.25.5`), but the guarantee is not declared in this repo.
+**Fix:** add `env: { GOTOOLCHAIN: local, GOSUMDB: sum.golang.org, GOPROXY: "https://proxy.golang.org,direct" }`
+to that step (and soften the comment if the inherited surface is left in place).
 
-Two residual gaps, both currently latent:
-1. `GOTOOLCHAIN` is left at its `auto` default. If the target module's `go` directive ever
-   exceeds the local toolchain's version, `go install` will **download a different Go toolchain**
-   from the module proxy and run it — a network fetch-and-execute surface that the file's comment
-   ("no network fetch-and-execute surface remains anywhere in this file") does not account for.
-   It is safe to close today: golangci-lint v2.12.2's `go` directive is `1.25.0` and the repo
-   pins `go 1.25.5` in `go.mod`, so `GOTOOLCHAIN=local` is satisfied without a download.
-2. `GOSUMDB` / `GOPROXY` / `GOFLAGS` are inherited from the runner image rather than declared, so
-   the checksum guarantee rests on an image default nobody in this repo controls.
+### IN-02: `ok_partition` dereferences `$1` before its arity check and labels every failure as "P11"
 
-**Fix:** declare the guarantees on the step:
+**File:** `verify-phase-48.sh:125-141`
+**Issue:** `local pn="$1"` executes before `if [ "$#" -ne 3 ]`. A zero-argument call under `set -u`
+aborts with bash's "unbound variable" instead of the intended diagnostic (still fail-closed, but
+the message loses the reason). Every failure message also hard-codes "P11 partition ${pn}", so a
+P2 deposit failure reads as a P11 error and sends the reader to the wrong partition.
+**Fix:** check `$#` first, then assign; change the prefix to the generic `partition ${pn}` (or
+`P11: partition ${pn}` only for the self-probe).
 
-```yaml
-      - name: install pinned golangci-lint
-        env:
-          GOTOOLCHAIN: local
-          GOFLAGS: -mod=mod
-          GOSUMDB: sum.golang.org
-          GOPROXY: https://proxy.golang.org,direct
-        run: |
-          ...
-```
+### IN-03: P1's `pull_request_target` scan still matches comment text (round-3 IN-03, still open)
 
-### IN-02: The pinned linter version `v2.12.2` is duplicated in four places with no single source of truth
+**File:** `verify-phase-48.sh:241-252`
+**Issue:** The round-4 change correctly makes the scan's exit code decisive (`rc=0` → fail,
+`rc=1` → pass, anything else → fail). But `grep -rn 'pull_request_target'` still reads raw source,
+so a workflow comment such as "we never use pull_request_target" reds P1 — while P8 strips
+comments for the same class of concern (`:1032`). This is a false-positive risk, not a security
+hole (the opposite direction is the dangerous one).
+**Fix:** scan `nocomment` text (or the parsed document) for the event name, keeping the
+exit-code check.
 
-**File:** `.github/workflows/ci.yml:90`, `.github/workflows/ci.yml:229`,
-`.github/workflows/verify-phase-48.sh:140`, `.github/workflows/verify-phase-48.sh:404`
-**Issue:** `v2.12.2` appears in the `go` job's lint-action `version:`, in the `verify` job's
-`go install` line, as a literal inside the P3 probe's expected string, and as `LINT_VERSION` in
-the script. A partial bump fails loudly rather than silently (the runtime preflight at `:446-458`
-refuses any binary whose `--version` is not `LINT_VERSION`, and P3 compares the install line
-against its own literal), so this is not a correctness hole — but a bump requires four coordinated
-edits across three files, and the failure mode is a confusing red rather than a pointed message.
-Consider having the P3 probe derive its expected version from a single literal in the script (or
-from the `go` job's action `version:`) so there is one place to change.
+### IN-04: `Dockerfile.backend` calls its base images "pinned" while every reference is a mutable tag, and the image ships as root
 
-### IN-03: P1's `pull_request_target` scan matches comment text, unlike the trust-surface rules
+**File:** `Dockerfile.backend:17` (claim), `:20` (`FROM golang:1.25-bookworm`), `:40`
+(`FROM debian:bookworm-slim`), `:47` (unpinned `apt-get install`)
+**Issue:** The comment says "All base images are pinned to specific tags (T-7-OSS-CONTAINER
+mitigation)", but `golang:1.25-bookworm` and `debian:bookworm-slim` are floating tags — `ci.yml`
+itself calls `golang:1.25-bookworm` "a floating tag" at `:153`. Builds are therefore not
+reproducible and a compromised/updated upstream tag silently changes the image. There is also no
+`USER` directive (the backend runs as root) and no `HEALTHCHECK`.
+**Fix:** pin by digest (`FROM golang:1.25-bookworm@sha256:...`), pin apt package versions or accept
+and document the drift, add a non-root `USER`, and add a `HEALTHCHECK` (or drop the "pinned"
+wording).
 
-**File:** `verify-phase-48.sh:209-212`
-**Issue:** `grep -rn 'pull_request_target' "$WF_DIR"` runs over raw source, so a workflow that
-merely *documents* "we do not use pull_request_target" in a comment reds the gate — while the
-P8 rules for the same class of concern explicitly strip comments first (`:945`). Applying the
-same comment-stripping (or restricting the match to non-comment lines) would remove the
-false-positive risk without weakening the check.
+### IN-05: The runtime half of the glibc migration is not exercised anywhere in CI
 
-### IN-04: `scan_trust_surface` reuses one log path for P8 and the P11 fixtures
+**File:** `.github/workflows/ci.yml:150-182`; `Dockerfile.backend:12-16`, `:40-47`
+**Issue:** The round-4 base-image change was motivated by a runtime link failure, but the `docker`
+job only builds (`push: false`), P7 explicitly forbids `load: true` (`verify-phase-48.sh:890-892`),
+and no step starts either image. A runtime regression — e.g. dropping `libstdc++6`, or a future
+move to a non-glibc runtime — keeps the `docker` job green while `docker compose up` fails exactly
+as before. This is a coverage gap, not a defect in the change; closing it requires revisiting
+D-24 ("CI never publishes an image and never produces a local one").
+**Fix (requires a D-24 amendment):** load the backend image and run a short startup smoke
+(`docker run --rm -e SERVER_ADDR=:9999 <tag>` under a timeout, failing if the container exits
+non-zero with a loader error), or add a link-check step (`ldd /app/skillforge | grep "not found"`)
+in the runtime stage.
 
-**File:** `verify-phase-48.sh:851`, `:1057-1060`, `:1445-1460`
-**Issue:** The function always writes to `$WORK/trust-surface.log`, so the eight P11 fixture runs
-overwrite P8's evidence file. It is harmless today (P8's log is printed at `:1059`, before the
-fixture loop), but a partition that later wants to re-inspect P8's evidence would find the
-fixture output instead. Parameterising the log path per caller would remove the coupling.
+### IN-06: The best-of-5 ratio is not a controlled comparison, and the env override accepts malformed values
 
-### IN-05: The `verify` check is self-attested on fork PRs (already documented — noted for branch-protection purposes)
+**File:** `internal/duckdb/connector_test.go:201-224`, `:226-327`
+**Issue:** The sampling logic is correct as written (min of 5 ratios; a genuine block inflates all
+samples) and the extraction into `measureWriteWithConcurrentReaders` is clean. Two caveats remain:
+(a) within each attempt the baseline is always measured first and against a table of 100k rows,
+while the concurrent write runs second against 600k rows, so the two samples are not measured
+under the same conditions — a systematic warm-up effect would bias the ratio downward (toward
+passing), which is the unsafe direction; (b) `fmt.Sscanf(v, "%f", &parsed)` accepts trailing
+garbage (`"3.0x"` → 3.0) and negative or zero values, which silently turn the assertion into an
+always-fail. The 5× row volume also makes this the slowest test in the package.
+**Fix:** measure a second baseline after the concurrent phase in each attempt and use
+`max(baselineBefore, baselineAfter)` (conservative, cheap); validate the override with
+`strconv.ParseFloat` and reject `<= 0`.
 
-**File:** `.github/workflows/ci.yml:199-203`
-**Issue:** On a `pull_request` event the workflow and the script both come from the PR's merge
-ref, so a fork PR can edit `verify-phase-48.sh` to `exit 0` and the `verify` check still reports
-green. The file's header states this plainly, so it is a documented limitation rather than a
-defect — but it means the branch-protection rule on `verify` carries no assurance for fork PRs
-and should not be counted as one when the fork boundary is discussed.
+### IN-07: The push-to-main trigger's `only-new-issues` reasoning does not follow, and the push path appears unexercised
 
-## Scope notes
+**File:** `.github/workflows/ci.yml:41-45` (trigger/comment), `:87-91` (lint step)
+**Issue:** The comment says push runs are limited to `main` because "the lint action has no diff
+on a manual/push run and would fall back to whole-repo lint over ~175 legacy findings." Limiting
+the push trigger to `main` does not prevent that fallback on a `main` push — under the comment's
+own premise, the first merge to `main` would red the lint step. Either the comment is stale (the
+action does derive a diff for push events) or the trigger choice does not provide the mitigation
+it claims. All green evidence in the phase record is from `pull_request` runs, so this path is
+unproven.
+**Fix:** verify one push-to-main run (or `workflow_dispatch` with the same job) and correct the
+comment; if the fallback is real, gate the lint step with a job-level `if:` (allowed at job level
+for this purpose only) or pass an explicit `--new-from-rev` base.
 
-* M1a (`fe` Sparkline hardcoded Windows path) and M1b (`docker` alpine-musl vs duckdb) are
-  source defects in files outside this review's scope and are **not** restated here. M1c is
-  reported as **CR-01** because its root cause is in `ci.yml`, an in-scope file — the review was
-  asked to report contributing causes, and the cause is deterministic and reproducible.
-* No other file was modified by this review; the mutant copies used for the mutation drills were
-  written to the repository root, executed, and deleted. `git status` shows no new tracked or
-  untracked artefacts from this review.
-* `bash verify-phase-48.sh` was executed on the review host as a baseline: **11/11 partitions,
-  exit 0** — i.e. the shipped gate does pass on a clean tree, and the findings above are about
-  what that pass is and is not evidence of.
+### IN-08: `TestSparklineNoDeps` only inspects the component's own source text
+
+**File:** `web/src/components/chat/parts/Sparkline.test.tsx:77-95`
+**Issue:** The path fix is correct and portable. The assertion, however, greps the raw text of
+`Sparkline.tsx` for three library names: a transitive import (e.g. the component importing a local
+wrapper that imports `recharts`), a dynamic import, or a bundler alias would all pass, and a
+matching library name in a comment would fail. It is a heuristic guard, not a dependency check.
+**Fix:** assert on the resolved module graph (e.g. `import.meta.glob`/Vite's module list) or on a
+built bundle, or rename the test to reflect that it only forbids direct textual imports.
 
 ---
 
-_Reviewed: 2026-10-20_
+_Reviewed: 2026-10-20T07:02:18Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
