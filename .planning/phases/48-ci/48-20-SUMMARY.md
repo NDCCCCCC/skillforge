@@ -148,3 +148,10 @@ None - no external service configuration required.
 ---
 *Phase: 48-ci*
 *Completed: 2026-10-20*
+
+## Self-Check: PASSED
+
+- `verify-phase-48.sh` exists and carries the token-list `ok_partition` plus all fifteen per-assertion tokens (8 P2/P3 + 3 P1 + 4 P4); zero `STRUCT-OK` occurrences remain.
+- Commits verified as ancestors of HEAD: `55cc33f` (Task 1), `d58376a` (Task 2), `8e30f74` (SUMMARY), `b8e91ef` (state/roadmap tracking).
+- Final gate run: exit 0, exactly one `ALL PASSED`, `registry 11/11, begin markers 11/11, success tokens 11/11`.
+- `requirements.ready-ids` returned `ready: []` for CICD-01/02/03 — no duplicate or regressive marking; they remain Complete on run 39380373930.
