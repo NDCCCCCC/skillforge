@@ -5,16 +5,16 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: "Round-4 verification: gaps_found 13/15 (P2/P3 token granularity + R1 ledger tail); four-green run 39380373930 verified, CICD flips stand"
-last_updated: "2026-10-20T13:14:25.102Z"
+stopped_at: Completed 48-20-PLAN.md
+last_updated: "2026-10-20T13:37:43.458Z"
 last_activity: 2026-10-20
 last_activity_desc: Phase 48 execution started
-state_head: 0daf890844a3b69553804d3c34c868d7df212ebb
+state_head: 8e30f74435805c0199e9f13e331aeb26dfe61ae8
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 30
-  completed_plans: 26
+  completed_plans: 27
   percent: 20
 ---
 
@@ -36,8 +36,8 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 ## Current Position
 
 Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 20 of 22
-Status: Executing Phase 48
+Plan: 21 of 22
+Status: Ready to execute
 Last activity: 2026-10-20 — Phase 48 execution started
 
 Progress: [██░░░░░░░░] 20%
@@ -75,6 +75,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase 48 P13 | 16 min | 3 tasks | 1 files |
 | Phase 48 P14 | 5 min | 2 tasks | 3 files |
 | Phase 48 P15 | 53 min | 3 tasks | 7 files (blocked-branch: 4 ci.yml runs on the public runner; 7 planning files reconciled; WR-06 closes on run-3) |
+| Phase 48 P48-20 | 13 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,7 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-15: append to 48-11's `M1 = BLOCKED` (line 116) — M1 was reclassified to M1 partial by plan 48-15; the runner did execute, but M1 in the strict all-three-jobs-green sense stays open because three new M-class rows (M1a / M1b / M1c) document the three classified persistent real reds that prevent the four-green run conclusion; full close requires source-side fixes for the Sparkline test path, Dockerfile.backend base image, and the P5a SIGPIPE capture shape
 - [Phase 48]: 48-15: append to 48-11's `Review dispositions final` (line 118) — WR-06 advances from `deferred` to `fixed — closed-by-evidence on run-3`; M2 / M3 / M4 / M5 unchanged except M4 closed by 48-15 evidence (only-new-issues works on a fast-forward push); CICD-01/02/03 do not advance in this branch per the recipe blocked-branch "do NONE of the flips" rule
 - [Phase 48]: 48-19: ci.yml run 39380373930 (head 630f875, 2026-10-20) is the first four-green run — `go=success`, `fe=success`, `docker=success`, `verify=success`; derived total 6 (runs 1-5 red). CICD-01/02/03 flip to Complete in both REQUIREMENTS.md places against that run id, and ROADMAP/VALIDATION/SECURITY/STATE carry the canonical fragment `ci.yml total runs: 6; first all-green: 39380373930`. The three classified build reds were cleared by 48-16 (materialised `-list` output, module-relative Sparkline path, glibc backend image); the run-5 red was a load-sensitive DuckDB reader-block ratio flake, fixed at the source with best-of-5 minimum sampling (50 readers and the 3.00x threshold unchanged)
+- [Phase 48]: 48-20: ok_partition now takes one-or-more required per-assertion-group tokens and reports every missing token at once — a partition's PASS deposit requires every one of its own assertion groups to have run (WR-03/M13 closed for P1/P2/P3/P4) — P3-STEP-IF-OK stays attached to the go-job step-level if: loop per the plan must_haves, so the P3-section deletion drill reds on P3-BLOCKING-OK/P3-LINT-OK; drills grep the output for a specific token, so ok_partition quotes the full required set
 
 ### Pending Todos
 
@@ -175,7 +177,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-20T08:25:21.189Z
-Stopped at: Round-4 verification: gaps_found 13/15 (P2/P3 token granularity + R1 ledger tail); four-green run 39380373930 verified, CICD flips stand
+Last session: 2026-10-20T13:37:42.799Z
+Stopped at: Completed 48-20-PLAN.md
 Resume file: None
 Resume command: `/gsd-verify-work` — Phase 48 is complete: ci.yml run 39380373930 (head `630f875`) concluded `go=fe=docker=verify=success` on the public default branch, and CICD-01/02/03 are Complete against that run id in both REQUIREMENTS.md places. Canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The three classified build reds were cleared by 48-16; the run-5 reader-block ratio flake was cleared by 48-19. M2-M5 remain open by design (fork PR, Dependabot, PR-scoped lint, second-run cache comparison). Next: Phase 49 (Hermetic Demo). See 48-19-SUMMARY.md, 48-VALIDATION.md M1/M1a/M1b/M1c, 48-SECURITY.md M1 + Approval paragraphs, ROADMAP.md Phase 48 section + Progress row.

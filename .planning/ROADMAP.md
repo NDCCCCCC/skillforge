@@ -164,7 +164,7 @@ Plans:
 
 **Gap closure round 5**（48-VERIFICATION.md round-4 再验证 `gaps_found` 13/15：truth 12 断言级 token 共享〔M13〕、truth 15 R1 ledger 尾段未标注；4 条 advisory；48-20..48-22 planned）
 
-- [ ] 48-20-PLAN.md — verifier 断言级 token 第一部分：`ok_partition` 接受 token 列表；P2/P3 拆为 4+4 个 per-assertion token，P1 拆为 3 个，P4 拆为 4 个；四个删除演练必须 red 并点名分区
+- [x] 48-20-PLAN.md — verifier 断言级 token 第一部分：`ok_partition` 接受 token 列表；P2/P3 拆为 4+4 个 per-assertion token，P1 拆为 3 个，P4 拆为 4 个；四个删除演练必须 red 并点名分区
 - [ ] 48-21-PLAN.md — verifier 断言级 token 第二部分：P6/P7/P9 各拆为 per-assertion token；P11 else-detector 改为先消费 range 再 grep（WR-01）；删除演练 + banner-in-else 演练
 - [ ] 48-22-PLAN.md — trust-surface 规则改为解析后文档驱动（quoted `"paths":` / `paths :` / `toJSON(secrets)` / quoted-hash secret，P11 fixtures 12 个）；ci.yml linter install 声明 GOTOOLCHAIN/GOSUMDB/GOPROXY；版本双写说明；R1 ledger 历史标注 + T-48-70..T-48-79 注册
 
@@ -220,7 +220,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 19/19 (+3 gap-closure planned) | In Progress |  |
+| 48. CI 矩阵 | v1.7 | 19/22 | In Progress |  |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
