@@ -75,9 +75,13 @@ describe('Sparkline', () => {
   });
 
   it('TestSparklineNoDeps', async () => {
-    const { readFileSync } = await import('fs');
+    const { readFileSync } = await import('node:fs');
+    // jsdom replaces the global URL class, and Node's fs only accepts its own
+    // URL instances; importing the constructor from node:url keeps this a
+    // plain file URL resolved against the test module on every platform.
+    const { URL: NodeURL } = await import('node:url');
     const content = readFileSync(
-      'D:/code/ClaudeCode/ai-agent/web/src/components/chat/parts/Sparkline.tsx',
+      new NodeURL('./Sparkline.tsx', import.meta.url),
       'utf-8',
     );
     const recharts = /recharts/.test(content);
