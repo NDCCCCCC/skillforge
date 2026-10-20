@@ -1786,21 +1786,82 @@ P11_FIXTURE_COUNT=0
 for fixture in empty-jobs empty-perms no-perms empty-dir \
                two-files yaml-ext lowercase-registry stray-secret \
                quoted-paths space-paths tojson-secrets quoted-hash-secret; do
+  # WR-R5-01, guard 1 — file presence BEFORE the scan. The mkdir list above
+  # would recreate a deleted fixture's directory, and the zero-files branch
+  # inside scan_trust_surface would then "reject" that EMPTY directory exactly
+  # as it rejects empty-dir — the R11/R12 vacuity class. A fixture with no
+  # workflow file is a deleted or never-written fixture, never a pin.
+  if [ "$fixture" != "empty-dir" ]; then
+    fixture_files=$(find "$P11_FIX/$fixture" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | wc -l | tr -d ' ')
+    [ "${fixture_files:-0}" -ge 1 ] || fail "P11 fixture '${fixture}' has no workflow file to scan — a deleted or never-written fixture is a vacuous pin, not evidence (WR-R5-01)"
+  fi
+  # WR-R5-01, guard 2 — every fixture declares the rule that rejects it. The
+  # required substrings are the FIRST lines scan_trust_surface actually emits
+  # for these fixtures (verified against a live run of the committed tree), so
+  # a rejection only counts as evidence when its REASON matches. A fixture
+  # added later without a registered reason cannot pass: the default arm
+  # refuses. Two registrations are deliberately layer-aware:
+  #   yaml-ext — the publication token, not the WRITE_VALUE line scan:
+  #     `packages: write` is itself a PUBLICATION_TOKEN and the publication
+  #     check runs before the write-scope line scan, so the publication rule
+  #     is what the first line names.
+  #   two-files — `path-filtered`, the substring BOTH path-filter layers
+  #     print (the parsed walk's `filters event … with a 'paths' key` and the
+  #     retained textual `contains paths:`): the fixture's unquoted `paths:`
+  #     key is caught by either layer, so after a parsed-walk deletion (the
+  #     R12 compound drill) it stays attributable to the path-filter RULE and
+  #     the loop reaches quoted-paths — the fixture the deleted walk alone
+  #     was catching. quoted-paths and space-paths keep the parsed-only
+  #     substring: no textual layer can see their shapes, which is exactly
+  #     the attribution the R9 drill reads.
+  #   stray-secret / quoted-hash-secret — `references secrets.` for the same
+  #     reason: the parsed walk prints `parsed value references secrets.X`
+  #     and the retained textual scan prints `references secrets.X`, so the
+  #     fixture stays attributable to the secret RULE after a walk deletion
+  #     (the R10 drill) and the loop reaches tojson-secrets — the fixture
+  #     only the deleted secret walk was catching.
+  case "$fixture" in
+    empty-jobs)                      want='empty or absent jobs';             class_token='P11-VACUITY-OK' ;;
+    empty-perms)                     want='empty permissions';                class_token='P11-VACUITY-OK' ;;
+    no-perms)                        want='declares no permissions';          class_token='P11-VACUITY-OK' ;;
+    empty-dir)                       want='zero *.yml/*.yaml files';          class_token='P11-VACUITY-OK' ;;
+    two-files)                       want='path-filtered';                    class_token='P11-PATHFILTER-OK' ;;
+    quoted-paths|space-paths)        want="with a 'paths' key";               class_token='P11-PATHFILTER-OK' ;;
+    yaml-ext)                        want='registry/publication token';       class_token='P11-PERMSWRITE-OK' ;;
+    lowercase-registry)              want='registry/publication token';       class_token='P11-PUBLICATION-OK' ;;
+    stray-secret|quoted-hash-secret) want='references secrets.';              class_token='P11-SECRET-OK' ;;
+    tojson-secrets)                  want='toJSON(secrets';                   class_token='P11-SECRET-OK' ;;
+    *) fail "P11 fixture '${fixture}' has no registered rejection reason — every fixture must declare the rule that rejects it (WR-R5-01)" ;;
+  esac
   scan_trust_surface "$P11_FIX/$fixture"
   p11_fixture_rc=$?
   if [ "$p11_fixture_rc" -eq 0 ]; then
     cat "$WORK/trust-surface.log"
     fail "P11 verifier is vacuous on an empty partition: scan_trust_surface returned success on the '${fixture}' fixture"
   fi
+  # The reason is rendered through sed rather than interpolated into fail():
+  # the probe's message quotes a NATIVE Windows path whose backslashes echo -e
+  # would read as escape sequences (\t, \e, \c …) — which mangles the evidence
+  # and can swallow the newline. Output that is never re-interpreted cannot be
+  # mangled. The first line is captured into a variable first, so neither the
+  # mismatch renderer nor the evidence line runs through a head|sed pipe.
+  first_line="$(head -1 "$WORK/trust-surface.log")"
+  if ! printf '%s\n' "$first_line" | grep -qF -- "$want"; then
+    printf '%s\n' "$first_line" | sed 's/^/       /'
+    fail "P11 fixture '${fixture}' rejected for the wrong reason: wanted '${want}' (WR-R5-01)"
+  fi
+  # WR-R5-01, guard 3 — the zero-files reason belongs to empty-dir alone. For
+  # any other fixture it means the fixture vanished and the scan found
+  # nothing; name the vacuity class even if a future fixture's registered
+  # reason ever accidentally contained the zero-files text.
+  if [ "$fixture" != "empty-dir" ] && printf '%s\n' "$first_line" | grep -qF 'zero *.yml/*.yaml files'; then
+    fail "P11 fixture '${fixture}' was rejected by vacuity (zero files) — a deleted fixture must not count as a pin (WR-R5-01)"
+  fi
   P11_FIXTURE_COUNT=$((P11_FIXTURE_COUNT + 1))
-  echo "fixture '${fixture}' rejected (rc=${p11_fixture_rc})" >> "$WORK/p11-fixtures.log"
-  # The reason is rendered through sed rather than interpolated into info():
-  # info() uses `echo -e`, and the probe's message quotes a NATIVE Windows path
-  # whose backslashes would be read as escape sequences (\t, \e, \c …) — which
-  # mangles the evidence and can swallow the newline. Output that is never
-  # re-interpreted cannot be mangled.
-  echo "  P11: fixture '${fixture}' rejected (rc=${p11_fixture_rc}):"
-  head -1 "$WORK/trust-surface.log" | sed 's/^/       /'
+  echo "fixture '${fixture}' rejected for '${want}' (rc=${p11_fixture_rc})" >> "$WORK/p11-fixtures.log"
+  printf '%s\n' "$class_token" >> "$WORK/p11-fixtures.log"
+  echo "  P11: fixture '${fixture}' rejected for '${want}' (rc=${p11_fixture_rc}):"
+  printf '%s\n' "$first_line" | sed 's/^/       /'
 done
 
 # The fixture loop is a probe too: twelve rejections are its success output. A
@@ -1811,7 +1872,12 @@ done
 # P11's own success token deposits right after its last decisive assertion —
 # BEFORE the registry count below, which demands that token to exist. The
 # reverse order would be a self-failing gate.
-ok_partition "P11" "$WORK/p11-fixtures.log" "rejected"
+#
+# WR-R5-01: one deposit token per fixture CLASS, not one all-matching
+# `rejected`. A single token that any rejection satisfied let a fixture (or a
+# rule + its fixtures) vanish while its siblings' evidence still deposited
+# PASS. Every class must have deposited for P11 to pass.
+ok_partition "P11" "$WORK/p11-fixtures.log" "P11-VACUITY-OK" "P11-PATHFILTER-OK" "P11-PERMSWRITE-OK" "P11-PUBLICATION-OK" "P11-SECRET-OK"
 
 # --- Half 3 (LAST): the registry, the call sites, the markers and the tokens
 # agree -----------------------------------------------------------------------
@@ -1830,7 +1896,7 @@ if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECT
 fi
 info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}, success tokens ${OK_COUNT}/${EXPECTED_PARTITIONS}"
 
-done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 12 fixtures rejected: 4 vacuity + 8 per-file)"
+done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 12 fixtures rejected for their registered reasons: 4 vacuity + 8 per-file; per-class tokens P11-VACUITY-OK P11-PATHFILTER-OK P11-PERMSWRITE-OK P11-PUBLICATION-OK P11-SECRET-OK)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
