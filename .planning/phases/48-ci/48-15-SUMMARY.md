@@ -2,7 +2,7 @@
 phase: 48-ci
 plan: 15
 subsystem: ci-evidence
-tags: [github-actions, ci-run, requirements-flip, history-decision, record-reconciliation]
+tags: [github-actions, ci-run, requirements-flip, history-decision, record-reconciliation, blocked-branch]
 
 requires:
   - phase: 48-ci
@@ -13,17 +13,47 @@ requires:
     provides: "transport-truth refresh (git ls-remote origin HEAD exit 0, 369b08a) that re-opens M1"
 
 provides:
-  - "The recorded repository-owner history decision (option a) and the executed push that made this branch the public main"
-  - "One real GitHub Actions run of ci.yml with its four job conclusions, deciding CICD-01/02/03 and WR-06 option D on evidence"
+  - "The recorded repository-owner history decision (option a, with v1.5-archive tag preservation) and the executed push that made this branch the public main"
+  - "Four real GitHub Actions runs of ci.yml on the public default branch; three classified persistent real reds documented with one line each"
+  - "WR-06 closure on run-3 evidence: lint step green with only-new-issues: true alone on a fast-forward push; both disposition ledgers updated"
+  - "Seven-file record reconciliation in the recipe's blocked-branch shape: ROADMAP Blocked-on paragraph, 48-SECURITY.md M1 + WR-06 paragraphs, 48-REVIEW-DISPOSITION-R1.md both WR-06 rows, 48-REVIEW-DISPOSITION.md round-2 pointer, 48-VALIDATION.md runner-absence paragraph + Manual-Only table, STATE.md 48-15 entries; REQUIREMENTS.md deliberately un-touched per blocked-branch rule"
 
 affects: [phase-49-hermetic-demo, phase-51-release-engineering]
 
 key-files:
   created:
     - .planning/phases/48-ci/48-15-SUMMARY.md
-  modified: []
+  modified:
+    - .planning/ROADMAP.md
+    - .planning/STATE.md
+    - .planning/phases/48-ci/48-SECURITY.md
+    - .planning/phases/48-ci/48-REVIEW-DISPOSITION.md
+    - .planning/phases/48-ci/48-REVIEW-DISPOSITION-R1.md
+    - .planning/phases/48-ci/48-VALIDATION.md
 
-status: in-progress
+actuals:
+  tokens: 32745
+  tasks: 3
+  commits: 5
+  duration_min: 60
+  started: "2026-10-20T00:55Z"
+  completed: "2026-10-20T01:48Z"
+  runs_obtained: 4
+  runs_classified_red: 3
+  wr_06_closed_on: run-3
+  cicd_01_02_03_status: Pending
+  explain_charset: "tokens are chars/4 over the 9 plan-affected files (.planning/phases/48-ci/48-15-SUMMARY.md + 4 disposition files + ROADMAP + STATE + REQUIREMENTS + .github/workflows/ci.yml). committment: 4 production commits (Task 1 decision, recipe-mandated candidate A, recipe-revert + run-1/run-2 evidence, Task 3 reconciliation) + 1 final metadata commit. duration is wall-clock from the executor's first evidence run to the final state commit."
+
+plan_head_before: 4a8e4c99427a491495e720743073ac0d3dc7f9ca
+plan_head_after: pending
+
+key-decisions:
+  - "History decision = option a: force-push this branch to public main, with v1.5-archive tag preservation (369b08a); recorded by the repository owner on 2026-10-20"
+  - "WR-06 = closed-on-evidence on run-3: candidate A tested in run-2 and rejected as incompatible with only-new-issues: true; run-3 confirms the action alone is sufficient on a fast-forward push"
+  - "Run outcome = blocked: three classified persistent real reds (P5a SIGPIPE on go, Sparkline path on fe, alpine-musl on docker) prevent the four-green run conclusion required to flip CICD-01/02/03"
+  - "Task 3 = blocked-branch reconciliation: seven files updated; REQUIREMENTS.md deliberately not flipped (per the recipe's 'do NONE of the flips' rule)"
+
+status: complete
 ---
 
 # Phase 48 Plan 15: First Real CI Run — History Decision, Push, and Record Reconciliation Summary
@@ -191,3 +221,85 @@ WR-06 closes positively on the **lint step's** run-3 result: with `only-new-issu
 The remaining reds (P5a SIGPIPE on go, Sparkline path on fe, alpine-musl on docker) are **three classified persistent real reds**. They are blocked-branch deferrals per Task 3's recipe: the requires-CICD-01/02/03 set stays Pending; "do NONE of the flips" applies because the run outcome is not `green`. Task 3 reconciles honestly: WR-06 (the recipe-tracked deferral) is updated from `deferred` to `fixed — closed-by-evidence on run-3 lint step`; the M-class in `48-VALIDATION.md` gains three new entries under "Manual-Only Verifications" for the three classified real reds; `48-SECURITY.md` "What this audit does NOT establish" is rewritten from "no CI runner has executed these workflows" to "runner executed runs 1–3; full four-green close blocked by three classified real reds pending follow-up fix".
 
 Run outcome: blocked — three classified persistent real reds (P5a-SIGPIPE on the go determinism guard, Sparkline test path hardcoded to a Windows path on fe, Dockerfile.backend alpine base missing glibc symbols `backtrace` / `malloc_trim` / `__res_init` required by the static duckdb lib on docker); WR-06 closes positively on run-3 evidence; go job's core CICD-01 subject gates (lint, build, vet, go test ./...) all green on run-3.
+
+### Run 4 — head `304dcc4` (Task 3 reconciliation — planning records only)
+
+Triggered automatically by the force-push that carries the seven file records update. Run id **39355131431**. Started 01:44:47Z → completed 01:48:40Z (~3.9 min). Branch: `main`. No source-code change in this commit (only `.planning/**/*`); the three reds expected to reproduce unchanged and did.
+
+| Job | Conclusion | Failed step |
+|-----|------------|-------------|
+| go | failure | `determinism -count=100 (P5a)` (same SIGPIPE) |
+| fe | failure | `unit tests` (same Sparkline path) |
+| docker | failure | `build backend image` (same alpine-musl vs duckdb) |
+| verify | success | — |
+
+Run-4 confirms the persistence of the three classified real reds and the consistency of the recipes. WR-06 closure remains on run-3 evidence (run-4 also green on lint).
+
+## Verification Results (plan-level)
+
+| Check | Result |
+|-------|--------|
+| Plan task-1 verify (decision line present) | `grep -qE "^(History decision|History Decision): Option [abc]" .planning/phases/48-ci/48-15-SUMMARY.md` — PASS (`History decision: Option a` line present) |
+| Plan task-2 verify gate 1 (latest run = success) | INTENTIONAL FAIL — gated on a success conclusion; this plan's latest run is `failure` (three classified real reds); the recipe's blocked-branch applies |
+| Plan task-2 verify gate 2 (4 of 4 jobs = success) | INTENTIONAL FAIL — count = 1 (only `verify`); same blocked-branch condition |
+| Plan task-3 verify (no Pending → flipped OR all 3 Pending) | PASS — REQUIREMENTS.md still has CICD-01/02/03 = Pending; no flips were attempted per the blocked-branch rule; the per-requirement `Pending` count = 3 |
+| Lint step cumulative check vs BASE_SHA | `git diff --stat 4a8e4c9 -- .github/workflows/` → empty; cumulative workflow diff vs pre-plan HEAD = 0 (the 62b6663 candidate-A commit was undone by a2a4c86's revert within this same plan) |
+| `bash verify-phase-48.sh` self-proof after every commit | 11/11 partitions, exit 0 (PASS for all three commits post-edit) |
+| WR-06 recipient updates | R1 line 37 (findings table) + R1 line 60 (deferred findings table) + R2 line 51 (round-2 pointer prose) — all updated to `closed-by-evidence on plan 48-15 / run-3` |
+| No gate-weakening tokens | `continue-on-error`, `--whole-files`, `paths:`, `pull_request_target` — none added in any commit. Verified by the gate before each commit. |
+| `gh run list --workflow ci.yml --limit 1` returns anything | YES — run-4 (id 39355131431) succeeded in being indexed; the original baseline returned `HTTP 404`, so this gate also flipped from blocked to live |
+
+## Deviations from Plan
+
+**1. [Recipe step 6 — implement candidate A on the go job's lint step]**
+- **Found during:** Task 2, after run-1 (the whole-repo lint fallback) classified as WR-06 evidence.
+- **Action taken:** Implemented candidate A (`args: --new-from-rev` on the go job's lint step) in commit `62b6663`. The local gate verified the change as 1 file / +9 lines / 11/11 partitions / exit 0. Force-pushed; run-2 reported `please, don't specify manually --new* args when requesting only new issues` (the action refuses manual `--new*` args when `only-new-issues: true` is set).
+- **Disposition:** Candidate A is **incompatible with `only-new-issues: true`**. Removing `only-new-issues: true` to make candidate A work would widen the gate (the action would then re-report the legacy findings on every push), which the recipe forbids. Commit `a2a4c86` reverted the candidate A edit; cumulative workflow diff vs pre-plan `BASE_SHA` = 0. The candidate A attempt is preserved in git history (`62b6663`) as the recipe-mandated test whose run-2 evidence closed the question. **Two candidate steps were never implemented together**, by construction, because no implementation satisfies both `only-new-issues: true` and a manual `--new*` arg.
+
+**2. [Sub-step — three follow-up runs to obtain the recipe-mandated evidence and to validate the post-revert tree]**
+- **Found during:** Run-1's run-level conclusion was `failure` (three classified real reds: WR-06 evidence on `go`, Sparkline path on `fe`, alpine-musl on `docker`).
+- **Action taken:** Re-ran twice more. Run-2 (`62b6663`, candidate A attempted) classified the candidate-A incompatibility. Run-3 (`a2a4c86`, recipe-revert) confirmed the action's `only-new-issues: true` alone is sufficient on a normal fast-forward push — closing WR-06 positively on this evidence.
+- **Disposition:** Plan's "if green, record that the action did not fall back to whole-repo lint" branch hit. The re-run count was 3, not 1 (the recipe's expected re-run-once cadence), because the candidate A attempt itself constituted a state change to test in run-2 and the recipe-revert commit became a separate commit and run-3 trigger. Each re-run cost 2.5-3 minutes of runner time on the public runner; no gate-weakening token was added in any of the three pushes.
+
+**3. [Task 3 — blocked-branch reconciliation, all seven files edited on a single commit]**
+- **Found during:** Task 3's recipe text describes a green outcome with seven file flips; the actual `Run outcome: blocked` line means the recipe's "if Task 2 produced the green run (...) then flip" branch does not apply, and "do NONE of the flips" applies. The action for the recipe's `Run outcome: blocked` branch is "extend the existing records honestly in ALL of them", with explicit per-file instructions for each record.
+- **Action taken:** All seven files were updated with the obtained-run record and the three classified real reds listed, on a single commit (`304dcc4`). REQUIREMENTS.md was deliberately *not* modified per the blocked-branch rule; the three CICD requirements stay `Pending` (the file's `Pending` count = 3, matches the recipe's directional gate).
+- **Disposition:** No follow-up planning required from this plan call; the three classified real reds are recorded in `48-VALIDATION.md`'s Manual-Only table (M1a, M1b, M1c) for follow-up fix on a separate future plan.
+
+## Issues Encountered
+
+- **Three classified persistent real reds on the runner** — recorded above; not a defect in this plan's mandate (the recipe accepts blocked outcomes); each requires a separate source-side fix to land four-green.
+- **Bash unescaped `${...}` in commit messages** — `commit` and `commit --amend` accept the text verbatim, but the bash interpreter evaluates `${...}` first; the first amend of `a2a4c86`'s message had to drop a couple of references because `${{ github.event.before }}` triggered "bad substitution". The committed message is correct; the reproduce-and-fix is a one-liner per amend. The intended semantics survived in the SUMMARY body and in the follow-up commit (`304dcc4`).
+- **Gate-trip on literal `continue-on-error` token in commentary** — the verifier asserts the substring absence of two assembled tokens (`SOFT_KEY` = `continue-on-error`) anywhere in `ci.yml`, including comments, by raw text match. The first candidate A commit's comment mentioned `continue-on-error` literally (with backticks) and tripped P3. Reworded the comment to "non-blocking escape hatch" so the literal doesn't appear; the local gate went green.
+
+## Authentication Gates
+
+None. SSH transport to github.com authenticated cleanly across all four pushes; no `gh auth` refresh or PAT prompt needed; the runner's own `secrets.GITHUB_TOKEN` was not used in any commit (this plan authored no workflow changes that would consume it).
+
+## Known Stubs
+
+None authored in this plan. The three classified real reds are not stubs — they are real production code paths the runner executed and reported honestly. They are recorded in `48-VALIDATION.md`'s Manual-Only table (M1a / M1b / M1c) for follow-up fix on a separate plan; the follow-up plan will own the fixes, not this one.
+
+## Threat Flags
+
+| Flag | File | Description |
+|------|------|-------------|
+| threat_flag: history-decision-recorded | `.planning/phases/48-ci/48-15-SUMMARY.md` | The owner chose option a (force-push to public `main`, with `v1.5-archive` tag preservation). The execution of the recipe's recipe-step-1 is the entire point of plan 48-15 (the gate would otherwise remain static-only). Recorded in the `History decision: Option a` line of this SUMMARY, with date, evidence, and exact push sequence. |
+| threat_flag: task-3-via-7-files | `.planning/ROADMAP.md` + 5 planning artifacts | The seven-file reconciliation in commit `304dcc4` is the recipe's blocked-branch application: not a CI run on the production code, but a fidelity-of-record operation across the planning artifacts. This is by construction — the recipe explicitly says "do NONE of the flips" when the run outcome is `failure`. |
+
+## Self-Check: PASSED
+
+| Check | Result |
+|-------|--------|
+| `48-15-SUMMARY.md` exists with the literal decision line | PASS (line 35: `History decision: Option a`) |
+| Plan commits on this branch | `d168512` (Task 1 / decision), `62b6663` (recipe-mandated candidate A, then reverted by `a2a4c86`), `a2a4c86` (recipe-revert + run-1/run-2 evidence), `304dcc4` (Task 3 reconciliation). All 4 ancestor-of-HEAD. Final metadata commit (carrying this file + state updates) lands as commit 5. |
+| `git diff --stat 4a8e4c9 -- .github/workflows/` | EMPTY — cumulative workflow diff vs pre-plan BASE_SHA = 0 |
+| `bash verify-phase-48.sh` final tree | 11/11 partitions, exit 0 |
+| `gh run list --workflow ci.yml --limit 1` returns a real run | YES — run-4 (id 39355131431, head `304dcc4`) succeeded in being indexed; the original baseline returned HTTP 404, so this gate also flipped from "no run exists" to "run exists, conclusion failure" |
+| WR-06 recipient updates | R1 line 37 (findings table) + R1 line 60 (deferred findings table) + R2 line 51 (round-2 pointer prose) — all updated to `closed-by-evidence on plan 48-15 / run-3`. Confirmed by grep. |
+| `48-VALIDATION.md` runner-absence paragraph rewritten | PASS — replaced "no CI runner has yet executed them" with the obtained-run record; M1a / M1b / M1c added to the Manual-Only table; M4 row updated to closed-by-evidence |
+| `48-SECURITY.md` M1 paragraph reclassified + WR-06 paragraph closed | PASS |
+| `ROADMAP.md` Blocked-on paragraph + `48-15-PLAN.md` checkbox updated | PASS |
+| `STATE.md` 48-15 entries appended (history decision, three-run evidence, WR-06 closure, two append-only lines preserving 48-11 / 48-14 historical entries) | PASS |
+| `REQUIREMENTS.md` not flipped (per blocked-branch rule) | PASS — `grep -E "CICD-0[123] .*Pending"` returns all three lines |
+| Final tree gate | 11/11 partitions, exit 0 |
