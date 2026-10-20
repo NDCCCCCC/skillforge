@@ -496,6 +496,35 @@ for token in (fetch_token, script_token):
             % token
         )
 
+# T-48-78: install env pin
+# WR-R5-02 (round-5 verification gap 2): 48-22 DECLARED the install surface
+# (GOTOOLCHAIN/GOSUMDB/GOPROXY on the verify job's linter install step) but
+# pinned it with nothing — flipping GOTOOLCHAIN to auto or deleting the block
+# kept exit 0 under the passing banner while the register claimed a pin
+# existed. The map is compared for EXACT equality, never per-key presence: a
+# re-narrowed map (a key dropped), a re-widened map (an extra key or a changed
+# value) and an undeclared map must all fail.
+inst_steps = [s for s in vsteps if "go install" in (s.get("run") or "")]
+if len(inst_steps) != 1:
+    raise SystemExit(
+        "P3: expected exactly one go-install step in the verify job, found %d" % len(inst_steps)
+    )
+want_env = {
+    "GOTOOLCHAIN": "local",
+    "GOSUMDB": "sum.golang.org",
+    "GOPROXY": "https://proxy.golang.org,direct",
+}
+got_env = inst_steps[0].get("env") or {}
+if got_env != want_env:
+    raise SystemExit(
+        "P3: the linter install step env is %r, want exactly %r - an inherited, re-narrowed "
+        "or re-widened GOTOOLCHAIN/GOSUMDB/GOPROXY surface is the IN-01 exposure "
+        "(WR-R5-02 / T-48-78)"
+        % (got_env, want_env)
+    )
+print("P3-INSTENV-OK")
+# T-48-78: end install env pin
+
 print("P3-VERIFYJOB-OK")
 PY
 p23_rc=$?
@@ -508,10 +537,10 @@ cat "$WORK/p23.log"
 # deleting either partition's assertion block leaves that partition's tokens
 # missing instead of borrowing the sibling's evidence.
 ok_partition "P2" "$WORK/p23.log" "P2-CMDS-OK" "P2-DET-OK" "P2-SHUFFLE-OK" "P2-HERMETIC-OK"
-ok_partition "P3" "$WORK/p23.log" "P3-STEP-IF-OK" "P3-BLOCKING-OK" "P3-LINT-OK" "P3-VERIFYJOB-OK"
+ok_partition "P3" "$WORK/p23.log" "P3-STEP-IF-OK" "P3-BLOCKING-OK" "P3-LINT-OK" "P3-VERIFYJOB-OK" "P3-INSTENV-OK"
 
 done_partition "P2 go-line (5 command fragments, materialised-list determinism shape: -list redirects to go-test-list.txt, grep -qx reads the file, a pipe directly after -list is rejected; CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate; per-assertion success tokens P2-CMDS-OK P2-DET-OK P2-SHUFFLE-OK P2-HERMETIC-OK)"
-done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install; per-assertion success tokens P3-STEP-IF-OK P3-BLOCKING-OK P3-LINT-OK P3-VERIFYJOB-OK)"
+done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install and an exactly-pinned install env map; per-assertion success tokens P3-STEP-IF-OK P3-BLOCKING-OK P3-LINT-OK P3-VERIFYJOB-OK P3-INSTENV-OK)"
 
 # ---------------------------------------------------------------------------
 # P4: lint-teeth
@@ -1986,7 +2015,7 @@ echo ""
 echo "Partitions verified:"
 echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; per-assertion success tokens P1-PARSED / P1-COMPOSITE-OK / P1-NO-PRT"
 echo "  P2 go-line        — the 5 CI command fragments + determinism materialised-list shape (list file, grep -qx on the file, no pipe after -list), CGO_ENABLED=1 and nothing else, verify job ends at the gate; per-assertion success tokens P2-CMDS-OK / P2-DET-OK / P2-SHUFFLE-OK / P2-HERMETIC-OK"
-echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; per-assertion success tokens P3-STEP-IF-OK / P3-BLOCKING-OK / P3-LINT-OK / P3-VERIFYJOB-OK"
+echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install and exactly-pinned install env (GOTOOLCHAIN/GOSUMDB/GOPROXY); per-assertion success tokens P3-STEP-IF-OK / P3-BLOCKING-OK / P3-LINT-OK / P3-VERIFYJOB-OK / P3-INSTENV-OK"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; per-assertion success tokens P4-A-ERRCHECK / P4-B-QUIET / P4-C-QUIET / P4-D-REVIVE"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; per-assertion success tokens P6-JOB-IF-OK / P6-STEP-IF-OK / P6-CMDS-OK / P6-COUNTS-OK"
