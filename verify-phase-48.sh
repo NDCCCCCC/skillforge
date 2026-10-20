@@ -1163,9 +1163,35 @@ for p in paths:
                 % (p, name, job_perms)
             )
 
+# T-48-03: parsed path-filter walk
+    # WR-02 (round-4 review) / 48-VERIFICATION advisory 2: GitHub judges path
+    # filters on the document it PARSES, and a quoted key (`"paths":`) or a
+    # spaced key (`paths :`) is valid YAML that the textual rule below cannot
+    # see — its substring `paths:` never occurs in either spelling. The parsed
+    # document is therefore the PRIMARY judge. The trigger block is read with
+    # the PyYAML 1.1 shape in mind (a bare `on:` loads as the boolean True).
+    # A sequence trigger (`on: [push, pull_request]`) carries bare event names
+    # with no configuration mapping, so there is nothing to inspect and this
+    # walk is simply skipped for that file. The textual rule below is retained
+    # UNCHANGED as the second layer, so every shape it caught is still caught.
+    trigger = doc.get("on", doc.get(True))
+    if isinstance(trigger, dict):
+        for event, config in trigger.items():
+            if isinstance(config, dict) and ("paths" in config or "paths-ignore" in config):
+                bad = "paths" if "paths" in config else "paths-ignore"
+                raise SystemExit(
+                    "trust-surface: %s filters event %r with a %r key — a path-filtered "
+                    "required check sits Pending on a PR that touches no matched path (T-48-03)"
+                    % (p, event, bad)
+                )
+# T-48-03: end parsed path-filter walk
+
     # T-48-03: a path-filtered required check sits Pending forever on a PR
     # that touches no matched path. Per-file: a second workflow does not get
-    # an exemption just because it is not named ci.yml.
+    # an exemption just because it is not named ci.yml. SECOND LAYER: the
+    # parsed walk above judges the document GitHub executes; this textual rule
+    # is retained unchanged so the P11 mutation drill stays attributable and
+    # no shape it caught is lost.
     for bad in ("paths:", "paths-ignore:"):
         if bad in nocomment:
             raise SystemExit(
@@ -1173,7 +1199,59 @@ for p in paths:
                 % (p, bad)
             )
 
+# T-48-04: parsed secret walk
+    # WR-02 (round-4 review) / 48-VERIFICATION advisory 2, PRIMARY layer over
+    # the textual scan below. The textual scan judges comment-stripped text,
+    # and `#` inside a quoted YAML scalar is DATA, not a comment — so
+    # `run: "echo x# ${{ secrets.DEPLOY_KEY }}"` hides its reference from the
+    # strip while GitHub still executes it, and `toJSON(secrets)` (which
+    # expands the whole secrets context) has no name after a dot for the
+    # textual regex to find. Walk every string VALUE of the parsed document
+    # (dict values, list items, scalar strings) and reject the same shapes
+    # under the same allowlist semantics. The textual `SECRET_REF` scan below
+    # is retained UNCHANGED as the second layer.
+    basename = os.path.basename(p)
+
+    def walk_strings(node):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            for v in node.values():
+                for s in walk_strings(v):
+                    yield s
+        elif isinstance(node, list):
+            for v in node:
+                for s in walk_strings(v):
+                    yield s
+
+    for s in walk_strings(doc):
+        for m in SECRET_REF.finditer(s):
+            name = m.group(1)
+            if name in ALLOWED_ANYWHERE:
+                continue
+            if basename == EVAL_GATE_BASENAME and name in ALLOWED_IN_EVAL_GATE:
+                continue
+            raise SystemExit(
+                "trust-surface: %s parsed value references secrets.%s; only secrets.GITHUB_TOKEN "
+                "is allowed outside eval-gate.yml (T-48-04)"
+                % (p, name)
+            )
+        if "secrets[" in s:
+            raise SystemExit(
+                "trust-surface: %s parsed value contains a dynamic secrets[ reference (T-48-04)" % p
+            )
+        lowered = s.lower()
+        if "tojson(secrets" in lowered or "tojson( secrets" in lowered:
+            raise SystemExit(
+                "trust-surface: %s parsed value contains a toJSON(secrets) expression — it "
+                "expands the whole secrets context (T-48-04)" % p
+            )
+# T-48-04: end parsed secret walk
+
     # T-48-04 / D-14: a public fork PR must never need or see a secret.
+    # SECOND LAYER: the parsed walk above is primary; this comment-stripped
+    # textual scan is retained unchanged so the P11 mutation drill stays
+    # attributable (stray-secret stays rejected with the walk deleted).
     basename = os.path.basename(p)
     for name in SECRET_REF.findall(nocomment):
         if name in ALLOWED_ANYWHERE:
@@ -1482,7 +1560,8 @@ info "P11: banner print sites ${BANNER_SITES} (line ${BANNER_LINE}, RAN gate lin
 # The fixtures live under $WORK and are never written into the repository.
 P11_FIX="$WORK/p11-fixtures"
 mkdir -p "$P11_FIX/empty-jobs" "$P11_FIX/empty-perms" "$P11_FIX/no-perms" "$P11_FIX/empty-dir" \
-  "$P11_FIX/two-files" "$P11_FIX/yaml-ext" "$P11_FIX/lowercase-registry" "$P11_FIX/stray-secret"
+  "$P11_FIX/two-files" "$P11_FIX/yaml-ext" "$P11_FIX/lowercase-registry" "$P11_FIX/stray-secret" \
+  "$P11_FIX/quoted-paths" "$P11_FIX/space-paths" "$P11_FIX/tojson-secrets" "$P11_FIX/quoted-hash-secret"
 
 cat > "$P11_FIX/empty-jobs/ci.yml" <<'YEOF'
 name: fixture-empty-jobs
@@ -1606,10 +1685,95 @@ jobs:
       - run: echo "${{ secrets.DEPLOY_KEY }}"
 YEOF
 
+# The four fixtures below pin the WR-02 evasion shapes (48-VERIFICATION
+# advisory 2 / 48-REVIEW.md WR-02): valid YAML that the retained textual
+# rules cannot see but the parsed-document walks reject. Each is a standalone
+# ci.yml carrying a valid on: block, permissions: contents: read and a
+# non-empty jobs: mapping, so the only reason it can be rejected is the rule
+# under test. The two path fixtures use a QUOTED key and a SPACED key
+# precisely so the retained textual `paths:` / `paths-ignore:` substring rule
+# cannot see them; the two secret fixtures carry no `secrets.NAME` reference
+# the retained textual SECRET_REF scan can see — `toJSON(secrets)` has no
+# name after the dot, and in quoted-hash-secret the `#` starts a comment for
+# the comment-stripping while the parsed document still holds the whole value.
+
+# quoted-paths/ — a QUOTED "paths": key on pull_request (T-48-03, parsed walk).
+cat > "$P11_FIX/quoted-paths/ci.yml" <<'YEOF'
+name: fixture-quoted-paths
+on:
+  pull_request:
+    "paths":
+      - "internal/**"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+YEOF
+
+# space-paths/ — a SPACED `paths :` key on pull_request (T-48-03, parsed walk).
+cat > "$P11_FIX/space-paths/ci.yml" <<'YEOF'
+name: fixture-space-paths
+on:
+  pull_request:
+    paths :
+      - "internal/**"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+YEOF
+
+# tojson-secrets/ — toJSON(secrets) expands the whole secrets context; there
+# is no secrets.NAME after a dot for the textual scan (T-48-04, parsed walk).
+cat > "$P11_FIX/tojson-secrets/ci.yml" <<'YEOF'
+name: fixture-tojson-secrets
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ toJSON(secrets) }}"
+YEOF
+
+# quoted-hash-secret/ — `#` inside a quoted scalar is data, so the textual
+# comment strip hides the reference while GitHub still executes it
+# (T-48-04, parsed walk).
+cat > "$P11_FIX/quoted-hash-secret/ci.yml" <<'YEOF'
+name: fixture-quoted-hash-secret
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "echo x# ${{ secrets.DEPLOY_KEY }}"
+YEOF
+
 P11_FIXTURE_COUNT=0
 : > "$WORK/p11-fixtures.log"
+# The four WR-02 fixtures sit at the END of the list on purpose: with the
+# parsed path walk deleted, two-files is still rejected by the retained
+# textual rule and the loop reaches quoted-paths — the first fixture only the
+# deleted walk was catching; with the parsed secret walk deleted, quoted-paths
+# and space-paths are still rejected by the intact parsed path walk and the
+# loop reaches tojson-secrets — the first fixture only the deleted secret walk
+# was catching.
 for fixture in empty-jobs empty-perms no-perms empty-dir \
-               two-files yaml-ext lowercase-registry stray-secret; do
+               two-files yaml-ext lowercase-registry stray-secret \
+               quoted-paths space-paths tojson-secrets quoted-hash-secret; do
   scan_trust_surface "$P11_FIX/$fixture"
   p11_fixture_rc=$?
   if [ "$p11_fixture_rc" -eq 0 ]; then
@@ -1627,10 +1791,10 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   head -1 "$WORK/trust-surface.log" | sed 's/^/       /'
 done
 
-# The fixture loop is a probe too: eight rejections are its success output. A
+# The fixture loop is a probe too: twelve rejections are its success output. A
 # loop that never ran (or was neutered) leaves the count and the log short, and
 # the deposit refuses (R2-WR-03).
-[ "$P11_FIXTURE_COUNT" -eq 8 ] || fail "P11 the fixture loop ran ${P11_FIXTURE_COUNT} fixture(s), want 8 — a neutralised or deleted loop cannot deposit PASS (R2-WR-03)"
+[ "$P11_FIXTURE_COUNT" -eq 12 ] || fail "P11 the fixture loop ran ${P11_FIXTURE_COUNT} fixture(s), want 12 — a neutralised or deleted loop cannot deposit PASS (R2-WR-03)"
 
 # P11's own success token deposits right after its last decisive assertion —
 # BEFORE the registry count below, which demands that token to exist. The
@@ -1654,7 +1818,7 @@ if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECT
 fi
 info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}, success tokens ${OK_COUNT}/${EXPECTED_PARTITIONS}"
 
-done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
+done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 12 fixtures rejected: 4 vacuity + 8 per-file)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
