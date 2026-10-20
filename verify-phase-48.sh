@@ -1062,6 +1062,14 @@ PUBLICATION_TOKENS = (
     "docker push",
     "packages: write",
     "push: true",
+    # IN-R5-01 (round-5 review): a quoted YAML boolean — `push: 'true'` or
+    # `push: "true"` — is a push-capable value the action executes, but the
+    # bare `push: true` substring above cannot see it. Match the quoted
+    # spellings too. (The parsed `with:`-mapping walk — judging `with.tags`
+    # registries against an allowlist — needs a D-26 registry decision and is
+    # deliberately deferred.)
+    "push: 'true'",
+    'push: "true"',
 )
 
 # D-26/D-29: a value-shaped write scope. Line-anchored so prose such as
@@ -1248,10 +1256,12 @@ for p in paths:
                 "is allowed outside eval-gate.yml (T-48-04)"
                 % (p, name)
             )
+# T-48-04: dynamic secrets[ branch
         if "secrets[" in s:
             raise SystemExit(
                 "trust-surface: %s parsed value contains a dynamic secrets[ reference (T-48-04)" % p
             )
+# T-48-04: end dynamic secrets[ branch
         lowered = s.lower()
         if "tojson(secrets" in lowered or "tojson( secrets" in lowered:
             raise SystemExit(
@@ -1573,7 +1583,8 @@ info "P11: banner print sites ${BANNER_SITES} (line ${BANNER_LINE}, RAN gate lin
 P11_FIX="$WORK/p11-fixtures"
 mkdir -p "$P11_FIX/empty-jobs" "$P11_FIX/empty-perms" "$P11_FIX/no-perms" "$P11_FIX/empty-dir" \
   "$P11_FIX/two-files" "$P11_FIX/yaml-ext" "$P11_FIX/lowercase-registry" "$P11_FIX/stray-secret" \
-  "$P11_FIX/quoted-paths" "$P11_FIX/space-paths" "$P11_FIX/tojson-secrets" "$P11_FIX/quoted-hash-secret"
+  "$P11_FIX/quoted-paths" "$P11_FIX/space-paths" "$P11_FIX/tojson-secrets" "$P11_FIX/quoted-hash-secret" \
+  "$P11_FIX/quoted-push" "$P11_FIX/dyn-secrets"
 
 cat > "$P11_FIX/empty-jobs/ci.yml" <<'YEOF'
 name: fixture-empty-jobs
@@ -1774,6 +1785,52 @@ jobs:
       - run: "echo x# ${{ secrets.DEPLOY_KEY }}"
 YEOF
 
+# The two fixtures below pin the round-5 advisory fixes (IN-R5-01 /
+# IN-R5-02a), appended at the END of the loop list for the same attribution
+# reason as the four above: with the publication variants reverted,
+# lowercase-registry is still rejected by the docker-push/ghcr.io tokens and
+# the loop reaches quoted-push — the fixture only the quoted variants catch;
+# with the secrets[ branch deleted, every earlier fixture is still rejected
+# and the loop reaches dyn-secrets — the fixture only that branch catches.
+
+# quoted-push/ — a single-quoted push flag on build-push-action: YAML
+# executes it as a push but the bare `push: true` substring cannot see it
+# (IN-R5-01). A plain unquoted-line mapping entry, so the comment strip has
+# nothing to hide. Everything else is clean: the publication rule is the
+# ONLY rule that can reject it.
+cat > "$P11_FIX/quoted-push/ci.yml" <<'YEOF'
+name: fixture-quoted-push
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/build-push-action@v7
+        with:
+          push: 'true'
+YEOF
+
+# dyn-secrets/ — a bracket-indexed secret reference: no `secrets.NAME` dot
+# form for the textual scan and no toJSON, so ONLY the parsed walk's
+# secrets[ branch can reject it (IN-R5-02a).
+cat > "$P11_FIX/dyn-secrets/ci.yml" <<'YEOF'
+name: fixture-dyn-secrets
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ secrets['DEPLOY_KEY'] }}"
+YEOF
+
 P11_FIXTURE_COUNT=0
 : > "$WORK/p11-fixtures.log"
 # The four WR-02 fixtures sit at the END of the list on purpose: with the
@@ -1782,10 +1839,16 @@ P11_FIXTURE_COUNT=0
 # deleted walk was catching; with the parsed secret walk deleted, quoted-paths
 # and space-paths are still rejected by the intact parsed path walk and the
 # loop reaches tojson-secrets — the first fixture only the deleted secret walk
-# was catching.
+# was catching. The two round-5 fixtures (IN-R5-01 / IN-R5-02a) extend that
+# rationale: with the publication quoted variants reverted, lowercase-registry
+# is still rejected by the docker-push/ghcr.io tokens and the loop reaches
+# quoted-push — the first fixture only the variants catch; with the secrets[
+# branch deleted, every earlier fixture is still rejected and the loop reaches
+# dyn-secrets — the first fixture only that branch catches.
 for fixture in empty-jobs empty-perms no-perms empty-dir \
                two-files yaml-ext lowercase-registry stray-secret \
-               quoted-paths space-paths tojson-secrets quoted-hash-secret; do
+               quoted-paths space-paths tojson-secrets quoted-hash-secret \
+               quoted-push dyn-secrets; do
   # WR-R5-01, guard 1 — file presence BEFORE the scan. The mkdir list above
   # would recreate a deleted fixture's directory, and the zero-files branch
   # inside scan_trust_surface would then "reject" that EMPTY directory exactly
@@ -1831,6 +1894,8 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
     lowercase-registry)              want='registry/publication token';       class_token='P11-PUBLICATION-OK' ;;
     stray-secret|quoted-hash-secret) want='references secrets.';              class_token='P11-SECRET-OK' ;;
     tojson-secrets)                  want='toJSON(secrets';                   class_token='P11-SECRET-OK' ;;
+    quoted-push)                     want='registry/publication token';       class_token='P11-PUBLICATION-OK' ;;
+    dyn-secrets)                     want='dynamic secrets[';                 class_token='P11-SECRET-OK' ;;
     *) fail "P11 fixture '${fixture}' has no registered rejection reason — every fixture must declare the rule that rejects it (WR-R5-01)" ;;
   esac
   scan_trust_surface "$P11_FIX/$fixture"
@@ -1864,10 +1929,10 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   printf '%s\n' "$first_line" | sed 's/^/       /'
 done
 
-# The fixture loop is a probe too: twelve rejections are its success output. A
-# loop that never ran (or was neutered) leaves the count and the log short, and
-# the deposit refuses (R2-WR-03).
-[ "$P11_FIXTURE_COUNT" -eq 12 ] || fail "P11 the fixture loop ran ${P11_FIXTURE_COUNT} fixture(s), want 12 — a neutralised or deleted loop cannot deposit PASS (R2-WR-03)"
+# The fixture loop is a probe too: fourteen rejections are its success output.
+# A loop that never ran (or was neutered) leaves the count and the log short,
+# and the deposit refuses (R2-WR-03).
+[ "$P11_FIXTURE_COUNT" -eq 14 ] || fail "P11 the fixture loop ran ${P11_FIXTURE_COUNT} fixture(s), want 14 — a neutralised or deleted loop cannot deposit PASS (R2-WR-03)"
 
 # P11's own success token deposits right after its last decisive assertion —
 # BEFORE the registry count below, which demands that token to exist. The
@@ -1896,7 +1961,7 @@ if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECT
 fi
 info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}, success tokens ${OK_COUNT}/${EXPECTED_PARTITIONS}"
 
-done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 12 fixtures rejected for their registered reasons: 4 vacuity + 8 per-file; per-class tokens P11-VACUITY-OK P11-PATHFILTER-OK P11-PERMSWRITE-OK P11-PUBLICATION-OK P11-SECRET-OK)"
+done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 14 fixtures rejected for their registered reasons: 4 vacuity + 10 per-file; per-class tokens P11-VACUITY-OK P11-PATHFILTER-OK P11-PERMSWRITE-OK P11-PUBLICATION-OK P11-SECRET-OK)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
@@ -1929,4 +1994,4 @@ echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cac
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface; evidence-bound success token"
 echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source; per-assertion success tokens P9-JOBS-OK / P9-GATE-EXPR-OK / P9-NOTICE-OK / P9-WIRING-OK / P9-TRIGGERS-OK / P9-GOVERSION-OK"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present; evidence-bound success token"
-echo "  P11 self-probe    — registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
+echo "  P11 self-probe    — registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 14 fixtures rejected: 4 vacuity + 10 per-file, per-class deposit tokens; empty partitions and per-file mutations proven to fail"
