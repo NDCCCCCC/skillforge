@@ -248,3 +248,11 @@ that the `-test.shuffle` seed prints only under `-v`.
 | Threats found | 20 |
 | Closed | 20 |
 | Open | 0 |
+
+## Security Audit 2026-10-20
+
+| Metric | Count |
+|---|---|
+| Threats found | 21 |
+| Closed | 21 |
+| Open | 0 |
