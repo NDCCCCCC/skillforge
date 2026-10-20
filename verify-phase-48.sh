@@ -1233,6 +1233,7 @@ if sorted(jobs) != want:
         "P9 eval-gate.yml job keys are %r, want exactly %r (D-09/D-10)"
         % (sorted(jobs), want)
     )
+print("P9-JOBS-OK")
 
 # --- the fork / Dependabot gate, asserted as the normalized expression ------
 # WR-07 / T-48-02 / T-48-18: three independent substring checks pass on an
@@ -1255,6 +1256,7 @@ if actual != expected:
         "(D-09; WR-07 - a neutralising || true or outer negation must not pass)"
         % (actual, expected)
     )
+print("P9-GATE-EXPR-OK")
 
 # --- the visible skip notice (D-10 / P4) ------------------------------------
 # A skipped job reports "Success" on GitHub, so the notice job is what keeps a
@@ -1280,6 +1282,7 @@ if not any("::notice::" in (s.get("run") or "") for s in (notice.get("steps") or
     raise SystemExit(
         "P9 eval-gate-skip-notice has no run: step containing the literal ::notice:: (D-10/P4)"
     )
+print("P9-NOTICE-OK")
 
 # --- the live wiring stays intact, and stays minimal ------------------------
 # Deleting the three secret mappings would make the workflow green while
@@ -1309,6 +1312,7 @@ for secret in ("secrets.GLM_API_KEY", "secrets.BGE_M3_URL", "secrets.MILVUS_ADDR
             "P9 eval-gate.yml references %s %d time(s), want exactly 1 - a duplicated grant widens the secret surface, a missing one fakes the live gate (R2-WR-05)"
             % (secret, n)
         )
+print("P9-WIRING-OK")
 
 # --- the trigger block, normalized for PyYAML's YAML-1.1 boolean `on:` ------
 triggers = doc.get("on", doc.get(True))
@@ -1322,6 +1326,7 @@ for event in ("pull_request", "push"):
         raise SystemExit(
             "P9 eval-gate.yml %s.branches is %r, want a list containing 'main'" % (event, branches)
         )
+print("P9-TRIGGERS-OK")
 
 # --- one Go version source for the whole directory (D-17 / P6) --------------
 targets = []
@@ -1358,18 +1363,15 @@ for path in sorted(targets):
                     % path
                 )
 
-print(
-    "EVALGATE-OK (%d jobs, exact gate expression, complement notice present) + GOVERSION-OK (%d file(s))"
-    % (len(jobs), len(targets))
-)
+print("P9-GOVERSION-OK")
 PY
 p9_rc=$?
 cat "$WORK/p9.log"
 [ "$p9_rc" -ne 0 ] && fail "P9 the eval-gate gate or the Go version source is violated (see the line above)"
 
-ok_partition "P9" "$WORK/p9.log" "EVALGATE-OK"
+ok_partition "P9" "$WORK/p9.log" "P9-JOBS-OK" "P9-GATE-EXPR-OK" "P9-NOTICE-OK" "P9-WIRING-OK" "P9-TRIGGERS-OK" "P9-GOVERSION-OK"
 
-done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact exactly once with a secret-free Gate check, one Go version source; evidence-bound success token EVALGATE-OK)"
+done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact exactly once with a secret-free Gate check, one Go version source; per-assertion success tokens P9-JOBS-OK P9-GATE-EXPR-OK P9-NOTICE-OK P9-WIRING-OK P9-TRIGGERS-OK P9-GOVERSION-OK)"
 
 # ---------------------------------------------------------------------------
 # P10: sc4-wording — the ROADMAP's SC-4 sentence, resolved through $ROOT
@@ -1673,6 +1675,6 @@ echo "  P5 composite      — three pinned majors in one file, zero checkout, ev
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; per-assertion success tokens P6-JOB-IF-OK / P6-STEP-IF-OK / P6-CMDS-OK / P6-COUNTS-OK"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface, rejects both job- and step-level if:; per-assertion success tokens P7-JOB-IF-OK / P7-STEP-IF-OK / P7-BUILDS-OK / P7-PUSH-OK / P7-NO-LOAD-OK / P7-CACHE-OK"
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface; evidence-bound success token"
-echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source; evidence-bound success token"
+echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source; per-assertion success tokens P9-JOBS-OK / P9-GATE-EXPR-OK / P9-NOTICE-OK / P9-WIRING-OK / P9-TRIGGERS-OK / P9-GOVERSION-OK"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present; evidence-bound success token"
 echo "  P11 self-probe    — registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
