@@ -84,8 +84,16 @@ by omission. No requirement is PARTIAL either.
 Dockerfiles referenced and per-image cache scopes — **no image was built**: Docker is absent from
 this host. P12 proves the `fe` job *declares* `npm ci` / `tsc --noEmit` / `vitest run`; the suites
 themselves were run separately and passed (Go build+test exit 0; Vitest 85 files / 689 tests
-exit 0), but no CI runner has yet executed them. The remaining proofs are Manual-Only M1–M5 and
-stay open until a real GitHub Actions run exists.
+exit 0). **A real GitHub Actions runner has now executed `ci.yml` three times** (recorded by
+plan 48-15 in `48-15-SUMMARY.md` § Task 2; run ids 39350901689, 39352480525, 39353593172;
+event `push` to `main`; branches force-pushed by the owner's option-a decision recorded as the
+repository-history decision). The runner-side outputs are captured. M1 (all-three-jobs-green) is
+*partially* closed by run-3's evidence: `lint`, `build + vet (P1)`, `go test ./... (CICD-01 /
+D-15)`, and the `verify` job all concluded `success` on run-3 — only the supplementary Phase-48
+mutation probe `determinism -count=100 (P5a)` failed (exit 141, SIGPIPE; classified persistent
+real red, recipe step 5). M1 stays open in the strict sense because the run-level conclusion is
+still `failure` (three classified real reds on `fe` and `docker` in addition to `P5a`); see
+Manual-Only table below for the three new entries.
 
 ---
 
@@ -106,11 +114,14 @@ stay open until a real GitHub Actions run exists.
 
 | # | What | How |
 |---|------|-----|
-| M1 | `go`, `fe`, `docker` jobs are all green on a real push | `gh run watch <run-id>` after pushing |
+| M1 | `go`, `fe`, `docker` jobs are all green on a real push | `gh run watch <run-id>` after pushing — partial on run-3 (`go=fe=docker=failure / verify=success`, head `a2a4c86`, run id 39353593172): the `go` core gates (lint, build, vet, `go test ./...`) all green; supplementary `P5a` determinism guard, `fe` Sparkline test, and `docker` alpine-base build are three classified persistent real reds (see M1a / M1b / M1c below) |
+| M1a | `fe` job's `Sparkline.test.tsx:79` `TestSparklineNoDeps` passes on a Linux runner | fix the hardcoded Windows absolute path (recorded in 48-15-SUMMARY.md § run-1 / run-2 / run-3 classifications), then re-push; 1/689 tests fail on Linux CI today |
+| M1b | `docker` job's backend image build links against the static duckdb archive on the runner | fix `Dockerfile.backend` base image (alpine-musl lacks `backtrace` / `malloc_trim` / `__res_init`; switch to debian-slim or apply musl-compat flags — recorded in 48-15-SUMMARY.md), then re-push |
+| M1c | `go` job's `determinism -count=100 (P5a)` guard does not SIGPIPE on the runner | runner environment: SIGPIPE before any test output captures, no `-test.shuffle` seed in log (D-19 quote rule — `-v` omitted). Reproduction on a WSL host cannot yield the same exit; the fix is runner-side (capture step output, abort early on output-buffer close, or add `-v` + accept the re-run cost). Recorded in 48-15-SUMMARY.md for follow-up |
 | M2 | fork PR triggers the approved `eval-gate` gate and the notice job is green | open a PR from a fork branch, read the check list |
 | M3 | Dependabot PR is treated like a fork (no live eval) | read the Dependabot PR's check list |
-| M4 | `only-new-issues` actually filters (lint output is scoped to changed lines, not the whole repo) | inspect the lint step's finding count on a PR touching one Go file |
-| M5 | Docker cache hit on the second run for **both** images | compare `scope=backend` / `scope=frontend` cache entries in run 2 |
+| M4 | `only-new-issues` actually filters (lint output is scoped to changed lines, not the whole repo) | closed-by-evidence on plan 48-15 run-3: lint step reported zero findings on the fast-forward push (head `a2a4c86`); the diff between `62b6663..a2a4c86` is `.github/workflows/ci.yml` revert + `.planning/phases/48-ci/48-15-SUMMARY.md` line additions — no Go content — confirming the action's `only-new-issues: true` alone is sufficient |
+| M5 | Docker cache hit on the second run for **both** images | compare `scope=backend` / `scope=frontend` cache entries in run 2 — requires a green docker job; deferred until M1b lands |
 
 ---
 

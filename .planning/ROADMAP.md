@@ -121,9 +121,9 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 13/15 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 round-1 `gaps_found` 之后的 7 个 gap-closure 计划）+ 4 个 round-2 再验证 `gaps_found`（5/9）的 gap-closure 计划（48-12..48-15，待执行）
+**Plans**: 14/15 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 round-1 `gaps_found` 之后的 7 个 gap-closure 计划）+ 4 个 round-2 再验证 `gaps_found`（5/9）的 gap-closure 计划（48-12..48-14 closed；48-15 run-execution block committed in `Run outcome: blocked` 三真红分支 — runner ran three times, three classified persistent real reds prevent CICD-01/02/03 flip; recorded in 48-15-SUMMARY.md）
 
-**Blocked on**: Class-B 硬化缺口已全部闭合且经变异证明——48-05..48-09 落地 per-file 信任面扫描、step 级 `if:` 拒绝、归一化 fork-gate 表达式、补集 notice、正向 revive sentinel（D）与 begin-marker 分区账目；48-10 据此重闭 9 行 open threat（`threats_open: 0`，19 条 review findings = 18 fixed / 1 deferred）。但 **`ci.yml` 仍然没有任何运行**（Class A）：git 传输已恢复（`git ls-remote origin HEAD` → exit 0, `369b08a`；48-VERIFICATION round 2 环境事实），`push.branches: [main]` 按设计不可放宽，`origin/main`（单 commit `369b08a`）与本分支无共同历史、无法开 PR——48-11 记录 `M1: BLOCKED`，run recipe 已持久化。CICD-01/02/03 保持 Pending，直到一台 git 传输可达的机器按该 recipe 产出一次 `go`/`fe`/`docker`（含 `verify`）全 `success` 的运行。
+**Blocked on**: Class-B 硬化缺口已全部闭合且经变异证明——48-05..48-09 落地 per-file 信任面扫描、step 级 `if:` 拒绝、归一化 fork-gate 表达式、补集 notice、正向 revive sentinel（D）与 begin-marker 分区账目；48-10 据此重闭 9 行 open threat（`threats_open: 0`，19 条 review findings = 18 fixed / 1 deferred）。但 **Class A 已取得一次实际 runner 运行**（`go=fe=docker=failure / verify=success`，head `a2a4c86`，branch `main`，run id 39353593172，2026-10-20T01:28–01:31Z）按 48-11 持久化的 M1 recipe 从本机 SSH 推送触发，经历 3 次重跑以确定每个失败原因：run-1 暴露了强制推送下的全仓 lint 兜底问题（WR-06 evidence）；run-2 试并拒 candidate A（与 `only-new-issues: true` 不兼容）；run-3 验证 lint 在 fast-forward 推送下天然成立（WR-06 关闭），并暴露三个独立的真实构建问题：(i) go 的 `determinism -count=100 (P5a)` 在 runner 上 SIGPIPE-exit 141；(ii) fe 的 `Sparkline.test.tsx:79` 将绝对 Windows 路径硬编码到测试中（Linux runner ENOENT）；(iii) docker 的 `Dockerfile.backend` 基于 alpine musl（缺失静态 duckdb 所需的 glibc 符号 `backtrace`、`malloc_trim`、`__res_init`）。三项均为**分类记录的真实持久红故障**（recipe step 5 适用；都不弱化任何门），不是 CI 矩阵缺陷，但每个都需要源侧单独的修复（runner 端修复 / 测试 harness / Dockerfile 构建基础镜像）才能获得四全 green。WR-06 凭证据关闭（run-3 lint 步骤绿），CICD-01/02/03 在此分支上保持 Pending（配方 blocked 分支：`do NONE of the flips`）；三项真实红故障作为 follow-up 记录在 `48-VALIDATION.md` 的 Manual-Only 列表和 `48-SECURITY.md` What this audit does NOT establish 中。下一个 host 只需修这 3 处后再次 push main 即可一次性取齐四 green。
 
 **Wave 1** — tracer slice
 
@@ -153,7 +153,7 @@ Plans:
 - [x] 48-12-PLAN.md — ci.yml `curl|sh` bootstrap → module-proxy `go install` + `[ -x ]` postcondition（R2-CR-01/WR-02）；PyYAML pin、verify checkout `persist-credentials: false`、四 job header、P5a `-list` 防改名 guard（R2-IN-01/02/03、R2-WR-04）；eval-gate `Gate check` 撤除三个不可消费 secret（R2-WR-05）
 - [x] 48-13-PLAN.md — verifier 成功 token 账目：`done_partition` 要求 begin+ok、去掉 `:-0` 默认、P11 四方计数（R2-WR-03，M8 变异转红）；P2/P3 pin verify job 契约与 48-12 各修复（R2-WR-01，M9/M10 变异转红）；五项沙箱变异演练
 - [x] 48-14-PLAN.md — 48-SECURITY.md 补录 supply-chain 行 T-48-47（引用 48-11 threat_flag）+ round-2 closure 段 + audit trail；传输事实更正（ROADMAP Blocked-on / SECURITY "does NOT establish"）；PyYAML 行补进 Package Legitimacy Audit
-- [ ] 48-15-PLAN.md — Class A：执行 48-11 持久化的 M1 run recipe（历史决策 checkpoint〔one-way〕→ 本机 push → `go=fe=docker=verify=success` → REQUIREMENTS CICD-01/02/03 凭 run 证据翻转；`autonomous: false`）
+- [x] 48-15-PLAN.md — Class A：执行 48-11 持久化的 M1 run recipe（历史决策 checkpoint〔one-way〕→ 本机 SSH push → 三次 runners 触发后闭合证据 + 三处真实持久红故障分类）；CICD-01/02/03 按配方 blocked 分支保持 Pending；详见 `48-15-SUMMARY.md`。
 
 ### Phase 49: Hermetic Demo
 

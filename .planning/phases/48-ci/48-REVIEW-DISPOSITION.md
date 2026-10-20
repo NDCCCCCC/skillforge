@@ -48,8 +48,9 @@ recorded: 2026-10-19T15:48:50.874Z
 
 > **Round 2 (2026-10-19, post gap-closure re-review).** This file is the gate-format ledger for the
 > INCREMENTAL re-review that ran after plans 48-05…48-11 landed. The ROUND-1 review's 19 findings
-> and their final dispositions (18 fixed by 48-05…48-09, 1 deferred = WR-06 option D, recorded by
-> plan 48-10) live in [48-REVIEW-DISPOSITION-R1.md](48-REVIEW-DISPOSITION-R1.md) — that round's
+> and their final dispositions (18 fixed by 48-05…48-09, 1 closed-by-evidence on plan 48-15 =
+> WR-06 lint step green on run-3 — recorded by plan 48-10 as the option-D deferral and reconciled
+> by plan 48-15 in `48-15-SUMMARY.md` § Task 2 Run-3) live in [48-REVIEW-DISPOSITION-R1.md](48-REVIEW-DISPOSITION-R1.md) — that round's
 > ledger was hand-authored in a different table format the gate parser cannot read, so its rows
 > could not be carried forward mechanically; it was restored from git (`6aa3391`) rather than lost.
 > **Finding IDs are REUSED across rounds and name different findings**: round-2 CR-01/WR-01…05/IN-01…03

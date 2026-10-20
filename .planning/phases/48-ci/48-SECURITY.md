@@ -163,28 +163,53 @@ mutation probe named in its Mitigation cell. That establishes the gates bite on 
 files; it does not establish runner-side runtime behavior. Two classes of proof remain open and
 are tracked as Manual-Only M1–M5 in `48-VALIDATION.md`:
 
-- **No CI runner has executed these workflows — M1: BLOCKED (recorded by plan 48-11; cause
-  corrected 2026-10-20).** `ci.yml` has never been on the remote default branch, so `go` / `fe` /
-  `docker` (and the new `verify` job) have never reported a conclusion. Every "mitigated" claim
-  above is a claim about *declaration*, not about *a run*. The "git transport unreachable" cause
-  recorded by 48-11 no longer holds: `git ls-remote origin HEAD` succeeds from the executing host
-  (exit 0, `369b08a` — 48-VERIFICATION.md round 2, Environment Facts). What remains is the
-  repository-owner history decision (`origin/main` is still a single unrelated commit with an
-  empty merge-base, so no PR can be opened from this branch) plus one push from this
-  transport-capable host — owned by plan 48-15, which executes the run recipe persisted verbatim
-  in `48-11-SUMMARY.md`. Until that run exists with all jobs `success`, CICD-01/02/03 stay
-  Pending.
+- **A CI runner has executed these workflows — three times (recorded by plan 48-15; M1 partial
+  close, full close blocked).** `ci.yml` has run on the public default branch three times since
+  `plan 48-15` force-pushed the local branch to public `main` on 2026-10-20. Run evidence
+  (recorded in `48-15-SUMMARY.md`): run-1 (head `d168512`, run id 39350901689), run-2 (head
+  `62b6663`, run id 39352480525), run-3 (head `a2a4c86`, run id 39353593172). Every "mitigated"
+  claim above is now a claim about a run, not about a declaration — that is the production
+  difference between "declared green" and "executed green". The history-decision constraint
+  recorded by plan 48-11 (`origin/main` was a single unrelated commit with empty merge-base) has
+  been resolved by the owner's option-a decision: tag `v1.5-archive` preserves the original
+  tip; force-push rewrites `main` to this branch. The "git transport unreachable" cause recorded
+  by plan 48-11 was already falsified by 48-VERIFICATION.md round 2. What remains is three
+  classified persistent real reds (recipe step 5; not a CI-matrix defect, but each requires a
+  separate source-side fix to land four-green): **(a)** the go job's `determinism -count=100
+  (P5a)` guard exits 141 (SIGPIPE) on the runner at the test binary before any output
+  captures — the seed is non-recoverable because `-v` is omitted per D-19; **(b)** the fe job's
+  `Sparkline.test.tsx:79` test (`TestSparklineNoDeps`) hardcodes a Windows absolute path that
+  does not exist on the Linux runner (ENOENT); **(c)** the docker job's `Dockerfile.backend`
+  builds on an alpine-musl base, which lacks the glibc symbols (`backtrace`, `malloc_trim`,
+  `__res_init`) the static duckdb archive needs. These three are recorded in
+  `48-VALIDATION.md`'s `Manual-Only Verifications` table as new rows alongside M1, and they do
+  not invalidate the existing `threats_open: 0` register — that register's `mitigate`
+  dispositions are about the workflow's *declarations*, which the runner-side test surface
+  confirmed. WR-06 closes positively on run-3 (the recipe-tracked deferred question, the push-
+  path lint scope: with `only-new-issues: true` alone, on a fast-forward push, the action's
+  diff-scoped output reported zero findings — recorded fixed-by-evidence in `48-REVIEW-
+  DISPOSITION-R1.md` and `48-REVIEW-DISPOSITION.md`). CICD-01/02/03 stay Pending because the
+  recipe's blocked-branch rule applies when the latest run's conclusion is not all-success;
+  flipping them on partial evidence is the exact requirement-spoofing class T-48-46 records.
 - **No image was built.** Docker is absent from this host, so `T-48-09`'s `push: false` and the two
   per-image cache scopes are statically asserted only.
 
 Deferred decisions carried from plan 48-11:
 
-- **WR-06 — deferred (option D).** Whether `golangci-lint-action@v9` falls back to whole-repo
-  linting on a `push` to `main` is **unmeasured**: the action cannot be exercised on a push event
-  from this host, so the push-path result is missing. Both candidate fixes are recorded in
-  `48-11-SUMMARY.md` (candidate A: explicit `--new-from-rev` diff base; candidate B: PR-gating the
-  lint step — recorded as D-06-reversing and NOT chosen). No lint-step code change was made; the
-  decision re-opens on the first real run's evidence. Owner: the first `ci.yml` run.
+- **WR-06 — closed-by-evidence on run-3 (plan 48-15).** Whether `golangci-lint-action@v9` falls back to whole-repo
+  linting on a `push` to `main` is **measured**: run-1 (head `d168512`,
+  force-push with no common ancestor) revealed the action's push-patch fetch errored
+  with "No common ancestor" and the action fell back to whole-repo lint with
+  11+ legacy findings; run-2 (head `62b6663`, fast-forward) tested candidate A
+  (`args: --new-from-rev` on the lint step) and the action rejected it as
+  incompatible with `only-new-issues: true` ("please, don't specify manually
+  --new* args when requesting only new issues"); run-3 (head `a2a4c86`,
+  fast-forward with the recipe-revert commit, pre-plan lint step restored)
+  confirmed the action's `only-new-issues: true` alone is sufficient on a normal
+  fast-forward push — diff was fetched, scoped, and reported zero findings.
+  Candidate B (PR-gating the lint step) remains D-06-reversing and was not chosen.
+  No lint-step code change was applied to production. WR-06 closes
+  fixed-by-evidence in both disposition ledgers.
 - **IN-08 and IN-07 — implemented, not deferred.** IN-08 landed as option F (the closed PR base
   set `[main, 'phase-*']` documented in the `ci.yml` header, no behavior change); IN-07 landed as
   option A (a fourth published `verify` job running `bash verify-phase-48.sh` with the pinned
@@ -214,7 +239,7 @@ that the `-test.shuffle` seed prints only under `-v`.
 - [x] `threats_open: 0` confirmed — the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, and the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill)
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
-**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-14). Class A (no real CI run, no image build) remains honestly recorded under "What this audit does NOT establish" and in `48-VALIDATION.md` M1–M5; it is a recorded environment block, not an open threat.
+**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-15 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14; on plan 48-15 the runner executed ci.yml three times on the public default branch and the run evidence is recorded in `48-15-SUMMARY.md` and `48-VALIDATION.md`. WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). Three classified persistent real reds (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) prevent the four-green run conclusion required to flip CICD-01/02/03; those three are not threats on the register — they are recorded source-side fixes pending, in the same "What this audit does NOT establish" section above and in the new Manual-Only rows.
 
 ## Security Audit 2026-10-19
 

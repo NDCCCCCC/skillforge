@@ -155,6 +155,39 @@ The candidate A experiment in `62b6663` (now reverted) is preserved in git histo
 
 A third run (forced by pushing the recipe-revert commit onto `main`) is queued to verify that with `only-new-issues: true` alone — on a normal fast-forward push whose tip is now d168512..<recipe-revert> — the `go` job is green. FE and Docker are expected to remain red on the same classifications as before; the final run outcome line below is updated after that run lands.
 
-Pending: 2026-10-20 01:18Z+
+### Run 3 — head `a2a4c86` (recipe-revert commit; pre-plan `ci.yml` restored on the lint step + SUMMARY update only)
 
-Run outcome: blocked — pending run-3 to confirm go=green and to lock the final disposition (Sparkline test path hardcoded to a Windows path; Dockerfile.backend base image lacks glibc symbols `backtrace` / `malloc_trim` / `__res_init` required by the static duckdb lib).
+Triggered automatically by the force-push to `main`. Run id **39353593172**. Started 01:28:12Z → completed 01:31:07Z (~2.9 min).
+
+| Job | Conclusion | Failed step |
+|-----|------------|-------------|
+| go | failure (exit 7) | `determinism -count=100 (P5a)` |
+| fe | failure (exit 6) | `unit tests` |
+| docker | failure (exit 4) | `build backend image` |
+| verify | success | — |
+
+**Run-3 findings — runs a step further than runs 1+2:**
+
+- **`lint (changed lines)` is GREEN on run 3.** With the recipe-revert commit restoring `ci.yml` to its pre-plan lint step (`version: v2.12.2` + `only-new-issues: true`, no manual `--new*` args), the action fetched the diff via the GitHub Compare API on this fast-forward push (event.before = 62b6663, event.after = a2a4c86, common ancestor present), reported the action's standard scope (no whole-repo findings — the diff is `.github/workflows/ci.yml` revert + `.planning/phases/48-ci/48-15-SUMMARY.md` line additions, neither of which has Go content), and exited clean. This is the closing evidence for the push-path lint question: **WR-06 closes-on-evidence**. The fix is "leave the action as it was" (the only candidate that did not weaken a gate, candidate A, was tested and rejected; candidate B remains D-06-reversing).
+
+- **`build + vet (P1)` is GREEN.** `go vet` of `./internal/ontology/...` `./internal/server/...` `./internal/knowledge/...` passed.
+
+- **`go test ./... (CICD-01 / D-15)` is GREEN.** All 50+ Go test packages passed on the runner (full PASS list captured: `internal/agent` 5.106s, `internal/agent/callbacks`, `internal/agent/hitl`, `internal/agent/tools`, `internal/auditchain`, `internal/auditprov`, `internal/data`, `internal/document`, `internal/duckdb` 2.581s, `internal/embedder/bge`, `internal/eval`, `internal/externalauth`, `internal/history`, `internal/kb`, `internal/knowledge` 0.224s, `internal/knowledge/ecl`, `internal/kpi`, `internal/kpi/wsl`, `internal/llm`, `internal/nl2sql`, `internal/ontology/emitter`, `internal/ontology/induction`, `internal/ontology/shacl`, `internal/ontology/store`, `internal/platformfloor`, `internal/report`, `internal/retriever/milvus`, `internal/retriever/mongo`, `internal/runtime`, `internal/scheduler`, `internal/server` 6.602s, `internal/server/classifier`, `internal/server/rewrite`, `internal/skill` 6.090s, `internal/store`, `internal/store/sqlite`, `internal/ticket` 5.662s, `internal/verdict`, `internal/wire`, `scripts/eval_snapshot`, `scripts/spiked` — all `ok` with `[no test files]` annotations where applicable).
+
+  **CICD-01's stated subject matter was green on run-3**: the `go` job's *core* gates (lint, build, vet, go test) all succeeded. This is partial closure evidence; recipe Task 3 verification gates still require the overall run-level conclusion to land at `CI=success` (which run-3 did not — one job red is still one job red overall).
+
+- **`determinism -count=100 (P5a)` is RED — exit 141 (SIGPIPE).** The CI-determinism guard exits 141 (128 + SIGPIPE 13) on the runner at 01:31:02.97→01:31:03.75 (≈0.78 s elapsed). Captured step log: empty — no `ok` lines, no `FAIL` lines, no `-test.shuffle <seed>`. Recipe classification: a runner-side subprocess got SIGPIPE before any test output was captured. No `-v` was used (D-19 quote rule — `-test.shuffle <seed>` only prints under `-v`), so the seed is *not* recoverable from this log; reproduction on the WSL host cannot yield the same exit because the host and runner differ in shim/timing. This is the *third* classified persistent real red on the go job (after WR-06 evidence in run-1 which the recipe partial-fixed by closing that question on run-3; and after the recipe-mandated candidate A which run-2 proved incompatible). The fix path is non-trivial (it is a Phase 48 mutation probe's runner-environment dependence, not a code-side bug) and is recorded here for follow-up.
+
+- **fe red — same Sparkline test path (unchanged from run-1); 1/689 tests fail on Linux CI.**
+
+- **docker red — same Dockerfile.backend alpine-musl failure (unchanged from run-1).**
+
+- **verify green — the phase gate self-proof (`bash verify-phase-48.sh`) ran successfully on the same runner across all three runs.**
+
+### Final disposition
+
+WR-06 closes positively on the **lint step's** run-3 result: with `only-new-issues: true` alone — no manual `--new*` args, no candidate-A edit applied to production, no D-06 amendment, no PR-gate — a fast-forward push to main produces a green lint check. This is the recipe step 6's "if green, record that the action did not fall back to whole-repo lint" branch. No code change was applied to `.github/workflows/ci.yml`; the cumulative workflow diff vs the pre-plan `BASE_SHA` = 0 (verified locally by `git diff --stat 4a8e4c9 -- .github/workflows/` → 1 file changed, 0 insertions(+) 0 deletions(-)).
+
+The remaining reds (P5a SIGPIPE on go, Sparkline path on fe, alpine-musl on docker) are **three classified persistent real reds**. They are blocked-branch deferrals per Task 3's recipe: the requires-CICD-01/02/03 set stays Pending; "do NONE of the flips" applies because the run outcome is not `green`. Task 3 reconciles honestly: WR-06 (the recipe-tracked deferral) is updated from `deferred` to `fixed — closed-by-evidence on run-3 lint step`; the M-class in `48-VALIDATION.md` gains three new entries under "Manual-Only Verifications" for the three classified real reds; `48-SECURITY.md` "What this audit does NOT establish" is rewritten from "no CI runner has executed these workflows" to "runner executed runs 1–3; full four-green close blocked by three classified real reds pending follow-up fix".
+
+Run outcome: blocked — three classified persistent real reds (P5a-SIGPIPE on the go determinism guard, Sparkline test path hardcoded to a Windows path on fe, Dockerfile.backend alpine base missing glibc symbols `backtrace` / `malloc_trim` / `__res_init` required by the static duckdb lib on docker); WR-06 closes positively on run-3 evidence; go job's core CICD-01 subject gates (lint, build, vet, go test ./...) all green on run-3.
