@@ -81,20 +81,19 @@ by omission. No requirement is PARTIAL either.
 
 **What ✅ does NOT mean here (read before closing CICD-01/02/03):** the green marks are
 *static and sentinel* proofs. P7/P13 prove the `docker` job is declared with `push: false`, both
-Dockerfiles referenced and per-image cache scopes — **no image was built**: Docker is absent from
-this host. P12 proves the `fe` job *declares* `npm ci` / `tsc --noEmit` / `vitest run`; the suites
-themselves were run separately and passed (Go build+test exit 0; Vitest 85 files / 689 tests
-exit 0). **A real GitHub Actions runner has now executed `ci.yml` four times** (recorded by
-plan 48-15 in `48-15-SUMMARY.md` § Task 2; run ids 39350901689, 39352480525, 39353593172,
-39355131431; event `push` to `main`, run-4 on head `304dcc4`; branches force-pushed by the
-owner's option-a decision recorded as the repository-history decision). The runner-side outputs are
-captured. M1 (all-three-jobs-green) is *partially* closed by run-3's evidence: `lint`,
-`build + vet (P1)`, `go test ./... (CICD-01 / D-15)`, and the `verify` job all concluded
-`success` on run-3 — only the supplementary Phase-48 mutation probe
-`determinism -count=100 (P5a)` failed (exit 141; the cause is the workflow pipeline shape, not the
-runner — see M1c). M1 stays open in the strict sense because the run-level conclusion is
-still `failure` (three classified real reds on `fe` and `docker` in addition to `P5a`); see
-Manual-Only table below for the three new entries.
+Dockerfiles referenced and per-image cache scopes — **the images were built by the runner, not by
+this host**: Docker is absent locally. P12 proves the `fe` job *declares* `npm ci` /
+`tsc --noEmit` / `vitest run`; the suites themselves were run separately and passed (Go
+build+test exit 0; Vitest 85 files / 689 tests exit 0). **A real GitHub Actions runner has
+executed `ci.yml` six times** (recorded by plans 48-15 and 48-19 in `48-15-SUMMARY.md` and
+`48-19-SUMMARY.md`; event `push` to `main`). The earlier runs (runs 1-5) were all red. **Run 6
+of 6 — run id 39380373930 on head `630f875` — is the first all-green**, with
+`go=fe=docker=verify=success`. Canonical fragment: `ci.yml total runs: 6; first all-green:
+39380373930`. The earlier runs exposed the three classified build causes fixed by 48-16 (P5a
+workflow pipeline shape, Sparkline Windows path, alpine-musl duckdb linkage — see M1a-M1c) and
+one load-sensitive DuckDB reader-block ratio flake fixed by 48-19 (best-of-5 minimum sampling).
+M1 is closed on run 6 of 6. M2-M5 remain open: a push run alone cannot exercise a fork PR, a
+Dependabot PR, or a second-run cache comparison.
 
 ---
 
@@ -115,14 +114,14 @@ Manual-Only table below for the three new entries.
 
 | # | What | How |
 |---|------|-----|
-| M1 | `go`, `fe`, `docker` jobs are all green on a real push | `gh run watch <run-id>` after pushing — partial on run-4 (`go=fe=docker=failure / verify=success`, head `304dcc4`, run id 39355131431) and identical on run-3 (`go=fe=docker=failure / verify=success`, head `a2a4c86`, run id 39353593172), within the four-run history (39350901689 / 39352480525 / 39353593172 / 39355131431): the `go` core gates (lint, build, vet, `go test ./...`) all green; supplementary `P5a` determinism guard, `fe` Sparkline test, and `docker` alpine-base build are three classified persistent real reds (see M1a / M1b / M1c below) |
-| M1a | `fe` job's `Sparkline.test.tsx:79` `TestSparklineNoDeps` passes on a Linux runner | fix the hardcoded Windows absolute path (recorded in 48-15-SUMMARY.md § run-1 / run-2 / run-3 classifications), then re-push; 1/689 tests fail on Linux CI today |
-| M1b | `docker` job's backend image build links against the static duckdb archive on the runner | fix `Dockerfile.backend` base image (alpine-musl lacks `backtrace` / `malloc_trim` / `__res_init`; switch to debian-slim or apply musl-compat flags — recorded in 48-15-SUMMARY.md), then re-push |
-| M1c | `go` job's `determinism -count=100 (P5a)` guard is green on the runner | **workflow pipeline shape, not runner environment** — `go test … -list … \| grep -qx …` under `set -o pipefail`: `grep -q` exits at the first match and closes the pipe, `go test -list` still writes its trailing `ok <pkg> <time>` line, the producer takes EPIPE → SIGPIPE → exit 141, and pipefail propagates it. Reproduced on WSL Ubuntu 22.04 with go1.25.5 linux/amd64 (the version `go-version-file: go.mod` installs): exit 141 with the exact `ci.yml` line (6/6), exit 0 once the list is materialised or `grep -q` is removed. The same line exits 0 on this Windows host, which is why 48-12's local check missed it. Remedy actually applied in 48-16: materialise the list to `$RUNNER_TEMP/go-test-list.txt` before grep. The former prescription (runner-side capture of step output, aborting early on output-buffer close, or adding `-v`) is withdrawn — it cannot fix a pipeline in the workflow. Recorded in 48-15-SUMMARY.md and re-proven by 48-VERIFICATION.md round 3 |
+| M1 | `go`, `fe`, `docker` jobs are all green on a real push | **closed** on run 39380373930 (head `630f875`): `go=success`, `fe=success`, `docker=success` (and `verify=success`); canonical fragment `ci.yml total runs: 6; first all-green: 39380373930`. The earlier runs (runs 1-5) were red; see M1a-M1c for the three classified build causes fixed by 48-16 and `48-19-SUMMARY.md` for the reader-block flake fixed between run 5 and run 6 |
+| M1a | `fe` job's `Sparkline.test.tsx:79` `TestSparklineNoDeps` passes on a Linux runner | **closed** — fixed by 48-16 Task 2 (resolve `Sparkline.tsx` via `import.meta.url` instead of a hardcoded Windows path); green on run 39380373930 |
+| M1b | `docker` job's backend image build links against the static duckdb archive on the runner | **closed** — fixed by 48-16 Task 3 (`golang:1.25-bookworm` builder, `debian:bookworm-slim` runtime with libstdc++6 / libgcc-s1); both images built on run 39380373930 |
+| M1c | `go` job's `determinism -count=100 (P5a)` guard is green on the runner | **closed** — fixed by 48-16 Task 1 (materialise the `-list` output to `$RUNNER_TEMP/go-test-list.txt` before grep); green on run 39380373930. Root-cause analysis retained: **workflow pipeline shape, not runner environment** — `go test … -list … \| grep -qx …` under `set -o pipefail`: `grep -q` exits at the first match and closes the pipe, `go test -list` still writes its trailing `ok <pkg> <time>` line, the producer takes EPIPE → SIGPIPE → exit 141, and pipefail propagates it. Reproduced on WSL Ubuntu 22.04 with go1.25.5 linux/amd64 (the version `go-version-file: go.mod` installs): exit 141 with the exact `ci.yml` line (6/6), exit 0 once the list is materialised or `grep -q` is removed. The same line exits 0 on this Windows host, which is why 48-12's local check missed it. Remedy actually applied in 48-16: materialise the list to `$RUNNER_TEMP/go-test-list.txt` before grep. The former prescription (runner-side capture of step output, aborting early on output-buffer close, or adding `-v`) is withdrawn — it cannot fix a pipeline in the workflow. Recorded in 48-15-SUMMARY.md and re-proven by 48-VERIFICATION.md round 3 |
 | M2 | fork PR triggers the approved `eval-gate` gate and the notice job is green | open a PR from a fork branch, read the check list |
 | M3 | Dependabot PR is treated like a fork (no live eval) | read the Dependabot PR's check list |
 | M4 | `only-new-issues` actually filters (lint output is scoped to changed lines, not the whole repo) | closed-by-evidence on plan 48-15 run-3: lint step reported zero findings on the fast-forward push (head `a2a4c86`); the diff between `62b6663..a2a4c86` is `.github/workflows/ci.yml` revert + `.planning/phases/48-ci/48-15-SUMMARY.md` line additions — no Go content — confirming the action's `only-new-issues: true` alone is sufficient |
-| M5 | Docker cache hit on the second run for **both** images | compare `scope=backend` / `scope=frontend` cache entries in run 2 — requires a green docker job; deferred until M1b lands |
+| M5 | Docker cache hit on the second run for **both** images | still open: compare `scope=backend` / `scope=frontend` cache entries across two consecutive green `docker` runs; the first green docker job is run 39380373930, so the comparison needs the next green run |
 
 ---
 

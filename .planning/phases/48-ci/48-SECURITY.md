@@ -163,41 +163,44 @@ mutation probe named in its Mitigation cell. That establishes the gates bite on 
 files; it does not establish runner-side runtime behavior. Two classes of proof remain open and
 are tracked as Manual-Only M1–M5 in `48-VALIDATION.md`:
 
-- **A CI runner has executed these workflows — four times (recorded by plan 48-15; M1 partial
-  close, full close blocked).** `ci.yml` has run on the public default branch four times since
-  `plan 48-15` force-pushed the local branch to public `main` on 2026-10-20. Run evidence
-  (recorded in `48-15-SUMMARY.md`): run-1 (head `d168512`, run id 39350901689), run-2 (head
-  `62b6663`, run id 39352480525), run-3 (head `a2a4c86`, run id 39353593172), run-4 (head
-  `304dcc4`, run id 39355131431). Every "mitigated"
-  claim above is now a claim about a run, not about a declaration — that is the production
-  difference between "declared green" and "executed green". The history-decision constraint
-  recorded by plan 48-11 (`origin/main` was a single unrelated commit with empty merge-base) has
-  been resolved by the owner's option-a decision: tag `v1.5-archive` preserves the original
-  tip; force-push rewrites `main` to this branch. The "git transport unreachable" cause recorded
-  by plan 48-11 was already falsified by 48-VERIFICATION.md round 2. What remains is three
-  classified persistent real reds (recipe step 5; not a CI-matrix defect, but each requires a
-  separate source-side fix to land four-green): **(a)** the go job's `determinism -count=100
-  (P5a)` guard is a **workflow pipeline shape**, not a runner-environment artefact: `go test …
-  -list … | grep -qx …` under `set -o pipefail` lets `grep -q` close the pipe at the first match
-  while `go test -list` still writes its trailing `ok <pkg> <time>` line, so the producer takes
-  SIGPIPE and the pipeline exits 141 (reproduced on WSL Ubuntu 22.04 / go1.25.5: 6/6 exit 141
-  with the exact `ci.yml` line, exit 0 once the list is materialised); the fix actually applied
-  by 48-16 materialises the list to `$RUNNER_TEMP/go-test-list.txt` before grep; **(b)** the fe job's
-  `Sparkline.test.tsx:79` test (`TestSparklineNoDeps`) hardcodes a Windows absolute path that
-  does not exist on the Linux runner (ENOENT); **(c)** the docker job's `Dockerfile.backend`
-  builds on an alpine-musl base, which lacks the glibc symbols (`backtrace`, `malloc_trim`,
-  `__res_init`) the static duckdb archive needs. These three are recorded in
-  `48-VALIDATION.md`'s `Manual-Only Verifications` table as new rows alongside M1, and they do
-  not invalidate the existing `threats_open: 0` register — that register's `mitigate`
-  dispositions are about the workflow's *declarations*, which the runner-side test surface
-  confirmed. WR-06 closes positively on run-3 (the recipe-tracked deferred question, the push-
-  path lint scope: with `only-new-issues: true` alone, on a fast-forward push, the action's
-  diff-scoped output reported zero findings — recorded fixed-by-evidence in `48-REVIEW-
-  DISPOSITION-R1.md` and `48-REVIEW-DISPOSITION.md`). CICD-01/02/03 stay Pending because the
-  recipe's blocked-branch rule applies when the latest run's conclusion is not all-success;
-  flipping them on partial evidence is the exact requirement-spoofing class T-48-46 records.
-- **No image was built.** Docker is absent from this host, so `T-48-09`'s `push: false` and the two
-  per-image cache scopes are statically asserted only.
+- **A CI runner has executed these workflows — six times; the sixth is the first all-green
+  (recorded by plans 48-15 and 48-19).** `ci.yml` has run on the public default branch six
+  times since `plan 48-15` force-pushed the local branch to public `main` on 2026-10-20. The
+  earlier runs (runs 1-5) were all red; **run 6 of 6 — run id 39380373930 on head `630f875` —
+  concluded `go=fe=docker=verify=success`**. Canonical fragment: `ci.yml total runs: 6; first
+  all-green: 39380373930`. Run evidence for the earlier runs is recorded in `48-15-SUMMARY.md`
+  (run-1 head `d168512`, run-2 head `62b6663`, run-3 head `a2a4c86`, run-4 head `304dcc4`) and
+  `48-19-SUMMARY.md` (run-5 head `e161436`, run id 39378733451). Every "mitigated" claim above
+  is now a claim about a run, not about a declaration — that is the production difference
+  between "declared green" and "executed green". The history-decision constraint recorded by
+  plan 48-11 (`origin/main` was a single unrelated commit with empty merge-base) was resolved by
+  the owner's option-a decision: tag `v1.5-archive` preserves the original tip; force-push
+  rewrote `main` to this branch. The "git transport unreachable" cause recorded by plan 48-11
+  was already falsified by 48-VERIFICATION.md round 2. The three classified persistent reds
+  recorded against the earlier runs were cleared at the source: **(a)** the go job's
+  `determinism -count=100 (P5a)` was a **workflow pipeline shape** — `go test … -list … | grep
+  -qx …` under `set -o pipefail` let `grep -q` close the pipe at the first match while `go test
+  -list` still wrote its trailing `ok <pkg> <time>` line, so the producer took EPIPE →
+  SIGPIPE → exit 141 (reproduced on WSL Ubuntu 22.04 / go1.25.5: 6/6 exit 141, exit 0 once the
+  list is materialised); 48-16 materialised the list to `$RUNNER_TEMP/go-test-list.txt`; **(b)**
+  the fe job's `Sparkline.test.tsx:79` hardcoded a Windows absolute path absent on the Linux
+  runner (ENOENT); 48-16 resolved it through `import.meta.url`; **(c)** the docker job's
+  `Dockerfile.backend` built on an alpine-musl base lacking the glibc symbols (`backtrace`,
+  `malloc_trim`, `__res_init`) the static duckdb archive needs; 48-16 moved builder and runtime
+  to glibc. A fifth red (run 5, head `e161436`) was a load-sensitive DuckDB reader-block ratio
+  flake, fixed at the source by 48-19 (best-of-5 minimum sampling). The three build causes
+  remain recorded in `48-VALIDATION.md`'s `Manual-Only Verifications` table as M1a-M1c (now
+  closed), and none of this invalidates the existing `threats_open: 0` register — that
+  register's `mitigate` dispositions are about the workflow's *declarations*, which the
+  runner-side test surface confirmed. WR-06 closes positively on run-3 (the push-path lint
+  scope: with `only-new-issues: true` alone, on a fast-forward push, the action's diff-scoped
+  output reported zero findings — recorded fixed-by-evidence in `48-REVIEW-DISPOSITION-R1.md`
+  and `48-REVIEW-DISPOSITION.md`). CICD-01/02/03 are Complete against run 39380373930.
+- **Images were built by the runner but never published.** Run 39380373930's `docker` job built
+  both images (backend on the glibc base, frontend) with `push: false`, so `T-48-09`'s
+  non-publication and the two per-image cache scopes are now runner-observed. Docker is absent
+  from this host, so the local build remains unproven. M5 (second-run cache comparison) stays
+  open.
 
 Deferred decisions carried from plan 48-11:
 
@@ -244,7 +247,7 @@ that the `-test.shuffle` seed prints only under `-v`.
 - [x] `threats_open: 0` confirmed — the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, and the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill)
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
-**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-15 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14; on plan 48-15 the runner executed ci.yml four times on the public default branch (run-1 id `39350901689` / head `d168512`, run-2 id `39352480525` / head `62b6663`, run-3 id `39353593172` / head `a2a4c86`, run-4 id `39355131431` / head `304dcc4`) and the run evidence is recorded in `48-15-SUMMARY.md` and `48-VALIDATION.md`. WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). Three classified persistent real reds (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) prevent the four-green run conclusion required to flip CICD-01/02/03; those three are not threats on the register — they are recorded source-side fixes pending, in the same "What this audit does NOT establish" section above and in the new Manual-Only rows.
+**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-19 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14. On plan 48-15 the runner executed ci.yml on the public default branch; on plan 48-19 the derived total is six runs (`gh run list`), and **run 6 of 6 — run id 39380373930 on head `630f875` — is four-green: `go=fe=docker=verify=success`** (canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`; run evidence in `48-15-SUMMARY.md`, `48-19-SUMMARY.md` and `48-VALIDATION.md`). WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). The three classified persistent real reds from the earlier runs (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) were cleared by 48-16's source fixes, and the run-5 reader-block ratio flake was cleared by 48-19; they are recorded in the same "What this audit does NOT establish" section above and in the Manual-Only rows.
 
 ## Security Audit 2026-10-19
 
