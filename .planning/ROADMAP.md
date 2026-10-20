@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 14/15 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 round-1 `gaps_found` 之后的 7 个 gap-closure 计划）+ 4 个 round-2 再验证 `gaps_found`（5/9）的 gap-closure 计划（48-12..48-14 closed；48-15 run-execution block committed in `Run outcome: blocked` 三真红分支 — runner ran three times, three classified persistent real reds prevent CICD-01/02/03 flip; recorded in 48-15-SUMMARY.md）
+**Plans**: 15/15 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 round-1 `gaps_found` 之后的 7 个 gap-closure 计划；48-12..48-14 为 round-2 再验证 `gaps_found`（5/9）的 gap-closure 计划；48-15 run-execution block committed in `Run outcome: blocked` 三真红分支 — runner ran four times, three classified persistent real reds prevent CICD-01/02/03 flip; recorded in 48-15-SUMMARY.md）+ 4 个 round-3 `gaps_found`（9/15）之后的 round-4 gap-closure 计划（48-16..48-19，planned）
 
 **Blocked on**: Class-B 硬化缺口已全部闭合且经变异证明——48-05..48-09 落地 per-file 信任面扫描、step 级 `if:` 拒绝、归一化 fork-gate 表达式、补集 notice、正向 revive sentinel（D）与 begin-marker 分区账目；48-10 据此重闭 9 行 open threat（`threats_open: 0`，19 条 review findings = 18 fixed / 1 deferred）。但 **Class A 已取得一次实际 runner 运行**（`go=fe=docker=failure / verify=success`，head `a2a4c86`，branch `main`，run id 39353593172，2026-10-20T01:28–01:31Z）按 48-11 持久化的 M1 recipe 从本机 SSH 推送触发，经历 3 次重跑以确定每个失败原因：run-1 暴露了强制推送下的全仓 lint 兜底问题（WR-06 evidence）；run-2 试并拒 candidate A（与 `only-new-issues: true` 不兼容）；run-3 验证 lint 在 fast-forward 推送下天然成立（WR-06 关闭），并暴露三个独立的真实构建问题：(i) go 的 `determinism -count=100 (P5a)` 在 runner 上 SIGPIPE-exit 141；(ii) fe 的 `Sparkline.test.tsx:79` 将绝对 Windows 路径硬编码到测试中（Linux runner ENOENT）；(iii) docker 的 `Dockerfile.backend` 基于 alpine musl（缺失静态 duckdb 所需的 glibc 符号 `backtrace`、`malloc_trim`、`__res_init`）。三项均为**分类记录的真实持久红故障**（recipe step 5 适用；都不弱化任何门），不是 CI 矩阵缺陷，但每个都需要源侧单独的修复（runner 端修复 / 测试 harness / Dockerfile 构建基础镜像）才能获得四全 green。WR-06 凭证据关闭（run-3 lint 步骤绿），CICD-01/02/03 在此分支上保持 Pending（配方 blocked 分支：`do NONE of the flips`）；三项真实红故障作为 follow-up 记录在 `48-VALIDATION.md` 的 Manual-Only 列表和 `48-SECURITY.md` What this audit does NOT establish 中。下一个 host 只需修这 3 处后再次 push main 即可一次性取齐四 green。
 
@@ -154,6 +154,13 @@ Plans:
 - [x] 48-13-PLAN.md — verifier 成功 token 账目：`done_partition` 要求 begin+ok、去掉 `:-0` 默认、P11 四方计数（R2-WR-03，M8 变异转红）；P2/P3 pin verify job 契约与 48-12 各修复（R2-WR-01，M9/M10 变异转红）；五项沙箱变异演练
 - [x] 48-14-PLAN.md — 48-SECURITY.md 补录 supply-chain 行 T-48-47（引用 48-11 threat_flag）+ round-2 closure 段 + audit trail；传输事实更正（ROADMAP Blocked-on / SECURITY "does NOT establish"）；PyYAML 行补进 Package Legitimacy Audit
 - [x] 48-15-PLAN.md — Class A：执行 48-11 持久化的 M1 run recipe（历史决策 checkpoint〔one-way〕→ 本机 SSH push → 三次 runners 触发后闭合证据 + 三处真实持久红故障分类）；CICD-01/02/03 按配方 blocked 分支保持 Pending；详见 `48-15-SUMMARY.md`。
+
+**Gap closure round 4**（48-VERIFICATION.md round-3 再验证 `gaps_found` 9/15：SC-1/2/3 三线仍红、truth 6 verifier 诚实性、truth 11/15 记录对账；48-16..48-19 planned）
+
+- [ ] 48-16-PLAN.md — 三处源侧/工作流侧修复：determinism `-list` 输出落盘（去掉管道/SIGPIPE）、Sparkline 测试改为 `import.meta.url` 相对解析、`Dockerfile.backend` 切换 glibc 基础镜像与运行时
+- [ ] 48-17-PLAN.md — verifier 诚实性：每个分区的 success token 绑定探针自产证据（日志非空 + 自产 token），`fe`/`docker` 增加 job 级 `if:` 拒绝，P2 pin 住 48-16 的落盘形状
+- [ ] 48-18-PLAN.md — 记录对账：M1c 根因从 "runner environment" 改为 "workflow pipeline shape"（VALIDATION/SECURITY/ROADMAP）、运行次数三改四、STATE line 117 失实原因标注、round-2 disposition ledger 关闭并提交
+- [ ] 48-19-PLAN.md — 推送 main 并取一次 `go=fe=docker=verify=success` 运行，按该 run id 翻转 CICD-01/02/03，并把 VALIDATION/SECURITY/STATE 对账到同一次运行
 
 ### Phase 49: Hermetic Demo
 
@@ -207,7 +214,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 13/15 | In Progress | - |
+| 48. CI 矩阵 | v1.7 | 15/15 (+4 gap-closure planned) | In Progress | - |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
