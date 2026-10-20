@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 19/19 executed (48-01..48-15 original + gap closures; 48-16..48-19 round-4 gap closure) + 3 round-5 gap-closure plans (48-20..48-22) planned
+**Plans**: 22/22 executed (48-01..48-15 original + gap closures; 48-16..48-19 round-4 gap closure; 48-20..48-22 round-5 gap closure)
 
 **Blocked on**: Resolved — the four-green run was obtained. Run 39380373930 on head `630f875` (2026-10-20, public `main`) concluded `go=fe=docker=verify=success`; canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The three source fixes cleared the three classified reds: 48-16 materialised the `-list` output to `$RUNNER_TEMP/go-test-list.txt` (P5a SIGPIPE), resolved the Sparkline test subject through `import.meta.url` (Windows-path ENOENT on Linux), and moved the backend image to a glibc base and runtime (duckdb's `backtrace` / `malloc_trim` / `__res_init`). The earlier runs (runs 1-5) were all red — the first four on those classified build causes, and run 5 on a load-sensitive DuckDB reader-block ratio flake that was fixed at the source (best-of-5 minimum sampling) so run 6 could land. CICD-01/02/03 are Complete against run 39380373930. WR-06 remains closed-by-evidence on run-3 (lint green with `only-new-issues: true` alone on a fast-forward push).
 
@@ -166,7 +166,7 @@ Plans:
 
 - [x] 48-20-PLAN.md — verifier 断言级 token 第一部分：`ok_partition` 接受 token 列表；P2/P3 拆为 4+4 个 per-assertion token，P1 拆为 3 个，P4 拆为 4 个；四个删除演练必须 red 并点名分区
 - [x] 48-21-PLAN.md — verifier 断言级 token 第二部分：P6/P7/P9 各拆为 per-assertion token；P11 else-detector 改为先消费 range 再 grep（WR-01）；删除演练 + banner-in-else 演练
-- [ ] 48-22-PLAN.md — trust-surface 规则改为解析后文档驱动（quoted `"paths":` / `paths :` / `toJSON(secrets)` / quoted-hash secret，P11 fixtures 12 个）；ci.yml linter install 声明 GOTOOLCHAIN/GOSUMDB/GOPROXY；版本双写说明；R1 ledger 历史标注 + T-48-70..T-48-79 注册
+- [x] 48-22-PLAN.md — trust-surface 规则改为解析后文档驱动（quoted `"paths":` / `paths :` / `toJSON(secrets)` / quoted-hash secret，P11 fixtures 12 个）；ci.yml linter install 声明 GOTOOLCHAIN/GOSUMDB/GOPROXY；版本双写说明；R1 ledger 历史标注 + T-48-70..T-48-79 注册
 
 ### Phase 49: Hermetic Demo
 
@@ -220,7 +220,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 20/22 | In Progress |  |
+| 48. CI 矩阵 | v1.7 | 21/22 | In Progress |  |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
