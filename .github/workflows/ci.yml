@@ -89,6 +89,15 @@ jobs:
         with:
           version: v2.12.2
           only-new-issues: true
+          # WR-06 candidate A (48-11 option D, 48-15 recipe step 6): the push run
+          # has no PR diff and the action otherwise falls back to whole-repo lint
+          # (~175 legacy findings). Forcing a `--new-from-rev` diff base against
+          # the previous tip scopes the run to the actual push delta, so the
+          # whole-repo fallback can no longer quietly surface 175 issues as a
+          # red check. Verifier-invariant: no step-level `if:`, no widened
+          # permissions, no non-blocking escape hatch, no workflow-file path
+          # filter — only this one action-level `args:` line was added.
+          args: --new-from-rev=${{ github.event.before }}
 
       - name: go test ./... (CICD-01 / D-15)
         run: go test ./... -count=1
