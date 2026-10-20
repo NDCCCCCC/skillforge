@@ -236,14 +236,17 @@ P1_PARSED=$(grep -cF 'P1-PARSED' "$WORK/p1.log" || true)
 
 # The composite action is parsed too, but it legitimately has no trigger block
 # — it is only ever reached through a caller workflow.
+# P1-B: composite parse
 [ -f "$COMPOSITE" ] || fail "P1 composite toolchain action missing: $COMPOSITE"
 python -c '
 import sys, yaml
 d = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))
 if (d.get("runs") or {}).get("using") != "composite":
     raise SystemExit("composite action is not `runs.using: composite`")
-' "$(native "$COMPOSITE")" || fail "P1 composite action parse failed: $COMPOSITE"
+print("P1-COMPOSITE-OK")
+' "$(native "$COMPOSITE")" >> "$WORK/p1.log" || fail "P1 composite action parse failed: $COMPOSITE"
 
+# P1-C: pull_request_target scan
 # D-11: pull_request_target executes fork-controlled workflow code against the
 # base repository's secrets and a mutating token. Report file:line, never just
 # the file name.
@@ -259,10 +262,13 @@ fi
 if [ "$p1_prt_rc" -ne 1 ]; then
   fail "P1 the pull_request_target scan returned rc=${p1_prt_rc}, want 1 (no match) — a neutralised or deleted probe cannot deposit PASS (R2-WR-03)"
 fi
+# The scan's decisive exit-code assertion ran to success, so its group emits
+# its own token (WR-03: one token per assertion group, not one per probe).
+printf 'P1-NO-PRT\n' >> "$WORK/p1.log"
 
-ok_partition "P1" "$WORK/p1.log" "P1-PARSED"
+ok_partition "P1" "$WORK/p1.log" "P1-PARSED" "P1-COMPOSITE-OK" "P1-NO-PRT"
 
-done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target; evidence-bound success token P1-PARSED)"
+done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target; per-assertion success tokens P1-PARSED P1-COMPOSITE-OK P1-NO-PRT)"
 
 # ---------------------------------------------------------------------------
 # P2 + P3: the go job's structural contract, decided by one Python probe so the
@@ -603,6 +609,7 @@ if ! grep -qE 'is not checked \(errcheck\)' "$WORK/p4-sentinel-a.log"; then
   tail -20 "$WORK/p4-sentinel-a.log"
   fail "P4 sentinel A: the run failed but did not name errcheck — a different cause is failing, not the gate"
 fi
+printf 'P4-A-ERRCHECK\n' >> "$WORK/p4-sentinel-a.log"
 pass "P4 sentinel A: an unchecked json.Unmarshal is reported as errcheck"
 
 # Sentinel B — absorbed noise. A bare deferred Close is what the
@@ -635,6 +642,7 @@ if ! grep -qF '0 issues' "$WORK/p4-sentinel-b.log"; then
   tail -20 "$WORK/p4-sentinel-b.log"
   fail "P4 sentinel B: the probe log does not report '0 issues' — a neutralised or deleted probe cannot certify absorption (R2-WR-03)"
 fi
+printf 'P4-B-QUIET\n' >> "$WORK/p4-sentinel-b.log"
 pass "P4 sentinel B: a bare deferred Close stays quiet (std-error-handling)"
 
 # Sentinel C — the disabled rule. An interface-shaped handler legitimately
@@ -667,6 +675,7 @@ if ! grep -qF '0 issues' "$WORK/p4-sentinel-c.log"; then
   tail -20 "$WORK/p4-sentinel-c.log"
   fail "P4 sentinel C: the probe log does not report '0 issues' — a neutralised or deleted probe cannot certify the rule is disabled (R2-WR-03)"
 fi
+printf 'P4-C-QUIET\n' >> "$WORK/p4-sentinel-c.log"
 pass "P4 sentinel C: an ignored parameter stays quiet (revive rule disabled)"
 
 # Sentinel D — the positive revive probe (WR-04). A/B/C together cannot tell
@@ -705,11 +714,21 @@ if ! grep -q 'revive' "$WORK/p4-sentinel-d.log"; then
   tail -20 "$WORK/p4-sentinel-d.log"
   fail "P4 sentinel D: the run failed but did not name revive — a different cause is failing, not the revive rule (WR-04)"
 fi
+printf 'P4-D-REVIVE\n' >> "$WORK/p4-sentinel-d.log"
 pass "P4 sentinel D: a missing package comment is reported as revive"
 
-ok_partition "P4" "$WORK/p4-sentinel-d.log" "revive"
+# Each sentinel is its own assertion group, so each emits its own token
+# (WR-03). The four probe logs concatenate into ONE evidence file, and the
+# concatenation is deliberately missing-file-tolerant: a deleted sentinel's
+# log will not exist, and an unguarded `cat` of all four paths would abort
+# before the deposit could name the missing token. Truncate first, then append
+# each log only when it exists — no `|| true`, no unguarded cat.
+: > "$WORK/p4.log"
+for s in a b c d; do if [ -f "$WORK/p4-sentinel-$s.log" ]; then cat "$WORK/p4-sentinel-$s.log" >> "$WORK/p4.log"; fi; done
 
-done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet; evidence-bound success token revive)"
+ok_partition "P4" "$WORK/p4.log" "P4-A-ERRCHECK" "P4-B-QUIET" "P4-C-QUIET" "P4-D-REVIVE"
+
+done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet; per-assertion success tokens P4-A-ERRCHECK P4-B-QUIET P4-C-QUIET P4-D-REVIVE)"
 
 # ---------------------------------------------------------------------------
 # P5: composite
@@ -1629,10 +1648,10 @@ fi
 
 echo ""
 echo "Partitions verified:"
-echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; evidence-bound success token"
+echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; per-assertion success tokens P1-PARSED / P1-COMPOSITE-OK / P1-NO-PRT"
 echo "  P2 go-line        — the 5 CI command fragments + determinism materialised-list shape (list file, grep -qx on the file, no pipe after -list), CGO_ENABLED=1 and nothing else, verify job ends at the gate; per-assertion success tokens P2-CMDS-OK / P2-DET-OK / P2-SHUFFLE-OK / P2-HERMETIC-OK"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; per-assertion success tokens P3-STEP-IF-OK / P3-BLOCKING-OK / P3-LINT-OK / P3-VERIFYJOB-OK"
-echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; evidence-bound success token revive"
+echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; per-assertion success tokens P4-A-ERRCHECK / P4-B-QUIET / P4-C-QUIET / P4-D-REVIVE"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; evidence-bound success token"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface, rejects both job- and step-level if:; evidence-bound success token"
