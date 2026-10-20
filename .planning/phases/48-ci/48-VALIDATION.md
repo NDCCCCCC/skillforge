@@ -164,3 +164,11 @@ Manual-Only table below for the three new entries.
 | Gaps found | 0 |
 | Resolved | 0 |
 | Escalated | 5 |
+
+## Validation Audit 2026-10-20
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 3 |
