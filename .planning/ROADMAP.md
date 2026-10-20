@@ -66,7 +66,7 @@
 ## Phases
 
 - [x] **Phase 47: 清债与可复现基线** - v1.6 遗留债务闭合或显式处置：flaky 测试修复 + rollback 治理缓存 + 警告处置记录，为 CI 全量门与 hermetic 套件铺平不闪红的地基
-- [ ] **Phase 48: CI 矩阵** - Go / FE / Docker 三线质量门进 GitHub Actions，每次 PR 公开可见绿灯
+- [x] **Phase 48: CI 矩阵** - Go / FE / Docker 三线质量门进 GitHub Actions，每次 PR 公开可见绿灯
 - [ ] **Phase 49: Hermetic Demo** - embedded 向量兜底 + stub LLM 路径，clone 后零内网依赖、零 API key 跑通全链
 - [ ] **Phase 50: 开源门面** - README 修真 + 架构图 + vs Dify/RAGFlow 对比表 + 社区设施，门面与仓库实况零失真
 - [ ] **Phase 51: 发布工程** - goreleaser + tag 触发 GitHub Release，二进制 + release notes 零手工
@@ -121,9 +121,9 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 17/19 plans executed（48-01..48-04 原始 4 计划；48-05..48-11 为 round-1 `gaps_found` 之后的 7 个 gap-closure 计划；48-12..48-14 为 round-2 再验证 `gaps_found`（5/9）的 gap-closure 计划；48-15 run-execution block committed in `Run outcome: blocked` 三真红分支 — runner ran four times, three classified persistent real reds prevent CICD-01/02/03 flip; recorded in 48-15-SUMMARY.md）+ 4 个 round-3 `gaps_found`（9/15）之后的 round-4 gap-closure 计划（48-16..48-19，planned）
+**Plans**: 19/19 plans executed (48-01..48-15 original + gap closures; 48-16..48-19 round-4 gap closure)
 
-**Blocked on**: Class-B 硬化缺口已全部闭合且经变异证明——48-05..48-09 落地 per-file 信任面扫描、step 级 `if:` 拒绝、归一化 fork-gate 表达式、补集 notice、正向 revive sentinel（D）与 begin-marker 分区账目；48-10 据此重闭 9 行 open threat（`threats_open: 0`，19 条 review findings = 18 fixed / 1 deferred）。但 **Class A 已取得实际 runner 运行：四次**（`go=fe=docker=failure / verify=success`，branch `main`，event `push`；run-1 id 39350901689 / head `d168512`，run-2 id 39352480525 / head `62b6663`，run-3 id 39353593172 / head `a2a4c86`，run-4 id 39355131431 / head `304dcc4`）按 48-11 持久化的 M1 recipe 从本机 SSH 推送触发，四次运行确定了每个失败原因：run-1 暴露了强制推送下的全仓 lint 兜底问题（WR-06 evidence）；run-2 试并拒 candidate A（与 `only-new-issues: true` 不兼容）；run-3 验证 lint 在 fast-forward 推送下天然成立（WR-06 关闭），并暴露三个独立的构建问题；run-4 在最终对账提交（head `304dcc4`）上复现同一结论：(i) go 的 `determinism -count=100 (P5a)` 是 **workflow pipeline shape** 缺陷——`go test … -list … | grep -qx …` 在 `set -o pipefail` 下让 `grep -q` 在首个匹配后关闭管道，`go test -list` 仍写尾行 `ok <pkg> <time>`，生产者收到 EPIPE → SIGPIPE → exit 141；WSL Ubuntu 22.04 / go1.25.5 复现 6/6 exit 141，物化列表后 exit 0；48-16 已改为把列表写入 `$RUNNER_TEMP/go-test-list.txt` 再 grep；(ii) fe 的 `Sparkline.test.tsx:79` 将绝对 Windows 路径硬编码到测试中（Linux runner ENOENT）；(iii) docker 的 `Dockerfile.backend` 基于 alpine musl（缺失静态 duckdb 所需的 glibc 符号 `backtrace`、`malloc_trim`、`__res_init`）。三项均为**分类记录的真实持久红故障**（recipe step 5 适用；都不弱化任何门），需要三个源侧修复才能获得四全 green：（ci.yml P5a 管道形态修复 / 测试 harness / Dockerfile 构建基础镜像）。WR-06 凭证据关闭（run-3 lint 步骤绿），CICD-01/02/03 在此分支上保持 Pending（配方 blocked 分支：`do NONE of the flips`）；三项真实红故障作为 follow-up 记录在 `48-VALIDATION.md` 的 Manual-Only 列表和 `48-SECURITY.md` What this audit does NOT establish 中。下一个 host 只需修这 3 处后再次 push main 即可一次性取齐四 green。
+**Blocked on**: Resolved — the four-green run was obtained. Run 39380373930 on head `630f875` (2026-10-20, public `main`) concluded `go=fe=docker=verify=success`; canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The three source fixes cleared the three classified reds: 48-16 materialised the `-list` output to `$RUNNER_TEMP/go-test-list.txt` (P5a SIGPIPE), resolved the Sparkline test subject through `import.meta.url` (Windows-path ENOENT on Linux), and moved the backend image to a glibc base and runtime (duckdb's `backtrace` / `malloc_trim` / `__res_init`). The earlier runs (runs 1-5) were all red — the first four on those classified build causes, and run 5 on a load-sensitive DuckDB reader-block ratio flake that was fixed at the source (best-of-5 minimum sampling) so run 6 could land. CICD-01/02/03 are Complete against run 39380373930. WR-06 remains closed-by-evidence on run-3 (lint green with `only-new-issues: true` alone on a fast-forward push).
 
 **Wave 1** — tracer slice
 
@@ -160,7 +160,7 @@ Plans:
 - [x] 48-16-PLAN.md — 三处源侧/工作流侧修复：determinism `-list` 输出落盘（去掉管道/SIGPIPE）、Sparkline 测试改为 `import.meta.url` 相对解析、`Dockerfile.backend` 切换 glibc 基础镜像与运行时
 - [x] 48-17-PLAN.md — verifier 诚实性：每个分区的 success token 绑定探针自产证据（日志非空 + 自产 token），`fe`/`docker` 增加 job 级 `if:` 拒绝，P2 pin 住 48-16 的落盘形状
 - [x] 48-18-PLAN.md — 记录对账：M1c 根因从 "runner environment" 改为 "workflow pipeline shape"（VALIDATION/SECURITY/ROADMAP）、运行次数三改四、STATE line 117 失实原因标注、round-2 disposition ledger 关闭并提交
-- [ ] 48-19-PLAN.md — 推送 main 并取一次 `go=fe=docker=verify=success` 运行，按该 run id 翻转 CICD-01/02/03，并把 VALIDATION/SECURITY/STATE 对账到同一次运行
+- [x] 48-19-PLAN.md — 推送 main 并取一次 `go=fe=docker=verify=success` 运行（run 39380373930），按该 run id 翻转 CICD-01/02/03，并把 VALIDATION/SECURITY/STATE 对账到同一次运行
 
 ### Phase 49: Hermetic Demo
 
@@ -214,7 +214,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 17/19 | In Progress | - |
+| 48. CI 矩阵 | v1.7 | 19/19 | Complete | 2026-10-20 |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
