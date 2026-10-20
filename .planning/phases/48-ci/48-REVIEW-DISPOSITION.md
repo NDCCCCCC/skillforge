@@ -6,19 +6,43 @@ findings:
   - id: CR-01
     severity: critical
     disposition: open
-    title: "Gate job executes `curl | sh` from a mutable HEAD ref with no checksum verification — and 48-11's own supply-chain threat flag for this line was dropped from the security record"
+    title: "The P5a determinism guard SIGPIPEs deterministically on every Linux runner — the root cause of the tracked M1c red lives in `ci.yml`"
+  - id: CR-02
+    severity: critical
+    disposition: open
+    title: "The success-token accounting does not prove a probe ran — a neutered partition still prints `ALL PASSED`"
   - id: WR-01
     severity: warning
     disposition: open
-    title: "The new `verify` job is invisible to every guard the phase built — its existence is unpinned and neither its job-level nor step-level `if:` is checked (48-07/48-11 seam)"
+    title: "The P11 else-detector uses the same SIGPIPE-prone idiom and can silently stop detecting"
   - id: WR-02
     severity: warning
     disposition: open
-    title: "The install pipeline drops curl's exit status — the WR-03 class is reintroduced by the same phase that fixed it"
+    title: "The trust-surface secret and path-filter rules are regex-scanned over text and miss three evasion shapes"
   - id: WR-03
     severity: warning
     disposition: open
-    title: "Begin-marker accounting does not bind a partition to its assertions — P8's `${TRUST_SURFACE_COUNT:-0}` default absorbs a deleted probe and keeps the gate green"
+    title: "`eval-gate.yml` persists the runner token in the one job that holds the three live secrets"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "The linter install's integrity guarantees are inherited from the runner image, not declared — the \"no network fetch-and-execute surface\" comment is overstated"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "The pinned linter version `v2.12.2` is duplicated in four places with no single source of truth"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "P1's `pull_request_target` scan matches comment text, unlike the trust-surface rules"
+  - id: IN-04
+    severity: info
+    disposition: open
+    title: "`scan_trust_surface` reuses one log path for P8 and the P11 fixtures"
+  - id: IN-05
+    severity: info
+    disposition: open
+    title: "The `verify` check is self-attested on fork PRs (already documented — noted for branch-protection purposes)"
   - id: WR-04
     severity: warning
     disposition: open
@@ -27,46 +51,27 @@ findings:
     severity: warning
     disposition: open
     title: "`Gate check` is granted all three live secrets although `--gate-check` is documented to run offline — the code contradicts WR-08's recorded premise"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "Header still says \"Three independent jobs\" while the file now ships four"
-  - id: IN-02
-    severity: info
-    disposition: open
-    title: "A fork PR's green `verify` check is fully self-attested, and the job persists the runner token — the header's \"strictly narrower surface\" claim omits this"
-  - id: IN-03
-    severity: info
-    disposition: open
-    title: "PyYAML is installed unpinned into the gate job"
-open: 9
-total: 9
-recorded: 2026-10-19T15:48:50.874Z
+open: 12
+total: 12
+recorded: 2026-10-20T02:25:11.610Z
 ---
 
 # Phase 48: Code Review Disposition
 
-> **Round 2 (2026-10-19, post gap-closure re-review).** This file is the gate-format ledger for the
-> INCREMENTAL re-review that ran after plans 48-05…48-11 landed. The ROUND-1 review's 19 findings
-> and their final dispositions (18 fixed by 48-05…48-09, 1 closed-by-evidence on plan 48-15 =
-> WR-06 lint step green on run-3 — recorded by plan 48-10 as the option-D deferral and reconciled
-> by plan 48-15 in `48-15-SUMMARY.md` § Task 2 Run-3) live in [48-REVIEW-DISPOSITION-R1.md](48-REVIEW-DISPOSITION-R1.md) — that round's
-> ledger was hand-authored in a different table format the gate parser cannot read, so its rows
-> could not be carried forward mechanically; it was restored from git (`6aa3391`) rather than lost.
-> **Finding IDs are REUSED across rounds and name different findings**: round-2 CR-01/WR-01…05/IN-01…03
-> below are NOT the round-1 findings of the same ids (those are dispositioned in the R1 file).
-
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
 | CR-01 | critical | open | - |
+| CR-02 | critical | open | - |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
 | WR-03 | warning | open | - |
-| WR-04 | warning | open | - |
-| WR-05 | warning | open | - |
 | IN-01 | info | open | - |
 | IN-02 | info | open | - |
 | IN-03 | info | open | - |
+| IN-04 | info | open | - |
+| IN-05 | info | open | - |
+| WR-04 | warning | open | - (not in the current review) |
+| WR-05 | warning | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
