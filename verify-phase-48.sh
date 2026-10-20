@@ -111,32 +111,41 @@ trap 'rm -rf "$WORK"' EXIT
 # scan_trust_surface call, kept both markers' bookkeeping, and printed
 # `PASS P8 trust-surface (0 workflow(s) ...)` under the green banner.
 #
-# So success tokens are EVIDENCE-BOUND (T-48-61 / R2-WR-03). A hand-placed
-# token certifies that a line was reached, not that a probe produced anything:
-# replacing or deleting a probe while keeping the bookkeeping still reached
-# the green banner (48-VERIFICATION mutation class D1-D3). ok_partition now
-# takes the partition, the log path that partition's OWN probe wrote, and a
-# literal token that probe emits; it refuses unless the log exists, is
-# non-empty, and contains that token. Only then does it write the .ok marker.
-# done_partition refuses without begin AND ok, and the deposit never precedes
-# the assertion it certifies.
+# So success tokens are EVIDENCE-BOUND (T-48-61 / R2-WR-03), and since the M13
+# round they are bound PER ASSERTION GROUP, not per probe. A probe carrying
+# many assertions behind ONE token let a partition's whole assertion block be
+# deleted while the shared token — printed at the end of a sibling group —
+# still deposited PASS for both partitions (the M13 shape: one shared token
+# for P2 and P3).
+# ok_partition therefore takes the partition, the log path that partition's
+# OWN probe wrote, and ONE OR MORE literal tokens, one per assertion group; it
+# refuses unless the log exists, is non-empty, and contains EVERY token. Only
+# then does it write the .ok marker, which still means "begin AND every
+# probe-emitted token". done_partition refuses without begin AND ok, and the
+# deposit never precedes the assertion it certifies.
 mkdir -p "$WORK/ran"
 begin_partition() { : > "$WORK/ran/$1.begin"; }
 ok_partition() {
-  local pn="$1"
-  if [ "$#" -ne 3 ]; then
-    fail "P11 partition ${pn} called ok_partition without its probe log and probe-emitted token — a success token can only be deposited from probe output (R2-WR-03)"
+  if [ "$#" -lt 3 ]; then
+    fail "partition called ok_partition without its probe log and at least one probe-emitted token — a success token can only be deposited from probe output (R2-WR-03)"
   fi
+  local pn="$1"
   local log="$2"
-  local token="$3"
+  shift 2
   if [ ! -f "$log" ]; then
-    fail "P11 partition ${pn} cannot deposit its success token: the probe log ${log} does not exist — the probe that certifies ${pn} did not run (R2-WR-03)"
+    fail "partition ${pn} cannot deposit its success tokens: the probe log ${log} does not exist — the probe that certifies ${pn} did not run (R2-WR-03)"
   fi
   if [ ! -s "$log" ]; then
-    fail "P11 partition ${pn} cannot deposit its success token: the probe log ${log} is empty — infrastructure failure, no evidence the probe ran (R2-WR-03)"
+    fail "partition ${pn} cannot deposit its success tokens: the probe log ${log} is empty — infrastructure failure, no evidence the probe ran (R2-WR-03)"
   fi
-  if ! grep -qF -- "$token" "$log"; then
-    fail "P11 partition ${pn} cannot deposit its success token: the probe log ${log} does not contain the probe-emitted token '${token}' — a neutralised or deleted probe cannot deposit PASS (R2-WR-03)"
+  local token missing=''
+  for token in "$@"; do
+    if ! grep -qF -- "$token" "$log"; then
+      missing="${missing:+${missing} }${token}"
+    fi
+  done
+  if [ -n "$missing" ]; then
+    fail "partition ${pn} cannot deposit its success tokens: the probe log ${log} does not contain the probe-emitted token(s) '${missing}' (required: ${*}) — a deleted or neutralised assertion group cannot deposit PASS (R2-WR-03)"
   fi
   : > "$WORK/ran/$pn.ok"
 }
@@ -293,6 +302,7 @@ for s in steps:
             "P3: the go job's step %r carries a step-level if: %r - the gate is skippable (WR-01/T-48-07)"
             % (label, s.get("if"))
         )
+print("P3-STEP-IF-OK")
 
 # --- P2 --------------------------------------------------------------------
 for frag in (
@@ -303,6 +313,7 @@ for frag in (
 ):
     if frag not in runs:
         raise SystemExit("P2: go job is missing the command fragment: %s" % frag)
+print("P2-CMDS-OK")
 
 # R2-WR-04: `go test -run` with zero matching tests exits 0, so a renamed test
 # makes the determinism step pass vacuously. The step carrying -count=100 must
@@ -332,12 +343,14 @@ if "-list '^TestDeriveEdgesDeterministic$' |" in det_run:
     raise SystemExit(
         "P2: the -count=100 determinism step pipes the -list output into grep - `grep -q` closes the pipe early and the producer takes SIGPIPE -> exit 141 on Linux (SC-1); materialise the list and grep the file instead"
     )
+print("P2-DET-OK")
 
 shuffled = [s for s in steps if "-shuffle=on" in (s.get("run") or "")]
 if not shuffled:
     raise SystemExit("P2: go job has no -shuffle=on step")
 if "-v" not in shuffled[0]["run"].split("-shuffle=on")[1]:
     raise SystemExit("P2: the -shuffle=on step has no -v, so the seed never reaches the log (D-19)")
+print("P2-SHUFFLE-OK")
 
 env = j.get("env") or {}
 if str(env.get("CGO_ENABLED")) != "1":
@@ -362,6 +375,7 @@ if extra:
 for name in ("GLM_API_KEY", "BGE_M3_URL", "MILVUS_ADDRESS"):
     if name in src:
         raise SystemExit("P2: ci.yml references live-service env %s" % name)
+print("P2-HERMETIC-OK")
 
 # --- P3 --------------------------------------------------------------------
 if soft_key in src:
@@ -370,6 +384,7 @@ if "if" in j:
     raise SystemExit("P3: the go job carries a job-level `if:` — the gate is skippable")
 if whole_flag in src:
     raise SystemExit("P3: ci.yml contains %s (D-04)" % whole_flag)
+print("P3-BLOCKING-OK")
 
 lint = [s for s in steps if "golangci/golangci-lint-action" in (s.get("uses") or "")]
 if len(lint) != 1:
@@ -401,6 +416,7 @@ if (steps[0].get("with") or {}).get("persist-credentials") is not False:
     raise SystemExit(
         "P3: the go job's checkout persists credentials - fork-authored code runs in this job (IN-10)"
     )
+print("P3-LINT-OK")
 
 # --- R2-WR-01: the verify job is pinned by the probe that judges the go job --
 # The IN-07 fix (wire this verifier into CI) was itself unpinned: deleting the
@@ -462,19 +478,22 @@ for token in (fetch_token, script_token):
             % token
         )
 
-print("STRUCT-OK")
+print("P3-VERIFYJOB-OK")
 PY
 p23_rc=$?
 cat "$WORK/p23.log"
 [ "$p23_rc" -ne 0 ] && fail "P2/P3: the go job's structural contract is violated (see the line above)"
 
-# One shared probe certifies two partitions (D-29/P2/P3 disagree-proof), so
-# both success tokens deposit at the same decisive exit-code assertion.
-ok_partition "P2" "$WORK/p23.log" "STRUCT-OK"
-ok_partition "P3" "$WORK/p23.log" "STRUCT-OK"
+# One shared probe certifies two partitions (D-29/P2/P3 disagree-proof), and
+# each assertion group inside it prints its OWN token (WR-03 / M13): a
+# partition's deposit requires every one of ITS groups to have run, so
+# deleting either partition's assertion block leaves that partition's tokens
+# missing instead of borrowing the sibling's evidence.
+ok_partition "P2" "$WORK/p23.log" "P2-CMDS-OK" "P2-DET-OK" "P2-SHUFFLE-OK" "P2-HERMETIC-OK"
+ok_partition "P3" "$WORK/p23.log" "P3-STEP-IF-OK" "P3-BLOCKING-OK" "P3-LINT-OK" "P3-VERIFYJOB-OK"
 
-done_partition "P2 go-line (5 command fragments, materialised-list determinism shape: -list redirects to go-test-list.txt, grep -qx reads the file, a pipe directly after -list is rejected; CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate; evidence-bound success token STRUCT-OK)"
-done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install; evidence-bound success token STRUCT-OK)"
+done_partition "P2 go-line (5 command fragments, materialised-list determinism shape: -list redirects to go-test-list.txt, grep -qx reads the file, a pipe directly after -list is rejected; CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate; per-assertion success tokens P2-CMDS-OK P2-DET-OK P2-SHUFFLE-OK P2-HERMETIC-OK)"
+done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install; per-assertion success tokens P3-STEP-IF-OK P3-BLOCKING-OK P3-LINT-OK P3-VERIFYJOB-OK)"
 
 # ---------------------------------------------------------------------------
 # P4: lint-teeth
@@ -1611,8 +1630,8 @@ fi
 echo ""
 echo "Partitions verified:"
 echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; evidence-bound success token"
-echo "  P2 go-line        — the 5 CI command fragments + determinism materialised-list shape (list file, grep -qx on the file, no pipe after -list), CGO_ENABLED=1 and nothing else, verify job ends at the gate; evidence-bound success token"
-echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; evidence-bound success token"
+echo "  P2 go-line        — the 5 CI command fragments + determinism materialised-list shape (list file, grep -qx on the file, no pipe after -list), CGO_ENABLED=1 and nothing else, verify job ends at the gate; per-assertion success tokens P2-CMDS-OK / P2-DET-OK / P2-SHUFFLE-OK / P2-HERMETIC-OK"
+echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; per-assertion success tokens P3-STEP-IF-OK / P3-BLOCKING-OK / P3-LINT-OK / P3-VERIFYJOB-OK"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; evidence-bound success token revive"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; evidence-bound success token"
