@@ -160,3 +160,8 @@ None.
 ---
 *Phase: 48-ci*
 *Completed: 2026-10-20*
+
+## Self-Check: PASSED
+
+- `.planning/phases/48-ci/48-16-SUMMARY.md` exists.
+- Task commits `ea4185e`, `886dec9`, `93b01c8` and SUMMARY commit `bf78f5c` are ancestors of HEAD.
