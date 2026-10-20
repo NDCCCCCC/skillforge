@@ -178,3 +178,12 @@ None - no external service configuration required.
 ---
 *Phase: 48-ci*
 *Completed: 2026-10-20*
+
+## Self-Check: PASSED
+
+- All four `files_modified` artifacts exist on the committed tree: `verify-phase-48.sh` (parsed walks + 12 fixtures + coordinated-bump note), `.github/workflows/ci.yml` (three declared install env keys, corrected comment), `48-REVIEW-DISPOSITION-R1.md` (historical annotation preceding the retained superseded paragraph), `48-SECURITY.md` (T-48-70..T-48-79, 31 rows / 0 open / verified).
+- Commits verified as ancestors of HEAD: `7cbd385` (Task 1), `9865967` (Task 2), `05ceef8` (Task 3), `71f1617` (SUMMARY), `32fac14` (state/roadmap tracking).
+- Final gate run post-commit: exit 0, exactly one `ALL PASSED`, `registry 11/11, begin markers 11/11, success tokens 11/11`, zero `NOT VERIFIED`.
+- Both deletion drills red with exact attribution (quoted-paths / tojson-secrets); `git diff` vs plan base `8a40057` touches exactly the four `files_modified` paths.
+- `git rev-list --count` from the plan ledger: 3 task commits, matching the SUMMARY frontmatter.
+- `requirements.ready-ids` returned all three IDs, but CICD-01/02/03 are already `Complete (run 39380373930)` in both REQUIREMENTS.md places and the plan forbids requirement-status changes — mark-complete deliberately not run (the plan's expected no-op; a bare mark would overwrite the canonical run-id text).
