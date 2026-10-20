@@ -70,6 +70,16 @@ verified: "2026-10-19"
 | T-48-19 | Denial of Service | unrelated later edits | medium | mitigate | P9's directory-wide `go-version:` ban plus the trigger-shape assertion | closed |
 | T-48-20 | Repudiation | the partitions this phase adds | high | mitigate | P11 half 2 pushes the adversarial fixtures (`two-files`, `yaml-ext`, `lowercase-registry`, `stray-secret`) through **the same per-file `scan_trust_surface` P8 runs**, each required to fail for its named rule; half 1a requires registry == call sites == body-written begin markers == 11, so a body that did not run cannot reach `ALL PASSED` (48-05 Task 3 + 48-09 Task 3) | closed |
 | T-48-47 | Tampering | `.github/workflows/ci.yml` verify job install step | critical | mitigate | Module-proxy install, not a pipe: the verify job runs `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` with an in-step `[ -x "$LINT_BIN/golangci-lint" ]` postcondition before the gate runs (48-12 Task 1); the mechanism is pinned by the same P2/P3 probe that judges the `go` job — install shape, `[ -x ]`, and two banned fetch/script tokens asserted (48-13 Task 2) — and re-adding a curl-piped install reds P3 naming the tokens (48-13 Task 3 drill). Origin: `48-11-SUMMARY.md` § Threat Flags recorded `threat_flag: supply-chain` against the then-shipped `curl …/HEAD/install.sh \| sh` step while this register stayed silent — the flag finally lands here | closed |
+| T-48-70 | Repudiation | P2/P3 shared probe — per-assertion evidence | high | mitigate | `ok_partition` requires every one of P2/P3's eight per-assertion-group tokens (`P2-CMDS-OK` / `P2-DET-OK` / `P2-SHUFFLE-OK` / `P2-HERMETIC-OK` / `P3-STEP-IF-OK` / `P3-BLOCKING-OK` / `P3-LINT-OK` / `P3-VERIFYJOB-OK`) at deposit (48-20 Task 1); deleting P2's entire assertion block reds the gate naming partition P2 and the four missing P2 tokens (48-20 M13 drill) | closed |
+| T-48-71 | Repudiation | P1 composite-parse and `pull_request_target` groups | high | mitigate | P1 deposits `P1-PARSED` + `P1-COMPOSITE-OK` + `P1-NO-PRT` with `# P1-B:`/`# P1-C:` section markers (48-20 Task 2); deleting the composite-parse group reds the gate naming P1 and `P1-COMPOSITE-OK` (48-20 P1-composite drill) | closed |
+| T-48-72 | Repudiation | P4 sentinel evidence binding | high | mitigate | P4 emits one token per sentinel (`P4-A-ERRCHECK` / `P4-B-QUIET` / `P4-C-QUIET` / `P4-D-REVIVE`) concatenated into `p4.log` missing-file-tolerantly (48-20 Task 2); deleting sentinel A reds the gate naming P4 and `P4-A-ERRCHECK` (48-20 P4-sentinel-A drill) | closed |
+| T-48-73 | Repudiation | P6/P7 single-print probes | high | mitigate | P6 emits four and P7 six per-assertion-group tokens with `# P6-A:`..`# P6-D:` / `# P7-A:`..`# P7-F:` markers, all required at deposit (48-21 Task 1); deleting the P6 job-level `if:` group or the P7 cache-scope group reds the gate naming the partition and the missing token (48-21 drills) | closed |
+| T-48-74 | Repudiation | P9 combined probe print | high | mitigate | P9's six per-assertion-group tokens (`P9-JOBS-OK` … `P9-GOVERSION-OK`) replace the combined `EVALGATE-OK`/`GOVERSION-OK` print (48-21 Task 2); deleting the notice group reds the gate naming P9 and `P9-NOTICE-OK` (48-21 drill) | closed |
+| T-48-75 | Repudiation | P11 else-detector SIGPIPE | medium | mitigate | The P11 else-detector captures the gate-to-banner range into `BANNER_RANGE` before a non-quiet grep reads it to EOF, so `set -o pipefail` can no longer EPIPE the producer into a silent "no else found" (48-21 Task 3); the banner-in-else mutation still reds P11 with `the passing banner sits after an else` (48-21 drill). Severity `medium` per 48-21-PLAN.md's own threat table — the declaring plan and this register state the same severity for the same ID | closed |
+| T-48-76 | Tampering | trust-surface path-filter rule | high | mitigate | The parsed `on:` walk in `scan_trust_surface` rejects `paths`/`paths-ignore` keys on every event configuration mapping — quoted `"paths":` and spaced `paths :` shapes included — with the textual substring rule retained unchanged as the second layer (48-22 Task 1); the `quoted-paths` and `space-paths` P11 fixtures are rejected by the same scan, and deleting the parsed walk (marker range `# T-48-03:`) reds P11 naming `quoted-paths` (48-22 drill) | closed |
+| T-48-77 | Information Disclosure | trust-surface secret rule | high | mitigate | A recursive walk over every parsed string value rejects named refs outside the allowlist, `secrets[` dynamic references and `toJSON(secrets` expressions, with the textual `SECRET_REF` scan retained unchanged as the second layer (48-22 Task 1); the `tojson-secrets` and `quoted-hash-secret` P11 fixtures are rejected — the latter hides its ref after a `#` the comment strip eats — and deleting the parsed walk (marker range `# T-48-04:`) reds P11 naming `tojson-secrets` (48-22 drill) | closed |
+| T-48-78 | Tampering | `ci.yml` linter install environment | medium | mitigate | The install step declares `GOTOOLCHAIN: local`, `GOSUMDB: sum.golang.org` and `GOPROXY: "https://proxy.golang.org,direct"`, so the inherited runner image no longer decides what `go install` downloads; the overstated no-network claim is corrected to the module-proxy statement with the satisfiability argument (48-22 Task 2); the install command, `@v2.12.2` pin and `[ -x ]` postcondition are unchanged and P3's install-shape assertion still pins them, so re-narrowing or re-widening the declared env reds the gate | closed |
+| T-48-79 | Repudiation | `48-REVIEW-DISPOSITION-R1.md` tail | medium | mitigate | The closing paragraph is prefixed by a historical annotation carrying `Historical note (superseded 2026-10-20)`, run `39380373930` (head `630f875`) four-green and the `Complete (run 39380373930)` statuses, with the original paragraph retained and labelled `**Superseded text (2026-10-19):**` (48-22 Task 3); the annotation precedes the retained text and the phrase `remain Pending` stays unique to it, so a verify comparing the two line numbers reds on removal or reordering | closed |
 
 *Status: open · closed · open — below `high` threshold (non-blocking)*
 *Severity: critical > high > medium > low — only open threats at or above `workflow.security_block_on` count toward `threats_open`*
@@ -101,7 +111,7 @@ Two independent passes disagreed with the first pass of this file.
    `docker push ghcr.io/...` → `TRUST-SURFACE-OK`, rc=0. `\|\| true` appended to the fork gate's
    `if:` → `EVALGATE-OK`, rc=0. `if: false` on all five `go`-job gate steps → `STRUCT-OK`, rc=0.
    `enable: [revive]` deleted → `config verify` rc=0, sentinel A still fires, sentinel C silent → P4
-   reports PASS.
+   reports PASS. Historical note (token names superseded 2026-10-20): STRUCT-OK and EVALGATE-OK were the verifier's shared per-probe success tokens on 2026-10-19; plans 48-20 and 48-21 split them into per-assertion-group tokens (P2-CMDS-OK, P3-STEP-IF-OK, P9-JOBS-OK and their siblings), so the mutation evidence recorded above still stands but the token names are historical.
 
 One review sub-claim was **refuted** by the verifier and is recorded here so it is not re-raised:
 WR-05 held that `.yaml` workflows escape P1 entirely. P1's `pull_request_target` scan is `grep -rn`
@@ -148,10 +158,15 @@ now that the fix and its mutation proof both exist:
 |-------------------|------|---------------|---------------------|
 | Round-2 gap-closure wave reintroduced the defect class it was fixing (R2-CR-01) | T-48-47 | 48-12 Task 1 (fix) + 48-13 Tasks 2-3 (pin + drill) | re-adding a curl-piped install or any network fetch-and-execute step to ci.yml reds P3 with the fetch/script tokens named |
 
-Arithmetic: the register carries 21 rows; 0 rows are `open` at or above `block_on: high`
-(`threats_open: 0`), 20 are `closed`, and 1 is `closed (accepted)` (T-48-14, gated decision A).
-Because the open count is 0, the frontmatter sets `status: verified`. The 21st row (T-48-47) was
-added by plan 48-14 on 2026-10-20, after 48-12 fixed the surface and 48-13 pinned it.
+Arithmetic: the register carries 31 rows; 0 rows are `open` at or above `block_on: high`
+(`threats_open: 0`), 30 are `closed`, and 1 is `closed (accepted)` (T-48-14, gated decision A) —
+31/31 closed, 0 open. Because the open count is 0, the frontmatter sets `status: verified`. The
+21st row (T-48-47) was added by plan 48-14 on 2026-10-20, after 48-12 fixed the surface and 48-13
+pinned it. Rows 22-31 (T-48-70..T-48-79) were added by plan 48-22 on 2026-10-20: T-48-70..T-48-75
+register the per-assertion-token and consumed-range mitigations shipped by plans 48-20 and 48-21,
+and T-48-76..T-48-79 register the parsed-document trust-surface walks, the declared linter install
+environment and the R1 historical annotation shipped by plan 48-22 — each Mitigation cell naming
+the enforcing assertion/token and the drill that bites.
 
 ---
 
@@ -237,6 +252,7 @@ that the `-test.shuffle` seed prints only under `-v`.
 | 2026-10-19 | 20 | 11 | 9 | corrected after `48-REVIEW.md` + `48-VERIFICATION.md` reproduced the mutations — the first row's `0 open` verdict is superseded, not deleted |
 | 2026-10-19 | 20 | 20 | 0 | gsd gap-closure (plans 48-05…48-09) — re-closed on mutation evidence; see 48-10-SUMMARY.md |
 | 2026-10-20 | 21 | 21 | 0 | gsd gap-closure round 3 (plans 48-12..48-13) — supply-chain row recorded after fix+pin landed |
+| 2026-10-20 | 31 | 31 | 0 | gsd gap-closure rounds 4-5 (plans 48-20..48-22) — per-assertion-group tokens (T-48-70..T-48-75), parsed-document trust-surface walks and declared linter install env (T-48-76..T-48-78), R1 ledger historical annotation (T-48-79); register rows recorded by plan 48-22 after each mitigation and its mutation drill landed |
 
 ---
 
@@ -244,10 +260,10 @@ that the `-test.shuffle` seed prints only under `-v`.
 
 - [x] All threats have a disposition (mitigate / accept / transfer)
 - [x] Accepted risks documented in Accepted Risks Log
-- [x] `threats_open: 0` confirmed — the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, and the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill)
+- [x] `threats_open: 0` confirmed — 31/31 closed, 0 open: the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill), and the round-4/5 rows T-48-70..T-48-79 (48-20..48-22) are closed on their per-assertion tokens, parsed-document walks, declared install env and R1 annotation
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
-**Approval:** APPROVED — 21/21 closed, 0 open (2026-10-20, plan 48-19 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14. On plan 48-15 the runner executed ci.yml on the public default branch; on plan 48-19 the derived total is six runs (`gh run list`), and **run 6 of 6 — run id 39380373930 on head `630f875` — is four-green: `go=fe=docker=verify=success`** (canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`; run evidence in `48-15-SUMMARY.md`, `48-19-SUMMARY.md` and `48-VALIDATION.md`). WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). The three classified persistent real reds from the earlier runs (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) were cleared by 48-16's source fixes, and the run-5 reader-block ratio flake was cleared by 48-19; they are recorded in the same "What this audit does NOT establish" section above and in the Manual-Only rows.
+**Approval:** APPROVED — 31/31 closed, 0 open (2026-10-20, plan 48-22 round-5 reconciliation; earlier approvals: 21/21 at the 48-19 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14. On plan 48-15 the runner executed ci.yml on the public default branch; on plan 48-19 the derived total is six runs (`gh run list`), and **run 6 of 6 — run id 39380373930 on head `630f875` — is four-green: `go=fe=docker=verify=success`** (canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`; run evidence in `48-15-SUMMARY.md`, `48-19-SUMMARY.md` and `48-VALIDATION.md`). WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). The three classified persistent real reds from the earlier runs (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) were cleared by 48-16's source fixes, and the run-5 reader-block ratio flake was cleared by 48-19; they are recorded in the same "What this audit does NOT establish" section above and in the Manual-Only rows.
 
 ## Security Audit 2026-10-19
 
@@ -261,6 +277,6 @@ that the `-test.shuffle` seed prints only under `-v`.
 
 | Metric | Count |
 |---|---|
-| Threats found | 21 |
-| Closed | 21 |
+| Threats found | 31 |
+| Closed | 31 |
 | Open | 0 |

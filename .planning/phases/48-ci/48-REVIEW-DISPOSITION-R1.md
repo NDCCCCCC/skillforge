@@ -59,7 +59,14 @@ mutation probe above.
 |----|-----------------|-----------|-------|
 | WR-06 | The push-path lint result: whether `golangci-lint-action@v9` falls back to whole-repo linting on a `push` to `main` (the review measured 45 findings under a whole-repo run of this tree, but cannot execute the action on a push event) | Closed on 2026-10-20 by plan 48-15 T2 evidence: run-1 reproduced the whole-repo fallback (force-push with empty merge-base, 11+ findings); run-2 tested candidate A (`args: --new-from-rev`) and the action rejected it as incompatible with `only-new-issues: true`; run-3 (fast-forward push with pre-plan lint step restored) confirmed `only-new-issues: true` alone is sufficient on a normal push — zero findings reported. Candidate B (PR-gating the lint step) was explicitly rejected as D-06-reversing and was not chosen. No lint-step code change was applied to production. | Run-1 (head `d168512`, id 39350901689); run-2 (head `62b6663`, id 39352480525); run-3 (head `a2a4c86`, id 39353593172). See `48-15-SUMMARY.md` § Task 2; row updated to `fixed`. |
 
-Not a review finding, but recorded here so nothing lives only in a plan's prose: **CICD-01/02/03
+Historical note (superseded 2026-10-20): the paragraph below records the state as it stood on
+2026-10-19 and is superseded on 2026-10-20 — git transport to github.com succeeded, six `ci.yml`
+runs exist on public `main`, run `39380373930` (head `630f875`) is four-green with
+`go=fe=docker=verify=success`, and CICD-01/02/03 are `Complete (run 39380373930)` in both
+`REQUIREMENTS.md` places. The text is retained as history, not as a current claim
+(48-22 Task 3; see also `48-REVIEW-DISPOSITION-R2.md` for the closure convention).
+
+**Superseded text (2026-10-19):** Not a review finding, but recorded here so nothing lives only in a plan's prose: **CICD-01/02/03
 remain Pending.** `48-11-SUMMARY.md` records `M1: BLOCKED` — git transport to github.com is
 unreachable from this host and `origin/main` shares no history with this branch, so no `ci.yml`
 run can exist yet. The three requirements advance only against a real run with
