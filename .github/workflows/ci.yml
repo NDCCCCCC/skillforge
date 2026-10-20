@@ -96,13 +96,18 @@ jobs:
       - name: determinism -count=100 (P5a)
         # D-18/D-19 (R2-WR-04): `go test -run` with zero matching tests exits 0,
         # so a renamed test would pass vacuously. The -list guard proves the
-        # pinned test still exists before the 100-repeat run; GitHub's default
-        # `bash -e {0}` has no pipefail, so `shell: bash` + an explicit
-        # pipefail make grep's exit the step's exit.
+        # pinned test still exists before the 100-repeat run. The list is
+        # materialised to a file instead of piped: `grep -q` exits at the first
+        # match and closes the pipe, while `go test -list` still writes its
+        # trailing `ok <pkg> <time>` line, which takes EPIPE -> SIGPIPE -> exit
+        # 141 under pipefail (round-4 gap SC-1). With no pipe there is nothing
+        # to close early, so the rename-proof guard keeps its meaning without
+        # the race.
         shell: bash
         run: |
-          set -o pipefail
-          go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' | grep -qx 'TestDeriveEdgesDeterministic'
+          LIST="$RUNNER_TEMP/go-test-list.txt"
+          go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' > "$LIST"
+          grep -qx 'TestDeriveEdgesDeterministic' "$LIST"
           go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
 
       - name: determinism -shuffle=on with seed (P5b)

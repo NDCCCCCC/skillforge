@@ -17,7 +17,7 @@
 #                         pull_request_target
 #   P2  go-line         — the go job carries the exact command strings the
 #                         local gate runs (the determinism step keeps its
-#                         -list existence guard under pipefail), is hermetic
+#                         -list existence guard against a materialised list), is hermetic
 #                         (CGO_ENABLED only, no live-service env), captures
 #                         its shuffle seed, and the verify job it shares the
 #                         file with ends at the gate script
@@ -266,8 +266,10 @@ for frag in (
 
 # R2-WR-04: `go test -run` with zero matching tests exits 0, so a renamed test
 # makes the determinism step pass vacuously. The step carrying -count=100 must
-# also prove the pinned test still exists (-list | grep -qx) under an explicit
-# pipefail — 48-12's guard, now pinned here so its removal reds this gate.
+# also prove the pinned test still exists. The list is materialised to a file
+# and grepped there — a pipeline would let `grep -q` close the pipe while
+# `go test -list` writes its trailing `ok` line, which is SIGPIPE / exit 141 on
+# a Linux runner (round-4 gap SC-1).
 det_steps = [s for s in steps if "-count=100" in (s.get("run") or "")]
 if len(det_steps) != 1:
     raise SystemExit(
@@ -278,9 +280,17 @@ if "-list '^TestDeriveEdgesDeterministic$'" not in det_run:
     raise SystemExit(
         "P2: the -count=100 determinism step lost the -list existence guard - a renamed test would pass vacuously (R2-WR-04)"
     )
-if "set -o pipefail" not in det_run:
+if "go-test-list.txt" not in det_run:
     raise SystemExit(
-        "P2: the -count=100 determinism step lost `set -o pipefail` - grep's exit would no longer gate the step (R2-WR-04)"
+        "P2: the -count=100 determinism step does not materialise the -list output to go-test-list.txt - the guard must not run through a pipe (R2-WR-04 / SC-1)"
+    )
+if "grep -qx 'TestDeriveEdgesDeterministic'" not in det_run:
+    raise SystemExit(
+        "P2: the -count=100 determinism step does not grep the materialised list for the pinned test name - the rename-proof guard is gone (R2-WR-04)"
+    )
+if "-list '^TestDeriveEdgesDeterministic$' |" in det_run:
+    raise SystemExit(
+        "P2: the -count=100 determinism step pipes the -list output into grep - `grep -q` closes the pipe early and the producer takes SIGPIPE -> exit 141 on Linux (SC-1); materialise the list and grep the file instead"
     )
 
 shuffled = [s for s in steps if "-shuffle=on" in (s.get("run") or "")]
@@ -423,7 +433,7 @@ cat "$WORK/p23.log"
 ok_partition "P2"
 ok_partition "P3"
 
-done_partition "P2 go-line (5 command fragments, determinism -list guard + pipefail, CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate)"
+done_partition "P2 go-line (5 command fragments, determinism -list guard on a materialised list, CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate)"
 done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install)"
 
 # ---------------------------------------------------------------------------
@@ -1505,7 +1515,7 @@ fi
 echo ""
 echo "Partitions verified:"
 echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target"
-echo "  P2 go-line        — the 5 CI command fragments + determinism -list guard under pipefail, CGO_ENABLED=1 and nothing else, verify job ends at the gate"
+echo "  P2 go-line        — the 5 CI command fragments + determinism -list guard on a materialised list, CGO_ENABLED=1 and nothing else, verify job ends at the gate"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first"
