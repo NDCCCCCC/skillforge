@@ -803,6 +803,7 @@ if "fe" not in jobs:
 fe_job = jobs["fe"]
 steps = fe_job.get("steps") or []
 
+# P6-A: job-level if
 # R2-WR-01 class, extended to the fe line (D10): a job-level `if:` makes the
 # whole gate skippable while its command text stays intact. P3 already applies
 # this rule to the go and verify jobs; the key's presence is the violation, and
@@ -812,7 +813,9 @@ if "if" in fe_job:
         "P6: the fe job carries a job-level if: %r - the gate is skippable (R2-WR-01)"
         % (fe_job.get("if"),)
     )
+print("P6-JOB-IF-OK")
 
+# P6-B: step-level if
 # WR-01 / T-48-07: same rule as P2/P3 — any step-level `if:` can disable a gate
 # step while its command text stays intact. No allowlist: neither the fe job nor
 # the docker job needs a conditional step (artifact-upload `if: always()` lives
@@ -824,14 +827,18 @@ for s in steps:
             "P6: the fe job's step %r carries a step-level if: %r - the gate is skippable (WR-01)"
             % (label, s.get("if"))
         )
+print("P6-STEP-IF-OK")
 
+# P6-C: commands
 runs = {(s.get("run") or "").strip(): s.get("working-directory") for s in steps if "run" in s}
 for cmd in ("npm ci", "npx tsc --noEmit", "npx vitest run"):
     if cmd not in runs:
         raise SystemExit("P6: fe job is missing the step: %s" % cmd)
     if runs[cmd] != "web":
         raise SystemExit("P6: fe step %r has working-directory %r, want 'web'" % (cmd, runs[cmd]))
+print("P6-CMDS-OK")
 
+# P6-D: count literals
 # A test count in a gate is a future silent-drift failure: the suite grows,
 # the literal does not, and the gate starts asserting a stale fact.
 #
@@ -860,15 +867,15 @@ for literal in (r"\b666\b", r"\b689\b"):
     if m:
         raise SystemExit("P6: ci.yml hard-codes a test-count literal: %r" % m.group(0))
 
-print("FE-LINE-OK")
+print("P6-COUNTS-OK")
 PY
 p6_rc=$?
 cat "$WORK/p6.log"
 [ "$p6_rc" -ne 0 ] && fail "P6 the fe line is violated (see the line above)"
 
-ok_partition "P6" "$WORK/p6.log" "FE-LINE-OK"
+ok_partition "P6" "$WORK/p6.log" "P6-JOB-IF-OK" "P6-STEP-IF-OK" "P6-CMDS-OK" "P6-COUNTS-OK"
 
-done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals, rejects both job- and step-level if:; evidence-bound success token FE-LINE-OK)"
+done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals, rejects both job- and step-level if:; per-assertion success tokens P6-JOB-IF-OK P6-STEP-IF-OK P6-CMDS-OK P6-COUNTS-OK)"
 
 # ---------------------------------------------------------------------------
 # P7: docker-line
@@ -890,6 +897,7 @@ if "docker" not in jobs:
 docker_job = jobs["docker"]
 steps = docker_job.get("steps") or []
 
+# P7-A: job-level if
 # R2-WR-01 class, extended to the docker line (D11): a job-level `if:` makes
 # the whole gate skippable while its build steps stay intact. Same rule P3
 # applies to the go and verify jobs; no allowlist.
@@ -898,7 +906,9 @@ if "if" in docker_job:
         "P7: the docker job carries a job-level if: %r - the gate is skippable (R2-WR-01)"
         % (docker_job.get("if"),)
     )
+print("P7-JOB-IF-OK")
 
+# P7-B: step-level if
 # WR-01: the two Docker image builds are the docker line's gate steps. A
 # step-level `if:` on either one makes CICD-03 silently unverified.
 for s in steps:
@@ -908,7 +918,9 @@ for s in steps:
             "P7: the docker job's step %r carries a step-level if: %r - the gate is skippable (WR-01)"
             % (label, s.get("if"))
         )
+print("P7-STEP-IF-OK")
 
+# P7-C: builds
 builds = [s for s in steps if (s.get("uses") or "").startswith("docker/build-push-action")]
 if len(builds) != 2:
     raise SystemExit("P7: expected exactly 2 docker build steps, found %d" % len(builds))
@@ -916,7 +928,9 @@ if len(builds) != 2:
 files = [(b.get("with") or {}).get("file") for b in builds]
 if files != ["Dockerfile.backend", "Dockerfile.frontend"]:
     raise SystemExit("P7: build step Dockerfiles are %r, want backend then frontend" % (files,))
+print("P7-BUILDS-OK")
 
+# P7-D: push
 for b in builds:
     with_ = b.get("with") or {}
     if with_.get("context") != ".":
@@ -924,11 +938,15 @@ for b in builds:
     # D-24: CI never publishes an image and never produces a local one.
     if with_.get("push") is not False:
         raise SystemExit("P7: build step %r does not carry push: false" % (b.get("name"),))
+print("P7-PUSH-OK")
 
+# P7-E: no load
 for bad in ("load: true", "docker compose build"):
     if bad in src:
         raise SystemExit("P7: ci.yml contains %r (D-24/D-25)" % bad)
+print("P7-NO-LOAD-OK")
 
+# P7-F: cache scopes
 # D-23: per-image scopes. A duplicate is how the second image starts evicting
 # the first, and a missing one falls back to the shared default scope.
 for scope in (
@@ -940,16 +958,15 @@ for scope in (
     n = src.count(scope)
     if n != 1:
         raise SystemExit("P7: ci.yml contains %r %d time(s), want exactly 1" % (scope, n))
-
-print("DOCKER-LINE-OK")
+print("P7-CACHE-OK")
 PY
 p7_rc=$?
 cat "$WORK/p7.log"
 [ "$p7_rc" -ne 0 ] && fail "P7 the docker line is violated (see the line above)"
 
-ok_partition "P7" "$WORK/p7.log" "DOCKER-LINE-OK"
+ok_partition "P7" "$WORK/p7.log" "P7-JOB-IF-OK" "P7-STEP-IF-OK" "P7-BUILDS-OK" "P7-PUSH-OK" "P7-NO-LOAD-OK" "P7-CACHE-OK"
 
-done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes, rejects both job- and step-level if:; evidence-bound success token DOCKER-LINE-OK)"
+done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes, rejects both job- and step-level if:; per-assertion success tokens P7-JOB-IF-OK P7-STEP-IF-OK P7-BUILDS-OK P7-PUSH-OK P7-NO-LOAD-OK P7-CACHE-OK)"
 
 # ---------------------------------------------------------------------------
 # scan_trust_surface <workflow-dir> — ONE implementation, two callers.
@@ -1653,8 +1670,8 @@ echo "  P2 go-line        — the 5 CI command fragments + determinism materiali
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; per-assertion success tokens P3-STEP-IF-OK / P3-BLOCKING-OK / P3-LINT-OK / P3-VERIFYJOB-OK"
 echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; per-assertion success tokens P4-A-ERRCHECK / P4-B-QUIET / P4-C-QUIET / P4-D-REVIVE"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
-echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; evidence-bound success token"
-echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface, rejects both job- and step-level if:; evidence-bound success token"
+echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; per-assertion success tokens P6-JOB-IF-OK / P6-STEP-IF-OK / P6-CMDS-OK / P6-COUNTS-OK"
+echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface, rejects both job- and step-level if:; per-assertion success tokens P7-JOB-IF-OK / P7-STEP-IF-OK / P7-BUILDS-OK / P7-PUSH-OK / P7-NO-LOAD-OK / P7-CACHE-OK"
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface; evidence-bound success token"
 echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source; evidence-bound success token"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present; evidence-bound success token"
