@@ -109,13 +109,37 @@ trap 'rm -rf "$WORK"' EXIT
 # A begin marker alone is still not enough: it proves a body STARTED, not that
 # the probe the body certifies RAN. M8 (48-VERIFICATION) commented out P8's
 # scan_trust_surface call, kept both markers' bookkeeping, and printed
-# `PASS P8 trust-surface (0 workflow(s) ...)` under the green banner. So every
-# probe deposits a success token — ok_partition — immediately after its own
-# decisive exit-code assertion, and done_partition refuses without begin AND
-# ok. The deposit never precedes the assertion it certifies.
+# `PASS P8 trust-surface (0 workflow(s) ...)` under the green banner.
+#
+# So success tokens are EVIDENCE-BOUND (T-48-61 / R2-WR-03). A hand-placed
+# token certifies that a line was reached, not that a probe produced anything:
+# replacing or deleting a probe while keeping the bookkeeping still reached
+# the green banner (48-VERIFICATION mutation class D1-D3). ok_partition now
+# takes the partition, the log path that partition's OWN probe wrote, and a
+# literal token that probe emits; it refuses unless the log exists, is
+# non-empty, and contains that token. Only then does it write the .ok marker.
+# done_partition refuses without begin AND ok, and the deposit never precedes
+# the assertion it certifies.
 mkdir -p "$WORK/ran"
 begin_partition() { : > "$WORK/ran/$1.begin"; }
-ok_partition() { : > "$WORK/ran/$1.ok"; }
+ok_partition() {
+  local pn="$1"
+  if [ "$#" -ne 3 ]; then
+    fail "P11 partition ${pn} called ok_partition without its probe log and probe-emitted token — a success token can only be deposited from probe output (R2-WR-03)"
+  fi
+  local log="$2"
+  local token="$3"
+  if [ ! -f "$log" ]; then
+    fail "P11 partition ${pn} cannot deposit its success token: the probe log ${log} does not exist — the probe that certifies ${pn} did not run (R2-WR-03)"
+  fi
+  if [ ! -s "$log" ]; then
+    fail "P11 partition ${pn} cannot deposit its success token: the probe log ${log} is empty — infrastructure failure, no evidence the probe ran (R2-WR-03)"
+  fi
+  if ! grep -qF -- "$token" "$log"; then
+    fail "P11 partition ${pn} cannot deposit its success token: the probe log ${log} does not contain the probe-emitted token '${token}' — a neutralised or deleted probe cannot deposit PASS (R2-WR-03)"
+  fi
+  : > "$WORK/ran/$pn.ok"
+}
 
 # Partition registry. The closing banner compares RAN against
 # EXPECTED_PARTITIONS; a shortfall exits non-zero.
@@ -180,6 +204,7 @@ WF_COUNT=$(wc -l < "$WORK/p1-list.txt" | tr -d ' ')
 # block at all — which is how a "parsed fine" check can be true of a file whose
 # trigger nobody has looked at. The trigger block is therefore read back
 # explicitly and required to be present on every workflow.
+: > "$WORK/p1.log"
 while IFS= read -r f; do
   [ -f "$f" ] || fail "P1 expected workflow file is missing: $f"
   python -c '
@@ -190,8 +215,15 @@ if not isinstance(d, dict):
 on = d.get("on", d.get(True))
 if on is None:
     raise SystemExit("no trigger block (PyYAML 1.1 reads the bare key `on:` as True)")
-' "$(native "$f")" || fail "P1 YAML parse / trigger read failed: $f"
+print("P1-PARSED")
+' "$(native "$f")" >> "$WORK/p1.log" || fail "P1 YAML parse / trigger read failed: $f"
 done < "$WORK/p1-list.txt"
+
+# The success token is emitted by the per-file probe itself, and the evidence
+# must cover EVERY enumerated file. A probe that is deleted or neutered leaves
+# this log short, and the deposit below refuses (R2-WR-03).
+P1_PARSED=$(grep -cF 'P1-PARSED' "$WORK/p1.log" || true)
+[ "$P1_PARSED" -eq "$WF_COUNT" ] || fail "P1 parsed ${P1_PARSED} workflow(s) but enumerated ${WF_COUNT} — the per-file parse probe did not run to success for every file (R2-WR-03)"
 
 # The composite action is parsed too, but it legitimately has no trigger block
 # — it is only ever reached through a caller workflow.
@@ -206,14 +238,22 @@ if (d.get("runs") or {}).get("using") != "composite":
 # D-11: pull_request_target executes fork-controlled workflow code against the
 # base repository's secrets and a mutating token. Report file:line, never just
 # the file name.
-if grep -rn 'pull_request_target' "$WF_DIR" > "$WORK/p1-prt.txt" 2>/dev/null; then
+grep -rn 'pull_request_target' "$WF_DIR" > "$WORK/p1-prt.txt" 2>/dev/null
+p1_prt_rc=$?
+if [ "$p1_prt_rc" -eq 0 ]; then
   sed 's/^/    /' "$WORK/p1-prt.txt"
   fail "P1 pull_request_target found (D-11) — listed above with file:line"
 fi
+# grep's no-match status is 1. Requiring it explicitly means a `:` substitution
+# (status 0) fails: the scan must have produced the decisive exit code, not
+# merely not-have-failed (R2-WR-03).
+if [ "$p1_prt_rc" -ne 1 ]; then
+  fail "P1 the pull_request_target scan returned rc=${p1_prt_rc}, want 1 (no match) — a neutralised or deleted probe cannot deposit PASS (R2-WR-03)"
+fi
 
-ok_partition "P1"
+ok_partition "P1" "$WORK/p1.log" "P1-PARSED"
 
-done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target)"
+done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target; evidence-bound success token P1-PARSED)"
 
 # ---------------------------------------------------------------------------
 # P2 + P3: the go job's structural contract, decided by one Python probe so the
@@ -430,11 +470,11 @@ cat "$WORK/p23.log"
 
 # One shared probe certifies two partitions (D-29/P2/P3 disagree-proof), so
 # both success tokens deposit at the same decisive exit-code assertion.
-ok_partition "P2"
-ok_partition "P3"
+ok_partition "P2" "$WORK/p23.log" "STRUCT-OK"
+ok_partition "P3" "$WORK/p23.log" "STRUCT-OK"
 
-done_partition "P2 go-line (5 command fragments, determinism -list guard on a materialised list, CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate)"
-done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install)"
+done_partition "P2 go-line (5 command fragments, determinism -list guard on a materialised list, CGO_ENABLED=1 only, shuffle seed under -v, verify job ends at the gate; evidence-bound success token STRUCT-OK)"
+done_partition "P3 lint-line (pinned v2.12.2, blocking, permissions map exact, verify job if-free with module-proxy install; evidence-bound success token STRUCT-OK)"
 
 # ---------------------------------------------------------------------------
 # P4: lint-teeth
@@ -567,6 +607,15 @@ GOEOF
 lint_run "p4-sentinel-b.log" "$SB" run --config "$ROOT/.golangci.yml" ./...
 p4_b_rc=$?
 [ "$p4_b_rc" -eq 0 ] || { tail -20 "$WORK/p4-sentinel-b.log"; fail "P4 sentinel B: a bare deferred Close was reported — the std-error-handling preset is not absorbing it (D-03)"; }
+# A silent run could also be a probe that never executed. The linter's own
+# clean-run line is the evidence that this module was actually judged.
+if [ ! -s "$WORK/p4-sentinel-b.log" ]; then
+  fail "P4 sentinel B produced no output — infrastructure failure, no evidence the noise-absorption probe ran (R2-WR-03)"
+fi
+if ! grep -qF '0 issues' "$WORK/p4-sentinel-b.log"; then
+  tail -20 "$WORK/p4-sentinel-b.log"
+  fail "P4 sentinel B: the probe log does not report '0 issues' — a neutralised or deleted probe cannot certify absorption (R2-WR-03)"
+fi
 pass "P4 sentinel B: a bare deferred Close stays quiet (std-error-handling)"
 
 # Sentinel C — the disabled rule. An interface-shaped handler legitimately
@@ -592,6 +641,13 @@ GOEOF
 lint_run "p4-sentinel-c.log" "$SC" run --config "$ROOT/.golangci.yml" ./...
 p4_c_rc=$?
 [ "$p4_c_rc" -eq 0 ] || { tail -20 "$WORK/p4-sentinel-c.log"; fail "P4 sentinel C: an unused parameter was reported — the revive rule is not disabled (D-03)"; }
+if [ ! -s "$WORK/p4-sentinel-c.log" ]; then
+  fail "P4 sentinel C produced no output — infrastructure failure, no evidence the unused-parameter probe ran (R2-WR-03)"
+fi
+if ! grep -qF '0 issues' "$WORK/p4-sentinel-c.log"; then
+  tail -20 "$WORK/p4-sentinel-c.log"
+  fail "P4 sentinel C: the probe log does not report '0 issues' — a neutralised or deleted probe cannot certify the rule is disabled (R2-WR-03)"
+fi
 pass "P4 sentinel C: an ignored parameter stays quiet (revive rule disabled)"
 
 # Sentinel D — the positive revive probe (WR-04). A/B/C together cannot tell
@@ -632,9 +688,9 @@ if ! grep -q 'revive' "$WORK/p4-sentinel-d.log"; then
 fi
 pass "P4 sentinel D: a missing package comment is reported as revive"
 
-ok_partition "P4"
+ok_partition "P4" "$WORK/p4-sentinel-d.log" "revive"
 
-done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet)"
+done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet; evidence-bound success token revive)"
 
 # ---------------------------------------------------------------------------
 # P5: composite
@@ -685,9 +741,9 @@ p5_rc=$?
 cat "$WORK/p5.log"
 [ "$p5_rc" -ne 0 ] && fail "P5 composite resolution order is violated (see the line above)"
 
-ok_partition "P5"
+ok_partition "P5" "$WORK/p5.log" "COMPOSITE-ORDER-OK"
 
-done_partition "P5 composite (three pinned majors, no checkout, every job checks out before setup)"
+done_partition "P5 composite (three pinned majors, no checkout, every job checks out before setup; evidence-bound success token COMPOSITE-ORDER-OK)"
 
 # ---------------------------------------------------------------------------
 # P6: fe-line
@@ -761,9 +817,9 @@ p6_rc=$?
 cat "$WORK/p6.log"
 [ "$p6_rc" -ne 0 ] && fail "P6 the fe line is violated (see the line above)"
 
-ok_partition "P6"
+ok_partition "P6" "$WORK/p6.log" "FE-LINE-OK"
 
-done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals)"
+done_partition "P6 fe-line (npm ci, tsc --noEmit, vitest run under web/, no count literals; evidence-bound success token FE-LINE-OK)"
 
 # ---------------------------------------------------------------------------
 # P7: docker-line
@@ -832,9 +888,9 @@ p7_rc=$?
 cat "$WORK/p7.log"
 [ "$p7_rc" -ne 0 ] && fail "P7 the docker line is violated (see the line above)"
 
-ok_partition "P7"
+ok_partition "P7" "$WORK/p7.log" "DOCKER-LINE-OK"
 
-done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes)"
+done_partition "P7 docker-line (both Dockerfiles, push: false, per-image cache scopes; evidence-bound success token DOCKER-LINE-OK)"
 
 # ---------------------------------------------------------------------------
 # scan_trust_surface <workflow-dir> — ONE implementation, two callers.
@@ -1069,13 +1125,13 @@ p8_rc=$?
 cat "$WORK/trust-surface.log"
 [ "$p8_rc" -ne 0 ] && fail "P8 the trust surface is violated (see the line above)"
 
-ok_partition "P8"
+ok_partition "P8" "$WORK/trust-surface.log" "TRUST-SURFACE-OK"
 
 # R2-WR-03 / A2: TRUST_SURFACE_COUNT is set by the probe under test, so it
 # carries NO `:-` default. A default would print a plausible zero and pass the
 # partition after the probe was deleted (the M8 mutation); under
 # `set -uo pipefail` (header) the bare unbound variable aborts instead.
-done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT} workflow(s) per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface)"
+done_partition "P8 trust-surface (${TRUST_SURFACE_COUNT} workflow(s) per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface; evidence-bound success token TRUST-SURFACE-OK)"
 
 # ---------------------------------------------------------------------------
 # P9: eval-gate-gate — the fork boundary, the visible skip, and the Go version
@@ -1235,9 +1291,9 @@ p9_rc=$?
 cat "$WORK/p9.log"
 [ "$p9_rc" -ne 0 ] && fail "P9 the eval-gate gate or the Go version source is violated (see the line above)"
 
-ok_partition "P9"
+ok_partition "P9" "$WORK/p9.log" "EVALGATE-OK"
 
-done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact exactly once with a secret-free Gate check, one Go version source)"
+done_partition "P9 eval-gate-gate (exact fork/Dependabot gate expression, complement skip notice, secrets intact exactly once with a secret-free Gate check, one Go version source; evidence-bound success token EVALGATE-OK)"
 
 # ---------------------------------------------------------------------------
 # P10: sc4-wording — the ROADMAP's SC-4 sentence, resolved through $ROOT
@@ -1271,9 +1327,19 @@ if [ "$sc4_new_state" != present ]; then
   fail "P10 ROADMAP.md is missing the replacement SC-4 wording『${SC4_NEW}』(D-12/P22)"
 fi
 
-ok_partition "P10"
+# Evidence for the deposit. `grep -q` writes no stdout, so the two presence
+# probes above cannot deposit a log themselves. On the asserted-success branch
+# only, re-run them without -q: the replacement phrase is present by
+# construction, so p10-new.log carries the matched ROADMAP line; the old phrase
+# is absent by design, so p10-old.log is legitimately empty. The concatenation
+# is non-empty and contains "$SC4_NEW" — the token the probe emitted (R2-WR-03).
+grep -F "$SC4_NEW" "$ROADMAP" > "$WORK/p10-new.log"
+grep -F "$SC4_OLD" "$ROADMAP" > "$WORK/p10-old.log"
+cat "$WORK/p10-new.log" "$WORK/p10-old.log" > "$WORK/p10.log"
 
-done_partition "P10 sc4-wording (old hermetic-precedent phrase absent, live-workflow wording present)"
+ok_partition "P10" "$WORK/p10.log" "$SC4_NEW"
+
+done_partition "P10 sc4-wording (old hermetic-precedent phrase absent, live-workflow wording present; evidence-bound success token $(printf '%s' "$SC4_NEW"))"
 
 # ---------------------------------------------------------------------------
 # P11: self-probe — the partition that proves the other ten are not decorative
@@ -1452,6 +1518,8 @@ jobs:
       - run: echo "${{ secrets.DEPLOY_KEY }}"
 YEOF
 
+P11_FIXTURE_COUNT=0
+: > "$WORK/p11-fixtures.log"
 for fixture in empty-jobs empty-perms no-perms empty-dir \
                two-files yaml-ext lowercase-registry stray-secret; do
   scan_trust_surface "$P11_FIX/$fixture"
@@ -1460,6 +1528,8 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
     cat "$WORK/trust-surface.log"
     fail "P11 verifier is vacuous on an empty partition: scan_trust_surface returned success on the '${fixture}' fixture"
   fi
+  P11_FIXTURE_COUNT=$((P11_FIXTURE_COUNT + 1))
+  echo "fixture '${fixture}' rejected (rc=${p11_fixture_rc})" >> "$WORK/p11-fixtures.log"
   # The reason is rendered through sed rather than interpolated into info():
   # info() uses `echo -e`, and the probe's message quotes a NATIVE Windows path
   # whose backslashes would be read as escape sequences (\t, \e, \c …) — which
@@ -1469,10 +1539,15 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   head -1 "$WORK/trust-surface.log" | sed 's/^/       /'
 done
 
+# The fixture loop is a probe too: eight rejections are its success output. A
+# loop that never ran (or was neutered) leaves the count and the log short, and
+# the deposit refuses (R2-WR-03).
+[ "$P11_FIXTURE_COUNT" -eq 8 ] || fail "P11 the fixture loop ran ${P11_FIXTURE_COUNT} fixture(s), want 8 — a neutralised or deleted loop cannot deposit PASS (R2-WR-03)"
+
 # P11's own success token deposits right after its last decisive assertion —
 # BEFORE the registry count below, which demands that token to exist. The
 # reverse order would be a self-failing gate.
-ok_partition "P11"
+ok_partition "P11" "$WORK/p11-fixtures.log" "rejected"
 
 # --- Half 3 (LAST): the registry, the call sites, the markers and the tokens
 # agree -----------------------------------------------------------------------
@@ -1491,7 +1566,7 @@ if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECT
 fi
 info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}, success tokens ${OK_COUNT}/${EXPECTED_PARTITIONS}"
 
-done_partition "P11 self-probe (registry == call sites == begin markers == success tokens, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
+done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 8 fixtures rejected: 4 vacuity + 4 per-file)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
@@ -1514,14 +1589,14 @@ fi
 
 echo ""
 echo "Partitions verified:"
-echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target"
-echo "  P2 go-line        — the 5 CI command fragments + determinism -list guard on a materialised list, CGO_ENABLED=1 and nothing else, verify job ends at the gate"
-echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install"
-echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent"
-echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first"
-echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals"
-echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface"
-echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface"
-echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source"
-echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present"
-echo "  P11 self-probe    — registry == call sites == begin markers == success tokens, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
+echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; evidence-bound success token"
+echo "  P2 go-line        — the 5 CI command fragments + determinism -list guard on a materialised list, CGO_ENABLED=1 and nothing else, verify job ends at the gate; evidence-bound success token"
+echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install; evidence-bound success token"
+echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; evidence-bound success token revive"
+echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
+echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals; evidence-bound success token"
+echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface; evidence-bound success token"
+echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface; evidence-bound success token"
+echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source; evidence-bound success token"
+echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present; evidence-bound success token"
+echo "  P11 self-probe    — registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, empty partitions and per-file mutations proven to fail"
