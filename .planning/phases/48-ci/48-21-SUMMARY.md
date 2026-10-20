@@ -164,3 +164,11 @@ None - no external service configuration required.
 ---
 *Phase: 48-ci*
 *Completed: 2026-10-20*
+
+## Self-Check: PASSED
+
+- `verify-phase-48.sh` exists and carries all sixteen new per-assertion tokens (4 P6 + 6 P7 + 6 P9); zero `FE-LINE-OK`, `DOCKER-LINE-OK` or `EVALGATE-OK` occurrences remain; `BANNER_RANGE` is in the P11 half-1 detector.
+- Commits verified as ancestors of HEAD: `2606813` (Task 1), `97c021b` (Task 2), `5b6203a` (Task 3), `27db69a` (SUMMARY), `f7a5938` (state/roadmap tracking).
+- Final gate run post-commit: exit 0, exactly one `ALL PASSED`, `registry 11/11, begin markers 11/11, success tokens 11/11`.
+- All four mutation drills (P6 job-if, P7 cache-scope, P9 notice-group, P11 banner-in-else) exited 1 with no `ALL PASSED`, naming the partition and the missing token / else placement.
+- `requirements.ready-ids` returned `ready: []` for CICD-01/02/03 — already Complete on run 39380373930; no marking performed (expected no-op).
