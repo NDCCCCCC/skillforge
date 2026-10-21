@@ -87,6 +87,215 @@ Phase 49 的三个需求（DEMO-01/02/03）在本仓库里都有**已存在的�
 
 **Primary recommendation:** 按「**新增 `internal/retriever/embedded` 包（照搬 mongo 的 rank + seed 形态）+ 在 `cmd/server/main.go` 的两个 switch 上各加一个 case + 用 `model.BaseChatModel` 实现一个 stub ChatModel 插进 `Deps.PipelineChatModel`**」这条主线实现；三处 demo 素材（asciinema 录制、agg 渲染、`docs/demo.gif`）作为**独立于主链的收尾工作项**推进，不要让录屏工具链的安装阻塞主链的代码落地。
 
+## Verification Corrections (this research pass)
+
+本轮（v2）按受限阅读清单逐条复核了与**检索面 / 向量化 / verdict 契约 / 门禁形态**直接相关的文件，并对上一轮研究稿做了以下**第一手实测更正**：
+
+| # | 更正 | 本轮证据 | 影响 |
+|---|---|---|---|
+| C-01 | **真正可索引的语料 = 218 篇 `.md`**（`authority` 16 + `sql-guides` 202）。`knowledge/draft`、`knowledge/historical`、`knowledge/personal` 三个目录里**各只有一个 `.gitkeep`**，没有任何 `.md` 文档 | `find knowledge -name '*.md' -type f \| wc -l` → `218`；`find knowledge -type f ! -name '*.md' \| wc -l` → `3`（`knowledge/draft/.gitkeep`、`knowledge/historical/.gitkeep`、`knowledge/personal/.gitkeep`）；`find knowledge -type f \| wc -l` → `221` | D-05 的「authority 16 + sql-guides 202 + draft 1 + historical 1」= 220 统计的是**目录条目**而非文档数，且**漏列 `personal`**。⇒ 缓存的 `corpusHash` 覆盖的是**实际入库的 218 篇**；缓存条数断言写 218，不是 220/221。详见 `## Assumptions Log` A-01 / A-13 |
+| C-02 | `docker`、`asciinema`、`agg`、`ollama`、`jq` **均不在 PATH**；`go` / `node` / `npm` / `python` / `cargo` / `golangci-lint` / `ffmpeg` / `git` 在 PATH | 本轮 `command -v` 探测（逐条结果见 `## Environment Availability` 的「探测记录」） | A-02 由「未验证」升级为**确定事实**；旧 quickstart 的 `docker compose up` 在本机**不可执行**；D-19 的素材产出必须先装 asciinema+agg |
+| C-03 | WSL2 内 Go 可用且与宿主同版本（`go1.25.5 linux/amd64`） | `wsl.exe -e bash -lc "go version"` → `go version go1.25.5 linux/amd64` | 门禁的 Go 分区在 WSL 内可跑，命令形态照 `verify-phase-47.sh` 的 `wsl()` 包装 |
+| C-04 | `.gitignore`（全文 40 行）**没有任何向量缓存条目**——现有条目是 `.env`、`*.exe`、`/spiked`、`spike-*trace.json`、`.DS_Store`、`node_modules/`、`web/dist/`、`skillforge.db*`、`/body_gbk_*`、`/body_quantum.json`、`/reports/`、`/eval/reports/`、`/data/`、`/skillforge-server*` | [VERIFIED: .gitignore:1-40] | D-14「不入仓库」必须**显式新增**一条规则，否则 `git status` 必脏 ⇒ Wave 0 缺口清单里那条是**必需项**不是可选项 |
+| C-05 | `.env.example:8-13` 已把 `RETRIEVER_BACKEND` 写成可选开关并逐条说明 `milvus` / `mongo` 两个取值，**没有 `embedded`**；`:43-45` 写明 BGE 端点「Required in both backends. OpenAI-compatible /v1/embeddings endpoint.」 | [VERIFIED: .env.example:8-13, 43-45] | D-15「`.env.example` 一字不动」成立，但代价是**新 backend 只能靠 README 说明** ⇒ README 那一节必须点名 `RETRIEVER_BACKEND=embedded`（见 `## Open Questions` Q5） |
+
+> 上一轮研究稿中标注 `[VERIFIED: …]` 的其它断言来自同一 phase 的第一次研究 pass；本轮**没有**重复打开那些文件，因此不在此处复述其引用，以免把未经本轮复核的证据再写一遍。下文新增的小节只引用**本轮实读**的文件。
+
+## Answers to the Nine Research Questions
+
+### Q1 — 进程内向量存储要满足什么接口面？tier 过滤必须怎么表现？
+
+**接口面**：实现 `internal/retriever/retriever.go:167-217` 的 `Retriever`，共 **8 个方法**（逐字签名）：
+
+- `Health(ctx context.Context) error`
+- `Search(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]Hit, error)`
+- `Ensure(ctx context.Context) error` — 幂等，每次启动都安全调用
+- `Insert(ctx context.Context, docs []Document) error` — 调用方预分配数字 ID，**不做自动去重**
+- `ListMetadata(ctx context.Context) ([]DocumentMeta, error)` — **不过滤 tier**，且**不得**对 `effective_to` 做 PRE 过滤（图谱要故意暴露被取代的 chunk 并打「已失效」徽标）
+- `GetChunk(ctx context.Context, id int64) (ChunkContent, error)` — 不存在时返回 `ErrChunkNotFound`（逐字：`errors.New("retriever: chunk not found by id")`）
+- `GetMaxID(ctx context.Context, tier string) (int64, error)` — tier 为空时返回 0
+- `Disconnect() error`
+
+[VERIFIED: internal/retriever/retriever.go:36, 167-217]
+
+**最接近的现有类比**：`internal/retriever/mongo/rank.go:94-132` 的 `rank` 是**纯函数**（无 I/O、无全局状态），排序比较器逐字为：
+
+```go
+sort.SliceStable(out, func(i, j int) bool {
+    if out[i].score != out[j].score {
+        return out[i].score > out[j].score
+    }
+    return out[i].row.ID < out[j].row.ID
+})
+```
+
+其包注释逐字解释了「过滤在存储侧、打分在 Go 侧」这个形状的由来：「We store each document with its embedding array and apply the tier filter as a real MongoDB query ({tier: {$in: tiers}}) BEFORE computing cosine similarity in Go.」[VERIFIED: internal/retriever/mongo/rank.go:17-35, 94-132]
+
+**「过滤在存储侧、打分在 Go 侧」的实现形状**（`internal/retriever/mongo/mongo.go` 的 `Search` 逐字）：
+
+```go
+filter := bson.D{
+    {Key: "tier", Value: bson.D{{Key: "$in", Value: tiers}}},
+    {Key: "$or", Value: bson.A{
+        bson.D{{Key: "effective_to", Value: 0}},
+        bson.D{{Key: "effective_to", Value: bson.D{{Key: "$gte", Value: now}}}},
+    }},
+}
+rows, err := c.finder.FindRows(ctx, filter)
+if len(rows) == 0 {
+    return nil, nil
+}
+return rank(rows, queryVec, topK), nil
+```
+
+同处注释逐字：「Empty tiers → $in:[] → no matches → 0 hits (D-09). This is THE trust boundary: building the filter any other way (e.g. skipping the find on empty tiers) would still produce 0 rows but would not be the DATABASE refusing — the structural guarantee would be in Go, not in the storage layer. Always build the filter, always run the find.」[VERIFIED: internal/retriever/mongo/mongo.go:397-441]
+
+** prescriptive 结论**：embedded 的等价形态是**两段式**——先构造候选集（`tier ∈ tiers` **且** `effective_to == 0 || effective_to >= now`），再对候选集算 cosine。**空 tier 集合 ⇒ 候选集为空 ⇒ 0 命中**（refusal-by-construction）。**禁止**「全量打分后再 filter」：那会把信任边界交给打分逻辑，一旦打分分支出错，隔离即失效。`internal/retriever/retriever.go:142-161` 的契约注释也是这个意思：「Tier-filter semantics: PRE-similarity at the SDK/Search layer (NEVER post-filter). Empty/zero tiers → backend returns 0 hits (refusal-by-construction, D-09).」
+
+### Q2 — 本地向量缓存条目必须包含什么？放哪里？并发首次启动怎么办？陈旧条目怎么判？
+
+**条目必须包含**（D-14 三要素 + 必要元数据）：
+
+| 字段 | 来源 | 为什么必须有 |
+|---|---|---|
+| `model` | `BGE_M3_MODEL`，缺省 `bge-m3`（[VERIFIED: cmd/server/main.go:289]） | 换模型必须失效 |
+| `dimension` | `1024`（`dimensions = 1024 // BGE-M3 dense output dimension`，[VERIFIED: internal/embedder/bge/bge.go:47-51]） | 维度不匹配会让 `vecmath.Cosine` **panic**（长度不等直接 panic，[VERIFIED: internal/vecmath/cosine.go:50-69]） |
+| `corpusHash` | 语料内容哈希 | 改语料必须失效 |
+| `endpointHash` | `BGE_M3_URL` 的 sha256（**原串不落盘、不进文件名**） | URL 可能带 token；且换端点应失效 |
+| 每条：`id` / `tier` / `source` / `effectiveFrom` / `effectiveTo` / 向量本体 | 来自 `retriever.Document` | 检索与引用都要用 |
+| 整体 payload 校验和 | sha256(全部向量字节) | 损坏检测 ⇒ 重建而非部分可用 |
+
+**放在哪**：仓库内 gitignored 目录（建议 `.skillforge-cache/vectors/`），并**新增一条 `.gitignore` 规则**（C-04：当前没有）。理由：与既有惯例一致（`.gitignore:12-17` 已经有 `skillforge.db` 这条"本地运行时状态不入库"的先例），且 demo 场景下"看得见的缓存"比"隐形缓存"更利于排障。
+
+**并发首次启动**：两个进程同时首启会同时向 BGE 端点打 218 次请求。**做法**：用**原子创建**的锁文件（`os.OpenFile(path, os.O_CREATE|os.O_EXCL, 0o600)`）做互斥；抢不到锁的进程**轮询等待**缓存文件出现（带超时），超时后**不**降级为假向量，而是**明确报错退出**（D-01：端点不可达 ⇒ 明确失败）。不要用「固定名目录锁 + `sleep` 猜时长」。
+
+**陈旧条目的判定**：读取时逐项校验 magic / version / dimension / 记录数 / payload 校验和 / **缓存 key 里的 corpusHash 是否等于当前语料的 hash**。任一不符 ⇒ **整个文件作废**（当作未命中并重建），**绝不**"部分可用"。
+
+**语料哈希必须基于内容**：`git clone` / `git checkout` 会重写 mtime ⇒ 禁止用 mtime。哈希输入 = (相对路径, 文件字节) 按路径排序后串联。**注意条数是 218，不是 220/221**（C-01）。
+
+### Q3 — BGE-M3 端点契约（录制/回放必须逐字一致）
+
+**请求体**（`internal/embedder/bge/bge.go:142-150` 逐字）：
+
+```go
+type embedReq struct {
+    Model string `json:"model,omitempty"`
+    Input string `json:"input"`
+}
+```
+
+⇒ body 为 `{"model":"<Model>","input":"<text>"}`；`Model` 为空时**整个字段被省略**（注释逐字：「Empty OMITS the field (back-compat with endpoints that reject unknown fields).」）
+
+**请求头**：`Content-Type: application/json`；token 非空时 `Authorization: Bearer <token>`，否则回落到环境变量 `BGE_M3_AUTH`（`authTokenFromEnv` 读 `os.Getenv("BGE_M3_AUTH")`）。
+
+**响应（两种形状，按顺序解析）**：
+1. OpenAI 兼容：`{"data":[{"embedding":[ …1024 个 float… ]}]}`
+2. TEI 裸数组：`[{"embedding":[ … ]}]`
+3. 都不匹配 ⇒ 错误逐字：`could not parse embedding from response (no 'embedding' array found)`
+
+[VERIFIED: internal/embedder/bge/bge.go:142-208]
+
+**维度**：`1024`（`func (b *BGE) Dimensions() int { return dimensions }`）。
+
+**模型名怎么设**：`bgeModel := envOr("BGE_M3_MODEL", "bge-m3")`（[VERIFIED: cmd/server/main.go:289]）；配置注释逐字：「model name for OpenAI-compatible /v1/embeddings (Ollama needs "bge-m3"; vLLM/TEI accept it).」⇒ **Ollama 与通用 OpenAI 兼容端点在请求体上完全一致**；差别只有两点：① Ollama 无需 key ⇒ `BGE_M3_AUTH` 留空即可，`BGE_M3_URL=http://localhost:11434/v1/embeddings`（README.md:52 的默认值）；② 通用端点通常要 key ⇒ 走 `BGE_M3_AUTH`。
+
+**录制/回放夹具必须逐字一致的三处**（这是 hermetic 门禁的替身契约）：
+- **请求体**：键集合与 `omitempty` 行为一致（`Model` 非空时 `model` 键**必须出现**）；
+- **响应体**：优先 OpenAI 形状 `{"data":[{"embedding":[…]}]}`（`bge` 先试它，再试 TEI 形状）；
+- **向量长度**：`1024`（否则 cosine 路径会 panic）。
+
+> **关键陷阱**：**固定录制的向量对任意查询文本的 cosine 近乎无关** ⇒ 必然低于 `internal/server/pipeline.go:64` 的 `retrievalScoreThreshold = 0.3` ⇒ 门禁只能验「拒答」、验不了「带引用的问答」。**解法**：夹具必须是**按键查表**的（语料文本 → 录制向量；demo 查询文本 → 录制向量），未命中的键返回明确错误。详见 `## Common Pitfalls` Pitfall 17 与 `## Code Examples` 示例 10。
+
+### Q4 — stub 路径怎么走？
+
+**现有先例的形状**（模式先例，**不是代码复用**）：`internal/knowledge/ecl/stub.go:305-314` 的 `StubExtract` 把「确定性规则」与「LLM 抽取」彻底分离——它用一组正则规则（`sqlRules` 逐字：`{sqlUpdateRegex→"update", sqlInsertRegex→"insert", sqlCreateLine→"create", sqlDeleteRegex→"update", sqlMergeRegex→"update", sqlSelectInto→"select"}`）扫合并后的正文，按**首次出现顺序**排序、**按名字去重**后产出结构化结果；合法值集合由独立函数 `ValidateExtraction` 把关（错误逐字：`ecl: invalid extraction kind %q for table %q (legal: update|select|insert|create)`）。[VERIFIED: internal/knowledge/ecl/stub.go:75, 81-97, 251-276, 305-314, 324-357]
+
+**本 phase 的 stub 必须满足的、可被机器检查的契约**：
+
+1. 产出必须是**合法** `verdict.Verdict`：`Status ∈ {"ok","needs_input","refused","error"}`（[VERIFIED: internal/verdict/validate.go:47-52]）；`Confidence ∈ [0.0, 1.0]`；`Citations` **非 nil**（nil ⇒ 错误逐字 `citations field missing (must be array, can be empty)`）（[VERIFIED: internal/verdict/validate.go:73-84]）。
+2. 走**同一条** grounding 校验：`GroundingCheck` 的 span 判定是 `strings.Contains(Normalize(chunkText), Normalize(c.Span))`，`Normalize` 做全角→半角（`width.Narrow`）+ 折叠空白 + TrimSpace（[VERIFIED: internal/verdict/grounding.go:66, 170-196]）⇒ stub 的 `Span` **必须逐字来自 chunk**。
+3. 走**同一条**降级链：`GroundingChecker` = `GroundingCheck` + `ApplyDowngrade`，降级把 `Confidence` 钳到 `ConfidenceFloor = 0.89`、`Status` 改成 `needs_input`、`ReviewRequired` 置 true（[VERIFIED: internal/verdict/grounding.go:204, 216, 293-323, 341-347]）。
+4. **D-10 额外约束**：`Confidence ≤ 0.5` 且 `ReviewRequired = true`。
+5. 走**同一条** wire 序列化：`data-policy` 帧就是 `json.Marshal(v)`（[VERIFIED: internal/server/chat.go:790-820]）⇒ 新增的 `Mode` 字段自动上 wire。
+6. `Stream` **不能返回空流**（pipeline 把零 token 流判为 ERROR）。
+
+### Q5 — 启动必填项要改什么？embedded 分支的规则是什么？
+
+**今天读的（逐字）**：
+
+```go
+bgeURL := envRequired("BGE_M3_URL")                         // :288
+bgeModel := envOr("BGE_M3_MODEL", "bge-m3")                  // :289
+bgeTimeoutSec := envOr("BGE_M3_TIMEOUT", "60")               // :290
+bgeTLSSkipVerify := strings.EqualFold(os.Getenv("BGE_M3_TLS_SKIP_VERIFY"), "true") // :296
+glmKey := envOr("LOCAL_API_KEY", envRequired("GLM_API_KEY")) // :302
+```
+
+[VERIFIED: cmd/server/main.go:288-302]
+
+**D-11 的改法**：`GLM_API_KEY` 变可选 ⇒ **必须**改写 `envOr("LOCAL_API_KEY", envRequired("GLM_API_KEY"))` 这一行。Go 的实参在调用前**eager 求值**，`envRequired` 即使写在默认值位置也会先执行 ⇒ 只缺 `GLM_API_KEY` 也会 `log.Fatalf` 退出。改成 `glmKey := envOr("LOCAL_API_KEY", os.Getenv("GLM_API_KEY"))`，再用 `glmKey == ""` 决定走真模型还是 stub。`BGE_M3_URL` **保持 `envRequired`**（D-01 + D-11：embedded 模式仍需外部向量化模型）。
+
+**embedded 分支的规则（D-16）**：`buildRetriever` 的 `case "embedded":` 里**不得**出现 `envRequired("MONGO_URI")`（今天在 `case "mongo":` 内，[VERIFIED: cmd/server/main.go:1239]）或 `envRequired("MILVUS_ADDRESS")`（今天在 default 分支内，[VERIFIED: cmd/server/main.go:1266]）。embedded 分支只读 `BGE_M3_URL` / `BGE_M3_MODEL` / 缓存目录（可选）。
+
+**`none` 分支一字不动（D-06）**：今天逐字是 `log.Printf("[WARN] cmd/server: RETRIEVER_BACKEND=none — tier-channel retrieval disabled (all tier queries refuse with no_authorized_source); data-channel Skills unaffected")` 后 `return noopRetriever{}, "none(degraded default-deny)"`（[VERIFIED: cmd/server/main.go:1236-1237]）。
+
+### Q6 — 同源静态托管：今天有什么、要复刻什么？
+
+**今天没有**：后端不伺服 `web/dist`。`web/vite.config.ts:26-33` 只在 dev 期把 `/api` 代理到 `http://localhost:8888`，其注释逐字：「In dev, the `/api` prefix is proxied to the Hertz backend on :8888 so the browser sees a single origin (no CORS). In production, SkillForge serves the built frontend and the API from the same origin (single-origin deployment).」——即**生产同源今天由 nginx 容器承担**（`Dockerfile.frontend:39`）。
+
+**要复刻的语义基线**（`Dockerfile.frontend:39` 的 nginx 配置逐字）：`location / { try_files $uri /index.html; }` 与 `location /api { proxy_pass http://backend:8888; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_buffering off; proxy_read_timeout 3600s; proxy_send_timeout 3600s; }`；同文件注释逐字：「proxy_buffering OFF is load-bearing for UIMessageChunk SSE streaming — without it nginx buffers chunks and the trust UI degrades to a single flushed blob at connection close.」
+
+**Go 侧的等价实现要点**：
+- `http.FileServer(http.Dir(distDir))` 伺服 `web/dist`；SPA fallback 单独一段（**无扩展名且文件不存在** ⇒ 回 `index.html`；有扩展名但不存在 ⇒ 404）；
+- **catch-all 必须最后注册**，否则遮蔽 `/api/*`；
+- `web/dist` 缺失 ⇒ 返回 **503 + 明确提示**（不要静默 404、不要目录列表）；
+- Go 侧直连后端**没有** nginx 的 buffering 问题（SSE 直出），但**不要**给 `/api` 路径加任何写缓冲；
+- 路由顺序错误（catch-all 先注册）会被门禁的端到端分区直接暴露。
+
+### Q7 — quickstart 端到端：今天的步骤、真实端口、哪些步骤在无 key / 无 Milvus / 无 BGE 时会断？
+
+**今天的 README Quick Start**（`README.md:41-67`）：① `git clone https://github.com/ninedrunk/skillforge.git` + `cd skillforge`；② `cp .env.example .env`，填 `GLM_API_KEY=<your Zhipu key>` 与 `BGE_M3_URL=http://localhost:11434/v1/embeddings   (default; ollama)`；③ `ollama pull bge-m3`；④ 可选：把 `examples/skills/compliance` 拷进 `skills/` 并删掉 `skills/simple-qa`；⑤ `docker compose up`；⑥ 打开 `http://localhost:8080`。
+
+**真实端口**（逐字来源）：前端 `http://localhost:8080`（`README.md:66`；compose 里 nginx `:8080 → :80`，`README.md:94`）；后端 `http://localhost:8888`（`README.md:79`；`docker-compose.yml` 的 `ports: - "8888:8888"`）；Milvus gRPC `localhost:19530`（`README.md:79`）；dev 模式 Vite `:5173`（D-12）。
+
+**在 hermetic 条件下的断点**：
+
+| 步骤 | 无 key | 无 Milvus | 无 BGE 端点 | 结论 |
+|---|---|---|---|---|
+| ② 填 `.env` | **断**（要求填 `GLM_API_KEY`） | — | — | hermetic 版必须改成"只填 `BGE_M3_URL`" |
+| ③ `ollama pull bge-m3` | — | — | **断**（模型不存在） | D-01 强制 ⇒ 这一步不能省，只能换端点 |
+| ⑤ `docker compose up` | **断**：compose 用 `${GLM_API_KEY:?GLM_API_KEY is required — see .env.example}` 强制插值 ⇒ 容器**启动前**就失败 | **断**：compose 还要拉起 milvus/etcd/minio | — | 整条 compose 路径在 hermetic 场景不可用 ⇒ D-12 改走 `go run ./cmd/server` |
+| 后端启动 | **断**：`envOr("LOCAL_API_KEY", envRequired("GLM_API_KEY"))` 的 eager 求值 ⇒ 缺 key 直接 `Fatalf` | — | — | D-11 必改 |
+| 默认 `RETRIEVER_BACKEND=milvus` | — | **断**：`envRequired("MILVUS_ADDRESS")` | — | D-16 ⇒ embedded 分支不得要求它 |
+
+**结论（ prescriptive ）**：hermetic quickstart = ① clone ② `cp .env.example .env` 并**只**填 `BGE_M3_URL` ③ 起一个 BGE 端点（Ollama 或等价 OpenAI 兼容端点）④ `export RETRIEVER_BACKEND=embedded` ⑤ `go run ./cmd/server`（:8888）⑥ `cd web && npm run dev`（:5173），或让后端同源伺服 `web/dist`（:8888）。
+
+### Q8 — demo.gif 怎么录、怎么渲染、产物落在哪、怎么兼作 SC4 证据？
+
+- **录**：`asciinema rec -c 100 -s 1 <out>.cast`（CLI 参数需按安装版本校准 —— A-03）。
+- **渲染**：`agg <out>.cast docs/demo.gif`（同上）。
+- **产物落点**：`docs/demo.gif` —— **该路径当前是空位**：`docs/` 下只有 `threat-model/`，而 `README.md:18` 已经写 `![SkillForge demo](docs/demo.gif)` ⇒ 这就是破图根因（本 phase 把真实素材放到该路径；**不要**改 README 的引用路径，那是 Phase 50 的范围）。
+- **Makefile 目标**：新增 `demo-gif`（调 `scripts/record-demo.sh`）+ `verify-phase-49`（调**仓库根**的 `verify-phase-49.sh`）。现有 Makefile 的 verify 目标形态是 `bash scripts/verify-phase-NN.sh`（11..30 在 `scripts/`），而 45..48 的门禁脚本在**仓库根** ⇒ Phase 49 跟 45..48 同级。
+- **兼作 SC4 证据**：录制脚本**本身**就是「quickstart 逐步实测通过」的执行记录 ⇒ 脚本进仓库（`scripts/record-demo.sh`），素材进仓库（`docs/demo.gif`）。
+- **安全约束**：录制环境**不导出**任何真实 key（空 key 反而会展示 stub 模式的启动 WARN，正是 D-08② 要展示的）；门禁对产物做二进制密钥扫描。
+
+### Q9 — `verify-phase-49.sh` 应该是什么形状？
+
+**照 Phase 48 的形状**（`verify-phase-48.sh`，仓库根）：`set -uo pipefail` + `export MSYS_NO_PATHCONV=1` + `ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` + `WORK="$(mktemp -d)"` + `trap` 清理 + `pass()/fail()/info()` + **分区计数**（`EXPECTED_PARTITIONS=11` / `RAN=0` / `RAN_LIST=()`）+ **证据绑定的成功 token**（`begin_partition` / `ok_partition` / `done_partition`）。
+
+**成功 token 的落法**（逐字语义见 `## Code Examples` 示例 9）：每个分区体**第一条语句**写 `$WORK/ran/<P>.begin`；分区的探针把**每个断言组**的 token 写进**该分区自己的**日志；`ok_partition <P> <log> <token...>` 校验日志存在、非空、且**含每一个 token**，才写 `$WORK/ran/<P>.ok`；`done_partition` 缺 `.begin` 或 `.ok` 一律拒。Phase 48 的原话逐字：「success tokens are EVIDENCE-BOUND … and since the M13 round they are bound PER ASSERTION GROUP, not per probe … the deposit never precedes the assertion it certifies.」
+
+**怎么证明「分区还会咬」**：每个分区都要有**变异演练**——把该分区断言的东西改坏（删一个断言 / 改一个阈值 / 换掉被禁 token），门禁必须**红**；演练本身必须留下证据（Phase 48 的 canary 做法：探针先被证明能产出决定性结果（rc 0/1），再被信任）。**没有变异演练的门禁等于没有门禁。**
+
+**分区清单**沿用现有稿的 P1..P9 编号（见 `## Code Examples` 示例 8）。
+
+## State of the Art
+
+- **进程内向量存储**：主流做法仍是专用向量库（Milvus / Qdrant / pgvector）。本 phase 用**暴力 cosine** 是在 218 篇 × 1024 维规模下的**刻意选择**，不是技术代差；仓库里已有同款判断（`internal/retriever/mongo/rank.go` 包注释：MongoDB 4.4 无原生向量检索 ⇒ 过滤在存储侧、cosine 在 Go 侧）。
+- **hermetic 测试替身**：业界通行做法是 **HTTP 层录制/回放**（固定 fixture + 本地 HTTP 服务），而不是在生产代码里留「测试分支」。本 phase 的替身端点**只存在于门禁脚本内**，生产二进制零分支 —— 与该通行做法一致（D-01 的边界见 `## Open Questions` Q1）。
+- **确定性 stub LLM**：仓库已有同构先例（`internal/knowledge/ecl/stub.go` 的 `StubExtract`），用确定性规则替代模型调用，同时保留严格校验。
+- **终端 demo 素材**：asciinema（录制）+ agg（渲染）是当前社区事实标准；`agg` 的 Docker 镜像长期未更新 ⇒ 优先 `cargo install --git https://github.com/asciinema/agg` 或预编译二进制（本机 `cargo` 在 PATH）。[ASSUMED: agg 的 Docker 镜像陈旧一条来自社区反馈，未取得一手来源 —— 见 S-30]
+
 ## Architectural Responsibility Map
 
 | Capability | Primary Tier | Secondary Tier | Rationale |
@@ -109,8 +318,10 @@ Phase 49 的三个需求（DEMO-01/02/03）在本仓库里都有**已存在的�
 | `github.com/cloudwego/hertz` v0.10.6 | proxy.golang.org | 2020 起 | github.com/cloudwego/hertz | HIGH（已是 go.mod 直接依赖，CloudWeGo 官方） | 复用；新增使用面仅 `pkg/common/adaptor.HertzHandler` |
 | `github.com/stretchr/testify` v1.11.1 | proxy.golang.org | 2017 起 | github.com/stretchr/testify | HIGH（已是 go.mod 直接依赖） | 复用，不新增 |
 | `vitest` ^2.0.0 | npm | 2023 起 | github.com/vitest-dev/vitest | HIGH（已是 web devDependency） | 复用，不新增 |
-| asciinema | PyPI | 2013 起 | github.com/asciinema/asciinema | MEDIUM（社区项目，非 Go/npm 依赖） | 可选工具；仅产素材；门禁不得依赖 |
-| agg | crates.io / GitHub Releases | 2023 起 | github.com/asciinema/agg | MEDIUM（社区项目；其 Docker 镜像据社区反馈已长期未更新 ⇒ 优先 cargo/预编译二进制）[ASSUMED] | 可选工具；仅产素材；门禁不得依赖 |
+| asciinema | PyPI | PyPI 上 2023-10-23 发布 | 官方站 `asciinema.org`（PyPI 包的 `repoUrl` 字段即此） | **SUS**（本轮 `gsd-tools query package-legitimacy check --ecosystem pypi asciinema` → `verdict: "SUS"`，`reasons: ["unknown-downloads"]`，`exists: true`, `deprecated: false`, `postinstall: null`） | 可选工具；仅产素材；**门禁不得依赖**。⚠️ SUS 判定来自「下载量未知」这一**元数据缺失**，不是来自 slop 信号；实施前建议人工确认官方安装方式（发行版包 / `pip install asciinema`）并加 planner `checkpoint:human-verify` |
+| agg | **不是 crates.io 的 `agg`** | — | github.com/asciinema/agg | **SUS（同名冲突）** | crates.io 上名为 `agg` 的包是 `github.com/savge13/agg`（本轮 `check --ecosystem crates agg` → `verdict: "SUS"`, `repoUrl: "https://github.com/savge13/agg"`, `weeklyDownloads: 179`）——**与 asciinema 的 agg 无关**。⇒ 安装必须走 `cargo install --git https://github.com/asciinema/agg`（**git 源，不走 crates.io**）或官方预编译二进制。⚠️ 门禁不得依赖 |
+
+> **门禁硬约束**：asciinema / agg 只在**生成素材**时用；`verify-phase-49.sh` 对素材的断言只用 **magic bytes**（`GIF8`）与**二进制密钥扫描**，不调用这两个工具。这样即使工具链缺失，门禁仍可判定素材合法 ⇒ `SUSP` 判定不构成对主链的阻塞。
 
 ## Validation Architecture
 
@@ -136,6 +347,7 @@ Phase 49 的三个需求（DEMO-01/02/03）在本仓库里都有**已存在的�
 | DEMO-01 | **tier 隔离在 embedded 下不削弱**：空 tier → 0 命中；非白名单 tier → 0 命中；effective_to 过期 → 0 命中 | Go unit | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./internal/retriever/embedded/ -run 'TestTier\|TestEffective' -count=1"` | ❌ Wave 0 |
 | DEMO-01 | 排序确定性：同 query 两次 Search 顺序一致（score desc, id asc tie-break） | Go unit | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./internal/retriever/embedded/ -run TestRank -count=1"` | ❌ Wave 0 |
 | DEMO-01 | 缓存：key 含 model+dim+语料 hash；换模型/换语料 ⇒ 失效重建；损坏文件 ⇒ 重建而非部分可用 | Go unit | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./internal/retriever/embedded/ -run TestCache -count=1"` | ❌ Wave 0 |
+| DEMO-01 | 缓存条数断言 = **218**（实际 `.md` 文档数；不是 D-05 的 220 目录条目数，见 C-01/Pitfall 18） | Go unit | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./internal/retriever/embedded/ -run TestCacheCorpusSize -count=1"` | ❌ Wave 0 |
 | DEMO-01 | `RETRIEVER_BACKEND=embedded` 时**不**要求 `MONGO_URI` / `MILVUS_ADDRESS`（D-16） | Go unit（`buildRetriever` 表驱动） | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./cmd/server/ -run TestBuildRetriever -count=1"` | ❌ Wave 0 |
 | DEMO-02 | 无 key 走 stub；产出 Verdict JSON 与真模型**逐字节同构**（同字段集、同 wire 形状） | Go unit | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./internal/server/stubchat/ -run TestWireShape -count=1"` | ❌ Wave 0 |
 | DEMO-02 | stub 的 answer 逐字来自 chunk；citations 的 span 真实出现在 chunk 内（grounding 不降级） | Go unit | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./internal/server/stubchat/ -run 'TestGrounding\|TestCitation' -count=1"` | ❌ Wave 0 |
@@ -249,8 +461,10 @@ Phase 49 的三个需求（DEMO-01/02/03）在本仓库里都有**已存在的�
 ```bash
 # 录制工具链（非 Go 侧依赖；门禁不得依赖它们）
 pip install asciinema                                     # 或发行版包管理器安装
-cargo install --git https://github.com/asciinema/agg       # 或下载预编译二进制
+cargo install --git https://github.com/asciinema/agg       # 必须走 git 源；crates.io 上的 "agg" 是另一个包
 ```
+
+> ⚠️ 两个包的合法性判定见 `## Package Legitimacy Audit`：**asciinema = SUS**（元数据下载量未知）、**crates.io 的 `agg` = SUS 且同名不同物**。二者都只用于产素材，**门禁不得依赖**，因此不阻塞主链；但实施前建议人工确认安装来源（planner `checkpoint:human-verify`）。
 
 ### Version verification
 
@@ -506,6 +720,15 @@ D-08 写的是「`web/src/components/chat/MessageBubble.tsx` 的 `isVerdict` 类
 
 ### Pitfall 16 — `docs/demo.gif` 当前是死链
 `README.md:18` 引用 `docs/demo.gif` 而文件不存在（`docs/` 下只有 `threat-model/`）。本 phase 产出真实素材即可，**不要**同时改 README 的引用路径（那是 Phase 50 的范围）。[VERIFIED: README.md:18]
+
+### Pitfall 17 — 固定录制的向量会让门禁的端到端分区永远拿不到引用
+替身端点如果对**所有**输入返回同一条固定向量，那么查询向量与任意 chunk 向量的 cosine 近乎 0，必然低于 `internal/server/pipeline.go:64` 的 `retrievalScoreThreshold = 0.3` ⇒ 端到端分区只能验到「拒答」，验不到「带引用的问答」。⇒ 夹具必须**按键查表**（语料文本 → 录制向量；demo 查询文本 → 录制向量），未命中的键返回**明确错误**而不是兜底向量。这样门禁既能断言 `citations` 非空，又不会引入随机性。[VERIFIED: internal/server/pipeline.go:64; internal/embedder/bge/bge.go:142-208]
+
+### Pitfall 18 — 把 D-05 的 220 当成"文档数"会让缓存条数断言永远失败
+D-05 的「authority 16 + sql-guides 202 + draft 1 + historical 1」统计的是**目录条目**；磁盘上 `draft` / `historical` / `personal` 三个目录**各只有一个 `.gitkeep`、0 篇 `.md`**，真正可入库的是 **218 篇 `.md`**。⇒ 缓存里记录/断言的**条数写 218**；`corpusHash` 的输入也只含这 218 篇（否则空目录的存在/缺失会无谓地让缓存失效）。[VERIFIED: `find knowledge -name '*.md' -type f | wc -l` → 218]
+
+### Pitfall 19 — 忘了给向量缓存加 `.gitignore` 规则
+`.gitignore` 全文 40 行里**没有任何向量缓存条目**（只有 `.env` / `*.exe` / `/spiked` / `spike-*trace.json` / `.DS_Store` / `node_modules/` / `web/dist/` / `skillforge.db*` / `/body_gbk_*` / `/body_quantum.json` / `/reports/` / `/eval/reports/` / `/data/` / `/skillforge-server*`）。D-14 要求缓存「不入仓库」，而这条规则**必须显式新增**——否则 `git status` 必脏、缓存可能被误提交。⇒ Wave 0 必须包含这一步。[VERIFIED: .gitignore:1-40]
 
 ## Code Examples
 
@@ -774,6 +997,56 @@ verify-phase-49.sh
 ```
 每个分区**独立落日志**、空日志判失败、`fail()` 立即 `exit 1`、收尾横幅以"已运行分区计数"对齐期望分区数（`verify-phase-48.sh:56-58` 的原则：全部可静态判定，缺一个分区就是非零退出，不是更软的口号）。
 
+**照 Phase 48 的三件套落成功 token**（`verify-phase-48.sh:213-279`，本 phase **直接复用**这套机制，不发明新的）：
+
+```bash
+# 1) 计数与目录（Phase 48 逐字：EXPECTED_PARTITIONS / RAN / RAN_LIST）
+EXPECTED_PARTITIONS=9
+RAN=0
+RAN_LIST=()
+mkdir -p "$WORK/ran"
+
+# 2) 分区体第一条语句就写 begin 标记
+begin_partition() { : > "$WORK/ran/$1.begin"; }
+
+# 3) 证据绑定的成功 token：日志必须存在、非空、且含【每一个】断言组 token
+ok_partition() {
+  local pn="$1" log="$2"; shift 2
+  [ -f "$log" ] || fail "${pn}: the probe that certifies ${pn} did not run (R2-WR-03)"
+  [ -s "$log" ] || fail "${pn}: ${log} is empty — infrastructure failure, no evidence the probe ran"
+  local tok
+  for tok in "$@"; do
+    grep -qF -- "$tok" "$log" || fail "${pn}: assertion group '${tok}' did not deposit its token"
+  done
+  : > "$WORK/ran/$pn.ok"
+}
+
+# 4) 收口：缺 begin 或缺 ok 一律拒；计数只认真正跑完的分区
+done_partition() {
+  local pn="$1"
+  [ -f "$WORK/ran/$pn.begin" ] || fail "${pn}: its body did not run (IN-06)"
+  [ -f "$WORK/ran/$pn.ok" ]    || fail "${pn}: its probe did not run to success (R2-WR-03)"
+  RAN=$((RAN + 1)); RAN_LIST+=("$pn"); pass "$pn"
+}
+```
+
+调用形态（每个断言组一个 token，token 写在**该分区自己的**日志里）：
+
+```bash
+begin_partition "P5"
+# …P5 的探针把每个断言组的 token 追加到自己的日志…
+printf 'P5-HERMETIC-OK\n'   >> "$WORK/p5.log"
+printf 'P5-CITATIONS-NONEMPTY\n' >> "$WORK/p5.log"
+ok_partition "P5" "$WORK/p5.log" "P5-HERMETIC-OK" "P5-CITATIONS-NONEMPTY"
+done_partition "P5 end-to-end hermetic"
+```
+
+**门禁怎么证明"还会咬"**：每个分区都要有**变异演练**——把该分区断言的东西改坏（删一个断言 / 改一个阈值 / 换掉被禁 token），门禁必须**红**。演练本身要留证据（Phase 48 的 canary 做法：探针先被证明能产出决定性结果（rc 0/1），再被信任）。**没有变异演练的门禁等于没有门禁。**
+
+**P5 的替身端点必须按键查表**（见 `## Common Pitfalls` Pitfall 17）：对所有输入返回同一条固定向量 ⇒ cosine 恒低于 `retrievalScoreThreshold = 0.3` ⇒ 端到端分区只能验到「拒答」。
+
+**门禁不得依赖** asciinema / agg / Ollama / Docker —— 否则就不是 hermetic 门禁；素材存在性用 magic bytes 断言即可。
+
 ## Migration Plan
 
 本 phase **不涉及数据迁移**——它是新增功能，不是对既有状态的改造。但有两处"准迁移"需要显式记录，避免被误当成"零影响"：
@@ -793,18 +1066,22 @@ verify-phase-49.sh
 
 | # | Claim | Section | Risk if Wrong |
 |---|---|---|---|
-| A-01 | CONTEXT.md D-05 写「authority 16 + sql-guides 202 + draft 1 + historical 1」，但磁盘实测 `knowledge/draft` 与 `knowledge/historical` 各 **0** 个 .md，实际总量 **218**（16 + 202） | Standard Stack / Architecture Patterns | 低：按磁盘为准即可；但 README/文档里若照抄 "draft 1 / historical 1" 会与实际不符，建议实施时同步更正或保留 D-05 原文并在文档注明 |
-| A-02 | 本机 **未安装** asciinema 与 agg（`command -v` 无输出）；ffmpeg 已安装（2021-03-24） | Environment Availability | 中：D-19 的 `docs/demo.gif` 本 phase **产出不了**，需先装工具链。门禁必须不依赖这两个工具 |
+| A-01 | CONTEXT.md D-05 写「authority 16 + sql-guides 202 + draft 1 + historical 1」，但磁盘实测 `knowledge/draft`、`knowledge/historical`、`knowledge/personal` 三个目录**各只有一个 `.gitkeep`、0 个 `.md`**；实际可入库语料 = **218 篇 `.md`**（authority 16 + sql-guides 202），磁盘文件总数 221 | Standard Stack / Architecture Patterns / `## Verification Corrections` C-01 | 低：按磁盘为准即可；**但** README/文档里若照抄 "draft 1 / historical 1" 会与实际不符，且 D-05 **漏列了 `personal` 目录**。建议实施时以 218 为准，并在文档注明「D-05 原文按目录条目计数，含 3 个空目录占位」 |
+| A-02 | 本机 **未安装** asciinema 与 agg（本轮 `command -v` 逐条探测：两者均无输出）；ffmpeg 已安装（2021-03-24） | Environment Availability | 中：D-19 的 `docs/demo.gif` 本 phase **产出不了**，需先装工具链。门禁必须不依赖这两个工具 |
 | A-03 | asciinema / agg 的具体 CLI 参数（`agg --cols/--rows/--font-size/--theme/--speed`、`asciinema rec -c/-s`）未逐字核实 | Code Examples 示例 7 | 低：脚本按实际安装版本校准即可；但 `docs/demo.gif` 的体积/清晰度预期（估 1–3 MB）依赖这些参数 |
 | A-04 | Ollama `/v1/embeddings` 的请求/响应形状未逐字核实；本 phase 以 `internal/embedder/bge/bge.go:143-147`（请求体）与 `:183-201`（两种响应解析）为准 | Architecture Patterns / Code Examples | 低：bge 已实现并被验证过；若 Ollama 实际返回第三种形状，由 bge 侧补解析即可（不在本 phase 范围） |
 | A-05 | `hertz/pkg/common/adaptor.HertzHandler` 在 v0.10.6 的 module cache 中**确实存在**（已读文件），但**未编译验证**（Windows 宿主 `go build` 因 duckdb 静态库 TLS-ABI 失败） | Code Examples 示例 5 | 中：若签名不符，静态托管实现需改用 Hertz 原生 handler 写法；实现时第一件事就是在 WSL 里 `go build ./...` 验证 |
 | A-06 | `Deps` 构造点已定位在 `cmd/server/main.go:1060-1087`（`Runner` 在 L1065，`PipelineChatModel` 在 L1087），但 stub 注入时**周边变量作用域**未逐行通读 | Architecture Patterns | 低：实施时按行核对即可 |
 | A-07 | stub 的抽取规则（句段选择、正则、长度上限）由 executor 定；本报告只约束"确定性 + 逐字来自 chunk" | Code Examples 示例 3 | 低：这是 Claude's Discretion 明文授权项 |
 | A-08 | 门禁使用**测试专用**本地替身 embedding 端点，不违反 D-01（D-01 禁止的是生产路径里的兜底） | Code Examples 示例 6 | **中**：这是本报告唯一需要 planner/用户显式确认的边界判断，见 `## Open Questions` Q1 |
-| A-09 | `knowledge/draft`、`knowledge/historical` 为空目录但仍在 `knowledge_bases.yaml` 中注册且 `retrieval_enabled: true` | Architecture Patterns | 低：空 tier 在检索时自然 0 命中，不影响；仅影响 D-05 的数字表述 |
+| A-09 | `knowledge/draft`、`knowledge/historical`、`knowledge/personal` 三个目录**只有 `.gitkeep`、0 篇 `.md`**，但仍在 `knowledge_bases.yaml` 中注册且 `retrieval_enabled: true`（`knowledge_bases.yaml:30-40` 的 draft 条目注释逐字：「draft 角色的检索闸由 Role 语义强制关闭（角色优先于条目开关）」） | Architecture Patterns | 低：空 tier 在检索时自然 0 命中，不影响；仅影响 D-05 的数字表述与缓存条数断言 |
 | A-10 | 本 phase 的门禁目标文件放**仓库根目录** `verify-phase-49.sh`（与 `verify-phase-45..48.sh` 同级；`scripts/` 下另有 11..39 的历史脚本） | Standard Stack / Architecture Patterns | 低：位置约定问题，planner 一眼可定 |
 | A-11 | WSL 下各 `go test` 包的实测耗时未跑，"30 秒内可跑"是基于纯内存单测的推断 | Validation Architecture | 低：若某包（尤其 `internal/server` 全量）超过 30 秒，按 Test Map 拆成更细的 `-run` 选择器 |
 | A-12 | `docs/demo.gif` 的实际体积与观感未验证（无工具链） | Code Examples 示例 7 / Open Questions Q6 | 低：先产出再按需调参；压不下去就缩短录制内容（不引入 LFS） |
+| A-13 | **D-05 的目录清单漏了 `personal`**（原文只列 authority/sql-guides/draft/historical 四个 tier，磁盘上还有 `knowledge/personal/`），且 `draft`/`historical`/`personal` 三个目录实际**只有 `.gitkeep`、0 篇 `.md`** | `## Verification Corrections` C-01 / Q2 / A-01 | 低：缓存条数断言按 218；tier 过滤的负例仍可用 `personal`（空目录 ⇒ 天然 0 命中） |
+| A-14 | **`.gitignore` 当前没有任何向量缓存条目**（全文 40 行，条目为 `.env` / `*.exe` / `/spiked` / `spike-*trace.json` / `.DS_Store` / `node_modules/` / `web/dist/` / `skillforge.db*` / `/body_gbk_*` / `/body_quantum.json` / `/reports/` / `/eval/reports/` / `/data/` / `/skillforge-server*`） | `## Verification Corrections` C-04 / `## Wave 0 Gaps` | **中**：D-14「不入仓库」需要**显式新增**一条 gitignore 规则；漏了会让 `git status` 变脏、缓存被误提交 |
+| A-15 | **`.env.example` 不列 `embedded` 这个 backend 取值**（`:8-13` 只逐条说明 `milvus` / `mongo`；`:43-45` 写 BGE 端点「Required in both backends. OpenAI-compatible /v1/embeddings endpoint.」） | `## Verification Corrections` C-05 / Open Questions Q5 | 低：D-15 明确「`.env.example` 一字不动」⇒ 新 backend 只能靠 README 说明；这是已知的可接受代价，但**README 必须点名 `RETRIEVER_BACKEND=embedded`** |
+| A-16 | WSL2 内的 Go 版本与宿主一致（`go version go1.25.5 linux/amd64`），故门禁的 Go 分区在 WSL 内**无需额外工具链** | `## Verification Corrections` C-03 / Environment Availability | 低：与 `go.mod` 的 `go 1.25.5` 一致 |
 
 ## Open Questions
 
@@ -838,12 +1115,22 @@ verify-phase-49.sh
 **不清楚的**：60–90 秒终端录屏的 GIF 体积估计 1–3 MB（依赖 A-03 的参数）。
 **建议**：先不引入 LFS（新增基础设施超出本 phase 范围）。若最终体积 > 5 MB，改用 asciinema 的 `--idle-time-limit` 压缩停顿 + agg 的 `--speed`/`--theme` 调参压到可接受区间。**若压不下去，正确做法是缩短录制内容而不是引入 LFS。**
 
+### Q7 — D-05 漏列的 `personal` tier 与三个空目录怎么处置？
+**我们知道的**：D-05 逐字写「authority 16 + sql-guides 202 + draft 1 + historical 1」，**没有 `personal`**；磁盘上 `knowledge/personal/` 存在（1 个 `.gitkeep`），且 `knowledge_bases.yaml:23-27` 里 `personal` 是**已注册**条目（role `personal`、`retrieval_enabled: true`）。`internal/kb/kb.go:11-30` 的包注释逐字说明 personal 的语义：「personal is user-private material: excluded from retrieval unless a skill explicitly declares it, and never citable」。
+**不清楚的**：D-05 的清单是「**要索引哪些 tier**」还是「**目录里有什么**」的描述？前者若照抄，会让 `personal` 永远不入库；后者则是笔误。
+**建议**：按**目录全量**走（registry 驱动的 walker 天然会覆盖 5 个 slug，active 且 retrieval-eligible 的才进候选集），**不**在代码里硬编码 D-05 的四元组；缓存条数按**实际入库的 218 篇 `.md`** 断言（C-01）。⇒ **planner 需在 PLAN 里显式记一句**：D-05 的数字是目录条目计数，不是文档数，且 `personal` 是已注册 tier。
+
+### Q8 — `.env.example` 不改（只靠 README）会不会让 hermetic 路径难找？
+**我们知道的**：D-15 逐字要求「`.env.example` **不改**」；`.env.example:8-13` 逐字列出 `RETRIEVER_BACKEND` 的可选值说明，但**只有 `milvus` / `mongo`**，没有 `embedded`（C-05）。
+**不清楚的**：`RETRIEVER_BACKEND` 是可选还是必填（`:8-13` 的措辞是"可选"，但 compose 里写死 `RETRIEVER_BACKEND: milvus`）。
+**建议**：README 的 hermetic 小节**必须**逐字给出 `export RETRIEVER_BACKEND=embedded` 这一行（否则读者照抄 `.env.example` 会落回 milvus ⇒ 又要 Milvus）。同时在 `.env.example` **旁边**（不是里面）放一句 README 指引。**不**改 `.env.example` 本体 —— 那是 D-15 的硬约束。
+
 ## Environment Availability
 
 | Dependency | Required By | Available | Version | Fallback |
 |---|---|---|---|---|
 | Go toolchain | 后端、门禁 P1–P3 | ✅ | `go1.25.5 windows/amd64` | — |
-| WSL bash | 跑 `go test ./...` | ✅（`wsl.exe -e bash -lc` 可用） | — | 宿主 `go test` **不可用**（duckdb 静态库 TLS-ABI 链接失败） |
+| WSL bash | 跑 `go test ./...` | ✅（`wsl.exe -e bash -lc` 可用） | WSL 内 `go version go1.25.5 linux/amd64`（与宿主同版本） | 宿主 `go test` **不可用**（duckdb 静态库 TLS-ABI 链接失败） |
 | `go vet` | 宿主侧编译面检查 | ✅（`go vet ./cmd/server` exit 0） | — | WSL `go vet` |
 | Node.js | 前端构建 / vitest | ✅ | `v24.19.0` | — |
 | npm / vitest | 前端单测 | ✅（`web/package.json` 已声明） | `vitest ^2.0.0` | — |
@@ -853,8 +1140,11 @@ verify-phase-49.sh
 | **asciinema** | 录屏 | ❌ | — | 需 `pip install asciinema`；门禁不依赖 |
 | **agg** | 渲染 GIF | ❌ | — | 需 `cargo install --git https://github.com/asciinema/agg` 或预编译二进制；门禁不依赖 |
 | ffmpeg | 备用 GIF 转换 | ✅ | 2021-03-24-git-a77beea6c8 | 优先 agg |
-| Docker / docker compose | 旧 quickstart | ❓（本会话未验证） | — | 本 phase 的 demo 路径不需要 Docker（D-12） |
-| Milvus / etcd / minio | 生产后端 | ❓（本会话未验证） | — | embedded backend 取代其 demo 角色 |
+| Docker / docker compose | 旧 quickstart | ❌（本轮 `command -v docker` 无输出） | — | 本 phase 的 demo 路径不需要 Docker（D-12）——这同时意味着**旧的 `docker compose up` quickstart 在本机不可执行**，hermetic 路径是唯一可演示路径 |
+| Milvus / etcd / minio | 生产后端 | ❌（无 Docker ⇒ 无法起 compose 服务） | — | embedded backend 取代其 demo 角色 |
+| `cargo` | 装 agg | ✅（在 PATH） | — | `cargo install --git https://github.com/asciinema/agg` |
+| `git` | 语料哈希/脚本 | ✅ | — | — |
+| `python` | 门禁里的 JSON 处理 | ✅ | — | 替代 `jq`（`jq` 不在 PATH） |
 
 > **宿主 `go build ./cmd/server` 失败的性质**：`cmd/server/main.go` 直接 import `internal/data` / `internal/duckdb`，链接 `marcboeker/go-duckdb/v2` 的预编译静态库时出现 `undefined reference to __emutls_v...`（gcc 16.1.0 与预编译 duckdb 库的 TLS ABI 不匹配）。**与 Phase 49 无关，非回归**。宿主侧用 `go vet` 做编译面检查，测试一律走 `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./..."`。
 
@@ -887,6 +1177,13 @@ verify-phase-49.sh
 | S-21 | `README.md:18, 26-79, 87-184`、`Makefile:129-142`、`verify-phase-48.sh:4-62` | 死链 demo.gif、当前 quickstart、Makefile 目标现状、门禁脚本形态 |
 | S-22 | `go.mod`、`.gitignore`、`.env.example`、`knowledge_bases.yaml` | 依赖实况、gitignore 现状、配置样例、5 个 KB 的 role 与 retrieval_enabled |
 | S-23 | `internal/knowledge/ecl/stub.go`、`internal/retriever/mongo/seed.go` | 两个 stub 先例的**职责边界**（ECL 是表抽取器；D-07 是 verdict 层 stub，**模式**先例非代码复用） |
+| S-32 | `internal/llm/extract.go:83-120, 135-154, 162-167, 185-192, 213-265, 283-285` | `ExtractJSON` 的「只切出 JSON 对象、不做校验」语义、`phase2SystemInstructions` 的 4 条决策规则（含「NEVER refuse when a relevant chunk exists」）、`withJSONObjectResponseFormat` 用 `model.WrapImplSpecificOptFn` 的原因（「eino v0.9.14 has no model.WithGenerateConfig」） |
+| S-33 | `docker-compose.yml:80-95` | backend 服务的 `environment` 逐字：`RETRIEVER_BACKEND: milvus` / `MILVUS_ADDRESS: milvus:19530` / `BGE_M3_URL: ${BGE_M3_URL:?BGE_M3_URL is required — see .env.example}` / `GLM_API_KEY: ${GLM_API_KEY:?GLM_API_KEY is required — see .env.example}` / `SQLITE_DSN: /data/skillforge.db` / `ports: - "8888:8888"` ⇒ **无 key ⇒ compose 在容器启动前就失败** |
+| S-34 | `verify-phase-47.sh:7-40, 65-115, 142-157, 203-237, 274-297` | 门禁形态的**根目录**归属、「HERMETIC: no live LLM / Milvus / BGE required.」、`wsl()` 包装、`pass_lines()` 反空跑、`run_go_test()` 的空日志即失败、P6 唯一可软失败分区的先例 |
+| S-35 | `verify-phase-48.sh:7-62, 68-96, 213-279, 295-313` | `EXPECTED_PARTITIONS` / `RAN` / `RAN_LIST` 计数、「NO WAIVERS」原则、空日志规则、`begin_partition`/`ok_partition`/`done_partition` 三件套、**逐断言组绑定**的成功 token、LINT_VERSION 钉版、禁 token 运行时拼装 |
+| S-36 | `find knowledge -name '*.md' -type f \| wc -l` → 218；`find knowledge -type f ! -name '*.md' \| wc -l` → 3（`draft`/`historical`/`personal` 各一个 `.gitkeep`）；`find knowledge -type f \| wc -l` → 221 | 语料实况（复核 D-05） |
+| S-37 | `command -v` 探测：`docker` / `asciinema` / `agg` / `ollama` / `jq` **均无输出**；`go` / `node` / `npm` / `python` / `cargo` / `golangci-lint` / `ffmpeg` / `git` 在 PATH | 环境实况（复核 Environment Availability） |
+| S-38 | `wsl.exe -e bash -lc "go version"` → `go version go1.25.5 linux/amd64` | WSL 内 Go 可用且与宿主同版本 |
 
 ### Secondary (MEDIUM confidence)
 
@@ -912,13 +1209,14 @@ verify-phase-49.sh
 
 | Area | Level | Reason |
 |---|---|---|
-| Standard stack | **HIGH** | 全部来自本会话实读的 go.mod / package.json / module cache；零新增依赖的结论是"不写新 import"的直接推论。唯一 MEDIUM 点是 hertz adaptor 未编译验证（A-05） |
-| Architecture | **HIGH** | 三个需求各自都有实读过的接缝：检索面（`retriever.Retriever` + `buildRetriever` switch）、LLM 面（`Deps.PipelineChatModel` 双通道）、静态托管面（hertz adaptor + nginx 语义基线）。三处隐藏地雷（panic 断言 / eager 求值 / milvus 耦合签名）也已定位到行号 |
-| Pitfalls | **MEDIUM-HIGH** | 16 条 pitfall 中 13 条有逐字代码证据；3 条（缓存并发、替身端点的 D-01 边界、demo.gif 体积）依赖尚未验证的外部条件，已在 Assumptions Log / Open Questions 单列 |
-| Validation architecture | **MEDIUM-HIGH** | 测试框架、命令与 Wave 0 缺口均可从仓库现状推导（testify 已是直接依赖、vitest 已在 devDeps、门禁形态有 `verify-phase-48.sh` 先例）。MEDIUM 点：WSL 下的实际 `go test` 耗时未实测，30 秒预算需在 Wave 0 首跑后校准（A-11） |
-| 外部工具链（asciinema/agg/Ollama embeddings） | **LOW-MEDIUM** | 本机三者皆未安装，CLI 参数与端点响应形状未逐字核实（A-03/A-04）；已全部隔离在 `## Assumptions Log` 与 `## Open Questions`，且**不阻塞**主链实现 |
+| Standard stack | **HIGH** | 全部来自本会话实读的 go.mod / package.json / module cache；零新增依赖的结论是"不写新 import"的直接推论。唯一 MEDIUM 点是 hertz adaptor 未编译验证（A-05）。**外部素材工具链**另计（asciinema=SUS / crates.io 的 agg 是同名不同物） |
+| Architecture | **HIGH** | 三个需求各自都有实读过的接缝：检索面（`retriever.Retriever` 8 方法 + `buildRetriever` switch）、LLM 面（`Deps.PipelineChatModel` 双通道）、静态托管面（hertz adaptor + nginx 语义基线）。三处隐藏地雷（panic 断言 / eager 求值 / milvus 耦合签名）也已定位到行号。**本轮复核**：接口面、tier PRE-filter 语义、seed 流程、stub 契约全部逐字复读确认 |
+| Nine questions | **HIGH** | 九问全部基于本轮**实读**的文件给出 prescriptive 答案：接口面（retriever.go:167-217）、过滤语义（mongo.go:397-441）、端点契约（bge.go:142-208）、stub 契约（verdict.go/validate.go/grounding.go）、启动必填（main.go:288-305, 1236-1266）、静态托管（Dockerfile.frontend:39 + vite.config.ts:26-33）、quickstart 断点（README.md:41-79 + docker-compose.yml:80-95）、素材链（Makefile + Dockerfile.frontend）、门禁形态（verify-phase-47/48.sh） |
+| Pitfalls | **MEDIUM-HIGH** | 19 条 pitfall 中 16 条有逐字代码证据；3 条（缓存并发首次启动、替身端点的 D-01 边界、demo.gif 体积）依赖尚未验证的外部条件，已在 Assumptions Log / Open Questions 单列 |
+| Validation architecture | **MEDIUM-HIGH** | 测试框架、命令与 Wave 0 缺口均可从仓库现状推导（testify 已是直接依赖、vitest 已在 devDeps、门禁形态有 `verify-phase-47.sh` / `verify-phase-48.sh` 两个先例，且本轮已逐字复读其 token 落盘机制）。MEDIUM 点：WSL 下的实际 `go test` 耗时未实测，30 秒预算需在 Wave 0 首跑后校准（A-11） |
+| 外部工具链（asciinema/agg/Ollama embeddings） | **LOW-MEDIUM** | 本机三者皆未安装（本轮 `command -v` 逐条确认），CLI 参数与端点响应形状未逐字核实（A-03/A-04）；合法性判定为 SUS（见 `## Package Legitimacy Audit`）；已全部隔离在 `## Assumptions Log` 与 `## Open Questions`，且**不阻塞**主链实现 |
 
-**Research date:** 2026-10-21
+**Research date:** 2026-10-21（本轮 v2 复核：语料普查、工具链探测、`.gitignore`/`.env.example` 实读、包合法性检查）
 **Valid until:** 2026-12-21（依赖：asciinema/agg 的安装与 CLI 确认、Ollama `/v1/embeddings` 形状确认、hertz adaptor 编译验证）
 
 **Researcher:** gsd-phase-researcher
