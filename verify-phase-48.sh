@@ -95,6 +95,116 @@ info() { echo -e "${YELLOW}INFO${NC} $1"; }
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# T-48-83: quote-aware comment strip helper
+# ONE helper, imported by BOTH call sites that strip YAML comments before
+# scanning (P1's pull_request_target text probe and P8/P11's scan_trust_surface).
+# They used to carry two IDENTICAL copies of a quote-blind `re.sub` whose pattern
+# matched "# then the rest of the line" — which is not a comment stripper at all.
+# YAML comments must start a line or follow whitespace, and a `#`
+# inside a quoted scalar is DATA. The old regex could not tell those apart, so
+#
+#     on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}
+#
+# was truncated to `on: {push: {branches: ['main` and the real
+# pull_request_target trigger vanished from the text layer (CR-01). Two copies
+# also meant a fix applied to one call site could silently leave the other
+# quote-blind; one shared, importable helper makes that impossible to repeat.
+#
+# YAML comment rules this implements (1.1 and 1.2 agree here):
+#   - `#` starts a comment only at the first character of a line, or when
+#     preceded by a space or tab. `main#hotfix` and `foo#bar` are scalars.
+#   - inside a single-quoted scalar a doubled `''` is an escaped quote, so
+#     `'it''s # not a comment'` is one scalar spanning the `#`.
+#   - inside a double-quoted scalar a backslash escapes the next character, so
+#     `"a\"#"` keeps its `#` and the closing quote.
+#   - an UNTERMINATED quote leaves the whole line intact. That is deliberate:
+#     a malformed line must fail toward MORE visible text, never less, or a
+#     genuine trigger could be hidden by a stray apostrophe in a comment.
+#
+# Line-count preservation is a contract, not a convenience: every input line
+# yields exactly one output line carrying the original terminator, so a
+# file:line reported against the stripped text is the file:line in the source.
+cat > "$WORK/lib_yaml_text.py" <<'YAMLSTRIP'
+"""Quote-aware YAML comment stripping, shared by every text scan that needs it.
+
+YAML 1.1 and YAML 1.2 use the same rule: a `#` begins a comment only when it is
+at the start of a line or preceded by white space. A `#` inside a quoted scalar
+is content, and so is `foo#bar` in a plain scalar. A regex like `#.*$` cannot
+express that, because "is this `#` inside quotes?" is not a local property of the
+character -- it depends on every preceding quote on the line. Hence a state
+machine over three states instead of a pattern.
+
+State machine, one character at a time, per line:
+  NORMAL       -- a `#` here, if it opens the line or follows space/tab, starts a
+                  comment and the rest of the line is dropped.
+  SINGLE       -- inside '...'; the only escape is '' (two quotes in a row).
+  DOUBLE       -- inside "..."; a backslash escapes the next character.
+
+Failure direction: an unterminated quote leaves the line untouched rather than
+truncating it, so a malformed line can only ever reveal MORE text.
+"""
+
+
+def strip_yaml_comments(src):
+    """Return `src` with YAML comments removed, preserving line count."""
+    out = []
+    for raw in src.splitlines(keepends=True):
+        # Separate the line's terminator so the state machine never has to treat
+        # it as content, and so it can be re-attached verbatim.
+        body = raw
+        term = ""
+        for candidate in ("\r\n", "\n", "\r"):
+            if body.endswith(candidate):
+                body = body[: -len(candidate)]
+                term = candidate
+                break
+        out.append(_strip_line(body) + term)
+    return "".join(out)
+
+
+def _strip_line(body):
+    state = "NORMAL"
+    kept = []
+    i = 0
+    n = len(body)
+    while i < n:
+        ch = body[i]
+        if state == "NORMAL":
+            if ch == "#" and (i == 0 or body[i - 1] in " \t"):
+                # Comment opens here; drop the remainder of this line and keep
+                # whatever was already emitted.
+                return "".join(kept)
+            if ch == "'":
+                state = "SINGLE"
+            elif ch == '"':
+                state = "DOUBLE"
+            kept.append(ch)
+            i += 1
+        elif state == "SINGLE":
+            if ch == "'":
+                if i + 1 < n and body[i + 1] == "'":
+                    # '' is an escaped quote: both stay, still inside SINGLE.
+                    kept.append("''")
+                    i += 2
+                    continue
+                state = "NORMAL"
+            kept.append(ch)
+            i += 1
+        else:  # DOUBLE
+            if ch == "\\" and i + 1 < n:
+                kept.append(body[i : i + 2])
+                i += 2
+                continue
+            if ch == '"':
+                state = "NORMAL"
+            kept.append(ch)
+            i += 1
+    # An unterminated quote falls out of the loop with state != NORMAL. The line
+    # is emitted whole: we fail toward seeing more text, never less.
+    return "".join(kept)
+YAMLSTRIP
+# T-48-83: end quote-aware comment strip helper
+
 # Every log path below is absolute under $WORK, so a partition cannot deposit
 # evidence next to the sources it is judging — a log file that appears in the
 # repo root is both an untracked artefact and a sign that a relative path
@@ -265,20 +375,38 @@ print("P1-COMPOSITE-OK")
 #
 # IN-R5-03: the scan judges COMMENT-STRIPPED text, one probe per enumerated
 # file — a comment naming the event is prose about the rule, not the rule
-# itself. The strip is the same multiline pattern scan_trust_surface applies
-# before judging publication tokens, path filters and secrets: it blanks the
-# comment part of each line WITHOUT removing lines, so line numbers are
-# unchanged and file:line reporting stays exact. The false-negative direction
-# stays closed: a real trigger mapping is executable YAML, which the strip
-# never touches, so it still reds with file:line below. P1's enumeration guard
-# above refuses a zero-file list before this loop runs, so the scan cannot
-# pass vacuously.
+# itself. It used to strip comments with a quote-blind `re.sub` matching "# then
+# the rest of the line", the same pattern scan_trust_surface used, which is
+# quote-BLIND: it cuts the line at the first `#` anywhere, including one inside
+# a quoted scalar. In flow style
+#
+#     on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}
+#
+# that truncates the line to `on: {push: {branches: ['main` and the genuine
+# trigger after it is never scanned — a false NEGATIVE, the one direction a
+# security gate may not have (CR-01). The old comment here claimed the opposite
+# ("a real trigger mapping is executable YAML, which the strip never touches, so
+# it still reds with file:line") and CR-01 falsified it: a trigger in flow style
+# IS executable YAML and the strip DOES touch it.
+#
+# T-48-83 splits the two jobs that one regex was doing:
+#   - the PARSED `on:` mapping (p1_prt_parsed_probe) is the PRIMARY judge. It
+#     cannot be fooled by quoting style, because the parser has already resolved
+#     block vs flow vs quoted scalar;
+#   - the TEXT layer supplies file:line evidence, using the quote-aware strip
+#     shared with scan_trust_surface, which can preserve or reveal more text but
+#     never hide a `#`-bearing line's tail;
+#   - each layer has its own live canary, so neither can be neutralised while the
+#     other still deposits PASS.
 p1_prt_probe() {
+  # T-48-83: P1 quote-aware text trigger scan
   python -c '
-import re, sys
+import sys
+sys.path.insert(0, sys.argv[3])
+from lib_yaml_text import strip_yaml_comments
 path, trigger = sys.argv[1], sys.argv[2]
 src = open(path, encoding="utf-8").read()
-stripped = re.sub(r"(?m)#.*$", "", src)
+stripped = strip_yaml_comments(src)
 hit = False
 for lineno, line in enumerate(stripped.splitlines(), 1):
     if trigger in line:
@@ -286,26 +414,111 @@ for lineno, line in enumerate(stripped.splitlines(), 1):
         hit = True
 if hit:
     raise SystemExit(1)
-' "$(native "$1")" 'pull_request_target'
+' "$(native "$1")" 'pull_request_target' "$(native "$WORK")"
+  # T-48-83: end P1 quote-aware text trigger scan
 }
-# A probe hard-wired to success could not produce a decisive result, so the
-# probe is proven LIVE before it is trusted: the same probe code runs once
-# against a one-line synthetic file whose EXECUTABLE text carries the trigger.
-# A live probe reds that canary (rc 1); a neutered one cannot. The canary file
-# lives under $WORK, never in the repository.
+
+# T-48-83: P1 parsed trigger judge
+# The primary judge for D-11. It reads the `on:` KEY of the parsed document and
+# rejects the banned event in all three shapes it can legally take, because
+# "does it mention the string" is not the question — "is the event wired up" is:
+#
+#   mapping key     on:\n  pull_request_target:\n        -> doc["on"]["pull_request_target"]
+#   sequence elem   on: [push, pull_request_target]     -> doc["on"] == "pull_request_target"
+#   whole value     on: pull_request_target              -> doc["on"] == "pull_request_target"
+#
+# `doc.get("on")` alone misses the last two shapes; `doc.get(True)` is YAML 1.1's
+# resolution of the bare key `on` (parsed as boolean True by PyYAML), so a
+# workflow written with an unquoted `on:` is read here, not silently skipped. A
+# non-mapping document is refused outright rather than treated as clean.
+p1_prt_parsed_probe() {
+  python -c '
+import sys, yaml
+path = sys.argv[1]
+BANNED = "pull_request_target"
+doc = yaml.safe_load(open(path, encoding="utf-8"))
+if doc is None:
+    sys.exit(0)
+if not isinstance(doc, dict):
+    print("P1 %s: top level is %s, not a mapping — cannot locate an on: block (D-11)" % (path, type(doc).__name__))
+    raise SystemExit(1)
+trigger = doc.get("on", doc.get(True))
+hit = False
+if isinstance(trigger, dict):
+    if BANNED in trigger:
+        print("P1 %s: on: has a %r key (D-11)" % (path, BANNED))
+        hit = True
+elif isinstance(trigger, list):
+    if BANNED in trigger:
+        print("P1 %s: on: lists %r as a sequence element (D-11)" % (path, BANNED))
+        hit = True
+elif isinstance(trigger, str):
+    if trigger == BANNED:
+        print("P1 %s: on: is the bare scalar %r (D-11)" % (path, BANNED))
+        hit = True
+if hit:
+    raise SystemExit(1)
+' "$(native "$1")"
+}
+# T-48-83: end P1 parsed trigger judge
+# A probe hard-wired to success could not produce a decisive result, so each
+# probe is proven LIVE and PROVABLY DISCRIMINATING before it is trusted: four
+# canaries, two per layer, so that neither layer can be silently neutralised
+# while the other still deposits PASS. Each canary file lives under $WORK, never
+# in the repository.
+#
+#   canary 1 (block, positive)  both layers must red  (rc 1)
+#   canary 2 (flow,  positive)  both layers must red  (rc 1) — canary 2 is the
+#     CR-01 shape: the trigger sits on one flow-style line AFTER a quoted `#`,
+#     so the quote-blind strip returned 0 here while the parsed judge still
+#     caught it. Requiring rc 1 from BOTH layers is what pins the helper.
+#   canary 3 (quoted #, negative)  both layers must stay 0 — a bare `#` in a
+#     quoted scalar with NO trigger anywhere must not be reported
+#   canary 4 (comment, negative)  both layers must stay 0 — IN-R5-03 must not
+#     regress into reporting a comment that merely names the event
 printf 'on:\n  pull_request_target:\n    branches: [main]\n' > "$WORK/p1-prt-canary.yml"
+printf "on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}\n" > "$WORK/p1-prt-canary-flow.yml"
+printf "on: {push: {branches: ['main#hotfix']}}\n" > "$WORK/p1-prt-canary-quoted-hash.yml"
+printf '# pull_request_target is banned by D-11\non: {push: {branches: [main]}}\n' > "$WORK/p1-prt-canary-comment.yml"
 p1_prt_probe "$WORK/p1-prt-canary.yml" > /dev/null 2>&1
 p1_prt_canary_rc=$?
-if [ "$p1_prt_canary_rc" -ne 1 ]; then
-  fail "P1 the comment-stripped pull_request_target scan returned rc=${p1_prt_canary_rc} on the positive canary, want 1 (hit) — a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
+p1_prt_parsed_probe "$WORK/p1-prt-canary.yml" > /dev/null 2>&1
+p1_parsed_canary_rc=$?
+if [ "$p1_prt_canary_rc" -ne 1 ] || [ "$p1_parsed_canary_rc" -ne 1 ]; then
+  fail "P1 the block-style positive canary returned rc=${p1_prt_canary_rc} (text) / rc=${p1_parsed_canary_rc} (parsed), want 1 (hit) from both — a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
+fi
+p1_prt_probe "$WORK/p1-prt-canary-flow.yml" > /dev/null 2>&1
+p1_flow_canary_rc=$?
+p1_prt_parsed_probe "$WORK/p1-prt-canary-flow.yml" > /dev/null 2>&1
+p1_parsed_flow_canary_rc=$?
+if [ "$p1_flow_canary_rc" -ne 1 ] || [ "$p1_parsed_flow_canary_rc" -ne 1 ]; then
+  fail "P1 the flow-style positive canary returned rc=${p1_flow_canary_rc} (text) / rc=${p1_parsed_flow_canary_rc} (parsed), want 1 (hit) from both — the quote-blind strip hid a flow-style trigger after a quoted '#' (CR-01), and a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
+fi
+p1_prt_probe "$WORK/p1-prt-canary-quoted-hash.yml" > /dev/null 2>&1
+p1_quoted_canary_rc=$?
+p1_prt_parsed_probe "$WORK/p1-prt-canary-quoted-hash.yml" > /dev/null 2>&1
+p1_parsed_quoted_canary_rc=$?
+if [ "$p1_quoted_canary_rc" -ne 0 ] || [ "$p1_parsed_quoted_canary_rc" -ne 0 ]; then
+  fail "P1 the quoted-hash negative canary returned rc=${p1_quoted_canary_rc} (text) / rc=${p1_parsed_quoted_canary_rc} (parsed), want 0 (no hit) from both — a '#' inside a quoted scalar is data, and a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
+fi
+p1_prt_probe "$WORK/p1-prt-canary-comment.yml" > /dev/null 2>&1
+p1_comment_canary_rc=$?
+p1_prt_parsed_probe "$WORK/p1-prt-canary-comment.yml" > /dev/null 2>&1
+p1_parsed_comment_canary_rc=$?
+if [ "$p1_comment_canary_rc" -ne 0 ] || [ "$p1_parsed_comment_canary_rc" -ne 0 ]; then
+  fail "P1 the comment-only negative canary returned rc=${p1_comment_canary_rc} (text) / rc=${p1_parsed_comment_canary_rc} (parsed), want 0 (no hit) from both — a comment naming the event is prose, not the rule (IN-R5-03), and a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
 fi
 p1_hits=0
 p1_scanned=0
+p1_parsed_scanned=0
 : > "$WORK/p1-prt.txt"
+: > "$WORK/p1-parsed.txt"
 while IFS= read -r f; do
   [ -f "$f" ] || fail "P1 expected workflow file is missing: $f"
   p1_prt_probe "$f" >> "$WORK/p1-prt.txt" 2>&1
   p1_prt_rc=$?
+  p1_prt_parsed_probe "$f" >> "$WORK/p1-parsed.txt" 2>&1
+  p1_parsed_rc=$?
   case "$p1_prt_rc" in
     0) p1_scanned=$((p1_scanned + 1)) ;;
     1) p1_hits=1; p1_scanned=$((p1_scanned + 1)) ;;
@@ -314,26 +527,38 @@ while IFS= read -r f; do
       fail "P1 the comment-stripped pull_request_target scan returned rc=${p1_prt_rc} for $f, want 0 (no match) or 1 (hit) — a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
       ;;
   esac
+  case "$p1_parsed_rc" in
+    0) p1_parsed_scanned=$((p1_parsed_scanned + 1)) ;;
+    1) p1_hits=1; p1_parsed_scanned=$((p1_parsed_scanned + 1)) ;;
+    *)
+      tail -5 "$WORK/p1-parsed.txt"
+      fail "P1 the parsed on: trigger judge returned rc=${p1_parsed_rc} for $f, want 0 (no match) or 1 (hit) — a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
+      ;;
+  esac
 done < "$WORK/p1-list.txt"
 if [ "$p1_hits" -ne 0 ]; then
-  sed 's/^/    /' "$WORK/p1-prt.txt"
-  fail "P1 pull_request_target found (D-11) — the match is in comment-stripped text; listed above with file:line"
+  sed 's/^/    /' "$WORK/p1-parsed.txt" 2>/dev/null
+  sed 's/^/    /' "$WORK/p1-prt.txt" 2>/dev/null
+  fail "P1 pull_request_target found (D-11) — reported by the parsed on: mapping and by quote-aware comment-stripped text; listed above with file:line"
 fi
 # The scan's decisive success is asserted, not assumed: every enumerated file's
-# probe must have produced a decisive result (rc 0 or 1 — anything else is
-# refused in the loop) and the hits flag must be exactly 0. The live canary
-# above closes the remaining direction: a probe deleted or neutered into
+# BOTH probes must have produced a decisive result (rc 0 or 1 — anything else is
+# refused in the loop) and the hits flag must be exactly 0. The four canaries
+# above close the remaining directions: a probe deleted or neutered into
 # always-succeeding fails there, and even a scan removed from this file
 # entirely leaves no P1-NO-PRT token for the deposit below to find (R2-WR-03).
 [ "$p1_scanned" -eq "$WF_COUNT" ] || fail "P1 the comment-stripped pull_request_target scan produced a decisive result for ${p1_scanned} of ${WF_COUNT} enumerated file(s) — a neutralised or deleted probe cannot deposit PASS (R2-WR-03)"
-[ "$p1_hits" -eq 0 ] || fail "P1 the comment-stripped pull_request_target scan ended with unreported hits — a non-decisive scan cannot deposit PASS (R2-WR-03)"
-# The scan's decisive success assertions ran to success, so its group emits
-# its own token (WR-03: one token per assertion group, not one per probe).
+[ "$p1_parsed_scanned" -eq "$WF_COUNT" ] || fail "P1 the parsed on: trigger judge produced a decisive result for ${p1_parsed_scanned} of ${WF_COUNT} enumerated file(s) — a neutralised or deleted judge cannot deposit PASS (R2-WR-03)"
+[ "$p1_hits" -eq 0 ] || fail "P1 the pull_request_target scan ended with unreported hits — a non-decisive scan cannot deposit PASS (R2-WR-03)"
+# Each assertion group emits its OWN token (WR-03: one token per assertion group,
+# not one per probe), and the token is appended only after BOTH the parsed
+# judge's decisive-result assertion and the zero-hit assertion have passed.
 printf 'P1-NO-PRT\n' >> "$WORK/p1.log"
+printf 'P1-NO-PRT-PARSED\n' >> "$WORK/p1.log"
 
-ok_partition "P1" "$WORK/p1.log" "P1-PARSED" "P1-COMPOSITE-OK" "P1-NO-PRT"
+ok_partition "P1" "$WORK/p1.log" "P1-PARSED" "P1-COMPOSITE-OK" "P1-NO-PRT" "P1-NO-PRT-PARSED"
 
-done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target; per-assertion success tokens P1-PARSED P1-COMPOSITE-OK P1-NO-PRT)"
+done_partition "P1 workflow-parse ($WF_COUNT workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target in the parsed on: mapping AND in quote-aware comment-stripped text; per-assertion success tokens P1-PARSED P1-COMPOSITE-OK P1-NO-PRT P1-NO-PRT-PARSED)"
 
 # ---------------------------------------------------------------------------
 # P2 + P3: the go job's structural contract, decided by one Python probe so the
@@ -1133,8 +1358,17 @@ scan_trust_surface() {
   local -a args=()
   while IFS= read -r f; do args+=("$(native "$f")"); done < "$list"
 
-  python - "${args[@]}" >> "$log" 2>&1 <<'PY'
+  P48_STRIP_DIR="$(native "$WORK")" python - "${args[@]}" >> "$log" 2>&1 <<'PY'
 import os, sys, re, yaml
+
+# T-48-83: the SAME quote-aware comment stripper P1's text layer uses. The
+# directory holding lib_yaml_text.py arrives as a ONE-SHOT environment variable
+# on the `python -` call site below (P48_STRIP_DIR), never as another argv
+# element: `paths = sys.argv[1:]` would then scan the helper directory as if it
+# were a workflow file, and never as an exported global either, or every
+# linter subprocess this script spawns would inherit it.
+sys.path.insert(0, os.environ["P48_STRIP_DIR"])
+from lib_yaml_text import strip_yaml_comments
 
 paths = sys.argv[1:]
 if not paths:
@@ -1203,8 +1437,10 @@ for p in paths:
     src = open(p, encoding="utf-8").read()
     # Every rule below judges comment-stripped text: a comment that mentions
     # a path filter, a secret or a publication token is not the surface
-    # itself (IN-02).
-    nocomment = re.sub(r"(?m)#.*$", "", src)
+    # itself (IN-02). The strip is quote-AWARE (T-48-83): `foo#bar` inside a
+    # quoted or plain scalar is data, and cutting the line at it would hide
+    # whatever rule-bearing text follows on the same line.
+    nocomment = strip_yaml_comments(src)
     doc = yaml.safe_load(src)
     if not isinstance(doc, dict):
         raise SystemExit("trust-surface: %s does not parse as a mapping" % p)
@@ -2091,7 +2327,7 @@ fi
 
 echo ""
 echo "Partitions verified:"
-echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; per-assertion success tokens P1-PARSED / P1-COMPOSITE-OK / P1-NO-PRT"
+echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target occurrences in the parsed on: mapping AND in quote-aware comment-stripped text; per-assertion success tokens P1-PARSED / P1-COMPOSITE-OK / P1-NO-PRT / P1-NO-PRT-PARSED"
 echo "  P2 go-line        — the 5 CI command fragments + determinism materialised-list shape (list file, grep -qx on the file, no pipe after -list), CGO_ENABLED=1 and nothing else, verify job ends at the gate; per-assertion success tokens P2-CMDS-OK / P2-DET-OK / P2-SHUFFLE-OK / P2-HERMETIC-OK"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install and exactly-pinned install env (GOTOOLCHAIN/GOSUMDB/GOPROXY); per-assertion success tokens P3-STEP-IF-OK / P3-BLOCKING-OK / P3-LINT-OK / P3-VERIFYJOB-OK / P3-INSTENV-OK"
 echo "  P4 lint-teeth     — config verify exit 0 with its own P4-CONFIG-OK token, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; per-assertion success tokens P4-CONFIG-OK / P4-A-ERRCHECK / P4-B-QUIET / P4-C-QUIET / P4-D-REVIVE"
