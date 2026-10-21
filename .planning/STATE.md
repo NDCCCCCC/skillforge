@@ -5,11 +5,11 @@ milestone_name: Open-Source Readiness
 current_phase: 49
 current_phase_name: Hermetic Demo
 status: planning
-stopped_at: Phase 48 complete, ready to plan Phase 49
-last_updated: "2026-10-21T10:00:57.174Z"
+stopped_at: Phase 49 context gathered
+last_updated: "2026-10-21T12:38:55.287Z"
 last_activity: 2026-10-21
 last_activity_desc: Phase 48 complete, transitioned to Phase 49
-state_head: 8f8cd6cb2157285c40f3d47a4eab33af14f8b5d5
+state_head: bf10bbeb98a4cd48564801f576cc4a84fcf31969
 progress:
   total_phases: 5
   completed_phases: 2
@@ -186,7 +186,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-21T05:40:00Z
-Stopped at: Phase 48 complete, ready to plan Phase 49
-Resume file: None
+Last session: 2026-10-21T12:38:44.895Z
+Stopped at: Phase 49 context gathered
+Resume file: .planning/phases/49-hermetic-demo/49-CONTEXT.md
 Resume command: `/gsd-plan-phase 49` — Phase 48 (CI 矩阵) is complete: 27/27 plans executed, round-7 verification `passed` (15/15 must-haves, `48-VERIFICATION.md`, coverage set 69 files, digest `v3:sha256:c3174dca2179d21c0bd1c0a5c648145db6a8e3b42b6b850b34507e46c6b01e16`), the 37-threat security sheet has 0 open, and the public four-green run 39380373930 backstops CICD-01/02/03. Phase 49 (Hermetic Demo) is next — start with its context (`/gsd-discuss-phase 49`). Round-8 candidates already recorded in ROADMAP.md「Round-7 review 遗留的 6 条 open 发现」: the workflow-level `permissions:` mapping-value branch still has no isolated fixture, the quote-aware stripper's quote-state has no canary, the P4 byte count is measured but not asserted, and the secret matcher still misses spaced/bracket forms.
