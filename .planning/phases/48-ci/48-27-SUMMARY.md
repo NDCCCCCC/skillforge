@@ -161,6 +161,14 @@ Every drill ran in its own sandbox copy of `verify-phase-48.sh` + `.github/` + `
 - `git diff --stat` 只涉及 `verify-phase-48.sh`（本计划唯一允许改的源码文件）与 `.planning/` 工件；未编辑任何 `.github/workflows/*`、`.golangci.yml`、Dockerfile 或 `48-SECURITY.md`。
 - 未改任何 requirement 状态行（REQUIREMENTS.md 本来就带 Complete）；未重开 branch-protection checkpoint（STATE.md 的 Option A 未动）。
 
+## 回归门（execute-phase `regression_gate`）记录
+
+- **命令解析**：`workflow.test_command` 未配置 → 根 Makefile 无 `^test:` 目标 → 根目录无 `package.json` → 有 `go.mod` ⇒ 解析为 `go test ./...`（与 CI 的 `go test ./... -count=1` 同形）。前序 phase 的 VERIFICATION.md 共 25 份、其中提取出的测试路径已写入 GSD handoff 文件 `regression-files`（Go 侧命令按项目语言解析，不消费该清单）。
+- **Windows 宿主首跑红**：`cmd/server`、`internal/data`、`internal/duckdb`、`internal/kpi/wsl`、`internal/server` 五个包 `[build failed]`。根因是**本机工具链**，不是回归：`duckdb-go-bindings` 预编译的 Windows 静态库与本机 msys2 ucrt64 gcc 16.1.0 的 TLS ABI 不匹配 —— `ld.exe: libicu_extension.a: undefined reference to __emutls_v._ZSt11__once_call` / `__emutls_v._ZSt15__once_callable`。**本 phase 的 diff 零行 Go 代码**（`git diff --name-only 80990b1..HEAD` 无 `*.go`、无 `go.mod`/`go.sum`），编译输入与前序 phase 完全相同。
+- **同构环境复跑绿**：同一条 `go test ./...` 在 WSL2 Ubuntu-22.04（go1.25.5 linux/amd64、gcc 11.4.0，与 CI 的 ubuntu-latest 同构）跑，**全绿** —— 上述五个 duckdb 依赖包同样 `ok`。
+- **前端回归**：`cd web && npx vitest run` → **85 个测试文件 / 689 个测试全部通过**（138.34s）。
+- **结论**：跨阶段回归门**通过**。Windows 侧的红是宿主链接器的既有限制，与本 phase 无关；后续在本机做全量 Go 回归须走 WSL 或 CI。
+
 ## Notes for the next agent
 
 - `48-SECURITY.md` 的 **T-48-83 / T-48-84 / T-48-85** 三行由 register 拥有者计划（48-25 / 48-26 血统）写入，本计划按其登记说明**不碰**该文件。写入时还必须更正 **T-48-82** 的 mitigation 单元：它声称"真实触发器仍会以 file:line 变红"，而这对 CR-01 形态并不成立（`on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}` 在 round-5 的剥离下会走到 `ALL PASSED`）。该行的 block-style 证据仍成立，泛化不成立。
