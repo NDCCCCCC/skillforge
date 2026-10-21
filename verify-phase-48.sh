@@ -1462,12 +1462,18 @@ for p in paths:
                 "(case-insensitive match, T-48-10)" % (p, bad)
             )
 
+# T-48-84: WRITE_VALUE line scan
     # D-26 / D-29: value-shaped write detection over comment-stripped lines.
+    # This is a TEXT rule and only a text rule: it matches a line whose value is
+    # exactly a write scope. A flow-style `permissions: {contents: write}` has no
+    # line of that shape, which is why perm-job-write exists as a separate
+    # fixture — the two rules must each be provable on their own.
     for lineno, line in enumerate(nocomment.splitlines(), 1):
         if WRITE_VALUE.match(line):
             raise SystemExit(
                 "trust-surface: %s:%d contains a write scope (D-26/D-29)" % (p, lineno)
             )
+# T-48-84: end WRITE_VALUE line scan
 
     # Vacuity rules 2 and 3: a workflow with no permissions key has not
     # declared a read-only ceiling, and an empty mapping declares nothing.
@@ -1498,6 +1504,7 @@ for p in paths:
     # Job-level permissions. The old isinstance(..., dict) branch silently
     # skipped string forms — `write-all` was judged only by the raw text scan
     # and `read-all` was not judged at all (IN-03).
+# T-48-84: job-level permissions walk
     for name, job in jobs.items():
         if not isinstance(job, dict):
             continue
@@ -1518,6 +1525,7 @@ for p in paths:
                 "trust-surface: %s job %r permissions is %r, expected a mapping or string (D-26/D-29)"
                 % (p, name, job_perms)
             )
+# T-48-84: end job-level permissions walk
 
 # T-48-03: parsed path-filter walk
     # WR-02 (round-4 review) / 48-VERIFICATION advisory 2: GitHub judges path
@@ -1927,7 +1935,8 @@ P11_FIX="$WORK/p11-fixtures"
 mkdir -p "$P11_FIX/empty-jobs" "$P11_FIX/empty-perms" "$P11_FIX/no-perms" "$P11_FIX/empty-dir" \
   "$P11_FIX/two-files" "$P11_FIX/yaml-ext" "$P11_FIX/lowercase-registry" "$P11_FIX/stray-secret" \
   "$P11_FIX/quoted-paths" "$P11_FIX/space-paths" "$P11_FIX/tojson-secrets" "$P11_FIX/quoted-hash-secret" \
-  "$P11_FIX/quoted-push" "$P11_FIX/dyn-secrets"
+  "$P11_FIX/quoted-push" "$P11_FIX/dyn-secrets" \
+  "$P11_FIX/perm-write-line" "$P11_FIX/perm-job-write" "$P11_FIX/perm-job-readall"
 
 cat > "$P11_FIX/empty-jobs/ci.yml" <<'YEOF'
 name: fixture-empty-jobs
@@ -2003,7 +2012,19 @@ jobs:
 YEOF
 
 # yaml-ext/ — the offending file has the OTHER valid extension (T-48-10 /
-# WR-05), and the offending surface is a write permission.
+# WR-05). This fixture certifies exactly one thing: that `*.yaml` is
+# enumerated as well as `*.yml`. Its payload is therefore a PUBLICATION TOKEN
+# (`packages: write`), which is a rule of its own and NOT one of the three
+# write-scope rules T-48-84 isolates — so a payload borrowed from the
+# write-scope family would make this fixture rejectable by a sibling rule and
+# hide a broken extension enumeration.
+#
+# The extension rule stays provable with this payload: drop `*.yaml` from the
+# enumeration and this fixture's directory contributes ZERO scanned files, so
+# the scan answers "zero *.yml/*.yaml files" instead of the registered reason
+# "registry/publication token" and the run reds on the wrong-reason path (and
+# the P11-YAMLEXT-OK class token, which only this fixture pays, is never
+# deposited). The EXT drill in the plan's verification matrix proves it.
 clean_ci_fixture "$P11_FIX/yaml-ext/ci.yml"
 cat > "$P11_FIX/yaml-ext/other.yaml" <<'YEOF'
 name: fixture-yaml-ext
@@ -2017,6 +2038,70 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: write
+    steps:
+      - run: "true"
+YEOF
+
+# perm-write-line/ — the WORKFLOW-level write scope, in the block shape the
+# WRITE_VALUE text rule matches. Isolates that rule alone (WR-01).
+cat > "$P11_FIX/perm-write-line/ci.yml" <<'YEOF'
+name: fixture-perm-write-line
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+YEOF
+
+# perm-job-write/ — a JOB-level write scope, written with a QUOTED key.
+# Two properties make it attributable to exactly one rule (WR-01):
+#   1. WRITE_VALUE's key pattern is `[A-Za-z0-9_-]+`, which cannot match a
+#      quoted key — so the text rule cannot see this line at any indentation.
+#      (An UNQUOTED job-level `contents: write` does not work: the rule is
+#      indentation-agnostic and claims it first, which is exactly what the
+#      intermediate revision of this fixture proved.)
+#   2. `contents: write` is NOT a PUBLICATION_TOKEN, so the publication check
+#      cannot claim it either. (`packages: write` also fails property 2 — it is
+#      a literal publication token.)
+# Only the parsed job-level walk can reject this fixture.
+cat > "$P11_FIX/perm-job-write/ci.yml" <<'YEOF'
+name: fixture-perm-job-write
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      "contents": write
+    steps:
+      - run: "true"
+YEOF
+
+# perm-job-readall/ — a job-level permissions SCALAR. The key is quoted so the
+# WRITE_VALUE text rule (key pattern `[A-Za-z0-9_-]+`) cannot see the line, and
+# the job's value is a scalar rather than a mapping, so the job-level mapping
+# walk cannot claim it either. Only judge_permissions_string — which receives
+# the parsed string via the job walk's `isinstance(job_perms, str)` branch —
+# can reject this fixture (WR-01).
+cat > "$P11_FIX/perm-job-readall/ci.yml" <<'YEOF'
+name: fixture-perm-job-readall
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    "permissions": write-all
     steps:
       - run: "true"
 YEOF
@@ -2191,7 +2276,8 @@ P11_FIXTURE_COUNT=0
 for fixture in empty-jobs empty-perms no-perms empty-dir \
                two-files yaml-ext lowercase-registry stray-secret \
                quoted-paths space-paths tojson-secrets quoted-hash-secret \
-               quoted-push dyn-secrets; do
+               quoted-push dyn-secrets \
+               perm-write-line perm-job-write perm-job-readall; do
   # WR-R5-01, guard 1 — file presence BEFORE the scan. The mkdir list above
   # would recreate a deleted fixture's directory, and the zero-files branch
   # inside scan_trust_surface would then "reject" that EMPTY directory exactly
@@ -2206,11 +2292,7 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   # for these fixtures (verified against a live run of the committed tree), so
   # a rejection only counts as evidence when its REASON matches. A fixture
   # added later without a registered reason cannot pass: the default arm
-  # refuses. Two registrations are deliberately layer-aware:
-  #   yaml-ext — the publication token, not the WRITE_VALUE line scan:
-  #     `packages: write` is itself a PUBLICATION_TOKEN and the publication
-  #     check runs before the write-scope line scan, so the publication rule
-  #     is what the first line names.
+  # refuses. One registration is deliberately layer-aware:
   #   two-files — `path-filtered`, the substring BOTH path-filter layers
   #     print (the parsed walk's `filters event … with a 'paths' key` and the
   #     retained textual `contains paths:`): the fixture's unquoted `paths:`
@@ -2226,6 +2308,31 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   #     fixture stays attributable to the secret RULE after a walk deletion
   #     (the R10 drill) and the loop reaches tojson-secrets — the fixture
   #     only the deleted secret walk was catching.
+  #   yaml-ext / perm-write-line / perm-job-write / perm-job-readall (T-48-84,
+  #     WR-01) — one fixture per RULE, each with its own class token, so
+  #     deleting one rule cannot be masked by a sibling depositing PASS:
+  #       yaml-ext          job-level `packages: write` (a PUBLICATION token)
+  #                         -> P11-YAMLEXT-OK — certifies the `*.yaml`
+  #                         enumeration, not any write-scope rule.
+  #       perm-write-line   top-level `contents: write`  -> P11-PERMSWRITE-OK
+  #                         — the WRITE_VALUE line scan claims it first (the
+  #                         scan is indentation-agnostic and runs before the
+  #                         workflow-level mapping walk), so this fixture is
+  #                         paid by the text rule alone.
+  #       perm-job-write    job-level `"contents": write` -> P11-JOBPERMS-OK
+  #                         — the key is QUOTED, and WRITE_VALUE's key pattern
+  #                         `[A-Za-z0-9_-]+` cannot match a quoted key, so the
+  #                         text rule cannot see it at any indentation; only the
+  #                         parsed job-level mapping walk can reject it.
+  #       perm-job-readall  job-level `"permissions": write-all`
+  #                         -> P11-JOBPERMS-STR-OK — a SCALAR job permission, so
+  #                         the mapping walk cannot claim it either; only
+  #                         judge_permissions_string can.
+  #     yaml-ext must NOT carry a write-scope payload. It sits EARLIER in the
+  #     loop than perm-write-line, so a write-scope payload there would let it
+  #     be rejected for a sibling rule's reason first and the R18 drill would
+  #     name yaml-ext instead of perm-write-line — the drill would still red,
+  #     but it would no longer name the rule it is supposed to isolate.
   case "$fixture" in
     empty-jobs)                      want='empty or absent jobs';             class_token='P11-VACUITY-OK' ;;
     empty-perms)                     want='empty permissions';                class_token='P11-VACUITY-OK' ;;
@@ -2233,12 +2340,15 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
     empty-dir)                       want='zero *.yml/*.yaml files';          class_token='P11-VACUITY-OK' ;;
     two-files)                       want='path-filtered';                    class_token='P11-PATHFILTER-OK' ;;
     quoted-paths|space-paths)        want="with a 'paths' key";               class_token='P11-PATHFILTER-OK' ;;
-    yaml-ext)                        want='registry/publication token';       class_token='P11-PERMSWRITE-OK' ;;
+    yaml-ext)                        want='registry/publication token';       class_token='P11-YAMLEXT-OK' ;;
     lowercase-registry)              want='registry/publication token';       class_token='P11-PUBLICATION-OK' ;;
     stray-secret|quoted-hash-secret) want='references secrets.';              class_token='P11-SECRET-OK' ;;
     tojson-secrets)                  want='toJSON(secrets';                   class_token='P11-SECRET-OK' ;;
     quoted-push)                     want='registry/publication token';       class_token='P11-PUBLICATION-OK' ;;
     dyn-secrets)                     want='dynamic secrets[';                 class_token='P11-SECRET-OK' ;;
+    perm-write-line)                 want='contains a write scope';           class_token='P11-PERMSWRITE-OK' ;;
+    perm-job-write)                  want="in job 'build' grants 'contents'='write'"; class_token='P11-JOBPERMS-OK' ;;
+    perm-job-readall)                want="job 'build' permissions grants 'write-all'"; class_token='P11-JOBPERMS-STR-OK' ;;
     *) fail "P11 fixture '${fixture}' has no registered rejection reason — every fixture must declare the rule that rejects it (WR-R5-01)" ;;
   esac
   scan_trust_surface "$P11_FIX/$fixture"
@@ -2275,7 +2385,7 @@ done
 # The fixture loop is a probe too: fourteen rejections are its success output.
 # A loop that never ran (or was neutered) leaves the count and the log short,
 # and the deposit refuses (R2-WR-03).
-[ "$P11_FIXTURE_COUNT" -eq 14 ] || fail "P11 the fixture loop ran ${P11_FIXTURE_COUNT} fixture(s), want 14 — a neutralised or deleted loop cannot deposit PASS (R2-WR-03)"
+[ "$P11_FIXTURE_COUNT" -eq 17 ] || fail "P11 the fixture loop ran ${P11_FIXTURE_COUNT} fixture(s), want 17 — a neutralised or deleted loop cannot deposit PASS (R2-WR-03)"
 
 # P11's own success token deposits right after its last decisive assertion —
 # BEFORE the registry count below, which demands that token to exist. The
@@ -2285,7 +2395,7 @@ done
 # `rejected`. A single token that any rejection satisfied let a fixture (or a
 # rule + its fixtures) vanish while its siblings' evidence still deposited
 # PASS. Every class must have deposited for P11 to pass.
-ok_partition "P11" "$WORK/p11-fixtures.log" "P11-VACUITY-OK" "P11-PATHFILTER-OK" "P11-PERMSWRITE-OK" "P11-PUBLICATION-OK" "P11-SECRET-OK"
+ok_partition "P11" "$WORK/p11-fixtures.log" "P11-VACUITY-OK" "P11-PATHFILTER-OK" "P11-PERMSWRITE-OK" "P11-JOBPERMS-OK" "P11-JOBPERMS-STR-OK" "P11-PUBLICATION-OK" "P11-SECRET-OK" "P11-YAMLEXT-OK"
 
 # --- Half 3 (LAST): the registry, the call sites, the markers and the tokens
 # agree -----------------------------------------------------------------------
@@ -2304,7 +2414,7 @@ if [ "$CALL_SITES" -ne "$EXPECTED_PARTITIONS" ] || [ "$BEGIN_COUNT" -ne "$EXPECT
 fi
 info "P11: registry ${CALL_SITES}/${EXPECTED_PARTITIONS}, begin markers ${BEGIN_COUNT}/${EXPECTED_PARTITIONS}, success tokens ${OK_COUNT}/${EXPECTED_PARTITIONS}"
 
-done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 14 fixtures rejected for their registered reasons: 4 vacuity + 10 per-file; per-class tokens P11-VACUITY-OK P11-PATHFILTER-OK P11-PERMSWRITE-OK P11-PUBLICATION-OK P11-SECRET-OK)"
+done_partition "P11 self-probe (registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 17 fixtures rejected for their registered reasons: 4 vacuity + 13 per-file; per-class tokens P11-VACUITY-OK P11-PATHFILTER-OK P11-PERMSWRITE-OK P11-JOBPERMS-OK P11-JOBPERMS-STR-OK P11-PUBLICATION-OK P11-SECRET-OK P11-YAMLEXT-OK)"
 
 # ---------------------------------------------------------------------------
 # Closing banner — gated on RAN vs EXPECTED_PARTITIONS, never on a literal.
@@ -2337,4 +2447,4 @@ echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cac
 echo "  P8 trust-surface  — per file (*.yml + *.yaml): read-only permissions, no registry/path/secret surface; evidence-bound success token"
 echo "  P9 eval-gate-gate — exact fork/Dependabot gate expression, complement ::notice:: skip, secrets intact exactly once, Gate check carries no env, one Go version source; per-assertion success tokens P9-JOBS-OK / P9-GATE-EXPR-OK / P9-NOTICE-OK / P9-WIRING-OK / P9-TRIGGERS-OK / P9-GOVERSION-OK"
 echo "  P10 sc4-wording   — ROADMAP SC-4: old hermetic-precedent phrase absent, live-workflow wording present; evidence-bound success token"
-echo "  P11 self-probe    — registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 14 fixtures rejected: 4 vacuity + 10 per-file, per-class deposit tokens; empty partitions and per-file mutations proven to fail"
+echo "  P11 self-probe    — registry == call sites == begin markers == evidence-bound success tokens, one RAN-gated banner site, 17 fixtures rejected: 4 vacuity + 13 per-file, per-class deposit tokens; empty partitions and per-file mutations proven to fail"
