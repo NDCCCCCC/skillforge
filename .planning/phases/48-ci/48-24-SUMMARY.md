@@ -203,3 +203,11 @@ None - no external service configuration required.
 ---
 *Phase: 48-ci*
 *Completed: 2026-10-21*
+
+## Self-Check: PASSED
+
+- SUMMARY.md exists at `.planning/phases/48-ci/48-24-SUMMARY.md`.
+- All three task commits are ancestors of HEAD: `438bca8` (Task 1), `e123787` (Task 2), `df88aa3` (Task 3); SUMMARY commit `7bc3b35`. Measured `git rev-list --count 5bea15c..HEAD` = 4.
+- `git diff --name-only 5bea15c..HEAD` touches only `verify-phase-48.sh` plus this SUMMARY; zero tracked-file deletions; the tracked tree is clean.
+- Final gate control on the committed tree: exit 0, exactly one `ALL PASSED`.
+- Drill matrix D0/R1-R14/G1-G4 recorded from re-runs on the final tree (anchors asserted in every mutation); no drill artifacts were written into the repository.
