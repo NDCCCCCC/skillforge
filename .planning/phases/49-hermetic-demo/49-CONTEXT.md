@@ -23,38 +23,38 @@
 
 ### 向量从哪来（Area 1）
 
-- **D-01 强制外部向量化模型，不做任何兜底。** 复用现有 `internal/embedder/bge`（HTTP 调 `BGE_M3_URL`，1024 维）。**不**引入进程内 embedder，**不**提交预计算向量文件，**不**用 hash/随机向量冒充。端点不可达 ⇒ 明确失败。
+- **D-01 — 强制外部向量化模型，不做任何兜底。** 复用现有 `internal/embedder/bge`（HTTP 调 `BGE_M3_URL`，1024 维）。**不**引入进程内 embedder，**不**提交预计算向量文件，**不**用 hash/随机向量冒充。端点不可达 ⇒ 明确失败。
   依据：用户原话「我的意思是不考虑任何兜底方案，强制要求使用外部向量化模型」；与 `internal/embedder/bge/bge.go` 既有纪律一致（包注释 Pitfall 8：hash 兜底会用语义无意义的向量掩盖真实故障）。
-- **D-02 端点形态两种都支持，以本地 Ollama 为主。** 本机/常见场景：`ollama pull bge-m3` ⇒ `BGE_M3_URL=http://localhost:11434/v1/embeddings`（OpenAI 兼容、无需 key；README 现已是此默认）。任意 OpenAI 兼容端点可通过改 `BGE_M3_URL` 替换，README 注明。
-- **D-03 "embedded" 一词专指「向量存储进程内」，不指「向量化进程内」。** 这条必须写进任何实现文档 —— 否则 planner 极可能理解反，做成进程内 embedder。
-- **D-04 向量存储 = 进程内 Go slice + cosine 排序。** 照搬 `internal/retriever/mongo/rank.go` 的纯函数 `rank` 与 (score desc, id asc) tie-break，保证可复现。
-- **D-05 语料 = 仓库现有 `knowledge/` 全量**（authority 16 + sql-guides 202 + draft 1 + historical 1），沿用 `internal/knowledge/indexer.go` 的 tier 校验与文档结构解析。
-- **D-06 接入方式 = 新增 backend 名 `embedded`**，与 `milvus` / `mongo` / `none` 并列。现有 `none` 的 degraded default-deny 语义（`cmd/server/main.go` 的 `noopRetriever`）一字不动。
+- **D-02 — 端点形态两种都支持，以本地 Ollama 为主。** 本机/常见场景：`ollama pull bge-m3` ⇒ `BGE_M3_URL=http://localhost:11434/v1/embeddings`（OpenAI 兼容、无需 key；README 现已是此默认）。任意 OpenAI 兼容端点可通过改 `BGE_M3_URL` 替换，README 注明。
+- **D-03 — "embedded" 一词专指「向量存储进程内」，不指「向量化进程内」。** 这条必须写进任何实现文档 —— 否则 planner 极可能理解反，做成进程内 embedder。
+- **D-04 — 向量存储 = 进程内 Go slice + cosine 排序。** 照搬 `internal/retriever/mongo/rank.go` 的纯函数 `rank` 与 (score desc, id asc) tie-break，保证可复现。
+- **D-05 — 语料 = 仓库现有 `knowledge/` 全量**（authority 16 + sql-guides 202 + draft 1 + historical 1），沿用 `internal/knowledge/indexer.go` 的 tier 校验与文档结构解析。
+- **D-06 — 接入方式 = 新增 backend 名 `embedded`**，与 `milvus` / `mongo` / `none` 并列。现有 `none` 的 degraded default-deny 语义（`cmd/server/main.go` 的 `noopRetriever`）一字不动。
 
 ### stub 模式怎么如实标注（Area 2）
 
-- **D-07 stub 产出 = 命中 chunk 的原文抽取。** 像 `internal/knowledge/ecl/stub.go` 的 `StubExtract` 那样做确定性抽取（正则/句段），从 top-k chunk 拼出 answer，citations 指向真实 chunk。输出仍是**合法** `verdict.Verdict` JSON，wire 形状与真模型完全一致，下游（前端、审计、评测）零改动。
-- **D-08 三处标注 stub 模式。** ①`verdict.Verdict` 增加一个 `omitempty` 字段（值形如 `mode:"stub"`；先例：`Answer` / `ComplianceStatus` 就是这么加的，legacy 生产者可 round-trip）②启动时打醒目 WARN ③README 写明。核对前端 `web/src/components/chat/MessageBubble.tsx` 的 `isVerdict` 类型守卫需一并扩展。
-- **D-09 触发条件 = 无 key 自动 stub + 三重标注。** 配置了 key 走真模型；没 key 走 stub，且三处都明说。已知风险：生产环境掉 key 会静默降级到 stub —— 靠三重标注抵消，不得静默伪装成真模型（SC3 原文要求）。
-- **D-10 stub 的引用与真模型完全同等，不豁免任何校验。** answer 逐字来自 chunk 原文，citations 走同一条 grounding 校验（引用 span 必须真实出现在 chunk 里，否则降级），confidence 上限 0.5，强制 `review_required=true`。
-- **D-11 `cmd/server/main.go` 的启动必填项必须随之调整：** `BGE_M3_URL` **保留必填**（embedded 模式仍需外部模型，D-01），`GLM_API_KEY` **改为可选**（stub 模式无 key 也要能起）。
+- **D-07 — stub 产出 = 命中 chunk 的原文抽取。** 像 `internal/knowledge/ecl/stub.go` 的 `StubExtract` 那样做确定性抽取（正则/句段），从 top-k chunk 拼出 answer，citations 指向真实 chunk。输出仍是**合法** `verdict.Verdict` JSON，wire 形状与真模型完全一致，下游（前端、审计、评测）零改动。
+- **D-08 — 三处标注 stub 模式。** ①`verdict.Verdict` 增加一个 `omitempty` 字段（值形如 `mode:"stub"`；先例：`Answer` / `ComplianceStatus` 就是这么加的，legacy 生产者可 round-trip）②启动时打醒目 WARN ③README 写明。核对前端 `web/src/components/chat/MessageBubble.tsx` 的 `isVerdict` 类型守卫需一并扩展。
+- **D-09 — 触发条件 = 无 key 自动 stub + 三重标注。** 配置了 key 走真模型；没 key 走 stub，且三处都明说。已知风险：生产环境掉 key 会静默降级到 stub —— 靠三重标注抵消，不得静默伪装成真模型（SC3 原文要求）。
+- **D-10 — stub 的引用与真模型完全同等，不豁免任何校验。** answer 逐字来自 chunk 原文，citations 走同一条 grounding 校验（引用 span 必须真实出现在 chunk 里，否则降级），confidence 上限 0.5，强制 `review_required=true`。
+- **D-11 — `cmd/server/main.go` 的启动必填项必须随之调整：** `BGE_M3_URL` **保留必填**（embedded 模式仍需外部模型，D-01），`GLM_API_KEY` **改为可选**（stub 模式无 key 也要能起）。
 
 ### clone 后怎么跑起来（Area 3）
 
-- **D-12 纯本地进程，零 Docker。** `go run ./cmd/server`（:8888）+ `cd web && npm run dev`（:5173，Vite 已代理 `/api` → :8888）。
+- **D-12 — 纯本地进程，零 Docker。** `go run ./cmd/server`（:8888）+ `cd web && npm run dev`（:5173，Vite 已代理 `/api` → :8888）。
   依据：现有 `docker-compose.yml` 的 backend 段用 `${BGE_M3_URL:?…}` / `${GLM_API_KEY:?…}` 强制插值 —— 没有 key 连 `docker compose up` 都起不来；另有 milvus/etcd/minio 三容器与本 phase 的"无内网"目标冲突。
-- **D-13 前端由后端同源托管（:8888）。** 新增静态托管 `web/dist` + SPA fallback（生产现由 nginx 容器承担）；后端当前**不**提供前端静态文件，需新增。
-- **D-14 全量索引 + 本地向量缓存。** 首次启动把 `knowledge/` 全量过 BGE-M3 算出向量，存**本地缓存文件（不入仓库）**；后续启动直接读缓存，避免每次重算。
+- **D-13 — 前端由后端同源托管（:8888）。** 新增静态托管 `web/dist` + SPA fallback（生产现由 nginx 容器承担）；后端当前**不**提供前端静态文件，需新增。
+- **D-14 — 全量索引 + 本地向量缓存。** 首次启动把 `knowledge/` 全量过 BGE-M3 算出向量，存**本地缓存文件（不入仓库）**；后续启动直接读缓存，避免每次重算。
   **缓存 key 必须包含 model + dimension + 语料 hash**，否则换模型或改语料会静默吃到旧向量。
-- **D-15 只加 `RETRIEVER_BACKEND=embedded`，其余配置体系一字不动。** 现有 milvus 路径、现有 compose、`.env.example` 均不修改，向后兼容最好。
-- **D-16 embedded 分支不得要求 `MONGO_URI` / `MILVUS_ADDRESS`**（现由 `mongo` / `milvus` 分支各自 `envRequired`）。
+- **D-15 — 只加 `RETRIEVER_BACKEND=embedded`，其余配置体系一字不动。** 现有 milvus 路径、现有 compose、`.env.example` 均不修改，向后兼容最好。
+- **D-16 — embedded 分支不得要求 `MONGO_URI` / `MILVUS_ADDRESS`**（现由 `mongo` / `milvus` 分支各自 `envRequired`）。
 
 ### demo.gif（Area 4）
 
-- **D-17 录终端 CLI 演示，不是浏览器 UI。** 用 curl/脚本跑一轮带引用的问答，终端里直接可见 citations。最能体现"改一个 `SKILL.md` 就换业务域"的内核卖点，且录屏工具链最轻。
-- **D-18 生成方式 = asciinema（录）+ agg（渲染 gif）**，用 Makefile 目标封装（如 `make demo-gif`），文档写明前置依赖。素材是真实录屏，不是脚本画出来的假动画。
-- **D-19 素材直接产出到 `docs/demo.gif`。** `README.md` 已经在引用这个路径而文件不存在（正是 Phase 50 FACE-01 的破图根因）；本 phase 直接把真实素材放到该路径，Phase 50 只需确认不断链。
-- **D-20 录制脚本进仓库，素材也进仓库。** 脚本（形如 `scripts/record-demo.sh`）+ Makefile 目标入库，文档写明依赖。脚本同时充当 SC4「quickstart 逐步实测通过」的证据。
+- **D-17 — 录终端 CLI 演示，不是浏览器 UI。** 用 curl/脚本跑一轮带引用的问答，终端里直接可见 citations。最能体现"改一个 `SKILL.md` 就换业务域"的内核卖点，且录屏工具链最轻。
+- **D-18 — 生成方式 = asciinema（录）+ agg（渲染 gif）**，用 Makefile 目标封装（如 `make demo-gif`），文档写明前置依赖。素材是真实录屏，不是脚本画出来的假动画。
+- **D-19 — 素材直接产出到 `docs/demo.gif`。** `README.md` 已经在引用这个路径而文件不存在（正是 Phase 50 FACE-01 的破图根因）；本 phase 直接把真实素材放到该路径，Phase 50 只需确认不断链。
+- **D-20 — 录制脚本进仓库，素材也进仓库。** 脚本（形如 `scripts/record-demo.sh`）+ Makefile 目标入库，文档写明依赖。脚本同时充当 SC4「quickstart 逐步实测通过」的证据。
 
 ### Claude's Discretion
 
