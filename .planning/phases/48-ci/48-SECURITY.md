@@ -6,6 +6,13 @@ status: verified
 threats_open: 0
 asvs_level: 1
 block_on: high
+# register_authored_at_plan_time added 2026-10-21 (round 7, plan 48-27): every plan in this phase
+# — 48-01 through 48-27 — authors a STRIDE register inside its own <threat_model> block, and the
+# rows below were entered by 48-25/48-26/this reconciliation from those blocks rather than by a
+# retroactive scan of the tree. The flag was missing, not false; with it declared, secure-phase's
+# skip condition (threats_open 0 + register authored at plan time + asvs_level 1 → L1 grep depth is
+# sufficient) applies instead of a retroactive-STRIDE pass.
+register_authored_at_plan_time: true
 created: "2026-10-19"
 verified: "2026-10-19"
 # threats_open corrected 2026-10-19 AFTER 48-VERIFICATION.md reproduced the code review's
@@ -26,7 +33,8 @@ verified: "2026-10-19"
 # cell was corrected in place to the P3-INSTENV-OK exact-equality pin 48-23 landed — the round-5
 # verification had falsified the cell's enforcement clause — rows T-48-80..T-48-82 were registered
 # after their mitigations and mutation drills landed (48-23/48-24), and 0 remains the truthful
-# open count: 34/34 closed, 0 open.
+# open count: 37/37 closed, 0 open (round 7, plan 48-27: rows T-48-83/84/85 registered; T-48-82's
+# over-generalised mitigation clause corrected in place).
 ---
 
 # Phase 48 — Security
@@ -87,7 +95,10 @@ verified: "2026-10-19"
 | T-48-79 | Repudiation | `48-REVIEW-DISPOSITION-R1.md` tail | medium | mitigate | The closing paragraph is prefixed by a historical annotation carrying `Historical note (superseded 2026-10-20)`, run `39380373930` (head `630f875`) four-green and the `Complete (run 39380373930)` statuses, with the original paragraph retained and labelled `**Superseded text (2026-10-19):**` (48-22 Task 3); the annotation precedes the retained text and the phrase `remain Pending` stays unique to it, so a verify comparing the two line numbers reds on removal or reordering | closed |
 | T-48-80 | Repudiation | P11 fixture-loop evidence binding | high | mitigate | Every P11 fixture registers a required first-line rejection reason (case statement with a refusing default arm), a file-presence guard runs before the scan so a deleted heredoc cannot be "rejected" by vacuity, and five per-class deposit tokens (`P11-VACUITY-OK` / `P11-PATHFILTER-OK` / `P11-PERMSWRITE-OK` / `P11-PUBLICATION-OK` / `P11-SECRET-OK`) are all required at ok_partition (48-23 Task 1); deleting a fixture heredoc reds the gate naming the fixture ("has no workflow file to scan" — the round-5 reproduction R11 now bites), and deleting the parsed path-filter walk together with both its path fixtures reds naming `quoted-paths` (the compound drill R12) | closed |
 | T-48-81 | Repudiation | P4 config-verify evidence binding | medium | mitigate | `P4-CONFIG-OK` is appended to `p4-config.log` only after the `golangci-lint config verify` rc refusal passes, joins `p4.log` behind the same missing-file-tolerant guard as the sentinel logs, and is required first by ok_partition P4; the block is wrapped in the column-0 marker range `# T-48-81: config verify evidence binding` (48-24 Task 1); deleting the range reds the gate naming partition P4 and the missing `P4-CONFIG-OK` token — by the group's own evidence, not by luck of sentinel D's revive attribution (48-24 drill) | closed |
-| T-48-82 | Denial of Service | P1 trigger-scan false-positive direction | low | mitigate | P1's banned-event scan judges comment-stripped text per enumerated workflow file (line numbers preserved), a positive canary proves the probe can report a hit before any clean verdict deposits, and the decisive success (scanned == enumerated, hits == 0) is asserted before `P1-NO-PRT` (48-24 Task 2); a comment naming the event no longer false-fires the gate (the comment-only fixture drill runs the full gate green), while a real trigger still reds with `file:line` evidence and the matched line (the real-trigger drill, 48-24) | closed |
+| T-48-82 | Denial of Service | P1 trigger-scan false-positive direction | low | mitigate | P1's banned-event scan judges comment-stripped text per enumerated workflow file (line numbers preserved), a positive canary proves the probe can report a hit before any clean verdict deposits, and the decisive success (scanned == enumerated, hits == 0) is asserted before `P1-NO-PRT` (48-24 Task 2); a comment naming the event no longer false-fires the gate (the comment-only fixture drill runs the full gate green), while a real trigger still reds with `file:line` evidence and the matched line (the real-trigger drill, 48-24). **Mitigation cell corrected 2026-10-21 (round 7, plan 48-27):** that enforcement clause held only for the BLOCK-style trigger the drill used; it did NOT generalise to the flow-style shape — `on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}` puts a `#` inside a quoted scalar, the then quote-blind strip truncated the line at that `#`, the real trigger key on the same physical line became invisible, and the gate reported `ALL PASSED` (`48-VERIFICATION.md:92-97`). The row's block-style evidence still stands; the generalisation did not. Round 7 replaced the strip with one shared quote-aware helper and moved the judgement onto the parsed `on:` document, so the flow-style case is now caught as well — see T-48-83 | closed |
+| T-48-83 | Tampering | P1 trigger judge (quote-aware strip + parsed `on:` judge) | high | mitigate | The parsed `on:` document is the primary judge and rejects the banned event in all three shapes it can legally take — mapping key, sequence element, bare scalar — reading the trigger as `doc.get("on", doc.get(True))` because PyYAML 1.1 loads a bare `on:` as the boolean `True`; both comment strips call ONE quote-aware helper (`$WORK/lib_yaml_text.py`, three-state machine over NORMAL / SINGLE / DOUBLE) whose `#` starts a comment only at line start or after whitespace outside quotes and which leaves an unterminated quote's line intact, so the failure direction is always seeing MORE text; four canaries (block, flow-behind-quoted-`#`, quoted-hash negative, comment-only negative) prove each layer live, and `P1-NO-PRT-PARSED` makes a deleted judge red at P1's deposit (48-27 Task 1, committed `a4cb04c`) | closed |
+| T-48-84 | Repudiation | P11 per-rule permission fixtures | high | mitigate | One isolating fixture and one class token per write-permission rule — `perm-write-line` → `P11-PERMSWRITE-OK` (claimed only by the WRITE_VALUE line scan), `perm-job-write` → `P11-JOBPERMS-OK` (a QUOTED job-level key, invisible to WRITE_VALUE's `[A-Za-z0-9_-]+` key pattern at any indent), `perm-job-readall` → `P11-JOBPERMS-STR-OK` (a job-level SCALAR string), `yaml-ext` → `P11-YAMLEXT-OK` (job-level `packages: write`, a publication token) — the count assertion raised to 17 (4 vacuity + 13 per-file), all four count sites and all four name sites aligned, and both rule bodies wrapped in COLUMN-0 deletable marker ranges `# T-48-84:` (48-27 Task 2, committed `09d1444`) | closed |
+| T-48-85 | Repudiation | P4 config-verify evidence line | medium | mitigate | The tool's real output size is sampled BEFORE any append — `p4_cfg_bytes=$(wc -c < "$WORK/p4-config.log")` after the rc capture — and the block prints `tool output: ${p4_cfg_bytes} byte(s)`; the qualitative claim `present` and its silent-success alternative were deleted from the script (0 occurrences of each), so the line can no longer describe itself. A successful `golangci-lint config verify` genuinely emits 0 bytes, which is why the healthy tree reads `tool output: 0 byte(s)`: 0 bytes IS the evidence (48-27 Task 3, committed `6bbdcf8`) | closed |
 
 *Status: open · closed · open — below `high` threshold (non-blocking)*
 *Severity: critical > high > medium > low — only open threats at or above `workflow.security_block_on` count toward `threats_open`*
@@ -200,6 +211,32 @@ Arithmetic (round 6, 2026-10-21): the register carries 34 rows; 33 are `closed`,
 or renumbered, and the row count arithmetic is truthful at 34. Because the open count is 0, the
 frontmatter keeps `status: verified`.
 
+Arithmetic (round 7, 2026-10-21, plan 48-27): the register carries **37** rows; 36 are `closed`,
+1 is `closed (accepted)` (T-48-14, gated decision A), and 0 are `open` at or above
+`block_on: high` — 37/37 closed, 0 open. Rows 35-37 (T-48-83, T-48-84, T-48-85) register the three
+round-7 mitigations, entered from 48-27-PLAN.md's own `<threat_model>` block after each fix and its
+drill landed, exactly as the round-6 rows were entered by plan 48-25. **T-48-82's Mitigation cell
+was corrected in place**: its "a real trigger still reds with `file:line`" clause was true only of
+the block-style trigger its own drill used and false for the flow-style shape that reached
+`ALL PASSED` under round 5's quote-blind strip — the registration note in 48-27-PLAN.md required
+that correction and it is now recorded rather than left to be read as a generalisation. No
+existing row was deleted or renumbered, and the frontmatter keeps `status: verified` because the
+open count is 0.
+
+Evidence for the three new rows — each closes on a mutation, not on a diff:
+
+| Row | Drill that proves the mitigation bites | Red it produces |
+|-----|----------------------------------------|-----------------|
+| T-48-83 | R15 / R15b | deleting the parsed judge, then the token alone, reds at P1 — `the block-style positive canary returned rc=1 (text) / rc=127 (parsed)` / `partition P1 cannot deposit its success tokens: … 'P1-NO-PRT-PARSED'` |
+| T-48-83 | R16 | reverting the helper to the quote-blind regex reds at `the flow-style positive canary returned rc=0 (text) / rc=1 (parsed)` |
+| T-48-83 | R17 / D1-old / D1-new / D2 | deleting the text layer reds at `produced a decisive result for 0 of 2 enumerated file(s)`; the pre-round-7 script is GREEN on the same file, the quote-blind variant and the fixed script are both RED |
+| T-48-84 | R18 / R19 / R19b / EXT | each red names its own fixture — `perm-write-line`, `perm-job-write`, `perm-job-readall`, `yaml-ext` |
+| T-48-85 | R20 / R20b | R20 keeps the gate green while the evidence line reads `tool output: 0 byte(s)`; R20b shows the pre-round-7 wording reporting `present` for that same 0-byte run, which is the unfalsifiable shape the row removes |
+
+Full table with all 37 drills, including the three whose red REASON changed without disappearing
+(G3, R19b, R15) and the `R21` / `R21-control` / `R21-counter` triple that discriminates the two
+trust-surface layers: `48-27-SUMMARY.md` § "Round-7 Drill Matrix".
+
 ---
 
 ## What this audit does NOT establish
@@ -301,6 +338,7 @@ that the `-test.shuffle` seed prints only under `-v`.
 | 2026-10-19 | 20 | 20 | 0 | gsd gap-closure (plans 48-05…48-09) — re-closed on mutation evidence; see 48-10-SUMMARY.md |
 | 2026-10-20 | 21 | 21 | 0 | gsd gap-closure round 3 (plans 48-12..48-13) — supply-chain row recorded after fix+pin landed |
 | 2026-10-20 | 31 | 31 | 0 | gsd gap-closure rounds 4-5 (plans 48-20..48-22) — per-assertion-group tokens (T-48-70..T-48-75), parsed-document trust-surface walks and declared linter install env (T-48-76..T-48-78), R1 ledger historical annotation (T-48-79); register rows recorded by plan 48-22 after each mitigation and its mutation drill landed |
+| 2026-10-21 | 37 | 37 | 0 | gsd gap-closure round 7 (plan 48-27) — rows T-48-83 (parsed `on:` judge + shared quote-aware stripper), T-48-84 (per-rule permission fixtures) and T-48-85 (measured config-verify evidence line) registered on the landed fixes and their drills; T-48-82's Mitigation cell corrected in place — its `file:line` enforcement clause held only for the block-style shape and was false for the CR-01 flow-style shape; frontmatter gained the missing `register_authored_at_plan_time: true` |
 | 2026-10-21 | 34 | 34 | 0 | gsd gap-closure round 6 (plans 48-23..48-26) — T-48-78's Mitigation cell corrected in place to the `P3-INSTENV-OK` exact-equality pin 48-23 landed (round 5 had falsified its enforcement clause; recorded in the round-6 re-closure section), and round-6 rows T-48-80 (48-23 Task 1), T-48-81 (48-24 Task 1) and T-48-82 (48-24 Task 2) registered by plan 48-25 after each mitigation and its drill landed |
 
 ---
@@ -309,10 +347,10 @@ that the `-test.shuffle` seed prints only under `-v`.
 
 - [x] All threats have a disposition (mitigate / accept / transfer)
 - [x] Accepted risks documented in Accepted Risks Log
-- [x] `threats_open: 0` confirmed — 34/34 closed, 0 open: the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill), the round-4/5 rows T-48-70..T-48-79 (48-20..48-22) are closed on their per-assertion tokens, parsed-document walks, declared install env and R1 annotation, and the round-6 rows T-48-80..T-48-82 (48-23/48-24, registered by 48-25 on 2026-10-21) are closed on the attributing fixture loop, the config-verify evidence binding and the comment-stripped trigger scan; T-48-78's Mitigation cell was corrected on 2026-10-21 (48-25) to the `P3-INSTENV-OK` pin that actually exists after round 5 falsified its enforcement clause
+- [x] `threats_open: 0` confirmed — 37/37 closed, 0 open: the round-7 rows T-48-83..T-48-85 (48-27, registered 2026-10-21 on 48-27's landed fixes and their 37-drill matrix) are closed on the same mutation evidence as the rows above, and T-48-82's Mitigation cell was corrected in place so it no longer reads as a generalisation the round-5 strip falsified; the earlier 34/34 chain:  the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill), the round-4/5 rows T-48-70..T-48-79 (48-20..48-22) are closed on their per-assertion tokens, parsed-document walks, declared install env and R1 annotation, and the round-6 rows T-48-80..T-48-82 (48-23/48-24, registered by 48-25 on 2026-10-21) are closed on the attributing fixture loop, the config-verify evidence binding and the comment-stripped trigger scan; T-48-78's Mitigation cell was corrected on 2026-10-21 (48-25) to the `P3-INSTENV-OK` pin that actually exists after round 5 falsified its enforcement clause
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
-**Approval:** APPROVED — 34/34 closed, 0 open (2026-10-21, plan 48-25 round-6 reconciliation: T-48-78's cell corrected to the pin that actually exists and rows T-48-80..T-48-82 registered on 48-23/48-24's landed evidence; earlier approvals: 31/31 at the 48-22 round-5 reconciliation, 21/21 at the 48-19 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14. On plan 48-15 the runner executed ci.yml on the public default branch; on plan 48-19 the derived total is six runs (`gh run list`), and **run 6 of 6 — run id 39380373930 on head `630f875` — is four-green: `go=fe=docker=verify=success`** (canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`; run evidence in `48-15-SUMMARY.md`, `48-19-SUMMARY.md` and `48-VALIDATION.md`). WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). The three classified persistent real reds from the earlier runs (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) were cleared by 48-16's source fixes, and the run-5 reader-block ratio flake was cleared by 48-19; they are recorded in the same "What this audit does NOT establish" section above and in the Manual-Only rows. Round-6 addendum (2026-10-21, plan 48-26): run 7 of 7 (id `39525757252`, head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, fast-forward push `630f875..c060c84`) is four-green — the first public run of the round-6 gate, so the T-48-80..T-48-82 mitigations and the corrected T-48-78 pin are now runner-executed; canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)`.
+**Approval:** APPROVED — 37/37 closed, 0 open (2026-10-21, plan 48-27 round-7 reconciliation: rows T-48-83..T-48-85 registered on their landed fixes and drills, T-48-82's over-generalised clause corrected in place, `register_authored_at_plan_time: true` declared; earlier: 34/34 closed, 0 open (2026-10-21, plan 48-25 round-6 reconciliation: T-48-78's cell corrected to the pin that actually exists and rows T-48-80..T-48-82 registered on 48-23/48-24's landed evidence; earlier approvals: 31/31 at the 48-22 round-5 reconciliation, 21/21 at the 48-19 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14. On plan 48-15 the runner executed ci.yml on the public default branch; on plan 48-19 the derived total is six runs (`gh run list`), and **run 6 of 6 — run id 39380373930 on head `630f875` — is four-green: `go=fe=docker=verify=success`** (canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`; run evidence in `48-15-SUMMARY.md`, `48-19-SUMMARY.md` and `48-VALIDATION.md`). WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). The three classified persistent real reds from the earlier runs (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) were cleared by 48-16's source fixes, and the run-5 reader-block ratio flake was cleared by 48-19; they are recorded in the same "What this audit does NOT establish" section above and in the Manual-Only rows. Round-6 addendum (2026-10-21, plan 48-26): run 7 of 7 (id `39525757252`, head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, fast-forward push `630f875..c060c84`) is four-green — the first public run of the round-6 gate, so the T-48-80..T-48-82 mitigations and the corrected T-48-78 pin are now runner-executed; canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)`.
 
 ## Security Audit 2026-10-19
 
@@ -336,4 +374,12 @@ that the `-test.shuffle` seed prints only under `-v`.
 |---|---|
 | Threats found | 34 |
 | Closed | 34 |
+| Open | 0 |
+
+## Security Audit 2026-10-21
+
+| Metric | Count |
+|---|---|
+| Threats found | 37 |
+| Closed | 37 |
 | Open | 0 |
