@@ -175,6 +175,10 @@ Plans:
 - [x] 48-25-PLAN.md — 记录半场：ci.yml push 触发注释更正为 run-3 实证（IN-R5-04，comment-only、job spans 不变）；48-SECURITY.md T-48-78 失实条款更正为 P3-INSTENV-OK pin + T-48-80..T-48-82 注册（34 行 0 open）；48-REVIEW-DISPOSITION.md 对账（15 条 round-4 rows 终态 + 7 条 round-5 rows）；COVERAGE.md round 标注
 - [x] 48-26-PLAN.md — Class-A：快进推送 main 重立 round-6 verify job 公共绿灯（闭合 round-5 的 local-green-only 记录边界），go/fe/docker job spans 断言不变、CICD 状态不重翻；VALIDATION/SECURITY/ROADMAP/STATE 四处 run 记录对账（total 由 gh run list 现读，first all-green 保持 39380373930）——已完成 2026-10-21：快进推送 `630f875..c060c84`，run 7/7（id `39525757252`）四绿，四处记录对账至 total 7
 
+**Round 7 — gap closure**（`48-ANALYSIS.md` + `48-VERIFICATION.md` 复核后的 CR-01/WR-01/WR-02）
+
+- [ ] 48-27-PLAN.md — CR-01：`on:` 触发判定改解析优先（quoted key / flow 形态）+ 两处注释剥离共用一个 quote-aware helper（`:281` 与 `:1207`）+ 新 token `P1-NO-PRT-PARSED` + flow-style 引号内 `#` 正向 canary；WR-01：三条权限规则各配隔离 fixture 与专属 class token（14→17 fixtures、5→8 token，`yaml-ext` 改缴 `P11-YAMLEXT-OK`）；WR-02：P4 config-verify 证据行改为 append 前实测字节数；演练扩到 R15-R21（含 R19b）
+
 ### Phase 49: Hermetic Demo
 
 **Goal**: 外部用户 clone 后不接内网 Milvus/BGE、不配任何 API key，即可把 SkillForge 完整跑起来并完成一轮带引用的问答——"clone→跑通"从碰运气变成保证。本里程碑工作量最大的真实代码改动（检索链现状：Milvus 必须 + BGE-M3 必须 + GLM API key）。
