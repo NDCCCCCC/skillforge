@@ -105,6 +105,22 @@ all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id
 event push) is the first public run of the round-6 gate (four-green: go=success fe=success
 docker=success verify=success)`. See M6 below.
 
+### Round-7 strengthening (2026-10-21, plan 48-27)
+
+No predicate row was added and none was retired. Round 7 did not change what CI must
+satisfy — it changed how the local gate PROVES three of the rows above, so those rows get
+stronger evidence instead of new rows:
+
+| Row | What round 7 added | Mutation evidence |
+|-----|--------------------|-------------------|
+| P1 (workflow parse / D-11 trigger) | trigger judgment moved to the PARSED `on:` document (mapping key, sequence element, bare scalar — read as `doc.get("on", doc.get(True))`, because PyYAML 1.1 loads a bare `on:` as the boolean `True`), and both comment strips now share one quote-aware helper, so a `#` inside a quoted scalar can no longer hide a real `pull_request_target`; four canaries + `P1-NO-PRT-PARSED` | R15 / R15b / R16 / R17 / D1-new / D2 — each red names its canary or its missing token; D1-old shows the pre-round-7 script green on the same file |
+| P11 / P16 (permission rules, D-29 ceiling) | one isolating fixture and one class token per rule (`perm-write-line` / `perm-job-write` / `perm-job-readall` / `yaml-ext`), fixtures 14→17, class tokens 5→8 | R18 reds naming `perm-write-line`, R19 naming `perm-job-write`, R19b naming `perm-job-readall`, EXT naming `yaml-ext` |
+| P19 (`golangci-lint config verify` exit 0) | the config-verify evidence line reports the tool's measured output size, sampled before any append, instead of describing itself | R20 keeps the gate green while reporting `tool output: 0 byte(s)`; R20b shows the pre-round-7 wording reporting `present` for that same 0-byte run |
+
+The 37-drill matrix in `48-27-SUMMARY.md` is the adversarial evidence that these assertions
+bite. It exercises the gate script rather than a new test target, so the quick-run command
+for every row above remains `bash verify-phase-48.sh`.
+
 ---
 
 ## Wave 0 Requirements
@@ -133,6 +149,7 @@ docker=success verify=success)`. See M6 below.
 | M4 | `only-new-issues` actually filters (lint output is scoped to changed lines, not the whole repo) | closed-by-evidence on plan 48-15 run-3: lint step reported zero findings on the fast-forward push (head `a2a4c86`); the diff between `62b6663..a2a4c86` is `.github/workflows/ci.yml` revert + `.planning/phases/48-ci/48-15-SUMMARY.md` line additions — no Go content — confirming the action's `only-new-issues: true` alone is sufficient |
 | M5 | Docker cache hit on the second run for **both** images | still open: compare `scope=backend` / `scope=frontend` cache entries across two consecutive green `docker` runs; the first green docker job is run 39380373930, so the comparison needs the next green run |
 | M6 | the round-6 gate script (P11 fixture-loop attribution + `P3-INSTENV-OK` install-env pin from 48-23, `P4-CONFIG-OK` evidence binding + comment-stripped trigger scan from 48-24, 48-25's record corrections) and the `verify` job that runs it have executed on a public runner | **closed** (2026-10-21, plan 48-26) — run 7 of 7: id `39525757252`, head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, event `push`, fast-forward push `630f875..c060c84` (no force), 2026-10-21T01:10:28Z→01:13:50Z: `verify=success` alongside `go=success`, `fe=success`, `docker=success`; derived total 7 read live from `gh run list`; canonical fragment `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)` — this closes the round-5 local-green-only record boundary |
+| M7 | the **round-7** gate script (parsed `on:` judge + shared quote-aware stripper from 48-27 Task 1, the three per-rule permission fixtures from Task 2, the measured config-verify evidence line from Task 3) has executed on a public runner | **open** — round 7 changed only `verify-phase-48.sh`; `git diff --stat fd6f082..HEAD` touches no `.github/**`, no `.golangci.yml` and no Dockerfile, so CICD-01/02/03 stay Complete against run 7 and no requirement flips. What is still unproven is that the round-7 assertions pass on a Linux runner: locally they are green plus a 37-drill matrix, but the parsed judge depends on the runner's PyYAML and `strip_yaml_comments` on its quoting, so the first green `verify` job on a pushed round-7 head closes this. `grep -cF 'P1-NO-PRT-PARSED' .github/workflows/ci.yml` is irrelevant here — the token lives in the script, not the workflow; read it from the `verify` job's log |
 
 ---
 
@@ -183,3 +200,11 @@ docker=success verify=success)`. See M6 below.
 | Gaps found | 0 |
 | Resolved | 0 |
 | Escalated | 3 |
+
+## Validation Audit 2026-10-21
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 1 |
