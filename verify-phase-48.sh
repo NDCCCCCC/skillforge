@@ -262,19 +262,72 @@ print("P1-COMPOSITE-OK")
 # D-11: pull_request_target executes fork-controlled workflow code against the
 # base repository's secrets and a mutating token. Report file:line, never just
 # the file name.
-grep -rn 'pull_request_target' "$WF_DIR" > "$WORK/p1-prt.txt" 2>/dev/null
-p1_prt_rc=$?
-if [ "$p1_prt_rc" -eq 0 ]; then
+#
+# IN-R5-03: the scan judges COMMENT-STRIPPED text, one probe per enumerated
+# file — a comment naming the event is prose about the rule, not the rule
+# itself. The strip is the same multiline pattern scan_trust_surface applies
+# before judging publication tokens, path filters and secrets: it blanks the
+# comment part of each line WITHOUT removing lines, so line numbers are
+# unchanged and file:line reporting stays exact. The false-negative direction
+# stays closed: a real trigger mapping is executable YAML, which the strip
+# never touches, so it still reds with file:line below. P1's enumeration guard
+# above refuses a zero-file list before this loop runs, so the scan cannot
+# pass vacuously.
+p1_prt_probe() {
+  python -c '
+import re, sys
+path, trigger = sys.argv[1], sys.argv[2]
+src = open(path, encoding="utf-8").read()
+stripped = re.sub(r"(?m)#.*$", "", src)
+hit = False
+for lineno, line in enumerate(stripped.splitlines(), 1):
+    if trigger in line:
+        print("%s:%d: %s" % (path, lineno, line))
+        hit = True
+if hit:
+    raise SystemExit(1)
+' "$(native "$1")" 'pull_request_target'
+}
+# A probe hard-wired to success could not produce a decisive result, so the
+# probe is proven LIVE before it is trusted: the same probe code runs once
+# against a one-line synthetic file whose EXECUTABLE text carries the trigger.
+# A live probe reds that canary (rc 1); a neutered one cannot. The canary file
+# lives under $WORK, never in the repository.
+printf 'on:\n  pull_request_target:\n    branches: [main]\n' > "$WORK/p1-prt-canary.yml"
+p1_prt_probe "$WORK/p1-prt-canary.yml" > /dev/null 2>&1
+p1_prt_canary_rc=$?
+if [ "$p1_prt_canary_rc" -ne 1 ]; then
+  fail "P1 the comment-stripped pull_request_target scan returned rc=${p1_prt_canary_rc} on the positive canary, want 1 (hit) — a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
+fi
+p1_hits=0
+p1_scanned=0
+: > "$WORK/p1-prt.txt"
+while IFS= read -r f; do
+  [ -f "$f" ] || fail "P1 expected workflow file is missing: $f"
+  p1_prt_probe "$f" >> "$WORK/p1-prt.txt" 2>&1
+  p1_prt_rc=$?
+  case "$p1_prt_rc" in
+    0) p1_scanned=$((p1_scanned + 1)) ;;
+    1) p1_hits=1; p1_scanned=$((p1_scanned + 1)) ;;
+    *)
+      tail -5 "$WORK/p1-prt.txt"
+      fail "P1 the comment-stripped pull_request_target scan returned rc=${p1_prt_rc} for $f, want 0 (no match) or 1 (hit) — a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)"
+      ;;
+  esac
+done < "$WORK/p1-list.txt"
+if [ "$p1_hits" -ne 0 ]; then
   sed 's/^/    /' "$WORK/p1-prt.txt"
-  fail "P1 pull_request_target found (D-11) — listed above with file:line"
+  fail "P1 pull_request_target found (D-11) — the match is in comment-stripped text; listed above with file:line"
 fi
-# grep's no-match status is 1. Requiring it explicitly means a `:` substitution
-# (status 0) fails: the scan must have produced the decisive exit code, not
-# merely not-have-failed (R2-WR-03).
-if [ "$p1_prt_rc" -ne 1 ]; then
-  fail "P1 the pull_request_target scan returned rc=${p1_prt_rc}, want 1 (no match) — a neutralised or deleted probe cannot deposit PASS (R2-WR-03)"
-fi
-# The scan's decisive exit-code assertion ran to success, so its group emits
+# The scan's decisive success is asserted, not assumed: every enumerated file's
+# probe must have produced a decisive result (rc 0 or 1 — anything else is
+# refused in the loop) and the hits flag must be exactly 0. The live canary
+# above closes the remaining direction: a probe deleted or neutered into
+# always-succeeding fails there, and even a scan removed from this file
+# entirely leaves no P1-NO-PRT token for the deposit below to find (R2-WR-03).
+[ "$p1_scanned" -eq "$WF_COUNT" ] || fail "P1 the comment-stripped pull_request_target scan produced a decisive result for ${p1_scanned} of ${WF_COUNT} enumerated file(s) — a neutralised or deleted probe cannot deposit PASS (R2-WR-03)"
+[ "$p1_hits" -eq 0 ] || fail "P1 the comment-stripped pull_request_target scan ended with unreported hits — a non-decisive scan cannot deposit PASS (R2-WR-03)"
+# The scan's decisive success assertions ran to success, so its group emits
 # its own token (WR-03: one token per assertion group, not one per probe).
 printf 'P1-NO-PRT\n' >> "$WORK/p1.log"
 
