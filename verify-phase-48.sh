@@ -2110,7 +2110,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    "permissions": write-all
+    "permissions": read-all
     steps:
       - run: "true"
 YEOF
@@ -2333,15 +2333,32 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
   #                         `[A-Za-z0-9_-]+` cannot match a quoted key, so the
   #                         text rule cannot see it at any indentation; only the
   #                         parsed job-level mapping walk can reject it.
-  #       perm-job-readall  job-level `"permissions": write-all`
+  #       perm-job-readall  job-level `"permissions": read-all`
   #                         -> P11-JOBPERMS-STR-OK — a SCALAR job permission, so
   #                         the mapping walk cannot claim it either; only
-  #                         judge_permissions_string can.
+  #                         judge_permissions_string can. The value is the
+  #                         plan's `read-all`, not `write-all`: `read-all` is the
+  #                         scope the D-29 enumeration deliberately refuses, and
+  #                         it is the branch the R19b drill deletes, so the
+  #                         fixture must carry THAT value for the drill to
+  #                         discriminate.
   #     yaml-ext must NOT carry a write-scope payload. It sits EARLIER in the
   #     loop than perm-write-line, so a write-scope payload there would let it
   #     be rejected for a sibling rule's reason first and the R18 drill would
   #     name yaml-ext instead of perm-write-line — the drill would still red,
   #     but it would no longer name the rule it is supposed to isolate.
+  #     The two drills' expected reds, recorded here so the matrix greps a
+  #     string this script really emits:
+  #       R18 (WRITE_VALUE line scan deleted) — perm-write-line is then
+  #         rejected by the workflow-level mapping walk instead, so the run
+  #         reds with `rejected for the wrong reason`.
+  #       R19 (job-level permissions walk deleted) — nothing rejects
+  #         perm-job-write any more, so the run reds with
+  #         `returned success on the 'perm-job-write' fixture`.
+  #       R19b (the `read-all` branch of judge_permissions_string deleted) —
+  #         the fixture is still rejected, but by the unknown-string arm
+  #         instead of the D-29 ceiling arm; the reason changes, the verdict
+  #         does not.
   case "$fixture" in
     empty-jobs)                      want='empty or absent jobs';             class_token='P11-VACUITY-OK' ;;
     empty-perms)                     want='empty permissions';                class_token='P11-VACUITY-OK' ;;
@@ -2357,7 +2374,7 @@ for fixture in empty-jobs empty-perms no-perms empty-dir \
     dyn-secrets)                     want='dynamic secrets[';                 class_token='P11-SECRET-OK' ;;
     perm-write-line)                 want='contains a write scope';           class_token='P11-PERMSWRITE-OK' ;;
     perm-job-write)                  want="in job 'build' grants 'contents'='write'"; class_token='P11-JOBPERMS-OK' ;;
-    perm-job-readall)                want="job 'build' permissions grants 'write-all'"; class_token='P11-JOBPERMS-STR-OK' ;;
+    perm-job-readall)                want="job 'build' permissions grants 'read-all'"; class_token='P11-JOBPERMS-STR-OK' ;;
     *) fail "P11 fixture '${fixture}' has no registered rejection reason — every fixture must declare the rule that rejects it (WR-R5-01)" ;;
   esac
   scan_trust_surface "$P11_FIX/$fixture"
