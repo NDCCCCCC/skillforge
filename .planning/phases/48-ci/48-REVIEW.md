@@ -1,27 +1,299 @@
 ---
 phase: 48-ci
-reviewed: 2026-10-20T15:34:24Z
+reviewed: 2026-10-21T02:15:44Z
 depth: standard
 files_reviewed: 2
 files_reviewed_list:
   - verify-phase-48.sh
   - .github/workflows/ci.yml
 findings:
-  critical: 0
+  critical: 1
   warning: 2
-  info: 5
+  info: 4
   total: 7
 status: issues_found
 ---
 
-# Phase 48: Code Review Report (gap-closure round 5)
+# Phase 48: Code Review Report
 
-**Reviewed:** 2026-10-20T15:34:24Z
+> **Round 6 is the current review.** The frontmatter counts above describe the round-6 incremental
+> review (delta `838766f..14eb461`). The round-5 section further down is retained for provenance only:
+> its findings are dispositioned in `48-REVIEW-DISPOSITION-R1.md` and are **not** re-opened here.
+
+## Round 6 — Incremental Review (gap-closure)
+
+**Reviewed:** 2026-10-21T02:15:44Z
 **Depth:** standard
 **Files Reviewed:** 2
+**Scope:** `git diff 838766fd..HEAD -- verify-phase-48.sh .github/workflows/ci.yml`
 **Status:** issues_found
 
-## Summary
+### Summary
+
+Round 6 changed two files. `verify-phase-48.sh` rebuilt the P1 trigger scan (comment-stripped,
+per-file, live canary, decisive-success assertions), pinned the verify job's install-step `env:` map
+by exact equality (`P3-INSTENV-OK`), bound the config-verify group to its own token
+(`P4-CONFIG-OK`), added the two quoted publication spellings, hoisted the single `basename` binding
+above the drill-deleted marker range, and rebuilt the P11 fixture loop (per-fixture reason map,
+file-presence guard, five per-class tokens, 12→14 fixtures). `ci.yml` changed one comment only; the
+job spans are byte-identical.
+
+**The gate is green on this host** (`bash verify-phase-48.sh`: exit 0, one `ALL PASSED`, 11/11
+registry/begin/token, 14/14 fixtures, ~34 s with golangci-lint 2.12.2 / PyYAML 6.0.3 / Python
+3.13.2). Most of the round-6 claims hold under mutation — the install-env pin, the `T-48-81` marker
+range, the fixture-presence guard, the reason map, the `secrets[` fixture and the quoted-push
+fixture all bite (see the drill table at the end). The `ci.yml` comment's factual claims are backed
+by the 48-15 run record (run 3 = 39353593172, fast-forward push, lint green).
+
+Three defects remain, one of them on the security-critical rule the delta rewrote:
+
+* **CR-01** — the new comment-stripped P1 scan can miss a **live** `pull_request_target` trigger.
+  Demonstrated end-to-end: a workflow whose trigger is a flow mapping with `#` inside a quoted
+  scalar earlier on the same line passes P1 and the whole gate.
+* **WR-01** — the new `P11-PERMSWRITE-OK` class token is deposited by a *publication-rule*
+  rejection (`yaml-ext` → `packages: write`). Both permission assertions it appears to cover can be
+  deleted while the gate stays green (two mutation runs).
+* **WR-02** — the P4 config-verify evidence line re-stats the log **after** appending to it, so it
+  always prints `tool output: present`; the `none (success is silent)` branch is unreachable.
+
+The four Info items are one un-pinned sibling spelling, one diagnostic mislabel, one pre-existing
+matcher-breadth residual the new fixture now certifies, and one over-generalized sentence in the new
+ci.yml comment.
+
+### Critical Issues
+
+#### CR-01: The comment-stripped P1 scan misses a live `pull_request_target` when a `#` appears in a quoted scalar earlier on the same line — the whole gate reports green with the banned trigger present
+
+**File:** `verify-phase-48.sh:276-290` (probe), `:281` (the strip), `:269-272` (the false
+invariant), `:296-301` (canary), `:305-317` (per-file loop)
+
+**Issue:** The new probe judges `re.sub(r"(?m)#.*$", "", src)`. That pattern is not quote-aware, so a
+`#` inside a quoted YAML scalar truncates the rest of the physical line — including a real trigger
+key on that line. The comment at `:269-272` asserts the opposite as an invariant: “The false-negative
+direction stays closed: a real trigger mapping is executable YAML, which the strip never touches.”
+That sentence is false.
+
+Verified end-to-end (not just in isolation). With this file present in
+`.github/workflows/`:
+
+```yaml
+name: zz-review-probe
+on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}
+permissions:
+  contents: read
+jobs:
+  b:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "true"
+```
+
+the gate prints
+
+```
+PASS P1 workflow-parse (3 workflow(s) *.yml / *.yaml + composite parse, zero pull_request_target; ...)
+=== Phase 48 Gate: ALL PASSED ===
+```
+
+The document parses (`yaml.safe_load` sees `on = {'push': {...}, 'pull_request_target': {}}`, so the
+trigger block check passes), the strip deletes `pull_request_target: {}` from the judged text, and
+no other partition inspects triggers (P8 only judges permissions / publication / paths / secrets).
+The canary at `:296` only covers the ordinary block-style/hit direction, so it cannot detect this.
+The shape is unusual, but it is legal YAML and a legal GitHub trigger mapping, and D-11 is the one
+security rule this partition exists for. A gate that prints “zero pull_request_target” for a tree
+that contains one is the “found nothing, reported green” class the file header says the phase closes.
+
+**Fix:** judge the parsed document, which P1 already loads. In the per-file loop, after
+`yaml.safe_load`, reject `pull_request_target` as a key of the parsed `on:` mapping (and as an
+element of a list-valued `on:`), and keep the textual scan only for file:line evidence:
+
+```python
+trigger = d.get("on", d.get(True))
+if isinstance(trigger, dict) and "pull_request_target" in trigger:
+    raise SystemExit("%s: `on:` mapping declares pull_request_target (D-11)" % path)
+if isinstance(trigger, list) and "pull_request_target" in [str(x) for x in trigger]:
+    raise SystemExit("%s: `on:` list declares pull_request_target (D-11)" % path)
+```
+
+Also extend the canary set with a flow-style positive (`on: {push: {branches: ['x#y']},
+pull_request_target: {}}`) so the quote-aware behaviour is itself proven live. If the textual scan
+is kept, make the strip quote-aware (track `'`/`"` state) rather than a bare `#.*$` regex — and
+preferably share one helper with `scan_trust_surface`, which carries a third copy of the same
+idiom (`:1207`).
+
+### Warnings
+
+#### WR-01: `P11-PERMSWRITE-OK` is deposited by the publication rule, so neither permission assertion has a fixture — deleting either keeps the gate green
+
+**File:** `verify-phase-48.sh:2000` (`yaml-ext` arm), `:1993-2007` (reason map), `:2052` (deposit),
+`:1229-1234` (write-scope line scan), `:1265-1284` (job-level permissions walk)
+
+**Issue:** The round-6 class-token scheme requires
+`P11-VACUITY-OK / P11-PATHFILTER-OK / P11-PERMSWRITE-OK / P11-PUBLICATION-OK / P11-SECRET-OK`, and
+the name `PERMSWRITE` reads as the permission-write rule. It is not. The only fixture carrying that
+token is `yaml-ext`, whose live first line is:
+
+```
+contains forbidden registry/publication token 'packages: write' (case-insensitive match, T-48-10)
+```
+
+because `packages: write` is itself in `PUBLICATION_TOKENS` and that check runs first. So the token
+certifies the publication rule a second time (`P11-PUBLICATION-OK` already exists). Meanwhile the two
+permission assertions are exercised by **no** fixture. Two mutation runs prove it, each ending in
+`=== Phase 48 Gate: ALL PASSED ===`:
+
+1. delete the `WRITE_VALUE` loop at `:1229-1234` (the D-26/D-29 “value-shaped write” scan);
+2. delete the job-level permissions walk at `:1265-1284` (including the string-shorthand and
+   unknown-shape branches added for IN-03 in round 5).
+
+Deleting the publication `packages: write` token *does* red the gate, but only because `yaml-ext`
+falls through to `WRITE_VALUE` and then fails its registered reason — i.e. the coverage is a side
+effect, not a pin. This is the same evidence-vs-attribution hole WR-R5-01 was raised for, moved one
+level up into the class tokens.
+
+**Fix:** add fixtures that isolate each assertion, appended at the end of the loop list with their
+own reason and token:
+
+* write-scope scan — a fixture with a job-level `permissions: {id-token: write}` (not in
+  `PUBLICATION_TOKENS`), registered `want='contains a write scope'`;
+* job-level permission walk — a fixture with the **string shorthand** `permissions: read-all` on a
+  job (not matched by `WRITE_VALUE`, which needs `key: write`, and not a publication token),
+  registered `want="grants 'read-all'"`;
+* then rename or re-scope `P11-PERMSWRITE-OK` so it is deposited by those fixtures, not by
+  `yaml-ext` (give `yaml-ext` its own `.yaml`-enumeration token if that is what it is for).
+
+#### WR-02: The P4 config-verify evidence line re-stats a log the same block is appending to, so it always claims `tool output: present`
+
+**File:** `verify-phase-48.sh:681-684` (the reporting block), `:679-687` (the marker range)
+
+**Issue:** The block is:
+
+```bash
+{
+  echo "exit code: ${p4_cfg_rc}"
+  echo "tool output: $( [ -s "$WORK/p4-config.log" ] && echo present || echo 'none (success is silent)' )"
+} >> "$WORK/p4-config.log"
+```
+
+The group's append redirection is set up before the first command, and the first `echo` writes
+`exit code: 0` into the same file. The command substitution in the second `echo` then tests
+`[ -s "$WORK/p4-config.log" ]`, which is already true. On a successful `golangci-lint config verify`
+the tool itself prints nothing (log size 0 bytes — confirmed), yet the evidence line says `present`.
+The `none (success is silent)` branch is unreachable, so the one line added specifically so “an
+auditor can still see what was judged” (`:666-668`) records a false fact. The exit code and the
+`P4-CONFIG-OK` token are unaffected; this is an evidence-integrity defect, not an exit-status one.
+
+**Fix:** capture the tool's output state *before* appending:
+
+```bash
+golangci-lint config verify ... > "$WORK/p4-config.log" 2>&1
+p4_cfg_rc=$?
+if [ -s "$WORK/p4-config.log" ]; then p4_cfg_out='present'; else p4_cfg_out='none (success is silent)'; fi
+{
+  echo "exit code: ${p4_cfg_rc}"
+  echo "tool output: ${p4_cfg_out}"
+} >> "$WORK/p4-config.log"
+```
+
+### Info
+
+#### IN-01: The double-quoted publication spelling `push: "true"` has no fixture — deleting that one token keeps the gate green
+
+**File:** `verify-phase-48.sh:1172` (token), `:1903-1922` (the only fixture, which uses the
+single-quoted spelling), `:2004` (its reason arm)
+
+**Issue:** Round 6 added two sibling spellings, but `quoted-push` exercises only `push: 'true'`. A
+mutation that deletes **only** line 1172 (`'push: "true"'`) runs to `ALL PASSED` — verified. The
+script's own WR-03/M13 standard (“one token per assertion group, not one per probe”) argues for
+either a second fixture or a fixture carrying both spellings and a per-spelling token.
+
+**Fix:** add a `double-quoted-push` fixture (or a second step in `quoted-push`) with
+`push: "true"`, registered against `registry/publication token`; if the tokens are considered one
+group, say so in the comment instead of leaving the appearance of per-spelling coverage.
+
+#### IN-02: P1 maps “probe crashed” onto “trigger found” — rc 1 is overloaded, so an undecodable workflow file is reported as a `pull_request_target` hit
+
+**File:** `verify-phase-48.sh:277-290` (`raise SystemExit(1)` at `:288`), `:309-316` (the `case`)
+
+**Issue:** The probe uses rc 1 for a hit (`SystemExit(1)`), but Python also exits 1 on an uncaught
+exception. A workflow file that is not valid UTF-8 raises `UnicodeDecodeError`, returns rc 1, and
+the loop takes the `1)` arm (`p1_hits=1`) — so the operator sees
+`P1 pull_request_target found (D-11)` with a traceback in the evidence instead of “the probe could
+not read this file”. Verified: a file with byte `0xff` returns rc 1. Fail-closed (the gate reds), so
+this is diagnostic only, but it contradicts the decisive-result discipline the surrounding comments
+describe.
+
+**Fix:** return distinct codes (0 clean / 1 hit / 2 internal error) and refuse anything but 0/1 in
+the `case`; or have the probe print `P1-PRT-HIT: path:line: text` and have the shell require that
+prefix for the hit branch, so an uncaught exception (no prefix) is refused as non-decisive.
+
+#### IN-03: The secret-expression matchers are literal-spelling; whitespace-separated spellings evade the whole trust surface (pre-existing rule, now certified by the new `dyn-secrets` fixture)
+
+**File:** `verify-phase-48.sh:1178` (`SECRET_REF`), `:1365` (`"secrets[" in s`), `:1371-1372`
+(`tojson(secrets`), `:1924-1939` (the `dyn-secrets` fixture)
+
+**Issue:** The `secrets[` branch added by round 5 (and pinned by round 6's `dyn-secrets` fixture) is a
+literal substring test, and the `SECRET_REF` regex requires `secrets\.` with no whitespace. GitHub
+expression whitespace is significant only inside string literals, so bracket/dot access with spaces
+is executable but unmatched. Verified against the full gate with a third workflow present:
+
+* `run: echo "${{ secrets [ 'DEPLOY_KEY' ] }}"` → `PASS P8 trust-surface` and `ALL PASSED`;
+* `run: echo "${{ secrets . DEPLOY_KEY }}"` → `PASS P8 trust-surface` and `ALL PASSED`.
+
+(The first form is the direct sibling of the fixture's `secrets['DEPLOY_KEY']`; the second is the
+dot form with spacing.) This predates the round-6 delta — it is the breadth of the matcher, not the
+new attribution loop — but round 6 is where `dyn-secrets` became the evidence for that branch, so it
+is recorded here rather than silently assumed covered. No other partition judges this shape.
+
+**Fix:** normalize whitespace out of each parsed string value before the three secret tests
+(`re.sub(r'\s+', '', s)`), or tokenize the `${{ }}` expression; then add one spaced-index fixture so
+the normalization itself is drilled. (If the project prefers to defer this as a separate threat row,
+record it explicitly — do not let the `P11-SECRET-OK` token imply it is covered.)
+
+#### IN-04: The new ci.yml push comment over-generalizes the force-push case (“has no common ancestor”)
+
+**File:** `.github/workflows/ci.yml:41-51` (claim at `:46-47`)
+
+**Issue:** The comment's operational conclusion is right and the round-5 finding is corrected
+explicitly at `:49-50` (“limiting the trigger to main does not by itself prevent that fallback; the
+force-push discipline does”), and the run-3 measurement it cites is real (`48-15-SUMMARY.md`: run
+39353593172, fast-forward push, lint green). One sentence is over-broad: “A FORCE push to main has no
+common ancestor”. That was true for the 48-15 history rewrite (run 1), but a rebase-style force push
+keeps the rebase base as a common ancestor; the Compare API then succeeds and the diff spans the
+whole rewritten range — still a whole-repo-scale lint surface, reached differently. An editor who
+trusts the absolute sentence could conclude that only no-common-ancestor force pushes are risky.
+
+**Fix:** “A history-rewriting force push (no common ancestor) fails the diff fetch; any other force
+push widens the diff to the rewritten range. Either way, main is never force-pushed.”
+
+### Round-6 verification evidence
+
+All drills were run on this host against the current tree; temporary mutants/workflow files were
+removed afterwards (`git status` clean for both scoped files).
+
+| Drill | Mutation | Observed result |
+|---|---|---|
+| D0 baseline | none | exit 0, one `ALL PASSED`, 11/11 registry/begin/token, 14/14 fixtures |
+| D1 | delete the `WRITE_VALUE` loop | **ALL PASSED** (WR-01) |
+| D2 | delete the job-level permissions walk | **ALL PASSED** (WR-01) |
+| D3 | delete the `# T-48-81` marker range | FAIL: P4 missing `P4-CONFIG-OK` (correct) |
+| D4 | remove ci.yml install-step `env:` block | FAIL: P2/P3 contract (correct) |
+| D5 | delete the `dyn-secrets` heredoc, keep its dir | FAIL: “fixture has no workflow file” (correct) |
+| D6 | delete only `'push: "true"'` | **ALL PASSED** (IN-01) |
+| D7 | temp workflow; comment mentions the event | PASS (IN-R5-03 false positive fixed) |
+| D8 | temp workflow; `on: [push, pull_request_target]` | FAIL: P1 file:line (correct) |
+| D9 | temp workflow; flow trigger, `#` earlier on the line | **ALL PASSED** (CR-01) |
+| D10 | temp workflow; `secrets [ 'DEPLOY_KEY' ]` | **ALL PASSED** (IN-03) |
+| D11 | temp workflow; `secrets . DEPLOY_KEY` | **ALL PASSED** (IN-03) |
+
+---
+
+## Round 5 — Historical Review (dispositioned; retained for provenance)
+
+> The findings below were dispositioned in `48-REVIEW-DISPOSITION-R1.md` / `48-REVIEW-DISPOSITION.md`.
+> They are kept verbatim for the audit trail and are not part of the round-6 counts.
+
+### Summary (round 5)
 
 Round-5 delta reviewed at standard depth: `verify-phase-48.sh` and `.github/workflows/ci.yml`
 (diff base `831d912`, plans 48-20/48-21/48-22).
@@ -61,9 +333,9 @@ Verification method: full-file reading of both files, cross-checks against `go.m
 round-4 ledger, and the plan summaries, plus execution of `bash verify-phase-48.sh` on this host
 and targeted greps (`import re` usage, `GOTOOLCHAIN`/`GOSUMDB`/`GOPROXY` occurrences in the gate).
 
-## Warnings
+### Warnings (round 5)
 
-### WR-R5-01: The P11 fixture loop cannot attribute rejections — a deleted or emptied fixture counts as a pin, so the 12 evasion fixtures can be silently removed while P11 stays green
+#### WR-R5-01: The P11 fixture loop cannot attribute rejections — a deleted or emptied fixture counts as a pin, so the 12 evasion fixtures can be silently removed while P11 stays green
 
 **File:** `verify-phase-48.sh:1786-1809` (loop), `:1814` (deposit), `:1011-1016` (the zero-files rejection branch the loop collides with)
 
@@ -111,7 +383,7 @@ head -1 "$WORK/trust-surface.log" | grep -qF "$want" \
 
 and emit one token per fixture class instead of the single all-matching `rejected`.
 
-### WR-R5-02: The 48-22 install-surface env declarations are pinned by nothing — removing `GOTOOLCHAIN: local` (or `GOSUMDB`/`GOPROXY`) keeps every partition green
+#### WR-R5-02: The 48-22 install-surface env declarations are pinned by nothing — removing `GOTOOLCHAIN: local` (or `GOSUMDB`/`GOPROXY`) keeps every partition green
 
 **File:** `.github/workflows/ci.yml:242-245` (the declarations), `verify-phase-48.sh:444-499` (the assertion group that should pin them)
 
@@ -147,9 +419,9 @@ if inst is None or (inst.get("env") or {}) != want_env:
     )
 ```
 
-## Info
+### Info (round 5)
 
-### IN-R5-01: `PUBLICATION_TOKENS` got no parsed layer in the 48-22 conversion — `push: 'true'` and a private-registry `tags:` value evade the publication rule everywhere outside P7's two judged steps
+#### IN-R5-01: `PUBLICATION_TOKENS` got no parsed layer in the 48-22 conversion — `push: 'true'` and a private-registry `tags:` value evade the publication rule everywhere outside P7's two judged steps
 
 **File:** `verify-phase-48.sh:1055-1065` (tokens), `:1112-1119` (textual check), `:936-953` (P7's narrow scope)
 
@@ -168,7 +440,7 @@ parsed (`push: 'true'` parses to the string `'true'`) and any `with.tags`/`with.
 registry literal, or at minimum extend the textual rule with quoted variants
 (`"push: 'true'"`, `"push: \"true\""`).
 
-### IN-R5-02: Two assertion groups in the reviewed delta have no evidence binding of their own
+#### IN-R5-02: Two assertion groups in the reviewed delta have no evidence binding of their own
 
 **File:** `verify-phase-48.sh:1251-1254` (`secrets[` check), `:586-593` (`config verify` group)
 
@@ -186,7 +458,7 @@ future sentinel change silently removes the coverage.
 reason assertion per WR-R5-01's fix. (b) append a `P4-CONFIG-OK` line to `$WORK/p4-config.log`
 after the rc check and require it in `ok_partition "P4"` alongside the four sentinel tokens.
 
-### IN-R5-03: P1's `pull_request_target` scan still judges raw source (carried from round 4 IN-03, still present)
+#### IN-R5-03: P1's `pull_request_target` scan still judges raw source (carried from round 4 IN-03, still present)
 
 **File:** `verify-phase-48.sh:265-279`
 
@@ -198,7 +470,7 @@ exit-code discipline added in round 4 is intact and correct; only the false-posi
 remains. **Fix:** scan `nocomment` text (or the parsed `on:` keys) for the event name, keeping the
 rc==1 requirement.
 
-### IN-R5-04: The push-to-main trigger comment still claims a mitigation it does not provide (carried from round 4 IN-07, still present)
+#### IN-R5-04: The push-to-main trigger comment still claims a mitigation it does not provide (carried from round 4 IN-07, still present)
 
 **File:** `.github/workflows/ci.yml:41-45`
 
@@ -212,7 +484,7 @@ and propagates the wrong model. **Fix:** verify one push-to-main run, then corre
 what the action actually does on push events (or add the explicit `--new-from-rev` base the
 comment implies).
 
-### IN-R5-05: Dead code left by the round-5 edits
+#### IN-R5-05: Dead code left by the round-5 edits
 
 **File:** `verify-phase-48.sh:296` (unused import), `:1225` and `:1267` (duplicate assignment)
 
@@ -225,6 +497,6 @@ make attributable. **Fix:** drop `re` from the import and the second `basename` 
 
 ---
 
-_Reviewed: 2026-10-20T15:34:24Z_
+_Reviewed: 2026-10-21T02:15:44Z (round 6) · 2026-10-20T15:34:24Z (round 5)_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
