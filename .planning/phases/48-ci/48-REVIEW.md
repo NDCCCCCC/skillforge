@@ -1,24 +1,295 @@
 ---
 phase: 48-ci
-reviewed: 2026-10-21T02:15:44Z
+reviewed: 2026-10-21T09:00:10Z
 depth: standard
-files_reviewed: 2
+files_reviewed: 1
 files_reviewed_list:
   - verify-phase-48.sh
-  - .github/workflows/ci.yml
 findings:
-  critical: 1
+  critical: 0
   warning: 2
   info: 4
-  total: 7
+  total: 6
 status: issues_found
 ---
 
 # Phase 48: Code Review Report
 
-> **Round 6 is the current review.** The frontmatter counts above describe the round-6 incremental
-> review (delta `838766f..14eb461`). The round-5 section further down is retained for provenance only:
-> its findings are dispositioned in `48-REVIEW-DISPOSITION-R1.md` and are **not** re-opened here.
+> **Round 7 is the current review.** The frontmatter counts above describe the round-7 incremental
+> review only (delta `80990b1..HEAD`, one source file: `verify-phase-48.sh`). The round-6 findings are
+> dispositioned in `48-REVIEW-DISPOSITION-R6.md` and are **not** re-opened here; the round-6 and
+> round-5 sections further down are retained verbatim for provenance only (round 5:
+> `48-REVIEW-DISPOSITION-R1.md`). `48-REVIEW-DISPOSITION.md` is the live round-7 ledger;
+> `48-REVIEW-DISPOSITION-R1.md` and `48-REVIEW-DISPOSITION-R2.md` are the older rounds' ledgers.
+
+## Round 7 — Incremental Review (gap-closure)
+
+**Reviewed:** 2026-10-21T09:00:10Z
+**Depth:** standard
+**Files Reviewed:** 1
+**Scope:** `git diff 80990b13499f862e8a633490e00d592867841f44..HEAD -- verify-phase-48.sh`
+**Status:** issues_found
+
+### Summary
+
+Round 7 changed one source file: `verify-phase-48.sh` (+419 / -47). No workflow file changed
+(`git diff 80990b1..HEAD -- .github/` is empty). All three round-6 findings are closed in the code,
+and two of the three new P11 fixtures are as isolating as their comments claim. What the delta did
+not finish is the job it announced: the comment at `verify-phase-48.sh:2320-2321` states "one
+fixture per RULE, each with its own class token, so deleting one rule cannot be masked by a sibling
+depositing PASS" — but the trust surface has FOUR write-permission rules, not three. The
+workflow-level `permissions:` mapping-value branch has no fixture, no class token and no drill, and
+deleting it leaves the gate green while a top-level write scope in a shape the text rule cannot see
+is accepted (WR-01).
+
+The second defect is a side effect of the new shared stripper. The stripper itself is **correct**:
+the NORMAL/SINGLE/DOUBLE state machine, the `''` escape, the backslash escape and the
+unterminated-quote fallback all behave exactly as documented — no correctness bug was found in it.
+But it changes what the retained TEXTUAL secret scan can see, which falsifies two of the file's own
+fixture-isolation comments and silently moves the R10 drill's red point (WR-02).
+
+Round-6 status:
+
+* **CR-01 — closed.** The trigger judgment now runs on the PARSED `on:` document
+  (`doc.get("on", doc.get(True))`, covering mapping key / sequence element / bare scalar) and the
+  textual layer only supplies file:line evidence. The flow-style positive canary
+  (`verify-phase-48.sh:481`) reproduces the CR-01 shape and now reds in both layers, where the
+  quote-blind regex left the text layer at rc 0.
+* **WR-01 — closed for three of the four write-permission rules**: the `WRITE_VALUE` line scan →
+  `perm-write-line` / `P11-PERMSWRITE-OK`; the job-level mapping walk → `perm-job-write` /
+  `P11-JOBPERMS-OK`; the job-level string branch → `perm-job-readall` / `P11-JOBPERMS-STR-OK`; and
+  `yaml-ext` now pays its own `P11-YAMLEXT-OK`. The fourth rule is not closed (WR-01 below).
+* **WR-02 — closed.** `p4_cfg_bytes=$(wc -c < "$WORK/p4-config.log" | tr -d ' \r\n')`
+  (`verify-phase-48.sh:914`) is sampled BEFORE the two appends, so the evidence line reports the
+  tool's own output size instead of a self-fulfilling word. A healthy run legitimately reads
+  `tool output: 0 byte(s)` — `golangci-lint config verify` prints nothing on success.
+
+The count and class-token bookkeeping is internally consistent: the authoritative count sites agree
+(17 fixtures, "4 vacuity + 13 per-file" at `:2413`, `:2443`, `:2476`) and the 8 class tokens in the
+reason map (`:2363-2377`) are exactly the 8 `ok_partition` requires (`:2424`). One stale comment
+survives (IN-01).
+
+**Findings in this round: 0 critical, 2 warnings, 4 info (6 total).**
+
+## Critical Issues
+
+None. The round-6 critical finding (CR-01) is closed in the code, and no new critical defect was
+found: the parsed `on:` judge cannot be defeated by quoting style, and the shared stripper's state
+machine is correct on every branch it implements.
+
+## Warnings
+
+### WR-01: The workflow-level `permissions:` mapping-value branch has no fixture and no class token — deleting it keeps the gate green while a top-level write scope is accepted
+
+**File:** `verify-phase-48.sh:1501-1506` (the unpinned branch), `:1420` (`WRITE_VALUE`), `:1474-1485`
+(the `WRITE_VALUE` line scan that claims the only candidate fixture first), `:2052-2063`
+(`perm-write-line`), `:1524-1530` (the pinned job-level twin), `:2320-2321` (the invariant the delta
+asserts)
+
+**Issue:** The trust surface carries four write-permission rules. Round 7 gave three of them an
+isolating fixture and a class token of their own. The fourth — the workflow-level mapping VALUE
+check — got neither:
+
+```python
+        for scope, value in perms.items():
+            if value not in ("read", "none"):
+                raise SystemExit(
+                    "trust-surface: %s in workflow-level grants %r=%r; only read/none are allowed (D-26/D-29)"
+                    % (p, scope, value)
+                )
+```
+
+`perm-write-line` is the only fixture whose top-level `permissions:` mapping carries a write value,
+and it never reaches this branch: the `WRITE_VALUE` line scan runs earlier in the same
+`for p in paths:` walk and claims the line `  contents: write` — `WRITE_VALUE =
+re.compile(r"^\s*[A-Za-z0-9_-]+:\s*write(-all)?\s*$")` (`:1420`) matches it. `empty-perms` covers
+only the `not perms` branch, `no-perms` only the `perms is None` branch. The job-level twin of the
+same rule IS pinned: `perm-job-write` carries a QUOTED key (`"contents": write`), which
+`WRITE_VALUE`'s key pattern `[A-Za-z0-9_-]+` cannot match at any indentation, so only the parsed
+job walk can reject it.
+
+**Failure mode:** delete `:1501-1506` and every one of the 17 fixture verdicts is unchanged —
+`perm-write-line` is still rejected by `WRITE_VALUE` with its registered reason `contains a write
+scope`, `perm-job-write` and `perm-job-readall` are still rejected by the job-level walk, the
+fixture count stays 17, and all 8 class tokens still deposit → the gate still prints
+`=== Phase 48 Gate: ALL PASSED ===`. The rule that was deleted is the ONLY thing that rejects a
+workflow-level write scope written in a shape `WRITE_VALUE` cannot see. Verified by simulating the
+scan ordering read-only (no gate run, no file written): with the branch present,
+`permissions: {contents: write}` and `permissions:\n  "contents": write` are rejected with
+`in workflow-level grants 'contents'='write'`; with the branch deleted, neither line matches
+`WRITE_VALUE` (its pattern requires the WHOLE line to be `key: write` with an unquoted key — the
+flow form starts `{`, the quoted-key form starts `"`) and the workflow is accepted. That is a
+D-26/D-29 ceiling violation the gate would report as clean.
+
+**Fix:** add an 18th fixture whose top-level `permissions:` mapping carries a write value the text
+rule cannot see — e.g.
+
+```yaml
+permissions:
+  "contents": write
+```
+
+registered `want="in workflow-level grants 'contents'='write'"` with its own class token (e.g.
+`P11-WF-PERMS-OK`), and raise the count assertions to 18. `packages: write` must NOT be used — it is
+a `PUBLICATION_TOKEN` and would be claimed by the publication rule first. Alternatively, extend the
+`T-48-84` marker range so the branch is provably live.
+
+### WR-02: The new quote-aware stripper falsifies the two `quoted-hash-secret` isolation comments — the fixture no longer isolates the parsed secret walk
+
+**File:** `verify-phase-48.sh:2152-2157` (the group comment), `:2208-2210` (the fixture comment),
+`:2206-2219` (the fixture), `:1605-1620` (the parsed secret walk), `:1638-1645` (the retained
+textual secret scan), `:2371` (the registered reason)
+
+**Issue:** Two comments still assert that the textual comment strip HIDES the `secrets.DEPLOY_KEY`
+reference in the `quoted-hash-secret` fixture:
+
+* `:2155-2157` — "the two secret fixtures carry no `secrets.NAME` reference the retained textual
+  SECRET_REF scan can see — `toJSON(secrets)` has no name after the dot, and in quoted-hash-secret
+  the `#` starts a comment for the comment-stripping while the parsed document still holds the whole
+  value."
+* `:2208-2210` — "quoted-hash-secret/ — `#` inside a quoted scalar is data, so the textual comment
+  strip hides the reference while GitHub still executes it (T-48-04, parsed walk)."
+
+Both were true of the quote-blind `re.sub(r"(?m)#.*$", "", src)` and are false of the new shared
+stripper. The stripper is quote-aware: the `#` in `run: "echo x# ${{ secrets.DEPLOY_KEY }}"` sits
+inside a double-quoted scalar, so the line is emitted INTACT and the retained textual `SECRET_REF`
+scan (`:1638`) now sees `secrets.DEPLOY_KEY` itself. The round-7 matrix already records this — R21's
+red is the TEXT-layer wording `references secrets.DEPLOY_KEY` (no `parsed value`), and R21-counter
+proves the layer switch by reverting the second call site to quote-blind
+(`.planning/phases/48-ci/48-27-SUMMARY.md:97-99`). The source comments and the recorded evidence
+now disagree.
+
+**Failure mode:** the fixture no longer isolates the parsed secret walk, although the file says it
+does. With the parsed walk deleted, `quoted-hash-secret` is still rejected — by the TEXT layer — and
+still matches its registered reason `references secrets.` (`:2371`), so the P11 reason map can no
+longer distinguish a parsed rejection from a textual one for this fixture. In audit terms the file's
+own coverage argument ("so the only reason it can be rejected is the rule under test", `:2152-2153`)
+is false for this fixture, and a reader who trusts it would conclude that the textual layer cannot
+see a quoted `#` — the exact belief CR-01 was filed against, written back into the file. The parsed
+walk itself is still pinned (`tojson-secrets` and `dyn-secrets` are invisible to the textual layer,
+so deleting it still reds the gate); what is broken is the isolation argument and the two comments
+that carry it.
+
+**Fix:** correct both comments to the new reality — the `#` is data, the textual layer sees the
+whole scalar, and the fixture pins the secret RULE rather than the parsed walk — and move the "the
+textual scan cannot see this" claim onto `tojson-secrets` / `dyn-secrets`, which still carry it. If
+a quoted-`#` fixture that ONLY the parsed walk can reject is wanted, that requires the
+quote-blind truncation the delta deliberately removed, so the honest fix is to re-scope the comments
+rather than to weaken the stripper.
+
+## Info
+
+### IN-01: The fixture-count comment still says "fourteen rejections" while the loop now runs 17
+
+**File:** `verify-phase-48.sh:2411` (stale comment), `:2413` (the assertion, 17), `:2443` and
+`:2476` (the banner texts, 17 = 4 vacuity + 13 per-file)
+
+**Issue:** the comment directly above the count assertion still reads "The fixture loop is a probe
+too: fourteen rejections are its success output" — the count changed 14 → 17 in round 7 and this
+comment was not updated. The three authoritative sites agree with each other (`:2413` asserts
+`-eq 17`; `:2443` and `:2476` both say 17 = 4 + 13; the 8 class tokens in the reason map at
+`:2363-2377` are exactly the 8 `ok_partition` requires at `:2424`), so the gate is unaffected. But
+this file's standard is that its comments are the audit trail — the comment at `:2411` is the one
+that explains the count assertion, and it now contradicts it.
+
+**Fix:** "seventeen rejections are its success output".
+
+### IN-02: The stripper's quote states are unexercised — every canary and fixture passes with SINGLE/DOUBLE/escape handling deleted, so the recorded R21 proof over-claims
+
+**File:** `verify-phase-48.sh:98-206` (the helper), `:479-482` (the four canary files),
+`:2206-2219` (the only quoted-`#` fixture), `.planning/phases/48-ci/48-27-PLAN.md:368` (the R21
+claim)
+
+**Issue:** the state machine's SINGLE and DOUBLE branches, the `''` escape, the backslash escape and
+the unterminated-quote fallback have no test at all. None of the four canaries contains a double
+quote (canaries 1 and 4 have no quotes; canaries 2 and 3 use single quotes), and the only `#`
+inside a quoted scalar anywhere in the fixture set (`quoted-hash-secret`, plus canaries 2 and 3) is
+preceded by a NON-whitespace character (`x`, `n`) — so the whitespace rule alone explains every
+observed verdict. Verified by simulation (the helper extracted from the script and executed in a
+throwaway namespace; no file written): a mutant that keeps the whitespace rule and deletes the whole
+quote state machine produces the IDENTICAL canary verdicts (1, 1, 0, 0) and the identical
+`quoted-hash-secret` behaviour.
+
+**Failure mode / consequence for the evidence:** R21 is described as proving "the shared strip is
+quote-aware at the second call site too" (`48-27-PLAN.md:368`), but what R21 actually distinguishes
+is the new whitespace rule from the old quote-blind regex — not quote-awareness from
+whitespace-awareness. The drill is still useful (it does red when the second call site is reverted
+to quote-blind), but the claim attached to it is stronger than the drill supports. Practically: a
+future simplification of the helper that drops the quote tracking — or breaks the `''`/backslash
+handling — would not be caught by the gate. The verdict impact is nil today (the parsed walks are
+the primary judges), but the file:line evidence the text layer supplies would silently degrade for
+a `#` preceded by whitespace inside a quoted scalar (`run: "echo hello # world"`, where the
+quote-aware strip keeps the tail and a whitespace-only strip truncates it).
+
+**Fix:** add a canary whose `#` is preceded by whitespace INSIDE a quoted scalar (e.g.
+`on: {push: {branches: ["main # hotfix"]}, pull_request_target: {}}`) and one that exercises the
+`''` escape, so the two rules (whitespace boundary, quote state) become separable by the gate; and
+re-word the R21 row in `48-27-SUMMARY.md` to what it actually proves.
+
+### IN-03: The P1 text layer is still a red-capable judge with a whole-line literal test, and the quote-aware stripper widens what counts as a non-comment line
+
+**File:** `verify-phase-48.sh:401-419` (the text probe), `:511-557` (the per-file loop and the
+failure message at `:545-552`)
+
+**Issue:** the text probe's hit condition is "the literal `pull_request_target` appears on a line
+that is not a comment" — not "is the event wired up". The new stripper keeps a `#` inside a quoted
+scalar as data, so the rest of that line now counts as non-comment text where the quote-blind strip
+used to truncate it. A workflow that merely NAMES the event inside a quoted string — e.g.
+`run: "echo '# pull_request_target is banned'"` — is now RED where the quote-blind strip left it
+green (verified: the stripper emits that line intact). The parsed judge is the exact one here; the
+text layer only needs to supply file:line evidence, but it can still fail the gate on its own
+(`p1_hits=1`).
+
+Two related details: (a) no canary covers the new shape — canary 3 is a quoted `#` with NO event
+and canary 4 is a whole-line comment, so the "quoted `#` plus a mere mention" case is unpinned in
+either direction; (b) the failure message states the event was "reported by the parsed on: mapping
+AND by quote-aware comment-stripped text", but the loop only requires that EITHER layer reported it,
+so a text-layer-only hit prints a message claiming a parsed-layer verdict that did not happen.
+
+**Fix:** restrict the text layer to evidence (the parsed judge already decides the verdict), or
+require the match to sit in a key position; and make the failure message report which layer(s)
+actually reported — e.g. separate `p1_text_hits` / `p1_parsed_hits` counters — instead of asserting
+both.
+
+### IN-04: The P4 byte count is measured but never asserted, and a failed measurement degrades to an empty number instead of a refusal
+
+**File:** `verify-phase-48.sh:914` (the measurement), `:916-918` (the evidence line), `:68`
+(`set -uo pipefail`, no `set -e`)
+
+**Issue:** round 6's WR-02 is genuinely closed — the count is sampled before the appends, `wc -c`
+measures the tool's own output, and the expression is portable across GNU and BSD `wc` (`wc -c <
+file` → padded number → `tr -d ' \r\n'`). Two residuals remain: (a) the number is reported but
+never asserted anywhere, so a neutered tool that exits 0 and prints nothing is indistinguishable
+from a healthy one — which is why the recorded R20 / R20b are green drills judging the EVIDENCE LINE
+rather than the exit code (`.planning/phases/48-ci/48-27-SUMMARY.md:95-96`); (b) with
+`set -uo pipefail` and no `set -e`, a failing `wc` leaves `${p4_cfg_bytes}` empty and the evidence
+line reads `tool output:  byte(s)` — the gate stays green on a broken measurement, and the log
+then carries a nonsense number instead of a refusal.
+
+**Fix:**
+
+```bash
+p4_cfg_bytes=$(wc -c < "$WORK/p4-config.log" | tr -d ' \r\n')
+case "$p4_cfg_bytes" in (''|*[!0-9]*) fail "P4 could not measure the config-verify output size (got '${p4_cfg_bytes}')" ;; esac
+```
+
+### Round-7 verification evidence
+
+Read-only verification was used throughout; no file was modified except this report.
+
+| Probe | Method | Observed result |
+|---|---|---|
+| S0 | `bash -n verify-phase-48.sh` | SYNTAX-OK |
+| S1 | read the whole current file + `git diff 80990b1..HEAD -- verify-phase-48.sh` (+419 / -47) | delta confined to `verify-phase-48.sh`; `git diff 80990b1..HEAD -- .github/` is empty |
+| S2 | extracted the `YAMLSTRIP` helper from the script and executed it in a throwaway Python namespace (no file written) | `''` escape, backslash escape, unterminated-quote fallback and the quoted-`#` all behave as documented — no correctness bug in the state machine |
+| S3 | same harness, "whitespace-rule-only" mutant (quote states deleted) | canary verdicts IDENTICAL (1, 1, 0, 0) and `quoted-hash-secret` IDENTICAL → the quote states are unexercised (IN-02) |
+| S4 | same harness, `WRITE_VALUE` against the three top-level write shapes | `permissions: {contents: write}` → no match; `permissions:\n  "contents": write` → no match; `permissions:\n  contents: write` → match → only the deleted branch at `:1501-1506` can reject the first two (WR-01) |
+| S5 | in-memory simulation of the `scan_trust_surface` rule ordering, with and without `:1501-1506` | `perm-job-write` / `perm-job-readall` / `empty-perms` / `no-perms` verdicts unchanged; `perm-write-line` stays rejected (by `WRITE_VALUE`, with its registered reason) → the branch is deletable with no fixture change (WR-01) |
+| S6 | counted the loop list, the `-eq 17` assertion, both banner texts, the 8 reason-map class tokens and the 8 `ok_partition` tokens | 17 / 17 / "4 + 13" / 8 = 8 agree; one stale comment says "fourteen" (IN-01) |
+| S7 | inspected the four canary files and the four `T-48-84` marker ranges | marker ranges now at column 0; the canaries use single quotes or none (IN-02) |
+| — | full gate run / mutation drills | NOT run (slow, and out of scope for this review) — the mutation claims above are derived from the rule ordering and the fixture set, not from an executed mutation |
+
+---
 
 ## Round 6 — Incremental Review (gap-closure)
 
@@ -497,6 +768,6 @@ make attributable. **Fix:** drop `re` from the import and the second `basename` 
 
 ---
 
-_Reviewed: 2026-10-21T02:15:44Z (round 6) · 2026-10-20T15:34:24Z (round 5)_
+_Reviewed: 2026-10-21T09:00:10Z (round 7) · 2026-10-21T02:15:44Z (round 6) · 2026-10-20T15:34:24Z (round 5)_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
