@@ -39,9 +39,15 @@ on:
     # `phase-*` base must not silently never start CI.
     branches: [main, 'phase-*']
   push:
-    # push is limited to main for the same reason as above — the lint action
-    # has no diff on a manual/push run and would fall back to whole-repo lint
-    # over ~175 legacy findings.
+    # push is limited to main: pull requests are the primary gated path, and a
+    # main push is the fast-forward of a reviewed merge — there the lint
+    # action's diff fetch succeeds and only-new-issues stays diff-scoped
+    # (measured on run 3 of the 48-15 push series, zero findings). A FORCE push
+    # to main has no common ancestor: the diff fetch fails and the action falls
+    # back to whole-repo lint over the legacy findings — so main is never
+    # force-pushed (the 48-15 history decision was a one-time, recorded
+    # exception). IN-R5-04 correction: limiting the trigger to main does not by
+    # itself prevent that fallback; the force-push discipline does.
     branches: [main]
 
 permissions:
