@@ -346,7 +346,7 @@ CI="$ROOT/.github/workflows/ci.yml"
 [ -f "$CI" ] || fail "P2 ci.yml missing: $CI"
 
 python - "$(native "$CI")" "$SOFT_KEY" "$WHOLE_FILES_FLAG" "$FETCH_TOKEN" "$SCRIPT_TOKEN" <<'PY' > "$WORK/p23.log" 2>&1
-import re, sys, yaml
+import sys, yaml
 
 path, soft_key, whole_flag = sys.argv[1], sys.argv[2], sys.argv[3]
 fetch_token, script_token = sys.argv[4], sys.argv[5]
@@ -1319,6 +1319,13 @@ for p in paths:
                 % (p, bad)
             )
 
+    # One basename binding for BOTH secret layers (IN-R5-05). It deliberately
+    # sits OUTSIDE the parsed-secret-walk marker range below: the R10 drill
+    # deletes that range, and a binding defined inside it would crash the
+    # retained textual scan with a NameError instead of letting the fixture
+    # loop reach the fixture only the deleted walk was catching.
+    basename = os.path.basename(p)
+
 # T-48-04: parsed secret walk
     # WR-02 (round-4 review) / 48-VERIFICATION advisory 2, PRIMARY layer over
     # the textual scan below. The textual scan judges comment-stripped text,
@@ -1330,8 +1337,6 @@ for p in paths:
     # (dict values, list items, scalar strings) and reject the same shapes
     # under the same allowlist semantics. The textual `SECRET_REF` scan below
     # is retained UNCHANGED as the second layer.
-    basename = os.path.basename(p)
-
     def walk_strings(node):
         if isinstance(node, str):
             yield node
@@ -1373,8 +1378,10 @@ for p in paths:
     # T-48-04 / D-14: a public fork PR must never need or see a secret.
     # SECOND LAYER: the parsed walk above is primary; this comment-stripped
     # textual scan is retained unchanged so the P11 mutation drill stays
-    # attributable (stray-secret stays rejected with the walk deleted).
-    basename = os.path.basename(p)
+    # attributable (stray-secret stays rejected with the walk deleted). The
+    # basename binding is the single assignment above the walk's marker range,
+    # so it survives the walk's deletion (the round-5 duplicate here was dead
+    # code, IN-R5-05).
     for name in SECRET_REF.findall(nocomment):
         if name in ALLOWED_ANYWHERE:
             continue
