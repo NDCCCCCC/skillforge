@@ -176,3 +176,11 @@ None - no external service configuration required.
 ---
 *Phase: 48-ci*
 *Completed: 2026-10-21*
+
+## Self-Check: PASSED
+
+- SUMMARY.md exists at `.planning/phases/48-ci/48-25-SUMMARY.md`.
+- All three task commits are ancestors of HEAD: `094f371` (Task 1), `f584f74` (Task 2), `38f3677` (Task 3); SUMMARY commit `2748d9c`. Measured `git rev-list --count 07afa0a..HEAD` = 4.
+- `git diff --name-only 07afa0a..HEAD` touches only the four planned files plus this SUMMARY; zero tracked-file deletions.
+- Final gate control on the committed tree: exit 0 with exactly one `ALL PASSED`; the ci.yml diff is comment-only and the go/fe/docker job spans are byte-identical to the pre-edit tree.
+- REQUIREMENTS.md untouched with all three `Complete (run 39380373930)` citations intact.
