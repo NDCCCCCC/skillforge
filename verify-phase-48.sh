@@ -903,12 +903,21 @@ lint_run() {
 # T-48-81: config verify evidence binding
 golangci-lint config verify --config "$(native "$ROOT/.golangci.yml")" > "$WORK/p4-config.log" 2>&1
 p4_cfg_rc=$?
+# T-48-85: the size is sampled BEFORE the block below appends to the same log.
+# A log the detector itself writes into cannot be its own evidence of what the
+# tool produced: the old `[ -s … ] && echo present` test appended "exit code: 0"
+# first and only then asked whether the file was non-empty, so the claim held by
+# construction and its silent-success alternative was unreachable. A byte count
+# is a measurement of the tool's own output; a qualitative word is a claim.
+# A successful `golangci-lint config verify` genuinely emits 0 bytes, so a
+# healthy run reads `tool output: 0 byte(s)` — 0 bytes IS the evidence here.
+p4_cfg_bytes=$(wc -c < "$WORK/p4-config.log" | tr -d ' \r\n')
 {
   echo "exit code: ${p4_cfg_rc}"
-  echo "tool output: $( [ -s "$WORK/p4-config.log" ] && echo present || echo 'none (success is silent)' )"
+  echo "tool output: ${p4_cfg_bytes} byte(s)"
 } >> "$WORK/p4-config.log"
 [ "$p4_cfg_rc" -eq 0 ] || fail "P4 golangci-lint config verify rejected .golangci.yml (rc=$p4_cfg_rc)"
-info "P4: config verify accepted .golangci.yml"
+info "P4: config verify accepted .golangci.yml (tool output: ${p4_cfg_bytes} byte(s))"
 printf 'P4-CONFIG-OK\n' >> "$WORK/p4-config.log"
 # T-48-81: end config verify evidence binding
 
