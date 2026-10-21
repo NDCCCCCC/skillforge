@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.7
 milestone_name: Open-Source Readiness
-current_phase: 48
-current_phase_name: CI 矩阵
-status: executing
-stopped_at: Planned 48-27-PLAN.md (round-7 gap closure; ready to execute)
-last_updated: "2026-10-21T05:40:00.000Z"
+current_phase: 49
+current_phase_name: Hermetic Demo
+status: planning
+stopped_at: Phase 48 complete, ready to plan Phase 49
+last_updated: "2026-10-21T10:00:57.174Z"
 last_activity: 2026-10-21
-last_activity_desc: Round-7 gap-closure plan 48-27 written and validated
-state_head: 1de1168a3a00a4f22626c1cc7bfe7748093dd34f
+last_activity_desc: Phase 48 complete, transitioned to Phase 49
+state_head: 8f8cd6cb2157285c40f3d47a4eab33af14f8b5d5
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 35
-  completed_plans: 32
-  percent: 20
+  completed_plans: 34
+  percent: 40
 ---
 
 # Project State
@@ -35,18 +35,18 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
-Phase: 48 (CI 矩阵) — EXECUTING
-Plan: 26 of 26 executed; 27 planned (48-27, round-7 gap closure)
-Status: Ready to execute
-Last activity: 2026-10-21 — Round-7 gap-closure plan 48-27 written and validated
+Phase: 49 — Hermetic Demo
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-21 — Phase 48 complete, transitioned to Phase 49
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8 (v1.7, Phase 47)
+- Total plans completed: 35 (v1.7, Phases 47–48)
 - Average duration: —
 - Total execution time: —
 
@@ -55,6 +55,7 @@ Progress: [██░░░░░░░░] 20%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 47 清债与可复现基线 | 8 | — | — |
+| 48 CI 矩阵 | 27 | — | — |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -186,6 +187,6 @@ Items acknowledged and carried forward from previous milestone close.
 ## Session Continuity
 
 Last session: 2026-10-21T05:40:00Z
-Stopped at: Planned 48-27-PLAN.md (round-7 gap closure)
+Stopped at: Phase 48 complete, ready to plan Phase 49
 Resume file: None
-Resume command: `/gsd-execute-phase 48` — Plan 48-27 (round-7 gap closure) is written and validated. Its predecessor 48-26 completed the round-6 Class-A run, whose canonical fragment stands in ROADMAP.md: `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)`. 48-27 closes three gaps found by re-reviewing 48-23..48-26 — CR-01 (the P1 trigger judgement is quote-blind and never exercises the flow-style class; both comment strips are quote-blind, at `verify-phase-48.sh:281` and `:1207`), WR-01 (the P11 permission cases do not each pay their own class token from an isolated fixture), WR-02 (the P4 config-verify evidence line's `present` is self-polluting and `none (success is silent)` unreachable) — all inside `verify-phase-48.sh` only, with drills extended to R15-R21. See 48-26-SUMMARY.md, 48-VALIDATION.md M6, 48-SECURITY.md runner-evidence + Approval round-6 addenda, ROADMAP.md Phase 48 section + Progress row.
+Resume command: `/gsd-plan-phase 49` — Phase 48 (CI 矩阵) is complete: 27/27 plans executed, round-7 verification `passed` (15/15 must-haves, `48-VERIFICATION.md`, coverage set 69 files, digest `v3:sha256:c3174dca2179d21c0bd1c0a5c648145db6a8e3b42b6b850b34507e46c6b01e16`), the 37-threat security sheet has 0 open, and the public four-green run 39380373930 backstops CICD-01/02/03. Phase 49 (Hermetic Demo) is next — start with its context (`/gsd-discuss-phase 49`). Round-8 candidates already recorded in ROADMAP.md「Round-7 review 遗留的 6 条 open 发现」: the workflow-level `permissions:` mapping-value branch still has no isolated fixture, the quote-aware stripper's quote-state has no canary, the P4 byte count is measured but not asserted, and the secret matcher still misses spaced/bracket forms.

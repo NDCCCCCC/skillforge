@@ -121,7 +121,7 @@ Plans:
   4. 依赖内网服务或 API key 的 live 门禁不进 CI（`.github/workflows/eval-gate.yml` 的 frozen-replay + faithfulness gate 是既有 **live** workflow，保持维护者 / 同仓行为不回归；`--frozen` 在打分前即 bootstrap BGE-M3 / Milvus / GLM，缺 secret 时 `log.Fatalf`，只有 `--gate-check` 阶段 hermetic，fork / Dependabot PR 得到带说明的 skip notice 而非红色失败或假绿），CI 不因内网断连闪红
   5. `bash verify-phase-48.sh` exit 0
 
-**Plans**: 26/26 executed (48-01..48-15 original + gap closures; 48-16..48-19 round-4; 48-20..48-22 round-5; 48-23..48-26 round-6 — round-6 closed 2026-10-21)
+**Plans**: 27/27 executed (48-01..48-15 original + gap closures; 48-16..48-19 round-4; 48-20..48-22 round-5; 48-23..48-26 round-6; 48-27 round-7 — round-7 closed 2026-10-21)
 
 **Blocked on**: Resolved — the four-green run was obtained. Run 39380373930 on head `630f875` (2026-10-20, public `main`) concluded `go=fe=docker=verify=success`; canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The three source fixes cleared the three classified reds: 48-16 materialised the `-list` output to `$RUNNER_TEMP/go-test-list.txt` (P5a SIGPIPE), resolved the Sparkline test subject through `import.meta.url` (Windows-path ENOENT on Linux), and moved the backend image to a glibc base and runtime (duckdb's `backtrace` / `malloc_trim` / `__res_init`). The earlier runs (runs 1-5) were all red — the first four on those classified build causes, and run 5 on a load-sensitive DuckDB reader-block ratio flake that was fixed at the source (best-of-5 minimum sampling) so run 6 could land. CICD-01/02/03 are Complete against run 39380373930. WR-06 remains closed-by-evidence on run-3 (lint green with `only-new-issues: true` alone on a fast-forward push). Round-6 update (2026-10-21, plan 48-26): the round-6 tree (head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, carrying 48-23..48-25's gate and record work) was pushed to public `main` as a fast-forward (`630f875..c060c84`, no force); run 7 of 7 — id `39525757252`, event `push` — concluded `go=success fe=success docker=success verify=success` and is the first public run of the round-6 gate, closing the round-5 local-green-only record boundary. go/fe/docker job spans are byte-identical between `630f875` and `c060c84` (the ci.yml delta is the push-trigger comment block, the verify-job header comment block, and the verify install step's declared env map), so CICD-01/02/03 stay Complete against run 39380373930 without re-flipping. Canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)`.
 
@@ -175,9 +175,11 @@ Plans:
 - [x] 48-25-PLAN.md — 记录半场：ci.yml push 触发注释更正为 run-3 实证（IN-R5-04，comment-only、job spans 不变）；48-SECURITY.md T-48-78 失实条款更正为 P3-INSTENV-OK pin + T-48-80..T-48-82 注册（34 行 0 open）；48-REVIEW-DISPOSITION.md 对账（15 条 round-4 rows 终态 + 7 条 round-5 rows）；COVERAGE.md round 标注
 - [x] 48-26-PLAN.md — Class-A：快进推送 main 重立 round-6 verify job 公共绿灯（闭合 round-5 的 local-green-only 记录边界），go/fe/docker job spans 断言不变、CICD 状态不重翻；VALIDATION/SECURITY/ROADMAP/STATE 四处 run 记录对账（total 由 gh run list 现读，first all-green 保持 39380373930）——已完成 2026-10-21：快进推送 `630f875..c060c84`，run 7/7（id `39525757252`）四绿，四处记录对账至 total 7
 
-**Round 7 — gap closure**（`48-VERIFICATION.md`（round-5 再验证 truth 12 FAILED，行 171 与 205-209 变异表）+ `48-REVIEW.md`（round-6 review）+ `48-REVIEW-DISPOSITION.md`（CR-01/WR-01/WR-02 三行 open）复核后的 CR-01/WR-01/WR-02）
+**Round 7 — gap closure**（`48-VERIFICATION.md`（round-5 再验证 truth 12 FAILED，行 171 与 205-209 变异表）+ `48-REVIEW.md`（round-6 review）+ `48-REVIEW-DISPOSITION.md`（CR-01/WR-01/WR-02 三行 open）复核后的 CR-01/WR-01/WR-02 —— **round-7 已于 2026-10-21 闭合：round-7 验证 15/15 must-haves VERIFIED、`status: passed`、gaps_remaining 为空**）
 
-- [ ] 48-27-PLAN.md — CR-01：`on:` 触发判定改解析优先（quoted key / flow 形态）+ 两处注释剥离共用一个 quote-aware helper（`:281` 与 `:1207`）+ 新 token `P1-NO-PRT-PARSED` + flow-style 引号内 `#` 正向 canary；WR-01：三条权限规则各配隔离 fixture 与专属 class token（14→17 fixtures、5→8 token，`yaml-ext` 改缴 `P11-YAMLEXT-OK`）；WR-02：P4 config-verify 证据行改为 append 前实测字节数；演练扩到 R15-R21（含 R19b）
+- [x] 48-27-PLAN.md — CR-01：`on:` 触发判定改解析优先（quoted key / flow 形态）+ 两处注释剥离共用一个 quote-aware helper（`:281` 与 `:1207`）+ 新 token `P1-NO-PRT-PARSED` + flow-style 引号内 `#` 正向 canary；WR-01：三条权限规则各配隔离 fixture 与专属 class token（14→17 fixtures、5→8 token，`yaml-ext` 改缴 `P11-YAMLEXT-OK`）；WR-02：P4 config-verify 证据行改为 append 前实测字节数；演练扩到 R15-R21（含 R19b）——已完成 2026-10-21：提交链 `a4cb04c`（CR-01 解析式 `on:` 判官 + 共享 quote-aware stripper）→ `09d1444`（WR-01 每规则一 fixture 一 class token，fixtures 14→17、token 5→8）→ `6bbdcf8`（WR-02 P4 实测字节数）→ `01f2626`（fixture 字面量对齐）→ `3935876`（SUMMARY + 本段标题），37 演练矩阵全绿；round-7 验证 15/15 `passed`（`48-VERIFICATION.md`，覆盖集 69 文件，digest `v3:sha256:c3174dca2179d21c0bd1c0a5c648145db6a8e3b42b6b850b34507e46c6b01e16`），`48-SECURITY.md` 37 条威胁 36 closed + 1 closed(accepted)、0 open
+
+**Round-7 review 遗留的 6 条 open 发现**（`48-REVIEW.md` round-7：0 critical / 2 warning / 4 info；`48-REVIEW-DISPOSITION.md` 记为 open，不阻断本 phase 的 `passed` 判定，留作后续 phase 的输入）：WR-01 workflow 级 `permissions:` 映射值分支仍无隔离 fixture（删掉它门禁照样绿，破掉「一规则一 fixture」不变量）/ WR-02 quote-aware stripper 让 `quoted-hash-secret` 的两条隔离注释失效（判定不变）/ IN-01 注释仍写 "fourteen rejections" 实为 17 / IN-02 stripper 的引号状态无 canary 覆盖 / IN-03 P1 文本层仍可红且失败文案过度声称 / IN-04 P4 字节数未断言（`wc` 失败会留空号而门禁仍绿）
 
 ### Phase 49: Hermetic Demo
 
@@ -231,7 +233,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
-| 48. CI 矩阵 | v1.7 | 24/26 | In Progress |  |
+| 48. CI 矩阵 | v1.7 | 27/27 | Complete    | 2026-10-21 |
 | 49. Hermetic Demo | v1.7 | 0/TBD | Not started | - |
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |

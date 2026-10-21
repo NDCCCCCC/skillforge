@@ -1,8 +1,8 @@
 ---
 phase: 48-ci
-verified: 2026-10-21T02:38:29Z
-status: gaps_found
-score: 14/15 must-haves verified
+verified: 2026-10-21T09:51:51Z
+status: passed
+score: 15/15 must-haves verified
 covered_files:
   - .github/actions/setup/action.yml
   - .github/workflows/ci.yml
@@ -63,6 +63,8 @@ covered_files:
   - .planning/phases/48-ci/48-25-SUMMARY.md
   - .planning/phases/48-ci/48-26-PLAN.md
   - .planning/phases/48-ci/48-26-SUMMARY.md
+  - .planning/phases/48-ci/48-27-PLAN.md
+  - .planning/phases/48-ci/48-27-SUMMARY.md
   - .planning/phases/48-ci/48-REVIEW-DISPOSITION.md
   - .planning/phases/48-ci/48-REVIEW.md
   - .planning/phases/48-ci/48-SECURITY.md
@@ -71,265 +73,318 @@ covered_files:
   - Dockerfile.frontend
   - verify-phase-48.sh
   - web/src/components/chat/parts/Sparkline.test.tsx
-covered_digest: "v3:sha256:8410732c70024d57315961f5368adb39f7fa7699a13c48db8fe815355f2e6fe9"
+covered_digest: "v3:sha256:c3174dca2179d21c0bd1c0a5c648145db6a8e3b42b6b850b34507e46c6b01e16"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
   previous_status: gaps_found
-  previous_score: 13/15
+  previous_score: 14/15
   gaps_closed:
-    - "Round-5 gap 1 的具体复现已闭合：R11（删除 quoted-paths heredoc）与 R12（删除 parsed path-filter walk + 两个 path fixture）现在都以 exit 1 结束并点名 'quoted-paths' has no workflow file to scan，fixture 原因映射、文件存在性守卫、五类 deposit token 均在位（14/14 fixtures 按注册理由拒绝）"
-    - "Round-5 gap 2 已闭合：R13（GOTOOLCHAIN: local -> auto）与 R14（删除整个 install env 块）现在都以 exit 1 结束，消息给出 got/want env map；P3-INSTENV-OK 由 ok_partition P3 强制要求；48-SECURITY.md T-48-78 已改为记载真实存在的 pin，并把被证伪的旧 clause 标为 superseded（register == code 恢复）"
-    - "Round-5 advisory（陈旧 disposition ledger）已闭合：48-REVIEW-DISPOSITION.md 现在 7 行、与 round-6 review 的 CR-01/WR-01/WR-02/IN-01..04 一一对应，frontmatter 7/7 open 与表格一致"
-    - "Round-5 IN-R5-05（dead code）已闭合：P2/P3 probe 只 import sys, yaml；scan_trust_surface 只有一个 basename 绑定（verify-phase-48.sh:1327）"
-    - "Round-5 IN-R5-03 的 false-positive 方向已闭合：注释里出现事件名不再误红（round-6 review D7 与本次 P1 代码路径一致），代价是引入了 CR-01 的 false-negative 方向（见 gaps）"
-  gaps_remaining:
-    - "Truth 12（fold vacuous/neutralised check into PASS）仍为 FAILED，但换成两个新类别：CR-01 的引号内 '#' 截断使真实 pull_request_target 以 ALL PASSED 通过；WR-01 的 P11-PERMSWRITE-OK 由 publication 规则代缴，删除两条 permission 断言仍 ALL PASSED"
+    - "truth 12 / CR-01（BLOCKER）——P1 的触发判定改为解析优先 + 单一 quote-aware 剥离器；CR-01 形态的 flow-style `pull_request_target` 现在整个门禁 exit 1 并给出 file:line"
+    - "truth 12 / WR-01（BLOCKER）——三条写权限规则各配隔离 fixture 与专属 class token；删除 WRITE_VALUE 行扫描或 job-level permissions walk 均 exit 1"
+    - "WR-02（advisory→fixed）——P4 config-verify 证据行改为 append 前实测字节数，健康树打印 `tool output: 0 byte(s)`"
+    - "IN-02（advisory→fixed）——P1 主循环对 rc ∉ {0,1} 显式 fail，两个 probe 都必须给出决定性结果"
+  gaps_remaining: []
   regressions: []
-gaps:
-  - truth: "The verifier refuses to fold a vacuous or neutralised check into PASS (P23 / T-48-11 / T-48-20)"
-    status: failed
-    reason: "CR-01 独立复现：P1-C 的注释剥离使用 re.sub(r'(?m)#.*$', '', src)，不感知 YAML 引号。当同一物理行的引号标量里出现 '#' 时，剥离会截断该行剩余内容，包括一个真实的 trigger key。沙箱副本加入 on: {push: {branches: ['main#hotfix']}, pull_request_target: {}} 后，整个门禁以 exit 0 打印 'PASS P1 workflow-parse (3 workflow(s) ... zero pull_request_target ...)' 与 '=== Phase 48 Gate: ALL PASSED ==='；同一 fixture 去掉引号内 '#' 后正确 exit 1 并给出 file:line。解析层只要求 on 非 None，从不检查禁用的 event key；P8/P9 也不检查 trigger。这正是文件头宣称要关闭的 'found nothing, reported green' 类别，并直接违反 48-24 的 prohibition（executable text 中的真实 trigger 必须带 file:line 变红）。"
-    artifacts:
-      - path: "verify-phase-48.sh"
-        issue: "P1-C probe lines 276-290（剥离在 :281）；:271-274 的注释把 false-negative 方向断言为已关闭，与复现相反；:296-297 的 canary 只覆盖普通 block 形态，无法证明引号场景"
-      - path: ".planning/phases/48-ci/48-SECURITY.md"
-        issue: "T-48-82 的 mitigation 文案泛称 'a real trigger still reds with file:line'，对 CR-01 形态不成立（row 的具体 block-style 证据仍成立）"
-    missing:
-      - "在 P1 的 per-file 循环里判定解析后的 on: 映射：dict 形态拒绝 key 'pull_request_target'，list 形态拒绝元素 'pull_request_target'（48-REVIEW.md CR-01 的 fix）"
-      - "若保留文本扫描，则把剥离改为引号感知（跟踪 ' 与 \" 状态），并与 scan_trust_surface:1207 的同款 idiom 共享一个 helper"
-      - "扩展 canary 集合，加入 flow-style positive（on: {push: {branches: ['x#y']}, pull_request_target: {}}），让引号感知行为本身被 live 证明；并加入 round-6 变异矩阵"
-  - truth: "The verifier refuses to fold a vacuous or neutralised check into PASS (P23 / T-48-11 / T-48-20)"
-    status: failed
-    reason: "WR-01 独立复现：P11 的五类 deposit token 中 P11-PERMSWRITE-OK 名不副实。唯一携带它的 fixture 是 yaml-ext，而它的首行理由是 'registry/publication token ... packages: write'（packages: write 本身就是 PUBLICATION_TOKEN，且 publication 检查先于 WRITE_VALUE 行扫描）。因此它第二次认证的是 publication 规则（P11-PUBLICATION-OK 已存在），两条 permission 断言没有任何 fixture 隔离。沙箱中分别删除 WRITE_VALUE 循环（verify-phase-48.sh:1229-1234）和 job-level permissions walk（:1265-1284），两次都以 exit 0 / 一条 'ALL PASSED' 结束；这是 round-5 gap 1 的同一证据-归属漏洞上移一层到 class token。"
-    artifacts:
-      - path: "verify-phase-48.sh"
-        issue: "case 分支 :2000 把 yaml-ext 归入 P11-PERMSWRITE-OK；真正的写权限规则 :1229-1234 与 :1265-1284 无 fixture；deposit 在 :2052"
-    missing:
-      - "为每条 permission 规则各加一个隔离 fixture：job-level permissions: {id-token: write}（不在 PUBLICATION_TOKENS）注册 'contains a write scope'；job-level permissions: read-all 注册 \"grants 'read-all'\""
-      - "重命名或重新绑定 P11-PERMSWRITE-OK，使它由上述 fixture 缴纳，而不是由 yaml-ext 代缴；yaml-ext 若需要 token 则单独命名"
 advisory:
-  - finding: "WR-02：P4 config-verify 的证据行在向同一日志 append 之后才对它做 [ -s ] 测试，因此永远打印 'tool output: present'；'none (success is silent)' 分支不可达"
+  - finding: "当前 HEAD 的 `verify-phase-48.sh` 尚未在公开 runner 上执行过：最新公共 run `39525757252`（head `c060c84`）跑的是 round-6 版门禁（14 fixtures、无 `P1-NO-PRT-PARSED`）"
     category: other
-    reason: "不影响 exit code 或 P4-CONFIG-OK，属于审计证据的真实性缺陷；已独立复现（golangci-lint config verify 输出 0 字节，合成块仍打印 present）"
-    evidence_status: "reproduced (shell idiom + 0-byte tool output)"
-  - finding: "IN-03：secret 匹配器是字面拼写；secrets [ 'X' ] 与 secrets . X 两种可执行写法绕过 P8 的 trust surface"
+    reason: "`.github/` 在 `c060c84..HEAD` 的 diff 为空，三条 CI 线的定义逐字节未变，因此 SC-1..SC-3 仍由同一 run 背书；新门禁在本机（Git Bash + pinned golangci-lint + PyYAML，与 CI verify job 同一套依赖）exit 0 且恰好一条 ALL PASSED。48-27 计划显式判定无需新的公共 run（三项 gap 由本地变异演练证明）。下一次 push 会由 `verify` job 实际执行新脚本"
+    evidence_status: "reproduced (gh run view + git diff --stat c060c84..HEAD -- .github/ 为空 + 本地门禁 exit 0)"
+  - finding: "`.planning/ROADMAP.md:180` 的 `48-27-PLAN.md` 仍是 `- [ ]`（未勾选），Phase 48 抬头仍写 `Plans: 26/26 executed`——但 48-27 已执行（4 个提交 + 48-27-SUMMARY.md）"
+    category: other
+    reason: "计划登记的记账滞后，不影响阶段目标（CI 三线公开绿灯）与任何 must-have；48-26 等前序计划都带了 `- [x] …… ——已完成 <date>` 的收尾登记，48-27 缺这一步"
+    evidence_status: "reproduced (git log fd6f082..HEAD -- .planning/ROADMAP.md 只有 3935876 一次改动，加入时即为 `- [ ]`；此后无提交再触碰该行)"
+  - finding: "IN-03（round-6 延续）——secret 匹配器仍是字面拼写 `secrets\\.([A-Za-z_][A-Za-z0-9_]*)`（verify-phase-48.sh:1421），`secrets ['X']` / `secrets . X` 两种写法绕过文本层与解析层"
     category: security
-    reason: "round-6 review 已记录为 pre-existing 的 matcher 宽度问题，非本 delta 引入；本次未作为 blocker 复现，round-5 报告亦按 Info 处理"
-    evidence_status: "code read (verify-phase-48.sh:1178, :1365, :1371-1372)"
-  - finding: "IN-01（review）：双引号 publication 拼写 push: \"true\" 无独立 fixture；只删除该 token 仍 ALL PASSED"
+    reason: "pre-existing 的匹配器宽度问题，round-7 未触及该正则（`diff` 中 :1421 未改）；解析层只覆盖无空格的 `secrets[`。非本 delta 引入，不构成 must-have 失败"
+    evidence_status: "code read (verify-phase-48.sh:1421, :1606, :1618, :1638)"
+  - finding: "IN-01（round-6 延续）——双引号 publication 拼写 `push: \"true\"` 有 token（verify-phase-48.sh:1398-1416）但无专属 fixture，删掉该 token 仍会 ALL PASSED"
     category: other
-    reason: "同一断言组的第二个拼写；round-6 review 已记录为 Info，未作为 must-have 复现"
-    evidence_status: "code read (verify-phase-48.sh:1172, :1903-1922)"
-  - finding: "IN-02（review）：P1 probe 的 rc 1 同时表示 hit 与 crash；非 UTF-8 workflow 会被误报为 trigger hit"
+    reason: "同一断言组的第二个拼写，review 早已记为 Info；本轮 WR-01 的隔离化只覆盖三条权限规则，publication 组未扩展"
+    evidence_status: "code read (verify-phase-48.sh:1398-1416, :2370)"
+  - finding: "IN-04（round-6 延续）——`ci.yml` push 注释的 'A FORCE push to main has no common ancestor' 过度概括（rebase 型 force push 仍有共同祖先）"
     category: other
-    reason: "fail-closed，仅诊断误导；未作为 must-have 复现"
-    evidence_status: "code read (verify-phase-48.sh:277-290, :305-317)"
-  - finding: "IN-04（review）：ci.yml push 注释的 'A FORCE push to main has no common ancestor' 过度概括（rebase 型 force push 仍有共同祖先）"
-    category: other
-    reason: "注释措辞；运行结论与 IN-R5-04 的修正均正确，无行为影响"
+    reason: "注释措辞，无行为影响；round-5 的 IN-R5-04 已把运行结论更正为实证表述"
     evidence_status: "code read (.github/workflows/ci.yml:41-51)"
+  - finding: "`48-27-PLAN.md:189-201` 给出的 R16 演练代码字面有缺陷：按 marker `# T-48-83: end quote-aware comment strip helper` 切段会连带吞掉 heredoc 终止符 `YAMLSTRIP`（它在 :205，end marker 在 :206），变异脚本退化为静默 exit 0 无 banner"
+    category: other
+    reason: "计划书里的演练脚手架缺陷，不是被验证代码的缺陷；48-27-SUMMARY 记录的红因（flow-style canary 返回 rc=0）与真实代码一致，说明执行者改用了 `\\nYAMLSTRIP\\n` 锚点。后续照抄该计划演练代码的人会踩同一个坑"
+    evidence_status: "reproduced (verifier 首次尝试即命中该静默绿；改用 YAMLSTRIP 锚点后 R15-R21 全部按预期落红)"
 ---
 
-# Phase 48: CI 矩阵 Verification Report (Re-verification, round 6)
+# Phase 48: CI 矩阵 Verification Report (Re-verification, round 7)
 
 **Phase Goal:** 外部贡献者的每次 PR 与维护者的每次 push 都被自动化质量门守护——Go / FE / Docker 三线在 GitHub Actions 上公开绿灯，把"666 Go 测试 + 84 FE 测试"的可信度从本机 WSL 搬到公共可见的 CI。
-**Verified:** 2026-10-21T02:38:29Z
-**Status:** gaps_found
-**Re-verification:** Yes — after gap-closure plans 48-23..48-26 (round 6)
+**Verified:** 2026-10-21T09:51:51Z
+**Status:** passed
+**Re-verification:** Yes — after gap-closure plan 48-27 (round 7)，工作树 HEAD `8f8cd6c`
+**Previous report:** round 6（`gaps_found`, 14/15）正文另存为 `48-VERIFICATION-R6.md`，未删改。
+
+---
+
+## 覆盖集指纹（由 verifier 亲自跑，逐字抄录）
+
+命令：
+
+```bash
+gsd_run query verification.fingerprint ".planning/phases/48-ci" <COVERED_FILES…>
+```
+
+输出：
+
+```json
+{
+  "covered_files": [
+    ".github/actions/setup/action.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/eval-gate.yml",
+    ".golangci.yml",
+    ".planning/REQUIREMENTS.md",
+    ".planning/ROADMAP.md",
+    ".planning/STATE.md",
+    ".planning/phases/48-ci/48-01-PLAN.md",
+    ".planning/phases/48-ci/48-01-SUMMARY.md",
+    ".planning/phases/48-ci/48-02-PLAN.md",
+    ".planning/phases/48-ci/48-02-SUMMARY.md",
+    ".planning/phases/48-ci/48-03-PLAN.md",
+    ".planning/phases/48-ci/48-03-SUMMARY.md",
+    ".planning/phases/48-ci/48-04-PLAN.md",
+    ".planning/phases/48-ci/48-04-SUMMARY.md",
+    ".planning/phases/48-ci/48-05-PLAN.md",
+    ".planning/phases/48-ci/48-05-SUMMARY.md",
+    ".planning/phases/48-ci/48-06-PLAN.md",
+    ".planning/phases/48-ci/48-06-SUMMARY.md",
+    ".planning/phases/48-ci/48-07-PLAN.md",
+    ".planning/phases/48-ci/48-07-SUMMARY.md",
+    ".planning/phases/48-ci/48-08-PLAN.md",
+    ".planning/phases/48-ci/48-08-SUMMARY.md",
+    ".planning/phases/48-ci/48-09-PLAN.md",
+    ".planning/phases/48-ci/48-09-SUMMARY.md",
+    ".planning/phases/48-ci/48-10-PLAN.md",
+    ".planning/phases/48-ci/48-10-SUMMARY.md",
+    ".planning/phases/48-ci/48-11-PLAN.md",
+    ".planning/phases/48-ci/48-11-SUMMARY.md",
+    ".planning/phases/48-ci/48-12-PLAN.md",
+    ".planning/phases/48-ci/48-12-SUMMARY.md",
+    ".planning/phases/48-ci/48-13-PLAN.md",
+    ".planning/phases/48-ci/48-13-SUMMARY.md",
+    ".planning/phases/48-ci/48-14-PLAN.md",
+    ".planning/phases/48-ci/48-14-SUMMARY.md",
+    ".planning/phases/48-ci/48-15-PLAN.md",
+    ".planning/phases/48-ci/48-15-SUMMARY.md",
+    ".planning/phases/48-ci/48-16-PLAN.md",
+    ".planning/phases/48-ci/48-16-SUMMARY.md",
+    ".planning/phases/48-ci/48-17-PLAN.md",
+    ".planning/phases/48-ci/48-17-SUMMARY.md",
+    ".planning/phases/48-ci/48-18-PLAN.md",
+    ".planning/phases/48-ci/48-18-SUMMARY.md",
+    ".planning/phases/48-ci/48-19-PLAN.md",
+    ".planning/phases/48-ci/48-19-SUMMARY.md",
+    ".planning/phases/48-ci/48-20-PLAN.md",
+    ".planning/phases/48-ci/48-20-SUMMARY.md",
+    ".planning/phases/48-ci/48-21-PLAN.md",
+    ".planning/phases/48-ci/48-21-SUMMARY.md",
+    ".planning/phases/48-ci/48-22-PLAN.md",
+    ".planning/phases/48-ci/48-22-SUMMARY.md",
+    ".planning/phases/48-ci/48-23-PLAN.md",
+    ".planning/phases/48-ci/48-23-SUMMARY.md",
+    ".planning/phases/48-ci/48-24-PLAN.md",
+    ".planning/phases/48-ci/48-24-SUMMARY.md",
+    ".planning/phases/48-ci/48-25-PLAN.md",
+    ".planning/phases/48-ci/48-25-SUMMARY.md",
+    ".planning/phases/48-ci/48-26-PLAN.md",
+    ".planning/phases/48-ci/48-26-SUMMARY.md",
+    ".planning/phases/48-ci/48-27-PLAN.md",
+    ".planning/phases/48-ci/48-27-SUMMARY.md",
+    ".planning/phases/48-ci/48-REVIEW-DISPOSITION.md",
+    ".planning/phases/48-ci/48-REVIEW.md",
+    ".planning/phases/48-ci/48-SECURITY.md",
+    ".planning/phases/48-ci/48-VALIDATION.md",
+    "Dockerfile.backend",
+    "Dockerfile.frontend",
+    "verify-phase-48.sh",
+    "web/src/components/chat/parts/Sparkline.test.tsx"
+  ],
+  "covered_digest": "v3:sha256:c3174dca2179d21c0bd1c0a5c648145db6a8e3b42b6b850b34507e46c6b01e16"
+}
+```
+
+> 说明：phase 目录的 27 对 PLAN/SUMMARY 由 fingerprint 工具按规则自动并入，本轮输入也显式列了它们（输出去重后 69 项）。`48-VERIFICATION.md` 自身不计入覆盖集。
 
 ---
 
 ## Goal Achievement
 
-### 公开结果成立，且记录边界被如实声明
+### 公开结果仍然成立，且本轮没有动 CI 定义
 
-本轮独立拉取并确认：
-
-- **Run `39525757252`**（head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`，event `push`，branch `main`，2026-10-21T01:10:28Z→01:13:50Z）结论 `success`。逐 job 经 Actions API 拉取：**`go=success`、`fe=success`、`docker=success`、`verify=success`**，四个 job 内所有 step 均为 `success`（无 skipped step）。
-- `gh run list --workflow ci.yml` 共 **7** 次运行（1–5 failure，6 success，7 success），与记录中的 canonical fragment `ci.yml total runs: 7` 一致；`origin/main` = `c060c84`，即第 7 次的 head。
-- **round-6 门禁确实在公共 runner 上执行**：拉取 run 7 的 `verify` job 日志，可见 `P3-INSTENV-OK`、`P4-CONFIG-OK`、`fixture 'dyn-secrets' rejected for 'dynamic secrets['`、`14 fixtures rejected for their registered reasons` 与唯一一条 `ALL PASSED`。
-- **记录边界：** `c060c84..HEAD` 只有 3 个 `.planning`-only commit（`08f5cc2`、`14eb461`、`80990b1`）；`verify-phase-48.sh` 与 `.github/` 在 `c060c84..HEAD` 的 diff 为空。因此 run 7 的绿灯覆盖的就是当前提交树的 gate/workflow 内容，记录提交仅为本地记录。
-- **job span 差异（精确表述）：** `630f875..c060c84` 之间 `go`、`fe` span 逐字节相同；`docker` span 的差异**只有注释行**（verify job 的 header comment block 被行范围提取归入 docker 尾部），`sed` 去注释后 `docker` 内容逐字节相同；`verify` span 承载 48-22 声明的 install-step `env:`，这是 round-6 首次公共执行的内容。
-- CICD-01/02/03 在 REQUIREMENTS.md 两处均为 `Complete (run 39380373930)`；run 7 是佐证，不重翻状态。
+- **`gh run view 39525757252`**（head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`，event `push`，2026-10-21T01:10:28Z→01:13:49Z）结论 `success`。逐 job 经 Actions API 复核：**`go=success`、`fe=success`、`docker=success`、`verify=success`**，四个 job 内**所有 step** 均 `success`（无 skipped）。
+- **`gh run view 39380373930`**（head `630f8751ab65a07d71d5fa6f25fd8e13c3838ef7`，event `push`）同样四绿全 step success——这是 REQUIREMENTS.md 两条记录引用的 first all-green run。
+- **CI 定义未变**：`git diff --stat c060c84..HEAD -- .github/` 输出为空；`c060c84..HEAD` 的完整 diff 只有 13 个文件——12 个 `.planning/**` 记录 + `verify-phase-48.sh`（+419/-47）。这正是 48-27 计划第 2 条 prohibition 的要求，也是"三线绿灯仍由同一次运行背书"的前提。
+- **CICD-01/02/03 状态未被重翻**：`.planning/REQUIREMENTS.md:17-19` 三条 `[x]`，`:69-71` 三行均 `Complete (run 39380373930)`；`:84` Coverage 17/17 mapped items。REQUIREMENTS.md 在 `c060c84..HEAD` 的 diff 为空（不在 13 个改动文件里）。
 
 ### Observable Truths
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | SC-1 / CICD-01：Go 线在公开触发上运行且发布检查为绿 | ✓ VERIFIED | Run 39525757252 `go=success`，全部 step success；`go` job span 与 630f875 逐字节相同。 |
-| 2 | SC-2 / CICD-02：FE 线在公开触发上运行且发布检查为绿 | ✓ VERIFIED | 同一 run `fe=success`；`fe` job span 逐字节相同。 |
-| 3 | SC-3 / CICD-03：两个 Dockerfile 在 CI 中构建 | ✓ VERIFIED | 同一 run `docker=success`（backend/frontend 两步均 success）；`docker` span 去注释后内容相同。 |
-| 4 | 在公共默认分支上存在一次真实的 `ci.yml` GitHub Actions 运行，且触发方式保留门禁 | ✓ VERIFIED | 7 次运行全部为 `push` 到 `main`；`origin/main` = run 7 head `c060c84`。 |
-| 5 | 仓库 owner 的历史决策已记录并执行 | ✓ VERIFIED | round-6 推送为非 force 快进 `630f875..c060c84`（HTTPS），`origin/main` 未被改写；48-15 的一次性例外记录不变。 |
-| 6 | CICD-01/02/03 只在可佐证的四绿 run 之后推进 | ✓ VERIFIED | 两处均引用 `Complete (run 39380373930)`；该 run 四绿此前已独立确认；run 7 为额外佐证。 |
-| 7 | 没有为制造绿灯而弱化门禁 | ✓ VERIFIED | `ci.yml` 无 `continue-on-error`、无 `paths:`/`paths-ignore:`、无 `pull_request_target`、无 `\|\| true`、无任何 job/step 级 `if:`、无 `secrets.`；G1–G4 回归变异全部 exit 1。 |
-| 8 | WR-06（push 路径 lint 范围）由运行证据裁决 | ✓ VERIFIED | run-3（`39353593172`）fast-forward push 上 lint 绿色；round-5 证据未变。 |
-| 9 | 门禁 bootstrap 不打开未记录的供应链面；register == code | ✓ VERIFIED | `ci.yml:242-245` 声明 GOTOOLCHAIN/GOSUMDB/GOPROXY；P3 的 parsed 精确等值断言 + `P3-INSTENV-OK`；R13/R14 现在均 exit 1（got/want map）；T-48-78 cell 已改为记载真实 pin 并把旧 clause 标为 superseded。 |
-| 10 | 实时门禁只把 secrets 授给消费它的 step | ✓ VERIFIED | P9 在基线与公开 run 7 均通过；G4（给 `Gate check` 加三 secret env）exit 1。 |
-| 11 | workflow 侧 Class-B 闭合，含防重命名 determinism 守卫 | ✓ VERIFIED | materialised-list 形态在位；G3（恢复 `go test -list \| grep -qx`）exit 1，消息点名 go-test-list.txt。 |
-| 12 | verifier 拒绝把空洞或被中和的检查折叠为 PASS | ✗ FAILED | CR-01：引号内 `#` 使真实 `pull_request_target` 以 exit 0 / ALL PASSED 通过（独立复现，对照组正确 exit 1）。WR-01：删除 WRITE_VALUE 循环或 job-level permissions walk 均 exit 0 / ALL PASSED（独立复现）。见 gaps。 |
-| 13 | SC-4：实时 eval-gate 从不伪造绿灯；fork/Dependabot 边界、secrets 与单一 Go 版本源成立 | ✓ VERIFIED | P9 通过；G4 exit 1；round-6 未改 eval-gate.yml。 |
-| 14 | SC-5：`bash verify-phase-48.sh` exit 0 | ✓ VERIFIED | 当前提交树实测 exit 0，恰好一条 `ALL PASSED`，registry/begin/token 11/11/11，14/14 fixtures 按注册理由拒绝。 |
-| 15 | 每条断言 run/transport 状态的记录都被对账到同一结果 | ✓ VERIFIED | ROADMAP/STATE/VALIDATION/SECURITY 均含 run 7 canonical fragment（total 7，first all-green 39380373930）；历史 6-run 段落保留并明确标注为历史；REQUIREMENTS 未被编辑。 |
+| 1 | SC-1 / CICD-01：Go 线在公开触发上运行且发布检查为绿 | ✓ VERIFIED | Run `39525757252` `go=success`，其 step 全 success：`build + vet (P1)`、`lint (changed lines)`、`go test ./... (CICD-01 / D-15)`、`determinism -count=100 (P5a)`、`determinism -shuffle=on with seed (P5b)`。 |
+| 2 | SC-2 / CICD-02：FE 线在公开触发上运行且发布检查为绿 | ✓ VERIFIED | 同一 run `fe=success`，step 全 success：`install`、`typecheck`、`unit tests`。本轮本地复核 `cd web && npx vitest run` → **85 test files / 689 tests 全绿**，exit 0。 |
+| 3 | SC-3 / CICD-03：两个 Dockerfile 在 CI 中构建 | ✓ VERIFIED | 同一 run `docker=success`，`build backend image` 与 `build frontend image` 两步均 success。 |
+| 4 | 在公共默认分支上存在真实的 `ci.yml` 运行，且触发方式保留门禁 | ✓ VERIFIED | `gh run list --workflow ci.yml`：run `39380373930`（push, 2026-10-20T06:26:30Z, success）与 `39525757252`（push, 2026-10-21T01:10:28Z, success）均为 push 到 `main`，head 分别为 `630f875` / `c060c84`。 |
+| 5 | 仓库 owner 的历史决策已记录并执行 | ✓ VERIFIED | `c060c84..HEAD` 无 force 改写（12 个 `.planning` + 1 个门禁脚本的线性提交）；round-6 的快进推送记录与 48-15 的一次性例外记录不变。 |
+| 6 | CICD-01/02/03 只在可佐证的四绿 run 之后推进 | ✓ VERIFIED | REQUIREMENTS 两处均 `Complete (run 39380373930)`；该 run 本轮经 `gh run view` 独立复核为四绿全 step success。 |
+| 7 | 没有为制造绿灯而弱化门禁 | ✓ VERIFIED | `ci.yml` 无 `continue-on-error`、`paths:`/`paths-ignore:`、`pull_request_target`、`\|\| true`、无 job/step 级 `if:`、无 `secrets.`；回归变异 G1（fe job 加 job 级 `if:`）、G4（`Gate check` 步加 `env:` 块）本轮重跑仍 exit 1。 |
+| 8 | WR-06（push 路径 lint 范围）由运行证据裁决 | ✓ VERIFIED | round-5 的 run-3（`39353593172`）fast-forward push 上 lint 绿色；`lint (changed lines)` step 在 run `39525757252` 中为 success。 |
+| 9 | 门禁 bootstrap 不打开未记录的供应链面；register == code | ✓ VERIFIED | P3 的 parsed 精确等值断言 + `P3-INSTENV-OK` 在健康树通过；R13（`GOTOOLCHAIN: local`→`auto`）本轮重跑 exit 1，消息 `FAIL P2/P3: the go job's structural contract is violated`；P11 registry == call sites == begin markers == success tokens（11/11/11）。 |
+| 10 | 实时门禁只把 secrets 授给消费它的 step | ✓ VERIFIED | P9 在基线通过；G4（给 `Gate check` 加三 secret `env:`）本轮重跑 exit 1，消息点名 `the 'Gate check' step carries an env: key`。 |
+| 11 | workflow 侧 Class-B 闭合，含防重命名 determinism 守卫 | ✓ VERIFIED | materialised-list 形态在位（P5a 写 `$RUNNER_TEMP/go-test-list.txt`）；R11（删 quoted-paths heredoc）exit 1 报 vacuous pin；R9（删 parsed path-filter walk）exit 1 报 `'quoted-paths' fixture`。 |
+| 12 | **verifier 拒绝把空洞或被中和的检查折叠为 PASS** | ✓ VERIFIED（本轮由 FAILED 升为 VERIFIED） | CR-01 与 WR-01 的两个 BLOCKER 全部闭合，独立复现见下方 Mutation Evidence：D2（flow-style `pull_request_target`）exit 1 并给 file:line；R15/R15b/R16/R17（删解析判官 / 删 token / 退回 quote-blind 剥离 / 删文本 probe）逐条 exit 1 点名 P1；R18/R19/R19b（删 WRITE_VALUE 行扫描 / 删 job-level walk / 放宽标量分支）逐条 exit 1 点名 `perm-write-line` / `perm-job-write` / `perm-job-readall`。 |
+| 13 | SC-4：实时 eval-gate 从不伪造绿灯；fork/Dependabot 边界、secrets 与单一 Go 版本源成立 | ✓ VERIFIED | P9 通过；G4 exit 1；`.github/workflows/eval-gate.yml` 在 `c060c84..HEAD` 未改动。 |
+| 14 | SC-5：`bash verify-phase-48.sh` exit 0 | ✓ VERIFIED | 当前提交树实测（`C:\Program Files\Git\bin\bash.exe`）**EXIT=0**，恰好一条 `=== Phase 48 Gate: ALL PASSED ===`，`NOT VERIFIED` 0 命中；`17 fixtures rejected for their registered reasons: 4 vacuity + 13 per-file`；`P4: config verify accepted .golangci.yml (tool output: 0 byte(s))`。 |
+| 15 | 每条断言 run/transport 状态的记录都被对账到同一结果 | ✓ VERIFIED | STATE.md / 48-VALIDATION.md / 48-SECURITY.md 三处都带同一 canonical fragment（`total runs: 7` / first all-green `39380373930` / run 7 = `39525757252`）；REQUIREMENTS.md 未被编辑；`48-27-SUMMARY.md` 的 37 条演练矩阵与本轮独立结果一致（见下）。 |
 
-**Score:** 14/15 truths verified（0 present-but-behavior-unverified，1 failed）
+**Score:** 15/15 truths verified（0 present-but-behavior-unverified，0 failed）
 
 ---
 
 ## Mutation Evidence（独立沙箱，仓库未被修改）
 
-每个变异都在 `mktemp` 沙箱副本（`verify-phase-48.sh` + `.github/` + `.golangci.yml` + `.planning/ROADMAP.md`）上执行；变异脚本对每个 anchor 先 `assert` 其存在且唯一，no-op 无法伪造结果。
+演练在 `mktemp` 沙箱副本（`verify-phase-48.sh` + `.github/` + `.golangci.yml` + `.planning/ROADMAP.md`）上执行；每个变异对锚点先断言存在且唯一，no-op 无法伪造结果。**verifier 自己写的 harness**（`drills.sh` + `mutate.py`），未采用 `48-27-PLAN.md` 里的演练代码片段（原因见 advisory 末条）。
+
+### Round-7 新增（CR-01 / WR-01 / WR-02）
 
 | # | Mutation | Result | Verdict |
 |---|----------|--------|---------|
-| D0 | baseline（当前提交树） | exit 0，恰好一条 `ALL PASSED`，11/11 registry/begin/token，14/14 fixtures | control |
-| R1 | 删除 P2 整段断言块 | exit 1 — P2 缺 `P2-CMDS-OK P2-DET-OK P2-SHUFFLE-OK P2-HERMETIC-OK` | BITES |
-| R2 | 删除 P3 段 | exit 1 — P3 缺 `P3-BLOCKING-OK P3-LINT-OK P3-VERIFYJOB-OK P3-INSTENV-OK` | BITES |
-| R3 | 删除 P1 composite 组 | exit 1 — P1 缺 `P1-COMPOSITE-OK` | BITES |
-| R4 | 删除 P4 sentinel A | exit 1 — P4 缺 `P4-A-ERRCHECK` | BITES |
-| R5 | 删除 P6 job-if 组 | exit 1 — P6 缺 `P6-JOB-IF-OK` | BITES |
-| R6 | 删除 P7 cache 组 | exit 1 — P7 缺 `P7-CACHE-OK` | BITES |
-| R7 | 删除 P9 notice 组 | exit 1 — P9 缺 `P9-NOTICE-OK` | BITES |
-| R8 | 把 banner 移到 else 内 | exit 1 — `the passing banner sits after an else` | BITES |
-| R9 | 删除 parsed path-filter walk | exit 1 — `returned success on the 'quoted-paths' fixture` | BITES |
-| R10 | 删除 parsed secret walk | exit 1 — `returned success on the 'tojson-secrets' fixture` | BITES |
-| **R11** | **删除 quoted-paths heredoc（round-5 gap 1）** | **exit 1 — `fixture 'quoted-paths' has no workflow file to scan`** | **round-5 gap CLOSED** |
-| **R12** | **path walk + quoted-paths + space-paths fixtures（复合）** | **exit 1 — 点名 `quoted-paths`** | **round-5 gap CLOSED** |
-| **R13** | **`GOTOOLCHAIN: local` → `auto`（round-5 gap 2）** | **exit 1 — got `{'GOTOOLCHAIN': 'auto', ...}` / want `{'GOTOOLCHAIN': 'local', ...}`** | **round-5 gap CLOSED** |
-| **R14** | **删除整个 install-step `env:` 块** | **exit 1 — got `{}`** | **round-5 gap CLOSED** |
-| G1 | fe job 加 job-level `if:` | exit 1 — `P6: the fe job carries a job-level if:` | no regression |
-| G2 | docker job 加 job-level `if:` | exit 1 — P7 | no regression |
-| G3 | 恢复 `go test -list \| grep -qx` | exit 1 — `does not materialise the -list output to go-test-list.txt` | no regression |
-| G4 | 给 `Gate check` 加三-secret env | exit 1 — P9 | no regression |
-| **CR-01** | **fixture `on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}`** | **exit 0，`PASS P1 ... zero pull_request_target`，`ALL PASSED`** | **BLOCKER — 独立复现** |
-| CR-01 control | 同一 fixture 去掉引号内 `#` | exit 1 — `zz-review-probe.yml:2: ... pull_request_target ...` | 证明差异来自剥离 |
-| **D1（WR-01）** | **删除 WRITE_VALUE 循环** | **exit 0，`ALL PASSED`** | **BLOCKER — 独立复现** |
-| **D2（WR-01）** | **删除 job-level permissions walk** | **exit 0，`ALL PASSED`** | **BLOCKER — 独立复现** |
-| WR-02 | 检查 P4 证据行语义 + 真实工具输出 | 工具输出 0 字节，日志仍写 `tool output: present` | WARNING — 独立复现 |
+| D0 | baseline（当前提交树） | exit 0，恰好一条 `ALL PASSED`，11/11 registry/begin/token，17/17 fixtures | control |
+| D2 | 在 `.github/workflows/zz-cr01-flow.yml` 注入 `on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}` | **exit 1** — `FAIL P1 pull_request_target found (D-11) — reported by the parsed on: mapping and by quote-aware comment-stripped text; listed above with file:line`，且日志含 `zz-cr01-flow.yml:` 的 file:line 证据 | **CR-01 BITES** |
+| R15 | 删 `# T-48-83: P1 parsed trigger judge` 段 + 把调用点改 `true` | **exit 1** — `FAIL P1 the block-style positive canary returned rc=1 (text) / rc=127 (parsed), want 1 (hit) from both — a probe that cannot produce a decisive result must not deposit PASS (R2-WR-03)` | BITES |
+| R15b | 只删 `printf 'P1-NO-PRT-PARSED\n' >> "$WORK/p1.log"` | **exit 1** — `FAIL partition P1 cannot deposit its success tokens: … does not contain the probe-emitted token(s) 'P1-NO-PRT-PARSED' (required: P1-PARSED P1-COMPOSITE-OK P1-NO-PRT P1-NO-PRT-PARSED)` | BITES（正是计划预期的红因） |
+| R16 | 把 helper body 退回 quote-blind `re.sub(r"(?m)#.*$", "", src)` | **exit 1** — `FAIL P1 the flow-style positive canary returned rc=0 (text) / rc=1 (parsed), want 1 (hit) from both — the quote-blind strip hid a flow-style trigger after a quoted '#' (CR-01) …` | BITES |
+| R17 | 删 `p1_prt_probe "$f" >> …` + `p1_prt_rc=$?` + 其 case 块 | **exit 1** — `FAIL P1 the comment-stripped pull_request_target scan produced a decisive result for 0 of 2 enumerated file(s) …` | BITES |
+| R18 | 删 `# T-48-84: WRITE_VALUE line scan` 段 | **exit 1** — `FAIL P11 fixture 'perm-write-line' rejected for the wrong reason: wanted 'contains a write scope' (WR-R5-01)` | **WR-01 BITES，点名 perm-write-line** |
+| R19 | 删 `# T-48-84: job-level permissions walk` 段 | **exit 1** — `FAIL P11 verifier is vacuous on an empty partition: scan_trust_surface returned success on the 'perm-job-write' fixture` | **WR-01 BITES，点名 perm-job-write** |
+| R19b | `if value in ("read-all", "write-all"):` → `("write-all",)` | **exit 1** — `FAIL P11 fixture 'perm-job-readall' rejected for the wrong reason: wanted 'job 'build' permissions grants 'read-all'' (WR-R5-01)`（理由落到 unknown-string 分支） | BITES |
+| R20 | config-verify 换成 `: > "$WORK/p4-config.log"` + `p4_cfg_rc=0` | exit 0，`allpassed=1`，证据行 `tool output: 0 byte(s)` | 绿是设计内（测的是诚实取样，不是变红） |
+| R21 | 删 `# T-48-04: parsed secret walk` 段 + 向真实树副本注入 `quoted-hash-secret.yml` | **exit 1**，日志含 `references secrets.DEPLOY_KEY` 且**不含** `parsed value references` → 消息来自文本层，证明第二个调用点确实共享 quote-aware 剥离 | BITES（共享性成立） |
 
-读法：round-5 的两个 gap 及其复现 R11–R14 确实已闭合；R1–R10、G1–G4 无回归。但 truth 12 仍有两个新失败类别，且均由本轮独立复现，不是接受 review 的说法。
+### Round-6 及更早的回归抽测（无回归）
+
+| # | Mutation | Result | Verdict |
+|---|----------|--------|---------|
+| R9 | 删 `# T-48-03: parsed path-filter walk` 段 | exit 1 — `returned success on the 'quoted-paths' fixture` | BITES |
+| R11 | 删 quoted-paths fixture 的 heredoc | exit 1 — `P11 fixture 'quoted-paths' has no workflow file to scan — a deleted or never-written fixture is a vacuous pin, not evidence (WR-R5-01)` | BITES |
+| R13 | `GOTOOLCHAIN: local` → `auto`（用缩进版锚点，避开 ci.yml 注释里的同名字面） | exit 1 — `FAIL P2/P3: the go job's structural contract is violated` | BITES |
+| G1 | `fe` job 加 job-level `if:` | exit 1 — `the fe job carries a job-level if:` | BITES |
+| G4 | `Gate check` 步加 `env:` 块 | exit 1 — `the 'Gate check' step carries an env: key` | BITES |
+
+### 计划验收 grep（逐条 PASS）
+
+`P1-SHARED-STRIP-OK`、`P11-ISOLATED-FIXTURES-OK`、`P4-MEASURED-EVIDENCE-OK`、`ROUND7-MESSAGES-PRESENT`、`MATRIX-RECORDED` 全部通过。计数核对：`17 fixtures` 出现 2 次、`13 per-file` 出现 2 次、字面 `re.sub(r"(?m)#.*$"` 在 `verify-phase-48.sh` 中出现 **0** 次、`tool output: present` 出现 **0** 次、`lib_yaml_text import strip_yaml_comments` 出现 **2** 次（P1 与 `scan_trust_surface` 各一次，共享同一 helper）。
+
+---
+
+## 48-27 must_haves 逐条判定（9 条 truths）
+
+| # | must_have（摘要） | Status | Evidence |
+|---|-------------------|--------|----------|
+| 1 | P1 对被禁事件按**解析后的 `on:` 映射**在三形态（mapping key / sequence element / bare scalar）判定；flow 单行映射里引号内 `#` 会让整个门禁 exit 1 并给 file:line | ✓ VERIFIED | `p1_prt_parsed_probe()`（:421-463）读 `doc.get("on", doc.get(True))`，三分支 + 非 dict 显式 exit 1；变异 **D2** exit 1 且日志含 file:line。 |
+| 2 | 两个剥离点共用**一个** quote-aware helper `strip_yaml_comments`，脚本中不再出现字面 `re.sub(r"(?m)#.*$")` | ✓ VERIFIED | `:98-206` 写出 `$WORK/lib_yaml_text.py`；两个调用点 `:371-419` 与 `:1367-1380` 各自 `from lib_yaml_text import strip_yaml_comments`；`grep -c 're\.sub(r"(?m)#\.\*\$"'` = **0**；变异 **R16** 退回旧写法后 flow canary 变红。 |
+| 3 | 文本层自身的引号感知由**四个 canary** 现场证明（block 正例 rc1 / flow 引号内 `#` 正例 rc1 / quoted-hash 负例 rc0 / comment-only 负例 rc0） | ✓ VERIFIED | `:464-510` 四个 canary 文件，text 与 parsed **两层**都要求规定 rc；变异 **R15/R16** 红在 canary 上并带固定可 grep 的消息。 |
+| 4 | P1 的 deposit 需要新 token `P1-NO-PRT-PARSED`，且只在解析判官的决定性结果 + 零命中断言之后 append | ✓ VERIFIED | `:550-557`：三条断言（两个 scanned 等值 + `p1_hits == 0`）之后才 `printf` 两个 token；`ok_partition "P1"`（:559）把它列为首个必需 token；变异 **R15b** 只删该 `printf` 即 exit 1。 |
+| 5 | 每条写权限断言由**自己的隔离 fixture** 缴纳自己的 token（`perm-write-line`→`P11-PERMSWRITE-OK`、`perm-job-write`→`P11-JOBPERMS-OK`、`perm-job-readall`→`P11-JOBPERMS-STR-OK`、`yaml-ext`→`P11-YAMLEXT-OK`） | ✓ VERIFIED | 注册表 :2362-2378 一一绑定，未注册 fixture 直接 `fail … has no registered rejection reason (WR-R5-01)`；健康树逐条打印各自的首行理由（见下"Behavioral Spot-Checks"）。 |
+| 6 | 删 WRITE_VALUE 行扫描 → 红并点名 `perm-write-line`；删 job-level permissions walk → 红并点名 `perm-job-write`；两者都到不了 ALL PASSED | ✓ VERIFIED | 变异 **R18** / **R19** 分别 exit 1，消息逐字点名对应 fixture。 |
+| 7 | fixture 计数断言、循环列表、mkdir 列表、deposit token 列表、done_partition 文案、收尾 banner **六处**都说 17 fixtures（4 vacuity + 13 per-file） | ✓ VERIFIED | `:2414` 等值断言 `[ "$P11_FIXTURE_COUNT" -eq 17 ] \|\| fail …`；`:2443` 与 `:2476` 文案一致；健康树打印 `17 fixtures rejected for their registered reasons: 4 vacuity + 13 per-file`；`grep -c "17 fixtures"`=2、`grep -c "13 per-file"`=2。 |
+| 8 | P4 config-verify 证据行报告**工具实测字节数**（append 前采样），0 字节时打印 `tool output: 0 byte(s)`，`present` 不再出现 | ✓ VERIFIED | `:903-922`：`p4_cfg_bytes=$(wc -c < … \| tr -d ' \r\n')` 在 `{ echo … } >> "$WORK/p4-config.log"` **之前**；健康树实测输出 `INFO P4: config verify accepted .golangci.yml (tool output: 0 byte(s))`；`grep -c 'tool output: present'` = **0**。 |
+| 9 | 健康树仍 exit 0 恰一条 ALL PASSED；矩阵保留旧结果（D0 绿、R1-R14 与 G1-G4 全 exit 1）并新增 R15-R21 | ✓ VERIFIED | 本轮实测 EXIT=0 / `ALL PASSED` 计数 = 1 / `NOT VERIFIED` 计数 = 0；回归抽测 R9/R11/R13/G1/G4 全部 exit 1（见上表）；`48-27-SUMMARY.md` 含 R15/R16/R17/R18/R19/R19b/R20/R21/D0/R1/R14/G1/G4 的记录。 |
+
+**48-27 must_haves：9/9 通过。** 三条 prohibition 同样成立：门禁未为造绿而削弱（每个非 D0 演练都点名 partition / fixture / token，`P11_FIXTURE_COUNT` 仍是等值断言）；`git diff --stat c060c84..HEAD` 只碰 `verify-phase-48.sh` + `.planning/**`，未触碰 `.github/workflows/*`、`.golangci.yml`、Dockerfiles、REQUIREMENTS.md；证据不再说谎（`tool output: present` 0 命中，`P1-NO-PRT-PARSED` 与 `P4-CONFIG-OK` 都在断言之后 printf）。
+
+---
 
 ## Required Artifacts
 
 | Artifact | Expected | Status | Details |
-|----------|----------|--------|---------|
-| `verify-phase-48.sh` | 11 partitions、零 waiver、per-assertion evidence token | ⚠️ PARTIAL | 21 个 per-assertion token + 5 个 P11 class token + `P3-INSTENV-OK`/`P4-CONFIG-OK` 均 drill-proven；但 P1-C 的引号不感知剥离（CR-01）与 `P11-PERMSWRITE-OK` 的错误归属（WR-01）仍是证据漏洞。 |
-| `.github/workflows/ci.yml` | 四个 job、保留门禁、声明 install 面 | ✓ VERIFIED | job span 与公共绿灯一致；声明被 P3-INSTENV-OK 精确 pin；无弱化 token。 |
-| `.github/workflows/eval-gate.yml` | 受门禁保护的 live workflow | ✓ VERIFIED | P9 通过；G4 仍红。 |
-| `.github/actions/setup/action.yml` | checkout-free composite，三个 pinned major | ✓ VERIFIED | P5 在基线通过。 |
-| `.golangci.yml` | v2 schema、无 baseline、revive 正向保证 | ✓ VERIFIED | P4 通过；sentinel D 仍归因 revive。 |
-| `Dockerfile.backend` / `Dockerfile.frontend` | CI 中可构建 | ✓ VERIFIED | run 7 两个构建 step 均 success。 |
-| `web/src/components/chat/parts/Sparkline.test.tsx` | 在 Linux runner 上通过的 FE 测试 | ✓ VERIFIED | run 7 `fe` job unit tests success。 |
-| `48REVIEW.md` / `48-REVIEW-DISPOSITION.md` | round-6 review 与逐项处置 | ✓ VERIFIED | 7 findings 与表格一一对应，CR-01/WR-01/WR-02 均 `open`，与本报告一致。 |
-| `48-SECURITY.md` | 34 行、0 open、verified、T-48-78 修正 | ✓ VERIFIED | 34 行 `T-48-`、`threats_open: 0`、`status: verified`；T-48-80..82 各一次；T-48-78 已修正。 |
-| `48-VALIDATION.md` | M6 记录 round-6 公共运行 | ✓ VERIFIED | M6 标记 closed，引用 run 7。 |
-
-交付物中无 `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/`PLACEHOLDER` 债务标记，debt-marker gate 不触发。
+| -------- | -------- | ------ | ------- |
+| `verify-phase-48.sh` | 11 partition、每断言自带证据 token 的零 waiver 门禁 | ✓ 存在且可用 | 2476 行；健康树 exit 0，`registry 11/11, begin markers 11/11, success tokens 11/11`。 |
+| `$WORK/lib_yaml_text.py`（`strip_yaml_comments`） | 单一 quote-aware 剥离器，落在 `# T-48-83: quote-aware comment strip helper` 标记区间内 | ✓ 存在 | `:98-206`；三状态机 NORMAL/SINGLE/DOUBLE，未闭合引号整行保留（fail toward more text）。 |
+| `p1_prt_parsed_probe()` | 解析优先的 `on:` 判官 | ✓ 存在 | `:421-463`；三形态 + 非 mapping 显式拒绝。 |
+| `$WORK/p1-prt-canary{,-flow,-quoted-hash,-comment}.yml` | 四个 canary | ✓ 存在 | `:464-510`；每层各跑一次并要求规定 rc。 |
+| `$WORK/p11-fixtures/perm-write-line`、`perm-job-write`、`perm-job-readall` | 三条写权限规则的隔离 fixture | ✓ 存在 | `:2054-2068` / `:2070-2095` / `:2097-2116`；fixtures 14→17。 |
+| `.github/workflows/ci.yml` | Go / FE / Docker / verify 四 job | ✓ 未改动 | `git diff c060c84..HEAD -- .github/` 为空。 |
+| `.github/workflows/eval-gate.yml` | live 门禁（不进 CI 背书线） | ✓ 未改动 | 同上。 |
+| `.github/actions/setup/action.yml`、`.golangci.yml`、`Dockerfile.backend`、`Dockerfile.frontend` | bootstrap / lint / 双镜像 | ✓ 存在且 CI 内构建成功 | run `39525757252` 的 `docker` job 两步 success。 |
 
 ## Key Link Verification
 
 | From | To | Via | Status | Details |
-|------|----|-----|--------|---------|
-| `ci.yml` push to `main` | GitHub Actions run | `on.push.branches: [main]` | WIRED（observed） | 7 次运行均为 push/main；run 7 head = `origin/main`。 |
-| `go`/`fe`/`docker` jobs | 各自 gate steps | job definitions | WIRED（observed green） | run 7 四 job 全 success；job span 不弱化。 |
-| `verify` job | `bash verify-phase-48.sh` | last step | WIRED（observed green） | run 7 verify 日志含 round-6 token 与 `ALL PASSED`。 |
-| P2/P3 assertion groups | 各自 token → `p23.log` → deposit | 13 tokens | WIRED — drill-proven | R1/R2 red 且点名 partition 与缺失 token。 |
-| P3 install env map | `P3-INSTENV-OK` | parsed 精确等值 | WIRED — drill-proven | R13/R14 red；gap 2 闭合。 |
-| P1/P4/P6/P7/P9 groups | 各自 token → deposit | per-group tokens | WIRED — drill-proven | R3–R7 red。 |
-| P11 fixtures | scan_trust_surface 规则 | 14-fixture 循环 + 原因映射 | WIRED — drill-proven | R9–R12 red。 |
-| P1 trigger scan | `P1-NO-PRT` | comment-stripped text | **NOT WIRED（引号内 `#`）** | CR-01：真实 trigger 存在时仍 deposit PASS。 |
-| permission rules | `P11-PERMSWRITE-OK` | yaml-ext 代缴 | **MISWIRED** | WR-01：两条 permission 断言无 fixture；删除后仍 PASS。 |
-| ci.yml install env | 48-SECURITY T-48-78 | register ↔ code | WIRED | cell 现在描述真实 pin。 |
-| run conclusions | REQUIREMENTS CICD 状态 | `Complete (run 39380373930)` | WIRED | 两处一致且未被 run 7 重翻。 |
+| ---- | --- | --- | ------ | ------- |
+| workflow 文件 | 解析判官 | `yaml.safe_load` → `doc.get("on", doc.get(True))` → 三形态拒绝 | ✓ | `P1-NO-PRT-PARSED` 在断言之后 append，删解析判官即 R15 红。 |
+| workflow 行 | file:line 证据 | `strip_yaml_comments`（引号状态机）→ 逐行匹配 | ✓ | 报告保持精确而假阴性洞关闭；D2 演练日志含 `zz-cr01-flow.yml:` 行号。 |
+| fixture 主体 | class token | `scan_trust_surface` 规则序（publication → WRITE_VALUE 行 → workflow perms → job perms）→ 注册 `want` 子串 → class token | ✓ | 一个 token 只由一个 fixture 缴纳，同胞无法代缴；R18/R19/R19b 逐条证红。 |
+| config verify 字节数 | P4 证据行 | `wc -c`（append 前采样）→ `tool output: N byte(s)` → `p4-config.log` → `ok_partition P4` | ✓ | 健康树实测 0 byte(s)。 |
+| `.github/`（CI 定义） | 公共绿灯 run | push → ci.yml → 四 job | ✓ | 定义自 `c060c84` 起未变，run `39525757252` 四绿。 |
 
-## Data-Flow Trace (Level 4)
+## Data-Flow Trace
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|---------------|--------|--------------------|--------|
-| `REQUIREMENTS.md` CICD rows | run id `39380373930` | Actions API job conclusions | Yes — 本轮重新拉取 | ✓ FLOWING |
-| `48-VALIDATION.md` M6 / ROADMAP / STATE / SECURITY | run id `39525757252` | `gh run list` + Actions API | Yes — 唯一的 live 来源 | ✓ FLOWING |
-| `verify-phase-48.sh` P11 class tokens | per-class evidence | scan_trust_surface 首行 | 部分 — `P11-PERMSWRITE-OK` 来自 publication 规则，不是它命名的 permission 规则 | ✗ MISATTRIBUTED（WR-01） |
-| `verify-phase-48.sh` P1 verdict | `pull_request_target` hits | 引号不感知的 comment strip | No — 引号内 `#` 之后的内容被丢弃 | ✗ FALSE NEGATIVE（CR-01） |
-| `verify-phase-48.sh` P4 evidence line | `tool output: present` | append 后对同一文件做 `-s` 判断 | No — 工具实际输出 0 字节 | ✗ FALSE（WR-02） |
-| `48-SECURITY.md` T-48-78 | enforcement claim | `P3-INSTENV-OK` assertion | Yes — R13/R14 可复现 | ✓ FLOWING |
+| -------- | ------------- | ------ | ------------------ | ------ |
+| `p1.log` | `P1-NO-PRT` / `P1-NO-PRT-PARSED` | 两个 probe 的决定性结果 + `p1_hits == 0` | ✓（不是自我声明，删断言即红） |
+| `p11-fixtures.log` | 8 个 class token | 每个 fixture **首个命中规则**的实测输出 | ✓（实测理由见 spot-check 表） |
+| `p4-config.log` | `tool output: N byte(s)` | `golangci-lint config verify` 的真实 stdout/stderr 字节数 | ✓（0 字节如实打印 0） |
 
 ## Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
-|----------|---------|--------|--------|
-| 当前提交树门禁为绿 | `bash verify-phase-48.sh` | exit 0，恰好一条 `ALL PASSED`，11/11，14/14 | ✓ PASS |
-| 公开运行存在 | `gh run list --workflow ci.yml` | 7 次（5 failure、2 success） | ✓ PASS |
-| run 7 逐 job 结论 | `gh api .../runs/39525757252/jobs` | 四 job success，全部 step success | ✓ PASS |
-| run 7 head 与远程一致 | `gh run view 39525757252 --json headSha` + `git rev-parse origin/main` | 均为 `c060c84…` | ✓ PASS |
-| round-6 gate 在公共 runner 执行 | run 7 `verify` job log | `P3-INSTENV-OK`、`P4-CONFIG-OK`、14 fixtures、`ALL PASSED` | ✓ PASS |
-| go/fe span 不变 | `git show` + `diff` `630f875` vs `c060c84` | 逐字节相同 | ✓ PASS |
-| docker span 不变（功能） | 去注释后 `diff` | 逐字节相同；差异仅注释行 | ✓ PASS |
-| 记录边界 | `git log/diff c060c84..HEAD` | 3 个 `.planning`-only commit；gate/workflow diff 为空 | ✓ PASS (boundary stated) |
-| fixture 删除 | 沙箱 R11/R12 | exit 1 | ✓ PASS（gap 闭合） |
-| install env 删除/翻转 | 沙箱 R13/R14 | exit 1 | ✓ PASS（gap 闭合） |
-| 引号内 `#` 的真实 trigger | 沙箱 CR-01 | exit 0 / `ALL PASSED` | ✗ FAIL（gap） |
-| permission 规则删除 | 沙箱 D1/D2 | exit 0 / `ALL PASSED` | ✗ FAIL（gap） |
+| -------- | ------- | ------ | ------ |
+| 健康树整体门禁 | `C:\Program Files\Git\bin\bash.exe -lc "bash verify-phase-48.sh"` | EXIT=0；`grep -c "ALL PASSED"` = 1；`grep -c "NOT VERIFIED"` = 0 | ✓ |
+| P4 证据诚实性 | 同上输出第 17 行 | `INFO P4: config verify accepted .golangci.yml (tool output: 0 byte(s))` | ✓ |
+| P11 注册完整性 | 同上输出第 90 行 | `INFO P11: registry 11/11, begin markers 11/11, success tokens 11/11` | ✓ |
+| 四个新 fixture 各自按注册理由被拒 | 同上输出 84-89 行 | `perm-write-line` → `ci.yml:6 contains a write scope (D-26/D-29)`；`perm-job-write` → `in job 'build' grants 'contents'='write'`；`perm-job-readall` → `job 'build' permissions grants 'read-all'`；`yaml-ext` → `contains forbidden registry/publication token 'packages: write'` | ✓ |
+| P1 双层判定文案 | 同上输出第 3 / 96 行 | `zero pull_request_target in the parsed on: mapping AND in quote-aware comment-stripped text; per-assertion success tokens P1-PARSED P1-COMPOSITE-OK P1-NO-PRT P1-NO-PRT-PARSED` | ✓ |
 
 ## Probe Execution
 
 | Probe | Command | Result | Status |
-|-------|---------|--------|--------|
-| P1–P11 on the committed tree | `bash verify-phase-48.sh` | exit 0，恰好一条 `ALL PASSED` | PASS |
-| R1–R14 mutation matrix | 沙箱 mutations（anchor asserted） | 全部 exit 1，点名 partition/fixture/token；R11–R14 为 round-5 gap 闭合证据 | PASS |
-| G1–G4 regression matrix | 沙箱 mutations | 全部 exit 1 | PASS — no regression |
-| CR-01 quote-aware trigger probe | 沙箱 fixture + 对照 | exit 0 vs 对照 exit 1 | FAIL（gap） |
-| WR-01 permission-rule isolation | 沙箱 D1/D2 | exit 0，`ALL PASSED` | FAIL（gap） |
-| WR-02 evidence integrity | shell idiom + `golangci-lint config verify` | 0 字节输出仍写 `present` | FAIL（warning） |
+| ----- | ------- | ------ | ------ |
+| Go 全量回归 | `wsl.exe -e bash -lc "cd /mnt/d/CODE/ClaudeCode/ai-agent && go test ./..."` | exit 0，`go version go1.25.5 linux/amd64`（与 CI `ubuntu-latest` 同构），全包 `ok` | ✓ |
+| FE 全量回归 | `cd web && npx vitest run` | exit 0，**85 test files / 689 tests** 全绿（24.56s） | ✓ |
+| 公共 CI 运行 | `gh run view 39525757252` / `gh run view 39380373930` | 两次 run 均 `success`，各 4 job 全 `success`、全 step `success` | ✓ |
+| 记录边界 | `git diff --stat c060c84..HEAD -- .github/` | 空；完整 diff 只含 12 个 `.planning/**` + `verify-phase-48.sh`（+419/-47） | ✓ |
+| 计划执行记账 | `git log --oneline fd6f082..HEAD -- .planning/ROADMAP.md` | 只有 `3935876` 一次改动，`48-27-PLAN.md` 加入时即为 `- [ ]`，此后无人再勾 | ⚠️ 见 advisory #2 |
+
+> Windows 宿主上 `go test ./...` 的 5 个 duckdb 依赖包链接失败（`undefined reference to __emutls_v._ZSt11__once_call`）在本轮复核为**宿主工具链限制**：本机 msys2 ucrt64 gcc 与 duckdb-go-bindings 预编译 Windows 静态库的 TLS ABI 不匹配；`c060c84..HEAD` 的 diff 是**零行 Go 代码**，且 WSL（同 CI 的 linux/amd64）全绿，因此不是回归。
 
 ## Requirements Coverage
 
-| Requirement | Source Plan(s) | Description | Status | Evidence |
-|-------------|----------------|-------------|--------|----------|
-| CICD-01 | 所有 26 个 plan 均声明 | Go CI：golangci-lint + `go test ./...` + CGO_ENABLED=1 build+vet，PR/push 触发 | ✓ SATISFIED | run 39525757252 `go=success`；run 39380373930 锚点保留；两处 REQUIREMENTS 状态一致。 |
-| CICD-02 | 所有 26 个 plan 均声明 | FE CI：`tsc --noEmit` + 全量 `vitest run` | ✓ SATISFIED | run 39525757252 `fe=success`（typecheck + unit tests 均 success）。 |
-| CICD-03 | 所有 26 个 plan 均声明 | 双 Dockerfile 在 CI 中可构建 | ✓ SATISFIED | run 39525757252 `docker=success`，两个 build step 均 success。 |
+| Requirement | Source Plan | Description | Status | Evidence |
+| ----------- | ---------- | ----------- | ------ | -------- |
+| CICD-01 | 48-01（`go` job）、48-02、48-16、48-26、48-27 | Go CI 进 GitHub Actions——golangci-lint + `go test ./...` + CGO_ENABLED=1 build+vet，PR/push 触发 | ✓ Complete | REQUIREMENTS.md:17 `[x]`、:69 `Complete (run 39380373930)`；run `39525757252` `go=success`（5 个 step 全 success）。 |
+| CICD-02 | 48-02（`fe` job）、48-26、48-27 | FE CI——`tsc --noEmit` + `vitest run` 全量 | ✓ Complete | REQUIREMENTS.md:18 `[x]`、:70 同引用；run `39525757252` `fe=success`（typecheck + unit tests success）；本地 `vitest run` 689/689 绿。 |
+| CICD-03 | 48-02（`docker` job）、48-16、48-26、48-27 | Docker 镜像构建验证——backend/frontend 双 Dockerfile 在 CI 中可构建 | ✓ Complete | REQUIREMENTS.md:19 `[x]`、:71 同引用；run `39525757252` `docker=success`（两个 build step 均 success）。 |
 
-**Cross-reference：** 26 个 plan 的 frontmatter `requirements:` 并集恰为 `{CICD-01, CICD-02, CICD-03}`，与 REQUIREMENTS.md 映射到 Phase 48 的集合一致；无孤立需求、无未映射 ID。
+**需求追溯核对**：27 份 PLAN（48-01..48-27）的 frontmatter 全部带 `requirements:`，取值均为 `{CICD-01, CICD-02, CICD-03}` 的子集；**三个 ID 全覆盖，无孤立 ID，无 plan 声明了不存在的 ID**。`48-27-PLAN.md` 的三条 `flagged_assumptions` 明确"不重翻 CICD 状态、不编辑任何 requirement 行"——本轮复核确认 `REQUIREMENTS.md` 在 `c060c84..HEAD` 的 diff 为空，遵守。
 
 ## Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| `verify-phase-48.sh` | 276-290（剥离 :281；false invariant :271-274） | P1-C 的 `re.sub(r"(?m)#.*$", "", src)` 不感知引号；引号内 `#` 截断真实 trigger | 🛑 Blocker | 真实 `pull_request_target` 以 `ALL PASSED` 通过（CR-01，独立复现）。 |
-| `verify-phase-48.sh` | 1229-1234、1265-1284、2000、2052 | `P11-PERMSWRITE-OK` 由 publication 规则（yaml-ext）代缴；两条 permission 断言无 fixture | 🛑 Blocker | 删除 WRITE_VALUE 循环或 job-level permissions walk 仍 ALL PASSED（WR-01，独立复现）。 |
-| `verify-phase-48.sh` | 681-684 | P4 evidence line 在 append 后对同一日志做 `-s` 判断 | ⚠️ Warning | 永远写 `tool output: present`；审计证据失真（WR-02，独立复现）。 |
-| `verify-phase-48.sh` | 1178、1365、1371-1372 | secret 匹配器为字面拼写，未覆盖 `secrets [ 'X' ]` / `secrets . X` | ℹ️ Info | 既有 matcher 宽度问题（review IN-03）；非本 delta 引入。 |
-| `verify-phase-48.sh` | 1172、1903-1922 | 双引号 publication 拼写无独立 fixture | ℹ️ Info | review IN-01；只删该 token 仍绿。 |
-| `verify-phase-48.sh` | 277-290、305-317 | probe rc 1 同时表示 hit 与 crash | ℹ️ Info | review IN-02；fail-closed，仅诊断误导。 |
-| `.github/workflows/ci.yml` | 41-51 | “A FORCE push to main has no common ancestor” 过度概括 | ℹ️ Info | review IN-04；无行为影响。 |
-
-## Manual-Only Verifications (acknowledged, unchanged)
-
-| # | Verification | Why manual | Current state |
-|---|--------------|------------|---------------|
-| M2 | 真实 fork PR 触发 live `eval-gate` 且 notice job 绿 | 需要实际 fork PR | Open（by design） |
-| M3 | Dependabot PR 被当作 fork 处理 | 需要实际 Dependabot PR | Open（by design） |
-| M5 | 第二次绿灯 docker run 的 cache hit | 需要显式的 cache-entry 对比 | Open — run 7 是第二次连续绿灯，但计划明确未执行对比 |
+| ---- | ---- | ------- | -------- | ------ |
+| — | — | 本轮 delta 未发现新的反模式 | — | 三个 `fix(48-ci)` 提交都是"加严"方向：无新增 waiver、无 `|| true`、无被中和的断言、无自我声明的证据行。 |
 
 ## Human Verification Required
 
-N/A — 基础设施/CI phase，无用户可见元素；所有验收标准均可程序化验证。M2/M3/M5 为已声明的 manual-only 项，不构成本轮 must-have 失败。
+N/A —— 基础设施/CI phase，无用户可见元素；五条 success criteria 全部可程序化验证，本轮实测覆盖 SC-1..SC-5。M2（真实 fork PR 触发 live eval-gate）、M3（Dependabot PR 按 fork 处理）、M5（第二次绿灯 docker run 的 cache hit）仍是已声明的 manual-only 项，按设计 Open，不构成 must-have 失败；`48-VERIFICATION-R6.md` 已逐项列出其理由，本轮无变化。
 
 ## Gaps Summary
 
-**阶段目标的公开结果已经达成，工程/需求层没有回归，round-5 的两个 gap 也确实闭合。** Run `39525757252` 在公共 `main` 上四绿，round-6 门禁（`P3-INSTENV-OK`、`P4-CONFIG-OK`、14 fixtures）在公共 runner 上实际执行；go/fe job span 与 `630f875` 逐字节相同，docker 仅注释差异；`c060c84..HEAD` 的 3 个提交只动 `.planning`，记录边界如实。R11/R12 与 R13/R14 现在都变红，truth 9 从 PARTIAL 升为 VERIFIED。CICD-01/02/03 在两处 REQUIREMENTS 中均为 `Complete (run 39380373930)`，四份记录 cite 同一 total 7。
+**阶段目标在本轮达成，round-6 的两个 BLOCKER 与一个 WARNING 全部闭合，无回归。**
 
-**仍有 1 个 must-have（truth 12）失败，且是本轮代码改动引入的新类别，不是 round-5 遗留：**
-
-1. **CR-01（BLOCKER）** — P1-C 的注释剥离不感知 YAML 引号。`on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}` 是合法的 GitHub 触发器映射，解析层通过，文本层在 `#` 处截断，真实 `pull_request_target` 被删除；整个门禁 exit 0 并打印 “zero pull_request_target”。对照组（去掉 `#`）正确 exit 1。这是 phase 文件头宣称要关闭的 “found nothing, reported green” 类别，直接违反 48-24 的 prohibition。
-2. **WR-01（BLOCKER）** — `P11-PERMSWRITE-OK` 由 `yaml-ext` 的 publication 拒绝代缴；写权限值扫描与 job-level permissions walk 没有任何隔离 fixture。分别删除这两段，门禁仍 exit 0 / `ALL PASSED`。这是 round-5 gap 1 的同一证据-归属漏洞上移到 class token 层。
-
-**WR-02（WARNING，非 must-have 失败）** — P4 的 `tool output` 证据行永远打印 `present`（工具实际输出 0 字节）。它不影响 exit code 或 `P4-CONFIG-OK`，不构成 “空洞检查折叠为 PASS”，但审计行记录的是假事实，应修。
-
-**最小闭合路径：** (1) 在 P1 的 per-file 循环里用已加载的解析文档判定 `on:` 映射（dict key / list element）拒绝 `pull_request_target`，保留文本扫描用于 file:line，并把剥离改为引号感知；扩展 flow-style canary。(2) 为 WRITE_VALUE 与 job-level permissions 各加一个隔离 fixture，让 `P11-PERMSWRITE-OK`（或改名后的 token）由它们缴纳。(3) 修 P4 证据行的取样顺序。修复后重跑本报告的 D0 + CR-01 + D1/D2 + R1–R14 + G1–G4 矩阵即可。
+- **CR-01 闭合**：P1 的触发判定改为解析优先（`doc.get("on", doc.get(True))`，mapping-key / sequence-element / bare-scalar 三形态），两个注释剥离点共用一个 quote-aware helper `strip_yaml_comments`。独立复现：把 round-6 的攻击形态 `on: {push: {branches: ['main#hotfix']}, pull_request_target: {}}` 注入沙箱副本后，门禁 **exit 1** 并给出 `zz-cr01-flow.yml:` 的 file:line；把 helper 退回 quote-blind 写法（R16）或删掉解析判官（R15）或删掉新 token（R15b）或删掉文本 probe（R17），四条都各自 exit 1 并点名 P1 与具体 token。
+- **WR-01 闭合**：`P11-PERMSWRITE-OK` 只由 `perm-write-line` 缴纳，`P11-JOBPERMS-OK` 只由 `perm-job-write` 缴纳，`P11-JOBPERMS-STR-OK` 只由 `perm-job-readall` 缴纳，`yaml-ext` 改缴 `P11-YAMLEXT-OK`。独立复现：删 WRITE_VALUE 行扫描（R18）与删 job-level permissions walk（R19）分别 exit 1 并**点名对应 fixture**；放宽标量分支（R19b）exit 1 点名 `perm-job-readall`。注册表还拒绝任何"未登记拒绝理由的 fixture"，杜绝同类漏洞上移。
+- **WR-02 闭合**：P4 证据行改为 append 前 `wc -c` 实测，健康树实测打印 `tool output: 0 byte(s)`（工具本轮就是静默的），脚本中 `tool output: present` 0 命中。IN-02 也随之闭合：P1 主循环对 rc ∉ {0,1} 显式 `fail`，两个 probe 都必须给出决定性结果。
+- **CI 定义未动**：`git diff --stat fd6f082..HEAD` 与 `git diff --stat c060c84..HEAD` 均未触碰 `.github/workflows/**`；两次公共 run 四绿全 step success，本轮本地 Go（WSL go1.25.5 linux/amd64）与 FE（689 测试）全绿。
+- **记账滞后一项（advisory，非 gap）**：`ROADMAP.md:180` 的 `48-27-PLAN.md` 仍是 `- [ ]`、Phase 48 抬头仍写 `26/26 executed`。这只影响计划登记的可读性，不影响阶段目标与任何 must-have；修它需要改 `ROADMAP.md`，而本轮 verifier 的权限是只读工件，故作为 advisory 交回编排者处置。
 
 ---
 
-_Verified: 2026-10-21T02:38:29Z_
-_Verifier: Claude (gsd-verifier)_
+_Verified: 2026-10-21T09:51:51Z_
+_Verifier: DeepSeek Harness (gsd-verifier)，round-7 独立复核_
