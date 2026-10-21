@@ -612,6 +612,17 @@ lint_run() {
 # findings" — is not weakened: the exit code stays authoritative, and a
 # non-silent failure fails immediately. What is added is an explicit evidence
 # line, so the log is never empty and an auditor can still see what was judged.
+#
+# T-48-81 / IN-R5-02b: the block below is wrapped in a column-0 marker range
+# and carries its OWN evidence token. Before this binding P4's deposit required
+# only the four sentinel tokens, so deleting the config-verify block was caught
+# only by luck of sentinel D's revive attribution (revive is not a default-v2
+# linter) — a real red, but reached by accident of the sentinel-D design, and a
+# future sentinel change would have silently removed the group's coverage. The
+# token is appended only AFTER the rc-equals-zero refusal has passed, so it is
+# bound to the assertion having run, and ok_partition "P4" requires it FIRST:
+# deleting the marker range reds naming P4 and the missing token.
+# T-48-81: config verify evidence binding
 golangci-lint config verify --config "$(native "$ROOT/.golangci.yml")" > "$WORK/p4-config.log" 2>&1
 p4_cfg_rc=$?
 {
@@ -620,6 +631,8 @@ p4_cfg_rc=$?
 } >> "$WORK/p4-config.log"
 [ "$p4_cfg_rc" -eq 0 ] || fail "P4 golangci-lint config verify rejected .golangci.yml (rc=$p4_cfg_rc)"
 info "P4: config verify accepted .golangci.yml"
+printf 'P4-CONFIG-OK\n' >> "$WORK/p4-config.log"
+# T-48-81: end config verify evidence binding
 
 # Sentinel A — the violation. An unchecked json.Unmarshal must be reported, and
 # reported as errcheck specifically: a red run from some other cause would
@@ -763,13 +776,18 @@ pass "P4 sentinel D: a missing package comment is reported as revive"
 # concatenation is deliberately missing-file-tolerant: a deleted sentinel's
 # log will not exist, and an unguarded `cat` of all four paths would abort
 # before the deposit could name the missing token. Truncate first, then append
-# each log only when it exists — no `|| true`, no unguarded cat.
+# each log only when it exists — no `|| true`, no unguarded cat. The config
+# log joins the same concatenation under the same guard (T-48-81): deleting
+# the config-verify block leaves p4-config.log absent, the guarded cat skips
+# it, and the deposit below refuses on the missing P4-CONFIG-OK token instead
+# of aborting.
 : > "$WORK/p4.log"
+if [ -f "$WORK/p4-config.log" ]; then cat "$WORK/p4-config.log" >> "$WORK/p4.log"; fi
 for s in a b c d; do if [ -f "$WORK/p4-sentinel-$s.log" ]; then cat "$WORK/p4-sentinel-$s.log" >> "$WORK/p4.log"; fi; done
 
-ok_partition "P4" "$WORK/p4.log" "P4-A-ERRCHECK" "P4-B-QUIET" "P4-C-QUIET" "P4-D-REVIVE"
+ok_partition "P4" "$WORK/p4.log" "P4-CONFIG-OK" "P4-A-ERRCHECK" "P4-B-QUIET" "P4-C-QUIET" "P4-D-REVIVE"
 
-done_partition "P4 lint-teeth (config verify + sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet; per-assertion success tokens P4-A-ERRCHECK P4-B-QUIET P4-C-QUIET P4-D-REVIVE)"
+done_partition "P4 lint-teeth (config verify carries its own P4-CONFIG-OK token, sentinel A errcheck and sentinel D revive fire, sentinels B and C stay quiet; per-assertion success tokens P4-CONFIG-OK P4-A-ERRCHECK P4-B-QUIET P4-C-QUIET P4-D-REVIVE)"
 
 # ---------------------------------------------------------------------------
 # P5: composite
@@ -2016,7 +2034,7 @@ echo "Partitions verified:"
 echo "  P1 workflow-parse — every .github/workflows/*.yml / *.yaml + the composite action parse; trigger block read; zero pull_request_target; per-assertion success tokens P1-PARSED / P1-COMPOSITE-OK / P1-NO-PRT"
 echo "  P2 go-line        — the 5 CI command fragments + determinism materialised-list shape (list file, grep -qx on the file, no pipe after -list), CGO_ENABLED=1 and nothing else, verify job ends at the gate; per-assertion success tokens P2-CMDS-OK / P2-DET-OK / P2-SHUFFLE-OK / P2-HERMETIC-OK"
 echo "  P3 lint-line      — golangci-lint-action pinned + blocking + only-new-issues, permissions map exact, verify job if-free with module-proxy install and exactly-pinned install env (GOTOOLCHAIN/GOSUMDB/GOPROXY); per-assertion success tokens P3-STEP-IF-OK / P3-BLOCKING-OK / P3-LINT-OK / P3-VERIFYJOB-OK / P3-INSTENV-OK"
-echo "  P4 lint-teeth     — config verify exit 0, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; per-assertion success tokens P4-A-ERRCHECK / P4-B-QUIET / P4-C-QUIET / P4-D-REVIVE"
+echo "  P4 lint-teeth     — config verify exit 0 with its own P4-CONFIG-OK token, sentinel A reported as errcheck, sentinel D reported as revive, sentinels B and C silent with '0 issues'; per-assertion success tokens P4-CONFIG-OK / P4-A-ERRCHECK / P4-B-QUIET / P4-C-QUIET / P4-D-REVIVE"
 echo "  P5 composite      — three pinned majors in one file, zero checkout, every job checks out first; evidence-bound success token"
 echo "  P6 fe-line        — npm ci, npx tsc --noEmit, npx vitest run under web/, zero count literals, rejects both job- and step-level if:; per-assertion success tokens P6-JOB-IF-OK / P6-STEP-IF-OK / P6-CMDS-OK / P6-COUNTS-OK"
 echo "  P7 docker-line    — both Dockerfiles, push: false twice, per-image cache scopes, zero publish surface, rejects both job- and step-level if:; per-assertion success tokens P7-JOB-IF-OK / P7-STEP-IF-OK / P7-BUILDS-OK / P7-PUSH-OK / P7-NO-LOAD-OK / P7-CACHE-OK"
