@@ -87,6 +87,8 @@ Phase 49 的三个需求（DEMO-01/02/03）在本仓库里都有**已存在的�
 
 **Primary recommendation:** 按「**新增 `internal/retriever/embedded` 包（照搬 mongo 的 rank + seed 形态）+ 在 `cmd/server/main.go` 的两个 switch 上各加一个 case + 用 `model.BaseChatModel` 实现一个 stub ChatModel 插进 `Deps.PipelineChatModel`**」这条主线实现；三处 demo 素材（asciinema 录制、agg 渲染、`docs/demo.gif`）作为**独立于主链的收尾工作项**推进，不要让录屏工具链的安装阻塞主链的代码落地。
 
+**本轮复核后的三条硬更正**（细节见 `## Verification Corrections` 与 `## Answers to the Nine Research Questions`）：① **可入库语料是 218 篇 `.md`**，不是 D-05 写的 220 个目录条目——`draft`/`historical`/`personal` 三个目录**各只有一个 `.gitkeep`**，缓存条数断言与 corpusHash 输入都必须按 218 算；② **`.gitignore` 当前没有任何向量缓存条目**，D-14「不入仓库」需要**显式新增**一条规则，否则缓存必被误提交；③ **`.env.example` 不列 `embedded` 这个 backend 取值**且 D-15 要求一字不动 ⇒ README 的 hermetic 小节必须逐字给出 `export RETRIEVER_BACKEND=embedded`，否则读者照抄 `.env.example` 会落回 milvus 又要 Milvus。
+
 ## Verification Corrections (this research pass)
 
 本轮（v2）按受限阅读清单逐条复核了与**检索面 / 向量化 / verdict 契约 / 门禁形态**直接相关的文件，并对上一轮研究稿做了以下**第一手实测更正**：
@@ -379,14 +381,16 @@ glmKey := envOr("LOCAL_API_KEY", envRequired("GLM_API_KEY")) // :302
 - [ ] `internal/retriever/embedded/embedded_test.go` —— Search / Ensure / Insert / GetChunk / GetMaxID / ListMetadata / Disconnect 的行为契约
 - [ ] `internal/retriever/embedded/tier_isolation_test.go` —— 空 tier → 0 命中、非白名单 tier → 0 命中、effective_to 过期 → 0 命中（**D-TIER-03 不削弱的核心断言**）
 - [ ] `internal/retriever/embedded/rank_test.go` —— 排序确定性（score desc, id asc tie-break）
-- [ ] `internal/retriever/embedded/cache_test.go` —— 缓存 key 三要素、失效、损坏重建、并发首次启动
+- [ ] `internal/retriever/embedded/cache_test.go` —— 缓存 key 三要素、失效、损坏重建、并发首次启动、**语料条数 = 218**（C-01 / Pitfall 18）
 - [ ] `internal/server/stubchat/stub_test.go` —— wire 逐字节同构、confidence ≤ 0.5、review_required、grounding 不豁免
 - [ ] `internal/webui/static_test.go` —— SPA fallback 四分支 + dist 缺失
 - [ ] `cmd/server/backend_switch_test.go` —— `buildRetriever` 表驱动：embedded 分支不要求 MONGO_URI/MILVUS_ADDRESS（D-16）
 - [ ] `web/src/types/verdict.test.ts` —— `mode` 字段解析 + `isVerdict` 不回归
-- [ ] `verify-phase-49.sh` —— 根目录门禁（P1..P9 分区、每区落日志、空日志判失败、fail-fast、收尾横幅按已运行分区计数）
+- [ ] `verify-phase-49.sh` —— 根目录门禁（P1..P9 分区、每区落日志、空日志判失败、fail-fast、收尾横幅按已运行分区计数；**成功 token 按断言组逐个绑定**，机制照 `verify-phase-48.sh:213-279`）
+- [ ] `verify-phase-49.sh` 内的**替身 embedding 端点夹具** —— 必须**按键查表**（语料文本 → 向量；demo 查询 → 向量），未命中返回明确错误（Pitfall 17）；不得返回单一固定向量
 - [ ] `scripts/record-demo.sh` —— 录屏脚本（SC4 证据）
-- [ ] `.gitignore` 增补向量缓存目录条目
+- [ ] `.gitignore` 增补向量缓存目录条目 —— **必需项**，当前 40 行里没有任何缓存条目（C-04 / A-14 / Pitfall 19）
+- [ ] README 新增「无 Docker / 无 API key 也能跑」小节 —— 必须逐字给出 `export RETRIEVER_BACKEND=embedded`（`.env.example` 一字不动，D-15 / Q8）
 
 > 门禁脚本**不得**依赖 asciinema / agg / Ollama / Docker（否则就不是 hermetic 门禁）；素材存在性用 magic bytes 断言即可。
 
@@ -638,6 +642,15 @@ if s.PipelineChatModel != nil {
 
 [VERIFIED: internal/retriever/mongo/mongo.go:364-425]
 
+### Pattern 8 — 缓存条目 + 并发首次启动（原子锁，不用 sleep 猜时长）
+D-14 要求缓存 key 含「模型 + 维度 + 语料哈希」三要素。落地成三件事：
+
+1. **条目内容** = magic(`SFVC`) + version + model + dim(1024) + docCount(**218**) + payloadHash(sha256 全部向量字节) + 每条 (id, tier, source, effectiveFrom, effectiveTo, vec)。**不存** key、**不存** `BGE_M3_URL` 原串（只存它的 sha256）。
+2. **陈旧判定** = magic / version / dim / docCount / payloadHash 任一不符 ⇒ **整份作废**并重建（绝不"部分可用"）。语料哈希**基于内容**（相对路径 + 字节），**绝不用 mtime**——`git clone` / `git checkout` 会改写 mtime。
+3. **并发首次启动** = 用 `os.OpenFile(path, os.O_CREATE|os.O_EXCL, 0o600)` 原子创建锁文件做互斥；抢不到锁的进程**轮询等待**缓存文件出现（带超时），超时后**明确报错退出**，**不**降级为假向量（D-01）。
+
+**落地位置**：仓库内 gitignored 目录 `.skillforge-cache/vectors/`（Q2 建议）——**必须同时新增一条 `.gitignore` 规则**，因为当前 `.gitignore` 40 行里没有任何缓存条目（C-04 / A-14 / Pitfall 19）。
+
 ### Anti-Patterns to Avoid
 
 | 反模式 | 为什么禁止 |
@@ -664,6 +677,8 @@ if s.PipelineChatModel != nil {
 | GIF 渲染 | agg | 自己写 GIF 编码器；ffmpeg 虽在本机可用，但转换链路比 agg 长且体积不可控 |
 | 向量缓存序列化 | 自定义紧凑二进制头 + 原始 `float32` LE（见 `## Code Examples` 示例 2） | JSON 存 218×1024 float（体积约 10×）；或用 gob（跨 Go 版本不保证兼容） |
 | 嵌入向量化 | 现有 `internal/embedder/bge` | 任何"端点不可达就本地算"的分支（D-01） |
+| 语料内容哈希 | `crypto/sha256` + 自己按路径排序遍历（见 Pattern 8） | 用 mtime / size 做"版本"——`git clone` / `git checkout` 会改写 mtime；用 `hashicorp/go-version` 之类新依赖 |
+| 进程互斥（缓存首启） | `os.OpenFile(..., os.O_CREATE\|os.O_EXCL, 0o600)` | `sleep` 猜时长、"建目录当锁"、引入 `gofrs/flock`（新增依赖） |
 
 **Key insight:** 本 phase 的全部新增逻辑都是**编排**（orchestration），不是**发明**。三个需求各自都能在仓库里找到一条已经存在的、风格一致的实现路径；真正的风险不在"写不出来"，而在"接错位置"——`cmd/server/main.go:499-506` 的 type assertion panic、`cmd/server/main.go:302` 的 eager 求值、以及把 `knowledge.Index` 改成后端无关这三处，都是"接错位置"的典型。
 
@@ -1175,7 +1190,9 @@ done_partition "P5 end-to-end hermetic"
 | S-19 | `web/src/types/verdict.ts:32-97, 138-156` | 前端 Verdict/Citation 类型、`isVerdict` 守卫、wire snake_case 约定 |
 | S-20 | `web/vite.config.ts:4-8, 20-33`、`web/package.json:7-53`、`Dockerfile.frontend:4-10, 39` | dev proxy、实际依赖版本、nginx SPA fallback 语义基线 |
 | S-21 | `README.md:18, 26-79, 87-184`、`Makefile:129-142`、`verify-phase-48.sh:4-62` | 死链 demo.gif、当前 quickstart、Makefile 目标现状、门禁脚本形态 |
-| S-22 | `go.mod`、`.gitignore`、`.env.example`、`knowledge_bases.yaml` | 依赖实况、gitignore 现状、配置样例、5 个 KB 的 role 与 retrieval_enabled |
+| S-22 | `go.mod`、`.gitignore`、`.env.example`、`knowledge_bases.yaml` | 依赖实况、gitignore 现状、配置样例、5 个 KB 的 role 与 retrieval_enabled。**本轮逐行复读**：`.gitignore` 全文 40 行（无任何向量缓存条目）、`.env.example:8-13`（`RETRIEVER_BACKEND` 只列 milvus/mongo）与 `:43-45`（BGE 端点「Required in both backends. OpenAI-compatible /v1/embeddings endpoint.」）、`knowledge_bases.yaml:15-40`（5 个 slug 及其 role） |
+| S-39 | `gsd-tools query package-legitimacy check --ecosystem pypi asciinema` → `verdict: "SUS"`, `reasons: ["unknown-downloads"]`, `exists: true`, `deprecated: false`, `postinstall: null`, `repoUrl: "https://asciinema.org"` | 包合法性审计的一手判定 |
+| S-40 | `gsd-tools query package-legitimacy check --ecosystem crates agg` → `verdict: "SUS"`, `repoUrl: "https://github.com/savge13/agg"`, `weeklyDownloads: 179` | crates.io 上的 `agg` **不是** asciinema 的 agg（同名不同物）⇒ 安装必须走 git 源 |
 | S-23 | `internal/knowledge/ecl/stub.go`、`internal/retriever/mongo/seed.go` | 两个 stub 先例的**职责边界**（ECL 是表抽取器；D-07 是 verdict 层 stub，**模式**先例非代码复用） |
 | S-32 | `internal/llm/extract.go:83-120, 135-154, 162-167, 185-192, 213-265, 283-285` | `ExtractJSON` 的「只切出 JSON 对象、不做校验」语义、`phase2SystemInstructions` 的 4 条决策规则（含「NEVER refuse when a relevant chunk exists」）、`withJSONObjectResponseFormat` 用 `model.WrapImplSpecificOptFn` 的原因（「eino v0.9.14 has no model.WithGenerateConfig」） |
 | S-33 | `docker-compose.yml:80-95` | backend 服务的 `environment` 逐字：`RETRIEVER_BACKEND: milvus` / `MILVUS_ADDRESS: milvus:19530` / `BGE_M3_URL: ${BGE_M3_URL:?BGE_M3_URL is required — see .env.example}` / `GLM_API_KEY: ${GLM_API_KEY:?GLM_API_KEY is required — see .env.example}` / `SQLITE_DSN: /data/skillforge.db` / `ports: - "8888:8888"` ⇒ **无 key ⇒ compose 在容器启动前就失败** |
@@ -1200,7 +1217,7 @@ done_partition "P5 end-to-end hermetic"
 
 | # | Source | 用到的内容 |
 |---|---|---|
-| S-30 | 社区讨论（Reddit） | agg 的 Docker 镜像长期未更新 ⇒ 优先 cargo / 预编译二进制；[ASSUMED] |
+| S-30 | 社区讨论（Reddit） | agg 的 Docker 镜像长期未更新 ⇒ 优先 cargo / 预编译二进制；[ASSUMED]。**本轮降级**：crates.io 上的 `agg` 已被一手验证为**同名不同物**（S-40）⇒ 这条社区结论只作背景，不作依据 |
 | S-31 | 训练知识 | `docs/demo.gif` 的体积估计（1–3 MB）与 asciinema/agg 的常用参数组合；[ASSUMED]（A-03） |
 
 ## Metadata
