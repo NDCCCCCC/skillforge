@@ -5,7 +5,7 @@ milestone_name: Open-Source Readiness
 current_phase: 48
 current_phase_name: CI 矩阵
 status: executing
-stopped_at: Completed 48-22-PLAN.md
+stopped_at: Completed 48-26-PLAN.md
 last_updated: "2026-10-21T01:02:02.269Z"
 last_activity: 2026-10-21
 last_activity_desc: Phase 48 execution started
@@ -141,6 +141,7 @@ Recent decisions affecting current work:
 - [Phase 48]: 48-22: both parsed trust-surface walks layer OVER the retained textual rules (not replacements) - the pre-existing two-files/stray-secret fixtures stay rejected with a walk deleted, so each deletion drill's fixture loop reaches the first fixture only the deleted walk was catching (quoted-paths resp. tojson-secrets) and attributes exactly
 - [Phase 48]: 48-22: drill markers for the parsed walks sit at column 0 inside the indented Python probe - comment-only lines do not participate in Python indentation, so the markers are valid probe syntax and startswith-matchable range delimiters; indented markers delete nothing (first drill attempt proved it)
 - [Phase 48]: 48-22: requirements mark-complete deliberately not run - ready-ids returned all three but REQUIREMENTS.md already carries Complete (run 39380373930) in both places and the plan forbids requirement-status changes; marking would overwrite the canonical run-id status text (plan's expected no-op)
+- [Phase 48]: 48-26: round-6 Class-A run obtained — the round-6 tree (head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, carrying 48-23..48-25's gate and record work) was pushed to public main as a fast-forward (`630f875..c060c84`, no force, HTTPS origin transport) and run 7 of 7 (id `39525757252`, event `push`, 2026-10-21T01:10:28Z→01:13:50Z) concluded `go=fe=docker=verify=success` — the first public run of the round-6 gate, closing the round-5 local-green-only record boundary; go/fe/docker job spans are byte-identical between `630f875` and `c060c84` (ci.yml delta = push-trigger comment block + verify-job header comment block + verify install-step declared env map), so CICD-01/02/03 stay Complete (run 39380373930) without re-flipping and REQUIREMENTS.md is untouched; canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)` — total derived live from `gh run list`, M2/M3/M5 stay open by design
 
 ### Pending Todos
 
@@ -156,7 +157,7 @@ None yet.
 - **LOW-1（已裁定接受，`GovernanceTab.tsx:167`）**: REL-02 的 FE 连线本身无直测（删掉 prop 三个新测试照样过）。
 - **D-05 已知限制（明确接受，非隐式修复）**: 启动校验会 quarantine 坏实体、rollback 不会，故回滚确认框与横幅的 `N 个实体已隔离` 都夸大了 rollback 的实际行为。三处显式记录，从未作为已修复呈现。
 - **既有 flake（非 Phase 47 引入，`audit_writer_test.go:59`）**: `TestAuditWriterPreconditions` 对文件型 SQLite store 开库时套 5s `context.WithTimeout`，CPU 超卖下会超时。串行全量 8/8 绿（Phase 47 验证者自行复跑 3/3 绿），8 份并发则全红。`git log -S` 定源于 `9613d4d`（2026-08-20, Phase 11）。Phase 48 每线单 job 不会触发。
-- **CICD-01/02/03 status as of plan 48-19 (2026-10-20): Complete.** Runner executed ci.yml six times on the public default branch (runs 1-5 red; run 6 of 6 — id 39380373930 / head `630f875` — concluded `go=fe=docker=verify=success`, event `push`). Canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The earlier classified reds were cleared at the source: the go job's P5a SIGPIPE (48-16 materialised the `-list` output), the fe job's Sparkline Windows path (48-16 module-relative resolution), and the docker alpine-musl duckdb linkage (48-16 glibc builder/runtime); the run-5 red was a load-sensitive DuckDB reader-block ratio flake fixed by 48-19 (best-of-5 minimum sampling). WR-06 closes positively on run-3 evidence (lint step green with `only-new-issues: true` alone on the fast-forward push). M2-M5 remain open by design.
+- **CICD-01/02/03 status as of plan 48-19 (2026-10-20): Complete.** Runner executed ci.yml six times on the public default branch (runs 1-5 red; run 6 of 6 — id 39380373930 / head `630f875` — concluded `go=fe=docker=verify=success`, event `push`). Canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The earlier classified reds were cleared at the source: the go job's P5a SIGPIPE (48-16 materialised the `-list` output), the fe job's Sparkline Windows path (48-16 module-relative resolution), and the docker alpine-musl duckdb linkage (48-16 glibc builder/runtime); the run-5 red was a load-sensitive DuckDB reader-block ratio flake fixed by 48-19 (best-of-5 minimum sampling). WR-06 closes positively on run-3 evidence (lint step green with `only-new-issues: true` alone on the fast-forward push). M2-M5 remain open by design. **Round-6 update (2026-10-21, plan 48-26):** runner has now executed ci.yml seven times — run 7 of 7 (id `39525757252`, head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, fast-forward push `630f875..c060c84`) is four-green and is the first public run of the round-6 gate (the 48-23/48-24 verifier hardening and 48-25 record corrections are runner-executed); go/fe/docker job spans are byte-identical `630f875..c060c84`, so the Complete statuses stand against run 39380373930 without re-flipping. Canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930`. M2/M3/M5 remain open by design.
 
 ## Deferred Items
 
@@ -184,7 +185,7 @@ Items acknowledged and carried forward from previous milestone close.
 
 ## Session Continuity
 
-Last session: 2026-10-20T14:56:15.448Z
-Stopped at: Completed 48-22-PLAN.md
+Last session: 2026-10-21T01:05:51Z
+Stopped at: Completed 48-26-PLAN.md
 Resume file: None
-Resume command: `/gsd-verify-work` — Phase 48 is complete: ci.yml run 39380373930 (head `630f875`) concluded `go=fe=docker=verify=success` on the public default branch, and CICD-01/02/03 are Complete against that run id in both REQUIREMENTS.md places. Canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The three classified build reds were cleared by 48-16; the run-5 reader-block ratio flake was cleared by 48-19. M2-M5 remain open by design (fork PR, Dependabot, PR-scoped lint, second-run cache comparison). Next: Phase 49 (Hermetic Demo). See 48-19-SUMMARY.md, 48-VALIDATION.md M1/M1a/M1b/M1c, 48-SECURITY.md M1 + Approval paragraphs, ROADMAP.md Phase 48 section + Progress row.
+Resume command: `/gsd-verify-work` — Phase 48 round-6 gap closure is complete: the round-6 tree (head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, 48-23..48-26) was pushed to public `main` as a fast-forward (`630f875..c060c84`) and run 7 of 7 — id `39525757252`, event `push` — concluded `go=fe=docker=verify=success`, the first public run of the round-6 gate; CICD-01/02/03 stay Complete against run 39380373930 (go/fe/docker job spans byte-identical across the push; REQUIREMENTS.md untouched). Canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)`. M2/M3/M5 remain open by design (fork PR, Dependabot, second-run cache comparison). Next: Phase 49 (Hermetic Demo). See 48-26-SUMMARY.md, 48-VALIDATION.md M6, 48-SECURITY.md runner-evidence + Approval round-6 addenda, ROADMAP.md Phase 48 section + Progress row.

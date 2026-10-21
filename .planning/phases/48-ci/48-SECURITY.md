@@ -243,6 +243,22 @@ are tracked as Manual-Only M1–M5 in `48-VALIDATION.md`:
   scope: with `only-new-issues: true` alone, on a fast-forward push, the action's diff-scoped
   output reported zero findings — recorded fixed-by-evidence in `48-REVIEW-DISPOSITION-R1.md`
   and `48-REVIEW-DISPOSITION.md`). CICD-01/02/03 are Complete against run 39380373930.
+  **Round-6 update (2026-10-21, plan 48-26):** the round-6 tree — head
+  `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, carrying 48-23's attributing fixture loop and
+  `P3-INSTENV-OK` install-env pin, 48-24's `P4-CONFIG-OK` evidence binding and comment-stripped
+  trigger scan, and 48-25's record corrections (the T-48-80..T-48-82 mitigations and the corrected
+  T-48-78 pin) — was pushed to public `main` as a fast-forward (`630f875..c060c84`, no force), and
+  run 7 of 7 (id `39525757252`, event `push`, 2026-10-21) concluded
+  `go=fe=docker=verify=success` — the **first public run of the round-6 gate**, closing the
+  round-5 record boundary: the current gate script and verify job have now executed publicly, not
+  only locally. The go, fe and docker job spans are byte-identical between `630f875` and
+  `c060c84` — the ci.yml delta is the push-trigger comment block (48-25's IN-R5-04 correction,
+  comments only), the verify-job header comment block, and the verify install step's declared env
+  map (values unchanged) — so the `Complete (run 39380373930)` statuses stand for the pushed tree
+  without re-flipping. Canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930;
+  run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first
+  public run of the round-6 gate (four-green: go=success fe=success docker=success
+  verify=success)`.
 - **Images were built by the runner but never published.** Run 39380373930's `docker` job built
   both images (backend on the glibc base, frontend) with `push: false`, so `T-48-09`'s
   non-publication and the two per-image cache scopes are now runner-observed. Docker is absent
@@ -296,7 +312,7 @@ that the `-test.shuffle` seed prints only under `-v`.
 - [x] `threats_open: 0` confirmed — 34/34 closed, 0 open: the nine re-opened rows are re-closed on the mutation-proven assertions of plans 48-05…48-09, the supply-chain surface flagged by `48-11-SUMMARY.md` § Threat Flags is received as row T-48-47 (closed; 48-12 fix + 48-13 pin/drill), the round-4/5 rows T-48-70..T-48-79 (48-20..48-22) are closed on their per-assertion tokens, parsed-document walks, declared install env and R1 annotation, and the round-6 rows T-48-80..T-48-82 (48-23/48-24, registered by 48-25 on 2026-10-21) are closed on the attributing fixture loop, the config-verify evidence binding and the comment-stripped trigger scan; T-48-78's Mitigation cell was corrected on 2026-10-21 (48-25) to the `P3-INSTENV-OK` pin that actually exists after round 5 falsified its enforcement clause
 - [x] `status: verified` set in frontmatter — matches the register (0 open at or above `block_on: high`)
 
-**Approval:** APPROVED — 34/34 closed, 0 open (2026-10-21, plan 48-25 round-6 reconciliation: T-48-78's cell corrected to the pin that actually exists and rows T-48-80..T-48-82 registered on 48-23/48-24's landed evidence; earlier approvals: 31/31 at the 48-22 round-5 reconciliation, 21/21 at the 48-19 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14. On plan 48-15 the runner executed ci.yml on the public default branch; on plan 48-19 the derived total is six runs (`gh run list`), and **run 6 of 6 — run id 39380373930 on head `630f875` — is four-green: `go=fe=docker=verify=success`** (canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`; run evidence in `48-15-SUMMARY.md`, `48-19-SUMMARY.md` and `48-VALIDATION.md`). WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). The three classified persistent real reds from the earlier runs (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) were cleared by 48-16's source fixes, and the run-5 reader-block ratio flake was cleared by 48-19; they are recorded in the same "What this audit does NOT establish" section above and in the Manual-Only rows.
+**Approval:** APPROVED — 34/34 closed, 0 open (2026-10-21, plan 48-25 round-6 reconciliation: T-48-78's cell corrected to the pin that actually exists and rows T-48-80..T-48-82 registered on 48-23/48-24's landed evidence; earlier approvals: 31/31 at the 48-22 round-5 reconciliation, 21/21 at the 48-19 reconciliation). Class A (no real CI run, no image build) was the recorded environment block through plan 48-14. On plan 48-15 the runner executed ci.yml on the public default branch; on plan 48-19 the derived total is six runs (`gh run list`), and **run 6 of 6 — run id 39380373930 on head `630f875` — is four-green: `go=fe=docker=verify=success`** (canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`; run evidence in `48-15-SUMMARY.md`, `48-19-SUMMARY.md` and `48-VALIDATION.md`). WR-06 closes positively on run-3 evidence (lint step green, fast-forward push with `only-new-issues: true` alone). The three classified persistent real reds from the earlier runs (P5a SIGPIPE on go, Sparkline test path on fe, alpine-musl vs duckdb on docker) were cleared by 48-16's source fixes, and the run-5 reader-block ratio flake was cleared by 48-19; they are recorded in the same "What this audit does NOT establish" section above and in the Manual-Only rows. Round-6 addendum (2026-10-21, plan 48-26): run 7 of 7 (id `39525757252`, head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, fast-forward push `630f875..c060c84`) is four-green — the first public run of the round-6 gate, so the T-48-80..T-48-82 mitigations and the corrected T-48-78 pin are now runner-executed; canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)`.
 
 ## Security Audit 2026-10-19
 

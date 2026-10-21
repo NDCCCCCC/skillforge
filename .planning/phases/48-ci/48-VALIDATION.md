@@ -93,7 +93,17 @@ of 6 — run id 39380373930 on head `630f875` — is the first all-green**, with
 workflow pipeline shape, Sparkline Windows path, alpine-musl duckdb linkage — see M1a-M1c) and
 one load-sensitive DuckDB reader-block ratio flake fixed by 48-19 (best-of-5 minimum sampling).
 M1 is closed on run 6 of 6. M2-M5 remain open: a push run alone cannot exercise a fork PR, a
-Dependabot PR, or a second-run cache comparison.
+Dependabot PR, or a second-run cache comparison. **Round-6 update (2026-10-21, plan 48-26):** a
+seventh run exists — run `39525757252` on head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67` (the
+round-6 tree, fast-forward push `630f875..c060c84`, no force) — and is four-green, the **first
+public run of the round-6 gate** (48-23's attributing fixture loop + install-env pin, 48-24's
+config-verify evidence binding + comment-stripped trigger scan, 48-25's record corrections): the
+round-6 gate script and its `verify` job have now executed publicly, not only locally. go/fe/docker
+job spans are byte-identical between `630f875` and `c060c84`, so CICD-01/02/03 stay Complete
+against run 39380373930 without re-flipping. Canonical fragment: `ci.yml total runs: 7; first
+all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252,
+event push) is the first public run of the round-6 gate (four-green: go=success fe=success
+docker=success verify=success)`. See M6 below.
 
 ---
 
@@ -122,6 +132,7 @@ Dependabot PR, or a second-run cache comparison.
 | M3 | Dependabot PR is treated like a fork (no live eval) | read the Dependabot PR's check list |
 | M4 | `only-new-issues` actually filters (lint output is scoped to changed lines, not the whole repo) | closed-by-evidence on plan 48-15 run-3: lint step reported zero findings on the fast-forward push (head `a2a4c86`); the diff between `62b6663..a2a4c86` is `.github/workflows/ci.yml` revert + `.planning/phases/48-ci/48-15-SUMMARY.md` line additions — no Go content — confirming the action's `only-new-issues: true` alone is sufficient |
 | M5 | Docker cache hit on the second run for **both** images | still open: compare `scope=backend` / `scope=frontend` cache entries across two consecutive green `docker` runs; the first green docker job is run 39380373930, so the comparison needs the next green run |
+| M6 | the round-6 gate script (P11 fixture-loop attribution + `P3-INSTENV-OK` install-env pin from 48-23, `P4-CONFIG-OK` evidence binding + comment-stripped trigger scan from 48-24, 48-25's record corrections) and the `verify` job that runs it have executed on a public runner | **closed** (2026-10-21, plan 48-26) — run 7 of 7: id `39525757252`, head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, event `push`, fast-forward push `630f875..c060c84` (no force), 2026-10-21T01:10:28Z→01:13:50Z: `verify=success` alongside `go=success`, `fe=success`, `docker=success`; derived total 7 read live from `gh run list`; canonical fragment `ci.yml total runs: 7; first all-green: 39380373930; run 7 (head c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67, id 39525757252, event push) is the first public run of the round-6 gate (four-green: go=success fe=success docker=success verify=success)` — this closes the round-5 local-green-only record boundary |
 
 ---
 
