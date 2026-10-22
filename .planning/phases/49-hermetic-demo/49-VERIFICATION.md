@@ -203,6 +203,13 @@ api_missing_http=503
 
 ## 6. Warnings（非阻断，需记录）
 
+> **Post-verification disposition（2026-10-23 收尾补记）**：本报告定稿后，以下 warnings 已在本 phase 内处置——
+> **W-1 已修复**（提交 `216620b`：`/api` 闸前移到 dist 检查之前 + `TestStaticHandlerMissingDistStill404sUnregisteredAPIPaths`；门禁修复后连跑两次 ALL PASSED）；
+> **W-2 已修复**（`TestModeOmitEmptyKeepsRealModelWireUnchanged`：零值 Verdict marshal 无 `"mode"` 键、stub marshal 出字面 `"mode":"stub"`）；
+> **W-3 已修复**（门禁 P4 新增 `P4-README-LABEL` 四条 README grep + 变异演练 **D10**；第 4 次连跑 ALL PASSED，`ok_partition "P4"` 扩为 4 token）；
+> **W-6 部分处理**（ROADMAP Phase 49 段新增 **Scope Note** 记录实施口径——SC1 实施为「无需内网 BGE 端点」、SC2 实施为「本地向量存储模式」、SC3 三重标注；**不改验收标准原文**，措辞修订按本报告建议留给 Phase 50）；
+> W-4/W-5/W-7/W-8 按下表建议接受并记录（处置账本见 `49-REVIEW-DISPOSITION.md`，评审工件见 `49-REVIEW.md`）。
+
 | # | 警告 | 证据 | 建议 |
 |---|---|---|---|
 | **W-1** | **`web/dist` 缺失时，未注册的 `/api/*` 路径返回 503（"web/dist not found"）而不是 404。** `static.go:75` 的 dist 存在性检查位于 `:88` 的 `/api` 闸**之前**，故缺 dist 时所有未匹配请求（含 `/api/unknown`）都走 `serveMissingDist` | 我的 fresh-clone 探针：`api_missing_http=503`（clone 内无 `web/dist`）；而 `web/dist` 存在时 `/api/unknown` → 404（`TestStaticHandlerAPIPrefixNeverFallsBackToHTML` PASS，门禁 `P6-API-NOT-SHADOWED`） | 修法很小：把 `/api` 闸移到 dist 检查之前，或在 `serveMissingDist` 里放行 `/api` 前缀。**不影响 SC1–SC5**（已注册 API 路由在缺 dist 时照常工作：实测 `skills_http=200`、`chat_http=200`），仅影响"前端未构建时未注册 API 的 404 语义" |

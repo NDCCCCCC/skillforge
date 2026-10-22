@@ -700,7 +700,21 @@ partition_P4() {
     fail "P4: no legal Verdict was produced in the no-key path — see $log"
   grep -qF 'P4-MODE-STUB' "$log" ||
     fail 'P4: the data-policy payload lost the literal "mode":"stub" — the wire-level stub annotation is the third leg of D-08'
-  ok_partition "P4" "$log" "P4-NO-KEY-STARTED" "P4-STUB-VERDICT-VALID" "P4-MODE-STUB"
+  # drill:P4-README-LABEL:begin
+  # D-08 的第三条腿是 README：门禁若不锁定它，hermetic quickstart 可以在
+  # 没有任何变红的情况下悄悄停止记载 stub 模式（phase-49 独立验证 W-3）。
+  # 四条 grep 各钉住一个读者必须能在 README 里找到的事实。
+  grep -qF 'export RETRIEVER_BACKEND=embedded' "$ROOT/README.md" ||
+    fail 'P4: README no longer shows the embedded backend switch (export RETRIEVER_BACKEND=embedded)'
+  grep -qF 'http://localhost:11434/v1/embeddings' "$ROOT/README.md" ||
+    fail 'P4: README no longer shows the default local Ollama endpoint (localhost:11434/v1/embeddings)'
+  grep -qF '"mode":"stub"' "$ROOT/README.md" ||
+    fail 'P4: README no longer documents the wire-level "mode":"stub" label'
+  grep -qF 'SKILLFORGE_MCP_SERVICE_SKILL' "$ROOT/README.md" ||
+    fail 'P4: README no longer names SKILLFORGE_MCP_SERVICE_SKILL — the hermetic quickstart would not boot'
+  echo "P4-README-LABEL: the README still documents the embedded switch, the Ollama endpoint, the wire label and the MCP skill env" >>"$log"
+  # drill:P4-README-LABEL:end
+  ok_partition "P4" "$log" "P4-NO-KEY-STARTED" "P4-STUB-VERDICT-VALID" "P4-MODE-STUB" "P4-README-LABEL"
   # drill:done:P4
   done_partition "P4"
 }
@@ -953,6 +967,10 @@ partition_P9() {
     # 这种缺失只有 P9 的「9 个分区各有 begin/ok/done」计数断言能抓到，局部跑发现不了。
 
     run_drill "D9" "ALL" "P9|INCOMPLETE|done_partition|registry" '/^  done_partition "P8"$/d'
+
+    # D10 删掉 P4 的 README 三重标注检查块：README 是 D-08 的第三条腿，
+    # 没有这条演练，quickstart 文档可以无声地丢掉 stub 标注而不变红。
+    run_drill_block "D10" "P4" "P4-README-LABEL|P4" "P4-README-LABEL"
 
   fi
 

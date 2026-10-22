@@ -30,10 +30,39 @@
 package verdict
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// TestModeOmitEmptyKeepsRealModelWireUnchanged pins the D-08① wire
+// contract (Phase 49): Mode is written ONLY by the stub extractor, so a
+// real-model producer that leaves Mode zero must marshal WITHOUT the
+// "mode" key — legacy consumers see an unchanged wire shape. A stub
+// producer that sets Mode=ModeStub must marshal the literal
+// "mode":"stub". If someone ever drops the omitempty tag (or writes Mode
+// on the real-model path), the first half of this test goes red before
+// any client notices the schema change.
+//
+// 49-02 truth ⑧ declared this mechanical criterion but did not land it;
+// the independent phase-49 verification flagged the gap (W-2) and this
+// test closes it.
+func TestModeOmitEmptyKeepsRealModelWireUnchanged(t *testing.T) {
+	real := Verdict{Status: "ok", Confidence: 0.92, Citations: []Citation{}}
+	b, err := json.Marshal(real)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(b), `"mode"`,
+		"a real-model verdict must not carry a mode key (omitempty contract)")
+
+	stub := Verdict{Status: "ok", Confidence: 0.5, Citations: []Citation{}, Mode: ModeStub}
+	b, err = json.Marshal(stub)
+	assert.NoError(t, err)
+	assert.Contains(t, string(b), `"mode":"stub"`,
+		"the stub verdict must carry the literal mode label")
+	assert.True(t, strings.Contains(string(b), `"mode":"stub"`))
+}
 
 // TestValidateVerdictAcceptsValid covers every ValidStatuses key plus
 // the boundary confidence values 0.0 and 1.0. A regression here would
@@ -131,8 +160,8 @@ func TestValidStatusesEnum(t *testing.T) {
 // compliance vocabulary.
 func TestComplianceStatusesEnum(t *testing.T) {
 	expected := map[string]bool{
-		"compliant":     true,
-		"non_compliant": true,
+		"compliant":      true,
+		"non_compliant":  true,
 		"not_applicable": true,
 	}
 	assert.Equal(t, expected, ComplianceStatuses,
