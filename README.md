@@ -78,6 +78,18 @@ That is the platform in action: one kernel, one Markdown Skill file. Swap in a d
 
 The backend is also directly reachable at `http://localhost:8888` for `curl` probes, and Milvus gRPC is at `localhost:19530`.
 
+### No API key? Stub LLM mode
+
+SkillForge boots **without any LLM API key**. When neither `LOCAL_API_KEY` nor `GLM_API_KEY` is set, the server starts in **stub LLM mode**: the pipeline's answer model is replaced by a deterministic extractor (`internal/server/stubchat`) that assembles each answer from the verbatim text of the top retrieved chunk — no LLM is called, and the retrieval / grounding / refusal machinery is the real production code.
+
+Three annotations make a stub answer impossible to mistake for a real one (D-08):
+
+1. **`[WARN]` at boot** — the server logs `STUB LLM MODE — no LOCAL_API_KEY / GLM_API_KEY configured` at startup, before any request is served.
+2. **`mode: "stub"` on the wire** — every stub verdict carries `mode: "stub"` in its JSON payload; real-model answers never emit the field, so the wire format stays backward-compatible. The UI renders a `STUB` badge on such cards.
+3. **Conservative verdicts** — stub answers are always capped at `confidence ≤ 0.5` with `review_required: true`.
+
+Observable consequences: answers are always verbatim quotes from a cited chunk (never paraphrased), refusals are more frequent (the stub refuses instead of guessing when no usable chunk text is found), and every response shows the `STUB` badge plus the 人工复核 flag. Note that `BGE_M3_URL` (the embedding endpoint) is still **required** in stub mode — stubbed is the LLM, not the retriever. Setting `GLM_API_KEY` (or `LOCAL_API_KEY` for an OpenAI-compatible local endpoint) and restarting switches back to the real model.
+
 ---
 
 ## Architecture

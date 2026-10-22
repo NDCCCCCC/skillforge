@@ -80,10 +80,24 @@ package verdict
 // ComplianceStatus are 260817-vsm additions; both are omitempty so legacy
 // producers (and Skills that don't use them) round-trip cleanly.
 type Verdict struct {
-	Status           string     `json:"status"`                     // platform-neutral (ValidStatuses)
-	Confidence       float64    `json:"confidence"`                 // [0.0, 1.0]
-	Citations        []Citation `json:"citations"`                  // D2-06: structured citations; may be empty
-	ReviewRequired   bool       `json:"review_required"`            // true if Confidence < 0.9 OR grounding downgrade
-	Answer           string     `json:"answer,omitempty"`           // 260817-vsm: factual-query direct answer
+	Status           string     `json:"status"`                      // platform-neutral (ValidStatuses)
+	Confidence       float64    `json:"confidence"`                  // [0.0, 1.0]
+	Citations        []Citation `json:"citations"`                   // D2-06: structured citations; may be empty
+	ReviewRequired   bool       `json:"review_required"`             // true if Confidence < 0.9 OR grounding downgrade
+	Answer           string     `json:"answer,omitempty"`            // 260817-vsm: factual-query direct answer
 	ComplianceStatus string     `json:"compliance_status,omitempty"` // 260817-vsm: Compliance-Skill-specific verdict
+
+	// Mode is the D-08① wire annotation (Phase 49): the ONLY producer that
+	// writes it is the stub extractor (internal/server/stubchat, value
+	// ModeStub="stub"). Real-model producers leave it zero, so the key is
+	// absent from their JSON (omitempty) and legacy consumers see an
+	// unchanged wire shape. It records answer provenance honestly — a stub
+	// answer must never masquerade as model-generated (SC3 / D-09).
+	Mode string `json:"mode,omitempty"`
 }
+
+// ModeStub is the only wire value Mode may carry today. stubchat and the
+// Phase 49 gate (49-04 verify script) must reference this constant instead
+// of repeating the string literal, so a rename here is a compile error, not
+// a silent drift.
+const ModeStub = "stub"

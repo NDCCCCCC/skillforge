@@ -43,6 +43,13 @@ export type VerdictStatus = typeof VERDICT_STATUSES[number];
 export const COMPLIANCE_STATUSES = ['compliant', 'non_compliant', 'not_applicable'] as const;
 export type ComplianceStatus = typeof COMPLIANCE_STATUSES[number];
 
+// 49-02 (D-08): stub-mode annotation — matches internal/verdict verdict.Mode.
+// Only the deterministic stubchat extractor stamps mode:"stub"; a real LLM
+// never emits the field (json:"mode,omitempty" keeps the wire
+// backward-compatible). Absent mode ⇒ real-model answer.
+export const VERDICT_MODES = ['stub'] as const;
+export type VerdictMode = typeof VERDICT_MODES[number];
+
 // Knowledge-base tier slugs — Phase 26 (KBM-02) made the tier vocabulary
 // REGISTRY-DRIVEN: any slug matching internal/kb.ValidateSlug is legal, so
 // `Tier` is a plain string and the FE never assumes a fixed tier count
@@ -76,6 +83,9 @@ export interface Verdict {
   /** 260817-vsm: Compliance-Skill-specific verdict. One of COMPLIANCE_STATUSES.
    * Empty for non-compliance Skills (simple-qa / calculator). */
   compliance_status?: ComplianceStatus;
+  /** 49-02 (D-08): "stub" when the deterministic extractor (not an LLM)
+   * produced this verdict. Optional + omitempty on the Go wire. */
+  mode?: VerdictMode;
 }
 
 // Citation struct — mirrors internal/verdict/citation.go (D2-06)
@@ -152,5 +162,15 @@ export function isRefusal(value: unknown): value is Refusal {
     'reason' in value &&
     typeof (value as { reason: unknown }).reason === 'string' &&
     REFUSAL_REASONS.includes((value as { reason: string }).reason as RefusalReason)
+  );
+}
+
+// 49-02 (D-08): narrow a Verdict to stub-mode for the VerdictCard badge.
+// Deliberately NOT folded into isVerdict — the guard must keep accepting
+// real-model verdicts (mode absent) and stay a status-only check.
+export function isStubVerdict(value: Verdict | unknown): value is Verdict & { mode: VerdictMode } {
+  return (
+    isVerdict(value) &&
+    (value as { mode?: unknown }).mode === 'stub'
   );
 }

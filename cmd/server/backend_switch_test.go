@@ -208,32 +208,35 @@ func TestBuildRetrieverNoneBranchUnchanged(t *testing.T) {
 	}
 }
 
-// TestGlmKeyLineStillEagerFor49_02 is the 地雷 2 hand-off credential.
-//
-// **这一行归 49-02 改造（D-11），本 plan 只 lock 现状。** 49-02 把
-// `glmKey := envOr("LOCAL_API_KEY", envRequired("GLM_API_KEY"))` 改成惰性求值
-// 之后，必须同步更新本测试 —— 否则未来读者会误以为这个 lock 在阻止 49-02。
-// 本测试存在的意义正是"让那次改动有据可查、有门可过"。
-func TestGlmKeyLineStillEagerFor49_02(t *testing.T) {
+// TestGlmKeyLineIsLazyForStubMode is the 49-02 rewrite of the 地雷 2
+// hand-off credential. The original lock (TestGlmKeyLineStillEagerFor49_02)
+// froze the pre-49-02 eager evaluation `envOr("LOCAL_API_KEY",
+// envRequired("GLM_API_KEY"))`; 49-02 landed the D-11 change and updates this
+// lock as its comment instructed. The invariants that survive: the GLM key
+// line keeps the LOCAL_API_KEY override, GLM_API_KEY is read lazily
+// (os.Getenv — a missing key must boot into stub LLM mode, not Fatalf), and
+// BGE_M3_URL stays REQUIRED (D-01/D-11).
+func TestGlmKeyLineIsLazyForStubMode(t *testing.T) {
 	src := mainGoSource(t)
 
-	if got := strings.Count(src, `envRequired("GLM_API_KEY")`); got != 1 {
-		t.Fatalf(`expected exactly 1 occurrence of envRequired("GLM_API_KEY") before 49-02 rewrites it, found %d — if 49-02 already landed, update this lock instead of restoring the eager evaluation`, got)
+	// GLM_API_KEY 不得再走 envRequired（eager Fatalf 会让无 key 启动直接死）。
+	if got := strings.Count(src, `envRequired("GLM_API_KEY")`); got != 0 {
+		t.Fatalf(`expected 0 occurrences of envRequired("GLM_API_KEY") after 49-02 (missing key must boot stub mode, not Fatal), found %d`, got)
 	}
 
-	// 找到那一行，断言它同时含 LOCAL_API_KEY 的 envOr（D-11 的"本地可覆盖"语义）。
+	// 找到 glmKey 行，断言惰性求值 + LOCAL_API_KEY 覆盖语义都在。
 	var line string
 	for _, l := range strings.Split(src, "\n") {
-		if strings.Contains(l, `envRequired("GLM_API_KEY")`) {
+		if strings.Contains(l, `glmKey := envOr("LOCAL_API_KEY"`) {
 			line = l
 			break
 		}
 	}
 	if line == "" {
-		t.Fatal(`could not locate the envRequired("GLM_API_KEY") line`)
+		t.Fatal(`could not locate the glmKey := envOr("LOCAL_API_KEY", ...) line`)
 	}
-	if !strings.Contains(line, `envOr("LOCAL_API_KEY"`) {
-		t.Fatalf("the GLM_API_KEY line no longer keeps the LOCAL_API_KEY override; got: %s", line)
+	if !strings.Contains(line, `os.Getenv("GLM_API_KEY")`) {
+		t.Fatalf("the GLM_API_KEY read is no longer lazy (os.Getenv) — a missing key would Fatal at boot instead of entering stub LLM mode; got: %s", line)
 	}
 
 	// BGE_M3_URL 仍是必填（D-11）：embedded 后端不做进程内 embedding，端点

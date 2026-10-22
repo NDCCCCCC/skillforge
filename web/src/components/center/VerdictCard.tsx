@@ -28,6 +28,7 @@ import { ChevronRight, ShieldCheck } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import type { Verdict, VerdictStatus } from '../../types/verdict';
+import { isStubVerdict } from '../../types/verdict';
 import { STATUS_LABELS } from '../common/StatusBadge';
 import StatusBadge from '../common/StatusBadge';
 import ComplianceStatusBadge from '../common/ComplianceStatusBadge';
@@ -87,6 +88,9 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
   // answer was derived from a factual lookup, not a compliance review.
   const showComplianceBadge =
     !!verdict.compliance_status && verdict.compliance_status !== 'not_applicable';
+  // 49-02 (D-08③): stub-mode badge — the answer came from the deterministic
+  // extractor, not an LLM. Rendered on both card surfaces.
+  const stubMode = isStubVerdict(verdict);
 
   // Open Design B5 — chat-stream inline card: a ≤340px compact stripe
   // (shield + status word + confidence + 详情→) that opens the detail
@@ -122,6 +126,14 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
         >
           <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: STATUS_STRIPE[verdict.status] }} aria-hidden />
           <span className="verdict-inline-status">{STATUS_LABELS[verdict.status]}</span>
+          {stubMode && (
+            <span
+              data-testid="stub-mode-badge"
+              className="rounded-full border border-current px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-70"
+            >
+              stub
+            </span>
+          )}
           <span className="verdict-inline-conf">置信度 {pct}%</span>
           <span className="verdict-inline-cta">
             详情
@@ -163,6 +175,14 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
             <StatusBadge status={verdict.status} />
             {showComplianceBadge && (
               <ComplianceStatusBadge status={verdict.compliance_status!} />
+            )}
+            {stubMode && (
+              <span
+                data-testid="stub-mode-badge"
+                className="rounded-full border border-current px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted"
+              >
+                stub
+              </span>
             )}
           </div>
         </div>

@@ -253,4 +253,27 @@ describe('VerdictCard', () => {
     expect(useAppStore.getState().centerView).toEqual({ kind: 'verdict', verdictId: 'chat-latest' });
     expect(useAppStore.getState().detailPanelOpen).toBe(true);
   });
+
+  // --- 49-02 (D-08③): stub-mode badge ---
+
+  const stubVerdict: Verdict = {
+    ...factualQuery,
+    confidence: 0.5,
+    review_required: true,
+    mode: 'stub',
+  };
+
+  it('renders the stub-mode badge on both card surfaces when verdict.mode="stub" (49-02)', () => {
+    // Full CenterPanel card.
+    const { rerender } = render(<VerdictCard verdict={stubVerdict} />);
+    expect(screen.getByTestId('stub-mode-badge')).toHaveTextContent('stub');
+    // Chat-stream inline stripe.
+    rerender(<VerdictCard verdict={stubVerdict} chatText="一些不包含答案的正文" />);
+    expect(screen.getByTestId('stub-mode-badge')).toHaveTextContent('stub');
+  });
+
+  it('renders NO stub-mode badge for a real-model verdict (mode absent, 49-02)', () => {
+    render(<VerdictCard verdict={compliant} />);
+    expect(screen.queryByTestId('stub-mode-badge')).toBeNull();
+  });
 });

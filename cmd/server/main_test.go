@@ -379,7 +379,9 @@ func TestBootAssemblyOrder(t *testing.T) {
 	for _, consumer := range []string{
 		"skill.NewLoader(\"skills/\", kbReg)",
 		"skill.New(\"skills/\", nil, kbReg)",
-		"skill.NewWizard(cm, \"skills/\", kbReg)",
+		// 49-02: the wizard now takes toolChatModel (nil in stub mode) —
+		// the lock's point is the kbReg injection, not the model variable.
+		"skill.NewWizard(toolChatModel, \"skills/\", kbReg)",
 		"knowledge.New(r, kbReg)",
 		"KBRegistry:  kbReg,",
 	} {
