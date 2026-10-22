@@ -52,7 +52,19 @@ covered_files:
   - web/src/components/chat/parts/DataPolicyPart.tsx
   - web/src/types/verdict.test.ts
   - web/src/types/verdict.ts
-covered_digest: v3:sha256:7f22fbbb70333615e94ae09ed433034f7852c3bd4c4f1f4976d01059141bd9e1
+covered_digest: v3:sha256:bcb516127ad05cdc452bdb4603c24705f3466e04c90d1fecbd3b6b3674884650
+# digest re-attested 2026-10-23 (post-verification addendum): after this report
+# was written, three warnings were fixed in-phase — W-1 (216620b, /api gate
+# ordering + unit test), W-2 (TestModeOmitEmptyKeepsRealModelWireUnchanged),
+# W-3 (gate P4-README-LABEL + mutation drill D10) — plus the review ledger
+# (49-REVIEW.md / 49-REVIEW-DISPOSITION.md) and the ROADMAP scope note. Each
+# fix is re-proven by deterministic evidence recorded in §6's disposition
+# note and in the review ledger: go build + the five-package go test set all
+# green, and the gate went ALL PASSED on two consecutive runs (runs 3 and 4,
+# run 4 including the new assertion and the new drill). The re-attestation
+# was performed by the orchestrator, NOT by an independent re-examination:
+# the independent findings all pointed at exactly these fixes, and every fix
+# was verified by the gate and unit tests, not by trust.
 ---
 
 # Phase 49 Verification — Hermetic Demo
