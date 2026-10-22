@@ -20,9 +20,9 @@
 
 ## Hermetic Demo (DEMO)
 
-- [ ] **DEMO-01**: 无内网依赖的检索链——embedded 向量兜底模式（无需外部 Milvus/BGE 即可检索）
-- [ ] **DEMO-02**: 无 API key 路径——stub LLM chat（既有 stub 抽取器延伸），全链可跑
-- [ ] **DEMO-03**: quickstart 实测通过——hermetic 模式下 README quickstart 逐步验证（产出 demo.gif 素材，反哺 FACE-01）
+- [x] **DEMO-01**: 无内网依赖的检索链——embedded 向量兜底模式（无需外部 Milvus/BGE 即可检索）
+- [x] **DEMO-02**: 无 API key 路径——stub LLM chat（既有 stub 抽取器延伸），全链可跑
+- [x] **DEMO-03**: quickstart 实测通过——hermetic 模式下 README quickstart 逐步验证（产出 demo.gif 素材，反哺 FACE-01）
 
 ## 清债与发布 (REL)
 
@@ -69,9 +69,9 @@ v1.6 遗留 backlog（继承进 v1.7 Traceability 表，REL-04 补录）。定�
 | CICD-01 | Phase 48 | Complete (run 39380373930) |
 | CICD-02 | Phase 48 | Complete (run 39380373930) |
 | CICD-03 | Phase 48 | Complete (run 39380373930) |
-| DEMO-01 | Phase 49 | Pending |
-| DEMO-02 | Phase 49 | Pending |
-| DEMO-03 | Phase 49 | Pending |
+| DEMO-01 | Phase 49 | Complete |
+| DEMO-02 | Phase 49 | Complete |
+| DEMO-03 | Phase 49 | Complete |
 | REL-01 | Phase 47 | Complete |
 | REL-02 | Phase 47 | Complete |
 | REL-03 | Phase 51 | Pending |

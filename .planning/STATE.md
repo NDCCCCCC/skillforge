@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.7
 milestone_name: Open-Source Readiness
-current_phase: 49
-current_phase_name: Hermetic Demo
-status: executing
-stopped_at: Phase 49 context gathered
-last_updated: "2026-10-22T01:09:47.889Z"
-last_activity: 2026-10-21
-last_activity_desc: Phase 48 complete, transitioned to Phase 49
-state_head: 2f51d2b1d460b1772ea6bec62d9a16cfcbfdb89e
+current_phase: 50
+current_phase_name: 开源门面
+status: planning
+stopped_at: Phase 49 complete, ready to plan Phase 50
+last_updated: "2026-10-22T13:34:49.920Z"
+last_activity: 2026-10-22
+last_activity_desc: Phase 49 complete, transitioned to Phase 50
+state_head: 7f0e8f56aa7e7b0700420e6c1d3b81aa0a71f9cb
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 39
-  completed_plans: 34
-  percent: 40
+  completed_plans: 38
+  percent: 60
 ---
 
 # Project State
@@ -25,7 +25,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-13)
 
 **Core value:** 同一个 agent 内核，通过可插拔的 Skill 文件被任意企业快速定制，无需改代码
-**Current focus:** Phase 48 — CI 矩阵
+**Current focus:** Phase 49 — Hermetic Demo
 
 ## Current Milestone
 
@@ -35,18 +35,18 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
-Phase: 49 (Hermetic Demo) — READY TO EXECUTE
+Phase: 50 — 开源门面
 Plan: Not started
-Status: Ready to execute
-Last activity: 2026-10-21 — Phase 48 complete, transitioned to Phase 49
+Status: Ready to plan
+Last activity: 2026-10-22 — Phase 49 complete, transitioned to Phase 50
 
-Progress: [████░░░░░░] 40%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 35 (v1.7, Phases 47–48)
+- Total plans completed: 39 (v1.7, Phases 47–48)
 - Average duration: —
 - Total execution time: —
 
@@ -56,6 +56,7 @@ Progress: [████░░░░░░] 40%
 |-------|-------|-------|----------|
 | 47 清债与可复现基线 | 8 | — | — |
 | 48 CI 矩阵 | 27 | — | — |
+| 49 | 4 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -187,6 +188,6 @@ Items acknowledged and carried forward from previous milestone close.
 ## Session Continuity
 
 Last session: 2026-10-21T12:38:44.895Z
-Stopped at: Phase 49 context gathered
+Stopped at: Phase 49 complete, ready to plan Phase 50
 Resume file: .planning/phases/49-hermetic-demo/49-CONTEXT.md
 Resume command: `/gsd-plan-phase 49` — Phase 48 (CI 矩阵) is complete: 27/27 plans executed, round-7 verification `passed` (15/15 must-haves, `48-VERIFICATION.md`, coverage set 69 files, digest `v3:sha256:c3174dca2179d21c0bd1c0a5c648145db6a8e3b42b6b850b34507e46c6b01e16`), the 37-threat security sheet has 0 open, and the public four-green run 39380373930 backstops CICD-01/02/03. Phase 49 (Hermetic Demo) is next — start with its context (`/gsd-discuss-phase 49`). Round-8 candidates already recorded in ROADMAP.md「Round-7 review 遗留的 6 条 open 发现」: the workflow-level `permissions:` mapping-value branch still has no isolated fixture, the quote-aware stripper's quote-state has no canary, the P4 byte count is measured but not asserted, and the secret matcher still misses spaced/bracket forms.
