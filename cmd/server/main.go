@@ -140,6 +140,7 @@ import (
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/skillforge/skillforge/internal/ticket"
+	"github.com/skillforge/skillforge/internal/webui"
 )
 
 // Phase 30 / WR-05 (T-30-06): per-session rate limiting constants.
@@ -1273,6 +1274,13 @@ func main() {
 	log.Printf("     POST /api/import/push         — Phase 15 import push (admin + salt required)")
 	log.Printf("     DELETE /api/import/dataset/:name — Phase 15 dataset delete (admin + salt required)")
 	log.Printf("     GET  /api/admin/kpis          — Phase 16 KPI catalog (admin, read-only)")
+	log.Printf("     GET  /                       — static web UI (web/dist, SPA fallback; 503 until built)")
+	// Phase 49 / D-13：同源托管 web/dist，让 hermetic quickstart 只开一个口。
+	// 必须最后注册：挂载点是 hertz 的 NoRoute（只在没有任何路由命中时触发），
+	// 所以已注册的 /api/* 与 /reports* 结构性地不可能落进静态 handler；
+	// 即便如此，仍把挂载放在全部路由之后、h.Spin() 之前，保持意图显式
+	// （Pitfall 13：catch-all 先注册会遮蔽 /api/*，整条 chat/SSE 主链断掉）。
+	webui.Mount(h, webui.DistDirDefault)
 	// h.Spin() blocks until SIGINT/SIGTERM; the return is unreachable
 	// in production but the lint guards us from a future "if err" insert.
 	h.Spin()
