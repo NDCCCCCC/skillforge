@@ -63,8 +63,8 @@ type ranked struct {
 // 时，没有二级键的顺序取决于输入顺序，而输入顺序在并发 seed 下不稳定 ⇒
 // eval 结果不可复现。mongo 已经踩过这个坑，这里照抄它的修法。
 //
-// 相似度**必须**用 vecmath.Cosine：第二份 cosine 实现会带来"两个后端的
-// 相似度在小数第几位上不一致"的隐性分裂（49-PATTERNS §1 明确禁止）。
+// 相似度**必须**调用 vecmath 包的 Cosine：第二份 cosine 实现会带来"两个
+// 后端的相似度在小数第几位上不一致"的隐性分裂（49-PATTERNS §1 明确禁止）。
 func rank(rows []row, queryVec []float32, k int) []retriever.Hit {
 	if k <= 0 || len(rows) == 0 || len(queryVec) == 0 {
 		return nil
