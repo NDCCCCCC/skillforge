@@ -90,6 +90,71 @@ Three annotations make a stub answer impossible to mistake for a real one (D-08)
 
 Observable consequences: answers are always verbatim quotes from a cited chunk (never paraphrased), refusals are more frequent (the stub refuses instead of guessing when no usable chunk text is found), and every response shows the `STUB` badge plus the 人工复核 flag. Note that `BGE_M3_URL` (the embedding endpoint) is still **required** in stub mode — stubbed is the LLM, not the retriever. Setting `GLM_API_KEY` (or `LOCAL_API_KEY` for an OpenAI-compatible local endpoint) and restarting switches back to the real model.
 
+## Run without Docker / without an API key
+
+The full stack above is the recommended path. This section is the **hermetic** path: no Docker, no Milvus, no etcd, no minio, and no LLM API key — just a Go toolchain, Node, and one embedding endpoint.
+
+> **What `embedded` means.** `RETRIEVER_BACKEND=embedded` keeps the **vector store inside the backend process** (an in-process Go slice with cosine ranking). It does **not** mean the embedding model runs in-process: vectorization is always delegated to an external embedding endpoint, and there is **no fallback** — if that endpoint is unreachable the backend fails loudly instead of silently degrading to meaningless vectors.
+
+### Prerequisites
+
+| Dependency | Why | Minimum |
+|------------|-----|---------|
+| **Go** | Runs the backend | 1.23+ (CGO toolchain required — see `make check-cgo`) |
+| **Node.js** | Runs the frontend dev server | 20+ (npm) |
+| **One embedding endpoint** | Serves the embedding model — still required | see below |
+
+### The embedding endpoint (still required — two interchangeable forms)
+
+| Form | How | `BGE_M3_URL` |
+|------|-----|--------------|
+| **Local Ollama** (primary) | `ollama pull bge-m3` | `http://localhost:11434/v1/embeddings` |
+| **Any OpenAI-compatible `/v1/embeddings` endpoint** | e.g. a hosted or self-hosted service | point `BGE_M3_URL` at its `/v1/embeddings` URL |
+
+Both forms speak the same OpenAI-compatible wire format, so switching between them is a one-line `BGE_M3_URL` change. The local Ollama path needs no key and is the default in `.env.example`.
+
+### Steps
+
+```bash
+# 1. Clone
+git clone https://github.com/ninedrunk/skillforge.git
+cd skillforge
+
+# 2. Start the embedding endpoint (local minimum)
+ollama pull bge-m3
+
+# 3. Point the backend at the in-process vector store.
+#    BGE_M3_URL is the embedding endpoint; SKILLFORGE_MCP_SERVICE_SKILL names
+#    the Skill that answers questions.
+export BGE_M3_URL=http://localhost:11434/v1/embeddings
+export RETRIEVER_BACKEND=embedded
+export SKILLFORGE_MCP_SERVICE_SKILL=simple-qa
+
+# 4. Start the backend (listens on :8888)
+go run ./cmd/server
+
+# 5. In a second terminal, start the frontend (dev server on :5173,
+#    proxying /api to :8888)
+cd web && npm install && npm run dev
+
+#    …or build the frontend once and let the backend serve it same-origin:
+#    cd web && npm run build && cd .. && go run ./cmd/server
+#    → http://localhost:8888
+
+# 6. Open the app and ask a question, e.g.
+#    差旅住宿费的报销标准是什么？
+```
+
+No `GLM_API_KEY` and no `LOCAL_API_KEY` were set, so the server boots in **stub LLM mode** and answers from the retrieved chunk text. Every such answer is labelled three ways: the wire payload carries `"mode":"stub"`, the boot log prints `STUB LLM MODE`, and the UI renders a `STUB` badge. The answer is still a real cited answer — retrieval, tier isolation, grounding and refusal are the production code paths; only the answer *writer* is deterministic.
+
+Set `GLM_API_KEY` (or `LOCAL_API_KEY` for an OpenAI-compatible local endpoint) and restart to switch to the real model — the `mode` field then disappears entirely (it is omitted, not set to `"real"`).
+
+Verify the whole hermetic path with the Phase 49 acceptance gate:
+
+```bash
+make verify-phase-49
+```
+
 ---
 
 ## Architecture

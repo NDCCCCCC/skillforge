@@ -38,3 +38,14 @@ skillforge.db-wal
 # WSL-built dev server binaries (Phase 16/18/19 verification builds, ~119MB
 # ELF with debug_info) — build artifacts, never commit.
 /skillforge-server*
+
+# Phase 49 local vector cache (D-14): the embedded retriever persists its
+# in-process vector store to a local cache so a restart does not re-embed
+# the corpus. The cache is machine-local derived state (it holds a copy of
+# the embedded documents) — never commit it.
+/.skillforge-cache/
+
+# Phase 49 demo recording intermediates: the asciinema cast and the rendered
+# frames are scratch. Only the finished docs/demo.gif is a deliverable.
+/*.cast
+/docs/demo.*.tmp
