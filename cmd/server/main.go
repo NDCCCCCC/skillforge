@@ -127,6 +127,7 @@ import (
 	"github.com/skillforge/skillforge/internal/ontology/shacl"
 	onstore "github.com/skillforge/skillforge/internal/ontology/store"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/retriever/embedded"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
 	"github.com/skillforge/skillforge/internal/scheduler"
@@ -500,6 +501,12 @@ func main() {
 	switch backend {
 	case "mongo":
 		indexerBackend = mongo.NewIndexerBackend(r.(*mongo.Client))
+	case "embedded":
+		// 必须走显式 case：下面的 default: 分支对 MilvusClient 做类型断言，
+		// embedded 客户端落进去是 **runtime panic**（不是编译错）。
+		// embedded.Client 自身已实现 Insert（满足 retriever.IndexerBackend），
+		// 不需要第三个接口。
+		indexerBackend = r.(*embedded.Client)
 	default:
 		// "none" and any unknown value fall through to milvus (default).
 		indexerBackend = milvus.NewIndexerBackend(r.(*milvus.MilvusClient))
@@ -1211,10 +1218,16 @@ func main() {
 	h.Spin()
 }
 
+// knowledgeDirForSeed is the corpus root the embedded backend seeds from.
+// 它是 seed 目录的唯一注入点：mongo / milvus 分支继续用各自的字面量
+// ("knowledge/")，只有 embedded 分支读这个变量，因此 cmd/server 的测试可以
+// 把它指向 t.TempDir() 而不影响既有路径。
+var knowledgeDirForSeed = "knowledge/"
+
 // buildRetriever constructs the retriever.Retriever specified by backend
-// ("milvus" or "mongo") and seeds the knowledge corpus into it. Both
-// paths log.Fatalf on a misconfigured URI / unreachable server — the
-// operator must see the failure at startup, not at request time.
+// (milvus（默认）/ mongo / embedded / none) and seeds the knowledge corpus
+// into it. Every path log.Fatalf on a misconfigured URI / unreachable
+// server — the operator must see the failure at startup, not at request time.
 //
 // kbReg is the knowledge-base registry both corpus-loading paths consume:
 // the registry decides which knowledge/<slug>/ directories are indexed and
@@ -1235,6 +1248,45 @@ func buildRetriever(ctx context.Context, backend string, emb *bge.BGE, kbReg kb.
 		// reads:data Skill, so kpi_call flows are fully operational here.
 		log.Printf("[WARN] cmd/server: RETRIEVER_BACKEND=none — tier-channel retrieval disabled (all tier queries refuse with no_authorized_source); data-channel Skills unaffected")
 		return noopRetriever{}, "none(degraded default-deny)"
+	case "embedded":
+		// Phase 49 / D-15 / D-16: in-process vector store. 这条分支刻意不读
+		// 任何外部数据库的地址变量 —— hermetic 演示的前提是"没有外部数据库
+		// 也能启动"。语料向量仍由外部 BGE-M3 计算（BGE_M3_URL 在 main() 的
+		// :288 已必填校验），本分支只读它的值算 endpoint hash。
+		//
+		// 注意：这里**不得**出现任何必填环境变量读取（如 env-required 系列）：
+		// 那会在 RETRIEVER_BACKEND=embedded 时重新引入对缺失环境变量的致命
+		// 依赖（Pitfall 2）。
+		//
+		// 装配顺序是 load-bearing 的：Ensure 必须早于 SeedFromKnowledgeDir。
+		// Ensure 只读缓存（算语料 hash → cacheKey → readCache），零网络；
+		// seed 只在缓存未命中时才装载语料并持锁写缓存。
+		cacheDir := envOr("SKILLFORGE_VECTOR_CACHE_DIR", ".skillforge-cache/vectors")
+		ec, err := embedded.New(embedded.Config{
+			Embedder:     emb,
+			Model:        envOr("BGE_M3_MODEL", "bge-m3"),
+			Dimensions:   emb.Dimensions(),
+			CacheDir:     cacheDir,
+			EndpointURL:  os.Getenv("BGE_M3_URL"),
+			KnowledgeDir: knowledgeDirForSeed,
+			Registry:     kbReg,
+		})
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: embedded retriever init: %v", err)
+		}
+		if err := ec.Ensure(ctx); err != nil {
+			log.Fatalf("[FAIL] cmd/server: embedded ensure: %v", err)
+		}
+		// embedded 模式下没有第二数据源：语料读不出或嵌入失败 ⇒ 必然全量
+		// 拒答，属于 D-01 的"明确失败"，所以这里 log.Fatalf 而不是像
+		// mongo/milvus 那样打 WARN 继续。空语料不是错误（seed 返回 0, nil）；
+		// 缓存已命中时 seed 首条语句短路返回（零网络）。
+		n, err := ec.SeedFromKnowledgeDir(ctx, knowledgeDirForSeed, emb, kbReg)
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/server: embedded knowledge seed: %v", err)
+		}
+		log.Printf("[OK] cmd/server: embedded store ready (docs=%d cache=%s)", n, cacheDir)
+		return ec, "embedded(" + cacheDir + ")"
 	case "mongo":
 		mURI := envRequired("MONGO_URI")
 		mc, err := mongo.New(ctx, mongo.Config{
