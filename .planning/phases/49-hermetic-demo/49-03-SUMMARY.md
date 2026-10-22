@@ -72,3 +72,12 @@ key-decisions:
 - `web/dist` 缺失时的 503 响应体含可操作的构建提示（`npm run build` 之类）；49-04 的门禁 P6 分区据此断言「未构建 ⇒ 503 而非 404」。
 - `webui.Mount` 必须留在 `h.Spin()` 之前 —— 路由顺序 lock 会抓住回归。
 - 静态层的 `/api` 前缀永不回退 HTML：`/api/nonexistent` 必须 404，不能是 SPA 的 index.html。
+
+## Post-verification fix（2026-10-22，独立验证阶段发现）
+
+独立验证（`49-VERIFICATION.md`）在 §6 指出一个非阻塞语义缺陷并已在本 phase 内修掉：
+
+- **缺陷**：`internal/webui/static.go` 的 dist 存在性检查排在 `/api` 闸**之前**，于是前端尚未构建（`web/dist` 缺失）时，一个**未注册的** `/api/xxx` 会拿到 503「web/dist 缺失」，而它其实该是 404——「接口不存在」与「前端是否构建」无关。已注册的 `/api/*` 路由不受影响（`NoRoute` 只在无路由命中时触发），所以这是个窄口径缺陷。
+- **修法**：把 `/api` 闸前移到 dist 检查**之前**（`internal/webui/static.go`），并在 `internal/webui/static_test.go` 补 `TestStaticHandlerMissingDistStill404sUnregisteredAPIPaths`（缺失 dist 时 `/api`、`/api/`、`/api/unknown`、`/api/knowledge` 全部 404；`/` 仍是 503）。原有 `TestStaticHandlerMissingDistReturns503`（路径 `/`）与 `TestStaticHandlerAPIPrefixNeverFallsBackToHTML`（dist 存在）语义不变。
+- **复跑**：`gofmt` 干净；`go build ./...`（WSL）exit 0；`go test ./internal/webui/ ./cmd/server/ ./internal/server/stubchat/ ./internal/verdict/ ./internal/retriever/embedded/ -count=1`（WSL）**五包全 ok**；`bash verify-phase-49.sh` 第三次连跑 **`=== Phase 49 Gate: ALL PASSED ===`、exit 0、恰好一条 ALL PASSED**。
+- **教训**：`/api` 闸与 dist 检查谁先谁后，是一条**语义**不变量而不是风格选择——「接口不存在」永远不该被前端构建状态解释。这类顺序缺陷单元测试若只覆盖一端（dist 存在）就发现不了，必须补「dist 缺失」那一端。

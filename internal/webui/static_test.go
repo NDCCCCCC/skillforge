@@ -244,6 +244,25 @@ func TestStaticHandlerMissingAssetReturns404(t *testing.T) {
 	}
 }
 
+func TestStaticHandlerMissingDistStill404sUnregisteredAPIPaths(t *testing.T) {
+	// The /api gate runs before the dist existence check: an API path that
+	// no route implements is a 404 whether or not the front end is built.
+	// Before phase 49's verification this answered 503 ("web/dist missing"),
+	// which blamed the front end for an API that does not exist.
+	absent := filepath.Join(t.TempDir(), "no-such-dist")
+	h := Handler(absent)
+	for _, p := range []string{"/api", "/api/", "/api/unknown", "/api/knowledge"} {
+		rec := do(h, http.MethodGet, p)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("GET %s with missing dist status = %d, want 404", p, rec.Code)
+		}
+	}
+	// The non-API path still reports the missing front end.
+	if rec := do(h, http.MethodGet, "/"); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET / with missing dist status = %d, want 503", rec.Code)
+	}
+}
+
 func TestStaticHandlerMissingDistReturns503(t *testing.T) {
 	absent := filepath.Join(t.TempDir(), "no-such-dist")
 	rec := do(Handler(absent), http.MethodGet, "/")

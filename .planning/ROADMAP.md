@@ -197,7 +197,12 @@ Plans:
   5. `bash verify-phase-49.sh` exit 0（含 hermetic 模式端到端）
 
 **Plans**: 4/4 executed（49-01 embedded 向量存储后端 → 49-02 stub LLM 路径 → 49-03 同源静态托管 → 49-04 hermetic 门禁 + demo 素材）
-**Verification**: `49-VERIFICATION.md` — status `passed`，34/34 must-haves VERIFIED，五条成功标准全部成立，gaps_remaining 为空
+**Verification**: `49-VERIFICATION.md` — status `human_needed`，34/34 must-haves VERIFIED、behavior_unverified 0、overrides 0、无 BLOCKER gap；五条成功标准全部成立，gaps_remaining 为空。`human_needed` 来自本 phase `49-VALIDATION.md` 自声明的 3 条 Manual-Only 项（真实 GLM key 路径、README 前端段、demo.gif 观感）尚待人工验收——**实现完成 ≠ 人工验收完成**。
+
+**Scope Note（本 phase 实施口径，供后续 phase 引用）** — 成功标准的措辞是规划期写下的，实施口径由 `49-CONTEXT.md` 的 D-01..D-20 锁定，措辞修订留给 Phase 50：
+- **SC1「无预装 Milvus/BGE」实施为「无需内网 BGE 端点」**：向量化永远由**真实外部模型**完成（D-01 零兜底——不引入进程内 embedder、不提交预计算向量、不用 hash/随机向量冒充），端点可以是本地 Ollama（`ollama pull bge-m3` ⇒ `http://localhost:11434/v1/embeddings`，OpenAI 兼容无需 key）或任意 OpenAI 兼容 `/v1/embeddings`（改 `BGE_M3_URL` 一行切换，D-02）。端点不可达时**明确失败**，不降级。
+- **SC2「embedded 向量兜底模式」实施为「本地向量存储模式」**：D-03 明确「embedded」指**向量存储在进程内**（Go slice + cosine，照搬 `internal/retriever/mongo/rank.go` 的纯函数 `rank` 与 (score desc, id asc) tie-break），**不指**向量化在进程内。embedded 是「无 Milvus 的正式路径」，不是「降级兜底」；tier 隔离仍是两段式 PRE-filter（先构造候选集再算 cosine，空 tiers ⇒ 0 命中），D-TIER-03 fail-closed 不削弱。
+- **SC3 stub 不静默伪装**：三重标注（wire 载荷 `"mode":"stub"`（`omitempty`，真模型不写该字段）+ 启动 WARN + README），引用与真模型同等校验（同一条 grounding 链、confidence ≤ 0.5、`review_required=true`），`internal/server/pipeline.go` 零改动（stub 经 `Deps.PipelineChatModel` 注入）。
 **Artifacts**: `docs/demo.gif`（真实录屏素材，反哺 FACE-01）、`verify-phase-49.sh`（九分区 + 十条变异演练）、`scripts/record-demo.sh`、README「Run without Docker / without an API key」小节
 
 ### Phase 50: 开源门面

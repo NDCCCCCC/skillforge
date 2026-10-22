@@ -69,14 +69,6 @@ const CatchAllPath = "/*filepath"
 func Handler(distDir string) http.Handler {
 	fileServer := http.FileServer(http.Dir(distDir))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 逐请求检查 index.html 而非启动期缓存：支持“先起后端、后构建前端”
-		// 的 hermetic 开发流（构建完刷新页面即可，无需重启）。
-		indexPath := filepath.Join(distDir, "index.html")
-		if _, err := os.Stat(indexPath); err != nil {
-			serveMissingDist(w)
-			return
-		}
-
 		p := r.URL.Path
 		if p == "" {
 			p = "/"
@@ -85,8 +77,22 @@ func Handler(distDir string) http.Handler {
 		// /api 闸。这不是冗余：即便用 NoRoute 挂载，未实现的 /api/xxx 也
 		// 不该被当成前端路由回 index.html——把“接口不存在”变成“前端路由”
 		// 会让前端的 404 处理误以为是页面路由问题。
+		//
+		// 这道闸必须排在 dist 存在性检查**之前**（phase 49 独立验证发现）：
+		// 否则前端尚未构建（web/dist 缺失）时，一个根本不存在的 /api/xxx
+		// 会拿到“前端没构建”的 503，而它其实该是 404——接口不存在与前端
+		// 是否构建无关。已注册的 /api/* 路由根本到不了这里（NoRoute 只在
+		// 无路由命中时触发），所以这道闸只影响“未注册的 /api 路径”。
 		if p == "/api" || strings.HasPrefix(p, "/api/") {
 			http.NotFound(w, r)
+			return
+		}
+
+		// 逐请求检查 index.html 而非启动期缓存：支持“先起后端、后构建前端”
+		// 的 hermetic 开发流（构建完刷新页面即可，无需重启）。
+		indexPath := filepath.Join(distDir, "index.html")
+		if _, err := os.Stat(indexPath); err != nil {
+			serveMissingDist(w)
 			return
 		}
 
