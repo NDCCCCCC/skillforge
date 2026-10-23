@@ -1,6 +1,7 @@
 ---
 phase: 52-llm-provider-panel
 plan: 04
+status: complete
 subsystem: llm-config
 tags: [llm, admin-panel, hot-reload, openai-compatible]
 requires: ["49-02 stub assembly (PipelineChatModel seam)"]
@@ -53,3 +54,4 @@ notes: |
   LOCAL_BASE_URL=https://opencode.ai/inference/openai/v1/chat/completions +
   LOCAL_MODEL=glm-5.3-flash (README documents the triple and where opencode
   itself keeps the key its /connect command writes).
+---
