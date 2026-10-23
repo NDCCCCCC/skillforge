@@ -1189,7 +1189,8 @@ func main() {
 		Wizard:       wizard,
 		Knowledge:    knowledge.New(r, kbReg),
 		EvalReporter: server.NewFilesystemEvalReporter(evalReportsDir, evalFrozenDir),
-		ChatModel:    toolChatModel, // nil in stub mode: emitRedline auto-skips via its existing `if s.ChatModel == nil` early return
+		ChatModel:    toolChatModel, // always the Phase 52 dynamic wrapper; stub semantics ride Available()=false via the three !ChatModelAvailable guards
+		LLMDynamic:   dynChat, // Phase 52 panel: nil would 503 every /api/admin/llm/* route
 		// Phase 11/12 HITL gate: ActiveManifest backs the D11-C2 expire-check
 		// in approvalPostHandler / planApproveHandler. The proper long-term
 		// shape is per-session (resolved from the pending row's skill_id at
