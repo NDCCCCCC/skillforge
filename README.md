@@ -328,7 +328,7 @@ We are **complementary, not competing**:
 
 Skills are declarative Markdown + YAML frontmatter files. Each defines a 7-field manifest (`description` / `agent` / `reads` / `writes` / `steps` / `guardrails` / `temperature`) that the kernel loads, validates, and routes against.
 
-- **Templates:** [`examples/skills/`](examples/skills/) ships three ready-to-run Skills — `simple-qa` (minimal authority-tier QA), `calculator` (tool-calling), and `compliance` (cited verdicts + structured refusals). Each passes the schema validator out of the box.
+- **Templates:** [`examples/skills/`](examples/skills/) ships seven ready-to-run Skills — `simple-qa` (minimal authority-tier QA), `calculator` (tool-calling), `compliance` (cited verdicts + structured refusals), `compliance-orchestrator` (multi-agent compliance pipeline), `external-lookup` (guarded web fetch), `kpi-dashboard` (aggregated-only metrics), `monthly-report`, and `sql-guides` (data-tier Q&A). Each passes the schema validator out of the box.
 - **Loaded Skills:** the kernel loads whatever is under [`skills/`](skills/) — the repo default is [`skills/simple-qa/SKILL.md`](skills/simple-qa/SKILL.md); drop any template there (and restart or let hot-reload pick it up) to make it the live domain.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to write your own Skill — the format is 7 fields of YAML frontmatter plus Markdown steps.
