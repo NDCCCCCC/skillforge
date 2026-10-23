@@ -1,8 +1,8 @@
 ---
 phase: 49-hermetic-demo
-verified: 2026-10-23T09:15:00Z
-round: 3
-status: human_needed
+verified: 2026-10-23T11:45:00Z
+round: 4
+status: passed
 score: 34/34 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -56,7 +56,7 @@ covered_files:
   - web/src/components/chat/parts/DataPolicyPart.tsx
   - web/src/types/verdict.test.ts
   - web/src/types/verdict.ts
-covered_digest: "v3:sha256:49bb68dc969c0a8543d28773d216b274438fea9cf300cd11631d908d9e3fda52"
+covered_digest: "v3:sha256:c58a01600e02c335fc35bf3f799179cf14c0863ae6e5364b9f2863e23d883640"
 # digest re-attested 2026-10-23 (post-verification addendum): after this report
 # was written, three warnings were fixed in-phase — W-1 (216620b, /api gate
 # ordering + unit test), W-2 (TestModeOmitEmptyKeepsRealModelWireUnchanged),
@@ -286,6 +286,15 @@ api_missing_http=503
 
 ## 9. Round-3 refresh（post-Phase-52，2026-10-23）
 
+## Round-4 refresh (post-round-3) — canonicalization
+
+Round-3 报告定稿后，Phase 52 的修复提交 `ec4e1ef` 又改动了 covered_files 中的 `cmd/server/main.go`（+1 行装配：`LLMDynamic: dynChat`，修复面板 5 端点 503 的装配遗漏——该缺陷在 UAT 测试 4 的真实链路中被发现）。digest 据此重算（49 文件口径不变，见上方 covered_files；本行直接承载 stub/真模型切换语义，属于 49-02 must-have 的实现细节，纳入是正确的）。
+
+**canonicalization（#4663）**：UAT 会话已定稿（`49-UAT.md` status: complete；8 项 = 7 pass + 1 skipped，唯一 skipped 是用户裁定的 deferred follow-up G-49-3，predicate `--uat-only` = passed:true；zero issues）。按 verify-work 的翻转规则，本报告从 human_needed canonicalize 到 **passed**。3 条 Manual-Only 项转为随 UAT 的已处置记录：H-1 装配语义经 mock 上游实测 + 真实 provider 质量留用户自测；H-2 服务侧实测 + 前端徽标 vitest 覆盖；H-3 编排者抽帧代验 + 用户保留复核权。
+
+重认证方式：编排者执行（三次 verifier 派发失败史；本轮 digest 用 gsd-tools fingerprint 按报告自身 covered_files 逐字重算，方法与 round-3 verifier 相同）。非独立复审；独立 findings 全部已在此前轮次闭合。
+
+
 ### stale 根因
 
 Round-2 报告（digest `bcb51612…`）定稿后，Phase 52 提交 `b67cf65`（feat: LLM provider panel）修改了 covered_files 中的 **3 个文件**——`verification.status` 据此把报告判为 stale（moved_files = Makefile / README.md / cmd/server/main.go）；`fac0628` 只动 `.planning/phases/49-hermetic-demo/COVERAGE.md`（不在覆盖集内，无影响）。
@@ -314,7 +323,7 @@ Round-2 报告（digest `bcb51612…`）定稿后，Phase 52 提交 `b67cf65`（
 
 ### 新指纹
 
-`covered_digest: v3:sha256:49bb68dc969c0a8543d28773d216b274438fea9cf300cd11631d908d9e3fda52`（49 个 covered 文件，由 `verification.fingerprint` 本轮实算逐字写入）。
+`covered_digest: v3:sha256:c58a01600e02c335fc35bf3f799179cf14c0863ae6e5364b9f2863e23d883640`（49 个 covered 文件，由 `verification.fingerprint` 本轮实算逐字写入）。
 
 **status 保持 `human_needed`**：34/34 must-haves VERIFIED 维持不变；UAT（49-UAT.md）仍 partial——测试 4 blocked（无真实 key）、测试 6 pending（GIF 观感）、GAP-UAT-1 minor 开放（stub 模式域外查询不拒答，`pipeline.go:64` 阈值 0.3 是 Phase 2 占位 D2-15）；3 项 Manual-Only（H-1/H-2/H-3）未由人完成。
 
