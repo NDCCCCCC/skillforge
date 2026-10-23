@@ -1,0 +1,49 @@
+name: Bug report
+description: Something in SkillForge does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please **redact any API keys,
+        tokens, or `.env` values** from logs before submitting.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start with `...`
+        2. Ask `...`
+        3. Observe `...`
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Redact keys/tokens. `go version`, OS, and how you run the stack help a lot.
+      placeholder: |
+        - go version: 
+        - OS: 
+        - RETRIEVER_BACKEND: milvus / embedded / mongo
+        - stub mode or real LLM (never paste the key itself):
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output (redacted)
+      render: shell

@@ -413,6 +413,13 @@ The frozen lock (`eval/frozen/compliance.lock.json`) pins the model, prompt hash
 
 Contributions are welcome — especially **new Skills** that prove the platform thesis. SkillForge is designed so that the highest-leverage contribution is a domain `SKILL.md`, not Go code.
 
+## Community & Security
+
+- 🛡️ [SECURITY.md](SECURITY.md) — how to report a vulnerability privately, and how the project thinks about security
+- 🤝 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant v2.1
+- 📋 Issue & PR templates — `.github/ISSUE_TEMPLATE/` and `.github/PULL_REQUEST_TEMPLATE.md` (bug reports ask you to redact keys; PRs carry the verification checklist)
+- 🏗️ [docs/architecture.md](docs/architecture.md) — the four-layer component map with code entry points
+
 See **[CONTRIBUTING.md](CONTRIBUTING.md)** for guides on:
 - Writing a Skill (the 7-field schema + validation)
 - Adding a tool (the Eino `tool.InvokableTool` interface)
