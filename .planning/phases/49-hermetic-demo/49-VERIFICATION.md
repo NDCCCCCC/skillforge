@@ -1,6 +1,7 @@
 ---
 phase: 49-hermetic-demo
-verified: 2026-10-22T13:58:00Z
+verified: 2026-10-23T09:15:00Z
+round: 3
 status: human_needed
 score: 34/34 must-haves verified
 behavior_unverified: 0
@@ -25,6 +26,8 @@ covered_files:
   - cmd/server/backend_switch_test.go
   - cmd/server/main.go
   - docs/demo.gif
+  - internal/llm/dynamic.go
+  - internal/llm/dynamic_test.go
   - internal/retriever/embedded/cache.go
   - internal/retriever/embedded/cache_test.go
   - internal/retriever/embedded/embedded.go
@@ -35,6 +38,7 @@ covered_files:
   - internal/retriever/embedded/tier_isolation.go
   - internal/retriever/embedded/tier_isolation_test.go
   - internal/retriever/retriever.go
+  - internal/server/chatmodel_avail.go
   - internal/server/pipeline.go
   - internal/server/stubchat/extract.go
   - internal/server/stubchat/stub.go
@@ -52,7 +56,7 @@ covered_files:
   - web/src/components/chat/parts/DataPolicyPart.tsx
   - web/src/types/verdict.test.ts
   - web/src/types/verdict.ts
-covered_digest: v3:sha256:bcb516127ad05cdc452bdb4603c24705f3466e04c90d1fecbd3b6b3674884650
+covered_digest: "v3:sha256:49bb68dc969c0a8543d28773d216b274438fea9cf300cd11631d908d9e3fda52"
 # digest re-attested 2026-10-23 (post-verification addendum): after this report
 # was written, three warnings were fixed in-phase — W-1 (216620b, /api gate
 # ordering + unit test), W-2 (TestModeOmitEmptyKeepsRealModelWireUnchanged),
@@ -65,6 +69,11 @@ covered_digest: v3:sha256:bcb516127ad05cdc452bdb4603c24705f3466e04c90d1fecbd3b6b
 # was performed by the orchestrator, NOT by an independent re-examination:
 # the independent findings all pointed at exactly these fixes, and every fix
 # was verified by the gate and unit tests, not by trust.
+advisory:
+  - finding: "Phase 52 hot-reload (DynamicChatModel / PipelineDynamic) changed the semantics of 'restart loads config': the panel can now hot-swap the chat model at runtime, so a restart is no longer the only config-load boundary. Phase 49's six-step quickstart (the env triple RETRIEVER_BACKEND / BGE_M3_URL + no key -> stub) is unaffected and holds verbatim — the stub path now resolves through PipelineDynamic's no-upstream fallback instead of a direct stubChat assignment."
+    category: architectural
+    reason: "New-scope consequence of Phase 52 touching cmd/server/main.go assembly; no phase-49 must-have is weakened (assembly semantics equivalent, all tests green, gate ALL PASSED re-run 2026-10-23)."
+    evidence_status: "go build + five-package go test green (WSL go1.25.5, 2026-10-23); bash verify-phase-49.sh exit 0 ALL PASSED (2026-10-23)"
 ---
 
 # Phase 49 Verification — Hermetic Demo
@@ -275,7 +284,43 @@ api_missing_http=503
 
 ---
 
-## 9. 结论
+## 9. Round-3 refresh（post-Phase-52，2026-10-23）
+
+### stale 根因
+
+Round-2 报告（digest `bcb51612…`）定稿后，Phase 52 提交 `b67cf65`（feat: LLM provider panel）修改了 covered_files 中的 **3 个文件**——`verification.status` 据此把报告判为 stale（moved_files = Makefile / README.md / cmd/server/main.go）；`fac0628` 只动 `.planning/phases/49-hermetic-demo/COVERAGE.md`（不在覆盖集内，无影响）。
+
+### Phase 52 改动如何触及 covered 文件
+
+| 文件 | Phase 52 改动 |
+|---|---|
+| `Makefile` | 仅**追加** `verify-phase-52` 目标（`bash verify-phase-52.sh`）+ `.PHONY` 增项；`verify-phase-49` 目标原样未动 |
+| `README.md` | 在 hermetic 小节之后**追加** "Bring your own chat model: the LLM provider panel (Phase 52)" 小节（opencode/Zen 端点三行 export、admin 面板说明、key 存放位置、`make verify-phase-52`）；49 的六步 quickstart、`:81-91` stub 三重标注小节、`:93-156` hermetic 小节原文未动 |
+| `cmd/server/main.go` | stub 装配从直接赋值 `pipelineChatModel = stubChat` 改为 `pipelineChatModel = llm.NewPipelineDynamic(dynChat, stubChat)`（`cmd/server/main.go:621`）：`dynChat` 是始终安装的 `*llm.DynamicChatModel`（面板热切换载体），**无上游时 PipelineDynamic 回退到同一个 `stubchat.New()` 提取器**，wire 上的 `mode:"stub"` / confidence ≤0.5 / review_required=true 语义不变（`verdict.Mode` 由 stubchat 提取器自己盖章，切上游自动消失）；`toolChatModel` 从"stub 时为 nil"改为"始终为 wrapper"，nil 语义由 `ChatModelAvailable`（`internal/server/chatmodel_avail.go`）的 Available()=false 槽位等价承载（redline 跳过、approval/plan 503 三处守卫不变）；`stubActive := glmKey == ""`（:312）与启动 `[WARN] … STUB LLM MODE …`（:316）逐字保留 |
+
+### 为什么这些改动不削弱任何 must-have
+
+1. **装配语义等价**：49-02 truth #1 的本质是"无 key 时 pipeline 仍产出带 `mode:"stub"` 的合法 Verdict、走同一条 validate→grounding 链"——`PipelineDynamic` 的 no-upstream 回退把请求递给**同一个** `*stubchat.Stub`，`internal/server/pipeline.go` 依旧零改动；truth #8（真模型路径无 `mode` 键）由 `Mode,omitempty` + 唯一生产者 `extract.go` 继续成立。truth #6 的三重标注（启动 WARN / wire `mode:"stub"` / README 小节）全部原样在位（本轮 grep 复核 + 门禁 P4 live 腿复跑）。
+2. **全部测试重跑绿（本轮实跑，2026-10-23，WSL go1.25.5）**：`go build ./...` + 五包 `go test -count=1` —— llmconfig 0.246s / llm 0.019s / server 19.304s / cmd/server 0.101s，全 `ok`。
+3. **门禁仍 ALL PASSED（本轮实跑）**：`bash verify-phase-49.sh` exit 0，`=== Phase 49 Gate: ALL PASSED ===` 恰好一条，P1–P9 九分区齐全（含 P4 无 key stub live 腿、P8 既有后端与配置零改动）。
+
+### covered_files 决定（46 → 49）
+
+- **新增 3 个**（判定标准：承载本 phase 的 must-have 行为）：
+  - `internal/llm/dynamic.go` —— `DynamicChatModel` / `PipelineDynamic` 现在是 49-02 stub 装配语义的**直接载体**（no-upstream → stubchat 回退、`ErrNoUpstream`）；
+  - `internal/llm/dynamic_test.go` —— 上述回退语义的测试证据（本轮实跑绿）；
+  - `internal/server/chatmodel_avail.go` —— `ChatModelAvailable` 承载"tool 消费者在 stub 模式下可见降级"（49-02 truth #1 的 nil 语义等价物）。
+- **不纳入**：`internal/llmconfig/{catalog,store,probe,llmconfig_test}.go`、`internal/server/llm_admin.go`、`internal/server/llm_admin_test.go`、`web/src/components/admin/llm/*` —— 这些是 Phase 52 的面板/目录/探测功能本体，不承载 49 的任何 must-have（49 的六步 quickstart 与 stub 路径在它们缺席时同样成立；`llmconfig.Load` 仅是回退链上的旁路，stub 判定仍以 `glmKey == ""` 为准）。
+
+### 新指纹
+
+`covered_digest: v3:sha256:49bb68dc969c0a8543d28773d216b274438fea9cf300cd11631d908d9e3fda52`（49 个 covered 文件，由 `verification.fingerprint` 本轮实算逐字写入）。
+
+**status 保持 `human_needed`**：34/34 must-haves VERIFIED 维持不变；UAT（49-UAT.md）仍 partial——测试 4 blocked（无真实 key）、测试 6 pending（GIF 观感）、GAP-UAT-1 minor 开放（stub 模式域外查询不拒答，`pipeline.go:64` 阈值 0.3 是 Phase 2 占位 D2-15）；3 项 Manual-Only（H-1/H-2/H-3）未由人完成。
+
+---
+
+## 10. 结论
 
 - **must-haves 34/34 VERIFIED**，`behavior_unverified = 0`，`overrides_applied = 0`，**无 BLOCKER gap**。
 - **SC1–SC5 全部成立**，其中 SC1 由我在**全新 clone + 真实 embedding 模型端点 + 零 API key**条件下独立复现（fresh clone → build → 186s 冷索引 → `/api/skills` 200 → `/api/chat` 200 → 结构化 Verdict 带 `tier=authority` 引用且 `mode:"stub"` / `confidence 0.5` / `review_required true`）。
