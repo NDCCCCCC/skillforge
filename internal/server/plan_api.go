@@ -230,7 +230,8 @@ func (s *Deps) planGetHandler(ctx context.Context, c *app.RequestContext) {
 // handler validates the resume target and triggers the Runner, which
 // in turn resumes the Tool's Pass 2 path.
 func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
-	if s.Store == nil || s.ChatModel == nil || s.ActiveManifest == nil || s.Embedder == nil || s.Retriever == nil {
+	// Phase 52: 委托式 ChatModel 的 stub 语义由 ChatModelAvailable 判定。
+	if s.Store == nil || !ChatModelAvailable(s.ChatModel) || s.ActiveManifest == nil || s.Embedder == nil || s.Retriever == nil {
 		c.JSON(http.StatusNotFound, map[string]string{
 			"error": "plan approval endpoint not initialized",
 		})

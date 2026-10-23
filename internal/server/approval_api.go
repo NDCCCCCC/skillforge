@@ -316,7 +316,9 @@ func (s *Deps) approvalGetHandler(ctx context.Context, c *app.RequestContext) {
 //	      highlights the failing input) or target spoof.
 //	500 — store / audit-writer / runner error.
 func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
-	if s.Store == nil || s.ChatModel == nil || s.ActiveManifest == nil {
+	// Phase 52: ChatModel 是委托式包装（热重载），stub 语义改由
+	// ChatModelAvailable 判定（upstream 槽实时状态），nil 判断保留兜底。
+	if s.Store == nil || !ChatModelAvailable(s.ChatModel) || s.ActiveManifest == nil {
 		c.JSON(http.StatusNotFound, map[string]string{
 			"error": "approval endpoint not initialized",
 		})

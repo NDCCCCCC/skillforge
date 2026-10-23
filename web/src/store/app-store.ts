@@ -468,6 +468,8 @@ export interface AppState {
   // Plan 40-07a — 'governance' (第 10 tab, 治理) extends the union.
   // Plan 41-04 — 'platform' (第 11 tab, 平台) extends the union;
   // default unchanged.
+  // Phase 52 — 'llm' (第 12 tab, LLM Provider 配置面板) extends the
+  // union; default unchanged.
   adminSubroute:
     | 'batches'
     | 'bases'
@@ -479,7 +481,8 @@ export interface AppState {
     | 'ontology'
     | 'pipeline'
     | 'governance'
-    | 'platform';
+    | 'platform'
+    | 'llm';
   indexReports: IndexRun[];
   auditRows: AuditRow[];
   auditFilter: AuditFilter;
@@ -548,6 +551,7 @@ export interface AppActions {
   // Plan 39-08 — union widened for the ECL 管线 (pipeline) tab.
   // Plan 40-07a — union widened for the 治理 (governance) tab.
   // Plan 41-04 — union widened for the 平台 (platform) tab.
+  // Phase 52 — union widened for the 模型配置 (llm) tab.
   setAdminSubroute(
     sub:
       | 'batches'
@@ -560,7 +564,8 @@ export interface AppActions {
       | 'ontology'
       | 'pipeline'
       | 'governance'
-      | 'platform',
+      | 'platform'
+      | 'llm',
   ): void;
   setIndexReports(runs: IndexRun[]): void;
   setAuditRows(rows: AuditRow[]): void;

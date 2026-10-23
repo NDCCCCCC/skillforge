@@ -53,6 +53,7 @@ import OntologyTab from './ontology/OntologyTab';
 import PipelineTab from './pipeline/PipelineTab';
 import GovernanceTab from './governance/GovernanceTab';
 import PlatformTab from './platform/PlatformTab';
+import LLMProviderPanel from './llm/LLMProviderPanel';
 
 export default function AdminDashboard() {
   const adminSubroute = useAppStore((s) => s.adminSubroute);
@@ -83,7 +84,8 @@ export default function AdminDashboard() {
       | 'ontology'
       | 'pipeline'
       | 'governance'
-      | 'platform',
+      | 'platform'
+      | 'llm',
   ) {
     setAdminSubroute(next);
     // URL is /admin for all subroutes (store-only subroute, no sub-path segment).
@@ -234,6 +236,15 @@ export default function AdminDashboard() {
           label="平台"
           onClick={() => handleSubroute('platform')}
         />
+        {/* Phase 52 — LLM Provider 配置面板 (the 12th tab): 厂商/套餐/key/
+            模型 三段式配置，保存即热重载。 */}
+        <SubrouteTab
+          active={adminSubroute === 'llm'}
+          testId="admin-tab-llm"
+          icon={<Wrench className="h-3.5 w-3.5" />}
+          label="模型配置"
+          onClick={() => handleSubroute('llm')}
+        />
       </nav>
 
       {/* CapacityMonitor */}
@@ -262,6 +273,7 @@ export default function AdminDashboard() {
         {adminSubroute === 'pipeline' && <PipelineTab />}
         {adminSubroute === 'governance' && <GovernanceTab />}
         {adminSubroute === 'platform' && <PlatformTab />}
+        {adminSubroute === 'llm' && <LLMProviderPanel />}
       </main>
 
       {/* Plan 29-08 — the /admin toast viewport. App.tsx early-returns for

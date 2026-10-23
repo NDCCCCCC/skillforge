@@ -137,7 +137,9 @@ func (s *Deps) emitRedline(ctx context.Context, c *app.RequestContext, v verdict
 	}
 	// No ChatModel wired (e.g. test deps that exercise only the
 	// counter-evidence pass). Skip without error — the verdict stands.
-	if s.ChatModel == nil {
+	// Phase 52: 生产 ChatModel 是委托式包装（热重载），stub 语义
+	// （无真上游时跳过红线）由 ChatModelAvailable 判定。
+	if !ChatModelAvailable(s.ChatModel) {
 		return nil
 	}
 

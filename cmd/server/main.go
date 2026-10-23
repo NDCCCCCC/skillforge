@@ -122,6 +122,7 @@ import (
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/llm"
+	"github.com/skillforge/skillforge/internal/llmconfig"
 	"github.com/skillforge/skillforge/internal/ontology/emitter"
 	"github.com/skillforge/skillforge/internal/ontology/induction"
 	"github.com/skillforge/skillforge/internal/ontology/shacl"
@@ -527,6 +528,8 @@ func main() {
 	// see the env triple above). Phase 17 live-UAT: GLM_MODEL selects the
 	// model (user decision 2026-08-27: glm-5.3-flash default) instead of
 	// the historical hardcoded "glm-5.2".
+	var pipelineChatModel model.BaseChatModel
+	var toolChatModel model.ToolCallingChatModel
 	//
 	// 49-02 stub assembly: with no API key the pipeline still runs —
 	// pipelineChatModel carries the deterministic stubchat extractor into
@@ -534,35 +537,88 @@ func main() {
 	// untouched), while toolChatModel stays nil so every tool-calling
 	// consumer degrades visibly (compile-time type signal, not a runtime
 	// surprise). The stub deliberately does NOT implement WithTools.
-	var pipelineChatModel model.BaseChatModel
-	var toolChatModel model.ToolCallingChatModel
+	//
+	// Phase 52 hot-reload assembly: toolChatModel is now ALWAYS the
+	// delegating *llm.DynamicChatModel, so every consumer that captured the
+	// interface value at startup (redline, wizard, rewriter, classifier,
+	// induction, ECL extractor, ADK agent) picks up panel-saved config on
+	// the NEXT call without a restart (user decision 2026-10-23). The
+	// stub-mode nil semantics are preserved by the Available() slot: with
+	// no upstream configured the wrapper reports Available()=false, and the
+	// three `!ChatModelAvailable(s.ChatModel)` guards (redline skip,
+	// approval/plan 503) keep behaving exactly as `ChatModel == nil` did.
+	// The pipeline side resolves to stubChat while no upstream is active
+	// and to the real model once the panel saves one (verdict.Mode is
+	// stamped by the stubchat extractor itself, so switching upstream
+	// drops the mode annotation automatically).
+	stubChat := stubchat.New()
 	if stubActive {
-		stubChat := stubchat.New()
-		pipelineChatModel = stubChat
 		log.Printf("[OK] cmd/server: chat model = stub (no LLM API key configured; see the stub-mode warning above)")
 	} else {
+		log.Printf("[OK] cmd/server: chat model preset from env (%s via %s); the admin panel can hot-swap provider/plan/model/key at runtime", serverModel, glmBase)
+	}
+	// buildUpstream is the Phase 52 resolver: it re-reads the panel config
+	// file on EVERY resolution and falls back to the env preset when the
+	// file is absent. A resolution failure leaves the slot empty
+	// (Available()=false, pipeline falls back to stub) instead of killing
+	// the server — the startup Fatalf for a broken env preset is kept
+	// below, but runtime reconfiguration can never take the process down.
+	buildUpstream := func() (model.ToolCallingChatModel, error) {
+		cfg, ok, cfgErr := llmconfig.Load()
+		if cfgErr != nil || !ok {
+			if stubActive {
+				return nil, llm.ErrNoUpstream
+			}
+			cmRaw, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+				BaseURL: glmBase,
+				APIKey:  glmKey,
+				Model:   serverModel,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("env preset: %w", err)
+			}
+			return llm.LocalThinkOffModel(cmRaw), nil
+		}
+		key, keyErr := llmconfig.ResolveKey(cfg)
+		if keyErr != nil {
+			return nil, fmt.Errorf("resolve key: %w", keyErr)
+		}
+		baseURL := cfg.BaseURL
+		if baseURL == "" {
+			if plan, ok := llmconfig.FindPlan(cfg.Vendor, cfg.Plan); ok {
+				baseURL = plan.BaseURL
+			}
+		}
 		cmRaw, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-			BaseURL: glmBase,
-			APIKey:  glmKey,
-			Model:   serverModel,
+			BaseURL: baseURL,
+			APIKey:  key,
+			Model:   cfg.Model,
 		})
 		if err != nil {
+			return nil, fmt.Errorf("panel config: %w", err)
+		}
+		return llm.LocalThinkOffModel(cmRaw), nil
+	}
+	dynChat := llm.NewDynamicChatModel(buildUpstream)
+	if up, err := buildUpstream(); err != nil {
+		if stubActive {
+			log.Printf("[OK] cmd/server: chat model dynamic slot empty (panel can hot-swap it at runtime)")
+		} else {
+			// The env preset was explicitly configured — a broken preset is
+			// a boot blocker (same contract as the pre-52 Fatalf), while a
+			// bad PANEL save at runtime only empties the slot.
 			log.Fatalf("[FAIL] cmd/server: chat model init: %v (check LOCAL_BASE_URL/GLM_BASE_URL=%s, LOCAL_API_KEY/GLM_API_KEY set)", err, glmBase)
 		}
-		// LOCAL_LLM_THINK=false wraps the model so EVERY server call site
-		// (verdict pipeline, rewriter, classifier) carries ollama's
-		// think:false — a thinking local model is silent for minutes (see
-		// internal/llm.LocalThinkOffModel), which the pipeline's latency
-		// floors correctly read as failure.
-		cm := llm.LocalThinkOffModel(cmRaw)
-		chatSource := "glm"
-		if os.Getenv("LOCAL_BASE_URL") != "" {
-			chatSource = "local"
-		}
-		log.Printf("[OK] cmd/server: chat model = %s via %s endpoint %s (LOCAL_*/GLM_* precedence)", serverModel, chatSource, glmBase)
-		pipelineChatModel = cm
-		toolChatModel = cm
+	} else {
+		_ = up // resolved fine; dynChat re-resolves per call
+		log.Printf("[OK] cmd/server: chat model upstream installed (panel can hot-swap provider/plan/model/key at runtime)")
 	}
+	toolChatModel = dynChat
+	// pipelineDynamic routes the streaming verdict seam: panel upstream
+	// present ⇒ the real model; absent ⇒ the deterministic stub (whose
+	// extractor stamps verdict.Mode="stub", so switching upstream drops the
+	// annotation automatically — D-08 semantics preserved).
+	pipelineChatModel = llm.NewPipelineDynamic(dynChat, stubChat)
 
 	// 9. ChatModelAgent + Runner.
 	adkAgent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{

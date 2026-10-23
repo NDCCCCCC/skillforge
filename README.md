@@ -155,6 +155,42 @@ Verify the whole hermetic path with the Phase 49 acceptance gate:
 make verify-phase-49
 ```
 
+### Bring your own chat model: the LLM provider panel (Phase 52)
+
+The chat model does not have to be Zhipu. Any OpenAI-compatible
+`chat/completions` endpoint works — including [OpenCode](https://opencode.ai)'s
+paid **Go** / **Go Plus** plans and the pay-as-you-go **Zen** plan, whose
+inference gateway speaks the OpenAI wire format. Three env vars are enough:
+
+```bash
+export LOCAL_API_KEY=<your provider key>
+export LOCAL_BASE_URL=https://opencode.ai/inference/openai/v1/chat/completions
+export LOCAL_MODEL=glm-5.3-flash        # or glm-5.3-flash-free, deepseek-v4.1-flash, …
+```
+
+Or skip the env vars entirely: **Admin UI → 模型配置** (`/api/admin/llm/*`,
+X-Admin-Token gated) lists the built-in vendor → plan catalog (Zhipu Coding
+Plan, OpenCode Go / Go Plus / Zen, OpenAI, DeepSeek, Moonshot, SiliconFlow,
+Ollama, custom), lets you pick a plan (the base URL auto-fills), paste a key,
+test the connectivity, pull the model list, and save — the change takes
+effect on the next request, no restart.
+
+**Where keys live.** The panel stores its config in a user-local JSON file
+(default `~/.skillforge/llm.json`, mode 0600; override the path with
+`SKILLFORGE_LLM_CONFIG`), and the GET endpoint always returns the key masked.
+A key can also be referenced indirectly via an env-var name (`api_key_env`),
+in which case only the variable name is persisted. opencode's own `/connect`
+credentials stay in opencode's user-level auth store — SkillForge never reads
+or writes them. Panel config takes precedence over the env preset above; a
+failed runtime swap empties the active slot and the backend falls back to
+stub mode (the startup `FAIL` still applies to a broken env preset only).
+
+Verify the panel wiring with the Phase 52 acceptance gate:
+
+```bash
+make verify-phase-52
+```
+
 ---
 
 ## Architecture

@@ -247,6 +247,19 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
 
+### Phase 52: LLM Provider 配置面板
+
+**Goal:** 管理员在 admin 面板选择厂商与套餐（内置目录含智谱 Coding/Standard、OpenCode Go/Go Plus/Zen、OpenAI、DeepSeek、Moonshot、SiliconFlow、Ollama、Custom），填入 API Key 或其环境变量名，测试连通、拉取模型列表、选定模型后保存——**立即生效，无需重启**（委托式 chat model 每次调用解析当前上游；WithTools 惰性重绑）。
+**Requirements**: LLMCFG-01（配置面板与持久化）、LLMCFG-02（热重载委托模型）、LLMCFG-03（连通性测试与模型列表）
+**Depends on:** Phase 51（实践上随 49-02 stub 装配落地即交付；与 50/51 无代码耦合）
+**Plans:** 3 plans + gate
+
+Plans:
+- [x] 52-01-PLAN.md — internal/llmconfig（厂商目录 / 0600 持久化 / 连通性测试 / 模型列表）
+- [x] 52-02-PLAN.md — llm.DynamicChatModel 委托式热重载 + admin API + nil 语义保住
+- [x] 52-03-PLAN.md — 前端 admin LLM 配置面板
+- [x] verify-phase-52.sh — 九分区门禁
+
 ---
 
 *Last updated: 2026-10-13 — v1.7 roadmap created（13 REQ → Phases 47-51，coverage 13/13）*

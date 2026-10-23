@@ -58,6 +58,7 @@ import (
 	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/kpi"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -300,6 +301,15 @@ type Deps struct {
 	// (the Phase 2 byte-identical path). cmd/server/main.go wires cm
 	// to both fields at startup.
 	PipelineChatModel model.BaseChatModel
+
+	// LLMDynamic is the Phase 52 hot-reload chat model (llm-provider-panel).
+	// 生产恒非 nil（cmd/server/main.go 装配 *llm.DynamicChatModel 并把
+	// 管理面板的保存动作接到 SetResolver）；nil = 面板功能未装配，
+	// /api/admin/llm/* 全部 503（照 Wizard/Knowledge 的 nil-posture）。
+	// 注意：生产 stub 模式下该字段**非 nil**（面板要在运行时把 stub 切到
+	// live），"是否有真上游"用 ChatModelAvailable(s.ChatModel) 判定，
+	// 不要直接判 nil。
+	LLMDynamic *llm.DynamicChatModel
 
 	// Rewriter is the Phase 10 query-rewriter wrapper (Plan 10-02).
 	// When non-nil AND history is non-empty, VerdictPipeline calls
@@ -720,6 +730,14 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/admin/pipeline/run", deps.adminPipelineRunHandler)
 	h.GET("/api/admin/pipeline/status", deps.adminPipelineStatusHandler)
 	h.POST("/api/admin/pipeline/retry/:note_id", deps.adminPipelineRetryHandler)
+	// Phase 52 (llm-provider-panel) — LLM provider 管理：目录 / 当前配置 /
+	// 保存即热重载 / key 连通性测试 / 模型列表。全部 token-gated
+	// (403 before 503)；GET 永不返回明文 key。LLMDynamic == nil ⇒ 503。
+	h.GET("/api/admin/llm/providers", deps.llmProvidersHandler)
+	h.GET("/api/admin/llm/config", deps.llmConfigHandler)
+	h.POST("/api/admin/llm/config", deps.llmSaveHandler)
+	h.POST("/api/admin/llm/test", deps.llmTestHandler)
+	h.GET("/api/admin/llm/models", deps.llmModelsHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
 	// turns + the session-bound skill_id so the FE can rebuild the
