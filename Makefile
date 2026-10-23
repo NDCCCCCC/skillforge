@@ -6,7 +6,7 @@
 # gate). Run `make` or `make verify-phase-11` to execute the gate;
 # the banner at the end is the operator's pass/fail signal.
 
-.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 verify-phase-26 phase-27 phase-28 phase-29 phase-30 test-unit test-frontend build clean verify-phase-49 demo-gif verify-phase-52
+.PHONY: check-cgo verify-phase-11 verify-phase-12 verify-phase-13 verify-phase-14 verify-phase-15 verify-phase-16 verify-phase-17 verify-phase-26 phase-27 phase-28 phase-29 phase-30 test-unit test-frontend build clean verify-phase-49 demo-gif verify-phase-50 verify-phase-52
 
 # check-cgo fails fast with an actionable message when gcc is missing.
 # mattn/go-sqlite3 and go-duckdb both require CGO; install MSYS2 UCRT64 gcc
@@ -159,3 +159,9 @@ demo-gif:
 # (catalog + hot-reload model + admin API + web panel + secret hygiene).
 verify-phase-52:
 	bash verify-phase-52.sh
+
+# verify-phase-50 checks the open-source facade (README truth, architecture
+# doc existence, community files, demo asset, badges) and mutation-proves
+# each partition still bites.
+verify-phase-50:
+	bash verify-phase-50.sh
