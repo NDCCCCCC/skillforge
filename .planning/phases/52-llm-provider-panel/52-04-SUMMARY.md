@@ -1,6 +1,6 @@
 ---
 phase: 52-llm-provider-panel
-plan: 04
+plan: set-summary
 status: complete
 subsystem: llm-config
 tags: [llm, admin-panel, hot-reload, openai-compatible]
