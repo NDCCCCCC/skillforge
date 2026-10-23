@@ -68,7 +68,7 @@
 - [x] **Phase 47: 清债与可复现基线** - v1.6 遗留债务闭合或显式处置：flaky 测试修复 + rollback 治理缓存 + 警告处置记录，为 CI 全量门与 hermetic 套件铺平不闪红的地基
 - [x] **Phase 48: CI 矩阵** - Go / FE / Docker 三线质量门进 GitHub Actions，每次 PR 公开可见绿灯
 - [x] **Phase 49: Hermetic Demo** - embedded 向量兜底 + stub LLM 路径，clone 后零内网依赖、零 API key 跑通全链
-- [ ] **Phase 50: 开源门面** - README 修真 + 架构图 + vs Dify/RAGFlow 对比表 + 社区设施，门面与仓库实况零失真
+- [ ] **Phase 50: 开源门面** - README 修真 + 架构图 + vs WeKnora/Semantica 对比表 + 社区设施，门面与仓库实况零失真
 - [ ] **Phase 51: 发布工程** - goreleaser + tag 触发 GitHub Release，二进制 + release notes 零手工
 
 ## Phase Details
@@ -211,13 +211,13 @@ Plans:
 
 ### Phase 50: 开源门面
 
-**Goal**: 新访客 5 分钟内理解 SkillForge 是什么、凭什么不同（vs Dify/RAGFlow）、怎么跑起来——门面素材与仓库实况零失真。纯文档/社区设施，无生产代码改动。
+**Goal**: 新访客 5 分钟内理解 SkillForge 是什么、凭什么不同（vs WeKnora/Semantica）、怎么跑起来——门面素材与仓库实况零失真。纯文档/社区设施，无生产代码改动。
 **Depends on**: Phase 49（demo.gif 素材与 quickstart 实测结论反哺 README）
 **Requirements**: FACE-01, FACE-02, FACE-03
 **Success Criteria** (what must be TRUE):
 
   1. README 与实际一致：`docs/demo.gif` 正常播放（Phase 49 真实运行素材）、示例 skill 数量更正为 7、badge 链接全部有效、构建表述如实（CGO_ENABLED=1 为 go-duckdb 生产构建现实路径，不宣称无 cgo 单 binary）
-  2. `docs/architecture.md` 组件图覆盖 agent 内核 / 知识层 / 治理层 / 平台层，新读者可据图定位代码入口；README 含 vs Dify/RAGFlow 差异化对比表，差异点可追溯到仓库实际能力
+  2. `docs/architecture.md` 组件图覆盖 agent 内核 / 知识层 / 治理层 / 平台层，新读者可据图定位代码入口；README 含 vs WeKnora/Semantica 差异化对比表，差异点可追溯到仓库实际能力
   3. SECURITY.md / CODE_OF_CONDUCT.md / GitHub issue/PR 模板齐备且从 README 可达
   4. `bash verify-phase-50.sh` exit 0（badge 链接有效性检查 + 文档与仓库实况一致性断言，含示例 skill 计数与实际目录比对）
 

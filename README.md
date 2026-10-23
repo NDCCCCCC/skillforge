@@ -10,16 +10,18 @@ refusal guardrails + system prompt). It is **not** a sandboxed skill
 plugin (the WeKnora usage) and not an MCP tool (the Anthropic Agent
 Skills usage). One `SKILL.md` retargets the same agent kernel to
 legal review, HR policy, IT helpdesk, or any other business domain
-— no recompilation, no code changes. Three ready-to-run templates
+— no recompilation, no code changes. Seven ready-to-run templates
 ship in [`examples/skills/`](examples/skills/) — `simple-qa`,
-`calculator`, and `compliance` — and
+`calculator`, `compliance`, `compliance-orchestrator`, `external-lookup`,
+`kpi-dashboard`, and `monthly-report` — and
 [`CONTRIBUTING.md`](CONTRIBUTING.md) walks you through writing your own.
 
 ![SkillForge demo](docs/demo.gif)
 
 [![Go Version](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![CI](https://img.shields.io/badge/CI-eval--gate--22--09--06-green)](.github/workflows/)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-informational)](.github/workflows/ci.yml)
+📄 [Architecture](docs/architecture.md) · [Security policy](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Contributing](CONTRIBUTING.md)
 
 ---
 
