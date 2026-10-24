@@ -28,7 +28,7 @@
 
 - [ ] **REL-01**: D-46-DEF-02 修复——`TestDeriveEdgesDeterministic` **边方向**确定性化（根因 = `internal/knowledge/graph_edges.go::ComputeEdges` 中 `sources` 由 `sourceTokens` 的 map 迭代序构造，`i<j` 配对使 `From`/`To` 随迭代序翻转，而 `EdgeGraph.Neighbors` 为有向遍历；修复 = 配对前确定性排序 + `Weight` 作第四排序键）。实测：`-count=200` 两次分别 34 败 / 50 败（17–25%），失败全落在 `From`/`To`/`EdgeType` 断言，`Weight` 断言 0 败；验收强度 = `-count=100` 全绿 + 一次 `-shuffle=on`（原「连续 6 次」在 ~20% flake 率下置信度不足，仅作冒烟门槛）
 - [ ] **REL-02**: audit WARNING-1 修复——rollback 成功路径刷新 SHACL 报告缓存（或修正注释），FE 死分支恢复
-- [ ] **REL-03**: 发布工程——goreleaser 配置 + tag 触发 GitHub Release（二进制 + release notes）
+- [x] **REL-03**: 发布工程——goreleaser 配置 + tag 触发 GitHub Release（二进制 + release notes）
 - [ ] **REL-04**: BL-01..04 补录进 REQUIREMENTS Traceability 表
 
 ## Future Requirements（v1.8+ 商业分期）
@@ -74,7 +74,7 @@ v1.6 遗留 backlog（继承进 v1.7 Traceability 表，REL-04 补录）。定�
 | DEMO-03 | Phase 49 | Complete |
 | REL-01 | Phase 47 | Complete |
 | REL-02 | Phase 47 | Complete |
-| REL-03 | Phase 51 | Pending |
+| REL-03 | Phase 51 | Complete |
 | REL-04 | Phase 47 | Complete |
 | BL-01 | Backlog（无 owner phase） | Deferred |
 | BL-02 | Backlog（Phase 48 lint 落地后立项） | Deferred |
