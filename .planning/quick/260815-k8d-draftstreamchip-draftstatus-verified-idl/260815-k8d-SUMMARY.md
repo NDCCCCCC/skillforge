@@ -24,6 +24,10 @@ metrics:
   commits: 2
   test_added: 1
   test_regression: 0
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick 260815-k8d: DraftStreamChip draftStatus verified → idle terminal transition

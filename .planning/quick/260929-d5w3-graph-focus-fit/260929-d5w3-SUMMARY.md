@@ -47,6 +47,10 @@ requirements-completed: []
 # Metrics
 duration: 15min
 completed: 2026-09-29
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick 260929-d5w3: Graph Focus + Canvas Fit Summary
@@ -101,4 +105,3 @@ None — all data paths are wired to real message/citation state.
 - All 5 source files + 2 planning files verified on disk (FOUND)
 - Both commit hashes verified in git log (9416b3b, dafe594)
 - web/src working tree clean after commits (0 modified; planning docs intentionally uncommitted per task constraints)
-

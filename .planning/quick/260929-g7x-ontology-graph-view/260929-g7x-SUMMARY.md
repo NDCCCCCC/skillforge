@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick 260929-g7x: 知识图谱「本体视图」Summary
 
 用 KG ABox 本体数据(quick-260928-nzk 写入)投影出 note↔表/险种/机构 的真实关系图,作为知识图谱默认视图;原 tier→文档 树降级为「文档」第二模式。

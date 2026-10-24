@@ -37,6 +37,10 @@ decisions:
 metrics:
   duration: ~12 min
   completed: 2026-09-28
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick Task 260928-jxb: Admin Console 3-Bug Fix Summary
@@ -46,12 +50,15 @@ metrics:
 ## What Was Built
 
 ### Task 1 — BUG-1 (P0): governance API null-array normalization — `99361f8`
+
 Go nil slices serialize to JSON `null` while the FE types claim arrays; `warnings:null` / `edges:null` crashed ShaclReportView / ProvenanceGraphView via `.length`/`.some` on null, killing the whole AdminDashboard (no error boundary). Normalized at the fetch-wrapper choke point in `governanceApi.ts`: `warnings ?? []`, `quarantined ?? []`, `nodes ?? []`, `edges ?? []`, `entries ?? []`. Consumption sites untouched. 4 vitest regression tests pin the exact live payloads from the 2026-09-28 walkthrough (TDD: RED 3-fail → GREEN 4-pass).
 
 ### Task 2 — BUG-2 (P1): PlatformTab shared Skill selector — `e2738c9`
+
 `skillName` was initialized `''` with NO selector, so SPARQL Run Query and Hybrid 搜索 always sent `X-Skill-Name: ''` → 401. Added a shared selector row (`data-testid="platform-skill-select"`, KGQueryPanel idiom) between the view switcher and view bodies; one control drives both views (MCP Inspector is server-scoped, untouched). Auto-defaults to the first `status === 'ok'` store skill via useEffect (`''` = guaranteed 401, must never persist); failed skills excluded; 加载中 placeholder when store empty. Existing SparqlPlaygroundView/HybridDebugView props and Ctrl+Enter deps re-attach unchanged. 3 vitest tests (TDD: RED 3-fail → GREEN 3-pass).
 
 ### Task 3 — BUG-3 (P1) + TASK-4: deps.MCPServer wiring + start-script GLM switch — `8390af1`
+
 Phase 43-01 leftover: `if deps != nil { deps.MCPServer = mcpSrv }` (main.go ~993) ran before `deps` was assigned (~1059) and `mcpSrv` was branch-scoped — dead code; `/api/admin/platform/mcp/status|tools|invoke` always saw nil → 503. Fix: hoisted `var mcpSrv *mcp.Server` above the `mcpEnabled` branch, switched `NewServer` to assignment form, deleted the dead block, and wired `MCPServer: mcpSrv,` as the last field of the `deps = &server.Deps{...}` literal (nil-posture comment, same as ECL/Ontology). TASK-4 (env-only, untracked): `.planning/quick/sf44-start.sh` now `unset LOCAL_BASE_URL LOCAL_API_KEY LOCAL_MODEL` after sourcing `.env` so boot falls back to GLM_* while the LOCAL Unsloth endpoint is down (precedence LOCAL_* > GLM_* > default, main.go:302-304). Script verified still `??` untracked.
 
 ## Commits

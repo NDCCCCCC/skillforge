@@ -24,6 +24,10 @@ decisions:
 metrics:
   duration: "~5 min"
   completed: 2026-08-14
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick Task 260814-ofn: Fix Stale Splitter Comments Summary

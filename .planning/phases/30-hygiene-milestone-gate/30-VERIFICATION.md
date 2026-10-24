@@ -36,6 +36,10 @@ gaps:
       - "Operator must run: go run ./cmd/eval --frozen --gate-check"
       - "Record env issues if services are unreachable"
 deferred: []
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: gaps_found
 ---
 
 # Phase 30: Verification Report

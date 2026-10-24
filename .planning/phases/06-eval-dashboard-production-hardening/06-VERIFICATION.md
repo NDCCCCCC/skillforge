@@ -18,6 +18,10 @@ human_verification:
   - test: "go test -tags liveeval ./internal/eval/ -run TestRunnerLiveReproducibility with GLM_API_KEY set"
     expected: "PASS (or SKIP if key unset) — abs(run1-run2) < 1e-3 on all 4 metrics across the 5-case cap"
     why_human: "Phase-gate check requires a real GLM API key (quota cost); the //go:build liveeval guard is verified on master, the live run itself is the SC-6 jitter layer"
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: human_needed
 ---
 
 # Phase 6: Eval Dashboard & Production Hardening Verification Report

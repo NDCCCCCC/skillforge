@@ -3,6 +3,10 @@ status: verified-encoding-fix-closed
 trigger: "Phase 7 live 验证发现 RAG 检索对应该回答的查询（如'年假有几天'）返回 unanswered（拒答）。"
 created: 2026-08-13
 updated: 2026-08-14
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: verified-encoding-fix-closed
 ---
 
 # Debug: agent-llm-query-rewrite

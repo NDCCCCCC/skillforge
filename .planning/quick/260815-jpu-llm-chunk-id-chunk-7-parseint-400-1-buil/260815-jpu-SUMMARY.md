@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick 260815-jpu Summary
 
 ## Goal
@@ -107,7 +114,9 @@ messages[1])"` (no `[ref-...]` substring in the new message).
 ## Verification (Global)
 
 ```bash
+
 # Backend
+
 go test ./internal/server/ -count=1 -timeout 120s    # ok
 go vet ./internal/server/                              # clean
 grep "CHUNK %d" internal/server/pipeline.go           # only in godoc comment (line 579); code uses ref-%d (line 586)
@@ -118,6 +127,7 @@ grep "parseLenientChunkID" internal/server/knowledge.go     # helper + caller + 
 grep "strconv.ParseInt(idStr" internal/server/knowledge.go # no matches (replaced)
 
 # Frontend
+
 cd web && npx tsc --noEmit                             # 0 errors
 cd web && npx vitest run src/__tests__/chunk-lookup.test.ts   # 22/22 PASS
 cd web && npx vitest run                               # 262/262 PASS

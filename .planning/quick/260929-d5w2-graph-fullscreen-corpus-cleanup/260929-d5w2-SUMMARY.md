@@ -1,6 +1,14 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick 260929-d5w2 Summary — graph fullscreen + pretty source paths + test-KB cleanup + corpus rename & full rebuild
 
 ## One-liner
+
 Detail-panel knowledge graph gains a fixed-overlay 全屏 mode; `prettySourcePath` shortens corpus source paths at three display sites (citations, graph nodes, KB doc list) with raw paths kept on hover; two dead test KBs (`uat-check`, `walkthrough-tmp`) deleted from the registry; 39 corpus files renamed to readable bases (sec suffixes preserved) with a full Milvus-recreate + ECL rebuild verified live.
 
 ## Stats
@@ -47,18 +55,22 @@ Detail-panel knowledge graph gains a fixed-overlay 全屏 mode; `prettySourcePat
 ## Task evidence
 
 ### Task 1 — graph fullscreen
+
 - `graph-fullscreen-btn` (Maximize2) in the narrow rail; overlay portaled to `document.body` (KnowledgeModal B7 posture — panel ancestors with backdrop-filter would clip `fixed`), `bg-bg`, `graph-fullscreen-close` + Esc.
 - vitest 8/8 in `KnowledgeGraphBrowser.test.tsx` (portal target = body, exactly one canvas in DOM, Esc exits).
 
 ### Task 2 — pretty source paths
+
 - Locked example verified: `sql-guides/取数口径/032_保单号查支付方式与开户行__sec02_SQL_正文.md` → `032_保单号查支付方式与开户行 · SQL正文`.
 - Raw path always on `title` / SVG `<title>` / `data-file` — machine identity untouched.
 - Citation popover + ChunkSourceView get source via the extended `fetchChunkContent` (async path; the sync fixture carries no source, so the row renders only when known).
 
 ### Task 3 — test-KB cleanup
+
 - Order: pkill → sqlite `.backup` → DELETE → `integrity_check ok` → restart → `GET /api/admin/kb` slugs `['authority','draft','historical','personal','sql-guides']` → backup removed. Script: `.planning/quick/260929-d5w2-kb-cleanup.sh`.
 
 ### Task 4 — rename + full rebuild
+
 - Pre-rename disk backup (persistent, NOT deleted, user decides): **`/home/ninedrunk/sql-guides-pre-rename-backup`** (WSL home, 202 files, 988K).
 - One wsl invocation end-to-end: pkill → `SKILLFORGE_MILVUS_RECREATE=1` boot (WARN line confirms recreate) → READY 32s → boot log `[OK] knowledge corpus indexed into skillforge_knowledge` → `POST /api/admin/pipeline/run` `{"status":"started"}` → poll to `"stage":"done"` → verify graph/SPARQL/SHACL (numbers above). Script: `.planning/quick/260929-d5w2-rebuild-rename.sh`.
 - Rename note: sec01 files keep the old long title as the section echo (spec: suffix untouched) — e.g. `001_机构部门科室信息更新__sec01_公司业务部、武汉中支部门组部门科室等信息更新.md`; old-name verification therefore ran on the base (pre-`__secNN_`) only.
@@ -72,6 +84,7 @@ Detail-panel knowledge graph gains a fixed-overlay 全屏 mode; `prettySourcePat
 - **Commit:** 1aaf853
 
 ### Observations (no action, out of scope)
+
 - Graph API shows 100 doc groups vs 202 disk files: steady-state of boot-index + ECL extraction in this environment (extraction batches cover 26 note groups; some section files carry no extracted chunks). Pre-existing behavior, not introduced here.
 - Milvus sources mix two path forms (`sql-guides/取数口径/...` from boot index vs `取数口径/...` from pipeline runs). Both render correctly through `prettySourcePath` (basename step). Pre-existing heterogeneity.
 - GLM stalled ~9 min on batch 25 (`031_取数工作汇总`) before completing — known intranet flakiness; no retry/error logged.
@@ -81,9 +94,11 @@ Detail-panel knowledge graph gains a fixed-overlay 全屏 mode; `prettySourcePat
 None — all display sites render live backend data; no placeholder content added.
 
 ## Duration
+
 ~35 min (2026-09-29T02:24Z → 03:00Z), rebuild pipeline ~17 min of that.
 
 ## Self-Check: PASSED
+
 - Commits verified: `git log` shows 2a05f69, dfc5231, ec870aa, 1aaf853 on `phase-20-p10-6-admin-console`.
 - Files verified: pretty-source.ts/.test.ts exist; all 5 modified FE files compile (`tsc --noEmit` clean).
 - Live verification: KB list 5 bases; graph new names 19 / old 0; SPARQL 57 rows; SHACL 7; backup present at `/home/ninedrunk/sql-guides-pre-rename-backup`.

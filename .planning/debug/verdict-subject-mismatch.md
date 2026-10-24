@@ -3,6 +3,10 @@ status: implemented-pending-live-verify
 trigger: "事实型查询「采购合同 50 万元以下由谁审批？」的结论主体是「合规（置信度 97%）」而非直接回答审批人；用户反馈『现在结论的主体是 是否合规？不应该是回答用户的提问吗？』；用户补充语境：项目是多 Skill 平台而非单纯合规系统，需在平台层评估「合规」用词"
 created: 2026-08-17
 updated: 2026-08-17
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: implemented-pending-live-verify
 ---
 
 # Debug: verdict-subject-mismatch
@@ -233,7 +237,9 @@ updated: 2026-08-17
 ### 用户可继续命令
 
 ```bash
+
 # 提交当前进度为一个 atomic commit
+
 git add internal/verdict/ internal/server/pipeline.go internal/server/chat.go internal/server/redline.go
 git commit -m "feat(260817-vsm): verdict package platform-decoupling (partial)
 
@@ -252,5 +258,7 @@ Partial: remaining test files + FE + SKILL.md pending.
 Co-Authored-By: Claude <noreply@anthropic.com>"
 
 # 然后继续更新剩余测试文件（grep -l '"合规"\|"不合规"\|"需补充"\|"unanswered"' 列出）
+
 # 最后 FE + SKILL.md + go test + vitest + live verify
+
 ```

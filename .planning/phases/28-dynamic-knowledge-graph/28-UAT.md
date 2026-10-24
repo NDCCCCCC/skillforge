@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  gap_snapshot: "unknown::scenarios=0"
+---
+
 # Phase 28 LIVE Acceptance Runbook
 
 **Phase:** 28 — 知识图谱动态化 + 关系层

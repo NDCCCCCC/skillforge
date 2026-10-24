@@ -23,6 +23,10 @@ human_verification:
   - test: "CR-01 failure-path operability check (SC-4/SC-5): force a milvus-load failure (e.g. stop Milvus mid-run), then observe GET /api/admin/pipeline/status and the FE run/retry buttons"
     expected: "KNOWN DEFECT (39-REVIEW CR-01): stage stays non-terminal (milvus-load) while no run is active — run button disabled and pulsing badge until a per-note retry succeeds or restart; dead rows remain retryable per-note. Confirm the defect reproduces and decide whether to schedule the minimal fix (deferred idle reset on error in Manager.Run/RetryNote)"
     why_human: "Requires a real partial-failure scenario against live services; outcome is a product decision on fix scheduling"
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: human_needed
 ---
 
 # Phase 39: ECL Pipeline — Section-aware Chunker + LLM Entity Extraction — Verification Report

@@ -32,6 +32,10 @@ decisions:
 metrics:
   duration: 12m
   completed: 2026-08-17
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Phase 260817-hck Plan 01: VerdictCard dedupe answer vs chat conclusion — Summary

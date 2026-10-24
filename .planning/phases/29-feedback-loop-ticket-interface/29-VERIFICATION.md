@@ -35,6 +35,10 @@ human_verification:
   - test: "Visual pass of the new surfaces: FeedbackRow inside the message column (no overflow), SfToast position/z-order in chat + eval + /admin, 7-tab order (反馈 6th, 复核 7th)"
     expected: "No layout breakage; toasts land in all three route branches; tab order matches D-29-12"
     why_human: "Pure visual/layout judgment"
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: human_needed
 ---
 
 # Phase 29: 反馈闭环 + 工单预留 (Feedback Loop + Ticket Interface) Verification Report

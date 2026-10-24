@@ -12,6 +12,10 @@ trigger: |
 created: 2026-09-05
 updated: 2026-09-05
 goal: find_and_fix
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: awaiting_human_verify
 ---
 
 # Debug Session: windows-gcc-emutls-link

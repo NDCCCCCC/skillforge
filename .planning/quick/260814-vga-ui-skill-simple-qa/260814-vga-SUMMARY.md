@@ -31,6 +31,10 @@ decisions:
 metrics:
   duration: 12m
   completed: 2026-08-14
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # quick-260814-vga: UI 文案泛化 + skills/ 默认 simple-qa Summary

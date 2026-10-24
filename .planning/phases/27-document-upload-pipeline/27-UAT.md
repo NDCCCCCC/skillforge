@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  gap_snapshot: "unknown::scenarios=0"
+---
+
 # Phase 27 LIVE Acceptance Runbook
 
 **Phase:** 27 — 文档上传入库 (Document Upload Pipeline)

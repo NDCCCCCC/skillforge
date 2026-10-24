@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick Task 260929-h8k: 机构实体别名消解 Summary
 
 **机构别名确定性归一化 —— 武汉/武汉中心支公司 式 16 对重复 org 实体在投影层与抽取层双路合并**

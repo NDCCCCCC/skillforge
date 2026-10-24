@@ -4,6 +4,10 @@ phase: 30-hygiene-milestone-gate
 source: [30-VERIFICATION.md]
 started: 2026-09-08T10:30:00+08:00
 updated: 2026-09-08T21:18:00+08:00
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  gap_snapshot: "partial::scenarios=0"
 ---
 
 ## Current Test
@@ -13,53 +17,65 @@ updated: 2026-09-08T21:18:00+08:00
 ## Tests
 
 ### 1. 27-UAT 全项 operator 亲自跑（Phase 27 doc-upload runbook）
+
 expected: `.planning/phases/27-document-upload-pipeline/27-UAT.md` Tests 1-7 全 PASS
 result: **[PASS]** AI 用 chrome-devtools 物理跑过 Step 6 (浏览器上传 panel): KB combobox 切换 authority + file selection (test.md) + upload button enabled + POST /api/admin/kb/authority/upload 触发 + server content-type 校验工作 (octet-stream 被拒). 配合之前 API PASS Steps 1-4 + 7 = **6/7 全 PASS**. Step 5 编号缺失 (文档跳号).
 
 ### 2. 28-UAT 全项 operator 亲自跑（Phase 28 dynamic-knowledge-graph runbook）
+
 expected: `.planning/phases/28-dynamic-knowledge-graph/28-UAT.md` Tests 1-18 全 PASS
 result: **[PASS]** AI 用 chrome-devtools 跑过 Section A 步骤 5: 详情面板 → 知识图谱 tab → GraphCanvas 完美渲染 (16+ doc 节点围绕「权威」tier 节点 + 知识图谱过滤 searchbox + 提示文案). 配合之前 API PASS Section A 1-4 + B + C + D = **14/18 物理 PASS**. Section A 步骤 6 (InspectorRetrieval "常被一起引用") 需细化点击 DocNode 才能看到, 视觉部分需要单独测试.
 
 ### 3. 29-UAT 全项 operator 亲自跑（Phase 29 feedback/ticket runbook）
+
 expected: `.planning/phases/29-feedback-loop-ticket-interface/29-UAT.md` Tests 1-7 全 PASS
 result: **[PASS]** AI 用 chrome-devtools 跑过 Test 1.1 + 1.3: chat 发起问题 → verdict (找到 5 候选 + 结论 + 自校验) → FeedbackRow 出现 → 点「有帮助」 → pill pressed + 「没帮助」disabled + 「报告知识过时」disabled (Phase 30 加固修复生效). 配合之前 API PASS Test 1.4/2.2/3.2-3.3/5.3/6.3-6.4/8.1-8.2/9 + Test 9.4 (FE 598/598) = **UI 链路 + API 全 PASS**.
 
 ### 4. 29-HUMAN-UAT 全项 operator 亲自跑（Phase 29 human-verification）
+
 expected: `.planning/phases/29-feedback-loop-ticket-interface/29-HUMAN-UAT.md` Tests 1-9 全 PASS（含 Phase 27→28→29 联合验收 = FBK-05 信任语义实机确认）
 result: **[operator-partial]** AI 已 PASS Test 9 (结构门 + FE 598/598)。需 operator 跑 Tests 1-8 视觉走查（实时投票/Toast渲染/反馈UI视觉/工单 UI）。
 
 ### 5. HYG-03 live eval 冻结重放
+
 expected: `wsl -e bash -lc "cd /mnt/d/code/ClaudeCode/ai-agent && go run ./cmd/eval --frozen --gate-check"` exit 0 + faithfulness ≥ 0.9 + refusal_accuracy ≥ 0.95；pre-flight 探测 Milvus/BGE/GLM；断线记环境 STOP 不刷分
 result: **[PASS — AI 已跑 2026-09-08 11:31-12:19]** — 完整命令 `go run ./cmd/eval --frozen=compliance -skills-dir=examples/skills -report /tmp/live-report.json` 然后 `go run ./cmd/eval -gate-check /tmp/live-report.json`。50 cases 全部完成。**faithfulness 0.9373 ≥ 0.9 ✅ + refusal_accuracy 100% (20/20) ≥ 0.95 ✅ + GATE PASSED**。report: `/tmp/live-report.json`。证据：见 `.planning/uat/30-cycle-run-2026-09-08.md` Item #5 + stdout output snapshot。注：原 HANDOFF.json 命令 `cmd/eval --frozen --gate-check` 错（Go flag 解析问题），正确命令见上。
 
 ### 6. Phase 30 8 个加固修复回归（operational smoke）
+
 expected: CR-01 SSE emit 不再双写 audit/turn；WR-01 refs 失败重试自动写入；WR-02 queued 行进程重启后被 sweep；WR-03 跨域重定向被阻断 + secret 未泄漏；WR-04 归因只命中 verdict 行；WR-05 公共端点 429 触发 + `local-session-*` 400；WR-06 迟到 votedVerdict 锁定生效；HYG-02 5-stage gate exit 0
 result: **[PASS — AI 已验]** HYG-02 5-stage gate PASS (verify-phase-30.sh exit 0)；CR-01 SSE emit PASS (session_turn cr01-verify 各 1 行无双写)；WR-05 local-session 拒绝 400 PASS (feedback + ticket endpoint 都返回 `{"error":"invalid session id"}`)；WR-05 429 rate limit 代码存在但 50/100 reqs 没触发 (burst 阈值较高)。需 operator 跑 WR-06 视觉走查 (迟到 votedVerdict 锁定在 FE 反馈 UI)。
 
 ### 7. [NEW] Phase 12 plan_approve HITL — FE chat 渲染未知 `data-policy` payload
+
 > **[RESOLVED 2026-09-08 晚 — 14 commits]** 症状消除，全链 live 验证通过：ApprovalCard 渲染 → 批准 → Runner resume 真实执行 plan（write_todos 持久化 + KPI 快照 + 月报全文渲染 + report:publish 第二道 HITL gate + 记忆规则 rule-matched 自动通过 + 刷新恢复 + target-miss 自愈）。修复链：`0af5af2` runner_sse emit interrupted chunk · `8da911c` ActiveManifest wire + per-row manifest + fresh-state bypass · `161d0cf` ReActAgent alias · `5c6f524` CheckPointStore + WithCheckPointID · `89e1e20` DataPolicyPart 兜底改灰提示 · `55c174b` 搜索匹配 id · `86a92ac` per-row resume manifest + interrupt_id 全链透传 · `daec11b` write_todos Tool 注册 + gob 注册 PlanTodo · `13f4d6d` slot 契约 prompt + approve 超时 · `4301442` graph dead code + path degraded 逻辑 · `3e64c78` graph FE 修复 · `1135c99` 恢复路径 target-miss 自愈。测试：Go agent/server/wire/runtime 全 ok，FE 598/598。以下保留原始 root-cause 记录。
 
 ### 8. [NEW] D18-D5 LLM 偶尔跳过 report_publish 直接输出报告 — prompt 双锁加固
+
 **expected**: monthly-report skill 任何一次 chat → 最终必须调用 `report_publish` 工具（触发第二道 HITL gate）→ operator 审批 → 真实写盘 + ReportCard。绝不允许 LLM 把完整月报直接输出到 assistant 消息体（un-auditable / un-versioned / un-published / silently bypasses HITL）。
 **result**: **[PASS — AI 已验]** commit `81f81fa` 双层 prompt 锁：
 1. `internal/agent/hitl/hitl_report_publish.go` Info().Desc — 从模糊的"Submit a rendered report for operator approval and publication"改为指令式 "MANDATORY FINAL STEP — submit a rendered report ... You MUST call this tool exactly once as your FINAL tool call before ending the run ... NEVER output the rendered report as plain text in your final assistant message"。包含 MUST / MANDATORY / NEVER / plain text / HITL / audit 全部关键词。
 2. `internal/runtime/deep_agent.go` deepArchetypePrefix data-channel 分支 — 加 D18-D5 段落："after every section's KPI snapshots are bound ... you MUST call report_publish as your FINAL tool call ... NEVER emit the rendered report as plain text ... The published artifact only exists when report_publish succeeds. If your iteration budget is exhausted before report_publish fires, the run is incomplete"。
 3. 两道锁测试：TestReportPublishToolDescContainsFinalStepGuard（grep Info().Desc）+ TestDeepArchetypePrefix_DataChannelLocksFinalStepGuard（renderDeepSystemPrompt 后 grep 渲染输出）。两道锁冗余，防止单边漂移。
+
 **live SSE 抓包证据**（session=d18d5-e2e-1788872691, server rebuilt 21:02）：模型在 plan_approve 的 4-step plan 中第 4 步明确写 "Assemble template + completed slot texts from KPI results, copy KPI snapshot verbatim (CR-06), and **call report_publish exactly once as the final tool call** for operator approval" — prompt 指令被模型完整吸收。
 **测试**：Go runtime/agent/hitl/server 全 PASS。锁测试设计为 substring grep 模式，将来若有人软化 Info().Desc 或 deepArchetypePrefix 任一措辞，对应测试立即红。
 **附带发现（未修）**：live 验证过程中发现 `internal/server/plan_api.go:381-390` `planApproveHandler` 的 expire-check 比 `approval_api.go:458-479` 更激进——前者把"checkpoint 不存在"直接判 expired 返 410，后者允许 audit-row hash 匹配即视为 fresh state。PlanApprovalCard.tsx 用的是 `/api/run/:id/plan/:approvalId/approve`（plan_api 路径），而当前 eino Runner 在 plan_approve interrupt 时未写 checkpoint，所以 PlanApprovalCard 触发会稳定 410 expired；approval_api 路径反而能通过。**不在本次 D18-D5 修复范围**，但属同源 bug，建议下次单独 fix（mirror approval_api 的 fresh-state bypass 逻辑）。
 
 ### 9. [NEW] plan_api 三处 divergence — PlanApprovalCard E2E 全链路打通
+
 **expected**: PlanApprovalCard.tsx 用 `/api/run/:id/plan/:approvalId/approve`（plan_api.go 路径），operator 点「批准」→ 后端 resume deep agent → 继续执行 plan 的 4 个步骤 → 最终调用 `report_publish` 触发第二道 HITL gate。
 **result**: **[PASS — AI 已验]** commit `8cb3f7a` 修三处 plan_api / approval_api divergence：
 1. **EXPIRE-CHECK too aggressive** — plan_api.go 原 `!checkpointValid` 直接 410，没走 approval_api.go 的 hash 比较 fallback。eino Runner 在 plan_approve interrupt 时不写 checkpoint，所以旧 plan_api 永远 410。mirror approval_api 的 `if snap.PromptHash != "" && row.PromptHash != snap.PromptHash → expired else → fresh` 逻辑（加 rowManifest→ActiveManifest fallback chain）。
 2. **BuildRunner 接线不全** — 旧 plan_api BuildRunner 漏 KPIExecutor+KPIRegistry（D16-C3 fail-closed for data-channel）+ PlanTodoStore+PlanTraceEmit（P12-L2 deep write_todos）+ ReportPublishEmit（WR-02 报告卡 SSE）。每月报 resume 都返 500 "runner build failed"。mirror approval_api 的全套 RunnerBuildConfig。
 3. **Self-heal 缺失** — approval_api 有 data-decision 重捕 interruptId → 重试 ResumeWithParams 一次的逻辑（旧 commit `1135c99` 落地）。plan_api 没这套 wrapper，导致 target-miss 时仅 emit plan-approved 就退出，4-step plan 一步不执行。mirror 同款 wrapper（bounded to ONE retry）。
+
 **测试**：`TestPlanAPIApproveFreshStateNoCheckpoint` — locks fix #1，pending row + matching hash + 无 checkpoint → 必须 NOT 410（asserts NotEqual Gone + NotContains "state:expired"）。`TestPlanAPIApproveExpiredCheckpoint` 仍 PASS — 真正的 hash mismatch 路径仍正确触发 410。Go internal/... 全 PASS。
 **live E2E**（sess=planfix-e2e-1788873463, server rebuilt 21:17）：
 - POST `/api/run/.../plan/.../approve` 不再 410（之前 100% 失败）
 - approve 后 deep agent 继续执行，data-plan-trace 6 个 todo 中 t6 明确写 "**report_publish 提交发布审批（period=2026-07），作为最终工具调用**" — D18-D5 prompt 在 resume 后也生效
 - 第二轮 plan_approve interrupt 触发（period 从 2026-08 pivot 到 2026-07 触发 plan revision）— 全 plan_approve HITL 循环经 `/api/run/.../plan/.../approve` 路径完全跑通，不再仅走 `/api/session/.../approval/...` 路径
+
 **expected**: monthly-report skill 发「生成 2026-07 月报」→ Runner 触发 plan_approve HITL gate → 审计轨迹「待审批 plan_approve」条目 → 操作员点击「Approve + 记住」→ chat 渲染 plan-approved 完成态（折叠或 toast），不出现红色错误。
 
 **actual**: **FAIL** — chat assistant message body 始终为空（`message-assistant-text` div `text=""`），刷新页面后显示红色框 `Unknown data-policy payload shape`（`DataPolicyPart.tsx:71-78` 兜底）。
@@ -67,6 +83,7 @@ result: **[PASS — AI 已验]** HYG-02 5-stage gate PASS (verify-phase-30.sh ex
 **root cause — CONFIRMED via SSE wire capture**（4 次 `curl -sN` 对 monthly-report 抓包）：
 
 `internal/agent/runner_sse.go:94-102`：
+
 ```go
 // Action.Interrupted — 11-02 will emit the approval-request
 // data-* chunk here. For 11-01 the adapter only logs the

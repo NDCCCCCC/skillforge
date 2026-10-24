@@ -49,6 +49,10 @@ started: 2026-08-15T03:45:00Z
 completed: 2026-08-15T03:54:45Z
 tasks: 1
 files: 2
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick 260815-gcw: chat 流式卡死诊断日志

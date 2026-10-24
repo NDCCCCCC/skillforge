@@ -129,6 +129,10 @@ advisory:
     category: other
     reason: "注释措辞；运行结论与 IN-R5-04 的修正均正确，无行为影响"
     evidence_status: "code read (.github/workflows/ci.yml:41-51)"
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: gaps_found
 ---
 
 # Phase 48: CI 矩阵 Verification Report (Re-verification, round 6)

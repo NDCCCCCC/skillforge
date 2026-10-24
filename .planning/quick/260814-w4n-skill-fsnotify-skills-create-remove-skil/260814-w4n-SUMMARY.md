@@ -30,6 +30,10 @@ decisions:
 metrics:
   duration: "~4 min (2026-08-14T15:19:11Z → 15:22:49Z)"
   completed: 2026-08-14
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick Task 260814-w4n: Skill fsnotify 目录级增删 Summary

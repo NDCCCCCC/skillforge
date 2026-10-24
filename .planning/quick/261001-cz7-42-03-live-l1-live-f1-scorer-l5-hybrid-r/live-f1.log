@@ -1,0 +1,26 @@
+=== RUN   TestLiveLLMExtractionF1
+    extract_live_f1_test.go:136: note 001: tables P=0.5000 R=0.6667 F1=0.5714 (live 4 tables vs golden 3)
+    extract_live_f1_test.go:136: note 007: tables P=0.0000 R=0.0000 F1=0.0000 (live 2 tables vs golden 0)
+    extract_live_f1_test.go:136: note 009: tables P=0.0000 R=0.0000 F1=0.0000 (live 1 tables vs golden 0)
+    extract_live_f1_test.go:136: note 010: tables P=0.0000 R=0.0000 F1=0.0000 (live 1 tables vs golden 0)
+    extract_live_f1_test.go:136: note 011: tables P=0.0000 R=0.0000 F1=0.0000 (live 1 tables vs golden 0)
+    extract_live_f1_test.go:136: note 015: tables P=0.0000 R=0.0000 F1=0.0000 (live 3 tables vs golden 0)
+    extract_live_f1_test.go:136: note 018: tables P=0.0000 R=0.0000 F1=0.0000 (live 2 tables vs golden 0)
+    extract_live_f1_test.go:136: note 020: tables P=0.0000 R=0.0000 F1=0.0000 (live 1 tables vs golden 0)
+    extract_live_f1_test.go:136: note 026: tables P=0.0000 R=0.0000 F1=0.0000 (live 2 tables vs golden 0)
+    extract_live_f1_test.go:136: note 029: tables P=0.0000 R=0.0000 F1=0.0000 (live 4 tables vs golden 0)
+    extract_live_f1_test.go:136: note 031: tables P=0.0000 R=0.0000 F1=0.0000 (live 4 tables vs golden 0)
+    extract_live_f1_test.go:136: note 033: tables P=0.0000 R=0.0000 F1=0.0000 (live 1 tables vs golden 0)
+    extract_live_f1_test.go:136: note 036: tables P=0.0000 R=0.0000 F1=0.0000 (live 1 tables vs golden 0)
+    extract_live_f1_test.go:136: note 039: tables P=0.5000 R=1.0000 F1=0.6667 (live 6 tables vs golden 3)
+    extract_live_f1_test.go:117: note 041: extraction error (ecl: extract: llm generate: failed to create chat completion: Post "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions": context deadline exceeded) — scoring 0
+    extract_live_f1_test.go:117: note 042: extraction error (ecl: extract: llm generate: failed to create chat completion: Post "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions": context deadline exceeded) — scoring 0
+    extract_live_f1_test.go:117: note 043: extraction error (ecl: extract: llm generate: failed to create chat completion: Post "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions": context deadline exceeded) — scoring 0
+    extract_live_f1_test.go:144: SC-2 live macro-F1 vs reviewed golden (26 notes, model=glm-5.3-flash): tables P=0.3846 R=0.4103 F1=0.3938 | related P=0.8462 R=0.8462 F1=0.8462
+    extract_live_f1_test.go:146: F1=0.3938
+    extract_live_f1_test.go:149: live tables macro-F1 = 0.3938 < 0.80 gate (SC-2 live half) — inspect the per-note log above
+--- FAIL: TestLiveLLMExtractionF1 (1800.52s)
+FAIL
+FAIL	github.com/skillforge/skillforge/internal/knowledge/ecl	1800.537s
+FAIL
+GO_EXIT=0

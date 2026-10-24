@@ -20,6 +20,10 @@ human_verification:
   - test: "Plan 07-06 Task 3 — create public `skillforge` remote (confirm GitHub username) + force-push rewritten history + clean-clone verify"
     expected: "Public repo live at github.com/<username>/skillforge; clean clone has zero internal info, no .planning/, all release artifacts present; `go test ./internal/skill -run TestExamplesValidate` passes on the public clone"
     why_human: "Requires (a) user to confirm GitHub username (CONTEXT §specifics: `ninedrunk` '待确认'), (b) create the empty public repo, (c) authorize a destructive force-push (no remote currently configured: `git remote -v` empty)."
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: human_needed
 ---
 
 # Phase 7: Open-Source Release Verification Report
@@ -181,17 +185,20 @@ The following items need human testing or environment setup. The autonomous work
 #### 4. Plan 07-06 Task 1-2 — `git filter-repo` single-pass rewrite
 
 **Test:** On a FRESH clone (`git clone <current-repo> skillforge-release && cd skillforge-release`), create `scrub.txt` with these 4 literal lines (order matters — FQDNs first):
+
 ```
 10.62.10.34==>127.0.0.1
 milvus.internal.company.com==>milvus
 bge-m3.internal.company.com==>localhost
 bge-m3.internal==>localhost
 ```
+
 Run `git filter-repo --invert-paths --path .planning/ --replace-text scrub.txt`. Then run the 4 audit gates:
 - Gate 1: `git grep -nE '10\.62\.10\.34|internal\.company\.com|bge-m3\.internal' $(git rev-list --all)` → ZERO matches
 - Gate 2: `git log --oneline --all -- .planning/ | wc -l` → 0
 - Gate 3: `git grep -nE 'AKIA[0-9A-Z]{16}|sk-[a-zA-Z0-9]{20,}' $(git rev-list --all)` → ZERO real keys (only `GLM_API_KEY=unhappy` test sentinel permitted)
 - Gate 4: `grep -cE '10\.62\.10\.34|internal\.company\.com|bge-m3\.internal' .env.example cmd/server/main.go internal/retriever/mongo/mongo.go internal/embedder/bge/bge.go scripts/live-verify.sh` → 0 across all 5 files
+
 **Expected:** All 4 gates pass with zero matches; filter-repo reports a full rewrite.
 **Why human:** Destructive + irreversible (rewrites every commit hash). `git-filter-repo` v2.47.0 IS installed (VERIFIED this session), but the operation must run on a fresh clone and the user must confirm the scrub table covers all internal-string variants before publication. Plan 07-06 explicitly marks this as `gate="blocking-human"`.
 

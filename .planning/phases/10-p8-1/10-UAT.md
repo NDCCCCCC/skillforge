@@ -4,6 +4,10 @@ phase: 10-p8-1
 source: 10-01-SUMMARY.md, 10-02-SUMMARY.md, 10-03-SUMMARY.md, 10-04-SUMMARY.md
 started: 2026-08-18T23:31:00Z
 updated: 2026-08-19T00:00:00Z
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  gap_snapshot: "partial::scenarios=0"
 ---
 
 ## Current Test
@@ -20,6 +24,7 @@ awaiting: user response
 ## Tests
 
 ### 1. Verdict renderer produces plain text from verdict JSON (MEM-04, 10-01 Task 1)
+
 expected: |
   `internal/history/verdict_renderer.go::RenderConclusion` is agent-path only.
   Verdict JSON → plain text. Zero `[CHUNK id]` markers in projection output.
@@ -28,6 +33,7 @@ result: pass
 verified_by: "go test ./internal/history/... -count=1 → ok 0.132s"
 
 ### 2. Neutral placeholder never leaks refusal semantics to LLM (10-01 Task 2)
+
 expected: |
   `internal/history/neutral_placeholder.go::RenderNeutralPlaceholder()` is
   fixed-string template; 11-word canonical refusal-semantic list documented
@@ -37,6 +43,7 @@ result: pass
 verified_by: "go test ./internal/history/... -count=1 → ok 0.132s"
 
 ### 3. Char-budget window is primary history truncation (D10-B3, 10-01 Task 2)
+
 expected: |
   `internal/history/budget_window.go::TruncateToCharBudget(msgs, budget)`
   is the primary window. Oldest-first drop with `SafeguardFloor=2`,
@@ -47,6 +54,7 @@ result: pass
 verified_by: "go test ./internal/history/... -count=1 → ok 0.132s"
 
 ### 4. RefusalClassifierInput is type-isolated to Query + Chunks (D10-A1, 10-01 Task 3)
+
 expected: |
   `internal/server/classifier/types.go::RefusalClassifierInput{Query string,
   Chunks []string}` — exactly 2 fields, no History. 7 reflection tests
@@ -56,6 +64,7 @@ result: pass
 verified_by: "go test ./internal/server/classifier/... -count=1 → ok 1.054s; grep -E 'History\\s*\\[\\]schema' internal/server/classifier/types.go → empty"
 
 ### 5. History flows into multi-turn messages prefix (D10-B2, 10-02 Task 3)
+
 expected: |
   `internal/server/pipeline.go::VerdictPipeline` extends `streamAndAssemble`
   signature to accept `history []*schema.Message`. Messages slice is built
@@ -66,6 +75,7 @@ result: pass
 verified_by: "go test ./internal/server/... -count=1 → ok 2.751s (TestVerdictPipeline* green)"
 
 ### 6. Classifier refusal short-circuits verdict LLM (MEM-03 / W3, 10-02 Task 1+3)
+
 expected: |
   Pipeline Step 7 (query-only refusal classifier) emits `Decision="refuse"`
   and short-circuits before the verdict LLM. Refusal emits
@@ -75,6 +85,7 @@ result: pass
 verified_by: "go test ./internal/server/... -count=1 → ok 2.751s (TestVerdictPipeline_ClassifierRefusesShortCircuits green)"
 
 ### 7. Rewriter failure falls back to original query (10-02 Task 1+3)
+
 expected: |
   Pipeline Step 0.5 (rewrite) is best-effort. Timeout or parse failure →
   fall back to original query. Classifier still runs on fallback.
@@ -83,6 +94,7 @@ result: pass
 verified_by: "go test ./internal/server/... -count=1 → ok 2.751s (TestVerdictPipeline_RewriterFailureFallsBack green)"
 
 ### 8. SC-3 hermetic: [CHUNK id] in history is scrubbed before LLM + citation strip (MEM-03, 10-02 Task 3)
+
 expected: |
   Pipeline strips ungrounded `Citations` from `v.Citations` after
   `GroundingChecker` so the SSE source-document stream never surfaces a
@@ -93,6 +105,7 @@ result: pass
 verified_by: "go test ./internal/server/... -count=1 → ok 2.751s (TestVerdictPipeline_HistoryChunkRefsSanitized green)"
 
 ### 9. audit_meta sibling table writes per-query history metadata (10-02 Task 2)
+
 expected: |
   `internal/store/sqlite/schema.go::audit_meta` table created (FK ON
   DELETE CASCADE). `PutAuditMeta(ctx, meta)` writes 8 columns.
@@ -102,6 +115,7 @@ result: pass
 verified_by: "go test ./internal/store/sqlite/... -count=1 → ok 0.553s"
 
 ### 10. History-bounded sessions persist across page refresh (MEM-02, 10-03 Task 1)
+
 expected: |
   `GET /api/session/:id/history` returns `[]SessionHistoryMessage` with
   per-role content rendered via `history.RenderConclusion` /
@@ -114,6 +128,7 @@ result: pass
 verified_by: "go test ./internal/server/... -count=1 -run TestSessionHistoryAPI → ok"
 
 ### 11. Skill auto-switches when restored session belongs to different skill (D10-D2, 10-03 Task 2)
+
 expected: |
   `web/src/hooks/use-skill-auto-switch.ts::useSkillAutoSwitch(skillId)`
   calls `store.setCurrentSkill` when skillId is non-empty AND in the
@@ -123,6 +138,7 @@ result: pass
 verified_by: "npx vitest run --reporter=basic → 349/349 pass"
 
 ### 12. HistoryRewriteHint shows rewrite transparency caption (D10-C3, 10-03 Task 2)
+
 expected: |
   `web/src/components/chat/HistoryRewriteHint.tsx` renders caption above
   user bubble when message carries a `data-decision` part with
@@ -132,6 +148,7 @@ result: pass
 verified_by: "npx vitest run --reporter=basic → 349/349 pass"
 
 ### 13. Chat restores history via per-session Chat instance + race-guard (D10-D1, 10-03 Task 2)
+
 expected: |
   `web/src/App.tsx` history-injection useEffect fetches history on mount;
   another useEffect injects transformed messages into per-session Chat
@@ -143,6 +160,7 @@ result: pass
 verified_by: "npx vitest run --reporter=basic → 349/349 pass"
 
 ### 14. D14 invariant: Zustand store bans `messages` field (D14, 10-03)
+
 expected: |
   No `messages` field added to `web/src/store/app-store.ts`. The Chat
   instance owns the message stream (via per-session `chatMapRef` +
@@ -151,6 +169,7 @@ result: pass
 verified_by: "grep -E '^\\s*messages\\s*[:=]' web/src/store/app-store.ts → empty"
 
 ### 15. D15 invariant: DecisionPayload struct UNCHANGED, history_* enum widens (D15, 10-02 + 10-03)
+
 expected: |
   `internal/wire/chunk.go::DecisionPayload` struct UNCHANGED. Decision
   enum widens by 4 string literals: `history_projected`,
@@ -162,6 +181,7 @@ result: pass
 verified_by: "npx tsc --noEmit → exit 1 with 1 pre-existing error (DataSubprogressPart.tsx:47 — unrelated D15 wire-type concern, documented in 10-04 SUMMARY as out-of-scope)"
 
 ### 16. cmd/spike-history --via-pipeline exercises production composition (B5, 10-04 Task 1)
+
 expected: |
   `cmd/spike-history/runner.go::runViaPipeline` mirrors production
   composition when `deps.Rewriter` or `deps.Classifier` are non-nil.
@@ -172,6 +192,7 @@ result: pass
 verified_by: "go test ./cmd/spike-history -count=1 → ok 0.476s"
 
 ### 17. Frozen eval lock byte-identity preserved (10-04 Task 1)
+
 expected: |
   `eval/frozen/compliance.lock.json` sha256 = `5cf700f3...` (Plan 10-04
   canonical). `git diff --quiet` exit 0; porcelain clean. Lock NOT
@@ -181,6 +202,7 @@ result: pass
 verified_by: "git diff --quiet eval/frozen/compliance.lock.json && git status --porcelain eval/frozen/ → exit 0; sha256sum → 5cf700f357a4a7022195ec233106c5398fe2c5562045ca8894996efe23cecded"
 
 ### 18. Session isolation regression lock (MEM-05, 10-04 pre-flight gate 6)
+
 expected: |
   `TestSessionIsolation50x5` passes — 50 concurrent sessions × 5 turns
   see only their own conversation history (no cross-session bleed).
@@ -189,6 +211,7 @@ result: pass
 verified_by: "go test ./internal/server/... -run TestSessionIsolation50x5 -count=1 → ok"
 
 ### 19. Live multi-turn chat resolves anaphora via history (MEM-01)
+
 expected: |
   User asks initial question, gets cited answer. User then asks "那第二条
   呢？" (what about the second one?). Agent combines session history,
@@ -203,6 +226,7 @@ reason: |
   04 Task 2 — blocked-pending-human" since 2026-08-18.
 
 ### 20. Page refresh restores chat history (MEM-02 user-observable)
+
 expected: |
   Open chat, send 2-3 messages, refresh the browser. Chat panel shows
   the prior conversation (user + assistant bubbles) with verdict card
@@ -214,6 +238,7 @@ reason: |
   Live stack not present. Same blocker as Test 19.
 
 ### 21. Live 35-case spike re-run gates (MEM-01..05 gate)
+
 expected: |
   `go run ./cmd/spike-history --via-pipeline --summarize --seed=42 \
     --golden=eval/golden/compliance.jsonl --out=reports/ \
@@ -232,6 +257,7 @@ reason: |
   the operator's responsibility to clear when the stack is provisioned.
 
 ### 22. FE pre-existing `tsc --noEmit` error in DataSubprogressPart.tsx
+
 expected: |
   `npx tsc --noEmit` exits 0 (no errors).
 result: pass

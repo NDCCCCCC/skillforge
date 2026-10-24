@@ -48,6 +48,10 @@ metrics:
   completed: 2026-09-28
   tasks: 4
   files: 7
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick Task 260928-nzk: ECL entity extraction → KG ABox Summary

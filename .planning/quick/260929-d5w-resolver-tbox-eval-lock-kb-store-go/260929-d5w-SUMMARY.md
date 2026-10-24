@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick Task 260929-d5w Summary — 批量修复全部遗留隐藏缺陷 (6 项)
 
 **One-liner:** D-NZK-DEF-01 姊妹 resolver cat_ 缺陷修复 + TBox 浏览卡片动态化 + eval frozen 扫描修复(锁 schema 对齐 + D6-13 sidecar 过滤) + KB 乱码数据修复 + store/entity_iri 质量扫描(IN-01/03/04/05 + 2 lint);活体服务 rebuild+restart 全链路验证。

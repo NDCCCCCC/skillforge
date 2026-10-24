@@ -37,6 +37,10 @@ gaps:
         issue: "FIXED：runtime stage RUN apk add ... libstdc++ libgcc，注释说明 CR-01/14-11 Gap 2"
     missing:
       - "operator 在含 Docker 环境执行 docker build -f Dockerfile.backend -t skillforge-backend:cgoflip . + docker run --rm --entrypoint /bin/sh 验证 ldd /app/skillforge 无 not found"
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: gaps_found
 ---
 
 # Phase 14: CGO 地基 + 平台信任地板（P10.0）Verification Report

@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  gap_snapshot: "unknown::scenarios=0"
+---
+
 # Phase 26 UAT — Live Vector-Library Migration + Admin-Console Walkthrough (Operator)
 
 **Phase:** 26 知识库注册表地基 (KB Registry Foundation)
@@ -34,20 +41,31 @@ env-intranet-service-flakiness).
 ## 2. Execution steps (one-shot re-seed)
 
 ```bash
+
 # 1. Set the one-shot re-seed flag in .env (literal "1" only — anything else stays closed)
+
 echo 'SKILLFORGE_MILVUS_RECREATE=1' >> .env
 
 # 2. Start the server (WSL build chain) and WATCH THE BOOT LOG
+
 wsl bash -lc "cd /mnt/d/code/ClaudeCode/ai-agent && go run ./cmd/server"
+
 #    Expect, in order:
+
 #      [WARN] ... SKILLFORGE_MILVUS_RECREATE=1 — dropping and re-creating collection
+
 #             skillforge_knowledge (full re-embed cost: every corpus doc re-embedded via BGE-M3)
+
 #      ... the boot-time index re-seeds the empty collection (chunk + embed + insert per doc)
+
 #      ... registry/audit boot lines (kb.Open over sqlite; audit hook bound)
 
 # 3. AFTER a successful boot: REMOVE the flag (one-shot semantics — leaving it set
+
 #    re-embeds the whole corpus on every future boot) and restart clean.
+
 #    Edit .env to delete the SKILLFORGE_MILVUS_RECREATE line, then stop + re-run step 2.
+
 ```
 
 Notes:

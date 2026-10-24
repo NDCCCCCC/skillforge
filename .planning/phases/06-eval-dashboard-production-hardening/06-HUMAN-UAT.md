@@ -4,6 +4,10 @@ phase: 06-eval-dashboard-production-hardening
 source: [06-VERIFICATION.md]
 started: 2026-08-13T17:35:00Z
 updated: 2026-08-13T17:35:00Z
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  gap_snapshot: "partial::scenarios=0"
 ---
 
 # Phase 6 — Human UAT

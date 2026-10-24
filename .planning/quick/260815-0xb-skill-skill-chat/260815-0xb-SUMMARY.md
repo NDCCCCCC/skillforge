@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick Task 260815-0xb: Skill 斜杠菜单 + chat 流式进度 Summary
 
 **One-liner:** ChatInput 换用 Claude Code 式 `/` 斜杠命令 Skill 菜单（过滤 + 键盘导航），VerdictPipeline 打通 FEUI-06 `data-subprogress` 通道，LLM 等待期逐条流式发射 retrieve/found_candidates/generate/self_verify 进度。

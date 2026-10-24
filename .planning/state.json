@@ -1,0 +1,38 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v1.7 — Open-Source Readiness",
+  "phases": [
+    {
+      "number": "47",
+      "name": "清债与可复现基线",
+      "status": "complete"
+    },
+    {
+      "number": "48",
+      "name": "CI 矩阵",
+      "status": "complete"
+    },
+    {
+      "number": "49",
+      "name": "Hermetic Demo",
+      "status": "complete"
+    },
+    {
+      "number": "50",
+      "name": "开源门面",
+      "status": "complete"
+    },
+    {
+      "number": "51",
+      "name": "发布工程",
+      "status": "complete"
+    }
+  ],
+  "next": {
+    "command": "/gsd-new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
+  },
+  "updated_at": "2026-10-24T02:38:36.146Z"
+}

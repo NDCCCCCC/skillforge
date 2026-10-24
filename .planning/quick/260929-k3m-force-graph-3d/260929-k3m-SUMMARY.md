@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick 260929-k3m: 本体视图渲染层 → react-force-graph-3d Summary
 
 **把本体视图（OntologyGraphView）的渲染层从 cytoscape 2D 画布整体换成 react-force-graph-3d 真三维力学图谱：节点拖拽沿 d3-force 实时传播、滚轮环绕相机、定向流动粒子标示关系方向；数据管线（focus 解析 / notes= fetch / toggle / 统计 / 详情侧栏）零改动。**

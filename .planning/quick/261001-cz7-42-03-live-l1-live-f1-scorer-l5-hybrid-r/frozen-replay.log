@@ -1,0 +1,109 @@
+2026/10/01 10:36:32 [INFO] cmd/eval: per-case budget = 5m0s (EVAL_CASE_TIMEOUT)
+2026/10/01 10:36:32 [INFO] cmd/eval: frozen mode: set=eval/frozen/compliance.jsonl lock=eval/frozen/compliance.lock.json (model_ver=glm-5.2, eval_set_version=compliance-2026-08-13-v1)
+2026/10/01 10:36:32 [OK] cmd/eval: kb registry wired (seed=knowledge_bases.yaml, 5 base(s), signature=dc2dbd54d162)
+2026/10/01 10:37:05 [OK] cmd/eval: frozen pin holds (model_ver=glm-5.2, prompt_hash=5b12acd938054bc7fdc5ef53b72bada5975cb22eb61f43be0305907e58fdc3d3)
+2026/10/01 10:37:05 [OK] cmd/eval: loaded 50 cases from eval/frozen/compliance.jsonl
+2026/10/01 10:37:05 [INFO] cmd/eval: scoring 50 cases with judge=glm-5.2
+2026/10/01 10:38:11 [WARN] cmd/eval: case adv-001 faithfulness: eval.Faithfulness: Entails("员工出差住宿费超过标准额度时，超过 200 元的超标部分须附书面情况说明。"): eval.judge: parse JSON: invalid character 'å' after object key:value pair (raw: {"answer": [{"statement": "员工出差住宿费超过标准额度时，超过 200 元的超标部分须附书面情况说明。", "reason": "上下文在"出差住宿费超标审批规则"部分明�...) — scoring 0
+2026/10/01 10:38:38 [OK] cmd/eval: case 1/50 adv-001 [adversarial] faith=0.000 arel=0.738 cprec=1.000 crecall=1.000 refused=false maxScore=0.799
+2026/10/01 10:38:38 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:39:29 [OK] cmd/eval: case 2/50 adv-002 [adversarial] faith=0.667 arel=0.879 cprec=1.000 crecall=1.000 refused=false maxScore=0.812
+2026/10/01 10:39:29 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:40:38 [OK] cmd/eval: case 3/50 adv-003 [adversarial] faith=1.000 arel=0.921 cprec=1.000 crecall=0.000 refused=false maxScore=0.787
+2026/10/01 10:40:38 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:41:39 [OK] cmd/eval: case 4/50 adv-004 [adversarial] faith=1.000 arel=0.851 cprec=1.000 crecall=1.000 refused=false maxScore=0.746
+2026/10/01 10:41:39 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:41:56 [OK] cmd/eval: case 5/50 ref-000 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.509
+2026/10/01 10:41:56 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:43:23 [OK] cmd/eval: case 6/50 adv-006 [adversarial] faith=1.000 arel=0.805 cprec=1.000 crecall=1.000 refused=false maxScore=0.800
+2026/10/01 10:43:23 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:44:17 [OK] cmd/eval: case 7/50 adv-007 [adversarial] faith=1.000 arel=0.898 cprec=1.000 crecall=1.000 refused=false maxScore=0.672
+2026/10/01 10:44:17 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:45:17 [OK] cmd/eval: case 8/50 adv-008 [adversarial] faith=1.000 arel=0.870 cprec=1.000 crecall=1.000 refused=false maxScore=0.795
+2026/10/01 10:45:17 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:46:08 [OK] cmd/eval: case 9/50 adv-009 [adversarial] faith=1.000 arel=0.834 cprec=1.000 crecall=1.000 refused=false maxScore=0.719
+2026/10/01 10:46:08 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:47:06 [OK] cmd/eval: case 10/50 adv-010 [adversarial] faith=1.000 arel=0.825 cprec=1.000 crecall=1.000 refused=false maxScore=0.762
+2026/10/01 10:47:06 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:47:44 [OK] cmd/eval: case 11/50 adv-011 [adversarial] faith=1.000 arel=0.944 cprec=1.000 crecall=1.000 refused=false maxScore=0.708
+2026/10/01 10:47:44 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:48:25 [OK] cmd/eval: case 12/50 adv-012 [adversarial] faith=1.000 arel=0.828 cprec=1.000 crecall=1.000 refused=false maxScore=0.688
+2026/10/01 10:48:25 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:49:12 [OK] cmd/eval: case 13/50 adv-013 [adversarial] faith=0.750 arel=0.835 cprec=1.000 crecall=1.000 refused=false maxScore=0.726
+2026/10/01 10:49:12 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:51:00 [OK] cmd/eval: case 14/50 adv-014 [adversarial] faith=1.000 arel=0.838 cprec=1.000 crecall=1.000 refused=false maxScore=0.769
+2026/10/01 10:51:00 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:51:54 [OK] cmd/eval: case 15/50 adv-015 [adversarial] faith=0.800 arel=0.922 cprec=1.000 crecall=1.000 refused=false maxScore=0.743
+2026/10/01 10:51:54 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:52:50 [OK] cmd/eval: case 16/50 adv-016 [adversarial] faith=1.000 arel=0.879 cprec=1.000 crecall=1.000 refused=false maxScore=0.763
+2026/10/01 10:52:50 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:53:43 [OK] cmd/eval: case 17/50 adv-017 [adversarial] faith=1.000 arel=0.804 cprec=1.000 crecall=1.000 refused=false maxScore=0.752
+2026/10/01 10:53:43 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:54:38 [OK] cmd/eval: case 18/50 adv-018 [adversarial] faith=1.000 arel=0.806 cprec=1.000 crecall=0.500 refused=false maxScore=0.759
+2026/10/01 10:54:38 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:56:14 [OK] cmd/eval: case 19/50 adv-019 [adversarial] faith=0.857 arel=0.777 cprec=0.750 crecall=1.000 refused=false maxScore=0.767
+2026/10/01 10:56:14 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:57:05 [OK] cmd/eval: case 20/50 adv-020 [adversarial] faith=1.000 arel=0.894 cprec=1.000 crecall=1.000 refused=false maxScore=0.784
+2026/10/01 10:57:05 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:59:31 [OK] cmd/eval: case 21/50 adv-021 [adversarial] faith=0.455 arel=0.899 cprec=0.867 crecall=1.000 refused=false maxScore=0.825
+2026/10/01 10:59:31 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 10:59:51 [OK] cmd/eval: case 22/50 ref-001 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.419
+2026/10/01 10:59:51 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:00:11 [OK] cmd/eval: case 23/50 ref-002 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.505
+2026/10/01 11:00:11 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:00:45 [OK] cmd/eval: case 24/50 ref-003 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.487
+2026/10/01 11:00:45 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:01:04 [OK] cmd/eval: case 25/50 ref-004 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.303
+2026/10/01 11:01:04 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:01:29 [OK] cmd/eval: case 26/50 ref-005 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.467
+2026/10/01 11:01:29 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:01:48 [OK] cmd/eval: case 27/50 ref-006 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.502
+2026/10/01 11:01:48 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:02:09 [OK] cmd/eval: case 28/50 ref-007 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.471
+2026/10/01 11:02:09 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:02:44 [OK] cmd/eval: case 29/50 ref-008 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.524
+2026/10/01 11:02:44 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:03:10 [OK] cmd/eval: case 30/50 ref-009 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.495
+2026/10/01 11:03:10 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:03:32 [OK] cmd/eval: case 31/50 ref-010 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.445
+2026/10/01 11:03:32 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:03:53 [OK] cmd/eval: case 32/50 ref-011 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.361
+2026/10/01 11:03:53 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:04:18 [OK] cmd/eval: case 33/50 ref-012 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.385
+2026/10/01 11:04:18 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:04:44 [OK] cmd/eval: case 34/50 ref-013 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.435
+2026/10/01 11:04:44 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:05:05 [OK] cmd/eval: case 35/50 ref-014 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.495
+2026/10/01 11:05:05 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:05:26 [OK] cmd/eval: case 36/50 ref-015 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.314
+2026/10/01 11:05:26 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:06:03 [OK] cmd/eval: case 37/50 ref-016 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.564
+2026/10/01 11:06:03 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:08:05 [OK] cmd/eval: case 38/50 ref-017 [refusal-required] faith=0.500 arel=0.702 cprec=1.000 crecall=0.000 refused=false maxScore=0.486
+2026/10/01 11:08:05 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:08:22 [OK] cmd/eval: case 39/50 ref-018 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.413
+2026/10/01 11:08:22 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:08:49 [OK] cmd/eval: case 40/50 ref-019 [refusal-required] faith=1.000 arel=0.000 cprec=0.000 crecall=1.000 refused=true maxScore=0.419
+2026/10/01 11:08:49 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:11:18 [OK] cmd/eval: case 41/50 mh-001 [multi-hop] faith=0.556 arel=0.766 cprec=0.950 crecall=0.667 refused=false maxScore=0.782
+2026/10/01 11:11:18 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:12:29 [OK] cmd/eval: case 42/50 mh-002 [multi-hop] faith=1.000 arel=0.810 cprec=1.000 crecall=1.000 refused=false maxScore=0.700
+2026/10/01 11:12:29 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:14:43 [OK] cmd/eval: case 43/50 mh-003 [multi-hop] faith=0.923 arel=0.844 cprec=1.000 crecall=1.000 refused=false maxScore=0.700
+2026/10/01 11:14:43 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:16:24 [OK] cmd/eval: case 44/50 mh-004 [multi-hop] faith=0.600 arel=0.765 cprec=1.000 crecall=0.500 refused=false maxScore=0.701
+2026/10/01 11:16:24 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:18:33 [OK] cmd/eval: case 45/50 mh-005 [multi-hop] faith=0.571 arel=0.756 cprec=1.000 crecall=0.333 refused=false maxScore=0.749
+2026/10/01 11:18:33 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:19:47 [OK] cmd/eval: case 46/50 mh-006 [multi-hop] faith=1.000 arel=0.825 cprec=1.000 crecall=1.000 refused=false maxScore=0.825
+2026/10/01 11:19:47 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:20:44 [OK] cmd/eval: case 47/50 mh-007 [multi-hop] faith=1.000 arel=0.840 cprec=1.000 crecall=1.000 refused=false maxScore=0.711
+2026/10/01 11:20:44 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:22:29 [OK] cmd/eval: case 48/50 mh-008 [multi-hop] faith=0.500 arel=0.827 cprec=1.000 crecall=1.000 refused=false maxScore=0.655
+2026/10/01 11:22:29 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:23:20 [OK] cmd/eval: case 49/50 mh-009 [multi-hop] faith=1.000 arel=0.810 cprec=1.000 crecall=1.000 refused=false maxScore=0.772
+2026/10/01 11:23:20 [..] cmd/eval: case pacing — sleeping 2s before next case
+2026/10/01 11:24:21 [OK] cmd/eval: case 50/50 mh-010 [multi-hop] faith=1.000 arel=0.759 cprec=1.000 crecall=1.000 refused=false maxScore=0.658
+2026/10/01 11:24:21 [OK] cmd/eval: 50 cases scored. Report: eval/report.json. Calibration: eval/calibration.json (recommended_threshold=0.5090).
+2026/10/01 11:24:21 [OK] cmd/eval: archived run to eval/reports (judge=glm-5.2)
+GO_EXIT=0

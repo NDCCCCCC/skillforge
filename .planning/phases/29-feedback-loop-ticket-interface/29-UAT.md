@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  gap_snapshot: "unknown::scenarios=0"
+---
+
 # Phase 29 Acceptance Runbook (29-UAT)
 
 **Phase:** 29 — 反馈闭环 + 工单接口 (Feedback Loop + Ticket Interface)

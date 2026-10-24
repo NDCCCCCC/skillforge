@@ -1,3 +1,10 @@
+---
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
+---
+
 # Quick 260815-j4y: RealChatTransport 包装 DefaultChatTransport 过滤 draft-* Summary
 
 ## One-liner

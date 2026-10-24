@@ -33,6 +33,10 @@ human_verification:
   - test: "WSL leg（Stage 06 补腿）：MSYS_NO_PATHCONV=1 wsl -d Ubuntu-22.04 -- bash -c 'cd /mnt/d/code/ClaudeCode/ai-agent && go test ./internal/kpi/wsl/... -count=1'"
     expected: "PASS（含 TestKPILoadFailClosedLayer2WSL/ValidRealCorpus 断言 7 KPIs + ValidateAgainstKPI 路由名）"
     why_human: "Windows MSYS2 gcc 无法链 duckdb_static（D15-01-1 既定先例）；17-09-SUMMARY 声称已过但验证器无法在本 host 复跑"
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: human_needed
 ---
 
 # Phase 17: KPI Dashboard Skill (P10.3) Verification Report

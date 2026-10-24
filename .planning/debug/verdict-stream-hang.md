@@ -4,6 +4,10 @@ status: awaiting_human_verify
 trigger: "问答在出结论之前就不动了 — 后端日志显示 streamAndAssemble 进入 Recv 循环后再无输出"
 created: 2026-08-17
 updated: 2026-08-17
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: awaiting_human_verify
 ---
 
 # Debug: verdict-stream-hang

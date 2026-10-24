@@ -4,6 +4,10 @@ trigger: "chat 太宽了，请锁定最大宽度。关闭左边和右边边栏�
 created: 2026-08-19
 updated: 2026-08-19
 mode: find_root_cause_only (diagnostic; gsd-debug will own the fix)
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: investigating
 ---
 
 ## Current Focus

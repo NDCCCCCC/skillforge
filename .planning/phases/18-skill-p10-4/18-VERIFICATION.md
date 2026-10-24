@@ -27,6 +27,10 @@ human_verification:
   - test: "FAN-06 操作员 live 重跑：用 live LLM 后端经 EvaluateFanOutExpectation 断言入口重跑 monthly_report 4 用例（数据通道真实分类决策），回填 monthly_report_fanout_rate_actual 并按 lock 约定重签"
     expected: "fan-out 率 ≥ 0.95 阈值；漂移可检测"
     why_human: "需要内网 GLM/BGE 服务（间歇可用，见 env-intranet-service-flakiness）；断言入口只达 tier-channel orchestrator，live 数据通道决策必须由操作员喂入，代码层不伪造"
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: human_needed
 ---
 
 # Phase 18: 业务月报 Skill（P10.4）Verification Report

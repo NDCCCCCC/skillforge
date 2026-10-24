@@ -30,6 +30,10 @@ decisions:
 metrics:
   duration: ~10m
   completed: 2026-08-14
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Phase quick-260814-wre Plan 01: Backend repo hygiene Summary

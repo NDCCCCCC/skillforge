@@ -43,6 +43,10 @@ metrics:
   tasks-total: 3
   commits: 2
   files-modified: 2
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: tasks-1-2-complete-task-3-pending-human-verify
 ---
 
 # Quick 260815-grw: streamAndAssemble {System, User} dual message split
@@ -143,10 +147,13 @@ Pre-existing tests preserved (no regressions):
 The plan's Task 3 is a `checkpoint:human-verify gate=blocking` requiring live backend restart + curl smoke. Build + unit tests already prove the GREEN state. The human-verify step confirms the production path:
 
 ```bash
+
 # In one shell:
+
 cd cmd/server && go run .
 
 # In another shell:
+
 curl -N -X POST http://localhost:8888/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"sessionId":"smoke-260815","skill":"compliance","query":"年假是怎么规定的？"}'

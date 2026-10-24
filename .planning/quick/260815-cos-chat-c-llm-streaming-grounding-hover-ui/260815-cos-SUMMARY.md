@@ -14,6 +14,10 @@ lines_added: 1203
 lines_removed: 185
 duration: ~30m
 tags: [streaming, draft-channel, hover-popover, trust-ui, superscript, confidence-bar, short-circuit]
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick Plan 260815-cos Summary

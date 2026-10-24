@@ -18,6 +18,10 @@ decisions:
 metrics:
   duration: 2m
   completed: 2026-08-14
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick Task 260814-tsr: Remove compliance-as-narrative from reader-facing docs Summary

@@ -41,6 +41,10 @@ patterns-established:
 # Metrics
 duration: ~3 min
 completed: 2026-08-15
+audit_acknowledged:
+  milestone: v1.7
+  at: 2026-10-24
+  status: unknown
 ---
 
 # Quick 260815-h0j: BGE-M3 embedder TLS unknown certificate — Summary
