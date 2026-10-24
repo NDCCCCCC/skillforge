@@ -68,7 +68,7 @@
 - [x] **Phase 47: 清债与可复现基线** - v1.6 遗留债务闭合或显式处置：flaky 测试修复 + rollback 治理缓存 + 警告处置记录，为 CI 全量门与 hermetic 套件铺平不闪红的地基
 - [x] **Phase 48: CI 矩阵** - Go / FE / Docker 三线质量门进 GitHub Actions，每次 PR 公开可见绿灯
 - [x] **Phase 49: Hermetic Demo** - embedded 向量兜底 + stub LLM 路径，clone 后零内网依赖、零 API key 跑通全链
-- [ ] **Phase 50: 开源门面** - README 修真 + 架构图 + vs WeKnora/Semantica 对比表 + 社区设施，门面与仓库实况零失真
+- [x] **Phase 50: 开源门面** - README 修真 + 架构图 + vs WeKnora/Semantica 对比表 + 社区设施，门面与仓库实况零失真 (completed 2026-10-24)
 - [ ] **Phase 51: 发布工程** - goreleaser + tag 触发 GitHub Release，二进制 + release notes 零手工
 
 ## Phase Details
@@ -201,12 +201,14 @@ Plans:
 - [x] 49-02-PLAN.md
 - [x] 49-03-PLAN.md
 - [x] 49-04-PLAN.md
+
 **Verification**: `49-VERIFICATION.md` — status `passed`（round-4，2026-10-23），34/34 must-haves VERIFIED、gaps_remaining 空。3 条 Manual-Only 项已按 UAT 处置（`49-UAT.md` status complete：7 pass + 1 deferred）：H-1 装配语义经 mock 上游实测（真实 provider 质量留用户自测，Phase 52 面板免重启可配）；H-2 服务侧实测 + 徽标 vitest 覆盖；H-3 编排者抽帧代验。唯一 deferred follow-up：**G-49-3**（stub 域外查询不拒答，minor，非本 phase 回归——拒答阈值 0.3 是 Phase 2 占位 D2-15，stub 不走 prompt），用户裁定延后到后续 phase（2026-10-23）。
 
 **Scope Note（本 phase 实施口径，供后续 phase 引用）** — 成功标准的措辞是规划期写下的，实施口径由 `49-CONTEXT.md` 的 D-01..D-20 锁定，措辞修订留给 Phase 50：
 - **SC1「无预装 Milvus/BGE」实施为「无需内网 BGE 端点」**：向量化永远由**真实外部模型**完成（D-01 零兜底——不引入进程内 embedder、不提交预计算向量、不用 hash/随机向量冒充），端点可以是本地 Ollama（`ollama pull bge-m3` ⇒ `http://localhost:11434/v1/embeddings`，OpenAI 兼容无需 key）或任意 OpenAI 兼容 `/v1/embeddings`（改 `BGE_M3_URL` 一行切换，D-02）。端点不可达时**明确失败**，不降级。
 - **SC2「embedded 向量兜底模式」实施为「本地向量存储模式」**：D-03 明确「embedded」指**向量存储在进程内**（Go slice + cosine，照搬 `internal/retriever/mongo/rank.go` 的纯函数 `rank` 与 (score desc, id asc) tie-break），**不指**向量化在进程内。embedded 是「无 Milvus 的正式路径」，不是「降级兜底」；tier 隔离仍是两段式 PRE-filter（先构造候选集再算 cosine，空 tiers ⇒ 0 命中），D-TIER-03 fail-closed 不削弱。
 - **SC3 stub 不静默伪装**：三重标注（wire 载荷 `"mode":"stub"`（`omitempty`，真模型不写该字段）+ 启动 WARN + README），引用与真模型同等校验（同一条 grounding 链、confidence ≤ 0.5、`review_required=true`），`internal/server/pipeline.go` 零改动（stub 经 `Deps.PipelineChatModel` 注入）。
+
 **Artifacts**: `docs/demo.gif`（真实录屏素材，反哺 FACE-01）、`verify-phase-49.sh`（九分区 + 十条变异演练）、`scripts/record-demo.sh`、README「Run without Docker / without an API key」小节
 
 ### Phase 50: 开源门面
@@ -248,7 +250,7 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | 47. 清债与可复现基线 | v1.7 | 8/8 | Complete | 2026-10-19 |
 | 48. CI 矩阵 | v1.7 | 27/27 | Complete    | 2026-10-21 |
 | 49. Hermetic Demo | v1.7 | 4/4 | Complete    | 2026-10-22 |
-| 50. 开源门面 | v1.7 | 0/TBD | Not started | - |
+| 50. 开源门面 | v1.7 | 3/3 | Complete    | 2026-10-24 |
 | 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
 
 ### Phase 52: LLM Provider 配置面板
