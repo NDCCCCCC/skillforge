@@ -118,7 +118,7 @@ describe('AdminDashboard — pipeline tab (the 9th tab)', () => {
     useAppStore.setState({ adminSubroute: 'batches' });
     render(<AdminDashboard />);
     const tabs = screen.getByTestId('admin-subroute-tabs');
-    expect(tabs.querySelectorAll('button')).toHaveLength(11);
+    expect(tabs.querySelectorAll('button')).toHaveLength(12);
     fireEvent.click(screen.getByTestId('admin-tab-pipeline'));
     expect(await screen.findByTestId('pipeline-tab')).toBeInTheDocument();
     expect(screen.getByTestId('admin-tab-pipeline')).toHaveTextContent('ECL 管线');

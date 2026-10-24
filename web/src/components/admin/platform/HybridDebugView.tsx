@@ -5,10 +5,21 @@
 // Query input + max_hops select + rerank toggle,
 // KG Expansion section (node-list + detail panel),
 // Milvus Hits table with top-5 highlighted.
+//
+// 2610 redesign: source-kind badges migrated to the shared
+// SourceKindBadge, the KG node table to the shared DataTable, the
+// detail button to the shared Button, loading/empty states to
+// LoadingSkeleton/EmptyState. The Milvus hits table stays purpose-built
+// (row-level testid `hybrid-milvus-hits` plus per-row top-5 highlight
+// styling that DataTable's column-driven API does not express). Search
+// interaction (POST runHybridSearch with X-Skill-Name) is unchanged.
 
 import { useState } from 'react';
 import { Search } from 'lucide-react';
-import { cn } from '../../../lib/cn';
+import DataTable from '../shared/DataTable';
+import { EmptyState, LoadingSkeleton } from '../shared/States';
+import { SourceKindBadge } from '../shared/SourceKindBadge';
+import { Button } from '../../ui/button';
 import { runHybridSearch } from './platformApi';
 import type { HybridKGNode, HybridResponse } from './types';
 
@@ -16,16 +27,9 @@ interface Props {
   skillName: string;
 }
 
-const KIND_BADGE: Record<string, string> = {
-  file: 'bg-status-compliant/10 text-status-compliant',
-  emitter: 'bg-surface-3 text-text-muted',
-  induction: 'bg-primary-dim text-primary',
-};
-
 function NodeDetailPanel({ node }: { node: HybridKGNode | null }) {
   if (!node) return <div className="w-72 text-text-muted text-xs">点击节点查看详情</div>;
   const prov = node.provenance;
-  const isSource = node.kind === 'file';
   return (
     <div className="w-72 space-y-2 text-xs">
       <div>
@@ -38,9 +42,7 @@ function NodeDetailPanel({ node }: { node: HybridKGNode | null }) {
           <div>
             <span className="text-text-muted">来源</span>
             <br />
-            <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', KIND_BADGE[prov.source_kind] ?? 'bg-surface-3 text-text-muted')}>
-              {prov.source_kind === 'file' ? '文件' : prov.source_kind === 'emitter' ? '生成' : '归纳'}
-            </span>
+            <SourceKindBadge kind={prov.source_kind} />
           </div>
           {prov.source_path && (
             <div>
@@ -146,15 +148,11 @@ export default function HybridDebugView({ skillName }: Props) {
 
       {/* Empty state */}
       {!response && !loading && !error && (
-        <div className="py-12 text-center text-sm text-text-muted">输入查询词开始混合检索</div>
+        <EmptyState title="混合检索" hint="输入查询词开始混合检索" />
       )}
 
       {/* Loading */}
-      {loading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => <div key={i} className="h-10 animate-pulse rounded bg-surface-2" />)}
-        </div>
-      )}
+      {loading && <LoadingSkeleton rows={3} />}
 
       {/* KG Expansion + Milvus Hits */}
       {response && !loading && (
@@ -165,49 +163,48 @@ export default function HybridDebugView({ skillName }: Props) {
               KG Expansion ({maxHops} hop) — {response.kg_nodes.length} nodes · {response.kg_edges.length} edges
             </h3>
             <div className="grid gap-4 lg:grid-cols-[1fr_288px]">
-              <div className="overflow-hidden rounded-md border border-border">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-surface-2 text-text-muted">
-                    <tr>
-                      <th className="px-3 py-2">node</th>
-                      <th className="px-3 py-2">type</th>
-                      <th className="px-3 py-2">tier</th>
-                      <th className="px-3 py-2">actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {response.kg_nodes.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="px-3 py-4 text-center text-text-muted">无节点</td>
-                      </tr>
-                    ) : (
-                      response.kg_nodes.map((n) => (
-                        <tr
-                          key={n.id}
-                          className="border-t border-border hover:bg-surface-2"
-                        >
-                          <td className="px-3 py-1.5 font-mono truncate max-w-xs" title={n.id}>{n.label || n.id}</td>
-                          <td className="px-3 py-1.5">
-                            <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', KIND_BADGE[n.kind] ?? 'bg-surface-3 text-text-muted')}>
-                              {n.kind}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 font-mono text-text-muted">{n.tier ?? '—'}</td>
-                          <td className="px-3 py-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedNode(n)}
-                              className="rounded border border-border bg-surface-2 px-2 py-0.5 text-xs hover:bg-surface-3"
-                            >
-                              detail
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                columns={[
+                  {
+                    key: 'node',
+                    label: 'node',
+                    render: (n) => (
+                      <span className="block max-w-xs truncate font-mono" title={n.id}>
+                        {n.label || n.id}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: 'type',
+                    label: 'type',
+                    render: (n) => <SourceKindBadge kind={n.kind} />,
+                  },
+                  {
+                    key: 'tier',
+                    label: 'tier',
+                    render: (n) => (
+                      <span className="font-mono text-text-muted">{n.tier ?? '—'}</span>
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    label: 'actions',
+                    render: (n) => (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setSelectedNode(n)}
+                      >
+                        detail
+                      </Button>
+                    ),
+                  },
+                ]}
+                rows={response.kg_nodes}
+                rowKey={(n) => n.id}
+                empty={{ title: '无节点' }}
+              />
               <div className="border border-border rounded p-3">
                 <NodeDetailPanel node={selectedNode} />
               </div>

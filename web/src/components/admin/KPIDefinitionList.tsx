@@ -3,15 +3,21 @@
 
 // Plan 20-03 (ADM-03) — KPI Definitions View.
 //
-// Renders a read-only table of KPI definitions loaded from GET /api/admin/kpis.
-// Files are the sole source of truth — NO edit button, NO kebab menu.
+// 2610 redesign: migrated to the shared admin component library —
+// useAdminData (three-state + X-Admin-Token), DataTable, PageHeader.
+// Wire contract unchanged: GET /api/admin/kpis.
+//
+// Renders a read-only table of KPI definitions. Files are the sole
+// source of truth — NO edit button, NO kebab menu.
 //
 // Data shape:
 //   GET /api/admin/kpis → { signature: string, kpis: KPIRow[], latest_calls: Record<string, string> }
 //   KPIRow: { name, description, params_summary, dataset }
 //   latest_calls maps KPI name → RFC3339 timestamp of last invocation
 
-import { useEffect, useState } from 'react';
+import { useAdminData } from './shared/useAdminData';
+import DataTable from './shared/DataTable';
+import { PageHeader } from './shared/Primitives';
 
 interface KPIRow {
   name: string;
@@ -42,116 +48,58 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <h3 className="text-lg font-semibold text-text">暂无 KPI 定义</h3>
-      <p className="mt-1 text-sm text-text-muted">在 kpis/ 目录添加 YAML 文件注册新 KPI</p>
-    </div>
-  );
-}
-
-function LoadingSkeleton() {
-  return (
-    <div className="flex flex-col gap-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="flex h-10 items-center gap-4 rounded-md bg-surface" />
-      ))}
-    </div>
-  );
-}
-
 export default function KPIDefinitionList() {
-  const [data, setData] = useState<KPIAdminResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    const token = localStorage.getItem('sf_admin_token') ?? '';
-    fetch('/api/admin/kpis', {
-      headers: {
-        'X-Admin-Token': token,
-      },
-    })
-      .then((resp) => {
-        if (!resp.ok) {
-          setError(true);
-          setLoading(false);
-          return null;
-        }
-        return resp.json() as Promise<KPIAdminResponse>;
-      })
-      .then((d) => {
-        if (d) {
-          setData(d);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
-  }, []);
-
-  if (loading) {
-    return <LoadingSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-danger">
-        <span>KPI 数据加载失败</span>
-      </div>
-    );
-  }
-
-  if (!data || data.kpis.length === 0) {
-    return <EmptyState />;
-  }
+  const { data, loading, error, reload } = useAdminData<KPIAdminResponse>('/api/admin/kpis');
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-border text-xs text-text-muted">
-            <th scope="col" className="pb-2 text-left font-semibold">Function Name</th>
-            <th scope="col" className="pb-2 text-left font-semibold">Signature</th>
-            <th scope="col" className="pb-2 text-left font-semibold">Last Called</th>
-            <th scope="col" className="pb-2 text-right font-semibold">Call Count</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {data.kpis.map((kpi) => {
-            const lastCalled = data.latest_calls[kpi.name];
-            const called = Boolean(lastCalled);
-            return (
-              <tr
-                key={kpi.name}
-                className="hover:bg-surface transition-colors"
-              >
-                <td className="py-3 font-medium text-text">{kpi.name}</td>
-                <td className="py-3">
-                  <code className="font-mono text-xs text-text-muted">{kpi.params_summary}</code>
-                </td>
-                <td className="py-3 text-sm text-text-muted">
-                  {called ? (
-                    <span title={lastCalled}>{formatRelativeTime(lastCalled)}</span>
-                  ) : (
-                    <span className="text-text-muted">Never</span>
-                  )}
-                </td>
-                <td className="py-3 text-right text-sm">
-                  {called ? (
-                    <span className="text-text-muted">1+</span>
-                  ) : (
-                    <span className="text-text-muted">0</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div>
+      <PageHeader
+        title="KPI 定义"
+        description="只读视图：KPI 由 kpis/ 目录下的 YAML 文件声明，文件是唯一真源"
+      />
+      <DataTable<KPIRow>
+        columns={[
+          {
+            key: 'name',
+            label: 'Function Name',
+            className: 'font-medium text-text',
+            render: (kpi) => kpi.name,
+          },
+          {
+            key: 'signature',
+            label: 'Signature',
+            render: (kpi) => (
+              <code className="font-mono text-xs text-text-muted">{kpi.params_summary}</code>
+            ),
+          },
+          {
+            key: 'last-called',
+            label: 'Last Called',
+            className: 'text-sm text-text-muted',
+            render: (kpi) => {
+              const lastCalled = data?.latest_calls[kpi.name];
+              if (!lastCalled) return <span className="text-text-muted">Never</span>;
+              return <span title={lastCalled}>{formatRelativeTime(lastCalled)}</span>;
+            },
+          },
+          {
+            key: 'call-count',
+            label: 'Call Count',
+            headClassName: 'text-right',
+            className: 'text-right text-sm text-text-muted',
+            render: (kpi) => {
+              const called = Boolean(data?.latest_calls[kpi.name]);
+              return <span className="text-text-muted">{called ? '1+' : '0'}</span>;
+            },
+          },
+        ]}
+        rows={data?.kpis ?? []}
+        rowKey={(kpi) => kpi.name}
+        loading={loading}
+        error={error}
+        errorRetry={reload}
+        empty={{ title: '暂无 KPI 定义', hint: '在 kpis/ 目录添加 YAML 文件注册新 KPI' }}
+      />
     </div>
   );
 }

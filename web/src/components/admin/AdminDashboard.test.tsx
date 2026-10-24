@@ -68,9 +68,9 @@ describe('AdminDashboard — bases subroute', () => {
     expect(await screen.findByTestId('kb-row-authority')).toBeInTheDocument();
   });
 
-  it('labels the tab "Knowledge Bases"', () => {
+  it('labels the tab "知识库"', () => {
     render(<AdminDashboard />);
-    expect(screen.getByTestId('admin-tab-bases')).toHaveTextContent('Knowledge Bases');
+    expect(screen.getByTestId('admin-tab-bases')).toHaveTextContent('知识库');
   });
 
   it('switching away unmounts the KB view', async () => {

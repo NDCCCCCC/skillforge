@@ -5,13 +5,22 @@
 // CodeMirror 6 editor for triple-pattern queries, skill selector,
 // limit control, Run Query / Clear buttons, results table with
 // provenance column.
+//
+// 2610 redesign: Run Query / Clear migrated to the shared Button, the
+// results table to the shared DataTable, the provenance badge to the
+// shared SourceKindBadge, the loading skeleton to LoadingSkeleton.
+// Query interaction (CodeMirror mount, Ctrl+Enter, POST via
+// sparqlQuery with X-Skill-Name) is unchanged.
 
 import { useEffect, useRef, useState } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { json } from '@codemirror/lang-json';
 import { Search, Trash } from 'lucide-react';
-import { cn } from '../../../lib/cn';
+import DataTable from '../shared/DataTable';
+import { LoadingSkeleton } from '../shared/States';
+import { SourceKindBadge } from '../shared/SourceKindBadge';
+import { Button } from '../../ui/button';
 import { sparqlQuery } from './platformApi';
 import type { SparqlPattern, SparqlResponse } from './types';
 
@@ -27,18 +36,7 @@ function ProvenanceCell({ prov }: { prov?: { source_kind: string; source_path?: 
   if (!prov) return <span className="text-text-muted">—</span>;
   return (
     <span className="flex flex-col gap-0.5">
-      <span
-        className={cn(
-          'w-fit text-[11px] font-semibold rounded px-1',
-          prov.source_kind === 'file'
-            ? 'bg-status-compliant/10 text-status-compliant'
-            : prov.source_kind === 'emitter'
-              ? 'bg-surface-3 text-text-muted'
-              : 'bg-primary-dim text-primary',
-        )}
-      >
-        {prov.source_kind === 'file' ? '文件' : prov.source_kind === 'emitter' ? '生成' : '归纳'}
-      </span>
+      <SourceKindBadge kind={prov.source_kind} />
       {prov.source_path && (
         <span className="truncate text-[11px] max-w-xs" title={prov.source_path}>
           {prov.source_path}
@@ -177,24 +175,15 @@ export default function SparqlPlaygroundView({ skillName, onSkillChange }: Props
           ))}
         </select>
 
-        <button
-          type="button"
-          onClick={runQuery}
-          disabled={loading}
-          className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg disabled:opacity-50"
-        >
+        <Button type="button" onClick={runQuery} disabled={loading} size="sm">
           <Search className="h-3.5 w-3.5" />
           Run Query
-        </button>
+        </Button>
 
-        <button
-          type="button"
-          onClick={clearResults}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-semibold hover:bg-surface-3"
-        >
+        <Button type="button" onClick={clearResults} variant="secondary" size="sm">
           <Trash className="h-3.5 w-3.5" />
           Clear
-        </button>
+        </Button>
       </div>
 
       {/* Error */}
@@ -213,49 +202,40 @@ export default function SparqlPlaygroundView({ skillName, onSkillChange }: Props
           <div className="font-mono text-xs text-text-muted">
             Results: {response.count} triples{response.truncated ? ' (truncated)' : ''}
           </div>
-          <div className="max-h-96 overflow-y-auto rounded-md border border-border">
-            <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-surface-2 text-text-muted">
-                <tr>
-                  <th className="px-3 py-2">subject</th>
-                  <th className="px-3 py-2">predicate</th>
-                  <th className="px-3 py-2">object</th>
-                  <th className="px-3 py-2">来源</th>
-                </tr>
-              </thead>
-              <tbody>
-                {response.results.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-3 py-4 text-center text-text-muted">
-                      输入查询模式并点击 Run Query
-                    </td>
-                  </tr>
-                ) : (
-                  response.results.map((r, i) => (
-                    <tr key={i} className="border-t border-border hover:bg-surface-2">
-                      <td className="break-all px-3 py-1.5 font-mono">{r.s}</td>
-                      <td className="break-all px-3 py-1.5 font-mono text-text-muted">{r.p}</td>
-                      <td className="break-all px-3 py-1.5 font-mono">{r.o}</td>
-                      <td className="px-3 py-1.5">
-                        <ProvenanceCell prov={r.provenance} />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={[
+              {
+                key: 's',
+                label: 'subject',
+                render: (r) => <span className="break-all font-mono">{r.s}</span>,
+              },
+              {
+                key: 'p',
+                label: 'predicate',
+                render: (r) => (
+                  <span className="break-all font-mono text-text-muted">{r.p}</span>
+                ),
+              },
+              {
+                key: 'o',
+                label: 'object',
+                render: (r) => <span className="break-all font-mono">{r.o}</span>,
+              },
+              {
+                key: 'provenance',
+                label: '来源',
+                render: (r) => <ProvenanceCell prov={r.provenance} />,
+              },
+            ]}
+            rows={response.results}
+            rowKey={(_, i) => String(i)}
+            empty={{ title: '输入查询模式并点击 Run Query' }}
+          />
         </div>
       )}
 
       {/* Loading skeleton */}
-      {loading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-10 animate-pulse rounded bg-surface-2" />
-          ))}
-        </div>
-      )}
+      {loading && <LoadingSkeleton rows={3} />}
     </div>
   );
 }

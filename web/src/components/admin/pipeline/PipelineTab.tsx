@@ -17,10 +17,21 @@
 // optimistic running state, no optimistic counters; NO cancel / batch-
 // retry / auto-run controls (fake capabilities); server error strings
 // render verbatim after their zh-CN prefix; dead ≠ deleted.
+//
+// 2610 redesign: stage / failure badges migrated to the shared
+// StatusBadge (status tokens only); run + retry buttons migrated to
+// ui/button; header migrated to PageHeader; the local loading skeleton
+// replaced with the shared LoadingSkeleton. The poll loop stays a
+// dedicated interval effect — useAdminData has no re-arming cadence,
+// and the 403/503-typed PipelineApiError branching is API-specific.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Play } from 'lucide-react';
 import { cn } from '../../../lib/cn';
+import { Button } from '../../ui/button';
+import StatusBadge, { type StatusTone } from '../shared/StatusBadge';
+import { LoadingSkeleton } from '../shared/States';
+import { PageHeader } from '../shared/Primitives';
 import { PipelineApiError, fetchStatus, retryNote, runPipeline } from './pipelineApi';
 import type { PipelineFailure, PipelineStatus } from './types';
 
@@ -43,12 +54,12 @@ const STAGE_LABEL: Record<string, string> = {
   done: '已完成',
 };
 
-/** Failure-row status badge: label + status-token classes
+/** Failure-row status badge: shared StatusBadge tone mapping
  * (FeedbackMetricsPanel rule — --color-status-* utilities only). */
-const FAILURE_BADGE: Record<PipelineFailure['status'], { label: string; cls: string }> = {
-  pending: { label: '重试中', cls: 'bg-status-needs-info/10 text-status-needs-info' },
-  dead: { label: '死信', cls: 'bg-status-non-compliant/10 text-status-non-compliant' },
-  resolved: { label: '已恢复', cls: 'bg-status-compliant/10 text-status-compliant' },
+const FAILURE_TONE: Record<PipelineFailure['status'], { tone: StatusTone; label: string }> = {
+  pending: { tone: 'amber', label: '重试中' },
+  dead: { tone: 'red', label: '死信' },
+  resolved: { tone: 'green', label: '已恢复' },
 };
 
 /** Dispatch into the SfToast viewport already mounted in AdminDashboard
@@ -59,16 +70,6 @@ function dispatchToast(kind: 'success' | 'error' | 'info', message: string): voi
 
 function asApiError(err: unknown): PipelineApiError {
   return err instanceof PipelineApiError ? err : new PipelineApiError(0, '网络错误');
-}
-
-function LoadingSkeleton() {
-  return (
-    <div className="flex flex-col gap-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="h-10 rounded bg-surface-2 animate-pulse" />
-      ))}
-    </div>
-  );
 }
 
 export default function PipelineTab() {
@@ -158,7 +159,7 @@ export default function PipelineTab() {
   if (firstLoad && loadError === null) {
     return (
       <section data-testid="pipeline-tab" className="space-y-4">
-        <LoadingSkeleton />
+        <LoadingSkeleton rows={3} />
       </section>
     );
   }
@@ -181,16 +182,17 @@ export default function PipelineTab() {
 
   // isRunning drives the pulse badge (amber); done green; everything
   // else (idle + unknown before first truth) neutral.
-  const badgeCls = isRunning
-    ? 'bg-status-needs-info/10 text-status-needs-info animate-pulse'
-    : stage === 'done'
-      ? 'bg-status-compliant/10 text-status-compliant'
-      : 'bg-surface-3 text-text-muted';
+  const stageTone: StatusTone = isRunning ? 'amber' : stage === 'done' ? 'green' : 'gray';
   const badgeLabel = eclOff ? 'ECL 未启用' : (STAGE_LABEL[stage] ?? stage);
   const stageRowLabel = STAGE_LABEL[stage] ?? stage;
 
   return (
     <section data-testid="pipeline-tab" className="space-y-4">
+      <PageHeader
+        title="ECL 管线"
+        description="Extract–Chunk–Load：从 sql-guides 重建切块、实体抽取与索引"
+      />
+
       {/* Inline error / notice lines. 403 and 503 render their dedicated
           locked copy; any other failure renders the retry-button line. */}
       {loadError !== null && !eclOff && !tokenRejected && (
@@ -219,22 +221,24 @@ export default function PipelineTab() {
       {/* Control strip (SchemaProposalsTab generate-box idiom). */}
       <div className="rounded-md border border-border bg-surface-2 p-3">
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
             data-testid="pipeline-run-btn"
             disabled={runDisabled}
             onClick={() => void handleRun()}
-            className="inline-flex h-fit items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg disabled:opacity-50"
+            size="sm"
+            className="h-fit"
           >
             <Play className="h-3.5 w-3.5" />
             {runLabel}
-          </button>
-          <span
-            data-testid="pipeline-stage-badge"
-            className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', badgeCls)}
-          >
-            {badgeLabel}
-          </span>
+          </Button>
+          <StatusBadge
+            status={stage}
+            tone={stageTone}
+            label={badgeLabel}
+            testId="pipeline-stage-badge"
+            className={cn(isRunning && 'animate-pulse')}
+          />
         </div>
         <p className="mt-2 text-xs text-text-muted">
           手动触发；boot 不自动运行。重复运行按 note 级替换，结果幂等。
@@ -310,9 +314,9 @@ export default function PipelineTab() {
             </thead>
             <tbody>
               {failures.map((f) => {
-                const badge = FAILURE_BADGE[f.status] ?? {
+                const badge = FAILURE_TONE[f.status] ?? {
+                  tone: 'gray' as StatusTone,
                   label: f.status,
-                  cls: 'bg-surface-3 text-text-muted',
                 };
                 return (
                   <tr
@@ -333,21 +337,20 @@ export default function PipelineTab() {
                       {f.last_error}
                     </td>
                     <td className="px-3 py-1.5">
-                      <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', badge.cls)}>
-                        {badge.label}
-                      </span>
+                      <StatusBadge status={f.status} tone={badge.tone} label={badge.label} />
                     </td>
                     <td className="px-3 py-1.5">
-                      <button
+                      <Button
                         type="button"
                         data-testid={`pipeline-retry-${f.note_id}`}
                         disabled={f.status !== 'dead' || retryInFlight === f.note_id}
                         onClick={() => void handleRetry(f.note_id)}
                         aria-label={`重试 note ${f.note_id}`}
-                        className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-semibold hover:bg-surface-3 disabled:opacity-50"
+                        variant="secondary"
+                        size="sm"
                       >
                         重试
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 );

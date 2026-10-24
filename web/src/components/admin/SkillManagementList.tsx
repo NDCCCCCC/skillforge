@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Plan 20-04 (ADM-04) — Skill Management View.
+// Migrated to the shared admin component library (admin UI redesign 2610):
+// useAdminData (token'd fetch + three states), DataTable (column-driven
+// table with built-in loading/error/empty), StatusBadge (token-tinted
+// status pill replacing the inline hex StatusDot), PageHeader.
 //
 // Renders a read-only table of registered Skills loaded from GET /api/admin/skills.
 // The endpoint overlays: hot-reload status from the skill registry + last eval summary
 // from eval/reports/INDEX.json.
 //
-// Data shape:
+// Data shape (unchanged by the migration):
 //   GET /api/admin/skills → { skills: SkillRow[] }
 //   SkillRow: { name, version, status, last_eval_summary, last_change_at }
 //
@@ -16,7 +20,11 @@
 //   - Eval results shown as hover tooltip ONLY — NOT inline badge
 //   - Tooltip dismisses on mouse leave
 
-import { useEffect, useState, useRef } from 'react';
+import { useRef, useState } from 'react';
+import DataTable from './shared/DataTable';
+import { PageHeader } from './shared/Primitives';
+import StatusBadge from './shared/StatusBadge';
+import { useAdminData } from './shared/useAdminData';
 
 interface EvalSummary {
   faithfulness: number;
@@ -59,22 +67,6 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-/** Colored dot for hot-reload status. */
-function StatusDot({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    ok: 'bg-[#34d399]',       // green — completed / ok
-    failed: 'bg-[#f87171]',   // red — failed / error
-    pending: 'bg-[#fbbf24]',  // amber — pending / running
-  };
-  const colorClass = colors[status] ?? 'bg-[#8b95a3]'; // unknown / never-run
-  return (
-    <span
-      className={`inline-block h-2 w-2 rounded-full ${colorClass}`}
-      aria-label={`Status: ${status}`}
-    />
-  );
-}
-
 /** Tooltip showing eval summary scores. */
 function EvalTooltip({ summary }: { summary: EvalSummary }) {
   return (
@@ -100,58 +92,13 @@ function EvalTooltip({ summary }: { summary: EvalSummary }) {
   );
 }
 
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <h3 className="text-lg font-semibold text-text">暂无注册 Skill</h3>
-      <p className="mt-1 text-sm text-text-muted">创建 skills/*.d/SKILL.md 注册新 Skill</p>
-    </div>
-  );
-}
-
-function LoadingSkeleton() {
-  return (
-    <div className="flex flex-col gap-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="flex h-10 items-center gap-4 rounded-md bg-surface" />
-      ))}
-    </div>
-  );
-}
-
 export default function SkillManagementList() {
-  const [skills, setSkills] = useState<SkillRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const { data, loading, error, reload } = useAdminData<SkillsAdminResponse>(
+    '/api/admin/skills',
+  );
+  const skills = data?.skills ?? [];
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const token = localStorage.getItem('sf_admin_token') ?? '';
-    fetch('/api/admin/skills', {
-      headers: {
-        'X-Admin-Token': token,
-      },
-    })
-      .then((resp) => {
-        if (!resp.ok) {
-          setError(true);
-          setLoading(false);
-          return null;
-        }
-        return resp.json() as Promise<SkillsAdminResponse>;
-      })
-      .then((d) => {
-        if (d) {
-          setSkills(d.skills);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        setError(true);
-        setLoading(false);
-      });
-  }, []);
 
   function handleMouseEnter(name: string) {
     if (hoverTimerRef.current) {
@@ -169,49 +116,41 @@ export default function SkillManagementList() {
     setHoveredSkill(null);
   }
 
-  if (loading) {
-    return <LoadingSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-danger">
-        <span>Skill 数据加载失败</span>
-      </div>
-    );
-  }
-
-  if (skills.length === 0) {
-    return <EmptyState />;
-  }
-
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-border text-xs text-text-muted">
-            <th scope="col" className="pb-2 text-left font-semibold">Name</th>
-            <th scope="col" className="pb-2 text-left font-semibold">Version</th>
-            <th scope="col" className="pb-2 text-left font-semibold">Status</th>
-            <th scope="col" className="pb-2 text-left font-semibold">Last Eval</th>
-            <th scope="col" className="pb-2 text-left font-semibold">Last Change</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {skills.map((skill) => (
-            <tr
-              key={skill.name}
-              className="hover:bg-surface transition-colors"
-            >
-              <td className="py-3 font-medium text-text">{skill.name}</td>
-              <td className="py-3">
-                <code className="font-mono text-xs text-text-muted">{skill.version > 0 ? `v${skill.version}` : '—'}</code>
-              </td>
-              <td className="py-3">
-                <StatusDot status={skill.status} />
-              </td>
-              <td
-                className="relative py-3"
+    <div>
+      <PageHeader
+        title="Skill 管理"
+        description="已注册 Skill 的版本、热加载状态与最近评测摘要（只读）"
+      />
+      <DataTable<SkillRow>
+        columns={[
+          {
+            key: 'name',
+            label: 'Name',
+            render: (skill) => (
+              <span className="font-medium text-text">{skill.name}</span>
+            ),
+          },
+          {
+            key: 'version',
+            label: 'Version',
+            render: (skill) => (
+              <code className="font-mono text-xs text-text-muted">
+                {skill.version > 0 ? `v${skill.version}` : '—'}
+              </code>
+            ),
+          },
+          {
+            key: 'status',
+            label: 'Status',
+            render: (skill) => <StatusBadge status={skill.status} />,
+          },
+          {
+            key: 'last_eval',
+            label: 'Last Eval',
+            className: 'relative',
+            render: (skill) => (
+              <span
                 onMouseEnter={() => handleMouseEnter(skill.name)}
                 onMouseLeave={handleMouseLeave}
               >
@@ -221,18 +160,32 @@ export default function SkillManagementList() {
                 {hoveredSkill === skill.name && skill.last_eval_summary && (
                   <EvalTooltip summary={skill.last_eval_summary} />
                 )}
-              </td>
-              <td className="py-3 text-sm text-text-muted">
+              </span>
+            ),
+          },
+          {
+            key: 'last_change',
+            label: 'Last Change',
+            render: (skill) => (
+              <span className="text-sm text-text-muted">
                 {skill.last_change_at ? (
-                  <span title={skill.last_change_at}>{formatRelativeTime(skill.last_change_at)}</span>
+                  <span title={skill.last_change_at}>
+                    {formatRelativeTime(skill.last_change_at)}
+                  </span>
                 ) : (
                   '—'
                 )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              </span>
+            ),
+          },
+        ]}
+        rows={skills}
+        rowKey={(skill) => skill.name}
+        loading={loading}
+        error={error}
+        errorRetry={reload}
+        empty={{ title: '暂无注册 Skill', hint: '创建 skills/*.d/SKILL.md 注册新 Skill' }}
+      />
     </div>
   );
 }

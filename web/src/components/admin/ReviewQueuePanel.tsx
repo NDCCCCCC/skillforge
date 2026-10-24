@@ -4,6 +4,14 @@
 // Plan 29-08 Task 2 — 「复核」 tab (FBK-02): the human-disposition view of
 // outdated-report feedback, against the frozen 29-05 wire contracts:
 //
+// Migrated to the shared admin component library (admin UI redesign 2610):
+// PageHeader, the shared LoadingSkeleton, the shared SegmentedButton
+// (previously duplicated with FeedbackMetricsPanel) and StatusBadge for
+// the disposition-history pill (replacing the per-disposition color map).
+// Deliberately NOT on useAdminData: this view POSTs dispositions, serves
+// two endpoints on one screen and renders the SERVER error verbatim
+// (review-error-detail) — useAdminData collapses failures into a boolean.
+//
 //   GET  /api/admin/feedback/review?status=pending|resolved[&disposition=…]
 //     → 200 {pending:[{chunk_id, kb_slug, report_count, last_reported_at, comments[]}], total}
 //     | 200 {dispositions:[{id, ts, chunk_id, disposition, note, actor}]}
@@ -36,6 +44,10 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { fetchChunkContent } from '../../lib/chunk-lookup';
 import { cn } from '../../lib/cn';
 import { Button } from '../ui/button';
+import SegmentedButton from './shared/SegmentedButton';
+import { LoadingSkeleton } from './shared/States';
+import StatusBadge from './shared/StatusBadge';
+import { PageHeader } from './shared/Primitives';
 
 interface PendingRow {
   chunk_id: number;
@@ -64,12 +76,12 @@ const DISPOSITION_LABEL: Record<Disposition, string> = {
   ignored: '忽略',
 };
 
-/** Badge colors per 29-UI-SPEC §Color: 已更新 green / 误报 red / 忽略 gray. */
-const DISPOSITION_CLASS: Record<Disposition, string> = {
-  updated: 'text-status-compliant',
-  false_positive: 'text-status-non-compliant',
-  ignored: 'text-status-unanswered',
-};
+/** History-badge tone per 29-UI-SPEC §Color: 已更新 green / 误报 red / 忽略 gray. */
+const DISPOSITION_TONE = {
+  updated: 'green',
+  false_positive: 'red',
+  ignored: 'gray',
+} as const satisfies Record<Disposition, 'green' | 'red' | 'gray'>;
 
 const TRUST_BANNER =
   '复核处置仅更新信号状态并写入审计日志，不会自动修改知识库内容；知识更新请通过「Knowledge Bases」上传流程完成。';
@@ -97,42 +109,6 @@ type PreviewState =
   | { state: 'loading' }
   | { state: 'ready'; text: string }
   | { state: 'error' };
-
-function LoadingSkeleton() {
-  return (
-    <div data-testid="review-loading" className="flex flex-col gap-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="flex h-10 items-center gap-4 rounded-md bg-surface" />
-      ))}
-    </div>
-  );
-}
-
-function SegmentedButton({
-  active,
-  testId,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  testId: string;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      onClick={onClick}
-      className={cn(
-        'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-        active ? 'bg-primary-dim text-primary' : 'text-text-muted hover:bg-surface-2 hover:text-text',
-      )}
-    >
-      {label}
-    </button>
-  );
-}
 
 export default function ReviewQueuePanel() {
   const [statusTab, setStatusTab] = useState<'pending' | 'resolved'>('pending');
@@ -266,7 +242,10 @@ export default function ReviewQueuePanel() {
 
   return (
     <div data-testid="review-view" className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold text-text">过时反馈复核</h2>
+      <PageHeader
+        title="过时反馈复核"
+        description="对「报告知识过时」反馈做终态处置并留痕审计（FBK-02）"
+      />
 
       {/* FBK-05 — the structural honesty contract of this view, always visible. */}
       <div
@@ -337,7 +316,7 @@ export default function ReviewQueuePanel() {
         </div>
       )}
 
-      {loading && !error && <LoadingSkeleton />}
+      {loading && !error && <LoadingSkeleton testId="review-loading" />}
 
       {/* Pending queue — chunk-aggregated rows. */}
       {!loading && !error && statusTab === 'pending' && pendingRows.length === 0 && (
@@ -496,20 +475,20 @@ export default function ReviewQueuePanel() {
             <tbody className="divide-y divide-border">
               {historyRows.map((row) => {
                 const label = (DISPOSITION_LABEL as Record<string, string>)[row.disposition] ?? row.disposition;
-                const badgeClass =
-                  (DISPOSITION_CLASS as Record<string, string>)[row.disposition] ?? 'text-text-muted';
+                const tone =
+                  (DISPOSITION_TONE as Record<string, 'green' | 'red' | 'gray'>)[row.disposition] ?? 'gray';
                 return (
                   <tr key={row.id} data-testid={`review-history-row-${row.id}`} className="hover:bg-surface transition-colors">
                     <td className="py-3">
                       <code className="font-mono text-xs text-text">{row.chunk_id}</code>
                     </td>
                     <td className="py-3">
-                      <span
-                        data-testid={`review-badge-${row.id}`}
-                        className={cn('text-xs font-semibold', badgeClass)}
-                      >
-                        {label}
-                      </span>
+                      <StatusBadge
+                        testId={`review-badge-${row.id}`}
+                        tone={tone}
+                        label={label}
+                        status={row.disposition}
+                      />
                     </td>
                     <td className="py-3 text-xs text-text-muted">{row.note === '' ? '—' : row.note}</td>
                     <td className="py-3">

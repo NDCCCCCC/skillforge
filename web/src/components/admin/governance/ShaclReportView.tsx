@@ -10,26 +10,18 @@
 // (D-46-04). FE renders the BE-stamped fields verbatim — zero frontend
 // layer derivation (Honesty red line 9), 0 dangling edges render as 0
 // (Honesty red line 8).
+//
+// 2610 redesign: the hand-rolled skeleton rows migrated to the shared
+// LoadingSkeleton. The zone tables stay purpose-built (not DataTable)
+// because the regression suites pin row-level data-testid
+// (`quarantine-row-${i}`) and cell order.
 
 import { cn } from '../../../lib/cn';
+import { LoadingSkeleton } from '../shared/States';
 import type { ShaclReport, ShaclViolation, ViolationLayer } from './types';
 
 // Reuse GovernanceTab's HealthBanner for yellow-zone backfill target
 export { HealthBanner } from './GovernanceTab';
-
-// Severity badge colors per UI-SPEC §Color
-const SEVERITY_BADGE: Record<string, string> = {
-  error: 'bg-status-non-compliant/10 text-status-non-compliant',
-  warning: 'bg-status-needs-info/10 text-status-needs-info',
-};
-
-function ViolationBadge({ severity }: { severity: ShaclViolation['severity'] }) {
-  return (
-    <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', SEVERITY_BADGE[severity])}>
-      {severity === 'error' ? '错误' : '警告'}
-    </span>
-  );
-}
 
 // Layer badge colors per 46-UI-SPEC §Color (D-46-03): classification family,
 // not severity — severity 徽章与 layer 徽章语义正交。global is the cross-entity
@@ -102,21 +94,6 @@ function LayerCountChips({ violations, testId }: { violations: ShaclViolation[];
   );
 }
 
-// Skeleton loader
-function SkeletonRows() {
-  return (
-    <>
-      {[1, 2, 3].map((i) => (
-        <tr key={i}>
-          <td colSpan={7} className="px-3 py-2">
-            <div className="h-10 animate-pulse rounded bg-surface-2" />
-          </td>
-        </tr>
-      ))}
-    </>
-  );
-}
-
 interface ShaclReportViewProps {
   report: ShaclReport | null;
   error?: string | null;
@@ -142,13 +119,7 @@ export default function ShaclReportView({ report, error, onRetry }: ShaclReportV
   }
 
   if (!report) {
-    return (
-      <table className="w-full text-left text-xs">
-        <tbody data-testid="shacl-skeleton">
-          <SkeletonRows />
-        </tbody>
-      </table>
-    );
+    return <LoadingSkeleton rows={3} testId="shacl-skeleton" />;
   }
 
   // ok state — no tables, single muted line

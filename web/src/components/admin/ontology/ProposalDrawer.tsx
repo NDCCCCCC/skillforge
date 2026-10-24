@@ -8,9 +8,14 @@
 // Approve supports renaming the local name inline (D-Induct-04); a 409
 // IRI conflict renders inline instead of a generic error.
 
+// 2610 redesign: footer actions migrated to ui/button (secondary /
+// primary, sm); the overlay structure is kept (project has no shadcn
+// Sheet) and is already expressed in border / radius / background
+// design tokens.
+
 import { useState } from 'react';
 import { Check, X } from 'lucide-react';
-import { cn } from '../../../lib/cn';
+import { Button } from '../../ui/button';
 import { approveProposal, rejectProposal } from './ontologyApi';
 import type { Proposal } from './types';
 
@@ -172,32 +177,27 @@ export default function ProposalDrawer({ proposal, onClose, onDecided }: Proposa
 
         {/* Footer: Approve / Reject */}
         <footer className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
-          <button
+          <Button
             type="button"
             data-testid="proposal-reject"
-            onClick={handleReject}
+            onClick={() => void handleReject()}
             disabled={busy !== null || proposal.status !== 'pending'}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-semibold',
-              'hover:bg-surface-3 disabled:opacity-50',
-            )}
+            variant="secondary"
+            size="sm"
           >
             <X className="h-3.5 w-3.5" />
             Reject
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             data-testid="proposal-approve"
-            onClick={handleApprove}
+            onClick={() => void handleApprove()}
             disabled={busy !== null || proposal.status !== 'pending'}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg',
-              'disabled:opacity-50',
-            )}
+            size="sm"
           >
             <Check className="h-3.5 w-3.5" />
             {busy === 'approve' ? 'Approving…' : 'Approve'}
-          </button>
+          </Button>
         </footer>
       </aside>
     </div>

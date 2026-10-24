@@ -2,15 +2,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Plan 40-07a — /admin/governance tab shell: HealthBanner + three-view
-// switcher (校验报告 / 溯源图谱 / 版本演进). Stub view bodies are
-// replaced by real implementations in plan 40-07b.
+// switcher (校验报告 / 溯源图谱 / 版本演进). Real view bodies landed in
+// plan 40-07b.
 //
 // View-switcher idiom: OntologyTab view-switcher (role="tablist" +
 // aria-selected buttons, local state, no router). HealthBanner is
 // shared across all three views (always visible above the switcher).
+//
+// 2610 redesign: the SHACL report one-shot load migrated to the shared
+// useAdminData hook (admin token handled centrally); the switcher
+// buttons migrated to the shared Button primitive; header migrated to
+// PageHeader. The BE nil-slice normalization (quick-260928-jxb BUG-1)
+// is re-applied client-side on the hook result.
 
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { cn } from '../../../lib/cn';
+import { useAdminData } from '../shared/useAdminData';
+import { PageHeader } from '../shared/Primitives';
+import { Button } from '../../ui/button';
 import { fetchShaclReport, runPipeline } from './governanceApi';
 import type { ShaclReport } from './types';
 import ShaclReportView from './ShaclReportView';
@@ -24,6 +33,14 @@ const VIEWS: Array<{ id: GovernanceView; label: string }> = [
   { id: 'provenance', label: '溯源图谱' },
   { id: 'timeline', label: '版本演进' },
 ];
+
+// quick-260928-jxb BUG-1: Go nil slices serialize to JSON null while the
+// FE types claim arrays — normalize so view components never see null
+// (warnings:null white-screened 治理 tab). useAdminData hands back the raw
+// payload, so the choke point moved here from fetchShaclReport.
+function normalizeReport(r: ShaclReport): ShaclReport {
+  return { ...r, warnings: r.warnings ?? [], quarantined: r.quarantined ?? [] };
+}
 
 // HealthBanner — shared sub-component. Also referenced by ShaclReportView
 // for yellow-zone backfill target (provenance-missing rows).
@@ -62,7 +79,8 @@ export function HealthBanner({ report }: { report: ShaclReport }) {
       <span className="font-mono text-xs text-text-muted">error {report.error_count}</span>
       <span className="font-mono text-xs text-text-muted">warning {report.warning_count}</span>
       {hasBackfill && (
-        <button
+        <Button
+          size="sm"
           data-testid="governance-backfill-btn"
           onClick={() => {
             if (
@@ -70,13 +88,13 @@ export function HealthBanner({ report }: { report: ShaclReport }) {
                 '运行 ECL 管线？将重建 sql-guides 的切块、实体抽取与索引（幂等操作，可重复执行），并同时回填 provenance 与 belongsToTier。',
               )
             ) {
-              runPipeline().catch(console.error);
+              void runPipeline().catch(console.error);
             }
           }}
-          className="ml-auto bg-primary px-3 py-1 text-xs font-semibold text-primary-fg rounded"
+          className="ml-auto"
         >
           Run ECL 回填
-        </button>
+        </Button>
       )}
       <div className="ml-auto text-xs text-text-muted font-mono">
         校验时点 {new Date(report.validated_at).toLocaleString()}
@@ -95,63 +113,73 @@ export function HealthBanner({ report }: { report: ShaclReport }) {
 
 export default function GovernanceTab() {
   const [view, setView] = useState<GovernanceView>('shacl');
-  const [shaclReport, setShaclReport] = useState<ShaclReport | null>(null);
-  const [shaclError, setShaclError] = useState<string | null>(null);
+  const {
+    data: rawData,
+    loading: shaclLoading,
+    error: shaclHookError,
+    reload: reloadShacl,
+  } = useAdminData<ShaclReport>('/api/admin/governance/shacl');
 
-  useEffect(() => {
-    fetchShaclReport()
-      .then(setShaclReport)
-      .catch((e: unknown) => setShaclError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  const shaclReport = useMemo(
+    () => (rawData ? normalizeReport(rawData) : null),
+    [rawData],
+  );
+  // Hook error is a boolean flag; the view layer wants a message string.
+  const shaclError = shaclHookError ? '治理状态加载失败' : null;
 
   // Single refetch implementation shared by the manual retry button and the
-  // post-rollback notification (REL-02 / D-02b). It never rethrows: a failed
-  // refresh is surfaced through shaclError, because the caller (TimelineView's
-  // success path) has no way to handle a rejection — the rollback itself
-  // already succeeded at that point.
-  const refreshShaclReport = () => {
-    // WR-07: a successful refetch must clear the stale error —
-    // ShaclReportView renders the failure branch whenever error is
-    // truthy, so leaving it set kept the view stuck on
-    // 「校验报告加载失败」 even after the refetch succeeded.
-    fetchShaclReport()
-      .then((r) => {
-        setShaclError(null);
-        setShaclReport(r);
-      })
-      .catch((e: unknown) => setShaclError(e instanceof Error ? e.message : String(e)));
-  };
+  // post-rollback notification (REL-02 / D-02b). Delegates to the hook's
+  // reload: a failed refresh surfaces through the hook error flag, because
+  // the caller (TimelineView's success path) has no way to handle a
+  // rejection — the rollback itself already succeeded at that point. A
+  // successful refetch clears the stale error (WR-07: ShaclReportView
+  // renders the failure branch whenever error is truthy).
+  const refreshShaclReport = reloadShacl;
 
   const healthBanner = shaclReport ? (
     <HealthBanner report={shaclReport} />
   ) : shaclError ? (
-    <div className="text-sm text-danger">治理状态加载失败（点击重试）</div>
+    <div className="text-sm text-danger">
+      治理状态加载失败（
+      <button onClick={reloadShacl} className="underline">
+        点击重试
+      </button>
+      ）
+    </div>
   ) : (
     <div className="h-10 animate-pulse rounded bg-surface-2" />
   );
 
   return (
     <div className="space-y-4" data-testid="governance-tab">
+      <PageHeader
+        title="治理"
+        description="SHACL 校验、溯源图谱与 TBox 版本演进的统一治理入口"
+      />
+
       {/* Health banner */}
       <div data-testid="governance-health-banner">{healthBanner}</div>
 
       {/* View switcher */}
       <div className="flex items-center gap-1" role="tablist">
         {VIEWS.map((v) => (
-          <button
+          <Button
             key={v.id}
             type="button"
             role="tab"
             aria-selected={view === v.id}
             data-testid={`governance-view-${v.id}`}
+            variant={view === v.id ? 'secondary' : 'ghost'}
+            size="sm"
             onClick={() => setView(v.id)}
             className={cn(
-              'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-              view === v.id ? 'bg-primary-dim text-primary' : 'text-text-muted hover:bg-surface-2 hover:text-text',
+              view === v.id
+                ? 'bg-primary-dim text-primary hover:bg-primary-dim'
+                : 'text-text-muted hover:text-text',
             )}
           >
             {v.label}
-          </button>
+          </Button>
         ))}
       </div>
 

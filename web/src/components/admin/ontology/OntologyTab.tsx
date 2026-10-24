@@ -5,9 +5,13 @@
 // TBox Browser (类层次) / KG Query (三元组查询) / Schema Proposals.
 // Simple button switching (the tab strip inside the ontology tab — no
 // router state, purely local).
+//
+// 2610 redesign: header row migrated to the shared PageHeader
+// primitive (web/src/components/admin/shared/Primitives.tsx).
 
 import { useState } from 'react';
 import { cn } from '../../../lib/cn';
+import { PageHeader } from '../shared/Primitives';
 import TBoxBrowser from './TBoxBrowser';
 import KGQueryPanel from './KGQueryPanel';
 import SchemaProposalsTab from './SchemaProposalsTab';
@@ -25,6 +29,10 @@ export default function OntologyTab() {
 
   return (
     <div data-testid="ontology-tab" className="space-y-4">
+      <PageHeader
+        title="本体"
+        description="浏览 TBox 类层次、查询 KG 三元组并审批 Schema 提议"
+      />
       <div className="flex items-center gap-1" role="tablist">
         {VIEWS.map((v) => (
           <button

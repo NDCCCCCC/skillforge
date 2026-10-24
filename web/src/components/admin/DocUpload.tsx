@@ -1,9 +1,21 @@
 // Copyright 2026 SkillForge Authors
 // SPDX-License-Identifier: Apache-2.0
 
+// Admin document upload panel — POST /api/admin/kb/:slug/upload
+// (multipart/form-data, X-Admin-Token).
+//
+// 2610 redesign: migrated to the shared admin component library — the
+// upload request now goes through adminFetchResponse (token injected by
+// the shared helper, no hand-rolled X-Admin-Token header) and the panel
+// buttons use the ui/button Button component. State machine, wire
+// contract and every data-testid are unchanged:
+//   idle → uploading → parsing → indexing → done | error
+
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { fetchKnowledgeBases } from '../../lib/kb-bases';
+import { adminFetchResponse } from './shared/useAdminData';
+import { Button } from '../ui/button';
 
 type UploadState = 'idle' | 'uploading' | 'parsing' | 'indexing' | 'done' | 'error';
 
@@ -30,8 +42,6 @@ export default function DocUpload() {
     const formData = new FormData();
     formData.append('file', file);
 
-    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('sf_admin_token') ?? '' : '';
-
     try {
       // Brief pause so user sees the parsing/indexing states too.
       await new Promise((r) => setTimeout(r, 200));
@@ -39,11 +49,10 @@ export default function DocUpload() {
       await new Promise((r) => setTimeout(r, 200));
       setState('indexing');
 
-      const resp = await fetch(`/api/admin/kb/${encodeURIComponent(selectedSlug)}/upload`, {
-        method: 'POST',
-        headers: { 'X-Admin-Token': token },
-        body: formData,
-      });
+      const resp = await adminFetchResponse(
+        `/api/admin/kb/${encodeURIComponent(selectedSlug)}/upload`,
+        { method: 'POST', body: formData },
+      );
 
       if (resp.ok) {
         const data = (await resp.json()) as { chunks: number };
@@ -70,15 +79,16 @@ export default function DocUpload() {
   if (!expanded) {
     return (
       <div className="mt-6 border-t border-border pt-4">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           data-testid="doc-upload-expand"
           onClick={() => setExpanded(true)}
-          className="flex items-center gap-2 text-sm font-medium text-text hover:text-primary"
         >
           <ChevronDown className="h-4 w-4" />
           上传文档到知识库
-        </button>
+        </Button>
       </div>
     );
   }
@@ -86,15 +96,20 @@ export default function DocUpload() {
   return (
     <div className="mt-6 border-t border-border pt-4" data-testid="doc-upload-panel">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-text">上传文档到知识库</h3>
-        <button
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-text">
+          <FileText className="h-4 w-4 text-text-muted" />
+          上传文档到知识库
+        </h3>
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           data-testid="doc-upload-collapse"
           onClick={() => setExpanded(false)}
-          className="text-xs text-text-muted hover:text-text"
+          aria-label="收起上传面板"
         >
           <ChevronUp className="h-4 w-4" />
-        </button>
+        </Button>
       </div>
       <p className="mt-1 text-xs text-text-dim">
         支持 .md / .pdf / .docx / .xlsx / .pptx（最大 100 MB，默认未配置 SKILLFORGE_UPLOAD_MAX_BYTES）。
@@ -123,15 +138,14 @@ export default function DocUpload() {
           className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text file:mr-2 file:rounded file:border-0 file:bg-primary-dim file:px-2 file:py-1 file:text-primary"
         />
 
-        <button
+        <Button
           type="button"
           data-testid="doc-upload-submit"
           onClick={handleSubmit}
           disabled={!selectedSlug || !file || state === 'uploading' || state === 'parsing' || state === 'indexing'}
-          className="rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-fg hover:bg-primary/90 disabled:opacity-50"
         >
           上传
-        </button>
+        </Button>
       </div>
 
       <div className="mt-3 min-h-[1.5rem] text-sm">

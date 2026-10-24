@@ -28,10 +28,12 @@ function CapacityBar({
   label,
   current,
   threshold,
+  compact = false,
 }: {
   label: string;
   current: number;
   threshold: number;
+  compact?: boolean;
 }) {
   const pct = threshold > 0 ? Math.min((current / threshold) * 100, 100) : 0;
   const breach = current >= threshold;
@@ -41,7 +43,7 @@ function CapacityBar({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="w-20 flex-shrink-0 text-xs text-text-muted">{label}</span>
+      <span className={compact ? 'w-16 flex-shrink-0 text-[10px] text-text-muted' : 'w-20 flex-shrink-0 text-xs text-text-muted'}>{label}</span>
       <div
         role="meter"
         aria-valuenow={current}
@@ -50,14 +52,14 @@ function CapacityBar({
         aria-label={ariaLabel}
         className="flex flex-1 items-center gap-2"
       >
-        <div className="flex-1 h-2 bg-surface-2 rounded">
+        <div className="flex-1 h-1.5 bg-surface-2 rounded">
           <div
             className={`h-full rounded transition-all ${breach ? 'bg-danger' : 'bg-primary'}`}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className={`text-xs font-mono ${breach ? 'text-danger font-bold' : 'text-text-muted'}`}>
-          {current.toLocaleString()}/{threshold.toLocaleString()}
+        <span className={`text-[10px] font-mono ${breach ? 'text-danger font-bold' : 'text-text-muted'}`}>
+          {compact ? `${current.toLocaleString()}` : `${current.toLocaleString()}/${threshold.toLocaleString()}`}
         </span>
         {breach && (
           <span className="bg-danger text-white text-[10px] px-1 rounded font-bold" aria-label="breach indicator">
@@ -69,7 +71,7 @@ function CapacityBar({
   );
 }
 
-export default function CapacityMonitor() {
+export default function CapacityMonitor({ compact = false }: { compact?: boolean }) {
   const [counts, setCounts] = useState<TableCounts | null>(null);
   const [error, setError] = useState(false);
 
@@ -115,9 +117,9 @@ export default function CapacityMonitor() {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <CapacityBar label="audit" current={counts.audit.count} threshold={counts.audit.threshold} />
-      <CapacityBar label="kpi_calls" current={counts.kpi_calls.count} threshold={counts.kpi_calls.threshold} />
-      <CapacityBar label="report_runs" current={counts.report_runs.count} threshold={counts.report_runs.threshold} />
+      <CapacityBar compact={compact} label="audit" current={counts.audit.count} threshold={counts.audit.threshold} />
+      <CapacityBar compact={compact} label="kpi_calls" current={counts.kpi_calls.count} threshold={counts.kpi_calls.threshold} />
+      <CapacityBar compact={compact} label="report_runs" current={counts.report_runs.count} threshold={counts.report_runs.threshold} />
     </div>
   );
 }

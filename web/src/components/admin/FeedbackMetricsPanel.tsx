@@ -12,6 +12,17 @@
 //            trend: [{day, verdict, count}]}
 //   （help_rate / outdated_rate 为 number|null；null = 0 票）
 //
+// Migrated to the shared admin component library (admin UI redesign 2610):
+// PageHeader, StatCard (replaces the local MetricCard copy), the shared
+// LoadingSkeleton and the shared SegmentedButton (previously duplicated
+// with ReviewQueuePanel). The summary cards and the dimension table keep
+// their data-testids verbatim.
+//
+// Deliberately NOT on useAdminData: the error state here renders the
+// SERVER error string verbatim (metrics-error-detail, e.g. 'admin token
+// required') — useAdminData collapses failures into a boolean, which
+// would break the honesty contract pinned by the tests.
+//
 // Caliber discipline (D-29-10): the rates are computed SERVER-side with
 // the FULL-vote denominator (helpful + unhelpful + outdated) and null
 // means "no votes yet". This panel NEVER derives a rate itself — a null
@@ -40,9 +51,11 @@
 // 29-UI-SPEC §Copywriting Contract.
 import { useCallback, useEffect, useState } from 'react';
 import { Sparkline, type SparklinePoint } from '../chat/parts/Sparkline';
-import { cn } from '../../lib/cn';
 import { Button } from '../ui/button';
 import { useAppStore } from '../../store/app-store';
+import SegmentedButton from './shared/SegmentedButton';
+import { LoadingSkeleton } from './shared/States';
+import { PageHeader, StatCard } from './shared/Primitives';
 
 interface MetricsTotals {
   helpful: number;
@@ -143,68 +156,6 @@ function formatRate(rate: number | null): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
 
-function LoadingSkeleton() {
-  return (
-    <div data-testid="metrics-loading" className="flex flex-col gap-3">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="flex h-10 items-center gap-4 rounded-md bg-surface" />
-      ))}
-    </div>
-  );
-}
-
-function SegmentedButton({
-  active,
-  testId,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  testId: string;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      onClick={onClick}
-      className={cn(
-        'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-        active ? 'bg-primary-dim text-primary' : 'text-text-muted hover:bg-surface-2 hover:text-text',
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
-function MetricCard({
-  testId,
-  label,
-  value,
-  display,
-}: {
-  testId: string;
-  label: string;
-  value: string;
-  display?: boolean;
-}) {
-  return (
-    <div data-testid={testId} className="rounded-md border border-border bg-surface p-4">
-      <div className="text-xs text-text-muted">{label}</div>
-      <div
-        className={cn(
-          'mt-1 font-mono font-semibold text-text',
-          display ? 'text-2xl' : 'text-lg',
-        )}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
 export default function FeedbackMetricsPanel() {
   const setAdminSubroute = useAppStore((s) => s.setAdminSubroute);
 
@@ -256,7 +207,10 @@ export default function FeedbackMetricsPanel() {
 
   return (
     <div data-testid="metrics-view" className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold text-text">反馈指标</h2>
+      <PageHeader
+        title="反馈指标"
+        description="用户反馈的帮助率、outdated 率与每日趋势（29-05 线协议，只读）"
+      />
 
       {/* D-29-10 — the denominator is never a silent assumption. */}
       <div
@@ -330,7 +284,7 @@ export default function FeedbackMetricsPanel() {
         </div>
       )}
 
-      {loading && !error && <LoadingSkeleton />}
+      {loading && !error && <LoadingSkeleton testId="metrics-loading" />}
 
       {!loading && !error && totals && totalVotes === 0 && (
         <div data-testid="metrics-empty" className="rounded-md border border-border bg-surface px-3 py-3 text-sm text-text-muted">
@@ -341,15 +295,14 @@ export default function FeedbackMetricsPanel() {
       {/* Summary cards — rates render 「—」 on a 0-vote denominator. */}
       {!loading && !error && totals && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-          <MetricCard testId="metrics-card-help-rate" label="帮助率" value={formatRate(totals.help_rate)} display />
-          <MetricCard testId="metrics-card-helpful" label="有帮助" value={String(totals.helpful)} />
-          <MetricCard testId="metrics-card-unhelpful" label="没帮助" value={String(totals.unhelpful)} />
-          <MetricCard testId="metrics-card-outdated" label="报告知识过时" value={String(totals.outdated)} />
-          <MetricCard
+          <StatCard testId="metrics-card-help-rate" label="帮助率" value={formatRate(totals.help_rate)} />
+          <StatCard testId="metrics-card-helpful" label="有帮助" value={String(totals.helpful)} tone="green" />
+          <StatCard testId="metrics-card-unhelpful" label="没帮助" value={String(totals.unhelpful)} tone="red" />
+          <StatCard testId="metrics-card-outdated" label="报告知识过时" value={String(totals.outdated)} tone="amber" />
+          <StatCard
             testId="metrics-card-outdated-rate"
             label="outdated 率"
             value={formatRate(totals.outdated_rate)}
-            display
           />
         </div>
       )}

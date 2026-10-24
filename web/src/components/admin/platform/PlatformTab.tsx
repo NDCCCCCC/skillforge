@@ -8,10 +8,17 @@
 // View-switcher idiom: GovernanceTab pattern (role="tablist" +
 // aria-selected buttons, local state, no router). skillName state is
 // lifted to tab level and passed to SPARQL Playground and Hybrid views.
+//
+// 2610 redesign: tab switcher buttons migrated to the shared Button
+// (variant swap for the active tab), a PageHeader added per the 2610
+// admin shell. All data-testids and the skill-selector semantics
+// (quick-260928-jxb BUG-2) are unchanged.
 
 import { useEffect, useState } from 'react';
 import { cn } from '../../../lib/cn';
 import { useAppStore } from '../../../store/app-store';
+import { PageHeader } from '../shared/Primitives';
+import { Button } from '../../ui/button';
 import SparqlPlaygroundView from './SparqlPlaygroundView';
 import McpInspectorView from './McpInspectorView';
 import HybridDebugView from './HybridDebugView';
@@ -43,23 +50,27 @@ export default function PlatformTab() {
 
   return (
     <div className="space-y-4" data-testid="platform-tab">
+      <PageHeader
+        title="平台调试"
+        description="SPARQL 查询、MCP 工具与 Hybrid 检索的联调工作台"
+      />
+
       {/* View switcher */}
       <div className="flex items-center gap-1" role="tablist">
         {VIEWS.map((v) => (
-          <button
+          <Button
             key={v.id}
             type="button"
             role="tab"
             aria-selected={view === v.id}
             data-testid={`platform-view-${v.id}`}
+            variant={view === v.id ? 'default' : 'ghost'}
+            size="sm"
             onClick={() => setView(v.id)}
-            className={cn(
-              'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-              view === v.id ? 'bg-primary-dim text-primary' : 'text-text-muted hover:bg-surface-2 hover:text-text',
-            )}
+            className={cn(view !== v.id && 'text-text-muted')}
           >
             {v.label}
-          </button>
+          </Button>
         ))}
       </div>
 

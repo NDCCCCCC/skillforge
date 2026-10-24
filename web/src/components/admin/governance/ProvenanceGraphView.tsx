@@ -4,19 +4,21 @@
 // Plan 40-07b — Provenance graph view using Cytoscape.js breadthfirst layout.
 // No React wrapper lib; mount via container ref + useEffect, destroy on unmount.
 // Graph styling reads CSS variables at mount via getComputedStyle (never hardcoded hex).
+//
+// 2610 redesign: mount-time load migrated to the shared useAdminData hook
+// (nil-slice normalization for Go `null` nodes/edges moved to the component
+// layer — quick-260928-jxb BUG-1 semantics preserved); the source-kind badge
+// migrated to the shared SourceKindBadge; empty/error states migrated to
+// EmptyState/ErrorState. The Cytoscape render pipeline, search highlight and
+// detail panel are unchanged.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
-import { cn } from '../../../lib/cn';
-import { fetchProvenanceGraph } from './governanceApi';
+import { useAdminData } from '../shared/useAdminData';
+import { EmptyState, ErrorState, LoadingSkeleton } from '../shared/States';
+import SourceKindBadge from '../shared/SourceKindBadge';
+import { Button } from '../../ui/button';
 import type { GraphNode, ProvenanceGraph } from './types';
-
-// Source-kind badge colors per UI-SPEC §Color
-const KIND_BADGE: Record<string, string> = {
-  file: 'bg-status-compliant/10 text-status-compliant',
-  emitter: 'bg-surface-3 text-text-muted',
-  induction: 'bg-primary-dim text-primary',
-};
 
 interface DetailPanelProps {
   node: GraphNode | null;
@@ -44,9 +46,7 @@ function DetailPanel({ node }: DetailPanelProps) {
         <span className="text-text-muted">来源</span>
         <br />
         {prov ? (
-          <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', KIND_BADGE[prov.source_kind] ?? 'bg-surface-3 text-text-muted')}>
-            {prov.source_kind === 'file' ? '文件' : prov.source_kind === 'emitter' ? '生成' : '归纳'}
-          </span>
+          <SourceKindBadge kind={prov.source_kind} />
         ) : (
           <span className="text-text-muted">源文件</span>
         )}
@@ -108,17 +108,24 @@ export default function ProvenanceGraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cy, setCy] = useState<cytoscape.Core | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [graphData, setGraphData] = useState<ProvenanceGraph | null>(null);
-  const [graphError, setGraphError] = useState<string | null>(null);
+  // Mount-time load via the shared hook (auto X-Admin-Token = 'sf_admin_token').
+  const {
+    data: rawGraph,
+    loading,
+    error: hookError,
+    reload,
+  } = useAdminData<ProvenanceGraph>('/api/admin/governance/provenance');
+
+  // Component-layer nil-slice normalization (quick-260928-jxb BUG-1): Go nil
+  // slices serialize to JSON null; keep the guarantee the old
+  // fetchProvenanceGraph choke point provided.
+  const graphData = useMemo<ProvenanceGraph | null>(
+    () => (rawGraph ? { ...rawGraph, nodes: rawGraph.nodes ?? [], edges: rawGraph.edges ?? [] } : null),
+    [rawGraph],
+  );
+
   const [searchQ, setSearchQ] = useState('');
   const [searchNoHit, setSearchNoHit] = useState('');
-
-  // Fetch graph data on mount
-  useEffect(() => {
-    fetchProvenanceGraph()
-      .then(setGraphData)
-      .catch((e: unknown) => setGraphError(e instanceof Error ? e.message : String(e)));
-  }, []);
 
   // Initialize Cytoscape when graph data arrives
   useEffect(() => {
@@ -310,30 +317,21 @@ export default function ProvenanceGraphView() {
     cy?.elements().removeClass('hit dim');
   };
 
-  if (graphError) {
+  if (hookError) {
     return (
-      <div className="text-sm text-danger">
-        溯源图谱加载失败
-        <button
-          onClick={() => window.location.reload()}
-          className="ml-2 underline"
-        >
-          （点击重试）
-        </button>
-      </div>
+      <ErrorState
+        message="溯源图谱加载失败"
+        onRetry={reload}
+      />
     );
   }
 
-  if (!graphData) {
-    return <div className="h-96 animate-pulse rounded-md border border-border bg-surface" />;
+  if (loading || !graphData) {
+    return <LoadingSkeleton rows={4} />;
   }
 
   if (graphData.nodes.length === 0) {
-    return (
-      <div className="py-12 text-center text-sm text-text-muted">
-        暂无溯源数据 — 运行 ECL 后生成溯源链
-      </div>
-    );
+    return <EmptyState title="暂无溯源数据" hint="运行 ECL 后生成溯源链" />;
   }
 
   return (
@@ -349,13 +347,14 @@ export default function ProvenanceGraphView() {
             placeholder="搜索实体（IRI 或名称）"
             className="flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs"
           />
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleClearHighlight}
             disabled={!searchQ}
-            className="border border-border bg-surface-2 px-2 py-1.5 text-xs rounded hover:bg-surface-3 disabled:opacity-50"
           >
             清除高亮
-          </button>
+          </Button>
         </div>
 
         {/* No-hit message */}

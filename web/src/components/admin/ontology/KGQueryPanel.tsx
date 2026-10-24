@@ -7,18 +7,29 @@
 // canonical example `?x a skf:Skill` mapping: s=?x, p=rdf:type, o=Skill.
 // Plan 40-08 — adds Skill selector (D-TIER-01 tier demo) and 来源 provenance
 // column (D-PROV-03).
+//
+// 2610 redesign: Skill-list mount load migrated to the shared
+// useAdminData hook; buttons migrated to ui/button (primary/secondary);
+// header migrated to PageHeader; local cn copy replaced with lib/cn.
+// The user-triggered pattern query stays an explicit mutation — it is
+// not an initial load, so it keeps the imperative fetch flow.
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Search } from 'lucide-react';
+import { cn } from '../../../lib/cn';
+import { Button } from '../../ui/button';
+import { PageHeader } from '../shared/Primitives';
+import { useAdminData } from '../shared/useAdminData';
 import { fetchKGQuery } from './ontologyApi';
-import type { KGTriple } from './types';
+import type { KGQueryResponse, KGTriple } from './types';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const DEFAULT_NS = 'http://skillforge.local/ontology#';
 
-function cn(...classes: (string | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
-}
+/** Mount-time URL for the Skill selector options (?x a skf:Skill). */
+const SKILL_LIST_URL = `/api/admin/ontology/kg/query?p=${encodeURIComponent(
+  RDF_TYPE,
+)}&o=${encodeURIComponent(`${DEFAULT_NS}Skill`)}`;
 
 export default function KGQueryPanel() {
   const [s, setS] = useState('');
@@ -28,24 +39,14 @@ export default function KGQueryPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState('');
-  const [skills, setSkills] = useState<string[]>([]);
+  const { data: skillList } = useAdminData<KGQueryResponse>(SKILL_LIST_URL);
 
-  // Fetch skill list on mount.
-  useEffect(() => {
-    fetchKGQuery('', 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', `${DEFAULT_NS}Skill`)
-      .then((r) => {
-        const names = r.matches
-          .map((m) => {
-            const prefix = `${DEFAULT_NS}skill_`;
-            return m.s.startsWith(prefix) ? m.s.slice(prefix.length) : null;
-          })
-          .filter((n): n is string => n !== null);
-        setSkills(names);
-      })
-      .catch(() => {
-        // Non-fatal — skills list just won't populate.
-      });
-  }, []);
+  const skills: string[] = (skillList?.matches ?? [])
+    .map((m) => {
+      const prefix = `${DEFAULT_NS}skill_`;
+      return m.s.startsWith(prefix) ? m.s.slice(prefix.length) : null;
+    })
+    .filter((n): n is string => n !== null);
 
   async function runQuery() {
     setLoading(true);
@@ -76,7 +77,10 @@ export default function KGQueryPanel() {
 
   return (
     <section data-testid="kg-query-panel" className="space-y-3">
-      <h2 className="text-sm font-semibold">KG 三元组查询</h2>
+      <PageHeader
+        title="KG 三元组查询"
+        description="按 s/p/o 模式查询知识图谱，留空即通配（?x）"
+      />
 
       {/* Skill selector row */}
       <div className="flex items-center gap-2">
@@ -130,26 +134,29 @@ export default function KGQueryPanel() {
             className="w-full rounded-md border border-border bg-surface-2 px-2 py-1.5 font-mono text-xs"
           />
         </label>
-        <button
+        <Button
           type="button"
           data-testid="kg-query-run"
-          onClick={runQuery}
+          onClick={() => void runQuery()}
           disabled={loading}
-          className="mt-5 inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg disabled:opacity-50"
+          size="sm"
+          className="mt-5"
         >
           <Search className="h-3.5 w-3.5" />
           Query
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           data-testid="kg-query-export"
           onClick={exportJSON}
           disabled={!matches}
-          className="mt-5 inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-semibold hover:bg-surface-3 disabled:opacity-50"
+          variant="secondary"
+          size="sm"
+          className="mt-5"
         >
           <Download className="h-3.5 w-3.5" />
           Export JSON
-        </button>
+        </Button>
       </div>
 
       {error && <div className="text-xs text-danger">查询失败: {error}</div>}
@@ -173,22 +180,7 @@ export default function KGQueryPanel() {
                 <td className="px-2 py-1">
                   {t.provenance ? (
                     <span className="flex flex-col gap-0.5">
-                      <span
-                        className={cn(
-                          'text-[11px] w-fit font-semibold px-1 rounded',
-                          t.provenance.source_kind === 'file'
-                            ? 'bg-status-compliant/10 text-status-compliant'
-                            : t.provenance.source_kind === 'emitter'
-                              ? 'bg-surface-3 text-text-muted'
-                              : 'bg-primary-dim text-primary'
-                        )}
-                      >
-                        {t.provenance.source_kind === 'file'
-                          ? '文件'
-                          : t.provenance.source_kind === 'emitter'
-                            ? '生成'
-                            : '归纳'}
-                      </span>
+                      <StatusToneBadge kind={t.provenance.source_kind} />
                       {t.provenance.source_path && (
                         <span
                           className="text-[11px] truncate max-w-xs"
@@ -228,5 +220,25 @@ export default function KGQueryPanel() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Provenance source-kind chip — status tokens only (no hex / raw
+ * color classes; 2610 redesign). */
+function StatusToneBadge({ kind }: { kind: string }) {
+  const label = kind === 'file' ? '文件' : kind === 'emitter' ? '生成' : '归纳';
+  return (
+    <span
+      className={cn(
+        'text-[11px] w-fit font-semibold px-1 rounded',
+        kind === 'file'
+          ? 'bg-status-compliant/10 text-status-compliant'
+          : kind === 'emitter'
+            ? 'bg-surface-3 text-text-muted'
+            : 'bg-primary-dim text-primary',
+      )}
+    >
+      {label}
+    </span>
   );
 }

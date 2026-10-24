@@ -4,13 +4,23 @@
 // Plan 41-05 — MCP Inspector view.
 // Server status row, tools table with Test buttons,
 // Test Invocation Panel with JSON params editor.
+//
+// 2610 redesign: mount-time status/tools loads migrated to the shared
+// useAdminData hook, the tools table to the shared DataTable, Test /
+// Invoke buttons to the shared Button, loading placeholders to
+// LoadingSkeleton. Invoke interaction (POST invokeMcpTool, params
+// editor lifecycle) is unchanged.
 
 import { useEffect, useRef, useState } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { json } from '@codemirror/lang-json';
 import { cn } from '../../../lib/cn';
-import { fetchMcpStatus, fetchMcpTools, invokeMcpTool } from './platformApi';
+import { useAdminData } from '../shared/useAdminData';
+import DataTable from '../shared/DataTable';
+import { LoadingSkeleton } from '../shared/States';
+import { Button } from '../../ui/button';
+import { invokeMcpTool } from './platformApi';
 import type { McpInvokeResponse, McpServerStatus, McpTool } from './types';
 
 function StatusDot({ online }: { online: boolean }) {
@@ -27,10 +37,19 @@ function StatusDot({ online }: { online: boolean }) {
 interface Props {}
 
 export default function McpInspectorView(_props: Props) {
-  const [status, setStatus] = useState<McpServerStatus | null>(null);
-  const [tools, setTools] = useState<McpTool[]>([]);
-  const [statusError, setStatusError] = useState<string | null>(null);
-  const [toolsError, setToolsError] = useState<string | null>(null);
+  // Mount-time loads via the shared hook (auto 'sf_admin_token' header).
+  const {
+    data: status,
+    loading: statusLoading,
+    error: statusError,
+    reload: reloadStatus,
+  } = useAdminData<McpServerStatus>('/api/admin/platform/mcp/status');
+  const {
+    data: tools,
+    loading: toolsLoading,
+    error: toolsError,
+    reload: reloadTools,
+  } = useAdminData<McpTool[]>('/api/admin/platform/mcp/tools');
 
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
   const [invokeResult, setInvokeResult] = useState<McpInvokeResponse | null>(null);
@@ -41,18 +60,9 @@ export default function McpInspectorView(_props: Props) {
   const paramsViewRef = useRef<EditorView | null>(null);
   const selectedToolRef = useRef<McpTool | null>(null);
 
-  useEffect(() => {
-    fetchMcpStatus()
-      .then(setStatus)
-      .catch((e: unknown) => setStatusError(e instanceof Error ? e.message : String(e)));
-    fetchMcpTools()
-      .then(setTools)
-      .catch((e: unknown) => setToolsError(e instanceof Error ? e.message : String(e)));
-  }, []);
-
   // Mount / remount params editor when selected tool changes
   useEffect(() => {
-    const tool = tools.find((t) => t.name === selectedTool) ?? null;
+    const tool = (tools ?? []).find((t) => t.name === selectedTool) ?? null;
     selectedToolRef.current = tool;
 
     if (paramsViewRef.current) {
@@ -113,12 +123,9 @@ export default function McpInspectorView(_props: Props) {
       {statusError ? (
         <div className="text-sm text-danger">
           MCP 状态加载失败
-          <button
-            onClick={() => window.location.reload()}
-            className="ml-2 underline"
-          >
+          <Button variant="ghost" size="sm" onClick={reloadStatus} className="ml-2 underline">
             （点击重试）
-          </button>
+          </Button>
         </div>
       ) : status ? (
         <div className="flex items-center gap-2 rounded-md border border-border bg-surface-2 p-3 font-mono text-xs">
@@ -128,67 +135,60 @@ export default function McpInspectorView(_props: Props) {
           </span>
           <span className="text-text-muted">· service_skill: {status.service_skill}</span>
         </div>
-      ) : (
-        <div className="h-10 animate-pulse rounded bg-surface-2" />
-      )}
+      ) : statusLoading ? (
+        <LoadingSkeleton rows={1} />
+      ) : null}
 
       {/* Tools table */}
       {toolsError ? (
         <div className="text-sm text-danger">
           工具列表加载失败
-          <button
-            onClick={() => window.location.reload()}
-            className="ml-2 underline"
-          >
+          <Button variant="ghost" size="sm" onClick={reloadTools} className="ml-2 underline">
             （点击重试）
-          </button>
+          </Button>
         </div>
+      ) : toolsLoading ? (
+        <LoadingSkeleton rows={3} />
       ) : (
-        <div className="overflow-hidden rounded-md border border-border">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-surface-2 text-text-muted">
-              <tr>
-                <th className="px-3 py-2">tool_name</th>
-                <th className="px-3 py-2">description</th>
-                <th className="px-3 py-2">actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tools.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-3 py-4 text-center text-text-muted">
-                    暂无工具
-                  </td>
-                </tr>
-              ) : (
-                tools.map((t) => (
-                  <tr
-                    key={t.name}
-                    className="border-t border-border hover:bg-surface-2"
-                  >
-                    <td className="px-3 py-1.5 font-mono">{t.name}</td>
-                    <td className="px-3 py-1.5 max-w-xs truncate" title={t.description}>
-                      {t.description}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedTool(t.name);
-                          setInvokeResult(null);
-                          setInvokeError(null);
-                        }}
-                        className="rounded border border-border bg-surface-2 px-2 py-1 text-xs font-semibold hover:bg-surface-3"
-                      >
-                        Test
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={[
+            {
+              key: 'name',
+              label: 'tool_name',
+              render: (t) => <span className="font-mono">{t.name}</span>,
+            },
+            {
+              key: 'description',
+              label: 'description',
+              render: (t) => (
+                <span className="block max-w-xs truncate" title={t.description}>
+                  {t.description}
+                </span>
+              ),
+            },
+            {
+              key: 'actions',
+              label: 'actions',
+              render: (t) => (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedTool(t.name);
+                    setInvokeResult(null);
+                    setInvokeError(null);
+                  }}
+                >
+                  Test
+                </Button>
+              ),
+            },
+          ]}
+          rows={tools ?? []}
+          rowKey={(t) => t.name}
+          empty={{ title: '暂无工具' }}
+        />
       )}
 
       {/* Test Invocation Panel */}
@@ -203,14 +203,9 @@ export default function McpInspectorView(_props: Props) {
             aria-label="MCP tool parameters editor"
           />
 
-          <button
-            type="button"
-            onClick={invokeTool}
-            disabled={invokeLoading}
-            className="rounded bg-primary px-3 py-1.5 text-xs font-semibold text-primary-fg disabled:opacity-50"
-          >
+          <Button type="button" onClick={invokeTool} disabled={invokeLoading} size="sm">
             Invoke
-          </button>
+          </Button>
 
           {/* Result area */}
           {invokeError && (

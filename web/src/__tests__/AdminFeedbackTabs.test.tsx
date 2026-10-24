@@ -45,12 +45,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('AdminDashboard — 7 tabs (29-08 D-29-12)', () => {
-  it('renders all tabs in the locked order — 反馈 6th, 复核 7th (order pins updated for the Phase 38 本体, Phase 39 ECL 管线, and Phase 40 治理 tabs)', () => {
+describe('AdminDashboard — 12 tabs (admin UI redesign 2610, grouped sidebar)', () => {
+  it('renders all tabs in the locked order — 反馈 6th, 复核 7th (order pins updated for Phase 38 本体, Phase 39 ECL 管线, Phase 40 治理, Phase 52 模型配置)', () => {
     render(<AdminDashboard />);
     expect(tabOrder()).toEqual([
       '导入批次',
-      'Knowledge Bases',
+      '知识库',
       'KPI 定义',
       'Skill 管理',
       '定时任务',
@@ -59,17 +59,18 @@ describe('AdminDashboard — 7 tabs (29-08 D-29-12)', () => {
       '本体',
       'ECL 管线',
       '治理',
-      '平台',
+      '平台工具',
+      '模型配置',
     ]);
     // The locked testids exist exactly once each.
     expect(screen.getAllByTestId('admin-tab-feedback')).toHaveLength(1);
     expect(screen.getAllByTestId('admin-tab-review')).toHaveLength(1);
   });
 
-  it('has 11 tabs total with 平台 as the 11th entry', () => {
+  it('has 12 tabs total with 模型配置 as the 12th entry', () => {
     render(<AdminDashboard />);
-    expect(tabOrder()).toHaveLength(11);
-    expect(tabOrder()[10]).toBe('平台');
+    expect(tabOrder()).toHaveLength(12);
+    expect(tabOrder()[11]).toBe('模型配置');
   });
 
   it('defaults to the 批次 tab (store default untouched by the union extension)', () => {

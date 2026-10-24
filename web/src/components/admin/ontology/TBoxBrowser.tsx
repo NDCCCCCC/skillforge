@@ -12,11 +12,17 @@
 // to the tail. Clicking a card lists its instances live from the KG
 // pattern query (?x rdf:type skf:<Class>). Instances render the
 // local-name tail so CJK sub-category IRIs stay readable.
+//
+// 2610 redesign: the TBox metadata one-shot load migrated to the shared
+// useAdminData hook (admin token handled centrally); header + KPIs
+// migrated to the shared PageHeader / StatCard primitives.
 
 import { useEffect, useState } from 'react';
-import { Boxes } from 'lucide-react';
 import { cn } from '../../../lib/cn';
-import { fetchKGQuery, fetchTBox } from './ontologyApi';
+import { useAdminData } from '../shared/useAdminData';
+import { PageHeader, StatCard } from '../shared/Primitives';
+import { fetchKGQuery } from './ontologyApi';
+import type { TBoxResponse } from './types';
 
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 
@@ -52,9 +58,8 @@ function localTail(iri: string, ns: string): string {
 }
 
 export default function TBoxBrowser() {
+  const { data: tbox } = useAdminData<TBoxResponse>('/api/admin/ontology/tbox');
   const [ns, setNS] = useState(DEFAULT_NS);
-  const [version, setVersion] = useState<number | null>(null);
-  const [tripleCount, setTripleCount] = useState<number | null>(null);
   const [classes, setClasses] = useState<Array<{ local: string; label: string }>>(TBOX_CLASSES);
   const [selected, setSelected] = useState<string>('Skill');
   const [instances, setInstances] = useState<string[]>([]);
@@ -64,20 +69,10 @@ export default function TBoxBrowser() {
   // Discover the live namespace from the TBox @prefix line (the env may
   // override SKILLFORGE_ONTOLOGY_NS; hardcoding would show 0 instances).
   useEffect(() => {
-    let cancelled = false;
-    fetchTBox()
-      .then((t) => {
-        if (cancelled) return;
-        setVersion(t.version);
-        setTripleCount(t.triple_count);
-        const m = t.ttl.match(/@prefix\s+skf:\s+<([^>]+)>/);
-        if (m) setNS(m[1]);
-      })
-      .catch((e) => !cancelled && setError(String(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!tbox) return;
+    const m = tbox.ttl.match(/@prefix\s+skf:\s+<([^>]+)>/);
+    if (m) setNS(m[1]);
+  }, [tbox]);
 
   // Discover classes beyond the static Phase 38 metadata: every
   // owl:Class individual in the KG that TBOX_CLASSES does not already
@@ -131,14 +126,14 @@ export default function TBoxBrowser() {
 
   return (
     <section data-testid="tbox-browser" className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-          <Boxes className="h-4 w-4" />
-          TBox 类层次
-        </h2>
-        <div className="font-mono text-[11px] text-text-muted">
-          v{version ?? '—'} · {tripleCount ?? '—'} triples
-        </div>
+      <PageHeader
+        title="TBox 类层次"
+        description="点击类卡片查看 KG 中的实例（?x a skf:<Class>）"
+      />
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
+        <StatCard label="TBox 版本" value={tbox ? `v${tbox.version}` : '—'} />
+        <StatCard label="三元组" value={tbox ? tbox.triple_count : '—'} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">

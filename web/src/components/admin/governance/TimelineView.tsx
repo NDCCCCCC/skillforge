@@ -4,9 +4,18 @@
 // Plan 40-07b — TBox version timeline with rollback. Newest-first.
 // Rollback lifecycle: confirm → POST → toast with new-violation count → refetch.
 // Per UI-SPEC §Component 6 + D-LOG-02 who badge colors.
+//
+// 2610 redesign: the mount-time changelog load migrated to the shared
+// useAdminData hook; the rollback CTA migrated to the shared Button. The
+// post-rollback refresh stays a direct fetchChangelog call (NOT hook
+// reload): a failed secondary refresh must stay silent — a hook reload
+// that errors would swap the timeline for the error branch and
+// repurpose a successful rollback as a page failure (T-47-14).
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { cn } from '../../../lib/cn';
+import { useAdminData } from '../shared/useAdminData';
+import { Button } from '../../ui/button';
 import { fetchChangelog, rollbackTBox } from './governanceApi';
 import type { ChangelogEntry } from './types';
 
@@ -89,15 +98,17 @@ function TimelineEntry({
 
         {/* Rollback button — only on non-current entries */}
         {!isCurrent && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             data-testid={`governance-rollback-${entry.version}`}
             onClick={() => onRollback(entry.version)}
             disabled={rollingBack !== null}
-            className="mt-1 border border-border bg-surface-2 px-2 py-1 rounded text-xs hover:bg-surface-3 disabled:opacity-50"
+            className="mt-1"
             aria-label={`回滚到版本 v${entry.version}`}
           >
             {rollingBack === entry.version ? '回滚中...' : '回滚到此版本'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -114,18 +125,23 @@ export interface TimelineViewProps {
 }
 
 export default function TimelineView({ onRollbackComplete }: TimelineViewProps = {}) {
-  const [changelog, setChangelog] = useState<{
+  // Mount-time load via the shared hook; `local` carries the post-rollback
+  // secondary refresh so its failures stay silent (see file header).
+  const {
+    data: hookChangelog,
+    loading: hookLoading,
+    error: hookError,
+  } = useAdminData<{ current_version: number; entries: ChangelogEntry[] }>(
+    '/api/admin/ontology/changelog',
+  );
+  const [local, setLocal] = useState<{
     current_version: number;
     entries: ChangelogEntry[];
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [rollingBack, setRollingBack] = useState<number | null>(null);
 
-  useEffect(() => {
-    fetchChangelog()
-      .then(setChangelog)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  const changelog = local ?? hookChangelog;
+  const loading = hookLoading && local === null;
 
   const handleRollback = async (targetVersion: number) => {
     if (!changelog) return;
@@ -171,7 +187,7 @@ export default function TimelineView({ onRollbackComplete }: TimelineViewProps =
       // Fire-and-forget changelog refresh. A rejection here is swallowed:
       // the changelog view is stale, but the rollback succeeded, and the
       // stale list is honest feedback rather than a false failure toast.
-      void fetchChangelog().then(setChangelog).catch(() => {
+      void fetchChangelog().then(setLocal).catch(() => {
         /* secondary refresh only — never a rollback outcome */
       });
     } catch (e: unknown) {
@@ -186,7 +202,7 @@ export default function TimelineView({ onRollbackComplete }: TimelineViewProps =
     }
   };
 
-  if (error) {
+  if (hookError) {
     return (
       <div className="text-sm text-danger">
         版本日志加载失败
@@ -200,7 +216,7 @@ export default function TimelineView({ onRollbackComplete }: TimelineViewProps =
     );
   }
 
-  if (!changelog) {
+  if (loading || !changelog) {
     return (
       <div className="space-y-2">
         {[1, 2, 3].map((i) => (

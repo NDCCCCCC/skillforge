@@ -110,7 +110,7 @@ describe('AdminDashboard — ontology tab', () => {
     useAppStore.setState({ adminSubroute: 'batches' });
     render(<AdminDashboard />);
     const tabs = screen.getByTestId('admin-subroute-tabs');
-    expect(tabs.querySelectorAll('button')).toHaveLength(11);
+    expect(tabs.querySelectorAll('button')).toHaveLength(12);
     fireEvent.click(screen.getByTestId('admin-tab-ontology'));
     expect(await screen.findByTestId('ontology-tab')).toBeInTheDocument();
   });

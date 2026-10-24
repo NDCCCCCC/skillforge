@@ -133,7 +133,7 @@ export default function ReportPortal({ initialSkillId = '', initialPeriod = '' }
         {loading ? (
           <p className="text-sm text-text-muted">Loading...</p>
         ) : error ? (
-          <p className="text-sm text-red-500">Error: {error}</p>
+          <p className="text-sm text-status-non-compliant">Error: {error}</p>
         ) : runs.length === 0 ? (
           <p className="text-sm text-text-muted">No report runs found</p>
         ) : (
@@ -159,7 +159,7 @@ export default function ReportPortal({ initialSkillId = '', initialPeriod = '' }
                     </td>
                     <td className="border border-border px-3 py-2">
                       {run.drift_detected ? (
-                        <span className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-status-needs-info/15 px-1.5 py-0.5 text-[10px] font-semibold text-status-needs-info">
                           DRIFT
                         </span>
                       ) : (
@@ -176,7 +176,7 @@ export default function ReportPortal({ initialSkillId = '', initialPeriod = '' }
                             href={run.output_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-0.5 text-blue-600 hover:underline"
+                            className="inline-flex items-center gap-0.5 text-primary hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" />
                             View
@@ -185,7 +185,7 @@ export default function ReportPortal({ initialSkillId = '', initialPeriod = '' }
                         <button
                           type="button"
                           onClick={() => void handleRerun(run.skill_id, run.period)}
-                          className="text-blue-600 hover:underline"
+                          className="text-primary hover:underline"
                         >
                           Rerun
                         </button>
@@ -203,17 +203,19 @@ export default function ReportPortal({ initialSkillId = '', initialPeriod = '' }
 }
 
 function StatusBadge({ status }: { status: ReportRun['status'] }) {
+  // admin UI redesign 2610 — light-on-dark status pills from the shared
+  // token palette (replaces the light-theme green-100/red-100 set).
   const cls =
     status === 'success'
-      ? 'bg-green-100 text-green-800 border-green-200'
+      ? 'bg-status-compliant/15 text-status-compliant'
       : status === 'failed'
-      ? 'bg-red-100 text-red-800 border-red-200'
+      ? 'bg-status-non-compliant/15 text-status-non-compliant'
       : status === 'skipped_duplicate'
-      ? 'bg-gray-100 text-gray-700 border-gray-200'
-      : 'bg-amber-100 text-amber-800 border-amber-200';
+      ? 'bg-status-unanswered/15 text-status-unanswered'
+      : 'bg-status-needs-info/15 text-status-needs-info';
 
   return (
-    <span className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-semibold ${cls}`}>
+    <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${cls}`}>
       {status}
     </span>
   );
