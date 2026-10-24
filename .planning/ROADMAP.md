@@ -69,7 +69,7 @@
 - [x] **Phase 48: CI 矩阵** - Go / FE / Docker 三线质量门进 GitHub Actions，每次 PR 公开可见绿灯
 - [x] **Phase 49: Hermetic Demo** - embedded 向量兜底 + stub LLM 路径，clone 后零内网依赖、零 API key 跑通全链
 - [x] **Phase 50: 开源门面** - README 修真 + 架构图 + vs WeKnora/Semantica 对比表 + 社区设施，门面与仓库实况零失真 (completed 2026-10-24)
-- [ ] **Phase 51: 发布工程** - goreleaser + tag 触发 GitHub Release，二进制 + release notes 零手工
+- [x] **Phase 51: 发布工程** - goreleaser + tag 触发 GitHub Release，二进制 + release notes 零手工 (completed 2026-10-24)
 
 ## Phase Details
 
@@ -251,14 +251,14 @@ Phase 48 与 Phase 49 均只依赖 Phase 47，可并行推进；Phase 50 依赖 
 | 48. CI 矩阵 | v1.7 | 27/27 | Complete    | 2026-10-21 |
 | 49. Hermetic Demo | v1.7 | 4/4 | Complete    | 2026-10-22 |
 | 50. 开源门面 | v1.7 | 3/3 | Complete    | 2026-10-24 |
-| 51. 发布工程 | v1.7 | 0/TBD | Not started | - |
+| 51. 发布工程 | v1.7 | 3/3 | Complete    | 2026-10-24 |
 
 ### Phase 52: LLM Provider 配置面板
 
 **Goal:** 管理员在 admin 面板选择厂商与套餐（内置目录含智谱 Coding/Standard、OpenCode Go/Go Plus/Zen、OpenAI、DeepSeek、Moonshot、SiliconFlow、Ollama、Custom），填入 API Key 或其环境变量名，测试连通、拉取模型列表、选定模型后保存——**立即生效，无需重启**（委托式 chat model 每次调用解析当前上游；WithTools 惰性重绑）。
 **Requirements**: LLMCFG-01（配置面板与持久化）、LLMCFG-02（热重载委托模型）、LLMCFG-03（连通性测试与模型列表）
 **Depends on:** Phase 51（实践上随 49-02 stub 装配落地即交付；与 50/51 无代码耦合）
-**Plans:** 3 plans + gate
+**Plans:** 4/3 plans complete + gate
 
 Plans:
 - [x] 52-01-PLAN.md — internal/llmconfig（厂商目录 / 0600 持久化 / 连通性测试 / 模型列表）

@@ -2,20 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v1.7
 milestone_name: Open-Source Readiness
-current_phase: 51
-current_phase_name: 发布工程
-status: executing
-stopped_at: Phase 50 complete, ready to plan Phase 51
-last_updated: "2026-10-24T01:03:20.141Z"
+current_phase: 52
+status: completed
+stopped_at: Phase 52 complete — all phases complete
+last_updated: "2026-10-24T02:38:36.031Z"
 last_activity: 2026-10-24
-last_activity_desc: Phase 50 complete, transitioned to Phase 51
-state_head: 9bd163958cda56f49ec5541bf351dfeda4e7e852
+last_activity_desc: Phase 52 complete
+state_head: 7ba310f439fe0e5465936efd0c3ef08ab45d546b
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 48
-  completed_plans: 44
-  percent: 67
+  completed_plans: 47
+  percent: 100
 ---
 
 # Project State
@@ -35,18 +34,18 @@ Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
 
 ## Current Position
 
-Phase: 51 (发布工程) — READY TO EXECUTE
+Phase: 52
 Plan: Not started
-Status: Ready to execute
-Last activity: 2026-10-24 — Phase 50 complete, transitioned to Phase 51
+Status: All phases complete
+Last activity: 2026-10-24 — Phase 52 complete
 
-Progress: [███████░░░] 67%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 42 (v1.7, Phases 47–48)
+- Total plans completed: 49 (v1.7, Phases 47–48)
 - Average duration: —
 - Total execution time: —
 
@@ -58,6 +57,8 @@ Progress: [███████░░░] 67%
 | 48 CI 矩阵 | 27 | — | — |
 | 49 | 4 | - | - |
 | 50 | 3 | - | - |
+| 51 | 3 | - | - |
+| 52 | 4 | - | - |
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -189,6 +190,6 @@ Items acknowledged and carried forward from previous milestone close.
 ## Session Continuity
 
 Last session: 2026-10-22T16:14:06.999Z
-Stopped at: Phase 50 complete, ready to plan Phase 51
+Stopped at: Phase 52 complete — all phases complete
 Resume file: .planning/phases/49-hermetic-demo/49-VERIFICATION.md
 Resume command: `/gsd-plan-phase 49` — Phase 48 (CI 矩阵) is complete: 27/27 plans executed, round-7 verification `passed` (15/15 must-haves, `48-VERIFICATION.md`, coverage set 69 files, digest `v3:sha256:c3174dca2179d21c0bd1c0a5c648145db6a8e3b42b6b850b34507e46c6b01e16`), the 37-threat security sheet has 0 open, and the public four-green run 39380373930 backstops CICD-01/02/03. Phase 49 (Hermetic Demo) is next — start with its context (`/gsd-discuss-phase 49`). Round-8 candidates already recorded in ROADMAP.md「Round-7 review 遗留的 6 条 open 发现」: the workflow-level `permissions:` mapping-value branch still has no isolated fixture, the quote-aware stripper's quote-state has no canary, the P4 byte count is measured but not asserted, and the secret matcher still misses spaced/bracket forms.
