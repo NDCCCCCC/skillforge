@@ -6,6 +6,8 @@ here and surface in the phase SUMMARY so a future plan can address them.
 
 ## 2026-08-11 — Plan 03-01 Task 1 (GREEN verification)
 
+- **Status:** acknowledged
+
 **Discovery:** `cd web && npx tsc --noEmit` does NOT exit 0 — but **none of the
 errors are caused by the 03-01 changes**. All errors live in Phase 4 test
 files / components and reflect drift between Phase 4's wire-type fixtures and

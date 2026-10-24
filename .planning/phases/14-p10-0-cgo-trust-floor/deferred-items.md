@@ -2,6 +2,8 @@
 
 ## 2026-08-23 — Plan 14-09: `findSkill` Phase-2 literal gate vs `simple-qa` deployment
 
+- **Status:** acknowledged
+
 - **File:** `internal/server/chat.go:660` (`findSkill`), `const defaultSkill = "compliance"` (chat.go:96)
 - **What:** `findSkill` accepts ONLY the literal `"compliance"` and returns the first loaded
   Skill's manifest regardless of its actual name. The deployed `skills/` dir contains exactly
