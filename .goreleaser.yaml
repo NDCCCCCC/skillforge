@@ -1,0 +1,74 @@
+# Release engineering configuration for SkillForge (Phase 51, REL-03).
+# Tag push (v*) triggers .github/workflows/release.yml, which runs
+# goreleaser with this config. The Linux build needs CGO (go-duckdb).
+version: 2
+
+project_name: skillforge
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: skillforge-server
+    main: ./cmd/server
+    binary: skillforge-server
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+      - windows
+    goarch:
+      - amd64
+    # Windows CGO needs a mingw-w64 cross toolchain; on the GitHub runner
+    # this comes from msys2 (see release.yml). If the runner cannot link
+    # go-duckdb for windows/amd64, drop the windows target here and in
+    # release.yml (recorded in the phase context as an open risk).
+
+archives:
+  - id: skillforge-archive
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  header: |
+    ## SkillForge {{ .Tag }}
+
+    Execution-time trust boundaries for AI agents — what the agent may
+    not answer, and what requires explicit approval.
+
+    > The server starts in stub mode without an API key: answers are
+    > extracted from retrieved knowledge chunks, clearly labeled
+    > `"mode": "stub"`. Set `LOCAL_API_KEY`/`LOCAL_BASE_URL`/`LOCAL_MODEL`
+    > (or the panel) for a real model.
+  footer: |
+    ## Quick start
+
+    1. Download the archive for your platform and unpack it.
+    2. Get an embedding endpoint (`ollama pull bge-m3` or any
+       OpenAI-compatible `/v1/embeddings`).
+    3. `export RETRIEVER_BACKEND=embedded BGE_M3_URL=... SKILLFORGE_MCP_SERVICE_SKILL=simple-qa`
+    4. `./skillforge-server` and open the printed port (web UI is served
+       same-origin when `web/dist` is present next to the binary).
+
+    Full quickstart: see README. The binary is the same one validated by
+    `verify-phase-49.sh` and `verify-phase-51.sh`.
