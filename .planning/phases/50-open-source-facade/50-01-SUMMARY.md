@@ -25,6 +25,10 @@ actuals:
   tasks: 3
   commits: 2
 ---
+## Accomplishments
+- README now tells the truth about the repo: all seven ready-to-run skills are listed one by one, the CI badge points at the real workflow file, CGO_ENABLED=1 is stated as the production build path, and docs/architecture.md carries a Mermaid four-layer map whose every backticked path was existence-checked.
+- The ROADMAP's Phase 50 wording was re-aligned from the stale 'Dify/RAGFlow' comparison to the shipped 'WeKnora/Semantica' positioning (historical Source lines kept intact).
+
 
 ## Summary
 

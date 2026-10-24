@@ -24,6 +24,9 @@ actuals:
   tasks: 2
   commits: 1
 ---
+## Accomplishments
+- A tag-triggered release workflow (push tags v*) runs three jobs — goreleaser snapshot with an ELF smoke test, an msys2/CGO Windows build, and a release job (the repo's only contents:write workflow) that assembles artifacts with generated notes and a header that states the stub caveat and the four-step quickstart — plus a README Releases section.
+
 
 ## Summary
 

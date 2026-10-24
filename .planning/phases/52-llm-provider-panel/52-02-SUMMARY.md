@@ -29,4 +29,7 @@ verification: |
 notes: |
   Set summary lives in 52-04-SUMMARY.md (plan: 04 is the collection record).
 ---
+## Accomplishments
+- internal/llm/dynamic.go installs a hot-reloading delegate chat model (nil-preserving stub semantics via ChatModelAvailable), five admin endpoints gate every mutation behind requireAdmin, and main.go wires the panel so saving config swaps upstream without a restart — a bad swap only clears the slot and falls back to stub.
+
 

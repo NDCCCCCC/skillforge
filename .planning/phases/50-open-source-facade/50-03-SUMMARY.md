@@ -24,6 +24,9 @@ actuals:
   tasks: 2
   commits: 1
 ---
+## Accomplishments
+- verify-phase-50.sh enforces the facade with six partitions and four mutation drills (D1..D4) — every drill was proven to bite (RED naming its partition) before the healthy tree was allowed to print ALL PASSED, and make verify-phase-50 wires it in.
+
 
 ## Summary
 

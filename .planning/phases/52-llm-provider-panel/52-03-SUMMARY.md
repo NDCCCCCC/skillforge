@@ -25,4 +25,7 @@ verification: |
 notes: |
   Set summary lives in 52-04-SUMMARY.md (plan: 04 is the collection record).
 ---
+## Accomplishments
+- An admin LLM provider panel (vendor/plan picker that autofills the base URL, key or env-indirect entry, model list pull, test/save, live source/mode/available status row) is mounted as the 12th admin tab with vitest coverage, end-to-end proven by UAT test 4's no-restart stub-to-live switch.
+
 

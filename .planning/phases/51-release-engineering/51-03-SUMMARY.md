@@ -24,6 +24,9 @@ actuals:
   tasks: 2
   commits: 1
 ---
+## Accomplishments
+- verify-phase-51.sh proves the release engineering with five partitions and four mutation drills (D1..D4 all RED), make verify-phase-51 wires it in, and the real tag push is the single remaining manual step (H-51-1/2).
+
 
 ## Summary
 

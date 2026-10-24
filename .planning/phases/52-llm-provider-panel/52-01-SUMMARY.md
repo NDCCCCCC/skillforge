@@ -23,4 +23,7 @@ verification: |
 notes: |
   Set summary lives in 52-04-SUMMARY.md (plan: 04 is the collection record).
 ---
+## Accomplishments
+- internal/llmconfig gives the server a vendor->plan->base-URL catalog (Zhipu, OpenCode Go/Go Plus/Zen, OpenAI, DeepSeek, Moonshot, SiliconFlow, Ollama, custom), an atomic 0600 config store with masked reads and env-indirect keys, a key-connectivity probe with classified failures, and a lenient four-shape /models parser.
+
 

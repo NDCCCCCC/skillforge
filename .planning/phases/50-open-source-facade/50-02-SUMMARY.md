@@ -31,6 +31,10 @@ actuals:
   tasks: 3
   commits: 1
 ---
+## Accomplishments
+- SECURITY.md distils the STRIDE register into four design stances with a private-vulnerability reporting path and a 7-day response commitment; CODE_OF_CONDUCT.md adopts Contributor Covenant 2.1.
+- Four community templates landed (.github ISSUE_TEMPLATE bug/feature + config + PULL_REQUEST_TEMPLATE) with a redaction warning in the bug form, and README gained a Community & Security block linking all of them.
+
 
 ## Summary
 

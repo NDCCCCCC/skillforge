@@ -22,6 +22,9 @@ actuals:
   tasks: 3
   commits: 1
 ---
+## Accomplishments
+- .goreleaser.yaml (v2) builds CGO_ENABLED=1 linux+windows/amd64 binaries of ./cmd/server; goreleaser check validates it and a WSL snapshot build produced a 98.6MB linux/amd64 ELF whose stub-mode smoke test served /api/skills=200 with a real 'mode':'stub' data-policy frame.
+
 
 ## Summary
 
