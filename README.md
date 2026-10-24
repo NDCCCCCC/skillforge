@@ -95,8 +95,8 @@ Observable consequences: answers are always verbatim quotes from a cited chunk (
 ## Releases
 
 Once v1.7.0 is tagged, the
-[Releases page](../../releases) ships prebuilt `skillforge-server`
-binaries for linux/amd64 and windows/amd64 (CGO builds — go-duckdb needs
+[Releases page](../../releases) ships prebuilt binaries —
+`skillforge-server-linux-amd64` and `skillforge-server-windows-amd64` (CGO builds — go-duckdb needs
 a C toolchain) together with structured release notes. The linux binary
 is smoke-tested in stub mode by the release workflow; see
 [release.yml](.github/workflows/release.yml).

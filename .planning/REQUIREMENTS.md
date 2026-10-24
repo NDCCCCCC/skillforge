@@ -8,9 +8,9 @@
 
 ## 开源门面 (FACE)
 
-- [ ] **FACE-01**: README 与实际一致——`docs/demo.gif` 破图修复（真实运行素材）、示例 skill 数量更正为 7、badge 链接全部有效
-- [ ] **FACE-02**: 新访客可理解架构——`docs/architecture.md` 组件图（agent 内核/知识层/治理层/平台层）+ README 中 vs Dify/RAGFlow 差异化对比表
-- [ ] **FACE-03**: 社区设施齐备——SECURITY.md、CODE_OF_CONDUCT.md、GitHub issue/PR 模板
+- [x] **FACE-01**: README 与实际一致——`docs/demo.gif` 破图修复（真实运行素材）、示例 skill 数量更正为 7、badge 链接全部有效
+- [x] **FACE-02**: 新访客可理解架构——`docs/architecture.md` 组件图（agent 内核/知识层/治理层/平台层）+ README 中 vs Dify/RAGFlow 差异化对比表
+- [x] **FACE-03**: 社区设施齐备——SECURITY.md、CODE_OF_CONDUCT.md、GitHub issue/PR 模板
 
 ## CI 矩阵 (CICD)
 
@@ -63,9 +63,9 @@ v1.6 遗留 backlog（继承进 v1.7 Traceability 表，REL-04 补录）。定�
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FACE-01 | Phase 50 | Pending |
-| FACE-02 | Phase 50 | Pending |
-| FACE-03 | Phase 50 | Pending |
+| FACE-01 | Phase 50 | Complete |
+| FACE-02 | Phase 50 | Complete |
+| FACE-03 | Phase 50 | Complete |
 | CICD-01 | Phase 48 | Complete (run 39380373930) |
 | CICD-02 | Phase 48 | Complete (run 39380373930) |
 | CICD-03 | Phase 48 | Complete (run 39380373930) |
