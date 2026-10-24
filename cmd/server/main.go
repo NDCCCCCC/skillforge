@@ -115,7 +115,9 @@ import (
 	"github.com/skillforge/skillforge/internal/data"
 	"github.com/skillforge/skillforge/internal/document"
 	"github.com/skillforge/skillforge/internal/duckdb"
+	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
+	"github.com/skillforge/skillforge/internal/embedder/local"
 	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
@@ -289,7 +291,20 @@ func main() {
 
 	// 1. Env var parsing. MILVUS_ADDRESS / MONGO_URI are validated inside
 	// the backend switch (only the configured backend's URI is required).
-	bgeURL := envRequired("BGE_M3_URL")
+	// EMBEDDER_BACKEND selects the vectorization backend:
+	//   - "bge" (default, backward compatible): external BGE-M3 HTTP
+	//     endpoint; BGE_M3_URL is required.
+	//   - "local": in-process feature-hashing embedder
+	//     (internal/embedder/local) — fully offline, no endpoint, no model
+	//     files. Lexical semantics (shared words/char-bigrams), the honest
+	//     hermetic default for demo/offline deployments.
+	embedderBackend := strings.ToLower(envOr("EMBEDDER_BACKEND", "bge"))
+	var bgeURL string
+	if embedderBackend == "bge" {
+		bgeURL = envRequired("BGE_M3_URL")
+	} else {
+		bgeURL = os.Getenv("BGE_M3_URL")
+	}
 	bgeModel := envOr("BGE_M3_MODEL", "bge-m3")
 	bgeTimeoutSec := envOr("BGE_M3_TIMEOUT", "60")
 	// BGE_M3_TLS_SKIP_VERIFY (opt-in) disables TLS certificate verification
@@ -464,18 +479,51 @@ func main() {
 	}
 	log.Printf("[OK] loaded %d Skill(s)", len(manifests))
 
-	// 6. BGE-M3 HTTP embedder (production; refuses on outage).
-	// BGE_M3_MODEL defaults to "bge-m3" (required by Ollama's
-	// OpenAI-compatible /v1/embeddings; harmless on vLLM/TEI).
-	// BGE_M3_TIMEOUT defaults to 60s (Ollama cold-loads the 1.2GB model on
-	// first call; internal Volcano/TEI returns <1s so the ceiling is harmless).
-	bgeTimeout, err := time.ParseDuration(bgeTimeoutSec + "s")
-	if err != nil || bgeTimeout <= 0 {
-		bgeTimeout = 60 * time.Second
+	// 6. Embedder (EMBEDDER_BACKEND switch). "bge" = external BGE-M3 HTTP
+	// endpoint (production; refuses on outage) — BGE_M3_MODEL defaults to
+	// "bge-m3" (required by Ollama's OpenAI-compatible /v1/embeddings;
+	// harmless on vLLM/TEI) and BGE_M3_TIMEOUT defaults to 60s (Ollama
+	// cold-loads the 1.2GB model on first call; internal Volcano/TEI
+	// returns <1s so the ceiling is harmless). "local" = in-process
+	// feature-hashing embedder (offline, zero-dependency).
+	var emb embedder.Embedder
+	var embedderModelName string
+	switch embedderBackend {
+	case "local":
+		le, lerr := local.New(local.Config{})
+		if lerr != nil {
+			log.Fatalf("[FAIL] cmd/server: local embedder init: %v", lerr)
+		}
+		emb = le
+		embedderModelName = local.Model
+		log.Printf("[OK] cmd/server: EMBEDDER_BACKEND=local — in-process feature-hashing embedder (%s, dim %d), fully offline; lexical semantics only (no paraphrase recall — switch to bge for that)", local.Model, le.Dimensions())
+	case "bge":
+		bgeTimeout, err := time.ParseDuration(bgeTimeoutSec + "s")
+		if err != nil || bgeTimeout <= 0 {
+			bgeTimeout = 60 * time.Second
+		}
+		emb = bge.New(bge.Config{URL: bgeURL, Model: bgeModel, Timeout: bgeTimeout, InsecureSkipVerify: bgeTLSSkipVerify})
+		embedderModelName = bgeModel
+		if bgeTLSSkipVerify {
+			log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", bgeURL)
+		}
+	default:
+		log.Fatalf("[FAIL] cmd/server: EMBEDDER_BACKEND=%q — must be \"bge\" or \"local\"", embedderBackend)
 	}
-	emb := bge.New(bge.Config{URL: bgeURL, Model: bgeModel, Timeout: bgeTimeout, InsecureSkipVerify: bgeTLSSkipVerify})
-	if bgeTLSSkipVerify {
-		log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", bgeURL)
+	// Retrieval refusal floor (GEVL-01, internal/server/pipeline.go): 0.3 is
+	// calibrated for BGE-M3 semantic cosine; the local feature-hashing
+	// embedder scores systematically lower, so recalibrate. An explicit
+	// SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD always wins.
+	if v := os.Getenv("SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD"); v != "" {
+		if f, perr := strconv.ParseFloat(v, 64); perr == nil && f >= 0 && f < 1 {
+			server.RetrievalScoreThreshold = float32(f)
+			log.Printf("[OK] cmd/server: retrieval score threshold = %.3f (SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD)", f)
+		} else {
+			log.Printf("[WARN] cmd/server: invalid SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD=%q — keeping default %.2f", v, server.RetrievalScoreThreshold)
+		}
+	} else if embedderBackend == "local" {
+		server.RetrievalScoreThreshold = 0.1
+		log.Printf("[OK] cmd/server: retrieval score threshold = 0.100 (EMBEDDER_BACKEND=local recalibration; the BGE 0.3 floor refuses everything under lexical-hash scores)")
 	}
 
 	// Phase 39 — ECL gate (D-ECL-01 / RESEARCH A3): the pipeline is ON by
@@ -504,7 +552,7 @@ func main() {
 	if backend == "" {
 		backend = "milvus"
 	}
-	r, backendLabel := buildRetriever(ctx, backend, emb, kbReg)
+	r, backendLabel := buildRetriever(ctx, backend, emb, embedderModelName, kbReg)
 
 	// Wire the narrow IndexerBackend for the upload pipeline (Phase 27).
 	// The upload handler uses this to insert chunks; it does NOT know
@@ -1367,7 +1415,7 @@ var knowledgeDirForSeed = "knowledge/"
 //
 // Returns the constructed Retriever plus a short label for the startup
 // log line (e.g. "milvus(10.x.x.x:19530)" / "mongo(10.x.x.x:27017)").
-func buildRetriever(ctx context.Context, backend string, emb *bge.BGE, kbReg kb.Registry) (retriever.Retriever, string) {
+func buildRetriever(ctx context.Context, backend string, emb embedder.Embedder, embedderModelName string, kbReg kb.Registry) (retriever.Retriever, string) {
 	switch backend {
 	case "none":
 		// Phase 17 live-UAT gap closure: safe degraded backend for
@@ -1395,7 +1443,7 @@ func buildRetriever(ctx context.Context, backend string, emb *bge.BGE, kbReg kb.
 		cacheDir := envOr("SKILLFORGE_VECTOR_CACHE_DIR", ".skillforge-cache/vectors")
 		ec, err := embedded.New(embedded.Config{
 			Embedder:     emb,
-			Model:        envOr("BGE_M3_MODEL", "bge-m3"),
+			Model:        embedderModelName,
 			Dimensions:   emb.Dimensions(),
 			CacheDir:     cacheDir,
 			EndpointURL:  os.Getenv("BGE_M3_URL"),

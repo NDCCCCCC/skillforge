@@ -61,7 +61,16 @@ import (
 // automatic one — the threshold governs the refusal floor (a trust
 // boundary), so its value is reviewed by a human before going live.
 // See eval/README.md for the calibration procedure.
-const retrievalScoreThreshold = 0.3
+//
+// The value is a VAR (not const) so EMBEDDER_BACKEND can recalibrate it at
+// boot: 0.3 is calibrated for BGE-M3 semantic cosine (typical relevant
+// scores 0.4–0.8). The in-process feature-hashing embedder
+// (internal/embedder/local) produces sparse bag-of-features vectors whose
+// cosine scores are systematically lower — under it the same 0.3 floor
+// refuses nearly everything. cmd/server overrides this when
+// EMBEDDER_BACKEND=local (SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD still wins
+// if set).
+var RetrievalScoreThreshold = float32(0.3)
 
 // pipelineEmitError wraps an SSE emit error and carries a persisted flag
 // indicating whether the audit+turn row was already written before the emit
@@ -256,7 +265,7 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	emitSubprogress(c, wire.SubprogressStep{Step: "retrieve", Tier: tiers[0]})
 	emitSubprogress(c, wire.SubprogressStep{Step: "found_candidates", Tier: tiers[0], Count: len(chunks)})
 
-	if maxScore(chunks) < retrievalScoreThreshold {
+	if maxScore(chunks) < RetrievalScoreThreshold {
 		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonLowRetrievalScore, true)
 	}
 
