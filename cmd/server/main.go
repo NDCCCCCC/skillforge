@@ -519,8 +519,14 @@ func main() {
 		// embedded.Client 自身已实现 Insert（满足 retriever.IndexerBackend），
 		// 不需要第三个接口。
 		indexerBackend = r.(*embedded.Client)
+	case "none":
+		// degraded 模式（RETRIEVER_BACKEND=none）：检索已禁用，上传索引
+		// 管线不装配（nil），任何依赖 indexer 的路由按既有的 nil-拒绝路径
+		// 处理。绝不能落进 default 的 Milvus 类型断言 —— noopRetriever
+		// 会在启动时直接 panic（2026-10-24 降级启动实测）。
+		indexerBackend = nil
 	default:
-		// "none" and any unknown value fall through to milvus (default).
+		// unknown values fall through to milvus (default).
 		indexerBackend = milvus.NewIndexerBackend(r.(*milvus.MilvusClient))
 	}
 
