@@ -1,0 +1,132 @@
+# Release workflow (Phase 51, REL-03): a v* tag push builds the server
+# for linux and windows and publishes the GitHub Release with structured
+# notes. This is the only workflow with write access to releases.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: build linux/amd64 (goreleaser snapshot)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: build --snapshot --clean --single-target --id skillforge-server
+      - name: smoke the linux binary (stub mode)
+        env:
+          RETRIEVER_BACKEND: embedded
+          BGE_M3_URL: http://127.0.0.1:1/v1/embeddings
+          SKILLFORGE_MCP_SERVICE_SKILL: simple-qa
+        run: |
+          BIN=dist/skillforge-server_linux_amd64_v1/skillforge-server
+          test -f "$BIN"
+          head -c 4 "$BIN" | od -An -tx1 | grep -q "7f 45 4c 46"
+          # cold start needs no network: the embedded retriever serves an
+          # empty corpus until knowledge/ is indexed; skills list is the
+          # readiness probe (same path as verify-phase-49's live driver).
+          ("$BIN" &) ; sleep 3
+          curl -sf http://localhost:8888/api/skills > /dev/null || {
+            echo "binary did not serve /api/skills" >&2; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skillforge-server-linux-amd64
+          path: dist/skillforge-server_linux_amd64_v1/skillforge-server
+
+  build-windows:
+    name: build windows/amd64 (msys2 mingw + CGO)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-icu
+            make
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: build (CGO_ENABLED=1)
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          export PATH="/mingw64/bin:$PATH"
+          go build -o skillforge-server.exe ./cmd/server
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skillforge-server-windows-amd64
+          path: skillforge-server.exe
+
+  release:
+    name: publish GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: assemble release assets
+        run: |
+          mkdir -p release-assets
+          cp artifacts/skillforge-server-linux-amd64/skillforge-server release-assets/
+          cp artifacts/skillforge-server-windows-amd64/skillforge-server.exe release-assets/
+          ls -la release-assets
+      - name: write release header
+        run: |
+          cat > RELEASE_HEADER.md <<'EOF'
+          ## SkillForge ${GITHUB_REF_NAME}
+
+          Execution-time trust boundaries for AI agents — what the agent may
+          not answer, and what requires explicit approval.
+
+          > The server starts in stub mode without an API key: answers are
+          > extracted from retrieved knowledge chunks, clearly labeled
+          > \`"mode": "stub"\`. Set \`LOCAL_API_KEY\`/\`LOCAL_BASE_URL\`/\`LOCAL_MODEL\`
+          > (or the admin panel) for a real model.
+
+          ## Quick start
+
+          1. Download the archive for your platform and unpack it.
+          2. Get an embedding endpoint (\`ollama pull bge-m3\` or any
+             OpenAI-compatible \`/v1/embeddings\`).
+          3. \`export RETRIEVER_BACKEND=embedded BGE_M3_URL=... SKILLFORGE_MCP_SERVICE_SKILL=simple-qa\`
+          4. \`./skillforge-server\` and open the printed port.
+
+          Full quickstart: see README. Validated by \`verify-phase-49.sh\` and
+          \`verify-phase-51.sh\`.
+          EOF
+      - name: publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body_path: RELEASE_HEADER.md
+          files: |
+            release-assets/*

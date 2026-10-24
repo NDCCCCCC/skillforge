@@ -92,6 +92,18 @@ Three annotations make a stub answer impossible to mistake for a real one (D-08)
 
 Observable consequences: answers are always verbatim quotes from a cited chunk (never paraphrased), refusals are more frequent (the stub refuses instead of guessing when no usable chunk text is found), and every response shows the `STUB` badge plus the 人工复核 flag. Note that `BGE_M3_URL` (the embedding endpoint) is still **required** in stub mode — stubbed is the LLM, not the retriever. Setting `GLM_API_KEY` (or `LOCAL_API_KEY` for an OpenAI-compatible local endpoint) and restarting switches back to the real model.
 
+## Releases
+
+Once v1.7.0 is tagged, the
+[Releases page](../../releases) ships prebuilt `skillforge-server`
+binaries for linux/amd64 and windows/amd64 (CGO builds — go-duckdb needs
+a C toolchain) together with structured release notes. The linux binary
+is smoke-tested in stub mode by the release workflow; see
+[release.yml](.github/workflows/release.yml).
+
+Prefer building yourself? The [Quick Start](#quick-start) above is the
+authoritative path and needs no release artifacts.
+
 ## Run without Docker / without an API key
 
 The full stack above is the recommended path. This section is the **hermetic** path: no Docker, no Milvus, no etcd, no minio, and no LLM API key — just a Go toolchain, Node, and one embedding endpoint.
