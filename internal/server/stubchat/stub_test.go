@@ -329,3 +329,64 @@ func TestFirstSpan_FenceLinesExcluded(t *testing.T) {
 	// fence lines, so a chunk that is ALL fenced code still yields the
 	// code body (stop-at-fence never fires before any content line).
 }
+
+// 260925 — SQL-shaped chunks get a structured markdown answer: verbatim
+// SQL inside a balanced ```sql fence plus per-statement analysis, not a
+// raw dump. The citation span must stay a verbatim chunk substring.
+func TestRenderVerdict_SQLChunkExplainsAndFences(t *testing.T) {
+	content := "```sql\n" +
+		"update etl_payment_due_t\n" +
+		"set department_group_code='420100', department_group_name='武汉中心支公司'\n" +
+		"where department_group_name='业务';\n" +
+		"drop table tmp_ycb_001;\n" +
+		"```\n" +
+		"注:置信度未达自动采信阈值。\n"
+	v := renderVerdict([]refBlock{{ID: "19", Tier: "authority", Source: "sql-guides/x.md", Content: content}})
+	if v.Status != "ok" {
+		t.Fatalf("status = %q, want ok", v.Status)
+	}
+	ans := v.Answer
+	if strings.Count(ans, "```sql") != 1 || strings.Count(ans, "```")%2 != 0 {
+		t.Fatalf("answer fence unbalanced:\n%s", ans)
+	}
+	if !strings.Contains(ans, "**逐句分析**") || !strings.Contains(ans, "**概述**") {
+		t.Fatalf("answer missing 概述/逐句分析 sections:\n%s", ans)
+	}
+	if !strings.Contains(ans, "`etl_payment_due_t`") || !strings.Contains(ans, "`tmp_ycb_001`") {
+		t.Fatalf("analysis missing target tables:\n%s", ans)
+	}
+	// Span stays verbatim-grounded.
+	if !strings.Contains(content, v.Citations[0].Span) {
+		t.Fatalf("span not verbatim substring: %q", v.Citations[0].Span)
+	}
+	// Prose chunk keeps the legacy answer (= span).
+	prose := renderVerdict([]refBlock{{ID: "7", Tier: "authority", Source: "a.md", Content: "员工离职后竞业限制期最长不超过 24 个月。\n"}})
+	if prose.Answer != prose.Citations[0].Span {
+		t.Fatalf("prose answer should equal span; got %q vs %q", prose.Answer, prose.Citations[0].Span)
+	}
+}
+
+// 260925 — ECL-split SQL manuals put an overview fragment (no fence)
+// FIRST and the actual ```sql body in a later chunk; renderVerdict must
+// answer from the SQL-shaped block, not blocks[0].
+func TestRenderVerdict_PrefersSQLBlockOverOverviewFirst(t *testing.T) {
+	prompt := "[ref-1] tier=sql-guides source=001__sec01.md\n" +
+		"# 公司业务部、武汉中支部门组部门科室等信息更新\n\n" +
+		"**涉及表/视图**: `etl_payment_due_t`, `etl_policy`\n---\n" +
+		"[ref-2] tier=sql-guides source=001__sec03.md\n" +
+		"## SQL / 正文\n\n```sql\nupdate etl_payment_due_t\nset department_group_code='420100'\nwhere department_group_name='业务';\n```\n---\n"
+	blocks := extractRefBlocks(prompt)
+	v := renderVerdict(blocks)
+	if v.Status != "ok" {
+		t.Fatalf("status=%s", v.Status)
+	}
+	if v.Citations[0].ChunkID != "2" {
+		t.Fatalf("expected SQL block chunk_id=2, got %s", v.Citations[0].ChunkID)
+	}
+	if !strings.Contains(v.Answer, "```sql") || !strings.Contains(v.Answer, "概述") {
+		t.Fatalf("answer not SQL-explained:\n%s", v.Answer)
+	}
+	if !strings.Contains(v.Answer, "etl_payment_due_t") {
+		t.Fatalf("answer missing SQL body:\n%s", v.Answer)
+	}
+}

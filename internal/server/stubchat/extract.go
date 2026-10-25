@@ -206,26 +206,51 @@ func firstSpan(content string) string {
 // It must NOT return an error — the pipeline would burn its 4 backoff
 // retries on a deterministic outcome.
 //
-// OK branch: take blocks[0] only (slice + first element — no map
-// iteration order, no randomness, so concurrent Streams are byte-identical).
-// Span and Answer are both firstSpan(blocks[0].Content) — a verbatim
-// substring of the chunk. Confidence is pinned to 0.5 and ReviewRequired
-// to true by the stub itself (D-10): pipeline.go has no mode branch, so
-// the floor must live here.
+// OK branch: prefer the FIRST SQL-shaped block, falling back to blocks[0].
+// ECL-split SQL manuals put a short overview fragment (标题 + 涉及表, no
+// fence) first and the actual statement body (```sql fence) in a LATER
+// chunk — answering from blocks[0] yields the table list but never the
+// SQL. Slice-index scan only (no map iteration order, no randomness, so
+// concurrent Streams are byte-identical). Span and Answer are derived
+// from the chosen block — a verbatim substring of its content.
+// Confidence is pinned to 0.5 and ReviewRequired to true by the stub
+// itself (D-10): pipeline.go has no mode branch, so the floor must live
+// here.
 func renderVerdict(blocks []refBlock) verdict.Verdict {
 	if len(blocks) == 0 {
 		return refusedVerdict()
 	}
-	span := firstSpan(blocks[0].Content)
+	chosen := 0
+	if !looksLikeSQL(blocks[0].Content) {
+		// Only switch to a later SQL block when it is a SIBLING section
+		// of blocks[0]'s own document (same ECL base name before
+		// "__sec"): an overview fragment followed by its ```sql body.
+		// A SQL chunk from an UNRELATED document must not hijack the
+		// answer — asking "出差住宿标准" with a travel-policy chunk first
+		// must keep answering from the policy even when a billing SQL
+		// script is also in the evidence.
+		for i := 1; i < len(blocks); i++ {
+			if looksLikeSQL(blocks[i].Content) && sameDocSource(blocks[0].Source, blocks[i].Source) {
+				chosen = i
+				break
+			}
+		}
+	}
+	span := firstSpan(blocks[chosen].Content)
 	if span == "" {
 		return refusedVerdict()
 	}
+	// 260925: SQL-shaped chunks get a structured markdown answer
+	// (概述 + fenced verbatim SQL + 逐句分析) instead of raw SQL text.
+	// Citation.Span stays the verbatim substring — GroundingCheck only
+	// verifies spans (internal/verdict/grounding.go:170), not answers.
+	answer := buildStubAnswer(blocks[chosen].Content, span)
 	return verdict.Verdict{
 		Status:         "ok",
 		Confidence:     0.5,
-		Citations:      []verdict.Citation{{ChunkID: blocks[0].ID, Span: span, Tier: blocks[0].Tier}},
+		Citations:      []verdict.Citation{{ChunkID: blocks[chosen].ID, Span: span, Tier: blocks[chosen].Tier}},
 		ReviewRequired: true,
-		Answer:         span,
+		Answer:         answer,
 		Mode:           verdict.ModeStub,
 	}
 }
