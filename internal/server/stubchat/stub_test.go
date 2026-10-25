@@ -390,3 +390,28 @@ func TestRenderVerdict_PrefersSQLBlockOverOverviewFirst(t *testing.T) {
 		t.Fatalf("answer missing SQL body:\n%s", v.Answer)
 	}
 }
+
+// 260925 — the citation span of a SQL chunk must be the first COMPLETE
+// statement (verbatim, ends with ';'), never a rune-capped mid-clause
+// cut that reads as "the SQL is truncated".
+func TestRenderVerdict_SQLSpanIsFirstCompleteStatement(t *testing.T) {
+	prompt := "[ref-1] tier=sql-guides source=001__sec03.md\n" +
+		"## SQL / 正文\n\n```sql\n" +
+		"update etl_payment_due_t\nset department_group_code='420100'\n  , department_name='业务部'\nwhere department_group_name='业务'\nand section_office_code not in ('OVD','CCI');\n" +
+		"update etl_policy\nset department_code='WFV';\n```\n---\n"
+	v := renderVerdict(extractRefBlocks(prompt))
+	span := v.Citations[0].Span
+	if !strings.HasSuffix(span, ";") {
+		t.Fatalf("span does not end with ';':\n%s", span)
+	}
+	if strings.Contains(span, "etl_policy\n") && strings.Count(span, "update") != 1 {
+		t.Fatalf("span leaked into the second statement:\n%s", span)
+	}
+	if !strings.Contains(span, "etl_payment_due_t") {
+		t.Fatalf("span missing first statement:\n%s", span)
+	}
+	// Verbatim substring of the chunk content (GroundingCheck precondition).
+	if !strings.Contains(prompt, span) {
+		t.Fatalf("span is not a verbatim substring of the evidence")
+	}
+}

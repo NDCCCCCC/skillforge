@@ -237,6 +237,16 @@ func renderVerdict(blocks []refBlock) verdict.Verdict {
 		}
 	}
 	span := firstSpan(blocks[chosen].Content)
+	// 260925: SQL chunks cite their FIRST COMPLETE STATEMENT instead of
+	// the generic firstSpan — the 400-rune cap cut long statements
+	// mid-clause, which read as "the SQL is truncated" in the citation.
+	// firstStatementSpan output is a verbatim substring of the fenced
+	// SQL, so GroundingCheck is unchanged.
+	if looksLikeSQL(blocks[chosen].Content) {
+		if s := firstStatementSpan(extractFencedSQL(blocks[chosen].Content)); s != "" {
+			span = s
+		}
+	}
 	if span == "" {
 		return refusedVerdict()
 	}

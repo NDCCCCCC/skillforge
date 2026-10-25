@@ -41,6 +41,41 @@ import (
 // 100-statement chunk cannot produce an unbounded answer.
 const maxAnswerStmts = 12
 
+// firstStatementSpan returns the verbatim FIRST complete SQL statement
+// from fenced SQL text: from the first keyword-led line through its
+// terminating ';'. Used as the citation span for SQL chunks — the
+// generic firstSpan rune cap would cut a long statement mid-clause,
+// which reads as "the SQL is truncated". The result is always a
+// verbatim substring of sqlText (GroundingCheck-safe); "" when no
+// keyword-led line exists.
+func firstStatementSpan(sqlText string) string {
+	lines := strings.Split(sqlText, "\n")
+	start := -1
+	for i, l := range lines {
+		t := strings.TrimSpace(l)
+		up := strings.ToUpper(t)
+		for _, kw := range []string{"UPDATE", "SELECT", "INSERT", "DELETE", "DROP", "CREATE", "ALTER", "MERGE", "TRUNCATE"} {
+			if strings.HasPrefix(up, kw) {
+				start = i
+				break
+			}
+		}
+		if start >= 0 {
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	for i := start; i < len(lines); i++ {
+		if strings.Contains(lines[i], ";") {
+			return strings.TrimSpace(strings.Join(lines[start:i+1], "\n"))
+		}
+	}
+	// Unterminated tail: still return it verbatim (no fabricated ';').
+	return strings.TrimSpace(strings.Join(lines[start:], "\n"))
+}
+
 // sameDocSource reports whether two ECL source paths belong to the same
 // base document: extension stripped, then the "__secNN" section suffix
 // removed ("取数口径/001_机构部门科室信息更新__sec01_概述.md" and
