@@ -276,3 +276,28 @@ func TestExtractRefBlocks_TableDriven(t *testing.T) {
 		assert.Contains(t, blocks[0].Content, "[ref-99]")
 	})
 }
+
+// 260925 — multi-line span regression: a SQL chunk's first line is often
+// just `update etl_payment_due_t`; the span must be a CONTIGUOUS verbatim
+// run of lines (GroundingCheck still passes) rather than a lone line.
+func TestFirstSpan_MultiLineSQLChunk(t *testing.T) {
+	content := "update etl_payment_due_t\n" +
+		"set department_group_code='420100'\n" +
+		", department_name='业务部'\n" +
+		"where department_group_name='业务';\n" +
+		"\n" +
+		"drop table tmp_ycb_001;\n"
+	span := firstSpan(content)
+	if span == "update etl_payment_due_t" {
+		t.Fatalf("firstSpan returned a single line; want contiguous multi-line span")
+	}
+	if !strings.Contains(content, span) {
+		t.Fatalf("span is not a verbatim substring of content:\n%q", span)
+	}
+	if !strings.Contains(span, "\n") {
+		t.Fatalf("span should span multiple lines, got:\n%q", span)
+	}
+	if n := utf8.RuneCountInString(span); n > 400 {
+		t.Fatalf("span exceeds maxSpanRunes: %d", n)
+	}
+}

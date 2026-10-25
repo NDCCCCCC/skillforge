@@ -124,42 +124,63 @@ func trimBlockTail(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// firstSpan picks the answer/citation span from chunk content: the first
-// line (skipping blank lines, `#` headings, and standalone `---`
-// separators) whose rune length is within [8, 200], TrimSpace'd. If no
-// line qualifies, fall back to the first non-empty line truncated to 200
-// runes. Returns "" when content is all whitespace — the caller must then
-// take the refused branch. An empty span must NEVER be produced: an empty
-// string is a substring of everything, so it would silently pass
+// maxSpanRunes caps the extracted span at ~400 runes (an entire CJK
+// paragraph fits comfortably; a 3000-byte SQL chunk yields its opening
+// statement block instead of a single 22-rune line).
+const maxSpanRunes = 400
+
+// firstSpan picks the answer/citation span from chunk content: the
+// CONTIGUOUS run of lines starting at the first content line (skipping
+// blank lines, `#` headings, and standalone `---` separators), kept
+// verbatim including internal newlines, until maxSpanRunes runes have
+// accumulated (cut at a whole-line boundary; a single over-long first
+// line is rune-truncated). The pre-260925 behavior returned only the
+// FIRST qualifying line — fine for prose regulations, but a SQL chunk's
+// first line is often just `update etl_payment_due_t`, gutting the
+// stub answer. Multi-line is still a verbatim substring of content.
+// Returns "" when content is all whitespace — the caller must then
+// take the refused branch. An empty span must NEVER be produced: an
+// empty string is a substring of everything, so it would silently pass
 // GroundingCheck (strings.Contains(any, "") == true) and defeat D-10.
 //
 // The return value is always a verbatim substring of content (only
 // leading/trailing whitespace removed), which is exactly the precondition
 // GroundingCheck needs: strings.Contains(Normalize(chunk), Normalize(span)).
 func firstSpan(content string) string {
-	for _, line := range strings.Split(content, "\n") {
+	lines := strings.Split(content, "\n")
+	start := -1
+	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") || trimmed == "---" {
 			continue
 		}
-		n := utf8.RuneCountInString(trimmed)
-		if n >= 8 && n <= 200 {
-			return trimmed
+		start = i
+		break
+	}
+	if start < 0 {
+		return ""
+	}
+	// Single over-long opening line: verbatim rune-truncated prefix.
+	if n := utf8.RuneCountInString(lines[start]); n > maxSpanRunes {
+		return string([]rune(strings.TrimSpace(lines[start]))[:maxSpanRunes])
+	}
+	var b strings.Builder
+	count := 0
+	for i := start; i < len(lines); i++ {
+		add := utf8.RuneCountInString(lines[i]) + 1 // +1 newline
+		if count > 0 && count+add > maxSpanRunes {
+			break // whole-line boundary — span stays a verbatim substring
+		}
+		if count > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(lines[i])
+		count += add
+		if count >= maxSpanRunes {
+			break
 		}
 	}
-	// Fallback: first non-empty line, rune-truncated to 200.
-	for _, line := range strings.Split(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		runes := []rune(trimmed)
-		if len(runes) > 200 {
-			return string(runes[:200])
-		}
-		return trimmed
-	}
-	return ""
+	return strings.TrimSpace(b.String())
 }
 
 // renderVerdict deterministically maps extracted blocks to a Verdict.
