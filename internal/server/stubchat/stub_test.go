@@ -301,3 +301,31 @@ func TestFirstSpan_MultiLineSQLChunk(t *testing.T) {
 		t.Fatalf("span exceeds maxSpanRunes: %d", n)
 	}
 }
+
+// 260925 follow-up — fence lines must never leak into the span: the
+// answer renders as markdown downstream and an unbalanced fence (the
+// 400-rune cap can cut before the closing fence) swallows the answer
+// into one code block. Span must stop AT a fence while staying a
+// verbatim contiguous substring.
+func TestFirstSpan_FenceLinesExcluded(t *testing.T) {
+	content := "## 章节\n" +
+		"```sql\n" +
+		"update etl_payment_due_t set department_group_code='420100';\n" +
+		"update etl_policy_request_issue_t set department_group_code='420100';\n" +
+		"```\n" +
+		"注:置信度未达自动采信阈值,需人工复核。\n"
+	span := firstSpan(content)
+	if strings.Contains(span, "```") {
+		t.Fatalf("span contains a fence line:\n%q", span)
+	}
+	if !strings.Contains(span, "update etl_payment_due_t") {
+		t.Fatalf("span lost the fenced SQL body:\n%q", span)
+	}
+	if !strings.Contains(content, span) {
+		t.Fatalf("span is not a verbatim substring of content:\n%q", span)
+	}
+	// Prose after the closing fence is reachable when the fence opens the
+	// file but the first content line follows it — start-skip only skips
+	// fence lines, so a chunk that is ALL fenced code still yields the
+	// code body (stop-at-fence never fires before any content line).
+}
