@@ -121,6 +121,24 @@ func Catalog() []Vendor {
 			},
 		},
 		{
+			ID:    "minimax",
+			Label: "MiniMax",
+			Plans: []Plan{
+				{
+					ID:      "standard",
+					Label:   "标准 API（按量）",
+					BaseURL: "https://api.minimaxi.com/v1",
+					Note:    "MiniMax 开放平台（国内站），OpenAI 兼容，按 token 计费；M3.1 系列为 MiniMax-M3.1",
+				},
+				{
+					ID:      "intl",
+					Label:   "国际站 API",
+					BaseURL: "https://api.minimax.io/v1",
+					Note:    "MiniMax 国际站，OpenAI 兼容，按 token 计费",
+				},
+			},
+		},
+		{
 			ID:    "siliconflow",
 			Label: "SiliconFlow（硅基流动）",
 			Plans: []Plan{

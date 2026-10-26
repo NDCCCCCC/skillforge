@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { ArrowUp, Paperclip, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
+import ModelPicker from './ModelPicker';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -248,9 +249,10 @@ export default function ChatInput({
           <span style={{ fontSize: 'var(--text-xs)' }}>模式：{modeLabel}</span>
         </div>
       ) : (
-        <div className="relative mb-2">
-          {/* Read-only badge (quick plan 260815-0xb): selection happens
-              via the slash menu below, not via a click popover. */}
+        <div className="relative mb-2 flex items-center justify-between gap-2">
+          {/* Left: Skill badge (or hint); Right: LLM model picker
+              (260926 — chat-page model switching, hot-reload). */}
+          <div style={{ minWidth: 0 }}>
           {currentSkill && (
             <div
               data-testid="chat-input-current-skill"
@@ -269,6 +271,8 @@ export default function ChatInput({
               未选择 Skill · 输入 / 选择
             </div>
           )}
+          </div>
+          <ModelPicker />
           {menuOpen && (
             <div
               data-testid="chat-input-skill-menu"

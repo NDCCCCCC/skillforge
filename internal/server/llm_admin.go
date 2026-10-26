@@ -24,6 +24,9 @@
 //	POST /api/admin/llm/test               → 200 TestResult | 400 {error} | 503
 //	GET  /api/admin/llm/models?vendor=&plan=&base_url=&api_key_env=
 //	                                       → 200 {models} | 400 {error} | 503
+//	POST /api/admin/llm/model {model}      → 200 {ok, model, available, masked_key}
+//	                                       | 400 {error} | 503 —— 只切模型,
+//	                                       密钥不出服务端(聊天页选择器用)。
 //
 // 关键语义（D-52 系列）：
 //   - GET 永不返回明文 key（T-52-01：llmconfig.Mask）。
@@ -37,6 +40,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
@@ -381,6 +385,57 @@ func (s *Deps) llmModelsHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	c.JSON(http.StatusOK, map[string]any{"models": models})
+}
+
+// llmModelSwitchRequest is the POST /api/admin/llm/model body. Key is
+// deliberately absent — the chat-page model picker must never see or
+// resend it; the server-side file config (~/.skillforge/llm.json, 0600)
+// already holds it.
+type llmModelSwitchRequest struct {
+	Model string `json:"model"`
+}
+
+// llmModelHandler implements POST /api/admin/llm/model —— 只切模型:
+// Load 现有文件配置 → 改 Model → Save → 立即热重载。密钥永不出服务端,
+// 前端只需 Admin Token。尚未保存过完整配置(无 file)时 400 —— 让用户
+// 先去 admin LLM 面板保存一次(Vendor/Plan/BaseURL/key)。
+func (s *Deps) llmModelHandler(ctx context.Context, c *app.RequestContext) {
+	if !requireAdmin(c) {
+		return
+	}
+	if s.LLMDynamic == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: "llm provider panel not initialized"})
+		return
+	}
+	var req llmModelSwitchRequest
+	if err := c.BindAndValidate(&req); err != nil || strings.TrimSpace(req.Model) == "" {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid JSON body: model is required"})
+		return
+	}
+	cfg, present, err := llmconfig.Load()
+	if err != nil || !present || cfg.BaseURL == "" {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "no saved llm config — save vendor/base_url/api key once in the admin LLM panel first"})
+		return
+	}
+	cfg.Model = strings.TrimSpace(req.Model)
+	if err := cfg.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
+		return
+	}
+	if err := llmconfig.Save(cfg); err != nil {
+		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "save failed: " + err.Error()})
+		return
+	}
+	s.applyLLMConfig()
+	ok := s.LLMDynamic.Available()
+	c.JSON(http.StatusOK, map[string]any{
+		"ok":         true,
+		"model":      cfg.Model,
+		"available":  ok,
+		"mode":       map[bool]string{true: "live", false: "stub"}[ok],
+		"masked_key": publicConfig(cfg).MaskedKey,
+		"note":       "hot-reloaded; no server restart needed",
+	})
 }
 
 // 确保接口实现（编译期护栏）。
