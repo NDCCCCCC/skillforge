@@ -9,11 +9,12 @@
 // model via POST /api/admin/llm/model {model}. The switch hot-reloads
 // the backend resolver — no server restart.
 //
-// Posture: fully optional chrome. 403 (no admin token) / network error /
-// stub mode without config → renders a muted non-interactive badge, so
-// the composer stays usable for anonymous visitors and tests.
+// Posture: fully optional chrome. 403 (no admin token) → clickable badge
+// that prompts once for the Admin Token and stores it in localStorage
+// (sf_admin_token); stub mode / network error → muted non-interactive
+// badge, so the composer stays usable for anonymous visitors and tests.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Cpu } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'sf_admin_token';
@@ -37,42 +38,61 @@ export default function ModelPicker() {
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState<string>('');
   const [usable, setUsable] = useState(false);
+  // denied = server answered 401/403 — the badge becomes a one-click
+  // token prompt instead of a misleading「未配置」.
+  const [denied, setDenied] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const load = useCallback(async (cancelledRef: { current: boolean }) => {
+    try {
+      const res = await fetch('/api/admin/llm/config', { headers: adminHeaders() });
+      if (res.status === 401 || res.status === 403) {
+        if (!cancelledRef.current) setDenied(true);
+        return;
+      }
+      if (!res.ok) return; // other errors — stay muted
+      const data: LlmConfigResponse = await res.json();
+      if (cancelledRef.current) return;
+      setDenied(false);
+      setModel(data.config?.model ?? '');
+      setMode(data.mode ?? '');
+      setUsable(true);
+      // Model list is best-effort: needs a reachable upstream.
       try {
-        const res = await fetch('/api/admin/llm/config', { headers: adminHeaders() });
-        if (!res.ok) return; // 403 without token — stay muted
-        const data: LlmConfigResponse = await res.json();
-        if (cancelled) return;
-        setModel(data.config?.model ?? '');
-        setMode(data.mode ?? '');
-        setUsable(true);
-        // Model list is best-effort: needs a reachable upstream.
-        try {
-          const q = new URLSearchParams();
-          if (data.config?.vendor) q.set('vendor', data.config.vendor);
-          if (data.config?.plan) q.set('plan', data.config.plan);
-          if (data.config?.base_url) q.set('base_url', data.config.base_url);
-          const mres = await fetch(`/api/admin/llm/models?${q.toString()}`, {
-            headers: adminHeaders(),
-          });
-          if (mres.ok) {
-            const mdata = (await mres.json()) as { models?: string[] };
-            if (!cancelled && Array.isArray(mdata.models)) setModels(mdata.models);
-          }
-        } catch {
-          /* list unavailable — select falls back to free-text current model */
+        const q = new URLSearchParams();
+        if (data.config?.vendor) q.set('vendor', data.config.vendor);
+        if (data.config?.plan) q.set('plan', data.config.plan);
+        if (data.config?.base_url) q.set('base_url', data.config.base_url);
+        const mres = await fetch(`/api/admin/llm/models?${q.toString()}`, {
+          headers: adminHeaders(),
+        });
+        if (mres.ok) {
+          const mdata = (await mres.json()) as { models?: string[] };
+          if (!cancelledRef.current && Array.isArray(mdata.models)) setModels(mdata.models);
         }
       } catch {
-        /* backend down — stay muted */
+        /* list unavailable — select falls back to free-text current model */
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    } catch {
+      /* backend down — stay muted */
+    }
   }, []);
+
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    void load(cancelledRef);
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [load]);
+
+  function promptForToken() {
+    const token = window.prompt('请输入 Admin Token（SKILLFORGE_ADMIN_TOKEN）以读取/切换模型：');
+    if (token == null) return; // cancelled
+    if (token.trim()) localStorage.setItem(ADMIN_TOKEN_KEY, token.trim());
+    else localStorage.removeItem(ADMIN_TOKEN_KEY);
+    const cancelledRef = { current: false };
+    void load(cancelledRef);
+  }
 
   async function switchModel(next: string) {
     if (!next || switching) return;
@@ -84,6 +104,11 @@ export default function ModelPicker() {
         headers: adminHeaders(),
         body: JSON.stringify({ model: next }),
       });
+      if (res.status === 401 || res.status === 403) {
+        setDenied(true);
+        setUsable(false);
+        return;
+      }
       const data = (await res.json()) as { model?: string; mode?: string; error?: string };
       if (!res.ok) {
         setError(data.error ?? `切换失败 (${res.status})`);
@@ -96,6 +121,23 @@ export default function ModelPicker() {
     } finally {
       setSwitching(false);
     }
+  }
+
+  if (denied) {
+    return (
+      <button
+        type="button"
+        data-testid="model-picker"
+        data-mode="need-token"
+        onClick={promptForToken}
+        className="composer-skill-badge"
+        style={{ opacity: 0.75, cursor: 'pointer' }}
+        title="点击输入 Admin Token 后即可在此查看/切换模型"
+      >
+        <Cpu className="h-3 w-3" aria-hidden />
+        <span>模型：点此输入 Token</span>
+      </button>
+    );
   }
 
   if (!usable) {
