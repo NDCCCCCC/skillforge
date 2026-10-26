@@ -23,6 +23,8 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+
+	"github.com/skillforge/skillforge/internal/llmconfig"
 )
 
 // ExtraFieldsModel wraps a ToolCallingChatModel and injects extra
@@ -63,6 +65,27 @@ func LocalThinkOffModel(cm model.ToolCallingChatModel) model.ToolCallingChatMode
 		return cm
 	}
 	return WithExtraFields(cm, map[string]any{"think": false})
+}
+
+// PipelineExtraFields returns the extra top-level request fields shared by
+// the VerdictPipeline / rewriter / refusal-classifier call sites
+// (response_format:json_object + thinking:disabled, per spike 003).
+//
+// MiniMax M3.x exception (observed 2026-10-26): the M3.1 family REQUIRES
+// adaptive thinking — a request carrying thinking.type="disabled" is
+// rejected with HTTP 400 code 2013 ("requires adaptive thinking"). For
+// vendor "minimax" the thinking field is omitted entirely (adaptive stays
+// on by default; the 4096-token budget already headrooms for reasoning).
+// Any other vendor — including unknown/none (fail-open, file config
+// missing) — keeps the historical thinking:disabled field.
+func PipelineExtraFields() map[string]any {
+	fields := map[string]any{
+		"response_format": map[string]string{"type": "json_object"},
+	}
+	if llmconfig.CurrentVendor() != "minimax" {
+		fields["thinking"] = map[string]string{"type": "disabled"}
+	}
+	return fields
 }
 
 // Generate implements model.BaseChatModel with the extra fields merged in.

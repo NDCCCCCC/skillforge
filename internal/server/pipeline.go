@@ -408,10 +408,9 @@ func (s *Deps) streamLLMAndDrain(ctx context.Context, c *app.RequestContext, man
 	if manifest.Temperature != nil {
 		temp = *manifest.Temperature
 	}
-	extraFields := map[string]any{
-		"response_format": map[string]string{"type": "json_object"},
-		"thinking":        map[string]string{"type": "disabled"},
-	}
+	// PipelineExtraFields（llm 包）：response_format + thinking:disabled，
+	// 但 vendor=minimax 时跳过 thinking（M3.x 强制 adaptive，发 disabled 400/2013）。
+	extraFields := llm.PipelineExtraFields()
 	chatModelOpts := []model.Option{
 		model.WithTemperature(temp),
 		model.WithMaxTokens(4096),

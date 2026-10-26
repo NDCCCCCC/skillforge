@@ -166,10 +166,8 @@ func (r *QueryRewriter) Rewrite(ctx context.Context, history []schema.Message, q
 
 	// Step B: build the prompt.
 	userPrompt := fmt.Sprintf(rewriterUserTemplate, historyText, query)
-	extraFields := map[string]any{
-		"response_format": map[string]string{"type": "json_object"},
-		"thinking":        map[string]string{"type": "disabled"},
-	}
+	// llm.PipelineExtraFields: vendor=minimax 时省略 thinking（M3.x 强制 adaptive）。
+	extraFields := llm.PipelineExtraFields()
 	opts := []model.Option{
 		model.WithTemperature(0.0),
 		// 2048 headroom for thinking models — same rationale as the

@@ -179,10 +179,8 @@ func (c *RefusalClassifier) Classify(ctx context.Context, in RefusalClassifierIn
 	chunksBlock := renderChunks(in.Chunks)
 	userPrompt := fmt.Sprintf(classifierUserTemplate, in.Query, chunksBlock)
 
-	extraFields := map[string]any{
-		"response_format": map[string]string{"type": "json_object"},
-		"thinking":        map[string]string{"type": "disabled"},
-	}
+	// llm.PipelineExtraFields: vendor=minimax 时省略 thinking（M3.x 强制 adaptive）。
+	extraFields := llm.PipelineExtraFields()
 	opts := []model.Option{
 		model.WithTemperature(0.0),
 		// 2048, not a tight envelope-sized cap: thinking models (qwen3.8,
