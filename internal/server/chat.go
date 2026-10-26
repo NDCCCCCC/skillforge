@@ -886,18 +886,27 @@ func conclusionText(v verdict.Verdict, reg kb.Registry) string {
 	// which adds no signal). The review-required / confidence framing
 	// is preserved.
 	if v.Answer != "" {
-		// 260817-i36 (④): the LLM's Answer often carries its own terminal
-		// punctuation ("。", ".", "！", "!", "？", "?"). The template adds
-		// another "。", producing 「。。」 in the chat conclusion. Strip the
-		// trailing sentence-punctuation run first so the sentence always
-		// ends with exactly one "。".
-		answer := strings.TrimRight(strings.TrimSpace(v.Answer), "。.！!？?")
-		fmt.Fprintf(&b, "结论：%s。", answer)
+		// 261026 markdown conclusion: the conclusion surface is markdown
+		// (the FE renders it through react-markdown — fenced code blocks
+		// become copyable cmd-blocks). A multi-line or fence-bearing
+		// Answer (LLM prose with ```sql blocks, stub SQL explainer) is
+		// emitted verbatim — stripping terminal punctuation or appending
+		// "。" there would corrupt the fence. Single-line Answers keep
+		// the historical strip-double-period behavior (260817-i36 ④).
+		answer := strings.TrimSpace(v.Answer)
+		b.WriteString("**结论**\n\n")
+		if strings.Contains(answer, "\n") || strings.Contains(answer, "```") {
+			b.WriteString(answer)
+		} else {
+			trimmed := strings.TrimRight(answer, "。.！!？?")
+			b.WriteString(trimmed + "。")
+		}
 		if v.ReviewRequired {
-			b.WriteString("置信度未达自动采信阈值，需人工复核。")
+			b.WriteString("\n\n置信度未达自动采信阈值，需人工复核。")
 		}
 		if len(v.Citations) > 0 {
-			fmt.Fprintf(&b, "依据 %s tier 条款：「%s」。", tierDisplayName(reg, v.Citations[0].Tier), v.Citations[0].Span)
+			span := strings.ReplaceAll(v.Citations[0].Span, "\n", "\n> ")
+			fmt.Fprintf(&b, "\n\n**依据** %s tier 条款：\n\n> %s", tierDisplayName(reg, v.Citations[0].Tier), span)
 		}
 		return normalizeConclusionPunctuation(b.String())
 	}

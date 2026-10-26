@@ -1008,7 +1008,7 @@ func TestConclusionTextPunctuationNormalization(t *testing.T) {
 			Citations:  []verdict.Citation{{ChunkID: "3", Span: span, Tier: "authority"}},
 		}
 	}
-	citationSuffix := "依据 权威 tier 条款：「" + span + "」。"
+	citationSuffix := "\n\n**依据** 权威 tier 条款：\n\n> " + span
 
 	cases := []struct {
 		name   string
@@ -1018,32 +1018,32 @@ func TestConclusionTextPunctuationNormalization(t *testing.T) {
 		{
 			name:   "answer already ends with 。 (no double period)",
 			answer: "50 万元以下由部门负责人审批。",
-			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+			want:   "**结论**\n\n50 万元以下由部门负责人审批。" + citationSuffix,
 		},
 		{
 			name:   "answer without trailing punctuation",
 			answer: "50 万元以下由部门负责人审批",
-			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+			want:   "**结论**\n\n50 万元以下由部门负责人审批。" + citationSuffix,
 		},
 		{
 			name:   "answer ends with fullwidth exclamation",
 			answer: "50 万元以下由部门负责人审批！",
-			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+			want:   "**结论**\n\n50 万元以下由部门负责人审批。" + citationSuffix,
 		},
 		{
 			name:   "answer ends with halfwidth exclamation",
 			answer: "50 万元以下由部门负责人审批!",
-			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+			want:   "**结论**\n\n50 万元以下由部门负责人审批。" + citationSuffix,
 		},
 		{
 			name:   "answer ends with question marks (run stripped)",
 			answer: "50 万元以下由谁审批？?",
-			want:   "结论：50 万元以下由谁审批。" + citationSuffix,
+			want:   "**结论**\n\n50 万元以下由谁审批。" + citationSuffix,
 		},
 		{
 			name:   "answer ends with ascii period",
 			answer: "50 万元以下由部门负责人审批.",
-			want:   "结论：50 万元以下由部门负责人审批。" + citationSuffix,
+			want:   "**结论**\n\n50 万元以下由部门负责人审批。" + citationSuffix,
 		},
 	}
 	for _, tc := range cases {
@@ -1051,10 +1051,6 @@ func TestConclusionTextPunctuationNormalization(t *testing.T) {
 			out := conclusionText(mkVerdict(tc.answer), testKBReg())
 			assert.NotContains(t, out, "。。",
 				"conclusion must never contain a double period")
-			assert.True(t, strings.HasSuffix(out, "。"),
-				"conclusion must end with 。")
-			assert.False(t, strings.HasSuffix(out, "。。"),
-				"conclusion must end with exactly one 。")
 			assert.Equal(t, tc.want, out)
 		})
 	}
@@ -1066,7 +1062,7 @@ func TestConclusionTextPunctuationNormalization(t *testing.T) {
 		assert.NotContains(t, out, "。。",
 			"review-required branch must never contain a double period")
 		assert.Equal(t,
-			"结论：50 万元以下由部门负责人审批。置信度未达自动采信阈值，需人工复核。"+citationSuffix,
+			"**结论**\n\n50 万元以下由部门负责人审批。\n\n置信度未达自动采信阈值，需人工复核。"+citationSuffix,
 			out)
 	})
 }
