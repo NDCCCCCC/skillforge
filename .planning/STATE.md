@@ -149,7 +149,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-None yet.
+- 2026-10-27 ✅ [261027-ebw](quick/261027-ebw/) found_candidates 子进度携带截断前候选总数（CandidateCounter 可选接口 + FE 截断标注）；commit 0eb2ff9。遗留：topK=5 字面量未动；Milvus/Mongo 未实现 counter。
 
 ### Blockers/Concerns
 
