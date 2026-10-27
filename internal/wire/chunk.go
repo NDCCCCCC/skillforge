@@ -278,10 +278,16 @@ type SkillScore struct {
 //     (rerank is reserved for a future reranker pass).
 //   - Tier:  the tier being searched (retrieve / found_candidates only).
 //   - Count: the candidate chunk count (found_candidates only).
+//   - Total: the pre-truncation candidate-set size (found_candidates only,
+//     optional — emitted only when the retriever exposes a candidate
+//     counter). Count may be less than Total when the search applied its
+//     topK cut; the FE renders the truncation explicitly so "找到 5 条候选"
+//     is not mistaken for "exactly 5 relevant hits".
 type SubprogressStep struct {
 	Step  string `json:"step"`
 	Tier  string `json:"tier,omitempty"`
 	Count int    `json:"count,omitempty"`
+	Total int    `json:"total,omitempty"`
 }
 
 // PlanTodo is one row of the DeepAgent planning trace. Phase 12 / Plan

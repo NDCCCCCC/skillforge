@@ -113,6 +113,28 @@ func TestVerdictPipeline_SubprogressOrder(t *testing.T) {
 	assert.Equal(t, "authority", progress[0].Tier,
 		"retrieve.tier must carry the first resolved search tier")
 
+	// (b2) quick task 261027-ebw: stubRetriever implements no
+	// CandidateCounter, so Total stays 0 and omits from the wire — a
+	// retriever without the capability must not fabricate a total.
+	assert.Zero(t, progress[1].Total,
+		"found_candidates.total must stay 0 when the retriever lacks a candidate counter")
+
+	// (b3) quick task 261027-ebw: when the retriever DOES implement the
+	// optional CandidateCounter, its total rides on the same chunk.
+	deps2 := newVerdictPipelineDeps(t)
+	deps2.Retriever = &stubRetriever{chunks: chunks, candTotal: 218}
+	deps2.Runner = newStubRunner(cannedVerdictJSON(verdict.CompliantStatus, 0.95, []string{"1"}, chunkText, "authority"))
+	addr2, cleanup2 := newTestHertz(t, deps2)
+	defer cleanup2()
+	resp2, err := postChatRaw(t, ctx, addr2, "sess-subprogress-total", "年假有几天")
+	require.NoError(t, err, "POST /api/chat (candidate-counter path)")
+	progress2 := subprogressFrames(t, drainBody(t, resp2))
+	require.Len(t, progress2, 4)
+	assert.Equal(t, 218, progress2[1].Total,
+		"found_candidates.total must carry the counter's pre-truncation size")
+	assert.Equal(t, 2, progress2[1].Count,
+		"found_candidates.count stays the post-truncation hit count")
+
 	// (c) Every data-subprogress chunk precedes text-start (the assistant
 	// message anchor) — progress streams DURING the wait, never after.
 	textStartIdx := -1

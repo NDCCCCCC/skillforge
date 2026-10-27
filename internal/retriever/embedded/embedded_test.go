@@ -75,6 +75,44 @@ func TestSearchReturnsHitsForAllowedTier(t *testing.T) {
 
 // TestSearchTopKAndQueryVecGuards covers the three cheap guards plus the
 // dimension guard that keeps vecmath.Cosine from panicking.
+// TestCountCandidates — quick task 261027-ebw: CountCandidates reports the
+// PRE-truncation candidate-set size using the SAME tier + effective_to
+// filter as Search, so it can never disagree with what Search ranked.
+func TestCountCandidates(t *testing.T) {
+	c := newTestClient(t, 2)
+	for i := 0; i < 3; i++ {
+		c.docs = append(c.docs, row{
+			ID:          int64(i + 1),
+			Tier:        "authority",
+			Content:     "doc",
+			Source:      "authority/d.md",
+			Embedding:   []float32{1, 0},
+			EffectiveTo: 0,
+		})
+	}
+	// One excluded-tier doc and one expired doc must NOT count.
+	c.docs = append(c.docs, row{ID: 4, Tier: "personal", Content: "x", Source: "personal/p.md", Embedding: []float32{1, 0}})
+	c.docs = append(c.docs, row{ID: 5, Tier: "authority", Content: "expired", Source: "authority/e.md", Embedding: []float32{1, 0}, EffectiveTo: 1})
+	c.rebuildIndex()
+	ctx := context.Background()
+
+	n, err := c.CountCandidates(ctx, []string{"authority"}, 100)
+	require.NoError(t, err)
+	assert.Equal(t, 3, n, "only in-window authority docs count (pre-truncation)")
+
+	n, err = c.CountCandidates(ctx, nil, 100)
+	require.NoError(t, err)
+	assert.Zero(t, n, "empty tiers ⇒ 0 (refusal-by-construction, D-09)")
+
+	// Consistency invariant: Search(topK > candidates) returns exactly
+	// CountCandidates hits.
+	hits, err := c.Search(ctx, []float32{1, 0}, []string{"authority"}, 10, 100)
+	require.NoError(t, err)
+	n2, err := c.CountCandidates(ctx, []string{"authority"}, 100)
+	require.NoError(t, err)
+	assert.Len(t, hits, n2)
+}
+
 func TestSearchTopKAndQueryVecGuards(t *testing.T) {
 	c := newTestClient(t, 3)
 	ctx := context.Background()

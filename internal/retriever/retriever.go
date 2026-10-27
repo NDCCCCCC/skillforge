@@ -215,3 +215,19 @@ type Retriever interface {
 	// Disconnect the instance is unusable.
 	Disconnect() error
 }
+
+// CandidateCounter is an OPTIONAL capability interface (quick task
+// 261027-ebw): retrievers that can cheaply report the pre-truncation
+// candidate-set size implement it. The VerdictPipeline type-asserts the
+// Retriever to this interface and, when supported, attaches the total to
+// the found_candidates subprogress step so the UI can distinguish
+// "top-5 of N" from "exactly 5". Backends that cannot answer cheaply
+// simply do not implement it — the pipeline treats absence as "no total".
+type CandidateCounter interface {
+	// CountCandidates returns the number of documents matching the tier
+	// slice and the effective_to window (the same PRE-similarity filter
+	// Search applies) — i.e. what Search WOULD have had to rank, before
+	// its topK cut. An empty tiers slice returns 0 (refusal-by-
+	// construction, D-09).
+	CountCandidates(ctx context.Context, tiers []string, now int64) (int, error)
+}

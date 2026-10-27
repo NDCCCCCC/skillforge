@@ -31,8 +31,16 @@ function renderStep(step: SubprogressStep, tierLabel: string | null): string {
   switch (step.step) {
     case 'retrieve':
       return tierLabel ? `检索 ${tierLabel} 知识层` : '检索知识层';
-    case 'found_candidates':
-      return `找到 ${step.count ?? 0} 条候选`;
+    case 'found_candidates': {
+      // quick task 261027-ebw: Count is min(topK, candidate set) — when the
+      // retriever reported a larger pre-truncation set, say so, or "找到 5
+      // 条候选" reads as "exactly 5 relevant hits" when it is a top-5 cut.
+      const { count, total } = step;
+      if (total && total > (count ?? 0)) {
+        return `找到 ${count ?? 0} 条候选（候选集共 ${total} 条，已按相关度取前 ${count ?? 0} 条）`;
+      }
+      return `找到 ${count ?? 0} 条候选`;
+    }
     case 'rerank':
       return '重排序';
     case 'self_verify':

@@ -59,6 +59,27 @@ describe('DataSubprogressPart', () => {
     expect(node).toHaveTextContent('找到 12 条候选');
   });
 
+  // quick task 261027-ebw: count may be a topK cut of a larger candidate
+  // set — the truncation must be visible, not read as "exactly N hits".
+  it('renders the truncation when total > count for found_candidates', () => {
+    render(
+      <DataSubprogressPart
+        part={makePart({ step: 'found_candidates', count: 5, total: 218 })}
+      />,
+    );
+    const node = screen.getByTestId('data-subprogress');
+    expect(node).toHaveTextContent('找到 5 条候选（候选集共 218 条，已按相关度取前 5 条）');
+  });
+
+  it('renders no truncation note when total equals count', () => {
+    render(
+      <DataSubprogressPart
+        part={makePart({ step: 'found_candidates', count: 5, total: 5 })}
+      />,
+    );
+    expect(screen.getByTestId('data-subprogress')).toHaveTextContent('找到 5 条候选');
+  });
+
   it('renders "重排序" for step="rerank"', () => {
     render(<DataSubprogressPart part={makePart({ step: 'rerank' })} />);
     const node = screen.getByTestId('data-subprogress');

@@ -88,7 +88,13 @@ type stubRetriever struct {
 	// capturedTiers records every tier slice the pipeline passed.
 	// TestPersonalTierRefusal asserts on the latest tier list.
 	capturedTiers [][]string
-	mu            sync.Mutex
+	// candTotal, when >= 0, makes stubRetriever ALSO implement
+	// retriever.CandidateCounter (quick task 261027-ebw). Negative means
+	// "no counter capability" — the default, mirroring a bare Retriever.
+	candTotal    int
+	candCountErr error
+	capturedNow  int64
+	mu           sync.Mutex
 }
 
 // Compile-time check that stubRetriever implements retriever.Retriever.
@@ -111,6 +117,19 @@ func (s *stubRetriever) Search(_ context.Context, _ []float32, tiers []string, t
 }
 
 func (s *stubRetriever) Ensure(_ context.Context) error { return nil }
+
+// CountCandidates implements retriever.CandidateCounter ONLY when
+// candTotal >= 0 — the pipeline type-asserts, so tests control the
+// capability per-case. With candCountErr set it surfaces that error.
+func (s *stubRetriever) CountCandidates(_ context.Context, _ []string, now int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.capturedNow = now
+	if s.candCountErr != nil {
+		return 0, s.candCountErr
+	}
+	return s.candTotal, nil
+}
 func (s *stubRetriever) Insert(_ context.Context, _ []retriever.Document) error {
 	return nil
 }
@@ -123,7 +142,7 @@ func (s *stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkCon
 	return retriever.ChunkContent{}, retriever.ErrChunkNotFound
 }
 func (s *stubRetriever) GetMaxID(_ context.Context, _ string) (int64, error) { return 0, nil }
-func (s *stubRetriever) Disconnect() error { return nil }
+func (s *stubRetriever) Disconnect() error                                   { return nil }
 
 // LastTiers returns the most recent tier list (or nil if none).
 func (s *stubRetriever) LastTiers() []string {

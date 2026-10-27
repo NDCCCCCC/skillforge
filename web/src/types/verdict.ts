@@ -138,6 +138,8 @@ export interface SubprogressStep {
   /** Registry slug of the tier being searched; absent = no tier badge. */
   tier?: Tier;
   count?: number;
+  /** Pre-truncation candidate-set size; absent = retriever has no counter. */
+  total?: number;
 }
 
 // Type guards — distinguish Verdict vs Refusal payloads inside the

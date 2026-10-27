@@ -173,7 +173,7 @@ func TestValidTypes_Twenty(t *testing.T) {
 func TestSubprogressStepRoundTrip(t *testing.T) {
 	steps := []SubprogressStep{
 		{Step: "retrieve", Tier: "权威"},
-		{Step: "found_candidates", Tier: "权威", Count: 5},
+		{Step: "found_candidates", Tier: "权威", Count: 5, Total: 218},
 		{Step: "generate"},
 		{Step: "self_verify"},
 	}
@@ -192,6 +192,10 @@ func TestSubprogressStepRoundTrip(t *testing.T) {
 			assert.InDelta(t, float64(p.Count), got["count"].(float64), 1e-9,
 				"count must round-trip for %q (FE renders 找到 N 条候选)", p.Step)
 		}
+		if p.Total != 0 {
+			assert.InDelta(t, float64(p.Total), got["total"].(float64), 1e-9,
+				"total must round-trip for %q (FE renders top-5 of N truncation)", p.Step)
+		}
 	}
 	// omitempty contract: generate/self_verify carry neither tier nor
 	// count — the wire payload must not bloat with zero-value fields.
@@ -199,6 +203,12 @@ func TestSubprogressStepRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, `{"step":"generate"}`, string(lean),
 		"omitempty required on tier/count so non-retrieval steps stay minimal")
+	// quick task 261027-ebw: Total must also be omitempty — a retriever
+	// without a candidate counter emits no total at all.
+	leanNoTotal, err := json.Marshal(SubprogressStep{Step: "found_candidates", Count: 5})
+	require.NoError(t, err)
+	assert.NotContains(t, string(leanNoTotal), `"total"`,
+		"total must be omitted when the retriever has no candidate counter")
 }
 
 // TestDecisionPayload_RouteFields — Plan 05-01 Task 1: DecisionPayload

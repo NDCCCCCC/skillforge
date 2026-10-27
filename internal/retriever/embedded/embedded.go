@@ -232,6 +232,19 @@ func (c *Client) Search(ctx context.Context, queryVec []float32, tiers []string,
 	return rank(cands, queryVec, topK), nil
 }
 
+// CountCandidates implements retriever.CandidateCounter (quick task
+// 261027-ebw): the pre-truncation candidate-set size — what Search would
+// rank before its topK cut. It reuses the SAME candidates() filter as
+// Search, so the count can never disagree with what Search actually saw.
+func (c *Client) CountCandidates(ctx context.Context, tiers []string, now int64) (int, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed {
+		return 0, ErrDisconnected
+	}
+	return len(candidates(c.docs, tiers, now)), nil
+}
+
 // Ensure prepares the store for Search: it computes the corpus hash, derives
 // the cache key and tries to load the on-disk vector cache into memory.
 // Idempotent — safe on every startup.

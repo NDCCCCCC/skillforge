@@ -263,7 +263,18 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	}
 
 	emitSubprogress(c, wire.SubprogressStep{Step: "retrieve", Tier: tiers[0]})
-	emitSubprogress(c, wire.SubprogressStep{Step: "found_candidates", Tier: tiers[0], Count: len(chunks)})
+	// quick task 261027-ebw: "找到 5 条候选" was indistinguishable from
+	// "exactly 5 relevant hits" — Count is min(topK=5, candidate set) and
+	// the topK literal at the Search call above made it 5 almost always.
+	// When the retriever can report the pre-truncation candidate-set size
+	// cheaply, attach it so the FE renders the truncation honestly.
+	candTotal := 0
+	if counter, ok := s.Retriever.(retriever.CandidateCounter); ok {
+		if total, err := counter.CountCandidates(ctx, tiers, now); err == nil {
+			candTotal = total
+		}
+	}
+	emitSubprogress(c, wire.SubprogressStep{Step: "found_candidates", Tier: tiers[0], Count: len(chunks), Total: candTotal})
 
 	if maxScore(chunks) < RetrievalScoreThreshold {
 		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonLowRetrievalScore, true)
