@@ -48,11 +48,19 @@ export default function KGQueryPanel() {
     })
     .filter((n): n is string => n !== null);
 
-  async function runQuery() {
+  // skillOverride — CODE-AUDIT 2026-11-05 (G-01): the select's onChange used
+  // to call runQuery() in the same event that setSelectedSkill fired; the
+  // closure still held the PREVIOUS skill, so the "auto-query on skill
+  // switch" silently ran a full unscoped KG.Query() while the UI labeled it
+  // with the newly selected skill. Callers that change the skill must pass
+  // the new value explicitly; the Query button passes nothing and uses the
+  // current render's state.
+  async function runQuery(skillOverride?: string) {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetchKGQuery(s.trim(), p.trim(), o.trim(), selectedSkill || undefined);
+      const skill = skillOverride ?? selectedSkill;
+      const resp = await fetchKGQuery(s.trim(), p.trim(), o.trim(), skill || undefined);
       setMatches(resp.matches);
     } catch (e) {
       setError(String(e));
@@ -90,7 +98,7 @@ export default function KGQueryPanel() {
           value={selectedSkill}
           onChange={(e) => {
             setSelectedSkill(e.target.value);
-            runQuery();
+            void runQuery(e.target.value);
           }}
           className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs"
         >

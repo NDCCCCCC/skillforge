@@ -78,6 +78,17 @@ func LocalThinkOffModel(cm model.ToolCallingChatModel) model.ToolCallingChatMode
 // on by default; the 4096-token budget already headrooms for reasoning).
 // Any other vendor — including unknown/none (fail-open, file config
 // missing) — keeps the historical thinking:disabled field.
+//
+// LOCAL_LLM_THINK=false (CODE-AUDIT 2026-11-05 A-01): when the operator
+// disables local chain-of-thought, "think":false is included HERE so the
+// sets built by the pipeline/classifier/rewriter call sites are COMPLETE.
+// Rationale: ExtraFieldsModel injects its own fields with caller-priority
+// semantics (see Generate below) — a caller that passes its own
+// WithExtraFields replaces the wrapper's map wholesale (eino-ext
+// WithExtraFields is assignment, not merge), so any field the wrapper
+// carries but the caller's set lacks would be dropped. Keeping the local
+// think flag in this shared builder guarantees the call-site sets stay
+// self-sufficient under both orderings.
 func PipelineExtraFields() map[string]any {
 	fields := map[string]any{
 		"response_format": map[string]string{"type": "json_object"},
@@ -85,17 +96,46 @@ func PipelineExtraFields() map[string]any {
 	if llmconfig.CurrentVendor() != "minimax" {
 		fields["thinking"] = map[string]string{"type": "disabled"}
 	}
+	if os.Getenv(LocalThinkDisabledEnv) == "false" {
+		fields["think"] = false
+	}
 	return fields
 }
 
-// Generate implements model.BaseChatModel with the extra fields merged in.
-func (m *ExtraFieldsModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	return m.inner.Generate(ctx, input, append(opts, openai.WithExtraFields(m.fields))...)
+// extraFieldsOption returns the option carrying m.fields. It MUST be placed
+// BEFORE any caller-provided options: eino applies impl-specific options in
+// slice order and eino-ext's WithExtraFields ASSIGNS the whole map (no
+// merge), so the LAST WithExtraFields wins. Positioning ours first gives
+// caller-priority semantics — a call site that passes its own extra fields
+// (the pipeline/classifier/rewriter sets, complete per PipelineExtraFields)
+// keeps them; option-less call sites (ReAct agent loop, eval judge) get the
+// wrapper defaults. (CODE-AUDIT 2026-11-05 A-01: the previous order — ours
+// appended last — made the wrapper stomp response_format/thinking whenever
+// LOCAL_LLM_THINK=false, fail-closing the classifier to out_of_scope.)
+func (m *ExtraFieldsModel) extraFieldsOption() model.Option {
+	return openai.WithExtraFields(m.fields)
 }
 
-// Stream implements model.BaseChatModel with the extra fields merged in.
+// generateOptions builds a fresh option slice with the wrapper's extra
+// fields FIRST so caller options keep priority. A new backing array is
+// allocated on every call — appending onto the caller's slice would risk
+// clobbering its backing array when len(opts) < cap(opts).
+func (m *ExtraFieldsModel) generateOptions(opts []model.Option) []model.Option {
+	out := make([]model.Option, 0, len(opts)+1)
+	out = append(out, m.extraFieldsOption())
+	return append(out, opts...)
+}
+
+// Generate implements model.BaseChatModel with the wrapper's extra fields
+// injected at caller-priority (see extraFieldsOption).
+func (m *ExtraFieldsModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	return m.inner.Generate(ctx, input, m.generateOptions(opts)...)
+}
+
+// Stream implements model.BaseChatModel with the wrapper's extra fields
+// injected at caller-priority (see extraFieldsOption).
 func (m *ExtraFieldsModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	return m.inner.Stream(ctx, input, append(opts, openai.WithExtraFields(m.fields))...)
+	return m.inner.Stream(ctx, input, m.generateOptions(opts)...)
 }
 
 // WithTools implements model.ToolCallingChatModel, returning a wrapped

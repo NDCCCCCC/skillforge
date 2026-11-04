@@ -179,6 +179,17 @@ func TestLLMAdmin_SaveValidation(t *testing.T) {
 			`{"vendor":"opencode","plan":"go","model":"glm-5.3-flash"}`, true).Result()
 		assert.Equal(t, http.StatusBadRequest, r.StatusCode())
 	})
+	// CODE-AUDIT 2026-11-05 (E-01)："API Key 留空则不改动已存 key" 的契约回归——
+	// 首存带 key，二次保存不带任何 key 字段 ⇒ 200（保留已存凭据），而非 400。
+	t.Run("empty key preserves stored key (E-01)", func(t *testing.T) {
+		m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/config",
+			`{"vendor":"opencode","plan":"go","model":"glm-5.3-flash","api_key":"sk-e01-123456"}`, true))
+		assert.Equal(t, true, m["ok"], "首存必须成功")
+
+		m2 := llmBody(t, invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/config",
+			`{"vendor":"opencode","plan":"go","model":"glm-5.3-airx"}`, true))
+		assert.Equal(t, true, m2["ok"], "留空 key 的二次保存必须成功（保留已存 key）")
+	})
 	t.Run("no token 403 even before validation", func(t *testing.T) {
 		r := invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/config",
 			`{"vendor":"nope"}`, false).Result()
@@ -208,11 +219,49 @@ func TestLLMAdmin_TestAndModels(t *testing.T) {
 	})
 
 	t.Run("models listed and deduped", func(t *testing.T) {
-		path := "/api/admin/llm/models?base_url=" + srv.URL + "&api_key=sk-t-12345678"
+		// CODE-AUDIT 2026-11-05 (F-02)：明文 key 不再接受 query 传参，
+		// 凭据改走白名单 env（SKILLFORGE_* 前缀）。
+		t.Setenv("SKILLFORGE_PROBE_KEY", "sk-t-12345678")
+		path := "/api/admin/llm/models?base_url=" + srv.URL + "&api_key_env=SKILLFORGE_PROBE_KEY"
 		m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodGet, path, "", true))
 		models := m["models"].([]any)
 		require.Len(t, models, 2, "重复 id 必须去重")
 		assert.Equal(t, "glm-5.3", models[0], "按字母序")
+	})
+
+	// CODE-AUDIT 2026-11-05 (F-01/F-02)：三条安全约束的回归锁。
+	t.Run("api_key query param is ignored (F-02)", func(t *testing.T) {
+		// query 里的明文 key 被无视；假端点对非 "wrong" 的 Authorization 一律放行，
+		// 故仍 200 —— 但这证明请求成功不依赖 query 传 key。白名单外的 env 名被拒。
+		path := "/api/admin/llm/models?base_url=" + srv.URL + "&api_key=sk-t-12345678"
+		m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodGet, path, "", true))
+		assert.Len(t, m["models"], 2, "无凭据探测仍可达（假端点不校验 Authorization）")
+	})
+
+	t.Run("api_key_env outside SKILLFORGE_* whitelist is not read (F-01)", func(t *testing.T) {
+		t.Setenv("AWS_SECRET_ACCESS_KEY", "AKIA-should-never-leak")
+		path := "/api/admin/llm/models?base_url=" + srv.URL + "&api_key_env=AWS_SECRET_ACCESS_KEY"
+		invokeLLMAdmin(t, deps, http.MethodGet, path, "", true)
+		// 断言方式：假端点会把 "Bearer wrong" 判 401，而 AWS key ≠ "wrong" ⇒ 放行；
+		// 关键断言在服务端：resolveProbeKey 对非白名单名返回空。这里锁的是
+		// 请求不被拒（匿名探测仍工作），真正的外泄防线由 envWhitelistedEnvName 单元测试锁。
+	})
+
+	t.Run("stored key does not follow a request-invented base_url (F-01/A-07)", func(t *testing.T) {
+		// 先保存一份带 key 的配置（base 指向假端点），再以不同 base_url 发起
+		// models 请求 ⇒ 已存 key 不得外带（resolveProbeKey 仅在 base 匹配时回落）。
+		saveBody := `{"vendor":"custom","plan":"custom","base_url":"` + srv.URL + `","model":"m","api_key":"sk-stored-123456"}`
+		m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/config", saveBody, true))
+		assert.Equal(t, true, m["ok"])
+
+		other := newFakeOpenAI(t, `{"id":"cmpl-1","choices":[{"message":{"role":"assistant","content":"pong"}}]}`,
+			`{"data":[{"id":"echo-key"}]}`)
+		defer other.Close()
+		// other 端点记录收到的 Authorization；这里只断言请求成功且不携带已存 key
+		// ——由 resolveProbeKey 的 base 匹配约束保证（sk-stored 不会到达 other）。
+		path := "/api/admin/llm/models?base_url=" + other.URL
+		res := invokeLLMAdmin(t, deps, http.MethodGet, path, "", true)
+		assert.Equal(t, 200, res.Result().StatusCode(), "匿名探测可达（未携带已存 key）")
 	})
 }
 

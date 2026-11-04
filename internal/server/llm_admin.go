@@ -195,6 +195,20 @@ func (s *Deps) llmSaveHandler(ctx context.Context, c *app.RequestContext) {
 		APIKeyEnv: req.APIKeyEnv,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
+	// CODE-AUDIT 2026-11-05 (E-01): the panel UI promises "API Key 留空则不改动
+	// 已存 key" — honor it. The GET response never echoes the plaintext key
+	// back, so a panel round-trip (load → tweak model → save) arrives with
+	// both key fields empty; before this fix Validate() 400'd and the ONLY
+	// workaround was re-entering the plaintext key (which fetchLLMModels
+	// then leaked into the URL). Preserve the stored credential when the
+	// request omits both; a first-ever save with no key still 400s via
+	// Validate below.
+	if req.APIKey == "" && req.APIKeyEnv == "" {
+		if stored, present, err := llmconfig.Load(); err == nil && present {
+			cfg.APIKey = stored.APIKey
+			cfg.APIKeyEnv = stored.APIKeyEnv
+		}
+	}
 	if err := cfg.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
 		return
@@ -290,6 +304,11 @@ func (s *Deps) llmTestHandler(ctx context.Context, c *app.RequestContext) {
 
 // resolveTestTarget 把测试请求解析成 (baseURL, key, model)：
 // 请求字段优先；缺失字段从已存文件配置 / 目录 plan 补齐。
+//
+// CODE-AUDIT 2026-11-05 (F-01/A-07)：三个安全约束——
+//  1. URL 来源：catalog 厂商的 base_url 仅在与目录值一致时被采纳（SSRF 加固）；
+//  2. api_key_env 仅接受 SKILLFORGE_* 白名单（防任意环境变量外泄）；
+//  3. 已存配置的 key 仅在最终 base_url 与已存配置一致时回落（防把 key 发往任意主机）。
 func (s *Deps) resolveTestTarget(req llmTestRequest) (string, string, string, error) {
 	base := req.BaseURL
 	modelName := req.Model
@@ -322,14 +341,18 @@ func (s *Deps) resolveTestTarget(req llmTestRequest) (string, string, string, er
 		return "", "", "", errStr("model is required for a connectivity test")
 	}
 
-	key := req.APIKey
-	if key == "" && req.APIKeyEnv != "" {
+	key := req.APIKey // 调用方显式提供的 key 属于其自身凭据，直接放行（端点自选）
+	if key == "" && req.APIKeyEnv != "" && envWhitelistedEnvName(req.APIKeyEnv) {
 		key = os.Getenv(req.APIKeyEnv)
 	}
 	if key == "" {
-		if cfg, present, err := llmconfig.Load(); err == nil && present {
-			key, _ = llmconfig.ResolveKey(cfg)
+		// 依赖服务端持有的凭据（env / 已存配置）时，base 必须先过 URL 来源约束
+		// ——否则"把服务端 key 发往任意主机"的通道在这里重开。
+		if req.BaseURL != "" {
+			constrained, _ := resolveProbeURLs(vendor, plan, req.BaseURL, "")
+			base = constrained
 		}
+		key = resolveProbeKey(base, "")
 	}
 	if key == "" {
 		return "", "", "", errStr("api_key required (or save a config first)")
@@ -337,7 +360,70 @@ func (s *Deps) resolveTestTarget(req llmTestRequest) (string, string, string, er
 	return base, key, modelName, nil
 }
 
+// envWhitelistedEnvName — CODE-AUDIT 2026-11-05 (F-01): api_key_env values
+// are restricted to SKILLFORGE_* names. Without this, a stolen admin token
+// could read ANY process env var (cloud credentials, DATABASE_URL) and have
+// the server send it as a Bearer header to a caller-chosen URL.
+func envWhitelistedEnvName(name string) bool {
+	return strings.HasPrefix(name, "SKILLFORGE_")
+}
+
+// resolveProbeURLs applies the F-01/A-07 URL-source constraint: for catalog
+// vendors the request-supplied base_url/models_url are honored ONLY when
+// they byte-match the catalog plan values — otherwise the catalog values
+// win. A stolen admin token can therefore no longer point the server-side
+// probe at an arbitrary host while a real key is attached. vendor=custom
+// (and unknown vendors) keep the request/saved values: custom endpoints are
+// operator-registered on purpose (e.g. ollama on localhost).
+func resolveProbeURLs(vendor, plan, reqBase, reqModelsURL string) (baseURL, modelsURL string) {
+	p, ok := llmconfig.FindPlan(vendor, plan)
+	if !ok {
+		return reqBase, reqModelsURL
+	}
+	if reqBase == p.BaseURL {
+		baseURL = reqBase
+	} else {
+		baseURL = p.BaseURL
+	}
+	if reqModelsURL == p.ModelsURL {
+		modelsURL = reqModelsURL
+	} else {
+		modelsURL = p.ModelsURL
+	}
+	return baseURL, modelsURL
+}
+
+// resolveProbeKey resolves the probe credential under the F-01/A-07 key-source
+// constraints: (1) api_key_env only via the SKILLFORGE_* whitelist; (2) the
+// stored file config's key may only follow a base URL the admin themselves
+// registered (request-invented URLs get no stored key — this closes the
+// "send the stored key to any host" and "echo it back via the response"
+// read-back channel).
+func resolveProbeKey(baseURL, apiKeyEnv string) string {
+	if apiKeyEnv != "" && envWhitelistedEnvName(apiKeyEnv) {
+		if v := os.Getenv(apiKeyEnv); v != "" {
+			return v
+		}
+	}
+	if cfg, present, err := llmconfig.Load(); err == nil && present {
+		storedBase := cfg.BaseURL
+		if storedBase == "" {
+			if p, ok := llmconfig.FindPlan(cfg.Vendor, cfg.Plan); ok {
+				storedBase = p.BaseURL
+			}
+		}
+		if baseURL != "" && baseURL == storedBase {
+			key, _ := llmconfig.ResolveKey(cfg)
+			return key
+		}
+	}
+	return ""
+}
+
 // llmModelsHandler implements GET /api/admin/llm/models.
+//
+// CODE-AUDIT 2026-11-05 (F-02): the api_key query parameter is GONE — keys
+// travel via api_key_env (whitelisted) or the server-stored config only.
 func (s *Deps) llmModelsHandler(ctx context.Context, c *app.RequestContext) {
 	if !requireAdmin(c) {
 		return
@@ -348,33 +434,13 @@ func (s *Deps) llmModelsHandler(ctx context.Context, c *app.RequestContext) {
 	}
 	vendor := string(c.Query("vendor"))
 	plan := string(c.Query("plan"))
-	baseURL := string(c.Query("base_url"))
-	modelsURL := string(c.Query("models_url"))
-	apiKey := string(c.Query("api_key"))
-	apiKeyEnv := string(c.Query("api_key_env"))
-
-	if modelsURL == "" || baseURL == "" || apiKey == "" {
-		if p, ok := llmconfig.FindPlan(vendor, plan); ok {
-			if modelsURL == "" {
-				modelsURL = p.ModelsURL
-			}
-			if baseURL == "" {
-				baseURL = p.BaseURL
-			}
-		}
-		if apiKey == "" && apiKeyEnv != "" {
-			apiKey = os.Getenv(apiKeyEnv)
-		}
-		if apiKey == "" {
-			if cfg, present, err := llmconfig.Load(); err == nil && present {
-				apiKey, _ = llmconfig.ResolveKey(cfg)
-			}
-		}
-	}
+	baseURL, modelsURL := resolveProbeURLs(vendor, plan,
+		string(c.Query("base_url")), string(c.Query("models_url")))
 	if baseURL == "" {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "base_url required (pick a vendor/plan or pass base_url)"})
 		return
 	}
+	apiKey := resolveProbeKey(baseURL, string(c.Query("api_key_env")))
 	if apiKey == "" {
 		// 部分网关允许无 key 列模型（如 ollama）；不强制。
 		apiKey = "anonymous"

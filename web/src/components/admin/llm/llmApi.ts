@@ -95,15 +95,21 @@ export function testLLMKey(token: string, req: LLMSaveRequest): Promise<LLMTestR
 }
 
 // GET /api/admin/llm/models takes the candidate connection as QUERY
-// PARAMETERS (the handler reads c.Query, not a body) so the browser never
-// POSTs a candidate key through a different verb than the one the wire
-// contract documents.
+// PARAMETERS (the handler reads c.Query, not a body).
+//
+// CODE-AUDIT 2026-11-05 (F-02/E-02): `api_key` is explicitly EXCLUDED from
+// the query — GET URLs land in nginx access logs, browser history and the
+// Referer header. The backend resolves the credential from api_key_env
+// (SKILLFORGE_* whitelist) or the server-stored config instead, so the
+// panel flow works without ever putting a plaintext key in a URL.
 export function fetchLLMModels(
   token: string,
   req: Partial<LLMSaveRequest>,
 ): Promise<{ models: string[] }> {
   const q = new URLSearchParams(
-    Object.entries(req).filter(([, v]) => v != null && v !== '') as [string, string][],
+    Object.entries(req).filter(
+      ([k, v]) => k !== 'api_key' && v != null && v !== '',
+    ) as [string, string][],
   );
   return fetch(`/api/admin/llm/models?${q.toString()}`, {
     headers: adminHeaders(token),

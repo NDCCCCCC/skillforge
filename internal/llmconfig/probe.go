@@ -36,7 +36,23 @@ const probeTimeout = 15 * time.Second
 // probeClient 是包级共享的 HTTP 客户端（计划要求：probe 复用一个
 // client）。仅用于 admin 面板触发的低频请求，不复用 http.DefaultClient
 // 以隔离超时配置。
-var probeClient = &http.Client{Timeout: probeTimeout}
+//
+// CODE-AUDIT 2026-11-05 (F-01): redirect policy is same-host-only and
+// capped at 3 hops — without it, an attacker-supplied probe URL can bounce
+// the request (and the Authorization header) onto an intranet or metadata
+// endpoint via 302, bypassing any URL allowlist applied to the first hop.
+var probeClient = &http.Client{
+	Timeout: probeTimeout,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			return fmt.Errorf("llmconfig: 重定向超过 3 跳，停止跟随")
+		}
+		if len(via) > 0 && req.URL.Host != via[0].URL.Host {
+			return fmt.Errorf("llmconfig: 拒绝跨主机重定向 (%s → %s)", via[0].URL.Host, req.URL.Host)
+		}
+		return nil
+	},
+}
 
 // TestResult 是一次连通性测试的结果，字段直接面向前端展示。
 type TestResult struct {
@@ -212,7 +228,29 @@ func parseModelList(raw []byte) ([]string, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("llmconfig: 无法识别的模型列表响应形状: %s", truncate(raw, 200))
+	// CODE-AUDIT 2026-11-05 (A-07): the raw upstream body is NOT echoed
+	// into the error. The previous message carried truncate(raw, 200) back
+	// to the admin caller via llmModelsHandler's 502 envelope — an
+	// attacker-controlled models_url could echo the Bearer key it had just
+	// received straight back to the caller, turning the SSRF probe into a
+	// key read-back channel.
+	return nil, fmt.Errorf("llmconfig: 无法识别的模型列表响应形状（HTTP %s，body 不回显）", statusFamily(raw))
+}
+
+// statusFamily returns a coarse, non-echoing descriptor for error text —
+// best-effort only; the HTTP status itself is logged by the caller path.
+func statusFamily(raw []byte) string {
+	trimmed := bytes.TrimSpace(raw)
+	switch {
+	case len(trimmed) == 0:
+		return "空响应"
+	case trimmed[0] == '{':
+		return "JSON object，但形状不匹配"
+	case trimmed[0] == '[':
+		return "JSON array，但形状不匹配"
+	default:
+		return "非 JSON 响应"
+	}
 }
 
 // modelEntry 是模型条目里我们唯一关心的字段。

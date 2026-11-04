@@ -576,9 +576,28 @@ func New(addr string, deps *Deps) *server.Hertz {
 			return
 		}
 		cl := c.Request.Header.ContentLength()
-		if cl > 0 && int64(cl) > nonImportMax {
+		// CODE-AUDIT 2026-11-05 (C-01): ContentLength() < 0 covers chunked /
+		// unknown-length bodies — the previous `cl > 0` condition let such
+		// requests bypass this guard and hit the global 2 GiB envelope, and
+		// the chat path buffers the whole body for its UTF-8 check, so a few
+		// concurrent chunked requests to the public /api/chat could OOM the
+		// process. STREAMING unknown-length bodies are rejected outright;
+		// BUFFERED bodies (hertz already read them into memory — small
+		// requests whose client omitted Content-Length, e.g. empty POSTs)
+		// are measured directly. Every first-party client sends
+		// Content-Length; only flood traffic loses.
+		tooLarge := false
+		if cl < 0 {
+			tooLarge = c.Request.IsBodyStream()
+			if !tooLarge {
+				tooLarge = int64(len(c.Request.Body())) > nonImportMax
+			}
+		} else {
+			tooLarge = int64(cl) > nonImportMax
+		}
+		if tooLarge {
 			c.JSON(http.StatusRequestEntityTooLarge, graphResponseError{
-				Error: "request body too large",
+				Error: "request body too large (chunked bodies not accepted here)",
 			})
 			c.Abort()
 			return
