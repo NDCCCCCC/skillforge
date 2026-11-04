@@ -150,6 +150,7 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 - 2026-10-27 ✅ [261027-ebw](quick/261027-ebw/) found_candidates 子进度携带截断前候选总数（CandidateCounter 可选接口 + FE 截断标注）；commit 0eb2ff9。遗留：topK=5 字面量未动；Milvus/Mongo 未实现 counter。
+- 2026-11-05 ✅ [261105-audit-batch1-security](quick/261105-audit-batch1-security/) 代码审计（[CODE-AUDIT-2026-11-05](reports/CODE-AUDIT-2026-11-05.md)，93 条发现）批次 1 安全止血：llm-admin 探针关闭 SSRF/env 外泄/key 读回/query 传 key 四条通道（F-01/A-07/F-02）+ 保存接口"留空即不改"（E-01）+ ExtraFieldsModel 调用方优先（A-01）+ KG 查询陈旧闭包（G-01）+ chunked body 2GiB OOM（C-01）；commit f9ac355。遗留：批次 2/3 共 80 余条（报告 §5.3）；本机 duckdb import 测试族全量运行时 CGO 崩溃为存量 flake（干净树对照证实）。
 
 ### Blockers/Concerns
 
