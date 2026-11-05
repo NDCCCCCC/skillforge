@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -179,14 +180,26 @@ func (s *Deps) decodeChatRequest(ctx context.Context, c *app.RequestContext) (qu
 	return req.Query, req.Skill, true
 }
 
+// sessionIDPattern is the accepted shape for a client-supplied
+// X-Session-Id: letters, digits, underscore and dash, 1..64 chars.
+// CODE-AUDIT 2026-11-05 (C-11): the header used to be taken verbatim as
+// the audit/session primary key — unbounded length and arbitrary bytes
+// (control chars, path-ish payloads) flowed straight into the store and
+// into another session's history lookup if guessed. An INVALID id is
+// replaced by a fresh server-generated one (never a 400 — the header is
+// an optimization, not a contract; dropping it degrades to a new session,
+// which is what a garbage client deserves).
+var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 // resolveChatSession resolves the session ID for the request, writing the
 // X-Session-Id response header. The header is the client's claim; if absent
-// the server generates a fresh crypto/rand ID (T-3-SESSIONID — 32 hex chars
-// = 128 bits of entropy, ASVS V6). The ID is echoed back on the response
-// so a client that did not send one can capture and reuse it for the next turn.
+// — or malformed (see sessionIDPattern) — the server generates a fresh
+// crypto/rand ID (T-3-SESSIONID — 32 hex chars = 128 bits of entropy,
+// ASVS V6). The ID is echoed back on the response so a client that did not
+// send one can capture and reuse it for the next turn.
 func (s *Deps) resolveChatSession(c *app.RequestContext) string {
 	sessionID := string(c.Request.Header.Peek("X-Session-Id"))
-	if sessionID == "" {
+	if sessionID == "" || !sessionIDPattern.MatchString(sessionID) {
 		sessionID = newSessionID()
 	}
 	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))

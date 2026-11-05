@@ -159,9 +159,21 @@ func (r *QueryRewriter) Rewrite(ctx context.Context, history []schema.Message, q
 	}
 
 	// Step A: render history as plain text + apply the 4000-char trim.
+	// CODE-AUDIT 2026-11-05 (A-15): the budget is documented as CHARS but
+	// was enforced on BYTES — historyText[:4000] cut mid-rune for Chinese
+	// text (≈ char 1333), producing an invalid UTF-8 sequence that
+	// encoding/json later replaced with U+FFFD. Truncate on a rune
+	// boundary now; the budget stays byte-equivalent in intent (4000
+	// runes ≤ 12000 bytes is a slightly looser prompt, which the LLM
+	// call tolerates — the 2s latency rationale is unchanged).
 	historyText := renderHistoryText(history)
 	if len(historyText) > historyCharBudget {
-		historyText = historyText[:historyCharBudget] + truncationMarker
+		runes := []rune(historyText)
+		if len(runes) > historyCharBudget {
+			historyText = string(runes[:historyCharBudget]) + truncationMarker
+		}
+		// len>historyCharBudget in bytes but ≤4000 runes: byte overage
+		// comes from multi-byte runes — nothing to trim by runes.
 	}
 
 	// Step B: build the prompt.
@@ -181,7 +193,16 @@ func (r *QueryRewriter) Rewrite(ctx context.Context, history []schema.Message, q
 	// Step C: run the LLM call under a context.WithTimeout derived
 	// from the caller's ctx. A timeout surfaces as ctx.DeadlineExceeded
 	// which the caller treats as a fallback trigger.
-	timeoutCtx, cancel := context.WithTimeout(ctx, r.Timeout)
+	// CODE-AUDIT 2026-11-05 (A-14): a zero/negative exported Timeout field
+	// would make context.WithTimeout expire immediately — the rewriter
+	// silently fell back on EVERY call. Mirror the classifier's guard
+	// (classifier.go:200-203); the classifier doc comment already claimed
+	// both sides behave identically.
+	timeout := r.Timeout
+	if timeout <= 0 {
+		timeout = DefaultRewriteTimeout
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	msgs := []*schema.Message{

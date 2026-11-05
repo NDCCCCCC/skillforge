@@ -694,6 +694,19 @@ func (s *Deps) streamOnce(
 			break
 		}
 		if recErr != nil {
+			// CODE-AUDIT 2026-11-05 (C-09): a mid-stream failure used to
+			// return WITHOUT the draft-end terminal marker — the FE
+			// DraftStreamChip stayed on 🟡 待校验 forever. Emit it (or an
+			// error-annotated variant) before propagating, so the FE state
+			// machine always converges.
+			if tokenN > 0 {
+				if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
+					Type: "text-delta-draft-end",
+					ID:   "draft-1",
+				}); emitErr != nil {
+					log.Printf("[WARN] server: emit text-delta-draft-end (error path): %v (non-fatal)", emitErr)
+				}
+			}
 			return buf.String(), tokenN, fmt.Errorf("recv LLM token: %w", recErr)
 		}
 		if msg == nil || msg.Content == "" {
@@ -704,8 +717,15 @@ func (s *Deps) streamOnce(
 		// "completed" log (D-7) follows, the hang is in the SSE emit /
 		// buf.WriteString path inside this loop body (or the loop never
 		// receives EOF — ctx cancel mid-stream).
+		//
+		// CODE-AUDIT 2026-11-05 (C-08): the per-token line was demoted from
+		// INFO to a debug-gated log — 4096 tokens per request at INFO made
+		// log I/O a bottleneck under concurrency. Set
+		// SKILLFORGE_DEBUG_STREAM_TOKENS=1 to restore the per-token trace.
 		tokenN++
-		log.Printf("[INFO] server: streamAndAssemble recv token_n=%d delta_bytes=%d", tokenN, len(msg.Content))
+		if os.Getenv("SKILLFORGE_DEBUG_STREAM_TOKENS") == "1" {
+			log.Printf("[INFO] server: streamAndAssemble recv token_n=%d delta_bytes=%d", tokenN, len(msg.Content))
+		}
 		// Best-effort draft emit. A dead SSE socket logs + swallows
 		// the failure — the verdict emit (the trust-bearing path)
 		// surfaces the real error to the caller.

@@ -41,7 +41,7 @@ export default function DataTable<T>({
   rows,
   rowKey,
   loading = false,
-  error = false,
+  error = '',
   errorRetry,
   errorTestid,
   empty,
@@ -55,7 +55,10 @@ export default function DataTable<T>({
   rows: T[];
   rowKey: (row: T, index: number) => string;
   loading?: boolean;
-  error?: boolean;
+  /** CODE-AUDIT 2026-11-05 (E-04): carries `HTTP <status>: <copy>` — the
+   * message is rendered verbatim so a 403 (wrong admin token) is
+   * distinguishable from a 500. Truthy checks keep working. */
+  error?: string;
   errorRetry?: () => void;
   errorTestid?: string;
   empty: { title: string; hint?: string };
@@ -72,7 +75,7 @@ export default function DataTable<T>({
   if (error) {
     return (
       <ErrorState
-        message="数据加载失败"
+        message={`数据加载失败 — ${error}`}
         onRetry={errorRetry}
         testId={errorTestid}
       />

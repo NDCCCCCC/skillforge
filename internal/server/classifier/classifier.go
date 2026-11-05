@@ -65,11 +65,12 @@ const classifierSystemTemplate = `You are a refusal classifier for a Chinese com
 - "refuse": the query is out of scope, the chunks do not address it, OR the query asks for personal/PII information.
 
 Return ONLY this JSON object:
-{"decision": "<allow|refuse>", "reason": "<one of: no_authorized_source | low_retrieval_score | out_of_scope | empty>", "confidence": <0.0 to 1.0>}
+{"decision": "<allow|refuse>", "reason": "<one of: no_authorized_source | low_retrieval_score | out_of_scope>", "confidence": <0.0 to 1.0>}
 
 Rules:
 1. If decision="allow", confidence MUST be >= 0.5 (the floor). Below the floor the system will default-deny regardless.
-2. reason is required when decision="refuse" and MUST be one of: no_authorized_source, low_retrieval_score, out_of_scope.
+2. reason is required when decision="refuse" and MUST be one of: no_authorized_source, low_retrieval_score, out_of_scope. reason="empty" is NOT accepted.
+3. decision="allow" MUST carry reason="empty" (the field stays empty — it is only meaningful on refuse).
 4. NEVER answer the query — only classify.
 5. Output ONLY the JSON object. No prose, no markdown.`
 

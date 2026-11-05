@@ -45,7 +45,7 @@ const DEFAULT_MAP: Record<string, { label: string; tone: StatusTone }> = {
   in_progress: { label: '进行中', tone: 'amber' },
   needs_input: { label: '待补充', tone: 'amber' },
   review: { label: '待复核', tone: 'amber' },
-  drifted: { label: 'drift', tone: 'amber' },
+  drifted: { label: '已漂移', tone: 'amber' },
   degraded: { label: '降级', tone: 'amber' },
   skipped: { label: '已跳过', tone: 'amber' },
   partial: { label: '部分成功', tone: 'amber' },

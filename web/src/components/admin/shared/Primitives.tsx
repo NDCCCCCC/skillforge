@@ -41,13 +41,20 @@ export function PageHeader({
   );
 }
 
-const STAT_TONE: Record<string, string> = {
+// CODE-AUDIT 2026-11-05 (E-11): the map used to be `Record<string, string>`,
+// which made `keyof typeof STAT_TONE` = string — a typo like tone="blurple"
+// type-checked and silently lost its color at runtime. `as const` + the
+// keyof union restore the compile-time constraint (StatusBadge.tsx already
+// used the correct shape).
+const STAT_TONE = {
   default: 'text-text',
   green: 'text-status-compliant',
   amber: 'text-status-needs-info',
   red: 'text-status-non-compliant',
   indigo: 'text-primary',
-};
+} as const;
+
+export type StatTone = keyof typeof STAT_TONE;
 
 export function StatCard({
   label,
@@ -94,6 +101,12 @@ export function Toolbar({
   children?: ReactNode;
   testId?: string;
 }) {
+  // CODE-AUDIT 2026-11-05 (E-12): `onSearchChange` without `search` rendered
+  // a fully-controlled input pinned to '' — every keystroke snapped back and
+  // the box looked frozen. Search is only rendered as a CONTROLLED input
+  // when both props arrive; with a callback but no value it degrades to an
+  // uncontrolled input (browser-owned state, callback still fires).
+  const controlled = onSearchChange !== undefined && search !== undefined;
   return (
     <div
       data-testid={testId}
@@ -104,7 +117,7 @@ export function Toolbar({
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-dim" />
           <input
             type="text"
-            value={search ?? ''}
+            {...(controlled ? { value: search ?? '' } : {})}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
             className="h-8 w-56 rounded-md border border-border bg-surface pl-8 pr-3 text-xs text-text placeholder:text-text-dim focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"

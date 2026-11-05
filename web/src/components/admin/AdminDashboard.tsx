@@ -22,7 +22,7 @@
 //     pipeline / governance / platform / llm tabs.
 //   Admin UI redesign 2610 — sidebar shell + grouped navigation.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   BarChart3,
@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
+import { dispatchAdminRefresh } from './shared/useAdminData';
 import SfToast from '../layout/SfToast';
 import CapacityMonitor from './CapacityMonitor';
 import ImportBatchList from './ImportBatchList';
@@ -129,9 +130,17 @@ export default function AdminDashboard() {
     setRoute('chat');
   }
 
+  // CODE-AUDIT 2026-11-05 (E-05): the Refresh button used to be a visible
+  // no-op — handlers were "wired for future" forever. It now broadcasts the
+  // global admin-refresh event (every mounted useAdminData view refetches)
+  // and shows brief feedback so the click is never silent.
+  const [refreshing, setRefreshing] = useState(false);
+
   function handleRefresh() {
-    // Refresh is a no-op for now — the views handle their own data fetching.
-    // Wired for future: trigger a re-fetch of the active subroute's data.
+    if (refreshing) return;
+    setRefreshing(true);
+    dispatchAdminRefresh();
+    window.setTimeout(() => setRefreshing(false), 600);
   }
 
   function handleSubroute(next: AdminSubroute) {
@@ -227,11 +236,13 @@ export default function AdminDashboard() {
             <button
               type="button"
               data-testid="admin-refresh"
+              data-refreshing={refreshing}
               onClick={handleRefresh}
+              aria-busy={refreshing}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text hover:bg-surface-3"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span>Refresh</span>
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+              <span>{refreshing ? '刷新中…' : 'Refresh'}</span>
             </button>
           </div>
         </header>

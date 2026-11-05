@@ -376,8 +376,20 @@ func explainSQL(content string) string {
 	if len(stmts) == 0 {
 		return strings.TrimSpace(content)
 	}
+	// CODE-AUDIT 2026-11-05 (C-07): total + kind distribution must be
+	// computed BEFORE truncation — the fenced block shows ALL statements,
+	// so a "共 12 条(UPDATE ×10、SELECT ×2)" summary derived from the
+	// truncated slice lied about the very thing this stub sells as
+	// "deterministic, never lies".
+	totalStmts := len(stmts)
+	fullKinds := map[string]int{}
+	for _, s := range stmts {
+		fullKinds[s.Kind]++
+	}
+	truncated := false
 	if len(stmts) > maxAnswerStmts {
 		stmts = stmts[:maxAnswerStmts]
+		truncated = true
 	}
 
 	var b strings.Builder
@@ -385,17 +397,21 @@ func explainSQL(content string) string {
 	for _, s := range stmts {
 		kinds[s.Kind]++
 	}
-	// Deterministic kind summary order.
-	order := make([]string, 0, len(kinds))
-	for k := range kinds {
+	// Deterministic kind summary order (from the FULL distribution).
+	order := make([]string, 0, len(fullKinds))
+	for k := range fullKinds {
 		order = append(order, k)
 	}
 	sort.Strings(order)
 	parts := make([]string, 0, len(order))
 	for _, k := range order {
-		parts = append(parts, fmt.Sprintf("%s ×%d", k, kinds[k]))
+		parts = append(parts, fmt.Sprintf("%s ×%d", k, fullKinds[k]))
 	}
-	fmt.Fprintf(&b, "**概述**:该 SQL 片段共 %d 条语句(%s),以下为原文与逐条分析。\n\n", len(stmts), strings.Join(parts, "、"))
+	if truncated {
+		fmt.Fprintf(&b, "**概述**:该 SQL 片段共 %d 条语句(%s),以下为原文与前 %d 条分析。\n\n", totalStmts, strings.Join(parts, "、"), maxAnswerStmts)
+	} else {
+		fmt.Fprintf(&b, "**概述**:该 SQL 片段共 %d 条语句(%s),以下为原文与逐条分析。\n\n", totalStmts, strings.Join(parts, "、"))
+	}
 
 	b.WriteString("```sql\n")
 	b.WriteString(sqlText)

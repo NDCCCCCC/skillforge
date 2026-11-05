@@ -49,3 +49,9 @@ skillforge.db-wal
 # frames are scratch. Only the finished docs/demo.gif is a deliverable.
 /*.cast
 /docs/demo.*.tmp
+
+# CODE-AUDIT 2026-11-05 (F-05): spike binaries are compiled throwaways
+# (~22 MB each) — never commit them. The four tracked copies were removed
+# from the index (git rm --cached) in quick task 261105-audit-batch3;
+# history still carries them (rewrite is a separate decision).
+.planning/spikes/**/spike-*
