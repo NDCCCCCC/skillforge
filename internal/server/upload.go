@@ -37,6 +37,7 @@ import (
 	"github.com/skillforge/skillforge/internal/document"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/retriever"
 )
 
 // uploadMaxBodyDefault is 100 MiB.
@@ -261,9 +262,29 @@ func (s *Deps) processUploadedFile(ctx context.Context, slug string, form *uploa
 
 	// STEP 8: IndexerBackend.Insert → 503 on backend unavailable,
 	// 500 on other Insert errors.
+	// CODE-AUDIT 2026-11-05 (B-01): the handler previously assumed
+	// IndexerBackend was always wired — a nil interface (old RETRIEVER_
+	// BACKEND=none assembly) panicked right here. Two guards now: an
+	// explicit nil check (503 before any insert attempt), and DisabledIndexer's
+	// sentinel error routed into the same 503 classification.
+	if s.IndexerBackend == nil {
+		if docUploadAuditHook != nil {
+			reject := DocUploadRejectAudit{
+				Slug:     slug,
+				FileName: filename,
+				FileSize: int64(len(data)),
+				Reason:   retriever.IndexerBackendNotWiredError,
+			}
+			payload, _ := json.Marshal(reject)
+			docUploadAuditHook(actionDocUploadRejected, string(payload))
+		}
+		c.Response.Header.Set("Retry-After", "30")
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: retriever.IndexerBackendNotWiredError})
+		return *parseErr
+	}
 	if err := s.IndexerBackend.Insert(ctx, docs); err != nil {
 		*parseErr = err
-		if isBackendUnavailable(err) {
+		if errors.Is(err, retriever.ErrIndexerDisabled) || isBackendUnavailable(err) {
 			if docUploadAuditHook != nil {
 				reject := DocUploadRejectAudit{
 					Slug:     slug,

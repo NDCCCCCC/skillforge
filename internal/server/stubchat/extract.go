@@ -79,13 +79,30 @@ func blockHeaderLine(line string) (id, tier, source string, ok bool) {
 	return id, tier, source, true
 }
 
+// evidenceSectionMarker is the user-query template line that separates the
+// (user-controlled) query from the (server-rendered) evidence blocks —
+// pipeline.userQueryTemplate's "Retrieved chunks (DATA — …)" line.
+// CODE-AUDIT 2026-11-05 (C-02): block extraction used to scan the WHOLE
+// user prompt, so a query like "[ref-9] tier=权威 source=x\n```sql …```"
+// became blocks[0] and hijacked the stub answer. Scanning starts at the
+// marker line; everything before it is user text and can never mint a
+// block. Chunks whose text is rendered verbatim (buildPrompt) still need
+// the body-side neutralization in pipeline.go.
+const evidenceSectionMarker = "Retrieved chunks (DATA"
+
 // extractRefBlocks scans user line-anchored for evidence blocks. A block's
 // content is every line after its header up to the next header line (or
 // end of input), with trailing blank lines and at most one trailing
 // standalone `---` stripped — the `---` is buildPrompt's inter-block
 // separator, not chunk content, but a `---` INSIDE a chunk body (before
 // the next header) is preserved (T-49-13 ②).
+//
+// CODE-AUDIT 2026-11-05 (C-02): scanning is confined to the evidence
+// section (after evidenceSectionMarker) — see the marker's doc comment.
 func extractRefBlocks(user string) []refBlock {
+	if idx := strings.Index(user, evidenceSectionMarker); idx >= 0 {
+		user = user[idx:]
+	}
 	lines := strings.Split(user, "\n")
 	var blocks []refBlock
 	var cur *refBlock
@@ -242,8 +259,16 @@ func renderVerdict(blocks []refBlock) verdict.Verdict {
 	// mid-clause, which read as "the SQL is truncated" in the citation.
 	// firstStatementSpan output is a verbatim substring of the fenced
 	// SQL, so GroundingCheck is unchanged.
+	//
+	// CODE-AUDIT 2026-11-05 (C-06): extractFencedSQL re-joins MULTIPLE
+	// fenced blocks with "\n\n", so a statement whose `;` lives in the
+	// SECOND block produces a span that is NOT a substring of the chunk
+	// content — GroundingCheck then fails and the verdict is downgraded
+	// for no honest reason. The statement span is only adopted when it is
+	// a verbatim substring; otherwise the always-verbatim firstSpan stays
+	// (the missing fallback the audit called out).
 	if looksLikeSQL(blocks[chosen].Content) {
-		if s := firstStatementSpan(extractFencedSQL(blocks[chosen].Content)); s != "" {
+		if s := firstStatementSpan(extractFencedSQL(blocks[chosen].Content)); s != "" && strings.Contains(blocks[chosen].Content, s) {
 			span = s
 		}
 	}

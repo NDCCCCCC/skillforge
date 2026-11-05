@@ -14,10 +14,37 @@
 // (sf_admin_token); stub mode / network error → muted non-interactive
 // badge, so the composer stays usable for anonymous visitors and tests.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Cpu } from 'lucide-react';
 
 const ADMIN_TOKEN_KEY = 'sf_admin_token';
+
+// CODE-AUDIT 2026-11-05 (D-03): localStorage throws (SecurityError /
+// QuotaExceededError) under Firefox "block cookies", Safari private mode
+// and enterprise storage policies. The repo convention is to catch around
+// every access (app-store.ts, LLMProviderPanel.readToken) — a throw inside
+// a React event handler with no ErrorBoundary anywhere in this app unmounts
+// the whole tree (white page) and the token could then NEVER be stored.
+// Reads and writes both degrade to an in-memory fallback instead.
+let memoryTokenFallback: string | null = null;
+
+function readAdminToken(): string {
+  try {
+    return localStorage.getItem(ADMIN_TOKEN_KEY) ?? memoryTokenFallback ?? '';
+  } catch {
+    return memoryTokenFallback ?? '';
+  }
+}
+
+function writeAdminToken(token: string | null): void {
+  memoryTokenFallback = token;
+  try {
+    if (token == null) localStorage.removeItem(ADMIN_TOKEN_KEY);
+    else localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  } catch {
+    /* storage disabled — the memory fallback above keeps this session usable */
+  }
+}
 
 interface LlmConfigResponse {
   source?: string;
@@ -27,8 +54,7 @@ interface LlmConfigResponse {
 }
 
 function adminHeaders(): HeadersInit {
-  const token = localStorage.getItem(ADMIN_TOKEN_KEY) ?? '';
-  return { 'Content-Type': 'application/json', 'X-Admin-Token': token };
+  return { 'Content-Type': 'application/json', 'X-Admin-Token': readAdminToken() };
 }
 
 export default function ModelPicker() {
@@ -55,6 +81,9 @@ export default function ModelPicker() {
       setDenied(false);
       setModel(data.config?.model ?? '');
       setMode(data.mode ?? '');
+      // CODE-AUDIT 2026-11-05 (D-08): a successful reload clears a stale
+      // switch-failure warning; previously the ⚠ stuck forever.
+      setError('');
       setUsable(true);
       // Model list is best-effort: needs a reachable upstream.
       try {
@@ -77,21 +106,30 @@ export default function ModelPicker() {
     }
   }, []);
 
+  // CODE-AUDIT 2026-11-05 (D-09): both load entry points (mount effect and
+  // the prompt-triggered reload) share ONE cancellation holder stored in a
+  // ref — the mount effect's cleanup flips it to true on unmount, so an
+  // in-flight prompt reload is also covered. The previous code minted a
+  // fresh holder inside promptForToken that nothing ever cancelled.
+  const loadCancelled = useRef({ current: false });
+
   useEffect(() => {
-    const cancelledRef = { current: false };
-    void load(cancelledRef);
+    loadCancelled.current.current = false;
+    void load(loadCancelled.current);
     return () => {
-      cancelledRef.current = true;
+      loadCancelled.current.current = true;
     };
   }, [load]);
 
   function promptForToken() {
     const token = window.prompt('请输入 Admin Token（SKILLFORGE_ADMIN_TOKEN）以读取/切换模型：');
     if (token == null) return; // cancelled
-    if (token.trim()) localStorage.setItem(ADMIN_TOKEN_KEY, token.trim());
-    else localStorage.removeItem(ADMIN_TOKEN_KEY);
-    const cancelledRef = { current: false };
-    void load(cancelledRef);
+    // CODE-AUDIT 2026-11-05 (D-03): writeAdminToken never throws (storage
+    // policies); the previous bare localStorage.setItem white-paged the
+    // whole app under disabled-storage browsers.
+    writeAdminToken(token.trim() || null);
+    loadCancelled.current.current = false;
+    void load(loadCancelled.current);
   }
 
   async function switchModel(next: string) {

@@ -44,7 +44,6 @@ import (
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/llm"
@@ -231,7 +230,11 @@ func (s *Deps) llmSaveHandler(ctx context.Context, c *app.RequestContext) {
 	})
 }
 
-// applyLLMConfig 用"每次调用重新 Load 文件"的 resolver 热装配 LLMDynamic。
+// applyLLMConfig 用共享工厂 llm.BuildUpstream 热装配 LLMDynamic。
+// CODE-AUDIT 2026-11-05 (A-03)：此前这里自建了一份"只认文件配置"的
+// resolver（无 env preset 回落、无 LocalThinkOffModel 包装），面板第一次
+// 保存就把启动期的完整语义顶掉了。现在与 cmd/server/main.go 共用同一
+// 个装配函数，语义分叉在构造上不可能再发生。
 // 文件被手工编辑也生效；Load 是本地小文件读取，代价可接受（T-52-05）。
 // 构造失败（key 被撤、URL 坏）⇒ resolver 返回错误 ⇒ Available()=false，
 // 管道回落 stub —— 服务不死（Phase 52 决策：启动/运行都不因坏上游 Fatalf）。
@@ -240,43 +243,9 @@ func (s *Deps) applyLLMConfig() {
 		return
 	}
 	s.LLMDynamic.SetResolver(func() (model.ToolCallingChatModel, error) {
-		cfg, present, err := llmconfig.Load()
-		if err != nil {
-			return nil, err
-		}
-		if !present {
-			return nil, errNoFileConfig
-		}
-		key, err := llmconfig.ResolveKey(cfg)
-		if err != nil {
-			return nil, err
-		}
-		base := cfg.BaseURL
-		if base == "" {
-			plan, ok := llmconfig.FindPlan(cfg.Vendor, cfg.Plan)
-			if !ok {
-				return nil, errUnknownVendorPlan
-			}
-			base = plan.BaseURL
-		}
-		cm, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
-			BaseURL: base,
-			APIKey:  key,
-			Model:   cfg.Model,
-		})
-		if err != nil {
-			return nil, err
-		}
-		return cm, nil
+		return llm.BuildUpstream(llm.UpstreamEnv{StubActive: false})
 	})
 }
-
-// errNoFileConfig / errUnknownVendorPlan 是 resolver 的内部哨兵
-// （Available()=false 的两条主因，面板上可据此提示）。
-var (
-	errNoFileConfig      = errStr("no llm config file (stub mode)")
-	errUnknownVendorPlan = errStr("unknown vendor/plan in llm config")
-)
 
 type errStr string
 
@@ -479,8 +448,20 @@ func (s *Deps) llmModelHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	cfg, present, err := llmconfig.Load()
-	if err != nil || !present || cfg.BaseURL == "" {
-		c.JSON(http.StatusBadRequest, graphResponseError{Error: "no saved llm config — save vendor/base_url/api key once in the admin LLM panel first"})
+	// CODE-AUDIT 2026-11-05 (A-04): three fixes —
+	//  1. the `cfg.BaseURL == ""` hard gate is GONE: blank base_url is legal
+	//     for non-custom vendors (catalog plan fallback) and the resolver
+	//     already falls back, so a legal minimax/zhipu config must not be
+	//     told "save a config first" when switching models;
+	//  2. a CORRUPT config file (err != nil) is a 500 with the real error,
+	//     not a misleading "save once in the panel" 400;
+	//  3. only a truly absent config stays a 400.
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "saved llm config is unreadable: " + err.Error()})
+		return
+	}
+	if !present {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "no saved llm config — save vendor/plan/api key once in the admin LLM panel first"})
 		return
 	}
 	cfg.Model = strings.TrimSpace(req.Model)

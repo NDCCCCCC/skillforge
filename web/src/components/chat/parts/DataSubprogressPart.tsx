@@ -64,11 +64,22 @@ export default function DataSubprogressPart({
 }: {
   part: DataSubprogressPartType | (UIMessage['parts'][number] & Record<string, unknown>);
 }) {
-  const data = (part as DataSubprogressPartType).data as SubprogressStep;
+  // CODE-AUDIT 2026-11-05 (D-05): part.data used to be blindly asserted
+  // (`as SubprogressStep`) and dereferenced — a chunk missing `data` (or a
+  // wrongly-typed part) threw a TypeError in the message-render path, and
+  // with NO ErrorBoundary anywhere in the app that unmounts the whole
+  // React tree (white page). The sibling data-* branches in MessageBubble
+  // guard with `?.` / early-returns; this file now does the same. The
+  // hook stays unconditional (rules-of-hooks), so the guard lives in the
+  // tier hook's argument, not in an early return before it.
+  const data = (part as { data?: SubprogressStep }).data;
+  const tier = data?.tier ?? '';
   // Hook must run unconditionally; useTierLabel('') is a no-op that hides
   // the badge when the step carries no tier.
-  const resolvedLabel = useTierLabel(data.tier ?? '');
-  const tierLabel = data.tier ? resolvedLabel : null;
+  const resolvedLabel = useTierLabel(tier);
+  const tierLabel = tier ? resolvedLabel : null;
+
+  if (!data) return null;
 
   return (
     <div

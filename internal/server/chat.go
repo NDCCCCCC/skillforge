@@ -893,8 +893,21 @@ func conclusionText(v verdict.Verdict, reg kb.Registry) string {
 		// emitted verbatim — stripping terminal punctuation or appending
 		// "。" there would corrupt the fence. Single-line Answers keep
 		// the historical strip-double-period behavior (260817-i36 ④).
+		//
+		// CODE-AUDIT 2026-11-05 (C-04): the heading used to be a blanket
+		// 「**结论**」 regardless of verdict state. After a grounding
+		// failure ApplyDowngrade overwrites Status to needs_input and
+		// pipeline.go strips the (non-existent) citations — so the
+		// unverified answer surfaced under a confident「结论」heading with
+		// its only trust hint removed. Downgraded verdicts now present as
+		// an explicitly unverified candidate; the "结论" heading is
+		// reserved for Status="ok".
 		answer := strings.TrimSpace(v.Answer)
-		b.WriteString("**结论**\n\n")
+		if v.Status == "ok" {
+			b.WriteString("**结论**\n\n")
+		} else {
+			b.WriteString("**未经核验的候选答案**\n\n")
+		}
 		if strings.Contains(answer, "\n") || strings.Contains(answer, "```") {
 			b.WriteString(answer)
 		} else {

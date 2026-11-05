@@ -96,6 +96,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -105,7 +106,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 
@@ -153,8 +153,11 @@ const (
 )
 
 // env-or-default helpers. Each required var aborts startup on empty.
+// CODE-AUDIT 2026-11-05 (A-06): the GLM default is owned by llmconfig so
+// the shared upstream factory and EffectiveBaseURL's capability judgement
+// cannot drift from the server's env preset.
 const (
-	defaultGLMBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
+	defaultGLMBaseURL = llmconfig.DefaultGLMBaseURL
 	defaultServerAddr = ":8888"
 	defaultCollection = "skillforge_knowledge"
 	// Plan 06-02 / SC-1: the eval dashboard reads the same files
@@ -181,6 +184,25 @@ func envOr(name, def string) string {
 		return v
 	}
 	return def
+}
+
+// redactURL strips userinfo and query from a URL before it reaches any
+// log line — Mongo URIs carry mongodb://user:password@host and BGE/Milvus
+// endpoints may carry ?api_key=… / ?token=…. CODE-AUDIT 2026-11-05
+// (B-03/B-07): the repo's own invariant (embedded.go:106-109, cache.go:29)
+// says a URL that may embed a credential is NEVER logged verbatim; these
+// two call sites violated it. Unparseable input degrades to a fixed
+// placeholder rather than risking a leak.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "<unparseable-url>"
+	}
+	scheme := u.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return scheme + "://" + u.Host
 }
 
 // parseBytesEnvOrDefault parses an int64 byte-count env var. Non-numeric or
@@ -505,7 +527,9 @@ func main() {
 		emb = bge.New(bge.Config{URL: bgeURL, Model: bgeModel, Timeout: bgeTimeout, InsecureSkipVerify: bgeTLSSkipVerify})
 		embedderModelName = bgeModel
 		if bgeTLSSkipVerify {
-			log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", bgeURL)
+			// CODE-AUDIT 2026-11-05 (B-07): redacted — the raw URL may carry
+			// ?api_key= / ?token= (repo invariant: embedded.go:106-109).
+			log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", redactURL(bgeURL))
 		}
 	default:
 		log.Fatalf("[FAIL] cmd/server: EMBEDDER_BACKEND=%q — must be \"bge\" or \"local\"", embedderBackend)
@@ -568,11 +592,14 @@ func main() {
 		// 不需要第三个接口。
 		indexerBackend = r.(*embedded.Client)
 	case "none":
-		// degraded 模式（RETRIEVER_BACKEND=none）：检索已禁用，上传索引
-		// 管线不装配（nil），任何依赖 indexer 的路由按既有的 nil-拒绝路径
-		// 处理。绝不能落进 default 的 Milvus 类型断言 —— noopRetriever
+		// degraded 模式（RETRIEVER_BACKEND=none）：检索已禁用。CODE-AUDIT
+		// 2026-11-05 (B-01)：这里此前装配 nil 接口，注释声称的"nil-拒绝
+		// 路径"并不存在 —— 上传路由 s.IndexerBackend.Insert 直接 nil 指针
+		// panic（提交 58aadb9 只修掉了启动期 panic）。现在装配显式的
+		// disabledIndexer，Insert 返回可识别的禁用错误，由 upload.go 归一
+		// 为 503。绝不能落进 default 的 Milvus 类型断言 —— noopRetriever
 		// 会在启动时直接 panic（2026-10-24 降级启动实测）。
-		indexerBackend = nil
+		indexerBackend = retriever.DisabledIndexer{}
 	default:
 		// unknown values fall through to milvus (default).
 		indexerBackend = milvus.NewIndexerBackend(r.(*milvus.MilvusClient))
@@ -617,41 +644,13 @@ func main() {
 	// (Available()=false, pipeline falls back to stub) instead of killing
 	// the server — the startup Fatalf for a broken env preset is kept
 	// below, but runtime reconfiguration can never take the process down.
+	// CODE-AUDIT 2026-11-05 (A-03): delegate to the SHARED factory in
+	// internal/llm — the panel's applyLLMConfig now resolves through the
+	// exact same function, so a panel save can no longer hot-swap this
+	// semantics-complete resolver for an impoverished copy (that copy had
+	// lost the env-preset fallback and the LocalThinkOffModel wrapper).
 	buildUpstream := func() (model.ToolCallingChatModel, error) {
-		cfg, ok, cfgErr := llmconfig.Load()
-		if cfgErr != nil || !ok {
-			if stubActive {
-				return nil, llm.ErrNoUpstream
-			}
-			cmRaw, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-				BaseURL: glmBase,
-				APIKey:  glmKey,
-				Model:   serverModel,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("env preset: %w", err)
-			}
-			return llm.LocalThinkOffModel(cmRaw), nil
-		}
-		key, keyErr := llmconfig.ResolveKey(cfg)
-		if keyErr != nil {
-			return nil, fmt.Errorf("resolve key: %w", keyErr)
-		}
-		baseURL := cfg.BaseURL
-		if baseURL == "" {
-			if plan, ok := llmconfig.FindPlan(cfg.Vendor, cfg.Plan); ok {
-				baseURL = plan.BaseURL
-			}
-		}
-		cmRaw, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-			BaseURL: baseURL,
-			APIKey:  key,
-			Model:   cfg.Model,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("panel config: %w", err)
-		}
-		return llm.LocalThinkOffModel(cmRaw), nil
+		return llm.BuildUpstream(llm.UpstreamEnv{StubActive: stubActive})
 	}
 	dynChat := llm.NewDynamicChatModel(buildUpstream)
 	if up, err := buildUpstream(); err != nil {
@@ -1474,7 +1473,10 @@ func buildRetriever(ctx context.Context, backend string, emb embedder.Embedder, 
 			Collection: "knowledge",
 		})
 		if err != nil {
-			log.Fatalf("[FAIL] cmd/server: mongo dial %s: %v", mURI, err)
+			// CODE-AUDIT 2026-11-05 (B-03): log the REDACTED URI — the raw
+			// mongodb://user:password@host form leaks credentials into
+			// container logs / log shippers.
+			log.Fatalf("[FAIL] cmd/server: mongo dial %s: %v", redactURL(mURI), err)
 		}
 		if err := mc.Ensure(ctx); err != nil {
 			log.Fatalf("[FAIL] cmd/server: mongo ensure collection: %v", err)
@@ -1489,7 +1491,7 @@ func buildRetriever(ctx context.Context, backend string, emb embedder.Embedder, 
 		} else {
 			log.Printf("[OK] knowledge corpus seeded into mongo %s.%s", mc.DatabaseName(), mc.CollectionName())
 		}
-		return mc, "mongo(" + mURI + ")"
+		return mc, "mongo(" + redactURL(mURI) + ")"
 	default:
 		if backend != "milvus" {
 			log.Printf("[WARN] cmd/server: unknown RETRIEVER_BACKEND=%q, falling back to milvus", backend)
@@ -1498,6 +1500,15 @@ func buildRetriever(ctx context.Context, backend string, emb embedder.Embedder, 
 		mcfg := milvus.Config{
 			Addr:           milvusAddr,
 			CollectionName: defaultCollection,
+		}
+		// CODE-AUDIT 2026-11-05 (B-02): the milvus collection is created at
+		// DefaultEmbedDim (1024, BGE-M3). An EMBEDDER_BACKEND=local embedder
+		// emits 512-dim vectors — boot sailed through (the seed-time mismatch
+		// was downgraded to a WARN) but EVERY Search then failed at runtime
+		// with "queryVec dim=512, want=1024", permanently dead retrieval with
+		// no log line naming both numbers. Assert the pairing NOW, loudly.
+		if d := emb.Dimensions(); d != milvus.DefaultEmbedDim {
+			log.Fatalf("[FAIL] cmd/server: embedder dim %d != milvus collection dim %d (RETRIEVER_BACKEND=milvus is built for BGE-M3's 1024-dim vectors; either restore EMBEDDER_BACKEND=bge or switch RETRIEVER_BACKEND to embedded|mongo)", d, milvus.DefaultEmbedDim)
 		}
 		mc, err := milvus.New(ctx, mcfg)
 		if err != nil {

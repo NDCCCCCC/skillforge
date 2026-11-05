@@ -153,9 +153,17 @@ export default function ChatInput({
     return () => document.removeEventListener('chat-input-prefill', handler);
   }, [setPendingDraft]);
 
+  // CODE-AUDIT 2026-11-05 (D-01): attached files were collected into
+  // `files` state, rendered as removable chips, and then SILENTLY DROPPED —
+  // onSend carries only the text, so the user believed a document reached
+  // the model when nothing did (silent data loss). Until a real upload
+  // channel exists, sending with attachments is blocked and the chip bar
+  // says so explicitly; after a blocked send the attachments survive.
+  const hasAttachments = files.length > 0;
+
   function handleSend() {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || hasAttachments) return;
     onSend(trimmed);
     setText('');
     // Phase 17: ensure pendingDraft is cleared on send
@@ -347,6 +355,17 @@ export default function ChatInput({
                 </button>
               </span>
             ))}
+            {/* CODE-AUDIT 2026-11-05 (D-01): the attachment channel is not
+                wired to the send payload yet — say so instead of silently
+                dropping the files on send. */}
+            <span
+              data-testid="chat-input-files-notice"
+              className="composer-file-chip"
+              style={{ color: 'var(--color-text-muted)' }}
+              role="status"
+            >
+              附件通道尚未接入，暂不会随消息发送；发送前请先移除附件
+            </span>
           </div>
         )}
 
@@ -371,8 +390,8 @@ export default function ChatInput({
           type="button"
           data-testid="chat-input-send"
           onClick={handleSend}
-          disabled={!text.trim() || disabled}
-          aria-label="发送"
+          disabled={!text.trim() || disabled || hasAttachments}
+          aria-label={hasAttachments ? '附件通道尚未接入，请先移除附件' : '发送'}
           className="composer-send"
         >
           <ArrowUp className="h-4 w-4" />

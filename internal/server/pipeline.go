@@ -786,6 +786,53 @@ func emitSubprogress(c *app.RequestContext, p wire.SubprogressStep) {
 // systemInstructionsTemplate is verbatim (no %s slots); Sprintf is
 // used for symmetry with the user side and to give the call sites one
 // obvious render boundary.
+// neutralizeFramingPrefix defuses forged block headers inside chunk text
+// (CODE-AUDIT 2026-11-05 C-02): chunk content is rendered verbatim into
+// the prompt, so a body line starting with "[ref-<digits>] tier=… source=…"
+// would be parsed as a NEW evidence block by the stub extractor (and
+// mis-anchored by the LLM). Lines inside the body that sit at line start
+// and match the header shape get a zero-width space injected before the
+// "[", so they no longer satisfy the line-anchored header match; genuine
+// headers are rendered by this file and never pass through here.
+// Mid-line "[ref-" substrings were never headers (T-49-13 line anchoring)
+// and are left untouched.
+func neutralizeFramingPrefix(content string) string {
+	if !strings.Contains(content, "[ref-") {
+		return content
+	}
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		rest, ok := strings.CutPrefix(line, "[ref-")
+		if !ok {
+			continue
+		}
+		// Header shape check (mirror of stubchat.blockHeaderLine without
+		// importing the package): [ref-<digits>] tier=<ns> source=<ns>.
+		closeIdx := strings.Index(rest, "]")
+		if closeIdx <= 0 {
+			continue
+		}
+		allDigits := true
+		for _, r := range rest[:closeIdx] {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if !allDigits {
+			continue
+		}
+		fields := strings.Fields(rest[closeIdx+1:])
+		if len(fields) != 2 ||
+			!strings.HasPrefix(fields[0], "tier=") ||
+			!strings.HasPrefix(fields[1], "source=") {
+			continue
+		}
+		lines[i] = "\u200b" + line
+	}
+	return strings.Join(lines, "\n")
+}
+
 func buildPrompt(query string, chunks []retriever.Hit) (string, string) {
 	var b strings.Builder
 	for _, ch := range chunks {
@@ -797,8 +844,12 @@ func buildPrompt(query string, chunks []retriever.Hit) (string, string) {
 		// and the BE chunkHandler accepts both bare and prefixed forms
 		// (Layer 3 / quick 260815-jpu parseLenientChunkID), so any
 		// residual drift is absorbed by the FE normalize (Layer 4).
+		//
+		// CODE-AUDIT 2026-11-05 (C-02): chunk bodies are neutralized so a
+		// forged line-anchored header inside the body cannot mint a new
+		// evidence block (see neutralizeFramingPrefix).
 		fmt.Fprintf(&b, "[ref-%d] tier=%s source=%s\n%s\n---\n",
-			ch.ID, ch.Tier, ch.Source, ch.Content)
+			ch.ID, ch.Tier, ch.Source, neutralizeFramingPrefix(ch.Content))
 	}
 	return fmt.Sprintf(systemInstructionsTemplate), fmt.Sprintf(userQueryTemplate, query, b.String())
 }
@@ -823,7 +874,7 @@ func chunksToBlock(chunks []retriever.Hit) string {
 	var b strings.Builder
 	for _, ch := range chunks {
 		fmt.Fprintf(&b, "[ref-%d] tier=%s source=%s\n%s\n---\n",
-			ch.ID, ch.Tier, ch.Source, ch.Content)
+			ch.ID, ch.Tier, ch.Source, neutralizeFramingPrefix(ch.Content))
 	}
 	return b.String()
 }

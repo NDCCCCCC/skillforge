@@ -73,11 +73,14 @@ func LocalThinkOffModel(cm model.ToolCallingChatModel) model.ToolCallingChatMode
 //
 // MiniMax M3.x exception (observed 2026-10-26): the M3.1 family REQUIRES
 // adaptive thinking — a request carrying thinking.type="disabled" is
-// rejected with HTTP 400 code 2013 ("requires adaptive thinking"). For
-// vendor "minimax" the thinking field is omitted entirely (adaptive stays
-// on by default; the 4096-token budget already headrooms for reasoning).
-// Any other vendor — including unknown/none (fail-open, file config
-// missing) — keeps the historical thinking:disabled field.
+// rejected with HTTP 400 code 2013 ("requires adaptive thinking").
+//
+// CODE-AUDIT 2026-11-05 (A-05/A-06/A-10): the policy is now an ENDPOINT
+// CAPABILITY WHITELIST (llmconfig.SupportsThinkingDisabled), not a
+// "!= minimax" blacklist on the declared vendor. That fixes three cases
+// at once: a vendor whose base_url points at another provider, an env
+// preset deployment (which has no vendor concept at all), and every
+// OpenAI-compatible endpoint that never had a thinking parameter.
 //
 // LOCAL_LLM_THINK=false (CODE-AUDIT 2026-11-05 A-01): when the operator
 // disables local chain-of-thought, "think":false is included HERE so the
@@ -93,7 +96,7 @@ func PipelineExtraFields() map[string]any {
 	fields := map[string]any{
 		"response_format": map[string]string{"type": "json_object"},
 	}
-	if llmconfig.CurrentVendor() != "minimax" {
+	if llmconfig.SupportsThinkingDisabled() {
 		fields["thinking"] = map[string]string{"type": "disabled"}
 	}
 	if os.Getenv(LocalThinkDisabledEnv) == "false" {

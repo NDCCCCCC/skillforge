@@ -18,6 +18,7 @@ package retriever
 
 import (
 	"context"
+	"errors"
 )
 
 // IndexerBackend is the narrow insert-only interface for the document upload pipeline.
@@ -34,3 +35,19 @@ type IndexerBackend interface {
 
 // IndexerBackendNotWiredError is the 503 body when Deps.IndexerBackend is nil.
 const IndexerBackendNotWiredError = "indexer backend not wired (server started without a retriever backend)"
+
+// ErrIndexerDisabled is returned by DisabledIndexer on every Insert —
+// RETRIEVER_BACKEND=none disabled the index pipeline on purpose, so an
+// upload is a deliberate 503, not a nil-pointer panic (CODE-AUDIT
+// 2026-11-05 B-01).
+var ErrIndexerDisabled = errors.New("indexer disabled (RETRIEVER_BACKEND=none)")
+
+// DisabledIndexer is the explicit "retrieval disabled" implementation wired
+// in place of a nil interface — calling code keeps a single nil-free path
+// and can classify the rejection as backend-unavailable (503).
+type DisabledIndexer struct{}
+
+// Insert implements IndexerBackend, always rejecting with ErrIndexerDisabled.
+func (DisabledIndexer) Insert(ctx context.Context, docs []Document) error {
+	return ErrIndexerDisabled
+}
