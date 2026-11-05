@@ -13,7 +13,7 @@
 // Sheet) and is already expressed in border / radius / background
 // design tokens.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { approveProposal, rejectProposal } from './ontologyApi';
@@ -30,6 +30,15 @@ export default function ProposalDrawer({ proposal, onClose, onDecided }: Proposa
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
+
+  // CODE-AUDIT 2026-11-05 (G-08): reset drawer states when proposal changes
+  // to avoid carrying over renaming/customName to another proposal.
+  useEffect(() => {
+    setCustomName('');
+    setBusy(null);
+    setError(null);
+    setRenaming(false);
+  }, [proposal?.id]);
 
   if (!proposal) return null;
 

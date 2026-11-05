@@ -18,6 +18,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
@@ -132,12 +133,18 @@ func (m *ExtraFieldsModel) generateOptions(opts []model.Option) []model.Option {
 // Generate implements model.BaseChatModel with the wrapper's extra fields
 // injected at caller-priority (see extraFieldsOption).
 func (m *ExtraFieldsModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if m == nil || m.inner == nil {
+		return nil, fmt.Errorf("extrafields: model not initialized")
+	}
 	return m.inner.Generate(ctx, input, m.generateOptions(opts)...)
 }
 
 // Stream implements model.BaseChatModel with the wrapper's extra fields
 // injected at caller-priority (see extraFieldsOption).
 func (m *ExtraFieldsModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if m == nil || m.inner == nil {
+		return nil, fmt.Errorf("extrafields: model not initialized")
+	}
 	return m.inner.Stream(ctx, input, m.generateOptions(opts)...)
 }
 
@@ -145,6 +152,9 @@ func (m *ExtraFieldsModel) Stream(ctx context.Context, input []*schema.Message, 
 // tool-bound model so the decorator survives tool binding (the ReAct
 // agent calls WithTools once per run).
 func (m *ExtraFieldsModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	if m == nil || m.inner == nil {
+		return nil, fmt.Errorf("extrafields: model not initialized")
+	}
 	inner, err := m.inner.WithTools(tools)
 	if err != nil {
 		return nil, err

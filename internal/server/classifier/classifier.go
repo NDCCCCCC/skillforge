@@ -226,18 +226,11 @@ func (c *RefusalClassifier) Classify(ctx context.Context, in RefusalClassifierIn
 			lastErr = parseErr
 			continue
 		}
-		// Enforce the W3 floor. Allow with confidence below the floor
-		// is treated as invalid (retry → DefaultDeny on exhaustion).
-		// Refuse is always accepted as-is (the floor applies to
-		// "allow" only — the system prompt enforces this).
-		if out.Decision == "allow" && out.Confidence < ClassifierConfidenceFloor {
-			lastErr = fmt.Errorf("classifier.Classify: confidence %.3f below floor %.2f (attempt %d)",
-				out.Confidence, ClassifierConfidenceFloor, attempt)
-			continue
-		}
 		// Shape gate (Valid() includes Decision enum + Confidence
-		// range + NaN check). Reason enum is checked only on refuse
-		// (an empty reason on refuse is also retried).
+		// range + NaN check + W3 floor: "allow" must be >= ClassifierConfidenceFloor).
+		// CODE-AUDIT 2026-11-05 (A-13): previously duplicated the floor check
+		// right before Valid(), diverging in responsibility. Valid() is the
+		// single source of truth.
 		if !out.Valid() {
 			lastErr = fmt.Errorf("classifier.Classify: invalid output (attempt %d): %+v", attempt, out)
 			continue

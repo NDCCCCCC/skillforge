@@ -11,7 +11,7 @@
 // contract and every data-testid are unchanged:
 //   idle → uploading → parsing → indexing → done | error
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { fetchKnowledgeBases } from '../../lib/kb-bases';
 import { adminFetchResponse } from './shared/useAdminData';
@@ -27,6 +27,7 @@ export default function DocUpload() {
   const [error, setError] = useState('');
   const [chunks, setChunks] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchKnowledgeBases()
@@ -74,6 +75,9 @@ export default function DocUpload() {
     setFile(null);
     setError('');
     setChunks(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }
 
   if (!expanded) {
@@ -130,6 +134,7 @@ export default function DocUpload() {
         </select>
 
         <input
+          ref={fileInputRef}
           data-testid="doc-upload-file"
           type="file"
           accept=".md,.pdf,.docx,.xlsx,.pptx"

@@ -40,7 +40,7 @@
 //
 // Rendering safety (T-29-09): server error strings, report comments and
 // the chunk preview flow through JSX text nodes only.
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { fetchChunkContent } from '../../lib/chunk-lookup';
 import { cn } from '../../lib/cn';
 import { Button } from '../ui/button';
@@ -123,14 +123,19 @@ export default function ReviewQueuePanel() {
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const [busyChunk, setBusyChunk] = useState<number | null>(null);
   const [actionError, setActionError] = useState<{ chunkId: number; message: string } | null>(null);
+  // CODE-AUDIT 2026-11-05 (G-05): guard against race conditions between status tabs
+  // and history filters overwriting each other.
+  const reqIdRef = useRef(0);
 
   const loadQueue = useCallback((status: 'pending' | 'resolved', disp: 'all' | Disposition) => {
     setLoading(true);
+    const thisReqId = ++reqIdRef.current;
     const token = localStorage.getItem('sf_admin_token') ?? '';
     let url = `/api/admin/feedback/review?status=${status}`;
     if (status === 'resolved' && disp !== 'all') url += `&disposition=${disp}`;
     return fetch(url, { headers: { 'X-Admin-Token': token } })
       .then(async (resp) => {
+        if (thisReqId !== reqIdRef.current) return;
         if (!resp.ok) {
           const body = (await resp.json().catch(() => ({}))) as { error?: unknown };
           // Server error verbatim (KnowledgeBaseList honesty rule) — the
@@ -156,6 +161,7 @@ export default function ReviewQueuePanel() {
         setLoading(false);
       })
       .catch(() => {
+        if (thisReqId !== reqIdRef.current) return;
         setServerError('');
         setError(true);
         setLoading(false);

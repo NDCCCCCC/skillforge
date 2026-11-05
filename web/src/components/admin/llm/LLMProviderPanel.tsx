@@ -37,13 +37,30 @@ import {
   type LLMVendor,
 } from './llmApi';
 
-const TOKEN_KEY = 'skillforge.adminToken';
+// CODE-AUDIT 2026-11-05 (D-02): unify admin token storage key.
+// Primary key is 'sf_admin_token' (shared by all other admin components),
+// while retaining backward compatibility with 'skillforge.adminToken'.
+const PRIMARY_TOKEN_KEY = 'sf_admin_token';
+const LEGACY_TOKEN_KEY = 'skillforge.adminToken';
 
 function readToken(): string {
   try {
-    return window.localStorage.getItem(TOKEN_KEY) ?? '';
+    return (
+      window.localStorage.getItem(PRIMARY_TOKEN_KEY) ??
+      window.localStorage.getItem(LEGACY_TOKEN_KEY) ??
+      ''
+    );
   } catch {
     return '';
+  }
+}
+
+function writeToken(val: string): void {
+  try {
+    window.localStorage.setItem(PRIMARY_TOKEN_KEY, val);
+    window.localStorage.setItem(LEGACY_TOKEN_KEY, val);
+  } catch {
+    /* private mode — keep in-memory only */
   }
 }
 
@@ -63,7 +80,7 @@ export default function LLMProviderPanel() {
 
   const currentPlan = vendors.find((v) => v.id === vendor)?.plans.find((p) => p.id === plan);
 
-  const loadAll = useCallback(async (tok: string) => {
+  const loadAll = useCallback(async (tok: string): Promise<boolean> => {
     setBusy('load');
     try {
       const [prov, cfg] = await Promise.all([fetchLLMProviders(tok), fetchLLMConfig(tok)]);
@@ -77,8 +94,10 @@ export default function LLMProviderPanel() {
         setApiKeyEnv(cfg.config.api_key_env);
       }
       setMsg(null);
+      return true;
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+      return false;
     } finally {
       setBusy('');
     }
@@ -141,10 +160,12 @@ export default function LLMProviderPanel() {
         kind: 'ok',
         text: r.available ? '已保存并立即生效' : '已保存（当前无可用上游，仍处于 stub 模式）',
       };
-      await loadAll(token);
-      // loadAll clears msg on its success path; re-assert AFTER the refresh
-      // so the save verdict stays visible next to the refreshed state line.
-      setMsg(savedMsg);
+      // CODE-AUDIT 2026-11-05 (E-07): loadAll errors should not be silently
+      // overwritten with savedMsg. Only re-assert savedMsg on success.
+      const ok = await loadAll(token);
+      if (ok) {
+        setMsg(savedMsg);
+      }
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -196,11 +217,7 @@ export default function LLMProviderPanel() {
             <Button
               type="button"
               onClick={() => {
-                try {
-                  window.localStorage.setItem(TOKEN_KEY, token);
-                } catch {
-                  /* private mode — keep in-memory only */
-                }
+                writeToken(token);
                 void loadAll(token);
               }}
             >

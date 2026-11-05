@@ -49,7 +49,7 @@
 // pattern). Zero new zustand fields — dim/days/granularity are component-
 // local useState; zero new tokens/deps; all copy verbatim from
 // 29-UI-SPEC §Copywriting Contract.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkline, type SparklinePoint } from '../chat/parts/Sparkline';
 import { Button } from '../ui/button';
 import { useAppStore } from '../../store/app-store';
@@ -166,14 +166,19 @@ export default function FeedbackMetricsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [serverError, setServerError] = useState('');
+  // CODE-AUDIT 2026-11-05 (G-04): guard against race conditions where a slower
+  // previous response overwrites a faster newer response after changing dimensions.
+  const reqIdRef = useRef(0);
 
   const loadMetrics = useCallback((nextDim: Dim, nextDays: Range) => {
     setLoading(true);
+    const thisReqId = ++reqIdRef.current;
     const token = localStorage.getItem('sf_admin_token') ?? '';
     return fetch(`/api/admin/feedback/metrics?dim=${nextDim}&days=${nextDays}`, {
       headers: { 'X-Admin-Token': token },
     })
       .then(async (resp) => {
+        if (thisReqId !== reqIdRef.current) return;
         if (!resp.ok) {
           const body = (await resp.json().catch(() => ({}))) as { error?: unknown };
           setServerError(typeof body.error === 'string' && body.error !== '' ? body.error : `HTTP ${resp.status}`);
@@ -188,6 +193,7 @@ export default function FeedbackMetricsPanel() {
         setLoading(false);
       })
       .catch(() => {
+        if (thisReqId !== reqIdRef.current) return;
         setServerError('');
         setError(true);
         setLoading(false);
