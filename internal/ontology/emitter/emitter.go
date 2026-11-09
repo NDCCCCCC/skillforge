@@ -261,7 +261,16 @@ func (e *Emitter) render(skills []Skill, cats []KBCategory) string {
 	for _, c := range cats {
 		fmt.Fprintf(&b, "skf:cat_%s a skf:KBCategory ;\n    skf:categoryName \"%s\" ;\n    skf:belongsToTier skf:%s .\n\n", c.TierName, c.TierName, c.TierName)
 		for _, sub := range c.SubCategories {
-			fmt.Fprintf(&b, "skf:sub_%s_%s a skf:SubCategory ;\n    skf:subCategoryName \"%s\" ;\n    skf:belongsToTier skf:cat_%s .\n\n", c.TierName, sub, sub, c.TierName)
+			// 2026-11-09：object 必须是 Tier，不是 KBCategory。
+			// 这里原先是 `skf:cat_%s`，于是 sub_* 的 belongsToTier 指向了
+			// 一个 KBCategory 个体，违反 shapes.ttl 里 belongsToTier 的
+			// sh:class 约束 —— 启动时 SHACL 报 7 条 error 并把这 7 个
+			// SubCategory 全部隔离（health=error, errors=7, quarantined=7）。
+			// 谓词名是 belongsToTier，range 也是 Tier（见上面 ObjectProperty
+			// 声明 {"belongsToTier", …, "Tier"}），所以上面 cat_* 那行写
+			// `skf:%s` 才是对的，这行抄错了。sub_* 的名字里已经含 tier
+			// （sub_<tier>_<name>），它确实属于那个 Tier。
+			fmt.Fprintf(&b, "skf:sub_%s_%s a skf:SubCategory ;\n    skf:subCategoryName \"%s\" ;\n    skf:belongsToTier skf:%s .\n\n", c.TierName, sub, sub, c.TierName)
 		}
 	}
 
