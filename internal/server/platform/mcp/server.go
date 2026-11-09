@@ -116,12 +116,13 @@ func NewServer(kg *store.Store, serviceSkill string) *Server {
 	s.mcp.AddTool(mcp.Tool{
 		Name:        "skf_neighbors",
 		Title:       "Get Entity Neighbors",
-		Description: "Return the N-hop neighborhood of an entity (nodes + edges) for graph exploration.",
+		Description: "Return the N-hop neighborhood of an entity (nodes + edges) for graph exploration. Results are tier-filtered by the caller's skill (D-TRUST-01): neighbors outside the skill's read-access tiers are never returned.",
 		InputSchema: mcp.ToolInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"uri":  map[string]interface{}{"type": "string", "description": "Entity URI"},
-				"hops": map[string]interface{}{"type": "integer", "description": "Number of hops (1 or 2, default 1)"},
+				"uri":   map[string]interface{}{"type": "string", "description": "Entity URI"},
+				"hops":  map[string]interface{}{"type": "integer", "description": "Number of hops (1 or 2, default 1)"},
+				"skill": map[string]interface{}{"type": "string", "description": "Skill name for tier filtering (defaults to service skill)"},
 			},
 			Required: []string{"uri"},
 		},
@@ -195,17 +196,44 @@ func (s *Server) CallTool(ctx context.Context, name string, params map[string]an
 // ---------------------------------------------------------------------------
 
 const (
-	rdfType         = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-	skfSkill        = "http://skillforge.local/ontology#Skill"
+	rdfType          = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+	skfSkill         = "http://skillforge.local/ontology#Skill"
 	skfHasReadAccess = "http://skillforge.local/ontology#hasReadAccess"
-	ns              = "http://skillforge.local/ontology#"
-	skfSkillPrefix  = ns + "skill_"
-	skfCatPrefix    = ns + "cat_"
+	skfTier          = "http://skillforge.local/ontology#Tier"
+	skfBelongsToTier = "http://skillforge.local/ontology#belongsToTier"
+	ns               = "http://skillforge.local/ontology#"
+	skfSkillPrefix   = ns + "skill_"
+	skfCatPrefix     = ns + "cat_"
 )
 
 // resolveSkillTiers maps a skill name to its read-access tier names.
 // Returns nil if the skill is not found.
+//
+// D-NZK-DEF-01（与兄弟 resolver 对齐）：真实 KG 的连线形状是
+//
+//	skf:skill_X skf:hasReadAccess skf:cat_<tier>   (KBCategory 个体)
+//	skf:cat_<tier> skf:belongsToTier skf:<tier>     (Tier 个体)
+//
+// 所以 hasReadAccess 的对象绝不能直接 TrimPrefix 当 tier 名 —— 那样得到
+// 的是 "cat_sql-guides"，而 store.QueryScoped 拿 tier 名去比对
+// belongsToTier 的对象（Tier IRI = ns+"<tier>"），永远匹配不上：
+// skf_query 在真实 KG 上恒返回空（信任模型形同虚设）。
+//
+// 归一逻辑与 internal/server/admin_platform.go 的 resolveSkillTiersFromKG
+// 及 internal/server/admin_ontology.go 的 (*Deps).resolveSkillTiers 完全一致
+// （三态）：
+//
+//  1. (O, rdf:type, skf:Tier)         → O 的本地名（旧的直连 Tier 写法）
+//  2. (O, skf:belongsToTier, tierIRI) → tierIRI 的本地名（KBCategory 展开）
+//  3. 都不是                            → 跳过（fail-closed：不贡献 tier）
+//
+// 结果按首次出现顺序去重。永远不返回"非 nil 的空切片"：
+// store.QueryScoped 把空 allowedTiers 当作"不过滤"的 admin 基线，
+// 因此"解析不出任何 tier"必须保持 nil 才能 fail-closed。
 func (s *Server) resolveSkillTiers(skillName string) []string {
+	if s.kg == nil {
+		return nil
+	}
 	if skillName == "" {
 		skillName = s.serviceSkill
 	}
@@ -215,10 +243,36 @@ func (s *Server) resolveSkillTiers(skillName string) []string {
 		return nil
 	}
 	accessTriples := s.kg.Query(skillIRI, skfHasReadAccess, "")
-	var tiers []string
-	for _, t := range accessTriples {
-		tierName := strings.TrimPrefix(t.O, ns)
+	return s.normalizeAccessTiers(accessTriples)
+}
+
+// normalizeAccessTiers 把一组 hasReadAccess 三元组归一成 tier 名列表。
+// 三态归一与去重规则见 resolveSkillTiers 的注释；handleSkills 复用同一套
+// 逻辑，保证"列出来的 reads_tiers"和"实际用于过滤的 tiers"永远是同一个值。
+func (s *Server) normalizeAccessTiers(accessTriples []store.Triple) []string {
+	var (
+		tiers []string
+		seen  = make(map[string]bool)
+	)
+	addTier := func(tierIRI string) {
+		tierName := strings.TrimPrefix(tierIRI, ns)
+		if tierName == "" || seen[tierName] {
+			return
+		}
+		seen[tierName] = true
 		tiers = append(tiers, tierName)
+	}
+	for _, t := range accessTriples {
+		// Case 1: 对象本身就是 Tier 个体（旧的直连写法，向后兼容）。
+		if len(s.kg.Query(t.O, rdfType, skfTier)) > 0 {
+			addTier(t.O)
+			continue
+		}
+		// Case 2: KBCategory 形状的对象 —— 沿 belongsToTier 展开。
+		for _, edge := range s.kg.Query(t.O, skfBelongsToTier, "") {
+			addTier(edge.O)
+		}
+		// Case 3: 未知对象 —— 不贡献任何 tier（fail-closed）。
 	}
 	return tiers
 }
@@ -257,10 +311,10 @@ func (s *Server) handleQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp
 	allowedTiers := s.resolveSkillTiers(skillName)
 
 	var results []store.Triple
-	if allowedTiers != nil {
+	if len(allowedTiers) > 0 {
 		results = s.kg.QueryScoped(args.S, args.P, args.O, allowedTiers)
 	} else {
-		// Skill not found — fail closed, return empty
+		// Skill not found / no resolvable tier — fail closed, return empty
 		results = []store.Triple{}
 	}
 
@@ -314,11 +368,13 @@ func (s *Server) handleSkills(ctx context.Context, req mcp.CallToolRequest) (*mc
 			desc = strings.TrimSuffix(desc, `"`)
 		}
 
-		// Get reads_tiers via hasReadAccess
+		// Get reads_tiers via hasReadAccess — 走与 resolveSkillTiers
+		// 相同的归一逻辑，否则这里会漏出 "cat_<tier>" 形态的本地名，
+		// 外部 agent 拿到的 tier 名与实际过滤用的 tier 名对不上。
 		accessTriples := s.kg.Query(t.S, skfHasReadAccess, "")
-		var readsTiers []string
-		for _, at := range accessTriples {
-			readsTiers = append(readsTiers, strings.TrimPrefix(at.O, ns))
+		readsTiers := s.normalizeAccessTiers(accessTriples)
+		if readsTiers == nil {
+			readsTiers = []string{}
 		}
 
 		skills = append(skills, map[string]any{
@@ -359,23 +415,34 @@ func (s *Server) handleChunkFor(ctx context.Context, req mcp.CallToolRequest) (*
 		skillName = s.serviceSkill
 	}
 	allowedTiers := s.resolveSkillTiers(skillName)
+	if len(allowedTiers) == 0 {
+		// Fail-closed: 解析不出任何 tier（未知 skill / 未知访问对象）
+		// 就不返回任何 chunk —— 绝不返回未按 tier 过滤的结果。
+		return &mcp.CallToolResult{
+			Content:           []mcp.Content{mcp.NewTextContent(jsonString([]map[string]any{}))},
+			StructuredContent: map[string]any{"chunks": []map[string]any{}},
+		}, nil
+	}
 
-	// Resolve tier names to category IRIs for filtering
-	var allowedCats []string
+	// tier IRI = ns + tier 名。belongsToTier 的对象是 Tier 个体
+	// （skf:sql-guides），不是 KBCategory 个体（skf:cat_sql-guides）——
+	// 之前这里又拼了一次 "cat_" 前缀，得到 ns+"cat_sql-guides"，与真实
+	// 对象永远不相等，于是 tier 过滤恒不通过、chunk_for 恒空。
+	allowedTierIRIs := make([]string, 0, len(allowedTiers))
 	for _, t := range allowedTiers {
-		allowedCats = append(allowedCats, ns+"cat_"+t)
+		allowedTierIRIs = append(allowedTierIRIs, ns+t)
 	}
 
 	// Find tables referenced by this entity via Adjacent1
 	var tableIRIs []string
 	if args.MaxHops == 1 {
-		tableIRIs = s.kg.Adjacent1(args.EntityIRI, ns+"referencesTable")
+		tableIRIs = s.referencedTables(args.EntityIRI, allowedTiers)
 	} else {
 		// 2-hop: entity -> table -> also entity's referenced tables
-		tableIRIs = s.kg.Adjacent1(args.EntityIRI, ns+"referencesTable")
+		tableIRIs = s.referencedTables(args.EntityIRI, allowedTiers)
 		// Also get tables referenced by those tables
 		for _, tbl := range tableIRIs {
-			extra := s.kg.Adjacent1(tbl, ns+"referencesTable")
+			extra := s.referencedTables(tbl, allowedTiers)
 			tableIRIs = append(tableIRIs, extra...)
 		}
 	}
@@ -384,39 +451,50 @@ func (s *Server) handleChunkFor(ctx context.Context, req mcp.CallToolRequest) (*
 	seen := make(map[string]bool)
 
 	for _, tblIRI := range tableIRIs {
-		// Find notes that reference this table
-		noteTriples := s.kg.Query("", ns+"referencesTable", tblIRI)
+		// Find notes that reference this table — QueryScoped keeps the
+		// note lookup inside the tier fence (D-TRUST-01).
+		//
+		// 谓词/对象必须在这里再判一次：store.QueryScoped 的 schema 层
+		// 直通分支（D-TIER-03）不施加 (s,p,o) 模式过滤，所以返回值里
+		// 混着全部 schema 三元组。少了这道过滤，chunk 列表会被
+		// Skill/Tier/KBCategory 个体污染。
+		noteTriples := s.kg.QueryScoped("", ns+"referencesTable", tblIRI, allowedTiers)
 		for _, nt := range noteTriples {
+			if nt.P != ns+"referencesTable" || nt.O != tblIRI {
+				continue
+			}
 			noteIRI := nt.S
 
 			// Tier-filter: only include notes that belong to allowed tiers
-			if allowedCats != nil {
-				tierTriples := s.kg.Query(noteIRI, ns+"belongsToTier", "")
-				tierOk := false
-				for _, tt := range tierTriples {
-					for _, cat := range allowedCats {
-						if tt.O == cat {
-							tierOk = true
-							break
-						}
-					}
-					if tierOk {
+			tierTriples := s.kg.QueryScoped(noteIRI, skfBelongsToTier, "", allowedTiers)
+			tierOk := false
+			for _, tt := range tierTriples {
+				if tt.S != noteIRI || tt.P != skfBelongsToTier {
+					continue
+				}
+				for _, tierIRI := range allowedTierIRIs {
+					if tt.O == tierIRI {
+						tierOk = true
 						break
 					}
 				}
-				if !tierOk {
-					continue
+				if tierOk {
+					break
 				}
+			}
+			if !tierOk {
+				continue
 			}
 
 			// Get provenance from note triple
 			var prov *store.Provenance
-			noteFull := s.kg.Query(noteIRI, "", "")
+			noteFull := s.kg.QueryScoped(noteIRI, "", "", allowedTiers)
 			for _, t := range noteFull {
-				if t.P == ns+"belongsToTier" && t.Provenance != nil {
-					prov = t.Provenance
-					break
+				if t.S != noteIRI || t.P != ns+"belongsToTier" || t.Provenance == nil {
+					continue
 				}
+				prov = t.Provenance
+				break
 			}
 
 			// Build a unique key to dedupe
@@ -496,11 +574,29 @@ func (s *Server) handleSchema(ctx context.Context, req mcp.CallToolRequest) (*mc
 	}, nil
 }
 
+// referencedTables 返回 entity 通过 referencesTable 引用到的 table IRI。
+// 走 QueryScoped 而不是裸 Adjacent1：entity 本身不可见（不在调用方
+// 可见的 tier 里）时返回空，避免把别的 tier 的 table 拉进候选集。
+func (s *Server) referencedTables(entityIRI string, allowedTiers []string) []string {
+	triples := s.kg.QueryScoped(entityIRI, ns+"referencesTable", "", allowedTiers)
+	out := make([]string, 0, len(triples))
+	seen := make(map[string]bool, len(triples))
+	for _, t := range triples {
+		if t.P != ns+"referencesTable" || seen[t.O] {
+			continue
+		}
+		seen[t.O] = true
+		out = append(out, t.O)
+	}
+	return out
+}
+
 // handleNeighbors implements skf_neighbors.
 func (s *Server) handleNeighbors(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
-		URI  string `json:"uri"`
-		Hops int    `json:"hops"`
+		URI   string `json:"uri"`
+		Hops  int    `json:"hops"`
+		Skill string `json:"skill"`
 	}
 	if err := req.BindArguments(&args); err != nil {
 		return errorResult("invalid arguments: " + err.Error()), nil
@@ -515,6 +611,28 @@ func (s *Server) handleNeighbors(ctx context.Context, req mcp.CallToolRequest) (
 		args.Hops = 2
 	}
 
+	// D-TRUST-01: 本 tool 与其它 tool 走同一套 tier 解析逻辑。
+	// 解析不出任何 tier 时必须 fail-closed（返回空），绝不能退化成
+	// 未过滤的邻居查询 —— 那等于给外部 agent 开了一个绕过 tier
+	// 过滤的后门（cmd/server/main.go 的公开声明即为此）。
+	skillName := args.Skill
+	if skillName == "" {
+		skillName = s.serviceSkill
+	}
+	allowedTiers := s.resolveSkillTiers(skillName)
+	if len(allowedTiers) == 0 {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{mcp.NewTextContent(jsonString(map[string]any{
+				"nodes": []map[string]any{},
+				"edges": []map[string]string{},
+			}))},
+			StructuredContent: map[string]any{
+				"nodes": []map[string]any{},
+				"edges": []map[string]string{},
+			},
+		}, nil
+	}
+
 	var nodes []map[string]any
 	var edges []map[string]string
 	nodeIDs := make(map[string]bool)
@@ -525,8 +643,15 @@ func (s *Server) handleNeighbors(ctx context.Context, req mcp.CallToolRequest) (
 
 	if args.Hops == 1 {
 		// Forward edges
-		fwd := s.kg.Query(args.URI, "", "")
+		//
+		// 模式在本地再判一次：store.QueryScoped 的 schema 层直通分支
+		// （D-TIER-03）不施加 (s,p,o) 过滤，直接用它的返回值会把与
+		// 起点无关的 schema 三元组一起当成"邻居"。
+		fwd := s.kg.QueryScoped(args.URI, "", "", allowedTiers)
 		for _, t := range fwd {
+			if t.S != args.URI {
+				continue
+			}
 			if !nodeIDs[t.O] {
 				nodes = append(nodes, map[string]any{"id": t.O, "label": stripPrefix(t.O)})
 				nodeIDs[t.O] = true
@@ -534,8 +659,11 @@ func (s *Server) handleNeighbors(ctx context.Context, req mcp.CallToolRequest) (
 			edges = append(edges, map[string]string{"source": t.S, "target": t.O, "predicate": t.P})
 		}
 		// Reverse edges
-		rev := s.kg.Query("", "", args.URI)
+		rev := s.kg.QueryScoped("", "", args.URI, allowedTiers)
 		for _, t := range rev {
+			if t.O != args.URI {
+				continue
+			}
 			if !nodeIDs[t.S] {
 				nodes = append(nodes, map[string]any{"id": t.S, "label": stripPrefix(t.S)})
 				nodeIDs[t.S] = true
@@ -544,9 +672,12 @@ func (s *Server) handleNeighbors(ctx context.Context, req mcp.CallToolRequest) (
 		}
 	} else {
 		// 2-hop
-		hop1 := s.kg.Query(args.URI, "", "")
+		hop1 := s.kg.QueryScoped(args.URI, "", "", allowedTiers)
 		hop1Set := make(map[string]bool)
 		for _, t := range hop1 {
+			if t.S != args.URI {
+				continue
+			}
 			if !nodeIDs[t.O] {
 				nodes = append(nodes, map[string]any{"id": t.O, "label": stripPrefix(t.O)})
 				nodeIDs[t.O] = true
@@ -556,8 +687,11 @@ func (s *Server) handleNeighbors(ctx context.Context, req mcp.CallToolRequest) (
 		}
 		// Hop 2 from hop-1 nodes
 		for h1 := range hop1Set {
-			h2edges := s.kg.Query(h1, "", "")
+			h2edges := s.kg.QueryScoped(h1, "", "", allowedTiers)
 			for _, t := range h2edges {
+				if t.S != h1 {
+					continue
+				}
 				if !nodeIDs[t.O] {
 					nodes = append(nodes, map[string]any{"id": t.O, "label": stripPrefix(t.O)})
 					nodeIDs[t.O] = true

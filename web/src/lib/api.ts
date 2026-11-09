@@ -12,6 +12,13 @@
 //
 // apiFetch<T>(url, opts) provides a single source of truth.
 // Callers can migrate incrementally — the helper is additive.
+//
+// 后端最小身份层：每个浏览器持有一个 owner token，所有请求都要带上
+// `X-Owner-Token` 头（后端据此过滤会话列表）。token 在这里注入，
+// 于是所有走 apiFetch 的调用点自动获得身份 —— 不必逐个改几十处
+// 调用点。调用方显式带了同名头时以调用方为准（测试注入优先）。
+
+import { getOwnerToken } from './owner-token';
 
 export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
   /** Request body — will be JSON.stringify'd if not a string. */
@@ -36,6 +43,10 @@ export async function apiFetch<T>(url: string, opts: ApiFetchOptions = {}): Prom
   }
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json');
+  }
+  // 身份头（后端最小身份层）：缺失时补上 owner token。
+  if (!headers.has('X-Owner-Token')) {
+    headers.set('X-Owner-Token', getOwnerToken());
   }
 
   const resp = await fetchFn(url, {

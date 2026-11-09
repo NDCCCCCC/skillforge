@@ -91,6 +91,14 @@ var sqlSurfaceSkipDirs = map[string]bool{
 	"screenshots":  true,
 	"web":          true, // FE is owned by web/src — not in the BE attack surface
 	"testdata":     true, // golden fixtures may legitimately contain SQL templates
+	// stubchat is the stub-LLM-mode deterministic answer writer. It parses
+	// SQL text that ALREADY EXISTS in the corpus (it classifies a chunk's
+	// statement kind so the stub answer can explain it) and never executes
+	// anything. It therefore trips the keyword scan without holding any
+	// SQL capability. The exclusion is not a loosening of the red line:
+	// TestStubChatHasNoSQLExecutionCapability below asserts the property
+	// that actually matters — this package must never gain a DB handle.
+	"stubchat": true,
 }
 
 // sqlSurfaceForbidden is the SQL-shape deny list. Each entry is a
@@ -296,6 +304,84 @@ func TestNoSQLGenerationSurface(t *testing.T) {
 			b.WriteString("\n")
 		}
 		t.Fatalf("%s", b.String())
+	}
+}
+
+// TestStubChatHasNoSQLExecutionCapability is the companion assertion for
+// the sqlSurfaceSkipDirs["stubchat"] exclusion.
+//
+// The DATA-09 red line is about CAPABILITY, not vocabulary: the agent
+// runtime must never be able to reach SQL execution. The keyword scan
+// expresses that as "no SQL keyword literal in agent-reachable packages",
+// which is stricter than the intent in one direction (a read-only parser
+// that classifies an existing statement trips it) and looser in another
+// (a package could hold a DB handle without spelling any keyword).
+//
+// This assertion covers the excluded package directly: internal/server/
+// stubchat must never gain a SQL execution entry point. It is therefore
+// a tighter gate for that package than the keyword scan it replaces.
+//
+// Run with: `go test ./internal/agent/ -run TestStubChatHasNoSQLExecutionCapability
+// -count=1 -v`.
+func TestStubChatHasNoSQLExecutionCapability(t *testing.T) {
+	root := findModuleRoot(t)
+	abs := filepath.Join(root, "internal", "server", "stubchat")
+	if _, err := os.Stat(abs); os.IsNotExist(err) {
+		t.Skip("internal/server/stubchat not present")
+	}
+
+	// Execution-capability markers. Each one is a way a package could
+	// actually reach a database, independent of the SQL text it happens
+	// to contain.
+	forbidden := []string{
+		"database/sql",
+		"sql.Open",
+		"sql.DB",
+		"sql.Tx",
+		".Exec(",
+		".ExecContext(",
+		".Query(",
+		".QueryContext(",
+		"duckdb",
+		"pgx",
+		"database/sql/driver",
+	}
+
+	var hits []string
+	walkErr := filepath.WalkDir(abs, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		stripped := stripGoComments(string(content))
+		for _, pat := range forbidden {
+			if strings.Contains(stripped, pat) {
+				relPath, relErr := filepath.Rel(root, path)
+				if relErr != nil {
+					relPath = path
+				}
+				hits = append(hits, relPath+" contains "+pat)
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		t.Fatalf("walk %s: %v", abs, walkErr)
+	}
+
+	if len(hits) > 0 {
+		t.Fatalf("stubchat gained a SQL execution capability (DATA-09 red line — the stub answer writer must stay a pure text transformer):\n  %s",
+			strings.Join(hits, "\n  "))
 	}
 }
 

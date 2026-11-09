@@ -306,6 +306,12 @@ func (s *Deps) wizardHandler(ctx context.Context, c *app.RequestContext) {
 //     registration (Loader nil OR rescan error OR new name absent);
 //     the FE must surface an accurate error instead of the success toast.
 func (s *Deps) wizardCommitHandler(ctx context.Context, c *app.RequestContext) {
+	// 2026-11-09 安全三连：本端点向 skills/ 信任根写盘，并被 fsnotify 在
+	// 1 秒内热加载 —— 未鉴权时等于把 agent 的提示词注入权开放给任意
+	// 网络客户端，且持久化、跨重启。路径穿越防护本来就有，缺的是授权。
+	if !requireAdmin(c) {
+		return
+	}
 	if s.Wizard == nil {
 		c.JSON(http.StatusServiceUnavailable, wizardCommitResponse{
 			Error: "wizard not initialized (set Deps.Wizard at server construction)",

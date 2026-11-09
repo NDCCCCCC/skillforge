@@ -258,6 +258,12 @@ func SparqlQueryScoped(pattern SparqlPattern, allowedTiers []string, kg *store.S
 // D-SPARQL-03: X-Skill-Name header carries skill name for tier isolation.
 // Not specified → 401 (no caller context).
 func (s *Deps) adminPlatformSparqlHandler(ctx context.Context, c *app.RequestContext) {
+	// 2026-11-09 安全三连：这个端点的身份此前完全靠调用方自述的
+	// X-Skill-Name（不是凭证）。改为要求 admin token；X-Skill-Name 仍
+	// 作为 tier 过滤的声明，但不再充当身份。
+	if !requireAdmin(c) {
+		return
+	}
 	// Step 1: Parse body
 	var pattern SparqlPattern
 	if err := c.Bind(&pattern); err != nil {
@@ -552,6 +558,13 @@ func HybridSearchScoped(
 // Env vars SKILLFORGE_RETRIEVAL_RERANK (default true) and SKILLFORGE_HYBRID_HOPS
 // (default 1) control the pipeline.
 func (s *Deps) adminPlatformHybridSearchHandler(ctx context.Context, c *app.RequestContext) {
+	// 2026-11-09 安全三连：本路由挂在 /api/admin/ 命名空间下，但此前
+	// 整个 handler 没有任何 requireAdmin（同文件的三处 requireAdmin
+	// 属于 MCP 的 status/tools/invoke）。唯一门槛是自述的 X-Skill-Name，
+	// 于是未授权者可消耗 embedder/rerank 额度并按声明的 skill 读 tier。
+	if !requireAdmin(c) {
+		return
+	}
 	// Step 1: Parse body
 	var q HybridQuery
 	if err := c.Bind(&q); err != nil {

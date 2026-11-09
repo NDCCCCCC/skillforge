@@ -292,7 +292,16 @@ func postApproval(t *testing.T, addr, sessionID, approvalID string, body any) (i
 	raw, err := json.Marshal(body)
 	require.NoError(t, err)
 	url := "http://" + addr + "/api/session/" + sessionID + "/approval/" + approvalID
-	resp, err := http.Post(url, "application/json", strings.NewReader(string(raw)))
+	// 2026-11-09 最小身份层：审批裁决要求 admin token 或会话归属匹配。
+	// 这些测试验证的是裁决/恢复的语义（幂等、过期、spoof、冻结参数），
+	// 不是访问策略本身，所以以测试管理员身份调用。
+	const approvalTestAdmin = "approval-test-admin-token"
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", approvalTestAdmin)
+	req, reqErr := http.NewRequest(http.MethodPost, url, strings.NewReader(string(raw)))
+	require.NoError(t, reqErr, "build POST %s", url)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Token", approvalTestAdmin)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err, "POST %s", url)
 	defer resp.Body.Close()
 	out, err := io.ReadAll(resp.Body)

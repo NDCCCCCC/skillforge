@@ -208,6 +208,13 @@ func atoiOrZero(raw string) (int, bool) {
 //     the admin-token policy (T-6-IDOR + T-6-TOKEN).
 //  5. 200 with the projected rows.
 func (s *Deps) auditHandler(ctx context.Context, c *app.RequestContext) {
+	// 2026-11-09 安全三连：审计台账含全部用户在保留期内的 query 原文与
+	// 裁决结论（企业合规场景下可能含薪酬、合同、客户数据）。此前它对
+	// 任何未认证调用方开放，脱敏只按"时间"维度做（超过保留期才脱敏），
+	// 保留期内原样返回。改为 admin-only。
+	if !requireAdmin(c) {
+		return
+	}
 	if s.Store == nil {
 		c.JSON(http.StatusServiceUnavailable, graphResponseError{
 			Error: "audit store not initialized (set Deps.Store at server construction)",

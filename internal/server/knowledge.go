@@ -258,6 +258,17 @@ func (s *Deps) chunkHandler(ctx context.Context, c *app.RequestContext) {
 		})
 		return
 	}
+	// 2026-11-09 安全三连：chunk 直读必须校验 tier 可见性（见
+	// knowledgeReadAllowed）。tier 隔离此前只在检索路径生效，直读路径
+	// 不做判定，而 chunk id 是递增整数可枚举 —— 权威库原文可被匿名
+	// 客户端整篇取走。判定放在取到 payload 之后、写出之前，内容不会
+	// 离开服务端。
+	if !s.knowledgeReadAllowed(c, payload.Tier) {
+		c.JSON(http.StatusForbidden, graphResponseError{
+			Error: "knowledge chunk not readable by this caller",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, payload)
 }
 
@@ -568,6 +579,16 @@ func (s *Deps) docContentHandler(ctx context.Context, c *app.RequestContext) {
 	if _, ok := s.KBRegistry.Lookup(tier); !ok {
 		c.JSON(http.StatusBadRequest, graphResponseError{
 			Error: fmt.Sprintf("unknown or deactivated knowledge base %q (active: %v)", tier, s.KBRegistry.ActiveSlugs()),
+		})
+		return
+	}
+	// Gate 3 (2026-11-09 安全三连) — tier 可见性。Gate 1 只校验 slug 形状，
+	// Gate 2 只校验"这个 base 是 active" —— 都不回答"这个调用方能不能读
+	// 这个 tier"。缺了这一门，authority 制度原文可被任意匿名客户端整篇
+	// 取走（file 参数可枚举）。
+	if !s.knowledgeReadAllowed(c, tier) {
+		c.JSON(http.StatusForbidden, graphResponseError{
+			Error: "knowledge document not readable by this caller",
 		})
 		return
 	}

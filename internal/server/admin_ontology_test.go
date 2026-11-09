@@ -338,9 +338,14 @@ func TestSchemaJudgmentParity(t *testing.T) {
 	deps := &Deps{Ontology: ont}
 
 	// --- Request A: skill-scoped surface (POST /api/sparql).
+	// 2026-11-09 安全三连：/api/sparql 现在要求 admin token（X-Skill-Name
+	// 仍是自述身份，只用于 tier 过滤，不再充当凭证）。env 必须与
+	// Request B 的 header 一致，否则 B 会 403。
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "tok")
 	respA := invokeParity(t, deps, http.MethodPost, "/api/sparql",
 		`{"p":"`+testNS+`hasReadAccess"}`,
-		ut.Header{Key: "X-Skill-Name", Value: "sql"})
+		ut.Header{Key: "X-Skill-Name", Value: "sql"},
+		ut.Header{Key: "X-Admin-Token", Value: "tok"})
 	if respA.Code != http.StatusOK {
 		t.Fatalf("/api/sparql: expected 200, got %d: %s", respA.Code, respA.Body.String())
 	}

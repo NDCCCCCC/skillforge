@@ -335,6 +335,14 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
+	// 2026-11-09 最小身份层：审批裁决是本系统最强的写权限（批准一次
+	// 工具调用 = 允许执行一次真实操作）。此前它无任何凭证，而 session
+	// id 由公开的 GET /api/sessions 批量发放 —— 等于任何人都能自动
+	// 批准任意 pending 调用。现在要求 admin 或会话归属匹配。
+	if !s.requireSessionOwner(ctx, c, sessionID) {
+		return
+	}
+
 	// decodeApprovalRequest: JSON decode + approvalID reconciliation + Validate
 	decision, err := s.decodeApprovalRequest(ctx, c, sessionID, approvalID)
 	if err != nil {

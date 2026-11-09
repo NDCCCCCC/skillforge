@@ -830,6 +830,22 @@ type Store interface {
 	// stays decoupled from the user-facing roster).
 	ListSessions(ctx context.Context) ([]SessionSummary, error)
 
+	// ClaimSessionOwner 绑定会话归属。首次写入者获得归属；已有非空
+	// 归属不被覆盖（防抢占）。owner 为空串时是 no-op。
+	//
+	// 这不是认证：owner token 只用于归属过滤，不做授权。它挡的是
+	// "公开接口批量发放 session id → 匿名裁决 HITL" 这条链。
+	ClaimSessionOwner(ctx context.Context, sessionID, owner string) error
+
+	// SessionOwner 返回会话的归属 token；无归属返回空串（历史会话）。
+	SessionOwner(ctx context.Context, sessionID string) (string, error)
+
+	// ListSessionsByOwner 按归属过滤会话列表。
+	//   owner == ""  → 只返回无归属会话（改造前的历史数据）
+	//   owner != ""  → 返回该 owner 的会话 + 无归属会话（兼容历史）
+	// 管理员走 ListSessions 拿全量，不走这里。
+	ListSessionsByOwner(ctx context.Context, owner string) ([]SessionSummary, error)
+
 	// RenameSession upserts the session_meta title override for
 	// sessionID (INSERT ... ON CONFLICT DO UPDATE). It does not require
 	// existing turns — renaming before any chat is legal and simply

@@ -66,11 +66,47 @@ import (
 // invokeAuditHandler runs GET /api/audit?q with the optional
 // X-Admin-Token header set. Returns the recorder so the test can
 // assert on body / status. Mirrors invokeGraphHandler.
+// auditTestAdminToken 是分页 / 过滤 / 脱敏 / 注入防护类测试使用的工作令牌。
+//
+// 2026-11-09：/api/audit 改为 admin-only 之后，这些测试必须在已认证的
+// 前提下运行 —— 它们验证的是 handler 内部逻辑，不是端点的访问策略。
+// 访问策略本身由 TestAdminToken_* 与 TestAuditRequiresAdmin 覆盖。
+const auditTestAdminToken = "audit-test-admin-token"
+
+// invokeAuditHandler runs GET /api/audit?q.
+//
+// adminToken 的三种取值：
+//   - ""   → 以测试管理员身份调用（env + header 同时设置）
+//   - "-"  → 刻意不带任何凭证（env 清空、无 header），用于鉴权语义测试
+//   - 其它 → 按原样作为 X-Admin-Token 发送，env 同步设置
 func invokeAuditHandler(t *testing.T, deps *Deps, q, adminToken string) *ut.ResponseRecorder {
 	t.Helper()
 	h := newAuditHandlerHertz(t, deps)
+
+	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
+	t.Cleanup(func() {
+		if prev != "" {
+			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev)
+		} else {
+			_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
+		}
+	})
+
 	var headers []ut.Header
-	if adminToken != "" {
+	switch adminToken {
+	case "":
+		_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", auditTestAdminToken)
+		headers = append(headers, ut.Header{Key: "X-Admin-Token", Value: auditTestAdminToken})
+	case "-":
+		_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
+	default:
+		// 保留测试自己设置的 env（错 token 测试需要 env 是"正确"的值、
+		// header 是"错误"的值，才能验证比较逻辑）。只有 env 为空时才补一个，
+		// 否则 handler 会因为 env 未设置而对任何 header 都 403 —— 那会让
+		// "错 token" 与 "未认证" 变得不可区分。
+		if os.Getenv("SKILLFORGE_ADMIN_TOKEN") == "" {
+			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", adminToken)
+		}
 		headers = append(headers, ut.Header{Key: "X-Admin-Token", Value: adminToken})
 	}
 	return ut.PerformRequest(h.Engine, http.MethodGet, "/api/audit?"+q, nil, headers...)
@@ -336,25 +372,21 @@ func TestAdminToken_UnsetEnv(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &Deps{Store: s}
-	got := invokeAuditHandler(t, deps, "", "")
-	require.Equal(t, http.StatusOK, got.Code)
+	// 2026-11-09：audit 改为 admin-only —— env 未设置时 isAdminRequest 恒
+	// false，端点直接 403。这比此前「返回脱敏行」更强：redact() 只处理
+	// 超过 retention 的旧行，保留期内的行本来会原样返回给匿名调用方。
+	got := invokeAuditHandler(t, deps, "", "-")
+	require.Equal(t, http.StatusForbidden, got.Code,
+		"unset SKILLFORGE_ADMIN_TOKEN must not serve the audit trail (T-6-IDOR)")
 
+	// 脱敏机制本身仍然要正确：以管理员身份取同一批行能拿到数据。
+	// 注意 admin 视角**不脱敏**（redact 在 isAdmin 时直接 return）——
+	// 这是设计：管理员看全量，脱敏只作用于非管理员。
+	adminGot := invokeAuditHandler(t, deps, "", "")
+	require.Equal(t, http.StatusOK, adminGot.Code)
 	var rows []auditWireRow
-	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
-	require.NotEmpty(t, rows, "the seeded row must be returned (even if redacted)")
-	for _, r := range rows {
-		if r.Query == "should-be-redacted" {
-			t.Fatalf("Query leaked unredacted despite unset admin env (T-6-IDOR / D6-08)")
-		}
-	}
-	foundRedacted := false
-	for _, r := range rows {
-		if len(r.Query) >= 9 && r.Query[:9] == "REDACTED:" {
-			foundRedacted = true
-			break
-		}
-	}
-	assert.True(t, foundRedacted, "unset SKILLFORGE_ADMIN_TOKEN must produce redacted rows (D6-08 demo-OOB)")
+	require.NoError(t, json.Unmarshal(adminGot.Body.Bytes(), &rows))
+	require.NotEmpty(t, rows, "the seeded row must be returned to an admin")
 }
 
 // TestAdminToken_WrongTokenTimingSafe — wrong token returns
@@ -381,13 +413,13 @@ func TestAdminToken_WrongTokenTimingSafe(t *testing.T) {
 	require.NoError(t, err)
 
 	deps := &Deps{Store: s}
+	// 2026-11-09：错 token 现在直接 403（此前返回脱敏行）。断言更强：
+	// 未认证既拿不到 raw 行，也拿不到任何行。
 	got := invokeAuditHandler(t, deps, "", "wrong-token")
-	require.Equal(t, http.StatusOK, got.Code)
-	var rows []auditWireRow
-	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &rows))
-	for _, r := range rows {
-		assert.NotEqual(t, "PII", r.Query, "wrong token MUST NOT return raw rows (T-6-TOKEN)")
-	}
+	require.Equal(t, http.StatusForbidden, got.Code,
+		"wrong token MUST NOT serve the audit trail (T-6-TOKEN)")
+	assert.NotContains(t, got.Body.String(), "PII",
+		"wrong token MUST NOT leak raw query text")
 }
 
 // TestAdminToken_CorrectTokenReturnsRaw — correct token → raw

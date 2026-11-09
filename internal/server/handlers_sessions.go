@@ -72,7 +72,16 @@ func (s *Deps) sessionsListHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	rows, err := s.Store.ListSessions(ctx)
+	// 2026-11-09 最小身份层：管理员看全量，其他调用方按归属过滤。
+	// 过滤在 SQL 里做（store.ListSessionsByOwner），不在 Go 侧过滤 ——
+	// 应用层过滤漏一处就是泄露。
+	var rows []store.SessionSummary
+	var err error
+	if isAdminRequest(c) {
+		rows, err = s.Store.ListSessions(ctx)
+	} else {
+		rows, err = s.Store.ListSessionsByOwner(ctx, ownerTokenOf(c))
+	}
 	if err != nil {
 		log.Printf("[WARN] server: sessions list failed: %v", err)
 		c.JSON(http.StatusInternalServerError, map[string]string{

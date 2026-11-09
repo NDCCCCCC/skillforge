@@ -118,8 +118,9 @@ CREATE INDEX IF NOT EXISTS idx_session_turn_sid ON session_turn(session_id);
 -- turns + LEFT JOINs this table). Deleting a session drops both its
 -- turns and its meta row; audit rows are NEVER touched (T-3-AUDIT).
 CREATE TABLE IF NOT EXISTS session_meta (
-    id    TEXT PRIMARY KEY,
-    title TEXT NOT NULL DEFAULT ''
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL DEFAULT '',
+    owner_token TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS checkpoint (
@@ -537,6 +538,11 @@ const (
 	// string denotes pre-floor era rows.
 	alterAuditAddPlatformFloorVersionSQL = "ALTER TABLE audit ADD COLUMN platform_floor_version TEXT NOT NULL DEFAULT ''"
 
+	// 2026-11-09 最小身份层：session_meta.owner_token 记录会话归属。
+	// 空串 = 无归属（本次改造之前创建的历史会话）。写操作对无归属会话
+	// fail-closed 要求 admin —— 无法证明归属的东西不能被匿名裁决。
+	alterSessionMetaAddOwnerTokenSQL = "ALTER TABLE session_meta ADD COLUMN owner_token TEXT NOT NULL DEFAULT ''"
+
 	// Phase 20 / Plan 20-06 (ADM-06) — actor_type discriminator for the
 	// admin audit sub-view. Admin handlers tag their audit rows with
 	// actor_type='admin'; regular chat-path rows get the SQL DEFAULT
@@ -807,6 +813,16 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		}
 		if _, err := s.db.ExecContext(ctx, c.stmt); err != nil {
 			return fmtError("migrate.audit."+c.column, err)
+		}
+	}
+
+	// 2026-11-09 最小身份层：session_meta.owner_token（幂等，PRAGMA
+	// table_info 门控，与上面几组 ALTER 同一套姿态）。
+	if exists, err := s.columnExists(ctx, "session_meta", "owner_token"); err != nil {
+		return err
+	} else if !exists {
+		if _, err := s.db.ExecContext(ctx, alterSessionMetaAddOwnerTokenSQL); err != nil {
+			return fmtError("migrate.session_meta.owner_token", err)
 		}
 	}
 

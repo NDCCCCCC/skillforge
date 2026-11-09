@@ -18,6 +18,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"database/sql"
 	"time"
 
@@ -85,6 +86,103 @@ func (s *SQLiteStore) ListSessions(ctx context.Context) ([]store.SessionSummary,
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmtError("ListSessions.Rows", err)
+	}
+	return out, nil
+}
+
+
+// claimSessionOwnerSQL 绑定会话归属。ON CONFLICT 的 CASE 保证已有
+// 非空归属不被覆盖 —— 否则任何人只要知道 session id 就能抢占会话
+// （而 session id 恰恰来自公开的列表接口，所以这一步是必须的）。
+const claimSessionOwnerSQL = `
+INSERT INTO session_meta (id, owner_token) VALUES (?, ?)
+ON CONFLICT(id) DO UPDATE SET owner_token =
+    CASE WHEN session_meta.owner_token = '' THEN excluded.owner_token
+         ELSE session_meta.owner_token END
+`
+
+// ClaimSessionOwner implements store.Store.
+func (s *SQLiteStore) ClaimSessionOwner(ctx context.Context, sessionID, owner string) error {
+	if s.isClosed() {
+		return sql.ErrConnDone
+	}
+	if sessionID == "" || owner == "" {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, claimSessionOwnerSQL, sessionID, owner); err != nil {
+		return fmtError("ClaimSessionOwner", err)
+	}
+	return nil
+}
+
+// SessionOwner implements store.Store.
+func (s *SQLiteStore) SessionOwner(ctx context.Context, sessionID string) (string, error) {
+	if s.isClosed() {
+		return "", sql.ErrConnDone
+	}
+	var owner string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(owner_token, '') FROM session_meta WHERE id = ?`, sessionID).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmtError("SessionOwner", err)
+	}
+	return owner, nil
+}
+
+// ListSessionsByOwner implements store.Store. 过滤条件写在 SQL 里而不是
+// 在 Go 侧过滤 —— 目的是让"看不到"由数据库保证，而不是依赖调用方
+// 记得过滤（应用层过滤漏一处就泄露）。
+func (s *SQLiteStore) ListSessionsByOwner(ctx context.Context, owner string) ([]store.SessionSummary, error) {
+	if s.isClosed() {
+		return nil, sql.ErrConnDone
+	}
+	const q = `
+SELECT st.session_id,
+       COALESCE((
+           SELECT u.content FROM session_turn u
+           WHERE u.session_id = st.session_id AND u.role = 'user'
+           ORDER BY u.ts ASC LIMIT 1
+       ), '') AS first_query,
+       (SELECT t2.ts FROM session_turn t2
+        WHERE t2.session_id = st.session_id
+        ORDER BY t2.ts DESC LIMIT 1) AS last_ts,
+       COALESCE(sm.title, '') AS title
+FROM session_turn st
+LEFT JOIN session_meta sm ON sm.id = st.session_id
+WHERE ? = '' AND COALESCE(sm.owner_token, '') = ''
+   OR ? <> '' AND (COALESCE(sm.owner_token, '') = ? OR COALESCE(sm.owner_token, '') = '')
+GROUP BY st.session_id
+ORDER BY last_ts DESC
+`
+	rows, err := s.db.QueryContext(ctx, q, owner, owner, owner)
+	if err != nil {
+		return nil, fmtError("ListSessionsByOwner", err)
+	}
+	defer rows.Close()
+
+	out := []store.SessionSummary{}
+	for rows.Next() {
+		var (
+			id            string
+			firstQuery    string
+			lastTs        time.Time
+			titleOverride string
+		)
+		if err := rows.Scan(&id, &firstQuery, &lastTs, &titleOverride); err != nil {
+			return nil, fmtError("ListSessionsByOwner.Scan", err)
+		}
+		out = append(out, store.SessionSummary{
+			ID:           id,
+			DerivedTitle: truncateRunes(firstQuery, titleLimit),
+			Title:        titleOverride,
+			LastActive:   lastTs.UTC(),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmtError("ListSessionsByOwner.Rows", err)
 	}
 	return out, nil
 }
