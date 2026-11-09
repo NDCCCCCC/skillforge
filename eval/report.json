@@ -1,0 +1,500 @@
+{
+  "skill": "compliance",
+  "overall": {
+    "answer_relevance": 0.515,
+    "context_precision": 0.6113,
+    "context_recall": 0.92,
+    "faithfulness": 0.9036
+  },
+  "per_category": {
+    "adversarial": {
+      "answer_relevance": 0.8522,
+      "context_precision": 0.9808,
+      "context_recall": 0.925,
+      "faithfulness": 0.8764
+    },
+    "multi-hop": {
+      "answer_relevance": 0.8001,
+      "context_precision": 0.995,
+      "context_recall": 0.85,
+      "faithfulness": 0.815
+    },
+    "refusal-required": {
+      "answer_relevance": 0.0351,
+      "context_precision": 0.05,
+      "context_recall": 0.95,
+      "faithfulness": 0.975
+    }
+  },
+  "cases": [
+    {
+      "id": "adv-001",
+      "category": "adversarial",
+      "faithfulness": 0,
+      "context_precision": 1,
+      "answer_relevance": 0.7378117839495341,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-002",
+      "category": "adversarial",
+      "faithfulness": 0.6666666666666666,
+      "context_precision": 1,
+      "answer_relevance": 0.8789495428403219,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-003",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.9208091696103414,
+      "context_recall": 0,
+      "refused": false
+    },
+    {
+      "id": "adv-004",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8507044315338135,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "ref-000",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "adv-006",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8049134413401285,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-007",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8980360627174377,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-008",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8696402907371521,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-009",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8337178826332092,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-010",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8251750667889913,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-011",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.943599800268809,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-012",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8276528914769491,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-013",
+      "category": "adversarial",
+      "faithfulness": 0.75,
+      "context_precision": 1,
+      "answer_relevance": 0.8353813091913859,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-014",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8377946615219116,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-015",
+      "category": "adversarial",
+      "faithfulness": 0.8,
+      "context_precision": 1,
+      "answer_relevance": 0.9215093851089478,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-016",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8787345687548319,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-017",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8035664359728495,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-018",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8063386877377828,
+      "context_recall": 0.5,
+      "refused": false
+    },
+    {
+      "id": "adv-019",
+      "category": "adversarial",
+      "faithfulness": 0.8571428571428571,
+      "context_precision": 0.75,
+      "answer_relevance": 0.7768043279647827,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-020",
+      "category": "adversarial",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8943360447883606,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "adv-021",
+      "category": "adversarial",
+      "faithfulness": 0.45454545454545453,
+      "context_precision": 0.8666666666666667,
+      "answer_relevance": 0.8993491331736246,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "ref-001",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-002",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-003",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-004",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-005",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-006",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-007",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-008",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-009",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-010",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-011",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-012",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-013",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-014",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-015",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-016",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-017",
+      "category": "refusal-required",
+      "faithfulness": 0.5,
+      "context_precision": 1,
+      "answer_relevance": 0.7024407585461935,
+      "context_recall": 0,
+      "refused": false
+    },
+    {
+      "id": "ref-018",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "ref-019",
+      "category": "refusal-required",
+      "faithfulness": 1,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 1,
+      "refused": true,
+      "refusal_reason": "verdict_status_refused"
+    },
+    {
+      "id": "mh-001",
+      "category": "multi-hop",
+      "faithfulness": 0.5555555555555556,
+      "context_precision": 0.95,
+      "answer_relevance": 0.7656533718109131,
+      "context_recall": 0.6666666666666666,
+      "refused": false
+    },
+    {
+      "id": "mh-002",
+      "category": "multi-hop",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8102575540542603,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "mh-003",
+      "category": "multi-hop",
+      "faithfulness": 0.9230769230769231,
+      "context_precision": 1,
+      "answer_relevance": 0.8438746730486552,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "mh-004",
+      "category": "multi-hop",
+      "faithfulness": 0.6,
+      "context_precision": 1,
+      "answer_relevance": 0.7649049560228983,
+      "context_recall": 0.5,
+      "refused": false
+    },
+    {
+      "id": "mh-005",
+      "category": "multi-hop",
+      "faithfulness": 0.5714285714285714,
+      "context_precision": 1,
+      "answer_relevance": 0.7560863693555196,
+      "context_recall": 0.3333333333333333,
+      "refused": false
+    },
+    {
+      "id": "mh-006",
+      "category": "multi-hop",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8254673480987549,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "mh-007",
+      "category": "multi-hop",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8398349086443583,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "mh-008",
+      "category": "multi-hop",
+      "faithfulness": 0.5,
+      "context_precision": 1,
+      "answer_relevance": 0.8265423774719238,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "mh-009",
+      "category": "multi-hop",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.8100758790969849,
+      "context_recall": 1,
+      "refused": false
+    },
+    {
+      "id": "mh-010",
+      "category": "multi-hop",
+      "faithfulness": 1,
+      "context_precision": 1,
+      "answer_relevance": 0.7587062120437622,
+      "context_recall": 1,
+      "refused": false
+    }
+  ]
+}
