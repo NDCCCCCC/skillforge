@@ -34,9 +34,11 @@ function StatusDot({ online }: { online: boolean }) {
   );
 }
 
-interface Props {}
-
-export default function McpInspectorView(_props: Props) {
+// 2026-11-09：此前是 `interface Props {}` + `function McpInspectorView(_props: Props)`。
+// 空 interface 在 TS 里等价于「任何非空值」（`0`、`""` 都满足），既没表达力
+// 又是 @typescript-eslint/no-empty-object-type 的违规源。这个组件本来就不
+// 接受任何 props，直接去掉参数即可 —— 比把空 interface 改成 unknown 更准确。
+export default function McpInspectorView() {
   // Mount-time loads via the shared hook (auto 'sf_admin_token' header).
   const {
     data: status,

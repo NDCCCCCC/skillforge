@@ -20,24 +20,32 @@
 // citation follows the same dispatcher (reuses the CitationCluster
 // path).
 //
-// Quick 260929-g7x — the browser is now a two-mode host: 本体 (default,
-// OntologyGraphView — the note↔table/product/org ABox entity graph) and
-// 文档 (this historical retrieval-corpus tree, kept verbatim). The mode
-// chips sit beside the fullscreen trigger and both modes render inside
-// the fullscreen overlay.
+// Quick 260929-g7x — the browser is a two-mode host: 本体
+// (OntologyGraphView — the note↔table/product/org ABox entity graph)
+// and 文档 (this historical retrieval-corpus tree, kept verbatim).
+// The mode chips sit beside the fullscreen trigger and both modes
+// render inside the fullscreen overlay.
+//
+// 默认模式改为「文档」：本体视图走 /api/admin/ontology/graph，是
+// X-Admin-Token 门禁的端点 —— 把它放在默认落地页，等于让每个普通
+// 用户第一次打开"知识图谱"面板就撞上"需要管理员令牌 + 令牌输入框"，
+// 把一个可用功能感知成不可用。文档/语料树视图对所有用户可见，
+// 本体视图降级为次级 tab。
 import { Maximize2, Network, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import GraphCanvas from './GraphCanvas';
 import GraphFilterInput from './GraphFilterInput';
 import OntologyGraphView from './OntologyGraphView';
+import { hasAdminToken } from './ontologyApi';
 import { useKnowledgeGraph } from '../../hooks/useKnowledgeGraph';
 import type { GraphFocus } from '../../lib/graph-focus';
 
 /**
- * Quick 260929-g7x — view mode. 本体 (default) renders the note-centric
- * ABox entity graph (OntologyGraphView); 文档 keeps the retrieval-corpus
- * radial tree (GraphCanvas) as the backward-compatible second mode.
+ * Quick 260929-g7x — view mode. 文档 (default) renders the
+ * retrieval-corpus radial tree (GraphCanvas); 本体 renders the
+ * note-centric ABox entity graph (OntologyGraphView) and needs an
+ * admin token.
  */
 type GraphViewMode = 'ontology' | 'document';
 
@@ -72,7 +80,12 @@ export default function KnowledgeGraphBrowser({
 }: KnowledgeGraphBrowserProps = {}) {
   const { graph, status, error, refetch } = useKnowledgeGraph();
   const [filter, setFilter] = useState('');
-  const [mode, setMode] = useState<GraphViewMode>('ontology');
+  // 默认落在「文档」视图 —— 本体视图是管理员门禁的端点，不能当默认
+  // 落地页（否则普通用户一进来就看到"需要管理员令牌"）。
+  const [mode, setMode] = useState<GraphViewMode>('document');
+  // 每帧重读：管理台登录后切回本体 tab 即可生效（localStorage 变化
+  // 不会触发 React 重渲染，但切 tab 会）。
+  const ontologyAvailable = hasAdminToken();
   // Quick 260929-d5w2 — the detail-panel rail is too narrow for the
   // radial graph; 全屏 swaps the body for a fixed inset-0 overlay that
   // renders the SAME graph body (mode chips + canvas) at viewport size.
@@ -102,21 +115,12 @@ export default function KnowledgeGraphBrowser({
     [graph],
   );
 
-  // Quick 260929-g7x — mode chips (本体 default / 文档). The document-
+  // Quick 260929-g7x — mode chips (文档 default / 本体). The document-
   // corpus states below (loading/error/empty heroes) are DOCUMENT-mode
   // concerns; the ontology view owns its own data lifecycle and renders
   // regardless of the /api/knowledge/graph corpus state.
   const modeChips = (
     <div className="flex flex-none items-center gap-1" role="group" aria-label="图谱视图切换">
-      <button
-        type="button"
-        data-testid="graph-mode-ontology"
-        aria-pressed={mode === 'ontology'}
-        onClick={() => setMode('ontology')}
-        className={`${MODE_CHIP_BASE} ${mode === 'ontology' ? MODE_CHIP_ON : MODE_CHIP_OFF}`}
-      >
-        本体
-      </button>
       <button
         type="button"
         data-testid="graph-mode-document"
@@ -126,11 +130,34 @@ export default function KnowledgeGraphBrowser({
       >
         文档
       </button>
+      <button
+        type="button"
+        data-testid="graph-mode-ontology"
+        aria-pressed={mode === 'ontology'}
+        onClick={() => setMode('ontology')}
+        className={`${MODE_CHIP_BASE} ${mode === 'ontology' ? MODE_CHIP_ON : MODE_CHIP_OFF}`}
+      >
+        本体
+      </button>
+    </div>
+  );
+
+  /**
+   * 模式切换条 + 主体。
+   *
+   * 文档模式的空/错/加载 hero 必须把 chips 一起带上 —— 否则用户在
+   * "知识库为空"这一屏上根本看不到切换入口（chips 被早返回吃掉了），
+   * 也就无法切到本体视图查看实体关系。
+   */
+  const withModeChips = (body: ReactNode) => (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-none items-center gap-2">{modeChips}</div>
+      {body}
     </div>
   );
 
   if (mode === 'document' && status === 'error') {
-    return (
+    return withModeChips(
       <div
         data-testid="knowledge-graph-error"
         className="flex flex-col items-center justify-center text-center min-h-[60vh]"
@@ -152,12 +179,12 @@ export default function KnowledgeGraphBrowser({
         >
           重试
         </button>
-      </div>
+      </div>,
     );
   }
 
   if (mode === 'document' && isLoading) {
-    return (
+    return withModeChips(
       <div
         data-testid="knowledge-graph-loading"
         className="flex flex-col items-center justify-center text-center min-h-[60vh]"
@@ -166,12 +193,12 @@ export default function KnowledgeGraphBrowser({
           <Network className="h-6 w-6 text-primary animate-pulse" />
         </div>
         <div className="text-base text-text-muted">正在加载知识层级...</div>
-      </div>
+      </div>,
     );
   }
 
   if (mode === 'document' && (!graph || totalDocs === 0)) {
-    return (
+    return withModeChips(
       <div
         data-testid="knowledge-graph-empty"
         className="flex flex-col items-center justify-center text-center min-h-[60vh]"
@@ -183,7 +210,7 @@ export default function KnowledgeGraphBrowser({
         <p className="mt-2 text-base text-text-muted max-w-md">
           请先通过知识索引导入文档到已注册的知识库，或运行 <code className="font-mono text-xs">scripts/spiked index</code> 示例语料。
         </p>
-      </div>
+      </div>,
     );
   }
 
@@ -216,7 +243,23 @@ export default function KnowledgeGraphBrowser({
       </div>
       <div className="min-h-0 flex-1">
         {mode === 'ontology' ? (
-          <OntologyGraphView focus={focus} />
+          ontologyAvailable ? (
+            <OntologyGraphView focus={focus} />
+          ) : (
+            // 没有管理员令牌时不要把"需要令牌 + 令牌输入框"摆成
+            // 落地页 —— 那会让普通用户以为整个面板坏了。一句说明
+            // 足够：本体关系图是管理员功能，文档视图继续可用。
+            <div
+              data-testid="ontology-needs-admin"
+              className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center"
+            >
+              <div className="text-sm font-semibold text-text">本体视图需要管理员权限</div>
+              <p className="max-w-md text-xs text-text-muted">
+                本体视图读取知识库里的实体关系投影，属于管理员功能。
+                如需查看，请在管理控制台登录后回到这里；文档视图对所有用户可用。
+              </p>
+            </div>
+          )
         ) : graph ? (
           // Unreachable-null guard: the document-mode early returns above
           // guarantee a populated corpus graph before this branch renders.

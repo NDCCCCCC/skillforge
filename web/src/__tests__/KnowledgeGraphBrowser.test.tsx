@@ -18,15 +18,18 @@
 //
 // Quick 260929-d5w2 — fullscreen overlay pins ( SAME body, Esc close).
 //
-// Quick 260929-g7x — the browser is a two-mode host: 本体 (OntologyGraphView)
-// is the DEFAULT mode; the corpus heroes + GraphCanvas tree all live behind
-// the 文档 chip. The ontology view must render regardless of the document
-// corpus state, and focus flows into the ontology fetch (?notes=).
+// Quick 260929-g7x — the browser is a two-mode host: 本体
+// (OntologyGraphView) and 文档 (the retrieval-corpus tree).
+//
+// 默认模式已改为「文档」：本体视图走 /api/admin/ontology/graph，需要
+// 管理员令牌；把它放在默认落地页会让普通用户一进来就撞上"需要管理员
+// 令牌"。本体降级为次级 tab，且在没有令牌时只给一句温和说明（不是
+// 错误 + 令牌表单）。
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
-// The browser mounts OntologyGraphView (default mode) — jsdom has no
+// The browser mounts OntologyGraphView (本体 mode) — jsdom has no
 // WebGL, so react-force-graph-3d is mocked here (260929-k3m: was the
 // cytoscape mock). The browser tests never touch graph internals; a
 // null-rendering stub is enough to satisfy the lazy import.
@@ -44,6 +47,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   localStorage.removeItem('skillforge.graph.focusMode');
+  localStorage.removeItem('sf_admin_token');
   useAppStore.setState({ centerView: { kind: 'knowledge-graph' } });
 });
 
@@ -131,36 +135,72 @@ function renderAndSwitchToDocument(props: Parameters<typeof KnowledgeGraphBrowse
 }
 
 describe('KnowledgeGraphBrowser', () => {
-  // ── Quick 260929-g7x: 本体 default mode ──────────────────────────────
-  it('defaults to the 本体 view and fetches the ontology projection', async () => {
+  // ── 默认模式：文档（语料树）──────────────────────────────────────
+  it('defaults to the 文档 view — the admin-gated ontology tab is NOT the landing screen', async () => {
     const fetchMock = mockFetchRouter(POPULATED_GRAPH);
     render(<KnowledgeGraphBrowser />);
+    expect(await screen.findByTestId('graph-canvas')).toBeInTheDocument();
+    // Mode chips: 文档 active, 本体 available (secondary).
+    expect(screen.getByTestId('graph-mode-document')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('graph-mode-ontology')).toHaveAttribute('aria-pressed', 'false');
+    // The default landing screen never asks for the admin-gated projection.
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/admin/ontology/graph', expect.anything());
+  });
+
+  it('keeps the mode chips switchable on the empty-corpus hero', async () => {
+    mockFetchRouter(EMPTY_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    expect(await screen.findByTestId('knowledge-graph-empty')).toBeInTheDocument();
+    // The chips survive the early return — otherwise the user is stuck
+    // on the empty hero with no way to reach the ontology view.
+    expect(screen.getByTestId('graph-mode-ontology')).toBeInTheDocument();
+    expect(screen.getByTestId('graph-mode-document')).toBeInTheDocument();
+  });
+
+  it('without an admin token the 本体 tab shows a gentle note (no error page, no token form)', async () => {
+    localStorage.removeItem('sf_admin_token');
+    mockFetchRouter(POPULATED_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    await screen.findByTestId('graph-canvas');
+
+    fireEvent.click(screen.getByTestId('graph-mode-ontology'));
+
+    const note = await screen.findByTestId('ontology-needs-admin');
+    expect(note).toHaveTextContent('本体视图需要管理员权限');
+    // NOT an error + admin-token gate — that made the panel feel broken.
+    expect(screen.queryByTestId('ontology-token-gate')).toBeNull();
+    expect(screen.queryByTestId('ontology-graph-error')).toBeNull();
+    // …and the user can still switch back to the document view.
+    fireEvent.click(screen.getByTestId('graph-mode-document'));
+    expect(await screen.findByTestId('graph-canvas')).toBeInTheDocument();
+  });
+
+  // ── 本体 mode（次级 tab，需要管理员令牌）──────────────────────────
+  it('with an admin token the 本体 tab renders the ontology projection', async () => {
+    localStorage.setItem('sf_admin_token', 'tok-abc');
+    const fetchMock = mockFetchRouter(POPULATED_GRAPH);
+    render(<KnowledgeGraphBrowser />);
+    await screen.findByTestId('graph-canvas');
+
+    fireEvent.click(screen.getByTestId('graph-mode-ontology'));
+
     expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/ontology/graph',
       expect.anything(),
     );
-    // The corpus tree is NOT rendered in ontology mode.
-    expect(screen.queryByTestId('graph-canvas')).toBeNull();
-    // Mode chips: 本体 active, 文档 available.
-    expect(screen.getByTestId('graph-mode-ontology')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('graph-mode-document')).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('the ontology view renders even when the document corpus is empty', async () => {
-    mockFetchRouter(EMPTY_GRAPH);
-    render(<KnowledgeGraphBrowser />);
-    expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
-    expect(screen.queryByTestId('knowledge-graph-empty')).toBeNull();
   });
 
   it('focus flows into the ontology fetch (?notes= derived from citations)', async () => {
+    localStorage.setItem('sf_admin_token', 'tok-abc');
     const fetchMock = mockFetchRouter(POPULATED_GRAPH);
     render(
       <KnowledgeGraphBrowser
         focus={{ chunkIds: new Set(), sources: ['D:/corpus/032_保单.md'] }}
       />,
     );
+    await screen.findByTestId('graph-canvas');
+    fireEvent.click(screen.getByTestId('graph-mode-ontology'));
     await screen.findByTestId('ontology-graph-view');
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/admin/ontology/graph?notes=note_032',
@@ -168,31 +208,33 @@ describe('KnowledgeGraphBrowser', () => {
     );
   });
 
-  it('mode chips switch between 本体 and 文档 both ways', async () => {
+  it('mode chips switch between 文档 and 本体 both ways', async () => {
+    localStorage.setItem('sf_admin_token', 'tok-abc');
     mockFetchRouter(POPULATED_GRAPH);
     render(<KnowledgeGraphBrowser />);
-    await screen.findByTestId('ontology-graph-view');
+    await screen.findByTestId('graph-canvas');
+
+    fireEvent.click(screen.getByTestId('graph-mode-ontology'));
+    expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
+    expect(screen.getByTestId('graph-mode-ontology')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('graph-canvas')).toBeNull();
 
     fireEvent.click(screen.getByTestId('graph-mode-document'));
     expect(await screen.findByTestId('graph-canvas')).toBeInTheDocument();
     expect(screen.getByTestId('graph-mode-document')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByTestId('ontology-graph-view')).toBeNull();
-
-    fireEvent.click(screen.getByTestId('graph-mode-ontology'));
-    expect(await screen.findByTestId('ontology-graph-view')).toBeInTheDocument();
-    expect(screen.queryByTestId('graph-canvas')).toBeNull();
   });
 
-  it('the fullscreen overlay renders the ACTIVE mode (ontology) and Esc exits', async () => {
+  it('the fullscreen overlay renders the ACTIVE mode (文档) and Esc exits', async () => {
     mockFetchRouter(POPULATED_GRAPH);
     render(<KnowledgeGraphBrowser />);
-    await screen.findByTestId('ontology-graph-view');
+    await screen.findByTestId('graph-canvas');
 
     fireEvent.click(screen.getByTestId('graph-fullscreen-btn'));
     const overlay = await screen.findByTestId('graph-fullscreen-overlay');
     expect(overlay.parentElement).toBe(document.body);
-    expect(within(overlay).getByTestId('ontology-graph-view')).toBeInTheDocument();
-    expect(within(overlay).getByTestId('graph-mode-ontology')).toBeInTheDocument();
+    expect(within(overlay).getByTestId('graph-canvas')).toBeInTheDocument();
+    expect(within(overlay).getByTestId('graph-mode-document')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('graph-fullscreen-overlay')).toBeNull();

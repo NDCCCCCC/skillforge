@@ -305,6 +305,16 @@ function LiveApp() {
   }, [sessions]);
   const { messages, sendMessage, status } = useChat({ chat });
   const [currentVerdict, setCurrentVerdict] = useState<Verdict | null>(null);
+
+  // 2026-11-09 — 语义路由兜底提示。后端在 ambiguous=true 但仍给出
+  // selected（top1 相关、只是与 top2 咬得近）时会直接执行该 Skill，
+  // 而不是把请求丢回给用户。用户因此**拿到了答案**，但那答案可能
+  // 来自他没预期的知识域 —— 这里把后端的 ambiguous 信号翻成一句
+  // 人能读的提示，避免兜底被当成确定结论。
+  //
+  // 局部 state 而非 store：与 currentVerdict 同级，D14 不变量要求
+  // store 里不出现第二份流状态。
+  const [routeNotice, setRouteNotice] = useState<{ skill: string; top1: number } | null>(null);
   const lastCreatedSkill = useAppStore((s) => s.lastCreatedSkill);
   const setLastCreatedSkill = useAppStore((s) => s.setLastCreatedSkill);
   const clearLastCreatedSkill = useAppStore((s) => s.clearLastCreatedSkill);
@@ -376,6 +386,38 @@ function LiveApp() {
     setCurrentVerdict(null);
   }, [messages]);
 
+  // 2026-11-09 — 读 data-decision 的路由决策，填兜底提示。
+  // 只有在「ambiguous 且仍选了某个 Skill」时才提示：ambiguous 且
+  // selected 为空表示后端放弃了（域外问题），此时没有答案可误解，
+  // 不该再叠一条提示。
+  useEffect(() => {
+    type RouteDecision = {
+      decision?: string;
+      ambiguous?: boolean;
+      selected?: string;
+      skillScores?: { score?: number }[];
+    };
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== 'assistant') continue;
+      for (const part of m.parts) {
+        if (part.type !== 'data-decision') continue;
+        const data = (part as { data?: unknown }).data as RouteDecision | undefined;
+        if (data?.decision !== 'route') continue;
+        if (data.ambiguous && data.selected) {
+          setRouteNotice({
+            skill: data.selected,
+            top1: data.skillScores?.[0]?.score ?? 0,
+          });
+        } else {
+          setRouteNotice(null);
+        }
+        return;
+      }
+    }
+    setRouteNotice(null);
+  }, [messages]);
+
   function handleSend(text: string) {
     // Phase 17 (DASH-01 live-UAT gap closure): the selected Skill must ride
     // the request body or the backend always resolves defaultSkill
@@ -420,6 +462,7 @@ function LiveApp() {
             status={status}
             onSend={handleSend}
             inputDisabled={!bootReady}
+            routeNotice={routeNotice}
           />
         }
         detail={

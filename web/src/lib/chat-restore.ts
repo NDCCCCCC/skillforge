@@ -26,6 +26,7 @@
 
 import type { UIMessage } from 'ai';
 import type { Verdict } from '../types/verdict';
+import { ownerTokenHeaders } from './owner-token';
 
 /** One rendered session turn from the BE history endpoint. The
  * `ts` field is the session_turn timestamp converted to ms (epoch ms).
@@ -89,7 +90,8 @@ export async function fetchHistory(
     const resp = await fetchImpl(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}/history`,
       {
-        headers: { Accept: 'application/json' },
+        // 后端最小身份层：会话历史同样按 owner 过滤，必须带身份头。
+        headers: { Accept: 'application/json', ...ownerTokenHeaders() },
       },
     );
     if (!resp.ok) {

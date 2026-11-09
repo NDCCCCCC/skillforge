@@ -13,6 +13,7 @@
 //   - PATCH /api/session/:id  body {title} (rename upsert)
 //   - DELETE /api/session/:id (idempotent 204)
 import type { PendingApprovalRow } from '../store/app-store';
+import { ownerTokenHeaders } from './owner-token';
 
 /** One roster row from GET /api/sessions (snake_case wire, DO NOT
  * camelCase — matches the Go handler's JSON tags). */
@@ -32,6 +33,17 @@ export interface SessionRosterResponse {
  * target (dev) and the same-origin path (prod). */
 const API_BASE = '/api';
 
+/**
+ * 会话作用域请求的统一请求头。
+ *
+ * 后端最小身份层：会话列表只返回归属当前 owner 的会话，所以
+ * /api/sessions 与 /api/session/:id/* 这一族请求都必须带
+ * `X-Owner-Token`。这里集中拼装，避免逐个调用点漏掉身份头。
+ */
+function sessionHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { Accept: 'application/json', ...ownerTokenHeaders(), ...(extra ?? {}) };
+}
+
 /** Fetch GET /api/sessions. Returns the roster or null on any error /
  * non-2xx / malformed payload. A null return means "roster unavailable"
  * — the caller keeps the local session state (fresh-session posture,
@@ -41,7 +53,7 @@ export async function fetchSessions(
 ): Promise<SessionRosterEntry[] | null> {
   try {
     const resp = await fetchImpl(`${API_BASE}/sessions`, {
-      headers: { Accept: 'application/json' },
+      headers: sessionHeaders(),
     });
     if (!resp.ok) {
       return null;
@@ -71,7 +83,7 @@ export async function renameSession(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sessionHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ title }),
       },
     );
@@ -92,7 +104,7 @@ export async function deleteSession(
   try {
     const resp = await fetchImpl(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}`,
-      { method: 'DELETE' },
+      { method: 'DELETE', headers: sessionHeaders() },
     );
     return resp.ok;
   } catch {
@@ -185,7 +197,7 @@ export async function fetchApprovalRules(
   const base = `${API_BASE}/session/${encodeURIComponent(sessionId)}/approval-rules`;
   try {
     const sessionResp = await fetchImpl(`${base}?scope=session`, {
-      headers: { Accept: 'application/json' },
+      headers: sessionHeaders(),
     });
     if (!sessionResp.ok) {
       return null;
@@ -198,7 +210,7 @@ export async function fetchApprovalRules(
       try {
         const skillResp = await fetchImpl(
           `${base}?scope=skill&skill_id=${encodeURIComponent(skillId)}`,
-          { headers: { Accept: 'application/json' } },
+          { headers: sessionHeaders() },
         );
         if (skillResp.ok) {
           const skillBody = (await skillResp.json()) as { rules?: ApprovalRuleWire[] };
@@ -234,7 +246,7 @@ export async function revokeApprovalRule(
   try {
     const resp = await fetchImpl(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}/approval-rules/${encodeURIComponent(ruleId)}`,
-      { method: 'DELETE', headers: { Accept: 'application/json' } },
+      { method: 'DELETE', headers: sessionHeaders() },
     );
     if (resp.ok) return { ok: true };
     const reason = resp.status === 404 ? '规则不存在' : `HTTP ${resp.status}`;
@@ -256,7 +268,7 @@ export async function fetchPendingApproval(
   try {
     const resp = await fetchImpl(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}/approval`,
-      { headers: { Accept: 'application/json' } },
+      { headers: sessionHeaders() },
     );
     if (!resp.ok) return undefined;
     const body = (await resp.json()) as { approvals?: PendingApprovalRow[] };
@@ -324,7 +336,7 @@ export async function fetchAuditRows(
   try {
     const resp = await fetchImpl(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}/audit?limit=100`,
-      { headers: { Accept: 'application/json' } },
+      { headers: sessionHeaders() },
     );
     if (!resp.ok) return null;
     const body = (await resp.json()) as { rows?: SessionAuditWire[] };
@@ -419,7 +431,7 @@ export async function fetchDecisionChain(
   try {
     const resp = await fetchImpl(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}/decision-chain?limit=200`,
-      { headers: { Accept: 'application/json' } },
+      { headers: sessionHeaders() },
     );
     if (!resp.ok) return null;
     const body = (await resp.json()) as {
@@ -468,7 +480,7 @@ export async function fetchSessionState(
   try {
     const resp = await fetchImpl(
       `${API_BASE}/session/${encodeURIComponent(sessionId)}/state?at=${encodeURIComponent(at)}`,
-      { headers: { Accept: 'application/json' } },
+      { headers: sessionHeaders() },
     );
     if (!resp.ok) return null;
     const body = (await resp.json()) as Partial<SessionState>;

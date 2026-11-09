@@ -41,6 +41,7 @@ import {
 } from './MockChatTransport';
 import { useAppStore } from '../store/app-store';
 import type { JsonObject, TerminalApproval } from '../store/app-store';
+import { ownerTokenHeaders } from '../lib/owner-token';
 import { DecisionForcedStop, DecisionPlanApproved, type PlanTodo } from '../types/wire-types';
 
 export type { DraftStatus, DraftUpdate, DraftUpdateHandler, MockChatTransportDraftOptions };
@@ -298,13 +299,19 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
     case 'fanout_dispatched':
     case 'fanout_completed':
     case 'fanout_failed': {
-      const runPath = asStr(data.runPath);
-      const transferFrom = asStr(data.transferFrom);
-      const transferTo = asStr(data.transferTo);
-      const reason = asStr(data.reason);
-      // Fields are reserved for the 13-05 timeline component that
-      // reads them off the dispatch seam.
-      void runPath; void transferFrom; void transferTo; void reason;
+      // 子 agent 决策（fanout_*）—— 字段已预留，本期不做时间线。
+      //
+      // 载荷契约已定稿：runPath / transferFrom / transferTo / reason
+      // 由后端稳定下发，这里统一读出并保留，等时间线组件接上这段
+      // dispatch seam 后直接消费即可。刻意不写 TODO —— 剩下的只是
+      // UI，字段本身不会再变，写 TODO 只会变成噪音。
+      const reservedFanout = {
+        runPath: asStr(data.runPath),
+        transferFrom: asStr(data.transferFrom),
+        transferTo: asStr(data.transferTo),
+        reason: asStr(data.reason),
+      };
+      void reservedFanout;
       return true;
     }
 
@@ -313,6 +320,33 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
   }
 }
 
+
+/**
+ * 断线 / 流失败的用户可见提示。
+ *
+ * 之前 SSE 流的失败只会把 error 抛给 useChat（status 变成 'error'），
+ * 界面上没有任何提示 —— 用户看到的是"消息发出去了，然后什么都没
+ * 发生"，把断线误读成"模型还在想"。这里统一走 window 'sf-toast'
+ * 事件（components/layout/SfToast.tsx 监听并渲染），把失败原因
+ * 摊到用户面前。
+ */
+function notifyStreamFailure(message: string): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent('sf-toast', {
+        detail: { kind: 'error', message: `连接中断：${message}` },
+      }),
+    );
+  } catch {
+    // 非浏览器环境（单测）——没有视口可提示，静默即可
+  }
+}
+
+/** 是否是"用户主动中止"造成的 AbortError —— 那不是失败，不提示。 */
+function isAbortError(err: unknown): boolean {
+  if (err instanceof Error && err.name === 'AbortError') return true;
+  return typeof DOMException !== 'undefined' && err instanceof DOMException && err.name === 'AbortError';
+}
 
 /** Options accepted by RealChatTransport. */
 export interface RealChatTransportOptions {
@@ -359,26 +393,57 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
     // lands in a throwaway session and /api/session/:id/history +
     // /api/sessions never see it. options.chatId IS the active session
     // id (App.tsx creates the Chat with id: activeSessionId).
-    const response = await fetchFn(api, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(options.chatId ? { 'x-session-id': options.chatId } : {}),
-        ...extraHeaders,
-      },
-      body: JSON.stringify({
-        messages: options.messages,
-        id: options.chatId,
-        trigger: options.trigger,
-        // Phase 17 (DASH-01): merge caller-supplied body extensions —
-        // App.handleSend passes { skill } so the backend can resolve the
-        // selected Skill instead of falling back to defaultSkill.
-        ...((options.body as Record<string, unknown> | undefined) ?? {}),
-      }),
-      signal: options.abortSignal,
-    });
+    //
+    // X-Owner-Token (后端最小身份层): SSE 传输走的是裸 fetch 而不是
+    // apiFetch，所以身份头必须在这里单独注入 —— 否则后端无法把这次
+    // 请求归属到当前浏览器的 owner。
+    //
+    // 取消 (cancel): 持有一个内部 AbortController，把 AI SDK 传入的
+    // abortSignal 转发到它，再由 ReadableStream 的 cancel() 回调真正
+    // abort 掉底层 fetch —— 用户点「停止」时连接立刻断开，而不是
+    // 等后端把剩余的流写完。
+    const abortController = new AbortController();
+    const externalSignal = options.abortSignal;
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        abortController.abort();
+      } else {
+        externalSignal.addEventListener('abort', () => abortController.abort(), { once: true });
+      }
+    }
+
+    let response: Response;
+    try {
+      response = await fetchFn(api, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...ownerTokenHeaders(),
+          ...(options.chatId ? { 'x-session-id': options.chatId } : {}),
+          ...extraHeaders,
+        },
+        body: JSON.stringify({
+          messages: options.messages,
+          id: options.chatId,
+          trigger: options.trigger,
+          // Phase 17 (DASH-01): merge caller-supplied body extensions —
+          // App.handleSend passes { skill } so the backend can resolve the
+          // selected Skill instead of falling back to defaultSkill.
+          ...((options.body as Record<string, unknown> | undefined) ?? {}),
+        }),
+        signal: abortController.signal,
+      });
+    } catch (err) {
+      // 网络层失败（连接被拒 / DNS / CORS）—— 用户必须看得见，
+      // 否则表现为"消息石沉大海"。
+      if (!isAbortError(err)) {
+        notifyStreamFailure(err instanceof Error ? err.message : String(err));
+      }
+      throw err;
+    }
 
     if (!response.ok || !response.body) {
+      notifyStreamFailure(`${api} 返回 ${response.status}`);
       return new ReadableStream<UIMessageChunk>({
         start(controller) {
           controller.error(
@@ -581,13 +646,29 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
 
           controller.close();
         } catch (err) {
+          if (isAbortError(err)) {
+            // 用户主动中止（点「停止」）—— 不是失败，不弹提示；
+            // 正常收尾，让 useChat 把 status 复位为 ready。
+            try {
+              controller.close();
+            } catch {
+              // 流已被消费方关闭 —— 忽略
+            }
+            return;
+          }
+          // 真实断线：既要让 useChat 进入 error 状态，也要把原因
+          // 摊给用户（静默失败会被误读成"模型还在想"）。
           controller.error(err);
+          notifyStreamFailure(err instanceof Error ? err.message : String(err));
         }
       },
-      cancel() {
-        // Stream cancelled by consumer (e.g. useChat.status === 'submitted'
-        // but user cancels). The fetch body will close automatically
-        // when the reader is released.
+      cancel(reason) {
+        // 消费者取消（useChat 的 stop()）→ 真正 abort 底层 fetch，
+        // SSE 连接立刻断开；后端随之看到客户端断开并停止推理。
+        // 旧实现留空并声称"reader 释放后 body 会自动关闭"—— 那是
+        // 错的：body 只在 reader 释放后才结束，而 cancel() 正是
+        // 释放之前的那一环。
+        abortController.abort(reason);
       },
     });
   }
@@ -596,8 +677,10 @@ export class RealChatTransport implements ChatTransport<UIMessage> {
     chatId: string;
     abortSignal?: AbortSignal;
   } & Record<string, unknown>): Promise<ReadableStream<UIMessageChunk> | null> {
-    // No persistent server-side stream handle in v1; matches
-    // MockChatTransport and DirectChatTransport semantics.
+    // 后端没有持久化的流句柄，断线后无法把上一段 SSE 续上（v1
+    // 语义与 MockChatTransport / DirectChatTransport 一致）：返回
+    // null 让 AI SDK 把这一轮标记为失败。断线的可见提示由
+    // notifyStreamFailure 负责，不在这里静默吞掉。
     return null;
   }
 }

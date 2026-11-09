@@ -48,8 +48,17 @@ function activeTabValue(kind: CenterView['kind']): string {
     case 'audit-timeline':
       return 'audit-timeline';
     case 'chunk-source':
-    // doc-view shares the 引用原文 tab (both are source-text views).
+    // doc-view 与 chunk-source 共用「引用原文」tab（两者都是源文本视图），
+    // 这是有意的穿透，不是漏写 break。
+    // 注意：ESLint 的 no-fallthrough 只认**紧邻下一个 case 的最后一条注释**
+    // 里的 commentPattern（默认 /falls?\s?through/i），所以关键词必须落在
+    // 最后一行 —— 写在前面几行里它看不到。
+    // falls through
     case 'doc-view':
+      return 'chunk-source';
+    // 引用原文 tab 的空状态 —— 高亮仍然落在「引用原文」上，
+    // 否则 tab 指示器会跳回「结论」，用户会以为点击没生效。
+    case 'chunk-source-empty':
       return 'chunk-source';
     case 'skill-md':
       return 'skill-md';
@@ -69,17 +78,26 @@ function activeTabValue(kind: CenterView['kind']): string {
 /**
  * Maps a tab value (emitted by Tabs.onValueChange on click) to the
  * matching CenterView kind.
+ *
+ * `currentSkillId` — the Skill actually selected right now. The
+ * Skill 定义 tab used to hardcode 'simple-qa', so clicking the tab
+ * always showed that one Skill's SKILL.md no matter which Skill the
+ * session was running.
  */
-function tabValueToCenterView(value: string): CenterView | null {
+function tabValueToCenterView(
+  value: string,
+  currentSkillId: string | null,
+): CenterView | null {
   switch (value) {
     case 'verdict':
       return { kind: 'empty' };
     case 'chunk-source':
       // chunk-source requires a prior CitationCluster click; a bare tab
-      // click without context stays at the empty verdict tab.
+      // click without context is handled by handleTabChange (it routes
+      // to the explicit empty state instead of doing nothing).
       return null;
     case 'skill-md':
-      return { kind: 'skill-md', skillId: 'simple-qa' };
+      return { kind: 'skill-md', skillId: currentSkillId ?? '' };
     case 'audit-timeline':
       return { kind: 'audit-timeline' };
     case 'agent-inspector':
@@ -114,6 +132,9 @@ export default function DetailPanel({
   const centerView = useAppStore((s) => s.centerView);
   const setCenterView = useAppStore((s) => s.setCenterView);
   const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
+  // 当前实际选中的 Skill —— 「Skill 定义」tab 用它取代了硬编码的
+  // 'simple-qa'（硬编码会让 tab 永远显示别人的 SKILL.md）。
+  const currentSkillId = useAppStore((s) => s.currentSkillId);
   // Plan 12-07 — PlanReplayView needs a runId. Prefer the plan slice's
   // currentRunId (the run that emitted data-plan-trace last); fall back
   // to the active session id (chatId === runId for v1).
@@ -140,7 +161,18 @@ export default function DetailPanel({
   ];
 
   function handleTabChange(value: string) {
-    const next = tabValueToCenterView(value);
+    // 「引用原文」在没有 chunk 上下文时，旧实现直接 return null ——
+    // 用户点了 tab 什么都没发生（像坏了）。现在给它一个明确的空
+    // 状态，tab 指示器也停在「引用原文」上。
+    if (
+      value === 'chunk-source' &&
+      centerView.kind !== 'chunk-source' &&
+      centerView.kind !== 'doc-view'
+    ) {
+      setCenterView({ kind: 'chunk-source-empty' });
+      return;
+    }
+    const next = tabValueToCenterView(value, currentSkillId);
     if (next) setCenterView(next);
   }
 
@@ -208,6 +240,20 @@ export default function DetailPanel({
             effectiveDate={centerView.effectiveDate}
             effectiveTo={centerView.effectiveTo}
           />
+        </div>
+      );
+    }
+    // 引用原文 tab 的空状态（没有选中任何 chunk）。
+    if (centerView.kind === 'chunk-source-empty') {
+      return (
+        <div className="center-panel-tab-content flex flex-col items-center justify-center text-center min-h-[60vh]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-dim mb-4">
+            <FileSearch className="h-6 w-6 text-primary" />
+          </div>
+          <div className="text-2xl font-semibold text-text">尚未选择引用片段</div>
+          <p className="mt-2 text-base text-text-muted">
+            在结论的引用列表里点击一段引用，或从知识图谱中选择一个 chunk，这里会显示原文。
+          </p>
         </div>
       );
     }

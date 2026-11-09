@@ -2,40 +2,44 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Plan 41-05 — /admin/platform tab shell: three-view switcher
-// (SPARQL Playground / MCP Inspector / Hybrid 调试). Replaces the
+// (三元组查询 / MCP Inspector / Hybrid 调试). Replaces the
 // placeholder from Plan 41-04.
 //
 // View-switcher idiom: GovernanceTab pattern (role="tablist" +
 // aria-selected buttons, local state, no router). skillName state is
-// lifted to tab level and passed to SPARQL Playground and Hybrid views.
+// lifted to tab level and passed to the triple-query and Hybrid views.
 //
 // 2610 redesign: tab switcher buttons migrated to the shared Button
 // (variant swap for the active tab), a PageHeader added per the 2610
 // admin shell. All data-testids and the skill-selector semantics
 // (quick-260928-jxb BUG-2) are unchanged.
+//
+// 命名跟随后端改名：SPARQL Playground → 三元组查询（端点
+// /api/sparql → /api/kg/triples）。Hybrid 视图保持原名 —— 它确实
+// 是混合检索。
 
 import { useEffect, useState } from 'react';
 import { cn } from '../../../lib/cn';
 import { useAppStore } from '../../../store/app-store';
 import { PageHeader } from '../shared/Primitives';
 import { Button } from '../../ui/button';
-import SparqlPlaygroundView from './SparqlPlaygroundView';
+import KGTripleQueryView from './KGTripleQueryView';
 import McpInspectorView from './McpInspectorView';
 import HybridDebugView from './HybridDebugView';
 
-type PlatformView = 'sparql' | 'mcp' | 'hybrid';
+type PlatformView = 'triples' | 'mcp' | 'hybrid';
 
 const VIEWS: Array<{ id: PlatformView; label: string }> = [
-  { id: 'sparql', label: 'SPARQL Playground' },
+  { id: 'triples', label: '三元组查询' },
   { id: 'mcp', label: 'MCP Inspector' },
   { id: 'hybrid', label: 'Hybrid 调试' },
 ];
 
 export default function PlatformTab() {
-  const [view, setView] = useState<PlatformView>('sparql');
+  const [view, setView] = useState<PlatformView>('triples');
   const [skillName, setSkillName] = useState('');
   // quick-260928-jxb BUG-2: skillName was initialized '' with NO selector,
-  // so SPARQL/Hybrid always sent X-Skill-Name: '' → 401. Shared selector
+  // so 三元组查询/Hybrid always sent X-Skill-Name: '' → 401. Shared selector
   // below serves both views (MCP Inspector is server-scoped, unaffected).
   // useSkillReload already polls store.skills from App mount — no new fetch.
   const skills = useAppStore((s) => s.skills);
@@ -52,7 +56,7 @@ export default function PlatformTab() {
     <div className="space-y-4" data-testid="platform-tab">
       <PageHeader
         title="平台调试"
-        description="SPARQL 查询、MCP 工具与 Hybrid 检索的联调工作台"
+        description="三元组模式查询、MCP 工具与 Hybrid 检索的联调工作台"
       />
 
       {/* View switcher */}
@@ -74,7 +78,7 @@ export default function PlatformTab() {
         ))}
       </div>
 
-      {/* Shared Skill selector (SPARQL + Hybrid both consume skillName) */}
+      {/* Shared Skill selector (三元组查询 + Hybrid both consume skillName) */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-text-muted">Skill 视角：</span>
         <select
@@ -95,8 +99,8 @@ export default function PlatformTab() {
       </div>
 
       {/* View bodies */}
-      {view === 'sparql' && (
-        <SparqlPlaygroundView skillName={skillName} onSkillChange={setSkillName} />
+      {view === 'triples' && (
+        <KGTripleQueryView skillName={skillName} />
       )}
       {view === 'mcp' && <McpInspectorView />}
       {view === 'hybrid' && <HybridDebugView skillName={skillName} />}

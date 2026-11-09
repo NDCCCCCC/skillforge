@@ -19,7 +19,7 @@
 //   - Auto-stick-to-bottom preserves user's scroll position
 //   - WizardMode replaces the whole column when wizardMode.active
 import { useEffect, useRef } from 'react';
-import { Briefcase, CalendarDays, Hotel, Sparkles } from 'lucide-react';
+import { Briefcase, CalendarDays, Hotel, Info, Sparkles } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
@@ -41,6 +41,15 @@ export interface ChatColumnProps {
   messages: UIMessage[];
   status: string;
   onSend: (text: string) => void;
+  /**
+   * 中止正在跑的 LLM 流（useChat 的 stop）。流式进行中时 composer
+   * 的发送按钮切换成「停止」—— 没有它，用户只能等这一轮跑完，无法
+   * 打断一条已经跑偏的回答。
+   *
+   * D14 不变量：stop 只是 useChat 的产物，作为 prop 逐层传递，
+   * **不进 Zustand store**（store 里不能出现第二份消息/流状态）。
+   */
+  onStop?: () => void;
   /** Boot-hydration send gate (debug new-session-shows-old-messages
    * residual #2): while the mount roster fetch is in flight the active
    * session may still be the throwaway boot session and the skill is
@@ -49,9 +58,23 @@ export interface ChatColumnProps {
    * composer and the empty-state suggested prompts (a prompt click is
    * a send). */
   inputDisabled?: boolean;
+  /**
+   * 语义路由的兜底结果（2026-11-09）。后端在 ambiguous=true 但仍有
+   * 可用 top1 时会直接执行它并返回答案 —— 这个 prop 让 UI 说明
+   * 「已自动选了谁、可能不是你要的知识域」，避免兜底被当成确定结论。
+   * 两者都为空/undefined 时不渲染。
+   */
+  routeNotice?: { skill: string; top1: number } | null;
 }
 
-export default function ChatColumn({ messages, status, onSend, inputDisabled = false }: ChatColumnProps) {
+export default function ChatColumn({
+  messages,
+  status,
+  onSend,
+  onStop,
+  inputDisabled = false,
+  routeNotice = null,
+}: ChatColumnProps) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const lastStuckRef = useRef(true);
   const wizardActive = useAppStore((s) => s.wizardMode.active);
@@ -97,6 +120,27 @@ export default function ChatColumn({ messages, status, onSend, inputDisabled = f
           exclusively from the plan slice (D14-extension); the synthetic
           write_todos fallback in PlanTracePart is defensive only. */}
       {planCurrentRunId && <PlanTracePart runId={planCurrentRunId} />}
+      {/* 2026-11-09 — 路由兜底提示。后端在 ambiguous=true 且给出
+          selected 时会直接执行 top1 并返回答案；这条提示把「我不太
+          确定」这件事讲明白，否则用户会把兜底答案当成确定结论。 */}
+      {routeNotice && (
+        <div
+          data-testid="route-fallback-notice"
+          role="status"
+          aria-live="polite"
+          className="mx-4 mt-2 flex items-start gap-2 rounded-md border border-text-muted/25 bg-surface-2 px-3 py-2 text-[11px] leading-relaxed text-text-muted"
+        >
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>
+            已自动选择 Skill{' '}
+            <span className="font-semibold">{routeNotice.skill}</span>
+            {routeNotice.top1 > 0
+              ? '（最高匹配度 ' + (routeNotice.top1 * 100).toFixed(0) + '%）'
+              : ''}
+            ，可能不是你要的知识域。可以切换 Skill 后重问。
+          </span>
+        </div>
+      )}
       {messages.length === 0 ? (
         <div
           data-testid="chat-empty"
@@ -154,7 +198,12 @@ export default function ChatColumn({ messages, status, onSend, inputDisabled = f
         </div>
       )}
 
-      <ChatInput onSend={onSend} disabled={inputDisabled} />
+      <ChatInput
+        onSend={onSend}
+        disabled={inputDisabled}
+        streaming={status === 'streaming'}
+        onStop={onStop}
+      />
     </div>
   );
 }

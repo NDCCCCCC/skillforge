@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { KnowledgeGraph } from '../types/knowledge';
+import { ownerTokenHeaders } from '../lib/owner-token';
 
 export type GraphStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -41,7 +42,10 @@ export function useKnowledgeGraph(): UseKnowledgeGraphResult {
     setStatus('loading');
     setError(null);
 
-    fetch('/api/knowledge/graph', { headers: { Accept: 'application/json' } })
+    // 后端最小身份层：知识图谱同样是后端请求，带上 owner token。
+    fetch('/api/knowledge/graph', {
+      headers: { Accept: 'application/json', ...ownerTokenHeaders() },
+    })
       .then(async (resp) => {
         if (cancelled) return null;
         if (resp.status === 503) {

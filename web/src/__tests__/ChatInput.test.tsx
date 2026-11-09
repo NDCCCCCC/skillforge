@@ -193,6 +193,56 @@ describe('ChatInput slash-command Skill menu (quick plan 260815-0xb)', () => {
   });
 });
 
+// 流式可中止 + 工程 TODO 清理（附件通道未接入）。
+describe('ChatInput — streaming stop button', () => {
+  it('renders the send button when idle', () => {
+    render(<ChatInput onSend={() => undefined} />);
+    expect(screen.getByTestId('chat-input-send')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-input-stop')).toBeNull();
+  });
+
+  it('swaps the send button for a stop button while streaming, and stop() fires', () => {
+    let stopped = 0;
+    render(<ChatInput onSend={() => undefined} streaming onStop={() => { stopped += 1; }} />);
+
+    const stopBtn = screen.getByTestId('chat-input-stop');
+    expect(stopBtn).toBeInTheDocument();
+    expect(stopBtn).toHaveAttribute('aria-label', '停止生成');
+    // The send button is gone while streaming — one action, not two.
+    expect(screen.queryByTestId('chat-input-send')).toBeNull();
+
+    fireEvent.click(stopBtn);
+    expect(stopped).toBe(1);
+  });
+
+  it('the stop button is enabled even with an empty input (the user must be able to abort)', () => {
+    render(<ChatInput onSend={() => undefined} streaming onStop={() => undefined} />);
+    expect(screen.getByTestId('chat-input-stop')).not.toBeDisabled();
+  });
+});
+
+describe('ChatInput — attachment affordance is hidden (upload channel not wired yet)', () => {
+  it('renders no attachment chips and no engineering notice', () => {
+    render(<ChatInput onSend={() => undefined} />);
+    expect(screen.queryByTestId('chat-input-files')).toBeNull();
+    expect(screen.queryByTestId('chat-input-files-notice')).toBeNull();
+    expect(screen.queryByTestId('chat-input-file-chip')).toBeNull();
+  });
+
+  it('the send button never exposes the attachment TODO in its aria-label', () => {
+    render(<ChatInput onSend={() => undefined} />);
+    const send = screen.getByTestId('chat-input-send');
+    expect(send).toHaveAttribute('aria-label', '发送');
+    expect(send.getAttribute('aria-label')).not.toContain('附件');
+  });
+
+  it('the placeholder no longer promises drag-and-drop attachments', () => {
+    render(<ChatInput onSend={() => undefined} />);
+    const textarea = screen.getByTestId('chat-input-textarea');
+    expect(textarea.getAttribute('placeholder')).not.toContain('拖放');
+  });
+});
+
 // within_text — minimal containment helper (avoids re-importing `within`
 // for plain DOM text assertions on a menu element).
 function within_text(container: HTMLElement, text: string): boolean {

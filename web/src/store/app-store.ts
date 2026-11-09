@@ -267,6 +267,10 @@ export type CenterView =
       effectiveTo: number | null;
     }
   | { kind: 'skill-md'; skillId: string }
+  // 引用原文 tab 的空状态 —— 用户点了「引用原文」但当前没有任何 chunk
+  // 上下文。以前这个 tab 点击后什么也不发生（点了没反应），现在给它
+  // 一个明确的空状态，而不是假装没听见这次点击。
+  | { kind: 'chunk-source-empty' }
   // Doc viewer — full markdown source of one knowledge corpus doc.
   // Entry points: left-sidebar FILES tree click + knowledge-graph doc-node
   // click. Backed by GET /api/knowledge/doc?tier=&file=.

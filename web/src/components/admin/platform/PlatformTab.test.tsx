@@ -3,10 +3,13 @@
 
 // quick-260928-jxb Task 2 — regression pins for the shared Skill selector.
 // The 2026-09-28 operator walkthrough found PlatformTab held skillName:''
-// with NO selector — SPARQL Run Query and Hybrid 搜索 always sent
+// with NO selector — 三元组查询 and Hybrid 搜索 always sent
 // X-Skill-Name: '' → 401. These tests pin: selector renders, auto-defaults
 // to the first ok skill (never ''), failed skills are absent, and one
 // selector drives the shared state for BOTH views.
+//
+// 命名跟随后端改名：SPARQL Playground → 三元组查询（端点
+// /api/sparql → /api/kg/triples），视图 id 从 'sparql' 改为 'triples'。
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,11 +61,26 @@ describe('PlatformTab — shared Skill selector (quick-260928-jxb BUG-2)', () =>
     expect(names).not.toContain('broken');
   });
 
-  it('selecting a different skill updates the shared state for both SPARQL and Hybrid views', () => {
+  it('selecting a different skill updates the shared state for both 三元组查询 and Hybrid views', () => {
     render(<PlatformTab />);
 
     const select = screen.getByTestId('platform-skill-select') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'calculator' } });
     expect(select.value).toBe('calculator');
+  });
+
+  // 命名跟随后端改名：默认视图是「三元组查询」，不再宣称 SPARQL。
+  it('defaults to the 三元组查询 view (renamed from the SPARQL playground)', () => {
+    render(<PlatformTab />);
+
+    expect(screen.getByTestId('platform-view-triples')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByTestId('platform-view-triples')).toHaveTextContent('三元组查询');
+    expect(screen.queryByTestId('platform-view-sparql')).toBeNull();
+    // The view body itself mounts (the switcher button and the body
+    // carry different test ids so both stay addressable).
+    expect(screen.getByTestId('platform-view-triples-body')).toBeInTheDocument();
   });
 });

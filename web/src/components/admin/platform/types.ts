@@ -7,9 +7,14 @@
 
 import type { ProvenanceInfo } from '../governance/types';
 
-// ── SPARQL types ──────────────────────────────────────────────────────────
+// ── 三元组查询 types（KG triples）────────────────────────────────────────
+//
+// 后端把 /api/sparql 改名为 /api/kg/triples，并把这个查询面从
+// "SPARQL 查询" 纠正为"三元组模式查询"：s / p / o 三段各自留空即
+// 通配匹配，再叠加一个可选 filter。前端类型名同步跟过去 —— 继续
+// 叫 Sparql* 就是在宣称一个并不存在的 SPARQL 引擎能力。
 
-export interface SparqlPattern {
+export interface TriplePattern {
   s?: string;
   p?: string;
   o?: string;
@@ -18,15 +23,15 @@ export interface SparqlPattern {
   filter?: string;
 }
 
-export interface SparqlResult {
+export interface KGTripleResult {
   s: string;
   p: string;
   o: string;
   provenance?: ProvenanceInfo;
 }
 
-export interface SparqlResponse {
-  results: SparqlResult[];
+export interface KGTripleResponse {
+  results: KGTripleResult[];
   count: number;
   truncated: boolean;
 }

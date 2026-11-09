@@ -4,7 +4,7 @@
 // SourceKindBadge — shared provenance source-kind pill (admin UI redesign 2610).
 //
 // One mapping for the `file / emitter / induction` source-kind badge that
-// ProvenanceGraphView, SparqlPlaygroundView and HybridDebugView each used
+// ProvenanceGraphView, KGTripleQueryView and HybridDebugView each used
 // to hand-roll (three copies of KIND_BADGE + label ternary). Token-only
 // colors; unknown kinds fall back to the neutral surface chip.
 

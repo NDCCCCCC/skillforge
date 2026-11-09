@@ -16,6 +16,8 @@
 // pure wire client.
 
 
+import { ownerTokenHeaders } from '../../lib/owner-token';
+
 /** One node of the projected ontology graph (BE ontologyGraphNode). */
 export interface OntologyNode {
   id: string;
@@ -38,6 +40,23 @@ export interface OntologyGraph {
 }
 
 const ADMIN_TOKEN_KEY = 'sf_admin_token';
+
+/**
+ * 当前浏览器是否持有管理员令牌。
+ *
+ * 本体视图走 /api/admin/ontology/graph，是 X-Admin-Token 门禁的端点。
+ * 没有令牌时 KnowledgeGraphBrowser 用一句温和的说明代替"错误 + 令牌
+ * 输入框"作为落地页 —— 普通用户一眼就能看出这是管理员功能，而不是
+ * 以为自己撞上了故障。
+ */
+export function hasAdminToken(): boolean {
+  try {
+    return (localStorage.getItem(ADMIN_TOKEN_KEY) ?? '').trim().length > 0;
+  } catch {
+    // localStorage 不可用 → 按"无令牌"处理（温和说明）
+    return false;
+  }
+}
 
 export class OntologyGraphApiError extends Error {
   constructor(
@@ -62,7 +81,10 @@ export async function fetchOntologyGraph(notes: string[] = []): Promise<Ontology
   let resp: Response;
   try {
     resp = await fetch(`/api/admin/ontology/graph${qs}`, {
-      headers: { 'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) ?? '' },
+      headers: {
+        'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) ?? '',
+        ...ownerTokenHeaders(),
+      },
     });
   } catch {
     throw new OntologyGraphApiError(0, '网络错误');

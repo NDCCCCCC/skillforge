@@ -8,22 +8,29 @@
 import type {
   HybridQuery,
   HybridResponse,
+  KGTripleResponse,
   McpInvokeRequest,
   McpInvokeResponse,
   McpServerStatus,
   McpTool,
-  SparqlPattern,
-  SparqlResponse,
+  TriplePattern,
 } from './types';
+import { ownerTokenHeaders } from '../../../lib/owner-token';
 
 const ADMIN_TOKEN_KEY = 'sf_admin_token';
 
+// 后端最小身份层：所有请求都要带 owner token（与 admin token 是
+// 两件事 —— admin token 是管理权限，owner token 是"这个浏览器是谁"）。
 function adminHeaders(): HeadersInit {
-  return { 'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) ?? '' };
+  return { 'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) ?? '', ...ownerTokenHeaders() };
 }
 
 function skillHeaders(skill: string): HeadersInit {
-  return { 'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) ?? '', 'X-Skill-Name': skill };
+  return {
+    'X-Admin-Token': localStorage.getItem(ADMIN_TOKEN_KEY) ?? '',
+    'X-Skill-Name': skill,
+    ...ownerTokenHeaders(),
+  };
 }
 
 export class PlatformApiError extends Error {
@@ -61,7 +68,11 @@ async function withNetworkGuard<T>(p: Promise<T>): Promise<T> {
   }
 }
 
-// ── SPARQL ────────────────────────────────────────────────────────────────
+// ── KG triples（三元组模式查询）──────────────────────────────────────────
+//
+// 端点随后端改名：/api/sparql → /api/kg/triples。名字改了不是
+// 换汤不换药 —— 语义也一并纠正：这个接口做的是 subject/predicate/
+// object 三段模式匹配（留空即通配）+ 可选 filter，不是 SPARQL。
 
 // The BE matches S/P/O against exact IRIs. The playground accepts compact
 // prefixed names (`rdf:type`, `skf:Skill`) so the default example and
@@ -77,10 +88,13 @@ function expandIri(value: string): string {
   return value;
 }
 
-export async function sparqlQuery(pattern: SparqlPattern, skill: string): Promise<SparqlResponse> {
+export async function kgTripleQuery(
+  pattern: TriplePattern,
+  skill: string,
+): Promise<KGTripleResponse> {
   return withNetworkGuard(
     (async () => {
-      const resp = await fetch('/api/sparql', {
+      const resp = await fetch('/api/kg/triples', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,7 +108,7 @@ export async function sparqlQuery(pattern: SparqlPattern, skill: string): Promis
         }),
       });
       if (!resp.ok) throw await toApiError(resp);
-      return resp.json() as Promise<SparqlResponse>;
+      return resp.json() as Promise<KGTripleResponse>;
     })(),
   );
 }

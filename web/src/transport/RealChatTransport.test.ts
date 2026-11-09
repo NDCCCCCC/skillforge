@@ -882,3 +882,130 @@ describe('RealChatTransport — plan-decision dispatch (Plan 12-07)', () => {
     expect(useAppStore.getState().plan.planByRunId['run-pd']?.status).toBe('forced_stop');
   });
 });
+
+// 后端最小身份层 + 流可中止 + 断线可感知。
+describe('RealChatTransport — owner token / abort / disconnect visibility', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the X-Owner-Token header (backend minimal identity layer)', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) =>
+      new Response(textBodyStream(sseFrame({ type: 'finish', finishReason: 'stop' })), {
+        status: 200,
+      }),
+    );
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    await drain(await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'chat-1',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    }));
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit | undefined];
+    const headers = init?.headers as Record<string, string>;
+    expect(headers['X-Owner-Token']).toBeTruthy();
+  });
+
+  it('cancel() aborts the underlying fetch (the stream really stops)', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedSignal = init?.signal ?? undefined;
+      // A body that never ends — like a live LLM stream.
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start() {
+            /* never closes */
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: 'submit-message',
+      chatId: 'chat-1',
+      messageId: 'msg-1',
+      messages: [],
+      abortSignal: undefined,
+    });
+    const reader = stream.getReader();
+    void reader.read();
+
+    expect(capturedSignal?.aborted).toBe(false);
+    await reader.cancel('user stopped the stream');
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('a non-2xx response raises a user-visible toast (no silent failure)', async () => {
+    const details: Array<{ kind?: unknown; message?: unknown }> = [];
+    const listener = (e: Event) => {
+      details.push((e as CustomEvent<{ kind?: unknown; message?: unknown }>).detail);
+    };
+    window.addEventListener('sf-toast', listener);
+
+    const fetchMock = vi.fn(async () => new Response('boom', { status: 500 }));
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    try {
+      const stream = await transport.sendMessages({
+        trigger: 'submit-message',
+        chatId: 'chat-1',
+        messageId: 'msg-1',
+        messages: [],
+        abortSignal: undefined,
+      });
+      await expect(drain(stream)).rejects.toThrow();
+    } finally {
+      window.removeEventListener('sf-toast', listener);
+    }
+
+    expect(details).toHaveLength(1);
+    expect(details[0].kind).toBe('error');
+    expect(String(details[0].message)).toContain('连接中断');
+  });
+
+  it('a network failure raises a user-visible toast', async () => {
+    const details: Array<{ kind?: unknown; message?: unknown }> = [];
+    const listener = (e: Event) => {
+      details.push((e as CustomEvent<{ kind?: unknown; message?: unknown }>).detail);
+    };
+    window.addEventListener('sf-toast', listener);
+
+    const fetchMock = vi.fn(async () => {
+      throw new Error('network down');
+    });
+    const transport = new RealChatTransport({
+      api: '/api/chat',
+      fetch: fetchMock as unknown as typeof globalThis.fetch,
+    });
+
+    try {
+      await expect(transport.sendMessages({
+        trigger: 'submit-message',
+        chatId: 'chat-1',
+        messageId: 'msg-1',
+        messages: [],
+        abortSignal: undefined,
+      })).rejects.toThrow('network down');
+    } finally {
+      window.removeEventListener('sf-toast', listener);
+    }
+
+    expect(details).toHaveLength(1);
+    expect(String(details[0].message)).toContain('连接中断');
+  });
+});

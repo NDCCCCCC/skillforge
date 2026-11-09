@@ -20,7 +20,7 @@
 // background. The send button is a square-rounded button at the
 // bottom-right of the card (no longer a circular paper-plane).
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { ArrowUp, Paperclip, X } from 'lucide-react';
+import { ArrowUp, Paperclip, Square, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import ModelPicker from './ModelPicker';
@@ -38,6 +38,15 @@ export interface ChatInputProps {
   /** Show a small "busy" hint (replaces the send icon with a spinner
    * when true). */
   busy?: boolean;
+  /** Streaming state — when true the send button becomes a stop button.
+   * Without this the user has no way to interrupt a running answer:
+   * before 2026-11-09 the chat had no stop control at all, so a slow or
+   * runaway generation could only be escaped by reloading the page
+   * (which loses the in-flight turn). */
+  streaming?: boolean;
+  /** Abort the in-flight generation. Required for the stop button; when
+   * absent the button falls back to the send affordance. */
+  onStop?: () => void;
 }
 
 interface AttachedFile {
@@ -62,6 +71,8 @@ export default function ChatInput({
   modeLabel,
   disabled = false,
   busy = false,
+  streaming = false,
+  onStop,
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
@@ -355,20 +366,8 @@ export default function ChatInput({
                 </button>
               </span>
             ))}
-            {/* CODE-AUDIT 2026-11-05 (D-01): the attachment channel is not
-                wired to the send payload yet — say so instead of silently
-                dropping the files on send. */}
-            <span
-              data-testid="chat-input-files-notice"
-              className="composer-file-chip"
-              style={{ color: 'var(--color-text-muted)' }}
-              role="status"
-            >
-              附件通道尚未接入，暂不会随消息发送；发送前请先移除附件
-            </span>
           </div>
         )}
-
         <textarea
           data-testid="chat-input-textarea"
           value={text}
@@ -381,27 +380,27 @@ export default function ChatInput({
           placeholder={
             modeLabel
               ? '回答向导的问题…'
-              : '输入问题，或键入 / 选择 Skill，或拖放文件...'
+              : '输入问题，或键入 / 选择 Skill...'
           }
           className="composer-textarea"
           rows={1}
         />
         <button
           type="button"
-          data-testid="chat-input-send"
-          onClick={handleSend}
-          disabled={!text.trim() || disabled || hasAttachments}
-          aria-label={hasAttachments ? '附件通道尚未接入，请先移除附件' : '发送'}
+          data-testid={streaming && onStop ? 'chat-input-stop' : 'chat-input-send'}
+          onClick={streaming && onStop ? onStop : handleSend}
+          disabled={streaming && onStop ? false : !text.trim() || disabled || hasAttachments}
+          aria-label={streaming && onStop ? '停止生成' : hasAttachments ? '请先移除附件' : '发送'}
           className="composer-send"
         >
-          <ArrowUp className="h-4 w-4" />
+          {streaming && onStop ? <Square className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
         </button>
       </div>
 
       {/* Open Design B6 — dual hint: Enter affordances left, retrieval
           scope right. */}
       <div className="composer-hint" data-testid="composer-hint">
-        <span>Enter 发送 · Shift+Enter 换行 · / 选择 Skill · 拖放文件附件</span>
+        <span>Enter 发送 · Shift+Enter 换行 · / 选择 Skill</span>
         <span>检索范围：当前 Skill 定义的知识层</span>
       </div>
     </div>

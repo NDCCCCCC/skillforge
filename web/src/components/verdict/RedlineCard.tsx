@@ -78,8 +78,14 @@ export default function RedlineCard({ data }: RedlineCardProps) {
     // Sanitization: strip path separators + control chars, trim leading
     // / trailing dashes (avoid "-.md" or "----.md" style oddities), cap
     // at 64 chars, fall back to 'redline' when nothing usable remains.
+    // clauseId 会被拼进下载文件名（safeClauseId + '.md'），必须剥离
+    // 控制字符与路径分隔符，否则部分文件系统上会得到非法文件名。
+    // no-control-regex 对 \x00 / \u0000 / 裸字节三种写法一视同仁地报，
+    // 换转义写法无效 —— 所以这里按 ESLint 官方建议显式 disable 并说明理由。
+    // eslint-disable-next-line no-control-regex
+    const UNSAFE_FILENAME_CHARS = /[\\/:*?"<>|\x00-\x1f]/g;
     const safeClauseId = (data.clauseId ?? '')
-      .replace(/[\\/:*?"<>|\x00-\x1f]/g, '-')
+      .replace(UNSAFE_FILENAME_CHARS, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 64) || 'redline';
     const filename = safeClauseId + '.md';

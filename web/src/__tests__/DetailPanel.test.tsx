@@ -170,15 +170,13 @@ describe('DetailPanel', () => {
     // fetch, and renders 知识库为空 when the BE returns a corpus with
     // 0 docs across all 4 tiers.
     //
-    // Root cause of D-46-DEF-01: since quick-260929-g7x the browser
-    // defaults to 本体/ontology mode (`useState<GraphViewMode>('ontology')`
-    // in KnowledgeGraphBrowser.tsx), and the document-corpus empty-state
-    // hero is rendered ONLY under `mode === 'document'`. The old
-    // assertion relied on an implicit default that has since changed, so
-    // it observed `ontology-graph-empty` / 本体暂无数据 instead. The SC-5
-    // contract is still implemented — it now lives in 文档 mode, so the
-    // test must select that mode (same shape as KnowledgeGraphBrowser's
-    // own `renders the empty-state hero in 文档 mode` case) before asserting.
+    // Root cause of D-46-DEF-01: the browser once defaulted to the
+    // 本体/ontology mode (`useState<GraphViewMode>('ontology')` in
+    // KnowledgeGraphBrowser.tsx), and the document-corpus empty-state
+    // hero is rendered ONLY under `mode === 'document'`. The default
+    // mode has since moved to 文档, and the corpus empty-state hero is
+    // the DEFAULT landing screen again — so the assertion no longer
+    // needs to select the mode first.
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async () => ({
@@ -200,10 +198,6 @@ describe('DetailPanel', () => {
     render(<DetailPanel currentVerdict={null} />);
     expect(screen.getByRole('tab', { name: '知识图谱' })).toHaveAttribute('aria-selected', 'true');
 
-    // Select 文档 mode — the empty-state hero is a document-mode concern
-    // (KnowledgeGraphBrowser.tsx: `mode === 'document' && (!graph || totalDocs === 0)`).
-    fireEvent.click(screen.getByTestId('graph-mode-document'));
-
     await waitFor(() => {
       expect(screen.getByTestId('knowledge-graph-empty')).toBeInTheDocument();
     });
@@ -217,6 +211,37 @@ describe('DetailPanel', () => {
     expect(screen.getByRole('tab', { name: '规划轨迹' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '审计轨迹' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '引用原文' })).toBeInTheDocument();
+  });
+
+  // 点了「引用原文」却什么都没发生 —— 旧实现直接 return null。
+  it('clicking 引用原文 without a chunk context shows an explicit empty state', () => {
+    useAppStore.setState({ centerView: { kind: 'empty' } });
+    render(<DetailPanel currentVerdict={null} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: '引用原文' }));
+
+    expect(useAppStore.getState().centerView.kind).toBe('chunk-source-empty');
+    expect(screen.getByTestId('detail-panel')).toHaveTextContent('尚未选择引用片段');
+    // The tab indicator stays on 引用原文 (the click was NOT ignored).
+    expect(screen.getByRole('tab', { name: '引用原文' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  // 硬编码的 'simple-qa' 让 tab 永远显示别人的 SKILL.md。
+  it('the Skill 定义 tab uses the CURRENTLY selected skill, not a hardcoded one', () => {
+    useAppStore.setState({
+      centerView: { kind: 'empty' },
+      currentSkillId: 'calculator',
+      skills: [{ id: 'calculator', name: 'Calculator', description: '', status: 'ok' }],
+    });
+    render(<DetailPanel currentVerdict={null} />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Skill 定义' }));
+
+    const cv = useAppStore.getState().centerView;
+    expect(cv.kind).toBe('skill-md');
+    if (cv.kind === 'skill-md') {
+      expect(cv.skillId).toBe('calculator');
+    }
   });
 
   it('clicking 规划轨迹 tab dispatches setCenterView({kind:"plan-replay"}) and renders PlanReplayView', async () => {

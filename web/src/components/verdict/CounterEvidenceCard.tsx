@@ -52,6 +52,12 @@ const DISCLAIMER =
   '以下内容来自「历史」知识层，仅供人工参考，不参与本次结论的生成与校验。';
 
 export default function CounterEvidenceCard({ conflictChunks }: CounterEvidenceCardProps) {
+  // Hook 必须在任何提前 return 之前调用 —— 否则当 conflictChunks 在两次
+  // 渲染之间从空变非空（或反之）时，Hook 调用数量变化，React 会抛
+  // "Rendered more/fewer hooks than expected" 或状态错乱。
+  // 2026-11-09 eslint react-hooks/rules-of-hooks 抓到此处。
+  const setCenterView = useAppStore((s) => s.setCenterView);
+
   // Plan 260815-cos / decision E1: zero rows → return null. The empty-
   // state copy is GONE — the disclaimer + header chrome only appear
   // when there ARE conflict chunks to annotate. This prevents the
@@ -59,8 +65,6 @@ export default function CounterEvidenceCard({ conflictChunks }: CounterEvidenceC
   // case = no annotation = no card).
   const rows = conflictChunks ?? [];
   if (rows.length === 0) return null;
-
-  const setCenterView = useAppStore((s) => s.setCenterView);
 
   return (
     <div
