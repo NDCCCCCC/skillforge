@@ -24,11 +24,27 @@
 
 ## What This Is
 
-SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 agent 工程能力。技术栈为 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端）。核心创新是"**Skill 驱动**"：企业通过编写或更新 Skill 文件（`SKILL.md`）让同一个 agent 内核适配不同业务需求，无需改代码。**v1.0 起增加「数据维度」**：业务敏感数据导入即脱敏（不保存原始数据），通过聚合 KPI 函数接口为 agent 提供数据支撑；合规（脱敏、审计、拒答）作为基线约束贯穿所有能力。
+SkillForge 是一个面向企业的 **可验证 agent 运行时**：以 **Go + Eino（字节 CloudWeGo 开源的 LLM 框架）+ Eino ADK 多 agent 编排**（后端），**React 19 + Vite + TypeScript**（前端），把"agent 的答案能不能被证明"做成工程约束而不是宣传语。
+
+技术栈不变；领域适配仍然通过 Skill 文件（`SKILL.md`）完成——一个文件换一个业务域，不改代码。但**对外叙事已从"Skill 驱动"切换为"可证明的执行契约"**：证据 / 执行 / 演进 三层各有对应的代码级机制（grounding 逐字校验 + authority 引用白名单 + platform floor；HITL 审批字节恒等 + INSERT-only 审计 + PROV-O 导出；冻结评测门禁 + 本体提案/审批/版本/回滚）。"Skill 驱动"从差异化退回到实现手段——`SKILL.md` 已是开放标准，"我有一种 SKILL.md 格式"不再是护城河。
+
+**v1.0 起增加「数据维度」**：业务敏感数据导入即脱敏（不保存原始数据），通过聚合 KPI 函数接口为 agent 提供数据支撑；合规（脱敏、审计、拒答）作为基线约束贯穿所有能力。
+
+**对外文案的诚实底线**：README / 文档里的每条能力描述必须与代码现状一致；尚未接上生产默认路径的能力一律按"实验路径 / admin 面板可见 / 规划中"措辞表述，宁可少说不要说错。
 
 ## Core Value
 
-**同一个 agent 内核，通过可插拔的 Skill 文件被任意企业快速定制，无需改代码** —— 这是从"应用"到"平台"的护城河，也是"通过更新 Skill 让项目更理解企业使用需求"这一设计哲学的直接落地。
+**要闸门，不要分数。社区给你一个 score；SkillForge 给你一个 gate。**
+
+问题不是"agent 能不能答"，而是"这个答案能不能被证明"。核心命题分三层：
+
+| 层 | 命题 |
+|---|---|
+| **可证明的证据** | 每条引用都逐字校验过；只有 authority 角色能背书；信任条款代码级注入，Skill 正文在结构上无法覆盖 |
+| **可证明的执行** | 写操作必须经人批，且人批的字节 = 执行的字节；一切执行可审计、可导出为 W3C PROV-O |
+| **可证明的演进** | Skill 变更必须过冻结评测门禁；领域本体由人提议、人审批、版本化、可回滚 |
+
+差异不在其中任何一件本身，而在**六件事的组合**：引用 span 逐字校验否则整条裁决降级 / 只有 authority 角色可被引用 / platform floor 代码级注入 / 审批绑定 frozen_args 字节恒等 / INSERT-only 审计台账 + PROV-O / Skill 晋级 fail-closed 门禁。措辞纪律：说"这套组合"，不说"业界唯一"——社区在 Ragas / TruLens / DeepEval（给分数）、LangGraph interrupt（给挂起）、TopBraid SHACL（给违规报告）、Casbin / OPA（给策略）上各有成熟件，本项目是把它们收进一个可审计的执行契约。
 
 ## Requirements
 
@@ -69,14 +85,14 @@ SkillForge 是一个面向企业的、可交互的 Web 应用，展示大模型 
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] **Skill 系统**：`SKILL.md` 6 字段规范（`description` / `agent` / `reads` / `writes` / `steps` / `guardrails`）、Skill 热加载与管理、意图路由（基于 description 语义匹配）
-- [ ] **Agent 内核（Eino + Eino ADK）**：多 agent 编排、工具调用、流式响应（参照 denova 的 Eino + ADK 落地）
+- [x] **Skill 系统**：`SKILL.md` **7** 字段规范（`description` / `agent` / `reads` / `writes` / `steps` / `guardrails` / `temperature`）、Skill 热加载与管理、意图路由（基于 description 语义匹配）—— **实际状态：字段数已由 6 改为 7（新增 `temperature`）**；manifest + 默认拒绝校验（`internal/skill/manifest.go`、`internal/skill/validate.go`：空 `reads`/`writes`/`steps` 与不足的 prohibitions 一律拒绝）+ fsnotify 热加载与版本计数（`internal/skill/registry.go`）**均已实现并上线**。未达成部分：**意图路由尚未装配到生产 chat 路径**（`Deps.Router` 仍为 nil，chat 走 `findSkill` 读启动快照），故本条按"主体已达成、路由待接线"勾选。
+- [x] **Agent 内核（Eino + Eino ADK）**：多 agent 编排、工具调用、流式响应（参照 denova 的 Eino + ADK 落地）—— **已实现**：Eino v0.9.14 + `eino/adk` 已锁版；多 agent 编排（`internal/runtime/{orchestrator,sub_agent_builder,fanout_runtime}.go`）、工具调用（`internal/agent/{hitl_tools,retrieve_tool,fanout_tools}.go`）、流式响应（Hertz `pkg/protocol/sse` ↔ 前端 Vercel AI SDK 的 UIMessageChunk 协议）全部落地并在 `cmd/server/main.go` 装配。
 - [ ] **真源分离知识层**：权威 / 历史 / 个人分层；Skill 通过 `reads` 字段声明知识边界（denova 真源分离机制的结构化升级）
 - [ ] **Agentic RAG**：自主决策（检索/拒答/追问/多跳）、引用溯源到具体段落、来源可信度标注
 - [ ] **护栏 & Eval**：拒答机制（不确定不瞎编）、引用溯源可视化、RAGAS 等可衡量评估管线
 - [ ] **内置样板 Skill：企业合规/制度审查**：仅读权威制度文档、结构化判断（合规/不合规/需补充）+ 引用条款、强护栏（绝不臆测）
 - [ ] **Skill 向导**（对标 denova 的 `skills-creator`）：企业用自然语言描述需求，agent 自动生成一个合规的 `SKILL.md`
-- [ ] **可交互 Web 前端**：问答界面、Skill 管理/浏览、引用溯源可视化、推理链展示
+- [x] **可交互 Web 前端**：问答界面、Skill 管理/浏览、引用溯源可视化、推理链展示 —— **已实现**：React 19 + Vite + TS + Tailwind v4 + shadcn；`web/src/components/` 下含聊天流（`chat/`：SkillPicker、ReasoningPart、RoutingTracePart、ToolPart）、引用溯源（`center/ChunkSourceView.tsx`、`CitationCluster.tsx`、`DocViewer.tsx`）、结构化 Verdict / Refusal 卡片（`VerdictCard.tsx` / `RefusalCard.tsx`）、审批卡（`ApprovalCard.tsx` / `PlanApprovalCard.tsx`）、审计时间线（`AuditTimelineTab.tsx`），以及 `/admin` 下的知识库 / 治理 / 本体 / 平台 / LLM 配置等面板。
 - [ ] **开源可发布**：Apache-2.0 license、README + 文档、Demo 站点、本地启动 + Docker 一键跑
 
 ### Out of Scope

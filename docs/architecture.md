@@ -1,6 +1,12 @@
 # Architecture
 
-One paragraph before the diagram: SkillForge is an **execution-time trust boundary** for AI agents. A single agent kernel is retargeted per business domain by a `SKILL.md` contract; every answer is retrieved from tier-isolated knowledge, grounded against its cited chunks, and — for any write action — gated by a human approval primitive. The kernel refuses by construction; it does not guess.
+One paragraph before the diagram: SkillForge is a **verifiable enterprise agent
+runtime** — *gates, not scores*. A single agent kernel is retargeted per
+business domain by a `SKILL.md` contract; every answer is retrieved from
+tier-isolated knowledge, grounded against its cited chunks, and — for any write
+action — gated by a human approval primitive. The kernel refuses by
+construction; it does not guess. The three layers of the product are **provable
+evidence**, **provable execution**, and **provable evolution**.
 
 ```mermaid
 graph TB
@@ -58,7 +64,7 @@ Corpus on disk (`knowledge/` — authority / draft / historical / personal / sql
 
 ### 3. Governance layer
 
-Every model verdict is parsed, validated (`internal/verdict/validate.go`), grounded against its cited chunk text (`internal/verdict/grounding.go` — a citation whose span does not appear in the chunk is downgraded), and floored (`internal/verdict/floor.go`). Write actions pass through a human approval gate with frozen-args byte-identity. The full execution ledger is insert-only and exports PROV-O. The threat model that drove these mechanisms lives in `docs/threat-model/`.
+Every model verdict is parsed, validated (`internal/verdict/validate.go`), grounded against its cited chunk text (`internal/verdict/grounding.go` — a citation whose span does not appear in the chunk is downgraded), and floored (`internal/verdict/floor.go`). Write actions pass through a human approval gate with frozen-args byte-identity. The full execution ledger is insert-only and exports PROV-O. The trust clauses themselves live in the platform floor (`internal/platformfloor`, composed by `agent.ComposePlatformPrompt`) so a Skill body cannot overwrite them — note that this composition is live on the agent path and in the admin prompt preview, but is **not yet** composed into the production verdict-pipeline chat prompt. The threat model that drove these mechanisms lives in `docs/threat-model/`.
 
 **Enter the code here:** `internal/verdict/grounding.go`, `internal/server/approval_api.go`, `internal/auditchain/chain.go`.
 
@@ -78,7 +84,7 @@ The persistence and product surface: the knowledge-base registry (`internal/kb`)
 
 ## Further reading
 
-- [README](../README.md) — quick start, trust-boundary positioning, three moats
+- [README](../README.md) — quick start, gates-not-scores positioning, the three moats, and what is not on the production path yet
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — build, verify gates, how to add a Skill
 - [docs/threat-model/](threat-model/) — STRIDE register behind the governance layer
 - [SECURITY.md](../SECURITY.md) — reporting policy

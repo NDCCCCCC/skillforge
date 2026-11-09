@@ -1,8 +1,18 @@
 # SkillForge v1.1.0 — Release Notes (2026-09-06)
 
-> **The lane**: execution-time trust boundaries for AI agents —
-> 什么不许答, 什么必须批. We are complementary to WeKnora (查得准)
-> and Semantica (为什么), not head-to-head with either.
+> **Status (2026-11-09).** This file is the **historical release notes for
+> v1.1.0** (2026-09-06) and is kept as-is for the record. The current
+> development version is **v1.7**, and it is **not tagged yet** — the latest
+> tagged release is **v1.6**. See [`CHANGELOG.md`](CHANGELOG.md) for the
+> v1.2 → v1.7 milestone history, and the README for what is actually on the
+> production path today.
+
+> **The lane**: 可验证的企业 agent 运行时 —— 要闸门，不要分数。
+> A community tool gives you a score; SkillForge gives you a gate.
+> We are complementary to WeKnora (查得准) and Semantica (为什么), and we do not
+> compete with visual orchestration (Dify / Coze / n8n) or with tool
+> ecosystems (LangGraph + MCP) — we differentiate at the approval-and-refusal
+> layer.
 
 ## Three things you get in v1.1 that v1.0 didn't have
 
@@ -74,9 +84,15 @@ VERDICT_STREAM_TIMEOUT=60s
 EVAL_CASE_TIMEOUT=90s
 ```
 
-**Operator runbook update**: see
-[`C:\Users\CPIC\.claude\projects\D--code-ClaudeCode-ai-agent\memory\env-wsl-backend-runbook.md`](C:\Users\CPIC\.claude\projects\D--code-ClaudeCode-ai-agent\memory\env-wsl-backend-runbook.md)
-for the verified startup command set (Windows + WSL both covered).
+**Operator runbook**: the verified startup command set is in the README —
+[Quick Start](README.md#quick-start) (Docker Compose) and
+[Run without Docker / without an API key](README.md#run-without-docker--without-an-api-key)
+(hermetic path, no API key required). Both are written to be host-agnostic and
+cover Windows and WSL.
+
+> The link that used to sit here pointed at an absolute path on a private
+> workstation (a `C:\Users\...` memory file) — it was unreachable for every
+> reader of this repository, so it was replaced by the in-repo paths above.
 
 ## What we **don't** ship
 

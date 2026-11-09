@@ -63,6 +63,10 @@
 
 **Standards（继承 v1.4–v1.6）：** 零硬编码；Go handler ≤200 行；不静默吞错；涉 web 先产 UI-SPEC；每 phase 配 `verify-phase-NN.sh`；文档表述与构建现实一致（CGO_ENABLED=1 是 go-duckdb 生产构建现实路径）。
 
+**当前状态（2026-11-09）**：Phases 47–51 全部 Complete（见下方 Progress 表），但 **v1.7 尚未打 tag**——仓库最新 tag 仍是 `v1.6`。因此对外文案的版本叙事统一按"当前开发版本 v1.7，未打 tag"写（README 的 Releases 小节已改；`SECURITY.md` 的 "v1.7.x tags ✅ (latest release)" 与仓库实况不符，不在本文件所有权范围内，待所有者裁定）。
+
+收官时同时完成一次**对外叙事切换**（README 首屏）：从"Skill 驱动"改为"可验证的企业 agent 运行时 / 要闸门不要分数"；Three Moats 改名重排为 approve-and-remember · 可证明的证据 · 可证明的执行 + 可证明的演进；对比表新增"不在同一赛道"说明（不与可视化编排 Dify/Coze/n8n 竞争、不与工具生态 LangGraph+MCP 竞争）；并新增一节 **What is not on the production path yet** 诚实清单——platform floor 未进生产 chat prompt、Skill 的 `steps`/`guardrails` 未进 prompt、热重载只更版本号（执行路径读启动快照）、语义路由未装配、KG 实体未进 chat 检索、`EMBEDDER_BACKEND=local` 哈希向量化待移除、rerank 未接线、"SPARQL" 端点实为三元组模式查询、纯工具 Skill（calculator）不可执行。
+
 ## Phases
 
 - [x] **Phase 47: 清债与可复现基线** - v1.6 遗留债务闭合或显式处置：flaky 测试修复 + rollback 治理缓存 + 警告处置记录，为 CI 全量门与 hermetic 套件铺平不闪红的地基
