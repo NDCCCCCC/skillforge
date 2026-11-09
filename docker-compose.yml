@@ -89,6 +89,15 @@ services:
       GLM_API_KEY: ${GLM_API_KEY:?GLM_API_KEY is required — see .env.example}
       GLM_BASE_URL: ${GLM_BASE_URL:-https://open.bigmodel.cn/api/coding/paas/v4}
       SQLITE_DSN: /data/skillforge.db    # volume-backed so audit rows survive restarts
+      # 2026-11-09：backend 在启动时对 SKILLFORGE_MCP_SERVICE_SKILL 做
+      # log.Fatalf 硬校验（cmd/server/main.go，D-TRUST-02：不允许管理面
+      # 绕过 tier 过滤）。此前 compose 没透传它，README 的 `docker compose
+      # up` 主路径必然崩溃循环。这里给一个安全默认值（最小权限的
+      # simple-qa），需要别的 Skill 时在 .env 里覆盖。
+      SKILLFORGE_MCP_SERVICE_SKILL: ${SKILLFORGE_MCP_SERVICE_SKILL:-simple-qa}
+      # 管理面令牌。留空 = 所有 /api/admin/* 恒 403（fail-closed），
+      # 管理面板不可用；需要面板时在 .env 里设置一个强随机值。
+      SKILLFORGE_ADMIN_TOKEN: ${SKILLFORGE_ADMIN_TOKEN:-}
     ports:
       - "8888:8888"
     volumes:

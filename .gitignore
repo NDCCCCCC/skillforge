@@ -55,3 +55,22 @@ skillforge.db-wal
 # from the index (git rm --cached) in quick task 261105-audit-batch3;
 # history still carries them (rewrite is a separate decision).
 .planning/spikes/**/spike-*
+
+# 2026-11-09 (C6)：Go 测试的临时根与构建产物。
+#
+# internal/server/import_api_test.go 的 TestMain 曾经把临时根建在**包目录
+# 内**（os.MkdirTemp(".", "skillforge-server-test-")）并且丢弃 os.RemoveAll
+# 的错误。Windows 上 DuckDB/SQLite 句柄常在测试结束时仍被持有，删除静默
+# 失败 —— 实测累积了 72 个目录 / 1.68 GB，并最终导致该包出现「包级 FAIL
+# 但没有任何 --- FAIL 用例」的幽灵失败（进程在 TestImportStreaming 处中断）。
+#
+# 根因已修（临时根移到系统临时目录 + 删除失败告警），这里再加一道兜底：
+# 即使某次运行仍留下目录，也不会被 git 追踪。
+skillforge-server-test-*
+skillforge-data-test-*
+raw-never-*
+
+# 根目录 go build 产物（README 的 `go build -o server` 一行会落在这里）
+/server
+/server.test
+/dist/

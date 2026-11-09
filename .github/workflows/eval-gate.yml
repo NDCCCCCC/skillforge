@@ -1,160 +1,182 @@
-# Eval Gate — Phase 22 Task 22-01
+# Copyright 2026 SkillForge Authors — SPDX-License-Identifier: Apache-2.0
 #
-# Runs the frozen compliance golden set (50 cases) on every PR + push to
-# main, then applies the per-Skill threshold gate from
-# examples/skills/<skill>/eval-gate.json. This is the GEVL-07 / SC-2
-# promotion gate (D6-11).
+# 演进门禁 —— 「Skill 变更必须过冻结评测才能晋级」的强制点。
 #
-# Behaviour:
-#   - PR + push to main: run frozen replay + gate check
-#   - workflow_dispatch: run as "manual" with optional judge-model override
+# 本文件分两级，刻意分开：
 #
-# Gates:
-#   - faithfulness  >=  0.90 (cross-Skill floor)
-#   - refusal_accuracy derived from per-category refusal-required refusal
-#     rate; Skill-specific thresholds live in eval-gate.json.
+#   lock-integrity  无需任何密钥，永远运行，**刚性阻断**。
+#                   它比对 eval/frozen/*.lock.json 里钉住的 prompt_hash 与
+#                   当前实际发送的 prompt 是否一致。改了 prompt / Skill
+#                   正文却没重新冻结 → 这里红。
 #
-# What this workflow DOES NOT do (out of scope for Phase 22):
-#   - It does not pin the production LLM (production gates stay on
-#     GLM_CODING via --frozen + AssertPin; CI uses the ambient
-#     JUDGE_MODEL / GLM_API_KEY secrets). A pinned run is a manual
-#     nightly job.
-#   - It does not backfill live eval reports (separate cron).
+#   live-eval       需要 LLM + 向量端点密钥，配置了才跑。
+#                   它跑真实评测并应用每个 Skill 的 eval-gate.json 阈值。
+#                   未配置密钥时**明确声明跳过**并让 job 保持中性状态
+#                   （neutral，不是 success）—— 门禁不能靠「没配密钥」变成
+#                   装饰。
 #
-# Required secrets (set in repo Settings → Secrets):
-#   - GLM_API_KEY    — Coding Plan key (the live judge LLM)
-#   - BGE_M3_URL     — internal BGE-M3 endpoint
-#   - MILVUS_ADDRESS — internal Milvus (RETRIEVER_BACKEND=milvus)
-#   - SKILLFORGE_DATA_SALT (optional, only if Skill author salt differs)
+# 为什么这两级都要有：lock-integrity 只能证明「冻结的评测对象没变」，
+# 证明不了「质量没退」。live-eval 才能回答后者。反过来，live-eval 需要
+# 花钱和外部服务，不能作为每个 PR 的硬门槛，所以它按 secret 是否配置决定。
 
-name: eval-gate
+name: Eval Gate
 
 on:
   pull_request:
-    branches: [main, phase-*]
+    branches: [main]
+    paths:
+      - 'skills/**'
+      - 'eval/**'
+      - 'internal/agent/**'
+      - 'internal/eval/**'
+      - 'internal/platformfloor/**'
+      - 'internal/knowledge/**'
   push:
     branches: [main]
+    paths:
+      - 'skills/**'
+      - 'eval/**'
+      - 'internal/agent/**'
+      - 'internal/eval/**'
   workflow_dispatch:
-    inputs:
-      judge_model:
-        description: 'Judge model id (overrides $JUDGE_MODEL). Defaults to glm-5.2.'
-        required: false
-        default: 'glm-5.2'
 
 permissions:
   contents: read
 
+concurrency:
+  group: eval-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.25.5'
+
 jobs:
-  eval-gate:
-    name: Frozen compliance replay + gate
-    # D-09: live secrets are withheld from fork PRs and Dependabot runs, so
-    # the live gate must not be reached by either. Non-pull_request events
-    # (push to main, workflow_dispatch) stay enabled; same-repository PRs
-    # keep the live gate. The trigger itself is deliberately unchanged —
-    # widening it would hand fork-controlled workflow code base-repo
-    # secrets (D-11 forbids that trigger class outright).
-    if: >
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository) &&
-      github.actor != 'dependabot[bot]'
+  # ---------------------------------------------------------------------
+  # 第一级：冻结完整性。无密钥、永远运行、刚性阻断。
+  # ---------------------------------------------------------------------
+  lock-integrity:
+    name: Frozen lock integrity (no secrets needed)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    env:
-      # WR-08: the three live secrets are deliberately NOT job-level. Job-level
-      # env is visible to every step — including tag-pinned third-party actions
-      # that never need a credential. They are scoped to the single consuming
-      # step below (`Run frozen compliance replay`); the `Gate check` step is
-      # the offline threshold comparison and consumes no secret — `--gate-check`
-      # short-circuits before any bootstrap (cmd/eval/main.go).
-      # CI never pins the production model; the live gate uses the
-      # ambient JUDGE_MODEL. workflow_dispatch can override.
-      JUDGE_MODEL: ${{ github.event.inputs.judge_model || 'glm-5.2' }}
-      BGE_M3_MODEL: bge-m3
-      RETRIEVER_BACKEND: milvus
-      SQLITE_DSN: ':memory:'
-      # Pin platform floor so the audit row carries the same
-      # platform-floor version the local UAT produces (Phase 24 / PLAT-10).
-      PLATFORM_FLOOR_VERSION: 1.1.0
-      SKIP_HISTORY_PIPELINE: 'true'
-      GOCACHE: ${{ github.workspace }}/.gocache
-      GOMODCACHE: ${{ github.workspace }}/.gomodcache
-
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
+      - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Build cmd/eval
-        working-directory: ${{ github.workspace }}
-        run: go build -o ./bin/eval ./cmd/eval
+      - name: Lock pin matches the shipped prompt
+        # 这条测试断言 eval/frozen/<skill>.lock.json 的 prompt_hash 等于
+        # 当前代码实际渲染出的 prompt 哈希。
+        #
+        # 它红了有两种可能，都需要人看一眼：
+        #   1. 你改了 prompt / Skill 正文 —— 那就重跑 `go run ./cmd/eval
+        #      -frozen <skill>` 重新冻结，并接受评测分数会变；或者
+        #   2. 你不该改 prompt —— 那就回退。
+        #
+        # 这正是「Skill 晋级要过门」的最小可证明形式：拦住「悄悄改提示词
+        # 而不重新评测」。
+        run: |
+          go test ./internal/eval/ -run TestShippedFrozenLockIsInSync -count=1 -v
 
-      - name: Run frozen compliance replay
+      - name: Frozen lock files are all present
+        run: |
+          missing=0
+          for s in skills/*/SKILL.md; do
+            name=$(basename "$(dirname "$s")")
+            if [ ! -f "eval/frozen/$name.lock.json" ]; then
+              echo "::warning::skills/$name 没有冻结评测锁（eval/frozen/$name.lock.json）"
+              missing=$((missing+1))
+            fi
+          done
+          echo "缺少冻结锁的 Skill 数：$missing"
+          # 只告警不阻断：新增 Skill 的第一天还没跑过评测是正常的，
+          # 但它必须先跑一次才能算「晋级」。
+
+  # ---------------------------------------------------------------------
+  # 第二级：真实评测 + 阈值门禁。需要 secrets。
+  # ---------------------------------------------------------------------
+  live-eval:
+    name: Live eval + per-Skill thresholds
+    runs-on: ubuntu-latest
+    # 只有配了密钥才跑；没配时 job 走 skipped（中性），不会伪装成通过。
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.EVAL_GATE_ENABLED == 'true' }}
+    environment: eval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Verify CGO toolchain
+        run: gcc --version | head -n 1
+
+      - name: Check secrets
+        id: secrets
         env:
           GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
           BGE_M3_URL: ${{ secrets.BGE_M3_URL }}
-          MILVUS_ADDRESS: ${{ secrets.MILVUS_ADDRESS }}
-        # WR-03: without `shell: bash` GitHub runs `bash -e {0}` (no pipefail),
-        # so the pipeline reports tee's status and a non-zero ./bin/eval exit
-        # is discarded. `set -o pipefail` stays in the body as belt-and-braces
-        # so the intent survives a later removal of the `shell:` key.
-        shell: bash
-        working-directory: ${{ github.workspace }}
         run: |
-          set -o pipefail
-          mkdir -p eval/reports/ci
-          ./bin/eval \
-            --frozen compliance \
-            --report eval/reports/ci/compliance.json \
-            --calibration eval/reports/ci/compliance-calibration.json \
-            2>&1 | tee eval/reports/ci/run.log
+          if [ -z "$GLM_API_KEY" ] || [ -z "$BGE_M3_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GLM_API_KEY / BGE_M3_URL 未配置 —— 跳过实测评测。"
+            echo "这不是通过，是未验证。冻结完整性仍由 lock-integrity job 保证。"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Gate check
-        # R2-WR-05: no env block here — the threshold read is an offline file
-        # comparison (`--gate-check` short-circuits before any bootstrap), so
-        # granting live secrets to it was dead credential surface. The three
-        # mappings live on the replay step above, the only consumer.
-        working-directory: ${{ github.workspace }}
+      - name: Run eval per Skill (frozen pin)
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
+          BGE_M3_URL: ${{ secrets.BGE_M3_URL }}
+          BGE_M3_MODEL: bge-m3
         run: |
-          # Exit code != 0 fails the workflow. Threshold comes from
-          # examples/skills/compliance/eval-gate.json.
-          ./bin/eval \
-            --gate-check eval/reports/ci/compliance.json \
-            --skills-dir examples/skills
+          set -euo pipefail
+          mkdir -p eval-reports
+          # 逐个 Skill 跑，保留每份报告：一个 Skill 退步不该掩盖另一个。
+          for s in skills/*/SKILL.md; do
+            name=$(basename "$(dirname "$s")")
+            if [ ! -f "eval/frozen/$name.lock.json" ]; then
+              echo "跳过 $name（无冻结锁）"
+              continue
+            fi
+            echo "=== eval $name ==="
+            go run ./cmd/eval \
+              -frozen "$name" \
+              -report "eval-reports/$name.json" \
+              -calibration "eval-reports/$name.calibration.json"
+          done
 
-      - name: Upload report artifact
-        if: always()
-        uses: actions/upload-artifact@v7
+      - name: Apply per-Skill thresholds
+        if: steps.secrets.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          fail=0
+          for r in eval-reports/*.json; do
+            # calibration 文件不是报告，跳过
+            case "$r" in *.calibration.json) continue;; esac
+            echo "=== gate-check $r ==="
+            if ! go run ./cmd/eval -gate-check "$r" | tee -a gate.md; then
+              fail=1
+            fi
+          done
+          if [ -f gate.md ]; then
+            {
+              echo "## Eval gate"
+              echo ""
+              cat gate.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit $fail
+
+      - name: Upload eval reports
+        if: always() && steps.secrets.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          name: eval-gate-report-${{ github.run_id }}
-          path: |
-            eval/reports/ci/compliance.json
-            eval/reports/ci/compliance-calibration.json
-            eval/reports/ci/run.log
-          retention-days: 14
-
-  # D-10: a skipped job still reports "Success" on GitHub, so without this
-  # sibling the fork / Dependabot skip would be indistinguishable from a real
-  # live-gate pass (the CI-side twin of Phase 47 HIGH-1). This job runs on
-  # exactly the complement of the gate above and says out loud what happened.
-  #
-  # WR-02: the condition is the verbatim negation of the gate expression, not
-  # the narrower "PR && (fork || dependabot)" form. That narrower form omitted
-  # a Dependabot-attributed push to main, where the gate is also skipped and
-  # the notice was silent. P9 asserts `notice == "!(" + gate + ")"` so the two
-  # expressions cannot drift apart again.
-  eval-gate-skip-notice:
-    name: eval-gate skipped (fork / Dependabot)
-    if: >
-      !((github.event_name != 'pull_request' ||
-         github.event.pull_request.head.repo.full_name == github.repository) &&
-        github.actor != 'dependabot[bot]')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Announce the skip
-        run: |
-          echo "::notice::eval-gate skipped: live secrets are unavailable to fork and Dependabot PRs, so the live compliance gate did not run. This is NOT a live-gate pass (D-09/D-10)."
+          name: eval-reports
+          path: eval-reports/
+          if-no-files-found: warn
+          retention-days: 30

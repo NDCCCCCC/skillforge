@@ -22,6 +22,20 @@ spike-*trace.json
 web/dist/
 web/node_modules/
 node_modules/
+dist/
+
+# --- Go test residue (2026-11-09 / C6) ---
+# 测试临时根曾建在包目录内且删除静默失败，最坏时在构建上下文里堆了
+# 1.68 GB 的 duckdb 暂存数据。根因已修，这里排除以防万一。
+skillforge-server-test-*
+skillforge-data-test-*
+raw-never-*
+server
+server.test
+
+# --- Host runtime state (never in the image) ---
+data/
+.skillforge-cache/
 
 # --- README assets (not a runtime dependency) ---
 docs/demo*.gif

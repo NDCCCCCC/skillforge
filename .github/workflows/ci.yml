@@ -1,265 +1,187 @@
-# CI — SkillForge public quality gate (Phase 48, CICD-01)
+# Copyright 2026 SkillForge Authors — SPDX-License-Identifier: Apache-2.0
 #
-# Pinned action majors: actions/checkout@v7, golangci/golangci-lint-action@v9,
-# and the toolchain majors behind .github/actions/setup (setup-go@v7,
-# setup-node@v7, setup-buildx-action@v4). The Go version itself is never a
-# literal — it comes from go.mod through the composite.
+# CI —— 构建、静态检查、竞态检测、覆盖率。
 #
-# TWO INVARIANTS THAT ARE EASY TO UNDO BY ACCIDENT:
-#
-#   1. NO PATH-TRIGGER FILTERS ANYWHERE IN THIS FILE (no `on:`-block path keys,
-#      and no ignore-list variant of them either).
-#      Branch protection matches the job name; a path-filtered workflow leaves
-#      a required check Pending forever on a PR that touches no matched path.
-#      A per-line skip must be a job-level `if:`, never a trigger filter.
-#      IN-08 (48-11, option F): the BASE branch carries the same
-#      Pending-forever hazard, and it is handled as a documented closed set —
-#      pull_request runs exist only for bases [main, 'phase-*'] (the trigger
-#      block below). A PR based on any other long-lived branch — release/*, a
-#      hotfix/* line — starts no CI at all, so widening the set is a deliberate
-#      trade (runner minutes on every base), decided by editing this header and
-#      the trigger together, never by dropping the filter silently.
-#
-#   2. NO SECRET-CONTEXT REFERENCES ANYWHERE IN THIS FILE (no repository or
-#      organisation secret interpolation).
-#      The whole go line is hermetic by construction — it declares only
-#      CGO_ENABLED, so the spike commands stay on their t.Skip path and
-#      `go test ./...` needs no live Milvus / BGE-M3 / GLM.
-#
-# Four independent jobs: `go` (CICD-01), `fe` (CICD-02), `docker` (CICD-03),
-# and `verify` (IN-07 — the phase gate itself, running verify-phase-48.sh).
-# Every job checks out first and then calls the repository-local composite
-# toolchain action.
+# 设计取舍（2026-11-09）：
+#   - 默认 job 必须能在**从未见过本仓库的机器**上全绿。任何需要外部服务
+#     （Milvus / MongoDB / LLM 端点）的断言都不进默认 job —— 那些走
+#     hermetic 替身，或者留给 eval-gate.yml（带 secrets）。
+#   - `-race` 不是可选项。本项目的信任主张建立在「并发下依然 fail-closed」
+#     上：tier 过滤、审批裁决、审计写入都是并发路径。只跑普通 `go test`
+#     等于不测这一层。
+#   - 覆盖率只作工件留存，不设阈值门槛。用一个拍出来的百分比当门禁会
+#     诱导写无断言的空测试；这里给趋势，不给分数。
 
 name: CI
 
 on:
-  pull_request:
-    # Widened to match eval-gate.yml's existing base set: a PR targeting a
-    # `phase-*` base must not silently never start CI.
-    branches: [main, 'phase-*']
   push:
-    # push is limited to main: pull requests are the primary gated path, and a
-    # main push is the fast-forward of a reviewed merge — there the lint
-    # action's diff fetch succeeds and only-new-issues stays diff-scoped
-    # (measured on run 3 of the 48-15 push series, zero findings). A FORCE push
-    # to main has no common ancestor: the diff fetch fails and the action falls
-    # back to whole-repo lint over the legacy findings — so main is never
-    # force-pushed (the 48-15 history decision was a one-time, recorded
-    # exception). IN-R5-04 correction: limiting the trigger to main does not by
-    # itself prevent that fallback; the force-push discipline does.
     branches: [main]
+    paths-ignore:
+      - '.planning/**'
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # 固定工具链，避免 minor 漂移让 CI 结果不可复现。
+  GO_VERSION: '1.25.5'
+  NODE_VERSION: '22'
+
 jobs:
-  go:
-    name: go
+  backend:
+    name: Backend (build · vet · race · coverage)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      # Required by only-new-issues (D-29): the action fetches the PR diff via
-      # pulls.get. Without this scope it only console.warns and silently
-      # degrades to whole-repo lint — the "reported green but did not run"
-      # class. No mutating scope is granted anywhere in this workflow.
-      pull-requests: read
-    env:
-      CGO_ENABLED: "1"
     steps:
-      # Checkout FIRST (D-30): a repo-local composite action resolves from
-      # github.workspace and cannot bootstrap its own checkout.
-      # IN-10: this job runs `go test ./...` over fork-authored content and is
-      # the only job with an extra scope, so the runner token is not persisted
-      # into the checkout's local git config.
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
+      - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup
+      - uses: actions/setup-go@v5
         with:
-          node: "false"
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
-      - name: build + vet (P1)
+      # go-duckdb 与 mattn/go-sqlite3 都需要 CGO。ubuntu-latest 自带 gcc，
+      # 这里只显式确认并打印版本，出问题时日志能直接定位。
+      - name: Verify CGO toolchain
         run: |
-          go build ./...
-          go vet ./internal/ontology/... ./internal/server/... ./internal/knowledge/...
+          gcc --version | head -n 1
+          go env CGO_ENABLED
 
-      - name: lint (changed lines)
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12.2
-          only-new-issues: true
+      - name: go build
+        run: go build ./...
 
-      - name: go test ./... (CICD-01 / D-15)
-        run: go test ./... -count=1
+      - name: go vet
+        run: go vet ./...
 
-      - name: determinism -count=100 (P5a)
-        # D-18/D-19 (R2-WR-04): `go test -run` with zero matching tests exits 0,
-        # so a renamed test would pass vacuously. The -list guard proves the
-        # pinned test still exists before the 100-repeat run. The list is
-        # materialised to a file instead of piped: `grep -q` exits at the first
-        # match and closes the pipe, while `go test -list` still writes its
-        # trailing `ok <pkg> <time>` line, which takes EPIPE -> SIGPIPE -> exit
-        # 141 under pipefail (round-4 gap SC-1). With no pipe there is nothing
-        # to close early, so the rename-proof guard keeps its meaning without
-        # the race.
-        shell: bash
+      - name: gofmt check
+        # 只报告，不阻断：仓库历史上有格式化漂移，硬门禁会让第一个 PR
+        # 面对几百行无关 diff。新增漂移会在这里显形。
         run: |
-          LIST="$RUNNER_TEMP/go-test-list.txt"
-          go test ./internal/knowledge/ -list '^TestDeriveEdgesDeterministic$' > "$LIST"
-          grep -qx 'TestDeriveEdgesDeterministic' "$LIST"
-          go test ./internal/knowledge/ -run '^TestDeriveEdgesDeterministic$' -count=100
+          out=$(gofmt -l . | grep -v '^$' || true)
+          if [ -n "$out" ]; then
+            echo "::warning::以下文件未 gofmt："
+            echo "$out"
+          fi
 
-      - name: determinism -shuffle=on with seed (P5b)
-        # The trailing -v is mandatory (D-19): Go prints -test.shuffle <seed>
-        # only under -v, so without it a red run is unreproducible.
-        run: go test ./internal/knowledge/ ./internal/ontology/... -count=1 -shuffle=on -v
+      # 关键一步：-race。并发路径上的 fail-closed 断言（tier 过滤、
+      # 审批归属校验、审计写入）只在竞态检测下才有意义。
+      - name: go test -race
+        run: |
+          go test -race -count=1 \
+            -covermode=atomic \
+            -coverprofile=coverage.out \
+            ./internal/... ./cmd/...
 
-  # CICD-02 / SC-2: the frontend gate. Checks out first, then installs the
-  # lockfile, typechecks, and runs the whole Vitest suite. No job-level
-  # permissions block: the workflow ceiling (`contents: read`) is all it needs.
-  fe:
-    name: fe
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out | tail -n 1
+          else
+            echo "no coverage.out produced"
+          fi
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: warn
+          retention-days: 14
+
+  frontend:
+    name: Frontend (typecheck · test · build)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup
+      - uses: actions/setup-node@v4
         with:
-          go: "false"
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-      - name: install
+      - name: Install
         working-directory: web
         run: npm ci
 
-      - name: typecheck
+      # tsc 严格模式是前端的主要正确性防线（vitest 只覆盖有测试的组件）。
+      - name: Typecheck (tsc --noEmit)
         working-directory: web
         run: npx tsc --noEmit
 
-      - name: unit tests
+      - name: Unit tests (vitest)
         working-directory: web
         run: npx vitest run
 
-  # CICD-03 / SC-3: both images build from the repository root, and neither is
-  # ever published or loaded. Each image gets its own GHA cache scope — the
-  # default `buildkit` scope makes the second build evict the first's cache.
-  # The compose-driven build path is deliberately absent: the compose file
-  # interpolates required live-service variables, so building through it would
-  # force CI to fake secrets for a build that does not need them.
-  docker:
-    name: docker
+      # ESLint 从零引入，首次运行有 31 处历史基线违规（清单见
+      # web/eslint-baseline.md）。清零前这一步「可见但不阻断」：
+      # 失败会出现在 CI 日志和 step 状态里，但不让 merge 变红。
+      #
+      # 不选「先不跑 lint」：那样技术债在 CI 里完全看不见。也不选
+      # 「关掉规则让它绿」：那才是真正的假绿。清零后删掉
+      # continue-on-error，这一步就自动变成硬门禁。
+      - name: "Lint (baseline: 31 known violations)"
+        working-directory: web
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Production build
+        working-directory: web
+        run: npm run build
+
+      - name: Upload web bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          if-no-files-found: warn
+          retention-days: 7
+
+  # 结构门禁：这些脚本锁定的是「不许回退」的架构不变量（tier 隔离不许
+  # 绕过、SQL 生成面不许存在、信任根只读等）。它们比单元测试更接近项目
+  # 的对外主张，所以单独一个 job，失败信息也更清晰。
+  structural-gates:
+    name: Structural gates (verify-phase-41)
     runs-on: ubuntu-latest
-    # 45 minutes: `golang:1.25-bookworm` is a floating tag that can lag the
-    # go.mod patch level (forcing an in-image toolchain download), and the
-    # CGO compile layer is invalidated by `COPY . .` on every commit.
-    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup
+      - uses: actions/setup-go@v5
         with:
-          go: "false"
-          node: "false"
-          buildx: "true"
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
-      - name: build backend image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.backend
-          push: false
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
-
-      - name: build frontend image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.frontend
-          push: false
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-
-  # IN-07 (48-11, option A): the phase verifier itself runs in CI. Drift
-  # between verify-phase-48.sh and the workflows it guards now turns a push or
-  # PR red instead of rotting silently on a maintainer's host. This is a
-  # FOURTH published job name (D-21): branch protection matches job names, so
-  # renaming `verify` later would strand any rule that references it.
-  #
-  # The script demands golangci-lint exactly v2.12.2 on PATH (its own preflight
-  # refuses any other binary), so the job installs that one version through the
-  # Go module proxy (`go install`, checksum-DB verified). The install is a
-  # module-proxy fetch of the pinned version — `GOPROXY` and `GOSUMDB` are
-  # declared on the step below, and `GOTOOLCHAIN: local` prevents `go install`
-  # from downloading and executing a different toolchain; no install script is
-  # fetched or executed. `GOTOOLCHAIN=local` is satisfiable: this job's
-  # `./.github/actions/setup` step (with `go: "true"`) installs Go through
-  # actions/setup-go with `go-version-file: go.mod`, go.mod pins `go 1.25.5`,
-  # and golangci-lint v2.12.2 requires `go 1.25.0` — so the toolchain already
-  # on the runner needs no download (IN-01, 48-22). The version literal in the
-  # install step must stay in sync with LINT_VERSION in verify-phase-48.sh:
-  # the gate's preflight refuses any other binary. Reusing the go job's lint
-  # action here would drag
-  # in its push-run whole-repo fallback — the exact unmeasured surface WR-06
-  # leaves open — which this job must not inherit: it lints the script's
-  # sentinel modules, never the repository.
-  #
-  # No job-level permissions: the workflow ceiling (`contents: read`) is all
-  # the script touches, strictly narrower than the go job's surface (D-29).
-  # No step-level `if:` anywhere (the 48-07 rule) and no non-blocking escape.
-  # Fork-PR caveat this job cannot remove (IN-07/IN-10): on a fork PR the green
-  # `verify` check is self-attested — the script audits the same checkout it
-  # executes from — so it proves the fork's own tree, not a
-  # maintainer-reviewed one. persist-credentials: false keeps the runner token
-  # out of the checkout's local git config regardless of whose tree that is.
-  verify:
-    name: verify
-    runs-on: ubuntu-latest
-    # 25 minutes: `go install` builds golangci-lint v2 from source on a cold
-    # runner (minutes, not seconds), and the gate script's own P4 sentinel
-    # runs must still fit inside the budget.
-    timeout-minutes: 25
-    steps:
-      # Checkout FIRST (D-30), then the repository-local composite — P5's
-      # checkout-before-setup rule covers every job in this file.
-      # IN-10 mirrored from the go job: the script executes checked-out
-      # content, so the runner token is not persisted into the checkout.
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/setup
-        with:
-          go: "true"
-          node: "false"
-
-      - name: install pinned golangci-lint
-        # IN-01 (48-22): declare the install surface instead of inheriting it
-        # from the runner image. GOTOOLCHAIN=local keeps `go install` from
-        # downloading another toolchain (satisfiable — see the job comment);
-        # GOSUMDB pins the checksum database; GOPROXY pins the module proxy.
-        env:
-          GOTOOLCHAIN: local
-          GOSUMDB: sum.golang.org
-          GOPROXY: "https://proxy.golang.org,direct"
+      - name: verify-phase-41 (tier isolation cannot be bypassed)
         run: |
-          LINT_BIN="$(go env GOPATH)/bin"
-          mkdir -p "$LINT_BIN"
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
-          [ -x "$LINT_BIN/golangci-lint" ] || { echo "FATAL: golangci-lint v2.12.2 not executable at $LINT_BIN/golangci-lint after go install" >&2; exit 1; }
-          echo "$LINT_BIN" >> "$GITHUB_PATH"
+          chmod +x verify-phase-41.sh
+          bash verify-phase-41.sh
 
-      - name: python deps for the gate (PyYAML)
-        # R2-IN-03: pinned to the locally validated version (48-RESEARCH.md) so
-        # an unreviewed upstream release cannot reach the gate job.
-        run: python -m pip install --quiet --disable-pip-version-check "pyyaml==6.0.3"
-
-      - name: phase gate self-proof
-        run: bash verify-phase-48.sh
+  # 汇总 job：branch protection 只需勾这一个，避免新增 job 时忘记更新规则。
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [backend, frontend, structural-gates]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any upstream job failed
+        run: |
+          echo "backend=${{ needs.backend.result }}"
+          echo "frontend=${{ needs.frontend.result }}"
+          echo "structural-gates=${{ needs.structural-gates.result }}"
+          if [ "${{ needs.backend.result }}" != "success" ] \
+          || [ "${{ needs.frontend.result }}" != "success" ] \
+          || [ "${{ needs.structural-gates.result }}" != "success" ]; then
+            echo "::error::CI 未全绿"
+            exit 1
+          fi

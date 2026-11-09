@@ -1,132 +1,251 @@
-# Release workflow (Phase 51, REL-03): a v* tag push builds the server
-# for linux and windows and publishes the GitHub Release with structured
-# notes. This is the only workflow with write access to releases.
-name: release
+# Copyright 2026 SkillForge Authors — SPDX-License-Identifier: Apache-2.0
+#
+# 发布流水线 —— tag 触发，产出可验证的发布件。
+#
+# 平台取舍（2026-11-09）：
+#
+#   本项目**强制 CGO**：go-duckdb 与 mattn/go-sqlite3 都要 C 编译器。CGO
+#   交叉编译需要目标平台工具链，维护成本远大于收益。项目自己的 Makefile
+#   也写明了「Windows-native gcc 无法链接 go-duckdb，请在 Linux/WSL2/
+#   Docker 上跑」。
+#
+#   因此发布件是：
+#     · linux/amd64 原生二进制（CGO 开启，静态链接 libstdc++/libgcc）
+#     · linux/amd64 + arm64 Docker 镜像（GHCR）—— 官方部署方式
+#     · 前端静态产物（web/dist，与平台无关）
+#     · SHA256SUMS + 由 GitHub 生成的可验证性 attestation
+#
+#   刻意不产出 macOS / Windows 二进制：产出了也跑不起来（DuckDB 的 CGO
+#   链接在这些平台上会失败），发一个装不上的包比不发更糟。
+
+name: Release
 
 on:
   push:
     tags:
-      - "v*"
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（例如 v1.0.0）；留空则用当前 ref'
+        required: false
 
 permissions:
-  contents: read
+  contents: write     # 创建 Release
+  packages: write     # 推 GHCR
+  id-token: write     # attestation
+  attestations: write
+
+env:
+  GO_VERSION: '1.25.5'
+  NODE_VERSION: '22'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-linux:
-    name: build linux/amd64 (goreleaser snapshot)
+  # ---------------------------------------------------------------------
+  # 前置：CHANGELOG 必须有对应条目。发布说明不能是空白模板。
+  # ---------------------------------------------------------------------
+  preflight:
+    name: Preflight (version consistency)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: latest
-          args: build --snapshot --clean --single-target --id skillforge-server
-      - name: smoke the linux binary (stub mode)
-        env:
-          RETRIEVER_BACKEND: embedded
-          BGE_M3_URL: http://127.0.0.1:1/v1/embeddings
-          SKILLFORGE_MCP_SERVICE_SKILL: simple-qa
-        run: |
-          BIN=dist/skillforge-server_linux_amd64_v1/skillforge-server
-          test -f "$BIN"
-          head -c 4 "$BIN" | od -An -tx1 | grep -q "7f 45 4c 46"
-          # cold start needs no network: the embedded retriever serves an
-          # empty corpus until knowledge/ is indexed; skills list is the
-          # readiness probe (same path as verify-phase-49's live driver).
-          ("$BIN" &) ; sleep 3
-          curl -sf http://localhost:8888/api/skills > /dev/null || {
-            echo "binary did not serve /api/skills" >&2; exit 1; }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: skillforge-server-linux-amd64
-          path: dist/skillforge-server_linux_amd64_v1/skillforge-server
 
-  build-windows:
-    name: build windows/amd64 (msys2 mingw + CGO)
-    runs-on: windows-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: msys2 {0}
+      - name: Resolve version
+        id: v
+        run: |
+          ref="${{ github.event.inputs.tag || github.ref_name }}"
+          case "$ref" in
+            v*.*.*) ;;
+            *) echo "::error::tag 必须是 v*.*.* 形式，实际是 $ref"; exit 1;;
+          esac
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+          echo "tag=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: CHANGELOG mentions this version
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          if ! grep -qF "$v" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md 里没有 $v 的条目。发布说明必须是人写的。"
+            exit 1
+          fi
+          echo "CHANGELOG.md 覆盖 $v"
+
+  # ---------------------------------------------------------------------
+  # 后端二进制（linux/amd64，CGO 开启）
+  # ---------------------------------------------------------------------
+  backend:
+    name: Backend binary (linux/amd64, CGO)
+    needs: preflight
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
-        with:
-          update: false
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-icu
-            make
+
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
-      - name: build (CGO_ENABLED=1)
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build (static-ish)
         env:
-          CGO_ENABLED: "1"
+          CGO_ENABLED: '1'
+          GOOS: linux
+          GOARCH: amd64
         run: |
-          export PATH="/mingw64/bin:$PATH"
-          go build -o skillforge-server.exe ./cmd/server
+          # DuckDB 与 SQLite 走 CGO，无法真正静态链接；把 GCC 运行时
+          # 静态化以减少目标机的 glibc/libstdc++ 版本耦合。
+          go build -trimpath \
+            -ldflags "-s -w -extldflags '-static-libgcc -static-libstdc++'" \
+            -o skillforge-server ./cmd/server
+
+      - name: Show binary
+        run: |
+          file skillforge-server
+          ls -lh skillforge-server
+          ldd skillforge-server || true
+
+      - name: Checksums
+        run: sha256sum skillforge-server > SHA256SUMS
+
       - uses: actions/upload-artifact@v4
         with:
-          name: skillforge-server-windows-amd64
-          path: skillforge-server.exe
+          name: backend-linux-amd64
+          path: |
+            skillforge-server
+            SHA256SUMS
 
-  release:
-    name: publish GitHub Release
-    needs: [build-linux, build-windows]
+  # ---------------------------------------------------------------------
+  # 前端静态产物
+  # ---------------------------------------------------------------------
+  frontend:
+    name: Frontend bundle
+    needs: preflight
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        working-directory: web
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: web
+        run: npx tsc --noEmit
+
+      - name: Test
+        working-directory: web
+        run: npx vitest run
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+      - name: Pack
+        run: |
+          cd web
+          tar -czf ../skillforge-web-${{ needs.preflight.outputs.version }}.tar.gz -C dist .
+          cd ..
+          sha256sum skillforge-web-${{ needs.preflight.outputs.version }}.tar.gz > SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-bundle
+          path: |
+            skillforge-web-*.tar.gz
+            SHA256SUMS
+
+  # ---------------------------------------------------------------------
+  # Docker 镜像（官方部署方式）
+  # ---------------------------------------------------------------------
+  docker:
+    name: Docker image (linux/amd64,arm64)
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------
+  # 汇总 + Release
+  # ---------------------------------------------------------------------
+  publish:
+    name: Publish GitHub Release
+    needs: [preflight, backend, frontend, docker]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+
+      - name: Collect artifacts
+        uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      - name: assemble release assets
+          path: dist
+
+      - name: Flatten + merge checksums
         run: |
-          mkdir -p release-assets
-          cp artifacts/skillforge-server-linux-amd64/skillforge-server release-assets/
-          cp artifacts/skillforge-server-windows-amd64/skillforge-server.exe release-assets/
-          ls -la release-assets
-      - name: write release header
-        run: |
-          cat > RELEASE_HEADER.md <<'EOF'
-          ## SkillForge ${GITHUB_REF_NAME}
+          mkdir -p release
+          find dist -type f \( -name 'skillforge-server' -o -name '*.tar.gz' \) \
+            -exec cp {} release/ \;
+          cd release
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
 
-          Execution-time trust boundaries for AI agents — what the agent may
-          not answer, and what requires explicit approval.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'release/*'
 
-          > The server starts in stub mode without an API key: answers are
-          > extracted from retrieved knowledge chunks, clearly labeled
-          > \`"mode": "stub"\`. Set \`LOCAL_API_KEY\`/\`LOCAL_BASE_URL\`/\`LOCAL_MODEL\`
-          > (or the admin panel) for a real model.
-
-          ## Quick start
-
-          1. Download the archive for your platform and unpack it.
-          2. Get an embedding endpoint (\`ollama pull bge-m3\` or any
-             OpenAI-compatible \`/v1/embeddings\`).
-          3. \`export RETRIEVER_BACKEND=embedded BGE_M3_URL=... SKILLFORGE_MCP_SERVICE_SKILL=simple-qa\`
-          4. \`./skillforge-server\` and open the printed port.
-
-          Full quickstart: see README. Validated by \`verify-phase-49.sh\` and
-          \`verify-phase-51.sh\`.
-          EOF
-      - name: publish release
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          body_path: RELEASE_HEADER.md
-          files: |
-            release-assets/*
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: SkillForge ${{ github.event.inputs.tag || github.ref_name }}
+          # 发布说明从 CHANGELOG 摘当前版本段落，不自动生成 ——
+          # 自动生成的 release notes 读起来像 commit 列表，不像说明。
+          body_path: RELEASE-NOTES.md
+          files: release/*
+          draft: true      # 人先看一眼再发；发布是不可逆的对外动作
+          prerelease: false
+          generate_release_notes: false
