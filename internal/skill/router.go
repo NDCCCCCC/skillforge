@@ -90,9 +90,13 @@ func NewRouter(emb embedder.Embedder) *Router {
 //
 // Field semantics:
 //   - Selected:    the chosen Skill's directory name (e.g. "compliance").
-//     Empty when Ambiguous is true (including the empty-
-//     snapshot case — "no Skills installed" routes to the
-//     picker UX with the wizard empty state).
+//     Empty ONLY when the router cannot offer a usable pick —
+//     empty snapshot, or every score below AmbiguityLowFloor
+//     (i.e. nothing is relevant). Since 2026-11-09 a top-1 that
+//     is relevant but too close to top-2 is still returned here
+//     while Ambiguous stays true: the caller executes it and the
+//     FE shows a "may not be the domain you wanted" hint. So
+//     `Selected == ""` is the picker condition, NOT `Ambiguous`.
 //   - Scores:      ranked list of every candidate Skill in the snapshot,
 //     sorted by cosine descending. Exactly one entry has
 //     Selected=true when Ambiguous is false; no entry has
@@ -100,9 +104,10 @@ func NewRouter(emb embedder.Embedder) *Router {
 //     Used by the React SkillForgeInspector (SC-1 trace) to
 //     render the routing confidence breakdown.
 //   - Ambiguous:   true when (top-1 score < AmbiguityLowFloor) OR
-//     (top-1 - top-2 < AmbiguityMargin). The chatHandler
-//     emits the data-decision chunk and returns WITHOUT
-//     invoking VerdictPipeline; the FE surfaces the picker.
+//     (top-1 - top-2 < AmbiguityMargin). Two distinct outcomes
+//     hang off it (see Route): low-confidence keeps Selected
+//     empty and the FE surfaces the picker; close-gap still
+//     returns a Selected so the request can be answered.
 type DecisionResult struct {
 	Selected  string
 	Scores    []wire.SkillScore
@@ -221,12 +226,27 @@ func (r *Router) Route(ctx context.Context, query string, snap map[string]*Entry
 	}
 
 	if ambiguous {
-		// Clear Selected on every entry — the picker lets the user
-		// choose, and the FE renders all candidates as unselected.
-		for i := range scores {
-			scores[i].Selected = false
+		// 2026-11-09：两种「模糊」可执行性完全不同，必须分档。
+		//
+		// (a) top1 < AmbiguityLowFloor —— 没有任何候选真正相关。
+		// 猜一个是有害的：会把某个无关 Skill 的拒答复述给用户，
+		// 反而掩盖「这是域外问题」这个事实。保持 Selected 为空，
+		// 让前端渲染 SkillPicker。
+		//
+		// (b) top1 >= AmbiguityLowFloor 但 gap < AmbiguityMargin ——
+		// 有多个相关候选，只是第一二名咬得太近（实测 0.5226 vs
+		// 0.4488，gap 0.0738 只比阈值 0.08 小 0.0062）。这时 top1
+		// 本身是相关的，兜底执行它优于让用户面对一行空白。
+		if top1 < float64(AmbiguityLowFloor) {
+			for i := range scores {
+				scores[i].Selected = false
+			}
+			return DecisionResult{Selected: "", Scores: scores, Ambiguous: true}, nil
 		}
-		return DecisionResult{Selected: "", Scores: scores, Ambiguous: true}, nil
+		// (b) 兜底执行 top1，但 Ambiguous 保持 true —— 前端据此提示
+		// 「已自动选择 X，可能不是你要的知识域」，而不是静默当作确定答案。
+		scores[0].Selected = true
+		return DecisionResult{Selected: idOrder[0], Scores: scores, Ambiguous: true}, nil
 	}
 
 	// Clear winner: flag the top entry as Selected.

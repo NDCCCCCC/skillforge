@@ -174,7 +174,12 @@ func TestRouter_Ambiguous_Top1Top2Close(t *testing.T) {
 	got, err := r.Route(context.Background(), "test query", snap)
 	require.NoError(t, err)
 	assert.True(t, got.Ambiguous, "gap (1.0 - 0.94 = 0.06) < AmbiguityMargin (0.08) → Ambiguous=true")
-	assert.Equal(t, "", got.Selected)
+	// 2026-11-09: close-gap ambiguity now still yields a usable pick —
+	// top-1 (alpha, cos=1.0) is well above AmbiguityLowFloor, so the
+	// router returns it as a fallback while Ambiguous stays true. The
+	// picker condition is Selected == "", not Ambiguous (see Route).
+	assert.Equal(t, "alpha", got.Selected, "relevant top-1 is returned as a fallback")
+	assert.True(t, got.Scores[0].Selected, "the fallback pick is flagged Selected in the ranked list")
 }
 
 // TestRouter_EmptySnapshot — D5-03 / empty-corpus path: registry has no

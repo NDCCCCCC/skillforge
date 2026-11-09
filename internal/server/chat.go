@@ -132,7 +132,7 @@ const defaultSkill = "compliance"
 // from the AI SDK v5 messages array, and applies the default skill.
 // Returns the resolved query and skill name; emits refusal and returns ("", "")
 // on any decoding error.
-func (s *Deps) decodeChatRequest(ctx context.Context, c *app.RequestContext) (query, skillID string, ok bool) {
+func (s *Deps) decodeChatRequest(ctx context.Context, c *app.RequestContext) (query, skillID string, explicitSkill bool, ok bool) {
 	// UTF-8 validity guard (BEFORE BindAndValidate). Sonic — Hertz's JSON
 	// decoder — silently replaces invalid UTF-8 bytes in string values with
 	// U+FFFD, so by the time req.Query is populated the original encoding
@@ -148,7 +148,7 @@ func (s *Deps) decodeChatRequest(ctx context.Context, c *app.RequestContext) (qu
 	if raw := c.Request.Body(); len(raw) > 0 && !utf8.Valid(raw) {
 		c.SetStatusCode(http.StatusBadRequest)
 		_ = wire.EmitChunk(c, errorChunk("request body must be valid UTF-8 (client likely sent a legacy codepage such as GBK/Shift-JIS)"))
-		return "", "", false
+		return "", "", false, false
 	}
 
 	var req chatRequest
@@ -159,7 +159,7 @@ func (s *Deps) decodeChatRequest(ctx context.Context, c *app.RequestContext) (qu
 			Reason:      verdict.RefusalReasonOutOfScope,
 			CanRephrase: false,
 		})
-		return "", "", false
+		return "", "", false, false
 	}
 	// AI SDK v5 compatibility: DefaultChatTransport sends {messages:[UIMessage]}
 	// not {query}. Extract the last user turn's text part so the React useChat
@@ -172,12 +172,15 @@ func (s *Deps) decodeChatRequest(ctx context.Context, c *app.RequestContext) (qu
 	if req.Query == "" {
 		c.SetStatusCode(http.StatusBadRequest)
 		_ = wire.EmitChunk(c, errorChunk("query is required"))
-		return "", "", false
+		return "", "", false, false
 	}
+	// 在填默认值**之前**采样：之后再问「是不是用户说的」就永远为真了。
+	// 这个布尔是「跳过语义路由门禁」的唯一依据（见 chatHandler）。
+	explicitSkill = req.Skill != ""
 	if req.Skill == "" {
 		req.Skill = defaultSkill
 	}
-	return req.Query, req.Skill, true
+	return req.Query, req.Skill, explicitSkill, true
 }
 
 // sessionIDPattern is the accepted shape for a client-supplied
@@ -207,12 +210,16 @@ func (s *Deps) resolveChatSession(c *app.RequestContext) string {
 }
 
 func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
-	query, skillID, ok := s.decodeChatRequest(ctx, c)
+	query, skillID, explicitSkill, ok := s.decodeChatRequest(ctx, c)
 	if !ok {
 		return
 	}
 
 	sessionID := s.resolveChatSession(c)
+	// 2026-11-09 最小身份层：把当前浏览器的 owner 绑定到本会话（首次
+	// 写入生效）。注册在这里而不是各写入点，是因为所有 tier-channel
+	// chat 路径都经过这里 —— 漏一处就等于留一条无归属的会话。
+	s.claimSessionOwner(ctx, sessionID, c)
 
 	// Phase 17 (DASH-01 live-UAT gap closure): data-channel Skills (reads
 	// declares "data:") ride the Runner path — the VerdictPipeline below is
@@ -268,7 +275,12 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// the FE renders the SkillPicker so the user picks (D5-03).
 	log.Printf("[INFO] server: chatHandler routing to Registry+Router skill=%s sess=%s", skillID, sessionID)
 	var manifest *skill.Manifest
-	if s.Registry != nil && s.Router != nil {
+	// 2026-11-09：用户显式指定了 Skill 就不再走语义路由的模糊门禁。
+	// 门禁存在的意义是「用户没说时避免猜错」，不是「用户说了还要再赌一次」。
+	// 实测反例：问「出差住宿费超标 200 元」时 top1=compliance 0.5226 / top2=0.4488，
+	// gap=0.0738 只比 AmbiguityMargin(0.08) 小 0.0062，就被判 ambiguous 并返回空答案 ——
+	// 而 compliance 的 description 里就写着这个触发短语。
+	if s.Registry != nil && s.Router != nil && !explicitSkill {
 		routed, ok := s.routeThenRun(ctx, c, chatRequest{Query: query, Skill: skillID})
 		if !ok {
 			// Router short-circuited (empty snapshot, ambiguous, embedder
@@ -364,10 +376,13 @@ func (s *Deps) routeThenRun(ctx context.Context, c *app.RequestContext, req chat
 		return nil, false
 	}
 
-	if result.Ambiguous {
-		// Ambiguous: emit a finish-step so the client sees the stream
-		// close cleanly. The FE renders the SkillPicker with the
-		// SkillScores so the user can pick (D5-03).
+	// 2026-11-09：只有「路由给不出可用选择」时才短路。
+	// Ambiguous 仍可能带一个兜底 Selected（top1 相关但咬得近），
+	// 那种情况要继续跑 VerdictPipeline —— 否则用户直接打字提问
+	// 永远只能拿到一行空白 + 选择器。
+	if result.Ambiguous && result.Selected == "" {
+		// 无可用候选：emit finish-step 让流干净结束，前端渲染
+		// SkillPicker（D5-03）。
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		return nil, false
 	}
@@ -710,7 +725,11 @@ func (s *Deps) renderedPromptBody(skillName string) string {
 		return s.Agent.RenderedSystemPrompt()
 	}
 	if m := s.findSkill(skillName); m != nil {
-		return agent.RenderSystemPrompt(m)
+		// 生产默认路径（Agent == nil → VerdictPipeline）真正发送的是
+		// PreRetrieveSystemPrompt 渲染的那份；审计的 prompt_hash 必须
+		// 对应它，否则 HITL 的 prompt 变更过期检测比对的是一份从未发送
+		// 的文本。ReAct / adk 路径走上面的 s.Agent.RenderedSystemPrompt。
+		return agent.PreRetrieveSystemPrompt(m)
 	}
 	return ""
 }

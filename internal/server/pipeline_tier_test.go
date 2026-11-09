@@ -55,6 +55,17 @@ func TestPipelineNilRegistryGraceful(t *testing.T) {
 	// Nil registry + resolved tiers → the tier slug is still a usable hint.
 	assert.Equal(t, "authority 出差标准", ruleBasedSuggestion("出差标准", []string{"authority"}, nil))
 
+	// 2026-11-09 — with a registry bound, resolved tiers must be rendered via
+	// DisplayName, not the raw slug. Live bug: the refusal suggestion read
+	// 「authority 公司年会在哪个酒店办？预算多少？」 — an internal tier
+	// identifier leaked into user-facing Chinese copy. The nil-registry case
+	// above still returns the slug because tierDisplayName degrades that way.
+	regAuth := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	assert.Equal(t, "权威 出差标准", ruleBasedSuggestion("出差标准", []string{"authority"}, regAuth),
+		"resolved tiers are rendered through tierDisplayName, never the raw slug")
+
 	// Registry with no authority-role base and no tiers → no keyword.
 	empty := kb.New([]kb.Entry{
 		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
