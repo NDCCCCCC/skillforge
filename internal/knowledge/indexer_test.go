@@ -24,10 +24,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/kb"
+	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/stretchr/testify/assert"
@@ -194,20 +196,35 @@ func TestIndexer_ProductionUsesEmbedderInterface(t *testing.T) {
 		"internal/knowledge/indexer.go must CALL emb.Embed (the Embedder interface) for production embedding")
 }
 
-// TestIndexer_RejectsOversizeDocs asserts the defensive cap. A body
-// over maxDocBytes triggers the skip path; only the small doc is seeded.
-func TestIndexer_RejectsOversizeDocs(t *testing.T) {
+// TestIndexer_SplitsOversizeDocsInsteadOfSkipping pins the chunking
+// contract that replaced the old "WARN + skip" guard: a body over
+// maxDocBytes is NOT dropped from the corpus — it is chunked and every
+// chunk is seeded.
+//
+// 为什么改这个契约：旧的护栏只打一条 WARN 就把超限文档丢弃，于是任何
+// 大于 4000 字节的权威政策文档永远不进语料 —— 检索找不到它，系统也不
+// 报错。这是一个真实的检索缺陷，不是风格问题。
+func TestIndexer_SplitsOversizeDocsInsteadOfSkipping(t *testing.T) {
 	dir := makeKnowledgeDir(t)
 	small := "短文档。\n"
-	big := strings.Repeat("X", maxDocBytes+10) // 10 bytes over the cap
+	big := strings.Repeat("X", maxDocBytes+10) // 10 bytes over the warn threshold
 	writeDoc(t, dir, "authority", "small.md", small)
 	writeDoc(t, dir, "authority", "huge.md", big)
 
 	cap := withSeedHook(t)
 	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 
-	require.Len(t, cap.docs, 1, "expected only the small doc to be seeded; oversize doc must be skipped")
-	assert.Equal(t, "small.md", filepath.Base(cap.docs[0].Source))
+	// huge.md is 4010 ASCII bytes = 4010 runes > chunkSizeRunes (3500)
+	// → split into 2 chunks; small.md stays a single chunk.
+	require.Len(t, cap.docs, 3, "oversize doc must be chunked and indexed, never skipped")
+	assert.Equal(t, "authority/huge.md", cap.docs[0].Source)
+	assert.Equal(t, "authority/huge.md", cap.docs[1].Source)
+	assert.Equal(t, "authority/small.md", cap.docs[2].Source)
+	for _, d := range cap.docs {
+		assert.LessOrEqual(t, utf8.RuneCountInString(d.Content), chunkSizeRunes,
+			"every chunk must stay within the chunk budget")
+		assert.NotEmpty(t, d.Content)
+	}
 }
 
 // TestIndexer_EmptyKnowledgeTreeOK asserts an empty knowledge/ root
@@ -428,11 +445,11 @@ func TestIndexer_ECLOffIndexesSecFragments(t *testing.T) {
 // TestIndexer_ECLBranchPrecedesMaxDocBytes — ONT-10 ordering proof (b) +
 // static guard. Behavioral half: an OVERSIZE __secNN fragment is excluded
 // under ECL mode even though it exceeds maxDocBytes — the ECL branch fires
-// regardless of the size guard. Static half (same pattern as
+// regardless of the size threshold. Static half (same pattern as
 // TestIndexer_ProductionWiresValidateEffective): the IsSecFragment call
-// must appear BEFORE the maxDocBytes guard in indexer.go source. Placement
-// after the guard would silently starve the ECL path of exactly the large
-// fragments it exists to re-chunk (RESEARCH 39 anti-pattern list).
+// must appear BEFORE the maxDocBytes threshold check in indexer.go source.
+// Placement after it would mean the legacy path still burns a chunking
+// pass on files the ECL pipeline owns (RESEARCH 39 anti-pattern list).
 func TestIndexer_ECLBranchPrecedesMaxDocBytes(t *testing.T) {
 	withECLMode(t, true)
 	dir := makeKnowledgeDir(t)
@@ -443,27 +460,82 @@ func TestIndexer_ECLBranchPrecedesMaxDocBytes(t *testing.T) {
 	cap := withSeedHook(t)
 	require.NoError(t, driveIndex(t, dir, newFakeEmbedder(), baselineRegistry()))
 	assert.Empty(t, cap.docs,
-		"oversize __secNN fragment must be excluded under ECL mode by the routing branch (which must sit before the size guard)")
+		"oversize __secNN fragment must be excluded under ECL mode by the routing branch (which must sit before the size threshold)")
 
-	// ECL-off contrast: the same file is skipped, but by the maxDocBytes
-	// guard (documenting which branch owns the exclusion in each mode).
+	// ECL-off contrast: the same file is NOT excluded. The size threshold
+	// is a warning only now — the file is chunked and indexed (the Phase-2
+	// "skip the oversize doc" defect is gone).
 	withECLMode(t, false)
 	dir2 := makeKnowledgeDir(t)
 	writeDoc(t, dir2, "authority", "001_公司业务部__sec03_SQL_正文.md", big)
 	cap2 := withSeedHook(t)
 	require.NoError(t, driveIndex(t, dir2, newFakeEmbedder(), baselineRegistry()))
-	assert.Empty(t, cap2.docs, "under ECL-off the same file is excluded by the maxDocBytes guard")
+	assert.NotEmpty(t, cap2.docs,
+		"under ECL-off the file must be chunked and indexed — the size threshold only warns now")
 
-	// Static ordering guard: ECL branch strictly before the size guard.
+	// Static ordering guard: ECL branch strictly before the size threshold.
 	data, err := os.ReadFile("indexer.go")
 	require.NoError(t, err)
 	src := string(data)
 	eclIdx := strings.Index(src, "ecl.IsSecFragment(")
 	guardIdx := strings.Index(src, "len(body) > maxDocBytes")
 	require.GreaterOrEqual(t, eclIdx, 0, "indexer.go must contain the ECL routing branch")
-	require.GreaterOrEqual(t, guardIdx, 0, "indexer.go must contain the maxDocBytes guard")
+	require.GreaterOrEqual(t, guardIdx, 0, "indexer.go must contain the maxDocBytes threshold check")
 	assert.Less(t, eclIdx, guardIdx,
-		"the ECL routing branch MUST precede the maxDocBytes guard — after it, the guard starves ECL of oversize fragments")
+		"the ECL routing branch MUST precede the maxDocBytes threshold — after it, the legacy path chunks files the ECL pipeline owns")
+}
+
+// TestIndexer_OversizeMarkdownDocChunkedAndIndexed 是本轮修复的核心
+// 回归：一份超过 4000 字节的 Markdown 权威文档必须被切成多个 chunk，
+// 并且**全部**进入索引（此前是被静默跳过 → 检索永远找不到它）。
+//
+// 同时固定 chunk 策略与 ECL 管线对齐：chunk 预算 = ecl.MinSplitRunes，
+// 分隔符阶梯是同一套（CJK 感知的 recursive splitter）。
+func TestIndexer_OversizeMarkdownDocChunkedAndIndexed(t *testing.T) {
+	dir := makeKnowledgeDir(t)
+
+	var b strings.Builder
+	b.WriteString("# 出差制度\n\n")
+	for i := 0; i < 400; i++ {
+		b.WriteString("第")
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString("条：A 类城市住宿费标准为 800 元，须凭发票报销。\n\n")
+	}
+	body := b.String()
+	require.Greater(t, len(body), maxDocBytes,
+		"fixture 必须超过告警阈值（否则测不到切分路径）")
+	require.Greater(t, utf8.RuneCountInString(body), chunkSizeRunes,
+		"fixture 必须超过 chunk 预算")
+
+	writeDoc(t, dir, "authority", "travel_policy.md", body)
+
+	emb := newFakeEmbedder()
+	cap := withSeedHook(t)
+	require.NoError(t, driveIndex(t, dir, emb, baselineRegistry()))
+
+	require.Greater(t, len(cap.docs), 1, "超限文档必须被切成多个 chunk")
+	assert.Len(t, emb.calls, len(cap.docs), "每个 chunk 都要单独 embed")
+
+	var joined strings.Builder
+	for _, d := range cap.docs {
+		assert.Equal(t, "authority", d.Tier)
+		assert.Equal(t, "authority/travel_policy.md", d.Source)
+		assert.NotEmpty(t, d.Content)
+		assert.LessOrEqual(t, utf8.RuneCountInString(d.Content), chunkSizeRunes,
+			"每个 chunk 不得超过 chunk 预算（与 ECL 管线对齐）")
+		joined.WriteString(d.Content)
+	}
+	// 切分不得截断正文：首尾条款都要在索引里。
+	assert.Contains(t, joined.String(), "第0条", "切分不得丢掉正文开头")
+	assert.Contains(t, joined.String(), "第399条", "切分不得丢掉正文结尾")
+}
+
+// TestIndexer_ChunkSizeAlignedWithECL 固定两套生产者的 chunk 尺寸一致：
+// 主索引路径与 ECL 路径共用 ecl.MinSplitRunes，避免"同一篇文档在两条
+// 路径下被切成不同大小"。
+func TestIndexer_ChunkSizeAlignedWithECL(t *testing.T) {
+	assert.Equal(t, ecl.MinSplitRunes, chunkSizeRunes,
+		"主索引路径的 chunk 预算必须与 ECL 管线一致")
 }
 
 // TestPurgeExprFor — ONT-10 purge-mode decision table (c). The ECL-on

@@ -46,7 +46,20 @@ const testAdminToken = "test-admin-token-15-06"
 var testTempRoot string
 
 func TestMain(m *testing.M) {
-	root, err := os.MkdirTemp(".", "skillforge-server-test-")
+	// 2026-11-09：临时根移出源码树，且删除失败不再静默。
+	//
+	// 此前是 os.MkdirTemp(".", "skillforge-server-test-") —— 建在**包目录
+	// 内**，结束时 `_ = os.RemoveAll(testTempRoot)` 丢弃错误。Windows 上
+	// DuckDB / SQLite 的句柄在 m.Run() 返回时往往仍被持有，删除于是静默
+	// 失败，每跑一次 go test 就沉淀一套几百 MB 的 duckdb 暂存数据。
+	//
+	// 实测：累积 72 个目录 / 1.68 GB 之后，本包开始出现「包级 FAIL 但没有
+	// 任何 --- FAIL 用例」的幽灵失败 —— `-v` 显示进程在 TestImportStreaming
+	// 处直接中断，没有任何结果行。清理残留后现象消失。
+	//
+	// 两个改动：① 根目录落到系统临时目录（不在源码树里）；② 删除失败打
+	// 警告而不是假装成功 —— 静默失败正是这个问题潜伏这么久的原因。
+	root, err := os.MkdirTemp("", "skillforge-server-test-")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mkdir server test temp root:", err)
 		os.Exit(1)
@@ -54,6 +67,7 @@ func TestMain(m *testing.M) {
 	testTempRoot, err = filepath.Abs(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "abs server test temp root:", err)
+		_ = os.RemoveAll(root)
 		os.Exit(1)
 	}
 	_ = os.Setenv("TMPDIR", testTempRoot)
@@ -61,7 +75,13 @@ func TestMain(m *testing.M) {
 	_ = os.Setenv("TMP", testTempRoot)
 
 	code := m.Run()
-	_ = os.RemoveAll(testTempRoot)
+	if rmErr := os.RemoveAll(testTempRoot); rmErr != nil {
+		fmt.Fprintf(os.Stderr,
+			"WARN: 测试临时根删除失败（Windows 上 DuckDB/SQLite 句柄可能仍被持有）:\n"+
+				"      %s\n      %v\n"+
+				"      手动删除即可，不影响本次测试结论。\n",
+			testTempRoot, rmErr)
+	}
 	os.Exit(code)
 }
 

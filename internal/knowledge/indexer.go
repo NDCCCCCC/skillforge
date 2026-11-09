@@ -27,14 +27,17 @@
 // truth for which directories exist and what they are called, so the
 // loader cannot drift from the retriever: both consume the same slug set.
 //
-// One-doc-one-chunk is the Phase 2 minimal model — each .md file becomes
-// exactly one Document row. The corpus is hand-authored, each clause is
-// 300-800 bytes, well under BGE-M3's 8192-token context window, and
-// further splitting would fragment a clause and hurt retrieval precision.
-// A hierarchical markdown splitter has never been scheduled by any
-// phase (it was silently dropped from planning); whether to build one
-// is an open backlog decision. CMPL-06 is unrelated — it is the Phase 5
-// counter-evidence highlighting feature, completed in Plan 05-06.
+// Chunking: a .md file becomes one Document row when its body fits in
+// the chunk budget (ecl.MinSplitRunes runes — the SAME budget the ECL
+// pipeline uses, so both producers share one chunking policy). A body
+// over the budget is split with the same recursive, CJK-aware splitter
+// the ECL pipeline uses (internal/knowledge/ecl/chunk.go), and EVERY
+// part is indexed.
+//
+// 为什么不再"超限就跳过"：Phase 2 的 maxDocBytes 护栏把任何超过 4000
+// 字节的文档只打一条 WARN 就丢弃 —— 一份权威政策文档会静默不入库，
+// 检索永远找不到它，而系统不报任何错。那是一个真实的检索缺陷，不是
+// 风格问题。现在超阈值只告警，文档照常切分入库。
 package knowledge
 
 import (
@@ -48,7 +51,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
+	recursive "github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
+	"github.com/cloudwego/eino/components/document"
+	"github.com/cloudwego/eino/schema"
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"gopkg.in/yaml.v3"
 
@@ -59,16 +66,70 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 )
 
-// maxDocBytes is a defensive cap on the body size we will embed and insert.
-// BGE-M3's embedding quality degrades past roughly 4K characters on CJK
-// text (the BGE-M3 8K-token context window is a ceiling, not a sweet spot).
-// The Phase 2 hand-authored corpus is well under 1 KB per file — this cap
-// is a guardrail against an operator dropping a 100 KB policy PDF into
-// knowledge/authority/ and silently degrading retrieval for everyone else.
-// When a file exceeds the cap we emit a warning and skip it; the operator
-// can split the doc manually. (No automatic splitter exists; whether to
-// build one is an open backlog decision.)
+// maxDocBytes is the WARNING threshold (in bytes) for a single source
+// file's body.
+//
+// 它曾经是一道"静默丢弃"护栏：超过 4000 字节的文档只打一条 WARN 就
+// 被跳过。后果是任何超过该阈值的权威政策文档永远不会进入语料 ——
+// 检索找不到它，系统也不报错（Phase 2 遗留的真实检索缺陷）。
+//
+// 现在它只用于告警：超阈值的文档照常切分并全部入库。保留这个阈值是
+// 因为它仍然是有用的运营信号（"这个文件比手写语料的常态大得多"），
+// 但它绝不能再决定"文档进不进库"。
 const maxDocBytes = 4000
+
+// chunkSizeRunes is the chunk budget in RUNES. 对齐 ECL 管线的
+// ecl.MinSplitRunes（同样在 3000-4000 区间，planner pin 3500），
+// 这样主索引路径与 ECL 路径用同一套 chunk 尺寸，不会出现"同一篇文档
+// 在两条路径下被切成不同大小"的不一致。
+const chunkSizeRunes = ecl.MinSplitRunes
+
+// buildSplitter returns the recursive, CJK-aware splitter used to chunk
+// oversized bodies.
+//
+// 与 internal/knowledge/ecl/chunk.go 的 buildSplitter 保持一致：同一套
+// 分隔符阶梯（空行 → 行 → 中英文句末 → 分句符 → 空格 → ""），同一个
+// rune 计量函数（LenFunc 必须按 rune 计，否则中文的 chunk 会短三倍）。
+// 末尾的 "" 是承重的：分隔符阶梯用尽后 splitter 会把仍超限的片段
+// 逐 rune 拆开（recursive.go 的 `if len(newSeparators) == 0` 分支），
+// 于是阶梯总能收敛到 chunk 尺寸以下。
+func buildSplitter(ctx context.Context) (document.Transformer, error) {
+	return recursive.NewSplitter(ctx, &recursive.Config{
+		ChunkSize: chunkSizeRunes,
+		Separators: []string{
+			"\n\n", "\n", "。", "！", "？", ".", "!", "?", ";", "；", "，", ",", " ", "",
+		},
+		LenFunc: func(s string) int { return utf8.RuneCountInString(s) },
+	})
+}
+
+// splitBody returns the chunk parts of body.
+//
+// 正文在 chunk 预算之内时原样返回单元素切片（不调用 splitter：常见
+// 路径上不做任何意外的空白规整）；超预算时用 recursive splitter 切开。
+// 空白片段被丢弃（切出来的空块进检索没有意义）。万一 splitter 返回
+// 空集，退回原文而不是静默丢掉这份文档 —— 丢文档是不可见的检索缺陷，
+// 必须避免。
+func splitBody(ctx context.Context, splitter document.Transformer, body string) ([]string, error) {
+	if utf8.RuneCountInString(body) <= chunkSizeRunes {
+		return []string{body}, nil
+	}
+	out, err := splitter.Transform(ctx, []*schema.Document{{ID: "kb-doc", Content: body}})
+	if err != nil {
+		return nil, err
+	}
+	parts := make([]string, 0, len(out))
+	for _, d := range out {
+		if strings.TrimSpace(d.Content) == "" {
+			continue
+		}
+		parts = append(parts, d.Content)
+	}
+	if len(parts) == 0 {
+		return []string{body}, nil
+	}
+	return parts, nil
+}
 
 // walkTier recursively discovers all .md files under absDir and returns
 // their absolute paths sorted in lexical (relative-path) order. Hidden
@@ -127,7 +188,11 @@ func walkTier(absDir string) ([]string, error) {
 //     the whole file). Production Skill files have frontmatter; corpus
 //     policy files typically don't, but the loader is permissive.
 //   - Files exceeding maxDocBytes are logged via fmt.Fprintf(os.Stderr, ...)
-//     and SKIPPED (not silently truncated — the operator needs to see it).
+//     as a WARNING and are NOT skipped: the body is chunked with the
+//     recursive splitter (same policy as the ECL pipeline) and every chunk
+//     is seeded. A document is never silently dropped from the corpus —
+//     "the policy file is too big" must not become "the policy file is
+//     invisible to retrieval".
 //   - Documents are assigned numeric IDs starting at 1, monotonically
 //     increasing across slug dirs. The seed is a REPLACE of the tiers in
 //     the batch, not an append: before the insert, seedDocs purges every
@@ -200,6 +265,13 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 		return fmt.Errorf("knowledge.Index: walk %s: %w", knowledgeDir, err)
 	}
 
+	// One splitter for the whole run: the chunking policy is a package
+	// constant, so building it per file would only waste work.
+	splitter, err := buildSplitter(ctx)
+	if err != nil {
+		return fmt.Errorf("knowledge.Index: build splitter: %w", err)
+	}
+
 	for _, slug := range dirs {
 		tierAbs := filepath.Join(knowledgeDir, slug)
 
@@ -224,32 +296,27 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 			}
 			// Phase 39 ECL routing branch (D-ECL-01 / ONT-10). Placement is
 			// LOAD-BEARING: this check sits BETWEEN splitFrontmatter and the
-			// maxDocBytes guard because merged ECL fragments routinely exceed
-			// the 4000-byte cap — placed after the guard, the guard would
-			// silently starve the ECL path of exactly the files it exists to
-			// re-chunk (RESEARCH 39 Pitfall / anti-pattern list). When
-			// eclMode is on, every __secNN+section fragment drops out of the
-			// legacy doc set (the ECL pipeline owns those files; seeding them
-			// here too would double-index the corpus across two producer
-			// generations). eclMode off → this branch never fires and legacy
-			// behavior is byte-identical to pre-Phase-39.
+			// maxDocBytes warning because merged ECL fragments routinely
+			// exceed the 4000-byte threshold — placed after it, the ECL
+			// path would spend its fragments on a legacy row the ECL
+			// pipeline is going to own anyway (RESEARCH 39 Pitfall /
+			// anti-pattern list). When eclMode is on, every __secNN+section
+			// fragment drops out of the legacy doc set (the ECL pipeline
+			// owns those files; seeding them here too would double-index
+			// the corpus across two producer generations). eclMode off →
+			// this branch never fires and legacy behavior is byte-identical
+			// to pre-Phase-39.
 			if eclMode && ecl.IsSecFragment(filepath.Base(path), fm) {
 				continue
 			}
 			if len(body) > maxDocBytes {
+				// 只告警，不丢弃 —— 超过阈值不再是"不进库"的理由
+				// （见 maxDocBytes 的注释：静默丢弃权威文档是真实的
+				// 检索缺陷）。
 				fmt.Fprintf(os.Stderr,
-					"[WARN] knowledge.Index: %s body=%d bytes exceeds cap=%d; skipping. "+
-						"Split the doc manually (no automatic splitter is scheduled).\n",
+					"[WARN] knowledge.Index: %s body=%d bytes exceeds warn threshold=%d; "+
+						"chunking and indexing it anyway (a document is never silently dropped).\n",
 					path, len(body), maxDocBytes)
-				continue
-			}
-
-			// PRODUCTION embed via the Embedder interface. We never call
-			// a deterministic fallback here — that would silently hide a
-			// BGE-M3 outage (Pitfall 8).
-			vec, err := emb.Embed(ctx, string(body))
-			if err != nil {
-				return fmt.Errorf("knowledge.Index: embed %s: %w", path, err)
 			}
 
 			// Source path is the slash-normalized relative path (no
@@ -269,16 +336,33 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 			// and pass.
 			ef, et := parseEffectiveWindow(fm)
 
-			docs = append(docs, retriever.Document{
-				ID:            nextID,
-				Tier:          slug,
-				Content:       string(body),
-				Source:        relSlash,
-				Embedding:     vec,
-				EffectiveFrom: ef,
-				EffectiveTo:   et,
-			})
-			nextID++
+			// Chunking. 超预算的正文用与 ECL 管线同一套 splitter 切开，
+			// 每一块单独 embed + 入库（此前是整篇跳过）。
+			chunks, err := splitBody(ctx, splitter, string(body))
+			if err != nil {
+				return fmt.Errorf("knowledge.Index: split %s: %w", path, err)
+			}
+
+			for _, chunk := range chunks {
+				// PRODUCTION embed via the Embedder interface. We never call
+				// a deterministic fallback here — that would silently hide a
+				// BGE-M3 outage (Pitfall 8).
+				vec, err := emb.Embed(ctx, chunk)
+				if err != nil {
+					return fmt.Errorf("knowledge.Index: embed %s: %w", path, err)
+				}
+
+				docs = append(docs, retriever.Document{
+					ID:            nextID,
+					Tier:          slug,
+					Content:       chunk,
+					Source:        relSlash,
+					Embedding:     vec,
+					EffectiveFrom: ef,
+					EffectiveTo:   et,
+				})
+				nextID++
+			}
 		}
 	}
 

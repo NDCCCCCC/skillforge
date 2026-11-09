@@ -104,6 +104,7 @@ import (
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/retriever/embedded"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 	"github.com/skillforge/skillforge/internal/retriever/mongo"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -909,6 +910,43 @@ func buildRetriever(ctx context.Context, emb *bge.BGE, kbReg kb.Registry) retrie
 		backend = "milvus"
 	}
 	switch backend {
+	case "embedded":
+		// 2026-11-09：此前 cmd/eval 只认 mongo / milvus，RETRIEVER_BACKEND=
+		// embedded 会走 default 分支打一句 WARN 然后**回落到 milvus**，
+		// 于是本地没有 Milvus 就完全跑不了评测门禁 —— 这正是冻结锁长期
+		// 没有重冻、`TestShippedFrozenLockIsInSync` 一直红的根因之一。
+		//
+		// 这里镜像 cmd/server 的 embedded 分支：语料向量仍由外部 BGE-M3
+		// 计算（BGE_M3_URL 在 buildEmbedder 已必填），本分支只把**向量
+		// 存储**放进进程内。项目原则是「向量化不可降级」，这不违反它。
+		//
+		// 装配顺序是 load-bearing 的：Ensure（只读缓存，命中则零网络）
+		// 必须早于 SeedFromKnowledgeDir。
+		cacheDir := envOr("SKILLFORGE_VECTOR_CACHE_DIR", ".skillforge-cache/vectors")
+		ec, err := embedded.New(embedded.Config{
+			Embedder:     emb,
+			Model:        envOr("BGE_M3_MODEL", "bge-m3"),
+			Dimensions:   emb.Dimensions(),
+			CacheDir:     cacheDir,
+			EndpointURL:  os.Getenv("BGE_M3_URL"),
+			KnowledgeDir: "knowledge/",
+			Registry:     kbReg,
+		})
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/eval: embedded retriever init: %v", err)
+		}
+		if err := ec.Ensure(ctx); err != nil {
+			log.Fatalf("[FAIL] cmd/eval: embedded ensure: %v", err)
+		}
+		// embedded 模式没有第二数据源：语料读不出或嵌入失败 ⇒ 必然全量
+		// 拒答，属于"明确失败"，所以这里 Fatal 而不是像 mongo/milvus
+		// 那样 WARN 后继续。
+		n, err := ec.SeedFromKnowledgeDir(ctx, "knowledge/", emb, kbReg)
+		if err != nil {
+			log.Fatalf("[FAIL] cmd/eval: embedded knowledge seed: %v", err)
+		}
+		log.Printf("[OK] cmd/eval: embedded store ready (docs=%d cache=%s)", n, cacheDir)
+		return ec
 	case "mongo":
 		mURI := envRequired("MONGO_URI")
 		mc, err := mongo.New(ctx, mongo.Config{URI: mURI, Database: "skillforge", Collection: "knowledge"})

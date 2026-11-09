@@ -117,7 +117,6 @@ import (
 	"github.com/skillforge/skillforge/internal/duckdb"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
-	"github.com/skillforge/skillforge/internal/embedder/local"
 	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
@@ -313,20 +312,19 @@ func main() {
 
 	// 1. Env var parsing. MILVUS_ADDRESS / MONGO_URI are validated inside
 	// the backend switch (only the configured backend's URI is required).
-	// EMBEDDER_BACKEND selects the vectorization backend:
-	//   - "bge" (default, backward compatible): external BGE-M3 HTTP
-	//     endpoint; BGE_M3_URL is required.
-	//   - "local": in-process feature-hashing embedder
-	//     (internal/embedder/local) — fully offline, no endpoint, no model
-	//     files. Lexical semantics (shared words/char-bigrams), the honest
-	//     hermetic default for demo/offline deployments.
+	// EMBEDDER_BACKEND selects the vectorization backend.
+	//
+	// 2026-11-09：本地哈希 embedder（internal/embedder/local）已从生产
+	// 路径移除。它让「BGE-M3 端点故障」静默退化成「词面哈希匹配」，而
+	// 健康检查照绿、拒答阈值还要下调到 0.1 —— 这直接违反「外部向量化
+	// 模型不可降级、不可兜底」的产品决策，也违反 internal/embedder/
+	// embedder.go 的 Embedder 契约（"must NOT fall back to a degraded
+	// mode silently on transport errors"）。
+	//
+	// 向量化现在只有一个后端：外部 BGE-M3 HTTP 端点。端点不可达就是
+	// 失败，检索不会用无意义的向量继续跑。
 	embedderBackend := strings.ToLower(envOr("EMBEDDER_BACKEND", "bge"))
-	var bgeURL string
-	if embedderBackend == "bge" {
-		bgeURL = envRequired("BGE_M3_URL")
-	} else {
-		bgeURL = os.Getenv("BGE_M3_URL")
-	}
+	bgeURL := envRequired("BGE_M3_URL")
 	bgeModel := envOr("BGE_M3_MODEL", "bge-m3")
 	bgeTimeoutSec := envOr("BGE_M3_TIMEOUT", "60")
 	// BGE_M3_TLS_SKIP_VERIFY (opt-in) disables TLS certificate verification
@@ -501,24 +499,15 @@ func main() {
 	}
 	log.Printf("[OK] loaded %d Skill(s)", len(manifests))
 
-	// 6. Embedder (EMBEDDER_BACKEND switch). "bge" = external BGE-M3 HTTP
-	// endpoint (production; refuses on outage) — BGE_M3_MODEL defaults to
-	// "bge-m3" (required by Ollama's OpenAI-compatible /v1/embeddings;
-	// harmless on vLLM/TEI) and BGE_M3_TIMEOUT defaults to 60s (Ollama
-	// cold-loads the 1.2GB model on first call; internal Volcano/TEI
-	// returns <1s so the ceiling is harmless). "local" = in-process
-	// feature-hashing embedder (offline, zero-dependency).
+	// 6. Embedder — 外部 BGE-M3 HTTP 端点（唯一后端，端点不可达即失败）。
+	// BGE_M3_MODEL defaults to "bge-m3" (required by Ollama's
+	// OpenAI-compatible /v1/embeddings; harmless on vLLM/TEI) and
+	// BGE_M3_TIMEOUT defaults to 60s (Ollama cold-loads the 1.2GB model on
+	// first call; internal Volcano/TEI returns <1s so the ceiling is
+	// harmless).
 	var emb embedder.Embedder
 	var embedderModelName string
 	switch embedderBackend {
-	case "local":
-		le, lerr := local.New(local.Config{})
-		if lerr != nil {
-			log.Fatalf("[FAIL] cmd/server: local embedder init: %v", lerr)
-		}
-		emb = le
-		embedderModelName = local.Model
-		log.Printf("[OK] cmd/server: EMBEDDER_BACKEND=local — in-process feature-hashing embedder (%s, dim %d), fully offline; lexical semantics only (no paraphrase recall — switch to bge for that)", local.Model, le.Dimensions())
 	case "bge":
 		bgeTimeout, err := time.ParseDuration(bgeTimeoutSec + "s")
 		if err != nil || bgeTimeout <= 0 {
@@ -532,11 +521,10 @@ func main() {
 			log.Printf("[WARN] cmd/server: BGE_M3_TLS_SKIP_VERIFY=true — TLS certificate verification is DISABLED for %s (internal-network self-signed HTTPS only; NEVER use in production)", redactURL(bgeURL))
 		}
 	default:
-		log.Fatalf("[FAIL] cmd/server: EMBEDDER_BACKEND=%q — must be \"bge\" or \"local\"", embedderBackend)
+		log.Fatalf("[FAIL] cmd/server: EMBEDDER_BACKEND=%q — 向量化只支持外部 BGE-M3 端点（\"bge\"）；本地哈希 embedder 已移除（不得降级为无语义向量）", embedderBackend)
 	}
 	// Retrieval refusal floor (GEVL-01, internal/server/pipeline.go): 0.3 is
-	// calibrated for BGE-M3 semantic cosine; the local feature-hashing
-	// embedder scores systematically lower, so recalibrate. An explicit
+	// calibrated for BGE-M3 semantic cosine. An explicit
 	// SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD always wins.
 	if v := os.Getenv("SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD"); v != "" {
 		if f, perr := strconv.ParseFloat(v, 64); perr == nil && f >= 0 && f < 1 {
@@ -545,9 +533,6 @@ func main() {
 		} else {
 			log.Printf("[WARN] cmd/server: invalid SKILLFORGE_RETRIEVAL_SCORE_THRESHOLD=%q — keeping default %.2f", v, server.RetrievalScoreThreshold)
 		}
-	} else if embedderBackend == "local" {
-		server.RetrievalScoreThreshold = 0.1
-		log.Printf("[OK] cmd/server: retrieval score threshold = 0.100 (EMBEDDER_BACKEND=local recalibration; the BGE 0.3 floor refuses everything under lexical-hash scores)")
 	}
 
 	// Phase 39 — ECL gate (D-ECL-01 / RESEARCH A3): the pipeline is ON by
@@ -920,13 +905,16 @@ func main() {
 	// listing's version + status fields — touching skills/<name>/SKILL.md
 	// on disk bumps that skill's Entry.Version (which the FE polls) and, on
 	// a broken-YAML reload, records status:"failed" WITHOUT bumping the
-	// version (keep-old). A nil embedder disables description-embedding
-	// (routing is not wired here — Router stays nil and chatHandler falls
-	// back to the Loader findSkill path); this also avoids a BGE round-trip
-	// at startup. The watcher goroutine runs until ctx (background) is
-	// cancelled — i.e. process exit — matching the existing Store.Close
-	// posture (Phase 6 adds graceful shutdown).
-	reg, err := skill.New("skills/", nil, kbReg)
+	// version (keep-old).
+	//
+	// 2026-11-09：embedder 不再传 nil。此前传 nil 会让每个 Entry 的
+	// DescVec 恒为空 → 语义路由永远判定为 Ambiguous → Router 从未被
+	// 装配 → chatHandler 落到 Loader.findSkill 读**启动时快照** ——
+	// 于是「改 SKILL.md 即生效」只更新了 version 号，真正跑的 manifest
+	// 纹丝不动。传入真实 embedder 后，description 向量随热重载一起刷新
+	// （reload 时 embed 失败是 non-fatal：保留上一份向量，不让 Skill 从
+	// 注册表里消失）。
+	reg, err := skill.New("skills/", emb, kbReg)
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: skill registry: %v (fix the SKILL.md or remove it from skills/)", err)
 	}
@@ -1227,8 +1215,14 @@ func main() {
 	}
 
 	deps = &server.Deps{
-		Loader:       loader,
-		Registry:     reg,
+		Loader: loader,
+		Registry: reg,
+		// 2026-11-09：装配语义 Router。此前 Deps.Router 恒为 nil，
+		// chatHandler 因此永远走 Loader.findSkill 的精确匹配分支 ——
+		// 语义路由（internal/skill/router.go）整套是死代码。
+		// Router 与 Registry 共用同一个 embedder：Route 的查询向量与
+		// 各 Skill 的 DescVec 必须来自同一模型，否则余弦不可比。
+		Router:       skill.NewRouter(emb),
 		Embedder:     emb,
 		Retriever:    r,
 		// 49-02: prodRunner.cm is documented currently-unused; nil in stub
