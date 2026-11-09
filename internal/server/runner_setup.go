@@ -121,6 +121,10 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		sessionID = newSessionID()
 	}
 	c.Response.Header.SetBytesV("X-Session-Id", []byte(sessionID))
+	// 2026-11-09 最小身份层：data-channel 路径同样认领归属（这里不经过
+	// resolveChatSession，所以必须单独调用，否则 kernel 路径的会话会
+	// 全部变成"无归属"）。
+	s.claimSessionOwner(ctx, sessionID, c)
 
 	manifest := s.findSkill(chatReq.Skill)
 	if manifest == nil {
