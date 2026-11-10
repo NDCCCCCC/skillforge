@@ -111,6 +111,12 @@ func BuildDeepAgent(ctx context.Context, cfg DispatchConfig) (adk.ResumableAgent
 
 		WithoutWriteTodos:      true, // Option C — custom write_todos Tool in 12-02
 		WithoutGeneralSubAgent: true, // Phase 13 territory; harden now against sub-agent injection
+
+		// Transport-level retry shared with the chat archetype. The
+		// policy (zero-output-only) lives in safeModelRetry
+		// (factory.go) because a partially-streamed turn cannot be
+		// recalled.
+		ModelRetryConfig: safeModelRetry(),
 		// 12-05: the 3-layer budget gate (max_iter dual-enforcement +
 		// token accumulator + fnv64a loop detector, P12-L9). Store +
 		// Emitter flow from DispatchConfig; nil keeps the gate armed

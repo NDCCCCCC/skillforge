@@ -256,6 +256,7 @@ func buildChatModelAgent(ctx context.Context, cfg DispatchConfig) (adk.Agent, er
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{Tools: cfg.Tools},
 		},
+		ModelRetryConfig: safeModelRetry(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("runtime.buildChatModelAgent: NewChatModelAgent: %w", err)
@@ -318,4 +319,41 @@ func (defaultSubAgentFactory) BuildSubAgent(ctx context.Context, cfg SubAgentCon
 // TestDefaultSubAgentMergeDelegatesToProduction (factory_test.go).
 func defaultSubAgentMerge(results []SubAgentResult) MergedVerdict {
 	return mergeSubAgentResults(results)
+}
+
+// safeModelRetry is the conservative ChatModel retry policy shared by
+// every archetype (chat + deep). Eino's retry is transport-level: on
+// failure it re-calls the ChatModel. Two properties of SkillForge's
+// streaming path make the naive policy wrong, so both are handled
+// explicitly.
+//
+//  1. A stream cannot be un-sent. eino@v0.9.14 consumes the whole
+//     stream before ShouldRetry runs (retry_chatmodel.go:236-238), and
+//     chunks already pushed to the client cannot be recalled. Retrying
+//     a stream that produced visible output would duplicate text on
+//     the wire, so any non-empty Content or ToolCalls is final.
+//  2. An empty-but-successful reply is NOT retried. That is a content
+//     problem owned by ApplyTrustStage (trust floor → grounding →
+//     critique), not a transport fault. Retrying it here would turn
+//     the trust staircase into a flaky sampler and mask the refusal
+//     moat.
+//
+// Context cancellation and deadline expiry never retry: the caller
+// chose to stop. MaxRetries=2 bounds the worst case at 3 model calls.
+func safeModelRetry() *adk.ModelRetryConfig {
+	return &adk.ModelRetryConfig{
+		MaxRetries: 2,
+		ShouldRetry: func(_ context.Context, rc *adk.RetryContext) *adk.RetryDecision {
+			if rc == nil || rc.Err == nil {
+				return nil
+			}
+			if errors.Is(rc.Err, context.Canceled) || errors.Is(rc.Err, context.DeadlineExceeded) {
+				return nil
+			}
+			if msg := rc.OutputMessage; msg != nil && (msg.Content != "" || len(msg.ToolCalls) > 0) {
+				return nil
+			}
+			return &adk.RetryDecision{Retry: true}
+		},
+	}
 }
