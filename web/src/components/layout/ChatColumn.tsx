@@ -24,6 +24,7 @@ import type { UIMessage } from 'ai';
 import { MessageBubble } from '../chat/MessageBubble';
 import ChatInput from '../chat/ChatInput';
 import DraftStreamChip from '../chat/parts/DraftStreamChip';
+import { answerStarted } from '../../lib/draft-stream';
 import WizardMode from './WizardMode';
 import { ApprovalCard } from '../ApprovalCard';
 import { PlanTracePart } from '../PlanTracePart';
@@ -85,6 +86,16 @@ export default function ChatColumn({
   // RealChatTransport writes this on every data-plan-trace chunk.
   // PlanTracePart uses it as the lookup key into planByRunId.
   const planCurrentRunId = useAppStore((s) => s.plan.currentRunId);
+
+  // 「边生成边显示」的替换语义（判定见 lib/draft-stream.ts）：
+  // draft 预览只在「还没有正式正文可看」时出现。正式答案的第一个字符
+  // 一到达，answerStarted 立刻为 true，预览随即卸载 —— 同一段话绝不
+  // 以「预览 + 正式消息」两种形态并存（那会看起来像回答重复了一遍）。
+  //
+  // turnSettled 是中断/失败收尾的兜底：这一轮已经结束（ready/error），
+  // 而 transport 没能补发 idle，预览不该永远停在那里转。
+  const turnSettled = status === 'ready' || status === 'error';
+  const draftPreviewVisible = draftStatus !== 'idle' && !turnSettled && !answerStarted(messages);
 
   useEffect(() => {
     if (wizardActive) return;
@@ -189,7 +200,7 @@ export default function ChatColumn({
               role={m.role === 'user' ? 'user' : 'assistant'}
             />
           ))}
-          {draftStatus !== 'idle' && (
+          {draftPreviewVisible && (
             <DraftStreamChip
               status={draftStatus as 'pending' | 'verified' | 'refused'}
               draftText={draftText}

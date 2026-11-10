@@ -863,18 +863,24 @@ body[data-dragging="true"] * {
   50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* ---------- DraftStreamChip (modern inline status card) ---------- */
+/* ---------- DraftStreamChip (live token preview) ---------- */
+/* 2026-11-10 改造：从「单行胶囊」变成「多行流式预览区」。
+   旧版 header 是 inline-flex + border-radius: 999px，正文又是
+   white-space: nowrap + text-overflow: ellipsis + max-width: 480px ——
+   模型逐字吐出来的正文被压成一行再截断，用户根本看不出「正在生成」，
+   这才是「看起来在干等」的真正原因。现在正文 pre-wrap 多行、超过
+   40vh 内部滚动，由组件负责自动贴底。 */
 .draft-chip-modern {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   margin: var(--space-3) 0;
-  padding: 8px 14px;
+  padding: 10px 14px;
   background: var(--color-tool-bg);
   border: 1px solid var(--color-tool-border);
-  border-radius: 999px;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  color: var(--color-text);
 }
 
 .draft-chip-modern[data-status="pending"] {
@@ -888,7 +894,30 @@ body[data-dragging="true"] * {
 .draft-chip-modern[data-status="verified"] {
   background: var(--color-ok-tint);
   border-color: var(--color-ok-border);
+}
+
+.draft-chip-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.draft-chip-label {
+  font-weight: 500;
+}
+
+.draft-chip-modern[data-status="verified"] .draft-chip-label {
   color: var(--color-status-compliant);
+}
+
+.draft-chip-meta {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
 }
 
 .draft-chip-dot {
@@ -907,12 +936,42 @@ body[data-dragging="true"] * {
   50% { opacity: 1; transform: scale(1.1); }
 }
 
+/* 正文：模型正在吐的字。pre-wrap 保留换行与缩进；overflow-wrap:
+   anywhere 防止长 URL / 长 token 把卡片撑破。 */
+.draft-chip-body {
+  max-height: 40vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+  color: var(--color-text);
+}
+
 .draft-chip-text {
-  font-style: italic;
-  max-width: 480px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-style: normal;
+}
+
+.draft-chip-ellipsis {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+}
+
+/* 闪烁光标 —— 「仍在生成」的唯一动画信号（verified 后移除）。 */
+.draft-chip-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.18em;
+  background: var(--color-tool-accent);
+  animation: draft-caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes draft-caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* ---------- Composer (floating rounded card) ---------- */
