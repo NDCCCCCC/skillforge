@@ -132,7 +132,7 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
 
   return (
     <div data-testid="citation-cluster" className="flex flex-wrap gap-2">
-      {citations.map((citation, index) => {
+      {(Array.isArray(citations) ? citations : []).map((citation, index) => {
         const isOpen = openChunkId === citation.chunk_id;
         return (
           <span

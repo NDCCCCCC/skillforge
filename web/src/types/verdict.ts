@@ -131,7 +131,11 @@ export type SubprogressStepName =
   | 'found_candidates'
   | 'rerank'
   | 'self_verify'
-  | 'generate';
+  | 'generate'
+  // 2026-11-10：真实过程事件。后端把「读了哪几篇」「正在生成什么」写进
+  // detail，用户不必在几十秒的生成期里猜系统是死了还是在干活。
+  | 'reading_guides'
+  | 'generating';
 
 export interface SubprogressStep {
   step: SubprogressStepName;
@@ -140,6 +144,13 @@ export interface SubprogressStep {
   count?: number;
   /** Pre-truncation candidate-set size; absent = retriever has no counter. */
   total?: number;
+  /**
+   * Human-readable description of what this step actually did.
+   * When present the FE renders it verbatim instead of the fixed per-step
+   * copy, so the timeline can report real content (which notes were read,
+   * what is being generated) rather than three generic labels.
+   */
+  detail?: string;
 }
 
 // Type guards — distinguish Verdict vs Refusal payloads inside the

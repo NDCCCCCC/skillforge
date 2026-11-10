@@ -28,6 +28,9 @@ type DataSubprogressPartType = {
 };
 
 function renderStep(step: SubprogressStep, tierLabel: string | null): string {
+  // detail 优先：后端把「实际读了哪几篇」「正在生成什么」写在这里，
+  // 比下面这些固定文案有信息量得多（2026-11-10 用户要求看到真实过程）。
+  if (step.detail) return step.detail;
   switch (step.step) {
     case 'retrieve':
       return tierLabel ? `检索 ${tierLabel} 知识层` : '检索知识层';

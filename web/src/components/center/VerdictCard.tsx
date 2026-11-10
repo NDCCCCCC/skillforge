@@ -195,7 +195,7 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
           </div>
         )}
         <div className="mt-3 text-xs text-text-muted">
-          {verdict.citations.length} 条引用
+          {Array.isArray(verdict.citations) ? verdict.citations.length : 0} 条引用
         </div>
         {/* Plan 260815-cos / CONTEXT.md decision D: confidence bar is
             visually hidden. The data-testid + data-confidence attributes

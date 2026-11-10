@@ -288,6 +288,14 @@ type SubprogressStep struct {
 	Tier  string `json:"tier,omitempty"`
 	Count int    `json:"count,omitempty"`
 	Total int    `json:"total,omitempty"`
+	// Detail carries a human-readable description of what the step actually
+	// did ("读取取数手册：025 学平险…、030 承保清单…"), so the timeline is
+	// not limited to the fixed per-step copy the FE used to hardcode.
+	// Added 2026-11-10 because "检索/找到5条/生成结论" carried no information
+	// about which notes were read or what was being generated — the three
+	// rows appeared instantaneously and left the user unable to tell work
+	// from a hang.
+	Detail string `json:"detail,omitempty"`
 }
 
 // PlanTodo is one row of the DeepAgent planning trace. Phase 12 / Plan

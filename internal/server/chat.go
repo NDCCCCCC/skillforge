@@ -306,7 +306,12 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 	// If this log appears but VerdictPipeline never logs (D-1), the hang is
 	// in the function-call boundary (nil manifest, ctx cancel, etc.).
 	log.Printf("[INFO] server: chatHandler dispatching to VerdictPipeline skill=%s sess=%s", skillID, sessionID)
-	if err := s.VerdictPipeline(ctx, c, query, manifest, sessionID, skillID); err != nil {
+	// Plan C: the pipeline is wrapped as an adk.Agent so this turn
+	// reaches adk.Runner exactly like the data-channel branch above.
+	// Output path is unchanged — the pipeline still writes its own SSE;
+	// runPipelineAgent only drains the terminal event (see
+	// pipeline_agent.go for the scope note).
+	if err := s.runPipelineAgent(ctx, c, query, manifest, sessionID, skillID); err != nil {
 		log.Printf("[ERROR] server: chatHandler verdict pipeline failed sess=%s: %v", sessionID, err)
 		var persisted bool
 		var turnID int64
@@ -321,9 +326,18 @@ func (s *Deps) chatHandler(ctx context.Context, c *app.RequestContext) {
 				log.Printf("[WARN] server: data-turn emit failed (audit row already written; non-fatal): %v", emitErr)
 			}
 		}
-		_ = wire.EmitChunk(c, errorChunk(err.Error()))
+		// 2026-11-10 用户要求：错误显示在对话框里，不要弹窗。
+		//
+		// 这里刻意不发 errorChunk —— 它会让 AI SDK 把整个流判为失败，
+		// transport 随即触发 sf-toast 弹窗，而下面这几帧 text-delta 因为
+		// 流已中止根本渲染不出来（用户只看到右下角一闪而过的红条）。
+		// 改成纯文本通道后，错误就以「助手消息」的形态留在对话里，
+		// 和正常回答在同一个位置，可回看、可复制。
+		//
+		// 审计不受影响：上面的 writeAuditAndTurn 已经按 refusal_reason=
+		// internal_error 记了一行，失败事实仍然留痕。
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"})
-		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: pipelineErrorText})
+		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: pipelineErrorTextFor(err)})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-end", ID: "msg-1"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish-step"})
 		_ = wire.EmitChunk(c, wire.UIMessageChunk{Type: "finish"})
@@ -819,7 +833,17 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 	// subsequent chunk (data-policy verdict, data-redline) is then dropped
 	// (the live Phase 7 failure: verdict rendered nothing). text/markdown
 	// is the accurate type for policy-clause source docs.
+	// 2026-11-09 —— 按 chunk_id 去重。source-document 的语义是「来源文档」，
+	// 同一个 chunk 只需要一条；而 citations 可能为同一 chunk 给出多个不同
+	// span（实测 C 场景：chunk 13 有「200 元以内…」和「住宿费超标部分未经
+	// 事前审批…」两个 span），逐条发就会让前端显示成两条同源引用。
+	// 多 span 仍完整保留在下面 data-policy 的 citations 里（详情页可见）。
+	emittedSource := make(map[string]bool, len(v.Citations))
 	for _, cit := range v.Citations {
+		if emittedSource[cit.ChunkID] {
+			continue
+		}
+		emittedSource[cit.ChunkID] = true
 		if err := wire.EmitChunk(c, wire.UIMessageChunk{
 			Type:      "source-document",
 			ID:        "src-" + cit.ChunkID,
@@ -831,6 +855,13 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 		}
 	}
 	// 2. data-policy carrying the entire Verdict.
+	//
+	// citations 兜底：nil 切片会序列化成 null，前端读 .length 会崩
+	// （实测 operational 路径：Cannot read properties of null (reading
+	// 'length')）。这里统一成空数组，任何未来路径产生 nil 都安全。
+	if v.Citations == nil {
+		v.Citations = []verdict.Citation{}
+	}
 	payload, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshal verdict: %w", err)
@@ -935,9 +966,16 @@ func conclusionText(v verdict.Verdict, reg kb.Registry) string {
 		// an explicitly unverified candidate; the "结论" heading is
 		// reserved for Status="ok".
 		answer := strings.TrimSpace(v.Answer)
-		if v.Status == "ok" {
+		// 2026-11-10：operational Skill 的原文引用自带标题结构
+		// （"**命中取数手册原文**（以下为知识库逐字内容，非模型生成）"），
+		// 再套一个「**结论**」会读成模型在给合规判断，而这里其实是引用
+		// 手册 —— 层级重复且误导，所以这类 Answer 跳过标题前缀。
+		switch {
+		case strings.HasPrefix(answer, "**命中取数手册原文**"):
+			// 引用形态，不加判断性标题
+		case v.Status == "ok":
 			b.WriteString("**结论**\n\n")
-		} else {
+		default:
 			b.WriteString("**未经核验的候选答案**\n\n")
 		}
 		if strings.Contains(answer, "\n") || strings.Contains(answer, "```") {
@@ -1098,6 +1136,48 @@ func errorChunk(msg string) wire.UIMessageChunk {
 // the FE gets a readable terminal state instead of a frozen 生成结论
 // node.
 const pipelineErrorText = "结论生成失败：模型服务暂时不可用，请稍后重试。"
+
+// 2026-11-10 用户要求「有什么问题就报什么问题」：上游 429 就明确报 429，
+// 不要笼统说"模型服务暂时不可用"——那会让人误以为是服务故障而不是额度问题。
+//
+// 但原始 error 可能带内部地址或凭证，所以只透传「HTTP 状态码 + 上游 message
+// 的可读片段」，并把这些内容脱敏后再给客户端（T-1-13 的约束仍然是底线）。
+var (
+	// 匹配 "status code: 429" / "status: 429 Too Many Requests"
+	reHTTPStatus = regexp.MustCompile(`(?:status code|status):\s*(\d{3})`)
+	// 匹配 "message: xxx"（到括号或换行为止）
+	reUpstreamMsg = regexp.MustCompile(`message:\s*([^(\n]{1,300})`)
+	// 需要脱敏的内容：URL 与常见 key 前缀
+	reURLRedact = regexp.MustCompile(`https?://[^\s"']+`)
+	reKeyRedact = regexp.MustCompile(`(?i)(as_sk_|sk-|api[_-]?key=)[A-Za-z0-9_\-]{6,}`)
+)
+
+// pipelineErrorTextFor 把流水线错误转成用户可见的终端文本。
+// 无状态码可提取时回落 pipelineErrorText，保持既有测试断言不变。
+func pipelineErrorTextFor(err error) string {
+	if err == nil {
+		return pipelineErrorText
+	}
+	raw := err.Error()
+	raw = reURLRedact.ReplaceAllString(raw, "<upstream>")
+	raw = reKeyRedact.ReplaceAllString(raw, "<redacted>")
+
+	var code, msg string
+	if m := reHTTPStatus.FindStringSubmatch(raw); m != nil {
+		code = m[1]
+	}
+	if m := reUpstreamMsg.FindStringSubmatch(raw); m != nil {
+		msg = strings.TrimSpace(m[1])
+	}
+	switch {
+	case code != "" && msg != "":
+		return fmt.Sprintf("结论生成失败：上游返回 HTTP %s —— %s", code, msg)
+	case code != "":
+		return fmt.Sprintf("结论生成失败：上游返回 HTTP %s（详见服务器日志）。", code)
+	default:
+		return pipelineErrorText
+	}
+}
 
 // Compile-time guarantee: schema.UserMessage is imported for future
 // streaming hooks (Phase 3+); this package will not silently lose the
