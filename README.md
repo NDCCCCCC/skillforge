@@ -47,7 +47,7 @@ walks you through writing your own.
 
 [![Go Version](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![CI](https://github.com/ninedrunk/skillforge/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/NDCCCCCC/skillforge/actions/workflows/ci.yml/badge.svg)](https://github.com/NDCCCCCC/skillforge/actions/workflows/ci.yml)
 📄 [Architecture](docs/architecture.md) · [Security policy](SECURITY.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Contributing](CONTRIBUTING.md)
 
 ---
@@ -99,7 +99,7 @@ Get a document-grounded, cited answer running in your browser.
 
 ```bash
 # 1. Clone
-git clone https://github.com/ninedrunk/skillforge.git
+git clone https://github.com/NDCCCCCC/skillforge.git
 cd skillforge
 
 # 2. Configure environment
@@ -205,7 +205,7 @@ Both forms speak the same OpenAI-compatible wire format, so switching between th
 
 ```bash
 # 1. Clone
-git clone https://github.com/ninedrunk/skillforge.git
+git clone https://github.com/NDCCCCCC/skillforge.git
 cd skillforge
 
 # 2. Start the embedding endpoint (local minimum)
