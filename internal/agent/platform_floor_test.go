@@ -33,8 +33,8 @@ import (
 // resolve to the same semver; the agent literal exists for source-grep
 // visibility — see internal/agent/platform_floor.go godoc).
 func TestPlatformFloorVersionLocked(t *testing.T) {
-	if PlatformFloorVersion != "1.1.0" {
-		t.Fatalf("agent.PlatformFloorVersion = %q, want \"1.1.0\" (D14-B1; 1.1.0 = 14-10 tail re-anchor)", PlatformFloorVersion)
+	if PlatformFloorVersion != "1.2.0" {
+		t.Fatalf("agent.PlatformFloorVersion = %q, want \"1.2.0\" (D14-B1; 1.2.0 = 2026-11-10 SQL 判据从「禁用」改为「有平台授权的依据」)", PlatformFloorVersion)
 	}
 	if PlatformFloorVersion != platformfloor.PlatformFloorVersion {
 		t.Fatalf("agent.PlatformFloorVersion (%q) != platformfloor.PlatformFloorVersion (%q) — re-export drift",
@@ -364,8 +364,8 @@ temperature: 0.0
 	// CODE-LEVEL home (Pitfall 17): the shadow body cannot duplicate it
 	// (no injection channel — a Skill-body leak would count 3+), and
 	// the static Skill template doesn't carry the items.
-	if got := strings.Count(rendered, "永不编写、执行或建议 SQL"); got != 2 {
-		t.Errorf("D14-A1 item 1 substring count = %d, want 2 (floor header + 1.1.0 tail restatement; Skill body must add none)", got)
+	if got := strings.Count(rendered, "永不编写、执行或建议 SQL"); got != 1 {
+		t.Errorf("D14-A1 item 1 substring count = %d, want 1 (only the 1.2.0 tail's conditional restatement; the header item was reworded to 「SQL 必须有据可依」 and the Skill body must add none)", got)
 	}
 	// (d) The shadow phrases DO NOT appear in the rendered prompt at
 	// all — the Skill body is structurally isolated from the system
@@ -454,8 +454,8 @@ temperature: 0.0
 	if !strings.HasSuffix(r1, tail) {
 		t.Errorf("v1 render missing floor tail\n got suffix: %q", r1[max(0, len(r1)-200):])
 	}
-	if got := strings.Count(r1, "永不编写、执行或建议 SQL"); got != 2 {
-		t.Errorf("v1 D14-A1 item 1 count = %d, want 2 (floor header + 1.1.0 tail restatement)", got)
+	if got := strings.Count(r1, "永不编写、执行或建议 SQL"); got != 1 {
+		t.Errorf("v1 D14-A1 item 1 count = %d, want 1 (only the 1.2.0 tail's conditional restatement)", got)
 	}
 
 	// v2: reload with a totally different body (simulating an editor
@@ -479,8 +479,8 @@ temperature: 0.0
 	if !strings.HasSuffix(r2, tail) {
 		t.Errorf("v2 render missing floor tail after reload\n got suffix: %q", r2[max(0, len(r2)-200):])
 	}
-	if got := strings.Count(r2, "永不编写、执行或建议 SQL"); got != 2 {
-		t.Errorf("v2 D14-A1 item 1 count = %d, want 2 (floor header + 1.1.0 tail restatement; Skill body cannot add a third)", got)
+	if got := strings.Count(r2, "永不编写、执行或建议 SQL"); got != 1 {
+		t.Errorf("v2 D14-A1 item 1 count = %d, want 1 (only the 1.2.0 tail's conditional restatement; Skill body cannot add one)", got)
 	}
 	// The v2 body contains a shadow phrase; assert it does NOT reach
 	// the system prompt (same structural-isolation lock as the shadow

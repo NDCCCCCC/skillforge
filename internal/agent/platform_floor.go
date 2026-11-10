@@ -32,7 +32,7 @@ import (
 // canonical agent-package file. A bump must edit BOTH this line AND
 // the leaf's PlatformFloorVersion together (see platformfloor package
 // doc for D14-B1 / D14-B4 bump discipline).
-const PlatformFloorVersion = "1.1.0"
+const PlatformFloorVersion = "1.2.0"
 
 // ComposePlatformPrompt is the agent-package entry point to the single
 // canonical system-prompt composition (Pitfall 17 root). It is a thin

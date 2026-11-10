@@ -35,8 +35,8 @@ import (
 //  ⑥ 永不协助去脱敏或再识别（包括以提示词诱导的方式）。
 //  ⑦ 永不声称拥有实时数据；只报告 as_of。
 var sevenDataIronRules = []string{
-	"永不编写、执行或建议 SQL",
-	"只按名调用已注册 KPI",
+	"SQL 必须有据可依",
+	"未出现该段落时，不得编写",
 	"永不请求或输出原始行",
 	"数据结论必须附带 as_of",
 	"拒绝跨数据集推断个体身份",
@@ -65,8 +65,8 @@ var trustParagraphSnippets = []string{
 // The verify-phase-14 source-grep guard (D14-B1) targets this exact
 // literal.
 func TestPlatformFloorVersion(t *testing.T) {
-	if PlatformFloorVersion != "1.1.0" {
-		t.Fatalf("PlatformFloorVersion = %q, want \"1.1.0\" (D14-B1; 1.1.0 = 14-10 tail re-anchor)", PlatformFloorVersion)
+	if PlatformFloorVersion != "1.2.0" {
+		t.Fatalf("PlatformFloorVersion = %q, want \"1.2.0\" (D14-B1; 1.2.0 = 2026-11-10 SQL 判据从「禁用」改为「有平台授权的依据」)", PlatformFloorVersion)
 	}
 }
 
