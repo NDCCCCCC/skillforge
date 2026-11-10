@@ -19,7 +19,9 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"sync"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -94,6 +96,14 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 		}
 		envBase := envUpstreamBaseURL()
 		envModel := envOr("LOCAL_MODEL", envOr("GLM_MODEL", "glm-5.3-flash"))
+		logResolution(resolution{
+			Source:  "ENV_PRESET",
+			Detail:  fmt.Sprintf("no panel config file at %s", llmconfig.ConfigPath()),
+			BaseURL: envBase,
+			Model:   envModel,
+			KeyLen:  len(envKey),
+			EnvVars: envPresence(),
+		})
 		cmRaw, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
 			BaseURL: envBase,
 			APIKey:  envKey,
@@ -118,6 +128,16 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 		}
 		baseURL = plan.BaseURL
 	}
+	logResolution(resolution{
+		Source:  "PANEL_FILE",
+		Detail:  fmt.Sprintf("%s (vendor=%s plan=%s)", llmconfig.ConfigPath(), cfg.Vendor, cfg.Plan),
+		BaseURL: baseURL,
+		Model:   cfg.Model,
+		KeyLen:  len(key),
+		EnvVars: envPresence(),
+		// The env vars are STILL set but do not participate — say so out loud.
+		OverridesEnv: anyEnvSet(),
+	})
 	cmRaw, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
 		BaseURL: baseURL,
 		APIKey:  key,
@@ -130,4 +150,88 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 	// silently regressed to minutes-long local thinking after any panel
 	// save (A-03).
 	return LocalThinkOffModel(cmRaw), nil
+}
+
+// resolution is the loggable shape of one BuildUpstream decision. It never
+// carries a key VALUE — only len(key) — so the operator can tell "which of the
+// two possible keys won" without a secret landing in the log (T-49-14).
+type resolution struct {
+	Source       string // ENV_PRESET | PANEL_FILE
+	Detail       string
+	BaseURL      string
+	Model        string
+	KeyLen       int
+	EnvVars      string
+	OverridesEnv bool
+}
+
+// lastResolution dedupes the per-call log: BuildUpstream runs on EVERY LLM call
+// (Phase 52 hot-reload), so an unconditional log would emit one line per request.
+// Logging only on CHANGE keeps the startup line + the panel-save line, which are
+// exactly the moments an operator needs to see.
+var (
+	lastResolutionMu sync.Mutex
+	lastResolution   string
+)
+
+// logResolution prints the effective upstream source once per change.
+//
+// WHY THIS EXISTS (2026-11-10 root cause): cmd/server printed "[OK] chat model
+// preset from env (…)"; .env said GLM_BASE_URL=http://34.21.254.49:8080/v1; and
+// yet every request went to api.minimaxi.com and returned 429 — because a stale
+// ~/.skillforge/llm.json (saved 2026-10-26 from the admin panel) takes precedence
+// over env by design and nothing said so. The investigation burned days on an
+// "env is wrong / key is throttled" theory while the actual endpoint was in a
+// file nobody looked at. One line naming the source makes that impossible.
+func logResolution(r resolution) {
+	identity := fmt.Sprintf("%s|%s|%s|%s|%d", r.Source, r.Detail, r.BaseURL, r.Model, r.KeyLen)
+	lastResolutionMu.Lock()
+	if identity == lastResolution {
+		lastResolutionMu.Unlock()
+		return
+	}
+	lastResolution = identity
+	lastResolutionMu.Unlock()
+
+	key := "unset"
+	if r.KeyLen > 0 {
+		key = "set"
+	}
+	if r.Source == "PANEL_FILE" {
+		log.Printf("[INFO] llm: upstream source=PANEL_FILE config=%s base_url=%s model=%s key=%s", r.Detail, r.BaseURL, r.Model, key)
+		if r.OverridesEnv {
+			log.Printf("[WARN] llm: PANEL FILE TAKES PRECEDENCE — .env is IGNORED for the chat model (%s). Delete %s to fall back to .env.", r.EnvVars, llmconfig.ConfigPath())
+		}
+		return
+	}
+	log.Printf("[INFO] llm: upstream source=ENV_PRESET %s base_url=%s model=%s key=%s (%s)", r.Detail, r.BaseURL, r.Model, key, r.EnvVars)
+}
+
+// envPresence renders WHICH env knobs are set (names only, never values) so the
+// "LOCAL_* shadows GLM_*" question is answerable from one line.
+func envPresence() string {
+	names := []string{"LOCAL_API_KEY", "LOCAL_BASE_URL", "LOCAL_MODEL", "GLM_API_KEY", "GLM_BASE_URL", "GLM_MODEL", "LOCAL_LLM_THINK"}
+	out := ""
+	for _, n := range names {
+		state := "unset"
+		if os.Getenv(n) != "" {
+			state = "set"
+		}
+		if out != "" {
+			out += " "
+		}
+		out += n + "=" + state
+	}
+	return out
+}
+
+// anyEnvSet reports whether any env LLM knob is set at all — used to warn when a
+// panel file is silently shadowing them.
+func anyEnvSet() bool {
+	for _, n := range []string{"LOCAL_API_KEY", "LOCAL_BASE_URL", "LOCAL_MODEL", "GLM_API_KEY", "GLM_BASE_URL", "GLM_MODEL"} {
+		if os.Getenv(n) != "" {
+			return true
+		}
+	}
+	return false
 }

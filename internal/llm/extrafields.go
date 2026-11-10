@@ -106,6 +106,35 @@ func PipelineExtraFields() map[string]any {
 	return fields
 }
 
+// OperationalExtraFields is PipelineExtraFields MINUS response_format, for the
+// operational (取数 / SQL generation) channel only.
+//
+// Why the exception (2026-11-10 live failure): operational skills intentionally
+// do NOT emit a JSON verdict — agent.OperationalSystemPrompt ends with "Output
+// plain markdown. Do NOT wrap the answer in a JSON object." Sending
+// response_format=json_object next to that instruction is a self-contradicting
+// request. Observed consequence on the relay in use: the model dutifully wrapped
+// the whole SQL answer in {"matched_note":true,"notes_considered":3,
+// "final_answer":"..."}, which (a) doubled the token cost because every SQL
+// newline became the two characters \\n, making an already slow stream slower,
+// and (b) did not unwrap, because emitOperationalAnswer only reads the "answer"
+// key — the user got raw JSON on screen. JSON mode is a verdict-path device; the
+// SQL path is markdown by contract, so it must not be requested.
+//
+// The thinking/think fields are preserved verbatim: they are endpoint-capability
+// knobs, not output-shape knobs, and dropping them would reintroduce the
+// A-05/A-06/A-10 and A-01 regressions.
+func OperationalExtraFields() map[string]any {
+	fields := map[string]any{}
+	if llmconfig.SupportsThinkingDisabled() {
+		fields["thinking"] = map[string]string{"type": "disabled"}
+	}
+	if os.Getenv(LocalThinkDisabledEnv) == "false" {
+		fields["think"] = false
+	}
+	return fields
+}
+
 // extraFieldsOption returns the option carrying m.fields. It MUST be placed
 // BEFORE any caller-provided options: eino applies impl-specific options in
 // slice order and eino-ext's WithExtraFields ASSIGNS the whole map (no
