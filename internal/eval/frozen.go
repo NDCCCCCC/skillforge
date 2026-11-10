@@ -42,11 +42,26 @@ const (
 	// current operation order rather than determinism itself.
 	StrictReproducibilityTolerance = 1e-6
 
-	// LiveReproducibilityTolerance gates the jitter layer (a real judge
-	// against the frozen set). It absorbs legitimate LLM API variance —
-	// retries, load-dependent sampling — while still catching a genuine
-	// behavioral change. Demanding the strict bar from a live API would
-	// produce a permanently red test that everyone learns to ignore.
+	// LiveReproducibilityTolerance gates the JITTER LAYER ONLY: the same
+	// judge scoring the SAME fixed inputs twice. Its gate test
+	// (TestRunnerLiveReproducibility) builds samples via
+	// buildFrozenSamples(), which synthesizes the answers outright —
+	// Answer = "claim-1. claim-2.", Contexts = [frozen-context-a,
+	// frozen-context-b]. No agent runs, no real answer is generated.
+	//
+	// For THAT semantic, 1e-3 is honest: a judge re-scoring identical
+	// text barely moves.
+	//
+	// What it does NOT cover, and must never be quoted as covering, is
+	// end-to-end reproducibility — running the agent again to regenerate
+	// the answer, then judging that new answer. Measured on adv-001 and
+	// adv-002 with an identical prompt_hash / model_ver / seed, the
+	// end-to-end faithfulness for the same case came out 0.500 once and
+	// 1.000 the next run: ±0.5, i.e. 500x this tolerance. The dominant
+	// noise source is the generator, not the judge.
+	//
+	// So: a single --frozen score is one SAMPLE, not a measurement.
+	// Aggregate over repeats before treating a delta as a regression.
 	LiveReproducibilityTolerance = 1e-3
 )
 
@@ -54,11 +69,18 @@ const (
 // It lives next to the set it pins: eval/frozen/<skill>.jsonl is pinned
 // by eval/frozen/<skill>.lock.json.
 //
-// What the pin buys: "re-running against a frozen eval set + pinned
-// model_ver + pinned prompt_hash returns numerically identical scores"
-// (SC-6) is only a meaningful claim if the runner can PROVE the model
-// and the prompt did not move underneath it. AssertPin is that proof;
-// this struct is the recorded expectation.
+// What the pin buys: it lets the runner PROVE the model and the prompt
+// did not move underneath the scores. Without that proof, two numbers
+// from two runs are not comparable at all.
+//
+// Careful with the wording here. SC-6 is often paraphrased as
+// "re-running a frozen set returns numerically identical scores", but
+// that sentence conflates two different claims:
+//   · judge-layer stability (same inputs, judge twice) -> 1e-3, gated
+//     by TestRunnerLiveReproducibility against synthesized answers
+//   · end-to-end stability (agent regenerates the answer, then judge)
+//     -> NOT gated here, and measured at ±0.5 on this corpus
+// AssertPin proves the pin, not the score's repeatability.
 //
 // Fields:
 //   - ModelVersion — the LLM id the frozen scores were produced with.

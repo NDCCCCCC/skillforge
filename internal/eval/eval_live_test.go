@@ -50,12 +50,18 @@ import (
 // a REAL judge twice and asserts the scores agree within
 // LiveReproducibilityTolerance (1e-3).
 //
-// What this proves that the strict layer cannot: the system is stable
-// in PRACTICE. The strict layer stubs the judge, so it can only prove
-// our arithmetic is deterministic — it says nothing about whether a
-// real LLM judge returns comparable numbers run over run. That second
-// property is the one SC-6 actually promises to an operator, and it is
-// the one a temperature regression or a silent model swap would break.
+// What this proves that the strict layer cannot: a real LLM judge
+// returns comparable numbers when re-scoring the SAME inputs. The strict
+// layer stubs the judge, so it can only prove our arithmetic is
+// deterministic.
+//
+// Read the sample construction carefully before quoting this as an
+// end-to-end reproducibility gate — it is NOT one. buildFrozenSamples()
+// synthesizes the answers ("claim-1. claim-2." over two canned contexts)
+// and no agent is invoked, so this test isolates the JUDGE. Regenerating
+// a real answer is a separate (and much noisier) layer: measured ±0.5 on
+// adv-001/adv-002 versus the 1e-3 asserted here. See the
+// LiveReproducibilityTolerance godoc in frozen.go.
 //
 // Skips (rather than fails) when GLM_API_KEY is unset so a contributor
 // who opts into the tag without credentials gets a clear skip instead
