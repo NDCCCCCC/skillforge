@@ -15,8 +15,8 @@ import type { NeighborResult } from '../types/knowledge';
 // Module-level result cache keyed by `${chunkId}:${depth}`.
 // Caches null (degraded fetch) as well as successful results to avoid
 // re-fetching the same (chunk, depth) within a session.
-let resultCache = new Map<string, NeighborResult | null>();
-let pendingPromises = new Map<string, Promise<NeighborResult | null>>();
+const resultCache = new Map<string, NeighborResult | null>();
+const pendingPromises = new Map<string, Promise<NeighborResult | null>>();
 
 /**
  * Test-only: clear all module-level caches (resultCache + pendingPromises).

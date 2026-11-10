@@ -175,7 +175,7 @@ describe('GraphCanvas — dynamic viewBox + fit (260929-d5w3 Task 2)', () => {
     render(<GraphCanvas graph={bigGraph(4, 25)} filter="" />);
     const nodes = screen.getAllByTestId('graph-doc-node');
     expect(nodes).toHaveLength(100);
-    const [vx, vy, vw, vh] = screen
+    const [, vy, vw, vh] = screen
       .getByRole('img')
       .getAttribute('viewBox')!
       .split(/[\s,]+/)

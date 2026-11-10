@@ -396,21 +396,6 @@ export default function OntologyGraphView({ focus = null }: OntologyGraphViewPro
     [palette],
   );
 
-  const nodeStyleFor = useCallback(
-    (n: FgNode): { color: string; val: number } => {
-      const base = nodeColorFor(n.kind);
-      if (!selectedId) {
-        return { color: base, val: hoverId === n.id ? n.val * 1.8 : n.val };
-      }
-      if (n.id === selectedId) return { color: base, val: n.val * 2.2 };
-      if (inNeighborhood(n.id)) {
-        return { color: base, val: hoverId === n.id ? n.val * 1.8 : n.val };
-      }
-      return { color: withAlpha(base, 0.15), val: n.val * 0.7 };
-    },
-    [selectedId, hoverId, inNeighborhood, nodeColorFor],
-  );
-
   /** zoomToFit(800ms transition, 40px padding) — once per dataset. */
   const fitOnce = useCallback((graph: OntologyGraph) => {
     if (fittedGraphRef.current === graph) return;

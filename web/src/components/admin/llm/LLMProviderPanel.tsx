@@ -78,7 +78,6 @@ export default function LLMProviderPanel() {
   const [busy, setBusy] = useState<'' | 'test' | 'save' | 'models' | 'load'>('');
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
-  const currentPlan = vendors.find((v) => v.id === vendor)?.plans.find((p) => p.id === plan);
 
   const loadAll = useCallback(async (tok: string): Promise<boolean> => {
     setBusy('load');

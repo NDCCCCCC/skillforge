@@ -124,16 +124,18 @@ jobs:
         working-directory: web
         run: npx vitest run
 
-      # ESLint 从零引入，首次运行有 31 处历史基线违规（清单见
-      # web/eslint-baseline.md）。清零前这一步「可见但不阻断」：
-      # 失败会出现在 CI 日志和 step 状态里，但不让 merge 变红。
+      # 2026-11-09 — ESLint 已清零（31 → 0），这一步从「可见但不阻断」
+      # 正式升级为**硬门禁**：任何新增违规都会让 CI 变红。
       #
-      # 不选「先不跑 lint」：那样技术债在 CI 里完全看不见。也不选
-      # 「关掉规则让它绿」：那才是真正的假绿。清零后删掉
-      # continue-on-error，这一步就自动变成硬门禁。
-      - name: "Lint (baseline: 31 known violations)"
+      # 演进路径（写在这里，避免以后有人又把 continue-on-error 加回来）：
+      #   ① 引入 ESLint 并如实记录 31 处历史基线，continue-on-error: true
+      #      （技术债在日志里可见，而不是假装没有）
+      #   ② 分两批清零：20 处机械项 + 7 处需判断项（其中 3 处是 ESLint
+      #      对「刻意失效触发器」的误判，用定向 disable + 理由处理，
+      #      而不是听它的删依赖）
+      #   ③ 清零后删除 continue-on-error
+      - name: Lint
         working-directory: web
-        continue-on-error: true
         run: npm run lint
 
       - name: Production build

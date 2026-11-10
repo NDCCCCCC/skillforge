@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { DefaultChatTransport } from 'ai';
-import type { UIMessage, UIMessageChunk } from 'ai';
+import type { UIMessageChunk } from 'ai';
 import { MockChatTransport } from '../transport';
 import { FIXTURE_REGISTRY, type MockFixtureName } from '../__fixtures__';
 import { sanitizeSourceUrl } from '../lib/sanitize-url';

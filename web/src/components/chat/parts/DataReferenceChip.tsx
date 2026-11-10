@@ -38,7 +38,7 @@ export function DataReferenceChip({ dataRef }: DataReferenceChipProps) {
             period: r.period,
             value: Number(r.value),
           }))}
-          onPointHover={(i) => {
+          onPointHover={(_i) => {
             // Point-level tooltip shares the same DataReferencePopup
             // copy as the single-value mode (D17-B4); the hover popup
             // is driven by the chat-message-level pointRef wiring.

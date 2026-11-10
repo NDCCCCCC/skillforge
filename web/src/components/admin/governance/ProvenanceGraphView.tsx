@@ -139,7 +139,6 @@ export default function ProvenanceGraphView() {
     const primary = token('--color-primary');
     const primaryDim = token('--color-primary-dim');
     const borderMuted = token('--color-border-muted');
-    const surface = token('--color-surface');
     const surface3 = token('--color-surface-3');
     const statusOk = token('--color-status-compliant');
     const okTint = token('--color-ok-tint');

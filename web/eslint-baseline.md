@@ -1,65 +1,78 @@
-# 前端 ESLint 基线（2026-11-09）
+# 前端 ESLint 基线（2026-11-09 清零完成）
 
-ESLint 从零引入。首次运行 `npx eslint src --max-warnings=0` 报 **31 处**违规 —— 这是项目从未跑过 lint 的必然结果，不是本次改造引入的。
+**当前：0 处违规。CI 里 `Lint` 是硬门禁。**
 
-**当前剩余 27 处**（2026-11-09 第二次运行）：已清掉 4 处「不是风格问题」的，见下表。
+## 演进路径
 
-处理原则：**先让门禁存在且可见，再逐批清零**。清零前 CI 里这一步是 `continue-on-error: true`（失败会显示，但不阻断 merge），所以：
+| 阶段 | 违规数 | CI 状态 |
+|---|---|---|
+| 首次引入 ESLint | 31 | `continue-on-error: true`（可见但不阻断） |
+| 第一批修复（机械项） | 7 | 同上 |
+| 第二批修复（需判断项） | 0 | — |
+| **清零后** | **0** | **硬门禁（已删除 `continue-on-error`）** |
 
-- 技术债在 CI 日志里**看得见**，不是假装没有
-- 新增代码如果引入新违规，会在 diff 里显形
-- 清零后把 `continue-on-error` 删掉，门禁就变成硬的
+项目此前从未跑过 lint，31 处是历史存量，不是某一次改动引入的。
 
-不要为了「让它绿」去关规则或加 `eslint-disable`。下面每一类都写清了该怎么修。
+## 清零过程记录
 
----
+### 第一批：20 处机械项（零语义风险）
 
-## 已修复的 4 处（2026-11-09）
+| 规则 | 数量 | 改法 |
+|---|---|---|
+| `prefer-const` | 3 | `let` → `const` |
+| `no-useless-assignment` | 2 | 去掉永不生效的初值（`= {}` / `= null`） |
+| `no-unused-vars`（未使用 import） | 8 | 删掉该项或整行 |
+| `no-unused-vars`（未使用参数） | 3 | 加 `_` 前缀，**保留 arity** |
+| `no-unused-vars`（未使用局部/解构） | 4 | 删该行；数组解构用 `const [, vy, vw, vh]` |
 
-这 4 处不是风格问题，是先修掉的：
+### 第二批：7 处需判断项
 
-| 文件 | 规则 | 性质 | 修法 |
-|---|---|---|---|
-| `verdict/CounterEvidenceCard.tsx` | `react-hooks/rules-of-hooks` | **真 bug**：`useAppStore` 在 `if (rows.length === 0) return null` 之后调用。`conflictChunks` 空↔非空切换时 Hook 数量变化 → React 抛 rendered more/fewer hooks 或状态错乱 | Hook 提到提前 return 之前 |
-| `layout/DetailPanel.tsx` | `no-fallthrough` | 有意穿透（`chunk-source` / `doc-view` 共用「引用原文」tab），但注释没被 ESLint 认出来 | **ESLint 只检查紧邻下一个 case 的最后一条注释**里的 `commentPattern`（默认 `/falls?\s?through/i`）——关键词必须落在最后一行，写在前几行它看不到 |
-| `admin/platform/McpInspectorView.tsx` | `no-empty-object-type` | `interface Props {}` 在 TS 里等价于「任意非空值」（`0`、`""` 都满足），既没表达力又是违规源 | 组件本就不接受 props，直接去掉参数 |
-| `verdict/RedlineCard.tsx` | `no-control-regex` | 剥离控制字符是**功能需求**：`clauseId` 会拼进下载文件名，NUL/US 在部分文件系统上产生非法文件名 | `no-control-regex` 对 `\x00` / `\u0000` / 裸字节三种写法**一视同仁地报**，换转义无效 → 提成模块级常量 + 定向 `eslint-disable-next-line` 并写明理由 |
+**真删 3 处**（确实是死代码）：`DocUpload.test.tsx` 的 `getType()`、`OntologyGraphView.tsx` 的 `nodeStyleFor` useCallback 整块、`MockChatTransport.ts` 的 `draftStatus`（声明后只在 `emitDraft` 里赋值，再没人读）。
 
-> 修 `RedlineCard` 时踩了一个坑值得记：批量替换把 `.replace(/^-+|-+$/g, '')`（trim 前后连字符）也误替换成常量引用，导致同一个 replace 出现两次。已经恢复。教训：替换 `.replace(/` 这类模式时必须带上更具体的上下文。
+**ESLint 误判 3 处 → 定向 disable 并写明理由**：
 
----
+`ApprovalRulesPanel.tsx` / `PlanRulesPanel.tsx` 的 `terminalStatus`、`useEvalReports.ts` 的 `reloadKey.current` —— 它们**不在 callback body 里引用**，但必须留在依赖数组里：
 
-## 剩余分类与修法
+> 审批被 approve-and-remember 终态化后，这个依赖让 callback 重建，下游
+> `useEffect([loadRules])` 才会重新拉列表。**删了 → 审批后列表不刷新。**
 
-| 规则 | 剩余数量 | 性质 | 修法 |
-|---|---|---|---|
-| `@typescript-eslint/no-unused-vars` | 18 | 死代码 | 删掉未使用的 import / 变量；若确为对外 API 的占位，改名为 `_x` 或加类型断言使用 |
-| `react-hooks/exhaustive-deps` | 4 | **可能是真 bug** | 逐个判断：依赖确实多余 → 从数组删除；确实需要 → 移进 `useCallback` 或改用 `useRef` |
-| `prefer-const` | 3 | 纯风格 | `let` → `const` |
-| `no-useless-assignment` | 2 | 死赋值 | 删除赋值，或把它变成真正的初值 |
-| 合计 | **27** | | |
+`exhaustive-deps` 只检查 body 引用，看不到「把某个值当作失效触发器」这个意图。这类必须定向 disable，不能照它说的删。
 
-## 优先修的
+**真修 1 处**：`ModelPicker.tsx` 的 cleanup 读 `loadCancelled.current.current`（ref 套 ref）。捕获到闭包常量 `holder` 后再操作，否则 cleanup 执行时 ref 可能已指向新对象，读到别人的状态。
 
-`react-hooks/exhaustive-deps` 的 4 处里有 2 处形如「`useCallback` 有一个多余依赖 `terminalStatus`」（`ApprovalRulesPanel.tsx` / `PlanRulesPanel.tsx`）—— 这类通常意味着 effect 的依赖关系与作者预期不一致，值得 review 而不是机械删除。
+## 两个踩过的坑（写给下一个人）
 
-## 为什么 `no-console` 仍然关闭
+### 1. `eslint-disable-next-line` 的"下一行"是**紧邻的代码行**
 
-`admin/governance/` 下有两处没有 disable 注释的 `console` 调用（`GovernanceTab.tsx` / `ProvenanceGraphView.tsx`）。打开 `no-console` 会让改造范围外的代码直接失败，属于另一批改动。当前那 4 处 `eslint-disable-next-line no-console` 在配置下是"未使用的禁用指令"，因此 `reportUnusedDisableDirectives` 设为 `off`。
+下面这种写法**不生效**（disable 作用到了注释行）：
 
-## 为什么规则一律 error 而不是 warn
-
-`lint` 脚本带 `--max-warnings=0`：任何 warning 都会让命令失败。所以"能过"和"零 warning"是同一件事，`warn` 只会制造假绿。
-
-## 运行
-
-```bash
-cd web
-npm run lint        # eslint src --max-warnings=0
-npm run typecheck   # tsc --noEmit
-npm run verify      # 三者串联
+```tsx
+// eslint-disable-next-line react-hooks/exhaustive-deps -- terminalStatus
+// 故意不出现在 body 里：……
+// 重建 → 下方 useEffect 重新拉列表。
+}, [terminalStatus]);   // ← 仍然报错
 ```
 
-## 一个踩过的坑
+正确写法：说明放在**前面几行**的普通注释里，**最后一条注释必须是单行**的 disable，紧贴目标代码：
 
-`eslint.config.js` 初版用的是 `'no-fallthrough': ['error', { allowEmptyFallthrough: true }]` —— 那是 **ESLint 9 的选项名**，ESLint 10 已移除。写上去不会报"配置项错误"，而是整个 lint 直接 `EXIT=2`（配置校验失败），看起来像 ESLint 坏了。ESLint 10 用 `allowEmptyCase` 表达同一件事且默认 `true`，所以那一行删掉即可。
+```tsx
+// terminalStatus 故意不出现在 body 里：它是失效触发器……
+// eslint-disable-next-line react-hooks/exhaustive-deps -- 刻意的失效触发器，见上
+}, [terminalStatus]);
+```
+
+### 2. `no-fallthrough` 的注释必须落在**紧邻下一个 case 的最后一行**
+
+```tsx
+case 'chunk-source':
+// falls through — 多行说明……
+// 这条注释写了中文解释，关键词不在最后一行
+case 'doc-view':   // ← 仍然报错
+```
+
+`commentPattern`（默认 `/falls?\s?through/i`）只匹配紧邻下一个 case 的**最后一条**注释。
+
+## 维护约定
+
+- **不要为了让它绿而关规则**，也不要无理由加 `eslint-disable`。每一处 disable 必须带 `-- 理由`。
+- 新增违规会直接让 CI 变红，这是刻意的。

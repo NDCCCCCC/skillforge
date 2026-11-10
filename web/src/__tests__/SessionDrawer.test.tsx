@@ -66,7 +66,7 @@ function actionOn(sessionId: string, testid: string) {
 
 /** URL-dispatching fetch stub: /api/session/:id PATCH + DELETE. */
 function stubSessionFetch(ok = true) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith('/api/session/')) {
       return { ok, status: ok ? 200 : 500 } as unknown as Response;

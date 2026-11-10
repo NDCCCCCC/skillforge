@@ -38,7 +38,6 @@ import SfToast from './components/layout/SfToast';
 import EvalDashboard from './components/eval/EvalDashboard';
 import AdminDashboard from './components/admin/AdminDashboard';
 import { MessageBubble } from './components/chat/MessageBubble';
-import HistoryRewriteHint from './components/chat/HistoryRewriteHint';
 import { useSkillReload } from './hooks/useSkillReload';
 import { useSkillAutoSwitch } from './hooks/use-skill-auto-switch';
 import { useResumeBanner } from './hooks/use-resume-banner';

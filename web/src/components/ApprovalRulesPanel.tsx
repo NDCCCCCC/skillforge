@@ -73,6 +73,11 @@ export default function ApprovalRulesPanel() {
     setLoading(false);
     // terminalStatus is the reactive re-fetch trigger (rule created via
     // approve-and-remember terminalizes the pending approval → re-list).
+    //
+    // terminalStatus 故意不出现在 body 里：它在这里的唯一作用就是「审批
+    // 终态变化 → callback 重建 → 下方 useEffect 重新拉列表」。exhaustive-deps
+    // 只检查 body 引用，看不到这个意图；照它说的删掉依赖，审批后列表不刷新。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 刻意的失效触发器，见上
   }, [activeSessionId, currentSkillId, terminalStatus]);
 
   useEffect(() => {

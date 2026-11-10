@@ -15,7 +15,7 @@
 // The filter bar debounces changes by 300ms before dispatching
 // setAuditFilter and refetching /api/audit (D6-03 + D6-05).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Search, ShieldAlert } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';

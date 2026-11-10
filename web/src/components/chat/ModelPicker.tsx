@@ -114,10 +114,16 @@ export default function ModelPicker() {
   const loadCancelled = useRef({ current: false });
 
   useEffect(() => {
-    loadCancelled.current.current = false;
-    void load(loadCancelled.current);
+    // 2026-11-09：先把 holder 捕获到闭包常量。loadCancelled 是
+    // useRef({current:false})，直接在 cleanup 里读 loadCancelled.current
+    // 会在 ref 已指向新对象时读到别人的状态（exhaustive-deps 的警告
+    // "ref value will likely have changed by the time this cleanup runs"
+    // 说的正是这个）。捕获之后 cleanup 操作的一定是本轮那个 holder。
+    const holder = loadCancelled.current;
+    holder.current = false;
+    void load(holder);
     return () => {
-      loadCancelled.current.current = true;
+      holder.current = true;
     };
   }, [load]);
 

@@ -185,7 +185,7 @@ describe('ChatInput slash-command Skill menu (quick plan 260815-0xb)', () => {
 
   it('Enter sends when the menu is NOT open (unchanged legacy behavior)', () => {
     seedSkills();
-    let sent: string[] = [];
+    const sent: string[] = [];
     render(<ChatInput onSend={(t) => { sent.push(t); }} />);
     type('普通问题');
     fireEvent.keyDown(screen.getByTestId('chat-input-textarea'), { key: 'Enter' });

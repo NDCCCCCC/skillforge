@@ -20,7 +20,7 @@ import { cn } from '../../../lib/cn';
 import { useAdminData } from '../shared/useAdminData';
 import { PageHeader } from '../shared/Primitives';
 import { Button } from '../../ui/button';
-import { fetchShaclReport, runPipeline } from './governanceApi';
+import { runPipeline } from './governanceApi';
 import type { ShaclReport } from './types';
 import ShaclReportView from './ShaclReportView';
 import ProvenanceGraphView from './ProvenanceGraphView';
@@ -115,7 +115,6 @@ export default function GovernanceTab() {
   const [view, setView] = useState<GovernanceView>('shacl');
   const {
     data: rawData,
-    loading: shaclLoading,
     error: shaclHookError,
     reload: reloadShacl,
   } = useAdminData<ShaclReport>('/api/admin/governance/shacl');

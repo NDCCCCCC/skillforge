@@ -23,7 +23,6 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { AlertTriangle } from 'lucide-react';
-import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import type { IndexRun } from '../../types/eval';
 

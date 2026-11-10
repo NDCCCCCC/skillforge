@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { render, screen, fireEvent } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { DrillChip } from './DrillChip';
 import { useAppStore } from '../../../store/app-store';

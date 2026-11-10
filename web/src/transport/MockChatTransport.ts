@@ -70,10 +70,8 @@ export class MockChatTransport implements ChatTransport<UIMessage> {
     // turn's stream starts fresh (verifying the chip clears on refusal
     // is the test responsibility, not the transport's).
     let draftBuffer = '';
-    let draftStatus: DraftStatus = 'pending';
 
     const emitDraft = (next: DraftStatus, text: string) => {
-      draftStatus = next;
       draftBuffer = text;
       this.onDraftUpdate({ status: next, draftText: text });
     };

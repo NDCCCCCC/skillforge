@@ -122,7 +122,7 @@ async function postJson(url: string, body: unknown): Promise<PostResult> {
       networkError: true,
     };
   }
-  let data: unknown = null;
+  let data: unknown;
   try {
     data = await resp.json();
   } catch {

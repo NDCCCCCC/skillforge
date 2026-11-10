@@ -43,7 +43,7 @@ afterEach(() => {
 
 describe('fetchKnowledgeBases', () => {
   it('fetches the public projection once and caches it module-wide', async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) => Promise.resolve(basesOk(SEED_BASES)));
+    const fetchMock = vi.fn((_input: RequestInfo | URL) => Promise.resolve(basesOk(SEED_BASES)));
     vi.stubGlobal('fetch', fetchMock);
     const mod = await fresh();
 

@@ -58,7 +58,7 @@ function adminHeaders(token: string): HeadersInit {
 
 async function parse(res: Response): Promise<unknown> {
   const text = await res.text();
-  let body: { error?: string } = {};
+  let body: { error?: string };
   try {
     body = text ? (JSON.parse(text) as { error?: string }) : {};
   } catch {

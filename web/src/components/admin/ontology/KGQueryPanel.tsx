@@ -14,7 +14,7 @@
 // The user-triggered pattern query stays an explicit mutation — it is
 // not an initial load, so it keeps the imperative fetch flow.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Download, Search } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { Button } from '../../ui/button';

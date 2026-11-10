@@ -85,6 +85,10 @@ export default function PlanRulesPanel() {
     }
     setLoading(false);
     // terminalStatus is the reactive re-fetch trigger.
+    //
+    // terminalStatus 不在 body 里引用，它是「plan 审批终态变化 → 重建
+    // callback → 重新拉列表」的触发器。删掉依赖会让审批后列表不刷新。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 刻意的失效触发器，见上
   }, [activeSessionId, currentSkillId, terminalStatus]);
 
   useEffect(() => {

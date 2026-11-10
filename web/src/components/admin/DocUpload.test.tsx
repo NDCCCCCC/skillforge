@@ -50,9 +50,6 @@ function headerOf(fetchMock: FetchMock, url: string, method: string): string {
   return ((init?.headers ?? {}) as Record<string, string>)['X-Admin-Token'];
 }
 
-function getType(url: string) {
-  return { url, method: 'GET' };
-}
 function postType(url: string) {
   return { url, method: 'POST' };
 }

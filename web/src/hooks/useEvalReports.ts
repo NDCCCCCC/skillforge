@@ -76,6 +76,9 @@ export function useEvalReports(pollIntervalMs = 30_000): UseEvalReportResult {
       cancelled = true;
       window.clearInterval(id);
     };
+    // reloadKey.current 是刻意放的失效触发器：调用方 bump 这个 ref 并伴随
+    // 一次重渲染时，依赖值变化会让本 effect 重跑（见下方 refetch 的注释）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 刻意的失效触发器，见上
   }, [pollIntervalMs, reloadKey.current, fetchOnce]);
 
   // Refetch trigger: bump the ref so the effect re-runs.
