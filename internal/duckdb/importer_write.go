@@ -24,7 +24,7 @@ import (
 	"iter"
 	"regexp"
 
-	"github.com/marcboeker/go-duckdb/v2"
+	"github.com/duckdb/duckdb-go/v2"
 )
 
 // Allowed staging column types. These are the only DuckDB types the Appender

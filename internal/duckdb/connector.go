@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package duckdb owns the DuckDB connection mode for SkillForge v1.0 data
-// support. It uses github.com/marcboeker/go-duckdb/v2 (CGO, DuckDB engine
+// support. It uses github.com/duckdb/duckdb-go/v2 (CGO, DuckDB engine
 // v1.4.1) and enforces three lifecycle disciplines:
 //
 //   1. Hermetic boot-queries: every new connection replays the two SET
@@ -43,7 +43,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/marcboeker/go-duckdb/v2"
+	"github.com/duckdb/duckdb-go/v2"
 )
 
 // bootHermetic contains the two hermetic SET statements. They are deliberately
