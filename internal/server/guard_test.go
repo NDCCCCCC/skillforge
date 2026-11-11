@@ -120,3 +120,52 @@ func TestGuardRejectsAddedTable(t *testing.T) {
 	assert.Contains(t, replacement, "未通过模板校验")
 	assert.Contains(t, replacement, "secret_salary_t")
 }
+
+// 跨 chunk 模板重组（DESIGN §8.4）：4KB 分片会把一份取数模板切成两段，
+// 单段抽不出完整 SQL 时 guard 只能 skip —— 等于这条请求没有本体校验。
+// 同一来源、id 相邻的分片必须能接回去，让违规改动仍然被拦下。
+func TestGuardVerifiesAcrossAdjacentChunkFragments(t *testing.T) {
+	// 切在 FROM 之前：前半只有 select 列表（无表），后半没有 SELECT 关键字，
+	// 两段单独都抽不出可用模板。
+	cut := strings.Index(guardNoteSQL, "\nfrom ")
+	require.Positive(t, cut)
+	first := "**涉及表/视图**: wuh_dw.etl_nonauto_policy_t\n\n```sql\n" + guardNoteSQL[:cut] + "\n"
+	second := guardNoteSQL[cut+1:] + "\n```"
+
+	fragments := []retriever.Hit{
+		{ID: 21, Tier: "personal", Source: "sql-guides/030_承保清单.md", Content: first},
+		{ID: 22, Tier: "personal", Source: "sql-guides/030_承保清单.md", Content: second},
+	}
+
+	// 违规：把谓词字段换掉。只有模板被拼回来，R3 才会报。
+	gen := strings.ReplaceAll(guardNoteSQL,
+		"a.department_group_name = '黄冈中心支公司'",
+		"a.department_name = '黄冈中心支公司'")
+
+	rejected, replacement := guardOperationalSQL(answerWithSQL(gen), fragments)
+	require.True(t, rejected,
+		"adjacent fragments must be merged so the predicate change is caught")
+	assert.Contains(t, replacement, "未通过模板校验")
+}
+
+// 对照组：id 不相邻说明中间那段没进 prompt，不能硬拼 —— 拼了就是把两份
+// 不同的模板缝在一起。此时仍应 fail-open（跳过校验、放行）。
+func TestGuardDoesNotMergeNonAdjacentFragments(t *testing.T) {
+	cut := strings.Index(guardNoteSQL, "\nfrom ")
+	require.Positive(t, cut)
+	first := "**涉及表/视图**: wuh_dw.etl_nonauto_policy_t\n\n```sql\n" + guardNoteSQL[:cut] + "\n"
+	second := guardNoteSQL[cut+1:] + "\n```"
+
+	fragments := []retriever.Hit{
+		{ID: 21, Tier: "personal", Source: "sql-guides/030_承保清单.md", Content: first},
+		{ID: 23, Tier: "personal", Source: "sql-guides/030_承保清单.md", Content: second},
+	}
+
+	gen := strings.ReplaceAll(guardNoteSQL,
+		"a.department_group_name = '黄冈中心支公司'",
+		"a.department_name = '黄冈中心支公司'")
+
+	rejected, _ := guardOperationalSQL(answerWithSQL(gen), fragments)
+	assert.False(t, rejected,
+		"non-adjacent fragments must not be stitched together; the guard has to fail open")
+}

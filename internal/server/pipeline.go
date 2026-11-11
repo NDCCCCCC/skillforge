@@ -25,6 +25,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -41,10 +42,10 @@ import (
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
-	"github.com/skillforge/skillforge/internal/sqlguard"
 	"github.com/skillforge/skillforge/internal/server/classifier"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
+	"github.com/skillforge/skillforge/internal/sqlguard"
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
@@ -1108,6 +1109,57 @@ func (s *Deps) emitOperationalAnswer(ctx context.Context, c *app.RequestContext,
 	return s.emitVerdictWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, v, chunks, allChunksByID(chunks), qvec, now)
 }
 
+// chunkTemplateCandidates 把「进了 prompt 的那几条 chunk」展开成一组可供模板
+// 抽取的文本：先是每条 chunk 各自，再加上「同一来源、chunk id 相邻」的连续
+// 段拼接后的文本。
+//
+// 为什么需要拼接：笔记按 4KB 分片入向量库，一份取数模板会被切成 2-3 段
+// （GTB 报告与 030 承保清单的 `'2025'che` 残片都是这个成因）。单段抽不出完整
+// SQL 时，`BestTemplate` 会返回 ok=false，guard 只能 skip —— 等于该请求没有
+// 本体校验。把连续分片接回去，模板才重新可解析。
+//
+// 拼接策略是「原样相接」+「补一个换行」两种变体都试：分片可能切在字符中间
+// （原样相接才对），也可能切在行边界（补换行才对）。文本很小，两种都试最省心。
+//
+// 只在 id 严格相邻时才合并：检索命中的是 top-K 子集，id 不连续说明中间那段
+// 没进 prompt，硬拼会把两份不同的模板缝在一起。
+func chunkTemplateCandidates(chunks []retriever.Hit) []string {
+	cands := make([]string, 0, len(chunks)*2)
+	for _, ch := range chunks {
+		cands = append(cands, ch.Content)
+	}
+
+	ordered := append([]retriever.Hit(nil), chunks...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].Source != ordered[j].Source {
+			return ordered[i].Source < ordered[j].Source
+		}
+		return ordered[i].ID < ordered[j].ID
+	})
+
+	for i := 0; i < len(ordered); {
+		j := i + 1
+		for j < len(ordered) &&
+			ordered[j].Source == ordered[i].Source &&
+			ordered[j].ID == ordered[j-1].ID+1 {
+			j++
+		}
+		if j-i >= 2 {
+			var raw, spaced strings.Builder
+			for k := i; k < j; k++ {
+				if k > i {
+					spaced.WriteString("\n")
+				}
+				raw.WriteString(ordered[k].Content)
+				spaced.WriteString(ordered[k].Content)
+			}
+			cands = append(cands, raw.String(), spaced.String())
+		}
+		i = j
+	}
+	return cands
+}
+
 // guardOperationalSQL 是 V2 本体化的接入点：拿检索到的已审核取数笔记当
 // 「模板本体」，把 LLM 生成的 SQL 与它做结构级比对，越界就拒绝。
 //
@@ -1130,12 +1182,13 @@ func guardOperationalSQL(ans string, chunks []retriever.Hit) (rejected bool, rep
 	if n > maxRecipes {
 		n = maxRecipes
 	}
+	cands := chunkTemplateCandidates(chunks[:n])
 
 	checked := 0
 	var worst sqlguard.Report
 	var worstTemplate string
-	for i := 0; i < n; i++ {
-		tmplSQL, tmplShape, ok := sqlguard.BestTemplate(chunks[i].Content, genSQL)
+	for _, content := range cands {
+		tmplSQL, tmplShape, ok := sqlguard.BestTemplate(content, genSQL)
 		if !ok || !tmplShape.Ok {
 			continue
 		}
@@ -1179,7 +1232,7 @@ func guardOperationalSQL(ans string, chunks []retriever.Hit) (rejected bool, rep
 		worstTemplate = tmplSQL
 	}
 	if checked == 0 {
-		log.Printf("[WARN] server: sqlguard could not verify — no parseable template among %d chunk(s)", n)
+		log.Printf("[WARN] server: sqlguard could not verify — no parseable template among %d chunk(s) / %d candidate text(s)", n, len(cands))
 		return false, ""
 	}
 	log.Printf("[WARN] server: sqlguard rejected generated SQL — %s", worst.Summary())
