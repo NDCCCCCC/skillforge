@@ -513,7 +513,7 @@ func (s *Deps) runAgentPath(ctx context.Context, c *app.RequestContext, req chat
 	// chunkAccumulator is not exposed across the package boundary; a
 	// future Plan can lift it via an accessor if richer source-document
 	// metadata is needed.
-	_ = emitVerdictStream(c, v, nil, nil)
+	_ = emitVerdictStream(c, v, nil, nil, true)
 	// 29-04 (T-29-06): persist the audit row + turn pair FIRST and emit
 	// the data-turn vote key BEFORE the terminal frames — useChat
 	// registers the assistant message at finish, so the FeedbackRow
@@ -804,10 +804,17 @@ func (s *Deps) findSkill(name string) *skill.Manifest {
 // discriminated union has no "tier" field on the source-document
 // variant; stuffing it in Data would not parse through the v5
 // client parser. The Verdict payload is the canonical place.
-func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retriever.Hit, reg kb.Registry) error {
+func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retriever.Hit, reg kb.Registry, emitText bool) error {
 	// text-start anchors the AI SDK v5 assistant message so useChat
 	// registers it in chat.messages. A data-only stream (source-document +
 	// data-policy) creates no message without a content chunk.
+	//
+	// 2026-11-11：emitText=false 表示**正文已经流式发过了**（streamTextSink
+	// 在生成期就发了 text-start + 逐 token text-delta），这里不能再发一遍，
+	// 否则同一段答案会出现两次。text-end 仍由调用方在收尾统一发。
+	if !emitText {
+		return emitVerdictTail(c, v, chunks)
+	}
 	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-start", ID: "msg-1"}); err != nil {
 		return fmt.Errorf("emit text-start: %w", err)
 	}
@@ -826,6 +833,16 @@ func emitVerdictStream(c *app.RequestContext, v verdict.Verdict, chunks []retrie
 	if err := wire.EmitChunk(c, wire.UIMessageChunk{Type: "text-delta", ID: "msg-1", Delta: conclusionText(v, reg)}); err != nil {
 		return fmt.Errorf("emit text-delta: %w", err)
 	}
+	return emitVerdictTail(c, v, chunks)
+}
+
+// emitVerdictTail 发 verdict 的"附件"：逐 citation 的 source-document，以及
+// 承载完整结构化结论的 data-policy。
+//
+// 正文（text part）刻意不在这里发：要么由本函数的调用方刚整段发过，
+// 要么由 streamTextSink 在生成期逐 token 发过（2026-11-11 流式正文）。
+// 这样两条路径共用同一段收尾代码，不会出现"流式一套、整段一套"的漂移。
+func emitVerdictTail(c *app.RequestContext, v verdict.Verdict, chunks []retriever.Hit) error {
 	// 1. source-document per citation (SC-6). mediaType is REQUIRED by the
 	// AI SDK v5 source-document schema (index.js:6672-6679): sourceId +
 	// mediaType + title are all non-optional. Omitting mediaType fails zod

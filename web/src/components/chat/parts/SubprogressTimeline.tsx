@@ -21,18 +21,16 @@
 //     其余降权 —— 眼睛始终知道"现在跑到第几枪"；
 //   - 每一步结束时留下真实耗时（下一步入场时刻 - 本步入场时刻），
 //     用户看得见"这一步花了 32 秒"，而不是一坨静止的列表；
-//   - 「正在生成结论」那一步额外显示实时输出字数（订阅 store 里的
-//     draftText —— 后端 streamOnce 逐 token 发 text-delta-draft，所以
-//     这个数字是真进度，不是假动画）。后端实测：5 条步骤在 0.3 秒内
-//     全发完，之后 66 秒只有模型在生成；没有这行跳动的"已输出 N 字 /
-//     Ns"，界面在那一分钟里就是死的；
+//   - 进行中的那一步带跳动的秒数（"进行中 · 52s"）。后端实测：5 条
+//     步骤在 0.3 秒内全发完，之后 60~90 秒只有模型在生成；没有这行
+//     秒数，界面在那分钟里就是死的。至于"生成了多少"，正文本身已经
+//     逐 token 流出来（streamTextSink，2026-11-11），不需要再报字数；
 //   - 回复结束后自动整体落定（全部打勾、标题变"已完成 N 步"），仍可
 //     手动收起/展开。
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import type { SubprogressStep } from '../../../types/verdict';
 import { useTierLabel } from '../../../lib/kb-bases';
-import { useAppStore } from '../../../store/app-store';
 import { renderStepCopy } from './subprogress-copy';
 
 /** 两条步骤之间最小的显示间隔（毫秒）。后端可能一口气连发多条，
@@ -57,13 +55,10 @@ function StepRow({
   entry,
   state,
   elapsedMs,
-  streamChars,
 }: {
   entry: SubprogressEntry;
   state: StepState;
   elapsedMs: number;
-  /** 当前这轮已到达的草稿字数（只有生成类步骤才展示）。 */
-  streamChars: number;
 }) {
   const tier = entry.data.tier ?? '';
   // Hook 必须无条件调用；空 tier 时 useTierLabel('') 是 no-op。
@@ -74,9 +69,6 @@ function StepRow({
   // 进行中的那一步显示"进行中 · 32s" —— 后端在 0.3 秒内把 5 条步骤全发完，
   // 之后是几十秒的模型生成期；没有这行跳动的秒数，界面就是死的。
   const meta = state === 'active' ? (elapsed ? `进行中 · ${elapsed}` : '进行中') : elapsed;
-  const generating =
-    entry.data.step === 'generate' || entry.data.step === 'generating';
-  const showChars = state === 'active' && generating && streamChars > 0;
   return (
     <li
       className="proc-step"
@@ -91,15 +83,7 @@ function StepRow({
           <Check className="proc-step-check" />
         )}
       </span>
-      <span className="proc-step-text">
-        {copy}
-        {showChars && (
-          <span className="proc-step-stream" data-testid="proc-stream-chars">
-            {' '}
-            · 已输出 {streamChars} 字
-          </span>
-        )}
-      </span>
+      <span className="proc-step-text">{copy}</span>
       <span className="proc-step-meta">{meta}</span>
     </li>
   );
@@ -117,9 +101,6 @@ export default function SubprogressTimeline({ entries, live }: SubprogressTimeli
   // 正在生成的回复从第一条开始一条一条落。
   const [shown, setShown] = useState(() => (live ? Math.min(1, total) : total));
   const [collapsed, setCollapsed] = useState(false);
-  // 后端逐 token 发 text-delta-draft → store.draftText 就是这一轮模型已经
-  // 吐出来的真实内容。拿它的字数做「已输出 N 字」，是真实进度而非假动画。
-  const draftText = useAppStore((s) => s.draftText);
   // 每秒一跳：让"进行中 · Ns"真的在走（后端发完步骤后到模型出结果之间
   // 常有几十秒静默，静止的"进行中"看起来像卡死）。
   const [, setTick] = useState(0);
@@ -209,7 +190,6 @@ export default function SubprogressTimeline({ entries, live }: SubprogressTimeli
                 entry={entry}
                 state={active ? 'active' : 'done'}
                 elapsedMs={elapsedMs}
-                streamChars={draftText.length}
               />
             );
           })}

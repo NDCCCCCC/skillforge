@@ -383,7 +383,8 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, true)
 	}
 
-	return s.emitVerdictWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, v, chunks, chunksByID, qvec, now)
+	// verdict 通道：正文由 emitVerdictStream 整段发（conclusionText）。
+	return s.emitVerdictWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, v, chunks, chunksByID, qvec, now, true)
 }
 
 // buildAuditMeta runs Step 0: loads session history and emits history
@@ -438,7 +439,11 @@ func (s *Deps) emitRefusalWithChunks(ctx context.Context, c *app.RequestContext,
 // When PipelineChatModel is wired it streams and assembles; otherwise it falls
 // back to Runner.Query + drainFinalContent.
 func (s *Deps) streamLLMAndDrain(ctx context.Context, c *app.RequestContext, manifest *skill.Manifest, systemPrompt, userPrompt string, historyMsgs []schema.Message) (string, error) {
-	return s.streamLLMAndDrainWith(ctx, c, manifest, systemPrompt, userPrompt, historyMsgs, llm.PipelineExtraFields())
+	// nil sink：verdict 通道的正文是 conclusionText(v)（由已核验的结构化
+	// 结论确定性拼出来的），不是 LLM 原文 —— 把 LLM 的 JSON 增量直接当正文
+	// 流出去等于把机器可读的中间产物丢给用户。流式机制本身是通用的，
+	// 见 streamTextSink；按通道启用，不让这里改变既有信任语义。
+	return s.streamLLMAndDrainWith(ctx, c, manifest, systemPrompt, userPrompt, historyMsgs, llm.PipelineExtraFields(), nil)
 }
 
 // streamLLMAndDrainWith is streamLLMAndDrain with an explicit extra-field set.
@@ -449,7 +454,7 @@ func (s *Deps) streamLLMAndDrain(ctx context.Context, c *app.RequestContext, man
 // llm.OperationalExtraFields for the live failure this fixes). Everything else
 // (temperature from the manifest, max tokens, history handling, the
 // PipelineChatModel wiring) is byte-identical for both callers.
-func (s *Deps) streamLLMAndDrainWith(ctx context.Context, c *app.RequestContext, manifest *skill.Manifest, systemPrompt, userPrompt string, historyMsgs []schema.Message, extraFields map[string]any) (string, error) {
+func (s *Deps) streamLLMAndDrainWith(ctx context.Context, c *app.RequestContext, manifest *skill.Manifest, systemPrompt, userPrompt string, historyMsgs []schema.Message, extraFields map[string]any, sink *streamTextSink) (string, error) {
 	temp := float32(0.0)
 	if manifest.Temperature != nil {
 		temp = *manifest.Temperature
@@ -469,7 +474,7 @@ func (s *Deps) streamLLMAndDrainWith(ctx context.Context, c *app.RequestContext,
 		for i := range historyMsgs {
 			historyPtrs[i] = &historyMsgs[i]
 		}
-		return s.streamAndAssemble(ctx, c, systemPrompt, userPrompt, historyPtrs, chatModelOpts)
+		return s.streamAndAssemble(ctx, c, systemPrompt, userPrompt, historyPtrs, chatModelOpts, sink)
 	}
 
 	// Phase 2 fallback.
@@ -497,13 +502,13 @@ func (s *Deps) streamLLMAndDrainWith(ctx context.Context, c *app.RequestContext,
 
 // emitVerdictWithChunks handles Steps 11-12: SSE emit, audit write,
 // counter-evidence pass, redline pass, and terminal chunks.
-func (s *Deps) emitVerdictWithChunks(ctx context.Context, c *app.RequestContext, sessionID, skillID, query string, tiers []string, meta *store.AuditMeta, v verdict.Verdict, chunks []retriever.Hit, chunksByID map[string]string, qvec []float32, now int64) error {
+func (s *Deps) emitVerdictWithChunks(ctx context.Context, c *app.RequestContext, sessionID, skillID, query string, tiers []string, meta *store.AuditMeta, v verdict.Verdict, chunks []retriever.Hit, chunksByID map[string]string, qvec []float32, now int64, emitText bool) error {
 	// sql-guides-needs-input (2026-09-14): recomputed from the same pure
 	// predicate VerdictPipeline used for the grounding closure — same
 	// inputs (registry, tiers), same function, so the two derivations
 	// cannot drift.
 	operational := !readsCitableTier(s.KBRegistry, tiers)
-	emitErr := emitVerdictStream(c, v, chunks, s.KBRegistry)
+	emitErr := emitVerdictStream(c, v, chunks, s.KBRegistry, emitText)
 	turnID, writeErr := s.writeAuditAndTurn(ctx, sessionID, skillID, query, v, skillID, "", meta)
 	persisted := turnID > 0 && writeErr == nil
 	if emitErr != nil {
@@ -692,6 +697,7 @@ func (s *Deps) streamAndAssemble(
 	user string,
 	historyMsgs []*schema.Message,
 	opts []model.Option,
+	sink *streamTextSink,
 ) (string, error) {
 	var lastErr error
 	for attempt := 1; attempt <= streamMaxAttempts; attempt++ {
@@ -711,7 +717,7 @@ func (s *Deps) streamAndAssemble(
 		// a slow-but-progressing stream mid-answer, which is exactly what the
 		// "60s of silence" comment above was trying to detect — the intent and
 		// the implementation disagreed.
-		raw, tokens, err := s.streamOnce(ctx, c, system, user, historyMsgs, opts)
+		raw, tokens, err := s.streamOnce(ctx, c, system, user, historyMsgs, opts, sink)
 		if err == nil {
 			return raw, nil
 		}
@@ -750,6 +756,7 @@ func (s *Deps) streamOnce(
 	user string,
 	historyMsgs []*schema.Message,
 	opts []model.Option,
+	sink *streamTextSink,
 ) (string, int, error) {
 	// DEBUG (260815-gcw): streamAndAssemble entry. Fires immediately after
 	// VerdictPipeline has built the prompt (Step 7). sessionID is NOT in the
@@ -898,6 +905,11 @@ func (s *Deps) streamOnce(
 		}); emitErr != nil {
 			log.Printf("[WARN] server: emit text-delta-draft: %v (non-fatal)", emitErr)
 		}
+		// 2026-11-11：同一份增量同时写进**正文**（sink 为 nil 时是空操作，
+		// verdict 通道保持原来的"整段结论"行为）。这就是"真实的流式请求"：
+		// 用的本来就是 Eino ChatModel.Stream 逐 token 的 Recv 循环，只是过去
+		// 这些增量只喂了草稿卡，正文要等解包/校验完才一次性吐出来。
+		sink.Push(msg.Content)
 		buf.WriteString(msg.Content)
 	}
 	// Terminal marker — FE uses this to switch DraftStreamChip from 🟡
@@ -1061,43 +1073,23 @@ func (s *Deps) emitOperationalAnswer(ctx context.Context, c *app.RequestContext,
 	// answer in a JSON object.」，再发 JSON 模式等于自相矛盾：实测模型把整段
 	// SQL 塞进 {"final_answer":"..."}，换行被转义成 \\n 字符（token 翻倍、
 	// 更慢），而下面的解包只认 "answer" 键 —— 用户直接看到一坨原始 JSON。
-	raw, err := s.streamLLMAndDrainWith(ctx, c, manifest, system, user, historyMsgs, llm.OperationalExtraFields())
+	// 2026-11-11 流式正文：模型增量直接写成 assistant 正文。
+	// Eino 的 ChatModel.Stream 早就把 token 逐个交到我们手里（streamOnce
+	// 的 Recv 循环），过去这些增量只喂了 text-delta-draft（草稿卡），正文
+	// 要等整段生成、JSON 解包、guard 校验完才一次吐出 —— 用户因此干等
+	// 60~90 秒。现在同一份增量同时进正文：生成即所见。
+	sink := newStreamTextSink(c)
+	raw, err := s.streamLLMAndDrainWith(ctx, c, manifest, system, user, historyMsgs, llm.OperationalExtraFields(), sink)
 	if err != nil {
 		return fmt.Errorf("verdict pipeline: operational LLM: %w", err)
 	}
-	ans := strings.TrimSpace(raw)
+	sink.Flush()
+
+	ans, streamed := finalizeOperationalAnswer(raw, sink, chunks)
 	if ans == "" {
 		return fmt.Errorf("verdict pipeline: operational LLM returned empty answer")
 	}
-	// 2026-11-10：模型经常无视 "Do NOT wrap in JSON"，仍然返回
-	// {"answer":"...","status":"completed"}。直接把 raw 当答案会把整段
-	// JSON 文本吐到对话里（用户截图的现场）。这里先尝试抽出 answer 字段，
-	// 抽不到才按纯 markdown 处理。
-	if inner := llm.ExtractJSON(ans); inner != "" {
-		var wrapper struct {
-			Answer string `json:"answer"`
-		}
-		if json.Unmarshal([]byte(inner), &wrapper) == nil {
-			if a := strings.TrimSpace(wrapper.Answer); a != "" {
-				ans = a
-			}
-		}
-	}
-	// 模型自己也可能吐 CR（尤其被要求"逐字复制"时）。CR 在 web 上不换行，
-	// 会让 SQL 挤成一行、相邻 token 粘连（"awhere"）。
-	//
-	// V2 本体化：把「只许改参数槽位」从 prompt 约束升级成代码校验。
-	// 任一授权模板通过校验就放行；全部不通过则拒绝输出生成的 SQL 并回退
-	// 到模板原文（见 guardOperationalSQL）。
-	if rejected, replacement := guardOperationalSQL(ans, chunks); rejected {
-		log.Printf("[WARN] server: sqlguard rejected the generated SQL; falling back to the template")
-		ans = replacement
-	}
 
-	// 换行归一必须放在 guard 之后：回退文本里嵌的是笔记原文，同样可能带
-	// 真 CR（2026-11-11 实测：回退路径漏归一，输出里出现 26 个 CR）。
-	ans = strings.ReplaceAll(ans, "\r\n", "\n")
-	ans = strings.ReplaceAll(ans, "\r", "\n")
 
 	v := verdict.Verdict{
 		Status:           "ok",
@@ -1106,7 +1098,76 @@ func (s *Deps) emitOperationalAnswer(ctx context.Context, c *app.RequestContext,
 		ComplianceStatus: "not_applicable",
 		Citations:        []verdict.Citation{},
 	}
-	return s.emitVerdictWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, v, chunks, allChunksByID(chunks), qvec, now)
+	// streamed=true 表示正文已经在生成期流式发过，这里只发 data-policy 等附件，
+	// 不再把同一段答案整段重发一遍。
+	return s.emitVerdictWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, v, chunks, allChunksByID(chunks), qvec, now, !streamed)
+}
+
+// finalizeOperationalAnswer 把模型原始输出收敛成"最终答案"，并且保证它
+// 与**已经流给用户看的内容**一致。
+//
+// 两种模式：
+//   - streamed=true：正文在生成期已逐 token 发出（sink.Out() 就是用户
+//     看到的那份）。此时任何后处理都只能「追加」，不能回撤 —— 这也是
+//     guard 拒绝时不再整段替换成回退文案、而是把"未通过校验 + 知识库原文
+//     模板"接在后面的原因：用户已经读过的内容不该悄悄消失。
+//   - streamed=false：探针判定模型把答案包成了 JSON（或压根没直出），走
+//     原来的整段解包 + 校验路径，行为与改造前完全一致。
+func finalizeOperationalAnswer(raw string, sink *streamTextSink, chunks []retriever.Hit) (string, bool) {
+	streamed := sink.Started()
+	var ans string
+	if streamed {
+		ans = strings.TrimSpace(sink.Out())
+		if ans == "" {
+			streamed = false
+		}
+	}
+	if !streamed {
+		ans = strings.TrimSpace(raw)
+		if ans == "" {
+			return "", false
+		}
+		// 模型经常无视 "Do NOT wrap in JSON"，仍然返回
+		// {"answer":"...","status":"completed"}。直接把 raw 当答案会把整段
+		// JSON 文本吐到对话里（用户截图的现场）。
+		if inner := llm.ExtractJSON(ans); inner != "" {
+			var wrapper struct {
+				Answer string `json:"answer"`
+			}
+			if json.Unmarshal([]byte(inner), &wrapper) == nil {
+				if a := strings.TrimSpace(wrapper.Answer); a != "" {
+					ans = a
+				}
+			}
+		}
+		ans = normalizeLineEndings(ans)
+	}
+
+	// V2 本体化：把「只许改参数槽位」从 prompt 约束升级成代码校验。任一授权
+	// 模板通过校验就放行；全部不通过则拒绝输出生成的 SQL。
+	if rejected, replacement := guardOperationalSQL(ans, chunks); rejected {
+		if streamed {
+			log.Printf("[WARN] server: sqlguard rejected the generated SQL; the streamed answer stays visible, appending the recipe instead of replacing it")
+			tail := "\n\n" + replacement
+			sink.Append(tail)
+			ans += tail
+		} else {
+			log.Printf("[WARN] server: sqlguard rejected the generated SQL; falling back to the template")
+			ans = replacement
+		}
+	}
+
+	// 回退文本里嵌的是笔记原文，可能带真 CR（2026-11-11 实测：回退路径漏
+	// 归一，输出里出现 26 个 CR）。sink 路径的 CR 已在流式阶段逐帧归一，
+	// 这里再兜一次是幂等的。
+	return normalizeLineEndings(ans), streamed
+}
+
+// normalizeLineEndings 把 CRLF / 裸 CR 统一成 LF。CR 在 web 上不换行，
+// 会让 SQL 挤成一行、相邻 token 粘连（"awhere"）。
+func normalizeLineEndings(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\r", "\n")
 }
 
 // chunkTemplateCandidates 把「进了 prompt 的那几条 chunk」展开成一组可供模板

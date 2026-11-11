@@ -1016,12 +1016,6 @@ body[data-dragging="true"] * {
   color: var(--color-text);
 }
 
-/* 「已输出 N 字」——真实进度，字宽对齐避免数字跳动时文字左右抖。 */
-.proc-step-stream {
-  color: var(--color-primary-hover);
-  font-variant-numeric: tabular-nums;
-}
-
 .proc-step-meta {
   flex: 0 0 auto;
   padding-top: 1px;
