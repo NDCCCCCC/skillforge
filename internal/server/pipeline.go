@@ -895,21 +895,27 @@ func (s *Deps) streamOnce(
 		if os.Getenv("SKILLFORGE_DEBUG_STREAM_TOKENS") == "1" {
 			log.Printf("[INFO] server: streamAndAssemble recv token_n=%d delta_bytes=%d", tokenN, len(msg.Content))
 		}
-		// Best-effort draft emit. A dead SSE socket logs + swallows
-		// the failure — the verdict emit (the trust-bearing path)
-		// surfaces the real error to the caller.
-		if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
-			Type:  "text-delta-draft",
-			ID:    "draft-1",
-			Delta: msg.Content,
-		}); emitErr != nil {
-			log.Printf("[WARN] server: emit text-delta-draft: %v (non-fatal)", emitErr)
-		}
 		// 2026-11-11：同一份增量同时写进**正文**（sink 为 nil 时是空操作，
 		// verdict 通道保持原来的"整段结论"行为）。这就是"真实的流式请求"：
 		// 用的本来就是 Eino ChatModel.Stream 逐 token 的 Recv 循环，只是过去
 		// 这些增量只喂了草稿卡，正文要等解包/校验完才一次性吐出来。
 		sink.Push(msg.Content)
+		// draft 帧只在正文还没开始流的时候发。正文一旦逐 token 出现在
+		// 聊天流里，草稿卡就是同一份内容的第二份拷贝：每 token 两帧，
+		// 长回答会把 SSE 帧量翻倍（实测 70 秒的长流最容易在中途被本机
+		// 网络栈/安全软件掐断，日志是 wsasend connection aborted）。
+		if !sink.Streaming() {
+			// Best-effort draft emit. A dead SSE socket logs + swallows
+			// the failure — the verdict emit (the trust-bearing path)
+			// surfaces the real error to the caller.
+			if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
+				Type:  "text-delta-draft",
+				ID:    "draft-1",
+				Delta: msg.Content,
+			}); emitErr != nil {
+				log.Printf("[WARN] server: emit text-delta-draft: %v (non-fatal)", emitErr)
+			}
+		}
 		buf.WriteString(msg.Content)
 	}
 	// Terminal marker — FE uses this to switch DraftStreamChip from 🟡
@@ -917,7 +923,7 @@ func (s *Deps) streamOnce(
 	// Only emitted when at least one token arrived: on an empty stream
 	// there is no draft to terminate, and the error return below routes
 	// to the chatHandler error branch instead.
-	if tokenN > 0 {
+	if tokenN > 0 && !sink.Streaming() {
 		if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
 			Type: "text-delta-draft-end",
 			ID:   "draft-1",
