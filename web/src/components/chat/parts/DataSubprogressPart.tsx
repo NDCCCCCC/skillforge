@@ -19,6 +19,7 @@
 // describe a knowledge layer that cannot exist.
 import type { SubprogressStep } from '../../../types/verdict';
 import { useTierLabel } from '../../../lib/kb-bases';
+import { renderStepCopy } from './subprogress-copy';
 import type { UIMessage } from 'ai';
 
 type DataSubprogressPartType = {
@@ -27,32 +28,11 @@ type DataSubprogressPartType = {
   data: SubprogressStep;
 };
 
+// 2026-11-11：文案抽到 subprogress-copy.ts，与 SubprogressTimeline 共用
+// （MessageBubble 现在把连续的步骤收进时间线渲染；本组件仍作为单行
+// 渲染器保留，供独立使用/测试）。
 function renderStep(step: SubprogressStep, tierLabel: string | null): string {
-  // detail 优先：后端把「实际读了哪几篇」「正在生成什么」写在这里，
-  // 比下面这些固定文案有信息量得多（2026-11-10 用户要求看到真实过程）。
-  if (step.detail) return step.detail;
-  switch (step.step) {
-    case 'retrieve':
-      return tierLabel ? `检索 ${tierLabel} 知识层` : '检索知识层';
-    case 'found_candidates': {
-      // quick task 261027-ebw: Count is min(topK, candidate set) — when the
-      // retriever reported a larger pre-truncation set, say so, or "找到 5
-      // 条候选" reads as "exactly 5 relevant hits" when it is a top-5 cut.
-      const { count, total } = step;
-      if (total && total > (count ?? 0)) {
-        return `找到 ${count ?? 0} 条候选（候选集共 ${total} 条，已按相关度取前 ${count ?? 0} 条）`;
-      }
-      return `找到 ${count ?? 0} 条候选`;
-    }
-    case 'rerank':
-      return '重排序';
-    case 'self_verify':
-      return '自校验';
-    case 'generate':
-      return '生成结论';
-    default:
-      return '';
-  }
+  return renderStepCopy(step, tierLabel);
 }
 
 // Pre-fix note (2026-08-19 quick task 260819-fix-datasubprogress-state-ref):

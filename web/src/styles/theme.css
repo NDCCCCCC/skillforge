@@ -863,6 +863,186 @@ body[data-dragging="true"] * {
   50% { opacity: 1; transform: scale(1.1); }
 }
 
+/* ---------- 执行过程时间线 (SubprogressTimeline, 2026-11-11) ----------
+   用户反馈："没有一步一步来的感觉"。旧实现把每条 data-subprogress 平铺成
+   独立一行：同色的点、各自断开的连接线、没有「正在跑」的当前态，读起来
+   就是一堆瞬间冒出来的标签。这一版用一张卡片 + 一条连续竖线 +
+   逐条入场 + 当前步高亮，把「推进」这件事显式表达出来。 */
+.proc-card {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  overflow: hidden;
+}
+
+.proc-card[data-live="false"] {
+  opacity: 0.92;
+}
+
+.proc-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface-2) 55%, transparent);
+}
+
+.proc-card-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text);
+}
+
+.proc-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-primary-hover);
+}
+
+.proc-card-status-done {
+  color: var(--color-text-muted);
+}
+
+.proc-card-status-spinner {
+  width: 12px;
+  height: 12px;
+  animation: proc-spin 900ms linear infinite;
+}
+
+.proc-card-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.proc-card-toggle:hover {
+  color: var(--color-text);
+  background: var(--color-surface-3);
+}
+
+.proc-list {
+  position: relative;
+  margin: 0;
+  padding: 8px 12px 10px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 一条连续竖线，所有行共用 —— 每行各画一段会跨 part 对不齐。
+   用 border-muted 而不是 timeline-track（后者与背景几乎同色），否则
+   这张卡看起来还是一堆孤立的点。 */
+.proc-list::before {
+  content: '';
+  position: absolute;
+  left: 21px;
+  top: 18px;
+  bottom: 18px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    var(--color-border-muted),
+    color-mix(in srgb, var(--color-border-muted) 35%, transparent)
+  );
+}
+
+.proc-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 4px 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  /* 新行入场：淡入 + 轻微上移。已在 DOM 里的旧行不会重播。 */
+  animation: proc-step-in 260ms ease-out both;
+}
+
+.proc-step-marker {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.proc-step[data-state="active"] .proc-step-marker {
+  border-color: var(--color-primary);
+  color: var(--color-primary-hover);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.proc-step-check {
+  width: 11px;
+  height: 11px;
+}
+
+.proc-step-spinner {
+  width: 11px;
+  height: 11px;
+  animation: proc-spin 900ms linear infinite;
+}
+
+.proc-step-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.proc-step[data-state="active"] .proc-step-text {
+  color: var(--color-text);
+}
+
+/* 「已输出 N 字」——真实进度，字宽对齐避免数字跳动时文字左右抖。 */
+.proc-step-stream {
+  color: var(--color-primary-hover);
+  font-variant-numeric: tabular-nums;
+}
+
+.proc-step-meta {
+  flex: 0 0 auto;
+  padding-top: 1px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim);
+}
+
+.proc-step[data-state="active"] .proc-step-meta {
+  color: var(--color-primary-hover);
+}
+
+@keyframes proc-step-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes proc-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ---------- DraftStreamChip (live token preview) ---------- */
 /* 2026-11-10 改造：从「单行胶囊」变成「多行流式预览区」。
    旧版 header 是 inline-flex + border-radius: 999px，正文又是
@@ -1143,6 +1323,17 @@ body[data-dragging="true"] * {
 }
 
 /* ---------- B6: per-reply feedback row ---------- */
+/* 2026-11-11：反馈条改为「回答结束后、仅最新一条回复后」出现，
+   入场做一次轻淡入，避免答案刚落定就硬蹦出一排按钮。 */
+.feedback-row-enter {
+  animation: feedback-row-in 320ms ease-out both;
+}
+
+@keyframes feedback-row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
 .feedback-row {
   display: flex;
   align-items: center;

@@ -525,4 +525,66 @@ describe('MessageBubble', () => {
     // chunkIds derive from verdict.citations[].chunk_id (Go snake_case).
     expect(refs).toHaveTextContent('c-001');
   });
+
+  // --- 2026-11-11 反馈条时机 ---------------------------------------------
+  // 用户要求："回答结束后再出现，追问时隐藏，仅出现在最新回复后面"。
+
+  it('回答仍在流式时不显示反馈条 (2026-11-11)', () => {
+    const message: UIMessage = {
+      id: 'm-stream',
+      role: 'assistant',
+      parts: [
+        { type: 'data-turn', data: { turnId: 41 } },
+        { type: 'text', text: '正在生成的结论…' },
+      ],
+    };
+
+    render(<MessageBubble message={message} isStreaming />);
+    expect(screen.queryByTestId('feedback-row')).toBeNull();
+  });
+
+  it('不是最新一条回复时不显示反馈条 (2026-11-11)', () => {
+    const message: UIMessage = {
+      id: 'm-old',
+      role: 'assistant',
+      parts: [
+        { type: 'data-turn', data: { turnId: 41 } },
+        { type: 'text', text: '上一轮的结论。' },
+      ],
+    };
+
+    render(<MessageBubble message={message} isLatestReply={false} />);
+    expect(screen.queryByTestId('feedback-row')).toBeNull();
+  });
+
+  it('最新一条回复且已结束 → 反馈条出现 (2026-11-11)', () => {
+    const message: UIMessage = {
+      id: 'm-latest',
+      role: 'assistant',
+      parts: [
+        { type: 'data-turn', data: { turnId: 41 } },
+        { type: 'text', text: '本轮的结论。' },
+      ],
+    };
+
+    render(<MessageBubble message={message} isLatestReply isStreaming={false} />);
+    expect(screen.getByTestId('feedback-row')).toBeInTheDocument();
+  });
+
+  it('连续的 data-subprogress 收进同一个执行过程时间线 (2026-11-11)', () => {
+    const message: UIMessage = {
+      id: 'm-proc',
+      role: 'assistant',
+      parts: [
+        { type: 'data-subprogress', id: 's1', data: { step: 'retrieve', detail: '检索 [SQL 取数操作手册] 知识层' } },
+        { type: 'data-subprogress', id: 's2', data: { step: 'found_candidates', count: 5 } },
+        { type: 'text', text: '结论如下。' },
+      ],
+    };
+
+    render(<MessageBubble message={message} />);
+    // 一条时间线卡片，而不是两条各自独立、彼此断开的点。
+    expect(screen.getAllByTestId('proc-card')).toHaveLength(1);
+    expect(screen.getAllByTestId('proc-step')).toHaveLength(2);
+  });
 });

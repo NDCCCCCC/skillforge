@@ -97,6 +97,15 @@ export default function ChatColumn({
   const turnSettled = status === 'ready' || status === 'error';
   const draftPreviewVisible = draftStatus !== 'idle' && !turnSettled && !answerStarted(messages);
 
+  // 2026-11-11 用户要求：反馈条只跟在「最新一条回复」后，进行中隐藏，
+  // 追问时隐藏。判定依据是「消息列表最后一条」而不是「最后一条
+  // assistant」—— 用户一发出追问，最后一条就变成 user，上一条的反馈
+  // 条立刻消失，等新的 assistant 回复落定后再出现。status='streaming'
+  // 期间同样不显示（答案还在往外吐）。
+  const lastMessage = messages[messages.length - 1];
+  const latestAssistantId =
+    lastMessage && lastMessage.role === 'assistant' ? lastMessage.id : null;
+
   useEffect(() => {
     if (wizardActive) return;
     const el = messagesRef.current;
@@ -198,6 +207,8 @@ export default function ChatColumn({
               key={m.id}
               message={m}
               role={m.role === 'user' ? 'user' : 'assistant'}
+              isLatestReply={m.id === latestAssistantId}
+              isStreaming={status === 'streaming' && m.id === latestAssistantId}
             />
           ))}
           {draftPreviewVisible && (

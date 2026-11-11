@@ -36,8 +36,8 @@ import type { UIMessage } from 'ai';
 import { Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store/app-store';
 import DataPolicyPart from './parts/DataPolicyPart';
-import DataSubprogressPart from './parts/DataSubprogressPart';
 import FeedbackRow, { isVote } from './parts/FeedbackRow';
+import SubprogressTimeline, { type SubprogressEntry } from './parts/SubprogressTimeline';
 import ReasoningPart from './parts/ReasoningPart';
 import RoutingTracePart from './parts/RoutingTracePart';
 import { SourceDocumentPart } from './parts/SourceDocumentPart';
@@ -53,7 +53,7 @@ import RedlineCard from '../verdict/RedlineCard';
 import HistoryRewriteHint from './HistoryRewriteHint';
 import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
 import { DataReferenceChip } from './parts/DataReferenceChip';
-import { isVerdict, type VerdictStatus } from '../../types/verdict';
+import { isVerdict, type SubprogressStep, type VerdictStatus } from '../../types/verdict';
 
 function renderPart(
   part: UIMessage['parts'][number],
@@ -92,12 +92,11 @@ function renderPart(
         />
       );
     case 'data-subprogress':
-      return (
-        <DataSubprogressPart
-          key={i}
-          part={part as Parameters<typeof DataSubprogressPart>[0]['part']}
-        />
-      );
+      // 2026-11-11：过程步骤不再逐 part 平铺（那样点与点之间没有先后，
+      // 也没有"正在跑"的当前态）。连续的一段 data-subprogress 由
+      // groupParts() 收进同一个 SubprogressTimeline 渲染，这里只在
+      // 分组逻辑漏掉时兜底返回 null。
+      return null;
     case 'step-start':
       return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
     case 'data-decision': {
@@ -221,12 +220,77 @@ function ReportCardView({ card }: { card: import('../../types/wire-types').Repor
   );
 }
 
+// 2026-11-11：把连续的 data-subprogress part 归成一段，交给同一个
+// SubprogressTimeline 渲染。逐 part 平铺时每条各自带一条 absolute
+// 连接线和同样颜色的点，"先后"在读感上完全丢失（用户反馈"没有一步
+// 一步来的感觉"）。
+type RenderGroup =
+  | { kind: 'part'; part: UIMessage['parts'][number]; index: number }
+  | { kind: 'subprogress'; key: string; entries: SubprogressEntry[] };
+
+function groupParts(parts: UIMessage['parts']): RenderGroup[] {
+  const groups: RenderGroup[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (part.type !== 'data-subprogress') {
+      groups.push({ kind: 'part', part, index: i });
+      continue;
+    }
+    const entries: SubprogressEntry[] = [];
+    let j = i;
+    while (j < parts.length && parts[j].type === 'data-subprogress') {
+      const sub = parts[j] as { id?: string; data?: SubprogressStep };
+      // 缺 data 的畸形 chunk 不进时间线（T-29-09 同款防御），否则
+      // renderStepCopy 会解引用 undefined 把整棵 React 树打白。
+      if (sub.data) entries.push({ key: sub.id ?? `subprogress-${j}`, data: sub.data });
+      j++;
+    }
+    groups.push({ kind: 'subprogress', key: `subprogress-group-${i}`, entries });
+    i = j - 1;
+  }
+  return groups;
+}
+
+/** 这一段过程是否仍在进行：消息还在流式，且结论（data-policy）尚未落地。
+ *
+ *  注意：正文（text）到达并不代表过程结束 —— 后端在「生成结论」那一步
+ *  之后才开始吐正文，如果一看见 text 就把最后一步标成"已完成"，用户会
+ *  看到"生成结论 ✓"和正在往下滚的正文同时存在，反而更别扭。只有结论
+ *  落地（data-policy）或整轮流结束，过程才落定。 */
+function isSubprogressLive(
+  groups: RenderGroup[],
+  index: number,
+  isStreaming: boolean,
+): boolean {
+  if (!isStreaming) return false;
+  for (let k = index + 1; k < groups.length; k++) {
+    const group = groups[k];
+    if (group.kind === 'part' && group.part.type === 'data-policy') return false;
+  }
+  return true;
+}
+
 export interface MessageBubbleProps {
   message: UIMessage;
   role?: 'assistant' | 'user';
+  /**
+   * 2026-11-11 用户要求：反馈条只跟在「最新一条回复」后面。
+   * 默认 true 保持单条渲染（测试 / seeded view）的旧行为。
+   */
+  isLatestReply?: boolean;
+  /**
+   * 该消息是否仍在流式生成。回答没结束前不显示反馈条，结束后再淡入。
+   * 默认 false（历史消息 / 单测）。
+   */
+  isStreaming?: boolean;
 }
 
-export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  role = 'assistant',
+  isLatestReply = true,
+  isStreaming = false,
+}: MessageBubbleProps) {
   // Plan 29-07 Task 2 — the ticket reference strip shows the session the
   // ticket would be filed under. Read from the store (the ApprovalRules
   // panels' existing pattern); hooks stay ABOVE the user-role early
@@ -324,6 +388,11 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
       }
     }
   }
+  // 2026-11-11：过程步骤聚合 + 反馈条可见性。
+  // showFeedback：回答已结束（!isStreaming）且这是对话里最新的一条回复。
+  // 流式期间不显示，避免"答案还在吐，先摆一排反馈按钮"。
+  const groups = groupParts(message.parts);
+  const showFeedback = isLatestReply && !isStreaming;
   return (
     <div
       className="message-assistant"
@@ -337,19 +406,38 @@ export function MessageBubble({ message, role = 'assistant' }: MessageBubbleProp
         <Sparkles className="h-4 w-4" />
       </div>
       <div className="message-assistant-body">
-        {message.parts.map((part, i) => renderPart(part, i, chatText, verdictStatus))}
+        {groups.map((group, gi) =>
+          group.kind === 'subprogress' ? (
+            <SubprogressTimeline
+              key={group.key}
+              entries={group.entries}
+              live={isSubprogressLive(groups, gi, isStreaming)}
+            />
+          ) : (
+            renderPart(group.part, group.index, chatText, verdictStatus)
+          ),
+        )}
         {/* Open Design B6 — per-reply feedback strip. Plan 29-07: the
             vote lock is server-driven (POST /api/feedback), the ticket
             form POSTs /api/tickets, and turn identity comes from the
-            data-turn part above. messageId stays DOM-only (Pitfall 7). */}
-        <FeedbackRow
-          messageId={message.id}
-          turnId={turnId}
-          votedVerdict={votedVerdict}
-          sessionId={activeSessionId}
-          chunkIds={chunkIds}
-          messageText={chatText}
-        />
+            data-turn part above. messageId stays DOM-only (Pitfall 7).
+
+            2026-11-11 用户要求：这一行只在「回答已经结束」且是「对话
+            最后一条回复」时出现。追问一开始（最后一条变成 user，或新
+            的 assistant 正在流式）上一条的反馈条就消失，不留一堆历史
+            反馈按钮。 */}
+        {showFeedback && (
+          <div className="feedback-row-enter">
+            <FeedbackRow
+              messageId={message.id}
+              turnId={turnId}
+              votedVerdict={votedVerdict}
+              sessionId={activeSessionId}
+              chunkIds={chunkIds}
+              messageText={chatText}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -65,10 +65,18 @@ const BOOT_GATE_FAIL_OPEN_MS = 2000;
 
 export default function App({ initialMessages }: AppProps) {
   if (initialMessages) {
+    // 2026-11-11：反馈条只跟最新一条回复 —— seeded 视图（测试/演示用的
+    // 静态消息列表）走同一条规则，避免这里成为"每条都挂反馈按钮"的例外。
+    const lastId = initialMessages[initialMessages.length - 1]?.id;
     return (
       <div data-testid="seeded-view">
         {initialMessages.map((m) => (
-          <MessageBubble key={m.id} message={m} role={m.role === 'user' ? 'user' : 'assistant'} />
+          <MessageBubble
+            key={m.id}
+            message={m}
+            role={m.role === 'user' ? 'user' : 'assistant'}
+            isLatestReply={m.id === lastId}
+          />
         ))}
       </div>
     );
