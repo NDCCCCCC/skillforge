@@ -175,27 +175,32 @@ func TestDocContentHandler_PathTraversalRejected(t *testing.T) {
 // unregistered slug 400s naming the active set, and a live base 200s with
 // the pre-existing behavior.
 func TestDocContentHandlerValidatesSlug(t *testing.T) {
-	deps := &Deps{KBRegistry: testKBReg()}
+	deps := &Deps{KBRegistry: testKBReg(), Loader: newKnowledgeReaderLoader(t)}
 	addr, cleanup := newKnowledgeTestHertz(t, deps)
 	defer cleanup()
 
+	getDoc := func(url string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, "http://"+addr+url, nil)
+		require.NoError(t, err)
+		req.Header.Set("X-Skill-Name", "reader")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		return resp
+	}
+
 	// tier=../cmd → the whitelist regex refuses before any registry work.
-	resp, err := http.Get("http://" + addr + "/api/knowledge/doc?tier=../cmd&file=main.go")
-	require.NoError(t, err)
-	defer resp.Body.Close()
+	resp := getDoc("/api/knowledge/doc?tier=../cmd&file=main.go")
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "traversal tier must 400 (T-26-05-3 regression)")
 
 	// tier=ghost → the registry refuses and names the active set.
-	resp, err = http.Get("http://" + addr + "/api/knowledge/doc?tier=ghost&file=annual_leave.md")
-	require.NoError(t, err)
-	defer resp.Body.Close()
+	resp = getDoc("/api/knowledge/doc?tier=ghost&file=annual_leave.md")
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	assert.Contains(t, drainBody(t, resp), "authority", "the 400 must list the active slug set")
 
 	// tier=authority → the pre-existing happy path, unchanged.
-	resp, err = http.Get("http://" + addr + "/api/knowledge/doc?tier=authority&file=annual_leave.md")
-	require.NoError(t, err)
-	defer resp.Body.Close()
+	resp = getDoc("/api/knowledge/doc?tier=authority&file=annual_leave.md")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -221,11 +226,14 @@ func TestDocContentHandlerDeactivated400(t *testing.T) {
 // TestDocContentHandler_ServesCorpusDoc — the happy path serves the full
 // markdown source of a real corpus doc.
 func TestDocContentHandler_ServesCorpusDoc(t *testing.T) {
-	deps := &Deps{KBRegistry: testKBReg()}
+	deps := &Deps{KBRegistry: testKBReg(), Loader: newKnowledgeReaderLoader(t)}
 	addr, cleanup := newKnowledgeTestHertz(t, deps)
 	defer cleanup()
 
-	resp, err := http.Get("http://" + addr + "/api/knowledge/doc?tier=authority&file=annual_leave.md")
+	req, err := http.NewRequest(http.MethodGet, "http://"+addr+"/api/knowledge/doc?tier=authority&file=annual_leave.md", nil)
+	require.NoError(t, err)
+	req.Header.Set("X-Skill-Name", "reader")
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -239,11 +247,14 @@ func TestDocContentHandler_ServesCorpusDoc(t *testing.T) {
 // TestDocContentHandler_MissingFile404 — a well-formed request for a
 // nonexistent doc returns 404 (not a path-bearing 500, W-3 posture).
 func TestDocContentHandler_MissingFile404(t *testing.T) {
-	deps := &Deps{KBRegistry: testKBReg()}
+	deps := &Deps{KBRegistry: testKBReg(), Loader: newKnowledgeReaderLoader(t)}
 	addr, cleanup := newKnowledgeTestHertz(t, deps)
 	defer cleanup()
 
-	resp, err := http.Get("http://" + addr + "/api/knowledge/doc?tier=draft&file=nope.md")
+	req, err := http.NewRequest(http.MethodGet, "http://"+addr+"/api/knowledge/doc?tier=authority&file=nope.md", nil)
+	require.NoError(t, err)
+	req.Header.Set("X-Skill-Name", "reader")
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)

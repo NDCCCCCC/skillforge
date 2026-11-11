@@ -128,7 +128,16 @@ func postWizard(t *testing.T, addr, body string) (int, wizardResponse) {
 
 func postWizardCommit(t *testing.T, addr, body string) (int, wizardCommitResponse) {
 	t.Helper()
-	resp, err := http.Post("http://"+addr+"/api/skills/wizard/commit", "application/json", strings.NewReader(body))
+	// 2026-11-09 安全三连: wizard/commit writes into the skills/ trust
+	// root and therefore sits behind requireAdmin. Tests present the
+	// caller identity the same way the operator does — X-Admin-Token
+	// against SKILLFORGE_ADMIN_TOKEN.
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)
+	req, err := http.NewRequest(http.MethodPost, "http://"+addr+"/api/skills/wizard/commit", strings.NewReader(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Admin-Token", testAdminToken)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)

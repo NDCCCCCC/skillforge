@@ -569,11 +569,14 @@ func TestStreamAndAssembleSendsSystemAndUserMessages(t *testing.T) {
 	assert.NotContains(t, msgs[0].Content, "The user query is:",
 		"messages[0] MUST NOT contain the user query framing (it belongs on messages[1])")
 	// Assert msgs[0] (system) doesn't contain the rendered chunk data
-	// blocks. We pin on the literal "tier=" token (data blocks use
+	// blocks. We pin on the literal "[ref-1]" token (data blocks use
 	// "[ref-N] tier=... source=..."; the system template references
-	// "[ref-N]" only inside the schema description prose, never with
-	// "tier="). Quick 260815-jpu.
-	assert.NotContains(t, msgs[0].Content, "tier=",
+	// "[ref-N]" only inside the schema description prose, never with a
+	// concrete rendered id). Note: the system message legitimately
+	// contains "tier=" prose from the injected Skill contract steps
+	// (e.g. "reads.tier filter (tier=权威 only)") — what must NOT leak
+	// is the rendered chunk data, not the word "tier=". Quick 260815-jpu.
+	assert.NotContains(t, msgs[0].Content, "[ref-1]",
 		"messages[0] MUST NOT contain chunk data blocks (those belong on messages[1])")
 
 	// (d) [1] is the rendered query + chunks. Content is verbatim
@@ -762,8 +765,12 @@ func TestStreamAndAssemble_ExhaustsRetries(t *testing.T) {
 		return false
 	}
 
-	// (b) Machine-readable error chunk preserved.
-	assert.True(t, has("error"), "error branch MUST emit an error chunk")
+	// (b) NO machine-readable error chunk — since 2026-11-10 the error
+	// branch deliberately stays OFF the error channel (an error chunk
+	// makes the AI SDK fail the whole stream and toast, swallowing the
+	// readable text frames below). The failure surfaces as a plain
+	// assistant message instead.
+	assert.False(t, has("error"), "error branch must NOT emit an error chunk (plain-text terminal state since 2026-11-10)")
 
 	// (c) Complete text lifecycle — the FE registers the message and
 	// renders a readable terminal state instead of freezing at 生成结论.

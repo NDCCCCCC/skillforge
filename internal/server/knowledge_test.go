@@ -36,6 +36,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,6 +48,7 @@ import (
 
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/skill"
 )
 
 // stubKnowledgeBuilder is the test double for KnowledgeBuilder. The
@@ -192,7 +195,7 @@ func TestChunkHandler_BadIDReturns400(t *testing.T) {
 func TestChunkHandler_Found(t *testing.T) {
 	payload := &knowledge.ChunkPayload{
 		ID:            "1",
-		Tier:          "权威",
+		Tier:          "authority",
 		Source:        "authority/a.md",
 		Content:       "正文片段",
 		EffectiveFrom: 0,
@@ -200,16 +203,17 @@ func TestChunkHandler_Found(t *testing.T) {
 		Version:       "",
 	}
 	stub := &stubKnowledgeBuilder{chunkPayload: payload}
-	deps := &Deps{Knowledge: stub}
+	deps := &Deps{Knowledge: stub, Loader: newKnowledgeReaderLoader(t)}
 
-	got := invokeChunkHandler(t, deps, "1")
+	got := invokeChunkHandler(t, deps, "1",
+		ut.Header{Key: "X-Skill-Name", Value: "reader"})
 	assert.Equal(t, http.StatusOK, got.Code)
 
 	// JSON round-trip — every field survives the wire.
 	var decoded knowledge.ChunkPayload
 	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
 	assert.Equal(t, "1", decoded.ID)
-	assert.Equal(t, "权威", decoded.Tier)
+	assert.Equal(t, "authority", decoded.Tier)
 	assert.Equal(t, "authority/a.md", decoded.Source)
 	assert.Equal(t, "正文片段", decoded.Content)
 	assert.Equal(t, int64(0), decoded.EffectiveFrom)
@@ -252,10 +256,11 @@ func TestChunkHandler_RouteRegistered(t *testing.T) {
 	// /api/knowledge/chunk/:id from the route table fails here, not at
 	// the first FE request.
 	deps := &Deps{Knowledge: &stubKnowledgeBuilder{
-		chunkPayload: &knowledge.ChunkPayload{ID: "1"},
-	}}
+		chunkPayload: &knowledge.ChunkPayload{ID: "1", Tier: "authority"},
+	}, Loader: newKnowledgeReaderLoader(t)}
 	h := New(":0", deps)
-	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/chunk/1", nil)
+	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/chunk/1", nil,
+		ut.Header{Key: "X-Skill-Name", Value: "reader"})
 	assert.NotEqual(t, http.StatusNotFound, w.Code, "GET /api/knowledge/chunk/:id must be registered (got 404)")
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -300,13 +305,14 @@ func TestParseLenientChunkID(t *testing.T) {
 // The fixture KnowledgeBuilder returns ID="7" so each variant must
 // resolve to the same 200 + ChunkPayload{ID:"7"} body.
 func TestChunkHandler_TolerantIDAcceptsPrefix(t *testing.T) {
-	payload := &knowledge.ChunkPayload{ID: "7", Tier: "权威", Source: "authority/x.md", Content: "正文片段"}
+	payload := &knowledge.ChunkPayload{ID: "7", Tier: "authority", Source: "authority/x.md", Content: "正文片段"}
 	stub := &stubKnowledgeBuilder{chunkPayload: payload}
-	deps := &Deps{Knowledge: stub}
+	deps := &Deps{Knowledge: stub, Loader: newKnowledgeReaderLoader(t)}
 
 	for _, idPath := range []string{"7", "CHUNK 7", "chunk 7", "ref-7", "REF-7", "[ref-7]"} {
 		t.Run(idPath, func(t *testing.T) {
-			got := invokeChunkHandler(t, deps, idPath)
+			got := invokeChunkHandler(t, deps, idPath,
+				ut.Header{Key: "X-Skill-Name", Value: "reader"})
 			assert.Equal(t, http.StatusOK, got.Code, "lenient parse must accept %q", idPath)
 			var decoded knowledge.ChunkPayload
 			require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
@@ -334,10 +340,47 @@ func TestChunkHandler_GarbageIDStillReturns400(t *testing.T) {
 	}
 }
 
+// newKnowledgeReaderLoader writes a minimal reader Skill (reads:
+// authority/**) into a temp dir and returns a scanned Loader. This is the
+// test-side analogue of a real Skill declaring its tier scope: since the
+// 2026-11-09 安全三连, chunk/doc direct reads are gated by
+// knowledgeReadAllowed, which matches the X-Skill-Name header against the
+// Loader's manifests and their resolved tiers.
+func newKnowledgeReaderLoader(t *testing.T) *skill.Loader {
+	t.Helper()
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "reader")
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	body := `---
+description: test reader skill for knowledge direct-read gating
+agent: ChatModelAgent
+reads:
+  - authority/**
+writes: []
+steps: |
+  1. read authority docs
+temperature: 0.0
+guardrails:
+  prohibitions:
+    - "Never cite clauses not retrieved from authority tier"
+    - "Never paraphrase critical clauses"
+    - "Never reveal personal/contact information of any individual"
+  required_refusal_phrases: []
+---
+`
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644))
+	loader := skill.NewLoader(dir, testKBReg())
+	_, err := loader.Scan()
+	require.NoError(t, err, "scan test reader skill")
+	return loader
+}
+
 // invokeChunkHandler runs the GET /api/knowledge/chunk/:id handler in
 // an isolated hertz instance and returns the recorder. idPath is the
 // raw path segment (e.g. "1" or "abc"). Mirrors invokeGraphHandler.
-func invokeChunkHandler(t *testing.T, deps *Deps, idPath string) *ut.ResponseRecorder {
+// Optional variadic headers let tests present a caller identity
+// (X-Skill-Name) as required by knowledgeReadAllowed.
+func invokeChunkHandler(t *testing.T, deps *Deps, idPath string, headers ...ut.Header) *ut.ResponseRecorder {
 	t.Helper()
 	h := server.Default(server.WithHostPorts(":0"))
 	h.GET("/api/knowledge/chunk/:id", deps.chunkHandler)
@@ -346,7 +389,7 @@ func invokeChunkHandler(t *testing.T, deps *Deps, idPath string) *ut.ResponseRec
 	// segment — the raw " " would split the request line. The handler
 	// reads `c.Param("id")` which hertz pre-decodes, so the test still
 	// sees the original idStr. Quick 260815-jpu.
-	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/chunk/"+url.PathEscape(idPath), nil)
+	w := ut.PerformRequest(h.Engine, http.MethodGet, "/api/knowledge/chunk/"+url.PathEscape(idPath), nil, headers...)
 	return w
 }
 

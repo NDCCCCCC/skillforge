@@ -107,15 +107,19 @@ func TestVerdictPipeline_OperationalSkillGroundsAgainstRetrievedChunks(t *testin
 	got := findVerdictFrame(t, body)
 	require.NotNil(t, got, "data-policy Verdict must be on the wire")
 
+	// 2026-11-10 方案 D：operational Skill 走 emitOperationalAnswer 直出
+	// 通道 —— LLM 产出 markdown（经 guardOperationalSQL 代码校验），verdict
+	// 由代码固定组装（ok / 0.9 / not_applicable / 空 citations）。canned
+	// verdict 不再参与；本测试锁定的是「直出 verdict 不经过 ApplyDowngrade
+	// 语义（citation 清空降级链）」这一不变量 + 零 redline 调用。
 	assert.Equal(t, "ok", got.Status,
-		"grounded operational citation must NOT be downgraded to needs_input")
-	assert.Equal(t, 0.95, got.Confidence,
-		"grounded verdict must keep its confidence (not the 0.89 downgrade cap)")
+		"operational direct-out verdict is ok (no downgrade chain)")
+	assert.Equal(t, 0.9, got.Confidence,
+		"operational direct-out confidence is the fixed 0.9 (not the 0.89 downgrade cap)")
 	assert.False(t, got.ReviewRequired,
-		"grounded verdict must not force review_required")
-	require.Len(t, got.Citations, 1,
-		"grounded citation must survive (source attribution is the skill's contract)")
-	assert.Equal(t, "sql-guides", got.Citations[0].Tier)
+		"operational direct-out must not force review_required")
+	assert.Empty(t, got.Citations,
+		"operational direct-out carries no citations (the quoted guide text IS the answer)")
 	assert.Equal(t, verdict.NotApplicableStatus, got.ComplianceStatus,
 		"no downgrade → ComplianceStatus keeps the LLM's not_applicable (never the ApplyDowngrade overwrite)")
 	assert.Equal(t, 0, redlineStub.callCount(),
@@ -154,14 +158,19 @@ func TestVerdictPipeline_OperationalSkillSuppressesRedlineOnNeedsInput(t *testin
 	got := findVerdictFrame(t, body)
 	require.NotNil(t, got, "data-policy Verdict must be on the wire")
 
-	assert.Equal(t, verdict.DowngradeStatus, got.Status,
-		"LLM-authored needs_input stays needs_input")
-	assert.Equal(t, 0.92, got.Confidence,
-		"grounded citation → no 0.89 confidence cap")
-	require.Len(t, got.Citations, 1,
-		"grounded citation must survive so the user sees which guide needs the input")
-	assert.Empty(t, got.ComplianceStatus,
-		"no downgrade → ComplianceStatus is untouched (no ApplyDowngrade overwrite)")
+	// 2026-11-10 方案 D：operational 通道不再调用 verdict LLM —— canned
+	// needs_input 被直接绕过，verdict 由代码固定组装。本测试锁定的是
+	// 「即使 LLM 声称 needs_input，operational Skill 也绝不触发 compliance
+	// clause-rewrite（redline）」，这是 needs_input 场景在新架构下的残留
+	// 语义。
+	assert.Equal(t, "ok", got.Status,
+		"operational direct-out verdict is ok regardless of the canned needs_input")
+	assert.Equal(t, 0.9, got.Confidence,
+		"operational direct-out confidence is the fixed 0.9 (no 0.89 confidence cap)")
+	assert.Empty(t, got.Citations,
+		"operational direct-out carries no citations")
+	assert.Equal(t, "not_applicable", got.ComplianceStatus,
+		"no downgrade overwrite path is reachable")
 	assert.Equal(t, 0, redlineStub.callCount(),
 		"operational skill must make ZERO redline LLM calls even on needs_input")
 }
