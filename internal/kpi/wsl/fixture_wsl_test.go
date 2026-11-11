@@ -101,7 +101,12 @@ func (ef *engineFixture) writeLoansStaging(t *testing.T, datasetID string, rows 
 	// the LRU's attached-catalog session).
 	c, err := duckdb.New(ctx, duckdb.Config{DSN: stagingPath, MaxOpenConns: 1})
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = c.Close() })
+	// Close the staging connector BEFORE the caller promotes this file into
+	// the datasets directory. DuckDB 1.5 takes an exclusive lock per database
+	// file, so an ATTACH of the promoted copy fails with "另一个程序正在使用此文件"
+	// while this handle is still open. DuckDB 1.4 tolerated the overlap, which
+	// is why t.Cleanup (test-end close) used to be enough.
+	defer func() { _ = c.Close() }()
 
 	_, err = c.DB().ExecContext(ctx, `
 		CREATE TABLE data (
