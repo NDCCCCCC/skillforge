@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -40,6 +41,7 @@ import (
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/sqlguard"
 	"github.com/skillforge/skillforge/internal/server/classifier"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
 	"github.com/skillforge/skillforge/internal/skill"
@@ -627,6 +629,61 @@ var streamBackoff = func(attempt int) time.Duration {
 	return time.Duration(1<<(attempt-2)) * time.Second // 1s, 2s, 4s
 }
 
+// isRetryableStreamErr decides whether a failed attempt is worth repeating.
+//
+// 2026-11-11 (live evidence): a 401 from the upstream was retried 4 times
+// with 1s/2s/4s backoff, so a bad key cost the user ~7 extra seconds and
+// three more doomed requests before the error surfaced. A 4xx other than
+// 429 is a property of the REQUEST (bad key, unknown model, malformed
+// body) — repeating it cannot succeed.
+//
+// What stays retryable:
+//   - 429: the relay throttles per-minute; backoff is exactly right.
+//   - 5xx / timeouts / connection resets: transient by nature.
+//   - errors with no extractable status: treated as transient, because the
+//     common case there is a dropped connection mid-handshake.
+//
+// Cancellation and deadline expiry never retry: the caller chose to stop.
+func isRetryableStreamErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	code := httpStatusOf(err)
+	switch {
+	case code == 0:
+		return true // unknown/transport → assume transient
+	case code == http.StatusTooManyRequests:
+		return true
+	case code >= 400 && code < 500:
+		return false
+	default:
+		return true
+	}
+}
+
+// httpStatusOf extracts an HTTP status code from an upstream error string.
+// The eino/model adapters render failures as "status code: 401" or
+// "status: 429 Too Many Requests", which reHTTPStatus (chat.go) already
+// parses for the user-facing message; reuse the same shape here so the
+// retry decision and the user-visible text never disagree.
+func httpStatusOf(err error) int {
+	if err == nil {
+		return 0
+	}
+	m := reHTTPStatus.FindStringSubmatch(err.Error())
+	if m == nil {
+		return 0
+	}
+	code, convErr := strconv.Atoi(m[1])
+	if convErr != nil || code < 100 || code > 599 {
+		return 0
+	}
+	return code
+}
+
 func (s *Deps) streamAndAssemble(
 	ctx context.Context,
 	c *app.RequestContext,
@@ -663,6 +720,15 @@ func (s *Deps) streamAndAssemble(
 			// FE. Retrying would re-emit the draft from scratch and the
 			// chip would show duplicated text — return the error as-is.
 			return raw, err
+		}
+		if !isRetryableStreamErr(err) {
+			// Deterministic failure (4xx other than 429): the next attempt
+			// would send the same request and get the same answer. Fail
+			// fast so the user sees the real cause instead of waiting out
+			// the backoff ladder.
+			log.Printf("[WARN] server: streamAndAssemble attempt=%d/%d not retryable, failing fast: %v",
+				attempt, streamMaxAttempts, err)
+			break
 		}
 	}
 	return "", fmt.Errorf("LLM stream failed after %d attempts: %w", streamMaxAttempts, lastErr)
@@ -1017,7 +1083,18 @@ func (s *Deps) emitOperationalAnswer(ctx context.Context, c *app.RequestContext,
 		}
 	}
 	// 模型自己也可能吐 CR（尤其被要求"逐字复制"时）。CR 在 web 上不换行，
-	// 会让 SQL 挤成一行、相邻 token 粘连（"awhere"）。输出前统一成 LF。
+	// 会让 SQL 挤成一行、相邻 token 粘连（"awhere"）。
+	//
+	// V2 本体化：把「只许改参数槽位」从 prompt 约束升级成代码校验。
+	// 任一授权模板通过校验就放行；全部不通过则拒绝输出生成的 SQL 并回退
+	// 到模板原文（见 guardOperationalSQL）。
+	if rejected, replacement := guardOperationalSQL(ans, chunks); rejected {
+		log.Printf("[WARN] server: sqlguard rejected the generated SQL; falling back to the template")
+		ans = replacement
+	}
+
+	// 换行归一必须放在 guard 之后：回退文本里嵌的是笔记原文，同样可能带
+	// 真 CR（2026-11-11 实测：回退路径漏归一，输出里出现 26 个 CR）。
 	ans = strings.ReplaceAll(ans, "\r\n", "\n")
 	ans = strings.ReplaceAll(ans, "\r", "\n")
 
@@ -1029,6 +1106,103 @@ func (s *Deps) emitOperationalAnswer(ctx context.Context, c *app.RequestContext,
 		Citations:        []verdict.Citation{},
 	}
 	return s.emitVerdictWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, v, chunks, allChunksByID(chunks), qvec, now)
+}
+
+// guardOperationalSQL 是 V2 本体化的接入点：拿检索到的已审核取数笔记当
+// 「模板本体」，把 LLM 生成的 SQL 与它做结构级比对，越界就拒绝。
+//
+// 判定逻辑：
+//   - 答案里没有 SQL 块 → 不是 SQL 输出（可能是拒答或说明），不拦。
+//   - 对进了 prompt 的前 3 条 chunk 逐个找最匹配的模板：任一模板校验通过
+//     就放行（说明生成结果落在某一份授权依据之内）。
+//   - 所有可解析的模板都不通过 → 拒绝，返回回退文案。
+//   - 模板全部解析失败（语料本身含非法样本，见 v2 语料报告）→ fail-open
+//     放行并记日志：历史数据缺陷不该把正常回答拦掉。
+func guardOperationalSQL(ans string, chunks []retriever.Hit) (rejected bool, replacement string) {
+	genSQLs := sqlguard.ExtractTemplates(ans)
+	if len(genSQLs) == 0 {
+		return false, ""
+	}
+	genSQL := genSQLs[0]
+
+	const maxRecipes = 3
+	n := len(chunks)
+	if n > maxRecipes {
+		n = maxRecipes
+	}
+
+	checked := 0
+	var worst sqlguard.Report
+	var worstTemplate string
+	for i := 0; i < n; i++ {
+		tmplSQL, tmplShape, ok := sqlguard.BestTemplate(chunks[i].Content, genSQL)
+		if !ok || !tmplShape.Ok {
+			continue
+		}
+
+		// 只有表集合「完全一致」时才把模板当基准。理由见 sqlguard.TableRelation：
+		// 生成结果少了模板里的表，很可能是笔记被 4KB 分片切断（实测 030 承重
+		// 清单的 SQL 末尾就是 `'2025'che` 这种残片），拿残缺模板硬比会把正常
+		// 答案判成越界（2026-11-11 线上误杀 R1+R3+R5）。而生成结果**多出**
+		// 模板没有的表就不存在「模板残缺」这个解释，直接拦。
+		genShape := sqlguard.Extract(genSQL)
+		switch sqlguard.RelateTables(genShape.Tables, tmplShape.Tables) {
+		case sqlguard.TablesEqual:
+			// 可校验
+		case sqlguard.GeneratedAdds:
+			log.Printf("[WARN] server: sqlguard rejected — generated SQL adds tables absent from the recipe (gen=%v tmpl=%v)",
+				genShape.Tables, tmplShape.Tables)
+			return true, buildGuardRejection(sqlguard.Report{
+				Checked: true,
+				Violations: []sqlguard.Violation{{
+					Rule:     "R1",
+					Severity: sqlguard.SeverityFail,
+					Detail: fmt.Sprintf("生成的 SQL 引用了模板里没有的表（模板 %s，生成 %s）",
+						strings.Join(tmplShape.Tables, ", "), strings.Join(genShape.Tables, ", ")),
+				}},
+			}, tmplSQL)
+		default:
+			log.Printf("[WARN] server: sqlguard skipped — table sets differ (%s), treating the recipe as incomplete; gen=%v tmpl=%v",
+				sqlguard.RelateTables(genShape.Tables, tmplShape.Tables), genShape.Tables, tmplShape.Tables)
+			continue
+		}
+
+		rep := sqlguard.Verify(genSQL, tmplShape)
+		if !rep.Checked {
+			continue
+		}
+		checked++
+		if rep.OK {
+			return false, ""
+		}
+		worst = rep
+		worstTemplate = tmplSQL
+	}
+	if checked == 0 {
+		log.Printf("[WARN] server: sqlguard could not verify — no parseable template among %d chunk(s)", n)
+		return false, ""
+	}
+	log.Printf("[WARN] server: sqlguard rejected generated SQL — %s", worst.Summary())
+	return true, buildGuardRejection(worst, worstTemplate)
+}
+
+// buildGuardRejection 把拒绝结果写成用户能读懂的一段，并附上模板原文。
+//
+// 为什么仍给原文：拒绝的是「越界的生成结果」，不是取数能力。用户在别处
+// 拿不到这份已审核模板，空手而归等于功能失效；而明确标注「未做任何适配」
+// 可以避免它被当成已适配答案。
+func buildGuardRejection(rep sqlguard.Report, templateSQL string) string {
+	var b strings.Builder
+	b.WriteString("**生成的 SQL 未通过模板校验，已拒绝输出**\n\n")
+	b.WriteString("平台把这次生成结果与已审核的取数笔记做了结构比对，判定它超出了「只调参数槽位」的授权范围：\n\n")
+	for _, v := range rep.Failures() {
+		fmt.Fprintf(&b, "- %s\n", v.Detail)
+	}
+	b.WriteString("\n下面是笔记里的模板原文，**未做任何适配**；需要改参数请自行调整，或把要求写得更具体后重试：\n\n")
+	b.WriteString("```sql\n")
+	b.WriteString(strings.TrimSpace(templateSQL))
+	b.WriteString("\n```\n")
+	return b.String()
 }
 
 // buildOperationalUserPrompt 把「问题 + 依据原文」拼成 user prompt。

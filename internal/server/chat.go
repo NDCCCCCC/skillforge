@@ -1147,10 +1147,35 @@ var (
 	reHTTPStatus = regexp.MustCompile(`(?:status code|status):\s*(\d{3})`)
 	// 匹配 "message: xxx"（到括号或换行为止）
 	reUpstreamMsg = regexp.MustCompile(`message:\s*([^(\n]{1,300})`)
-	// 需要脱敏的内容：URL 与常见 key 前缀
+	// 需要脱敏的内容：URL 与各种形态的密钥
 	reURLRedact = regexp.MustCompile(`https?://[^\s"']+`)
-	reKeyRedact = regexp.MustCompile(`(?i)(as_sk_|sk-|api[_-]?key=)[A-Za-z0-9_\-]{6,}`)
+	// 前缀式密钥：as_sk_xxx / sk-xxx
+	rePrefixedKey = regexp.MustCompile(`(?i)(?:as_sk_|sk-)[A-Za-z0-9_\-]{6,}`)
+	// Bearer 令牌：Authorization: Bearer xxx
+	reBearerToken = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9_\-\.=]{8,}`)
+	// 键值式：api_key=xxx / key: xxx / token=xxx / secret=xxx / password=xxx。
+	// 旧版本只认 api_key= 一种写法，上游把 32 位裸 key 放在 "key=" 或无前缀
+	// 字段里时脱不掉（2026-11-11 补强）。裸 key 也纳入：宁可多脱敏，也不能
+	// 让凭证出现在对话流里；短值（<6）保留，避免把 "key=abc" 这类说明误伤。
+	reKeyValue = regexp.MustCompile(`(?i)\b([a-z0-9_\-]*(?:api[_-]?key|key|token|secret|password|credential)[a-z0-9_\-]*)\b\s*[=:]\s*["']?[^\s"'&,;)]{6,}`)
 )
+
+// redactSecrets 把 error 文本里的 URL / key / token 换成占位符。
+// 顺序有讲究：先抹 URL（它可能整段带着 query 里的 key），再抹 Bearer，
+// 最后抹键值对；否则 URL 里的 `?api_key=...` 会先被键值规则切开，
+// 剩半个残缺 URL 反而更难识别。
+func redactSecrets(raw string) string {
+	raw = reURLRedact.ReplaceAllString(raw, "<upstream>")
+	raw = reBearerToken.ReplaceAllString(raw, "Bearer <redacted>")
+	raw = rePrefixedKey.ReplaceAllString(raw, "<redacted>")
+	// 键值对保留键名，只替换值 —— 让用户知道是哪类凭证出了问题。
+	return reKeyValue.ReplaceAllStringFunc(raw, func(m string) string {
+		if i := strings.IndexAny(m, "=:"); i >= 0 {
+			return m[:i+1] + " <redacted>"
+		}
+		return "<redacted>"
+	})
+}
 
 // pipelineErrorTextFor 把流水线错误转成用户可见的终端文本。
 // 无状态码可提取时回落 pipelineErrorText，保持既有测试断言不变。
@@ -1159,8 +1184,7 @@ func pipelineErrorTextFor(err error) string {
 		return pipelineErrorText
 	}
 	raw := err.Error()
-	raw = reURLRedact.ReplaceAllString(raw, "<upstream>")
-	raw = reKeyRedact.ReplaceAllString(raw, "<redacted>")
+	raw = redactSecrets(raw)
 
 	var code, msg string
 	if m := reHTTPStatus.FindStringSubmatch(raw); m != nil {
