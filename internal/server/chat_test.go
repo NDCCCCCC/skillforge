@@ -635,15 +635,43 @@ func (e *routerEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
 }
 func (e *routerEmbedder) Dimensions() int { return e.dim }
 
+// splitRouterEmbedder puts Skill descriptions and user queries on
+// ORTHOGONAL axes: descriptions embed to e0, every query embeds to e1, so
+// cos(query, skill) = 0 for all candidates. That drives the router's
+// low-confidence branch (top-1 < AmbiguityLowFloor), which is the only
+// ambiguous variant that keeps Selected empty and therefore short-circuits
+// to the SkillPicker.
+type splitRouterEmbedder struct{ dim int }
+
+func (e *splitRouterEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	v := make([]float32, e.dim)
+	if strings.Contains(text, "shared description") {
+		v[0] = 1.0
+	} else {
+		v[1] = 1.0
+	}
+	return v, nil
+}
+
+func (e *splitRouterEmbedder) Dimensions() int { return e.dim }
+
+// routerTestEmbedder is the structural interface registryWithSkills needs.
+// Declaring it locally (instead of importing embedder.Embedder) keeps the
+// fixture usable with both the tied vector embedder and the orthogonal one.
+type routerTestEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+	Dimensions() int
+}
+
 // registryWithSkills builds a fresh skills/ root with two Skills
 // under custom names. Both Skills use the same description so their
 // embeddings are identical (cos=1 with each other AND with any
-// query at the matching pivot) — gap=0 < margin → ambiguous. Used by
-// TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline to set up a
-// tied-Skill snapshot deterministically.
+// query at the matching pivot) — gap=0 < margin → ambiguous, and
+// top-1 above AmbiguityLowFloor → the router keeps a fallback Selected.
+// Used by TestChatHandler_AmbiguousWithFallbackStillRunsPipeline.
 //
 // Caller must close via cancel() (which stops the watcher goroutine).
-func registryWithSkills(t *testing.T, emb *routerEmbedder, names ...string) (*skill.Registry, context.CancelFunc) {
+func registryWithSkills(t *testing.T, emb routerTestEmbedder, names ...string) (*skill.Registry, context.CancelFunc) {
 	t.Helper()
 	root := t.TempDir()
 	for _, name := range names {
@@ -804,11 +832,19 @@ func TestChatHandler_EmptyRegistryDoesNotInvokePipeline(t *testing.T) {
 		"empty registry MUST NOT invoke the retriever either")
 }
 
-// TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline — D5-03 /
-// SC-1 picker UX: when the router returns Ambiguous=true, chatHandler
-// emits the routing decision and returns WITHOUT running VerdictPipeline.
-// The FE renders the SkillPicker so the user picks.
-func TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline(t *testing.T) {
+// TestChatHandler_AmbiguousWithFallbackStillRunsPipeline — D5-03 的
+// 2026-11-09 修订：router 的「模糊」有两种可执行性完全不同的情形。
+//
+//	(a) top-1 低于 AmbiguityLowFloor —— 没有任何候选真正相关，
+//	    Selected 为空，前端渲染 SkillPicker，pipeline 不跑。
+//	(b) top-1 相关但与前二名咬得太近 —— Selected 保留 top-1 作兜底，
+//	    平台继续执行，同时 Ambiguous=true 让前端提示「可能不是你要的域」。
+//
+// 本用例钉住 (b)：两个 Skill 描述完全相同（cos=1），query 与它们也完全
+// 一致 → gap=0 → ambiguous；top-1=1.0 ≥ floor → 有兜底 Selected。
+// 旧断言「ambiguous 必须清空 Selected 且不跑 pipeline」是 (a) 的语义，
+// 套在 (b) 上会让用户只看到一行空白加选择器（2026-11-09 线上反馈）。
+func TestChatHandler_AmbiguousWithFallbackStillRunsPipeline(t *testing.T) {
 	emb := &routerEmbedder{dim: 8, pivotIndex: 3}
 	// Two Skills with identical descriptions (cos=1 with each other AND
 	// cos=1 with the query at the matching pivot) — gap=0 < margin → ambiguous.
@@ -830,7 +866,7 @@ func TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline(t *testing.T) {
 	body, _ := postChat(t, addr, "anything", "")
 	frames := parseFrames(t, body)
 
-	// Find the routing decision; assert ambiguous.
+	// Find the routing decision; assert ambiguous with a fallback selection.
 	var foundRoute bool
 	for _, f := range frames {
 		if f.Type != "data-decision" {
@@ -843,15 +879,62 @@ func TestChatHandler_AmbiguousRoutingDoesNotInvokePipeline(t *testing.T) {
 		if p.Decision == "route" {
 			foundRoute = true
 			assert.True(t, p.Ambiguous, "tied Skills must produce Ambiguous=true")
-			assert.Empty(t, p.Selected, "ambiguous must clear Selected")
+			assert.Equal(t, "alpha", p.Selected,
+				"(b) close-gap ambiguity keeps top-1 as the fallback selection")
 			assert.GreaterOrEqual(t, len(p.SkillScores), 2, "ambiguous carries ≥2 candidates")
 		}
 	}
 	assert.True(t, foundRoute, "expected a route data-decision frame")
+	// 断言用 retriever 而不是 runner：这个 fixture 的 stubRetriever 返回空
+	// chunk，pipeline 会在检索后就走进结构化拒答，永远到不了 runner。
+	// 「检索被调用了」才是「pipeline 真的跑了」的可靠信号。
+	assert.Greater(t, sr.CallCount(), 0,
+		"(b) with a fallback Selected the pipeline MUST run — an empty answer plus a picker is the regression this pins")
+}
+
+// TestChatHandler_AmbiguousWithoutFallbackDoesNotInvokePipeline 钉住 (a)：
+// 没有任何候选与问题相关时，绝不猜一个 Skill 去跑 pipeline —— 那会把
+// 无关领域的拒答复述给用户，反而掩盖「这是域外问题」。
+func TestChatHandler_AmbiguousWithoutFallbackDoesNotInvokePipeline(t *testing.T) {
+	emb := &splitRouterEmbedder{dim: 8}
+	r, cancel := registryWithSkills(t, emb, "alpha", "bravo")
+	defer cancel()
+
+	sr := &stubRetriever{chunks: []retriever.Hit{}}
+	stubRun := newStubRunner("")
+	deps := &Deps{
+		Embedder:  emb,
+		Retriever: sr,
+		Runner:    stubRun,
+		Router:    skill.NewRouter(emb),
+		Registry:  r,
+	}
+	addr, cleanup := newTestHertz(t, deps)
+	defer cleanup()
+
+	body, _ := postChat(t, addr, "anything", "")
+	frames := parseFrames(t, body)
+
+	var foundRoute bool
+	for _, f := range frames {
+		if f.Type != "data-decision" {
+			continue
+		}
+		var p wire.DecisionPayload
+		if err := json.Unmarshal(f.Data, &p); err != nil {
+			continue
+		}
+		if p.Decision == "route" {
+			foundRoute = true
+			assert.True(t, p.Ambiguous, "orthogonal candidates must produce Ambiguous=true")
+			assert.Empty(t, p.Selected, "(a) low-confidence must clear Selected → picker")
+		}
+	}
+	assert.True(t, foundRoute, "expected a route data-decision frame")
 	assert.Equal(t, 0, stubRun.CallCount(),
-		"ambiguous routing MUST NOT invoke VerdictPipeline / Runner")
+		"(a) no relevant candidate MUST NOT invoke VerdictPipeline")
 	assert.Equal(t, 0, sr.CallCount(),
-		"ambiguous routing MUST NOT invoke the retriever")
+		"(a) routing short-circuits before any tier lookup")
 }
 
 // TestVerdictStreamCarriesConclusionText — regression for
