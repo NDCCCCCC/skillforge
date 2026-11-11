@@ -110,10 +110,23 @@ go mod tidy
 
 ## 7. 现在起怎么用 Windows 跑后端测试
 
-在没有 GCC 15 之前，先绕开会崩的重负载用例（不是掩盖，是明确边界）：
+**不要跑**。实测连最轻的用例也会崩：
 
-```powershell
-go test ./internal/duckdb/ -count=1 -run 'TestDuckDBBootQueries|TestValidateDatasetID|TestAttachDataset'
+```
+go test ./internal/duckdb/ -count=1 -run 'TestDuckDBBootQueries|TestValidateDatasetID'
+→ Exception 0xc0000005 + 寄存器 dump → FAIL（0.4s）
 ```
 
-CI 在 Linux 上跑完整套件，不受影响（Linux 预编译库与本机 GCC 无关）。
+即：在 GCC 16 下，**只要进程碰到 DuckDB，就有约一半概率原生崩溃**，与用例重量无关。
+所以「只挑轻量用例跑」这条绕行不成立，能给的只有两条：
+
+- 本地跑后端的其它包时排除 DuckDB 依赖链：
+  `go test $(go list ./... | Select-String -NotMatch 'duckdb|internal/data')`
+- 全量 DuckDB 套件交给 Linux CI（Linux 预编译库与本机 GCC 无关）。
+
+### ⚠️ 生产风险
+
+这不是只影响测试：`cmd/server` 也是用同一套 GCC 16 + 混编静态库链接出来的，
+任何走 `internal/duckdb` 的取数 / 导入 / KPI 路径都带着同样的堆损坏概率。
+修复跑道（第 4 节 A）在服务侧的优先级应该按 **P1** 处理，而不是「测试红」。
+

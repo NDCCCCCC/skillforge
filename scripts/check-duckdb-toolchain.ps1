@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   检查 Windows 上编译 SkillForge DuckDB(CGO) 所需的工具链是否匹配。
