@@ -6,7 +6,7 @@ section: SQL / 正文
 
 ## SQL / 正文
 
-```sql
+```text
   `dlkytbyda` text COMMENT '(道路客运)特别约定1',
   `dlkytbydzdy` text COMMENT '(道路客运)特别约定-自定义',
   `jzsgbxqq` datetime DEFAULT NULL COMMENT '(建筑施工)保险起期',

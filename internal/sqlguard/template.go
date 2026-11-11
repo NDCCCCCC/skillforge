@@ -30,8 +30,12 @@ import (
 //
 //  1. prefers fenced blocks, including ones whose closing fence was cut off
 //     (an unterminated fence that starts a statement is kept — a truncated
-//     template is still a usable whitelist for tables and predicates);
-//  2. falls back to a bare statement scan when no fence is present;
+//     template is still a usable whitelist for tables and predicates), but
+//     respects explicit non-SQL language labels (```shell / ```javascript
+//     / ```text … — 2026-11-11 待办 14);
+//  2. falls back to a bare statement scan ONLY when the note has no fences
+//     at all — a fenced note is structured documentation whose prose must
+//     not resurrect a phantom template;
 //  3. never returns an empty-string entry, and drops blocks without any
 //     statement keyword.
 //
@@ -45,12 +49,29 @@ func ExtractTemplates(note string) []string {
 	note = normalizeSplitters(note)
 
 	var out []string
-	for _, block := range fencedBlocks(note) {
-		if looksLikeSQL(block) {
-			out = append(out, strings.TrimSpace(block))
+	blocks := fencedBlocks(note)
+	labeledNonSQL := false
+	for _, fb := range blocks {
+		// fence language gate (2026-11-11, 待办 14): a fence the corpus
+		// author explicitly labelled as non-SQL (```shell / ```javascript /
+		// ```text …) is never a 取数模板, no matter which keywords its
+		// prose happens to contain (a MongoDB doc mentions "insert", a
+		// shell recipe mentions "update"). Respect the label.
+		if nonSQLFence(fb.lang) {
+			labeledNonSQL = true
+			continue
+		}
+		if looksLikeSQL(fb.body) {
+			out = append(out, strings.TrimSpace(fb.body))
 		}
 	}
-	if len(out) == 0 {
+	// bareStatement fallback. A note carrying an explicit non-SQL fence is
+	// structured documentation whose prose must not resurrect a phantom
+	// template (MongoDB "insertOne", shell "update"). Everything else keeps
+	// the historical behaviour: notes whose fences never yielded a usable
+	// block (empty ```sql/``` pairs, the close-then-open quirk) still fall
+	// back to the bare statement scan, exactly as before this change.
+	if len(out) == 0 && !labeledNonSQL {
 		if stmt := bareStatement(note); looksLikeSQL(stmt) {
 			out = append(out, strings.TrimSpace(stmt))
 		}
@@ -72,25 +93,56 @@ func normalizeSplitters(s string) string {
 	return s
 }
 
-// fencedBlocks walks the text and returns the contents of every ``` fence.
-// An unterminated fence contributes the rest of the text.
-func fencedBlocks(s string) []string {
+// fencedBlock is one ``` fence: its language label ("" when the opening
+// fence is bare ```) and its body.
+type fencedBlock struct {
+	lang string
+	body string
+}
+
+// nonSQLFence reports whether an explicit fence language label declares the
+// block as something other than SQL. An empty label (bare ```) is NOT
+// non-SQL — legacy corpus blocks rely on the keyword heuristic.
+func nonSQLFence(lang string) bool {
+	switch strings.ToLower(strings.TrimSpace(lang)) {
+	case "", "sql":
+		return false
+	default:
+		// Any explicit non-sql label (shell, javascript, text, json, …)
+		// opts the block out of template extraction. Unknown labels are
+		// treated as the author's explicit intent, same as known ones.
+		return true
+	}
+}
+
+// fencedBlocks walks the text and returns every ``` fence with its
+// language label. An unterminated fence contributes the rest of the text.
+func fencedBlocks(s string) []fencedBlock {
 	lines := strings.Split(s, "\n")
-	var blocks []string
+	var blocks []fencedBlock
 	var cur []string
+	lang := ""
 	inFence := false
 	for _, ln := range lines {
 		trimmed := strings.TrimSpace(ln)
 		isFence := strings.HasPrefix(trimmed, "```")
 		if isFence {
 			if inFence {
-				blocks = append(blocks, strings.Join(cur, "\n"))
+				// An EMPTY fence pair (```sql on one line, ``` on the
+				// next) is formatting noise, not structured code — skip
+				// it entirely so it neither yields a block nor suppresses
+				// the bare-statement fallback below.
+				if len(cur) > 0 {
+					blocks = append(blocks, fencedBlock{lang: lang, body: strings.Join(cur, "\n")})
+				}
 				cur = nil
 				inFence = false
+				lang = ""
 				continue
 			}
 			inFence = true
 			cur = nil
+			lang = strings.TrimSpace(strings.TrimPrefix(trimmed, "```"))
 			// A fence that opens another fence inside an open one
 			// (`042__sec07`) is treated as a close-then-open by the branch
 			// above; this branch only runs when not already inside.
@@ -101,7 +153,7 @@ func fencedBlocks(s string) []string {
 		}
 	}
 	if inFence && len(cur) > 0 {
-		blocks = append(blocks, strings.Join(cur, "\n"))
+		blocks = append(blocks, fencedBlock{lang: lang, body: strings.Join(cur, "\n")})
 	}
 	return blocks
 }

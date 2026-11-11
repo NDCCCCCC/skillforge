@@ -6,7 +6,7 @@ section: SQL / 正文
 
 ## SQL / 正文
 
-```sql
+```text
   `tybxzq` datetime DEFAULT NULL COMMENT '(通用)保险止期',
   `tybxqq` datetime DEFAULT NULL COMMENT '(通用)保险起期',
   `styxx` text COMMENT '四、通用信息',

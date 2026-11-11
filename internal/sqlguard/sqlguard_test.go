@@ -182,6 +182,36 @@ func TestExtractTemplatesExpandsLiteralCarriageReturns(t *testing.T) {
 	assert.Contains(t, got[0], "\nfrom b")
 }
 
+// 待办 14 (2026-11-11) — fence language gate. A fence the corpus author
+// explicitly labelled as non-SQL is never a template, and a note carrying
+// such a label must not fall back to the bare statement scan either (the
+// MongoDB/FineBI/定时任务 docs mention "insert"/"update" in prose).
+func TestExtractTemplatesRespectsNonSQLFenceLabels(t *testing.T) {
+	note := "## 操作手册\n\n```text\ninsertOne({ name: \"Alice\" }); // mongo shell\n```\n\n正文提到 update 与 insert 关键词。\n"
+	got := ExtractTemplates(note)
+	assert.Empty(t, got, "a labelled non-SQL fence suppresses both extraction and the bare fallback")
+
+	note = "```javascript\ndb.users.updateOne({}, { $set: { age: 1 } })\n```\n正文还有 SELECT 字样。\n"
+	got = ExtractTemplates(note)
+	assert.Empty(t, got, "```javascript is a non-SQL label")
+
+	// The label is per-fence: a SQL fence in the same note is still taken.
+	note = "```text\nshell 输出，含 update 一词\n```\n\n```sql\nselect a from b where c = 1\n```\n"
+	got = ExtractTemplates(note)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "select a from b")
+}
+
+// 待办 14 — an EMPTY fence pair (```sql immediately closed) is formatting
+// noise from a chunk boundary: it yields no block and does NOT suppress
+// the bare-statement fallback (live file: 010_财务现金流 sec04).
+func TestExtractTemplatesEmptyFencePairKeepsBareFallback(t *testing.T) {
+	note := "```sql\n```\n\n说明：\nSELECT tm.org_name from wuh_dw.t where x = 1\n"
+	got := ExtractTemplates(note)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "SELECT tm.org_name")
+}
+
 func TestBestTemplatePicksMatchingTables(t *testing.T) {
 	note := "```sql\nselect x from unrelated_t where y = 1\n```\n" +
 		"```sql\nselect a.policy_no from wuh_dw.etl_nonauto_policy_t a where a.agent_code = '1'\n```"
