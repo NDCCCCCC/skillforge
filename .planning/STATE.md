@@ -174,6 +174,7 @@ Recent decisions affecting current work:
 | 2026-11-13 | [261113-ib1](quick/261113-ib1-rename-backend-route-api-sparql-to-api-k/261113-ib1-SUMMARY.md) — 后端 KG 路由 /api/sparql → /api/kg/triples（旧路径移除 + 路由契约回归测试 + 门禁/README/CHANGELOG 清扫） | 2c8cb0b, f429fcc |
 | 2026-11-13 | [261113-ixo](quick/261113-ixo-fix-llm-provider-panel-crash-loadall-bac/261113-ixo-SUMMARY.md) — LLM Provider 面板 config 缺省字段回填空串，修复 trim TypeError（点击拉取模型无响应） | 31e426b |
 | 2026-11-13 | [261113-j42](quick/261113-j42-chat-composer-ux-fixes-modelpicker-shows/261113-j42-SUMMARY.md) — composer 三项 UX：ModelPicker 空模型兜底、textarea 自适应撑高、滚动条美化 | 49f73c3 |
+| 2026-11-13 | [261113-jau](quick/261113-jau-move-topbar-sessions-button-from-right-i/261113-jau-SUMMARY.md) — TopBar 会话入口重排：列表按钮挪左区、右区换新建会话、图标按钮即显 tooltip | ea60487 |
 
 ## Deferred Items
 
