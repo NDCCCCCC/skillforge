@@ -273,7 +273,7 @@ func invokeParity(t *testing.T, deps *Deps, method, path, body string, headers .
 	t.Helper()
 	h := server.Default(server.WithHostPorts(":0"))
 	ontologyRoutes(h, deps)
-	h.POST("/api/kg/triples", deps.adminPlatformSparqlHandler)
+	h.POST("/api/kg/triples", deps.adminPlatformTripleHandler)
 	var hdrs []ut.Header
 	if body != "" {
 		hdrs = append(hdrs, ut.Header{Key: "Content-Type", Value: "application/json"})
@@ -350,7 +350,7 @@ func TestSchemaJudgmentParity(t *testing.T) {
 	if respA.Code != http.StatusOK {
 		t.Fatalf("/api/kg/triples: expected 200, got %d: %s", respA.Code, respA.Body.String())
 	}
-	var sparql SparqlResponse
+	var sparql TripleResponse
 	if err := json.Unmarshal(respA.Body.Bytes(), &sparql); err != nil {
 		t.Fatalf("/api/kg/triples unmarshal: %v", err)
 	}

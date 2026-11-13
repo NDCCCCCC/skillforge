@@ -155,12 +155,12 @@ func TestResolveSkillTiersFromKG_DedupesPreservesOrder(t *testing.T) {
 		"duplicate tier reachable via multiple paths must appear exactly once, first-seen order")
 }
 
-// TestSparqlQueryScoped_LiveCategoryWiring_ABoxVisible is the end-to-end
+// TestTripleQueryScoped_LiveCategoryWiring_ABoxVisible is the end-to-end
 // regression: the resolver output must restore positive ABox visibility
 // through Store.QueryScoped. This is the exact gap Phase 44's hermetic
 // suite missed — it hand-fed ["sql-guides"] instead of the resolver's
 // ["cat_sql-guides"] output.
-func TestSparqlQueryScoped_LiveCategoryWiring_ABoxVisible(t *testing.T) {
+func TestTripleQueryScoped_LiveCategoryWiring_ABoxVisible(t *testing.T) {
 	ont := liveCatOnt()
 	tiers := resolveSkillTiersFromKG("sql-guides", ont)
 	assert.Equal(t, []string{"sql-guides"}, tiers)

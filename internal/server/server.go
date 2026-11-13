@@ -734,12 +734,13 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// Renamed 2026-11-13: the retired SPARQL-named path → /api/kg/triples;
 	// old path REMOVED (no compat shim — the FE already calls
 	// /api/kg/triples, see web/src/components/admin/platform/platformApi.ts).
-	// The Go handler keeps its Sparql* name: internal naming only, the
-	// contract is the URL. X-Skill-Name carries caller identity for tier
-	// filtering (D-SPARQL-03). NOT under /api/admin/ — registered bare; the
-	// handler itself gates via requireAdmin (2026-11-09 安全三连),
-	// X-Skill-Name is self-declared and only scopes tiers.
-	h.POST("/api/kg/triples", deps.adminPlatformSparqlHandler)
+	// Go handler + types renamed to Triple* the same day: this endpoint is
+	// S/P/O pattern matching, not SPARQL. X-Skill-Name carries caller
+	// identity for tier filtering (D-SPARQL-03). NOT under /api/admin/ —
+	// registered bare; the handler itself gates via requireAdmin
+	// (2026-11-09 安全三连), X-Skill-Name is self-declared and only scopes
+	// tiers.
+	h.POST("/api/kg/triples", deps.adminPlatformTripleHandler)
 	// Phase 41 Plan 03 (PLAT-ONT-20) — Hybrid Retrieval endpoint.
 	// X-Skill-Name header carries caller identity for tier isolation (D-HYB-05).
 	// POST body: {query, max_hops, rerank}; response: {kg_nodes, kg_edges, milvus_hits}.

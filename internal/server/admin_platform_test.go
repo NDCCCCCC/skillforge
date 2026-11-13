@@ -37,11 +37,11 @@ const (
 )
 
 // fixtureKG builds an in-memory store with known triples for testing
-// SparqlQueryScoped. Schema triples (skf:Class, skf:ObjectProperty, etc.)
+// TripleQueryScoped. Schema triples (skf:Class, skf:ObjectProperty, etc.)
 // are never filtered; ABox triples (note/tbl) are filtered by tier.
 //
 // ===========================================================================
-// SPARQL fixture triple inventory (post D-SPARQL-02/03/04 fixes, Phase 44;
+// Triple-query fixture inventory (post D-SPARQL-02/03/04 fixes, Phase 44;
 // Path B counts updated per D-SPARQL-05 β — v1.6 Phase 45, D-45-04)
 // ===========================================================================
 // fixtureKG() inserts 22 unique S|P|O triples (the original 23 raw inserts
@@ -174,12 +174,12 @@ func fixtureKG() *store.Store {
 	return s
 }
 
-// TestSparqlQueryScoped_AllWildcard tests querying with all empty strings
+// TestTripleQueryScoped_AllWildcard tests querying with all empty strings
 // returns all KG triples (no filter, no pagination).
-func TestSparqlQueryScoped_AllWildcard(t *testing.T) {
+func TestTripleQueryScoped_AllWildcard(t *testing.T) {
 	kg := fixtureKG()
-	pattern := SparqlPattern{}
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	pattern := TriplePattern{}
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	// All 22 unique fixture triples on Path A (admin baseline, no filter):
 	// 4 schema defs + 4 schema individuals + 2 hasReadAccess + 4 note_001 +
@@ -190,12 +190,12 @@ func TestSparqlQueryScoped_AllWildcard(t *testing.T) {
 	assert.Len(t, resp.Results, 22)
 }
 
-// TestSparqlQueryScoped_SubjectFilter tests querying with S specified
+// TestTripleQueryScoped_SubjectFilter tests querying with S specified
 // returns only matching triples.
-func TestSparqlQueryScoped_SubjectFilter(t *testing.T) {
+func TestTripleQueryScoped_SubjectFilter(t *testing.T) {
 	kg := fixtureKG()
-	pattern := SparqlPattern{S: testNS + "note_001"}
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	pattern := TriplePattern{S: testNS + "note_001"}
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	// note_001 has 4 triples: rdf:type + belongsToTier + label + referencesTable.
 	// Path A (nil allowedTiers) early-returns to s.Query which does NOT
@@ -209,13 +209,13 @@ func TestSparqlQueryScoped_SubjectFilter(t *testing.T) {
 	}
 }
 
-// TestSparqlQueryScoped_Pagination verifies offset+limit pagination works;
+// TestTripleQueryScoped_Pagination verifies offset+limit pagination works;
 // Count reflects total before limit; Truncated is true when results exceed limit.
-func TestSparqlQueryScoped_Pagination(t *testing.T) {
+func TestTripleQueryScoped_Pagination(t *testing.T) {
 	kg := fixtureKG()
 	// 22 total triples; limit=5, offset=0
-	pattern := SparqlPattern{Limit: 5, Offset: 0}
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	pattern := TriplePattern{Limit: 5, Offset: 0}
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	// Path A total before pagination. Updated from 16 -> 22 per D-SPARQL-04b.
 	assert.Equal(t, 22, resp.Count) // total before pagination
@@ -223,11 +223,11 @@ func TestSparqlQueryScoped_Pagination(t *testing.T) {
 	assert.Len(t, resp.Results, 5)  // page size = 5
 }
 
-// TestSparqlQueryScoped_Truncated results > limit sets Truncated=true.
-func TestSparqlQueryScoped_Truncated(t *testing.T) {
+// TestTripleQueryScoped_Truncated results > limit sets Truncated=true.
+func TestTripleQueryScoped_Truncated(t *testing.T) {
 	kg := fixtureKG()
-	pattern := SparqlPattern{Limit: 3, Offset: 0}
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	pattern := TriplePattern{Limit: 3, Offset: 0}
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	// Path A count. Updated from 16 -> 22 per D-SPARQL-04b.
 	assert.Equal(t, 22, resp.Count)
@@ -239,8 +239,8 @@ func TestSparqlQueryScoped_Truncated(t *testing.T) {
 	// For total=22, limit=5, offset=20: page = triples[20:min(25,22)] = triples[20:22] = 2 items.
 	// The plan/research originally asserted 0 here ("offset beyond count"), but
 	// count > offset so the page is non-empty (the last count-offset items).
-	pattern2 := SparqlPattern{Limit: 5, Offset: 20}
-	resp2, err := SparqlQueryScoped(pattern2, nil, kg)
+	pattern2 := TriplePattern{Limit: 5, Offset: 20}
+	resp2, err := TripleQueryScoped(pattern2, nil, kg)
 	assert.NoError(t, err)
 	// Path A count (offset before end of page). Updated 16 -> 22 per D-SPARQL-04b.
 	assert.Equal(t, 22, resp2.Count)
@@ -248,13 +248,13 @@ func TestSparqlQueryScoped_Truncated(t *testing.T) {
 	assert.Len(t, resp2.Results, 2)
 }
 
-// TestSparqlQueryScoped_TierFilter verifies tier filtering: allowedTiers=["sql-guides"]
+// TestTripleQueryScoped_TierFilter verifies tier filtering: allowedTiers=["sql-guides"]
 // returns only triples whose subjects have belongsToTier=sql-guides; schema triples
 // (skf:Class, etc.) are never filtered (D-TIER-03).
-func TestSparqlQueryScoped_TierFilter(t *testing.T) {
+func TestTripleQueryScoped_TierFilter(t *testing.T) {
 	kg := fixtureKG()
-	pattern := SparqlPattern{}
-	resp, err := SparqlQueryScoped(pattern, []string{"sql-guides"}, kg)
+	pattern := TriplePattern{}
+	resp, err := TripleQueryScoped(pattern, []string{"sql-guides"}, kg)
 	assert.NoError(t, err)
 	// D-SPARQL-05 (v1.6 Phase 45) / D-45-04 (45-CONTEXT): intended behavior
 	// change — the β subject∩predicate arm makes the 2 hasReadAccess triples
@@ -285,13 +285,13 @@ func TestSparqlQueryScoped_TierFilter(t *testing.T) {
 	}
 }
 
-// TestSparqlQueryScoped_FailClosedNoBelongsToTier verifies that an entity with
+// TestTripleQueryScoped_FailClosedNoBelongsToTier verifies that an entity with
 // no belongsToTier triple is invisible when tier filtering is active (D-TIER-07).
-func TestSparqlQueryScoped_FailClosedNoBelongsToTier(t *testing.T) {
+func TestTripleQueryScoped_FailClosedNoBelongsToTier(t *testing.T) {
 	kg := fixtureKG()
-	pattern := SparqlPattern{S: testNS + "note_003"}
+	pattern := TriplePattern{S: testNS + "note_003"}
 	// No tier filtering → note_003 visible (both triples)
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, resp.Count)
 
@@ -305,7 +305,7 @@ func TestSparqlQueryScoped_FailClosedNoBelongsToTier(t *testing.T) {
 	// skill_compliance->authority rides along with skill_sql->sql-guides.
 	// note_003 has no belongsToTier → visibleSubjects does not include
 	// note_003 → all 2 of its ABox triples are EXCLUDED (correct fail-closed).
-	resp2, err := SparqlQueryScoped(pattern, []string{"sql-guides"}, kg)
+	resp2, err := TripleQueryScoped(pattern, []string{"sql-guides"}, kg)
 	assert.NoError(t, err)
 	assert.Equal(t, 10, resp2.Count) // 8 schema + 2 hasReadAccess (β); 0 ABox (note_003 fail-closed)
 	// D-SPARQL-05 positive: the hasReadAccess row rides schema passthrough
@@ -324,47 +324,47 @@ func TestSparqlQueryScoped_FailClosedNoBelongsToTier(t *testing.T) {
 	}
 }
 
-// TestSparqlQueryScoped_Filter verifies pattern.Filter applies substring match
+// TestTripleQueryScoped_Filter verifies pattern.Filter applies substring match
 // on S/P/O values after KG query.
-func TestSparqlQueryScoped_Filter(t *testing.T) {
+func TestTripleQueryScoped_Filter(t *testing.T) {
 	kg := fixtureKG()
 	// Filter on label value (SQL指南)
-	pattern := SparqlPattern{P: testNS + "label", Filter: "SQL"}
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	pattern := TriplePattern{P: testNS + "label", Filter: "SQL"}
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, resp.Count)
 	assert.Equal(t, `"SQL指南第一章"`, resp.Results[0].O)
 
 	// Filter case-insensitive
-	pattern2 := SparqlPattern{P: testNS + "label", Filter: "sql"}
-	resp2, err := SparqlQueryScoped(pattern2, nil, kg)
+	pattern2 := TriplePattern{P: testNS + "label", Filter: "sql"}
+	resp2, err := TripleQueryScoped(pattern2, nil, kg)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, resp2.Count)
 
 	// Filter that matches nothing
-	pattern3 := SparqlPattern{P: testNS + "label", Filter: "不存在"}
-	resp3, err := SparqlQueryScoped(pattern3, nil, kg)
+	pattern3 := TriplePattern{P: testNS + "label", Filter: "不存在"}
+	resp3, err := TripleQueryScoped(pattern3, nil, kg)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, resp3.Count)
 }
 
-// TestSparqlQueryScoped_InvalidLimit negative limit/offset returns error.
-func TestSparqlQueryScoped_InvalidLimit(t *testing.T) {
+// TestTripleQueryScoped_InvalidLimit negative limit/offset returns error.
+func TestTripleQueryScoped_InvalidLimit(t *testing.T) {
 	kg := fixtureKG()
-	_, err := SparqlQueryScoped(SparqlPattern{Limit: -1, Offset: 0}, nil, kg)
+	_, err := TripleQueryScoped(TriplePattern{Limit: -1, Offset: 0}, nil, kg)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "negative")
 
-	_, err2 := SparqlQueryScoped(SparqlPattern{Limit: 10, Offset: -5}, nil, kg)
+	_, err2 := TripleQueryScoped(TriplePattern{Limit: 10, Offset: -5}, nil, kg)
 	assert.Error(t, err2)
 	assert.Contains(t, err2.Error(), "negative")
 }
 
-// TestSparqlQueryScoped_LimitCap verifies limit > 500 is capped to 500.
-func TestSparqlQueryScoped_LimitCap(t *testing.T) {
+// TestTripleQueryScoped_LimitCap verifies limit > 500 is capped to 500.
+func TestTripleQueryScoped_LimitCap(t *testing.T) {
 	kg := fixtureKG()
-	pattern := SparqlPattern{Limit: 9999}
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	pattern := TriplePattern{Limit: 9999}
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	// Path A returns all 22. Updated from 16 -> 22 per D-SPARQL-04b.
 	assert.Equal(t, 22, resp.Count)
@@ -372,12 +372,12 @@ func TestSparqlQueryScoped_LimitCap(t *testing.T) {
 	assert.Len(t, resp.Results, 22)
 }
 
-// TestSparqlQueryScoped_DefaultLimit verifies default limit of 50 when 0.
-func TestSparqlQueryScoped_DefaultLimit(t *testing.T) {
+// TestTripleQueryScoped_DefaultLimit verifies default limit of 50 when 0.
+func TestTripleQueryScoped_DefaultLimit(t *testing.T) {
 	kg := fixtureKG()
 	// With nil (admin baseline), all 22 triples returned even with default 50
-	pattern := SparqlPattern{Limit: 0, Offset: 0}
-	resp, err := SparqlQueryScoped(pattern, nil, kg)
+	pattern := TriplePattern{Limit: 0, Offset: 0}
+	resp, err := TripleQueryScoped(pattern, nil, kg)
 	assert.NoError(t, err)
 	// Path A returns all 22. Updated from 16 -> 22 per D-SPARQL-04b.
 	assert.Equal(t, 22, resp.Count)

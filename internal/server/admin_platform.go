@@ -146,8 +146,8 @@ func (s *Deps) adminPlatformMcpInvokeHandler(ctx context.Context, c *app.Request
 // to POST /api/kg/triples (old SPARQL-named path removed, no shim).
 // ---------------------------------------------------------------------------
 
-// SparqlPattern is the POST body for /api/kg/triples (D-SPARQL-01).
-type SparqlPattern struct {
+// TriplePattern is the POST body for /api/kg/triples (D-SPARQL-01).
+type TriplePattern struct {
 	S      string `json:"s"`      // subject IRI or "": wildcard
 	P      string `json:"p"`      // predicate IRI or "": wildcard
 	O      string `json:"o"`      // object IRI or "": wildcard
@@ -161,23 +161,23 @@ func ProvenanceFromTriple(t store.Triple) *store.Provenance {
 	return t.Provenance
 }
 
-// SparqlResult is one result triple in the SPARQL response.
-type SparqlResult struct {
+// TripleResult is one result triple in the triple query response.
+type TripleResult struct {
 	S          string            `json:"s"`
 	P          string            `json:"p"`
 	O          string            `json:"o"`
 	Provenance *store.Provenance `json:"provenance,omitempty"`
 }
 
-// SparqlResponse is the response body for /api/kg/triples (D-SPARQL-01).
-type SparqlResponse struct {
-	Results   []SparqlResult `json:"results"`
+// TripleResponse is the response body for /api/kg/triples (D-SPARQL-01).
+type TripleResponse struct {
+	Results   []TripleResult `json:"results"`
 	Count     int            `json:"count"`
 	Truncated bool           `json:"truncated"`
 }
 
-// SparqlQueryScoped is the shared SPARQL handler logic used by both the REST
-// endpoint and the MCP skf_query tool (D-SPARQL-01).
+// TripleQueryScoped is the shared triple-pattern query logic used by both
+// the REST endpoint and the MCP skf_query tool (D-SPARQL-01).
 //
 // Steps:
 //  1. If pattern.Filter is non-empty, apply substring match on entity names
@@ -187,10 +187,10 @@ type SparqlResponse struct {
 //  4. Compute Count (total matches before pagination) and Truncated.
 //  5. Default Limit to 50 if 0; cap Limit at 500 (D-MCP-05).
 //  6. Returns error for negative limit/offset (→ 400).
-func SparqlQueryScoped(pattern SparqlPattern, allowedTiers []string, kg *store.Store) (SparqlResponse, error) {
+func TripleQueryScoped(pattern TriplePattern, allowedTiers []string, kg *store.Store) (TripleResponse, error) {
 	// Validate
 	if pattern.Limit < 0 || pattern.Offset < 0 {
-		return SparqlResponse{}, fmt.Errorf("negative limit or offset")
+		return TripleResponse{}, fmt.Errorf("negative limit or offset")
 	}
 
 	// Default limit to 50; cap at 500
@@ -235,9 +235,9 @@ func SparqlQueryScoped(pattern SparqlPattern, allowedTiers []string, kg *store.S
 	page := triples[start:end]
 
 	// Step 5: Build response
-	results := make([]SparqlResult, 0, len(page))
+	results := make([]TripleResult, 0, len(page))
 	for _, t := range page {
-		results = append(results, SparqlResult{
+		results = append(results, TripleResult{
 			S:          t.S,
 			P:          t.P,
 			O:          t.O,
@@ -245,20 +245,20 @@ func SparqlQueryScoped(pattern SparqlPattern, allowedTiers []string, kg *store.S
 		})
 	}
 
-	return SparqlResponse{
+	return TripleResponse{
 		Results:   results,
 		Count:     count,
 		Truncated: count > offset+limit,
 	}, nil
 }
 
-// adminPlatformSparqlHandler implements POST /api/kg/triples.
+// adminPlatformTripleHandler implements POST /api/kg/triples.
 //
 // D-SPARQL-01: POST body = {s?, p?, o?, limit?, offset?, filter?}
 // D-SPARQL-02: Read-only — no mutation verbs.
 // D-SPARQL-03: X-Skill-Name header carries skill name for tier isolation.
 // Not specified → 401 (no caller context).
-func (s *Deps) adminPlatformSparqlHandler(ctx context.Context, c *app.RequestContext) {
+func (s *Deps) adminPlatformTripleHandler(ctx context.Context, c *app.RequestContext) {
 	// 2026-11-09 安全三连：这个端点的身份此前完全靠调用方自述的
 	// X-Skill-Name（不是凭证）。改为要求 admin token；X-Skill-Name 仍
 	// 作为 tier 过滤的声明，但不再充当身份。
@@ -266,7 +266,7 @@ func (s *Deps) adminPlatformSparqlHandler(ctx context.Context, c *app.RequestCon
 		return
 	}
 	// Step 1: Parse body
-	var pattern SparqlPattern
+	var pattern TriplePattern
 	if err := c.Bind(&pattern); err != nil {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid request body: " + err.Error()})
 		return
@@ -288,7 +288,7 @@ func (s *Deps) adminPlatformSparqlHandler(ctx context.Context, c *app.RequestCon
 	}
 
 	// Step 4: Call shared handler
-	resp, err := SparqlQueryScoped(pattern, tiers, s.Ontology.KG)
+	resp, err := TripleQueryScoped(pattern, tiers, s.Ontology.KG)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
 		return
