@@ -1833,6 +1833,28 @@ body[data-dragging="true"] .detail-panel-wrap {
   background-color: color-mix(in srgb, var(--color-surface) 88%, transparent);
 }
 
+/* 261113-jau — topbar 即显 hover 提示（原生 title 延迟 ~1s 且不可样式化）。
+   CSS-only：[data-tip] 悬停时在按钮下方弹出小黑片。z-index 高于 topbar。 */
+[data-tip] {
+  position: relative;
+}
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-surface-3, #333);
+  color: var(--color-text, #fff);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 60;
+}
+
 /* ====================================================================
    Responsive (Open Design redesign B7 → B9).
    The panels are overlays at every size; below 1280px they turn

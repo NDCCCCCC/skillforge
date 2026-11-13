@@ -60,7 +60,9 @@ describe('TopBar', () => {
   // Session-management phase — the always-visible panel toggle (the
   // SessionPicker dropdown is hidden below md; this button is the
   // mobile session surface). The panel itself is mounted by
-  // ChatLayout; the TopBar owns only the toggle.
+  // ChatLayout; the TopBar owns only the toggle. 261113-jau: the
+  // button moved to the LEFT zone (beside SessionPicker) but keeps
+  // its testid + toggle behavior, so this test is unchanged.
   it('toggles the session panel flag from the 会话列表 button', () => {
     render(<TopBar />);
     expect(useAppStore.getState().sessionPanelOpen).toBe(false);
@@ -68,6 +70,22 @@ describe('TopBar', () => {
     expect(useAppStore.getState().sessionPanelOpen).toBe(true);
     fireEvent.click(screen.getByTestId('topbar-sessions'));
     expect(useAppStore.getState().sessionPanelOpen).toBe(false);
+  });
+
+  // 261113-jau — the right-zone 新建会话 button dispatches the store
+  // createSession action: a new roster row is appended and activated.
+  // createSession is a pure in-memory mint (no fetch), so state
+  // assertions are sufficient. Note: module-level lastMint (double-
+  // dispatch guard) can carry across tests in this file, but the guard
+  // only fires when activeSessionId equals the last mint — beforeEach
+  // resets it to 'session-init', so the mint always proceeds here.
+  it('the 新建会话 button dispatches createSession (new roster row + active flip)', () => {
+    render(<TopBar />);
+    const before = useAppStore.getState().sessions.length;
+    fireEvent.click(screen.getByTestId('topbar-new-session'));
+    const state = useAppStore.getState();
+    expect(state.sessions.length).toBe(before + 1);
+    expect(state.activeSessionId).toBe(state.sessions[state.sessions.length - 1].id);
   });
 
   it('the Eval button hops to /eval with route + dashboard subroute', () => {

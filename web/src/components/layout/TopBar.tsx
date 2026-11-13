@@ -6,6 +6,12 @@
 // surfaces are all re-homed here:
 //   - Skill switcher → SkillPicker (live store.skills)
 //   - Session list   → SessionPicker (store.sessions, 新建/删除 inline)
+//                     + 会话列表 panel toggle (moved to the LEFT zone,
+//                       261113-jau: the panel it opens is the left
+//                       session-panel-wrap — entry and panel now align)
+//   - 新建会话        → Plus button in the right zone (261113-jau:
+//                       direct createSession, replaces the old right-
+//                       zone session-list entry)
 //   - Skill 管理/创建 → SkillManagerMenu (全部重载 / 新建 Skill 向导)
 //   - 知识库文件树   → KnowledgeModal (LibraryBig trigger)
 //   - Eval 入口      → BarChart3 button (pushState /eval + setRoute)
@@ -13,7 +19,7 @@
 //                       is retired)
 //   - 详情面板开关   → retained from B2
 import { useState } from 'react';
-import { BarChart3, Hexagon, LibraryBig, MessagesSquare, PanelRight, PanelRightClose } from 'lucide-react';
+import { BarChart3, Hexagon, LibraryBig, MessagesSquare, PanelRight, PanelRightClose, Plus } from 'lucide-react';
 import { useAppStore } from '../../store/app-store';
 import SkillManagerMenu from './SkillManagerMenu';
 import ThemeToggle from './ThemeToggle';
@@ -31,6 +37,7 @@ export default function TopBar({ height }: TopBarProps) {
   const toggleDetailPanel = useAppStore((s) => s.toggleDetailPanel);
   const sessionPanelOpen = useAppStore((s) => s.sessionPanelOpen);
   const setSessionPanelOpen = useAppStore((s) => s.setSessionPanelOpen);
+  const createSession = useAppStore((s) => s.createSession);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
 
   // LeftSidebar's eval hop: real navigation when we're outside /eval,
@@ -66,12 +73,11 @@ export default function TopBar({ height }: TopBarProps) {
         <div className="hidden w-44 flex-none md:block">
           <SessionPicker />
         </div>
-      </div>
-      <div className="flex flex-none items-center gap-1">
-        <SkillManagerMenu />
-        {/* Session panel entry — ALWAYS visible (the SessionPicker
-            dropdown is hidden below md; without this button mobile
-            has no session surface at all). */}
+        {/* Session panel entry (261113-jau) — moved from the right zone
+            into the LEFT zone so the entry sits beside SessionPicker,
+            aligned with the left-anchored session-panel-wrap it opens.
+            ALWAYS visible (the SessionPicker dropdown is hidden below
+            md; without this button mobile has no session surface). */}
         <button
           type="button"
           data-testid="topbar-sessions"
@@ -80,8 +86,27 @@ export default function TopBar({ height }: TopBarProps) {
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
           aria-label="会话列表"
           title="会话列表"
+          data-tip="会话列表"
         >
           <MessagesSquare className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex flex-none items-center gap-1">
+        <SkillManagerMenu />
+        {/* 261113-jau — direct 新建会话: replaces the old right-zone
+            session-list entry (the panel toggle now lives in the left
+            zone, next to SessionPicker). One click mints + activates a
+            session via the store action. */}
+        <button
+          type="button"
+          data-testid="topbar-new-session"
+          onClick={() => createSession()}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
+          aria-label="新建会话"
+          title="新建会话"
+          data-tip="新建会话"
+        >
+          <Plus className="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -90,6 +115,7 @@ export default function TopBar({ height }: TopBarProps) {
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
           aria-label="知识库"
           title="知识库"
+          data-tip="知识库"
         >
           <LibraryBig className="h-4 w-4" />
         </button>
@@ -100,6 +126,7 @@ export default function TopBar({ height }: TopBarProps) {
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
           aria-label="评估"
           title="评估"
+          data-tip="评估"
         >
           <BarChart3 className="h-4 w-4" />
         </button>
@@ -110,6 +137,7 @@ export default function TopBar({ height }: TopBarProps) {
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
           aria-label={detailPanelOpen ? '收起详情面板' : '展开详情面板'}
           aria-pressed={detailPanelOpen}
+          data-tip={detailPanelOpen ? '收起详情面板' : '展开详情面板'}
         >
           {detailPanelOpen ? (
             <PanelRightClose className="h-4 w-4" />
