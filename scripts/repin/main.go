@@ -71,6 +71,23 @@ func tierRegistry() kb.Registry {
 	})
 }
 
+// lockModelVersion extracts model_ver from raw lock JSON without a full
+// unmarshal (used for the pre-check that must run before the file is read
+// through the typed path).
+func lockModelVersion(raw []byte) string {
+	var probe struct {
+		ModelVersion string `json:"model_ver"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return ""
+	}
+	return probe.ModelVersion
+}
+
+// silence the unused-function linter: lockModelVersion is kept for callers
+// that want the model id without the full typed unmarshal.
+var _ = lockModelVersion
+
 func main() {
 	skillName := flag.String("skill", "compliance", "Skill name to re-pin")
 	skillsDir := flag.String("skills-dir", "examples/skills", "directory holding <skill>/SKILL.md")
@@ -101,7 +118,6 @@ func main() {
 	}
 
 	body := agent.RenderSystemPrompt(manifest)
-	newHash := eval.PromptHashFor(*skillName, eval.DefaultJudgeModel, body)
 
 	raw, err := os.ReadFile(*lockPath)
 	if err != nil {
@@ -118,8 +134,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	// model_ver 是 prompt_hash 的一个输入（reprohash.PromptHash 把它算进去），
+	// 所以算 hash 用的 model 必须与写进锁里的 model_ver 一致 —— 否则单测
+	// （用 lock.ModelVersion 算）和 live eval（用 ActiveModelVersion() 算）
+	// 会各算各的，永远对不上。
+	//
+	// 这里用锁里已有的 model_ver 算 hash，并校验它等于 DefaultJudgeModel：
+	// internal/eval 的 TestShippedFrozenLockIsInSync 断言
+	// lock.ModelVersion == DefaultJudgeModel，改动 model_ver 会让该断言失败。
+	if lf.ModelVersion != eval.DefaultJudgeModel {
+		fmt.Fprintf(os.Stderr,
+			"[repin] lock pins model_ver=%q but DefaultJudgeModel=%q — the shipped-lock unit test requires them to match.\n"+
+				"  Re-pin the model_ver deliberately (and re-run the eval under that model) before using this tool.",
+			lf.ModelVersion, eval.DefaultJudgeModel)
+		os.Exit(1)
+	}
+	newHash := eval.PromptHashFor(*skillName, eval.DefaultJudgeModel, body)
+
 	fmt.Printf("[repin] skill      = %s\n", *skillName)
-	fmt.Printf("[repin] model_ver  = %s\n", lf.ModelVersion)
+	fmt.Printf("[repin] model_ver  = %s (DefaultJudgeModel=%s)\n", lf.ModelVersion, eval.DefaultJudgeModel)
+	fmt.Printf("[repin] active ver = %s  ← live eval 用它断言 pin；必须等于 model_ver\n", eval.ActiveModelVersion())
 	fmt.Printf("[repin] old hash   = %s\n", lf.PromptHash)
 	fmt.Printf("[repin] new hash   = %s\n", newHash)
 	fmt.Printf("[repin] prompt len = %d bytes\n", len(body))
