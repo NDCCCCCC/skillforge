@@ -167,6 +167,12 @@ Recent decisions affecting current work:
 - **既有 flake（非 Phase 47 引入，`audit_writer_test.go:59`）**: `TestAuditWriterPreconditions` 对文件型 SQLite store 开库时套 5s `context.WithTimeout`，CPU 超卖下会超时。串行全量 8/8 绿（Phase 47 验证者自行复跑 3/3 绿），8 份并发则全红。`git log -S` 定源于 `9613d4d`（2026-08-20, Phase 11）。Phase 48 每线单 job 不会触发。
 - **CICD-01/02/03 status as of plan 48-19 (2026-10-20): Complete.** Runner executed ci.yml six times on the public default branch (runs 1-5 red; run 6 of 6 — id 39380373930 / head `630f875` — concluded `go=fe=docker=verify=success`, event `push`). Canonical fragment: `ci.yml total runs: 6; first all-green: 39380373930`. The earlier classified reds were cleared at the source: the go job's P5a SIGPIPE (48-16 materialised the `-list` output), the fe job's Sparkline Windows path (48-16 module-relative resolution), and the docker alpine-musl duckdb linkage (48-16 glibc builder/runtime); the run-5 red was a load-sensitive DuckDB reader-block ratio flake fixed by 48-19 (best-of-5 minimum sampling). WR-06 closes positively on run-3 evidence (lint step green with `only-new-issues: true` alone on the fast-forward push). M2-M5 remain open by design. **Round-6 update (2026-10-21, plan 48-26):** runner has now executed ci.yml seven times — run 7 of 7 (id `39525757252`, head `c060c84a0a9e2a73fbf5134adbbf2b7d45eefc67`, fast-forward push `630f875..c060c84`) is four-green and is the first public run of the round-6 gate (the 48-23/48-24 verifier hardening and 48-25 record corrections are runner-executed); go/fe/docker job spans are byte-identical `630f875..c060c84`, so the Complete statuses stand against run 39380373930 without re-flipping. Canonical fragment: `ci.yml total runs: 7; first all-green: 39380373930`. M2/M3/M5 remain open by design.
 
+## Quick Tasks Completed
+
+| Date | Quick Task | Commit(s) |
+|------|-----------|-----------|
+| 2026-11-13 | [261113-ib1](quick/261113-ib1-rename-backend-route-api-sparql-to-api-k/261113-ib1-SUMMARY.md) — 后端 KG 路由 /api/sparql → /api/kg/triples（旧路径移除 + 路由契约回归测试 + 门禁/README/CHANGELOG 清扫） | 2c8cb0b, f429fcc |
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close.
