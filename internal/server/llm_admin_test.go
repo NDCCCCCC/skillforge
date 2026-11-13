@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/llm"
+	"github.com/skillforge/skillforge/internal/llmconfig"
 )
 
 const llmAdminToken = "llm-admin-test-token"
@@ -263,6 +264,96 @@ func TestLLMAdmin_TestAndModels(t *testing.T) {
 		res := invokeLLMAdmin(t, deps, http.MethodGet, path, "", true)
 		assert.Equal(t, 200, res.Result().StatusCode(), "匿名探测可达（未携带已存 key）")
 	})
+}
+
+// TestLLMAdmin_EnvPresetConfigReportsEffectiveModel — 261113-lzz 缺陷 1：
+// env preset 模式（无 ~/.skillforge/llm.json）下面板必须报告真实生效的
+// 模型与端点。此前 env 分支 BaseURL/Model 无默认值，LOCAL_*/GLM_* 都未设
+// 时报告 ""，而服务实际在跑 DefaultGLMModel —— 报告 ≠ 系统实际状态。
+func TestLLMAdmin_EnvPresetConfigReportsEffectiveModel(t *testing.T) {
+	// env preset 路径：llmTestDeps 已把 llm.json 指到空的临时目录（文件
+	// 不存在 ⇒ Load present=false）；清空模型/端点变量，只留 key。
+	t.Setenv("LOCAL_BASE_URL", "")
+	t.Setenv("GLM_BASE_URL", "")
+	t.Setenv("LOCAL_MODEL", "")
+	t.Setenv("GLM_MODEL", "")
+	t.Setenv("LOCAL_API_KEY", "")
+	t.Setenv("GLM_API_KEY", "sk-env-preset-key-12345678")
+
+	deps := llmTestDeps(t, nil)
+	m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodGet, "/api/admin/llm/config", "", true))
+	assert.Equal(t, "env", m["source"])
+	cfg, ok := m["config"].(map[string]any)
+	require.True(t, ok, "env preset 必须有 config: %v", m)
+	assert.Equal(t, llmconfig.DefaultGLMModel, cfg["model"],
+		"面板报告的模型必须等于实际生效模型（与 BuildUpstream 同一回落链）")
+	assert.Equal(t, llmconfig.DefaultGLMBaseURL, cfg["base_url"],
+		"报告的端点必须等于实际拨号端点")
+
+	// env 里显式设置模型时报告显式值（LOCAL_* 优先于 GLM_*）。
+	t.Run("explicit LOCAL_MODEL wins", func(t *testing.T) {
+		t.Setenv("LOCAL_MODEL", "my-model-override")
+		m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodGet, "/api/admin/llm/config", "", true))
+		cfg := m["config"].(map[string]any)
+		assert.Equal(t, "my-model-override", cfg["model"])
+	})
+}
+
+// TestLLMAdmin_EnvPresetModelsProbe — 261113-lzz 缺陷 2：env preset 模式
+// 拉模型列表。此前 resolveProbeKey 只认白名单 env 名与已存文件配置，env
+// preset 两者皆无 ⇒ 凭据退化为 "anonymous" ⇒ 真实网关拒绝 ⇒ 502。
+// 假上游对 /models 强校验 Bearer key：env 凭据兜底不生效即 401 ⇒ 502，
+// 测试失败 —— 200 即证明凭据来自 env 且随请求发出。
+func TestLLMAdmin_EnvPresetModelsProbe(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer sk-env-preset-key-12345678" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"message":"unauthorized"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"glm-5.3-flash"},{"id":"glm-5.3-airx"}]}`))
+	})
+	upstream := httptest.NewServer(mux)
+	t.Cleanup(upstream.Close)
+
+	t.Setenv("LOCAL_BASE_URL", "")
+	t.Setenv("GLM_BASE_URL", upstream.URL)
+	t.Setenv("LOCAL_MODEL", "")
+	t.Setenv("GLM_MODEL", "")
+	t.Setenv("LOCAL_API_KEY", "")
+	t.Setenv("GLM_API_KEY", "sk-env-preset-key-12345678")
+
+	deps := llmTestDeps(t, nil)
+
+	// base_url = env base ⇒ env 凭据可跟随（200 模型列表，非 502）。
+	m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodGet,
+		"/api/admin/llm/models?base_url="+upstream.URL, "", true))
+	models := m["models"].([]any)
+	require.Len(t, models, 2)
+	assert.Equal(t, "glm-5.3-airx", models[0], "按字母序")
+	assert.Equal(t, "glm-5.3-flash", models[1])
+
+	// 安全约束回归（Task 3 兜底的另一半）：请求发明的 base（≠ env base）
+	// 拿不到 env 凭据 —— env 的真实 key 绝不能被发往任意主机。
+	//
+	// 注意断言口径：后端在拿不到任何凭据时会发 "Bearer anonymous" 占位
+	// （llm_admin.go:414 —— 部分网关允许无 key 列模型，如 ollama），那是
+	// 「无凭据」的标记而非凭据泄漏。所以此处断言的是「env 真 key 未出现」，
+	// 而不是「Authorization 头必须为空」。
+	const envKey = "sk-env-preset-key-12345678"
+	invented := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); strings.Contains(auth, envKey) {
+			t.Errorf("env key leaked to a request-invented host: Authorization=%q", auth)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(invented.Close)
+	res := invokeLLMAdmin(t, deps, http.MethodGet,
+		"/api/admin/llm/models?base_url="+invented.URL, "", true)
+	assert.Equal(t, http.StatusBadGateway, res.Result().StatusCode(),
+		"发明端点拒收 anonymous ⇒ 502；env key 不得外带")
 }
 
 func TestLLMAdmin_NilPanel503(t *testing.T) {

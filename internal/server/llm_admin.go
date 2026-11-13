@@ -138,14 +138,18 @@ func (s *Deps) llmConfigHandler(ctx context.Context, c *app.RequestContext) {
 		resp.Config = publicConfig(cfg)
 	default:
 		// 回落 env（LOCAL_*/GLM_*）：只报告事实，不回写文件。
+		// BaseURL/Model 与 env preset 的实际拨号回落链共用同一默认值
+		// （261113-lzz 缺陷 1）：LOCAL_*/GLM_* 都未设时，服务实际在跑
+		// DefaultGLMBaseURL + DefaultGLMModel，面板必须报告同一事实，
+		// 否则前端只能显示"未设置模型"（报告 ≠ 系统实际状态）。
 		key := envOr("LOCAL_API_KEY", os.Getenv("GLM_API_KEY"))
 		if key != "" {
 			resp.Source = "env"
 			resp.Config = &llmConfigPublic{
 				Vendor:    "env",
 				Plan:      "env",
-				BaseURL:   envOr("LOCAL_BASE_URL", envOr("GLM_BASE_URL", "")),
-				Model:     envOr("LOCAL_MODEL", envOr("GLM_MODEL", "")),
+				BaseURL:   envOr("LOCAL_BASE_URL", envOr("GLM_BASE_URL", llmconfig.DefaultGLMBaseURL)),
+				Model:     envOr("LOCAL_MODEL", envOr("GLM_MODEL", llmconfig.DefaultGLMModel)),
 				MaskedKey: llmconfig.Mask(key),
 			}
 		} else {
@@ -367,7 +371,9 @@ func resolveProbeURLs(vendor, plan, reqBase, reqModelsURL string) (baseURL, mode
 // stored file config's key may only follow a base URL the admin themselves
 // registered (request-invented URLs get no stored key — this closes the
 // "send the stored key to any host" and "echo it back via the response"
-// read-back channel).
+// read-back channel); (3) 261113-lzz — in env preset mode (no file config)
+// the env credentials may only follow the env-configured endpoint itself
+// (EffectiveBaseURL), so they never leak to a caller-chosen host.
 func resolveProbeKey(baseURL, apiKeyEnv string) string {
 	if apiKeyEnv != "" && envWhitelistedEnvName(apiKeyEnv) {
 		if v := os.Getenv(apiKeyEnv); v != "" {
@@ -384,6 +390,15 @@ func resolveProbeKey(baseURL, apiKeyEnv string) string {
 		if baseURL != "" && baseURL == storedBase {
 			key, _ := llmconfig.ResolveKey(cfg)
 			return key
+		}
+	}
+	// env preset 兜底（261113-lzz 缺陷 2）：无文件配置时，用 env 里的凭据，
+	// 但只发给 env 自己配的那个端点（baseURL 必须逐字等于 env base）——
+	// 不扩大 key 的外泄面。有文件配置时本分支不可达：EffectiveBaseURL()
+	// 返回文件端点，上面的文件配置分支对同一 base 已先命中并 return。
+	if baseURL != "" && baseURL == llmconfig.EffectiveBaseURL() {
+		if v := envOr("LOCAL_API_KEY", os.Getenv("GLM_API_KEY")); v != "" {
+			return v
 		}
 	}
 	return ""

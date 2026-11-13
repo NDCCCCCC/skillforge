@@ -343,7 +343,7 @@ func main() {
 	// must not abort boot (no-key boots into stub LLM mode instead).
 	glmKey := envOr("LOCAL_API_KEY", os.Getenv("GLM_API_KEY"))
 	glmBase := envOr("LOCAL_BASE_URL", envOr("GLM_BASE_URL", defaultGLMBaseURL))
-	serverModel := envOr("LOCAL_MODEL", envOr("GLM_MODEL", "glm-5.3-flash"))
+	serverModel := envOr("LOCAL_MODEL", envOr("GLM_MODEL", llmconfig.DefaultGLMModel))
 	stubActive := glmKey == ""
 	if stubActive {
 		// D-08② — the loudest of the three stub annotations. Never print

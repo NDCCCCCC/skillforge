@@ -95,7 +95,7 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 			return nil, ErrNoUpstream
 		}
 		envBase := envUpstreamBaseURL()
-		envModel := envOr("LOCAL_MODEL", envOr("GLM_MODEL", "glm-5.3-flash"))
+		envModel := envOr("LOCAL_MODEL", envOr("GLM_MODEL", llmconfig.DefaultGLMModel))
 		logResolution(resolution{
 			Source:  "ENV_PRESET",
 			Detail:  fmt.Sprintf("no panel config file at %s", llmconfig.ConfigPath()),

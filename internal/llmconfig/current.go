@@ -27,6 +27,11 @@ import (
 // 避免三处字面量漂移。
 const DefaultGLMBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
 
+// DefaultGLMModel 是 env preset 路径（无文件配置）的默认模型 id，
+// 与 upstream.go / cmd/server 的 env 回落语义一致。导出它是为了让
+// 「实际生效模型」与「面板报告模型」共用同一事实来源，避免字面量漂移。
+const DefaultGLMModel = "glm-5.3-flash"
+
 // CurrentVendor 返回文件 LLM 配置的 vendor ID；无配置或读取失败返回 ""。
 // 读失败按未知厂商处理（保守：调用方沿用默认请求字段）——与 resolver 的
 // fail-open-to-stub 姿态一致，这里绝不需要 Fatal。
