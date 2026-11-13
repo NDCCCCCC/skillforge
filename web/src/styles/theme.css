@@ -1268,6 +1268,26 @@ body[data-dragging="true"] * {
   color: var(--color-text-dim);
 }
 
+/* 261113-j42：溢出时的滚动条美化——细圆角，hover 加深；Firefox 走
+   scrollbar-width/color，Chromium/Safari 走 ::-webkit-scrollbar。 */
+.composer-textarea {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-surface-3) transparent;
+}
+.composer-textarea::-webkit-scrollbar {
+  width: 6px;
+}
+.composer-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+.composer-textarea::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+}
+.composer-textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-dim);
+}
+
 .composer-send {
   position: absolute;
   right: 12px;

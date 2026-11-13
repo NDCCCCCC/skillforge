@@ -217,6 +217,11 @@ export default function ModelPicker() {
           style={{ fontSize: 'inherit', maxWidth: 220 }}
           aria-label="切换模型"
         >
+          {/* 261113-j42：model 为空时插入占位项——否则 select 的 value=""
+              匹配不到任何 option，浏览器会显示第一项，误导用户以为已选中。
+              占位项 value 为空，switchModel 的 `if (!next) return` 守卫天然
+              不触发切换。 */}
+          {!model && <option value="">选择模型…</option>}
           {!models.includes(model) && model && <option value={model}>{model}</option>}
           {models.map((m) => (
             <option key={m} value={m}>
@@ -225,7 +230,18 @@ export default function ModelPicker() {
           ))}
         </select>
       ) : (
-        <span>{model || (mode === 'stub' ? 'stub' : '…')}</span>
+        // 261113-j42：三层兜底。env 来源时 /api/admin/llm/config 的
+        // config.model 可能缺省（live 模式 + 空 model），旧文案只剩 "…"
+        // 一个省略号，用户无从知道该去哪里配置。
+        <span
+          title={
+            model
+              ? undefined
+              : '模型名未配置 — 在 admin「LLM Provider 配置」选择/保存模型'
+          }
+        >
+          {model || (mode === 'stub' ? 'stub' : '未设置模型')}
+        </span>
       )}
       <span
         data-testid="model-picker-mode"

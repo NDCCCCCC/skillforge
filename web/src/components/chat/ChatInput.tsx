@@ -94,6 +94,9 @@ export default function ChatInput({
   const filter = menuOpen ? text.slice(1) : '';
   const [activeIndex, setActiveIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
+  // 261113-j42：textarea auto-grow 用。rows={1} 仅作 SSR/首帧基线，
+  // 实际高度由下面的 effect 按 scrollHeight 撑高。
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Filtered skills: case-insensitive substring match against BOTH the
   // name and the description (a Skill is findable by what it does,
@@ -163,6 +166,18 @@ export default function ChatInput({
     document.addEventListener('chat-input-prefill', handler);
     return () => document.removeEventListener('chat-input-prefill', handler);
   }, [setPendingDraft]);
+
+  // 261113-j42：textarea auto-grow——多行内容撑高输入框而不是出现内部
+  // 滚动条。先重置为 auto 让浏览器按内容算出 scrollHeight，再钳到 200
+  // （与 theme.css 的 .composer-textarea max-height 一致，超限后 CSS
+  // overflow 接管）。依赖 text：发送清空后自动回落到单行（CSS 的
+  // min-height:56px 兜底，scrollHeight 小于它时不缩水）。
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+  }, [text]);
 
   // CODE-AUDIT 2026-11-05 (D-01): attached files were collected into
   // `files` state, rendered as removable chips, and then SILENTLY DROPPED —
@@ -370,6 +385,7 @@ export default function ChatInput({
         )}
         <textarea
           data-testid="chat-input-textarea"
+          ref={textareaRef}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
