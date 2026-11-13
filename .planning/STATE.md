@@ -175,6 +175,7 @@ Recent decisions affecting current work:
 | 2026-11-13 | [261113-ixo](quick/261113-ixo-fix-llm-provider-panel-crash-loadall-bac/261113-ixo-SUMMARY.md) — LLM Provider 面板 config 缺省字段回填空串，修复 trim TypeError（点击拉取模型无响应） | 31e426b |
 | 2026-11-13 | [261113-j42](quick/261113-j42-chat-composer-ux-fixes-modelpicker-shows/261113-j42-SUMMARY.md) — composer 三项 UX：ModelPicker 空模型兜底、textarea 自适应撑高、滚动条美化 | 49f73c3 |
 | 2026-11-13 | [261113-jau](quick/261113-jau-move-topbar-sessions-button-from-right-i/261113-jau-SUMMARY.md) — TopBar 会话入口重排：列表按钮挪左区、右区换新建会话、图标按钮即显 tooltip | ea60487 |
+| 2026-11-13 | [261113-l57](quick/261113-l57-add-scripts-rebuild-ps1-one-shot-rebuild/261113-l57-SUMMARY.md) — scripts/rebuild.ps1 一键日常重建（web + 后端到 bin\，补 run.bat 仅缺位才构建的坑） | d1b934d |
 
 ## Deferred Items
 
