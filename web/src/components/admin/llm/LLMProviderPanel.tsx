@@ -86,11 +86,15 @@ export default function LLMProviderPanel() {
       setVendors(prov.vendors);
       setState(cfg);
       if (cfg.config) {
-        setVendor(cfg.config.vendor);
-        setPlan(cfg.config.plan);
-        setBaseUrl(cfg.config.base_url);
-        setModel(cfg.config.model);
-        setApiKeyEnv(cfg.config.api_key_env);
+        // 261113-ixo: backend omits fields (Go omitempty / env-derived
+        // config), so any of these can be undefined at runtime despite
+        // the LLMConfigView type. Backfill with '' to keep the state
+        // contract (string) honest — buildRequest trims these.
+        setVendor(cfg.config.vendor ?? '');
+        setPlan(cfg.config.plan ?? '');
+        setBaseUrl(cfg.config.base_url ?? '');
+        setModel(cfg.config.model ?? '');
+        setApiKeyEnv(cfg.config.api_key_env ?? '');
       }
       setMsg(null);
       return true;
@@ -127,9 +131,13 @@ export default function LLMProviderPanel() {
   }
 
   function buildRequest(): LLMSaveRequest {
+    // 261113-ixo: belt-and-braces — even with the loadAll backfill the
+    // state contract must never feed undefined into trim().
+    const envName = apiKeyEnv ?? '';
+    const plainKey = apiKey ?? '';
     const req: LLMSaveRequest = { vendor, plan, base_url: baseUrl, model };
-    if (apiKeyEnv.trim()) req.api_key_env = apiKeyEnv.trim();
-    else if (apiKey.trim()) req.api_key = apiKey.trim();
+    if (envName.trim()) req.api_key_env = envName.trim();
+    else if (plainKey.trim()) req.api_key = plainKey.trim();
     return req;
   }
 

@@ -152,4 +152,53 @@ describe('LLMProviderPanel', () => {
       expect(screen.getByTestId('llm-msg').textContent).toContain('连通失败');
     });
   });
+
+  it('261113-ixo: config missing api_key_env (env/omitempty) must not crash trim on 拉取模型列表', async () => {
+    // Regression: for source=env the backend omits api_key_env (Go
+    // omitempty / env-derived config). The panel used to copy that
+    // undefined straight into state, so buildRequest()'s apiKeyEnv.trim()
+    // threw a TypeError — surfaced as an error message and the models
+    // click never reached the wire.
+    const ENV_CONFIG = {
+      source: 'env',
+      config: {
+        vendor: 'opencode',
+        plan: 'go',
+        base_url: 'https://opencode.ai/inference/openai/v1',
+        model: 'glm-5.3-flash',
+        api_key_masked: '',
+        api_key_set: true,
+        // api_key_env deliberately ABSENT — runtime contract, not the
+        // optimistic LLMConfigView type
+      },
+      mode: 'live',
+      available: true,
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/providers')) return Promise.resolve(jsonResponse(PROVIDERS));
+      if (url === '/api/admin/llm/config' && (!init?.method || init.method === 'GET')) {
+        return Promise.resolve(jsonResponse(ENV_CONFIG));
+      }
+      if (url.startsWith('/api/admin/llm/models')) {
+        return Promise.resolve(jsonResponse({ models: ['glm-5.3-flash', 'glm-4.7-air'] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<LLMProviderPanel />);
+    await screen.findByTestId('llm-provider-panel');
+
+    fireEvent.click(screen.getByRole('button', { name: /拉取模型列表/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('llm-msg').textContent).toContain('拉到 2 个模型');
+    });
+    const modelsCall = (fetchMock.mock.calls as [string, RequestInit][]).find(([url]) =>
+      url.startsWith('/api/admin/llm/models'),
+    );
+    expect(modelsCall).toBeTruthy();
+    // the pre-fix TypeError text ("…reading 'trim'") must never surface
+    expect(screen.getByTestId('llm-msg').textContent).not.toContain('trim');
+  });
 });
