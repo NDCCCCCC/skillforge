@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/skillforge/skillforge/internal/llmconfig"
 	"github.com/skillforge/skillforge/internal/reprohash"
 )
 
@@ -185,19 +186,31 @@ func PromptHashFor(skillName, modelVersion, renderedPromptBody string) string {
 }
 
 // ActiveModelVersion reports the model id the current process would use
-// for the judge (and, in cmd/eval, the agent — both are built from the
-// same env). This is the "live" value AssertPin compares against the
-// lock's model_ver. Precedence mirrors ResolveLLM: LOCAL_MODEL > JUDGE_MODEL
-// > DefaultJudgeModel. A deployment relying on LOCAL_BASE_URL/LOCAL_API_KEY
-// (self-hosted endpoint) MUST set LOCAL_MODEL — otherwise the pin/report
-// would silently record the GLM default name while actually calling the
-// local server.
+// for the judge (and, in cmd/eval, the agent — both resolve through
+// llmconfig.Effective()). This is the "live" value AssertPin compares
+// against the lock's model_ver.
+//
+// 261113-obm: it reads llmconfig.Effective() — the SAME source
+// ResolveLLM dials — so the pin compares against the model the judge
+// actually uses. It used to read env only (LOCAL_MODEL > JUDGE_MODEL >
+// DefaultJudgeModel), which meant a model changed on the admin panel
+// updated the dial target but not the pin comparison: two sources for
+// one question, and the page could drift from the pin unnoticed.
+//
+// On the env-preset path (no panel config) a deployment relying on
+// LOCAL_BASE_URL/LOCAL_API_KEY (self-hosted endpoint) MUST still set
+// LOCAL_MODEL — otherwise the pin/report records the GLM default name
+// while actually calling the local server. The panel-config path has no
+// such gap: the model comes from the same file that names the endpoint.
+//
+// Effective errors when a panel config exists but its key cannot be
+// resolved; the model id is then unknown, so fall back to
+// DefaultJudgeModel (the same floor ResolveLLM's no-key failure
+// resolves to).
 func ActiveModelVersion() string {
-	if m := os.Getenv("LOCAL_MODEL"); m != "" {
-		return m
+	_, _, m, err := llmconfig.Effective()
+	if err != nil || m == "" {
+		return DefaultJudgeModel
 	}
-	if m := os.Getenv("JUDGE_MODEL"); m != "" {
-		return m
-	}
-	return DefaultJudgeModel
+	return m
 }

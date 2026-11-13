@@ -17,6 +17,7 @@
 package llmconfig
 
 import (
+	"fmt"
 	"os"
 	"strings"
 )
@@ -78,6 +79,64 @@ func EffectiveBaseURL() string {
 		return v
 	}
 	return DefaultGLMBaseURL
+}
+
+// Effective 返回当前生效的 LLM 连接三元组 (baseURL, apiKey, model) ——
+// 「页面上改了什么」与「基线跑的是什么」必须同一套，所以这是 eval 与
+// 服务端共用的**单一事实来源**（261113-obm）。
+//
+// 解析顺序与 internal/llm.BuildUpstream **逐字一致**（PANEL_FILE >
+// ENV_PRESET；llm 反向 import 本包，所以顺序在这里定义、那边照抄）：
+//
+//  1. 文件配置（~/.skillforge/llm.json，admin 面板保存）present 时：
+//     baseURL = cfg.BaseURL，空则回落 catalog plan（FindPlan，A-04
+//     parity）；apiKey = ResolveKey(cfg)；model = cfg.Model。
+//  2. 无文件配置（或文件读失败 —— BuildUpstream 同样把 cfgErr 当作
+//     无可用配置）回落 env preset：baseURL = LOCAL_BASE_URL >
+//     GLM_BASE_URL > DefaultGLMBaseURL；apiKey = LOCAL_API_KEY >
+//     GLM_API_KEY；model = LOCAL_MODEL > JUDGE_MODEL > DefaultGLMModel。
+//     （model 链的中段是 JUDGE_MODEL —— 这是 eval 的 env 契约；服务端
+//     BuildUpstream 的中段是 GLM_MODEL。除这一档外逐字一致。）
+//
+// 明确失败原则：文件配置存在但 key 解析失败（如 api_key_env 指向未
+// 设置的变量）时返回 err，**不**静默降级到 env preset —— 页面明明配了
+// 却拨到别处，比当场报错更难排查。
+func Effective() (baseURL, apiKey, model string, err error) {
+	cfg, present, loadErr := Load()
+	if loadErr == nil && present {
+		key, keyErr := ResolveKey(cfg)
+		if keyErr != nil {
+			return "", "", "", fmt.Errorf("llmconfig: Effective: %w", keyErr)
+		}
+		baseURL = cfg.BaseURL
+		if baseURL == "" {
+			if p, ok := FindPlan(cfg.Vendor, cfg.Plan); ok {
+				baseURL = p.BaseURL
+			}
+		}
+		return baseURL, key, cfg.Model, nil
+	}
+	// env preset：与 cmd/server 的 envOr 链逐字一致。
+	if v := os.Getenv("LOCAL_BASE_URL"); v != "" {
+		baseURL = v
+	} else if v := os.Getenv("GLM_BASE_URL"); v != "" {
+		baseURL = v
+	} else {
+		baseURL = DefaultGLMBaseURL
+	}
+	if v := os.Getenv("LOCAL_API_KEY"); v != "" {
+		apiKey = v
+	} else if v := os.Getenv("GLM_API_KEY"); v != "" {
+		apiKey = v
+	}
+	if v := os.Getenv("LOCAL_MODEL"); v != "" {
+		model = v
+	} else if v := os.Getenv("JUDGE_MODEL"); v != "" {
+		model = v
+	} else {
+		model = DefaultGLMModel
+	}
+	return baseURL, apiKey, model, nil
 }
 
 // SupportsThinkingDisabled 按实际拨号端点判定是否下发

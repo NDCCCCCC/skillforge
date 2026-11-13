@@ -21,10 +21,13 @@
 //
 // Architecture (single-language, Apache-2.0 clean):
 //
-//   - chatmodel.go (this file) — NewGLMChatModel: the GLM Coding Plan
-//     ChatModel construction shared by the judge. Mirrors cmd/server's
-//     inline construction at main.go:152, with the JUDGE_MODEL override
-//     (D3-07).
+//   - chatmodel.go (this file) — NewGLMChatModel + ResolveLLM: the
+//     judge's ChatModel construction, sharing llmconfig.Effective()
+//     with the server's BuildUpstream (panel config > env preset), so
+//     what the admin panel saves is exactly what eval runs
+//     (261113-obm; formerly an env-only mirror of cmd/server's inline
+//     construction at main.go:152, with the JUDGE_MODEL override
+//     D3-07).
 //   - judge.go — Judge interface + glmJudge impl + StubJudge for hermetic
 //     tests. Each judge method is one structured-output LLM call at
 //     temperature=0.
@@ -45,26 +48,43 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 
 	"github.com/skillforge/skillforge/internal/llm"
+	"github.com/skillforge/skillforge/internal/llmconfig"
 )
 
 // DefaultGLMBaseURL is the GLM Coding Plan endpoint (Pitfall 6: NOT
 // /api/paas/v4 — the standard endpoint rejects Coding Plan keys with a
-// confusing "余额不足" error). Mirrors cmd/server's defaultGLMBaseURL.
-const DefaultGLMBaseURL = "https://open.bigmodel.cn/api/coding/paas/v4"
+// confusing "余额不足" error). 261113-obm: aliased to
+// llmconfig.DefaultGLMBaseURL instead of repeating the literal — one
+// endpoint string, shared with the server's env-preset path.
+const DefaultGLMBaseURL = llmconfig.DefaultGLMBaseURL
 
-// DefaultJudgeModel is the default LLM used as the trust evaluator's
-// judge (D3-07). GLM-5.2 matches the production agent's model — this is
-// the "self-eval bias" path documented in eval/README.md (Pitfall 8
-// counter-measure: deterministic Go grounding floor + human spot-check +
-// the JUDGE_MODEL env-var slot for Phase 6 cross-evaluation with
-// DeepSeek/another model).
-const DefaultJudgeModel = "glm-5.2"
+// DefaultJudgeModel is the FINAL fallback for the trust evaluator's
+// judge model (D3-07): used only when there is NEITHER a panel config
+// (~/.skillforge/llm.json) NOR any env model slot. The panel config
+// wins over it — llmconfig.Effective() (shared with the server's
+// BuildUpstream) resolves the actual model, and this constant is only
+// the env-preset floor's floor. It still matches the production agent's
+// default model — the "self-eval bias" path documented in eval/README.md
+// (Pitfall 8 counter-measure: deterministic Go grounding floor + human
+// spot-check + the JUDGE_MODEL env-var slot for Phase 6 cross-evaluation
+// with DeepSeek/another model).
+//
+// 261113-obm: aliased to llmconfig.DefaultGLMModel to kill the second
+// literal (the two must never drift — one names the server's default
+// model, the other the judge's). History: was "glm-5.2"; the
+// deployment's account group does not serve that id — every eval case
+// came back 404 "Model glm-5.2 is not supported by any configured
+// account in this group" and scored as agent_error, which the report
+// only summarised as a count (75/75) without the cause. The model id is
+// ALSO an input to the frozen prompt_hash, so the pin has to be
+// re-authored whenever it changes. scripts/eval-models.ps1 lists what
+// the endpoint actually serves before a run.
+const DefaultJudgeModel = llmconfig.DefaultGLMModel
 
 // LLMConfig is the resolved chat-endpoint triple (base URL / key / model).
 type LLMConfig struct {
@@ -73,59 +93,59 @@ type LLMConfig struct {
 	Model   string
 }
 
-// firstNonEmptyEnv returns the first non-empty env var among keys.
-func firstNonEmptyEnv(keys ...string) string {
-	for _, k := range keys {
-		if v := os.Getenv(k); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-// ResolveLLM resolves the chat endpoint with this precedence:
+// ResolveLLM resolves the chat endpoint the SAME way the server does —
+// through llmconfig.Effective(), whose precedence is:
 //
-//  1. LOCAL_* — a self-hosted OpenAI-compatible endpoint
-//     (LOCAL_BASE_URL + LOCAL_API_KEY + LOCAL_MODEL). Rationale
-//     (2026-09-06 operator decision): the GLM Coding Plan throttles at
-//     eval-scale request rates (429), so the eval CLI and server can be
-//     pointed at a local inference server instead.
-//  2. GLM_* — the Zhipu Coding Plan production endpoint.
-//  3. Built-in defaults (DefaultGLMBaseURL + DefaultJudgeModel).
+//  1. Panel config (~/.skillforge/llm.json, saved from the admin panel's
+//     「LLM Provider 配置」) — what the user changes on the page is what
+//     eval runs. A blank base_url falls back to the catalog plan.
+//  2. Env preset — LOCAL_* overrides GLM_* / JUDGE_MODEL, then the
+//     built-in defaults (DefaultGLMBaseURL + DefaultJudgeModel).
+//     Rationale for the LOCAL_* slots (2026-09-06 operator decision):
+//     the GLM Coding Plan throttles at eval-scale request rates (429),
+//     so the eval CLI and server can be pointed at a local inference
+//     server instead.
 //
-// Shared by NewGLMChatModel (judge) and cmd/server's inline construction —
-// both sides must resolve the SAME endpoint so judge and agent agree on
-// the model under test.
+// 261113-obm: this used to be an env-only lookup (LOCAL_* > GLM_*),
+// which meant the panel and the eval baseline ran two DIFFERENT
+// resolutions — the user changed the model on the page and eval kept
+// dialling whatever .env said. Both sides now share one chain, so the
+// judge and the agent under test agree on the model by construction.
+//
+// A panel config whose key cannot be resolved (e.g. api_key_env names
+// an unset variable) surfaces here as an empty APIKey — NewGLMChatModel
+// then fails with the actionable no-key message. It must NOT silently
+// degrade to env: dialling an endpoint the user didn't configure is
+// harder to debug than failing.
 func ResolveLLM() LLMConfig {
-	baseURL := firstNonEmptyEnv("LOCAL_BASE_URL", "GLM_BASE_URL")
-	if baseURL == "" {
-		baseURL = DefaultGLMBaseURL
-	}
-	modelName := firstNonEmptyEnv("LOCAL_MODEL", "JUDGE_MODEL")
-	if modelName == "" {
-		modelName = DefaultJudgeModel
+	baseURL, apiKey, modelName, err := llmconfig.Effective()
+	if err != nil {
+		// Effective only errors when a panel config exists but its key
+		// is unresolvable. Blank the key so NewGLMChatModel reports the
+		// actionable message instead of half-configured silence.
+		apiKey = ""
 	}
 	return LLMConfig{
 		BaseURL: baseURL,
-		APIKey:  firstNonEmptyEnv("LOCAL_API_KEY", "GLM_API_KEY"),
+		APIKey:  apiKey,
 		Model:   modelName,
 	}
 }
 
 // NewGLMChatModel constructs a ChatModel pointing at the resolved
-// endpoint (see ResolveLLM for the LOCAL_* > GLM_* precedence), for use
-// as the Judge's underlying LLM. Historically GLM Coding Plan-only; the
-// LOCAL_* slots (2026-09-06) let the same constructor drive a
-// self-hosted OpenAI-compatible server. Returns
-// model.ToolCallingChatModel so the judge can be upgraded to a
-// tool-calling variant if a future Ragas-style structured-output
-// optimization requires it. Today the judge uses plain JSON output
-// (response_format: json_object) which the openai.NewChatModel emits
-// natively.
+// endpoint (see ResolveLLM for the panel-config > env-preset precedence
+// shared with the server's BuildUpstream), for use as the Judge's
+// underlying LLM. Historically GLM Coding Plan-only; the LOCAL_* slots
+// (2026-09-06) let the same constructor drive a self-hosted
+// OpenAI-compatible server. Returns model.ToolCallingChatModel so the
+// judge can be upgraded to a tool-calling variant if a future
+// Ragas-style structured-output optimization requires it. Today the
+// judge uses plain JSON output (response_format: json_object) which the
+// openai.NewChatModel emits natively.
 func NewGLMChatModel(ctx context.Context) (model.ToolCallingChatModel, error) {
 	cfg := ResolveLLM()
 	if cfg.APIKey == "" {
-		return nil, errors.New("eval: no chat API key resolved (set LOCAL_API_KEY for a self-hosted endpoint, or GLM_API_KEY for the Coding Plan — copy .env.example to .env and populate)")
+		return nil, errors.New("eval: no chat API key resolved — either save a provider config once in the admin panel's「LLM Provider 配置」(writes ~/.skillforge/llm.json; eval shares the server's resolution chain, so the panel config wins), or set GLM_API_KEY / LOCAL_API_KEY in .env as the env-preset fallback")
 	}
 	modelName := cfg.Model
 	cmRaw, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{

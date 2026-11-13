@@ -206,8 +206,16 @@ func TestAssertPin_SkillNameDrift(t *testing.T) {
 	assert.Contains(t, err.Error(), "skill_name drift")
 }
 
-// TestActiveModelVersion covers the JUDGE_MODEL override + default.
+// TestActiveModelVersion covers the env-preset path: the JUDGE_MODEL
+// override + the default floor. 261113-obm: ActiveModelVersion reads
+// llmconfig.Effective() now, so it MUST be isolated from any real
+// ~/.skillforge/llm.json on this machine — SKILLFORGE_LLM_CONFIG points
+// at an absent temp path, forcing the env-preset chain. The
+// panel-config source is pinned by TestActiveModelVersion_PanelConfig in
+// chatmodel_test.go.
 func TestActiveModelVersion(t *testing.T) {
+	t.Setenv("SKILLFORGE_LLM_CONFIG", filepath.Join(t.TempDir(), "absent.json"))
+	t.Setenv("LOCAL_MODEL", "")
 	t.Setenv("JUDGE_MODEL", "")
 	assert.Equal(t, DefaultJudgeModel, ActiveModelVersion())
 
