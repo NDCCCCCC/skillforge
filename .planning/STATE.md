@@ -178,7 +178,8 @@ Recent decisions affecting current work:
 | 2026-11-13 | [261113-l57](quick/261113-l57-add-scripts-rebuild-ps1-one-shot-rebuild/261113-l57-SUMMARY.md) — scripts/rebuild.ps1 一键日常重建（web + 后端到 bin\，补 run.bat 仅缺位才构建的坑） | d1b934d |
 | 2026-11-13 | [261113-lhu](quick/261113-lhu-composer-header-rework-interactive-skill/261113-lhu-SUMMARY.md) — composer 头部改造：SkillPicker 下沉替换只读徽章、ModelPicker 空模型可手动设置 | c49ba52 |
 | 2026-11-13 | [261113-luu](quick/261113-luu-redesign-composer-send-button-rounded-sq/261113-luu-SUMMARY.md) — 发送按钮视觉重设计（圆角方形 + 渐变 + 幽灵禁用态 + 焦点环） | 7721292 |
-| 2026-11-13 | [261113-lzz](quick/261113-lzz-backend-llm-admin-fixes-env-mode-config-/261113-lzz-SUMMARY.md) — 后端 LLM admin：env 模式报告真实生效模型（DefaultGLMModel 单一事实来源）+ 探针凭据 env preset 兜底 | pending |
+| 2026-11-13 | [261113-lzz](quick/261113-lzz-backend-llm-admin-fixes-env-mode-config-/261113-lzz-SUMMARY.md) — 后端 LLM admin：env 模式报告真实生效模型（DefaultGLMModel 单一事实来源）+ 探针凭据 env preset 兜底 | 40d8eb4 |
+| 2026-11-13 | [261113-nkf](quick/261113-nkf-skillpicker-dropdown-opens-upward-when-s/261113-nkf-SUMMARY.md) — SkillPicker 下拉方向自适应（空间不足向上展开 + 内部滚动） | e4d9c49 |
 
 ## Deferred Items
 
