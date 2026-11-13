@@ -113,25 +113,25 @@ go test ./internal/server/platform/mcp/... -count=1 2>&1 | tail -15 || fail "MCP
 pass "(c) tier filtering regression tests"
 
 # ---------------------------------------------------------------------------
-# (d) SPARQL endpoint test via curl
+# (d) KG triples endpoint test via curl
 # Starts the server with a test KG and verifies 200/401 responses.
 # NOTE: Requires server to be running with seeded KG. For hermetic gate,
 # we verify the handler logic via the ./internal/server tier-isolation
 # tests in step (b) plus the static handler assertions below.
 # This section documents the curl commands to run against a live server.
 # ---------------------------------------------------------------------------
-info "(d) SPARQL endpoint"
+info "(d) KG triples endpoint"
 
 cd "$PROJECT_ROOT"
 
 # Verify the SPARQL route is registered in server.go
-grep -q 'h\.POST.*"/api/sparql"' internal/server/server.go || fail "SPARQL route not registered"
+grep -q 'h\.POST.*"/api/kg/triples"' internal/server/server.go || fail "KG triples route not registered"
 grep -q 'adminPlatformSparqlHandler' internal/server/server.go || fail "SPARQL handler not registered"
 
 # Verify X-Skill-Name header handling (401 when missing)
 grep -q 'X-Skill-Name' internal/server/admin_platform.go || fail "X-Skill-Name header check missing"
 
-# Tier isolation on the SPARQL path: the handler must resolve the caller's
+# Tier isolation on the KG triples path: the handler must resolve the caller's
 # tiers AND route the query through the scoped variant. Route-registration
 # greps alone cannot see either fact.
 SPARQL_BODY="$(extract_go_func internal/server/admin_platform.go "func (s *Deps) adminPlatformSparqlHandler(")"
@@ -145,7 +145,7 @@ if printf '%s\n' "$SPARQL_CODE" | grep -q 'kg\.Query('; then
   fail "SPARQL handler calls the unfiltered kg.Query — it bypasses tier filtering (D-TRUST-01)"
 fi
 
-pass "(d) SPARQL endpoint registered"
+pass "(d) KG triples endpoint registered"
 
 # ---------------------------------------------------------------------------
 # (e) MCP stdio server instantiation

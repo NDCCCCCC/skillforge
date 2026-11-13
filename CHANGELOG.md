@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `hitl.lock.json` / `kpi.lock.json` / `platform-floor.lock.json` 的核查结果**：
   只有 `compliance.lock.json` 是真正的评测集 pin。其余 4 个无任何代码或测试
   引用，其中 `deep` 的 `prompt_hash` 是全零、`kpi` 的是字面占位符文本。
+- **API rename**：KG 三元组查询端点改名为 `POST /api/kg/triples`（原 SPARQL
+  命名路径彻底移除，无兼容 shim；前端已先行迁移，见
+  `web/src/components/admin/platform/platformApi.ts`）。Go 侧 `Sparql*`
+  标识符按 locked 决策保留为内部命名。
 
 ### Fixed
 
@@ -236,8 +240,10 @@ The tag has **not** been cut — the latest tagged release is still `v1.6`.
   ABox dual-write to KG and Milvus; golden F1 tables 0.9846 / related 1.0.
 - **Phase 40 — Data governance**: SHACL + provenance + TBox versioning.
   Violations never block boot (quarantine flow); tier isolation D-TIER-01/03/06/07.
-- **Phase 41 — Platform layer**: MCP stdio server (5 tools) + `POST /api/sparql`
-  (skill-scoped tier isolation) + hybrid retrieval (KG 1-2 hop → Milvus → rerank).
+- **Phase 41 — Platform layer**: MCP stdio server (5 tools) + the KG
+  triple-pattern query endpoint (skill-scoped tier isolation; renamed to
+  `POST /api/kg/triples` on 2026-11-13) + hybrid retrieval (KG 1-2 hop →
+  Milvus → rerank).
 
 ## [v1.3.0] — 2026-09-09
 
