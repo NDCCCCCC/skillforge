@@ -233,15 +233,27 @@ export default function ModelPicker() {
         // 261113-j42：三层兜底。env 来源时 /api/admin/llm/config 的
         // config.model 可能缺省（live 模式 + 空 model），旧文案只剩 "…"
         // 一个省略号，用户无从知道该去哪里配置。
-        <span
+        // 261113-lhu：兜底态从只读 span 改为可点击 button — env 模式
+        // 拉不到模型列表时（/api/admin/llm/models 无凭据解析），用户
+        // 仍可手动键入模型名切换，而不是被锁死在「未设置模型」。
+        <button
+          type="button"
+          data-testid="model-picker-set"
+          onClick={() => {
+            const next = window.prompt('输入模型名（如 glm-5.3-flash）后回车切换：');
+            if (next && next.trim()) void switchModel(next.trim());
+          }}
+          className="bg-transparent text-inherit outline-none cursor-pointer transition-opacity hover:opacity-80"
+          style={{ font: 'inherit' }}
           title={
             model
-              ? undefined
-              : '模型名未配置 — 在 admin「LLM Provider 配置」选择/保存模型'
+              ? '点击手动输入模型名切换'
+              : '模型名未配置 — 在 admin「LLM Provider 配置」选择/保存模型，或点击手动输入模型名切换'
           }
+          aria-label="设置模型"
         >
           {model || (mode === 'stub' ? 'stub' : '未设置模型')}
-        </span>
+        </button>
       )}
       <span
         data-testid="model-picker-mode"

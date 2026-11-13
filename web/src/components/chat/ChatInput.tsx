@@ -11,9 +11,13 @@
 // popover was REPLACED by a Claude Code-style slash-command menu:
 // typing "/" at the start of a non-wizard, non-disabled input opens a
 // filterable Skill menu (arrow-key navigation + Enter select + Esc
-// close). The current Skill renders as a READ-ONLY pill badge above the
-// textarea (chat-input-current-skill); selection happens exclusively
-// through the slash menu.
+// close). 261113-lhu — the READ-ONLY pill badge is replaced by the
+// SkillPicker dropdown (moved down from the TopBar): the composer's
+// top-left now hosts the same interactive surface as a click-first
+// entry, and the slash menu stays as the keyboard-first entry (the two
+// are independent floating layers — typing "/" still opens the menu).
+// The chat-input-current-skill testid now lives on the picker's w-44
+// wrapper so downstream selectors stay stable.
 //
 // Visual upgrade (Phase 4): the composer is now a floating rounded
 // card with subtle shadow + focus glow, sitting on a transparent
@@ -24,12 +28,13 @@ import { ArrowUp, Paperclip, Square, X } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
 import ModelPicker from './ModelPicker';
+import SkillPicker from './parts/SkillPicker';
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export interface ChatInputProps {
   onSend: (text: string) => void;
-  /** Optional mode label — when set, the Skill/currentSkill hint is
+  /** Optional mode label — when set, the SkillPicker/model-picker row is
    * replaced by the mode label (e.g. "模式：Skill 向导"). Plan 05-04. */
   modeLabel?: string;
   /** Disable the textarea + send button (e.g. while a preview fetch is
@@ -81,7 +86,6 @@ export default function ChatInput({
   // populated by useSkillReload (item.manifest.description).
   const currentSkillId = useAppStore((s) => s.currentSkillId);
   const skills = useAppStore((s) => s.skills);
-  const currentSkill = skills.find((s) => s.id === currentSkillId);
   // Slash menu state (quick plan 260815-0xb). menuOpen is derived from
   // the input text (never toggled independently) so the menu cannot
   // desync from the textarea; activeIndex tracks the keyboard
@@ -284,27 +288,12 @@ export default function ChatInput({
         </div>
       ) : (
         <div className="relative mb-2 flex items-center justify-between gap-2">
-          {/* Left: Skill badge (or hint); Right: LLM model picker
-              (260926 — chat-page model switching, hot-reload). */}
-          <div style={{ minWidth: 0 }}>
-          {currentSkill && (
-            <div
-              data-testid="chat-input-current-skill"
-              className="composer-skill-badge"
-            >
-              <span className="composer-skill-badge-dot" aria-hidden />
-              <span>{currentSkill.name}</span>
-            </div>
-          )}
-          {!currentSkill && (
-            <div
-              data-testid="chat-input-current-skill"
-              className="chat-header-skill chat-header-skill-missing"
-              style={{ padding: '0 4px', fontSize: 11 }}
-            >
-              未选择 Skill · 输入 / 选择
-            </div>
-          )}
+          {/* Left: SkillPicker (261113-lhu — moved down from the TopBar;
+              chat-input-current-skill stays on this w-44 wrapper so the
+              testid is stable); Right: LLM model picker (260926 —
+              chat-page model switching, hot-reload). */}
+          <div className="w-44 flex-none" data-testid="chat-input-current-skill">
+            <SkillPicker />
           </div>
           <ModelPicker />
           {menuOpen && (

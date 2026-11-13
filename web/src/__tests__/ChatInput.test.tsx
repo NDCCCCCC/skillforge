@@ -66,12 +66,14 @@ function type(value: string) {
 }
 
 describe('ChatInput slash-command Skill menu (quick plan 260815-0xb)', () => {
-  it('renders the read-only current-skill badge; typing "/" opens the menu listing skills', () => {
+  it('renders the SkillPicker trigger; typing "/" opens the menu listing skills', () => {
     seedSkills();
     render(<ChatInput onSend={() => undefined} />);
-    // Read-only badge — a div, not a clickable popover trigger.
-    const badge = screen.getByTestId('chat-input-current-skill');
-    expect(badge.textContent).toContain('未选择 Skill');
+    // 261113-lhu — the read-only badge became the interactive SkillPicker
+    // (chat-input-current-skill stays on the picker's w-44 wrapper). No
+    // current skill yet → the trigger shows the 选择 Skill placeholder.
+    expect(screen.getByTestId('skill-picker-trigger')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-input-current-skill').textContent).toContain('选择 Skill');
     // Menu closed before any input.
     expect(screen.queryByTestId('chat-input-skill-menu')).toBeNull();
     type('/');
@@ -127,7 +129,7 @@ describe('ChatInput slash-command Skill menu (quick plan 260815-0xb)', () => {
     ).toBe('');
     expect(screen.queryByTestId('chat-input-skill-menu')).toBeNull();
     expect(sent).toBe(0);
-    // Badge immediately reflects the selection.
+    // Picker trigger immediately reflects the selection.
     expect(screen.getByTestId('chat-input-current-skill').textContent).toContain('Calculator');
   });
 
@@ -180,7 +182,8 @@ describe('ChatInput slash-command Skill menu (quick plan 260815-0xb)', () => {
     await waitFor(() => {
       expect(useAppStore.getState().currentSkillId).toBeNull();
     });
-    expect(screen.getByTestId('chat-input-current-skill').textContent).toContain('未选择 Skill');
+    // 261113-lhu — picker trigger falls back to the 选择 Skill placeholder.
+    expect(screen.getByTestId('chat-input-current-skill').textContent).toContain('选择 Skill');
   });
 
   it('Enter sends when the menu is NOT open (unchanged legacy behavior)', () => {

@@ -4,7 +4,9 @@
 // TopBar — the 56px frosted-glass topbar of the chat-first shell
 // (Open Design redesign B3: full composition). The deleted LeftSidebar
 // surfaces are all re-homed here:
-//   - Skill switcher → SkillPicker (live store.skills)
+//   - Skill switcher → SkillPicker in the composer (261113-lhu moved it
+//                       OFF the TopBar into ChatInput — the switch entry
+//                       belongs beside the textarea it affects)
 //   - Session list   → SessionPicker (store.sessions, 新建/删除 inline)
 //                     + 会话列表 panel toggle (moved to the LEFT zone,
 //                       261113-jau: the panel it opens is the left
@@ -24,7 +26,6 @@ import { useAppStore } from '../../store/app-store';
 import SkillManagerMenu from './SkillManagerMenu';
 import ThemeToggle from './ThemeToggle';
 import KnowledgeModal from './KnowledgeModal';
-import SkillPicker from '../chat/parts/SkillPicker';
 import SessionPicker from '../chat/parts/SessionPicker';
 
 export interface TopBarProps {
@@ -66,9 +67,6 @@ export default function TopBar({ height }: TopBarProps) {
             SkillForge
           </span>
           <span className="hidden text-xs text-text-muted lg:inline">· 知识问答</span>
-        </div>
-        <div className="w-44 flex-none">
-          <SkillPicker />
         </div>
         <div className="hidden w-44 flex-none md:block">
           <SessionPicker />

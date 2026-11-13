@@ -3,7 +3,8 @@
 
 // Open Design redesign B3 — TopBar full-composition tests. The TopBar
 // re-homes every deleted-LeftSidebar surface:
-//   1. SkillPicker + SessionPicker triggers render (live store data).
+//   1. SessionPicker trigger renders (live store data); the SkillPicker
+//      is NOT here anymore — 261113-lhu moved it into the composer.
 //   2. The 知识库 button opens the KnowledgeModal.
 //   3. The Eval button hops to /eval (pushState + route + subroute).
 //   4. The detail-panel toggle and ThemeToggle are present.
@@ -22,8 +23,10 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  // Both pickers read live store slices; feed them a deterministic
-  // surface. The knowledge fetch is stubbed away (modal unopened).
+  // SessionPicker reads the live store slice; feed it a deterministic
+  // surface (skills stays seeded — harmless, and the SkillPicker
+  // surface is now pinned by SkillPicker.test / ChatInput.test). The
+  // knowledge fetch is stubbed away (modal unopened).
   useAppStore.setState({
     skills: [
       { id: 'simple-qa', name: 'simple-qa', description: '简单问答', status: 'ok' },
@@ -43,9 +46,11 @@ beforeEach(() => {
 });
 
 describe('TopBar', () => {
-  it('renders the SkillPicker and SessionPicker triggers', () => {
+  // 261113-lhu — the Skill 切换入口已下沉 composer（ChatInput 内的
+  // SkillPicker）；TopBar 不再承载它，此处钉住"不回流"。
+  it('renders the SessionPicker trigger and no longer hosts SkillPicker', () => {
     render(<TopBar />);
-    expect(screen.getByTestId('skill-picker-trigger')).toBeInTheDocument();
+    expect(screen.queryByTestId('skill-picker-trigger')).not.toBeInTheDocument();
     expect(screen.getByTestId('session-picker-trigger')).toBeInTheDocument();
     expect(screen.getByTestId('session-picker-trigger').textContent).toContain('会话 1');
   });
