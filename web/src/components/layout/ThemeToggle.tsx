@@ -19,6 +19,10 @@ export default function ThemeToggle() {
       className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-2 hover:text-text"
       aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'}
       title={theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'}
+      // 261113-mkc: same CSS-only instant tooltip as the TopBar buttons
+      // (theme.css [data-tip]:hover::after); aria-label/title stay as the
+      // a11y fallback.
+      data-tip={theme === 'dark' ? '切换到浅色主题' : '切换到暗色主题'}
     >
       {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
     </button>

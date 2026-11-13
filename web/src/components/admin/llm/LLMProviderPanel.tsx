@@ -87,9 +87,9 @@ export default function LLMProviderPanel() {
       setState(cfg);
       if (cfg.config) {
         // 261113-ixo: backend omits fields (Go omitempty / env-derived
-        // config), so any of these can be undefined at runtime despite
-        // the LLMConfigView type. Backfill with '' to keep the state
-        // contract (string) honest — buildRequest trims these.
+        // config) — reflected as optional in LLMConfigView since
+        // 261113-mkc. Backfill with '' to keep the state contract
+        // (string) honest — buildRequest trims these.
         setVendor(cfg.config.vendor ?? '');
         setPlan(cfg.config.plan ?? '');
         setBaseUrl(cfg.config.base_url ?? '');

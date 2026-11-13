@@ -19,14 +19,19 @@ export interface LLMVendor {
   plans: LLMPlan[];
 }
 
+// 261113-mkc: mirrors the backend wire contract (internal/server/
+// llm_admin.go llmConfigPublic). base_url / masked_key / api_key_env /
+// updated_at carry Go omitempty, so they can be absent at runtime (e.g.
+// env-derived config) — hence optional. The backend never emitted
+// api_key_masked / api_key_set (the previous optimistic shape).
 export interface LLMConfigView {
   vendor: string;
   plan: string;
-  base_url: string;
+  base_url?: string;
   model: string;
-  api_key_masked: string;
-  api_key_set: boolean;
-  api_key_env: string;
+  masked_key?: string;
+  api_key_env?: string;
+  updated_at?: string;
 }
 
 export interface LLMConfigState {
