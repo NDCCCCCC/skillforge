@@ -24,13 +24,18 @@
 #      (step 3 is done by the orchestrator — the script prints the value).
 #
 # MODEL VERSION (load-bearing): the prompt_hash covers the model id too
-# (reprohash.PromptHash takes it as an input). The shipped lock pins
-# model_ver=glm-5.2 (= eval.DefaultJudgeModel), and the unit test asserts
-# that equality. So the eval MUST run under glm-5.2 — this script drops
-# LOCAL_MODEL / JUDGE_MODEL from the environment before the run (they would
-# otherwise make ActiveModelVersion() drift off the pinned model) and clears
-# LOCAL_* credentials the way run.bat does (they point at a dead endpoint
-# and outrank GLM_*).
+# (reprohash.PromptHash takes it as an input), so the eval and the re-pin
+# must agree on the model. The source of truth is the admin panel config
+# (~/.skillforge/llm.json - what the page saves): internal/eval.ResolveLLM
+# resolves the panel config FIRST, env preset second. This script therefore
+#   - panel config present -> leaves LOCAL_MODEL/JUDGE_MODEL alone (pinning
+#     env models would only obscure which model actually ran) and prints it;
+#   - no panel config -> falls back to env (keeps any LOCAL_MODEL/JUDGE_MODEL,
+#     else glm-5.3-flash) and asks the user to save the panel config once.
+# LOCAL_* credentials are still cleared: .env's LOCAL_BASE_URL points at a
+# dead local inference server and outranks GLM_* on the env-only path
+# (run.bat drops them for the same reason). With a panel config the Go side
+# reads the panel first anyway, so clearing LOCAL_* is always safe.
 #
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\eval-refreeze.ps1
@@ -51,6 +56,23 @@ Set-Location $root
 
 if (-not $Version) {
     $Version = 'compliance-' + (Get-Date -Format 'yyyy-MM-dd') + '-v2'
+}
+
+# ── panel config: the same source of truth the server uses ───────────────
+# The admin panel's "LLM Provider config" save writes ~/.skillforge/llm.json
+# (SKILLFORGE_LLM_CONFIG overrides the path) and internal/llmconfig resolves
+# it before any env preset - eval now shares that chain, so "what the page
+# says" is what the eval runs. PowerShell has no shared module here, so the
+# helper is inlined (same self-contained style as the .env bridge below).
+function Get-PanelConfigPath {
+    if ($env:SKILLFORGE_LLM_CONFIG) { return $env:SKILLFORGE_LLM_CONFIG }
+    return (Join-Path $HOME '.skillforge\llm.json')
+}
+
+function Get-PanelConfig {
+    $p = Get-PanelConfigPath
+    if (-not (Test-Path $p)) { return $null }
+    try { return (Get-Content $p -Raw | ConvertFrom-Json) } catch { return $null }
 }
 
 # ── load .env into the process environment ───────────────────────────────
@@ -79,16 +101,32 @@ if (-not $SkipEval) {
         Set-Item -Path "Env:$k" -Value $v
     }
 
-    # Pin the model to the lock's model_ver: the prompt_hash covers the model
-    # id, so the eval and the pin must agree on it (see header note).
-    $env:LOCAL_MODEL = 'glm-5.2'
-    $env:JUDGE_MODEL = 'glm-5.2'
     # LOCAL_* credentials point at a dead endpoint and outrank GLM_* (run.bat
-    # drops them for the same reason).
+    # drops them for the same reason). With a panel config the Go side reads
+    # the panel first anyway, so clearing LOCAL_* is always safe.
     foreach ($k in 'LOCAL_API_KEY', 'LOCAL_BASE_URL') {
         if (Test-Path "Env:$k") { Remove-Item "Env:$k" -Force }
     }
-    Write-Host '[refreeze] running eval against the CURRENT compliance prompt (judge=glm-5.2)...'
+
+    # Model resolution mirrors internal/llmconfig: panel config first, env
+    # preset second (see header note). Only pin env models when there is NO
+    # panel config - over the panel they are dead weight that hides which
+    # model actually ran.
+    $panelPath = Get-PanelConfigPath
+    $panel = Get-PanelConfig
+    if ($panel -and $panel.model) {
+        Write-Host ("[refreeze] panel config = {0} model={1} base_url={2}" -f $panelPath, $panel.model, $panel.base_url)
+        Write-Host "[refreeze] using panel config model=$($panel.model) - NOT pinning LOCAL_MODEL/JUDGE_MODEL"
+    } else {
+        Write-Host '[refreeze] no panel config - falling back to env models'
+        if (-not $env:LOCAL_MODEL) { $env:LOCAL_MODEL = 'glm-5.3-flash' }
+        if (-not $env:JUDGE_MODEL) { $env:JUDGE_MODEL = 'glm-5.3-flash' }
+        Write-Host '[refreeze] HINT: save the LLM Provider config once in the admin panel'
+        Write-Host '[refreeze]       (~/.skillforge/llm.json) - the eval then uses the SAME'
+        Write-Host '[refreeze]       model the page uses.'
+    }
+    $effModel = if ($panel -and $panel.model) { $panel.model } else { $env:LOCAL_MODEL }
+    Write-Host "[refreeze] running eval against the CURRENT compliance prompt (model=$effModel)..."
     go run ./cmd/eval --golden=eval/golden/compliance.jsonl --archive
     if ($LASTEXITCODE -ne 0) {
         Write-Host '[refreeze] eval FAILED - lock NOT re-pinned (a pin without fresh scores would be a lie).'
