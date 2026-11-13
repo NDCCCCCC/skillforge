@@ -18,7 +18,15 @@
 //   - Heading copy is `检测到歧义，请选择目标 Skill`
 //   - Per-candidate CTA `使用此 Skill` instead of the default select
 //   - A `使用默认 Skill` dismiss button appears at the bottom
-import { useEffect, useRef, useState } from 'react';
+//
+// 261113-nkf — placement is adaptive. The picker now lives in the
+// composer header (ABOVE the input box), so a downward menu has to
+// cross the composer card and can get clipped. On open, a
+// useLayoutEffect measures the viewport space below the trigger and
+// flips the menu to `bottom` positioning (`data-placement="top"`)
+// when it cannot fit below. The menu also caps at
+// max-h-[min(320px,60vh)] with internal scrolling.
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
 import { cn } from '../../../lib/cn';
 import { useAppStore } from '../../../store/app-store';
@@ -49,7 +57,11 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
   // safe even before the approval slice hydrates.
   const approvalPending = useAppStore((s) => Boolean(s.approval?.pending));
   const [open, setOpen] = useState(false);
+  // 261113-nkf — flip-to-top placement state (measured on open).
+  const [dropUp, setDropUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const current = skills.find((s) => s.id === currentSkillId);
   const disabledByPendingApproval = approvalPending;
@@ -74,6 +86,31 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [open, disabledByPendingApproval]);
 
+  // 261113-nkf — placement measurement. Runs synchronously after the
+  // menu commits (before paint) so the flip never flashes downward.
+  //   spaceBelow = viewport bottom − trigger bottom
+  //   menuHeight = rendered scrollHeight, else an estimate
+  //                (row ≈ 34px + paddings/banner ≈ 40px, capped at 320)
+  // Flip when the menu cannot fit below AND there is more room above.
+  // Closing resets to the default downward placement.
+  const itemCount = ambiguityMode ? (scores?.length ?? 0) : skills.length;
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setDropUp(false);
+      return;
+    }
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const menuHeight = menuRef.current?.scrollHeight || Math.min(itemCount * 34 + 40, 320);
+    if (spaceBelow < menuHeight && spaceAbove > spaceBelow) {
+      setDropUp(true);
+    }
+  }, [open, itemCount]);
+
   function handleSelect(skillId: string) {
     useAppStore.getState().setCurrentSkill(skillId);
     useAppStore.getState().setCenterView({ kind: 'skill-md', skillId });
@@ -96,6 +133,7 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
   return (
     <div data-testid="skill-picker" data-mode={ambiguityMode ? 'ambiguity' : 'default'} className="relative" ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
         data-testid="skill-picker-trigger"
         data-disabled-by-pending-approval={disabledByPendingApproval || undefined}
@@ -122,8 +160,13 @@ export default function SkillPicker({ scores, onPickAmbiguous, onDismissAmbiguou
 
       {open && (
         <div
+          ref={menuRef}
           data-testid="skill-picker-menu"
-          className="absolute z-10 mt-1 w-full min-w-56 rounded-md border border-border bg-surface-2 shadow-lg"
+          data-placement={dropUp ? 'top' : 'bottom'}
+          className={cn(
+            'absolute z-10 w-full min-w-56 max-h-[min(320px,60vh)] overflow-y-auto rounded-md border border-border bg-surface-2 shadow-lg',
+            dropUp ? 'bottom-[calc(100%+4px)] mb-1' : 'mt-1',
+          )}
         >
           {skillServiceOffline && !ambiguityMode && (
             <div
