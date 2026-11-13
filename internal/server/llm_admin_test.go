@@ -49,6 +49,7 @@ func invokeLLMAdmin(t *testing.T, deps *Deps, method, path, body string, withTok
 	h.POST("/api/admin/llm/config", deps.llmSaveHandler)
 	h.POST("/api/admin/llm/test", deps.llmTestHandler)
 	h.GET("/api/admin/llm/models", deps.llmModelsHandler)
+	h.POST("/api/admin/llm/model", deps.llmModelHandler)
 
 	var headers []ut.Header
 	if withToken {
@@ -354,6 +355,107 @@ func TestLLMAdmin_EnvPresetModelsProbe(t *testing.T) {
 		"/api/admin/llm/models?base_url="+invented.URL, "", true)
 	assert.Equal(t, http.StatusBadGateway, res.Result().StatusCode(),
 		"发明端点拒收 anonymous ⇒ 502；env key 不得外带")
+}
+
+// TestLLMAdmin_ModelSwitch_EnvPreset — 261113-mkc：env preset 部署（无
+// ~/.skillforge/llm.json）下聊天页模型选择器必须能切模型。此前无文件配置
+// 一律 400（"save vendor/plan/api key first"），而部署常用 env preset
+// （LOCAL_*/GLM_*）—— 面板 GET 已报告 env 形态（261113-lzz 缺陷 1），
+// 切模型却仍是文件配置中心的盲区。
+//
+// 语义锁：模型写入进程环境 LOCAL_MODEL（BuildUpstream 的 env 回落链优先读
+// 它 ⇒ 立即生效），端点/凭据继续用 env 既有值，文件配置不动；热重载后
+// resolver 必须看到新模型；env key 只能以 masked 形态出现在响应里。
+func TestLLMAdmin_ModelSwitch_EnvPreset(t *testing.T) {
+	// env preset 前提：无文件配置（llmTestDeps 已把 SKILLFORGE_LLM_CONFIG
+	// 指向不存在的临时路径）。相关变量全部先经 t.Setenv 注册（含空值），
+	// handler 内部的 os.Setenv("LOCAL_MODEL", …) 才会在测试结束时被还原，
+	// 不污染同包其他用例。
+	t.Setenv("LOCAL_BASE_URL", "")
+	t.Setenv("GLM_BASE_URL", "http://localhost:9999/v1")
+	t.Setenv("LOCAL_MODEL", "")
+	t.Setenv("GLM_MODEL", "")
+	t.Setenv("LOCAL_API_KEY", "sk-env-preset-switch-123456")
+	t.Setenv("GLM_API_KEY", "")
+
+	// DynamicChatModel 构造需要一个 resolver；handler 走 applyLLMConfig() 后
+	// 它会被真实 BuildUpstream 替换，所以这里注入的 fake 不参与断言。
+	deps := llmTestDeps(t, func() (model.ToolCallingChatModel, error) {
+		return &fakeLLMUp{}, nil
+	})
+
+	resp := invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/model", `{"model":"my-model"}`, true)
+	m := llmBody(t, resp) // 内置断言 200
+	assert.Equal(t, true, m["ok"])
+	assert.Equal(t, "my-model", m["model"], "响应必须回显切换后的模型")
+	require.Contains(t, m, "available", "available 字段必须存在（值随 resolver 而定）")
+	assert.Equal(t, true, m["available"])
+	assert.Equal(t, "live", m["mode"])
+	assert.NotEmpty(t, m["note"], "note 必须存在")
+	assert.Contains(t, m["note"], "restart", "note 必须讲清进程重启即丢失（env 变量不持久化）")
+	assert.Equal(t, "my-model", os.Getenv("LOCAL_MODEL"),
+		"LOCAL_MODEL 必须被写入进程环境")
+
+	// 「新模型真的进了上游构建路径」的可观测口径。
+	//
+	// 不能断言上面那个 fake resolver 看到了新模型：handler 的
+	// applyLLMConfig() 会用真实 llm.BuildUpstream **替换**注入的 resolver，
+	// fake resolver 在 handler 之后根本不会被调用（它只在 DynamicChatModel
+	// 构造后的首次解析时跑一次，那次 LOCAL_MODEL 还是空）。
+	//
+	// 真正可观测的证据是 available==true —— 它来自 handler 末尾的
+	// s.LLMDynamic.Available()，会强制走 resolve() → BuildUpstream，
+	// 而 BuildUpstream 的 ENV_PRESET 分支正是读 LOCAL_MODEL 构造上游；
+	// 模型名无效时它会返回 error，Available() 即为 false。
+	assert.True(t, deps.LLMDynamic.Available(),
+		"热重载后的上游必须能用新模型成功构建（Available() 触发真实 BuildUpstream）")
+
+	// 安全约束：env key 绝不能以明文出现在任何响应字节里。
+	raw := string(resp.Result().Body())
+	assert.NotContains(t, raw, "sk-env-preset-switch-123456", "env key 明文不得出现在响应里")
+	masked, _ := m["masked_key"].(string)
+	assert.NotEmpty(t, masked, "masked_key 必须存在（env key 的 masked 形态）")
+	assert.NotContains(t, masked, "123456", "masked key 绝不能含明文片段")
+}
+
+// TestLLMAdmin_ModelSwitch_NothingConfigured — 文件配置与 env preset 凭据
+// 都不存在时保持 400，且错误文案必须把两条途径都说清（面板保存 / env 凭据）。
+func TestLLMAdmin_ModelSwitch_NothingConfigured(t *testing.T) {
+	t.Setenv("LOCAL_API_KEY", "")
+	t.Setenv("GLM_API_KEY", "")
+
+	deps := llmTestDeps(t, nil) // 无文件配置（空临时目录）
+	r := invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/model", `{"model":"m"}`, true).Result()
+	require.Equal(t, http.StatusBadRequest, r.StatusCode())
+	var e graphResponseError
+	require.NoError(t, json.Unmarshal(r.Body(), &e))
+	assert.Contains(t, e.Error, "panel", "文案必须提到面板保存途径")
+	assert.Contains(t, e.Error, "LOCAL_API_KEY", "文案必须提到 env preset 途径")
+}
+
+// TestLLMAdmin_ModelSwitch_FileConfig — 文件配置路径行为不变（261113-mkc
+// 只在无文件配置时新增 env preset 分支）：Load → 改 Model → Save → 热重载，
+// 新模型落盘；LOCAL_MODEL 不被触碰（那是 env 路径专属的写入）。
+func TestLLMAdmin_ModelSwitch_FileConfig(t *testing.T) {
+	t.Setenv("LOCAL_MODEL", "")
+	deps := llmTestDeps(t, func() (model.ToolCallingChatModel, error) {
+		if _, present, err := readSavedConfig(t); err == nil && present {
+			return &fakeLLMUp{}, nil
+		}
+		return nil, nil
+	})
+	llmBody(t, invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/config",
+		`{"vendor":"opencode","plan":"go","model":"glm-5.3-flash","api_key":"sk-file-12345678"}`, true))
+
+	m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/model", `{"model":"glm-5.3-airx"}`, true))
+	assert.Equal(t, true, m["ok"])
+	assert.Equal(t, "glm-5.3-airx", m["model"])
+	assert.Equal(t, "live", m["mode"])
+
+	b, err := os.ReadFile(os.Getenv("SKILLFORGE_LLM_CONFIG"))
+	require.NoError(t, err)
+	assert.Contains(t, string(b), "glm-5.3-airx", "文件配置必须持久化新模型")
+	assert.Equal(t, "", os.Getenv("LOCAL_MODEL"), "文件路径不得写 LOCAL_MODEL")
 }
 
 func TestLLMAdmin_NilPanel503(t *testing.T) {

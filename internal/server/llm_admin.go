@@ -24,9 +24,11 @@
 //	POST /api/admin/llm/test               → 200 TestResult | 400 {error} | 503
 //	GET  /api/admin/llm/models?vendor=&plan=&base_url=&api_key_env=
 //	                                       → 200 {models} | 400 {error} | 503
-//	POST /api/admin/llm/model {model}      → 200 {ok, model, available, masked_key}
-//	                                       | 400 {error} | 503 —— 只切模型,
-//	                                       密钥不出服务端(聊天页选择器用)。
+//	POST /api/admin/llm/model {model}      → 200 {ok, model, available, mode,
+//	                                       masked_key, note} | 400 {error} | 503
+//	                                       —— 只切模型, 密钥不出服务端(聊天页
+//	                                       选择器用)。文件配置与 env preset
+//	                                       (261113-mkc) 两条路径都支持。
 //
 // 关键语义（D-52 系列）：
 //   - GET 永不返回明文 key（T-52-01：llmconfig.Mask）。
@@ -439,16 +441,27 @@ func (s *Deps) llmModelsHandler(ctx context.Context, c *app.RequestContext) {
 
 // llmModelSwitchRequest is the POST /api/admin/llm/model body. Key is
 // deliberately absent — the chat-page model picker must never see or
-// resend it; the server-side file config (~/.skillforge/llm.json, 0600)
-// already holds it.
+// resend it; the server side already holds it (file config 0600, or the
+// env preset credentials in a no-file deployment — 261113-mkc).
 type llmModelSwitchRequest struct {
 	Model string `json:"model"`
 }
 
-// llmModelHandler implements POST /api/admin/llm/model —— 只切模型:
-// Load 现有文件配置 → 改 Model → Save → 立即热重载。密钥永不出服务端,
-// 前端只需 Admin Token。尚未保存过完整配置(无 file)时 400 —— 让用户
-// 先去 admin LLM 面板保存一次(Vendor/Plan/BaseURL/key)。
+// llmModelHandler implements POST /api/admin/llm/model —— 只切模型，密钥
+// 永不出服务端，前端只需 Admin Token。两条路径（261113-mkc）：
+//
+//  1. 文件配置存在（~/.skillforge/llm.json）：Load → 改 Model → Save →
+//     立即热重载 —— 持久化，行为不变。
+//  2. 无文件配置但 env preset 有凭据（LOCAL_API_KEY/GLM_API_KEY）：
+//     os.Setenv("LOCAL_MODEL", model) → 立即热重载。BuildUpstream 的 env
+//     回落链本来就优先读 LOCAL_MODEL，端点/凭据继续用 env 既有值（key 只
+//     发给 env 自己配的端点），文件配置一字不动。进程环境变量随进程结束
+//     消失、重启即丢 —— note 明示，要持久化请在面板保存一次。
+//  3. 两者皆无：400，文案说清两条途径。
+//
+// 此前无文件配置一律 400，env preset 部署（LOCAL_*/GLM_*，无 llm.json）
+// 的聊天页模型选择器永远切不动 —— 与 261113-lzz 的「面板报告 ≠ 实际生效」
+// 是同一类文件配置中心的盲区。
 func (s *Deps) llmModelHandler(ctx context.Context, c *app.RequestContext) {
 	if !requireAdmin(c) {
 		return
@@ -462,6 +475,7 @@ func (s *Deps) llmModelHandler(ctx context.Context, c *app.RequestContext) {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid JSON body: model is required"})
 		return
 	}
+	modelName := strings.TrimSpace(req.Model)
 	cfg, present, err := llmconfig.Load()
 	// CODE-AUDIT 2026-11-05 (A-04): three fixes —
 	//  1. the `cfg.BaseURL == ""` hard gate is GONE: blank base_url is legal
@@ -470,16 +484,40 @@ func (s *Deps) llmModelHandler(ctx context.Context, c *app.RequestContext) {
 	//     told "save a config first" when switching models;
 	//  2. a CORRUPT config file (err != nil) is a 500 with the real error,
 	//     not a misleading "save once in the panel" 400;
-	//  3. only a truly absent config stays a 400.
+	//  3. only a truly absent config stays a 400 — and since 261113-mkc the
+	//     env-preset branch below takes over first when env credentials exist.
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "saved llm config is unreadable: " + err.Error()})
 		return
 	}
 	if !present {
-		c.JSON(http.StatusBadRequest, graphResponseError{Error: "no saved llm config — save vendor/plan/api key once in the admin LLM panel first"})
+		// env preset 路径（261113-mkc）：模型写进进程环境 LOCAL_MODEL，
+		// 端点/凭据继续用 env 既有值 —— BuildUpstream 的 ENV_PRESET 分支
+		// 拨 envUpstreamBaseURL 并带 env key，这里不引入任何「key 跟随
+		// 调用方 URL」的新组合，外泄面不变；响应里的 key 只以 Mask 形态
+		// 出现，绝不回明文。
+		envKey := envOr("LOCAL_API_KEY", os.Getenv("GLM_API_KEY"))
+		if envKey == "" {
+			c.JSON(http.StatusBadRequest, graphResponseError{Error: "no saved llm config and no env preset credentials — save vendor/plan/api key once in the admin LLM panel, or set LOCAL_API_KEY (or GLM_API_KEY) before starting the server"})
+			return
+		}
+		if err := os.Setenv("LOCAL_MODEL", modelName); err != nil {
+			c.JSON(http.StatusInternalServerError, graphResponseError{Error: "set LOCAL_MODEL failed: " + err.Error()})
+			return
+		}
+		s.applyLLMConfig()
+		ok := s.LLMDynamic.Available()
+		c.JSON(http.StatusOK, map[string]any{
+			"ok":         true,
+			"model":      modelName,
+			"available":  ok,
+			"mode":       map[bool]string{true: "live", false: "stub"}[ok],
+			"masked_key": llmconfig.Mask(envKey),
+			"note":       "env hot-reload; LOCAL_MODEL lives in process env only — a process restart loses it, save a config in the admin LLM panel to persist",
+		})
 		return
 	}
-	cfg.Model = strings.TrimSpace(req.Model)
+	cfg.Model = modelName
 	if err := cfg.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
 		return
