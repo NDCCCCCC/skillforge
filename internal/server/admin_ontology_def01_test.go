@@ -20,7 +20,7 @@ package server
 // (the /admin/ontology KG query panel resolver).
 //
 // 260928-wzl fixed resolveSkillTiersFromKG (admin_platform.go — the
-// /api/sparql + hybrid resolvers) for the live KG wiring shape:
+// /api/kg/triples + hybrid resolvers) for the live KG wiring shape:
 //
 //	skill_x hasReadAccess cat_x   (KBCategory individual)
 //	cat_x          belongsToTier  tier_x            (Tier individual)
@@ -33,7 +33,7 @@ package server
 // belongsToTier objects (Tier IRIs), so the raw "cat_" local name
 // matched nothing → every ABox row fail-closed filtered on the
 // /admin/ontology KG query panel for EVERY skill, while the same
-// query through /api/sparql returned rows. One KG, two resolvers,
+// query through /api/kg/triples returned rows. One KG, two resolvers,
 // two answers.
 //
 // These tests pin the same contract as admin_platform_def01_test.go:
@@ -116,7 +116,7 @@ func TestResolveSkillTiers_DedupesPreservesOrder(t *testing.T) {
 }
 
 // TestOntologyKGQuery_ResolverDrivesABoxVisibility is the end-to-end
-// regression: through the SAME store, the /api/sparql resolver output
+// regression: through the SAME store, the /api/kg/triples resolver output
 // and the /admin/ontology panel resolver output must agree — the
 // ABox note of the expanded tier is visible via both.
 func TestOntologyKGQuery_ResolverDrivesABoxVisibility(t *testing.T) {

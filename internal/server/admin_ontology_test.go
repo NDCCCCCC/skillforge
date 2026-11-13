@@ -260,10 +260,11 @@ func TestAdminOntologySnapshot(t *testing.T) {
 }
 
 // invokeParity mirrors invokeOntology but registers BOTH the admin ontology
-// routes AND POST /api/sparql on ONE engine, so TestSchemaJudgmentParity can
-// issue the two parity requests against the same handler set. /api/sparql is
-// NOT under the admin token group (server.go registers it bare — its caller
-// context is the X-Skill-Name header, not X-Admin-Token).
+// routes AND POST /api/kg/triples on ONE engine, so TestSchemaJudgmentParity can
+// issue the two parity requests against the same handler set. /api/kg/triples is
+// registered bare (NOT under the admin token group); the handler itself gates
+// via requireAdmin, and X-Skill-Name is self-declared — it only scopes tiers,
+// it is not a credential.
 //
 // DO NOT fold this into invokeOntology: six existing tests depend on
 // invokeOntology/ontologyRoutes exact behavior (45-02 acceptance criteria
@@ -272,7 +273,7 @@ func invokeParity(t *testing.T, deps *Deps, method, path, body string, headers .
 	t.Helper()
 	h := server.Default(server.WithHostPorts(":0"))
 	ontologyRoutes(h, deps)
-	h.POST("/api/sparql", deps.adminPlatformSparqlHandler)
+	h.POST("/api/kg/triples", deps.adminPlatformSparqlHandler)
 	var hdrs []ut.Header
 	if body != "" {
 		hdrs = append(hdrs, ut.Header{Key: "Content-Type", Value: "application/json"})
@@ -306,7 +307,7 @@ func parityHasSubject(rows []store.Triple, s string) bool {
 }
 
 // TestSchemaJudgmentParity pins SPARQL-03 / D-45-03 at the handler level:
-// /api/sparql (X-Skill-Name, skill-scoped surface) and
+// /api/kg/triples (X-Skill-Name, skill-scoped surface) and
 // /api/admin/ontology/kg/query?skill= (X-Admin-Token, admin surface) make
 // the IDENTICAL schema/ABox judgment on the SAME store — both route through
 // QueryScoped Path B and its single isSchemaTriple call site (store.go, the
@@ -337,21 +338,21 @@ func TestSchemaJudgmentParity(t *testing.T) {
 	ont.KG = fixtureKG()
 	deps := &Deps{Ontology: ont}
 
-	// --- Request A: skill-scoped surface (POST /api/sparql).
-	// 2026-11-09 安全三连：/api/sparql 现在要求 admin token（X-Skill-Name
+	// --- Request A: skill-scoped surface (POST /api/kg/triples).
+	// 2026-11-09 安全三连：/api/kg/triples 现在要求 admin token（X-Skill-Name
 	// 仍是自述身份，只用于 tier 过滤，不再充当凭证）。env 必须与
 	// Request B 的 header 一致，否则 B 会 403。
 	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "tok")
-	respA := invokeParity(t, deps, http.MethodPost, "/api/sparql",
+	respA := invokeParity(t, deps, http.MethodPost, "/api/kg/triples",
 		`{"p":"`+testNS+`hasReadAccess"}`,
 		ut.Header{Key: "X-Skill-Name", Value: "sql"},
 		ut.Header{Key: "X-Admin-Token", Value: "tok"})
 	if respA.Code != http.StatusOK {
-		t.Fatalf("/api/sparql: expected 200, got %d: %s", respA.Code, respA.Body.String())
+		t.Fatalf("/api/kg/triples: expected 200, got %d: %s", respA.Code, respA.Body.String())
 	}
 	var sparql SparqlResponse
 	if err := json.Unmarshal(respA.Body.Bytes(), &sparql); err != nil {
-		t.Fatalf("/api/sparql unmarshal: %v", err)
+		t.Fatalf("/api/kg/triples unmarshal: %v", err)
 	}
 	rowsA := make([]store.Triple, 0, len(sparql.Results))
 	for _, r := range sparql.Results {
@@ -374,7 +375,7 @@ func TestSchemaJudgmentParity(t *testing.T) {
 	// --- Parity assertions: same judgment on both surfaces.
 	wantS, wantP, wantO := testNS+"skill_sql", testNS+"hasReadAccess", testNS+"sql-guides"
 	if !parityHasTriple(rowsA, wantS, wantP, wantO) {
-		t.Errorf("/api/sparql missing the beta-visible row (%s, %s, %s); got %+v",
+		t.Errorf("/api/kg/triples missing the beta-visible row (%s, %s, %s); got %+v",
 			wantS, wantP, wantO, rowsA)
 	}
 	if !parityHasTriple(admin.Matches, wantS, wantP, wantO) {
@@ -383,7 +384,7 @@ func TestSchemaJudgmentParity(t *testing.T) {
 	}
 	noteX := testNS + "note_003"
 	if parityHasSubject(rowsA, noteX) {
-		t.Errorf("/api/sparql leaked a note_003 row (fail-closed violation, D-TIER-07): %+v", rowsA)
+		t.Errorf("/api/kg/triples leaked a note_003 row (fail-closed violation, D-TIER-07): %+v", rowsA)
 	}
 	if parityHasSubject(admin.Matches, noteX) {
 		t.Errorf("kg/query leaked a note_003 row (fail-closed violation, D-TIER-07): %+v", admin.Matches)
@@ -393,7 +394,7 @@ func TestSchemaJudgmentParity(t *testing.T) {
 	// same total (schema passthrough is tier-agnostic → both hasReadAccess
 	// rows on each surface).
 	if sparql.Count != len(admin.Matches) {
-		t.Errorf("count parity broken: /api/sparql count=%d, kg/query matches=%d",
+		t.Errorf("count parity broken: /api/kg/triples count=%d, kg/query matches=%d",
 			sparql.Count, len(admin.Matches))
 	}
 }

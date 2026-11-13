@@ -142,10 +142,11 @@ func (s *Deps) adminPlatformMcpInvokeHandler(ctx context.Context, c *app.Request
 }
 
 // ---------------------------------------------------------------------------
-// SPARQL-like REST endpoint types and handler
+// KG triple-pattern REST endpoint types and handler. Renamed 2026-11-13
+// to POST /api/kg/triples (old SPARQL-named path removed, no shim).
 // ---------------------------------------------------------------------------
 
-// SparqlPattern is the POST body for /api/sparql (D-SPARQL-01).
+// SparqlPattern is the POST body for /api/kg/triples (D-SPARQL-01).
 type SparqlPattern struct {
 	S      string `json:"s"`      // subject IRI or "": wildcard
 	P      string `json:"p"`      // predicate IRI or "": wildcard
@@ -168,7 +169,7 @@ type SparqlResult struct {
 	Provenance *store.Provenance `json:"provenance,omitempty"`
 }
 
-// SparqlResponse is the response body for /api/sparql (D-SPARQL-01).
+// SparqlResponse is the response body for /api/kg/triples (D-SPARQL-01).
 type SparqlResponse struct {
 	Results   []SparqlResult `json:"results"`
 	Count     int            `json:"count"`
@@ -251,7 +252,7 @@ func SparqlQueryScoped(pattern SparqlPattern, allowedTiers []string, kg *store.S
 	}, nil
 }
 
-// adminPlatformSparqlHandler implements POST /api/sparql.
+// adminPlatformSparqlHandler implements POST /api/kg/triples.
 //
 // D-SPARQL-01: POST body = {s?, p?, o?, limit?, offset?, filter?}
 // D-SPARQL-02: Read-only — no mutation verbs.

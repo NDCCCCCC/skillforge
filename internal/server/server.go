@@ -730,10 +730,16 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.GET("/api/admin/platform/mcp/status", deps.adminPlatformMcpStatusHandler)
 	h.GET("/api/admin/platform/mcp/tools", deps.adminPlatformMcpToolsHandler)
 	h.POST("/api/admin/platform/mcp/invoke", deps.adminPlatformMcpInvokeHandler)
-	// Phase 41 Plan 02 (PLAT-ONT-19) — SPARQL-like endpoint for KG queries.
-	// X-Skill-Name header carries caller identity for tier isolation (D-SPARQL-03).
-	// NOT under /api/admin/ — the token is the X-Skill-Name header, not X-Admin-Token.
-	h.POST("/api/sparql", deps.adminPlatformSparqlHandler)
+	// Phase 41 Plan 02 (PLAT-ONT-19) — KG triple-pattern query endpoint.
+	// Renamed 2026-11-13: the retired SPARQL-named path → /api/kg/triples;
+	// old path REMOVED (no compat shim — the FE already calls
+	// /api/kg/triples, see web/src/components/admin/platform/platformApi.ts).
+	// The Go handler keeps its Sparql* name: internal naming only, the
+	// contract is the URL. X-Skill-Name carries caller identity for tier
+	// filtering (D-SPARQL-03). NOT under /api/admin/ — registered bare; the
+	// handler itself gates via requireAdmin (2026-11-09 安全三连),
+	// X-Skill-Name is self-declared and only scopes tiers.
+	h.POST("/api/kg/triples", deps.adminPlatformSparqlHandler)
 	// Phase 41 Plan 03 (PLAT-ONT-20) — Hybrid Retrieval endpoint.
 	// X-Skill-Name header carries caller identity for tier isolation (D-HYB-05).
 	// POST body: {query, max_hops, rerank}; response: {kg_nodes, kg_edges, milvus_hits}.
