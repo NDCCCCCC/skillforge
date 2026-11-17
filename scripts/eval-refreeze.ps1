@@ -121,16 +121,19 @@ if (-not $SkipEval) {
     # model actually ran.
     $panelPath = Get-PanelConfigPath
     $panel = Get-PanelConfig
-    # 261117-adp 后续：光让脚本自己"读到"面板配置不够 —— cmd/eval 是独立
-    # 子进程，它内部 llmconfig.ConfigPath() 默认仍指向 ~/.skillforge/llm.json
-    # （上一轮 75 条全 404 Qwen 的根因：.env 桥接带进来的 LOCAL_MODEL 渗入
-    # env preset 分支）。把面板路径显式传给子进程，eval 才真正用页面配置。
+    # 261117-adp follow-up: letting the script itself "see" the panel config
+    # is NOT enough - cmd/eval is a separate child process whose
+    # llmconfig.ConfigPath() still defaults to ~/.skillforge/llm.json (root
+    # cause of the previous 75x404 Qwen run: LOCAL_MODEL leaked in from the
+    # .env bridge into the env-preset branch). Export the panel path so the
+    # child really uses the page config.
     $env:SKILLFORGE_LLM_CONFIG = $panelPath
     if ($panel -and $panel.model) {
         Write-Host ("[refreeze] panel config = {0} model={1} base_url={2}" -f $panelPath, $panel.model, $panel.base_url)
         Write-Host "[refreeze] using panel config model=$($panel.model) - exported SKILLFORGE_LLM_CONFIG to the eval subprocess"
-        # .env 可能带着旧本地服务的 LOCAL_MODEL（Qwen3.8 等）——PANEL 分支
-        # 不读它，但留着会污染 env preset 兜底与其它工具的判断，统一清掉。
+        # .env may carry LOCAL_MODEL of the old local server (Qwen3.8 etc) -
+        # the PANEL branch does not read it, but leftovers pollute the
+        # env-preset fallback and other tools' judgement. Clear them.
         foreach ($k in 'LOCAL_MODEL', 'JUDGE_MODEL') {
             if (Test-Path "Env:$k") { Remove-Item "Env:$k" -Force }
         }
