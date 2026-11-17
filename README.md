@@ -509,15 +509,22 @@ This snapshot is the **frozen compliance baseline** (Phase 8 pin — `eval/froze
 The block below is what `go run ./scripts/eval_snapshot` prints from `eval/report.json` + the lock (the header date is the **render** date — pass `-date` to pin it; the eval itself is pinned by the lock's model / prompt hash / seed):
 
 ```
-Frozen run on **2026-11-09** · `eval_set_version: compliance-2026-08-13-v1` · `model_ver: glm-5.2` · `prompt_hash: e0081be1…`
+Frozen run on **2026-11-17** · `eval_set_version: compliance-2026-11-17-v2` · `model_ver: glm-5.3-flash` · `prompt_hash: ce696227…`
 
-| Skill / scope | Faithfulness | Context Precision | Refusal Accuracy | Cases |
-|---------------|-------------|-------------------|------------------|-------|
-| compliance (full set, pre-2026-11-09 prompt) | 90% | 61% | 95% (19/20) | 50 (20 adversarial / 20 refusal-required / 10 multi-hop) |
-| compliance (adversarial subset, re-run on the 2026-11-09 prompt) | **96%** | **98%** | — (no refusals in this subset) | 20 |
+| Skill / scope | Faithfulness | Context Precision | Context Recall | Refusal Accuracy | Cases |
+|---------------|-------------|-------------------|----------------|------------------|-------|
+| compliance (75-case set on the 2026-11-17 prompt, glm-5.3-flash) | **90%** | 61% | 86% | 100% (20/20 refusal-required, 0 wrongly-refused adversarial) | 75 (21 adversarial / 20 refusal-required / 10 multi-hop / 34 history-injection) |
 
 **Reproduce:** `RETRIEVER_BACKEND=embedded go run ./cmd/eval --frozen=compliance`
 
+> **2026-11-17 re-freeze notes.** The baseline was fully re-frozen after the
+> compliance SKILL.md prompt changed (260817-vsm added the Step-0 query
+> classification) and the default judge model moved glm-5.2 → glm-5.3-flash
+> (the deployment endpoint does not serve glm-5.2). Both `model_ver` and
+> `prompt_hash` were re-pinned from the SAME eval run; scores above describe
+> that run. The 2026-11-09 block below is kept as the historical v1 baseline
+> (50-case set, glm-5.2, pre-vsm prompt) — do not quote it as current.
+>
 > **Read this before quoting the numbers.**
 >
 > 1. **The two rows are different scopes, not a before/after.** The first row is the full 50-case set scored on the pre-2026-11-09 prompt; the second is the 20 adversarial cases re-scored after the prompt consolidation. They must not be compared as if one replaced the other. The **full set has not been re-run** on the new prompt yet — only the adversarial subset has.

@@ -181,7 +181,7 @@ run_stage "D15 wire-type compile alarm (npx tsc --noEmit; data-decision fanout_*
 #   placeholder; 13-05 fills actual sha256 after live UAT operator
 #   sign-off).
 
-EXPECTED_COMPLIANCE_SHA="1dc6f148fe3debd0b572872d87126242362905b26ae1097b983ed8754277bbdc"  # 14-01 re-pin → 14-07 ripple → 14-10 floor-1.1.0 re-pin ripple (lockstep with verify-phase-14.sh Stage 11; T-8-12 recorded re-lock)
+EXPECTED_COMPLIANCE_SHA="128cfe4e43f780b0c49a151d4fadf7e72e15fbe348d66bec564546662cb4860f"  # 14-01 re-pin → 14-07 ripple → 14-10 floor-1.1.0 re-pin ripple (lockstep with verify-phase-14.sh Stage 11; T-8-12 recorded re-lock)
 run_stage "frozen eval byte-identity (compliance.lock.json + fanout.lock.json sha256)" \
   bash -c "set -e; ACTUAL_COMPLIANCE_SHA=\$(sha256sum eval/frozen/compliance.lock.json | cut -d' ' -f1); if [ \"\${ACTUAL_COMPLIANCE_SHA}\" != \"${EXPECTED_COMPLIANCE_SHA}\" ]; then echo \"FATAL: compliance.lock.json sha256 mismatch — file tampered OR an unrecorded re-lock bypassed T-8-12 (pins move only via recorded re-locks: 14-01 / 14-10, lockstep with verify-phase-14.sh Stage 11)\"; echo \"  expected: ${EXPECTED_COMPLIANCE_SHA}\"; echo \"  actual:   \${ACTUAL_COMPLIANCE_SHA}\"; exit 1; fi; if [ ! -f eval/frozen/fanout.lock.json ]; then echo 'FATAL: fanout.lock.json missing — 13-04 Task 2 should have created it'; exit 1; fi; sha256sum eval/frozen/compliance.lock.json eval/frozen/fanout.lock.json"
 

@@ -1,13 +1,13 @@
 {
-  "recommended_threshold": 0.7987266778945923,
-  "rationale": "midpoint of refusal boundary (0.7987, 25th percentile of answered-case scores (no refused cases in the golden set; fallback heuristic)) and answered 25th percentile (0.7987); 1 cases (1 answered, 0 refused). Operator should review the distribution and adjust manually if the bimodal separation is unclear. See eval/README.md.",
+  "recommended_threshold": 0.5093519926071167,
+  "rationale": "midpoint of refusal boundary (0.3239, 5th percentile of refused-case scores) and answered 25th percentile (0.6948); 75 cases (50 answered, 25 refused). Operator should review the distribution and adjust manually if the bimodal separation is unclear. See eval/README.md.",
   "score_distribution": {
-    "count": 1,
-    "max": 0.7987266778945923,
-    "median": 0.7987266778945923,
-    "min": 0.7987266778945923,
-    "p25": 0.7987266778945923,
-    "p75": 0.7987266778945923
+    "count": 75,
+    "max": 0.8251463770866394,
+    "median": 0.6969498991966248,
+    "min": 0.302881121635437,
+    "p25": 0.513416588306427,
+    "p75": 0.7625742256641388
   },
-  "refusal_boundary_score": 0.7987266778945923
+  "refusal_boundary_score": 0.32388828992843627
 }

@@ -219,7 +219,7 @@ run_stage "structural-constant source-greps (floor version + hermetic SETs + LRU
 #   - fanout.lock.json / deep.lock.json — no prompt surface, byte-frozen.
 # Drift between runs surfaces as a hard FAIL (T-8-12 + T-14-18/19).
 
-EXPECTED_COMPLIANCE_SHA="1dc6f148fe3debd0b572872d87126242362905b26ae1097b983ed8754277bbdc"      # 14-01 re-pin → 14-10 floor-1.1.0 re-pin
+EXPECTED_COMPLIANCE_SHA="128cfe4e43f780b0c49a151d4fadf7e72e15fbe348d66bec564546662cb4860f"      # 14-01 re-pin → 14-10 floor-1.1.0 re-pin
 EXPECTED_HITL_SHA="6e91881f4aafeffb843e996c89ff1c27ef22eb18fac94eceff9184f938481d08"            # Phase 11 baseline UNCHANGED
 EXPECTED_FANOUT_SHA="f00f5b31c691070a7e5c0d76062e870148bfe65c231328ca41f7e10cc9ebf90e"          # 18 WR-05 re-freeze → 26-07 KBM-04 tier-vocabulary re-sign
 EXPECTED_DEEP_SHA="f3958dcd4930ac09e03c824f781df9c6eb04b691770cab4d512e11fba3c3c482"            # Phase 10 placeholder UNCHANGED
