@@ -91,6 +91,12 @@ if ($panel -and $panel.model) {
     Write-Host '[diag] using panel config model - NOT pinning LOCAL_MODEL/JUDGE_MODEL'
     $effModel = $panel.model
     if ($panel.base_url) { $effBase = $panel.base_url }
+    # 261117-adp 后续：把面板路径传给 cmd/eval 子进程（同 eval-refreeze），
+    # 否则子进程读不到面板配置、回落 env preset —— 上一轮 75x404 的根因。
+    $env:SKILLFORGE_LLM_CONFIG = $panelPath
+    foreach ($k in 'LOCAL_MODEL', 'JUDGE_MODEL') {
+        if (Test-Path "Env:$k") { Remove-Item "Env:$k" -Force }
+    }
 } else {
     Write-Host '[diag] no panel config - falling back to env models'
     if (-not $env:LOCAL_MODEL) { $env:LOCAL_MODEL = 'glm-5.3-flash' }

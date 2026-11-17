@@ -26,10 +26,12 @@
 # MODEL VERSION (load-bearing): the prompt_hash covers the model id too
 # (reprohash.PromptHash takes it as an input), so the eval and the re-pin
 # must agree on the model. The source of truth is the admin panel config
-# (~/.skillforge/llm.json - what the page saves): internal/eval.ResolveLLM
-# resolves the panel config FIRST, env preset second. This script therefore
-#   - panel config present -> leaves LOCAL_MODEL/JUDGE_MODEL alone (pinning
-#     env models would only obscure which model actually ran) and prints it;
+# (what the page saves). This script therefore
+#   - exports SKILLFORGE_LLM_CONFIG = panel path so the cmd/eval subprocess
+#     reads the SAME file (without it the child falls back to ~/.skillforge,
+#     misses the panel config and drifts into env - the 75x404 Qwen incident);
+#   - panel config present -> clears LOCAL_MODEL/JUDGE_MODEL (leftovers from
+#     .env would only pollute the env-preset fallback) and prints the model;
 #   - no panel config -> falls back to env (keeps any LOCAL_MODEL/JUDGE_MODEL,
 #     else glm-5.3-flash) and asks the user to save the panel config once.
 # LOCAL_* credentials are still cleared: .env's LOCAL_BASE_URL points at a
@@ -109,7 +111,7 @@ if (-not $SkipEval) {
     # LOCAL_* credentials point at a dead endpoint and outrank GLM_* (run.bat
     # drops them for the same reason). With a panel config the Go side reads
     # the panel first anyway, so clearing LOCAL_* is always safe.
-    foreach ($k in 'LOCAL_API_KEY', 'LOCAL_BASE_URL') {
+    foreach ($k in 'LOCAL_API_KEY', 'LOCAL_BASE_URL', 'LOCAL_MODEL') {
         if (Test-Path "Env:$k") { Remove-Item "Env:$k" -Force }
     }
 
@@ -119,9 +121,19 @@ if (-not $SkipEval) {
     # model actually ran.
     $panelPath = Get-PanelConfigPath
     $panel = Get-PanelConfig
+    # 261117-adp 后续：光让脚本自己"读到"面板配置不够 —— cmd/eval 是独立
+    # 子进程，它内部 llmconfig.ConfigPath() 默认仍指向 ~/.skillforge/llm.json
+    # （上一轮 75 条全 404 Qwen 的根因：.env 桥接带进来的 LOCAL_MODEL 渗入
+    # env preset 分支）。把面板路径显式传给子进程，eval 才真正用页面配置。
+    $env:SKILLFORGE_LLM_CONFIG = $panelPath
     if ($panel -and $panel.model) {
         Write-Host ("[refreeze] panel config = {0} model={1} base_url={2}" -f $panelPath, $panel.model, $panel.base_url)
-        Write-Host "[refreeze] using panel config model=$($panel.model) - NOT pinning LOCAL_MODEL/JUDGE_MODEL"
+        Write-Host "[refreeze] using panel config model=$($panel.model) - exported SKILLFORGE_LLM_CONFIG to the eval subprocess"
+        # .env 可能带着旧本地服务的 LOCAL_MODEL（Qwen3.8 等）——PANEL 分支
+        # 不读它，但留着会污染 env preset 兜底与其它工具的判断，统一清掉。
+        foreach ($k in 'LOCAL_MODEL', 'JUDGE_MODEL') {
+            if (Test-Path "Env:$k") { Remove-Item "Env:$k" -Force }
+        }
     } else {
         Write-Host '[refreeze] no panel config - falling back to env models'
         if (-not $env:LOCAL_MODEL) { $env:LOCAL_MODEL = 'glm-5.3-flash' }

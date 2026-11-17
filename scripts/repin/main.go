@@ -139,21 +139,21 @@ func main() {
 	// （用 lock.ModelVersion 算）和 live eval（用 ActiveModelVersion() 算）
 	// 会各算各的，永远对不上。
 	//
-	// 这里用锁里已有的 model_ver 算 hash，并校验它等于 DefaultJudgeModel：
-	// internal/eval 的 TestShippedFrozenLockIsInSync 断言
-	// lock.ModelVersion == DefaultJudgeModel，改动 model_ver 会让该断言失败。
-	if lf.ModelVersion != eval.DefaultJudgeModel {
-		fmt.Fprintf(os.Stderr,
-			"[repin] lock pins model_ver=%q but DefaultJudgeModel=%q — the shipped-lock unit test requires them to match.\n"+
-				"  Re-pin the model_ver deliberately (and re-run the eval under that model) before using this tool.",
-			lf.ModelVersion, eval.DefaultJudgeModel)
-		os.Exit(1)
-	}
-	newHash := eval.PromptHashFor(*skillName, eval.DefaultJudgeModel, body)
-
+	// 261113-obm 决策（用户确认）：部署端点的账号组不提供 glm-5.2，
+	// DefaultJudgeModel 已改为 glm-5.3-flash —— 本工具把锁的 model_ver
+	// 一并更新到 DefaultJudgeModel（这正是"重冻结"的一部分：换模型 =
+	// 换基线）。前提是 eval 分数必须在**同一模型**下产出（eval-refreeze
+	// 脚本保证这一点）。
 	fmt.Printf("[repin] skill      = %s\n", *skillName)
-	fmt.Printf("[repin] model_ver  = %s (DefaultJudgeModel=%s)\n", lf.ModelVersion, eval.DefaultJudgeModel)
-	fmt.Printf("[repin] active ver = %s  ← live eval 用它断言 pin；必须等于 model_ver\n", eval.ActiveModelVersion())
+	fmt.Printf("[repin] old model_ver = %s\n", lf.ModelVersion)
+	if lf.ModelVersion != eval.DefaultJudgeModel {
+		fmt.Printf("[repin] UPDATING model_ver %q -> %q (261113-obm: endpoint does not serve %q)\n",
+			lf.ModelVersion, eval.DefaultJudgeModel, lf.ModelVersion)
+		lf.ModelVersion = eval.DefaultJudgeModel
+	}
+	newHash := eval.PromptHashFor(*skillName, lf.ModelVersion, body)
+
+	fmt.Printf("[repin] new model_ver = %s (DefaultJudgeModel=%s)\n", lf.ModelVersion, eval.DefaultJudgeModel)
 	fmt.Printf("[repin] old hash   = %s\n", lf.PromptHash)
 	fmt.Printf("[repin] new hash   = %s\n", newHash)
 	fmt.Printf("[repin] prompt len = %d bytes\n", len(body))
