@@ -97,6 +97,26 @@ function renderPart(
       // groupParts() 收进同一个 SubprogressTimeline 渲染，这里只在
       // 分组逻辑漏掉时兜底返回 null。
       return null;
+    case 'data-truncation': {
+      // 261117-n96 backlog — 回答被 MaxTokens 预算截断时的显式提示条。
+      // 之前截断是静默的：回答写到一半直接结束，用户以为是模型偷懒。
+      const reason = (part as { data?: { reason?: string } }).data?.reason;
+      if (reason !== 'max_tokens') return null;
+      return (
+        <div
+          key={i}
+          className="mt-3 p-3 rounded-md border"
+          style={{ borderColor: 'var(--color-status-needs-info)' }}
+          role="status"
+          data-testid="answer-truncation-notice"
+        >
+          <span className="text-sm" style={{ color: 'var(--color-status-needs-info)' }}>
+            ⚠ 回答可能不完整：已达到本次输出的长度上限。
+            可在 .env 中设置 SKILLFORGE_ANSWER_MAX_TOKENS 调高后重试。
+          </span>
+        </div>
+      );
+    }
     case 'step-start':
       return <StepStartPart key={i} part={part as Parameters<typeof StepStartPart>[0]['part']} />;
     case 'data-decision': {

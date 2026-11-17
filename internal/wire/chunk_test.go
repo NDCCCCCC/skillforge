@@ -132,9 +132,9 @@ func TestDecisionChunkType(t *testing.T) {
 // emitted after writeAuditAndTurn and before the terminal frames, so
 // refusal rounds carry a vote key too (Open Q3).
 func TestValidTypes_Twenty(t *testing.T) {
-	const expected = 24
+	const expected = 25
 	assert.Equal(t, expected, len(ValidTypes),
-		"ValidTypes must hold exactly %d entries (23 through Plan 12-02, +1 for data-turn per Plan 29-04)", expected)
+		"ValidTypes must hold exactly %d entries (24 after data-turn per Plan 29-04, +1 data-truncation per 261117-n96)", expected)
 	assert.True(t, ValidTypes["data-redline"],
 		"data-redline MUST be registered (18th wire type, D5-14)")
 	assert.True(t, ValidTypes["finish"],
@@ -554,7 +554,7 @@ func TestDataDecisionFanoutEnum(t *testing.T) {
 // silently would break the D15 TS mirror (AssertAssignable fails to
 // compile) AND this test would catch the drift at the BE level first.
 func TestValidTypesUnchangedAfterFanout(t *testing.T) {
-	assert.Equal(t, 24, len(ValidTypes),
+	assert.Equal(t, 25, len(ValidTypes),
 		"ValidTypes MUST stay at 24 entries (23 through 13-03 fanout, +1 for data-turn per Plan 29-04); fanout_* are new VALUES in the Decision string enum, NOT new chunk types")
 	assert.True(t, ValidTypes["data-decision"],
 		"data-decision MUST remain in ValidTypes (fanout_* rides it, P13-L7)")
@@ -577,8 +577,8 @@ func TestValidTypesUnchangedAfterFanout(t *testing.T) {
 // silently would break the D15 TS mirror (AssertAssignable fails to
 // compile) AND this test would catch the drift at the BE level first.
 func TestValidTypesUnchangedAfterBudgetGate(t *testing.T) {
-	assert.Equal(t, len(ValidTypes), 24,
-		"ValidTypes MUST stay at 24 entries (23 through the 12-05 budget gate, +1 for data-turn per Plan 29-04); forced_stop is a new VALUE in the Decision string enum, NOT a new chunk type")
+	assert.Equal(t, len(ValidTypes), 25,
+		"ValidTypes MUST stay at 25 entries (24 after data-turn per Plan 29-04, +1 data-truncation per 261117-n96); forced_stop is a new VALUE in the Decision string enum, NOT a new chunk type")
 	assert.True(t, ValidTypes["data-decision"],
 		"data-decision MUST remain in ValidTypes (forced_stop rides it, P12-L3)")
 	// Budget-trigger chunks would have used a hypothetical new
@@ -632,7 +632,7 @@ func TestDecisionDataRefWireReferences(t *testing.T) {
 	assert.Equal(t, float64(4150), got.References[2].Value)
 
 	// ValidTypes count unchanged (field addition, not union variant).
-	assert.Equal(t, 24, len(ValidTypes),
+	assert.Equal(t, 25, len(ValidTypes),
 		"ValidTypes MUST stay at 24 after D17-B2 References addition (field, not variant; 23 through Plan 12-02 + data-turn per Plan 29-04)")
 }
 
@@ -700,6 +700,42 @@ func TestDecisionDataRefWire(t *testing.T) {
 
 	// 4. ValidTypes count MUST stay flat here (no new chunk type added
 	//    by D16-B3; the 24th entry is Plan 29-04's data-turn).
-	assert.Equal(t, 24, len(ValidTypes),
+	assert.Equal(t, 25, len(ValidTypes),
 		"ValidTypes MUST stay at 24 after D16-B3 DataRef addition (data-decision discriminator unchanged — D16 overload pattern; 23 through Plan 12-02 + data-turn per Plan 29-04)")
+}
+
+// TestUIMessageChunkTruncation — 261117-n96：data-truncation 帧的 JSON 形状
+// 锁（TruncationPayload 经 Data 载荷下发，FE 按 reason 映射文案）。
+// 注意 ValidTypes 计数：D15 配对提交已在 chunk.go 注册第 25 个类型，
+// 既有计数断言须同步 +1。
+func TestUIMessageChunkTruncation(t *testing.T) {
+	payload, err := json.Marshal(TruncationPayload{Reason: "max_tokens"})
+	if err != nil {
+		t.Fatalf("marshal TruncationPayload: %v", err)
+	}
+	c := UIMessageChunk{Type: "data-truncation", Data: payload}
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("marshal chunk: %v", err)
+	}
+	var got struct {
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Type != "data-truncation" {
+		t.Errorf("type = %q, want data-truncation", got.Type)
+	}
+	var p TruncationPayload
+	if err := json.Unmarshal(got.Data, &p); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if p.Reason != "max_tokens" {
+		t.Errorf("reason = %q, want max_tokens", p.Reason)
+	}
+	if !ValidTypes["data-truncation"] {
+		t.Error("data-truncation 必须已注册进 ValidTypes（否则被白名单门拒发）")
+	}
 }

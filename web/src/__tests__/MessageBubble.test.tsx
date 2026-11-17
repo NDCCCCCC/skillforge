@@ -588,3 +588,33 @@ describe('MessageBubble', () => {
     expect(screen.getAllByTestId('proc-step')).toHaveLength(2);
   });
 });
+
+// 261117-n96 backlog — data-truncation 提示条（回答被 MaxTokens 截断时的
+// 显式告知；此前截断是静默的，用户以为模型没写完就停了）。
+describe('MessageBubble data-truncation', () => {
+  it('renders the notice for reason=max_tokens', () => {
+    const message: UIMessage = {
+      id: 'm-t1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'select ... from tmp_ycb_001 a' },
+        { type: 'data-truncation', data: { reason: 'max_tokens' } },
+      ],
+    };
+    render(<MessageBubble message={message} />);
+    const notice = screen.getByTestId('answer-truncation-notice');
+    expect(notice).toBeInTheDocument();
+    expect(notice.textContent).toContain('回答可能不完整');
+    expect(notice.textContent).toContain('SKILLFORGE_ANSWER_MAX_TOKENS');
+  });
+
+  it('renders nothing for an unknown reason (fail-closed)', () => {
+    const message: UIMessage = {
+      id: 'm-t2',
+      role: 'assistant',
+      parts: [{ type: 'data-truncation', data: { reason: 'something-new' } }],
+    };
+    render(<MessageBubble message={message} />);
+    expect(screen.queryByTestId('answer-truncation-notice')).toBeNull();
+  });
+});

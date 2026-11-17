@@ -848,6 +848,15 @@ func (s *Deps) streamOnce(
 	defer stream.Close()
 
 	var buf strings.Builder
+	// 261117-n96 backlog — answer-truncation detection. The upstream's LAST
+	// stream chunk carries ResponseMeta.FinishReason; "length" means the
+	// answer hit the MaxTokens budget and was cut off mid-generation. That
+	// chunk usually has empty Content, so the check must run BEFORE the
+	// content filter below. When set, a data-truncation SSE frame is emitted
+	// so the FE shows a visible "answer may be incomplete" notice instead of
+	// silently ending mid-sentence (2026-11-17 user report: long SQL answers
+	// stopped at the filter-conditions section with no explanation).
+	truncatedByLength := false
 	// DEBUG (260815-gcw): token counter + first-Recv boundary. tokenN is
 	// the per-call counter for the recv log (D-6) and the completed
 	// log (D-7); declared at function scope (not inside the for) so it
@@ -892,6 +901,12 @@ func (s *Deps) streamOnce(
 					streamAttemptMaxDuration, tokenN, recErr)
 			}
 			return buf.String(), tokenN, fmt.Errorf("recv LLM token: %w", recErr)
+		}
+		// 261117-n96: finish_reason rides the last chunk, which usually has
+		// empty Content — check it BEFORE the empty-content filter, or the
+		// "length" signal is silently dropped.
+		if msg != nil && msg.ResponseMeta != nil && msg.ResponseMeta.FinishReason == "length" {
+			truncatedByLength = true
 		}
 		if msg == nil || msg.Content == "" {
 			continue
@@ -947,6 +962,23 @@ func (s *Deps) streamOnce(
 			ID:   "draft-1",
 		}); emitErr != nil {
 			log.Printf("[WARN] server: emit text-delta-draft-end: %v (non-fatal)", emitErr)
+		}
+	}
+	// 261117-n96 — answer-truncation notice. Best-effort like the draft
+	// frames: a dead SSE socket logs + swallows, the trust-bearing path
+	// surfaces real errors. Both channels emit (the verdict channel's JSON
+	// would fail to parse downstream anyway — the notice tells the user WHY).
+	if truncatedByLength {
+		payload, mErr := json.Marshal(wire.TruncationPayload{Reason: "max_tokens"})
+		if mErr != nil {
+			log.Printf("[WARN] server: marshal TruncationPayload: %v (non-fatal)", mErr)
+		} else if emitErr := wire.EmitChunk(c, wire.UIMessageChunk{
+			Type: "data-truncation",
+			Data: payload,
+		}); emitErr != nil {
+			log.Printf("[WARN] server: emit data-truncation: %v (non-fatal)", emitErr)
+		} else {
+			log.Printf("[INFO] server: streamAndAssemble answer truncated by MaxTokens budget — data-truncation emitted")
 		}
 	}
 	// DEBUG (260815-gcw): completion log. Fires after text-delta-draft-end

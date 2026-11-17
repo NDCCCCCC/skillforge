@@ -436,6 +436,10 @@ export type SkillForgeChunk =
   // Custom data parts (Pitfall 2 — payload on .data)
   | { type: 'data-policy'; id?: string; data: Verdict | Refusal }
   | { type: 'data-subprogress'; id?: string; data: SubprogressStep }
+  // 261117-n96 — answer-truncation notice: the backend saw
+  // finish_reason="length" (the answer hit the MaxTokens budget and WAS cut
+  // off). MessageBubble renders a visible "answer may be incomplete" bar.
+  | { type: 'data-truncation'; id?: string; data: { reason: 'max_tokens' } }
   // Plan 12-02 / 12-06 — live planning trace (PLAN-02 SC-2). Paired
   // commit with BE internal/wire/chunk.go ValidTypes["data-plan-trace"]
   // (D15 lockstep invariant). The FE plan slice stores the post-write

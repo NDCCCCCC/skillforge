@@ -108,6 +108,20 @@ type ConflictChunk struct {
 	EffectiveTo   int64  `json:"effectiveTo,omitempty"`
 }
 
+// TruncationPayload is the JSON shape carried by data-truncation SSE chunks
+// (261117-n96 backlog). The pipeline emits it when the upstream's last stream
+// chunk carries finish_reason="length" — i.e. the answer hit the MaxTokens
+// budget and WAS cut off mid-generation. The FE renders a visible
+// "answer may be incomplete" notice instead of silently ending mid-sentence.
+//
+// Field semantics:
+//   - Reason: machine-readable truncation cause. "max_tokens" today;
+//     the FE maps it to user-facing copy (keep the mapping client-side so
+//     wording changes never need a wire change).
+type TruncationPayload struct {
+	Reason string `json:"reason"`
+}
+
 // DecisionPayload is the JSON shape carried by data-decision SSE chunks.
 // Plan 03-03's agent package populates it via Eino callbacks
 // (newDecisionCallback — see 03-RESEARCH.md §Code Examples lines 670-676)
@@ -511,6 +525,12 @@ var ValidTypes = map[string]bool{
 	// TS mirror at web/src/types/wire-types.ts ships in the SAME commit
 	// (D15 paired-commit invariant).
 	"data-turn": true,
+	// 261117-n96 backlog — answer-truncation notice. Emitted once per
+	// answer when the upstream's finish_reason is "length" (the MaxTokens
+	// budget cut the answer off). Payload: TruncationPayload{Reason}.
+	// The TS mirror at web/src/types/wire-types.ts ships in the SAME commit
+	// (D15 paired-commit invariant).
+	"data-truncation": true,
 	// `finish` is the message-level terminator in AI SDK v5's
 	// uiMessageChunkSchema (distinct from finish-step / finish-message).
 	// VerdictPipeline emits it as the final chunk; the whitelist gate
