@@ -214,3 +214,4 @@ Resume command: `/gsd-plan-phase 49` — Phase 48 (CI 矩阵) is complete: 27/27
 
 | 2026-11-17 | 261113-obm / 261117 系列 — eval 与服务端统一到页面配置解析链（llmconfig.Effective 单一事实来源）+ 原生适配器（deepseek/ollama/ark，openai 兜底）+ 拉取模型列表改 POST 请求体 + run.bat/eval 脚本编码与路径修复 | 91d22c6, 86b067c, a0fcdbd, dc5b2b5 |
 | 2026-11-17 | eval 基线全量重冻结（live，用户执行）：compliance.lock model_ver→glm-5.3-flash、prompt_hash→ce696227…，75 case 新基线 faithfulness 0.9038 / 拒答 100%；verify-phase-{13-16}.sh sha 同步；TestShippedFrozenLockIsInSync 转绿（此前自 2026-08-17 起红） | 7a4ce0a, a3e7346 |
+| 2026-11-17 | 261117-n96 — 回答截断修复：pipeline MaxTokens 4096→8192 + SKILLFORGE_ANSWER_MAX_TOKENS 可配置（长 SQL 回答此前被静默截断） | a9ea589 |
