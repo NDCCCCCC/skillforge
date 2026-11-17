@@ -433,6 +433,9 @@ func resolveProbeKey(baseURL, apiKeyEnv string) string {
 //
 // CODE-AUDIT 2026-11-05 (F-02): the api_key query parameter is GONE — keys
 // travel via api_key_env (whitelisted) or the server-stored config only.
+//
+// 261117-mpr：面板的「拉取模型列表」改走 POST（请求体带 key），因为 GET 不能
+// 在 URL 里带明文 key。见 llmModelsProbeHandler 与 llm_models_probe.go。
 func (s *Deps) llmModelsHandler(ctx context.Context, c *app.RequestContext) {
 	if !requireAdmin(c) {
 		return
@@ -466,6 +469,95 @@ func (s *Deps) llmModelsHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	c.JSON(http.StatusOK, map[string]any{"models": models})
+}
+
+// llmModelsProbeHandler implements POST /api/admin/llm/models.
+//
+// 面板「拉取模型列表」的正式入口（261117-mpr）：候选连接（vendor/plan/
+// base_url/models_url/model + 凭据）全部走请求体，于是「页面上刚填的明文
+// key」能真正到达服务端 —— 而 GET 版本按 F-02 的设计拿不到它，只能发
+// anonymous，真实网关必然 401，面板就显示一条误导性的「令牌已过期」。
+//
+// 凭据解析复用 resolveTestTarget：明文 key > api_key_env 白名单 > 已存
+// 配置 / env preset，与「测试连通」按钮完全一致（用户在页面上怎么填，
+// 拉列表就用什么）。
+func (s *Deps) llmModelsProbeHandler(ctx context.Context, c *app.RequestContext) {
+	if !requireAdmin(c) {
+		return
+	}
+	if s.LLMDynamic == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: "llm provider panel not initialized"})
+		return
+	}
+	var req llmModelsProbeRequest
+	if err := c.BindAndValidate(&req); err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid JSON body"})
+		return
+	}
+	baseURL, apiKey, err := s.resolveModelsProbeTarget(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
+		return
+	}
+	// models_url 只在与最终 base 同源时采纳（目录套餐给专门列表端点，
+	// 例如 opencode 的 /inference/v1/models）；自定义端点留空走
+	// baseURL + 适配器默认路径。
+	modelsURL := ""
+	if req.ModelsURL != "" {
+		modelsURL = req.ModelsURL
+	}
+	adapter := ""
+	if p, ok := llmconfig.FindPlan(req.Vendor, req.Plan); ok {
+		adapter = p.Adapter
+	}
+	models, lerr := llmconfig.ListModels(ctx, modelsURL, baseURL, apiKey, adapter)
+	if lerr != nil {
+		c.JSON(http.StatusBadGateway, graphResponseError{Error: "model list failed: " + lerr.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, map[string]any{"models": models})
+}
+
+// resolveModelsProbeTarget 解析拉取模型列表的 (baseURL, apiKey)。
+//
+// 与 resolveTestTarget 的两点差异（探测 ≠ 连通性测试）：
+//  1. 不要 model —— 列表接口用不上；
+//  2. 允许匿名 —— 部分网关（ollama 等）无 key 也能列模型，key 链全部
+//     落空时返回 "anonymous" 占位而不是 400（与 GET 版本语义一致）。
+//
+// 凭据顺序与 resolveTestTarget 相同：面板刚填的明文 key > api_key_env
+// 白名单 > 已存配置 / env preset（后两者受 URL 来源约束，不外带）。
+func (s *Deps) resolveModelsProbeTarget(req llmModelsProbeRequest) (string, string, error) {
+	base := req.BaseURL
+	vendor, plan := req.Vendor, req.Plan
+	if base == "" {
+		p, ok := llmconfig.FindPlan(vendor, plan)
+		if !ok {
+			return "", "", errStr("unknown vendor/plan and no base_url given")
+		}
+		base = p.BaseURL
+	}
+	if base == "" {
+		return "", "", errStr("base_url required (pick a vendor/plan or pass base_url)")
+	}
+
+	key := req.APIKey // 调用方显式提供的 key 属于其自身凭据，直接放行（端点自选）
+	if key == "" && req.APIKeyEnv != "" && envWhitelistedEnvName(req.APIKeyEnv) {
+		key = os.Getenv(req.APIKeyEnv)
+	}
+	if key == "" {
+		// 依赖服务端持有的凭据（env / 已存配置）时，base 必须先过 URL 来源
+		// 约束 —— 否则"把服务端 key 发往任意主机"的通道在这里重开。
+		if req.BaseURL != "" {
+			constrained, _ := resolveProbeURLs(vendor, plan, req.BaseURL, "")
+			base = constrained
+		}
+		key = resolveProbeKey(base, "")
+	}
+	if key == "" {
+		key = "anonymous" // 与 GET 版本一致：匿名探测可达（ollama 等）
+	}
+	return base, key, nil
 }
 
 // llmModelSwitchRequest is the POST /api/admin/llm/model body. Key is

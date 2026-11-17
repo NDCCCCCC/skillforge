@@ -49,6 +49,8 @@ func invokeLLMAdmin(t *testing.T, deps *Deps, method, path, body string, withTok
 	h.POST("/api/admin/llm/config", deps.llmSaveHandler)
 	h.POST("/api/admin/llm/test", deps.llmTestHandler)
 	h.GET("/api/admin/llm/models", deps.llmModelsHandler)
+	// 261117-mpr — POST 版本（面板「拉取模型列表」正式入口，key 走请求体）。
+	h.POST("/api/admin/llm/models", deps.llmModelsProbeHandler)
 	h.POST("/api/admin/llm/model", deps.llmModelHandler)
 
 	var headers []ut.Header
@@ -662,4 +664,61 @@ func (f *fakeLLMUp) Stream(_ context.Context, _ []*schema.Message, _ ...model.Op
 
 func (f *fakeLLMUp) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
 	return f, nil
+}
+
+// TestLLMAdmin_ModelsProbe_POST_UsesPanelKey 是 261117-mpr 的回归锁。
+//
+// 面板「拉取模型列表」此前走 GET：按 F-02 的决策明文 key 不能进 URL，服务端
+// 只能发 "Bearer anonymous" ⇒ 真实网关回 401 ⇒ 面板显示一条让人误以为 key
+// 错的「令牌已过期」，而用户在面板里填的那把 key 根本没被用上。
+// POST 版本把候选连接放进请求体 ⇒ 面板填的 key 才能真正到达上游。
+func TestLLMAdmin_ModelsProbe_POST_UsesPanelKey(t *testing.T) {
+	const panelKey = "sk-panel-typed-in-the-ui-123456"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
+		// 强校验：请求必须真的带着面板里那把 key，否则 401（复现旧行为）。
+		if r.Header.Get("Authorization") != "Bearer "+panelKey {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":{"code":"401","message":"令牌已过期或验证不正确"}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"glm-5.3-flash"},{"id":"glm-5.3"}]}`))
+	})
+	upstream := httptest.NewServer(mux)
+	t.Cleanup(upstream.Close)
+
+	deps := llmTestDeps(t, nil)
+	// body 里带 vendor/plan/base_url/model + 明文 api_key，模拟面板提交。
+	body := `{"vendor":"zhipu","plan":"coding-plan","base_url":"` + upstream.URL + `","model":"glm-5.3-flash","api_key":"` + panelKey + `"}`
+
+	m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/models", body, true))
+	models, ok := m["models"].([]any)
+	require.True(t, ok, "models 必须是数组: %v", m)
+	require.Len(t, models, 2, "面板填的 key 必须被用来探测（否则上游 401）")
+	assert.Equal(t, "glm-5.3", models[0], "按字母序")
+	assert.Equal(t, "glm-5.3-flash", models[1])
+}
+
+// TestLLMAdmin_ModelsProbe_POST_NoKeyStillWorks 锁匿名探测仍可达
+// （部分网关允许无 key 列模型，如 ollama）。
+func TestLLMAdmin_ModelsProbe_POST_NoKeyStillWorks(t *testing.T) {
+	srv := newFakeOpenAI(t, `{"id":"c","choices":[{"message":{"role":"assistant","content":"pong"}}]}`,
+		`{"data":[{"id":"m1"}]}`)
+	defer srv.Close()
+
+	deps := llmTestDeps(t, nil)
+	body := `{"vendor":"custom","plan":"custom","base_url":"` + srv.URL + `","model":"m"}`
+	m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/models", body, true))
+	assert.Len(t, m["models"], 1)
+}
+
+// TestLLMAdmin_ModelsProbe_POST_RejectsToo 锁：没有 base_url 也无法从目录
+// 补齐时给可行动错误。
+func TestLLMAdmin_ModelsProbe_POST_NoBaseURL(t *testing.T) {
+	deps := llmTestDeps(t, nil)
+	res := invokeLLMAdmin(t, deps, http.MethodPost, "/api/admin/llm/models",
+		`{"vendor":"nope","plan":"nope","model":"m"}`, true).Result()
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode())
+	assert.Contains(t, string(res.Body()), "unknown vendor/plan")
 }

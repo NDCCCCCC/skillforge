@@ -99,24 +99,21 @@ export function testLLMKey(token: string, req: LLMSaveRequest): Promise<LLMTestR
   }).then(parse) as Promise<LLMTestResult>;
 }
 
-// GET /api/admin/llm/models takes the candidate connection as QUERY
-// PARAMETERS (the handler reads c.Query, not a body).
+// POST /api/admin/llm/models — 面板「拉取模型列表」的正式入口。
 //
-// CODE-AUDIT 2026-11-05 (F-02/E-02): `api_key` is explicitly EXCLUDED from
-// the query — GET URLs land in nginx access logs, browser history and the
-// Referer header. The backend resolves the credential from api_key_env
-// (SKILLFORGE_* whitelist) or the server-stored config instead, so the
-// panel flow works without ever putting a plaintext key in a URL.
+// 261117-mpr：改成 POST + 请求体，因为候选连接**必须包含页面上刚填的
+// 明文 key**，而 GET 不能把 key 放进 URL（会落进 nginx access log、
+// 浏览器历史、Referer 头 —— F-02/E-02 的原始约束）。请求体不进 URL，
+// 那三个泄漏面都不成立，于是面板填的 key 能真正到达服务端；此前走 GET
+// 时服务端只能发 anonymous，真实网关必然 401，面板就报一条让人误以为
+// key 错的「令牌已过期」。
 export function fetchLLMModels(
   token: string,
   req: Partial<LLMSaveRequest>,
 ): Promise<{ models: string[] }> {
-  const q = new URLSearchParams(
-    Object.entries(req).filter(
-      ([k, v]) => k !== 'api_key' && v != null && v !== '',
-    ) as [string, string][],
-  );
-  return fetch(`/api/admin/llm/models?${q.toString()}`, {
+  return fetch('/api/admin/llm/models', {
+    method: 'POST',
     headers: adminHeaders(token),
+    body: JSON.stringify(req),
   }).then(parse) as Promise<{ models: string[] }>;
 }

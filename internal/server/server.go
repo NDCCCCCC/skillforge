@@ -764,6 +764,9 @@ func New(addr string, deps *Deps) *server.Hertz {
 	h.POST("/api/admin/llm/config", deps.llmSaveHandler)
 	h.POST("/api/admin/llm/test", deps.llmTestHandler)
 	h.GET("/api/admin/llm/models", deps.llmModelsHandler)
+	// 261117-mpr — 面板「拉取模型列表」的正式入口：候选连接（含明文 key）走
+	// 请求体，因为 GET 不能带 key 进 URL（会落进 access log / Referer）。
+	h.POST("/api/admin/llm/models", deps.llmModelsProbeHandler)
 	h.POST("/api/admin/llm/model", deps.llmModelHandler)
 	// Phase 10 Plan 03 (MEM-02 / D10-D1 + D10-D2) — cross-refresh
 	// history restore. The handler returns the session's rendered
