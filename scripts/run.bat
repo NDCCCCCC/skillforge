@@ -10,8 +10,12 @@ REM hardcoded .planning/tmp paths:
 REM   1. parse .env into the process environment
 REM   2. drop LOCAL_* (they point at a dead endpoint and outrank GLM_*)
 REM   3. apply sane defaults (timeouts, MCP service skill, admin token)
-REM   4. build the server binary if missing (bin\skillforge-server.exe)
-REM   5. run it in the foreground (Ctrl+C stops it)
+REM   4. default SKILLFORGE_LLM_CONFIG to <repo>\.skillforge\llm.json —
+REM      some endpoint-security agents deny writes to the user profile for
+REM      unknown exes, which made panel saves fail with "Access is denied";
+REM      the repo dir is always writable. eval-*.ps1 resolve the same path.
+REM   5. build the server binary if missing (bin\skillforge-server.exe)
+REM   6. run it in the foreground (Ctrl+C stops it)
 REM
 REM Env knobs (optional, set BEFORE calling):
 REM   SF_ADDR   - listen address, default 127.0.0.1:8888
@@ -41,6 +45,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "if (-not $env:SKILLFORGE_MCP_SERVICE_SKILL) { $env:SKILLFORGE_MCP_SERVICE_SKILL='simple-qa' };" ^
   "if (-not $env:SKILLFORGE_ADMIN_TOKEN) { $env:SKILLFORGE_ADMIN_TOKEN='dev-admin-token' };" ^
   "if (-not $env:SERVER_ADDR) { $env:SERVER_ADDR = if ($env:SF_ADDR) { $env:SF_ADDR } else { '127.0.0.1:8888' } };" ^
+  "if (-not $env:SKILLFORGE_LLM_CONFIG) { $env:SKILLFORGE_LLM_CONFIG = Join-Path $root '.skillforge\llm.json' };" ^
+  "New-Item -ItemType Directory -Force -Path (Split-Path $env:SKILLFORGE_LLM_CONFIG) | Out-Null;" ^
+  "Write-Host ('[run.bat] llm config file = ' + $env:SKILLFORGE_LLM_CONFIG);" ^
   "$bin = if ($env:SF_BINARY) { $env:SF_BINARY } else { Join-Path $root 'bin\skillforge-server.exe' };" ^
   "if (-not (Test-Path $bin)) {" ^
   "  Write-Host '[run.bat] binary missing - building (needs gcc in PATH for duckdb CGO)...';" ^

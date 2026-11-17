@@ -66,6 +66,11 @@ if (-not $Version) {
 # helper is inlined (same self-contained style as the .env bridge below).
 function Get-PanelConfigPath {
     if ($env:SKILLFORGE_LLM_CONFIG) { return $env:SKILLFORGE_LLM_CONFIG }
+    # run.bat (261117) defaults the panel config into the REPO .skillforge\
+    # dir - endpoint-security agents deny unknown exes writing the user
+    # profile, so the server may be unable to write $HOME at all.
+    $repo = Join-Path $PSScriptRoot '..\.skillforge\llm.json'
+    if (Test-Path $repo) { return $repo }
     return (Join-Path $HOME '.skillforge\llm.json')
 }
 
