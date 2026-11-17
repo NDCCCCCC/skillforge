@@ -27,9 +27,20 @@ package llmconfig
 type Plan struct {
 	ID        string `json:"id"`         // "coding-plan", "go", "zen", ...
 	Label     string `json:"label"`      // 人类可读名称
-	BaseURL   string `json:"base_url"`   // OpenAI 兼容 chat/completions base；custom 时为空串由用户填
+	BaseURL   string `json:"base_url"`   // chat/completions base；custom 时为空串由用户填
 	ModelsURL string `json:"models_url"` // 模型列表端点；空 = BaseURL + "/models"
 	Note      string `json:"note"`       // 一句话说明（计费/隐私/前置条件）
+
+	// Adapter 选择用哪个 eino 原生适配器构造 ChatModel（261117-adp）。
+	//
+	// 空串 = openai 兜底（走 OpenAI 兼容协议，适用于任何兼容网关，含自定义
+	// 第三方端点）。非空值必须与 internal/llm 的 Adapter* 常量一致：
+	// "openai" / "deepseek" / "ollama" / "ark"。
+	//
+	// 为什么要有这个字段：OpenAI 兼容是**最低公约数**，每家非标准字段
+	// （DeepSeek 的 reasoning_content、Ollama 的 think、方舟的 endpoint id
+	// 语义）都得靠手写补丁 —— 补丁一漂移就是 bug。能原生就原生。
+	Adapter string `json:"adapter"`
 }
 
 // Vendor 是一个 LLM 厂商，含其全部可选套餐。
@@ -112,7 +123,8 @@ func Catalog() []Vendor {
 					ID:      "standard",
 					Label:   "官方 API",
 					BaseURL: "https://api.deepseek.com/v1",
-					Note:    "DeepSeek 开放平台，按 token 计费",
+					Adapter: "deepseek",
+					Note:    "DeepSeek 开放平台，按 token 计费；走 eino 原生 deepseek 适配器",
 				},
 			},
 		},
@@ -164,9 +176,23 @@ func Catalog() []Vendor {
 			Plans: []Plan{
 				{
 					ID:      "local",
-					Label:   "本地服务",
-					BaseURL: "http://localhost:11434/v1",
-					Note:    "需先在本机运行 ollama serve；模型在本地推理，不出网",
+					Label:   "本地服务（原生 API）",
+					BaseURL: "http://localhost:11434",
+					Adapter: "ollama",
+					Note:    "需先在本机运行 ollama serve；走 eino 原生 ollama 适配器（/api/chat，BaseURL 不带 /v1），模型在本地推理不出网",
+				},
+			},
+		},
+		{
+			ID:    "ark",
+			Label: "火山方舟（Ark）",
+			Plans: []Plan{
+				{
+					ID:      "standard",
+					Label:   "方舟在线推理",
+					BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
+					Adapter: "ark",
+					Note:    "Model 填方舟上的 endpoint id（不是模型名）；走 eino 原生 ark 适配器",
 				},
 			},
 		},
@@ -178,7 +204,8 @@ func Catalog() []Vendor {
 					ID:      "custom",
 					Label:   "自定义 OpenAI 兼容端点",
 					BaseURL: "", // 由用户在面板里填写（Plan.BaseURL 为空 ⇒ 前端必填 base_url）
-					Note:    "任意 OpenAI 兼容网关；base_url 需填到 /v1 一级",
+					Adapter: "openai",
+					Note:    "任意 OpenAI 兼容网关；base_url 需填到 /v1 一级。这是兜底路径 —— 别的厂商有原生适配器时不走这里",
 				},
 			},
 		},

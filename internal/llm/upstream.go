@@ -23,7 +23,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 
 	"github.com/skillforge/skillforge/internal/llmconfig"
@@ -104,7 +103,10 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 			KeyLen:  len(envKey),
 			EnvVars: envPresence(),
 		})
-		cmRaw, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
+		// 261117-adp: env preset 没有套餐上下文 ⇒ 无 adapter 声明 ⇒ 走
+		// openai 兜底（历史上所有 env 部署都是 OpenAI 兼容端点）。
+		cm, err := buildByAdapter(context.Background(), adapterSpec{
+			Adapter: AdapterOpenAI,
 			BaseURL: envBase,
 			APIKey:  envKey,
 			Model:   envModel,
@@ -112,25 +114,27 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 		if err != nil {
 			return nil, fmt.Errorf("env preset: %w", err)
 		}
-		return LocalThinkOffModel(cmRaw), nil
+		return LocalThinkOffModel(cm), nil
 	}
 	key, keyErr := llmconfig.ResolveKey(cfg)
 	if keyErr != nil {
 		return nil, fmt.Errorf("resolve key: %w", keyErr)
 	}
 	baseURL := cfg.BaseURL
-	if baseURL == "" {
-		// A-04 parity: blank base_url is legal for non-custom vendors —
-		// fall back to the catalog plan exactly like llmModelHandler.
-		plan, found := llmconfig.FindPlan(cfg.Vendor, cfg.Plan)
-		if !found {
-			return nil, fmt.Errorf("panel config: unknown vendor/plan %s/%s", cfg.Vendor, cfg.Plan)
+	var planAdapter string
+	if p, found := llmconfig.FindPlan(cfg.Vendor, cfg.Plan); found {
+		planAdapter = p.Adapter
+		if baseURL == "" {
+			// A-04 parity: blank base_url is legal for non-custom vendors —
+			// fall back to the catalog plan exactly like llmModelHandler.
+			baseURL = p.BaseURL
 		}
-		baseURL = plan.BaseURL
+	} else if cfg.Vendor != "custom" {
+		return nil, fmt.Errorf("panel config: unknown vendor/plan %s/%s", cfg.Vendor, cfg.Plan)
 	}
 	logResolution(resolution{
 		Source:  "PANEL_FILE",
-		Detail:  fmt.Sprintf("%s (vendor=%s plan=%s)", llmconfig.ConfigPath(), cfg.Vendor, cfg.Plan),
+		Detail:  fmt.Sprintf("%s (vendor=%s plan=%s adapter=%s)", llmconfig.ConfigPath(), cfg.Vendor, cfg.Plan, adapterOf(planAdapter)),
 		BaseURL: baseURL,
 		Model:   cfg.Model,
 		KeyLen:  len(key),
@@ -138,7 +142,9 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 		// The env vars are STILL set but do not participate — say so out loud.
 		OverridesEnv: anyEnvSet(),
 	})
-	cmRaw, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
+	// 261117-adp: 按套餐声明的 adapter 走 eino 原生适配器，空串 = openai 兜底。
+	cm, err := buildByAdapter(context.Background(), adapterSpec{
+		Adapter: adapterOf(planAdapter),
 		BaseURL: baseURL,
 		APIKey:  key,
 		Model:   cfg.Model,
@@ -148,8 +154,11 @@ func BuildUpstream(env UpstreamEnv) (model.ToolCallingChatModel, error) {
 	}
 	// The panel resolver copy dropped this wrapper — LOCAL_LLM_THINK=false
 	// silently regressed to minutes-long local thinking after any panel
-	// save (A-03).
-	return LocalThinkOffModel(cmRaw), nil
+	// save (A-03). 原生 ollama 适配器自带 Thinking 字段，不重复包。
+	if adapterOf(planAdapter) == AdapterOllama {
+		return cm, nil
+	}
+	return LocalThinkOffModel(cm), nil
 }
 
 // resolution is the loggable shape of one BuildUpstream decision. It never

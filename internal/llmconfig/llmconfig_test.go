@@ -329,7 +329,7 @@ func TestListModelsShapes(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			got, err := ListModels(context.Background(), srv.URL, "", "sk-lm")
+			got, err := ListModels(context.Background(), srv.URL, "", "sk-lm", "")
 			if err != nil {
 				t.Fatalf("ListModels: %v", err)
 			}
@@ -350,7 +350,7 @@ func TestListModelsFallbackURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	got, err := ListModels(context.Background(), "", srv.URL+"/v1", "")
+	got, err := ListModels(context.Background(), "", srv.URL+"/v1", "", "")
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestListModelsErrorStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := ListModels(context.Background(), srv.URL, "", "k"); err == nil {
+	if _, err := ListModels(context.Background(), srv.URL, "", "k", ""); err == nil {
 		t.Fatal("非 2xx 应报错")
 	} else if !strings.Contains(err.Error(), "403") {
 		t.Fatalf("错误应含状态码: %v", err)
@@ -380,7 +380,53 @@ func TestListModelsUnknownShape(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := ListModels(context.Background(), srv.URL, "", "k"); err == nil {
+	if _, err := ListModels(context.Background(), srv.URL, "", "k", ""); err == nil {
 		t.Fatal("未知形状应报错")
+	}
+}
+
+// TestListModelsOllamaNative 是 261117-adp 的回归锁：原生 ollama 的列表
+// 协议与 OpenAI 兼容系完全不同 —— GET /api/tags，响应
+// {"models":[{"name":"qwen2.5:7b",...}]}（字段是 name 不是 id）。
+// 此前一律按 /models + id 猜 ⇒ 选了原生 ollama 永远拉不到模型列表。
+func TestListModelsOllamaNative(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/tags" {
+			t.Errorf("path = %q, want /api/tags（原生 ollama 的列表端点）", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"models":[{"name":"qwen2.5:7b","size":4700000000},{"name":"llama3.1:8b"}]}`))
+	}))
+	defer srv.Close()
+
+	got, err := ListModels(context.Background(), "", srv.URL, "", "ollama")
+	if err != nil {
+		t.Fatalf("ListModels(ollama): %v", err)
+	}
+	want := []string{"llama3.1:8b", "qwen2.5:7b"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %v, want %v（必须从 name 字段取到模型名）", got, want)
+	}
+}
+
+// TestProbeURLAndField 锁端点/字段选择：显式 models_url 永远优先。
+func TestProbeURLAndField(t *testing.T) {
+	url, field := probeURLAndField("", "http://localhost:11434", "ollama")
+	if url != "http://localhost:11434/api/tags" || field != "name" {
+		t.Fatalf("ollama: url=%q field=%q", url, field)
+	}
+
+	url, field = probeURLAndField("", "https://api.deepseek.com/v1", "deepseek")
+	if url != "https://api.deepseek.com/v1/models" || field != "id" {
+		t.Fatalf("deepseek: url=%q field=%q", url, field)
+	}
+
+	url, field = probeURLAndField("", "https://example/v1", "")
+	if url != "https://example/v1/models" || field != "id" {
+		t.Fatalf("空 hint 应走 openai 兜底: url=%q field=%q", url, field)
+	}
+
+	url, _ = probeURLAndField("https://gateway.example/list", "https://example/v1", "ollama")
+	if url != "https://gateway.example/list" {
+		t.Fatalf("显式 models_url 必须优先: url=%q", url)
 	}
 }

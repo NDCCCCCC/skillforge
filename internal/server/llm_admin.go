@@ -454,7 +454,13 @@ func (s *Deps) llmModelsHandler(ctx context.Context, c *app.RequestContext) {
 		// 部分网关允许无 key 列模型（如 ollama）；不强制。
 		apiKey = "anonymous"
 	}
-	models, err := llmconfig.ListModels(ctx, modelsURL, baseURL, apiKey)
+	// 261117-adp: 列表协议随适配器而变 —— 原生 ollama 是 /api/tags 且字段
+	// 叫 name，其余是 /models + id。让目录告诉探测层该用哪套。
+	adapter := ""
+	if p, ok := llmconfig.FindPlan(vendor, plan); ok {
+		adapter = p.Adapter
+	}
+	models, err := llmconfig.ListModels(ctx, modelsURL, baseURL, apiKey, adapter)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, graphResponseError{Error: "model list failed: " + err.Error()})
 		return

@@ -154,19 +154,23 @@ func isTimeoutErr(err error) bool {
 	return false
 }
 
-// ListModels 拉取模型列表。modelsURL 为空时回退 baseURL+"/models"。
+// ListModels 拉取模型列表。modelsURL 为空时按适配器回退：
+//   - ollama 原生：baseURL + "/api/tags"（响应 {"models":[{"name":...}]}）
+//   - 其余（含空 adapterHint = openai 兜底）：baseURL + "/models"
+//
+// 261117-adp: adapterHint 是新增参数 —— 此前一律按 OpenAI 形状请求、只认
+// id 字段，选了原生 ollama 就永远拉不到列表（Ollama 的 /api/tags 用 name
+// 字段）。这是「有原生适配器却用兼容协议去猜」的直接后果。
+//
 // 宽松解析四种已知响应形状：
-//  1. {"data":[{"id":...}]}   — OpenAI / Ollama / 大多数兼容网关
-//  2. {"models":[{"id":...}]} — 部分聚合网关
-//  3. ["id", ...]             — 纯字符串数组
-//  4. [{"id":...}, ...]       — 纯对象数组
+//  1. {"data":[{"id":...}]}    — OpenAI / 大多数兼容网关
+//  2. {"models":[{"id"/"name":...}]} — Ollama 原生 / 部分聚合网关
+//  3. ["id", ...]              — 纯字符串数组
+//  4. [{"id"/"name":...}, ...] — 纯对象数组
 //
 // 空 id 跳过；结果按字母序去重后返回。
-func ListModels(ctx context.Context, modelsURL, baseURL, apiKey string) ([]string, error) {
-	url := modelsURL
-	if url == "" {
-		url = strings.TrimRight(baseURL, "/") + "/models"
-	}
+func ListModels(ctx context.Context, modelsURL, baseURL, apiKey, adapterHint string) ([]string, error) {
+	url, entryField := probeURLAndField(modelsURL, baseURL, adapterHint)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("llmconfig: 构造请求失败: %w", err)
@@ -192,23 +196,48 @@ func ListModels(ctx context.Context, modelsURL, baseURL, apiKey string) ([]strin
 		return nil, fmt.Errorf("llmconfig: 模型列表端点返回 HTTP %d: %s", resp.StatusCode, truncate(raw, 200))
 	}
 
-	ids, err := parseModelList(raw)
+	ids, err := parseModelList(raw, entryField)
 	if err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
+// probeURLAndField 按适配器选择列表端点与条目字段名。
+//
+//   - 显式 models_url 永远优先（目录里 opencode 之类给了专门的 models_url）；
+//   - ollama 原生：baseURL + "/api/tags"，条目字段 "name"；
+//   - 其余（含空 hint = openai 兜底）：baseURL + "/models"，字段 "id"。
+func probeURLAndField(modelsURL, baseURL, adapterHint string) (url, entryField string) {
+	entryField = "id"
+	if adapterHint == "ollama" {
+		entryField = "name"
+	}
+	switch {
+	case modelsURL != "":
+		return modelsURL, entryField
+	case adapterHint == "ollama":
+		return strings.TrimRight(baseURL, "/") + "/api/tags", entryField
+	default:
+		return strings.TrimRight(baseURL, "/") + "/models", entryField
+	}
+}
+
 // parseModelList 依次尝试四种形状，全部失败时报"无法识别的响应形状"。
-func parseModelList(raw []byte) ([]string, error) {
-	// 形状 1/2：{"data":[...]} 或 {"models":[...]}，元素可带 id 字段。
+//
+// entryField 告诉它条目里的名字字段是 "id"（OpenAI 系）还是 "name"
+// （Ollama 原生 /api/tags）。
+func parseModelList(raw []byte, entryField string) ([]string, error) {
+	// 形状 1/2：{"data":[...]} 或 {"models":[...]}，元素可带 id/name 字段。
 	var shaped struct {
 		Data   []modelEntry `json:"data"`
 		Models []modelEntry `json:"models"`
 	}
 	if err := json.Unmarshal(raw, &shaped); err == nil {
-		ids := collectIDs(shaped.Data)
-		ids = append(ids, collectIDs(shaped.Models)...)
+		ids := collectIDs(shaped.Data, entryField)
+		// /api/tags 的条目在 models 里且用 name 字段；OpenAI 系的 data 用 id。
+		// 两个容器都试一遍，字段名由 entryField 决定，另一字段名也作为兜底。
+		ids = append(ids, collectIDs(shaped.Models, entryField)...)
 		if len(ids) > 0 {
 			return dedupeSort(ids), nil
 		}
@@ -220,10 +249,10 @@ func parseModelList(raw []byte) ([]string, error) {
 		return dedupeSort(strs), nil
 	}
 
-	// 形状 4：纯对象数组带 id。
+	// 形状 4：纯对象数组带 id/name。
 	var objs []modelEntry
 	if err := json.Unmarshal(raw, &objs); err == nil {
-		if ids := collectIDs(objs); len(ids) > 0 {
+		if ids := collectIDs(objs, entryField); len(ids) > 0 {
 			return dedupeSort(ids), nil
 		}
 	}
@@ -253,17 +282,32 @@ func statusFamily(raw []byte) string {
 	}
 }
 
-// modelEntry 是模型条目里我们唯一关心的字段。
+// modelEntry 是模型条目里我们关心的字段。两个都解析：OpenAI 兼容网关用
+// id，Ollama 原生 /api/tags 用 name。
 type modelEntry struct {
-	ID string `json:"id"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
-// collectIDs 提取非空 id。
-func collectIDs(entries []modelEntry) []string {
+// collectIDs 提取非空名称。primary 决定优先读哪个字段（"name" ⇒ Ollama
+// 原生；其余 ⇒ id），另一字段作为兜底，这样同一份响应无论形状都解析得出来。
+func collectIDs(entries []modelEntry, primary string) []string {
 	ids := make([]string, 0, len(entries))
-	for _, e := range entries {
+	pick := func(e modelEntry) string {
+		if primary == "name" {
+			if e.Name != "" {
+				return e.Name
+			}
+			return e.ID
+		}
 		if e.ID != "" {
-			ids = append(ids, e.ID)
+			return e.ID
+		}
+		return e.Name
+	}
+	for _, e := range entries {
+		if v := pick(e); v != "" {
+			ids = append(ids, v)
 		}
 	}
 	return ids
