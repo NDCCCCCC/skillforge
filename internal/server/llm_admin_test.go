@@ -94,6 +94,43 @@ func TestLLMAdmin_ProvidersCatalog(t *testing.T) {
 	raw, _ := json.Marshal(vendors)
 	assert.Contains(t, string(raw), `"opencode"`)
 	assert.Contains(t, string(raw), `"zhipu"`)
+
+	// 261117-dvu: 字段名级回归。只断言值存在（"zhipu" 大小写无关）不够 ——
+	// catalog.go 的 Vendor/Plan 曾漏写 json tag，Go 序列化成大写
+	// ID/Label/Plans，前端 llmApi.ts 读 v.id/v.label/v.plans 全拿到
+	// undefined ⇒ 厂商下拉永远空白，而上面那两条断言照样绿。
+	// 用带小写 tag 的结构体反序列化，字段对不上就是空 ⇒ 当场抓到。
+	var typed []struct {
+		ID    string `json:"id"`
+		Label string `json:"label"`
+		Plans []struct {
+			ID        string `json:"id"`
+			Label     string `json:"label"`
+			BaseURL   string `json:"base_url"`
+			ModelsURL string `json:"models_url"`
+			Note      string `json:"note"`
+		} `json:"plans"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &typed))
+	require.NotEmpty(t, typed, "反序列化后必须有厂商（字段名必须是小写 id/label/plans）")
+	require.NotEmpty(t, typed[0].ID, "vendors[0].id 必须存在 —— 若为空说明后端返回的是大写 ID")
+	assert.NotEmpty(t, typed[0].Label, "vendors[0].label 必须存在")
+	require.NotEmpty(t, typed[0].Plans, "vendors[0].plans 必须存在")
+	assert.NotEmpty(t, typed[0].Plans[0].ID, "plans[0].id 必须存在")
+	assert.NotEmpty(t, typed[0].Plans[0].Label, "plans[0].label 必须存在")
+	assert.NotEmpty(t, typed[0].Plans[0].BaseURL, "plans[0].base_url 必须存在")
+	// models_url 的空串是有语义的（= BaseURL + /models），所以要求 key 存在，
+	// 但不要求值非空。note 同理可以为空但 key 必须在。
+	var keyProbe []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &keyProbe))
+	plans, _ := keyProbe[0]["plans"].([]any)
+	require.NotEmpty(t, plans)
+	// models_url 的空串有语义（= BaseURL + /models），note 可空但 key 必须在
+	// —— 两者都属于 plans[i]，不在 vendor 顶层。
+	plan0, ok := plans[0].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, plan0, "models_url", "plans[0].models_url 这个 key 必须存在（不可 omitempty）")
+	require.Contains(t, plan0, "note", "plans[0].note 这个 key 必须存在")
 }
 
 func TestLLMAdmin_ConfigMaskedAndSources(t *testing.T) {

@@ -20,19 +20,27 @@
 package llmconfig
 
 // Plan 是一个厂商下的一种套餐/接入方式。
+//
+// 261117-dvu: json tag 必须与前端 llmApi.ts 的 LLMPlan 契约逐字一致。
+// 此前缺 tag ⇒ Go 序列化成大写 ID/Label/BaseURL...，前端读 v.id/v.plans
+// 全拿到 undefined ⇒ 厂商下拉永远空白（值 "zhipu" 存在也没用，字段名对不上）。
 type Plan struct {
-	ID        string // "coding-plan", "go", "zen", ...
-	Label     string // 人类可读名称
-	BaseURL   string // OpenAI 兼容 chat/completions base；custom 时为空串由用户填
-	ModelsURL string // 模型列表端点；空 = BaseURL + "/models"
-	Note      string // 一句话说明（计费/隐私/前置条件）
+	ID        string `json:"id"`         // "coding-plan", "go", "zen", ...
+	Label     string `json:"label"`      // 人类可读名称
+	BaseURL   string `json:"base_url"`   // OpenAI 兼容 chat/completions base；custom 时为空串由用户填
+	ModelsURL string `json:"models_url"` // 模型列表端点；空 = BaseURL + "/models"
+	Note      string `json:"note"`       // 一句话说明（计费/隐私/前置条件）
 }
 
 // Vendor 是一个 LLM 厂商，含其全部可选套餐。
+//
+// 261117-dvu: 同上，字段名对齐前端 LLMVendor。**不要给这些字段加
+// omitempty** —— models_url/base_url 的空串是有语义的（custom 端点回退、
+// BaseURL+"/models"），前端契约也把它们声明为必填 string。
 type Vendor struct {
-	ID    string // "zhipu", "opencode", "openai", "deepseek", ...
-	Label string
-	Plans []Plan
+	ID    string `json:"id"`    // "zhipu", "opencode", "openai", "deepseek", ...
+	Label string `json:"label"`
+	Plans []Plan `json:"plans"`
 }
 
 // Catalog 返回内置厂商/套餐目录。每次调用返回全新切片，调用方可自由
