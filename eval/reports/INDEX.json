@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "runs": [
+    {
+      "ts": "2026-08-22T22-14-41Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.2",
+      "faithfulness": 0.6876,
+      "context_precision": 0.4,
+      "answer_relevance": 0.6593,
+      "context_recall": 0.03,
+      "refusal_accuracy": 0,
+      "frozen_version": "compliance-2026-08-13-v1",
+      "report_path": "2026-08-22T22-14-41Z.json"
+    },
+    {
+      "ts": "2026-08-23T00-43-30Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.2",
+      "faithfulness": 0.6763,
+      "context_precision": 0.42,
+      "answer_relevance": 0.7045,
+      "context_recall": 0.03,
+      "refusal_accuracy": 0,
+      "frozen_version": "compliance-2026-08-13-v1",
+      "report_path": "2026-08-23T00-43-30Z.json"
+    },
+    {
+      "ts": "2026-08-23T03-13-46Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.2",
+      "faithfulness": 0.888,
+      "context_precision": 0.3167,
+      "answer_relevance": 0.291,
+      "context_recall": 0.4,
+      "refusal_accuracy": 0.95,
+      "frozen_version": "compliance-2026-08-13-v1",
+      "report_path": "2026-08-23T03-13-46Z.json"
+    },
+    {
+      "ts": "2026-09-07T04-19-02Z",
+      "skill": "compliance",
+      "judge_model": "Qwen3.8-27B-UD-Q4_K_XL",
+      "faithfulness": 0.7685,
+      "context_precision": 0.6667,
+      "answer_relevance": 0.5279,
+      "context_recall": 1,
+      "refusal_accuracy": 1,
+      "frozen_version": "",
+      "report_path": "2026-09-07T04-19-02Z.json"
+    },
+    {
+      "ts": "2026-10-01T03-24-21Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.2",
+      "faithfulness": 0.9036,
+      "context_precision": 0.6113,
+      "answer_relevance": 0.515,
+      "context_recall": 0.92,
+      "refusal_accuracy": 0.95,
+      "frozen_version": "compliance-2026-08-13-v1",
+      "report_path": "2026-10-01T03-24-21Z.json"
+    },
+    {
+      "ts": "2026-11-13T08-57-39Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.2",
+      "faithfulness": 0,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 0,
+      "refusal_accuracy": 0,
+      "frozen_version": "",
+      "report_path": "2026-11-13T08-57-39Z.json"
+    },
+    {
+      "ts": "2026-11-17T04-52-28Z",
+      "skill": "compliance",
+      "judge_model": "Qwen3.8-27B-UD-Q4_K_XL",
+      "faithfulness": 0,
+      "context_precision": 0,
+      "answer_relevance": 0,
+      "context_recall": 0,
+      "refusal_accuracy": 0,
+      "frozen_version": "",
+      "report_path": "2026-11-17T04-52-28Z.json"
+    },
+    {
+      "ts": "2026-11-17T07-25-45Z",
+      "skill": "compliance",
+      "judge_model": "glm-5.3-flash",
+      "faithfulness": 0.9038,
+      "context_precision": 0.6136,
+      "answer_relevance": 0.545,
+      "context_recall": 0.8604,
+      "refusal_accuracy": 1,
+      "frozen_version": "",
+      "report_path": "2026-11-17T07-25-45Z.json"
+    }
+  ]
+}
