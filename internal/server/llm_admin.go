@@ -350,19 +350,42 @@ func envWhitelistedEnvName(name string) bool {
 // probe at an arbitrary host while a real key is attached. vendor=custom
 // (and unknown vendors) keep the request/saved values: custom endpoints are
 // operator-registered on purpose (e.g. ollama on localhost).
+//
+// 261117-flc: the custom arm was DOCUMENTED but NOT IMPLEMENTED. The catalog's
+// custom plan carries BaseURL: "" (the operator fills it in the panel), so the
+// byte-match below always failed and the operator's own URL was replaced by the
+// empty catalog value; the handler then answered 400 "base_url required (pick a
+// vendor/plan or pass base_url)" to a request that HAD a base_url — "拉取模型列表"
+// was impossible for every third-party / self-hosted endpoint.
+//
+// 空目录值的语义按字段分别定义（这个区分是安全必需的）：
+//   - p.BaseURL == ""     ⇒ 该套餐完全由用户填写 ⇒ 采纳请求的 base_url。
+//   - p.ModelsURL == ""   ⇒ **仅当** base_url 也是用户填写时（即上面那条成立）
+//                           才采纳请求的 models_url。否则目录套餐的 models_url
+//                           是空 = "由 baseURL 推导 /models"（ListModels 的约定），
+//                           此时若采纳任意请求值，攻击者可让服务端把真实 key
+//                           带去它指定的主机 —— 那是新的外泄面。
 func resolveProbeURLs(vendor, plan, reqBase, reqModelsURL string) (baseURL, modelsURL string) {
 	p, ok := llmconfig.FindPlan(vendor, plan)
 	if !ok {
 		return reqBase, reqModelsURL
 	}
-	if reqBase == p.BaseURL {
+	operatorSupplied := p.BaseURL == ""
+	if operatorSupplied {
+		baseURL = reqBase
+	} else if reqBase == p.BaseURL {
 		baseURL = reqBase
 	} else {
 		baseURL = p.BaseURL
 	}
-	if reqModelsURL == p.ModelsURL {
+	switch {
+	case operatorSupplied && p.ModelsURL == "":
+		// 自定义套餐：models_url 也由用户决定（留空 = baseURL + /models）。
 		modelsURL = reqModelsURL
-	} else {
+	case p.ModelsURL != "" && reqModelsURL == p.ModelsURL:
+		modelsURL = reqModelsURL
+	default:
+		// 目录套餐：空 = 由 baseURL 推导；非空 = 只认字节相同的白名单值。
 		modelsURL = p.ModelsURL
 	}
 	return baseURL, modelsURL

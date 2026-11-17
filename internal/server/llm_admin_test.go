@@ -495,6 +495,84 @@ func TestLLMAdmin_ModelSwitch_FileConfig(t *testing.T) {
 	assert.Equal(t, "", os.Getenv("LOCAL_MODEL"), "文件路径不得写 LOCAL_MODEL")
 }
 
+// TestResolveProbeURLs 是 261117-flc 的回归锁。自定义第三方端点的【拉取模型列表】
+// 曾经必失败：catalog 的 custom 套餐 BaseURL 为空串（由面板填写），而
+// resolveProbeURLs 只在"请求值逐字等于目录值"时才采纳请求值 ⇒ 用户填的 URL
+// 被空串顶掉 ⇒ handler 对"明明带了 base_url"的请求回 400 base_url required。
+//
+// 同时锁住安全边界：目录套餐（base_url 非空）的 models_url 空值 = "由 baseURL
+// 推导 /models"，此时**不能**采纳请求注入的 models_url，否则带真实 key 的探测
+// 会被引到任意主机。
+func TestResolveProbeURLs(t *testing.T) {
+	const injected = "http://127.0.0.1:1/v1" // 请求方注入的任意主机
+
+	for _, tc := range []struct {
+		name           string
+		vendor, plan   string
+		reqBase        string
+		reqModelsURL   string
+		wantBase       string
+		wantModelsURL  string
+	}{
+		{
+			name: "custom plan keeps the operator-supplied base_url", // 261117-flc 主修复
+			vendor: "custom", plan: "custom",
+			reqBase: "https://third-party.example/v1", reqModelsURL: "",
+			wantBase: "https://third-party.example/v1", wantModelsURL: "",
+		},
+		{
+			name: "custom plan keeps the operator-supplied models_url too",
+			vendor: "custom", plan: "custom",
+			reqBase: "https://third-party.example/v1", reqModelsURL: "https://third-party.example/models",
+			wantBase: "https://third-party.example/v1", wantModelsURL: "https://third-party.example/models",
+		},
+		{
+			name: "catalog plan with empty models_url must NOT take an injected models_url",
+			vendor: "zhipu", plan: "coding-plan",
+			reqBase: "https://open.bigmodel.cn/api/coding/paas/v4",
+			reqModelsURL: injected,
+			wantBase: "https://open.bigmodel.cn/api/coding/paas/v4",
+			wantModelsURL: "",
+		},
+		{
+			name: "catalog plan overrides an injected base_url with the catalog value",
+			vendor: "zhipu", plan: "coding-plan",
+			reqBase: injected, reqModelsURL: "",
+			wantBase: "https://open.bigmodel.cn/api/coding/paas/v4",
+			wantModelsURL: "",
+		},
+		{
+			name: "unknown vendor/plan passes the request through (operator-registered)",
+			vendor: "my-private", plan: "whatever",
+			reqBase: "https://private.example/v1", reqModelsURL: "https://private.example/models",
+			wantBase: "https://private.example/v1", wantModelsURL: "https://private.example/models",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gotBase, gotModelsURL := resolveProbeURLs(tc.vendor, tc.plan, tc.reqBase, tc.reqModelsURL)
+			assert.Equal(t, tc.wantBase, gotBase)
+			assert.Equal(t, tc.wantModelsURL, gotModelsURL)
+		})
+	}
+}
+
+// TestLLMAdmin_Models_SelfHostedEndpointShowsEffectiveBaseURL 是端到端锁：
+// 用 custom 套餐 + 自建端点拉模型列表，必须 200（修复前是 400 base_url required，
+// 因为用户填的 URL 被空目录值顶掉）。顺带断言候选端点确实是请求里那个。
+func TestLLMAdmin_Models_SelfHostedEndpointShowsEffectiveBaseURL(t *testing.T) {
+	srv := newFakeOpenAI(t, `{"id":"c","choices":[{"message":{"role":"assistant","content":"pong"}}]}`,
+		`{"data":[{"id":"glm-5.3-flash"},{"id":"glm-5.3"}]}`)
+	defer srv.Close()
+
+	deps := llmTestDeps(t, nil)
+	t.Setenv("SKILLFORGE_PROBE_KEY", "sk-any")
+
+	path := "/api/admin/llm/models?vendor=custom&plan=custom&base_url=" + srv.URL + "&api_key_env=SKILLFORGE_PROBE_KEY"
+	m := llmBody(t, invokeLLMAdmin(t, deps, http.MethodGet, path, "", true))
+	models := m["models"].([]any)
+	require.Len(t, models, 2, "自建端点（custom 套餐）必须能拉到模型列表：%v", m)
+}
+
 func TestLLMAdmin_NilPanel503(t *testing.T) {
 	t.Setenv("SKILLFORGE_ADMIN_TOKEN", llmAdminToken)
 	deps := &Deps{} // LLMDynamic == nil
