@@ -461,7 +461,10 @@ func (s *Deps) streamLLMAndDrainWith(ctx context.Context, c *app.RequestContext,
 	}
 	chatModelOpts := []model.Option{
 		model.WithTemperature(temp),
-		model.WithMaxTokens(4096),
+		// 261117-n96: 此前硬编码 4096 —— 长 SQL/取数回答在此被网关截断，
+		// 前端表现为「回答没写完就结束」且无任何提示。默认提到 8192，
+		// SKILLFORGE_ANSWER_MAX_TOKENS 可按部署需要调高。
+		model.WithMaxTokens(envIntOr("SKILLFORGE_ANSWER_MAX_TOKENS", 8192)),
 	}
 	if len(extraFields) > 0 {
 		chatModelOpts = append(chatModelOpts, openai.WithExtraFields(extraFields))
@@ -627,6 +630,21 @@ func envDurationOr(name string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+// envIntOr 返回第一个非空 env 的正整数值；均未设、非法或 ≤0 时回落 def。
+// 与 envDurationOr 同族，供 pipeline 的数值型 env 旋钮使用。
+func envIntOr(name string, def int) int {
+	s := os.Getenv(name)
+	if s == "" {
+		return def
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || n <= 0 {
+		log.Printf("[WARN] internal/server: %s=%q invalid (want positive integer); using default %d", name, s, def)
+		return def
+	}
+	return n
 }
 
 // streamBackoff computes the pre-attempt sleep for attempt n (1-based;

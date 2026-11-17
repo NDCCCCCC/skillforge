@@ -279,6 +279,11 @@ Verify the panel wiring with the Phase 52 acceptance gate:
 make verify-phase-52
 ```
 
+**Answer length knob.** The pipeline caps one answer at 8192 output tokens
+(was 4096 — long SQL / data-pull answers were cut off mid-stream with no
+indication). Set `SKILLFORGE_ANSWER_MAX_TOKENS` to a positive integer to
+raise or lower it; an invalid value silently falls back to the default.
+
 ---
 
 ## Architecture
