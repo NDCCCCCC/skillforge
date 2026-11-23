@@ -662,6 +662,44 @@ CREATE TABLE IF NOT EXISTS ingest_items (
     updated_at TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (job_id, step, item_key)
 );
+
+-- embed_cache (Phase 54 / Plan 54-02 / ING-04 / SC 5): the vector lookaside
+-- keyed by the Dify 'Embedding(model_name, hash)' pattern — a composite PK
+-- of (model, content_hash) IS the uniqueness mechanism. A re-run (54-03 step
+-- retry, re-upload of unchanged content) that reaches the embed step finds
+-- every unchanged chunk's vector here and costs ZERO BGE-M3 calls.
+--
+-- IMMUTABLE CACHE ROWS — stronger than ecl_failures, weaker than audit:
+-- the same (model, content_hash) pair is deterministic (same model ⇒ same
+-- vector), so rows are INSERT-OR-IGNORE'd once and never updated. No
+-- UPDATE path exists in embed_cache.go, and a PutEmbedding with a
+-- different vector under the same key is a no-op by design — the first
+-- write wins and reproducibility is preserved. Rows are deleted only by
+-- manual operator SQL (a model swap does NOT purge: the old model's rows
+-- simply stop being looked up, because every lookup carries the model).
+--
+--   - vector: float32 LITTLE-ENDIAN packed BLOB (4 bytes/dim; 1024-dim
+--     BGE-M3 ≈ 4 KB/chunk, a thousand-chunk tier ≈ 4 MB — an acceptable
+--     skillforge.db size/budget, and the SQLite backup path is the
+--     proven recovery story). Byte order is pinned by
+--     TestEmbedCacheBlobRoundTrip (encode/decode + a literal-bytes
+--     assertion) so a backup/restored DB on another machine decodes
+--     identically.
+--   - dim: the row's dimensionality — the cache read path fails LOUDLY on
+--     a stored-dim != embedder-dim mismatch instead of silently inserting
+--     a mixed-dimension vector (the embedder.Embedder contract's "MUST
+--     equal Dimensions()" moat).
+--   - created_at: RFC3339Nano UTC string SET BY THE CALLER (never a SQL
+--     default — the ecl_failures.updated_at timestamp discipline).
+--   - No index beyond the PK: every read is an exact-key batch lookup.
+CREATE TABLE IF NOT EXISTS embed_cache (
+    model        TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    dim          INTEGER NOT NULL,
+    vector       BLOB NOT NULL,          -- float32 little-endian packed
+    created_at   TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (model, content_hash)
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.

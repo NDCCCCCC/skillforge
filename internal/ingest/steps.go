@@ -48,6 +48,7 @@ package ingest
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -73,7 +74,9 @@ type pipelineState struct {
 	docID      string // parse output (the 53-01 persist relative path)
 	chunks     []string
 	docs       []retriever.Document
-	pks        []int64 // vector_insert output (the written PK set)
+	pks        []int64          // vector_insert output (the written PK set)
+	skipPKs    map[string]int64 // embed output: content_hash -> kept PK (unchanged chunks; vector_insert preserves these verbatim)
+	cacheKeys  []string         // embed output: the cache keys actually used (embeds.json content)
 }
 
 // stepParse — plan 54-01 owns this step. Verbatim migration of the sync
@@ -123,6 +126,9 @@ func (r *Runner) stepParse(ctx context.Context, j Job, st *pipelineState) (strin
 	if err := r.jobs.SetJobDocInfo(ctx, j.JobID, docID, pr.ParserName, sourcePath, nowTime()); err != nil {
 		return "", fmt.Errorf("record doc info on job row: %w", err)
 	}
+	// 54-02: stage the parse product (the frontmatter-stripped body a
+	// 54-03 retry re-reads instead of re-parsing the archive).
+	r.writeArtifact(j.JobID, "parsed.txt", st.body)
 	return docID, nil
 }
 
@@ -159,6 +165,26 @@ func (r *Runner) stepChunk(ctx context.Context, j Job, st *pipelineState) (strin
 		return "", err
 	}
 	st.docs = docs
+
+	// 54-02: stage the chunk manifest ({chunk_index, content, content_hash}
+	// per line) — the RAGFlow Task.chunk_ids equivalent lives on the
+	// vector_insert side, which appends the "pk" field after the sink
+	// allocates. json.Marshal for the lines: content is arbitrary user
+	// text and must never break the line-oriented format.
+	type chunkLine struct {
+		ChunkIndex  int    `json:"chunk_index"`
+		Content     string `json:"content"`
+		ContentHash string `json:"content_hash"`
+	}
+	lines := make([]chunkLine, 0, len(docs))
+	for _, doc := range docs {
+		lines = append(lines, chunkLine{ChunkIndex: int(doc.ChunkIndex), Content: doc.Content, ContentHash: doc.ContentHash})
+	}
+	if buf, err := json.Marshal(lines); err == nil {
+		r.writeArtifact(j.JobID, "chunks.jsonl_lines.json", buf)
+	} else {
+		log.Printf("[WARN] ingest: chunks manifest marshal: %v", err)
+	}
 	return fmt.Sprintf("chunks=%d", len(chunks)), nil
 }
 
@@ -171,34 +197,89 @@ func (r *Runner) stepChunk(ctx context.Context, j Job, st *pipelineState) (strin
 // artifact_ref = "embedded=N" (provisional; 54-02 wires the embed-cache
 // key + per-chunk item ledger).
 func (r *Runner) stepEmbed(ctx context.Context, j Job, st *pipelineState) (string, error) {
-	docs, _, err := knowledge.ResolveReuseAndEmbed(ctx, j.Slug, st.docID, st.docs, r.emb, r.retriever)
-	if err != nil {
-		return "", err
+	// 54-02 three-tier lookup (D-54-02):
+	//
+	//  Tier 1 -- previous generation (ExistingChunks seam): unchanged
+	//  hashes keep their PK AND their vector (re-inserted verbatim at
+	//  vector_insert) and never touch the embedding endpoint. This is the
+	//  53-03 refresh judgment moved to BEFORE embedding, its correct
+	//  position per the LlamaIndex refresh pattern.
+	//  Tier 2 -- the embed cache: (model, content_hash) hits resolve at
+	//  zero endpoint cost (BLOB decode behind the EmbedCache seam).
+	//  Tier 3 -- a fresh emb.Embed, PutEmbedding for the next run.
+	//
+	// An embed failure fails the job (D-54-01: embedding is a necessity;
+	// never a zero vector, Pitfall 8).
+	//
+	// artifact_ref = embeds.json (the cache-key set actually used).
+	st.skipPKs = map[string]int64{}
+
+	if r.existing != nil {
+		prev, err := r.existing(ctx, j.Slug, st.docID)
+		if err != nil {
+			log.Printf("[WARN] ingest: previous-generation lookup %s/%s: %v (every chunk embeds fresh)", j.Slug, st.docID, err)
+			prev = nil
+		}
+		for i := range st.docs {
+			if old, ok := prev[st.docs[i].ContentHash]; ok {
+				st.skipPKs[st.docs[i].ContentHash] = old.ID
+				st.docs[i].ID = old.ID
+				st.docs[i].Embedding = old.Embedding
+			}
+		}
 	}
-	st.docs = docs
-	return fmt.Sprintf("embedded=%d", len(docs)), nil
+
+	var (
+		emb, missCount int
+		cacheKeys      []string
+	)
+	for i := range st.docs {
+		if st.docs[i].Embedding != nil {
+			continue // Tier 1 hit: vector carried in from the previous generation
+		}
+		emb++
+		cacheKeys = append(cacheKeys, st.docs[i].ContentHash)
+	}
+
+	if len(cacheKeys) > 0 && r.embedCache != nil && r.embedderModel != "" {
+		hits, err := r.embedCache.GetEmbeddings(ctx, r.embedderModel, cacheKeys)
+		if err != nil {
+			log.Printf("[WARN] ingest: embed cache lookup: %v (every remaining chunk embeds fresh)", err)
+			hits = nil
+		}
+		for i := range st.docs {
+			if st.docs[i].Embedding != nil {
+				continue
+			}
+			if vec, ok := hits[st.docs[i].ContentHash]; ok {
+				st.docs[i].Embedding = vec // Tier 2 hit
+			}
+		}
+	}
+
+	for i := range st.docs {
+		if st.docs[i].Embedding != nil {
+			continue // Tier 1 or 2
+		}
+		missCount++
+		vec, err := r.emb.Embed(ctx, st.docs[i].Content)
+		if err != nil {
+			return "", fmt.Errorf("embed failed: %w", err)
+		}
+		st.docs[i].Embedding = vec
+		if r.embedCache != nil && r.embedderModel != "" {
+			if err := r.embedCache.PutEmbedding(ctx, r.embedderModel, st.docs[i].ContentHash, vec, nowTime()); err != nil {
+				log.Printf("[WARN] ingest: embed cache put: %v", err)
+			}
+		}
+	}
+
+	if buf, err := json.Marshal(cacheKeys); err == nil {
+		r.writeArtifact(j.JobID, "embeds.json", buf)
+	}
+	return fmt.Sprintf("embedded=%d cached=%d kept=%d", emb, len(cacheKeys)-emb, len(st.skipPKs)), nil
 }
 
-// stepVectorInsert — the upsert's insert half. In order, inside the
-// per-slug mutex the runner holds across embed→vector_insert (D27-03-2:
-// GetMaxID + Insert must be one critical section per slug, or two
-// same-slug jobs allocate colliding IDs — the mutex scope matches the
-// retired sync chain's, which spanned UploadIndex(embed)+Insert):
-//
-//  1. Lookup(slug) re-check — the retired STEP 7c fail-closed migration:
-//     the slug may have been deactivated during the async window.
-//  2. VectorSink (production impl: cmd/server/main.go closure) — delete
-//     the doc's previous generation then insert, NEVER bare append (the
-//     2931/256 write-amplification incident class; D-53-03).
-//
-// Backend-unavailable errors keep the retired "backend unavailable:"
-// classification text; everything else is "insert failed:" — the step
-// row's error field is the failure record now (SC 1), so the operator
-// distinction must survive the async migration.
-//
-// artifact_ref = the written PK set ("pks=<csv>") — the SC 5 contract:
-// 54-03's retry purges by this list BEFORE re-inserting (write-amplification
-// guard).
 func (r *Runner) stepVectorInsert(ctx context.Context, j Job, st *pipelineState) (string, error) {
 	if _, ok := r.reg.Lookup(j.Slug); !ok {
 		return "", errors.New("slug deactivated during upload")
@@ -206,6 +287,11 @@ func (r *Runner) stepVectorInsert(ctx context.Context, j Job, st *pipelineState)
 	if r.sink == nil {
 		return "", errors.New("vector sink not wired")
 	}
+	// 54-02: the sink receives the FULL doc set — the Tier 1 kept chunks
+	// carry their PRESERVED PKs and original vectors, so the sink's own
+	// delete+insert stays idempotent (a kept row re-inserts under its
+	// same PK; nothing to insert happens only when the doc is brand new
+	// and empty, unreachable -- parse rejects empty bodies).
 	pks, err := r.sink(ctx, j.Slug, st.docID, st.docs)
 	if err != nil {
 		if errors.Is(err, retriever.ErrIndexerDisabled) || IsBackendUnavailable(err) {
@@ -217,13 +303,6 @@ func (r *Runner) stepVectorInsert(ctx context.Context, j Job, st *pipelineState)
 	return "pks=" + formatPKs(pks), nil
 }
 
-// stepECLSkipped — the four ecl_* steps in 54-01: the auto-trigger is
-// 54-04 scope, so the trigger seam is injected nil and every ecl step
-// lands skipped with the reason in the error field (plan-specified text).
-// skipped never blocks job=done (D-54-01: KG/ECL are enhancements —
-// "enhancement failure does not block"; their being unwired is the same
-// posture). 54-04 replaces this placeholder with real trigger wiring;
-// the step NAMES are LOCKED meanwhile (D-55-01).
 func (r *Runner) stepECLSkipped(_ context.Context, _ Job, _ *pipelineState) (string, error) {
 	const reason = "ecl auto-trigger not wired (54-04)"
 	if r.eclTrigger != nil {

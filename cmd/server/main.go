@@ -118,6 +118,7 @@ import (
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/embedder/bge"
 	"github.com/skillforge/skillforge/internal/externalauth"
+	"github.com/skillforge/skillforge/internal/ingest"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
@@ -1218,8 +1219,58 @@ func main() {
 		wizard = skill.NewWizard(toolChatModel, "skills/", kbReg)
 	}
 
+	// Phase 54-01/54-02 -- async ingest runner. The VectorSink closure
+	// carries the vector_insert upsert semantics (delete the doc OLD rows
+	// via the 53-03 lifecycle seam, then Insert the new set -- never bare
+	// append: the 2931/256 write-amplification incident class).
+	ingestSink := func(ctx context.Context, slug, docID string, docs []retriever.Document) ([]int64, error) {
+		if ds, ok := r.(retriever.DocChunkStore); ok {
+			if err := ds.DeleteDocRows(ctx, slug, docID); err != nil {
+				return nil, fmt.Errorf("delete old doc rows: %w", err)
+			}
+		}
+		if err := indexerBackend.Insert(ctx, docs); err != nil {
+			return nil, fmt.Errorf("insert doc rows: %w", err)
+		}
+		pks := make([]int64, len(docs))
+		for i := range docs {
+			pks[i] = docs[i].ID
+		}
+		return pks, nil
+	}
+	existingChunks := func(ctx context.Context, slug, docID string) (map[string]retriever.DocChunk, error) {
+		ds, ok := r.(retriever.DocChunkStore)
+		if !ok {
+			return map[string]retriever.DocChunk{}, nil // no lifecycle capability: no skip set
+		}
+		rows, err := ds.DocChunkRows(ctx, slug, docID)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]retriever.DocChunk, len(rows))
+		for _, row := range rows {
+			out[row.ContentHash] = row
+		}
+		return out, nil
+	}
+	ingestRunner, err := ingest.NewRunner(ingest.RunnerConfig{
+		Jobs:           st.(*sqlite.SQLiteStore),
+		Emb:            emb,
+		Reg:            kbReg,
+		ParserReg:      document.NewParserRegistry(),
+		Retriever:      r,
+		Sink:           ingestSink,
+		ExistingChunks: existingChunks,
+		EmbedderModel:  embedderModelName,
+		AuditHook:      uploadAuditSink,
+		Artifacts:      ingest.NewArtifactStore("data/ingest"),
+	})
+	if err != nil {
+		log.Fatalf("[FAIL] cmd/server: ingest runner: %v", err)
+	}
+
 	deps = &server.Deps{
-		Loader:   loader,
+		Ingest:   ingestRunner,
 		Registry: reg,
 		// 2026-11-09：装配语义 Router。此前 Deps.Router 恒为 nil，
 		// chatHandler 因此永远走 Loader.findSkill 的精确匹配分支 ——

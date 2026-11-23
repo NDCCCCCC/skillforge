@@ -113,14 +113,18 @@ type VectorSink func(ctx context.Context, slug, docID string, docs []retriever.D
 // server.Deps.Ingest (nil = every ingest surface 503s, the ECL
 // nil-posture).
 type Runner struct {
-	jobs       JobStore
-	emb        embedder.Embedder
-	reg        kb.Registry
-	parserReg  *document.ParserRegistry
-	retriever  retriever.Retriever
-	sink       VectorSink
-	eclTrigger ECLTrigger
-	auditHook  func(action, detail string)
+	jobs          JobStore
+	emb           embedder.Embedder
+	reg           kb.Registry
+	parserReg     *document.ParserRegistry
+	retriever     retriever.Retriever
+	sink          VectorSink
+	eclTrigger    ECLTrigger
+	embedCache    EmbedCache
+	artifacts     *ArtifactStore
+	existing      func(ctx context.Context, slug, docID string) (map[string]retriever.DocChunk, error)
+	embedderModel string
+	auditHook     func(action, detail string)
 
 	// sem bounds concurrently RUNNING jobs (default maxConcurrentJobs=2):
 	// two parallel ingests already hammer the intranet Milvus/BGE pair;
@@ -155,10 +159,24 @@ type RunnerConfig struct {
 	Retriever  retriever.Retriever
 	Sink       VectorSink
 	ECLTrigger ECLTrigger
-	// AuditHook is the audit sink for the runner's action_doc_uploaded
+	// EmbedCache is the (model, content_hash) vector lookaside (54-02).
+	// nil = no lookaside: every chunk embeds fresh (correct, just
+	// not free on retry).
+	EmbedCache EmbedCache
+	// Artifacts is the per-job staging root (54-02 D-54-02). nil =
+	// no step products are written (retry then re-runs the chain).
+	Artifacts *ArtifactStore
 	// row (same fn the server package's SetDocUploadAuditHook binds —
 	// one store write path, two entry points).
-	AuditHook func(action, detail string)
+	// ExistingChunks feeds the embed step skip set (54-02): content_hash
+	// -> kept chunk (PK + vector for verbatim re-insert). nil = no skip
+	// set (every chunk embeds fresh).
+	ExistingChunks func(ctx context.Context, slug, docID string) (map[string]retriever.DocChunk, error)
+	// EmbedderModel names the embedding model for the cache key's model
+	// half (54-02). Empty = cache lookaside disabled (every chunk
+	// embeds fresh).
+	EmbedderModel string
+	AuditHook     func(action, detail string)
 	// MaxConcurrent overrides the running-job cap (tests). 0 → default.
 	MaxConcurrent int
 }
@@ -182,15 +200,19 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 		max = maxConcurrentJobs
 	}
 	return &Runner{
-		jobs:       cfg.Jobs,
-		emb:        cfg.Emb,
-		reg:        cfg.Reg,
-		parserReg:  cfg.ParserReg,
-		retriever:  cfg.Retriever,
-		sink:       cfg.Sink,
-		eclTrigger: cfg.ECLTrigger,
-		auditHook:  cfg.AuditHook,
-		sem:        make(chan struct{}, max),
+		jobs:          cfg.Jobs,
+		emb:           cfg.Emb,
+		reg:           cfg.Reg,
+		parserReg:     cfg.ParserReg,
+		retriever:     cfg.Retriever,
+		sink:          cfg.Sink,
+		eclTrigger:    cfg.ECLTrigger,
+		auditHook:     cfg.AuditHook,
+		embedCache:    cfg.EmbedCache,
+		embedderModel: cfg.EmbedderModel,
+		existing:      cfg.ExistingChunks,
+		artifacts:     cfg.Artifacts,
+		sem:           make(chan struct{}, max),
 	}, nil
 }
 
@@ -484,6 +506,18 @@ func (r *Runner) writeUploadAudit(job Job, st *pipelineState) {
 
 // lockSlug / unlockSlug manage the per-slug embed→vector_insert critical
 // section (D27-03-2 — see the file comment).
+// writeArtifact stages one step product (54-02 D-54-02). A nil
+// artifacts store (unwired, tests) silently skips -- the step contract
+// treats products as retry aids, not correctness requirements.
+func (r *Runner) writeArtifact(jobID, name string, data []byte) {
+	if r.artifacts == nil {
+		return
+	}
+	if err := r.artifacts.Write(jobID, name, data); err != nil {
+		log.Printf("[WARN] ingest: artifact %s/%s: %v", jobID, name, err)
+	}
+}
+
 func (r *Runner) lockSlug(slug string) {
 	mu, _ := r.slugMutexes.LoadOrStore(slug, &sync.Mutex{})
 	mu.(*sync.Mutex).Lock()
