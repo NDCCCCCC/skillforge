@@ -137,14 +137,14 @@ func TestAuditPlanTodoActionEnum(t *testing.T) {
 
 	// Both new enum values must round-trip through PutAudit.
 	row := store.AuditRow{
-		Timestamp:   time.Now().UTC(),
-		SessionID:   "sess-plan-todo",
-		SkillID:     "compliance",
-		Query:       "audit-plan-todo-enum-test",
-		PromptHash:  "p-hash",
+		Timestamp:    time.Now().UTC(),
+		SessionID:    "sess-plan-todo",
+		SkillID:      "compliance",
+		Query:        "audit-plan-todo-enum-test",
+		PromptHash:   "p-hash",
 		ModelVersion: "test",
-		VerdictJSON: "{}",
-		Action:      sqlite.ActionPlanTodoUpsert,
+		VerdictJSON:  "{}",
+		Action:       sqlite.ActionPlanTodoUpsert,
 	}
 	id1, err := s.PutAudit(ctx, row)
 	require.NoError(t, err, "action_plan_todo_upsert must be accepted by PutAudit")
@@ -183,14 +183,14 @@ func TestAuditPlanTodoActionFilterable(t *testing.T) {
 	base := time.Now().UTC()
 	row := func(action string) store.AuditRow {
 		return store.AuditRow{
-			Timestamp:   base,
-			SessionID:   "sess-filter",
-			SkillID:     "compliance",
-			Query:       "audit-plan-todo-filter-test",
-			PromptHash:  "p-hash",
+			Timestamp:    base,
+			SessionID:    "sess-filter",
+			SkillID:      "compliance",
+			Query:        "audit-plan-todo-filter-test",
+			PromptHash:   "p-hash",
 			ModelVersion: "test",
-			VerdictJSON: "{}",
-			Action:      action,
+			VerdictJSON:  "{}",
+			Action:       action,
 		}
 	}
 	_, err = s.PutAudit(ctx, row(sqlite.ActionPendingApproval))

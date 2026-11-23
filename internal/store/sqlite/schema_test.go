@@ -89,6 +89,44 @@ var expectedDatasetDeletesCols = []string{
 	"deleted_at",
 }
 
+// expectedApprovalRulesCols is the canonical column list asserted by
+// TestApprovalRulesDDL (Phase 56 / Plan 56-01 / D-56-01). Order matches
+// the schemaSQL CREATE TABLE statement so a future migration that adds
+// / reorders columns fails loudly. This ONE list also pins the legacy
+// rebuild: approval_rules_migrate_test.go asserts the SAME list against
+// a rebuilt pre-56 database, so any drift between the schemaSQL DDL and
+// legacyApprovalRulesV2DDL fails in whichever test runs first.
+var expectedApprovalRulesCols = []string{
+	"id",
+	"target",
+	"match_type",
+	"args_hash",
+	"args_pattern",
+	"skill_id",
+	"scope",
+	"scope_session_id",
+	"enabled",
+	"expires_at",
+	"origin",
+	"hit_count",
+	"last_hit_at",
+	"created_at",
+	"last_used_at",
+}
+
+// expectedApprovalRuleHitsCols is the canonical column list asserted by
+// TestApprovalRuleHitsDDL.
+var expectedApprovalRuleHitsCols = []string{
+	"id",
+	"rule_id",
+	"ts",
+	"session_id",
+	"target",
+	"tool_call_id",
+	"match_type",
+	"matched_args_hash",
+}
+
 // tableColumns returns the ordered column names from PRAGMA table_info.
 func tableColumns(t *testing.T, s *SQLiteStore, table string) []string {
 	t.Helper()
@@ -244,7 +282,7 @@ func TestAuditMetaInsertQuery(t *testing.T) {
 		decision        string
 		reason          sql.NullString
 		conf            sql.NullFloat64
-		projectedN   int
+		projectedN      int
 		budgetTruncated int
 		droppedCount    int
 	)
@@ -349,4 +387,63 @@ func TestAuditMetaNullableOptionalColumns(t *testing.T) {
 	assert.False(t, rewritten.Valid, "rewritten_query NULL when unset")
 	assert.False(t, reason.Valid, "classifier_reason NULL when unset")
 	assert.False(t, conf.Valid, "classifier_confidence NULL when unset")
+}
+
+// TestApprovalRulesDDL — after migrate(), the approval_rules table has
+// the 15 expected D-56-01 columns in canonical order (Phase 56 / Plan
+// 56-01). The table is the project's FIRST rebuild migration; the same
+// list is asserted against a REBUILT legacy DB in
+// approval_rules_migrate_test.go, pinning schemaSQL and
+// legacyApprovalRulesV2DDL to one shape.
+func TestApprovalRulesDDL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	assert.Equal(t, expectedApprovalRulesCols, tableColumns(t, s, "approval_rules"),
+		"approval_rules must have the expected 15 D-56-01 columns in canonical order")
+}
+
+// TestApprovalRuleHitsDDL — after migrate(), the approval_rule_hits
+// INSERT-only ledger exists with the 8 expected columns.
+func TestApprovalRuleHitsDDL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	assert.Equal(t, expectedApprovalRuleHitsCols, tableColumns(t, s, "approval_rule_hits"),
+		"approval_rule_hits must have the expected 8 columns in canonical order")
+}
+
+// TestApprovalRulesIndexesExist — after migrate(), the five Phase 56
+// indexes exist: the UNIQUE natural key (the four-tuple PK's
+// successor, with match_type/args_pattern folded in), the exact-tier
+// args_hash index, the two scope listing indexes, and the hit-ledger
+// history index. These live at the migrate() tail AFTER the legacy
+// rebuild — the UAT 14-09 ordering contract — so their existence here
+// also proves the fresh-DB path lands them.
+func TestApprovalRulesIndexesExist(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := New(ctx, Config{DSN: ":memory:"})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	for _, idx := range []string{
+		"idx_approval_rules_natural",
+		"idx_approval_rules_args_hash",
+		"idx_approval_rules_scope",
+		"idx_approval_rules_skill",
+		"idx_rule_hits_rule",
+	} {
+		var idxCount int
+		require.NoError(t,
+			s.db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?`, idx).Scan(&idxCount))
+		require.Equal(t, 1, idxCount, "%s must exist after migration", idx)
+	}
 }

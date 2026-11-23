@@ -30,7 +30,7 @@ import (
 // placeholder — the row never touches fmt.Sprintf (T-3-SQLI / T-14-16).
 //
 // Phase 15 / Plan 15-02: extended with dataset/period/k_min_override
-// additive columns (DEFAULT '' / 0 for old callers).
+// additive columns (DEFAULT ” / 0 for old callers).
 const putDatasetSQL = `
 INSERT OR REPLACE INTO datasets (
     name, tier, schema_json, file_path, content_sha256, batch_id, created_at,
@@ -122,4 +122,3 @@ func (s *SQLiteStore) DeleteDataset(ctx context.Context, name string) error {
 	}
 	return nil
 }
-

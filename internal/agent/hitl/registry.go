@@ -84,11 +84,11 @@ var injectDepsOnce sync.Once
 // Skills with `writes: ["report:publish"]` get the report_publish Tool
 // in their LLM-visible whitelist.
 var AllowedWriteTargets = []string{
-	"memory:facts",    // 11-02: first write target (HITL-06)
-	"review_report",   // 11-04: second write target — handler nil until 11-04
-	"plan_approve",    // 12-03: third write target — DeepAgent plan confirmation gate (PLAN-03)
-	"report:publish",  // 18-01: fourth write target — monthly-report publication gate (D18-A4)
-	"skill_state",     // deprecated placeholder for calculator (D7-10); no handler
+	"memory:facts",   // 11-02: first write target (HITL-06)
+	"review_report",  // 11-04: second write target — handler nil until 11-04
+	"plan_approve",   // 12-03: third write target — DeepAgent plan confirmation gate (PLAN-03)
+	"report:publish", // 18-01: fourth write target — monthly-report publication gate (D18-A4)
+	"skill_state",    // deprecated placeholder for calculator (D7-10); no handler
 }
 
 // hitlHandlers is the D11-B3 map from write-target name to the
@@ -112,11 +112,11 @@ var AllowedWriteTargets = []string{
 //   - DO NOT add a sync.RWMutex — the registry is process-wide
 //     constant after init; reads are lock-free.
 var hitlHandlers = map[string]tool.InvokableTool{
-	"memory:facts":   &MemoryFactsTool{},    // 11-02 — this file's companion hitl_memory_facts.go (exported in 11-05 for BuildToolsForSkill's WithContext injection)
-	"review_report":  &reviewReportTool{},   // 11-04 — hitl_review_report.go (HITL-06 second write target)
+	"memory:facts":   &MemoryFactsTool{},   // 11-02 — this file's companion hitl_memory_facts.go (exported in 11-05 for BuildToolsForSkill's WithContext injection)
+	"review_report":  &reviewReportTool{},  // 11-04 — hitl_review_report.go (HITL-06 second write target)
 	"plan_approve":   &planApproveTool{},   // 12-03 — hitl_plan_approve.go (PLAN-03 DeepAgent plan confirmation gate)
-	"report:publish": &reportPublishTool{},   // 18-01 — hitl_report_publish.go (D18-A4 monthly-report publication gate)
-	"skill_state":    nil,                   // deprecated placeholder (D7-10 calculator). nil handler = BuildToolsForSkill silently skips.
+	"report:publish": &reportPublishTool{}, // 18-01 — hitl_report_publish.go (D18-A4 monthly-report publication gate)
+	"skill_state":    nil,                  // deprecated placeholder (D7-10 calculator). nil handler = BuildToolsForSkill silently skips.
 }
 
 // KnownTargets returns a sorted copy of AllowedWriteTargets.
@@ -147,11 +147,15 @@ type auditBinder interface{ setAudit(hook auditWriterHook) }
 
 // reportSinkBinder is implemented by handlers that need the CR-04
 // reports-table audit sink (currently report:publish).
-type reportSinkBinder interface{ setReportSink(sink report.ReportAuditSink) }
+type reportSinkBinder interface {
+	setReportSink(sink report.ReportAuditSink)
+}
 
 // reportEmitBinder is implemented by handlers that need the WR-02 SSE
 // emission hook (currently report:publish).
-type reportEmitBinder interface{ setEmit(fn ReportPublishEmitFunc) }
+type reportEmitBinder interface {
+	setEmit(fn ReportPublishEmitFunc)
+}
 
 // kbBinder is implemented by handlers whose LLM-visible schema carries
 // registry-derived vocabulary (currently memory:facts — its tier Enum

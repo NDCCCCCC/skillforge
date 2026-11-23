@@ -18,8 +18,8 @@ package sqlite
 
 import (
 	"context"
-	"errors"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/skillforge/skillforge/internal/store"
@@ -31,7 +31,7 @@ import (
 // with explicit ORDER BY + LIMIT 1 — NOT MIN()/MAX() aggregates, whose
 // result type loses the column's DATETIME affinity and fails to Scan
 // into time.Time. session_meta is LEFT JOINed so the rename override
-// surfaces as Title ('' when absent). No audit table involvement: the
+// surfaces as Title (” when absent). No audit table involvement: the
 // immutable trail stays decoupled from the user-facing roster.
 const listSessionsSQL = `
 SELECT st.session_id,
@@ -89,7 +89,6 @@ func (s *SQLiteStore) ListSessions(ctx context.Context) ([]store.SessionSummary,
 	}
 	return out, nil
 }
-
 
 // claimSessionOwnerSQL 绑定会话归属。ON CONFLICT 的 CASE 保证已有
 // 非空归属不被覆盖 —— 否则任何人只要知道 session id 就能抢占会话

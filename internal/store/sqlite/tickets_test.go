@@ -118,13 +118,13 @@ func TestTicketIdempotentReplay(t *testing.T) {
 	defer func() { _ = s.Close() }()
 
 	first := store.TicketRow{
-		TS:          time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC),
-		SessionID:   "sess-ticket-1",
-		TurnID:      9,
-		Description: "差旅报销口径与制度 5.2 冲突，请核实",
-		ChunkIDs:    "201,202",
-		SkillID:     "compliance",
-		Provider:    "none",
+		TS:             time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC),
+		SessionID:      "sess-ticket-1",
+		TurnID:         9,
+		Description:    "差旅报销口径与制度 5.2 冲突，请核实",
+		ChunkIDs:       "201,202",
+		SkillID:        "compliance",
+		Provider:       "none",
 		DispatchStatus: "none",
 	}
 	inserted, err := s.PutTicket(ctx, first)
@@ -176,13 +176,13 @@ func TestTicketRoundTrip(t *testing.T) {
 
 	ts := time.Date(2026, 9, 2, 8, 15, 30, 500000000, time.UTC)
 	row := store.TicketRow{
-		TS:          ts,
-		SessionID:   "sess-ticket-rt",
-		TurnID:      77,
-		Description: "多行描述\n第二行：需要 IT 服务台跟进",
-		ChunkIDs:    "301,302",
-		SkillID:     "compliance",
-		Provider:    "webhook",
+		TS:             ts,
+		SessionID:      "sess-ticket-rt",
+		TurnID:         77,
+		Description:    "多行描述\n第二行：需要 IT 服务台跟进",
+		ChunkIDs:       "301,302",
+		SkillID:        "compliance",
+		Provider:       "webhook",
 		DispatchStatus: "queued",
 	}
 	inserted, err := s.PutTicket(ctx, row)

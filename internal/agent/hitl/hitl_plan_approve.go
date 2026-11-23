@@ -89,9 +89,9 @@ type PlanApproveArgs struct {
 
 // PrevRunContext carries the previous run metadata for D18-D2 plan_approve inheritance.
 type PrevRunContext struct {
-	Period          string `json:"period"`           // previous run period
-	TemplateVersion string `json:"template_version"` // template sha256 prefix
-	PrevVersion     int    `json:"prev_version"`    // previous report version
+	Period          string `json:"period"`             // previous run period
+	TemplateVersion string `json:"template_version"`   // template sha256 prefix
+	PrevVersion     int    `json:"prev_version"`       // previous report version
 	ModNotes        string `json:"modification_notes"` // user modification notes
 }
 
@@ -245,7 +245,7 @@ func (h *planApproveTool) InvokableRun(ctx context.Context, args string, _ ...to
 			ArgumentsInJSON: args,
 			ToolCallID:      approvalID,
 			Target:          PlanApproveTarget,
-			Reason: buildPlanApproveReason(parsed),
+			Reason:          buildPlanApproveReason(parsed),
 		}
 		// D11-C3 — sync audit INSERT BEFORE StatefulInterrupt. A
 		// fail-closed audit write returns BEFORE the interrupt is

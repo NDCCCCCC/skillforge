@@ -50,17 +50,17 @@ import (
 // fanout RunPath-required invariant (P13-L6 posture).
 func makeFanoutRow(action, runPath, transferFrom, transferTo, reason string, ts time.Time) store.AuditRow {
 	return store.AuditRow{
-		Timestamp:    ts,
-		SessionID:    "sess-fanout-test",
-		SkillID:      "compliance",
-		Query:        "fanout-test",
-		PromptHash:   "p-hash",
-		ModelVersion: "test",
-		VerdictJSON:  "{}",
-		Action:       action,
-		RunPath:      runPath,
-		TransferFrom: transferFrom,
-		TransferTo:   transferTo,
+		Timestamp:     ts,
+		SessionID:     "sess-fanout-test",
+		SkillID:       "compliance",
+		Query:         "fanout-test",
+		PromptHash:    "p-hash",
+		ModelVersion:  "test",
+		VerdictJSON:   "{}",
+		Action:        action,
+		RunPath:       runPath,
+		TransferFrom:  transferFrom,
+		TransferTo:    transferTo,
 		RefusalReason: reason,
 	}
 }

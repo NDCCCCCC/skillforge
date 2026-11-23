@@ -45,14 +45,14 @@ func TestSqliteMattnZeroRegression(t *testing.T) {
 
 		// (a) audit write + read round-trip
 		row := store.AuditRow{
-			Timestamp:   time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC),
-			SessionID:   "sess-aggregate",
-			UserID:      "user-mattn",
-			SkillID:     "compliance",
-			Query:       "mattn aggregate round-trip?",
-			PromptHash:  "deadbeef",
+			Timestamp:    time.Date(2026, 8, 22, 10, 0, 0, 0, time.UTC),
+			SessionID:    "sess-aggregate",
+			UserID:       "user-mattn",
+			SkillID:      "compliance",
+			Query:        "mattn aggregate round-trip?",
+			PromptHash:   "deadbeef",
 			ModelVersion: "glm-5.2",
-			VerdictJSON: `{"status":"answer","confidence":0.9}`,
+			VerdictJSON:  `{"status":"answer","confidence":0.9}`,
 		}
 		id, err := s.PutAudit(ctx, row)
 		require.NoError(t, err, "PutAudit should insert under mattn")
@@ -99,7 +99,7 @@ func TestSqliteMattnZeroRegression(t *testing.T) {
 		require.Equal(t, 4, s.cfg.MaxOpenConns, "file DSN must keep MaxOpenConns=4")
 
 		const (
-			goroutines = 8
+			goroutines   = 8
 			perGoroutine = 10
 		)
 		var (

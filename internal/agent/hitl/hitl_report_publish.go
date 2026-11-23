@@ -67,12 +67,12 @@ type ReportPublishEmitFunc func(p wire.DecisionPayload)
 // publish time (CR-01), and Snapshot is adapted via report.MapSnapshot
 // (CR-06).
 type ReportPublishArgs struct {
-	Period     string                 `json:"period"`             // e.g. "2026-08"
-	Template   any                    `json:"template"`           // report template structure (JSON object)
-	Slots      map[int]map[int]string `json:"slots"`              // sectionIdx -> slotIdx -> text
-	SkillID    string                 `json:"skillId"`            // for audit
-	SessionID  string                 `json:"sessionId"`          // for audit
-	KPICallIDs []int64                `json:"kpiCallIds"`         // KPI call audit IDs
+	Period     string                 `json:"period"`     // e.g. "2026-08"
+	Template   any                    `json:"template"`   // report template structure (JSON object)
+	Slots      map[int]map[int]string `json:"slots"`      // sectionIdx -> slotIdx -> text
+	SkillID    string                 `json:"skillId"`    // for audit
+	SessionID  string                 `json:"sessionId"`  // for audit
+	KPICallIDs []int64                `json:"kpiCallIds"` // KPI call audit IDs
 	// Snapshot maps KPI name → value, captured from the run's kpi_call
 	// results (CR-06). Pass 2 binds it into the render via
 	// report.MapSnapshot; a template that declares KPIs without any
@@ -208,7 +208,7 @@ func (h *reportPublishTool) InvokableRun(ctx context.Context, args string, _ ...
 		if !report.IsValidPeriod(parsed.Period) {
 			return "", fmt.Errorf("report_publish: invalid period %q (must match ^[A-Za-z0-9_-]+$)", parsed.Period)
 		}
-			if parsed.Template == nil {
+		if parsed.Template == nil {
 			return "", errors.New("report_publish: template with sections is required")
 		}
 		// WR-03: convert + validate the template EARLY (fail-fast before

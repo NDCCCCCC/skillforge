@@ -64,15 +64,15 @@ func TestAuditBudgetTriggeredActionEnum(t *testing.T) {
 
 	// Row 1: action_budget_triggered + budget_layer=token.
 	row := store.AuditRow{
-		Timestamp:   time.Now().UTC(),
-		SessionID:   "sess-budget",
-		SkillID:     "compliance",
-		Query:       "audit-budget-enum-test",
-		PromptHash:  "p-hash",
+		Timestamp:    time.Now().UTC(),
+		SessionID:    "sess-budget",
+		SkillID:      "compliance",
+		Query:        "audit-budget-enum-test",
+		PromptHash:   "p-hash",
 		ModelVersion: "test",
-		VerdictJSON: "{}",
-		Action:      sqlite.ActionBudgetTriggered,
-		BudgetLayer: "token",
+		VerdictJSON:  "{}",
+		Action:       sqlite.ActionBudgetTriggered,
+		BudgetLayer:  "token",
 	}
 	id, err := s.PutAudit(ctx, row)
 	require.NoError(t, err, "action_budget_triggered + budget_layer=token must be accepted by PutAudit")
@@ -114,15 +114,15 @@ func TestAuditBudgetLayerFilterable(t *testing.T) {
 	base := time.Now().UTC()
 	mk := func(layer string) store.AuditRow {
 		return store.AuditRow{
-			Timestamp:   base,
-			SessionID:   "sess-budget-filter",
-			SkillID:     "compliance",
-			Query:       "audit-budget-filter-test",
-			PromptHash:  "p-hash",
+			Timestamp:    base,
+			SessionID:    "sess-budget-filter",
+			SkillID:      "compliance",
+			Query:        "audit-budget-filter-test",
+			PromptHash:   "p-hash",
 			ModelVersion: "test",
-			VerdictJSON: "{}",
-			Action:      sqlite.ActionBudgetTriggered,
-			BudgetLayer: layer,
+			VerdictJSON:  "{}",
+			Action:       sqlite.ActionBudgetTriggered,
+			BudgetLayer:  layer,
 		}
 	}
 	_, err = s.PutAudit(ctx, mk("token"))
@@ -171,15 +171,15 @@ func TestAuditBudgetLayerInvalidRejected(t *testing.T) {
 
 	// Empty budget_layer is rejected for action_budget_triggered.
 	_, err = s.PutAudit(ctx, store.AuditRow{
-		Timestamp:   time.Now().UTC(),
-		SessionID:   "sess-spoof",
-		SkillID:     "compliance",
-		Query:       "audit-spoof-test",
-		PromptHash:  "p-hash",
+		Timestamp:    time.Now().UTC(),
+		SessionID:    "sess-spoof",
+		SkillID:      "compliance",
+		Query:        "audit-spoof-test",
+		PromptHash:   "p-hash",
 		ModelVersion: "test",
-		VerdictJSON: "{}",
-		Action:      sqlite.ActionBudgetTriggered,
-		BudgetLayer: "",
+		VerdictJSON:  "{}",
+		Action:       sqlite.ActionBudgetTriggered,
+		BudgetLayer:  "",
 	})
 	require.Error(t, err, "empty BudgetLayer on a budget row MUST be rejected")
 	assert.True(t, errors.Is(err, sqlite.ErrInvalidBudgetLayer),
@@ -187,15 +187,15 @@ func TestAuditBudgetLayerInvalidRejected(t *testing.T) {
 
 	// Unknown budget_layer value is rejected.
 	_, err = s.PutAudit(ctx, store.AuditRow{
-		Timestamp:   time.Now().UTC(),
-		SessionID:   "sess-spoof",
-		SkillID:     "compliance",
-		Query:       "audit-spoof-test",
-		PromptHash:  "p-hash",
+		Timestamp:    time.Now().UTC(),
+		SessionID:    "sess-spoof",
+		SkillID:      "compliance",
+		Query:        "audit-spoof-test",
+		PromptHash:   "p-hash",
 		ModelVersion: "test",
-		VerdictJSON: "{}",
-		Action:      sqlite.ActionBudgetTriggered,
-		BudgetLayer: "hypothetical",
+		VerdictJSON:  "{}",
+		Action:       sqlite.ActionBudgetTriggered,
+		BudgetLayer:  "hypothetical",
 	})
 	require.Error(t, err, "unknown BudgetLayer value MUST be rejected")
 	assert.True(t, errors.Is(err, sqlite.ErrInvalidBudgetLayer),
@@ -234,14 +234,14 @@ func TestAuditNonBudgetRowsBudgetLayerNull(t *testing.T) {
 	base := time.Now().UTC()
 	for _, tc := range cases {
 		_, err := s.PutAudit(ctx, store.AuditRow{
-			Timestamp:   base,
-			SessionID:   "sess-nonbudget",
-			SkillID:     "compliance",
-			Query:       "audit-nonbudget-test",
-			PromptHash:  "p-hash",
+			Timestamp:    base,
+			SessionID:    "sess-nonbudget",
+			SkillID:      "compliance",
+			Query:        "audit-nonbudget-test",
+			PromptHash:   "p-hash",
 			ModelVersion: "test",
-			VerdictJSON: "{}",
-			Action:      tc.action,
+			VerdictJSON:  "{}",
+			Action:       tc.action,
 		})
 		require.NoError(t, err, "row %q must be accepted", tc.name)
 	}

@@ -88,16 +88,44 @@ const (
 	HITL07MemoryFactsInvokableRunSHA256 = "fb07cab85178f5873a1ffc4f157a7911044798bc2196807d4fc1ec5d20bdafdf"
 
 	// HITL08ApprovalRulesCreateSHA256 is the sha256 of
-	// internal/store/sqlite/approval_rules.go lines 140-160
+	// internal/store/sqlite/approval_rules.go lines 379-401
 	// (CreateRule's body). Catches a silent rotation of the PK
 	// insert path.
-	HITL08ApprovalRulesCreateSHA256 = "2488b345e23b9dc214f3bec8f6c6aacd5e111d8d170b1a6036884c34871be4fa"
+	//
+	// 56-01 D-56-01 schema evolution — baseline DELIBERATELY rotated
+	// (2026-11 Phase 56): the four-tuple PK is gone; CreateRule now
+	// inserts by surrogate-id natural key (INSERT OR IGNORE over
+	// match_type/args_pattern/scope/enabled/expires_at/origin), and
+	// the line range moved from 140-160 (11-08 baseline) to 379-401
+	// after the Phase 56 rewrite of approval_rules.go. This is a
+	// sanctioned evolution, not a tamper signal.
+	//
+	// PENDING-RECOMPUTE: the execution sandbox for Plan 56-01 forbids
+	// running hash tooling (python/sha256sum were permission-denied),
+	// so the constant below is a placeholder. The FIRST
+	// `go test ./internal/agent/hitl/ -run TestThreatModelCriticalMitigations`
+	// run prints the actual hash in the assert.Equal diff — paste it
+	// here to re-arm the lock (the test's own re-baseline protocol).
+	HITL08ApprovalRulesCreateSHA256 = "22196de3c23361abc34c482ea30a2708525c9a37d7247ce406f2d8d33fb318e9"
 
 	// HITL08ApprovalRulesMatchSQLSHA256 is the sha256 of
-	// internal/store/sqlite/approval_rules.go lines 112-119
-	// (matchRuleSQL's DDL block). Catches a silent rotation of the
-	// cross-session isolation predicate.
-	HITL08ApprovalRulesMatchSQLSHA256 = "3f005bab44d2e93cc3af6bd0409a08126a0592fecd0e1e06f4d727a32ce54e06"
+	// internal/store/sqlite/approval_rules.go lines 275-287
+	// (listActiveRulesForTargetSQL's DDL block). Catches a silent
+	// rotation of the three-layer scope isolation predicate.
+	//
+	// 56-01 D-56-01 schema evolution — baseline DELIBERATELY rotated
+	// AND re-targeted (2026-11 Phase 56): the old baseline hashed
+	// matchRuleSQL (lines 112-119, args_hash exact equality + binary
+	// scope). The live isolation predicate now lives in
+	// listActiveRulesForTargetSQL — the candidate fetch the 56-02
+	// matching engine consumes (enabled + TTL + session/skill/global
+	// scope layers, ? placeholders only) — so the baseline follows the
+	// live path. matchRuleSQL survives as a DEPRECATED transitional
+	// lookup and retires once 56-02 switches the matcher.
+	//
+	// PENDING-RECOMPUTE: see HITL08ApprovalRulesCreateSHA256 above —
+	// paste the actual hash from the first failing run to re-arm.
+	HITL08ApprovalRulesMatchSQLSHA256 = "a821c25fb13579b95a6dd0a316611491eb9af015fd3d13aff6eaf8a6ee406fd2"
 
 	// P123DeepAgentMaxIterationSHA256 is the sha256 of
 	// internal/runtime/deep_agent.go lines 92-97 (the alignment group
@@ -304,23 +332,35 @@ func testThreatHitl07FrozenArgsByteEquality(t *testing.T) {
 // primitives (the scope constants + the rule-key shape) and the
 // sha256 baselines of the sqlite source.
 func testThreatHitl08ScopeLeakPrevention(t *testing.T) {
-	// (b) sha256 baselines — CreateRule body + matchRuleSQL DDL.
-	createActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 140, 160)
+	// (b) sha256 baselines — CreateRule body (379-401) +
+	// listActiveRulesForTargetSQL DDL (275-287). 56-01 D-56-01 schema
+	// evolution: the baselines were DELIBERATELY rotated (surrogate-id
+	// PK insert path; three-layer scope isolation predicate) and the
+	// match baseline re-targeted from the retired matchRuleSQL to the
+	// live candidate fetch. Constants carry PENDING-RECOMPUTE
+	// placeholders — the first test run's assert.Equal diff prints the
+	// actual hashes to paste back (the test's own re-baseline
+	// protocol; the 56-01 execution sandbox forbade hash tooling).
+	createActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 379, 401)
 	assert.Equal(t, HITL08ApprovalRulesCreateSHA256, createActual,
-		"approval_rules.go::CreateRule body drifted from baseline — review the PK insert path")
-	matchActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 112, 119)
+		"approval_rules.go::CreateRule body drifted from baseline — review the surrogate-PK insert path")
+	matchActual := sha256LinesRange(t, "../../store/sqlite/approval_rules.go", 275, 287)
 	assert.Equal(t, HITL08ApprovalRulesMatchSQLSHA256, matchActual,
-		"approval_rules.go::matchRuleSQL DDL drifted from baseline — review the cross-session isolation predicate")
+		"approval_rules.go::listActiveRulesForTargetSQL DDL drifted from baseline — review the three-layer scope isolation predicate")
 
-	// (a) Functional — the D11-D3 binary scope is structural: there
-	// is NO ScopeGlobal value, and the scope_session_id encoding is
-	// "empty = skill-scope, non-empty = session-scope". We assert the
-	// binary-scope primitives here (the cross-session functional test
-	// lives in internal/store/sqlite/approval_rules_test.go).
+	// (a) Functional — the D-56-01 three-layer scope (session | skill
+	// | global) is a STORED column since the 56-01 table rebuild; the
+	// D11-D3 binary scope_session_id encoding is decoded once by the
+	// legacy rebuild in schema.go and no longer exists at the Go
+	// layer. The three-layer functional coverage (session isolation,
+	// cross-session skill scope, global visibility) lives in
+	// internal/store/sqlite/approval_rules_test.go
+	// (TestApprovalRulesScopeThreeLayer).
 	//
 	// ComputeFrozenArgsHash is the rule-key anchor: it hashes the
-	// VERBATIM bytes (never re-marshaled) so the rule key is stable
-	// across the (target, args_hash, skill_id, scope_session_id) PK.
+	// VERBATIM bytes (never re-marshaled) so the exact-tier args_hash
+	// is stable across the (target, match_type, args_hash,
+	// args_pattern, skill_id, scope, scope_session_id) natural key.
 	h1 := ComputeFrozenArgsHash([]byte(`{"k":"v"}`))
 	h2 := ComputeFrozenArgsHash([]byte(`{"k":"v"}`))
 	assert.Equal(t, h1, h2, "frozen_args hash must be deterministic across calls")

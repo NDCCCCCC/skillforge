@@ -43,6 +43,7 @@ INSERT INTO kpi_calls (
     as_of_period, k_min_applied, result_snapshot, signature
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
+
 // 16-06 executor's AuditSink (the audit leg of its three output legs);
 // each invocation freezes {func, args, as_of, result_snapshot,
 // k_min_applied} exactly as observed, never truncated (D16-D3).

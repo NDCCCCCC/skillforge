@@ -134,25 +134,91 @@ CREATE TABLE IF NOT EXISTS checkpoint (
     expires_at    TEXT
 );
 
--- approval_rules (Plan 11-05 / HITL-08 / D11-D2): the independent
--- approve-and-remember rule table. PK is the full rule key
--- (target, args_hash, skill_id, scope_session_id) per D11-D1/D11-D2.
--- D11-D3 binary scope: a session-scope rule has scope_session_id set to
--- the originating session; a skill-scope rule has scope_session_id = ''
--- with skill_id set to the Skill identity. There is NO global scope.
--- Revoke DELETEs the row here and INSERTs an action_rule_revoked audit
--- row in the same transaction (D11-D4 + T-3-AUDIT INSERT-only).
+-- approval_rules (Phase 56 / Plan 56-01 / D-56-01): the policy-entry
+-- rule table, rebuilt from the Plan 11-05 four-tuple-PK form. The PK
+-- is now the surrogate id (AUTOINCREMENT) — PRAGMA-gated ALTER
+-- cannot rewrite a PRIMARY KEY, so pre-56 deployments upgrade via the
+-- rebuild step in migrate() (see legacyApprovalRulesRebuild), NOT via
+-- an ALTER. The four-tuple survives as the UNIQUE natural key
+-- idx_approval_rules_natural — but with match_type and args_pattern
+-- folded in.
+--
+-- Match tiers (D-56-01), matched in priority order session > skill >
+-- global by the 56-02 engine:
+--
+--   - exact:    arguments match the rule's args_hash byte-for-byte
+--               (the Plan 11-05 semantics — args_hash is now an INDEX
+--               COLUMN for this tier, no longer part of the key).
+--   - prefix:   args_pattern locks a JSON-object field subset; the
+--               remaining fields stay free (naming follows the Claude
+--               Code Bash(cmd:*) intuition, landed as a field-level
+--               template).
+--   - template: matches at the TARGET level only (every call to the
+--               target auto-passes).
+--
+-- Deny semantics are UNCHANGED by design (D-56-01): deny /
+-- request_change stay one-shot operator decisions — there is NO deny
+-- rule, rules only ever AUTO-PASS a write. The rule table therefore
+-- has no verdict column.
+--
+-- Three-layer scope (replaces the D11-D3 binary scope): scope is now a
+-- STORED column ('session' | 'skill' | 'global'). scope_session_id is
+-- retained as the VALUE column for scope='session' rows only. A
+-- 'global' rule applies across every Skill (skill_id may be '').
+--
+-- Origin ('approve_remember' | 'manual' | 'seed'): where the rule came
+-- from — an operator's approve-and-remember click, a panel-authored
+-- entry, or a seeded policy. Legacy rows migrated by the rebuild step
+-- carry 'approve_remember' (the only possible legacy source).
+--
+-- last_used_at is a COMPAT COLUMN kept in lockstep with last_hit_at
+-- (HitRule writes both in one statement) so the pre-56 FE shim
+-- (last_used_at wire field) keeps rendering until the 56-03 panel
+-- switches to last_hit_at; it retires in the next milestone.
+--
+-- NOTE: the approval_rules INDEXES deliberately live at the migrate()
+-- tail (after the legacy rebuild), NOT here — this is the UAT 14-09
+-- "no such column" landmine: on a pre-56 database this CREATE TABLE is
+-- a no-op (the legacy four-tuple table already exists), so an index
+-- inlined here would reference match_type before the rebuild adds it.
 CREATE TABLE IF NOT EXISTS approval_rules (
-    target            TEXT NOT NULL,
-    args_hash         TEXT NOT NULL,
-    skill_id          TEXT NOT NULL,
-    scope_session_id  TEXT NOT NULL DEFAULT '',
-    created_at        INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    last_used_at      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-    PRIMARY KEY (target, args_hash, skill_id, scope_session_id)
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    target           TEXT NOT NULL,
+    match_type       TEXT NOT NULL DEFAULT 'exact'
+                     CHECK (match_type IN ('exact','prefix','template')),
+    args_hash        TEXT NOT NULL DEFAULT '',
+    args_pattern     TEXT NOT NULL DEFAULT '',
+    skill_id         TEXT NOT NULL DEFAULT '',
+    scope            TEXT NOT NULL DEFAULT 'session'
+                     CHECK (scope IN ('session','skill','global')),
+    scope_session_id TEXT NOT NULL DEFAULT '',
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    expires_at       INTEGER,
+    origin           TEXT NOT NULL DEFAULT 'approve_remember'
+                     CHECK (origin IN ('approve_remember','manual','seed')),
+    hit_count        INTEGER NOT NULL DEFAULT 0,
+    last_hit_at      INTEGER,
+    created_at       INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    last_used_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
-CREATE INDEX IF NOT EXISTS idx_approval_rules_scope_session ON approval_rules(scope_session_id);
-CREATE INDEX IF NOT EXISTS idx_approval_rules_skill ON approval_rules(skill_id);
+
+-- approval_rule_hits (Phase 56 / Plan 56-01 / D-56-01): the INSERT-only
+-- hit ledger — one row per rule auto-pass, written by the 56-02 engine
+-- (InsertRuleHit) as the fine-grained companion to the rule row's
+-- hit_count / last_hit_at counters. append-only like audit: there is
+-- no UPDATE / DELETE path for hit rows anywhere in this package, so
+-- the per-rule hit history stays replayable (the 56-03 panel's hit
+-- history view reads it via QueryRuleHits).
+CREATE TABLE IF NOT EXISTS approval_rule_hits (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id           INTEGER NOT NULL,
+    ts                INTEGER NOT NULL,
+    session_id        TEXT NOT NULL,
+    target            TEXT NOT NULL,
+    tool_call_id      TEXT NOT NULL DEFAULT '',
+    match_type        TEXT NOT NULL,
+    matched_args_hash TEXT NOT NULL DEFAULT ''
+);
 
 -- plan_todos (Phase 12 / Plan 12-02 / P12-L5 / P12-L4): the SEPARATE
 -- INSERT-only audit table that backs the DeepAgent write_todos Tool
@@ -554,9 +620,9 @@ const (
 	// + D15-D3 k_min override. NOT NULL DEFAULT '' / 0 keeps the
 	// migration additive for existing datasets rows; the import pipeline
 	// populates the columns on every new/updated row.
-	alterDatasetsAddDatasetSQL        = "ALTER TABLE datasets ADD COLUMN dataset TEXT NOT NULL DEFAULT ''"
-	alterDatasetsAddPeriodSQL         = "ALTER TABLE datasets ADD COLUMN period TEXT NOT NULL DEFAULT ''"
-	alterDatasetsAddKMinOverrideSQL   = "ALTER TABLE datasets ADD COLUMN k_min_override INTEGER NOT NULL DEFAULT 0"
+	alterDatasetsAddDatasetSQL      = "ALTER TABLE datasets ADD COLUMN dataset TEXT NOT NULL DEFAULT ''"
+	alterDatasetsAddPeriodSQL       = "ALTER TABLE datasets ADD COLUMN period TEXT NOT NULL DEFAULT ''"
+	alterDatasetsAddKMinOverrideSQL = "ALTER TABLE datasets ADD COLUMN k_min_override INTEGER NOT NULL DEFAULT 0"
 
 	alterCheckpointAddSkillVersionSQL = "ALTER TABLE checkpoint ADD COLUMN skill_version TEXT NOT NULL DEFAULT ''"
 	alterCheckpointAddPromptHashSQL   = "ALTER TABLE checkpoint ADD COLUMN prompt_hash TEXT NOT NULL DEFAULT ''"
@@ -721,6 +787,164 @@ CREATE INDEX IF NOT EXISTS idx_dispositions_chunk ON feedback_dispositions(chunk
 CREATE INDEX IF NOT EXISTS idx_tickets_session ON tickets(session_id)
 `
 )
+
+// approval_rules / approval_rule_hits indexes (Phase 56 / Plan 56-01 /
+// D-56-01). Five consts executed at the TAIL of migrate() — AFTER the
+// legacy rebuild step, per the D14-E1 ordering contract.
+//
+// The ordering is LOAD-BEARING, not stylistic: on a pre-56 database the
+// schemaSQL `CREATE TABLE IF NOT EXISTS approval_rules` is a no-op (the
+// legacy four-tuple-PK table already exists), so an index inlined into
+// schemaSQL would reference match_type / scope / args_pattern before
+// the rebuild step introduces them and New() would die with
+// "no such column: match_type" — the exact UAT 14-09 landmine
+// (idx_audit_run_path precedent). Execution order in migrate():
+//
+//		legacy rebuild (probe-gated) → these five CREATE INDEX statements
+//
+//	  - idx_approval_rules_natural: the UNIQUE natural key replacing the
+//	    legacy four-tuple PK — (target, match_type, args_hash,
+//	    args_pattern, skill_id, scope, scope_session_id). The legacy row
+//	    set maps injectively onto it, so the rebuild INSERT cannot trip
+//	    the UNIQUE constraint.
+//	  - idx_approval_rules_args_hash: the exact-tier candidate lookup
+//	    (args_hash is an index column now, not a key).
+//	  - idx_approval_rules_scope:     scope listing (panel + engine).
+//	  - idx_approval_rules_skill:     skill-scope listing.
+//	  - idx_rule_hits_rule:           per-rule hit history reads.
+const (
+	createApprovalRulesNaturalIdxSQL = `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_rules_natural
+    ON approval_rules(target, match_type, args_hash, args_pattern, skill_id, scope, scope_session_id)
+`
+
+	createApprovalRulesArgsHashIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_approval_rules_args_hash ON approval_rules(args_hash)
+`
+
+	createApprovalRulesScopeIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_approval_rules_scope ON approval_rules(scope, scope_session_id)
+`
+
+	createApprovalRulesSkillIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_approval_rules_skill ON approval_rules(skill_id)
+`
+
+	createRuleHitsRuleIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_rule_hits_rule ON approval_rule_hits(rule_id, ts)
+`
+)
+
+// Phase 56 / Plan 56-01 / D-56-01 — the legacy approval_rules rebuild.
+//
+// This is the FIRST table-rebuild migration in the project (the house
+// convention until now was PRAGMA-gated ALTER, which cannot rewrite a
+// PRIMARY KEY). Legacy form: PK (target, args_hash, skill_id,
+// scope_session_id), binary scope encoded as scope_session_id ” vs
+// non-empty. New form: surrogate `id` PK + match_type/scope/enabled/
+// expires_at/origin/hit_count/last_hit_at columns.
+//
+// legacyApprovalRulesV2DDL is the new-shape table under the temporary
+// name. It MUST stay column-for-column identical to the schemaSQL
+// approval_rules declaration — the DDL tests assert both fresh-DB and
+// rebuilt-DB shapes against the same expectedApprovalRulesCols list,
+// so a drift between the two declarations fails loudly.
+const legacyApprovalRulesV2DDL = `
+CREATE TABLE approval_rules_v2 (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    target           TEXT NOT NULL,
+    match_type       TEXT NOT NULL DEFAULT 'exact'
+                     CHECK (match_type IN ('exact','prefix','template')),
+    args_hash        TEXT NOT NULL DEFAULT '',
+    args_pattern     TEXT NOT NULL DEFAULT '',
+    skill_id         TEXT NOT NULL DEFAULT '',
+    scope            TEXT NOT NULL DEFAULT 'session'
+                     CHECK (scope IN ('session','skill','global')),
+    scope_session_id TEXT NOT NULL DEFAULT '',
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    expires_at       INTEGER,
+    origin           TEXT NOT NULL DEFAULT 'approve_remember'
+                     CHECK (origin IN ('approve_remember','manual','seed')),
+    hit_count        INTEGER NOT NULL DEFAULT 0,
+    last_hit_at      INTEGER,
+    created_at       INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    last_used_at     INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+)
+`
+
+// legacyApprovalRulesCopySQL maps each legacy row onto the new shape:
+//
+//   - match_type = 'exact'      — the only matching tier the legacy
+//     engine had (matchRuleSQL was args_hash equality).
+//   - scope = CASE              — the D11-D3 binary encoding decoded
+//     back: scope_session_id != ” → 'session', ” → 'skill'. There is
+//     no global scope in legacy data.
+//   - last_hit_at = last_used_at — legacy last_used_at MEANT "when the
+//     rule last auto-passed a write" (UpdateLastUsedAt); in the new
+//     model that semantic belongs to last_hit_at.
+//   - origin = DEFAULT ('approve_remember') — the only legacy source.
+//   - hit_count = DEFAULT 0, enabled = DEFAULT 1, expires_at = NULL.
+//
+// The mapping is injective on the legacy PK (each legacy row lands on
+// a distinct natural key), so the INSERT cannot trip
+// idx_approval_rules_natural — no merge/dedup needed.
+const legacyApprovalRulesCopySQL = `
+INSERT INTO approval_rules_v2 (
+    target, match_type, args_hash, skill_id, scope, scope_session_id,
+    created_at, last_used_at, last_hit_at
+) SELECT
+    target, 'exact', args_hash, skill_id,
+    CASE WHEN scope_session_id = '' THEN 'skill' ELSE 'session' END,
+    scope_session_id, created_at, last_used_at, last_used_at
+FROM approval_rules
+`
+
+// rebuildLegacyApprovalRules upgrades a pre-56 approval_rules table in
+// place: create approval_rules_v2 (new DDL) → copy rows with the
+// legacy→policy mapping → drop the legacy table → rename v2 into
+// place, all inside ONE transaction. The legacy indexes
+// (idx_approval_rules_scope_session / idx_approval_rules_skill) die
+// with the DROP TABLE; the migrate() tail recreates the new index set
+// right after this returns.
+//
+// Probe gate: PRAGMA table_info(approval_rules) must NOT contain
+// match_type — a fresh 56+ database (or an already-rebuilt one) has
+// the column, making the whole step a no-op (idempotent on every
+// New(), same posture as the ALTER gates above).
+//
+// FK safety: no table holds a FOREIGN KEY into approval_rules (the
+// audit table records lifecycle events by value, not by FK — D11-D2
+// single-table reuse note in approval_rules_api.go), so DROP TABLE
+// cannot orphan anything.
+func (s *SQLiteStore) rebuildLegacyApprovalRules(ctx context.Context) error {
+	hasMatchType, err := s.columnExists(ctx, "approval_rules", "match_type")
+	if err != nil {
+		return err
+	}
+	if hasMatchType {
+		return nil // already the 56+ shape — nothing to rebuild
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmtError("rebuildLegacyApprovalRules.BeginTx", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, legacyApprovalRulesV2DDL); err != nil {
+		return fmtError("rebuildLegacyApprovalRules.v2_ddl", err)
+	}
+	if _, err := tx.ExecContext(ctx, legacyApprovalRulesCopySQL); err != nil {
+		return fmtError("rebuildLegacyApprovalRules.copy", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DROP TABLE approval_rules`); err != nil {
+		return fmtError("rebuildLegacyApprovalRules.drop", err)
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE approval_rules_v2 RENAME TO approval_rules`); err != nil {
+		return fmtError("rebuildLegacyApprovalRules.rename", err)
+	}
+	return tx.Commit()
+}
 
 // auditLifecycleColumns / checkpointSnapshotColumns pair each new column
 // with the ALTER that adds it, so migrate() can loop instead of
@@ -945,6 +1169,36 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	}
 	if _, err := s.db.ExecContext(ctx, idxTicketsSession); err != nil {
 		return fmtError("migrate.tickets.session_idx", err)
+	}
+
+	// Phase 56 / Plan 56-01 / D-56-01 — the approval_rules legacy
+	// rebuild (project's FIRST table-rebuild migration; PRAGMA-gated
+	// ALTER cannot rewrite a PRIMARY KEY). Probe-gated: a no-op on any
+	// DB already carrying the 56+ shape. MUST run BEFORE the approval
+	// rules index block below — on a pre-56 database the new-shape
+	// columns (match_type / scope / args_pattern / ...) exist only
+	// after this swap (UAT 14-09 "no such column" ordering contract).
+	if err := s.rebuildLegacyApprovalRules(ctx); err != nil {
+		return err
+	}
+
+	// Phase 56 / Plan 56-01 / D-56-01 — approval_rules /
+	// approval_rule_hits read-path indexes. Executed AFTER the rebuild
+	// per the ordering contract documented on the const block.
+	if _, err := s.db.ExecContext(ctx, createApprovalRulesNaturalIdxSQL); err != nil {
+		return fmtError("migrate.approval_rules.natural_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createApprovalRulesArgsHashIdxSQL); err != nil {
+		return fmtError("migrate.approval_rules.args_hash_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createApprovalRulesScopeIdxSQL); err != nil {
+		return fmtError("migrate.approval_rules.scope_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createApprovalRulesSkillIdxSQL); err != nil {
+		return fmtError("migrate.approval_rules.skill_idx", err)
+	}
+	if _, err := s.db.ExecContext(ctx, createRuleHitsRuleIdxSQL); err != nil {
+		return fmtError("migrate.approval_rule_hits.rule_idx", err)
 	}
 	return nil
 }

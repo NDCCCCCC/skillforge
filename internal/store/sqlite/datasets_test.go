@@ -96,12 +96,12 @@ func TestDeleteDataset(t *testing.T) {
 
 	for _, name := range []string{"loans__2026-07", "loans__2026-08", "cards__2026-07"} {
 		require.NoError(t, s.PutDataset(ctx, store.DatasetRow{
-			Name:      name,
-			Tier:      "历史",
+			Name:       name,
+			Tier:       "历史",
 			SchemaJSON: `{}`,
-			FilePath:  "data/datasets/" + name + ".duckdb",
-			BatchID:   "b1",
-			CreatedAt: time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC),
+			FilePath:   "data/datasets/" + name + ".duckdb",
+			BatchID:    "b1",
+			CreatedAt:  time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC),
 		}))
 	}
 

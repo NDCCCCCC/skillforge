@@ -235,12 +235,12 @@ func TestMigrateLegacyDatasetsUpgradePath(t *testing.T) {
 	require.Equal(t, 2, count, "legacy datasets rows must survive migration")
 
 	var (
-		name           string
-		tier            string
-		contentSHA256  string
-		dataset        string
-		period         string
-		kMinOverride   int
+		name          string
+		tier          string
+		contentSHA256 string
+		dataset       string
+		period        string
+		kMinOverride  int
 	)
 	require.NoError(t, s.db.QueryRowContext(ctx,
 		`SELECT name, tier, content_sha256, dataset, period, k_min_override FROM datasets WHERE name = 'loans__2026-06'`).Scan(

@@ -15,10 +15,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Plan 11-05 / HITL-08 / D11-D4 — the Approval Rules panel backend.
+// Phase 56 / Plan 56-01 (D-56-01) upgrades the wire contract ADDITIVELY
+// (every pre-56 field survives; the FE union already carries
+// 'rule-matched', wired in 56-02/56-03):
 //
-// Wire contract:
-//
-//	GET /api/session/:id/approval-rules?scope=session|skill[&skill_id=<skill>]
+//	GET /api/session/:id/approval-rules?scope=session|skill|global[&skill_id=<skill>]
 //	    → 200 {"rules": [...ApprovalRuleJSON]}   success
 //	    → 400 {error: "..."}                      invalid scope / missing skill_id
 //	    → 500 {error: "..."}                      QueryRules failed (generic envelope)
@@ -27,29 +28,42 @@
 //	DELETE /api/session/:id/approval-rules/:ruleId[?reason=<text>]
 //	    → 200 {"status":"revoked","rule":{...}}   rule DELETEd + audit row INSERTed (same tx)
 //	    → 400 {error: "..."}                      malformed ruleId
-//	    → 404 {error: "..."}                      no rule row for the PK
-//	    → 500 {error: "..."}                      Revoke failed (generic envelope)
+//	    → 404 {error: "..."}                      no rule row for the id
+//	    → 500 {error: "..."}                      RevokeByID failed (generic envelope)
 //	    → 503 {error: "..."}                      Deps.Store nil or lacks rule surface
 //
-// The ruleId path param is base64url-encoded JSON carrying the full
-// rule PK {target, args_hash, skill_id, scope_session_id} — the GET
-// response embeds it per rule so the FE never reconstructs the key.
+// The ruleId path param is base64url-encoded JSON {"id": <int64>} —
+// the surrogate PK since the 56-01 table rebuild (the legacy full-PK
+// payload {target, args_hash, skill_id, scope_session_id} is retired:
+// the pre-56 FE never parses rule_id, it round-trips the opaque string
+// the GET response embedded, so re-encoding the handle is
+// FE-transparent). The GET response embeds it per rule so the FE never
+// reconstructs the key.
 //
-// Threat model (11-05 threat_model):
+// Scope semantics (D-56-01 three-layer scope, replacing the D11-D3
+// binary scope): scope=session lists the rules bound to :id;
+// scope=skill lists the rules bound to skill_id across sessions
+// (skill_id REQUIRED); scope=global lists the cross-Skill rules
+// (skill_id NOT required). Listing is an ACTIVE-rules view — the store
+// filters expired rules by default.
+//
+// Threat model (11-05 threat model, carried into 56-01):
 //
 //   - T-3-SQLI — every value reaches the store via `?` placeholders;
-//     the handler never concatenates SQL.
-//   - T-11-05-03/04 — scope validation at the boundary rejects anything
-//     outside the D11-D3 binary {"session","skill"}; there is no
-//     "global" scope value to smuggle in.
-//   - D11-D4 — revoke delegates to store.Revoke, which runs the
-//     DELETE + action_rule_revoked audit INSERT in ONE transaction
-//     (T-3-AUDIT: the audit row is the revoke evidence).
+//     the handler never concatenates SQL. Scope is additionally
+//     enum-validated at this boundary (exactly three values), so there
+//     is no fourth value to smuggle into the store's switch.
+//   - T-11-05-03/04 — superseded by the D-56-01 three-value boundary
+//     check above: {"session","skill","global"} is the closed set.
+//   - D11-D4 — revoke delegates to store.RevokeByID, which runs the
+//     SELECT-snapshot + DELETE + action_rule_revoked audit INSERT in
+//     ONE transaction (T-3-AUDIT: the audit row is the revoke
+//     evidence, now carrying rule_id/match_type/scope alongside the
+//     legacy PK fields).
 //
-// Router registration is NOT in this file's blast radius (the touched
-// list for 11-05 contains no router file); the owning plan wires
-// s.ListApprovalRulesHandler / s.RevokeApprovalRuleHandler into the
-// Hertz router alongside the other session-scoped endpoints.
+// Router registration is NOT in this file's blast radius; the owning
+// plan wires s.ListApprovalRulesHandler / s.RevokeApprovalRuleHandler
+// into the Hertz router alongside the other session-scoped endpoints.
 package server
 
 import (
@@ -69,18 +83,41 @@ import (
 )
 
 // ApprovalRuleJSON is the wire shape of one approve-and-remember rule.
-// Scope is derived: scope_session_id != "" → "session", else "skill"
-// (D11-D3 binary scope — no third value exists).
+//
+// 56-01 additive fields (D-56-01): match_type, args_pattern, enabled,
+// expires_at, origin, hit_count, last_hit_at, id. The pre-56 fields
+// (target, args_hash, skill_id, scope_session_id, scope, created_at,
+// last_used_at, rule_id) all survive unchanged — the old consumers
+// keep rendering.
+//
+//   - scope is now READ FROM THE STORED COLUMN (session | skill |
+//     global) instead of derived from scope_session_id.
+//   - args_hash is '' for prefix/template rules (exact-only).
+//   - last_used_at is a compat shim: the store mirrors it from
+//     last_hit_at (HitRule writes both), so old FE keeps rendering;
+//     retires after 56-03 switches the panel to last_hit_at.
+//   - expires_at / last_hit_at are RFC3339 or null (never-expiring /
+//     never-hit rules).
 type ApprovalRuleJSON struct {
-	Target         string    `json:"target"`
-	ArgsHash       string    `json:"args_hash"`
-	SkillID        string    `json:"skill_id"`
-	ScopeSessionID string    `json:"scope_session_id"`
-	Scope          string    `json:"scope"`
-	CreatedAt      time.Time `json:"created_at"`
-	LastUsedAt     time.Time `json:"last_used_at"`
+	ID             int64      `json:"id"`
+	Target         string     `json:"target"`
+	MatchType      string     `json:"match_type"`
+	ArgsHash       string     `json:"args_hash"`
+	ArgsPattern    string     `json:"args_pattern"`
+	SkillID        string     `json:"skill_id"`
+	Scope          string     `json:"scope"`
+	ScopeSessionID string     `json:"scope_session_id"`
+	Enabled        bool       `json:"enabled"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	Origin         string     `json:"origin"`
+	HitCount       int64      `json:"hit_count"`
+	LastHitAt      *time.Time `json:"last_hit_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	// LastUsedAt is the compat shim (== last_hit_at at the store
+	// layer). Retires after the 56-03 panel reads last_hit_at.
+	LastUsedAt time.Time `json:"last_used_at"`
 	// RuleID is the opaque handle the DELETE endpoint consumes
-	// (base64url JSON of the rule PK). Embedded so the FE never
+	// (base64url JSON of {"id": <int64>}). Embedded so the FE never
 	// reconstructs the key client-side.
 	RuleID string `json:"rule_id"`
 }
@@ -90,19 +127,19 @@ type ListApprovalRulesResponse struct {
 	Rules []ApprovalRuleJSON `json:"rules"`
 }
 
-// RevokeApprovalRuleResponse is the DELETE envelope.
+// RevokeApprovalRuleResponse is the DELETE envelope. Rule carries only
+// the revoked rule's ID reliably — the row is already deleted when the
+// response is built (its full shape lives on in the action_rule_revoked
+// audit row, not in this payload).
 type RevokeApprovalRuleResponse struct {
 	Status string           `json:"status"`
 	Rule   ApprovalRuleJSON `json:"rule"`
 }
 
 // ruleIDPayload is the decoded form of the :ruleId path param — the
-// full D11-D2 primary key.
+// surrogate PK introduced by the 56-01 table rebuild.
 type ruleIDPayload struct {
-	Target         string `json:"target"`
-	ArgsHash       string `json:"args_hash"`
-	SkillID        string `json:"skill_id"`
-	ScopeSessionID string `json:"scope_session_id"`
+	ID int64 `json:"id"`
 }
 
 // approvalRulesStoreOf unwraps the narrow ApprovalRulesStore surface
@@ -118,7 +155,7 @@ func (s *Deps) approvalRulesStoreOf() (sqlite.ApprovalRulesStore, bool) {
 }
 
 // ListApprovalRulesHandler implements GET
-// /api/session/:id/approval-rules?scope=session|skill.
+// /api/session/:id/approval-rules?scope=session|skill|global.
 func (s *Deps) ListApprovalRulesHandler(ctx context.Context, c *app.RequestContext) {
 	ars, ok := s.approvalRulesStoreOf()
 	if !ok {
@@ -134,28 +171,34 @@ func (s *Deps) ListApprovalRulesHandler(ctx context.Context, c *app.RequestConte
 		return
 	}
 
-	// D11-D3 binary scope — anything outside {"session","skill"} is a
-	// 400. There is no "global" scope to list.
-	var scope sqlite.Scope
+	// D-56-01 three-layer scope — anything outside
+	// {"session","skill","global"} is a 400. The closed-set boundary
+	// check leaves the store's switch no fourth value to receive
+	// (T-11-05-03/04 posture, carried into the three-scope model).
+	var scope sqlite.RuleScope
 	switch string(c.Query("scope")) {
 	case "session":
-		scope = sqlite.ScopeSession
+		scope = sqlite.RuleScopeSession
 	case "skill":
-		scope = sqlite.ScopeSkill
+		scope = sqlite.RuleScopeSkill
+	case "global":
+		scope = sqlite.RuleScopeGlobal
 	default:
 		c.JSON(http.StatusBadRequest, graphResponseError{
-			Error: "scope must be one of {session, skill} (D11-D3 binary scope)",
+			Error: "scope must be one of {session, skill, global} (D-56-01 three-layer scope)",
 		})
 		return
 	}
 
 	skillID := string(c.Query("skill_id"))
-	if scope == sqlite.ScopeSkill && skillID == "" {
+	if scope == sqlite.RuleScopeSkill && skillID == "" {
 		c.JSON(http.StatusBadRequest, graphResponseError{
 			Error: "skill_id is required when scope=skill",
 		})
 		return
 	}
+	// scope=global deliberately does NOT require skill_id — a global
+	// rule applies across every Skill (skill_id may be '').
 
 	rules, err := ars.QueryRules(ctx, sessionID, skillID, scope)
 	if err != nil {
@@ -184,8 +227,8 @@ func (s *Deps) ListApprovalRulesHandler(ctx context.Context, c *app.RequestConte
 
 // RevokeApprovalRuleHandler implements DELETE
 // /api/session/:id/approval-rules/:ruleId. The revoke delegates to
-// store.Revoke — DELETE approval_rules row + INSERT audit
-// action_rule_revoked in a single transaction (D11-D4).
+// store.RevokeByID — SELECT snapshot + DELETE approval_rules row +
+// INSERT audit action_rule_revoked in a single transaction (D11-D4).
 func (s *Deps) RevokeApprovalRuleHandler(ctx context.Context, c *app.RequestContext) {
 	ars, ok := s.approvalRulesStoreOf()
 	if !ok {
@@ -201,7 +244,7 @@ func (s *Deps) RevokeApprovalRuleHandler(ctx context.Context, c *app.RequestCont
 		return
 	}
 
-	target, argsHash, skillID, scopeSessionID, err := decodeRuleID(c.Param("ruleId"))
+	ruleID, err := decodeRuleID(c.Param("ruleId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, graphResponseError{
 			Error: "malformed ruleId: " + err.Error(),
@@ -211,12 +254,12 @@ func (s *Deps) RevokeApprovalRuleHandler(ctx context.Context, c *app.RequestCont
 
 	userID := userIDFromCtx(ctx)
 
-	// 11-05 stub: the active manifest for the session is resolved by
-	// the Phase 12+ session store. The two audit-row snapshot values
-	// (skill_version, prompt_hash) degrade to "" — the revoke audit
-	// row's identity is the rule PK in frozen_args, which is complete
-	// without them.
-	manifest, err := manifestFromSession(ctx, sessionID, skillID)
+	// 11-05 stub (unchanged): the active manifest for the session is
+	// resolved by the Phase 12+ session store. The two audit-row
+	// snapshot values (skill_version, prompt_hash) degrade to "" — the
+	// revoke audit row's identity is the frozen rule snapshot in
+	// frozen_args, which is complete without them.
+	manifest, err := manifestFromSession(ctx, sessionID, "")
 	if err != nil {
 		log.Printf("[WARN] server: approval-rules manifest lookup failed: %v", err)
 		c.JSON(http.StatusInternalServerError, graphResponseError{
@@ -234,7 +277,9 @@ func (s *Deps) RevokeApprovalRuleHandler(ctx context.Context, c *app.RequestCont
 		reason = "approval-rules panel revoke"
 	}
 
-	if err := ars.Revoke(ctx, sessionID, userID, target, argsHash, skillID, scopeSessionID, skillVersion, promptHash, reason); err != nil {
+	if err := ars.RevokeByID(ctx, sessionID, userID, ruleID, skillVersion, promptHash, reason); err != nil {
+		// The store's zero-row error carries the literal "no rule
+		// found" — the 404 classifier (same contract as 11-05).
 		if strings.Contains(err.Error(), "no rule found") {
 			c.JSON(http.StatusNotFound, graphResponseError{
 				Error: "no approval rule found for the given ruleId",
@@ -248,68 +293,78 @@ func (s *Deps) RevokeApprovalRuleHandler(ctx context.Context, c *app.RequestCont
 		return
 	}
 
+	// The rule row is already deleted — only its ID is reliably known
+	// here. The full revoked shape lives on in the action_rule_revoked
+	// audit row's frozen_args snapshot (T-3-AUDIT).
 	c.JSON(http.StatusOK, RevokeApprovalRuleResponse{
 		Status: "revoked",
-		Rule: toApprovalRuleJSON(sqlite.ApprovalRule{
-			Target:         target,
-			ArgsHash:       argsHash,
-			SkillID:        skillID,
-			ScopeSessionID: scopeSessionID,
-		}),
+		Rule:   toApprovalRuleJSON(sqlite.ApprovalRule{ID: ruleID}),
 	})
 }
 
-// toApprovalRuleJSON maps the store row to the wire shape, deriving
-// the D11-D3 scope string and embedding the opaque rule_id handle.
+// toApprovalRuleJSON maps the store row to the wire shape, reading the
+// D-56-01 fields straight off the struct (no scope derivation — the
+// scope column is authoritative) and embedding the opaque rule_id
+// handle.
 func toApprovalRuleJSON(r sqlite.ApprovalRule) ApprovalRuleJSON {
-	scope := "skill"
-	if r.ScopeSessionID != "" {
-		scope = "session"
-	}
-	return ApprovalRuleJSON{
+	out := ApprovalRuleJSON{
+		ID:             r.ID,
 		Target:         r.Target,
+		MatchType:      r.MatchType,
 		ArgsHash:       r.ArgsHash,
+		ArgsPattern:    r.ArgsPattern,
 		SkillID:        r.SkillID,
+		Scope:          r.Scope,
 		ScopeSessionID: r.ScopeSessionID,
-		Scope:          scope,
+		Enabled:        r.Enabled,
+		Origin:         r.Origin,
+		HitCount:       r.HitCount,
 		CreatedAt:      r.CreatedAt,
-		LastUsedAt:     r.LastUsedAt,
-		RuleID:         encodeRuleID(r),
+		// Compat shim: the store mirrors last_used_at from last_hit_at
+		// (HitRule writes both), so the pre-56 FE keeps rendering until
+		// the 56-03 panel switches to last_hit_at.
+		LastUsedAt: r.LastUsedAt,
+		RuleID:     encodeRuleID(r),
 	}
+	if r.ExpiresAt > 0 {
+		t := time.Unix(r.ExpiresAt, 0).UTC()
+		out.ExpiresAt = &t
+	}
+	if !r.LastHitAt.IsZero() {
+		t := r.LastHitAt
+		out.LastHitAt = &t
+	}
+	return out
 }
 
-// encodeRuleID packs the rule PK as base64url(JSON) — the opaque
-// handle the FE passes back to the DELETE endpoint.
+// encodeRuleID packs the rule surrogate PK as base64url(JSON) — the
+// opaque handle the FE passes back to the DELETE endpoint.
 func encodeRuleID(rule sqlite.ApprovalRule) string {
-	payload, err := json.Marshal(ruleIDPayload{
-		Target:         rule.Target,
-		ArgsHash:       rule.ArgsHash,
-		SkillID:        rule.SkillID,
-		ScopeSessionID: rule.ScopeSessionID,
-	})
+	payload, err := json.Marshal(ruleIDPayload{ID: rule.ID})
 	if err != nil {
-		// json.Marshal on a 4-string struct cannot fail; defensive.
+		// json.Marshal on an int64 field cannot fail; defensive.
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
-// decodeRuleID is the inverse of encodeRuleID. target, args_hash, and
-// skill_id must be non-empty; scope_session_id may be empty (the
-// D11-D3 encoding of a skill-scope rule).
-func decodeRuleID(ruleID string) (target, argsHash, skillID, scopeSessionID string, err error) {
+// decodeRuleID is the inverse of encodeRuleID. The id must be a
+// positive int64 — a surrogate PK of 0 or below cannot exist
+// (AUTOINCREMENT starts at 1), so anything else is a malformed or
+// forged handle.
+func decodeRuleID(ruleID string) (int64, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(ruleID)
 	if err != nil {
-		return "", "", "", "", fmt.Errorf("base64url decode: %w", err)
+		return 0, fmt.Errorf("base64url decode: %w", err)
 	}
 	var payload ruleIDPayload
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", "", "", "", fmt.Errorf("json decode: %w", err)
+		return 0, fmt.Errorf("json decode: %w", err)
 	}
-	if payload.Target == "" || payload.ArgsHash == "" || payload.SkillID == "" {
-		return "", "", "", "", fmt.Errorf("ruleId payload requires non-empty target, args_hash, skill_id")
+	if payload.ID <= 0 {
+		return 0, fmt.Errorf("ruleId payload requires a positive id")
 	}
-	return payload.Target, payload.ArgsHash, payload.SkillID, payload.ScopeSessionID, nil
+	return payload.ID, nil
 }
 
 // userIDFromCtx extracts the operator identity from the request ctx.
