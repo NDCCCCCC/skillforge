@@ -87,6 +87,21 @@ type JobStore interface {
 	// caller must not proceed. Stamps updated_at = now on success.
 	ClaimJob(ctx context.Context, jobID string, now time.Time) (bool, error)
 
+	// ClaimJobRetry is the retry-path CAS (54-03): claim a FAILED or
+	// partial job for re-execution. A concurrent second retry (or an
+	// enqueue racing the retry) finds no matching row -> false -> 409.
+	// Unlike ClaimJob this does NOT match queued/running: those jobs have
+	// an active owner already.
+	ClaimJobRetry(ctx context.Context, jobID string, now time.Time) (bool, error)
+
+	// CascadeStale marks every step AFTER fromStep as stale (upstream
+	// re-ran, downstream results are void — Dify re_segment semantics),
+	// inside ONE transaction: a running straggler (crash residue) is
+	// failed first ("superseded by upstream retry") then staled, so the
+	// stale write is not rejected by a status guard. Returns the number
+	// of rows staled.
+	CascadeStale(ctx context.Context, jobID, fromStep string, now time.Time) (int64, error)
+
 	// IsNotFound reports whether err wraps ErrNotFound — letting callers
 	// distinguish "unknown job" (→ 404) from a store failure (→ 500).
 	IsNotFound(err error) bool

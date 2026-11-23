@@ -321,3 +321,93 @@ func (s *SQLiteStore) ClaimJob(ctx context.Context, jobID string, now time.Time)
 	}
 	return n == 1, nil
 }
+
+// claimRetryIngestJobSQL — the retry-path CAS: FAILED or partial jobs
+// only (queued/running have an active owner; done means the content is
+// already in). One row matched = the retry owns the job from this
+// instant; zero = a concurrent retry beat the caller (-> 409).
+const claimRetryIngestJobSQL = `
+UPDATE ingest_jobs
+SET status = 'running', updated_at = ?
+WHERE job_id = ? AND status IN ('failed', 'partial')
+`
+
+// staleStepSQL re-points one step at 'stale' with the supersede reason.
+const staleStepSQL = `
+UPDATE ingest_steps
+SET status = 'stale', error = ?, completed_at = ?
+WHERE job_id = ? AND step = ?
+`
+
+// failRunningStepSQL lands a running straggler (crash residue) at failed
+// BEFORE staling it — a stale row whose previous state was running would
+// lose the interruption fact; the SC 1 timeline shows the interrupt AND
+// the supersede.
+const failRunningStepSQL = `
+UPDATE ingest_steps
+SET status = 'failed', error = ?, completed_at = ?
+WHERE job_id = ? AND step = ? AND status = 'running'
+`
+
+// ClaimJobRetry (54-03) — see ingest.JobStore for the contract.
+func (s *SQLiteStore) ClaimJobRetry(ctx context.Context, jobID string, now time.Time) (bool, error) {
+	res, err := s.db.ExecContext(ctx, claimRetryIngestJobSQL,
+		now.UTC().Format(time.RFC3339Nano),
+		jobID,
+	)
+	if err != nil {
+		return false, fmtError("ClaimJobRetry", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmtError("ClaimJobRetry.RowsAffected", err)
+	}
+	return n == 1, nil
+}
+
+// CascadeStale (54-03) — see ingest.JobStore for the contract. Step
+// ordering resolves through ingest.StepSequence (the app-level sequence
+// is the source of truth; the table carries no order column). The whole
+// cascade runs in one transaction: a partial stale on a retry request is
+// worse than a rejected one (the retry would re-run steps whose
+// downstream state is half-voided).
+func (s *SQLiteStore) CascadeStale(ctx context.Context, jobID, fromStep string, now time.Time) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmtError("CascadeStale.BeginTx", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	nowS := now.UTC().Format(time.RFC3339Nano)
+	const supersede = "superseded by upstream retry"
+	staled := int64(0)
+
+	after := false
+	for _, name := range ingest.StepSequence {
+		if name == fromStep {
+			after = true
+			continue
+		}
+		if !after {
+			continue
+		}
+		// Running straggler first (crash residue) — failed THEN stale so
+		// the timeline shows both facts.
+		res, err := tx.ExecContext(ctx, failRunningStepSQL, supersede, nowS, jobID, name)
+		if err != nil {
+			return 0, fmtError("CascadeStale.failRunning("+name+")", err)
+		}
+		_ = res
+		res, err = tx.ExecContext(ctx, staleStepSQL, supersede, nowS, jobID, name)
+		if err != nil {
+			return 0, fmtError("CascadeStale.stale("+name+")", err)
+		}
+		if n, err := res.RowsAffected(); err == nil {
+			staled += n
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmtError("CascadeStale.Commit", err)
+	}
+	return staled, nil
+}

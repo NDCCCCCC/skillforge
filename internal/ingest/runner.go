@@ -50,6 +50,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -251,7 +252,7 @@ func (r *Runner) Enqueue(ctx context.Context, j Job, raw []byte) (string, error)
 		defer r.wg.Done()
 		r.sem <- struct{}{}
 		defer func() { <-r.sem }()
-		r.run(context.Background(), j.JobID, raw)
+		r.run(context.Background(), j.JobID, raw, "")
 	}()
 	return j.JobID, nil
 }
@@ -260,6 +261,103 @@ func (r *Runner) Enqueue(ctx context.Context, j Job, raw []byte) (string, error)
 // (deterministic assertions about detached goroutines); production code
 // observes progress through the job/step rows instead.
 func (r *Runner) WaitIdle() { r.wg.Wait() }
+
+// Retry errors (54-03): structured so admin_ingest.go maps them to
+// precise HTTP codes instead of a generic 500 (RAGFlow lesson: return
+// the FIRST real error, not a generic failure).
+var (
+	ErrRetryStepInvalid   = errors.New("unknown step")
+	ErrRetryStepMissing   = errors.New("step has no row")
+	ErrRetryStepNotFailed = errors.New("step is not failed")
+	ErrRetryJobBusy       = errors.New("job already has an active execution")
+	ErrRetryRawMissing    = errors.New("parse archive missing for parse retry")
+)
+
+// RetryStep re-runs ONE failed step and everything after it (54-03
+// Task 2). Order matters:
+//
+//  1. validate step name + current status = failed (else 404/409)
+//  2. ClaimJobRetry CAS — concurrent retry/enqueue loses -> 409
+//  3. CascadeStale — downstream rows become stale in one transaction
+//  4. detached goroutine resumes at step (attempt counters continue;
+//     the archive re-read feeds a parse retry, later steps run on the
+//     staged artifacts)
+func (r *Runner) RetryStep(ctx context.Context, jobID, step string) (string, error) {
+	valid := false
+	for _, s := range StepSequence {
+		if s == step {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return "", ErrRetryStepInvalid
+	}
+
+	steps, err := r.jobs.ListSteps(ctx, jobID)
+	if err != nil {
+		return "", err
+	}
+	var target StepRow
+	found := false
+	for _, s := range steps {
+		if s.Step == step {
+			target = s
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", fmt.Errorf("%w: %s", ErrRetryStepMissing, target.Error)
+	}
+	if target.Status != StepFailed {
+		return "", fmt.Errorf("%w: %s", ErrRetryStepNotFailed, target.Error)
+	}
+
+	ok, err := r.jobs.ClaimJobRetry(ctx, jobID, nowTime())
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", ErrRetryJobBusy
+	}
+	if _, err := r.jobs.CascadeStale(ctx, jobID, step, nowTime()); err != nil {
+		// Roll the claim back — a claimed job with a half-voided cascade
+		// is exactly the half-state the transaction exists to prevent.
+		_ = r.jobs.UpdateJob(ctx, jobID, StatusFailed, "cascade stale failed: "+err.Error(), nowTime())
+		return "", err
+	}
+
+	raw := []byte(nil)
+	if step == StepParse {
+		// Resuming AT parse needs the archive (data/uploads) — read it
+		// now, synchronously, so a missing archive is a clean error and
+		// the claim rolls back before the goroutine exists.
+		job, err := r.jobs.GetJob(ctx, jobID)
+		if err != nil {
+			_ = r.jobs.UpdateJob(ctx, jobID, StatusFailed, "retry job row unreadable: "+err.Error(), nowTime())
+			return "", err
+		}
+		if job.SourcePath == "" {
+			_ = r.jobs.UpdateJob(ctx, jobID, StatusFailed, "retry parse: no archive path on job row", nowTime())
+			return "", ErrRetryRawMissing
+		}
+		raw, err = os.ReadFile(job.SourcePath)
+		if err != nil {
+			_ = r.jobs.UpdateJob(ctx, jobID, StatusFailed, "retry parse archive unreadable: "+err.Error(), nowTime())
+			return "", err
+		}
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		r.sem <- struct{}{}
+		defer func() { <-r.sem }()
+		r.run(context.Background(), jobID, raw, step)
+	}()
+	return "queued", nil
+}
 
 // GetJob returns the job row (the GET endpoint walks the Runner, never
 // the store). A missing job wraps ErrNotFound — the handler maps it to
@@ -295,7 +393,13 @@ func (r *Runner) ActiveJobBySHA256(ctx context.Context, slug, sha256 string) (Jo
 // run executes the pipeline for one claimed job. Called on the detached
 // goroutine only. CR-01: every exit path lands the job (and the in-flight
 // step) in a terminal state.
-func (r *Runner) run(ctx context.Context, jobID string, raw []byte) {
+// run executes the pipeline for one claimed job, starting at startFrom
+// ("" = StepSequence head; a retry passes the failed step's name so the
+// chain resumes there — upstream done steps do NOT re-run, their products
+// stay on disk and their PKs stay live). Called on the detached goroutine
+// only. CR-01: every exit path lands the job (and the in-flight step) in
+// a terminal state.
+func (r *Runner) run(ctx context.Context, jobID string, raw []byte, startFrom string) {
 	ok, err := r.jobs.ClaimJob(ctx, jobID, nowTime())
 	if err != nil {
 		// Store I/O on the claim: the job may still read queued forever —
@@ -329,6 +433,12 @@ func (r *Runner) run(ctx context.Context, jobID string, raw []byte) {
 		attempts[s.Step] = s.Attempt
 	}
 
+	if startFrom != "" && startFrom != StepParse && len(raw) == 0 {
+		// Resume past parse: raw is not consumed by any later step, so an
+		// empty slice is correct (the 54-02 staging artifacts + the live
+		// pipelineState fields carry the inputs). Resuming AT parse reads
+		// the archive below.
+	}
 	st := &pipelineState{raw: raw}
 	var (
 		currentStep      string
@@ -360,7 +470,15 @@ func (r *Runner) run(ctx context.Context, jobID string, raw []byte) {
 		}
 	}()
 
+	started := startFrom == ""
 	for _, name := range StepSequence {
+		if !started {
+			if name == startFrom {
+				started = true
+			} else {
+				continue // upstream done step: do NOT re-run (54-03 resume semantics)
+			}
+		}
 		currentStep = name
 
 		// D27-03-2: open the per-slug critical section at the embed step

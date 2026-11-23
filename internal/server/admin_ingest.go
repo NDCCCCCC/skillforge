@@ -52,6 +52,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -59,6 +61,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/ingest"
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // requireIngest gates a handler on the ingest runner being wired. ORDER
@@ -198,4 +201,69 @@ func durationMS(startedAt, completedAt string) int64 {
 		return 0
 	}
 	return d
+}
+
+// adminIngestStepRetryHandler implements
+// POST /api/admin/ingest/jobs/:id/steps/:step/retry (54-03 SC 3).
+// Error mapping: unknown/missing step -> 404; step not failed / job busy
+// -> 409; store I/O or other internal -> 500 (internal detail withheld,
+// the admin_pipeline.go IN-04 wording precedent). The response CARRIES
+// the step's current error text (RAGFlow lesson: return the first real
+// error, not a generic failure). One action_doc_ingest_step_retried
+// audit row per accepted retry (putPipelineAuditRow posture).
+func (s *Deps) adminIngestStepRetryHandler(ctx context.Context, c *app.RequestContext) {
+	runner, ok := s.requireIngest(c)
+	if !ok {
+		return
+	}
+	jobID := c.Param("id")
+	step := c.Param("step")
+
+	errText := ""
+	if steps, err := runner.ListSteps(ctx, jobID); err == nil {
+		for _, s := range steps {
+			if s.Step == step && s.Error != "" {
+				errText = s.Error
+			}
+		}
+	}
+
+	status, err := runner.RetryStep(ctx, jobID, step)
+	if err != nil {
+		switch {
+		case errors.Is(err, ingest.ErrRetryStepInvalid), errors.Is(err, ingest.ErrRetryStepMissing):
+			c.JSON(http.StatusNotFound, graphResponseError{Error: err.Error()})
+		case errors.Is(err, ingest.ErrRetryStepNotFailed), errors.Is(err, ingest.ErrRetryJobBusy):
+			c.JSON(http.StatusConflict, graphResponseError{Error: err.Error()})
+		default:
+			log.Printf("[WARN] server: ingest step retry %s/%s: %v", jobID, step, err)
+			c.JSON(http.StatusInternalServerError, graphResponseError{Error: "ingest retry failed -- see server logs"})
+		}
+		return
+	}
+
+	if s.Store != nil {
+		payload, _ := json.Marshal(map[string]string{
+			"job_id":      jobID,
+			"step":        step,
+			"prior_error": errText,
+			"actor":       "admin",
+		})
+		if _, err := s.Store.PutAudit(ctx, store.AuditRow{
+			Timestamp:  time.Now().UTC(),
+			UserID:     "admin",
+			Action:     "action_doc_ingest_step_retried",
+			ActorType:  "admin",
+			FrozenArgs: payload,
+		}); err != nil {
+			log.Printf("[WARN] server: ingest step retry audit: %v", err)
+		}
+	}
+
+	c.JSON(http.StatusOK, map[string]string{
+		"status": status,
+		"job_id": jobID,
+		"step":   step,
+		"error":  errText,
+	})
 }
