@@ -226,6 +226,20 @@ func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 		}
 	})
 
+	// Phase 53-01: every successful upload now persists into the corpus
+	// (STEP 7d). Redirect both persist roots into temp dirs so the tests
+	// below never write into the repo's real knowledge/ + data/ trees.
+	// Tests that need to ASSERT on the persisted paths re-point them via
+	// setPersistDirs (upload_persist_test.go); this redirect is the
+	// hermeticity safety net for all the others.
+	persistKnowledgeRoot = t.TempDir()
+	persistUploadsDir = t.TempDir()
+	prevKBRoot, prevUploadsDir := defaultPersistKnowledgeRoot, defaultPersistUploadsDir
+	t.Cleanup(func() {
+		persistKnowledgeRoot = prevKBRoot
+		persistUploadsDir = prevUploadsDir
+	})
+
 	kbReg := kb.New([]kb.Entry{
 		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
 	})
@@ -490,6 +504,10 @@ func TestUploadPerSlugSerialization(t *testing.T) {
 		ParserRegistry:    document.NewParserRegistry(),
 		UploadMaxBodyBytes: 50 << 20,
 	}
+	// Phase 53-01: this test builds Deps manually (no uploadTestDeps), so
+	// redirect the persist roots itself — both uploads succeed and would
+	// otherwise write canonical files into the repo's knowledge/ tree.
+	setPersistDirs(t)
 	// Set admin token (uploadTestDeps helper does this; replicated here).
 	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
 	_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)

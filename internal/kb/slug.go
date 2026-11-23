@@ -6,7 +6,9 @@ package kb
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // slugPattern is the single slug whitelist: lowercase ascii, letter
@@ -74,4 +76,53 @@ func ValidateNewSlug(s string) error {
 		return fmt.Errorf("slug %q is reserved: %s", s, reason)
 	}
 	return nil
+}
+
+// MaxFileStemLen caps a sanitized filename stem in bytes. The stem is
+// composed into "<sha8>-<stem>.md" (8 + 1 + 96 + 3 = 108 bytes), which
+// stays far below the 255-byte single filesystem component limit.
+const MaxFileStemLen = 96
+
+// FileStemFallback replaces a stem that sanitizes to nothing (e.g. a
+// filename made only of non-whitelist characters). Uniqueness is carried
+// by the sha8 prefix, so the fallback only needs to be a legal name.
+const FileStemFallback = "doc"
+
+// SanitizeFileStem reduces an uploaded filename to a path-safe stem
+// (filename without extension) using the SAME character whitelist slugs
+// use — lowercase a-z, digits, hyphen: A-Z folds down, every other rune
+// becomes '-', boundary hyphens are trimmed. Post-sanitize the output is
+// pure ASCII (whitelist guarantees every kept rune is one byte), so the
+// byte cap cannot split a rune.
+//
+// It is deliberately NOT ValidateSlug: the stem never becomes a slug or a
+// registry key — it only names the sha8-prefixed canonical file under
+// knowledge/<slug>/ — so slug reservations and the letter-first rule do
+// not apply. Phase 53-01 (D-53-01) uses it so an attacker-controlled
+// upload filename can never escape the knowledge/<slug>/ directory or
+// produce a second "." component.
+func SanitizeFileStem(name string) string {
+	stem := name
+	if ext := filepath.Ext(name); ext != "" {
+		stem = strings.TrimSuffix(name, ext)
+	}
+	var b strings.Builder
+	for _, r := range stem {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r - 'A' + 'a')
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return FileStemFallback
+	}
+	if len(out) > MaxFileStemLen {
+		out = out[:MaxFileStemLen]
+	}
+	return out
 }

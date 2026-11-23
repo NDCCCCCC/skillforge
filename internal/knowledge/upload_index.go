@@ -185,3 +185,35 @@ func getUploadNextID(ctx context.Context, slug string, r retriever.Retriever) (i
 // When non-nil, called instead of the package-level validateTiers.
 var validateTiersHook func([]retriever.Document, kb.Registry) error
 
+// SplitFrontmatterRaw exposes the corpus loader's frontmatter splitter to
+// the upload persist path (internal/server, Phase 53-01 / D-53-01).
+//
+// Why exported: the canonical knowledge file written at upload time must
+// carry the EXACT body bytes UploadIndex chunked (splitFrontmatter on the
+// raw upload bytes — NOT the md parser's goldmark-rendered plain text,
+// which strips markdown syntax and would re-chunk differently). Without
+// this guarantee the boot reseed would diverge from the upload-time chunk
+// set, silently defeating the restart-evaporation fix.
+//
+// Returns (frontmatter-stripped body, raw YAML block or nil), mirroring
+// splitFrontmatter. The persist path ignores the YAML block: uploaded
+// docs are unversioned on reseed (parseEffectiveWindow reads only the
+// provenance frontmatter the persist path writes, which has no
+// effective_* fields → (0,0) perpetual — the 53-CONTEXT accepted
+// behavior).
+func SplitFrontmatterRaw(raw []byte) (body []byte, frontmatter []byte) {
+	return splitFrontmatter(raw)
+}
+
+// ParseEffectiveWindow exposes the corpus loader's effective-window
+// parser to the upload persist path (53-01): the canonical knowledge file
+// must carry the SOURCE document's effective_from / effective_to so a boot
+// reseed reads back the same window the upload-time docs carried — without
+// this passthrough an upload with a bounded window silently degrades to
+// perpetual (0,0) at the next reseed, breaking restart chunk equivalence.
+// nil frontmatter (non-md sources) yields the (0,0) perpetual sentinel,
+// exactly matching the directory-path behavior for frontmatter-less files.
+func ParseEffectiveWindow(fm []byte) (effectiveFrom, effectiveTo int64) {
+	return parseEffectiveWindow(fm)
+}
+

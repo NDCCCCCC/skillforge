@@ -28,9 +28,12 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -48,6 +51,67 @@ const (
 	actionDocUploadRejected = "action_doc_upload_rejected"
 )
 
+// Phase 53-01 (D-53-01) — upload persistence constants. knowledge/ is the
+// single source of truth: every uploaded document is written there before
+// IndexerBackend.Insert, so the boot-time seedDocs tier purge re-indexes
+// uploads instead of silently evaporating them (Phase 53 breakpoint A).
+const (
+	// mimeMarkdown is the only MIME type whose canonical file body is the
+	// frontmatter-stripped RAW markdown (see persistBodyFor — load-bearing
+	// for restart chunk equivalence).
+	mimeMarkdown = "text/markdown"
+
+	// persistExtMarkdown is the canonical file extension: even PDF/DOCX
+	// uploads land as .md because the persisted body is extracted TEXT.
+	persistExtMarkdown = ".md"
+
+	// persistSHA8Len is the sha256-hex prefix used in canonical file names.
+	// 8 hex chars (32 bits) make accidental same-name collisions negligible
+	// and full-content collisions are already excluded by SHA-256 dedup.
+	persistSHA8Len = 8
+
+	// archiveExtFallback names extension-less uploads in the raw-bytes
+	// archive so the file still carries a conventional suffix.
+	archiveExtFallback = ".bin"
+
+	// defaultPersistKnowledgeRoot mirrors the corpus root the boot-time
+	// knowledge.Index seeds from (cmd/server main.go passes "knowledge/").
+	// Changing one without the other would strand uploads outside the
+	// reseed walk.
+	defaultPersistKnowledgeRoot = "knowledge"
+
+	// defaultPersistUploadsDir is the raw-bytes archive dir, following the
+	// runtime data-tree convention (cf. SKILLFORGE_DATASETS_DIR →
+	// data/datasets, ontology → data/ontology).
+	defaultPersistUploadsDir = "data/uploads"
+
+	// persistDirMode / persistFileMode are the on-disk modes for the two
+	// persist targets. 0o755 dirs keep tier dirs browsable by operators;
+	// 0o644 files are group/world readable like the seeded corpus files.
+	persistDirMode  = 0o755
+	persistFileMode = 0o644
+)
+
+// persistKnowledgeRoot / persistUploadsDir are the two persist roots.
+// Package vars (not consts) following the docUploadAuditHook injection
+// pattern: production keeps the defaults above; tests redirect both into
+// t.TempDir() via SetPersistKnowledgeRoot / SetPersistUploadsDir. Not
+// synchronized — bound at boot, and upload handlers only READ them (the
+// per-slug mutex already serializes same-slug persist writes).
+var (
+	persistKnowledgeRoot = defaultPersistKnowledgeRoot
+	persistUploadsDir    = defaultPersistUploadsDir
+)
+
+// SetPersistKnowledgeRoot binds the corpus root PersistUploadedDoc writes
+// canonical knowledge files under. Production never calls this (the
+// default matches the seed root); tests use it with t.Cleanup restore.
+func SetPersistKnowledgeRoot(root string) { persistKnowledgeRoot = root }
+
+// SetPersistUploadsDir binds the raw-bytes archive dir. Same posture as
+// SetPersistKnowledgeRoot.
+func SetPersistUploadsDir(dir string) { persistUploadsDir = dir }
+
 // DocUploadAudit is the FrozenArgs payload for action_doc_uploaded.
 type DocUploadAudit struct {
 	Slug          string `json:"slug"`
@@ -58,6 +122,12 @@ type DocUploadAudit struct {
 	ChunkCount    int    `json:"chunk_count"`
 	IDRangeStart  int64  `json:"id_range_start"`
 	IDRangeEnd    int64  `json:"id_range_end"`
+	// PersistedPath is the corpus-relative path of the canonical knowledge
+	// file written by PersistUploadedDoc — the same string as the file's
+	// doc_id frontmatter field (Phase 53-01). Additive JSON field:
+	// pre-53 audit rows simply lack it, so FrozenArgs consumers keep
+	// working (backward-compatible).
+	PersistedPath string `json:"persisted_path"`
 }
 
 // DocUploadRejectAudit is the FrozenArgs payload for action_doc_upload_rejected.
@@ -89,15 +159,18 @@ func getSlugMutex(slug string) *sync.Mutex {
 // upload endpoint for Phase 27.
 //
 // CHECK ORDER (verbatim from kb_admin.go pattern):
-//   1. isAdminRequest(c) → 403  (403 must not leak KB registry state)
-//   2. s.KBRegistry == nil → 503
-//   3. c.Param("slug") → kb.ValidateSlug → 400
-//   4. reg.Lookup(slug) → 404 if deactivated/unknown
-//   5. Content-Length → 413 if > UploadMaxBodyBytes
-//   6. multipart parse + onFile callback → processUploadedFile
-//   7. UploadIndex → 422 with action_doc_upload_rejected on failure
-//   8. IndexerBackend.Insert → 503 with Retry-After on backend failure
-//   9. action_doc_uploaded audit row on success
+//  1. isAdminRequest(c) → 403  (403 must not leak KB registry state)
+//  2. s.KBRegistry == nil → 503
+//  3. c.Param("slug") → kb.ValidateSlug → 400
+//  4. reg.Lookup(slug) → 404 if deactivated/unknown
+//  5. Content-Length → 413 if > UploadMaxBodyBytes
+//  6. multipart parse + onFile callback → processUploadedFile
+//  7. UploadIndex → 422 with action_doc_upload_rejected on failure
+//     7d. PersistUploadedDoc → 422 (persist failed) BEFORE Insert — D-53-01
+//     fail-closed: "Insert succeeded but no file on disk" must be
+//     impossible, or the boot reseed would evaporate the upload again
+//  8. IndexerBackend.Insert → 503 with Retry-After on backend failure
+//  9. action_doc_uploaded audit row on success
 func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 	// STEP 1: admin token gate — 403 must NOT leak KB registry state
 	if !requireAdmin(c) {
@@ -159,8 +232,9 @@ func (s *Deps) uploadHandler(ctx context.Context, c *app.RequestContext) {
 
 // processUploadedFile handles the per-file processing inside uploadHandler's
 // multipart callback. It reads the file into memory, verifies magic bytes,
-// checks SHA-256 deduplication, calls UploadIndex, inserts into the indexer,
-// and emits the audit row on success.
+// checks SHA-256 deduplication, calls UploadIndex, persists the document
+// to the durable corpus (STEP 7d — before Insert, D-53-01), inserts into
+// the indexer, and emits the audit row on success.
 //
 // The parseErr pointer lets this method signal an error to the outer
 // multipart parser without double-writing an HTTP response.
@@ -260,6 +334,32 @@ func (s *Deps) processUploadedFile(ctx context.Context, slug string, form *uploa
 		return *parseErr
 	}
 
+	// STEP 7d: persist to the durable corpus BEFORE Insert (Phase 53-01 /
+	// D-53-01). Ordering is fail-closed by construction: after a successful
+	// Insert there is no undo, so persisting first makes "Insert succeeded
+	// but no file on disk" unreachable — that is the exact state the boot
+	// reseed (seedDocs tier purge) cannot recover, i.e. breakpoint A. The
+	// converse half-state (file on disk, Insert failed) is self-healing:
+	// the next reseed indexes the canonical file like any directory doc.
+	// Failure → 422 + reject audit with a "persist failed" reason so
+	// operators can tell storage failure apart from parse/index failure.
+	persistedPath, err := PersistUploadedDoc(ctx, slug, filename, form.Metadata, data)
+	if err != nil {
+		*parseErr = err
+		if docUploadAuditHook != nil {
+			reject := DocUploadRejectAudit{
+				Slug:     slug,
+				FileName: filename,
+				FileSize: int64(len(data)),
+				Reason:   err.Error(),
+			}
+			payload, _ := json.Marshal(reject)
+			docUploadAuditHook(actionDocUploadRejected, string(payload))
+		}
+		c.JSON(http.StatusUnprocessableEntity, graphResponseError{Error: err.Error()})
+		return *parseErr
+	}
+
 	// STEP 8: IndexerBackend.Insert → 503 on backend unavailable,
 	// 500 on other Insert errors.
 	// CODE-AUDIT 2026-11-05 (B-01): the handler previously assumed
@@ -336,6 +436,7 @@ func (s *Deps) processUploadedFile(ctx context.Context, slug string, form *uploa
 			ChunkCount:    len(docs),
 			IDRangeStart:  idStart,
 			IDRangeEnd:    idEnd,
+			PersistedPath: persistedPath,
 		}
 		payload, _ := json.Marshal(success)
 		docUploadAuditHook(actionDocUploaded, string(payload))
@@ -350,6 +451,148 @@ func (s *Deps) processUploadedFile(ctx context.Context, slug string, form *uploa
 		IDRange: []int64{idStart, idEnd},
 	})
 	return nil
+}
+
+// PersistUploadedDoc writes an uploaded document into the durable corpus
+// so knowledge/ stays the single source of truth (Phase 53-01 / D-53-01).
+// Without this the upload's chunks live only in the vector store, and the
+// boot-time seedDocs tier purge (indexer.go: DeleteTierRows → reseed
+// directory docs only) silently evaporates them — Phase 53 breakpoint A.
+//
+// Two writes, in this order:
+//
+//  1. Archive — the ORIGINAL bytes at <persistUploadsDir>/<sha256><ext>
+//     (raw provenance for forensics/re-import; never indexed by the walk,
+//     which only reads knowledge/<slug>/*.md).
+//  2. Canonical file — <persistKnowledgeRoot>/<slug>/<sha8>-<stem>.md:
+//     provenance frontmatter (source_sha256 / source_mime / uploaded_at /
+//     doc_id) + the exact body the chunker consumed (persistBodyFor), so
+//     a boot reseed re-chunks it into IDENTICAL chunks.
+//
+// Ordering is load-bearing in BOTH directions:
+//   - archive BEFORE canonical file: if the archive write fails we return
+//     before touching knowledge/, so a failed upload can never leave a
+//     canonical file on disk that the next reseed would index even though
+//     the client saw a 422.
+//   - the caller invokes this BEFORE IndexerBackend.Insert (STEP 7d
+//     before STEP 8): "Insert succeeded but no file on disk" is the one
+//     unrecoverable direction (CONTEXT 坑 4 fail-closed). The converse —
+//     canonical file present, Insert failed — self-heals on the next
+//     reseed, which is precisely the D-53-01 posture.
+//
+// Any write error is returned wrapped with a "persist failed" prefix; the
+// caller maps it to 422 + action_doc_upload_rejected. Re-uploading the
+// same bytes overwrites both targets (sha-named → idempotent; the sha8
+// truncation collision window is ignored per plan). The returned path is
+// the slash-normalized corpus-relative doc_id, which after this write
+// gives uploaded docs the SAME doc_id semantics as directory docs
+// (53-CONTEXT: 落盘后两条路径的 doc_id 语义归一).
+func PersistUploadedDoc(ctx context.Context, slug, filename, mimeType string, raw []byte) (string, error) {
+	hash := sha256.Sum256(raw)
+	sha256Hex := hex.EncodeToString(hash[:])
+	sha8 := sha256Hex[:persistSHA8Len]
+
+	body, fm, err := persistBodyFor(ctx, mimeType, filename, raw)
+	if err != nil {
+		return "", fmt.Errorf("persist failed: derive body: %w", err)
+	}
+	// Effective-window passthrough (53-01 review fix): the canonical
+	// file must carry the SOURCE window so reseed reads back what
+	// upload-time docs carried (equivalence covers the window too).
+	ef, et := knowledge.ParseEffectiveWindow(fm)
+	if err != nil {
+	}
+	if len(body) == 0 {
+		// Unreachable via the handler (UploadIndex already rejects an empty
+		// body before STEP 7d) — guarded here so direct callers of this
+		// function can never persist an empty canonical file.
+		return "", errors.New("persist failed: derived body is empty")
+	}
+
+	name := sha8 + "-" + kb.SanitizeFileStem(filename) + persistExtMarkdown
+	docID := slug + "/" + name
+
+	// Write 1: raw-bytes archive (ordering rationale above).
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		ext = archiveExtFallback
+	}
+	if err := os.MkdirAll(persistUploadsDir, persistDirMode); err != nil {
+		return "", fmt.Errorf("persist failed: archive dir: %w", err)
+	}
+	archivePath := filepath.Join(persistUploadsDir, sha256Hex+ext)
+	if err := os.WriteFile(archivePath, raw, persistFileMode); err != nil {
+		return "", fmt.Errorf("persist failed: archive %s: %w", archivePath, err)
+	}
+
+	// Write 2: canonical knowledge file.
+	dir := filepath.Join(persistKnowledgeRoot, slug)
+	if err := os.MkdirAll(dir, persistDirMode); err != nil {
+		return "", fmt.Errorf("persist failed: knowledge dir %s: %w", dir, err)
+	}
+	file := buildPersistedMarkdown(sha256Hex, mimeType, docID, time.Now().UTC().Format(time.RFC3339), ef, et, body)
+	if err := os.WriteFile(filepath.Join(dir, name), file, persistFileMode); err != nil {
+		return "", fmt.Errorf("persist failed: knowledge file %s: %w", filepath.Join(dir, name), err)
+	}
+	return docID, nil
+}
+
+// persistBodyFor selects the body bytes written into the canonical
+// knowledge file. The two branches are load-bearing for restart chunk
+// equivalence (D-53-01):
+//
+//   - text/markdown → the frontmatter-stripped RAW body. UploadIndex
+//     chunks exactly this byte span (its md-parser output is discarded);
+//     the parser's goldmark-rendered plain text strips markdown syntax
+//     and would re-chunk differently at the next reseed, silently
+//     diverging the corpus from the upload-time chunk set.
+//
+//   - every other registered type → the parser's plain-text Content.
+//     splitFrontmatter on raw PDF/DOCX bytes yields the binary itself,
+//     and a knowledge/*.md containing those bytes is garbage on reseed.
+//     (The upload path's raw-binary chunking for non-md types is a
+//     pre-existing defect out of 53-01 scope; persisting extracted text
+//     means the DISK copy — the D-53-01 source of truth — is the correct
+//     one, and the next reseed converges the vector store onto it.)
+func persistBodyFor(ctx context.Context, mimeType, filename string, raw []byte) (body, frontmatter []byte, err error) {
+	if mimeType == mimeMarkdown {
+		body, fm := knowledge.SplitFrontmatterRaw(raw)
+		return body, fm, nil
+	}
+	pr, err := document.NewParserRegistry().Parse(ctx, mimeType, bytes.NewReader(raw), filename)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse %s for persist: %w", filename, err)
+	}
+	// Non-md sources carry no frontmatter concept: nil fm -> (0,0) window,
+	// which is exactly how the directory path treats them.
+	return pr.Content, nil, nil
+}
+
+// buildPersistedMarkdown renders the canonical file: provenance YAML
+// frontmatter + the chunker's source body. Frontmatter values are all
+// whitelist-constrained — hex digest, a ParserRegistry-allowlisted MIME
+// (enforced upstream by VerifyMagicBytes), a sanitized stem + validated
+// slug in doc_id, an RFC3339 timestamp — so plain-scalar YAML emission is
+// injection-safe without quoting. The trailing newline keeps the body
+// byte-exact across the write/re-read round trip without gluing the last
+// line to whatever follows.
+func buildPersistedMarkdown(sha256Hex, mimeType, docID, uploadedAt string, ef, et int64, body []byte) []byte {
+	// NOTE: format-verb order MUST match the argument order below —
+	// 53-01 review caught docID/uploadedAt swapped into each other's
+	// fields (uploaded_at rendered the corpus path, doc_id the timestamp).
+	fm := fmt.Sprintf("source_sha256: %s\nsource_mime: %s\nuploaded_at: %s\ndoc_id: %s\neffective_from: %d\neffective_to: %d\n",
+
+		sha256Hex, mimeType, uploadedAt, docID, ef, et)
+
+	out := make([]byte, 0, len(fm)+len(body)+8)
+	out = append(out, "---\n"...)
+	out = append(out, fm...)
+	out = append(out, "---\n"...)
+	out = append(out, body...)
+	if body[len(body)-1] != '\n' {
+		out = append(out, '\n')
+	}
+	return out
 }
 
 // uploadForm carries the optional metadata field from the multipart form.
