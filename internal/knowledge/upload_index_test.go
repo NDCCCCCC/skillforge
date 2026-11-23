@@ -21,6 +21,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/retriever"
@@ -280,9 +281,12 @@ func TestUploadIndexChunkingOversizedDoc(t *testing.T) {
 	}
 	me := &mockEmbedder{}
 
-	// Build a body larger than maxDocBytes (4000).
-	// The chunker adds 200-byte overlap, so 3 chunks are expected.
-	largeBody := make([]byte, 9000)
+	// Build a body larger than chunkSizeRunes (3500 runes). 53-02: the
+	// upload path uses the SAME recursive splitter as Index; a separator-
+	// starved body converges through the splitter's per-rune fallback, so
+	// every chunk must fit the rune budget.
+	const oversizedRunes = 9000
+	largeBody := make([]byte, oversizedRunes)
 	for i := range largeBody {
 		largeBody[i] = 'x'
 	}
@@ -291,9 +295,13 @@ func TestUploadIndexChunkingOversizedDoc(t *testing.T) {
 
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(docs), 2, "oversized doc should produce multiple chunks")
+	joined := ""
 	for i, doc := range docs {
-		assert.LessOrEqual(t, len(doc.Content), maxDocBytes, "chunk %d content length must be <= maxDocBytes", i)
+		assert.LessOrEqual(t, utf8.RuneCountInString(doc.Content), chunkSizeRunes,
+			"chunk %d exceeds the shared rune budget (chunkSizeRunes=%d)", i, chunkSizeRunes)
+		joined += doc.Content
 	}
+	assert.Equal(t, oversizedRunes, utf8.RuneCountInString(joined), "chunks must cover the body with no loss")
 	// IDs must be sequential starting from 1.
 	for i, doc := range docs {
 		assert.Equal(t, int64(i+1), doc.ID, "chunk %d should have sequential ID", i)
@@ -385,36 +393,6 @@ func TestUploadIndexValidateTiersBeforeEmbed(t *testing.T) {
 	assert.Contains(t, err.Error(), "tier validation failed")
 	assert.True(t, hookCalled, "validateTiers must be called before embedder")
 	assert.Equal(t, 0, embedCalls, "embedder must not be called when validateTiers fails")
-}
-
-// TestChunkBody verifies the chunker produces correct sizes and counts.
-func TestChunkBody(t *testing.T) {
-	tests := []struct {
-		name      string
-		size      int
-		wantMin   int
-		wantMax   int
-	}{
-		{"small fits in one", 100, 1, 1},
-		{"exactly max", maxDocBytes, 1, 1},
-		{"just over max", maxDocBytes + 1, 2, 2},
-		{"triple max", maxDocBytes*3 - 1, 3, 4},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body := make([]byte, tt.size)
-			for i := range body {
-				body[i] = 'x'
-			}
-			chunks := chunkBody(body, maxDocBytes)
-			require.GreaterOrEqual(t, len(chunks), tt.wantMin)
-			require.LessOrEqual(t, len(chunks), tt.wantMax)
-			for i, c := range chunks {
-				assert.LessOrEqual(t, len(c), maxDocBytes, "chunk %d exceeds maxDocBytes", i)
-			}
-		})
-	}
 }
 
 // ---- concurrent safety ----

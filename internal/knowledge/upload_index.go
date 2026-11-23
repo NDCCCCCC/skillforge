@@ -88,8 +88,19 @@ func UploadIndex(
 		return nil, fmt.Errorf("parse failed: document body is empty")
 	}
 
-	// Step 4: chunk if body exceeds maxDocBytes.
-	chunks := chunkBody(body, maxDocBytes)
+	// Step 4: chunk if body exceeds chunkSizeRunes, using the SAME
+	// CJK-aware recursive splitter as the boot-time Index path (53-02 /
+	// D-53-02: chunkBody's byte-window chunking is retired — two chunk
+	// policies inside one tier made retrieval distributions incomparable;
+	// the cross-path equivalence test pins byte-identical output).
+	splitter, err := buildSplitter(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("build splitter: %w", err)
+	}
+	chunks, err := splitBody(ctx, splitter, string(body))
+	if err != nil {
+		return nil, fmt.Errorf("split body: %w", err)
+	}
 
 	// Step 5: parse effective window from frontmatter (0,0 if absent).
 	ef, et := parseEffectiveWindow(fm)
@@ -102,7 +113,7 @@ func UploadIndex(
 		docs = append(docs, retriever.Document{
 			ID:            int64(i), // placeholder; will be overwritten below
 			Tier:          slug,
-			Content:       string(chunk),
+			Content:       chunk,
 			Source:        filename,
 			Embedding:     nil, // filled in embed step
 			EffectiveFrom: ef,
@@ -121,7 +132,7 @@ func UploadIndex(
 	// Step 7: embed each chunk. Embed failure is a hard error — never
 	// fall back to a zero vector.
 	for i, chunk := range chunks {
-		vec, err := emb.Embed(ctx, string(chunk))
+		vec, err := emb.Embed(ctx, chunk)
 		if err != nil {
 			return nil, fmt.Errorf("embed failed: %w", err)
 		}
@@ -174,39 +185,3 @@ func getUploadNextID(ctx context.Context, slug string, r retriever.Retriever) (i
 // When non-nil, called instead of the package-level validateTiers.
 var validateTiersHook func([]retriever.Document, kb.Registry) error
 
-// chunkBody splits body into chunks of at most maxBytes characters, with
-// 200-character overlap between consecutive chunks. Returns a single-element
-// slice if body fits within maxBytes. The overlap prevents clause splitting
-// at chunk boundaries from losing context.
-func chunkBody(body []byte, maxBytes int) [][]byte {
-	if len(body) <= maxBytes {
-		return [][]byte{body}
-	}
-	var chunks [][]byte
-	pos := 0
-	for pos < len(body) {
-		end := pos + maxBytes
-		if end >= len(body) {
-			chunks = append(chunks, body[pos:])
-			break
-		}
-		// Back off to avoid splitting in the middle of a UTF-8 rune.
-		// Scan back up to 20 bytes for a safe cut point near maxBytes.
-		cut := end
-		for i := 0; i < 20 && cut > pos; i++ {
-			b := body[cut-1]
-			if b&0x80 == 0 || (b&0xC0) == 0xC0 {
-				break
-			}
-			cut--
-		}
-		chunks = append(chunks, body[pos:cut])
-		overlap := 200
-		if cut-overlap > pos {
-			pos = cut - overlap
-		} else {
-			pos = cut
-		}
-	}
-	return chunks
-}
