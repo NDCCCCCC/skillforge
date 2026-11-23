@@ -70,7 +70,7 @@ Full details: `.planning/milestones/v1.8-ROADMAP.md`
 
 ## Phases (v1.8)
 
-- [ ] **Phase 53: 摄取链路完整性** - 上传落盘单一事实来源 + chunkBody 退役 + doc_id 生命周期 + 跨路径等价性测试
+- [x] **Phase 53: 摄取链路完整性** - 上传落盘单一事实来源 + chunkBody 退役 + doc_id 生命周期 + 跨路径等价性测试 ✅ 2026-11-23 GATE GREEN(9 PASS/0 FAIL)
 - [ ] **Phase 54: 摄取流水线后端** - 异步 job + ingest_step 状态机（staging/artifact_ref）+ 任意步骤重试 + ECL 自动触发 + 批量 embed
 - [ ] **Phase 55: 摄取流水线前端视图** - 八步时间线 + 双层状态派生 + 步骤重试交互（UI-SPEC 先行）
 - [ ] **Phase 56: 操作面板可用性** - 审批规则三级匹配/scope 三层/命中反馈闭环 + 右侧检查器信息架构 + 写入链路闭合
