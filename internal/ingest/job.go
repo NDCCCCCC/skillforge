@@ -150,6 +150,16 @@ type Job struct {
 }
 
 // StepRow is one (job, step) pipeline row (the ingest_steps projection).
+// FailedItem is one item-level failure inside a step (54-03 SC 7 --
+// the Bedrock "COMPLETE but N docs failed" projection's data half).
+// Keyed by the chunk content_hash: the re-upload repair flow finds the
+// exact chunk to re-embed by it (the hash-unchanged skip does not hit a
+// FAILED chunk, so the repair re-embeds precisely the failures).
+type FailedItem struct {
+	Key   string
+	Error string
+}
+
 type StepRow struct {
 	JobID       string
 	Step        string

@@ -66,17 +66,18 @@ import (
 // (D-54-02: staging first, retry second); from 54-02 on, a retrying run
 // re-reads raw from the job row's source_path archive instead.
 type pipelineState struct {
-	raw        []byte
-	body       []byte // parse output (frontmatter-stripped)
-	fm         []byte // frontmatter block (nil for non-md sources)
-	ef, et     int64  // effective window parsed from fm (0,0 perpetual when absent)
-	parserName string // parse output (ParseResult.ParserName)
-	docID      string // parse output (the 53-01 persist relative path)
-	chunks     []string
-	docs       []retriever.Document
-	pks        []int64          // vector_insert output (the written PK set)
-	skipPKs    map[string]int64 // embed output: content_hash -> kept PK (unchanged chunks; vector_insert preserves these verbatim)
-	cacheKeys  []string         // embed output: the cache keys actually used (embeds.json content)
+	raw         []byte
+	body        []byte // parse output (frontmatter-stripped)
+	fm          []byte // frontmatter block (nil for non-md sources)
+	ef, et      int64  // effective window parsed from fm (0,0 perpetual when absent)
+	parserName  string // parse output (ParseResult.ParserName)
+	docID       string // parse output (the 53-01 persist relative path)
+	chunks      []string
+	docs        []retriever.Document
+	pks         []int64          // vector_insert output (the written PK set)
+	failedItems []FailedItem     // embed output: the chunks whose embed failed (SC 7 partial semantics)
+	skipPKs     map[string]int64 // embed output: content_hash -> kept PK (unchanged chunks; vector_insert preserves these verbatim)
+	cacheKeys   []string         // embed output: the cache keys actually used (embeds.json content)
 }
 
 // stepParse — plan 54-01 owns this step. Verbatim migration of the sync
@@ -264,7 +265,18 @@ func (r *Runner) stepEmbed(ctx context.Context, j Job, st *pipelineState) (strin
 		missCount++
 		vec, err := r.emb.Embed(ctx, st.docs[i].Content)
 		if err != nil {
-			return "", fmt.Errorf("embed failed: %w", err)
+			// 54-03 SC 7 item tolerance: ONE chunk's embed failure does not
+			// fail the step — the failure is LEDGERED (failedItems -> the
+			// partial projection + failed_items in the GET response) and the
+			// chunk's Embedding stays nil, which the vector_insert step
+			// filters OUT (a failed chunk never enters the store: no fake
+			// vector, no half document — D-54-01 honored at the item
+			// granularity). An ALL-failed embed still fails the step below.
+			st.failedItems = append(st.failedItems, FailedItem{
+				Key:   st.docs[i].ContentHash,
+				Error: "embed failed: " + err.Error(),
+			})
+			continue
 		}
 		st.docs[i].Embedding = vec
 		if r.embedCache != nil && r.embedderModel != "" {
@@ -277,7 +289,21 @@ func (r *Runner) stepEmbed(ctx context.Context, j Job, st *pipelineState) (strin
 	if buf, err := json.Marshal(cacheKeys); err == nil {
 		r.writeArtifact(j.JobID, "embeds.json", buf)
 	}
-	return fmt.Sprintf("embedded=%d cached=%d kept=%d", emb, len(cacheKeys)-emb, len(st.skipPKs)), nil
+	if len(st.failedItems) > 0 {
+		// 54-03 SC 7: the failure ledger rides the artifacts too, so the
+		// GET endpoint's failed_items projection has a durable source
+		// (the in-memory slice dies with the goroutine).
+		if buf, err := json.Marshal(st.failedItems); err == nil {
+			r.writeArtifact(j.JobID, "embed_failed.json", buf)
+		}
+	}
+	if len(st.failedItems) == len(st.docs) {
+		// EVERY chunk failed: there is nothing to insert and nothing to
+		// show for the step — fail it outright (partial needs at least one
+		// success to be partial).
+		return "", fmt.Errorf("embed failed: all %d chunks failed (see failed_items)", len(st.failedItems))
+	}
+	return fmt.Sprintf("embedded=%d cached=%d kept=%d failed=%d", emb, len(cacheKeys)-emb, len(st.skipPKs), len(st.failedItems)), nil
 }
 
 func (r *Runner) stepVectorInsert(ctx context.Context, j Job, st *pipelineState) (string, error) {
@@ -292,7 +318,15 @@ func (r *Runner) stepVectorInsert(ctx context.Context, j Job, st *pipelineState)
 	// delete+insert stays idempotent (a kept row re-inserts under its
 	// same PK; nothing to insert happens only when the doc is brand new
 	// and empty, unreachable -- parse rejects empty bodies).
-	pks, err := r.sink(ctx, j.Slug, st.docID, st.docs)
+	// 54-03 SC 7: chunks whose embed FAILED (Embedding nil, ledgered in
+	// failedItems) never enter the store -- no fake vector, no half doc.
+	live := make([]retriever.Document, 0, len(st.docs))
+	for i := range st.docs {
+		if st.docs[i].Embedding != nil {
+			live = append(live, st.docs[i])
+		}
+	}
+	pks, err := r.sink(ctx, j.Slug, st.docID, live)
 	if err != nil {
 		if errors.Is(err, retriever.ErrIndexerDisabled) || IsBackendUnavailable(err) {
 			return "", fmt.Errorf("backend unavailable: %w", err)

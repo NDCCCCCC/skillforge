@@ -1268,6 +1268,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FAIL] cmd/server: ingest runner: %v", err)
 	}
+	// 54-03 SC 8 -- boot crash-recovery scan (synchronous, BEFORE accepting
+	// traffic: a running residue must be failed and a queued residue
+	// resumed before any new upload can race them). Failure WARNs and
+	// continues: recovery is a repair action, not an admission gate.
+	if err := ingestRunner.RecoverOrphans(ctx); err != nil {
+		log.Printf("[WARN] cmd/server: ingest crash-recovery scan: %v", err)
+	}
 
 	deps = &server.Deps{
 		Ingest:   ingestRunner,

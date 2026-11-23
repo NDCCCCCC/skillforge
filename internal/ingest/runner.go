@@ -262,6 +262,63 @@ func (r *Runner) Enqueue(ctx context.Context, j Job, raw []byte) (string, error)
 // observes progress through the job/step rows instead.
 func (r *Runner) WaitIdle() { r.wg.Wait() }
 
+// ReadArtifact returns one staged product (54-03: the admin GET
+// endpoint reads embed_failed.json through this to project failed_items —
+// the handler has no ArtifactStore of its own; the runner is the seam).
+func (r *Runner) ReadArtifact(jobID, name string) ([]byte, error) {
+	if r.artifacts == nil {
+		return nil, os.ErrNotExist
+	}
+	return r.artifacts.Read(jobID, name)
+}
+
+// RecoverOrphans is the boot-time crash-recovery scan (54-03 SC 8,
+// single-process architecture: ANY running residue is crash residue).
+//
+// The asymmetry is deliberate:
+//   - running -> failed("[transient] interrupted by restart"): the crash's
+//     usual accomplice is the intranet flaking, and the boot path must not
+//     auto-replay LLM/Milvus spend on that gamble — failed + transient
+//     classification puts the job inside the retry endpoint's reach for a
+//     human decision instead.
+//   - queued -> resumed: nothing was spent yet, so continuing costs
+//     nothing the operator did not already ask for.
+func (r *Runner) RecoverOrphans(ctx context.Context) error {
+	jobs, err := r.jobs.ListResumable(ctx)
+	if err != nil {
+		return err
+	}
+	for _, j := range jobs {
+		switch j.Status {
+		case StatusRunning:
+			nowT := nowTime()
+			_ = r.jobs.UpsertStep(ctx, StepRow{
+				JobID:       j.JobID,
+				Step:        "parse",
+				Status:      StepFailed,
+				Error:       "[transient] interrupted by restart",
+				CompletedAt: rfc3339(nowT),
+			})
+			if err := r.jobs.UpdateJob(ctx, j.JobID, StatusFailed,
+				"[transient] interrupted by restart (crash recovery)", nowT); err != nil {
+				return err
+			}
+			log.Printf("[INFO] ingest: crash recovery: job %s (running residue) -> failed; retry via the step endpoint", j.JobID)
+		case StatusQueued:
+			log.Printf("[INFO] ingest: crash recovery: resuming queued job %s (%s)", j.JobID, j.Filename)
+			jobID := j.JobID
+			r.wg.Add(1)
+			go func() {
+				defer r.wg.Done()
+				r.sem <- struct{}{}
+				defer func() { <-r.sem }()
+				r.run(context.Background(), jobID, nil, StepParse)
+			}()
+		}
+	}
+	return nil
+}
+
 // Retry errors (54-03): structured so admin_ingest.go maps them to
 // precise HTTP codes instead of a generic 500 (RAGFlow lesson: return
 // the FIRST real error, not a generic failure).
@@ -384,7 +441,7 @@ func (r *Runner) IsNotFound(err error) bool { return r.jobs.IsNotFound(err) }
 // re-submitting the file is a legitimate operator flow.
 func (r *Runner) ActiveJobBySHA256(ctx context.Context, slug, sha256 string) (Job, bool) {
 	j, err := r.jobs.GetJobBySHA256(ctx, slug, sha256)
-	if err != nil || j.Status == StatusFailed {
+	if err != nil || j.Status == StatusFailed || j.Status == StatusPartial {
 		return Job{}, false
 	}
 	return j, true
@@ -562,7 +619,16 @@ func (r *Runner) run(ctx context.Context, jobID string, raw []byte, startFrom st
 	// All eight steps terminal (done/skipped): job=done, then the success
 	// audit row — migrated from upload.go STEP 9 verbatim, because only
 	// NOW do the chunk count and ID range exist.
-	if err := r.jobs.UpdateJob(ctx, jobID, StatusDone, "", nowTime()); err != nil {
+	finalStatus := StatusDone
+	if len(st.failedItems) > 0 {
+		// 54-03 SC 7: a step that finished with LEDGERED item failures
+		// (embed lost some chunks) lands the job at partial -- the
+		// Bedrock "COMPLETE but N docs failed" projection. The success
+		// audit still runs: the landed chunks are a real, retrievable
+		// result, and failed_items names exactly what did not make it.
+		finalStatus = StatusPartial
+	}
+	if err := r.jobs.UpdateJob(ctx, jobID, finalStatus, "", nowTime()); err != nil {
 		log.Printf("[WARN] ingest: job %s done transition failed: %v", jobID, err)
 		return
 	}

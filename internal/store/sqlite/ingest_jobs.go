@@ -411,3 +411,34 @@ func (s *SQLiteStore) CascadeStale(ctx context.Context, jobID, fromStep string, 
 	}
 	return staled, nil
 }
+
+// listResumableSQL — the boot-recovery scan set (54-03 SC 8): running
+// (crash residue) and queued (died before claiming), oldest first so
+// recovery replays the original enqueue order.
+const listResumableSQL = `
+SELECT job_id, slug, filename, sha256, mime, file_size, doc_id, source_path,
+       parser_name, status, error, created_at, updated_at
+FROM ingest_jobs
+WHERE status IN ('running', 'queued')
+ORDER BY created_at ASC
+`
+
+// ListResumable (54-03) — see ingest.JobStore for the contract.
+func (s *SQLiteStore) ListResumable(ctx context.Context) ([]ingest.Job, error) {
+	rows, err := s.db.QueryContext(ctx, listResumableSQL)
+	if err != nil {
+		return nil, fmtError("ListResumable", err)
+	}
+	defer rows.Close()
+	var out []ingest.Job
+	for rows.Next() {
+		var j ingest.Job
+		if err := rows.Scan(&j.JobID, &j.Slug, &j.Filename, &j.SHA256, &j.Mime,
+			&j.FileSize, &j.DocID, &j.SourcePath, &j.ParserName,
+			&j.Status, &j.Error, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, fmtError("ListResumable.Scan", err)
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}

@@ -94,6 +94,12 @@ type JobStore interface {
 	// an active owner already.
 	ClaimJobRetry(ctx context.Context, jobID string, now time.Time) (bool, error)
 
+	// ListResumable returns jobs in the boot-recovery scan states
+	// (54-03 SC 8): running (crash residue) and queued (enqueued but the
+	// process died before claiming). Ordered by created_at ascending so
+	// recovery replays the original enqueue order.
+	ListResumable(ctx context.Context) ([]Job, error)
+
 	// CascadeStale marks every step AFTER fromStep as stale (upstream
 	// re-ran, downstream results are void — Dify re_segment semantics),
 	// inside ONE transaction: a running straggler (crash residue) is

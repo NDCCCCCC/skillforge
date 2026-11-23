@@ -163,20 +163,40 @@ func (s *Deps) adminIngestJobHandler(ctx context.Context, c *app.RequestContext)
 		})
 	}
 
+	// 54-03 SC 7 — failed_items projection: the embed step's failure
+	// ledger (embed_failed.json artifact), surfaced verbatim. A job
+	// without ledgered failures (or pre-54-03) simply omits the file —
+	// the field stays nil and the JSON omits nothing meaningful.
+	var failedItems []ingestItemDTO
+	if raw, err := runner.ReadArtifact(jobID, "embed_failed.json"); err == nil {
+		var ledger []struct {
+			Key   string `json:"Key"`
+			Error string `json:"Error"`
+		}
+		if json.Unmarshal(raw, &ledger) == nil {
+			for _, f := range ledger {
+				failedItems = append(failedItems, ingestItemDTO{
+					Step:    "embed",
+					ItemKey: f.Key,
+					Status:  "failed",
+					Error:   f.Error,
+				})
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, ingestJobDTO{
-		JobID:     job.JobID,
-		Slug:      job.Slug,
-		Filename:  job.Filename,
-		SHA256:    job.SHA256,
-		DocID:     job.DocID,
-		Status:    job.Status,
-		Error:     job.Error,
-		CreatedAt: job.CreatedAt,
-		UpdatedAt: job.UpdatedAt,
-		Steps:     dtos,
-		// 54-01 ships no item writer (the embed per-chunk ledger is
-		// 54-02) — always empty, present for shape stability (SC 7).
-		FailedItems: []ingestItemDTO{},
+		JobID:       job.JobID,
+		Slug:        job.Slug,
+		Filename:    job.Filename,
+		SHA256:      job.SHA256,
+		DocID:       job.DocID,
+		Status:      job.Status,
+		Error:       job.Error,
+		CreatedAt:   job.CreatedAt,
+		UpdatedAt:   job.UpdatedAt,
+		Steps:       dtos,
+		FailedItems: failedItems,
 	})
 }
 
