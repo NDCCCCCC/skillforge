@@ -166,10 +166,8 @@ Observable consequences: answers are always verbatim quotes from a cited chunk (
 
 ## Releases
 
-**Current development version: v1.7 — not tagged yet.** The latest tagged
-release is **v1.6**; the v1.7 phases (47–51) are complete in the roadmap but
-the tag has not been cut, so there is no v1.7 release artifact to download.
-When the tag lands, the [Releases page](../../releases) ships prebuilt
+**Latest tagged release: v1.7** (the v1.7 Open-Source Readiness milestone,
+phases 47–51 + 52). The [Releases page](../../releases) ships prebuilt
 binaries — `skillforge-server-linux-amd64` and `skillforge-server-windows-amd64`
 (CGO builds — go-duckdb needs a C toolchain) together with structured release
 notes. The linux binary is smoke-tested in stub mode by the release workflow;
