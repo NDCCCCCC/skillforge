@@ -48,88 +48,90 @@ const (
 // minus 1 line-58 duplicate removed by D-SPARQL-04).
 //
 // Breakdown by category:
-//   1. Schema class definitions (4 rdf:type triples): testNS+Class,
-//      testNS+ObjectProperty, testNS+Skill, testNS+Tier -> rdf:type with
-//      object = Class/ObjectProperty. Caught by isSchemaTriple's rdf:type
-//      arm (store.go:623-635) + the owl-IRI fix (D-SPARQL-04).
 //
-//   2. Schema individual types (4 rdf:type triples): skill_sql,
-//      skill_compliance -> rdf:type skf:Skill; sql-guides, authority ->
-//      rdf:type skf:Tier. Caught by isSchemaTriple's schemaClasses arm
-//      (store.go:633-635).
+//  1. Schema class definitions (4 rdf:type triples): testNS+Class,
+//     testNS+ObjectProperty, testNS+Skill, testNS+Tier -> rdf:type with
+//     object = Class/ObjectProperty. Caught by isSchemaTriple's rdf:type
+//     arm (store.go:623-635) + the owl-IRI fix (D-SPARQL-04).
 //
-//   3. Skill hasReadAccess triples (2 triples): skill_sql -> sql-guides,
-//      skill_compliance -> authority. Schema under D-SPARQL-05 (v1.6
-//      Phase 45, β arm / D-45-04): both subjects carry
-//      rdf:type -> skf:Skill (skf:Skill is in schemaClasses) and
-//      hasReadAccess is in the metaPredicates allowlist, so
-//      isSchemaTriple's subject∩predicate arm classifies both triples as
-//      schema. -> INCLUDED in EVERY Path B tier-filtered view (schema
-//      passthrough is tier-agnostic) and on Path A (nil-tier) admin
-//      baseline. skill_compliance->authority is included alongside
-//      skill_sql->sql-guides regardless of allowedTiers.
+//  2. Schema individual types (4 rdf:type triples): skill_sql,
+//     skill_compliance -> rdf:type skf:Skill; sql-guides, authority ->
+//     rdf:type skf:Tier. Caught by isSchemaTriple's schemaClasses arm
+//     (store.go:633-635).
 //
-//   4. ABox note_001 (4 triples, sql-guides tier): rdf:type NoteChunk +
-//      belongsToTier sql-guides + label "SQL指南第一章" +
-//      referencesTable tbl_payment_t. All 4 visible on Path A; on Path B
-//      with sql-guides, subject is visible so ALL 4 included (D-TIER-06:
-//      "if subject is visible, ALL its edges are included").
+//  3. Skill hasReadAccess triples (2 triples): skill_sql -> sql-guides,
+//     skill_compliance -> authority. Schema under D-SPARQL-05 (v1.6
+//     Phase 45, β arm / D-45-04): both subjects carry
+//     rdf:type -> skf:Skill (skf:Skill is in schemaClasses) and
+//     hasReadAccess is in the metaPredicates allowlist, so
+//     isSchemaTriple's subject∩predicate arm classifies both triples as
+//     schema. -> INCLUDED in EVERY Path B tier-filtered view (schema
+//     passthrough is tier-agnostic) and on Path A (nil-tier) admin
+//     baseline. skill_compliance->authority is included alongside
+//     skill_sql->sql-guides regardless of allowedTiers.
 //
-//   5. ABox note_002 (3 triples, authority tier): rdf:type + belongsToTier
-//      authority + label "合规政策V2". Visible on Path A. On Path B with
-//      sql-guides, subject NOT visible -> ALL 3 EXCLUDED (D-TIER-03
-//      fail-closed).
+//  4. ABox note_001 (4 triples, sql-guides tier): rdf:type NoteChunk +
+//     belongsToTier sql-guides + label "SQL指南第一章" +
+//     referencesTable tbl_payment_t. All 4 visible on Path A; on Path B
+//     with sql-guides, subject is visible so ALL 4 included (D-TIER-06:
+//     "if subject is visible, ALL its edges are included").
 //
-//   6. ABox note_003 (2 triples, NO tier): rdf:type + label "无归属笔记".
-//      Visible on Path A (both triples). On Path B with sql-guides,
-//      subject NOT visible (no belongsToTier) -> ALL 2 EXCLUDED
-//      (D-TIER-03 fail-closed + D-TIER-07).
+//  5. ABox note_002 (3 triples, authority tier): rdf:type + belongsToTier
+//     authority + label "合规政策V2". Visible on Path A. On Path B with
+//     sql-guides, subject NOT visible -> ALL 3 EXCLUDED (D-TIER-03
+//     fail-closed).
 //
-//   7. ABox tbl_payment_t (3 triples, sql-guides tier): rdf:type
-//      TableSchema + belongsToTier sql-guides + label "支付表". Visible
-//      on Path A; on Path B with sql-guides, subject is visible so ALL 3
-//      included.
+//  6. ABox note_003 (2 triples, NO tier): rdf:type + label "无归属笔记".
+//     Visible on Path A (both triples). On Path B with sql-guides,
+//     subject NOT visible (no belongsToTier) -> ALL 2 EXCLUDED
+//     (D-TIER-03 fail-closed + D-TIER-07).
 //
-//   TOTALS:
+//  7. ABox tbl_payment_t (3 triples, sql-guides tier): rdf:type
+//     TableSchema + belongsToTier sql-guides + label "支付表". Visible
+//     on Path A; on Path B with sql-guides, subject is visible so ALL 3
+//     included.
+//
+//     TOTALS:
 //     Path A (nil allowedTiers) - admin baseline, no filtering:
-//       = 4 (schema defs) + 4 (schema individuals) + 2 (hasReadAccess) +
-//         4 (note_001) + 3 (note_002) + 2 (note_003) + 3 (tbl_payment_t)
-//       = 22 unique triples
+//     = 4 (schema defs) + 4 (schema individuals) + 2 (hasReadAccess) +
+//     4 (note_001) + 3 (note_002) + 2 (note_003) + 3 (tbl_payment_t)
+//     = 22 unique triples
 //
 //     Path B (allowedTiers=["sql-guides"]):
-//       Schema (always visible via isSchemaTriple short-circuit at
-//               store.go:556-561, D-TIER-03 + D-SPARQL-05 β):
-//         - 4 schema class defs (rdf:type+Class/ObjectProperty arm)
-//         - 4 schema individual types (rdf:type+schemaClasses arm)
-//         - 2 hasReadAccess (β subject∩predicate arm, D-SPARQL-05:
-//           skill_sql/skill_compliance carry rdf:type skf:Skill ∈
-//           schemaClasses and hasReadAccess ∈ metaPredicates; schema
-//           passthrough is tier-agnostic, so both appear in every tier view)
-//         = 10
-//       ABox (subject in visibleSubjects={note_001, tbl_payment_t}
-//             computed at store.go:528-536 from belongsToTier triples):
-//         - note_001: 4 triples (subject visible, D-TIER-06 includes all edges)
-//         - tbl_payment_t: 3 triples (subject visible)
-//       = 10 schema + 4 + 3 = 17
+//     Schema (always visible via isSchemaTriple short-circuit at
+//     store.go:556-561, D-TIER-03 + D-SPARQL-05 β):
+//     - 4 schema class defs (rdf:type+Class/ObjectProperty arm)
+//     - 4 schema individual types (rdf:type+schemaClasses arm)
+//     - 2 hasReadAccess (β subject∩predicate arm, D-SPARQL-05:
+//     skill_sql/skill_compliance carry rdf:type skf:Skill ∈
+//     schemaClasses and hasReadAccess ∈ metaPredicates; schema
+//     passthrough is tier-agnostic, so both appear in every tier view)
+//     = 10
+//     ABox (subject in visibleSubjects={note_001, tbl_payment_t}
+//     computed at store.go:528-536 from belongsToTier triples):
+//     - note_001: 4 triples (subject visible, D-TIER-06 includes all edges)
+//     - tbl_payment_t: 3 triples (subject visible)
+//     = 10 schema + 4 + 3 = 17
 //
-//       Subjects NOT in visibleSubjects (excluded by ABox path):
-//         - note_002 (authority tier not in allowedTiers) — fail-closed
-//         - note_003 (no belongsToTier) — fail-closed (D-TIER-07)
+//     Subjects NOT in visibleSubjects (excluded by ABox path):
+//     - note_002 (authority tier not in allowedTiers) — fail-closed
+//     - note_003 (no belongsToTier) — fail-closed (D-TIER-07)
 //
 //     Path B (S=note_003, allowedTiers=["sql-guides"]):
-//       Schema: 10 (8 schema + 2 hasReadAccess — schema passthrough
-//               precedes the S/P/O filter at store.go:568-577, so all 10
-//               appear even though S=note_003 matches none of them)
-//       ABox: 0 (subject not in visibleSubjects -> fail-closed)
-//       = 10
+//     Schema: 10 (8 schema + 2 hasReadAccess — schema passthrough
+//     precedes the S/P/O filter at store.go:568-577, so all 10
+//     appear even though S=note_003 matches none of them)
+//     ABox: 0 (subject not in visibleSubjects -> fail-closed)
+//     = 10
 //
 //     Path A (S=note_003, nil):
-//       ABox: 2 (rdf:type + label; subject not constrained on Path A)
-//       = 2
+//     ABox: 2 (rdf:type + label; subject not constrained on Path A)
+//     = 2
 //
 //     Path A (S=note_001, nil):
-//       ABox: 4 (rdf:type + belongsToTier + label + referencesTable)
-//       = 4
+//     ABox: 4 (rdf:type + belongsToTier + label + referencesTable)
+//     = 4
+//
 // ===========================================================================
 func fixtureKG() *store.Store {
 	s := store.New()

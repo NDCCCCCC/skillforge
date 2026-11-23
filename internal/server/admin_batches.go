@@ -44,13 +44,13 @@ import (
 // importBatchAdminRow is one batch row as rendered for the admin view.
 type importBatchAdminRow struct {
 	BatchID              string `json:"batch_id"`
-	Dataset             string `json:"dataset"`
-	Period              string `json:"period"`
-	Status              string `json:"status"`
+	Dataset              string `json:"dataset"`
+	Period               string `json:"period"`
+	Status               string `json:"status"`
 	DesensitizedRowCount int64  `json:"desensitized_row_count"`
-	RawSizeBytes        int64  `json:"raw_size_bytes"`
-	DiscardTS           string `json:"discard_ts"`
-	CreatedAt           string `json:"created_at"`
+	RawSizeBytes         int64  `json:"raw_size_bytes"`
+	DiscardTS            string `json:"discard_ts"`
+	CreatedAt            string `json:"created_at"`
 }
 
 // importBatchesAdminResponse is the 200 envelope for the admin batch list view.
@@ -101,13 +101,13 @@ func (s *Deps) batchesAdminHandler(ctx context.Context, c *app.RequestContext) {
 	for _, r := range rows {
 		batches = append(batches, importBatchAdminRow{
 			BatchID:              r.BatchID,
-			Dataset:             r.Dataset,
-			Period:              r.Period,
-			Status:              batchStatus(r),
+			Dataset:              r.Dataset,
+			Period:               r.Period,
+			Status:               batchStatus(r),
 			DesensitizedRowCount: r.DesensitizedRowCount,
-			RawSizeBytes:        r.RawSizeBytes,
-			DiscardTS:           r.DiscardTS,
-			CreatedAt:           r.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			RawSizeBytes:         r.RawSizeBytes,
+			DiscardTS:            r.DiscardTS,
+			CreatedAt:            r.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		})
 	}
 

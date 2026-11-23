@@ -430,11 +430,11 @@ func (s *stubMetaRetriever) Search(_ context.Context, _ []float32, _ []string, _
 func (s *stubMetaRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
 	return retriever.ChunkContent{}, errors.New("not implemented")
 }
-func (s *stubMetaRetriever) Health(_ context.Context) error                        { return nil }
+func (s *stubMetaRetriever) Health(_ context.Context) error                         { return nil }
 func (s *stubMetaRetriever) Ensure(_ context.Context) error                         { return nil }
 func (s *stubMetaRetriever) Insert(_ context.Context, _ []retriever.Document) error { return nil }
 func (s *stubMetaRetriever) Disconnect() error                                      { return nil }
-func (s *stubMetaRetriever) GetMaxID(_ context.Context, _ string) (int64, error)  { return 0, nil }
+func (s *stubMetaRetriever) GetMaxID(_ context.Context, _ string) (int64, error)    { return 0, nil }
 
 var _ retriever.Retriever = (*stubMetaRetriever)(nil)
 
@@ -796,7 +796,7 @@ func TestNeighborsHandler_ConfigMaxEdgesCap(t *testing.T) {
 	stubKB := &stubKnowledgeBuilder{}
 	deps := &Deps{Knowledge: stubKB, Retriever: stub, GraphLimits: GraphLimits{
 		MaxNodes:           50,
-		MaxEdges:          2,
+		MaxEdges:           2,
 		NeighborDepthLimit: 2,
 	}}
 

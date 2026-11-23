@@ -28,11 +28,11 @@ package embedded
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
-	"crypto/sha256"
-	"encoding/hex"
 	"strconv"
 	"strings"
 	"sync"

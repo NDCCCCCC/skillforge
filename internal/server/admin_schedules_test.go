@@ -72,7 +72,9 @@ func (f *fakeAdminSchedulesStore) ListReportRuns(_ context.Context, _, _ string,
 func (f *fakeAdminSchedulesStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
 	panic("not implemented")
 }
-func (f *fakeAdminSchedulesStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
+func (f *fakeAdminSchedulesStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) {
+	panic("not implemented")
+}
 func (f *fakeAdminSchedulesStore) CountRows(_ context.Context, _ string) (int64, error) {
 	panic("not implemented")
 }
@@ -84,6 +86,7 @@ func (f *fakeAdminSchedulesStore) ListAllImportBatches(_ context.Context) ([]sto
 func (f *fakeAdminSchedulesStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
 	panic("not implemented")
 }
+
 // AppendTurn satisfies the interface; 0 = no real row id (no sqlite
 // backend behind this fake) — downstream data-turn emitters treat 0 as
 // the degrade signal (Phase 29 / Plan 29-01 contract).
@@ -215,13 +218,18 @@ type spyAdminSchedulesStore struct {
 }
 
 func (s *spyAdminSchedulesStore) ListReportRuns(_ context.Context, skillID, period string, limit int) ([]store.ReportRunRow, error) {
-	s.calls = append(s.calls, struct{ skillID, period string; limit int }{skillID, period, limit})
+	s.calls = append(s.calls, struct {
+		skillID, period string
+		limit           int
+	}{skillID, period, limit})
 	return s.rows, nil
 }
 func (s *spyAdminSchedulesStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
 	panic("not implemented")
 }
-func (s *spyAdminSchedulesStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
+func (s *spyAdminSchedulesStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) {
+	panic("not implemented")
+}
 func (s *spyAdminSchedulesStore) CountRows(_ context.Context, _ string) (int64, error) {
 	panic("not implemented")
 }
@@ -233,6 +241,7 @@ func (s *spyAdminSchedulesStore) ListAllImportBatches(_ context.Context) ([]stor
 func (s *spyAdminSchedulesStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
 	panic("not implemented")
 }
+
 // AppendTurn satisfies the interface; 0 = no real row id (no sqlite
 // backend behind this spy) — downstream data-turn emitters treat 0 as
 // the degrade signal (Phase 29 / Plan 29-01 contract).

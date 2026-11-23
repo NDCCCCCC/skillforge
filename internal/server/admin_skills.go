@@ -25,12 +25,12 @@
 // Threat model (20-04 threat_model):
 //
 //   - T-20-04-MUTATE — zero mutation verbs source-grep gate. This handler
-//       is retrieval-only; the skill registry is a read-only snapshot and
-//       eval results are immutable artifacts.
+//     is retrieval-only; the skill registry is a read-only snapshot and
+//     eval results are immutable artifacts.
 //
 //   - T-20-04-TOOLTIP — eval result is shown as a hover tooltip in the
-//       FE only (SkillManagementList), not as an inline badge. The 200ms
-//       delay prevents flash on mouse pass-through.
+//     FE only (SkillManagementList), not as an inline badge. The 200ms
+//     delay prevents flash on mouse pass-through.
 package server
 
 import (
@@ -47,17 +47,17 @@ import (
 
 // evalIndexEntry is one run entry in eval/reports/INDEX.json.
 type evalIndexEntry struct {
-	Timestamp       string  `json:"ts"`
-	Skill          string  `json:"skill"`
-	JudgeModel     string  `json:"judge_model"`
-	Faithfulness   float64 `json:"faithfulness"`
+	Timestamp        string  `json:"ts"`
+	Skill            string  `json:"skill"`
+	JudgeModel       string  `json:"judge_model"`
+	Faithfulness     float64 `json:"faithfulness"`
 	ContextPrecision float64 `json:"context_precision"`
-	ReportPath     string  `json:"report_path"`
+	ReportPath       string  `json:"report_path"`
 }
 
 // evalIndex is the top-level structure of eval/reports/INDEX.json.
 type evalIndex struct {
-	Version int               `json:"version"`
+	Version int              `json:"version"`
 	Runs    []evalIndexEntry `json:"runs"`
 }
 
@@ -67,7 +67,7 @@ type evalIndex struct {
 type evalSummary struct {
 	Faithfulness     float64 `json:"faithfulness"`
 	ContextPrecision float64 `json:"context_precision"`
-	EvalTS          string  `json:"eval_ts"`
+	EvalTS           string  `json:"eval_ts"`
 }
 
 // skillAdminEntry is one skill in the GET /api/admin/skills response.
@@ -184,7 +184,7 @@ func loadLatestEval(indexPath string) map[string]*evalSummary {
 		latest[run.Skill] = &evalSummary{
 			Faithfulness:     run.Faithfulness,
 			ContextPrecision: run.ContextPrecision,
-			EvalTS:          ts.UTC().Format(time.RFC3339),
+			EvalTS:           ts.UTC().Format(time.RFC3339),
 		}
 	}
 	return latest

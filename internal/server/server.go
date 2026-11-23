@@ -58,9 +58,9 @@ import (
 	"github.com/skillforge/skillforge/internal/externalauth"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
-	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
 	"github.com/skillforge/skillforge/internal/kpi"
+	"github.com/skillforge/skillforge/internal/llm"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/scheduler"
 	"github.com/skillforge/skillforge/internal/server/classifier"
@@ -646,6 +646,15 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// accepts a multipart/form-data file, verifies magic bytes, parses it
 	// into chunks, embeds each chunk, and inserts into the vector backend.
 	h.POST("/api/admin/kb/:slug/upload", deps.uploadHandler)
+	// Phase 53-03 (ING-03 / D-53-03) — document delete verb. The trailing
+	// doc_id is a Hertz WILDCARD (*doc_id), not a single-segment :param:
+	// a doc_id IS a slash path ("authority/<sha8>-<stem>.md") and must ride
+	// the URL unencoded. Admin-token-gated like the upload; deletes the
+	// doc's vector rows AND its canonical knowledge/<slug>/ file (D-53-01:
+	// the file is the corpus — deleting rows without it would resurrect
+	// the doc at the next reseed) and writes one action_doc_deleted audit
+	// row. Trust model: knowledge.go docDeleteHandler godoc.
+	h.DELETE("/api/admin/kb/:slug/docs/*doc_id", deps.docDeleteHandler)
 	// Public read-only projection for the chat FE (slug → display_name
 	// badge mapping). No token by design: the payload is minimized to
 	// slug/display_name/role of ACTIVE entries only.

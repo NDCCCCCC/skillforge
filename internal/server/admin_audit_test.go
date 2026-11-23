@@ -70,12 +70,15 @@ type fakeAdminAuditStore struct {
 func (f *fakeAdminAuditStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
 	return f.rows, f.err
 }
-func (f *fakeAdminAuditStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
+func (f *fakeAdminAuditStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) {
+	panic("not implemented")
+}
 
 // Unused store.Store methods — panic if reached.
 func (f *fakeAdminAuditStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
 	panic("not implemented")
 }
+
 // AppendTurn satisfies the interface; 0 = no real row id (no sqlite
 // backend behind this fake) — downstream data-turn emitters treat 0 as
 // the degrade signal (Phase 29 / Plan 29-01 contract).
@@ -227,6 +230,7 @@ func (s *spyAdminAuditStore) AuditBySessionAt(_ context.Context, _ string, _ int
 func (s *spyAdminAuditStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
 	panic("not implemented")
 }
+
 // AppendTurn satisfies the interface; 0 = no real row id (no sqlite
 // backend behind this spy) — downstream data-turn emitters treat 0 as
 // the degrade signal (Phase 29 / Plan 29-01 contract).
@@ -394,29 +398,29 @@ func TestAdminAuditHandler(t *testing.T) {
 			Store: &fakeAdminAuditStore{
 				rows: []store.AuditRow{
 					{
-						ID:                    1,
-						Timestamp:             time.Now(),
-						SessionID:             "sess-admin-1",
-						UserID:                "admin",
-						SkillID:               "compliance",
-						Query:                 "show me all pending approvals",
-						PromptHash:            "abc123",
-						ModelVersion:          "v1",
-						VerdictJSON:           "{}",
-						RefusalReason:         "",
-						ChunkIDs:              "",
-						Action:                "action_pending_approval",
-						SkillVersion:          "1.0",
-						FrozenArgs:            nil,
-						ToolCallID:            "tc-1",
-						ApprovalID:            "tc-1",
-						ScopeSessionID:        "sess-admin-1",
-						BudgetLayer:           "",
-						RunPath:               "",
-						TransferFrom:          "",
-						TransferTo:            "",
-						PlatformFloorVersion:  "1.0.0",
-						ActorType:             "admin",
+						ID:                   1,
+						Timestamp:            time.Now(),
+						SessionID:            "sess-admin-1",
+						UserID:               "admin",
+						SkillID:              "compliance",
+						Query:                "show me all pending approvals",
+						PromptHash:           "abc123",
+						ModelVersion:         "v1",
+						VerdictJSON:          "{}",
+						RefusalReason:        "",
+						ChunkIDs:             "",
+						Action:               "action_pending_approval",
+						SkillVersion:         "1.0",
+						FrozenArgs:           nil,
+						ToolCallID:           "tc-1",
+						ApprovalID:           "tc-1",
+						ScopeSessionID:       "sess-admin-1",
+						BudgetLayer:          "",
+						RunPath:              "",
+						TransferFrom:         "",
+						TransferTo:           "",
+						PlatformFloorVersion: "1.0.0",
+						ActorType:            "admin",
 					},
 				},
 			},

@@ -33,9 +33,9 @@ func TestSanitizeEntitiesKindGate(t *testing.T) {
 	raw := []ExtractedEntity{
 		{Name: "车险", Kind: "InsuranceProduct"},
 		{Name: "总公司", Kind: "Organization"},
-		{Name: "幻觉险", Kind: "Product"},     // near-miss class name → drop
+		{Name: "幻觉险", Kind: "Product"},         // near-miss class name → drop
 		{Name: "幻觉机构", Kind: "objectProperty"}, // wrong case/space → drop
-		{Name: "无名", Kind: ""},                // missing kind → drop
+		{Name: "无名", Kind: ""},                 // missing kind → drop
 	}
 	got := sanitizeEntities(raw)
 	if len(got) != 2 {
@@ -50,8 +50,8 @@ func TestSanitizeEntitiesKindGate(t *testing.T) {
 // are dropped; the 12-rune boundary itself survives (T-NZK-01 name cap).
 func TestSanitizeEntitiesNameGate(t *testing.T) {
 	raw := []ExtractedEntity{
-		{Name: "   ", Kind: "InsuranceProduct"},                  // whitespace-only → empty after trim
-		{Name: "", Kind: "Organization"},                         // empty
+		{Name: "   ", Kind: "InsuranceProduct"},                   // whitespace-only → empty after trim
+		{Name: "", Kind: "Organization"},                          // empty
 		{Name: strings.Repeat("车", 13), Kind: "InsuranceProduct"}, // 13 runes → drop
 		{Name: strings.Repeat("车", 12), Kind: "InsuranceProduct"}, // 12 runes → keep
 	}

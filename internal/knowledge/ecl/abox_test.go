@@ -66,7 +66,7 @@ func TestABoxNoteAndTableIRI(t *testing.T) {
 // set + open-question resolution #1).
 func TestABoxBuildTriples(t *testing.T) {
 	note := Note{SourceIdx: "001", Title: "t", Tier: "sql-guides",
-		Sections: []MergedSection{{Body: "body", SourcePaths: []string{"knowledge/sql-guides/001__sec01.md"}}},
+		Sections:  []MergedSection{{Body: "body", SourcePaths: []string{"knowledge/sql-guides/001__sec01.md"}}},
 		StartLine: 10, EndLine: 50}
 	ex := Extraction{
 		Tables: []ExtractedTable{

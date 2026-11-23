@@ -19,6 +19,7 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"unicode/utf8"
@@ -52,15 +53,21 @@ func (m *mockEmbedder) Dimensions() int {
 
 // mockRetriever is a hermetic test double for retriever.Retriever.
 // All methods are configurable function fields; nil = no-op / zero value.
+// It also implements retriever.DocChunkStore (Phase 53-03): the upsert
+// type-asserts the capability and fails closed without it, so the mock
+// carries it with configurable function fields (nil DocChunkRowsFunc =
+// "doc has no existing rows").
 type mockRetriever struct {
-	HealthFunc       func(ctx context.Context) error
-	SearchFunc       func(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]retriever.Hit, error)
-	EnsureFunc       func(ctx context.Context) error
-	InsertFunc       func(ctx context.Context, docs []retriever.Document) error
-	ListMetadataFunc func(ctx context.Context) ([]retriever.DocumentMeta, error)
-	GetChunkFunc     func(ctx context.Context, id int64) (retriever.ChunkContent, error)
-	GetMaxIDFunc     func(ctx context.Context, tier string) (int64, error)
-	DisconnectFunc   func() error
+	HealthFunc        func(ctx context.Context) error
+	SearchFunc        func(ctx context.Context, queryVec []float32, tiers []string, topK int, now int64) ([]retriever.Hit, error)
+	EnsureFunc        func(ctx context.Context) error
+	InsertFunc        func(ctx context.Context, docs []retriever.Document) error
+	ListMetadataFunc  func(ctx context.Context) ([]retriever.DocumentMeta, error)
+	GetChunkFunc      func(ctx context.Context, id int64) (retriever.ChunkContent, error)
+	GetMaxIDFunc      func(ctx context.Context, tier string) (int64, error)
+	DisconnectFunc    func() error
+	DocChunkRowsFunc  func(ctx context.Context, tier, docID string) ([]retriever.DocChunk, error)
+	DeleteDocRowsFunc func(ctx context.Context, tier, docID string) error
 }
 
 func (m *mockRetriever) Health(ctx context.Context) error {
@@ -119,6 +126,23 @@ func (m *mockRetriever) Disconnect() error {
 	return nil
 }
 
+// retriever.DocChunkStore (Phase 53-03) — the upsert capability. Nil
+// DocChunkRowsFunc = the doc has no existing rows (first upload); nil
+// DeleteDocRowsFunc = the delete is a no-op.
+func (m *mockRetriever) DocChunkRows(ctx context.Context, tier, docID string) ([]retriever.DocChunk, error) {
+	if m.DocChunkRowsFunc != nil {
+		return m.DocChunkRowsFunc(ctx, tier, docID)
+	}
+	return nil, nil
+}
+
+func (m *mockRetriever) DeleteDocRows(ctx context.Context, tier, docID string) error {
+	if m.DeleteDocRowsFunc != nil {
+		return m.DeleteDocRowsFunc(ctx, tier, docID)
+	}
+	return nil
+}
+
 // compile-time proof that mockRetriever satisfies retriever.Retriever.
 var _ retriever.Retriever = (*mockRetriever)(nil)
 
@@ -132,7 +156,7 @@ func TestUploadIndexProducesValidDocuments(t *testing.T) {
 	mr := &mockRetriever{}
 	me := &mockEmbedder{}
 
-	docs, err := UploadIndex(context.Background(), "authority", []byte("Hello world"), "text/markdown", "test.md", me, reg, mr)
+	docs, err := UploadIndex(context.Background(), "authority", []byte("Hello world"), "text/markdown", "test.md", "authority/test.md", me, reg, mr)
 
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
@@ -162,7 +186,7 @@ effective_to: 1735689600
 
 This is the body content.
 `
-	docs, err := UploadIndex(context.Background(), "authority", []byte(md), "text/markdown", "policy.md", me, reg, mr)
+	docs, err := UploadIndex(context.Background(), "authority", []byte(md), "text/markdown", "policy.md", "authority/policy.md", me, reg, mr)
 
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
@@ -189,7 +213,7 @@ func TestUploadIndexNextIDCoordination(t *testing.T) {
 	}
 	me := &mockEmbedder{}
 
-	docs, err := UploadIndex(context.Background(), "authority", []byte("Chunk one"), "text/markdown", "test.md", me, reg, mr)
+	docs, err := UploadIndex(context.Background(), "authority", []byte("Chunk one"), "text/markdown", "test.md", "authority/test.md", me, reg, mr)
 
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
@@ -205,7 +229,7 @@ func TestUploadIndexDeactivatedSlugRejection(t *testing.T) {
 	mr := &mockRetriever{}
 	me := &mockEmbedder{}
 
-	_, err := UploadIndex(context.Background(), "authority", []byte("Hello"), "text/markdown", "test.md", me, reg, mr)
+	_, err := UploadIndex(context.Background(), "authority", []byte("Hello"), "text/markdown", "test.md", "authority/test.md", me, reg, mr)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "deactivated")
@@ -222,7 +246,7 @@ func TestUploadIndexUnknownSlugRejection(t *testing.T) {
 	mr := &mockRetriever{}
 	me := &mockEmbedder{}
 
-	_, err := UploadIndex(context.Background(), "nonexistent", []byte("Hello"), "text/markdown", "test.md", me, reg, mr)
+	_, err := UploadIndex(context.Background(), "nonexistent", []byte("Hello"), "text/markdown", "test.md", "nonexistent/test.md", me, reg, mr)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not registered")
@@ -243,7 +267,7 @@ func TestUploadIndexEmbedFailureFailsClosed(t *testing.T) {
 		},
 	}
 
-	docs, err := UploadIndex(context.Background(), "authority", []byte("Hello world"), "text/markdown", "test.md", me, reg, mr)
+	docs, err := UploadIndex(context.Background(), "authority", []byte("Hello world"), "text/markdown", "test.md", "authority/test.md", me, reg, mr)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "embed failed")
@@ -261,7 +285,7 @@ func TestUploadIndexParseFailureFailsClosed(t *testing.T) {
 	me := &mockEmbedder{}
 
 	// application/pdf parser rejects non-PDF bytes.
-	_, err := UploadIndex(context.Background(), "authority", []byte("not a pdf"), "application/pdf", "evil.pdf", me, reg, mr)
+	_, err := UploadIndex(context.Background(), "authority", []byte("not a pdf"), "application/pdf", "evil.pdf", "authority/evil.pdf", me, reg, mr)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse failed")
@@ -291,7 +315,7 @@ func TestUploadIndexChunkingOversizedDoc(t *testing.T) {
 		largeBody[i] = 'x'
 	}
 
-	docs, err := UploadIndex(context.Background(), "authority", largeBody, "text/markdown", "large.md", me, reg, mr)
+	docs, err := UploadIndex(context.Background(), "authority", largeBody, "text/markdown", "large.md", "authority/large.md", me, reg, mr)
 
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(docs), 2, "oversized doc should produce multiple chunks")
@@ -387,7 +411,7 @@ func TestUploadIndexValidateTiersBeforeEmbed(t *testing.T) {
 	}
 	defer func() { validateTiersHook = oldHook }()
 
-	_, err := UploadIndex(context.Background(), "authority", []byte("Hello"), "text/markdown", "test.md", me, reg, &mockRetriever{})
+	_, err := UploadIndex(context.Background(), "authority", []byte("Hello"), "text/markdown", "test.md", "authority/test.md", me, reg, &mockRetriever{})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tier validation failed")
@@ -423,7 +447,7 @@ func TestUploadIndexConcurrent(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			slug := []string{"authority", "history"}[idx%2]
-			_, err := UploadIndex(context.Background(), slug, []byte("content"), "text/markdown", "test.md", me, reg, &mockRetriever{})
+			_, err := UploadIndex(context.Background(), slug, []byte("content"), "text/markdown", "test.md", slug+"/test.md", me, reg, &mockRetriever{})
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -432,4 +456,355 @@ func TestUploadIndexConcurrent(t *testing.T) {
 	mu.Lock()
 	assert.Equal(t, 10, embedCalls)
 	mu.Unlock()
+}
+
+// ---- Phase 53-03 (D-53-03): doc-level upsert ----
+
+// fakeDocStore simulates the backend row set for upsert tests: rows keyed
+// by PK with tier+docID tags, a PK watermark GetMaxID reads, and a
+// deletion log. Insert doubles as "the caller's Insert" so a test drives
+// the full upload → insert → re-upload cycle hermetically.
+type fakeDocStore struct {
+	mu      sync.Mutex
+	rows    map[int64]retriever.Document
+	maxID   int64
+	deleted []string
+}
+
+func newFakeDocStore() *fakeDocStore {
+	return &fakeDocStore{rows: map[int64]retriever.Document{}}
+}
+
+// insert simulates the caller's IndexerBackend.Insert after UploadIndex
+// returns.
+func (f *fakeDocStore) insert(docs []retriever.Document) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, d := range docs {
+		f.rows[d.ID] = d
+		if d.ID > f.maxID {
+			f.maxID = d.ID
+		}
+	}
+}
+
+func (f *fakeDocStore) Health(_ context.Context) error { return nil }
+func (f *fakeDocStore) Search(_ context.Context, _ []float32, _ []string, _ int, _ int64) ([]retriever.Hit, error) {
+	return nil, nil
+}
+func (f *fakeDocStore) Ensure(_ context.Context) error { return nil }
+func (f *fakeDocStore) Insert(_ context.Context, docs []retriever.Document) error {
+	f.insert(docs)
+	return nil
+}
+func (f *fakeDocStore) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
+	return nil, nil
+}
+func (f *fakeDocStore) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
+	return retriever.ChunkContent{}, retriever.ErrChunkNotFound
+}
+func (f *fakeDocStore) GetMaxID(_ context.Context, _ string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.maxID, nil
+}
+func (f *fakeDocStore) Disconnect() error { return nil }
+
+func (f *fakeDocStore) DocChunkRows(_ context.Context, tier, docID string) ([]retriever.DocChunk, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []retriever.DocChunk
+	for _, d := range f.rows {
+		if d.Tier == tier && d.DocID == docID {
+			out = append(out, retriever.DocChunk{
+				ID:          d.ID,
+				ChunkIndex:  d.ChunkIndex,
+				ContentHash: d.ContentHash,
+				Embedding:   d.Embedding,
+			})
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeDocStore) DeleteDocRows(_ context.Context, tier, docID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleted = append(f.deleted, tier+"/"+docID)
+	for id, d := range f.rows {
+		if d.Tier == tier && d.DocID == docID {
+			delete(f.rows, id)
+		}
+	}
+	return nil
+}
+
+func (f *fakeDocStore) deleteLog() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.deleted...)
+}
+
+func (f *fakeDocStore) docRows(t *testing.T, tier, docID string) []retriever.DocChunk {
+	t.Helper()
+	rows, err := f.DocChunkRows(t.Context(), tier, docID)
+	require.NoError(t, err)
+	return rows
+}
+
+// countingEmbedder wraps mockEmbedder with a per-text call log.
+type countingEmbedder struct {
+	mockEmbedder
+	mu    sync.Mutex
+	texts []string
+}
+
+func (e *countingEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	e.mu.Lock()
+	e.texts = append(e.texts, text)
+	e.mu.Unlock()
+	return e.mockEmbedder.Embed(ctx, text)
+}
+
+func (e *countingEmbedder) calls() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.texts...)
+}
+
+// para builds one splitter-stable paragraph: the sentence repeated n
+// times so the recursive splitter always cuts at 。 boundaries and the
+// paragraph's chunk boundaries are identical across versions that keep
+// the sentence shape.
+func para(tag string, n int) string {
+	return strings.Repeat(tag+"政策条款内容测试。", n)
+}
+
+// TestUploadIndexAssignsDocLifecycleMetadata pins the producer contract:
+// every doc carries doc_id (verbatim from the parameter), chunk_index
+// (0-based position in the new sequence), and content_hash (sha256 hex of
+// the chunk text — the exact digest contentHashHex computes).
+func TestUploadIndexAssignsDocLifecycleMetadata(t *testing.T) {
+	reg := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	me := &mockEmbedder{}
+
+	const sentence = "条款内容若干字。"
+	// 3 sentences/paragraph keeps each paragraph under chunkSizeRunes; two
+	// paragraphs over 3500 runes total force a multi-chunk split.
+	body := strings.Repeat(sentence, 300) + "\n\n" + strings.Repeat(sentence, 300)
+
+	docs, err := UploadIndex(context.Background(), "authority", []byte(body), "text/markdown", "doc.md", "authority/doc.md", me, reg, &mockRetriever{})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(docs), 2, "the body must split into multiple chunks to make chunk_index meaningful")
+	for i, d := range docs {
+		assert.Equal(t, "authority/doc.md", d.DocID, "chunk %d doc_id", i)
+		assert.Equal(t, int32(i), d.ChunkIndex, "chunk %d position", i)
+		assert.Equal(t, contentHashHex(d.Content), d.ContentHash, "chunk %d content_hash must be sha256-hex of the chunk text", i)
+		assert.Len(t, d.ContentHash, 64, "chunk %d content_hash must be a full sha256 hex digest", i)
+	}
+}
+
+// TestUploadIndexUpsertReuploadKeepsUnchangedPKs is the D-53-03
+// acceptance scenario: re-upload the SAME document with one character
+// changed in the middle paragraph and assert that
+//  1. unchanged chunks KEEP their PKs (reused, no re-embed),
+//  2. changed chunks get fresh PKs above the tier watermark,
+//  3. only the changed chunks cost an embedding call (省 BGE-M3),
+//  4. the doc's previous generation is deleted exactly once,
+//  5. after the simulated re-insert the doc's rows are exactly the new
+//     generation with contiguous chunk_index 0..N-1.
+func TestUploadIndexUpsertReuploadKeepsUnchangedPKs(t *testing.T) {
+	reg := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	emb := &countingEmbedder{mockEmbedder: mockEmbedder{}}
+	store := newFakeDocStore()
+	ctx := context.Background()
+	docID := "authority/doc.md"
+
+	v1Body := para("甲", 500) + "\n\n" + para("乙", 500) + "\n\n" + para("丙", 500)
+	v1, err := UploadIndex(ctx, "authority", []byte(v1Body), "text/markdown", "doc.md", docID, emb, reg, store)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(v1), 3, "the three paragraphs must split into multiple chunks")
+	v1Embeds := len(emb.calls())
+	require.Equal(t, len(v1), v1Embeds, "first upload embeds every chunk")
+	require.Empty(t, store.deleteLog(), "first upload must not delete anything")
+	store.insert(v1)
+
+	// v2: one character changed in the MIDDLE paragraph — the paragraph
+	// shape (sentence count + boundaries) is preserved so only that
+	// paragraph's chunk hashes change.
+	v2Body := para("甲", 500) + "\n\n" + para("乙改", 500) + "\n\n" + para("丙", 500)
+	v2, err := UploadIndex(ctx, "authority", []byte(v2Body), "text/markdown", "doc.md", docID, emb, reg, store)
+	require.NoError(t, err)
+	require.NotEmpty(t, v2)
+
+	// Partition v2 by hash against v1.
+	v1ByHash := make(map[string]retriever.Document, len(v1))
+	for _, d := range v1 {
+		v1ByHash[d.ContentHash] = d
+	}
+	var reused, fresh []retriever.Document
+	for _, d2 := range v2 {
+		if d1, ok := v1ByHash[d2.ContentHash]; ok {
+			reused = append(reused, d2)
+			assert.Equal(t, d1.ID, d2.ID, "unchanged chunk must KEEP its PK (content_hash %s)", d2.ContentHash[:12])
+		} else {
+			fresh = append(fresh, d2)
+		}
+	}
+	require.NotEmpty(t, reused, "the 甲/丙 paragraphs are unchanged — at least their chunks must be reused")
+	require.NotEmpty(t, fresh, "the edited 乙 paragraph must produce fresh chunks")
+
+	// (3) 省 BGE-M3: exactly the fresh chunks cost an embedding call.
+	v2Embeds := len(emb.calls()) - v1Embeds
+	assert.Equal(t, len(fresh), v2Embeds,
+		"only changed chunks may be re-embedded (fresh=%d, actual embeds=%d)", len(fresh), v2Embeds)
+
+	// (2) fresh PKs sit above the tier watermark v1 established.
+	var v1Max int64
+	for _, d := range v1 {
+		if d.ID > v1Max {
+			v1Max = d.ID
+		}
+	}
+	for _, d := range fresh {
+		assert.Greater(t, d.ID, v1Max, "fresh chunk id must be above the previous watermark")
+	}
+
+	// (4) exactly one delete of the doc's previous generation.
+	assert.Equal(t, []string{"authority/" + docID}, store.deleteLog(),
+		"the upsert must delete the doc's previous generation exactly once")
+
+	// (5) simulated re-insert converges the doc's rows onto the new
+	// generation: contiguous chunk_index, every superseded PK gone.
+	store.insert(v2)
+	rows := store.docRows(t, "authority", docID)
+	require.Len(t, rows, len(v2), "the doc's rows must be exactly the new generation")
+	seenIdx := make(map[int32]bool, len(rows))
+	seenID := make(map[int64]bool, len(rows))
+	for _, r := range rows {
+		seenIdx[r.ChunkIndex] = true
+		seenID[r.ID] = true
+	}
+	for i := 0; i < len(rows); i++ {
+		assert.True(t, seenIdx[int32(i)], "chunk_index must be contiguous 0..N-1 (missing %d)", i)
+	}
+	v2Hashes := make(map[string]bool, len(v2))
+	for _, d2 := range v2 {
+		v2Hashes[d2.ContentHash] = true
+	}
+	for _, d1 := range v1 {
+		if !v2Hashes[d1.ContentHash] {
+			assert.False(t, seenID[d1.ID], "superseded chunk id %d must be gone after delete+insert", d1.ID)
+		}
+	}
+}
+
+// TestUploadIndexUpsertRewritesChunkIndexForReusedRows pins the plan note:
+// a retained row's chunk_index is REWRITTEN to the new sequence, so a
+// change at the HEAD of the document still leaves 0..N-1 in order (the
+// retained rows carry their old PKs but fresh positions).
+func TestUploadIndexUpsertRewritesChunkIndexForReusedRows(t *testing.T) {
+	reg := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	emb := &countingEmbedder{mockEmbedder: mockEmbedder{}}
+	store := newFakeDocStore()
+	ctx := context.Background()
+	docID := "authority/doc.md"
+
+	// v1 head chunk differs from v2 head chunk; the tail is identical.
+	v1Body := para("旧", 500) + "\n\n" + para("同", 500)
+	v2Body := para("新", 500) + "\n\n" + para("同", 500)
+
+	v1, err := UploadIndex(ctx, "authority", []byte(v1Body), "text/markdown", "doc.md", docID, emb, reg, store)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(v1), 2)
+	store.insert(v1)
+
+	v2, err := UploadIndex(ctx, "authority", []byte(v2Body), "text/markdown", "doc.md", docID, emb, reg, store)
+	require.NoError(t, err)
+	require.Len(t, v2, len(v1), "the tail is unchanged, so the chunk count must hold")
+
+	// The tail chunk (identical hash) keeps its old PK but its chunk_index
+	// must be the NEW sequence position.
+	v1Tail := v1[len(v1)-1]
+	v2Tail := v2[len(v2)-1]
+	assert.Equal(t, v1Tail.ContentHash, v2Tail.ContentHash, "tail chunk must be byte-identical")
+	assert.Equal(t, v1Tail.ID, v2Tail.ID, "tail chunk keeps its PK")
+	assert.Equal(t, int32(len(v2)-1), v2Tail.ChunkIndex, "chunk_index must follow the NEW sequence")
+	assert.Equal(t, int32(0), v2[0].ChunkIndex, "the head chunk starts the new sequence at 0")
+}
+
+// capabilitylessRetriever is a Retriever WITHOUT retriever.DocChunkStore —
+// the mongo-backend shape (it predates the lifecycle capability). Go has
+// no "remove method" construct: embedding mockRetriever would promote the
+// two lifecycle methods too, so this double delegates the eight Retriever
+// methods explicitly and never defines DocChunkRows / DeleteDocRows.
+type capabilitylessRetriever struct {
+	inner *mockRetriever
+}
+
+var _ retriever.Retriever = (*capabilitylessRetriever)(nil)
+
+func (c *capabilitylessRetriever) Health(ctx context.Context) error {
+	return c.inner.Health(ctx)
+}
+func (c *capabilitylessRetriever) Search(ctx context.Context, q []float32, tiers []string, topK int, now int64) ([]retriever.Hit, error) {
+	return c.inner.Search(ctx, q, tiers, topK, now)
+}
+func (c *capabilitylessRetriever) Ensure(ctx context.Context) error { return c.inner.Ensure(ctx) }
+func (c *capabilitylessRetriever) Insert(ctx context.Context, docs []retriever.Document) error {
+	return c.inner.Insert(ctx, docs)
+}
+func (c *capabilitylessRetriever) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, error) {
+	return c.inner.ListMetadata(ctx)
+}
+func (c *capabilitylessRetriever) GetChunk(ctx context.Context, id int64) (retriever.ChunkContent, error) {
+	return c.inner.GetChunk(ctx, id)
+}
+func (c *capabilitylessRetriever) GetMaxID(ctx context.Context, tier string) (int64, error) {
+	return c.inner.GetMaxID(ctx, tier)
+}
+func (c *capabilitylessRetriever) Disconnect() error { return c.inner.Disconnect() }
+
+// TestUploadIndexUpsertCapabilityFailClosed pins the fail-closed gate: a
+// real doc_id against a backend without the lifecycle capability must
+// ERROR (never silently degrade to bare-append — that is breakpoint C),
+// and it must fail before any embedding call.
+func TestUploadIndexUpsertCapabilityFailClosed(t *testing.T) {
+	reg := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	me := &countingEmbedder{mockEmbedder: mockEmbedder{}}
+	r := &capabilitylessRetriever{}
+
+	docs, err := UploadIndex(context.Background(), "authority", []byte("Hello world"), "text/markdown", "test.md", "authority/test.md", me, reg, r)
+	require.Error(t, err)
+	assert.Nil(t, docs)
+	assert.Contains(t, err.Error(), "retriever.DocChunkStore")
+	assert.Empty(t, me.calls(), "the capability gate must fire before any embedding call")
+}
+
+// TestUploadIndexLegacyAppendPostureEmptyDocID pins the empty-docID
+// escape hatch: no lookup, no delete, every chunk fresh — IDs stay the
+// GetMaxID+1.. sequence, exactly the pre-53 posture (direct/test callers
+// only; the production upload path always passes a doc_id).
+func TestUploadIndexLegacyAppendPostureEmptyDocID(t *testing.T) {
+	reg := kb.New([]kb.Entry{
+		{Slug: "authority", DisplayName: "Authority", Role: kb.RoleAuthority, RetrievalEnabled: true},
+	})
+	emb := &countingEmbedder{mockEmbedder: mockEmbedder{}}
+	store := newFakeDocStore()
+
+	docs, err := UploadIndex(context.Background(), "authority", []byte("Hello world"), "text/markdown", "test.md", "", emb, reg, store)
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	assert.Equal(t, int64(1), docs[0].ID)
+	assert.Equal(t, "", docs[0].DocID, "empty doc_id keeps the legacy zero value")
+	assert.Empty(t, store.deleteLog(), "the legacy posture must not delete anything")
+	assert.Len(t, emb.calls(), 1, "the legacy posture embeds without a lifecycle lookup")
 }

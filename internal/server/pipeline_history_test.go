@@ -96,10 +96,10 @@ func emitChunks() []retriever.Hit {
 // the canned response. Tests assert on the captured shape via
 // StreamMessages() / Calls.
 type historyTestStubLM struct {
-	mu      sync.Mutex
-	calls   int
-	canned  string
-	err     error
+	mu       sync.Mutex
+	calls    int
+	canned   string
+	err      error
 	messages [][]*schema.Message
 }
 

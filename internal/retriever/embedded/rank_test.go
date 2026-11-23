@@ -56,8 +56,8 @@ func TestRankOrdersByScoreDescThenIDAsc(t *testing.T) {
 
 	// 两个不同分：高分在前，与插入序无关。
 	rows = []row{
-		{ID: 1, Tier: "authority", Embedding: []float32{0, 1, 0}},  // cos = 0
-		{ID: 2, Tier: "authority", Embedding: []float32{1, 0, 0}},  // cos = 1
+		{ID: 1, Tier: "authority", Embedding: []float32{0, 1, 0}}, // cos = 0
+		{ID: 2, Tier: "authority", Embedding: []float32{1, 0, 0}}, // cos = 1
 	}
 	hits = rank(rows, query, 2)
 	require.Len(t, hits, 2)
@@ -72,10 +72,10 @@ func TestRankOrdersByScoreDescThenIDAsc(t *testing.T) {
 func TestRankSkipsDimMismatchAndEmptyEmbedding(t *testing.T) {
 	query := []float32{1, 0, 0}
 	rows := []row{
-		{ID: 1, Embedding: []float32{1, 0}},      // 长度不符
-		{ID: 2, Embedding: nil},                  // 空
-		{ID: 3, Embedding: []float32{}},          // 空（len==0）
-		{ID: 4, Embedding: []float32{1, 0, 0}},   // 合法
+		{ID: 1, Embedding: []float32{1, 0}},    // 长度不符
+		{ID: 2, Embedding: nil},                // 空
+		{ID: 3, Embedding: []float32{}},        // 空（len==0）
+		{ID: 4, Embedding: []float32{1, 0, 0}}, // 合法
 	}
 	assert.NotPanics(t, func() {
 		got := rank(rows, query, 10)

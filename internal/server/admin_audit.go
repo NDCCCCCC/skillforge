@@ -27,17 +27,17 @@
 // Threat model (20-06 threat_model):
 //
 //   - T-20-06-AUDIT  — actor_type column is ADDITIVE only. The store
-//                       layer has no UPDATE/DELETE path for audit rows.
-//                       INSERT-only invariant is preserved.
+//     layer has no UPDATE/DELETE path for audit rows.
+//     INSERT-only invariant is preserved.
 //
 //   - T-20-06-REDACT  — Phase 6 redact() is applied with isAdmin=true,
-//                       so the admin sees raw rows (the access policy
-//                       of the X-Admin-Token path is to bypass the
-//                       retention projection).
+//     so the admin sees raw rows (the access policy
+//     of the X-Admin-Token path is to bypass the
+//     retention projection).
 //
 //   - T-6-TOKEN       — isAdminRequest gate uses
-//                       crypto/subtle.ConstantTimeCompare (ASVS V6.2.1).
-//                       The token value is never logged.
+//     crypto/subtle.ConstantTimeCompare (ASVS V6.2.1).
+//     The token value is never logged.
 package server
 
 import (

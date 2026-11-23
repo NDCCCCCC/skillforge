@@ -43,6 +43,8 @@ package knowledge
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -65,6 +67,23 @@ import (
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/retriever/milvus"
 )
+
+// contentHashHex returns the lowercase sha256 hex digest of a chunk's
+// text — the doc-lifecycle re-embed skip key (Phase 53-03 / D-53-03). Both
+// producers (Index's chunk loop and UploadIndex's upsert step) hash through
+// this single helper so a directory doc and its re-uploaded copy always
+// carry byte-identical hashes for byte-identical chunks; any second
+// implementation would let a same-content chunk be judged "changed" by one
+// producer and "unchanged" by the other, silently breaking the PK-reuse
+// guarantee the upsert tests pin.
+//
+// Unexported: the hash never leaves this package — retriever.Document
+// carries the digest, and the DELETE endpoint audits it from the backend,
+// not from here.
+func contentHashHex(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
 
 // maxDocBytes is the WARNING threshold (in bytes) for a single source
 // file's body.
@@ -343,7 +362,7 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 				return fmt.Errorf("knowledge.Index: split %s: %w", path, err)
 			}
 
-			for _, chunk := range chunks {
+			for i, chunk := range chunks {
 				// PRODUCTION embed via the Embedder interface. We never call
 				// a deterministic fallback here — that would silently hide a
 				// BGE-M3 outage (Pitfall 8).
@@ -360,6 +379,17 @@ func Index(ctx context.Context, knowledgeDir string, emb embedder.Embedder, mc c
 					Embedding:     vec,
 					EffectiveFrom: ef,
 					EffectiveTo:   et,
+					// Phase 53-03 (D-53-03): doc_id = the slash-normalized
+					// relative path — the SAME string as Source but an
+					// independent concept (Source is the citation display
+					// title; DocID is the upsert/delete lifecycle key, and
+					// after the 53-01 persist step an uploaded doc's file
+					// carries this exact same doc_id semantics). The boot
+					// reseed stamps every row, so the DELETE endpoint and
+					// the upload upsert can address directory docs too.
+					DocID:       relSlash,
+					ChunkIndex:  int32(i),
+					ContentHash: contentHashHex(chunk),
 				})
 				nextID++
 			}

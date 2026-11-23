@@ -204,8 +204,8 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		// P12-L2 deep-archetype write_todos substrate: the audited Tool
 		// INSERTs plan_todos rows + emits the live data-plan-trace chunk.
 		// Both derive from the same store/emitter seams above.
-		PlanTodoStore:  planTodoStoreOf(s.Store),
-		PlanTraceEmit:  s.planTraceEmitter(c),
+		PlanTodoStore: planTodoStoreOf(s.Store),
+		PlanTraceEmit: s.planTraceEmitter(c),
 	})
 	if err != nil {
 		log.Printf("[ERROR] server: ChatHandler BuildRunner failed: %v", err)

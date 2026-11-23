@@ -80,11 +80,11 @@ type ProvenanceGraph struct {
 
 // GraphNode represents one node in the provenance graph.
 type GraphNode struct {
-	ID         string                 `json:"id"`
-	Kind       string                 `json:"kind"` // "file"|"note"|"table"|"skill"|"skillmd"|"quarantined"
-	Label      string                 `json:"label"`
-	Provenance *store.Provenance      `json:"provenance,omitempty"`
-	Tier       string                 `json:"tier,omitempty"`
+	ID         string            `json:"id"`
+	Kind       string            `json:"kind"` // "file"|"note"|"table"|"skill"|"skillmd"|"quarantined"
+	Label      string            `json:"label"`
+	Provenance *store.Provenance `json:"provenance,omitempty"`
+	Tier       string            `json:"tier,omitempty"`
 }
 
 // GraphEdge represents one directed edge in the provenance graph.
@@ -104,7 +104,8 @@ type GraphEdge struct {
 //   - quarantined nodes: entities in the quarantine map
 //
 // Edges connect: source_file → note → table (via referencesTable)
-//               source_file → skillmd → skill (via skf:Skill declarations)
+//
+//	source_file → skillmd → skill (via skf:Skill declarations)
 func (s *Deps) adminGovernanceProvenanceHandler(ctx context.Context, c *app.RequestContext) {
 	dep, ok := s.requireOntology(c)
 	if !ok {

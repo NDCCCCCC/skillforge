@@ -131,12 +131,16 @@ func isAdminRequest(c *app.RequestContext) bool {
 // requireAdmin checks the X-Admin-Token header against
 // SKILLFORGE_ADMIN_TOKEN. On mismatch it writes 403 with the standard
 // graphResponseError envelope and returns false; the caller should
-//   if !requireAdmin(c) { return }
+//
+//	if !requireAdmin(c) { return }
+//
 // Phase 35 (REPEATHTTP-02): replaces the 7+ repeated
-//   if !isAdminRequest(c) {
-//       c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
-//       return
-//   }
+//
+//	if !isAdminRequest(c) {
+//	    c.JSON(http.StatusForbidden, graphResponseError{Error: "admin token required"})
+//	    return
+//	}
+//
 // template at every admin-gated handler entry. The 403 MUST NOT
 // leak KB registry state or any store state per D6-03 / T-3-AUDIT.
 func requireAdmin(c *app.RequestContext) bool {
@@ -368,14 +372,14 @@ func parseAuditTime(raw string) (time.Time, error) {
 // Contract (best-effort, matches writeAuditAndTurn's posture):
 //
 //   - nil s     → no-op (degraded mode: the audit row was already
-//                 silently skipped, the meta row follows suit).
+//     silently skipped, the meta row follows suit).
 //   - nil meta  → no-op (the caller chose not to write a meta row —
-//                 legitimate on a first-turn / empty-history path
-//                 when no Phase 10 signals exist).
+//     legitimate on a first-turn / empty-history path
+//     when no Phase 10 signals exist).
 //   - error     → log + swallow (the response has already streamed;
-//                 failing the request over a meta-write error is
-//                 worse than degraded durability — T-3-AUDIT-WRITE
-//                 accept disposition).
+//     failing the request over a meta-write error is
+//     worse than degraded durability — T-3-AUDIT-WRITE
+//     accept disposition).
 //
 // The function deliberately does NOT return the error so the call
 // site can fire-and-forget without scattering error-handling. The

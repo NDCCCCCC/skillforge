@@ -58,8 +58,8 @@ type ExtractedEntity struct {
 // "entities,omitempty" so stub extractions (the D-GT-01 golden-set drafter)
 // stay nil-entities — the golden wire shape is unchanged (D-NZK-06).
 type Extraction struct {
-	Tables       []ExtractedTable `json:"tables"`
-	RelatedNotes []RelatedNote    `json:"related_notes"`
+	Tables       []ExtractedTable  `json:"tables"`
+	RelatedNotes []RelatedNote     `json:"related_notes"`
 	Entities     []ExtractedEntity `json:"entities,omitempty"`
 }
 

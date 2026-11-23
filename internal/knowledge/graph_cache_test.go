@@ -160,12 +160,12 @@ func TestCitationSubCache(t *testing.T) {
 	stubStore := &stubAuditQuerier{
 		rows: []store.AuditRow{
 			{
-				ID:          1,
-				Timestamp:   time.Now(),
-				UserID:      "admin",
-				Action:      "verdict_finalized",
-				ActorType:   "admin",
-				FrozenArgs:  []byte(`{}`),
+				ID:         1,
+				Timestamp:  time.Now(),
+				UserID:     "admin",
+				Action:     "verdict_finalized",
+				ActorType:  "admin",
+				FrozenArgs: []byte(`{}`),
 				VerdictJSON: mustMarshalVerdict(verdict.Verdict{
 					Status:     "valid",
 					Confidence: 0.95,
@@ -176,12 +176,12 @@ func TestCitationSubCache(t *testing.T) {
 				}),
 			},
 			{
-				ID:          2,
-				Timestamp:   time.Now(),
-				UserID:      "admin",
-				Action:      "verdict_finalized",
-				ActorType:   "admin",
-				FrozenArgs:  []byte(`{}`),
+				ID:         2,
+				Timestamp:  time.Now(),
+				UserID:     "admin",
+				Action:     "verdict_finalized",
+				ActorType:  "admin",
+				FrozenArgs: []byte(`{}`),
 				VerdictJSON: mustMarshalVerdict(verdict.Verdict{
 					Status:     "valid",
 					Confidence: 0.95,
@@ -265,12 +265,12 @@ func TestInvalidateCacheClearsBoth(t *testing.T) {
 	stubStore := &stubAuditQuerier{
 		rows: []store.AuditRow{
 			{
-				ID:          1,
-				Timestamp:   time.Now(),
-				UserID:      "admin",
-				Action:      "verdict_finalized",
-				ActorType:   "admin",
-				FrozenArgs:  []byte(`{}`),
+				ID:         1,
+				Timestamp:  time.Now(),
+				UserID:     "admin",
+				Action:     "verdict_finalized",
+				ActorType:  "admin",
+				FrozenArgs: []byte(`{}`),
 				VerdictJSON: mustMarshalVerdict(verdict.Verdict{
 					Status:     "valid",
 					Confidence: 0.95,

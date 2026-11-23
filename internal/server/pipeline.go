@@ -1146,7 +1146,6 @@ func (s *Deps) emitOperationalAnswer(ctx context.Context, c *app.RequestContext,
 		return fmt.Errorf("verdict pipeline: operational LLM returned empty answer")
 	}
 
-
 	v := verdict.Verdict{
 		Status:           "ok",
 		Answer:           ans,

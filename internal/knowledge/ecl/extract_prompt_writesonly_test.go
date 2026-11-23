@@ -75,11 +75,11 @@ func TestExtractionPromptWritesOnly(t *testing.T) {
 // strip applied before the corpus-contract gate.
 func TestStripSchemaPrefix(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"wuh_dw.etl_policy", "etl_policy"},   // live-failure case
-		{"etl_policy", "etl_policy"},          // already clean
-		{"a.b.etl_c", "etl_c"},                // multi-part: LastIndex wins
+		{"wuh_dw.etl_policy", "etl_policy"},              // live-failure case
+		{"etl_policy", "etl_policy"},                     // already clean
+		{"a.b.etl_c", "etl_c"},                           // multi-part: LastIndex wins
 		{"etl_NONAUTO_POLICY_T", "etl_NONAUTO_POLICY_T"}, // case kept
-		{"", ""},                              // empty stays empty (gate rejects)
+		{"", ""}, // empty stays empty (gate rejects)
 	}
 	for _, c := range cases {
 		if got := stripSchemaPrefix(c.in); got != c.want {

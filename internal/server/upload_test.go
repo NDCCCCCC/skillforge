@@ -73,58 +73,125 @@ func (m *mockStore) HasUploadBySHA256(ctx context.Context, slug, sha256 string) 
 }
 
 // Unused store.Store methods — panic if reached.
-func (m *mockStore) PutAudit(_ context.Context, _ store.AuditRow) (int64, error) { panic("not implemented") }
-func (m *mockStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) { panic("not implemented") }
-func (m *mockStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) { panic("not implemented") }
-func (m *mockStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) { panic("not implemented") }
+func (m *mockStore) PutAudit(_ context.Context, _ store.AuditRow) (int64, error) {
+	panic("not implemented")
+}
+func (m *mockStore) QueryAudit(_ context.Context, _ store.AuditFilter) ([]store.AuditRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) AuditBySessionAt(_ context.Context, _ string, _ int64) ([]store.AuditRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) GetSession(_ context.Context, _ string) ([]store.SessionMessage, error) {
+	panic("not implemented")
+}
+
 // AppendTurn satisfies the interface; 0 = no real row id — downstream
 // data-turn emitters treat 0 as the degrade signal (Plan 29-01).
-func (m *mockStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) (int64, error) { return 0, nil }
-func (m *mockStore) UpdateAuditMetrics(_ context.Context, _ int64, _, _, _, _ *float64) error { panic("not implemented") }
-func (m *mockStore) PutAuditMeta(_ context.Context, _ store.AuditMeta) error { panic("not implemented") }
-func (m *mockStore) ListSessions(_ context.Context) ([]store.SessionSummary, error) { panic("not implemented") }
-func (m *mockStore) RenameSession(_ context.Context, _, _ string) error { panic("not implemented") }
+func (m *mockStore) AppendTurn(_ context.Context, _ string, _, _ store.SessionMessage) (int64, error) {
+	return 0, nil
+}
+func (m *mockStore) UpdateAuditMetrics(_ context.Context, _ int64, _, _, _, _ *float64) error {
+	panic("not implemented")
+}
+func (m *mockStore) PutAuditMeta(_ context.Context, _ store.AuditMeta) error {
+	panic("not implemented")
+}
+func (m *mockStore) ListSessions(_ context.Context) ([]store.SessionSummary, error) {
+	panic("not implemented")
+}
+func (m *mockStore) RenameSession(_ context.Context, _, _ string) error   { panic("not implemented") }
 func (m *mockStore) DeleteSessionTurns(_ context.Context, _ string) error { panic("not implemented") }
-func (m *mockStore) InsertPendingApproval(_ context.Context, _ store.PendingApprovalRow) (int64, error) { panic("not implemented") }
-func (m *mockStore) MarkApproved(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) { panic("not implemented") }
-func (m *mockStore) MarkRejected(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) { panic("not implemented") }
-func (m *mockStore) MarkChangeRequested(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) { panic("not implemented") }
-func (m *mockStore) MarkRuleRevoked(_ context.Context, _ store.RuleRevokeRow) (int64, error) { panic("not implemented") }
-func (m *mockStore) SetCheckpointWithSnapshot(_ context.Context, _ string, _ []byte, _, _ string) error { panic("not implemented") }
-func (m *mockStore) GetCheckpointByVersionFilter(_ context.Context, _, _, _ string) ([]byte, bool, error) { panic("not implemented") }
+func (m *mockStore) InsertPendingApproval(_ context.Context, _ store.PendingApprovalRow) (int64, error) {
+	panic("not implemented")
+}
+func (m *mockStore) MarkApproved(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) {
+	panic("not implemented")
+}
+func (m *mockStore) MarkRejected(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) {
+	panic("not implemented")
+}
+func (m *mockStore) MarkChangeRequested(_ context.Context, _ store.ApprovalResolutionRow) (int64, error) {
+	panic("not implemented")
+}
+func (m *mockStore) MarkRuleRevoked(_ context.Context, _ store.RuleRevokeRow) (int64, error) {
+	panic("not implemented")
+}
+func (m *mockStore) SetCheckpointWithSnapshot(_ context.Context, _ string, _ []byte, _, _ string) error {
+	panic("not implemented")
+}
+func (m *mockStore) GetCheckpointByVersionFilter(_ context.Context, _, _, _ string) ([]byte, bool, error) {
+	panic("not implemented")
+}
 func (m *mockStore) Delete(_ context.Context, _ string) error { panic("not implemented") }
-func (m *mockStore) QueryFanoutByRunPath(_ context.Context, _ string) ([]store.FanoutEvent, error) { panic("not implemented") }
-func (m *mockStore) ListFanoutEvents(_ context.Context, _ string, _ int) ([]store.FanoutEvent, error) { panic("not implemented") }
+func (m *mockStore) QueryFanoutByRunPath(_ context.Context, _ string) ([]store.FanoutEvent, error) {
+	panic("not implemented")
+}
+func (m *mockStore) ListFanoutEvents(_ context.Context, _ string, _ int) ([]store.FanoutEvent, error) {
+	panic("not implemented")
+}
 func (m *mockStore) PutDataset(_ context.Context, _ store.DatasetRow) error { panic("not implemented") }
-func (m *mockStore) ListDatasets(_ context.Context) ([]store.DatasetRow, error) { panic("not implemented") }
+func (m *mockStore) ListDatasets(_ context.Context) ([]store.DatasetRow, error) {
+	panic("not implemented")
+}
 func (m *mockStore) DeleteDataset(_ context.Context, _ string) error { panic("not implemented") }
-func (m *mockStore) PutImportBatch(_ context.Context, _ store.ImportBatchRow) error { panic("not implemented") }
-func (m *mockStore) LatestImportBatch(_ context.Context, _, _ string) (*store.ImportBatchRow, error) { panic("not implemented") }
-func (m *mockStore) ListImportBatches(_ context.Context, _ string) ([]store.ImportBatchRow, error) { panic("not implemented") }
-func (m *mockStore) ListAllImportBatches(_ context.Context) ([]store.ImportBatchRow, error) { panic("not implemented") }
-func (m *mockStore) PutDatasetDelete(_ context.Context, _ store.DatasetDeleteRow) error { panic("not implemented") }
+func (m *mockStore) PutImportBatch(_ context.Context, _ store.ImportBatchRow) error {
+	panic("not implemented")
+}
+func (m *mockStore) LatestImportBatch(_ context.Context, _, _ string) (*store.ImportBatchRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) ListImportBatches(_ context.Context, _ string) ([]store.ImportBatchRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) ListAllImportBatches(_ context.Context) ([]store.ImportBatchRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) PutDatasetDelete(_ context.Context, _ store.DatasetDeleteRow) error {
+	panic("not implemented")
+}
 func (m *mockStore) PutKPICall(_ context.Context, _ store.KPICallRow) error { panic("not implemented") }
-func (m *mockStore) ListKPICalls(_ context.Context, _ store.KPICallsFilter) ([]store.KPICallRow, error) { panic("not implemented") }
-func (m *mockStore) LatestKPICallByFunc(_ context.Context) (map[string]time.Time, error) { panic("not implemented") }
+func (m *mockStore) ListKPICalls(_ context.Context, _ store.KPICallsFilter) ([]store.KPICallRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) LatestKPICallByFunc(_ context.Context) (map[string]time.Time, error) {
+	panic("not implemented")
+}
 func (m *mockStore) PutReport(_ context.Context, _ store.ReportRow) error { panic("not implemented") }
-func (m *mockStore) ListReports(_ context.Context, _ string, _ int) ([]store.ReportRow, error) { panic("not implemented") }
-func (m *mockStore) GetReport(_ context.Context, _ string, _ int) (*store.ReportRow, error) { panic("not implemented") }
-func (m *mockStore) GetLatestReport(_ context.Context, _ string) (*store.ReportRow, error) { panic("not implemented") }
-func (m *mockStore) ListReportsBySkill(_ context.Context, _ string, _ int) ([]store.ReportRow, error) { panic("not implemented") }
-func (m *mockStore) PutReportRun(_ context.Context, _ store.ReportRunRow) error { panic("not implemented") }
-func (m *mockStore) ListReportRuns(_ context.Context, _, _ string, _ int) ([]store.ReportRunRow, error) { panic("not implemented") }
-func (m *mockStore) GetReportRun(_ context.Context, _ string) (*store.ReportRunRow, error) { panic("not implemented") }
-func (m *mockStore) GetLatestReportRunBySkill(_ context.Context, _, _ string) (*store.ReportRunRow, error) { panic("not implemented") }
+func (m *mockStore) ListReports(_ context.Context, _ string, _ int) ([]store.ReportRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) GetReport(_ context.Context, _ string, _ int) (*store.ReportRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) GetLatestReport(_ context.Context, _ string) (*store.ReportRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) ListReportsBySkill(_ context.Context, _ string, _ int) ([]store.ReportRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) PutReportRun(_ context.Context, _ store.ReportRunRow) error {
+	panic("not implemented")
+}
+func (m *mockStore) ListReportRuns(_ context.Context, _, _ string, _ int) ([]store.ReportRunRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) GetReportRun(_ context.Context, _ string) (*store.ReportRunRow, error) {
+	panic("not implemented")
+}
+func (m *mockStore) GetLatestReportRunBySkill(_ context.Context, _, _ string) (*store.ReportRunRow, error) {
+	panic("not implemented")
+}
 func (m *mockStore) CountRows(_ context.Context, _ string) (int64, error) { panic("not implemented") }
-func (m *mockStore) Health(_ context.Context) error { panic("not implemented") }
-func (m *mockStore) Close() error { panic("not implemented") }
+func (m *mockStore) Health(_ context.Context) error                       { panic("not implemented") }
+func (m *mockStore) Close() error                                         { panic("not implemented") }
 
 // mockIndexerBackend is the test double for server.IndexerBackend.
 // It records every Insert call and returns a configurable error.
 type mockIndexerBackend struct {
-	mu      sync.Mutex
-	docs    [][]retriever.Document
-	err     error
+	mu       sync.Mutex
+	docs     [][]retriever.Document
+	err      error
 	onInsert func(ctx context.Context, docs []retriever.Document) error
 }
 
@@ -176,13 +243,29 @@ func (m *mockRetrieverForUpload) GetMaxID(_ context.Context, _ string) (int64, e
 }
 
 func (m *mockRetrieverForUpload) Health(_ context.Context) error { return nil }
-func (m *mockRetrieverForUpload) Search(_ context.Context, _ []float32, _ []string, _ int, _ int64) ([]retriever.Hit, error) { return nil, nil }
+func (m *mockRetrieverForUpload) Search(_ context.Context, _ []float32, _ []string, _ int, _ int64) ([]retriever.Hit, error) {
+	return nil, nil
+}
 func (m *mockRetrieverForUpload) Ensure(_ context.Context) error { return nil }
-func (m *mockRetrieverForUpload) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) { return nil, nil }
+func (m *mockRetrieverForUpload) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
+	return nil, nil
+}
 func (m *mockRetrieverForUpload) GetChunk(_ context.Context, _ int64) (retriever.ChunkContent, error) {
 	return retriever.ChunkContent{}, retriever.ErrChunkNotFound
 }
 func (m *mockRetrieverForUpload) Disconnect() error { return nil }
+
+// Phase 53-03: the upload handler passes a real doc_id into UploadIndex,
+// whose upsert type-asserts retriever.DocChunkStore on the Retriever and
+// FAILS CLOSED without it. The mock therefore implements the capability
+// with an empty result set — every upload in these tests behaves as a
+// first upload (nothing to reuse, nothing to delete), which is exactly
+// the posture the pre-53 tests pinned.
+func (m *mockRetrieverForUpload) DocChunkRows(_ context.Context, _, _ string) ([]retriever.DocChunk, error) {
+	return nil, nil
+}
+
+func (m *mockRetrieverForUpload) DeleteDocRows(_ context.Context, _, _ string) error { return nil }
 
 // stubEmbedderForUpload is the test double for embedder.Embedder.
 // Reused from testhelpers — kept here for clarity.
@@ -232,11 +315,11 @@ func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 	// Tests that need to ASSERT on the persisted paths re-point them via
 	// setPersistDirs (upload_persist_test.go); this redirect is the
 	// hermeticity safety net for all the others.
-	persistKnowledgeRoot = t.TempDir()
+	knowledgeRootDir = t.TempDir()
 	persistUploadsDir = t.TempDir()
-	prevKBRoot, prevUploadsDir := defaultPersistKnowledgeRoot, defaultPersistUploadsDir
+	prevKBRoot, prevUploadsDir := knowledgeRootDir, defaultPersistUploadsDir
 	t.Cleanup(func() {
-		persistKnowledgeRoot = prevKBRoot
+		knowledgeRootDir = prevKBRoot
 		persistUploadsDir = prevUploadsDir
 	})
 
@@ -244,11 +327,11 @@ func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
 	})
 	return &Deps{
-		KBRegistry:       kbReg,
-		Embedder:         newStubEmbedderForUpload(),
-		Retriever:        &mockRetrieverForUpload{mockIndexerBackend: idxBackend},
-		IndexerBackend:   idxBackend,
-		ParserRegistry:  document.NewParserRegistry(),
+		KBRegistry:         kbReg,
+		Embedder:           newStubEmbedderForUpload(),
+		Retriever:          &mockRetrieverForUpload{mockIndexerBackend: idxBackend},
+		IndexerBackend:     idxBackend,
+		ParserRegistry:     document.NewParserRegistry(),
 		UploadMaxBodyBytes: 50 << 20, // 50 MiB for tests
 	}
 }
@@ -315,15 +398,19 @@ func TestUploadKBRegistryNotWired(t *testing.T) {
 	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
 	_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)
 	t.Cleanup(func() {
-		if prev == "" { _ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN") } else { _ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev) }
+		if prev == "" {
+			_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
+		} else {
+			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev)
+		}
 	})
 
 	deps := &Deps{
-		KBRegistry:       nil, // not wired
-		Embedder:         newStubEmbedderForUpload(),
-		Retriever:        &mockRetrieverForUpload{mockIndexerBackend: &mockIndexerBackend{}},
-		IndexerBackend:   &mockIndexerBackend{},
-		ParserRegistry:  document.NewParserRegistry(),
+		KBRegistry:         nil, // not wired
+		Embedder:           newStubEmbedderForUpload(),
+		Retriever:          &mockRetrieverForUpload{mockIndexerBackend: &mockIndexerBackend{}},
+		IndexerBackend:     &mockIndexerBackend{},
+		ParserRegistry:     document.NewParserRegistry(),
 		UploadMaxBodyBytes: 50 << 20,
 	}
 	resp := invokeUpload(t, deps, "authority", testAdminToken, []byte("# Hello"), "text/markdown", 7)
@@ -395,7 +482,7 @@ func TestUploadSuccess(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var uploadResp struct {
-		Chunks  int    `json:"chunks"`
+		Chunks  int     `json:"chunks"`
 		IDRange []int64 `json:"id_range"`
 	}
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &uploadResp))
@@ -424,7 +511,11 @@ func TestUploadAuditRowOnSuccess(t *testing.T) {
 	docUploadAuditHook = hook
 	defer func() {
 		docUploadAuditHook = originalHook
-		if prev == "" { _ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN") } else { _ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev) }
+		if prev == "" {
+			_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
+		} else {
+			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev)
+		}
 	}()
 
 	idx := &mockIndexerBackend{}
@@ -462,7 +553,11 @@ func TestUploadAuditRowOnRejected(t *testing.T) {
 	docUploadAuditHook = hook
 	defer func() {
 		docUploadAuditHook = originalHook
-		if prev == "" { _ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN") } else { _ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev) }
+		if prev == "" {
+			_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
+		} else {
+			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev)
+		}
 	}()
 
 	idx := &mockIndexerBackend{}
@@ -498,10 +593,10 @@ func TestUploadPerSlugSerialization(t *testing.T) {
 		KBRegistry: kb.New([]kb.Entry{
 			{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
 		}),
-		Embedder:          newStubEmbedderForUpload(),
-		Retriever:         &mockRetrieverForUpload{mockIndexerBackend: idx},
-		IndexerBackend:    idx,
-		ParserRegistry:    document.NewParserRegistry(),
+		Embedder:           newStubEmbedderForUpload(),
+		Retriever:          &mockRetrieverForUpload{mockIndexerBackend: idx},
+		IndexerBackend:     idx,
+		ParserRegistry:     document.NewParserRegistry(),
 		UploadMaxBodyBytes: 50 << 20,
 	}
 	// Phase 53-01: this test builds Deps manually (no uploadTestDeps), so
@@ -536,7 +631,7 @@ func TestUploadPerSlugSerialization(t *testing.T) {
 				return
 			}
 			var uploadResp struct {
-				Chunks  int      `json:"chunks"`
+				Chunks  int     `json:"chunks"`
 				IDRange []int64 `json:"id_range"`
 			}
 			_ = json.Unmarshal(resp.Body.Bytes(), &uploadResp)
@@ -678,13 +773,13 @@ func (r *deactivatingKBRegistry) Lookup(slug string) (kb.Entry, bool) {
 	}
 	return entry, ok
 }
-func (r *deactivatingKBRegistry) List() []kb.Entry         { return r.delegate.List() }
-func (r *deactivatingKBRegistry) ActiveSlugs() []string    { return r.delegate.ActiveSlugs() }
+func (r *deactivatingKBRegistry) List() []kb.Entry      { return r.delegate.List() }
+func (r *deactivatingKBRegistry) ActiveSlugs() []string { return r.delegate.ActiveSlugs() }
 func (r *deactivatingKBRegistry) SlugsByRole(role kb.Role) []string {
 	return r.delegate.SlugsByRole(role)
 }
 func (r *deactivatingKBRegistry) RetrievalEligible() []string { return r.delegate.RetrievalEligible() }
-func (r *deactivatingKBRegistry) Signature() string            { return r.delegate.Signature() }
+func (r *deactivatingKBRegistry) Signature() string           { return r.delegate.Signature() }
 func (r *deactivatingKBRegistry) ResolveReads(reads []string) ([]string, error) {
 	return r.delegate.ResolveReads(reads)
 }

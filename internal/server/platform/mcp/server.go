@@ -55,7 +55,7 @@ func NewServer(kg *store.Store, serviceSkill string) *Server {
 
 	s := &Server{
 		kg:           kg,
-		serviceSkill:  serviceSkill,
+		serviceSkill: serviceSkill,
 		mcp:          server.NewMCPServer(serverName, serverVersion),
 		stdio:        server.NewStdioServer(nil), // set after AddTools
 	}
@@ -83,7 +83,7 @@ func NewServer(kg *store.Store, serviceSkill string) *Server {
 		Title:       "List Skills",
 		Description: "Return all registered Skill individuals in the knowledge graph with their names, descriptions, and read-access tiers.",
 		InputSchema: mcp.ToolInputSchema{
-			Type: "object",
+			Type:       "object",
 			Properties: map[string]interface{}{},
 		},
 	}, s.handleSkills)
@@ -108,7 +108,7 @@ func NewServer(kg *store.Store, serviceSkill string) *Server {
 		Title:       "Get TBox Schema",
 		Description: "Return the TBox class hierarchy and object properties from the knowledge graph.",
 		InputSchema: mcp.ToolInputSchema{
-			Type: "object",
+			Type:       "object",
 			Properties: map[string]interface{}{},
 		},
 	}, s.handleSchema)
@@ -339,7 +339,7 @@ func (s *Server) handleQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp
 	}
 
 	return &mcp.CallToolResult{
-		Content:          []mcp.Content{mcp.NewTextContent(jsonString(map[string]any{"results": out, "count": total, "truncated": end < total}))},
+		Content:           []mcp.Content{mcp.NewTextContent(jsonString(map[string]any{"results": out, "count": total, "truncated": end < total}))},
 		StructuredContent: map[string]any{"results": out, "count": total, "truncated": end < total},
 	}, nil
 }
@@ -394,8 +394,8 @@ func (s *Server) handleSkills(ctx context.Context, req mcp.CallToolRequest) (*mc
 func (s *Server) handleChunkFor(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var args struct {
 		EntityIRI string `json:"entity_iri"`
-		MaxHops  int    `json:"max_hops"`
-		Skill    string `json:"skill"`
+		MaxHops   int    `json:"max_hops"`
+		Skill     string `json:"skill"`
 	}
 	if err := req.BindArguments(&args); err != nil {
 		return errorResult("invalid arguments: " + err.Error()), nil
@@ -508,9 +508,9 @@ func (s *Server) handleChunkFor(ctx context.Context, req mcp.CallToolRequest) (*
 			seen[key] = true
 
 			chunk := map[string]any{
-				"source_path": "",
-				"line_start":  0,
-				"line_end":    0,
+				"source_path":  "",
+				"line_start":   0,
+				"line_end":     0,
 				"text_snippet": noteIRI,
 			}
 			if prov != nil {
@@ -719,8 +719,8 @@ func (s *Server) handleNeighbors(ctx context.Context, req mcp.CallToolRequest) (
 
 func errorResult(msg string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
-		Content:    []mcp.Content{mcp.NewTextContent(`{"error": "` + msg + `"}`)},
-		IsError:    true,
+		Content: []mcp.Content{mcp.NewTextContent(`{"error": "` + msg + `"}`)},
+		IsError: true,
 	}
 }
 

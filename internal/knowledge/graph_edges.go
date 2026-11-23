@@ -34,10 +34,10 @@ import (
 
 // Edge type constants — one per deterministic edge derivation.
 const (
-	EdgeTypeSectionAdjacent  = "section_adjacent"
-	EdgeTypeVersionChain     = "version_chain"
-	EdgeTypeKeywordCooccur   = "keyword_cooccur"
-	EdgeTypeCitationCooccur  = "citation_cooccur"
+	EdgeTypeSectionAdjacent = "section_adjacent"
+	EdgeTypeVersionChain    = "version_chain"
+	EdgeTypeKeywordCooccur  = "keyword_cooccur"
+	EdgeTypeCitationCooccur = "citation_cooccur"
 )
 
 // Edge represents a directed relation between two chunk nodes.
@@ -212,7 +212,7 @@ func ComputeEdges(docs []retriever.DocumentMeta, auditQuerier any) ([]Edge, erro
 	}
 
 	// 2. KeywordCooccur: Jaccard on filename tokens across sources.
-	sourceTokens := make(map[string][]string)    // source -> tokens
+	sourceTokens := make(map[string][]string) // source -> tokens
 	seenSource := make(map[string]bool)
 	for _, d := range docs {
 		if seenSource[d.Source] {
@@ -224,9 +224,9 @@ func ComputeEdges(docs []retriever.DocumentMeta, auditQuerier any) ([]Edge, erro
 
 	// Collect unique sources and their representative chunk IDs.
 	type srcInfo struct {
-		source   string
-		chunkID  int64
-		tokens   []string
+		source  string
+		chunkID int64
+		tokens  []string
 	}
 	sources := make([]srcInfo, 0, len(sourceTokens))
 	for src, tokens := range sourceTokens {
@@ -306,20 +306,20 @@ type Node struct {
 
 // NeighborResult is the return type of EdgeGraph.Neighbors.
 type NeighborResult struct {
-	ChunkID        string  `json:"chunk_id"`
-	Depth          int     `json:"depth"`
-	Nodes          []Node  `json:"nodes"`
-	Edges          []Edge  `json:"edges"`
-	Degraded       bool    `json:"degraded"`
-	DegradedReason string  `json:"degraded_reason,omitempty"`
+	ChunkID        string `json:"chunk_id"`
+	Depth          int    `json:"depth"`
+	Nodes          []Node `json:"nodes"`
+	Edges          []Edge `json:"edges"`
+	Degraded       bool   `json:"degraded"`
+	DegradedReason string `json:"degraded_reason,omitempty"`
 }
 
 // PathResult is the return type of EdgeGraph.ShortestPath.
 type PathResult struct {
-	From           string  `json:"from"`
-	To             string  `json:"to"`
-	MaxHops        int     `json:"max_hops"`
-	Hops           int     `json:"hops"`
+	From           string   `json:"from"`
+	To             string   `json:"to"`
+	MaxHops        int      `json:"max_hops"`
+	Hops           int      `json:"hops"`
 	Path           []string `json:"path"`
 	Edges          []Edge   `json:"edges"`
 	Degraded       bool     `json:"degraded"`

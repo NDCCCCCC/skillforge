@@ -45,6 +45,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -53,11 +54,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
+	"github.com/skillforge/skillforge/internal/retriever"
+	"github.com/skillforge/skillforge/internal/store"
 )
 
 // graphResponseError is the {error: "..."} envelope returned with 4xx /
@@ -85,7 +89,7 @@ type graphResponseError struct {
 //   - "  7  "          → 7 (whitespace trimmed)
 //   - `"7"` / `'7'`    → 7 (quotes stripped)
 //   - "-7"             → -7 (negative numbers pass through; the
-//                         knowledge layer returns 404 for missing IDs)
+//     knowledge layer returns 404 for missing IDs)
 //
 // Rejected (returns (0, false)):
 //   - "abc"
@@ -445,7 +449,18 @@ var _ KnowledgeBuilder = (*knowledge.GraphBuilder)(nil)
 // which directories exist, so there is no separate tier→directory mapping
 // layer to keep in sync (the old one silently produced empty listings the
 // day the two lists drifted).
-const knowledgeRootDir = "knowledge/"
+//
+// Package var (not a const) following the persistKnowledgeRoot pattern
+// (upload.go): production keeps the default, and the Phase 53-03 DELETE
+// tests redirect it into t.TempDir() via SetKnowledgeRootDir so the
+// file-deletion assertions never touch the repo's real knowledge/ tree.
+var knowledgeRootDir = "knowledge/"
+
+// SetKnowledgeRootDir binds the on-disk corpus root the docs endpoints
+// read and the doc DELETE handler removes files under. Production never
+// calls this (the default matches the seed root); tests use it with
+// t.Cleanup restore.
+func SetKnowledgeRootDir(root string) { knowledgeRootDir = root }
 
 // docEntry is one file row in the /api/knowledge/docs response.
 type docEntry struct {
@@ -604,4 +619,222 @@ func (s *Deps) docContentHandler(ctx context.Context, c *app.RequestContext) {
 		"file":    file,
 		"content": string(content),
 	})
+}
+
+// actionDocDeleted is the INSERT-only audit action the doc DELETE endpoint
+// writes (Phase 53-03 / ING-03). It lands in the same audit table as the
+// kb admin mutations (action_kb_created / action_kb_deactivated) and the
+// upload pipeline (action_doc_uploaded), so GET /api/admin/audit surfaces
+// the full document lifecycle: uploaded → (re-uploaded) → deleted.
+const actionDocDeleted = "action_doc_deleted"
+
+// DocDeleteAudit is the FrozenArgs payload for action_doc_deleted.
+type DocDeleteAudit struct {
+	Slug       string `json:"slug"`
+	DocID      string `json:"doc_id"`
+	ChunkCount int    `json:"chunk_count"`
+}
+
+// docDeleteHandler implements DELETE /api/admin/kb/:slug/docs/:doc_id —
+// the document-level delete verb of the doc-lifecycle phase (Phase 53-03 /
+// ING-03 / D-53-03).
+//
+// Wire shape: the URL carries the doc_id VERBATIM (slash path, no
+// %-encoding), e.g.
+//
+//	DELETE /api/admin/kb/authority/docs/authority/travel_expense.md
+//
+// The trailing segment is therefore registered as a Hertz WILDCARD
+// (*doc_id, the /reports/*filepath precedent) rather than a single-segment
+// :param — a doc_id IS a slash path ("authority/<sha8>-<stem>.md"), and a
+// single-segment param would force %2F-encoding whose decode behavior is
+// router-version-dependent. The wildcard keeps the URL unencoded and the
+// handler receives the leading slash, which it strips.
+//
+// Semantics (D-53-03 / D-53-01 — two deletes, one transaction intent):
+//
+//  1. Vector rows: DeleteDocRows(tier=slug, doc_id) through the
+//     retriever.DocChunkStore capability — every chunk of the document
+//     leaves the retrieval surface immediately.
+//  2. The canonical FILE under knowledge/<slug>/ — the D-53-01 single
+//     source of truth. Deleting rows without the file would resurrect the
+//     document at the next boot reseed (the file IS the corpus), so the
+//     file MUST go with the rows; the raw-bytes archive under
+//     data/uploads/ is provenance, not corpus, and is deliberately kept.
+//
+// CHECK ORDER mirrors kb_admin.go / upload.go: 403 before anything that
+// could leak KB registry state; 503 for the nil registry; 400 for the
+// slug regex; 404 for the unknown/deactivated slug.
+//
+// doc_id is gated TWICE before it ever becomes a filesystem path: it must
+// start with "<slug>/" (a caller can never delete another base's file —
+// the slug in the URL and the slug in the doc_id must agree) and its
+// remainder must pass validRelDocPath (the traversal floor: no leading
+// slash, no backslashes, no "." / ".." / empty segments).
+//
+// Lifecycle keys only: the delete addresses rows by doc_id, NEVER by
+// source. Pre-53 collections whose rows still carry doc_id="" answer 404
+// ("no lifecycle rows") — and a source-keyed fallback would be actively
+// WRONG, not merely incomplete: on the ECL-cohabiting tier an ECL
+// fragment row's source can equal the note path, so deleting by source
+// could cross producer generations (the exact failure the D-Milvus-02
+// ownership marker exists to prevent). Operators migrate a pre-53
+// collection with the documented one-shot SKILLFORGE_MILVUS_RECREATE=1
+// rebuild, after which every row carries a doc_id.
+//
+//	DELETE /api/admin/kb/:slug/docs/:doc_id → 200 { deleted_chunks: N }
+//	                                        → 403 (no admin token)
+//	                                        → 503 { error: KB registry not wired }
+//	                                        → 400 { error: invalid slug / invalid doc_id }
+//	                                        → 404 { error: kb not found / doc_id has no lifecycle rows }
+//	                                        → 500 { error: delete failed — see server logs } (W-3)
+func (s *Deps) docDeleteHandler(ctx context.Context, c *app.RequestContext) {
+	// STEP 1: admin token gate — 403 must NOT leak KB registry state.
+	if !requireAdmin(c) {
+		return
+	}
+
+	// STEP 2: KB registry nil → 503.
+	if s.KBRegistry == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: kbRegistryNotWiredError})
+		return
+	}
+
+	// STEP 3: validate slug param (whitelist regex — same 400 as upload).
+	slug := c.Param("slug")
+	if err := kb.ValidateSlug(slug); err != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: err.Error()})
+		return
+	}
+
+	// STEP 4: slug active check via registry Lookup — an unknown OR
+	// deactivated base has no deletable surface.
+	if _, ok := s.KBRegistry.Lookup(slug); !ok {
+		c.JSON(http.StatusNotFound, graphResponseError{Error: "kb " + slug + " not found or deactivated"})
+		return
+	}
+
+	// STEP 5: doc_id extraction + the two-path gate. Hertz wildcard params
+	// carry the leading slash of the matched remainder.
+	docID := strings.TrimPrefix(string(c.Param("doc_id")), "/")
+	if docID == "" {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "doc_id is required (the corpus-relative path, e.g. " + slug + "/file.md)"})
+		return
+	}
+	if !strings.HasPrefix(docID, slug+"/") {
+		// Cross-base guard: the URL's slug and the doc_id's slug segment
+		// must agree, so a request scoped to one base can never address
+		// another base's rows or file.
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "doc_id must live under " + slug + "/ (got " + docID + ")"})
+		return
+	}
+	rel := strings.TrimPrefix(docID, slug+"/")
+	if !validRelDocPath(rel) {
+		// Traversal floor: identical rule the doc-content reader applies.
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid doc_id path"})
+		return
+	}
+
+	// STEP 6: retriever + capability gate. The delete is a doc-lifecycle
+	// operation; a backend without retriever.DocChunkStore cannot honor it
+	// and silently answering 200 would be a lie.
+	if s.Retriever == nil {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{Error: "retriever not initialized"})
+		return
+	}
+	lifecycle, ok := s.Retriever.(retriever.DocChunkStore)
+	if !ok {
+		c.JSON(http.StatusServiceUnavailable, graphResponseError{
+			Error: "retriever backend does not support doc-level delete (retriever.DocChunkStore)",
+		})
+		return
+	}
+
+	// STEP 7: existence check via the same projection the upsert reads —
+	// the count doubles as the response's deleted_chunks, and an empty
+	// result is the 404 (no lifecycle rows for this doc_id: either the
+	// doc never existed or the collection predates Phase 53 — the error
+	// says which remedy applies).
+	rows, err := lifecycle.DocChunkRows(ctx, slug, docID)
+	if err != nil {
+		log.Printf("[WARN] server: doc delete lookup failed (slug=%s doc_id=%s): %v", slug, docID, err)
+		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "doc delete failed — see server logs"})
+		return
+	}
+	if len(rows) == 0 {
+		c.JSON(http.StatusNotFound, graphResponseError{
+			Error: "doc_id " + docID + " has no lifecycle rows (not indexed, or the collection predates Phase 53 and needs the one-shot SKILLFORGE_MILVUS_RECREATE rebuild)",
+		})
+		return
+	}
+
+	// STEP 8 (a): vector rows out — every chunk of the document leaves the
+	// retrieval surface.
+	if err := lifecycle.DeleteDocRows(ctx, slug, docID); err != nil {
+		log.Printf("[WARN] server: doc delete rows failed (slug=%s doc_id=%s): %v", slug, docID, err)
+		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "doc delete failed — see server logs"})
+		return
+	}
+
+	// STEP 8 (b): the canonical file out — D-53-01: the file IS the
+	// corpus, so rows-without-file would resurrect the doc at the next
+	// boot reseed. A missing file is success (idempotent: a doc whose
+	// rows exist but file never persisted — the pre-53-01 upload shape —
+	// still deletes cleanly). Any OTHER removal failure is a 500 AFTER
+	// the rows are gone: reseed would resurrect the doc, so this must
+	// fail loudly and name the half-state, not masquerade as success.
+	// filePath uses the FULL docID (slug segment included): the canonical
+	// file lives at knowledgeRootDir/<slug>/<name> (PersistUploadedDoc),
+	// and `rel` here is docID minus the slug prefix — Joining on rel
+	// would remove a file one level up from where 53-01 wrote it, and
+	// os.Remove's IsNotExist would then be swallowed by the idempotent
+	// branch, returning 200 while the corpus file survives (caught by
+	// TestDocDeleteHappyPath in the 53-03 review). rel remains the
+	// traversal-check surface: the check above already proves docID =
+	// slug + "/" + validRelDocPath(rel), so Join(root, FromSlash(docID))
+	// cannot escape the corpus root.
+	filePath := filepath.Join(knowledgeRootDir, filepath.FromSlash(docID))
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		log.Printf("[WARN] server: doc deleted from index but file removal failed (slug=%s doc_id=%s file=%s): %v — the next reseed will resurrect it", slug, docID, filePath, err)
+		c.JSON(http.StatusInternalServerError, graphResponseError{
+			Error: "rows deleted but file removal failed — the next reseed will resurrect this doc; fix the filesystem and retry",
+		})
+		return
+	}
+
+	// STEP 9: INSERT-only audit row (best-effort, putKBAdminAuditRow
+	// posture: a failed write is logged and never rolls the delete back).
+	s.putDocDeletedAuditRow(ctx, DocDeleteAudit{
+		Slug:       slug,
+		DocID:      docID,
+		ChunkCount: len(rows),
+	})
+
+	c.JSON(http.StatusOK, map[string]any{"deleted_chunks": len(rows)})
+}
+
+// putDocDeletedAuditRow writes the action_doc_deleted audit row. Mirrors
+// putKBAdminAuditRow (kb_admin.go): Store-nil = degraded mode (skip), a
+// failed write is logged at WARN and never rolls the mutation back — the
+// rows and the file are already gone, and turning a successful delete
+// into a 500 because its audit row failed would desync the operator's
+// intent from the system state.
+func (s *Deps) putDocDeletedAuditRow(ctx context.Context, payload DocDeleteAudit) {
+	if s.Store == nil {
+		return
+	}
+	frozen, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("[WARN] server: doc delete audit row marshal (slug=%s doc_id=%s): %v (row skipped)", payload.Slug, payload.DocID, err)
+		return
+	}
+	if _, err := s.Store.PutAudit(ctx, store.AuditRow{
+		Timestamp:  time.Now().UTC(),
+		UserID:     "admin",
+		Action:     actionDocDeleted,
+		ActorType:  "admin",
+		FrozenArgs: frozen,
+	}); err != nil {
+		log.Printf("[WARN] server: doc delete audit row write (slug=%s doc_id=%s): %v (best-effort, delete not rolled back)", payload.Slug, payload.DocID, err)
+	}
 }

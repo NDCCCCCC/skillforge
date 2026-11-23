@@ -53,11 +53,11 @@ import (
 func setPersistDirs(t *testing.T) (kbRoot, uploadsDir string) {
 	t.Helper()
 	kbRoot, uploadsDir = t.TempDir(), t.TempDir()
-	prevKB, prevUploads := persistKnowledgeRoot, persistUploadsDir
-	persistKnowledgeRoot = kbRoot
+	prevKB, prevUploads := knowledgeRootDir, persistUploadsDir
+	knowledgeRootDir = kbRoot
 	persistUploadsDir = uploadsDir
 	t.Cleanup(func() {
-		persistKnowledgeRoot = prevKB
+		knowledgeRootDir = prevKB
 		persistUploadsDir = prevUploads
 	})
 	return kbRoot, uploadsDir

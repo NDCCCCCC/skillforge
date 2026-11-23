@@ -42,6 +42,14 @@ type row struct {
 	Embedding     []float32
 	EffectiveFrom int64
 	EffectiveTo   int64
+	// Phase 53-03 (D-53-03) doc-lifecycle triple. Zero values on legacy
+	// rows (and on cache-hit rows — the v1 cache format does not store
+	// the fields; a corpus change invalidates the cache key anyway, so
+	// the next seed re-stamps them). Pure display metadata: nothing in
+	// candidates/rank branches on it.
+	DocID       string
+	ChunkIndex  int32
+	ContentHash string
 }
 
 // ranked is one scored candidate.
@@ -95,6 +103,10 @@ func rank(rows []row, queryVec []float32, k int) []retriever.Hit {
 			Source:        r.row.Source,
 			EffectiveFrom: r.row.EffectiveFrom,
 			EffectiveTo:   r.row.EffectiveTo,
+			// Phase 53-03 doc-lifecycle projection (retriever.Hit godoc).
+			DocID:       r.row.DocID,
+			ChunkIndex:  r.row.ChunkIndex,
+			ContentHash: r.row.ContentHash,
 		})
 	}
 	return hits

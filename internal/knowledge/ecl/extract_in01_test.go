@@ -49,8 +49,8 @@ func TestExtractUnderCapStillUsesJoinAndPrompt(t *testing.T) {
 		SourceIdx: "003",
 		Title:     "Small Note",
 		Sections: []MergedSection{{
-			Section:    "SQL",
-			Body:       "update etl_small_t set x = 1;",
+			Section:     "SQL",
+			Body:        "update etl_small_t set x = 1;",
 			SourcePaths: []string{"test.sql"},
 		}},
 	}

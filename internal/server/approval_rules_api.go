@@ -92,7 +92,7 @@ import (
 //
 //   - scope is now READ FROM THE STORED COLUMN (session | skill |
 //     global) instead of derived from scope_session_id.
-//   - args_hash is '' for prefix/template rules (exact-only).
+//   - args_hash is ” for prefix/template rules (exact-only).
 //   - last_used_at is a compat shim: the store mirrors it from
 //     last_hit_at (HitRule writes both), so old FE keeps rendering;
 //     retires after 56-03 switches the panel to last_hit_at.

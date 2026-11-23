@@ -61,15 +61,15 @@ const importDisabledError = "import disabled — SKILLFORGE_DATA_SALT unset"
 
 // previewResponse is the JSON envelope for POST /api/import/preview.
 type previewResponse struct {
-	PreviewID     string                `json:"preview_id"`
-	Dataset       string                `json:"dataset"`
-	Period        string                `json:"period"`
-	ProposedTier  string                `json:"proposed_tier"`
-	RulesSHA256   string                `json:"rules_sha256"`
-	ContentSHA256 string                `json:"content_sha256"`
-	RowCount      int64                 `json:"row_count"`
-	Columns       []data.PreviewColumn  `json:"columns"`
-	SamplePairs   []data.RowPair        `json:"sample_pairs"`
+	PreviewID     string               `json:"preview_id"`
+	Dataset       string               `json:"dataset"`
+	Period        string               `json:"period"`
+	ProposedTier  string               `json:"proposed_tier"`
+	RulesSHA256   string               `json:"rules_sha256"`
+	ContentSHA256 string               `json:"content_sha256"`
+	RowCount      int64                `json:"row_count"`
+	Columns       []data.PreviewColumn `json:"columns"`
+	SamplePairs   []data.RowPair       `json:"sample_pairs"`
 }
 
 // commitResponse is the JSON envelope for POST /api/import/commit and

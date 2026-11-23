@@ -256,6 +256,7 @@ func (m *MilvusClient) ListMetadata(ctx context.Context) ([]retriever.DocumentMe
 	}
 
 	var idCol, tierCol, sourceCol, efCol, etCol entity.Column
+	var docIDCol, chunkIdxCol, contentHashCol entity.Column
 	for _, c := range rs {
 		switch c.Name() {
 		case "id":
@@ -268,6 +269,15 @@ func (m *MilvusClient) ListMetadata(ctx context.Context) ([]retriever.DocumentMe
 			efCol = c
 		case "effective_to":
 			etCol = c
+		// Phase 53-03 doc-lifecycle projection. On a pre-53 schema the
+		// columns are absent and stay nil — rows then carry the zero
+		// values, the same legacy contract as Search.
+		case "doc_id":
+			docIDCol = c
+		case "chunk_index":
+			chunkIdxCol = c
+		case "content_hash":
+			contentHashCol = c
 		}
 	}
 	if idCol == nil {
@@ -304,6 +314,21 @@ func (m *MilvusClient) ListMetadata(ctx context.Context) ([]retriever.DocumentMe
 				row.EffectiveTo = v
 			}
 		}
+		if docIDCol != nil {
+			if v, e := docIDCol.GetAsString(i); e == nil {
+				row.DocID = v
+			}
+		}
+		if chunkIdxCol != nil {
+			if v, e := chunkIdxCol.GetAsInt64(i); e == nil {
+				row.ChunkIndex = int32(v)
+			}
+		}
+		if contentHashCol != nil {
+			if v, e := contentHashCol.GetAsString(i); e == nil {
+				row.ContentHash = v
+			}
+		}
 		out = append(out, row)
 	}
 	return out, nil
@@ -330,13 +355,16 @@ func (m *MilvusClient) GetChunk(ctx context.Context, id int64) (retriever.ChunkC
 		m.cfg.CollectionName,
 		nil, // partitions (nil = default)
 		fmt.Sprintf("id == %d", id),
-		[]string{"id", "tier", "content", "source", "effective_from", "effective_to"},
+		// Phase 53-03: the doc-lifecycle triple rides along so the chunk
+		// surface can render it. Absent on a pre-53 schema → zero values.
+		[]string{"id", "tier", "content", "source", "effective_from", "effective_to", "doc_id", "chunk_index", "content_hash"},
 	)
 	if err != nil {
 		return retriever.ChunkContent{}, fmt.Errorf("milvus.GetChunk: Query: %w", err)
 	}
 
 	var idCol, tierCol, contentCol, sourceCol, efCol, etCol entity.Column
+	var docIDCol, chunkIdxCol, contentHashCol entity.Column
 	for _, c := range rs {
 		switch c.Name() {
 		case "id":
@@ -351,6 +379,12 @@ func (m *MilvusClient) GetChunk(ctx context.Context, id int64) (retriever.ChunkC
 			efCol = c
 		case "effective_to":
 			etCol = c
+		case "doc_id":
+			docIDCol = c
+		case "chunk_index":
+			chunkIdxCol = c
+		case "content_hash":
+			contentHashCol = c
 		}
 	}
 	if idCol == nil || idCol.Len() == 0 {
@@ -385,6 +419,21 @@ func (m *MilvusClient) GetChunk(ctx context.Context, id int64) (retriever.ChunkC
 	if etCol != nil {
 		if v, e := etCol.GetAsInt64(0); e == nil {
 			row.EffectiveTo = v
+		}
+	}
+	if docIDCol != nil {
+		if v, e := docIDCol.GetAsString(0); e == nil {
+			row.DocID = v
+		}
+	}
+	if chunkIdxCol != nil {
+		if v, e := chunkIdxCol.GetAsInt64(0); e == nil {
+			row.ChunkIndex = int32(v)
+		}
+	}
+	if contentHashCol != nil {
+		if v, e := contentHashCol.GetAsString(0); e == nil {
+			row.ContentHash = v
 		}
 	}
 	return row, nil

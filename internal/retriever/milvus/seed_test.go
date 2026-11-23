@@ -22,7 +22,7 @@ package milvus
 //
 //   - the fresh-deploy schema carries exactly 11 fields, with widths
 //     derived from the single-home consts (zero-hardcode standard);
-//   - every Insert carries all 11 columns in schema order, with the
+//   - every Insert carries all 14 columns in schema order, with the
 //     VarChar columns built via NewColumnVarChar (NEVER NewColumnString —
 //     spike-findings DataType String=20 vs FieldTypeVarChar=21 mismatch);
 //   - legacy-shaped Documents (D-Milvus-02) seed with zero-value section
@@ -107,10 +107,11 @@ func seedTestDoc(id int64) retriever.Document {
 	}
 }
 
-// wantSeedColumns is the 11-column schema/insert contract in order
-// (Plan 39-02 / D-Milvus-01). The slice order is the single home for the
-// column-order assertion — SeedDocuments must insert in this order so the
-// collection schema and the insert payloads can never disagree.
+// wantSeedColumns is the 14-column schema/insert contract in order
+// (Plan 39-02 / D-Milvus-01 + Phase 53-03 / D-53-03). The slice order is
+// the single home for the column-order assertion — SeedDocuments must
+// insert in this order so the collection schema and the insert payloads
+// can never disagree.
 var wantSeedColumns = []struct {
 	name string
 	typ  entity.FieldType
@@ -126,6 +127,10 @@ var wantSeedColumns = []struct {
 	{"section", entity.FieldTypeVarChar},
 	{"section_idx", entity.FieldTypeInt64},
 	{"section_count", entity.FieldTypeInt64},
+	// Phase 53-03 (D-53-03) doc-lifecycle columns.
+	{"doc_id", entity.FieldTypeVarChar},
+	{"chunk_index", entity.FieldTypeInt64},
+	{"content_hash", entity.FieldTypeVarChar},
 }
 
 func seedColumnByName(cols []entity.Column, name string) entity.Column {
@@ -139,9 +144,11 @@ func seedColumnByName(cols []entity.Column, name string) entity.Column {
 
 // TestSeedDocumentsLegacyDocSeedsZeroValueSectionFields: a legacy-shaped
 // Document (D-Milvus-02) must seed with the zero-value contract —
-// source_idx="", section="", section_idx=0, section_count=0 — so the
-// retrieval filter semantics of existing rows are unchanged and the
-// ownership marker (section_count > 0) is not set spuriously.
+// source_idx="", section="", section_idx=0, section_count=0, and (Phase
+// 53-03) doc_id="", chunk_index=0, content_hash="" — so the retrieval
+// filter semantics of existing rows are unchanged, the ownership marker
+// (section_count > 0) is not set spuriously, and the doc-lifecycle
+// lookup never aliases a legacy row.
 func TestSeedDocumentsLegacyDocSeedsZeroValueSectionFields(t *testing.T) {
 	mc := &seedMock{exists: true}
 	docs := []retriever.Document{seedTestDoc(1), seedTestDoc(2)}
@@ -150,7 +157,7 @@ func TestSeedDocumentsLegacyDocSeedsZeroValueSectionFields(t *testing.T) {
 		t.Fatalf("SeedDocuments: %v", err)
 	}
 
-	// Exactly one Insert carrying all 11 columns.
+	// Exactly one Insert carrying all 14 columns.
 	if got := len(mc.cols); got != len(wantSeedColumns) {
 		t.Fatalf("Insert carried %d columns, want %d", got, len(wantSeedColumns))
 	}
@@ -169,7 +176,7 @@ func TestSeedDocumentsLegacyDocSeedsZeroValueSectionFields(t *testing.T) {
 		}
 	}
 
-	// D-Milvus-02 zero-value contract for every legacy row.
+	// D-Milvus-02 + D-53-03 zero-value contract for every legacy row.
 	for i := range docs {
 		if v, err := seedColumnByName(mc.cols, "source_idx").GetAsString(i); err != nil || v != "" {
 			t.Fatalf("row %d source_idx = (%q, %v), want (\"\", nil)", i, v, err)
@@ -182,6 +189,15 @@ func TestSeedDocumentsLegacyDocSeedsZeroValueSectionFields(t *testing.T) {
 		}
 		if v, err := seedColumnByName(mc.cols, "section_count").GetAsInt64(i); err != nil || v != 0 {
 			t.Fatalf("row %d section_count = (%d, %v), want (0, nil) — 0 is the legacy marker, never set it for legacy rows", i, v, err)
+		}
+		if v, err := seedColumnByName(mc.cols, "doc_id").GetAsString(i); err != nil || v != "" {
+			t.Fatalf("row %d doc_id = (%q, %v), want (\"\", nil)", i, v, err)
+		}
+		if v, err := seedColumnByName(mc.cols, "chunk_index").GetAsInt64(i); err != nil || v != 0 {
+			t.Fatalf("row %d chunk_index = (%d, %v), want (0, nil)", i, v, err)
+		}
+		if v, err := seedColumnByName(mc.cols, "content_hash").GetAsString(i); err != nil || v != "" {
+			t.Fatalf("row %d content_hash = (%q, %v), want (\"\", nil)", i, v, err)
 		}
 	}
 

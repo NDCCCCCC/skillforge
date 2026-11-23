@@ -166,8 +166,8 @@ func TestRedline_Conditional(t *testing.T) {
 		deps := newTestDeps()
 		deps.ChatModel = stubCM
 		v := verdict.Verdict{
-			Status:           "ok",
-			Confidence:       0.95,
+			Status:     "ok",
+			Confidence: 0.95,
 			Citations: []verdict.Citation{
 				{ChunkID: "1", Span: "权威条款", Tier: "权威"},
 			},
@@ -187,8 +187,8 @@ func TestRedline_Conditional(t *testing.T) {
 		deps := newTestDeps()
 		deps.ChatModel = stubCM
 		v := verdict.Verdict{
-			Status:           "ok",
-			Confidence:       0.85,
+			Status:     "ok",
+			Confidence: 0.85,
 			Citations: []verdict.Citation{
 				{ChunkID: "1", Span: "违规条款", Tier: "权威"},
 			},
@@ -235,8 +235,8 @@ func TestRedline_PayloadStructure(t *testing.T) {
 	deps := newTestDeps()
 	deps.ChatModel = stubCM
 	v := verdict.Verdict{
-		Status:           "ok",
-		Confidence:       0.8,
+		Status:     "ok",
+		Confidence: 0.8,
 		Citations: []verdict.Citation{
 			{ChunkID: "1", Span: "违规原文", Tier: "权威"},
 		},

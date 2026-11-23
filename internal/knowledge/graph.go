@@ -383,10 +383,11 @@ func docNodeID(tier, source string) string {
 // graph visually reflects Phase 999.2 nested KB organization.
 //
 // Examples:
-//   "sql-guides/汽车险/004_xxx.md"                  -> "汽车险/004_xxx.md"
-//   "sql-guides/财务对账/013_财务-政保入账清单.md"   -> "财务对账/013_财务-政保入账清单.md"
-//   "authority/annual_leave.md"                     -> "annual_leave.md"
-//   "plain.md"                                      -> "plain.md"
+//
+//	"sql-guides/汽车险/004_xxx.md"                  -> "汽车险/004_xxx.md"
+//	"sql-guides/财务对账/013_财务-政保入账清单.md"   -> "财务对账/013_财务-政保入账清单.md"
+//	"authority/annual_leave.md"                     -> "annual_leave.md"
+//	"plain.md"                                      -> "plain.md"
 //
 // Pre-999.2 this function used strings.LastIndex, which returned only the
 // basename and silently flattened any nested KB organization — that

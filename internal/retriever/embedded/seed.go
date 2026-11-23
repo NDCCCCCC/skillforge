@@ -187,12 +187,23 @@ func (c *Client) SeedFromKnowledgeDir(ctx context.Context, knowledgeDir string, 
 			if err != nil {
 				return 0, fmt.Errorf("embedded.SeedFromKnowledgeDir: rel %s: %w", path, err)
 			}
+			relSlash := filepath.ToSlash(rel)
 			docs = append(docs, retriever.Document{
 				ID:        nextID,
 				Tier:      slug,
 				Content:   string(body),
-				Source:    filepath.ToSlash(rel),
+				Source:    relSlash,
 				Embedding: vec,
+				// Phase 53-03 (D-53-03): the seed stamps the doc-lifecycle
+				// triple with the same contract as knowledge.Index —
+				// doc_id = the slash corpus path, chunk_index = 0 (this
+				// seed indexes each file as ONE row, so the sequence is a
+				// single element), content_hash = sha256 hex of the body.
+				// Without the stamp, uploads' upsert/delete lookups would
+				// miss every directory doc on this backend.
+				DocID:       relSlash,
+				ChunkIndex:  0,
+				ContentHash: sha256Hex(string(body)),
 			})
 			nextID++
 		}
@@ -212,6 +223,10 @@ func (c *Client) SeedFromKnowledgeDir(ctx context.Context, knowledgeDir string, 
 			Embedding:     d.Embedding,
 			EffectiveFrom: d.EffectiveFrom,
 			EffectiveTo:   d.EffectiveTo,
+			// Phase 53-03 doc-lifecycle triple (see the docs literal above).
+			DocID:       d.DocID,
+			ChunkIndex:  d.ChunkIndex,
+			ContentHash: d.ContentHash,
 		})
 	}
 

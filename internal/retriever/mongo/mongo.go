@@ -219,7 +219,9 @@ func (c *Client) GetMaxID(ctx context.Context, tier string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("mongo.GetMaxID: Aggregate: %w", err)
 	}
-	var rows []struct{ ID int64 `bson:"id"` }
+	var rows []struct {
+		ID int64 `bson:"id"`
+	}
 	if err := cur.All(ctx, &rows); err != nil {
 		return 0, fmt.Errorf("mongo.GetMaxID: cursor.All: %w", err)
 	}

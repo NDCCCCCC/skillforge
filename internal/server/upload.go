@@ -74,12 +74,6 @@ const (
 	// archive so the file still carries a conventional suffix.
 	archiveExtFallback = ".bin"
 
-	// defaultPersistKnowledgeRoot mirrors the corpus root the boot-time
-	// knowledge.Index seeds from (cmd/server main.go passes "knowledge/").
-	// Changing one without the other would strand uploads outside the
-	// reseed walk.
-	defaultPersistKnowledgeRoot = "knowledge"
-
 	// defaultPersistUploadsDir is the raw-bytes archive dir, following the
 	// runtime data-tree convention (cf. SKILLFORGE_DATASETS_DIR →
 	// data/datasets, ontology → data/ontology).
@@ -92,22 +86,19 @@ const (
 	persistFileMode = 0o644
 )
 
-// persistKnowledgeRoot / persistUploadsDir are the two persist roots.
+// persistUploadsDir is the raw-bytes archive root; the canonical-file
+// root is knowledgeRootDir (knowledge.go) — unified in the 53-03 review
+// so DELETE can never miss the file an upload wrote. Package var per
 // Package vars (not consts) following the docUploadAuditHook injection
-// pattern: production keeps the defaults above; tests redirect both into
-// t.TempDir() via SetPersistKnowledgeRoot / SetPersistUploadsDir. Not
 // synchronized — bound at boot, and upload handlers only READ them (the
 // per-slug mutex already serializes same-slug persist writes).
 var (
-	persistKnowledgeRoot = defaultPersistKnowledgeRoot
-	persistUploadsDir    = defaultPersistUploadsDir
+	persistUploadsDir = defaultPersistUploadsDir
 )
 
 // SetPersistKnowledgeRoot binds the corpus root PersistUploadedDoc writes
 // canonical knowledge files under. Production never calls this (the
 // default matches the seed root); tests use it with t.Cleanup restore.
-func SetPersistKnowledgeRoot(root string) { persistKnowledgeRoot = root }
-
 // SetPersistUploadsDir binds the raw-bytes archive dir. Same posture as
 // SetPersistKnowledgeRoot.
 func SetPersistUploadsDir(dir string) { persistUploadsDir = dir }
@@ -298,8 +289,18 @@ func (s *Deps) processUploadedFile(ctx context.Context, slug string, form *uploa
 		}
 	}
 
-	// UploadIndex: parse + chunk + embed. Does NOT call Insert.
-	docs, err := knowledge.UploadIndex(ctx, slug, data, form.Metadata, filename, s.Embedder, s.KBRegistry, s.Retriever)
+	// UploadIndex: parse + chunk + embed + the 53-03 doc-level upsert.
+	// Does NOT call Insert.
+	//
+	// Phase 53-03: the doc_id must exist BEFORE this call — the upsert
+	// needs it to address the doc's previous generation (reuse unchanged
+	// rows, delete superseded ones). It is derived from the sha256 the
+	// handler already computed plus the SAME naming rule PersistUploadedDoc
+	// applies, through the shared persistedDocID helper: one naming home,
+	// so the key the upsert deletes under can never drift from the file
+	// STEP 7d actually writes.
+	docID := persistedDocID(slug, sha256Hex, filename)
+	docs, err := knowledge.UploadIndex(ctx, slug, data, form.Metadata, filename, docID, s.Embedder, s.KBRegistry, s.Retriever)
 	if err != nil {
 		*parseErr = err
 		// STEP 7b: UploadIndex failure → 422 with rejection audit
@@ -490,7 +491,6 @@ func (s *Deps) processUploadedFile(ctx context.Context, slug string, form *uploa
 func PersistUploadedDoc(ctx context.Context, slug, filename, mimeType string, raw []byte) (string, error) {
 	hash := sha256.Sum256(raw)
 	sha256Hex := hex.EncodeToString(hash[:])
-	sha8 := sha256Hex[:persistSHA8Len]
 
 	body, fm, err := persistBodyFor(ctx, mimeType, filename, raw)
 	if err != nil {
@@ -509,7 +509,7 @@ func PersistUploadedDoc(ctx context.Context, slug, filename, mimeType string, ra
 		return "", errors.New("persist failed: derived body is empty")
 	}
 
-	name := sha8 + "-" + kb.SanitizeFileStem(filename) + persistExtMarkdown
+	name := persistedDocName(sha256Hex, filename)
 	docID := slug + "/" + name
 
 	// Write 1: raw-bytes archive (ordering rationale above).
@@ -526,7 +526,7 @@ func PersistUploadedDoc(ctx context.Context, slug, filename, mimeType string, ra
 	}
 
 	// Write 2: canonical knowledge file.
-	dir := filepath.Join(persistKnowledgeRoot, slug)
+	dir := filepath.Join(knowledgeRootDir, slug)
 	if err := os.MkdirAll(dir, persistDirMode); err != nil {
 		return "", fmt.Errorf("persist failed: knowledge dir %s: %w", dir, err)
 	}
@@ -535,6 +535,27 @@ func PersistUploadedDoc(ctx context.Context, slug, filename, mimeType string, ra
 		return "", fmt.Errorf("persist failed: knowledge file %s: %w", filepath.Join(dir, name), err)
 	}
 	return docID, nil
+}
+
+// persistedDocName derives the canonical knowledge-file name for one
+// upload: "<sha8>-<sanitized-stem>.md" (persistSHA8Len hex prefix of the
+// file's sha256 + the kb-whitelisted stem). Extracted from
+// PersistUploadedDoc in Phase 53-03 so the doc_id the UPLOAD pipeline
+// feeds the upsert (before persist even runs) and the doc_id written into
+// the canonical file's frontmatter derive from ONE naming home — a second
+// literal copy of the rule would let the upsert's delete key drift from
+// the file the persist step writes, resurrecting the doc under a new
+// name at the next reseed.
+func persistedDocName(sha256Hex, filename string) string {
+	return sha256Hex[:persistSHA8Len] + "-" + kb.SanitizeFileStem(filename) + persistExtMarkdown
+}
+
+// persistedDocID returns the corpus-relative doc_id of one upload:
+// "<slug>/<persistedDocName>" — the lifecycle key the upsert and the
+// DELETE endpoint address the doc by, identical to the returned value of
+// PersistUploadedDoc (53-CONTEXT: 落盘后两条路径的 doc_id 语义归一).
+func persistedDocID(slug, sha256Hex, filename string) string {
+	return slug + "/" + persistedDocName(sha256Hex, filename)
 }
 
 // persistBodyFor selects the body bytes written into the canonical

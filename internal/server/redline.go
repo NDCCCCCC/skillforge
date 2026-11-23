@@ -67,14 +67,14 @@ Rules:
 //
 // D5-14 COST CONTROL — THE GATE IS THE FIRST LINE OF THIS FUNCTION.
 //
-//  260817-vsm (verdict-subject-mismatch): gate now ORs Status against
-//  DowngradeStatus AND ComplianceStatus against NonCompliantStatus,
-//  because the Compliance Skill's verdict now lives in ComplianceStatus
-//  (Status is the platform-neutral envelope).
+//	 260817-vsm (verdict-subject-mismatch): gate now ORs Status against
+//	 DowngradeStatus AND ComplianceStatus against NonCompliantStatus,
+//	 because the Compliance Skill's verdict now lives in ComplianceStatus
+//	 (Status is the platform-neutral envelope).
 //
-//	if v.Status != verdict.DowngradeStatus && v.ComplianceStatus != verdict.NonCompliantStatus {
-//	    return nil  // BEFORE any LLM call, BEFORE any wire emit
-//	}
+//		if v.Status != verdict.DowngradeStatus && v.ComplianceStatus != verdict.NonCompliantStatus {
+//		    return nil  // BEFORE any LLM call, BEFORE any wire emit
+//		}
 //
 // A compliant verdict (ComplianceStatus="compliant") makes ZERO LLM
 // calls and emits ZERO data-redline chunks. TestRedline_Conditional is
@@ -95,6 +95,7 @@ Rules:
 //     (grounding failure → GroundingChecker downgraded).
 //   - ComplianceStatus=NonCompliantStatus ("non_compliant") —
 //     Compliance Skill verdict indicating the subject fails the policy.
+//
 // Both are policy-gap signals where a rewrite proposal is actionable.
 // ComplianceStatus="compliant" or empty has no gap to rewrite.
 //

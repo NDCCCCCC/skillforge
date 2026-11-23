@@ -509,42 +509,42 @@ func TestResolveProbeURLs(t *testing.T) {
 	const injected = "http://127.0.0.1:1/v1" // 请求方注入的任意主机
 
 	for _, tc := range []struct {
-		name           string
-		vendor, plan   string
-		reqBase        string
-		reqModelsURL   string
-		wantBase       string
-		wantModelsURL  string
+		name          string
+		vendor, plan  string
+		reqBase       string
+		reqModelsURL  string
+		wantBase      string
+		wantModelsURL string
 	}{
 		{
-			name: "custom plan keeps the operator-supplied base_url", // 261117-flc 主修复
+			name:   "custom plan keeps the operator-supplied base_url", // 261117-flc 主修复
 			vendor: "custom", plan: "custom",
 			reqBase: "https://third-party.example/v1", reqModelsURL: "",
 			wantBase: "https://third-party.example/v1", wantModelsURL: "",
 		},
 		{
-			name: "custom plan keeps the operator-supplied models_url too",
+			name:   "custom plan keeps the operator-supplied models_url too",
 			vendor: "custom", plan: "custom",
 			reqBase: "https://third-party.example/v1", reqModelsURL: "https://third-party.example/models",
 			wantBase: "https://third-party.example/v1", wantModelsURL: "https://third-party.example/models",
 		},
 		{
-			name: "catalog plan with empty models_url must NOT take an injected models_url",
+			name:   "catalog plan with empty models_url must NOT take an injected models_url",
 			vendor: "zhipu", plan: "coding-plan",
-			reqBase: "https://open.bigmodel.cn/api/coding/paas/v4",
-			reqModelsURL: injected,
-			wantBase: "https://open.bigmodel.cn/api/coding/paas/v4",
+			reqBase:       "https://open.bigmodel.cn/api/coding/paas/v4",
+			reqModelsURL:  injected,
+			wantBase:      "https://open.bigmodel.cn/api/coding/paas/v4",
 			wantModelsURL: "",
 		},
 		{
-			name: "catalog plan overrides an injected base_url with the catalog value",
+			name:   "catalog plan overrides an injected base_url with the catalog value",
 			vendor: "zhipu", plan: "coding-plan",
 			reqBase: injected, reqModelsURL: "",
-			wantBase: "https://open.bigmodel.cn/api/coding/paas/v4",
+			wantBase:      "https://open.bigmodel.cn/api/coding/paas/v4",
 			wantModelsURL: "",
 		},
 		{
-			name: "unknown vendor/plan passes the request through (operator-registered)",
+			name:   "unknown vendor/plan passes the request through (operator-registered)",
 			vendor: "my-private", plan: "whatever",
 			reqBase: "https://private.example/v1", reqModelsURL: "https://private.example/models",
 			wantBase: "https://private.example/v1", wantModelsURL: "https://private.example/models",

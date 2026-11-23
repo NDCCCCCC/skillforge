@@ -477,6 +477,12 @@ func (c *Client) Insert(ctx context.Context, docs []retriever.Document) error {
 			Embedding:     d.Embedding,
 			EffectiveFrom: d.EffectiveFrom,
 			EffectiveTo:   d.EffectiveTo,
+			// Phase 53-03 (D-53-03): doc-lifecycle triple round-trips
+			// verbatim (zero values for legacy producers — the same
+			// contract milvus.SeedDocuments applies).
+			DocID:       d.DocID,
+			ChunkIndex:  d.ChunkIndex,
+			ContentHash: d.ContentHash,
 		})
 	}
 	return nil
@@ -502,6 +508,11 @@ func (c *Client) ListMetadata(ctx context.Context) ([]retriever.DocumentMeta, er
 			Source:        d.Source,
 			EffectiveFrom: d.EffectiveFrom,
 			EffectiveTo:   d.EffectiveTo,
+			// Phase 53-03 doc-lifecycle projection (legacy rows: zero
+			// values, per the retriever.Document contract).
+			DocID:       d.DocID,
+			ChunkIndex:  d.ChunkIndex,
+			ContentHash: d.ContentHash,
 		})
 	}
 	// 确定性输出：docs 是插入序，插入序可能来自并发 seed 之外的路径，
@@ -533,6 +544,10 @@ func (c *Client) GetChunk(ctx context.Context, id int64) (retriever.ChunkContent
 		Content:       d.Content,
 		EffectiveFrom: d.EffectiveFrom,
 		EffectiveTo:   d.EffectiveTo,
+		// Phase 53-03 doc-lifecycle projection (legacy rows: zero values).
+		DocID:       d.DocID,
+		ChunkIndex:  d.ChunkIndex,
+		ContentHash: d.ContentHash,
 	}, nil
 }
 

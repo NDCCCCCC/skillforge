@@ -25,10 +25,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/hertz/pkg/app/server"
-	"github.com/cloudwego/hertz/pkg/common/ut"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"github.com/skillforge/skillforge/internal/ontology/induction"
 	"github.com/skillforge/skillforge/internal/ontology/store"

@@ -61,8 +61,20 @@ const (
 	// (Plan 39-02 / D-Milvus-01). section carries the merged logical-section
 	// title (CJK-heavy), the same width class as source paths.
 	DefaultSectionMaxLen = 256
-	DefaultIVFNList      = 128 // IVF_FLAT nlist — small dataset, modest cluster count
-	DefaultIVFNProbe     = 10  // search-time nprobe
+	// DefaultDocIDMaxLen is the Milvus doc_id (VARCHAR) column width
+	// (Phase 53-03 / D-53-03). doc_id carries the slash-normalized
+	// corpus-relative document path — the same string shape as source
+	// (slug + "/" + relative path, possibly nested), so it shares the
+	// 256 width class. It is the upsert / DELETE lifecycle key, not a
+	// display field.
+	DefaultDocIDMaxLen = 256
+	// DefaultContentHashMaxLen is the Milvus content_hash (VARCHAR) column
+	// width (Phase 53-03 / D-53-03). The value is a lowercase sha256 hex
+	// digest — exactly 64 characters — so the width is the digest length,
+	// not a guess.
+	DefaultContentHashMaxLen = 64
+	DefaultIVFNList          = 128 // IVF_FLAT nlist — small dataset, modest cluster count
+	DefaultIVFNProbe         = 10  // search-time nprobe
 
 	// Network resilience (per Plan 01-01 internal-api strategy).
 	dialTimeout  = 5 * time.Second

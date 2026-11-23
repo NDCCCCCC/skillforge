@@ -54,8 +54,12 @@ func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []s
 		nil, // partitions (nil = default)
 		filter,
 		// OutputFields include effective_from + effective_to (Plan 05-02 D5-15)
-		// so the returned Hit carries the policy-version window for audit.
-		[]string{"id", "tier", "content", "source", "effective_from", "effective_to"},
+		// so the returned Hit carries the policy-version window for audit,
+		// and the Phase 53-03 doc-lifecycle triple (doc_id / chunk_index /
+		// content_hash) for the retrieval-metadata projection (retriever.Hit
+		// godoc). Legacy rows carry the zero values — pure display, no
+		// filter/ranking semantics.
+		[]string{"id", "tier", "content", "source", "effective_from", "effective_to", "doc_id", "chunk_index", "content_hash"},
 		[]entity.Vector{entity.FloatVector(queryVec)},
 		"embedding",
 		entity.COSINE,
@@ -77,6 +81,13 @@ func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []s
 		sourceCol := sr.Fields.GetColumn("source")
 		effectiveFromCol := sr.Fields.GetColumn("effective_from")
 		effectiveToCol := sr.Fields.GetColumn("effective_to")
+		// Phase 53-03 doc-lifecycle projection columns. GetColumn returns
+		// nil when the field is absent (a pre-53 schema without the
+		// columns) — the nil guards keep the Hit at its zero values, which
+		// is exactly the legacy contract.
+		docIDCol := sr.Fields.GetColumn("doc_id")
+		chunkIdxCol := sr.Fields.GetColumn("chunk_index")
+		contentHashCol := sr.Fields.GetColumn("content_hash")
 		for i := 0; i < sr.ResultCount; i++ {
 			row := retriever.Hit{Score: -1}
 			if i < len(sr.Scores) {
@@ -110,6 +121,21 @@ func (m *MilvusClient) Search(ctx context.Context, queryVec []float32, tiers []s
 			if effectiveToCol != nil {
 				if v, e := effectiveToCol.GetAsInt64(i); e == nil {
 					row.EffectiveTo = v
+				}
+			}
+			if docIDCol != nil {
+				if v, e := docIDCol.GetAsString(i); e == nil {
+					row.DocID = v
+				}
+			}
+			if chunkIdxCol != nil {
+				if v, e := chunkIdxCol.GetAsInt64(i); e == nil {
+					row.ChunkIndex = int32(v)
+				}
+			}
+			if contentHashCol != nil {
+				if v, e := contentHashCol.GetAsString(i); e == nil {
+					row.ContentHash = v
 				}
 			}
 			out = append(out, row)

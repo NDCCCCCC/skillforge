@@ -42,6 +42,9 @@ import (
 //	section       VARCHAR(256)  Plan 39-02 D-Milvus-01 — ECL logical section title
 //	section_idx   INT64         Plan 39-02 D-Milvus-01 — 1-based section position (0 = legacy)
 //	section_count INT64         Plan 39-02 D-Milvus-01 — sections in note (> 0 = ECL-owned)
+//	doc_id        VARCHAR(256)  Phase 53-03 D-53-03 — document lifecycle key (slash corpus path)
+//	chunk_index   INT64         Phase 53-03 D-53-03 — 0-based position in the doc's chunk sequence
+//	content_hash  VARCHAR(64)   Phase 53-03 D-53-03 — sha256 hex of the chunk text (re-embed skip key)
 //
 // Plan 39-02 (D-Milvus-01): the four ECL section fields are NATIVE
 // columns, not JSON stuffed into source — Phase 41 hybrid retrieval
@@ -51,6 +54,16 @@ import (
 // one-shot door exactly once — boot with SKILLFORGE_MILVUS_RECREATE=1
 // (drop + re-create + full re-embed via the boot-time knowledge.Index),
 // then unset it. No migration code beyond this gate.
+//
+// Phase 53-03 (D-53-03): the three doc-lifecycle fields follow the EXACT
+// same migration recipe as the ECL four — native columns, no in-place
+// ALTER (Milvus has none for pre-2.x-created collections that is safe
+// here), so an existing pre-53 collection needs the same ONE-SHOT
+// SKILLFORGE_MILVUS_RECREATE=1 door (drop + re-create + boot-time reseed
+// from knowledge/, which now stamps doc_id / chunk_index / content_hash
+// on every row). The zero-value legacy contract (retriever.Document
+// godoc) means a rebuilt collection reads identically to a legacy one
+// until producers start stamping the fields.
 //
 // Plan 05-02 D5-15: the two effective_* INT64 columns use sentinel-0
 // (NOT nullable). The default value 0 at the schema layer is the
@@ -100,7 +113,14 @@ func EnsureCollection(ctx context.Context, mc client.Client, cfg Config) error {
 		WithField(entity.NewField().WithName("source_idx").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultSourceIdxMaxLen))).
 		WithField(entity.NewField().WithName("section").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultSectionMaxLen))).
 		WithField(entity.NewField().WithName("section_idx").WithDataType(entity.FieldTypeInt64)).
-		WithField(entity.NewField().WithName("section_count").WithDataType(entity.FieldTypeInt64))
+		WithField(entity.NewField().WithName("section_count").WithDataType(entity.FieldTypeInt64)).
+		// Phase 53-03 (D-53-03) — native doc-lifecycle metadata, the ECL
+		// four's migration recipe verbatim (see the schema godoc): widths
+		// derive from the single-home consts; VarChar via
+		// FieldTypeVarChar + max_length, matching tier / content / source.
+		WithField(entity.NewField().WithName("doc_id").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultDocIDMaxLen))).
+		WithField(entity.NewField().WithName("chunk_index").WithDataType(entity.FieldTypeInt64)).
+		WithField(entity.NewField().WithName("content_hash").WithDataType(entity.FieldTypeVarChar).WithMaxLength(int64(DefaultContentHashMaxLen)))
 
 	if err := mc.CreateCollection(ctx, schema, 1); err != nil { // shardsNum=1 (spike)
 		return fmt.Errorf("CreateCollection(%q): %w", cfg.CollectionName, err)
@@ -170,6 +190,9 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 	sections := make([]string, len(docs))
 	sectionIdxs := make([]int64, len(docs))
 	sectionCounts := make([]int64, len(docs))
+	docIDs := make([]string, len(docs))
+	chunkIdxs := make([]int64, len(docs))
+	contentHashes := make([]string, len(docs))
 	for i, d := range docs {
 		if len(d.Embedding) != cfg.EmbedDim {
 			return fmt.Errorf("doc (id=%d) embedding dim=%d, want=%d", d.ID, len(d.Embedding), cfg.EmbedDim)
@@ -188,6 +211,14 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 		sections[i] = truncateRunes(d.Section, DefaultSectionMaxLen)
 		sectionIdxs[i] = d.SectionIdx
 		sectionCounts[i] = d.SectionCount
+		// Phase 53-03 (D-53-03): same legacy posture — producers that do
+		// not stamp the doc-lifecycle fields leave doc_id="",
+		// chunk_index=0, content_hash="" (the zero-value legacy contract
+		// on retriever.Document). chunk_index widens int32→int64 at the
+		// column boundary (Milvus INT64 is the only integer width here).
+		docIDs[i] = truncateRunes(d.DocID, DefaultDocIDMaxLen)
+		chunkIdxs[i] = int64(d.ChunkIndex)
+		contentHashes[i] = truncateRunes(d.ContentHash, DefaultContentHashMaxLen)
 	}
 
 	idCol := entity.NewColumnInt64("id", ids)
@@ -203,8 +234,11 @@ func SeedDocuments(ctx context.Context, mc client.Client, cfg Config, docs []ret
 	sectionCol := entity.NewColumnVarChar("section", sections)
 	sectionIdxCol := entity.NewColumnInt64("section_idx", sectionIdxs)
 	sectionCountCol := entity.NewColumnInt64("section_count", sectionCounts)
+	docIDCol := entity.NewColumnVarChar("doc_id", docIDs)
+	chunkIdxCol := entity.NewColumnInt64("chunk_index", chunkIdxs)
+	contentHashCol := entity.NewColumnVarChar("content_hash", contentHashes)
 
-	if _, err := mc.Insert(ctx, cfg.CollectionName, "", idCol, tierCol, contentCol, sourceCol, vecCol, effectiveFromCol, effectiveToCol, sourceIdxCol, sectionCol, sectionIdxCol, sectionCountCol); err != nil {
+	if _, err := mc.Insert(ctx, cfg.CollectionName, "", idCol, tierCol, contentCol, sourceCol, vecCol, effectiveFromCol, effectiveToCol, sourceIdxCol, sectionCol, sectionIdxCol, sectionCountCol, docIDCol, chunkIdxCol, contentHashCol); err != nil {
 		return fmt.Errorf("Insert: %w", err)
 	}
 	// async=false + flush so the rows are durable + visible to the next Search.

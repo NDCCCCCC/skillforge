@@ -78,8 +78,8 @@ func TestCandidatesExcludesNonWhitelistedTier(t *testing.T) {
 func TestCandidatesExcludesExpiredEffectiveTo(t *testing.T) {
 	const now int64 = 1_000
 	docs := []row{
-		{ID: 1, Tier: "authority", EffectiveTo: 0},      // perpetual
-		{ID: 2, Tier: "authority", EffectiveTo: now},    // valid on the boundary
+		{ID: 1, Tier: "authority", EffectiveTo: 0},       // perpetual
+		{ID: 2, Tier: "authority", EffectiveTo: now},     // valid on the boundary
 		{ID: 3, Tier: "authority", EffectiveTo: now + 1}, // future
 		{ID: 4, Tier: "authority", EffectiveTo: now - 1}, // expired
 	}

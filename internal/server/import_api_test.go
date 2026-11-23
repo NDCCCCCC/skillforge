@@ -208,10 +208,10 @@ func invokeImport(t *testing.T, deps *Deps, method, path, token string, body []b
 }
 
 // TestImportStreaming sends a >16 MB multipart push and asserts:
-//   1. HTTP 200 + batch_id in response.
-//   2. The batch lands in the SQLite import_batches audit table.
-//   3. No new entries appear in the package-private temp root (Hertz did not
-//      pre-parse the multipart form into a temp file).
+//  1. HTTP 200 + batch_id in response.
+//  2. The batch lands in the SQLite import_batches audit table.
+//  3. No new entries appear in the package-private temp root (Hertz did not
+//     pre-parse the multipart form into a temp file).
 func TestImportStreaming(t *testing.T) {
 	deps, cleanup := importTestDeps(t)
 	defer cleanup()

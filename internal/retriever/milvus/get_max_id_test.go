@@ -35,10 +35,10 @@ type getMaxIDMockClient struct {
 }
 
 type queryCall struct {
-	ctx    context.Context
-	coll   string
-	expr   string
-	limit  int64
+	ctx   context.Context
+	coll  string
+	expr  string
+	limit int64
 }
 
 func (m *getMaxIDMockClient) Query(

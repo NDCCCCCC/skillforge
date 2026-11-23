@@ -162,12 +162,12 @@ func ValidReason(s string) bool {
 //     ConfidenceFloor; this wrapper enforces BOTH per the W3 floor
 //     gate).
 //   - On retry exhaustion (parse / enum / range / floor failure after
-//   MaxRetries attempts): returns the DefaultDeny shape
-//   {Decision: "refuse", Reason: verdict.RefusalReasonOutOfScope,
-//   Confidence: 0.0, error: …}. The DefaultDeny is the LAST
-//   successful envelope; the error is non-nil so callers can log
-//   it as an observability signal without mistaking it for an
-//   upstream failure.
+//     MaxRetries attempts): returns the DefaultDeny shape
+//     {Decision: "refuse", Reason: verdict.RefusalReasonOutOfScope,
+//     Confidence: 0.0, error: …}. The DefaultDeny is the LAST
+//     successful envelope; the error is non-nil so callers can log
+//     it as an observability signal without mistaking it for an
+//     upstream failure.
 //
 // The input struct has no History field (D10-A1 — types.go). The
 // classifier sees only the rewritten query + the current-turn

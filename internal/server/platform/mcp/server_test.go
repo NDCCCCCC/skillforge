@@ -247,9 +247,9 @@ func TestSKFNeighbors_TierIsolation(t *testing.T) {
 }
 
 // TestSKFNeighbors_InvisibleEntityReturnsNoEdges 是"裸 kg.Query 会失败"
-//的对照：查一个**不可见 tier** 的实体时，隔离过滤必须把它的边全部
-//挡住。裸 Query 会把 note_b 的边原样返回（等于把 tier-b 的内容交给
-//只被授权 tier-a 的外部 agent），QueryScoped 则一条都不返回。
+// 的对照：查一个**不可见 tier** 的实体时，隔离过滤必须把它的边全部
+// 挡住。裸 Query 会把 note_b 的边原样返回（等于把 tier-b 的内容交给
+// 只被授权 tier-a 的外部 agent），QueryScoped 则一条都不返回。
 func TestSKFNeighbors_InvisibleEntityReturnsNoEdges(t *testing.T) {
 	kg := fixtureLiveCatKG()
 

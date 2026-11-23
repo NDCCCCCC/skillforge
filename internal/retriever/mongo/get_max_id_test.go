@@ -28,9 +28,11 @@ import (
 // The results type must have the same bson tag as what the production
 // cursor.All receives — the bson tag makes it a distinct Go type.
 type mockAggCursor struct {
-	results []struct{ ID int64 `bson:"id"` }
-	err     error
-	calls   int
+	results []struct {
+		ID int64 `bson:"id"`
+	}
+	err   error
+	calls int
 }
 
 func (m *mockAggCursor) All(_ context.Context, out interface{}) error {
@@ -95,7 +97,9 @@ func TestMongoClientGetMaxIDEmpty(t *testing.T) {
 // the behavior of the $sort + $limit pipeline in production MongoDB).
 func TestMongoClientGetMaxIDPopulated(t *testing.T) {
 	cur := &mockAggCursor{
-		results: []struct{ ID int64 `bson:"id"` }{{ID: 5}, {ID: 4}, {ID: 3}, {ID: 2}, {ID: 1}},
+		results: []struct {
+			ID int64 `bson:"id"`
+		}{{ID: 5}, {ID: 4}, {ID: 3}, {ID: 2}, {ID: 1}},
 	}
 	mc := &Client{
 		cfg:    Config{Database: "test", Collection: "knowledge"},
