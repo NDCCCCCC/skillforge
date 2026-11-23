@@ -1,20 +1,20 @@
 ---
 gsd_state_version: "1.0"
-milestone: v1.7
-milestone_name: Open-Source Readiness
-current_phase: 52
-status: completed
-stopped_at: Phase 52 complete — all phases complete
-last_updated: "2026-10-24T02:38:36.031Z"
-last_activity: 2026-10-24
-last_activity_desc: Phase 52 complete
-state_head: 7ba310f439fe0e5465936efd0c3ef08ab45d546b
+milestone: v1.8
+milestone_name: Ingest Integrity & Ontology into Production
+current_phase: 53
+status: not_started
+stopped_at: v1.8 milestone created (2026-11-23) — awaiting Phase 53 kickoff
+last_updated: "2026-11-23T12:00:00.000Z"
+last_activity: 2026-11-23
+last_activity_desc: v1.8 milestone created from ingest/ontology/provenance analysis + 4-way web research
+state_head: 6e7efa4f469b9d048d65ecece8007e8ef131726f
 progress:
   total_phases: 6
-  completed_phases: 5
-  total_plans: 48
-  completed_plans: 47
-  percent: 100
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,22 +24,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-13)
 
 **Core value:** 同一个 agent 内核，通过可插拔的 Skill 文件被任意企业快速定制，无需改代码
-**Current focus:** Phase 49 — Hermetic Demo
+**Current focus:** Phase 53 — 摄取链路完整性（未启动）
 
 ## Current Milestone
 
-**v1.7 Open-Source Readiness** — 外部用户 clone→跑通→看懂→信任。
-Phases: 47 清债基线 → (48 CI 矩阵 ∥ 49 Hermetic Demo) → 50 开源门面 → 51 发布工程
-Coverage: 13/13 REQ（FACE×3 / CICD×3 / DEMO×3 / REL×4）
+**v1.8 Ingest Integrity & Ontology into Production** — 摄取完整性 + 流水线可视化重试 + 面板体验修复 + 本体进生产 + 来源标注。
+Phases: 53 摄取完整性 → (54 流水线后端 ∥ 56 操作面板) → 55 流水线前端 → 57 本体进 chat → 58 来源标注
+Coverage: 15/15 REQ（ING×5 / PANEL×3 / ONT×3 / PROV×3 / ROI×1）。Full details: `.planning/milestones/v1.8-ROADMAP.md`
+
+**Note:** v1.7 Phases 47-52 全部 complete 但**未打 tag**（仓库最新 tag 仍 v1.6）——v1.8 版本叙事按"开发版"处理，tag 打发为独立决策。
 
 ## Current Position
 
-Phase: 52
+Phase: 53
 Plan: Not started
-Status: All phases complete
-Last activity: 2026-10-24 — Phase 52 complete
+Status: Milestone created — awaiting kickoff
+Last activity: 2026-11-23 — v1.8 milestone created
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 

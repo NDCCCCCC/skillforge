@@ -13,7 +13,8 @@
 | v1.4 (Ontology Layer) | 38-41 | ✅ SHIPPED 2026-09-23 |
 | v1.5 (Outstanding Closure) | 42-44 | ✅ SHIPPED 2026-10-02 (closure-only) |
 | v1.6 (SPARQL Schema Detection + Entity SHACL Shapes) | 45-46 | ✅ SHIPPED 2026-10-08 |
-| v1.7 (Open-Source Readiness) | 47-51 | 🚧 IN PROGRESS |
+| v1.7 (Open-Source Readiness) | 47-51 (+52) | ✅ COMPLETE 2026-10-24 (tag pending) |
+| **v1.8 (Ingest Integrity & Ontology into Production)** | **53-58** | **🚧 IN PROGRESS** |
 | Backlog | 999.x | Backlog |
 
 ---
@@ -53,7 +54,32 @@
 
 ---
 
-## 🚧 Current Milestone: v1.7 Open-Source Readiness
+## 🚧 Current Milestone: v1.8 Ingest Integrity & Ontology into Production
+
+**Milestone Goal:** 修复摄取链路三个数据完整性断点（上传蒸发/分块不一致/无生命周期），新建摄取流水线可视化与任意步骤重试，接通操作面板两处体验断裂（审批规则恒空、右侧检查器未正确应用），把本体接进生产 chat（实体锚定 + grounding 校验），并让每个引用自报来源通道（vector/graph/hybrid）。完成后 v1.7 诚实清单移除「KG 实体未进 chat 检索」条目。
+
+**Source:** 2026-11-23 三轮实证分析（摄取链路 / 本体消费面 / 来源标注）+ 用户追加需求（流水线可视化与步骤重试、面板体验修复）+ 四路联网调研（Dify/RAGFlow 源码级、LangGraph、Anthropic Citations、LlamaIndex、GraphRAG、Langfuse 等，见 `.planning/milestones/v1.8-ROADMAP.md` Industry References 节）。
+
+**Scope:** 15 项需求（ING×5 / PANEL×3 / ONT×3 / PROV×3 / ROI×1）→ 6 phases（53-58），coverage 15/15。
+
+**Standards（继承 v1.4–v1.7）:** 零硬编码；Go handler ≤200 行；不静默吞错；涉 web 先产 UI-SPEC；每 phase 配 `verify-phase-NN.sh`；wire 契约扩展只加可选字段。
+
+**Key invariant:** Citation 的 grounding 语义（D2-03 verbatim）与 provenance 语义正交——本体只引导检索，不直接制造引用。
+
+Full details: `.planning/milestones/v1.8-ROADMAP.md`
+
+## Phases (v1.8)
+
+- [ ] **Phase 53: 摄取链路完整性** - 上传落盘单一事实来源 + chunkBody 退役 + doc_id 生命周期 + 跨路径等价性测试
+- [ ] **Phase 54: 摄取流水线后端** - 异步 job + ingest_step 状态机（staging/artifact_ref）+ 任意步骤重试 + ECL 自动触发 + 批量 embed
+- [ ] **Phase 55: 摄取流水线前端视图** - 八步时间线 + 双层状态派生 + 步骤重试交互（UI-SPEC 先行）
+- [ ] **Phase 56: 操作面板可用性** - 审批规则三级匹配/scope 三层/命中反馈闭环 + 右侧检查器信息架构 + 写入链路闭合
+- [ ] **Phase 57: 本体进 chat** - 实体锚定接线 hybrid pipeline + graph-only 向量验证门 + grounding 实体校验
+- [ ] **Phase 58: 来源标注 wire** - Citation origin/via 可选字段 + data-retrieval SSE + 前端 badge + ROI 看板
+
+---
+
+## ✅ Milestone: v1.7 Open-Source Readiness (Phases complete 2026-10-24, tag pending)
 
 **Milestone Goal:** 把"核心引擎产品级、门面个人项目级"的落差补齐——外部用户 clone→跑通→看懂→信任，确立信任边界赛道的开源门面。
 
