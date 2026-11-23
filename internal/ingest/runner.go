@@ -47,6 +47,7 @@ package ingest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -113,18 +114,20 @@ type VectorSink func(ctx context.Context, slug, docID string, docs []retriever.D
 // server.Deps.Ingest (nil = every ingest surface 503s, the ECL
 // nil-posture).
 type Runner struct {
-	jobs          JobStore
-	emb           embedder.Embedder
-	reg           kb.Registry
-	parserReg     *document.ParserRegistry
-	retriever     retriever.Retriever
-	sink          VectorSink
-	eclTrigger    ECLTrigger
-	embedCache    EmbedCache
-	artifacts     *ArtifactStore
-	existing      func(ctx context.Context, slug, docID string) (map[string]retriever.DocChunk, error)
-	embedderModel string
-	auditHook     func(action, detail string)
+	jobs             JobStore
+	emb              embedder.Embedder
+	reg              kb.Registry
+	parserReg        *document.ParserRegistry
+	retriever        retriever.Retriever
+	sink             VectorSink
+	eclTrigger       ECLTrigger
+	embedCache       EmbedCache
+	artifacts        *ArtifactStore
+	existing         func(ctx context.Context, slug, docID string) (map[string]retriever.DocChunk, error)
+	embedderModel    string
+	retryAttempts    int
+	retryBackoffBase time.Duration
+	auditHook        func(action, detail string)
 
 	// sem bounds concurrently RUNNING jobs (default maxConcurrentJobs=2):
 	// two parallel ingests already hammer the intranet Milvus/BGE pair;
@@ -175,8 +178,10 @@ type RunnerConfig struct {
 	// EmbedderModel names the embedding model for the cache key's model
 	// half (54-02). Empty = cache lookaside disabled (every chunk
 	// embeds fresh).
-	EmbedderModel string
-	AuditHook     func(action, detail string)
+	EmbedderModel    string
+	RetryAttempts    int
+	RetryBackoffBase time.Duration
+	AuditHook        func(action, detail string)
 	// MaxConcurrent overrides the running-job cap (tests). 0 → default.
 	MaxConcurrent int
 }
@@ -200,19 +205,21 @@ func NewRunner(cfg RunnerConfig) (*Runner, error) {
 		max = maxConcurrentJobs
 	}
 	return &Runner{
-		jobs:          cfg.Jobs,
-		emb:           cfg.Emb,
-		reg:           cfg.Reg,
-		parserReg:     cfg.ParserReg,
-		retriever:     cfg.Retriever,
-		sink:          cfg.Sink,
-		eclTrigger:    cfg.ECLTrigger,
-		auditHook:     cfg.AuditHook,
-		embedCache:    cfg.EmbedCache,
-		embedderModel: cfg.EmbedderModel,
-		existing:      cfg.ExistingChunks,
-		artifacts:     cfg.Artifacts,
-		sem:           make(chan struct{}, max),
+		jobs:             cfg.Jobs,
+		emb:              cfg.Emb,
+		reg:              cfg.Reg,
+		parserReg:        cfg.ParserReg,
+		retriever:        cfg.Retriever,
+		sink:             cfg.Sink,
+		eclTrigger:       cfg.ECLTrigger,
+		auditHook:        cfg.AuditHook,
+		embedderModel:    cfg.EmbedderModel,
+		retryAttempts:    cfg.RetryAttempts,
+		retryBackoffBase: cfg.RetryBackoffBase,
+		existing:         cfg.ExistingChunks,
+		embedCache:       cfg.EmbedCache,
+		artifacts:        cfg.Artifacts,
+		sem:              make(chan struct{}, max),
 	}, nil
 }
 
@@ -377,11 +384,28 @@ func (r *Runner) run(ctx context.Context, jobID string, raw []byte) {
 			return
 		}
 
-		artifact, stepStatus, err := r.execStep(ctx, job, name, st)
+		// 54-03: transient failures retry INSIDE the step (backoff 1s/4s/16s
+		// x retryAttempts); deterministic ones surface after exactly one
+		// attempt. The classification rides the error text so the step row
+		// (and the operator reading it) sees WHY the retry policy chose
+		// the path it took.
+		var artifact string
+		var stepStatus string
+		var stepErr error
+		stepErr = r.retryLoop(ctx, func() error {
+			var a string
+			var sst string
+			var e error
+			a, sst, e = r.execStep(ctx, job, name, st)
+			artifact, stepStatus, err = a, sst, e
+			return e
+		})
 		completedAt := nowTime()
 		completed := rfc3339(completedAt)
-		if err != nil {
-			logStepFailure(jobID, name, err)
+		if stepErr != nil {
+			class := Classify(stepErr)
+			tagged := class.Prefix(stepErr)
+			logStepFailure(jobID, name, errors.New(tagged))
 			_ = r.jobs.UpsertStep(ctx, StepRow{
 				JobID:       jobID,
 				Step:        name,
@@ -389,12 +413,12 @@ func (r *Runner) run(ctx context.Context, jobID string, raw []byte) {
 				Attempt:     attempts[name] + 1,
 				StartedAt:   currentStepStart,
 				CompletedAt: completed,
-				Error:       err.Error(),
+				Error:       tagged,
 			})
 			// D-54-01 fail-closed: a failed REQUIRED step fails the job.
 			// Remaining steps stay pending — the SC 1 timeline shows
 			// exactly where the chain stopped and why.
-			_ = r.jobs.UpdateJob(ctx, jobID, StatusFailed, name+" failed: "+err.Error(), completedAt)
+			_ = r.jobs.UpdateJob(ctx, jobID, StatusFailed, name+" failed: "+tagged, completedAt)
 			return
 		}
 		if err := r.jobs.UpsertStep(ctx, StepRow{
