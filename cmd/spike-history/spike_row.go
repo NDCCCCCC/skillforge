@@ -66,8 +66,8 @@ import (
 // ExpectedChunks; the spike fields layer on top.
 type spikeRow struct {
 	eval.Case
-	BaselineID   string `json:"baseline_id,omitempty"`
-	Subclass     string `json:"subclass,omitempty"`
+	BaselineID    string `json:"baseline_id,omitempty"`
+	Subclass      string `json:"subclass,omitempty"`
 	HistoryAnchor struct {
 		TurnIndex    int    `json:"turn_index"`
 		FakeChunkRef string `json:"fake_chunk_ref"`

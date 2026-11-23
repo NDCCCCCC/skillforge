@@ -838,6 +838,11 @@ type ApprovalRulesStore interface {
 	QueryRules(ctx context.Context, sessionID, skillID string, scope RuleScope) ([]ApprovalRule, error)
 	MatchRule(ctx context.Context, target, argsHash, skillID, sessionID string) (*ApprovalRule, bool, error)
 	ListActiveRulesForTarget(ctx context.Context, target, skillID, sessionID string) ([]ApprovalRule, error)
+	// MatchRuleForArgs is the 56-02 tier scoring engine (rule_engine.go)
+	// — the candidate fetch above plus in-Go exact/prefix/template
+	// evaluation and the deterministic priority pick. It REPLACES
+	// MatchRule as the matcher's lookup (which retires by 56-05).
+	MatchRuleForArgs(ctx context.Context, req MatchRequest) (*ApprovalRule, MatchStats, error)
 	RevokeByID(ctx context.Context, sessionID, userID string, ruleID int64, skillVersion, promptHash string, reason string) error
 	UpdateLastUsedAt(ctx context.Context, target, argsHash, skillID, scopeSessionID string) error
 	HitRule(ctx context.Context, ruleID int64) error

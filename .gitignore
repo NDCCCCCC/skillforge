@@ -96,3 +96,6 @@ raw-never-*
 
 # SkillForge 本机 LLM 配置（含 API key 明文 / 环境变量引用，绝不入库）
 /.skillforge/
+
+# Claude agent worktrees (historical full-tree copies; never commit)
+.claude/worktrees/

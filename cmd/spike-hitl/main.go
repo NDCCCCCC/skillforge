@@ -21,24 +21,24 @@
 //
 // The 6-step pipeline (proves HITL-01..08 in one binary):
 //
-//	1. Run #1: BuildRunner → runner.Run → scripted ChatModel emits a
-//	   memory_facts_write tool call → MemoryFactsTool Pass-1 →
-//	   tool.StatefulInterrupt → Runner persists checkpoint.
-//	2. WritePendingApproval: seed the action_pending_approval audit
-//	   row via the fail-closed AuditWriter (D11-C3); stamp the
-//	   checkpoint with the D11-C2 (skill_version, prompt_hash)
-//	   snapshot.
-//	3. Refresh: drop the in-memory Runner state; keep the sqlite
-//	   store; rebuild a NEW Runner from the same store (simulates
-//	   backend restart + UI refresh).
-//	4. GET analog: query the action_pending_approval row; state =
-//	   active (snapshot matches).
-//	5. Run #2: MarkApproved (action_approved row) via the AuditWriter,
-//	   then runner.ResumeWithParams with an ApprovalDecision approve
-//	   payload → Tool Pass-2 runs → write executes.
-//	6. Assert: 3-row audit chain (pending + approved) in INSERT-only
-//	   monotonic order; sha256(frozen_args) byte-identical between the
-//	   pending row, the approved row, and the Tool-call args.
+//  1. Run #1: BuildRunner → runner.Run → scripted ChatModel emits a
+//     memory_facts_write tool call → MemoryFactsTool Pass-1 →
+//     tool.StatefulInterrupt → Runner persists checkpoint.
+//  2. WritePendingApproval: seed the action_pending_approval audit
+//     row via the fail-closed AuditWriter (D11-C3); stamp the
+//     checkpoint with the D11-C2 (skill_version, prompt_hash)
+//     snapshot.
+//  3. Refresh: drop the in-memory Runner state; keep the sqlite
+//     store; rebuild a NEW Runner from the same store (simulates
+//     backend restart + UI refresh).
+//  4. GET analog: query the action_pending_approval row; state =
+//     active (snapshot matches).
+//  5. Run #2: MarkApproved (action_approved row) via the AuditWriter,
+//     then runner.ResumeWithParams with an ApprovalDecision approve
+//     payload → Tool Pass-2 runs → write executes.
+//  6. Assert: 3-row audit chain (pending + approved) in INSERT-only
+//     monotonic order; sha256(frozen_args) byte-identical between the
+//     pending row, the approved row, and the Tool-call args.
 //
 // Output protocol (the acceptance gate greps for these prefixes):
 //
@@ -192,7 +192,7 @@ func (s *stubRetriever) Health(_ context.Context) error { return nil }
 func (s *stubRetriever) Search(_ context.Context, _ []float32, _ []string, _ int, _ int64) ([]retriever.Hit, error) {
 	return nil, nil
 }
-func (s *stubRetriever) Ensure(_ context.Context) error                        { return nil }
+func (s *stubRetriever) Ensure(_ context.Context) error                         { return nil }
 func (s *stubRetriever) Insert(_ context.Context, _ []retriever.Document) error { return nil }
 func (s *stubRetriever) ListMetadata(_ context.Context) ([]retriever.DocumentMeta, error) {
 	return nil, nil
@@ -201,7 +201,7 @@ func (s *stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkCon
 	return retriever.ChunkContent{}, errors.New("stub: no chunk")
 }
 func (s *stubRetriever) GetMaxID(_ context.Context, _ string) (int64, error) { return 0, nil }
-func (s *stubRetriever) Disconnect() error { return nil }
+func (s *stubRetriever) Disconnect() error                                   { return nil }
 
 // e2eReport is the JSON summary emitted to stdout on success. The
 // acceptance gate parses this for the audit-chain + frozen_args

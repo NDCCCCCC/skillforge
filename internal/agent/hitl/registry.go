@@ -163,22 +163,27 @@ type reportEmitBinder interface {
 type kbBinder interface{ bindKBRegistry(reg kb.Registry) error }
 
 // sessionCloner is implemented by handlers that carry per-request
-// bindable state (sessionID / skillID / ruleMatcher / tier vocabulary —
-// currently memory:facts). CR-04 (26-REVIEW): those fields must never be
-// written on the shared singleton, because BuildToolsForSkill runs per
-// HTTP request on its own goroutine; the handler is asked for a
-// request-scoped copy instead.
+// bindable state (sessionID / skillID / ruleMatcher / ruleHitEmit /
+// tier vocabulary — currently memory:facts). CR-04 (26-REVIEW): those
+// fields must never be written on the shared singleton, because
+// BuildToolsForSkill runs per HTTP request on its own goroutine; the
+// handler is asked for a request-scoped copy instead. The 56-02
+// ruleHitEmit param threads the rule-matched SSE hook alongside the
+// matcher (D-56-02 — same per-request path, same nil-safety).
 type sessionCloner interface {
-	cloneForSession(reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher) (tool.InvokableTool, error)
+	cloneForSession(reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher, ruleHitEmit RuleHitEmitFunc) (tool.InvokableTool, error)
 }
 
 // HandlerForSession returns the write handler for target, scoped to the
 // per-request identity. Handlers WITHOUT bindable state are returned as
 // the shared singleton (they are read-only after init, and the D11-B3
 // map is the source of truth); handlers WITH bindable state return a
-// fresh copy carrying (reg, sessionID, skillID, ruleMatcher), so two
-// concurrent requests never share mutable fields and an interrupt's
-// audit row can only name the session that actually issued it.
+// fresh copy carrying (reg, sessionID, skillID, ruleMatcher,
+// ruleHitEmit), so two concurrent requests never share mutable fields
+// and an interrupt's audit row can only name the session that actually
+// issued it. ruleHitEmit is the 56-02 rule-matched SSE hook (D-56-02);
+// nil = the auto-pass still executes and audits, the live stream just
+// gets no frame.
 //
 // Fail-closed contract (T-26-06-2): a nil registry, or one without an
 // authority-role KB, aborts the clone for handlers that need the
@@ -186,13 +191,13 @@ type sessionCloner interface {
 // construction, never a fallback to a compiled-in tier list. A nil
 // handler (unregistered target) returns (nil, nil) and stays the
 // caller's silent-skip case.
-func HandlerForSession(target string, reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher) (tool.InvokableTool, error) {
+func HandlerForSession(target string, reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher, ruleHitEmit RuleHitEmitFunc) (tool.InvokableTool, error) {
 	h := hitlHandlers[target]
 	if h == nil {
 		return nil, nil
 	}
 	if c, ok := h.(sessionCloner); ok {
-		return c.cloneForSession(reg, sessionID, skillID, ruleMatcher)
+		return c.cloneForSession(reg, sessionID, skillID, ruleMatcher, ruleHitEmit)
 	}
 	return h, nil
 }

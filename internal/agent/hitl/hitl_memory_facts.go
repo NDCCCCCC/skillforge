@@ -134,6 +134,14 @@ type MemoryFactsTool struct {
 	// back to the interrupt path — fail-closed toward human review.
 	ruleMatcher RuleMatcher
 
+	// ruleHitEmit is the 56-02 rule-matched SSE hook (D-56-02 命中必须
+	// 可见): invoked in the hit branch AFTER MarkAutoPassedRule succeeds
+	// (audit row FIRST, event after — the P12-L6 / 12-06 ordering).
+	// Narrow hitl.RuleHitEmitFunc signature — the server-side closure
+	// assembles the wire payload. nil = the event is not sent; the
+	// audit row above is the durable record either way.
+	ruleHitEmit RuleHitEmitFunc
+
 	// sessionID / skillID are the per-session identity bound when
 	// BuildToolsForSkill asks the registry for a request-scoped copy
 	// (cloneForSession, CR-04 26-REVIEW — D11-B1 per-turn whitelist
@@ -212,7 +220,7 @@ func (t *MemoryFactsTool) bindKBRegistry(reg kb.Registry) error {
 // Validation is fail-closed and happens BEFORE any state is used: a nil
 // registry (or one without an authority-role KB) refuses the clone, the
 // same contract as NewMemoryFactsTool.
-func (t *MemoryFactsTool) cloneForSession(reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher) (tool.InvokableTool, error) {
+func (t *MemoryFactsTool) cloneForSession(reg kb.Registry, sessionID, skillID string, ruleMatcher RuleMatcher, ruleHitEmit RuleHitEmitFunc) (tool.InvokableTool, error) {
 	c := *t // shallow copy: carries the audit hook and any bound vocabulary
 	if err := c.bindKBRegistry(reg); err != nil {
 		return nil, err
@@ -220,6 +228,7 @@ func (t *MemoryFactsTool) cloneForSession(reg kb.Registry, sessionID, skillID st
 	c.sessionID = sessionID
 	c.skillID = skillID
 	c.ruleMatcher = ruleMatcher
+	c.ruleHitEmit = ruleHitEmit
 	return &c, nil
 }
 
@@ -315,18 +324,36 @@ func (t *MemoryFactsTool) InvokableRun(ctx context.Context, args string, _ ...to
 		}
 
 		// D11-D1 auto-pass (HITL-08): if an approve-and-remember rule
-		// matches (target, sha256(args), skillID, sessionID), skip the
-		// interrupt — audit the auto-pass and execute directly. The
-		// argsHash is computed from the VERBATIM args bytes, never
-		// re-marshaled (HITL-07 byte-identity anchor shared with the
-		// rule key).
-		argsHash := ComputeFrozenArgsHash([]byte(args))
-		if _, matched := t.ruleMatcherOrDefault().Match(ctx, MemoryFactsTarget, argsHash, t.skillID, t.sessionID); matched {
+		// matches, skip the interrupt — audit the auto-pass and execute
+		// directly. The 56-02 engine (D-56-02) evaluates ALL three tiers
+		// (exact args-hash equality / prefix locked-field subset /
+		// template target-level) with the deterministic session > skill
+		// > global + specificity scoring. The argsHash is computed from
+		// the VERBATIM args bytes, never re-marshaled (HITL-07
+		// byte-identity anchor shared with the rule key); ArgsJSON rides
+		// along verbatim for the prefix tier.
+		matchReq := MatchRequest{
+			Target:     MemoryFactsTarget,
+			ArgsJSON:   args,
+			ArgsHash:   ComputeFrozenArgsHash([]byte(args)),
+			SkillID:    t.skillID,
+			SessionID:  t.sessionID,
+			ToolCallID: approvalID,
+		}
+		if rule, matched := t.ruleMatcherOrDefault().Match(ctx, matchReq); matched {
 			userID := userIDFromCtx(ctx)
 			if _, err := auditOrDefault(t.audit).MarkAutoPassedRule(ctx, t.sessionID, userID, approvalID, MemoryFactsTarget, []byte(args)); err != nil {
 				// Fail-closed, same posture as the pending-row insert:
 				// an audit failure aborts the write.
 				return "", fmt.Errorf("memory_facts_write: MarkAutoPassedRule failed (fail-closed): %w", err)
+			}
+			// 56-02 rule-matched SSE (D-56-02 命中必须可见): audit row
+			// FIRST, event after (P12-L6 / 12-06 ordering). nil emitter
+			// = the event is not sent; the audit row above is the
+			// durable record either way. rule is non-nil whenever
+			// matched is true (the engine contract), guarded defensively.
+			if rule != nil && t.ruleHitEmit != nil {
+				t.ruleHitEmit(rule.ID, rule.MatchType, rule.Scope, rule.Target, matchReq.ToolCallID)
 			}
 			return t.executeMemoryFactsWrite(ctx, []byte(args))
 		}

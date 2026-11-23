@@ -105,7 +105,13 @@ import (
 // store (via the clone, not a shared-instance mutation — CR-04). A nil
 // ruleMatcher degrades to hitl.NoopRuleMatcher (no auto-pass — every
 // write interrupts; the fail-closed direction).
-func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, skillID string, ruleMatcher hitl.RuleMatcher, reg kb.Registry) ([]tool.BaseTool, error) {
+//
+// 56-02 EXTENSION (D-56-02): ruleHitEmit rides the same per-request
+// path — the Tool hit branch invokes it after MarkAutoPassedRule so the
+// rule-matched data-decision frame reaches the live stream with the
+// deterministic audit-row-before-event ordering. nil = events not sent
+// (audit rows still written).
+func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, skillID string, ruleMatcher hitl.RuleMatcher, reg kb.Registry, ruleHitEmit hitl.RuleHitEmitFunc) ([]tool.BaseTool, error) {
 	if manifest == nil {
 		return nil, errors.New("agent.BuildToolsForSkill: manifest is nil")
 	}
@@ -162,7 +168,7 @@ func BuildToolsForSkill(_ context.Context, manifest *skill.Manifest, sessionID, 
 		// (e.g. "review_report" before 11-04 lands) → silently skip:
 		// the LLM does NOT see a Tool schema for an unregistered
 		// handler — see Task 2's hitlHandlers var declaration comment.
-		h, err := hitl.HandlerForSession(target, reg, sessionID, skillID, ruleMatcher)
+		h, err := hitl.HandlerForSession(target, reg, sessionID, skillID, ruleMatcher, ruleHitEmit)
 		if err != nil {
 			return nil, fmt.Errorf("agent.BuildToolsForSkill: %w", err)
 		}

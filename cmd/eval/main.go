@@ -220,7 +220,7 @@ func runGateCheck(reportPath, skillsDir string) int {
 
 // KPILockFile pins a KPI eval run. Extends LockFile with KPI-specific fields.
 type KPILockFile struct {
-	ModelVersion       string `json:"model_ver"`
+	ModelVersion      string `json:"model_ver"`
 	PromptHash        string `json:"prompt_hash"`
 	Seed              int64  `json:"seed"`
 	EvalSetVersion    string `json:"eval_set_version"`
@@ -615,18 +615,18 @@ func main() {
 		log.Printf("[INFO] cmd/eval: scoring %d cases with judge=%s", len(cases), judgeModel)
 
 		report, scores := runEvalPass(ctx, evalPass{
-			cases:   cases,
-			agent:   ag,
-			emb:     emb,
-			r:       r,
-			store:   st,
-			judge:   judge,
-			tiers:   manifest.ResolvedTiers(),
-			topK:    *topK,
-			skill:   skillName,
-			nJudges: len(judges),
+			cases:     cases,
+			agent:     ag,
+			emb:       emb,
+			r:         r,
+			store:     st,
+			judge:     judge,
+			tiers:     manifest.ResolvedTiers(),
+			topK:      *topK,
+			skill:     skillName,
+			nJudges:   len(judges),
 			caseDelay: caseDelayDur,
-			dump:    &dumpRows,
+			dump:      &dumpRows,
 		})
 		reportsByJudge[judgeModel] = report
 

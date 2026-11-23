@@ -121,8 +121,8 @@ func TestRunEntry_ViaPipelineDryRun(t *testing.T) {
 	row.HistoryAnchor.FakeChunkRef = ""
 
 	deps := &runnerDeps{
-		DryRun:    true,
-		Rewriter:  &rewrite.QueryRewriter{},
+		DryRun:     true,
+		Rewriter:   &rewrite.QueryRewriter{},
 		Classifier: &classifier.RefusalClassifier{},
 	}
 	cost := &costState{LimitUSD: 5.00}

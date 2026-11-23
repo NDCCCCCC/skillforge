@@ -85,7 +85,7 @@ const (
 	// the hash rotated to reflect the 4 auditOrDefault call-site
 	// rewrites inside InvokableRun — the 3-way byte-equality
 	// assertion itself is unchanged.
-	HITL07MemoryFactsInvokableRunSHA256 = "fb07cab85178f5873a1ffc4f157a7911044798bc2196807d4fc1ec5d20bdafdf"
+	HITL07MemoryFactsInvokableRunSHA256 = "3bb967794b8c88acb77988d67565478719e929695f95a772cad140d5ce12048d"
 
 	// HITL08ApprovalRulesCreateSHA256 is the sha256 of
 	// internal/store/sqlite/approval_rules.go lines 379-401

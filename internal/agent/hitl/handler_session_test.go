@@ -47,9 +47,9 @@ import (
 func TestHandlerForSessionRequestScoped(t *testing.T) {
 	reg := testKBReg()
 
-	a, err := HandlerForSession(MemoryFactsTarget, reg, "sess-A", "skill-A", nil)
+	a, err := HandlerForSession(MemoryFactsTarget, reg, "sess-A", "skill-A", nil, nil)
 	require.NoError(t, err)
-	b, err := HandlerForSession(MemoryFactsTarget, reg, "sess-B", "skill-B", nil)
+	b, err := HandlerForSession(MemoryFactsTarget, reg, "sess-B", "skill-B", nil, nil)
 	require.NoError(t, err)
 
 	mftA, okA := a.(*MemoryFactsTool)
@@ -79,14 +79,14 @@ func TestHandlerForSessionRequestScoped(t *testing.T) {
 // without an authority-role KB) refuses the clone: the fail-closed
 // contract moves to the request path, it is not weakened by it.
 func TestHandlerForSessionNilRegistryFailsClosed(t *testing.T) {
-	_, err := HandlerForSession(MemoryFactsTarget, nil, "sess-A", "skill-A", nil)
+	_, err := HandlerForSession(MemoryFactsTarget, nil, "sess-A", "skill-A", nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "kb registry required")
 
 	bad := kb.New([]kb.Entry{
 		{Slug: "historical", DisplayName: "Historical", Role: kb.RoleHistorical, RetrievalEnabled: true},
 	})
-	_, err = HandlerForSession(MemoryFactsTarget, bad, "sess-A", "skill-A", nil)
+	_, err = HandlerForSession(MemoryFactsTarget, bad, "sess-A", "skill-A", nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "authority")
 }
@@ -94,7 +94,7 @@ func TestHandlerForSessionNilRegistryFailsClosed(t *testing.T) {
 // TestHandlerForSessionUnregisteredTarget — a nil handler stays the
 // caller's silent-skip case (nil, nil).
 func TestHandlerForSessionUnregisteredTarget(t *testing.T) {
-	h, err := HandlerForSession("skill_state", testKBReg(), "sess-A", "skill-A", nil)
+	h, err := HandlerForSession("skill_state", testKBReg(), "sess-A", "skill-A", nil, nil)
 	require.NoError(t, err)
 	assert.Nil(t, h)
 }
@@ -117,7 +117,7 @@ func TestHandlerForSessionConcurrentHammer(t *testing.T) {
 			sessionID := fmt.Sprintf("sess-%02d", g)
 			skillID := fmt.Sprintf("skill-%02d", g)
 			for i := 0; i < iterations; i++ {
-				h, err := HandlerForSession(MemoryFactsTarget, testKBReg(), sessionID, skillID, nil)
+				h, err := HandlerForSession(MemoryFactsTarget, testKBReg(), sessionID, skillID, nil, nil)
 				if err != nil {
 					errs <- fmt.Errorf("goroutine %s: %w", sessionID, err)
 					return

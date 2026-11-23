@@ -112,6 +112,12 @@ type planApproveRequest struct {
 	Scope       string          `json:"scope,omitempty"`
 	ApprovalID  string          `json:"approval_id"`
 	InterruptID string          `json:"interrupt_id,omitempty"`
+	// 56-02 (D-56-02) additive HTTP-only remember params — the same
+	// shape approvalPostRequest carries. They are NOT part of
+	// hitl.ApprovalDecision (the D11-B2 gob checkpoint payload);
+	// deriveApprovalRule consumes them at this boundary only.
+	MatchType   string          `json:"match_type,omitempty"`
+	ArgsPattern json.RawMessage `json:"args_pattern,omitempty"`
 }
 
 // planGetHandler implements GET /api/run/:id/plan (PLAN-05 BE replay
@@ -442,12 +448,46 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 			return
 		}
 	default:
+		// 56-02 approve-and-remember (D-56-02): derive the rule BEFORE
+		// MarkApproved — a rule-shape validation failure (bad tier,
+		// smuggled prefix key) answers 422 with NO audit resolution row
+		// and no resume; mirrors executeApprovalResume's ordering.
+		// The runID doubles as the rule's scope_session_id — the plan
+		// path's session identity (the same key PlanRulesPanel lists
+		// scope=session rules by).
+		var newRule *sqlite.ApprovalRule
+		if decision.Scope == "session" || decision.Scope == "skill" {
+			remember := rememberRuleParams{matchType: req.MatchType, argsPattern: req.ArgsPattern}
+			rule, ruleErr := deriveApprovalRule(&row, runID, decision, frozenArgs, remember)
+			if ruleErr != nil {
+				resp := map[string]string{"error": "invalid approval rule params"}
+				if verr, ok := ruleErr.(*approvalRuleValidationError); ok {
+					resp["field"] = verr.field
+					resp["msg"] = verr.msg
+				}
+				c.JSON(http.StatusUnprocessableEntity, resp)
+				return
+			}
+			newRule = rule
+		}
 		if _, err := writer.MarkApproved(ctx, runID, "", snap, approvalID, approvalID, hitl.PlanApproveTarget, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: plan MarkApproved (run=%s id=%s) failed: %v", runID, approvalID, err)
 			c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "audit write failed",
 			})
 			return
+		}
+		// Rule INSERT after the resolution row — WARN + continue (the
+		// approval stands even if the rule row fails; CreateRule's
+		// INSERT OR IGNORE makes repeated remembers idempotent).
+		if newRule != nil {
+			if ars, ok := s.approvalRulesStoreOf(); ok {
+				if err := ars.CreateRule(ctx, *newRule); err != nil {
+					log.Printf("[WARN] server: plan rule create (run=%s id=%s) failed — approval stands, rule skipped: %v", runID, approvalID, err)
+				}
+			} else {
+				log.Printf("[WARN] server: plan rule create (run=%s id=%s) skipped — store lacks the approval-rules surface", runID, approvalID)
+			}
 		}
 	}
 
@@ -496,6 +536,13 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 		// registry when the manifest declares memory:facts — thread the
 		// same registry the annotate/KB admin surfaces already use.
 		KBRegistry: s.KBRegistry,
+		// 56-02 (D-56-02): the resumed deep-agent run consults the
+		// approve-and-remember engine for further tool calls and streams
+		// rule-matched frames through the SAME response. nil-safe
+		// degradations (NoopRuleMatcher / no frames) when the store
+		// lacks the rule surface.
+		RuleMatcher: s.ruleMatcherFor(),
+		RuleHitEmit: s.ruleMatchEmitter(c),
 		// WR-01: same session-bound audit wiring as the approval
 		// endpoint (fresh writer — the shared Deps.AuditWriter is never
 		// identity-mutated).

@@ -34,7 +34,7 @@ import (
 // putKPICallSQL is the single write path for the kpi_calls audit table
 // (KPI-02 + D16-D4). Column order mirrors the CREATE TABLE DDL in
 // schema.go one-to-one; id is omitted (AUTOINCREMENT assigns it) and
-// signature carries the DEFAULT '' safety net.
+// signature carries the DEFAULT ” safety net.
 // Phase 37 (STORE-02): ON CONFLICT no-op until UNIQUE(func, args_json, ts)
 // is added to the kpi_calls CREATE TABLE DDL.
 const putKPICallSQL = `

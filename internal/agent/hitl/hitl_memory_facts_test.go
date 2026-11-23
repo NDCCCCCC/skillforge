@@ -329,23 +329,27 @@ func TestMemFactsArgsParse(t *testing.T) {
 // compose.ToolsNodeConfig accepts it. Compile-time check.
 var _ tool.InvokableTool = (*MemoryFactsTool)(nil)
 
-// fakeRuleMatcher is the 11-05 RuleMatcher test double. The fn hook
-// decides match/no-match; on match it returns a fully-populated
-// sqlite.ApprovalRule mirroring what SqlRuleMatcher surfaces.
+// fakeRuleMatcher is the 11-05 / 56-02 RuleMatcher test double. The fn
+// hook decides match/no-match; on match it returns a fully-populated
+// sqlite.ApprovalRule mirroring what SqlRuleMatcher surfaces (a
+// session-scope exact rule — the legacy auto-pass shape).
 type fakeRuleMatcher struct {
-	fn func(target, argsHash, skillID, sessionID string) bool
+	fn func(req MatchRequest) bool
 }
 
-func (m fakeRuleMatcher) Match(_ context.Context, target, argsHash, skillID, sessionID string) (*sqlite.ApprovalRule, bool) {
+func (m fakeRuleMatcher) Match(_ context.Context, req MatchRequest) (*sqlite.ApprovalRule, bool) {
 	if m.fn == nil {
 		return nil, false
 	}
-	if m.fn(target, argsHash, skillID, sessionID) {
+	if m.fn(req) {
 		return &sqlite.ApprovalRule{
-			Target:         target,
-			ArgsHash:       argsHash,
-			SkillID:        skillID,
-			ScopeSessionID: sessionID,
+			ID:             1,
+			Target:         req.Target,
+			MatchType:      sqlite.MatchTypeExact,
+			ArgsHash:       req.ArgsHash,
+			SkillID:        req.SkillID,
+			Scope:          "session",
+			ScopeSessionID: req.SessionID,
 		}, true
 	}
 	return nil, false
@@ -354,20 +358,43 @@ func (m fakeRuleMatcher) Match(_ context.Context, target, argsHash, skillID, ses
 // TestRuleAutoPass — D11-D1 / HITL-08 auto-pass path. When the rule
 // matcher reports a match, Pass 1 MUST:
 //
-//  1. call ruleMatcher.Match with (target, sha256(args), skillID, sessionID),
+//  1. call ruleMatcher.Match with the 56-02 MatchRequest (target,
+//     sha256(args), verbatim ArgsJSON, skillID, sessionID, toolCallID),
 //  2. SKIP tool.StatefulInterrupt (no interrupt error is returned),
-//  3. execute the write directly and return the structured OK string.
+//  3. execute the write directly and return the structured OK string,
+//  4. (56-02 / D-56-02) invoke the ruleHitEmit hook with the winning
+//     rule's identity so the live stream learns of the auto-pass.
 //
 // The auto-pass audit row (MarkAutoPassedRule) goes through the
 // noopAuditWriter here (audit: nil); the store-level audit row shape
 // is locked by TestApprovalRulesRevoke and the writer's own tests.
 func TestRuleAutoPass(t *testing.T) {
 	matched := false
-	fakeMatcher := fakeRuleMatcher{fn: func(_, _, _, _ string) bool { matched = true; return true }}
+	var gotReq MatchRequest
+	fakeMatcher := fakeRuleMatcher{fn: func(req MatchRequest) bool {
+		matched = true
+		gotReq = req
+		return true
+	}}
+
+	var (
+		emitCalls int
+		gotRuleID int64
+		gotType   string
+		gotScope  string
+		gotTarget string
+		gotCallID string
+	)
+	emitter := func(ruleID int64, matchType, scope, target, toolCallID string) {
+		emitCalls++
+		gotRuleID, gotType, gotScope, gotTarget, gotCallID =
+			ruleID, matchType, scope, target, toolCallID
+	}
 
 	h := &MemoryFactsTool{
 		audit:       nil,
 		ruleMatcher: fakeMatcher,
+		ruleHitEmit: emitter,
 		sessionID:   "sess-auto",
 		skillID:     "compliance",
 	}
@@ -380,6 +407,40 @@ func TestRuleAutoPass(t *testing.T) {
 	assert.Contains(t, result, "memory_facts_write OK")
 	assert.Contains(t, result, "employee_count")
 	assert.True(t, matched, "rule matcher MUST have been called")
+	assert.Equal(t, "memory:facts", gotReq.Target)
+	assert.Equal(t, args, gotReq.ArgsJSON, "ArgsJSON must ride verbatim (prefix-tier probe)")
+	assert.NotEmpty(t, gotReq.ArgsHash, "ArgsHash must be precomputed (the engine never re-hashes)")
+	assert.Equal(t, "compliance", gotReq.SkillID)
+	assert.Equal(t, "sess-auto", gotReq.SessionID)
+
+	// D-56-02: the hit branch must surface the auto-pass through the
+	// emitter with the winning rule's identity.
+	assert.Equal(t, 1, emitCalls, "ruleHitEmit must fire exactly once per auto-pass")
+	assert.Equal(t, int64(1), gotRuleID)
+	assert.Equal(t, "exact", gotType)
+	assert.Equal(t, "session", gotScope)
+	assert.Equal(t, "memory:facts", gotTarget)
+	assert.NotEmpty(t, gotCallID, "toolCallID must ride the emitter for the SSE frame")
+}
+
+// TestRuleAutoPassNilEmitterStillExecutes — the 56-02 emit hook is
+// optional: a nil ruleHitEmit must not break the auto-pass (the audit
+// row is the durable record; the SSE frame is enhancement).
+func TestRuleAutoPassNilEmitterStillExecutes(t *testing.T) {
+	fakeMatcher := fakeRuleMatcher{fn: func(MatchRequest) bool { return true }}
+	h := &MemoryFactsTool{
+		audit:       nil,
+		ruleMatcher: fakeMatcher,
+		sessionID:   "sess-noemit",
+		skillID:     "compliance",
+	}
+	// The auto-pass EXECUTES the write, and the write is fail-closed on
+	// the bound registry — bind one (the nil-emitter contract under test
+	// is about the SSE hook, not about skipping the write's own gates).
+	require.NoError(t, h.bindKBRegistry(testKBReg()))
+	result, err := h.InvokableRun(context.Background(), `{"key":"k","value":"v"}`)
+	require.NoError(t, err, "nil emitter must not break the auto-pass")
+	assert.Contains(t, result, "memory_facts_write OK")
 }
 
 // TestRuleAutoPassNilMatcherFallsBackToInterrupt — the fail-closed

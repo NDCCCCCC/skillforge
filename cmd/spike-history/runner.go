@@ -113,14 +113,14 @@ const dryRunHitBaseID = 9991
 // rewrite → classifier → multi-turn messages prefix). The legacy
 // direct path (both nil) remains byte-identical to Phase 9.
 type runnerDeps struct {
-	Embedder  embedder.Embedder
-	Retriever retriever.Retriever
-	Manifest  *skill.Manifest
-	ChatModel model.ToolCallingChatModel
-	Judge     eval.Judge
-	Rewriter  *rewrite.QueryRewriter
+	Embedder   embedder.Embedder
+	Retriever  retriever.Retriever
+	Manifest   *skill.Manifest
+	ChatModel  model.ToolCallingChatModel
+	Judge      eval.Judge
+	Rewriter   *rewrite.QueryRewriter
 	Classifier *classifier.RefusalClassifier
-	DryRun    bool
+	DryRun     bool
 }
 
 // costState accumulates the approximate USD spend across the live
@@ -175,7 +175,7 @@ type SpikeResult struct {
 	AnchorTurn          int                `json:"anchor_turn,omitempty"`
 	FakeChunkRef        string             `json:"fake_chunk_ref,omitempty"`
 	RewrittenQuery      string             `json:"rewritten_query,omitempty"`
-	Metrics             map[string]float64 `json:"metrics"`                    // 4指标 key
+	Metrics             map[string]float64 `json:"metrics"` // 4指标 key
 	Refused             bool               `json:"refused"`
 	GroundingPass       bool               `json:"grounding_pass"`
 	UngroundedCites     int                `json:"ungrounded_cites"`
@@ -395,11 +395,11 @@ func RunEntry(
 	judge := deps.Judge
 	if deps.DryRun {
 		judge = &eval.StubJudge{
-			DefaultEntails:       true,
-			DefaultRelevant:      true,
-			DefaultAttributable:  true,
-			DefaultQuestions:     []string{"stub question"},
-			DefaultClaims:        []string{"stub claim"},
+			DefaultEntails:      true,
+			DefaultRelevant:     true,
+			DefaultAttributable: true,
+			DefaultQuestions:    []string{"stub question"},
+			DefaultClaims:       []string{"stub claim"},
 		}
 	}
 
@@ -456,17 +456,17 @@ func RunEntry(
 
 // runViaPipeline implements the --via-pipeline composition (Plan 10-04 / B5):
 //
-//	1. Project history via history.Project (budget-primary, D10-B3).
-//	2. Rewrite (D10-C1): when history is non-empty, resolve anaphora.
-//	    Failure/timeout falls back to the original query. The rewritten
-//	    query is recorded on result.RewrittenQuery ONLY when it differs
-//	    from the original (mirrors pipeline.go audit_meta behavior).
-//	3. Embed the rewritten query; on embed failure fall back to the
-//	    original query embedding.
-//	4. Retrieve topK=5 chunks on the rewritten query.
-//	5. Query-only refusal classifier (D10-A1): decision=refuse short-
-//	    circuits before the verdict LLM. cost is recorded for the
-//	    classifier + rewriter calls that actually ran.
+//  1. Project history via history.Project (budget-primary, D10-B3).
+//  2. Rewrite (D10-C1): when history is non-empty, resolve anaphora.
+//     Failure/timeout falls back to the original query. The rewritten
+//     query is recorded on result.RewrittenQuery ONLY when it differs
+//     from the original (mirrors pipeline.go audit_meta behavior).
+//  3. Embed the rewritten query; on embed failure fall back to the
+//     original query embedding.
+//  4. Retrieve topK=5 chunks on the rewritten query.
+//  5. Query-only refusal classifier (D10-A1): decision=refuse short-
+//     circuits before the verdict LLM. cost is recorded for the
+//     classifier + rewriter calls that actually ran.
 //
 // Returns the assembled multi-turn messages slice, the hits, and a bool
 // that is true only when the classifier refused (caller returns early).

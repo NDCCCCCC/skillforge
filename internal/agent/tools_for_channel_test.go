@@ -253,7 +253,7 @@ func agentChannelTools(cfg agent.RunnerBuildConfig) ([]tool.BaseTool, error) {
 		}, nil
 	}
 	// tier-channel branch — same composition as runner_setup.go.
-	tools, err := agent.BuildToolsForSkill(context.Background(), cfg.Manifest, cfg.SessionID, cfg.SkillID, hitl.NoopRuleMatcher{}, cfg.KBRegistry)
+	tools, err := agent.BuildToolsForSkill(context.Background(), cfg.Manifest, cfg.SessionID, cfg.SkillID, hitl.NoopRuleMatcher{}, cfg.KBRegistry, nil)
 	if err != nil {
 		return nil, err
 	}

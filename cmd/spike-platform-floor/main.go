@@ -86,15 +86,15 @@ import (
 
 func main() {
 	var (
-		goldenPath     = flag.String("golden", "eval/golden/platform-floor.jsonl", "platform-floor golden JSONL path")
-		replayCompl    = flag.Bool("replay-compliance", false, "replay compliance frozen set with the live judge (D14-B4 live half)")
-		replayHitl     = flag.Bool("replay-hitl", false, "replay hitl frozen set with the live judge")
-		fillLock       = flag.Bool("fill-lock", false, "fill platform-floor.lock.json metrics + operator_signed_at from reports/*.jsonl")
-		lockPath       = flag.String("lock", "eval/frozen/platform-floor.lock.json", "platform-floor lock file (used by --fill-lock)")
-		outDir         = flag.String("out", "reports", "output directory for live JSONL results")
-		costLimitUSD   = flag.Float64("cost-limit", 4.00, "hard cost cap (USD); live mode aborts on overrun")
-		seed           = flag.Int("seed", 42, "deterministic seed (informational only; locked value)")
-		operatorName   = flag.String("operator-name", "", "operator display name (required by --fill-lock)")
+		goldenPath   = flag.String("golden", "eval/golden/platform-floor.jsonl", "platform-floor golden JSONL path")
+		replayCompl  = flag.Bool("replay-compliance", false, "replay compliance frozen set with the live judge (D14-B4 live half)")
+		replayHitl   = flag.Bool("replay-hitl", false, "replay hitl frozen set with the live judge")
+		fillLock     = flag.Bool("fill-lock", false, "fill platform-floor.lock.json metrics + operator_signed_at from reports/*.jsonl")
+		lockPath     = flag.String("lock", "eval/frozen/platform-floor.lock.json", "platform-floor lock file (used by --fill-lock)")
+		outDir       = flag.String("out", "reports", "output directory for live JSONL results")
+		costLimitUSD = flag.Float64("cost-limit", 4.00, "hard cost cap (USD); live mode aborts on overrun")
+		seed         = flag.Int("seed", 42, "deterministic seed (informational only; locked value)")
+		operatorName = flag.String("operator-name", "", "operator display name (required by --fill-lock)")
 	)
 	flag.Parse()
 
@@ -124,13 +124,13 @@ func main() {
 // platformFloorRow is the golden-set shape we consume. Only fields the
 // live runner needs; platform-floor.jsonl carries exactly this schema.
 type platformFloorRow struct {
-	ID                       string             `json:"id"`
-	Scenario                 string             `json:"scenario"`
-	Query                    string             `json:"query"`
-	ExpectedRefuse           bool               `json:"expected_refuse"`
-	ExpectedSQLPatternAbsent bool               `json:"expected_sql_pattern_absent"`
-	Notes                    string             `json:"notes"`
-	HistoryTurns             []historyTurn      `json:"history_turns,omitempty"`
+	ID                       string        `json:"id"`
+	Scenario                 string        `json:"scenario"`
+	Query                    string        `json:"query"`
+	ExpectedRefuse           bool          `json:"expected_refuse"`
+	ExpectedSQLPatternAbsent bool          `json:"expected_sql_pattern_absent"`
+	Notes                    string        `json:"notes"`
+	HistoryTurns             []historyTurn `json:"history_turns,omitempty"`
 }
 
 type historyTurn struct {
@@ -143,16 +143,16 @@ type historyTurn struct {
 // operator can audit any row and so Mode 3 (--fill-lock) can recompute
 // metrics without re-running the LLM.
 type liveResult struct {
-	ID         string `json:"id"`
-	Scenario   string `json:"scenario"`
-	Query      string `json:"query"`
-	Response   string `json:"response"`
-	Hermetic   bool   `json:"hermetic_pass"`
-	HermeticR  string `json:"hermetic_reason"`
-	Partial    bool   `json:"partial_obedience"`
-	PartialR   string `json:"partial_obedience_reason"`
-	Verdict    string `json:"verdict"` // PASS / FAIL
-	ElapsedMS  int64  `json:"elapsed_ms"`
+	ID        string `json:"id"`
+	Scenario  string `json:"scenario"`
+	Query     string `json:"query"`
+	Response  string `json:"response"`
+	Hermetic  bool   `json:"hermetic_pass"`
+	HermeticR string `json:"hermetic_reason"`
+	Partial   bool   `json:"partial_obedience"`
+	PartialR  string `json:"partial_obedience_reason"`
+	Verdict   string `json:"verdict"` // PASS / FAIL
+	ElapsedMS int64  `json:"elapsed_ms"`
 }
 
 // runPlatformFloorLive is Mode 1 — the SC-5 live second layer.

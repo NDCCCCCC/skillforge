@@ -436,8 +436,8 @@ type GoldenCase struct {
 	// 26-07). Parsed for golden-set schema fidelity; the tier-mismatch
 	// gate itself asserts on the Load-time BuildSubAgent rejection, not
 	// on this field.
-	TierGroundTruth string   `json:"tier_ground_truth"`
-	Notes           string   `json:"notes"`
+	TierGroundTruth string `json:"tier_ground_truth"`
+	Notes           string `json:"notes"`
 }
 
 // LiveCaseResult is the measured per-case outcome. DurationMS is the
@@ -1366,7 +1366,7 @@ func (stubRetriever) GetChunk(_ context.Context, _ int64) (retriever.ChunkConten
 	return retriever.ChunkContent{}, nil
 }
 func (stubRetriever) GetMaxID(_ context.Context, _ string) (int64, error) { return 0, nil }
-func (stubRetriever) Disconnect() error { return nil }
+func (stubRetriever) Disconnect() error                                   { return nil }
 
 // Suppress unused-import errors for types referenced only via
 // embedded struct fields (eino tool.BaseTool is unused at this

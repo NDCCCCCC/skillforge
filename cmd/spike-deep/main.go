@@ -454,7 +454,7 @@ func measureParseRate(
 	// agent.BuildRunner uses internally. The deep agent's
 	// MaxIteration is hard-capped at 10 by runtime.BuildDeepAgent
 	// (P12-L2 source-grep locked).
-	tools, terr := agent.BuildToolsForSkill(ctx, manifest, c.ID, manifest.Name, nil, kbReg)
+	tools, terr := agent.BuildToolsForSkill(ctx, manifest, c.ID, manifest.Name, nil, kbReg, nil)
 	if terr != nil {
 		row.Error = fmt.Sprintf("BuildToolsForSkill: %v", terr)
 		return row

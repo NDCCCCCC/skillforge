@@ -201,6 +201,13 @@ func (s *Deps) ChatHandler(ctx context.Context, c *app.RequestContext) {
 		ReportAudit:         reportAudit,
 		ReportPublishEmit:   s.reportPublishEmitter(c),
 		FanOutAudit:         fanOutAudit,
+		// 56-02 (D-56-02): the approve-and-remember engine goes live on
+		// the chat path — a matched rule auto-passes the write (skipping
+		// the interrupt) and the rule-matched frame streams through the
+		// SAME SSE response. nil-safe: a store without the rule surface
+		// degrades to NoopRuleMatcher / no frames (fail-closed).
+		RuleMatcher: s.ruleMatcherFor(),
+		RuleHitEmit: s.ruleMatchEmitter(c),
 		// P12-L2 deep-archetype write_todos substrate: the audited Tool
 		// INSERTs plan_todos rows + emits the live data-plan-trace chunk.
 		// Both derive from the same store/emitter seams above.
@@ -323,6 +330,56 @@ func (s *Deps) reportPublishEmitter(c *app.RequestContext) hitl.ReportPublishEmi
 			log.Printf("[WARN] server: emit %s data-decision failed (toolCallId=%s): %v", p.Decision, p.ToolCallID, err)
 		}
 	}
+}
+
+// ruleMatchEmitter builds the per-request SSE emission hook for the
+// 56-02 rule-matched frame (D-56-02 命中必须可见): when a HITL Tool's
+// Pass-1 auto-passes via an approve-and-remember rule, the Tool's hit
+// branch invokes this closure AFTER MarkAutoPassedRule lands the audit
+// row, and the frame rides the SAME data-decision envelope every other
+// decision uses (D16 overload pattern — no new SSE chunk type, so the
+// D15 wire-type alarm and the D-04 transport-swap contract stay
+// untouched). The payload carries the winning rule's identity
+// (ruleId / ruleMatchType / ruleScope) plus the call attribution
+// (toolCallId / query=target), so the FE can render "已按规则 #N
+// 自动放行" and link to the 56-03 panel row.
+//
+// Step is 0 by design (mirrors dataRefEmitter): the hop counter lives
+// inside internal/agent's per-Run stepCounter and the FE consumes
+// rule-matched frames by KIND, not by hop ordinal. Emission failures
+// are logged, never propagated: the auto-pass already executed and its
+// audit row is the durable record — a dropped frame must not fail the
+// write.
+func (s *Deps) ruleMatchEmitter(c *app.RequestContext) hitl.RuleHitEmitFunc {
+	return func(ruleID int64, matchType, scope, target, toolCallID string) {
+		if err := runnerEmitDecision(c, wire.DecisionPayload{
+			Step:          0,
+			Decision:      wire.DecisionRuleMatched,
+			ToolCallID:    toolCallID,
+			Query:         target,
+			RuleID:        ruleID,
+			RuleMatchType: matchType,
+			RuleScope:     scope,
+		}); err != nil {
+			log.Printf("[WARN] server: emit rule-matched data-decision failed (ruleId=%d toolCallId=%s): %v", ruleID, toolCallID, err)
+		}
+	}
+}
+
+// ruleMatcherFor returns the production RuleMatcher for one request:
+// hitl.NewSqlRuleMatcher over the store's approval-rules surface. This
+// closes the OTHER half of the 11-05 deferred wiring — production never
+// instantiated the matcher (NewSqlRuleMatcher had zero call sites), so
+// every chat/resume path ran RuleMatcher=nil → NoopRuleMatcher and no
+// rule could EVER auto-pass, no matter what the approval panel stored.
+// A store without the rule surface yields nil → BuildRunner degrades
+// to hitl.NoopRuleMatcher (fail-closed: every write interrupts).
+func (s *Deps) ruleMatcherFor() hitl.RuleMatcher {
+	ars, ok := s.approvalRulesStoreOf()
+	if !ok {
+		return nil
+	}
+	return hitl.NewSqlRuleMatcher(ars)
 }
 
 // runnerEmitDecision mirrors the legacy chatHandler's emitDecision

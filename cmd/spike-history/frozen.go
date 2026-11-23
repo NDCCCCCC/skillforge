@@ -123,25 +123,25 @@ type frozenLockEvidence struct {
 // It captures the frozen-gate run's outcome + per-metric drift so
 // ops can audit the acceptance-gate decision later.
 type frozenRunReport struct {
-	RunTimestamp   string             `json:"run_timestamp"`
-	LockPath       string             `json:"lock_path"`
-	LockSHA256     string             `json:"lock_sha256"`
-	LockContents   frozenLockEvidence `json:"lock_contents"`
-	CaseCount      int                `json:"case_count"`
-	Metrics        map[string]float64 `json:"metrics"`
-	RefusalRate    float64            `json:"refusal_rate"`
-	InjectionCount int                `json:"injection_penetrated_count"`
+	RunTimestamp   string               `json:"run_timestamp"`
+	LockPath       string               `json:"lock_path"`
+	LockSHA256     string               `json:"lock_sha256"`
+	LockContents   frozenLockEvidence   `json:"lock_contents"`
+	CaseCount      int                  `json:"case_count"`
+	Metrics        map[string]float64   `json:"metrics"`
+	RefusalRate    float64              `json:"refusal_rate"`
+	InjectionCount int                  `json:"injection_penetrated_count"`
 	Thresholds     frozenGateThresholds `json:"thresholds"`
-	DriftedMetrics []string           `json:"drifted_metrics"`
-	Pass           bool               `json:"pass"`
-	ArchiveHeader  string             `json:"archive_header,omitempty"`
+	DriftedMetrics []string             `json:"drifted_metrics"`
+	Pass           bool                 `json:"pass"`
+	ArchiveHeader  string               `json:"archive_header,omitempty"`
 }
 
 // metricsDiffReport is the JSON schema of reports/metrics_diff_<date>.json.
 // One entry per gated metric; drift = actual - baseline.
 type metricsDiffReport struct {
-	RunTimestamp string                    `json:"run_timestamp"`
-	LockSHA256   string                    `json:"lock_sha256"`
+	RunTimestamp string                     `json:"run_timestamp"`
+	LockSHA256   string                     `json:"lock_sha256"`
 	Diffs        map[string]metricDiffEntry `json:"diffs"`
 }
 
@@ -331,27 +331,27 @@ func writeFrozenReports(outDir string, report *frozenRunReport, archive bool) er
 			Diffs: map[string]metricDiffEntry{
 				"faithfulness": {
 					Baseline: th.FaithfulnessBaseline, Actual: report.Metrics["faithfulness"],
-					Drift: report.Metrics["faithfulness"] - th.FaithfulnessBaseline,
+					Drift:     report.Metrics["faithfulness"] - th.FaithfulnessBaseline,
 					Tolerance: th.FaithfulnessTolerance,
-					Pass: abs(report.Metrics["faithfulness"]-th.FaithfulnessBaseline) <= th.FaithfulnessTolerance,
+					Pass:      abs(report.Metrics["faithfulness"]-th.FaithfulnessBaseline) <= th.FaithfulnessTolerance,
 				},
 				"refusal_accuracy": {
 					Baseline: th.RefusalBaseline, Actual: report.RefusalRate,
-					Drift: report.RefusalRate - th.RefusalBaseline,
+					Drift:     report.RefusalRate - th.RefusalBaseline,
 					Tolerance: th.RefusalTolerance,
-					Pass: abs(report.RefusalRate-th.RefusalBaseline) <= th.RefusalTolerance,
+					Pass:      abs(report.RefusalRate-th.RefusalBaseline) <= th.RefusalTolerance,
 				},
 				"context_precision": {
 					Baseline: th.ContextPrecBaseline, Actual: report.Metrics["context_precision"],
-					Drift: report.Metrics["context_precision"] - th.ContextPrecBaseline,
+					Drift:     report.Metrics["context_precision"] - th.ContextPrecBaseline,
 					Tolerance: th.ContextPrecTolerance,
-					Pass: abs(report.Metrics["context_precision"]-th.ContextPrecBaseline) <= th.ContextPrecTolerance,
+					Pass:      abs(report.Metrics["context_precision"]-th.ContextPrecBaseline) <= th.ContextPrecTolerance,
 				},
 				"context_recall": {
 					Baseline: th.ContextRecallBaseline, Actual: report.Metrics["context_recall"],
-					Drift: report.Metrics["context_recall"] - th.ContextRecallBaseline,
+					Drift:     report.Metrics["context_recall"] - th.ContextRecallBaseline,
 					Tolerance: th.ContextRecallTolerance,
-					Pass: abs(report.Metrics["context_recall"]-th.ContextRecallBaseline) <= th.ContextRecallTolerance,
+					Pass:      abs(report.Metrics["context_recall"]-th.ContextRecallBaseline) <= th.ContextRecallTolerance,
 				},
 			},
 		}

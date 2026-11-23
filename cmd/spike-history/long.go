@@ -141,18 +141,18 @@ type historyTurn = struct {
 //     SpikeRow:
 //     - target = lengthTargets[i % 3]
 //     - fillerCount = max-even-difference between target and
-//       signal.HistoryTurns length (see computeFillerCount below)
+//     signal.HistoryTurns length (see computeFillerCount below)
 //     - Pick fillerCount/2 distinct baseline IDs (without
-//       replacement) and produce (user, assistant) pairs from them.
+//     replacement) and produce (user, assistant) pairs from them.
 //     - Insert the signal at a deterministic random position in
-//       the combined slice so the signal does not always sit at
-//       the head (which would make it easier to ignore — we want
-//       the agent to "miss" it during projection truncation).
+//     the combined slice so the signal does not always sit at
+//     the head (which would make it easier to ignore — we want
+//     the agent to "miss" it during projection truncation).
 //     - Build the final HistoryTurns slice in deterministic order.
 //     - Copy ID / Query / GroundTruth / ExpectedChunks / BaselineID
-//       / Subclass / HistoryAnchor from the signal. Overwrite
-//       Category with longSynthCategory so writeResult routes to
-//       long.jsonl.
+//     / Subclass / HistoryAnchor from the signal. Overwrite
+//     Category with longSynthCategory so writeResult routes to
+//     long.jsonl.
 //
 // Determinism guarantee: same seed + same golden file → byte-equal
 // output. Plan 09-06 live UAT's reproducibility check depends on this.

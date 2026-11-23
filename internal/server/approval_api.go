@@ -66,6 +66,7 @@ import (
 	"github.com/skillforge/skillforge/internal/agent/hitl"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 	"github.com/skillforge/skillforge/internal/wire"
 )
 
@@ -125,6 +126,13 @@ type approvalListResponse struct {
 // approvalPostRequest is the POST body. It mirrors the
 // hitl.ApprovalDecision JSON shape plus the optional interrupt_id
 // (the eino resume-target UUID — see the file-level note).
+//
+// 56-02 additive HTTP-only fields (D-56-02): MatchType / ArgsPattern
+// carry the approve-and-remember rule shape the operator chose. They
+// are DELIBERATELY NOT part of hitl.ApprovalDecision — the decision
+// struct is the gob-registered checkpoint payload (D11-B2; its shape
+// is contractually frozen) — so these parameters live and die at the
+// HTTP boundary and are consumed by deriveApprovalRule only.
 type approvalPostRequest struct {
 	Decision    string          `json:"decision"`
 	Reason      string          `json:"reason,omitempty"`
@@ -133,6 +141,38 @@ type approvalPostRequest struct {
 	Scope       string          `json:"scope,omitempty"`
 	ApprovalID  string          `json:"approval_id"`
 	InterruptID string          `json:"interrupt_id,omitempty"`
+	// MatchType is the rule tier to remember: exact (default — backward
+	// compatible with the pre-56 FE which never sends it), prefix
+	// (ArgsPattern locks a JSON-object field subset), template
+	// (target-level). Only meaningful when Scope is session|skill.
+	MatchType string `json:"match_type,omitempty"`
+	// ArgsPattern is the prefix-tier field-lock pattern. Validated
+	// against the executed frozenArgs (anti-smuggling) by
+	// deriveApprovalRule BEFORE any audit row is written.
+	ArgsPattern json.RawMessage `json:"args_pattern,omitempty"`
+}
+
+// rememberRuleParams carries the 56-02 HTTP-only approve-and-remember
+// rule-shape parameters from decodeApprovalRequest into
+// executeApprovalResume. Plain strings/bytes — never a checkpoint
+// payload member (see approvalPostRequest).
+type rememberRuleParams struct {
+	matchType   string
+	argsPattern json.RawMessage
+}
+
+// approvalRuleValidationError is the 422-able rule-shape failure: the
+// operator's remember parameters are structurally invalid (bad tier,
+// non-object pattern, smuggled locked key). The handler answers 422
+// with field+msg (the ApprovalDecision.ValidationError envelope shape)
+// and NEVER writes an audit row or resumes.
+type approvalRuleValidationError struct {
+	field string
+	msg   string
+}
+
+func (e *approvalRuleValidationError) Error() string {
+	return "approval rule params: field " + e.field + ": " + e.msg
 }
 
 // activeSkillSnapshot derives the D11-C2 snapshot of the active Skill:
@@ -344,7 +384,7 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 	}
 
 	// decodeApprovalRequest: JSON decode + approvalID reconciliation + Validate
-	decision, err := s.decodeApprovalRequest(ctx, c, sessionID, approvalID)
+	decision, remember, err := s.decodeApprovalRequest(ctx, c, sessionID, approvalID)
 	if err != nil {
 		return // error response already written by decodeApprovalRequest
 	}
@@ -355,8 +395,9 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 		return // error response already written by validateAndResolveApproval
 	}
 
-	// executeApprovalResume: audit resolution + Runner rebuild + ResumeWithParams
-	iter, err := s.executeApprovalResume(ctx, c, sessionID, approvalID, decision, row)
+	// executeApprovalResume: audit resolution + rule creation (56-02) +
+	// Runner rebuild + ResumeWithParams
+	iter, err := s.executeApprovalResume(ctx, c, sessionID, approvalID, decision, row, remember)
 	if err != nil {
 		return // error response already written by executeApprovalResume
 	}
@@ -366,13 +407,14 @@ func (s *Deps) approvalPostHandler(ctx context.Context, c *app.RequestContext) {
 }
 
 // decodeApprovalRequest decodes the POST body, reconciles the approvalID
-// field, and validates the decision. Returns the validated decision or an
-// error with a response already written to c.
-func (s *Deps) decodeApprovalRequest(ctx context.Context, c *app.RequestContext, sessionID, approvalID string) (*hitl.ApprovalDecision, error) {
+// field, and validates the decision. Returns the validated decision plus
+// the HTTP-only remember params (56-02), or an error with a response
+// already written to c.
+func (s *Deps) decodeApprovalRequest(ctx context.Context, c *app.RequestContext, sessionID, approvalID string) (*hitl.ApprovalDecision, rememberRuleParams, error) {
 	var req approvalPostRequest
 	if err := json.Unmarshal(c.Request.Body(), &req); err != nil {
 		c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
-		return nil, fmt.Errorf("invalid JSON")
+		return nil, rememberRuleParams{}, fmt.Errorf("invalid JSON")
 	}
 	if req.ApprovalID == "" {
 		req.ApprovalID = approvalID
@@ -381,7 +423,7 @@ func (s *Deps) decodeApprovalRequest(ctx context.Context, c *app.RequestContext,
 			"field": "approval_id",
 			"msg":   "body approval_id does not match the URL segment",
 		})
-		return nil, fmt.Errorf("approval_id mismatch")
+		return nil, rememberRuleParams{}, fmt.Errorf("approval_id mismatch")
 	}
 
 	// HITL-02 / D11-B2: Validate FIRST (422 on failure).
@@ -400,9 +442,10 @@ func (s *Deps) decodeApprovalRequest(ctx context.Context, c *app.RequestContext,
 			resp["msg"] = verr.Msg
 		}
 		c.JSON(http.StatusUnprocessableEntity, resp)
-		return nil, fmt.Errorf("validation failed")
+		return nil, rememberRuleParams{}, fmt.Errorf("validation failed")
 	}
-	return decision, nil
+	remember := rememberRuleParams{matchType: req.MatchType, argsPattern: req.ArgsPattern}
+	return decision, remember, nil
 }
 
 // validateAndResolveApproval checks idempotency, looks up the pending row,
@@ -469,10 +512,18 @@ func (s *Deps) validateAndResolveApproval(ctx context.Context, c *app.RequestCon
 	return row, nil
 }
 
-// executeApprovalResume writes the audit resolution row, rebuilds the
-// Runner, and calls ResumeWithParams. Returns the iterator or an error
-// with a response already written to c.
-func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext, sessionID, approvalID string, decision *hitl.ApprovalDecision, row *store.AuditRow) (*adk.AsyncIterator[*adk.AgentEvent], error) {
+// executeApprovalResume writes the audit resolution row, persists the
+// approve-and-remember rule (56-02 / D-56-02 — the CreateRule
+// zero-callsite fix), rebuilds the Runner, and calls ResumeWithParams.
+// Returns the iterator or an error with a response already written to c.
+//
+// 56-02 ordering contract: rule-shape VALIDATION (deriveApprovalRule)
+// runs BEFORE the audit resolution — a smuggled prefix key must 422
+// with ZERO audit rows written — while the rule INSERT itself runs
+// AFTER MarkApproved with WARN-and-continue failure semantics (the
+// approval already succeeded; a rule-row failure must never roll back
+// an approved execution — the D-54-01 asymmetry mirrored).
+func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext, sessionID, approvalID string, decision *hitl.ApprovalDecision, row *store.AuditRow, remember rememberRuleParams) (*adk.AsyncIterator[*adk.AgentEvent], error) {
 	// Audit resolution row (D11-C3 fail-closed writer).
 	frozenArgs := decision.FrozenArgs
 	if len(frozenArgs) == 0 {
@@ -508,15 +559,50 @@ func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext,
 			return nil, fmt.Errorf("audit write failed")
 		}
 	default:
+		// 56-02 approve-and-remember (D-56-02): derive the rule BEFORE
+		// MarkApproved — validation failure answers 422 with no audit
+		// resolution row (test ③) and no resume.
+		var newRule *sqlite.ApprovalRule
+		if decision.Scope == "session" || decision.Scope == "skill" {
+			rule, ruleErr := deriveApprovalRule(row, sessionID, decision, frozenArgs, remember)
+			if ruleErr != nil {
+				resp := map[string]string{"error": "invalid approval rule params"}
+				if verr, ok := ruleErr.(*approvalRuleValidationError); ok {
+					resp["field"] = verr.field
+					resp["msg"] = verr.msg
+				}
+				c.JSON(http.StatusUnprocessableEntity, resp)
+				return nil, ruleErr
+			}
+			newRule = rule
+		}
 		if _, err := writer.MarkApproved(ctx, sessionID, "", snap, approvalID, approvalID, row.Query, frozenArgs, decision.Reason); err != nil {
 			log.Printf("[ERROR] server: approval MarkApproved (sess=%s id=%s) failed: %v", sessionID, approvalID, err)
 			c.JSON(http.StatusInternalServerError, map[string]string{"error": "audit write failed"})
 			return nil, fmt.Errorf("audit write failed")
 		}
+		// Rule INSERT after the resolution row. WARN + continue: the
+		// approval already succeeded — rule creation is an enhancement,
+		// never a rollback trigger. CreateRule's INSERT OR IGNORE makes
+		// re-approving the same natural-key tuple a no-op (idempotent
+		// re-approve).
+		if newRule != nil {
+			if ars, ok := s.approvalRulesStoreOf(); ok {
+				if err := ars.CreateRule(ctx, *newRule); err != nil {
+					log.Printf("[WARN] server: approval rule create (sess=%s id=%s) failed — approval stands, rule skipped: %v", sessionID, approvalID, err)
+				}
+			} else {
+				log.Printf("[WARN] server: approval rule create (sess=%s id=%s) skipped — store lacks the approval-rules surface", sessionID, approvalID)
+			}
+		}
 	}
 
 	// Rebuild Runner (D11-B4): resume is a NEW Runner pointing at the SAME
 	// checkPointID. Must use the pending row's skill manifest for correctness.
+	// 56-02: the resumed run carries the production rule matcher (further
+	// tool calls in this run consult approve-and-remember rules) and the
+	// rule-matched SSE hook — nil-safe degradations when the store lacks
+	// the rule surface.
 	cpStore, ok := s.Store.(adk.CheckPointStore)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, map[string]string{"error": "store does not support checkpoints"})
@@ -537,6 +623,8 @@ func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext,
 		PlanTodoStore:   planTodoStoreOf(s.Store),
 		PlanTraceEmit:   s.planTraceEmitter(c),
 		KBRegistry:      s.KBRegistry,
+		RuleMatcher:     s.ruleMatcherFor(),
+		RuleHitEmit:     s.ruleMatchEmitter(c),
 		AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
 			WithIdentity(sessionID, "", snap),
 		ReportAudit:       s.Store,
@@ -615,6 +703,8 @@ func (s *Deps) drainResumeEvents(ctx context.Context, c *app.RequestContext, ses
 			PlanTodoStore:   planTodoStoreOf(s.Store),
 			PlanTraceEmit:   s.planTraceEmitter(c),
 			KBRegistry:      s.KBRegistry,
+			RuleMatcher:     s.ruleMatcherFor(),
+			RuleHitEmit:     s.ruleMatchEmitter(c),
 			AuditWriter: hitl.NewAuditWriter(s.Store, agent.PlatformFloorVersion).
 				WithIdentity(sessionID, "", snap),
 			ReportAudit:       s.Store,
@@ -677,4 +767,162 @@ func emitChunkClosure(c *app.RequestContext) agent.EmitFunc {
 	return agent.EmitFunc(func(chunk wire.UIMessageChunk) error {
 		return wire.EmitChunk(c, chunk)
 	})
+}
+
+// deriveApprovalRule builds the approve-and-remember rule row from the
+// operator's decision plus the HTTP-only remember params (56-02 /
+// D-56-02 — the CreateRule zero-callsite fix: until this wiring the
+// approval resume path wrote ONLY the audit resolution and decision.
+// Scope never landed as a rule row).
+//
+// Semantics (mirrors the 56-02 plan text):
+//
+//   - scope mapping: decision.Scope "session" → scope_session_id =
+//     sessionID; "skill" → skill scope across sessions; "" (one-off)
+//     → (nil, nil) — no rule is created. "global" is NOT creatable
+//     from the approve flow (ApprovalDecision.validScopes refuses it
+//     upstream anyway); global rules come from the panel/seed only.
+//   - exact → ArgsHash = ComputeFrozenArgsHash(executed frozenArgs
+//     bytes) — the bytes the write will ACTUALLY execute (HITL-07
+//     edited args win over the pending row's snapshot; the caller
+//     resolves that before calling).
+//   - prefix → args_pattern must parse to a non-empty JSON object of
+//     scalar values, and every locked key must exist in the executed
+//     frozenArgs top level (anti-smuggling: the FE cannot lock fields
+//     the agent never sent) — violations are 422-able validation
+//     errors, NEVER partial rules.
+//   - template → target-level rule, ArgsPattern and ArgsHash stay
+//     empty. (A template rule auto-passes every call to the target
+//     within its scope — the operator explicitly chose the loosest
+//     tier; UI copy warns.)
+//   - Always: Target=row.Query, SkillID=row.SkillID, Enabled=true
+//     (CRITICAL — CreateRule's zero-value policy inserts a DISABLED
+//     rule when Enabled is left false), Origin=approve_remember,
+//     ExpiresAt=0 (never expires; SetRuleExpiry retires it later).
+//
+// gob red line: this function touches ONLY the store-layer ApprovalRule
+// value — hitl.ApprovalDecision (the D11-B2 gob-registered checkpoint
+// payload) is read, never extended.
+func deriveApprovalRule(
+	row *store.AuditRow,
+	sessionID string,
+	decision *hitl.ApprovalDecision,
+	frozenArgs []byte,
+	remember rememberRuleParams,
+) (*sqlite.ApprovalRule, error) {
+	// One-off approvals create no rule. (decision.Scope has already
+	// passed ApprovalDecision.Validate, so anything outside
+	// {"", session, skill} cannot reach here.)
+	if decision.Scope != "session" && decision.Scope != "skill" {
+		return nil, nil
+	}
+
+	matchType := remember.matchType
+	if matchType == "" {
+		matchType = sqlite.MatchTypeExact // default — backward compatible with the pre-56 FE
+	}
+
+	rule := &sqlite.ApprovalRule{
+		Target:  row.Query,
+		SkillID: row.SkillID,
+		Scope:   decision.Scope,
+		// Enabled MUST be explicit true — the store's zero-value policy
+		// inserts a DISABLED rule otherwise (the godoc-flagged trap).
+		Enabled:   true,
+		Origin:    sqlite.OriginApproveRemember,
+		ExpiresAt: 0, // never expires at creation
+	}
+	if decision.Scope == "session" {
+		rule.ScopeSessionID = sessionID
+	}
+
+	switch matchType {
+	case sqlite.MatchTypeExact:
+		rule.MatchType = sqlite.MatchTypeExact
+		rule.ArgsHash = hitl.ComputeFrozenArgsHash(frozenArgs)
+	case sqlite.MatchTypePrefix:
+		rule.MatchType = sqlite.MatchTypePrefix
+		pattern, err := validateArgsPattern(remember.argsPattern, frozenArgs)
+		if err != nil {
+			return nil, err
+		}
+		rule.ArgsPattern = pattern
+	case sqlite.MatchTypeTemplate:
+		rule.MatchType = sqlite.MatchTypeTemplate
+	default:
+		return nil, &approvalRuleValidationError{
+			field: "match_type",
+			msg:   fmt.Sprintf("must be one of {exact, prefix, template}, got %q", matchType),
+		}
+	}
+	return rule, nil
+}
+
+// validateArgsPattern enforces the prefix-tier creation contract and
+// returns the CANONICAL pattern (Go's json.Marshal emits sorted keys,
+// no whitespace) so the natural-key idempotency holds across
+// byte-different-but-semantically-equal FE payloads — re-approving the
+// same lock set never duplicates the rule row (INSERT OR IGNORE does
+// the rest).
+func validateArgsPattern(argsPattern json.RawMessage, frozenArgs []byte) (string, error) {
+	if len(argsPattern) == 0 {
+		return "", &approvalRuleValidationError{
+			field: "args_pattern",
+			msg:   "is required when match_type is prefix",
+		}
+	}
+	var pattern map[string]any
+	if err := json.Unmarshal(argsPattern, &pattern); err != nil || pattern == nil {
+		return "", &approvalRuleValidationError{
+			field: "args_pattern",
+			msg:   "must be a JSON object of {locked_field: expected_scalar_value}",
+		}
+	}
+	if len(pattern) == 0 {
+		return "", &approvalRuleValidationError{
+			field: "args_pattern",
+			msg:   "must lock at least one field",
+		}
+	}
+	var executed map[string]any
+	if err := json.Unmarshal(frozenArgs, &executed); err != nil || executed == nil {
+		return "", &approvalRuleValidationError{
+			field: "args_pattern",
+			msg:   "the pending call's frozen_args is not a JSON object — prefix rules require one",
+		}
+	}
+	for key, value := range pattern {
+		if key == "" {
+			return "", &approvalRuleValidationError{
+				field: "args_pattern",
+				msg:   "locked field names must be non-empty",
+			}
+		}
+		switch value.(type) {
+		case string, bool, float64:
+			// scalar — JSON numbers decode as float64; null and
+			// nested object/array values are refused (a null lock can
+			// never equal a real field; object locks would smuggle
+			// structure the args schema does not guarantee).
+		default:
+			return "", &approvalRuleValidationError{
+				field: "args_pattern",
+				msg:   fmt.Sprintf("locked field %q must map to a scalar (string/number/bool)", key),
+			}
+		}
+		if _, exists := executed[key]; !exists {
+			return "", &approvalRuleValidationError{
+				field: "args_pattern",
+				msg:   fmt.Sprintf("locked field %q does not exist in the pending call's args (anti-smuggling)", key),
+			}
+		}
+	}
+	canonical, err := json.Marshal(pattern)
+	if err != nil {
+		return "", &approvalRuleValidationError{
+			field: "args_pattern",
+			msg:   "failed to canonicalize the pattern",
+		}
+	}
+	return string(canonical), nil
 }

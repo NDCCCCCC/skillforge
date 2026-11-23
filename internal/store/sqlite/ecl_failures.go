@@ -141,10 +141,15 @@ func (s *SQLiteStore) GetFailure(noteID string) (ecl.Failure, error) {
 	return f, nil
 }
 
-// IsNotFound implements ecl.FailureStore. It returns true when err wraps
-// ErrNoFailureRecord — i.e., the ledger has no row for the requested note.
-// Any other error (SQLite I/O failures) returns false, allowing the caller
-// to distinguish "unknown note" (→ 404) from "store unavailable" (→ 500).
+// IsNotFound implements ecl.FailureStore AND ingest.JobStore — both narrow
+// seams want the same method name, and a Go type can carry it only once,
+// so the single implementation checks BOTH sentinel families
+// (ErrNoFailureRecord for the ECL dead-letter ledger, ErrNoIngestJob for
+// the ingest job tables). The two error flows never cross: each caller
+// passes errors produced by its own seam's lookups, so an ecl caller can
+// never observe an ingest sentinel and vice versa. Each seam's semantic is
+// preserved: true = "the requested row does not exist" (→ 404), false =
+// any other error including SQLite I/O failures (→ 500).
 func (s *SQLiteStore) IsNotFound(err error) bool {
-	return errors.Is(err, ErrNoFailureRecord)
+	return errors.Is(err, ErrNoFailureRecord) || errors.Is(err, ErrNoIngestJob)
 }

@@ -160,15 +160,15 @@ func populateCategoryWorst(c *spikeCategoryResult, base baselineMetrics) {
 // runner.go's imports — Go's identifier resolution prefers the local
 // declaration, so this type wins inside summary.go).
 type Verdict struct {
-	Decision           string              `json:"decision"`
-	Reason             string              `json:"reason"`
-	WorstMetric        string              `json:"worst_metric"`
-	WorstDelta         float64             `json:"worst_delta"`
-	EscapedRecommended string              `json:"escaped_recommended,omitempty"`
-	GeneratedAt        string              `json:"generated_at"`
-	TotalCostUSD       float64             `json:"total_cost_usd"`
-	Baseline           baselineMetrics        `json:"baseline"`
-	Categories         []spikeCategoryResult  `json:"categories"`
+	Decision           string                `json:"decision"`
+	Reason             string                `json:"reason"`
+	WorstMetric        string                `json:"worst_metric"`
+	WorstDelta         float64               `json:"worst_delta"`
+	EscapedRecommended string                `json:"escaped_recommended,omitempty"`
+	GeneratedAt        string                `json:"generated_at"`
+	TotalCostUSD       float64               `json:"total_cost_usd"`
+	Baseline           baselineMetrics       `json:"baseline"`
+	Categories         []spikeCategoryResult `json:"categories"`
 }
 
 // loadSpikeResults reads the three per-category JSONL streams from

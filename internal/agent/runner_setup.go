@@ -127,6 +127,16 @@ type RunnerBuildConfig struct {
 	// construct a Runner without a DB — see the BuildRunner doc.
 	RuleMatcher hitl.RuleMatcher
 
+	// RuleHitEmit is the 56-02 (D-56-02 命中必须可见) rule-matched SSE
+	// hook, threaded — same per-request path as RuleMatcher — into the
+	// whitelisted HITL Tools' cloneForSession. A Tool whose Pass-1
+	// auto-passes via a matched rule invokes it AFTER MarkAutoPassedRule
+	// lands the audit row (audit first, event after — the P12-L6 / 12-06
+	// write_todos ordering). Narrow hitl.RuleHitEmitFunc signature; the
+	// server-side closure assembles the wire payload. nil → noop emitter
+	// (audit rows still written; the live stream gets no frame).
+	RuleHitEmit hitl.RuleHitEmitFunc
+
 	// CheckPointStore is the 11-04 / D11-C1 checkpoint persistence
 	// binding. eino v0.9.14 exposes NO adk.Runner.WithCheckPointStore
 	// setter — the store can only be attached via
@@ -397,7 +407,7 @@ func BuildRunner(ctx context.Context, cfg RunnerBuildConfig) (*adk.Runner, error
 		if ruleMatcher == nil {
 			ruleMatcher = hitl.NoopRuleMatcher{}
 		}
-		hits, err := BuildToolsForSkill(ctx, cfg.Manifest, cfg.SessionID, cfg.SkillID, ruleMatcher, cfg.KBRegistry)
+		hits, err := BuildToolsForSkill(ctx, cfg.Manifest, cfg.SessionID, cfg.SkillID, ruleMatcher, cfg.KBRegistry, cfg.RuleHitEmit)
 		if err != nil {
 			return nil, fmt.Errorf("agent.BuildRunner: BuildToolsForSkill: %w", err)
 		}
