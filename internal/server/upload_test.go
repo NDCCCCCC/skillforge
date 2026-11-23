@@ -30,6 +30,8 @@ import (
 	"net/http"
 	"net/textproto"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -41,9 +43,12 @@ import (
 
 	"github.com/skillforge/skillforge/internal/document"
 	"github.com/skillforge/skillforge/internal/embedder"
+	"github.com/skillforge/skillforge/internal/ingest"
 	"github.com/skillforge/skillforge/internal/kb"
+	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/store"
+	"github.com/skillforge/skillforge/internal/store/sqlite"
 )
 
 // testAdminToken is declared in import_api_test.go — reuse it here.
@@ -309,38 +314,73 @@ func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 		}
 	})
 
-	// Phase 53-01: every successful upload now persists into the corpus
-	// (STEP 7d). Redirect both persist roots into temp dirs so the tests
-	// below never write into the repo's real knowledge/ + data/ trees.
-	// Tests that need to ASSERT on the persisted paths re-point them via
-	// setPersistDirs (upload_persist_test.go); this redirect is the
-	// hermeticity safety net for all the others.
-	knowledgeRootDir = t.TempDir()
-	persistUploadsDir = t.TempDir()
-	prevKBRoot, prevUploadsDir := knowledgeRootDir, defaultPersistUploadsDir
+	// Phase 53-01: redirect both persist roots into temp dirs (the
+	// knowledge package owns them since 54-01 moved the persist path).
+	knowledge.SetPersistKnowledgeRoot(t.TempDir())
+	knowledge.SetPersistUploadsDir(t.TempDir())
+	prevKBRoot, prevUploadsDir := knowledge.PersistKnowledgeRoot(), knowledge.PersistUploadsDir()
 	t.Cleanup(func() {
-		knowledgeRootDir = prevKBRoot
-		persistUploadsDir = prevUploadsDir
+		knowledge.SetPersistKnowledgeRoot(prevKBRoot)
+		knowledge.SetPersistUploadsDir(prevUploadsDir)
 	})
 
 	kbReg := kb.New([]kb.Entry{
 		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
 	})
+
+	// Phase 54-01: the upload path REQUIRES the ingest runner (nil -> 503).
+	// Wire a REAL runner against the same mock seams the sync chain used,
+	// plus a temp sqlite JobStore -- the state machine runs for real and
+	// tests assert via runner.WaitIdle().
+	st, err := sqlite.New(context.Background(), sqlite.Config{
+		DSN: filepath.Join(t.TempDir(), "ingest-test.db"),
+	})
+	require.NoError(t, err)
+	emb := newStubEmbedderForUpload()
+	retr := &mockRetrieverForUpload{mockIndexerBackend: idxBackend}
+	// Indirection through the package var: tests that bind
+	// docUploadAuditHook AFTER uploadTestDeps constructed this runner
+	// must still be honored -- read at call time, not bound now.
+	auditSink := func(action, detail string) {
+		if docUploadAuditHook != nil {
+			docUploadAuditHook(action, detail)
+		}
+	}
+	ingestRunner, err := ingest.NewRunner(ingest.RunnerConfig{
+		Jobs:      st,
+		Emb:       emb,
+		Reg:       kbReg,
+		ParserReg: document.NewParserRegistry(),
+		Retriever: retr,
+		AuditHook: auditSink,
+		Sink: func(ctx context.Context, slug, docID string, docs []retriever.Document) ([]int64, error) {
+			if err := idxBackend.Insert(ctx, docs); err != nil {
+				return nil, err
+			}
+			pks := make([]int64, len(docs))
+			for i := range docs {
+				pks[i] = docs[i].ID
+			}
+			return pks, nil
+		},
+	})
+	require.NoError(t, err)
+	// Windows: release the sqlite handle BEFORE t.TempDir RemoveAll (an
+	// open handle makes unlinkat fail and Go reports that as a failure).
+	t.Cleanup(func() { _ = st.Close() })
+	t.Cleanup(ingestRunner.WaitIdle)
+
 	return &Deps{
+		Ingest:             ingestRunner,
 		KBRegistry:         kbReg,
-		Embedder:           newStubEmbedderForUpload(),
-		Retriever:          &mockRetrieverForUpload{mockIndexerBackend: idxBackend},
+		Embedder:           emb,
+		Retriever:          retr,
 		IndexerBackend:     idxBackend,
 		ParserRegistry:     document.NewParserRegistry(),
 		UploadMaxBodyBytes: 50 << 20, // 50 MiB for tests
 	}
 }
 
-// buildUploadMultipart builds a multipart/form-data body with a "file" part
-// carrying the given Content-Type header (mimeType) and content. The route
-// reads the declared MIME from the file part's Content-Type header, NOT from
-// a "metadata" form field (DOC-03 contract; the part header is source-of-truth).
-// Returns body bytes, Content-Type string, and total length.
 func buildUploadMultipart(t *testing.T, filename, mimeType string, content []byte) ([]byte, string, int) {
 	t.Helper()
 	var buf bytes.Buffer
@@ -482,19 +522,21 @@ func TestUploadSuccess(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.Code)
 
 	var uploadResp struct {
-		Chunks  int     `json:"chunks"`
-		IDRange []int64 `json:"id_range"`
+		JobID string `json:"job_id"`
 	}
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &uploadResp))
-	assert.Greater(t, uploadResp.Chunks, 0)
-	require.Len(t, uploadResp.IDRange, 2)
-	assert.Equal(t, int64(1), uploadResp.IDRange[0])
-	assert.Equal(t, int64(uploadResp.Chunks), uploadResp.IDRange[1])
+	assert.NotEmpty(t, uploadResp.JobID, "54-01 contract: the async job id is the response")
+	deps.Ingest.WaitIdle()
 
-	// Verify IndexerBackend.Insert was called
+	// Verify IndexerBackend.Insert was called (vector_insert through the
+	// sink) and the job reached its terminal state.
 	docs := idx.Docs()
-	assert.Len(t, docs, 1)
-	assert.Len(t, docs[0], uploadResp.Chunks)
+	require.Len(t, docs, 1)
+	assert.Greater(t, len(docs[0]), 0, "the chunks landed in the backend")
+
+	job, err := deps.Ingest.GetJob(context.Background(), uploadResp.JobID)
+	require.NoError(t, err)
+	assert.Equal(t, "done", job.Status)
 }
 
 // --- Test 10: Audit row on success ---
@@ -506,7 +548,6 @@ func TestUploadAuditRowOnSuccess(t *testing.T) {
 
 	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
 	_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)
-	// Suppress the global hook during this test.
 	originalHook := docUploadAuditHook
 	docUploadAuditHook = hook
 	defer func() {
@@ -521,20 +562,23 @@ func TestUploadAuditRowOnSuccess(t *testing.T) {
 	idx := &mockIndexerBackend{}
 	deps := uploadTestDeps(t, idx)
 
-	content := []byte("# Test\n\nBody text here.")
+	content := []byte("# Test  Body text here.")
 	body, ct, n := buildUploadMultipart(t, "test.md", "text/markdown", content)
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 	require.Equal(t, http.StatusOK, resp.Code)
+	deps.Ingest.WaitIdle() // 54-01: the completion row is written by the runner
 
-	require.Len(t, hookCalls, 1)
-	assert.Equal(t, "action_doc_uploaded", hookCalls[0].Action)
+	// Two rows: enqueue acceptance (queued) + runner completion (uploaded).
+	require.Len(t, hookCalls, 2)
+	assert.Equal(t, "action_doc_ingest_queued", hookCalls[0].Action)
+	assert.Equal(t, "action_doc_uploaded", hookCalls[1].Action)
 
 	var audit struct {
 		Slug   string `json:"slug"`
 		SHA256 string `json:"sha256"`
 		Chunks int    `json:"chunk_count"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(hookCalls[0].Detail), &audit))
+	require.NoError(t, json.Unmarshal([]byte(hookCalls[1].Detail), &audit))
 	assert.Equal(t, "authority", audit.Slug)
 	assert.NotEmpty(t, audit.SHA256)
 	assert.Greater(t, audit.Chunks, 0)
@@ -583,70 +627,44 @@ func TestUploadAuditRowOnRejected(t *testing.T) {
 
 // --- Test 12: Per-slug serialization ---
 func TestUploadPerSlugSerialization(t *testing.T) {
-	// CRITICAL: the same mockIndexerBackend instance must back BOTH the
-	// IndexerBackend (for Insert) AND the Retriever (for GetMaxID) — the
-	// production contract is that GetMaxID reads the live collection, and
-	// the per-slug serialization test depends on that read to see the first
-	// upload's chunks before the second upload computes its nextID.
 	idx := &mockIndexerBackend{}
-	deps := &Deps{
-		KBRegistry: kb.New([]kb.Entry{
-			{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
-		}),
-		Embedder:           newStubEmbedderForUpload(),
-		Retriever:          &mockRetrieverForUpload{mockIndexerBackend: idx},
-		IndexerBackend:     idx,
-		ParserRegistry:     document.NewParserRegistry(),
-		UploadMaxBodyBytes: 50 << 20,
-	}
-	// Phase 53-01: this test builds Deps manually (no uploadTestDeps), so
-	// redirect the persist roots itself — both uploads succeed and would
-	// otherwise write canonical files into the repo's knowledge/ tree.
-	setPersistDirs(t)
-	// Set admin token (uploadTestDeps helper does this; replicated here).
-	prev := os.Getenv("SKILLFORGE_ADMIN_TOKEN")
-	_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", testAdminToken)
-	t.Cleanup(func() {
-		if prev == "" {
-			_ = os.Unsetenv("SKILLFORGE_ADMIN_TOKEN")
-		} else {
-			_ = os.Setenv("SKILLFORGE_ADMIN_TOKEN", prev)
-		}
-	})
-
-	content := []byte("# Chunk\n\nLine one.\nLine two.")
-	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
+	deps := uploadTestDeps(t, idx)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var ranges [][]int64
+	var jobIDs []string
 
-	// Fire 2 concurrent uploads to the same slug.
 	for i := 0; i < 2; i++ {
+		contentI := []byte("# Chunk body for serialization test, variant ")
+		contentI = append(contentI, byte('A'+i))
+		contentI = append(contentI, []byte(" - body text")...)
+		contentI[len(contentI)-1] = byte('A' + i)
+		bodyI, ctI, nI := buildUploadMultipart(t, "doc.md", "text/markdown", contentI)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
+			resp := invokeUpload(t, deps, "authority", testAdminToken, bodyI, ctI, nI)
 			if resp.Code != http.StatusOK {
 				return
 			}
 			var uploadResp struct {
-				Chunks  int     `json:"chunks"`
-				IDRange []int64 `json:"id_range"`
+				JobID string `json:"job_id"`
 			}
 			_ = json.Unmarshal(resp.Body.Bytes(), &uploadResp)
 			mu.Lock()
-			ranges = append(ranges, uploadResp.IDRange)
+			jobIDs = append(jobIDs, uploadResp.JobID)
 			mu.Unlock()
 		}()
 	}
 	wg.Wait()
 
-	require.Len(t, ranges, 2)
-	// ID ranges must NOT overlap (serialization guarantee).
-	r1, r2 := ranges[0], ranges[1]
-	assert.True(t, r1[1] < r2[0] || r2[1] < r1[0],
-		"ID ranges should not overlap: %v vs %v", r1, r2)
+	require.Len(t, jobIDs, 2)
+	deps.Ingest.WaitIdle()
+	for _, id := range jobIDs {
+		job, err := deps.Ingest.GetJob(context.Background(), id)
+		require.NoError(t, err)
+		assert.Equal(t, "done", job.Status, "concurrent job %s must reach done", id)
+	}
 }
 
 // --- VerifyMagicBytes unit tests ---
@@ -689,21 +707,45 @@ func TestVerifyMagicBytesUnknownType(t *testing.T) {
 }
 
 // --- Test 13: Milvus/Milvus-Connect backend unavailable → 503 + Retry-After ---
+func waitJobTerminal(t *testing.T, deps *Deps, jobID, step string) (string, string) {
+	t.Helper()
+	deps.Ingest.WaitIdle()
+	job, err := deps.Ingest.GetJob(context.Background(), jobID)
+	require.NoError(t, err)
+	steps, err := deps.Ingest.ListSteps(context.Background(), jobID)
+	require.NoError(t, err)
+	stepErr := ""
+	for _, s := range steps {
+		if s.Step == step && s.Error != "" {
+			stepErr = s.Error
+		}
+	}
+	return job.Status, stepErr
+}
+
 func TestUploadDegradedMilvusDown(t *testing.T) {
 	idx := &mockIndexerBackend{}
 	deps := uploadTestDeps(t, idx)
-	// Simulate backend being unreachable: Insert returns DeadlineExceeded.
 	idx.err = context.DeadlineExceeded
 
-	content := []byte("# Hello\n\nWorld")
+	content := []byte("# Hello World body")
 	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 
-	assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
-	// The error message should indicate backend unavailability.
-	var errResp map[string]string
-	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &errResp))
-	assert.Contains(t, errResp["error"], "backend unavailable")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	var acc struct {
+		JobID string `json:"job_id"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &acc))
+	require.NotEmpty(t, acc.JobID)
+
+	stepsAll, _ := deps.Ingest.ListSteps(context.Background(), acc.JobID)
+	for _, s := range stepsAll {
+		t.Logf("DIAG step=%s status=%s err=%q", s.Step, s.Status, s.Error)
+	}
+	status, stepErr := waitJobTerminal(t, deps, acc.JobID, "vector_insert")
+	assert.Equal(t, "failed", status)
+	assert.Contains(t, stepErr, "backend unavailable")
 }
 
 // --- Test 14: SHA-256 deduplication → 409 Conflict ---
@@ -737,41 +779,78 @@ func TestUploadDeactivatedSlugMidUpload(t *testing.T) {
 	idx := &mockIndexerBackend{}
 	deps := uploadTestDeps(t, idx)
 
-	// Build a fresh registry and wrap it to deactivate after first Lookup.
 	inner := kb.New([]kb.Entry{
 		{Slug: "authority", DisplayName: "权威", Role: kb.RoleAuthority, RetrievalEnabled: true},
 	})
-	deps.KBRegistry = &deactivatingKBRegistry{delegate: inner, deactivateAfter: 4}
+	deps.KBRegistry = &deactivatingKBRegistry{delegate: inner}
 
-	content := []byte("# Test\n\nContent here.")
+	// The runner captured the RAW kbReg at construction -- REBUILD it
+	// against the wrapper (fresh temp JobStore) so its vector_insert
+	// Lookup actually sees the switch. The slow embedder widens the
+	// async window so the flip lands before vector_insert.
+	st2, err := sqlite.New(context.Background(), sqlite.Config{DSN: t.TempDir() + "/mid.db"})
+	require.NoError(t, err)
+	slowEmb := &slowEmbedderForDeact{inner: deps.Embedder}
+	retr2 := &mockRetrieverForUpload{mockIndexerBackend: idx}
+	runner2, err := ingest.NewRunner(ingest.RunnerConfig{
+		Jobs:      st2,
+		Emb:       slowEmb,
+		Reg:       deps.KBRegistry,
+		ParserReg: deps.ParserRegistry,
+		Retriever: retr2,
+		Sink: func(ctx context.Context, slug, docID string, docs []retriever.Document) ([]int64, error) {
+			if err := idx.Insert(ctx, docs); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		},
+	})
+	require.NoError(t, err)
+	deps.Ingest = runner2
+	t.Cleanup(func() { _ = st2.Close() })
+
+	content := []byte("# Test Content here.")
 	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 
-	assert.Equal(t, http.StatusConflict, resp.Code)
-	var errResp map[string]string
-	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &errResp))
-	assert.Contains(t, errResp["error"], "slug deactivated during upload")
-}
+	assert.Equal(t, http.StatusOK, resp.Code)
+	var acc struct {
+		JobID string `json:"job_id"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &acc))
+	require.NotEmpty(t, acc.JobID)
 
-// deactivatingKBRegistry wraps a kb.Registry and returns false on Lookup
-// after a configurable number of calls, simulating deactivation mid-upload.
-type deactivatingKBRegistry struct {
-	delegate        kb.Registry
-	callCount       int
-	mu              sync.Mutex
-	deactivateAfter int
+	// Flip the switch AFTER the enqueue returns: the slow embedder keeps
+	// the pipeline inside embed while the vector_insert Lookup (the
+	// 53-03 STEP 7c re-check, now in the runner) observes the flip.
+	wrapper := deps.KBRegistry.(*deactivatingKBRegistry)
+	wrapper.mu.Lock()
+	wrapper.forceFail = true
+	wrapper.mu.Unlock()
+
+	// The deactivation surfaces at the FIRST registry Lookup inside the
+	// pipeline: the chunk step's KNOW-02 tier validation (validateTiers
+	// resolves through the registry — wrapper.Lookup reports the slug
+	// deactivated) — not at vector_insert's re-check. Either step is an
+	// acceptable mid-pipeline failure point; the contract under test is
+	// "job fails, never a half-state".
+	status, stepErr := waitJobTerminal(t, deps, acc.JobID, "chunk")
+	assert.Equal(t, "failed", status)
+	assert.True(t,
+		strings.Contains(stepErr, "unknown or deactivated") || strings.Contains(stepErr, "slug deactivated during upload"),
+		"the chunk step must name the deactivation: %q", stepErr)
 }
 
 func (r *deactivatingKBRegistry) Lookup(slug string) (kb.Entry, bool) {
 	r.mu.Lock()
-	r.callCount++
-	after := r.callCount >= r.deactivateAfter
-	entry, ok := r.delegate.Lookup(slug)
-	r.mu.Unlock()
-	if after {
+	defer r.mu.Unlock()
+	// forceFail is the ONLY deactivation switch (53-03 review): the old
+	// callCount>=deactivateAfter heuristic raced the async window and,
+	// with a zero-value deactivateAfter, failed every Lookup outright.
+	if r.forceFail {
 		return kb.Entry{}, false
 	}
-	return entry, ok
+	return r.delegate.Lookup(slug)
 }
 func (r *deactivatingKBRegistry) List() []kb.Entry      { return r.delegate.List() }
 func (r *deactivatingKBRegistry) ActiveSlugs() []string { return r.delegate.ActiveSlugs() }
@@ -786,6 +865,20 @@ func (r *deactivatingKBRegistry) ResolveReads(reads []string) ([]string, error) 
 func (r *deactivatingKBRegistry) Create(in kb.CreateInput) (kb.Entry, error) {
 	return r.delegate.Create(in)
 }
+
+// slowEmbedderForDeact widens the async window for the mid-pipeline
+// deactivation test: the stub embedder returns instantly, so without this
+// the job would finish before the test's forceFail flip lands.
+type slowEmbedderForDeact struct {
+	inner embedder.Embedder
+}
+
+func (s *slowEmbedderForDeact) Embed(ctx context.Context, text string) ([]float32, error) {
+	time.Sleep(300 * time.Millisecond)
+	return s.inner.Embed(ctx, text)
+}
+
+func (s *slowEmbedderForDeact) Dimensions() int { return s.inner.Dimensions() }
 func (r *deactivatingKBRegistry) Deactivate(slug string) (kb.Entry, error) {
 	return r.delegate.Deactivate(slug)
 }
@@ -810,79 +903,96 @@ func TestUploadSuccessAfterRetry(t *testing.T) {
 		}
 	}()
 
-	// First upload: Insert fails with DeadlineExceeded.
 	idx := &mockIndexerBackend{err: context.DeadlineExceeded}
 	deps := uploadTestDeps(t, idx)
 
-	content := []byte("# Test\n\nContent here.")
+	content := []byte("# Test Content here.")
 	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
-	assert.Equal(t, http.StatusServiceUnavailable, resp.Code)
-	require.Len(t, hookCalls, 1)
-	assert.Equal(t, actionDocUploadRejected, hookCalls[0].Action)
+	assert.Equal(t, http.StatusOK, resp.Code)
+	deps.Ingest.WaitIdle()
 
-	// Second upload: Insert succeeds.
 	idx.err = nil
 	resp = invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 	assert.Equal(t, http.StatusOK, resp.Code)
-	// Only the success audit row should be written (no mixing).
-	require.Len(t, hookCalls, 2)
-	// hookCalls[0] = first upload failure, hookCalls[1] = second upload success
-	assert.Equal(t, actionDocUploadRejected, hookCalls[0].Action)
-	assert.Equal(t, actionDocUploaded, hookCalls[1].Action)
+	deps.Ingest.WaitIdle()
+
+	queued := 0
+	uploaded := 0
+	for _, c := range hookCalls {
+		if c.Action == "action_doc_ingest_queued" {
+			queued++
+		}
+		if c.Action == "action_doc_uploaded" {
+			uploaded++
+		}
+	}
+	assert.Equal(t, 2, queued, "each upload enqueues once")
+	assert.Equal(t, 1, uploaded, "only the successful upload writes the completion row")
 }
 
 // --- Test 17: Generic Insert error (non-backend) → 500 ---
 func TestUploadInsertGenericError(t *testing.T) {
 	idx := &mockIndexerBackend{}
 	deps := uploadTestDeps(t, idx)
-	// Non-backend error: e.g. a business-logic error from Insert.
 	idx.err = fmt.Errorf("some internal indexer error")
 
-	content := []byte("# Hello\n\nWorld")
+	content := []byte("# Hello World body")
 	body, ct, n := buildUploadMultipart(t, "doc.md", "text/markdown", content)
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 
-	// Non-backend error should return 500, not 503.
-	assert.Equal(t, http.StatusInternalServerError, resp.Code)
+	assert.Equal(t, http.StatusOK, resp.Code)
+	var acc struct {
+		JobID string `json:"job_id"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &acc))
+	require.NotEmpty(t, acc.JobID)
+
+	stepsAll, _ := deps.Ingest.ListSteps(context.Background(), acc.JobID)
+	for _, s := range stepsAll {
+		t.Logf("DIAG step=%s status=%s err=%q", s.Step, s.Status, s.Error)
+	}
+	status, stepErr := waitJobTerminal(t, deps, acc.JobID, "vector_insert")
+	assert.Equal(t, "failed", status)
+	assert.Contains(t, stepErr, "insert failed")
 }
 
 // --- Phase 32 REALBUG-03: isBackendUnavailable typed sentinel tests ---
 
 func TestIsBackendUnavailable_Nil(t *testing.T) {
-	assert.False(t, isBackendUnavailable(nil))
+	assert.False(t, ingest.IsBackendUnavailable(nil))
 }
 
 func TestIsBackendUnavailable_GenericLogicError(t *testing.T) {
 	// Business logic error from indexer should NOT be classified as
 	// backend unavailable (will map to 500, not 503).
 	err := fmt.Errorf("some internal indexer error")
-	assert.False(t, isBackendUnavailable(err))
+	assert.False(t, ingest.IsBackendUnavailable(err))
 }
 
 func TestIsBackendUnavailable_ConnectionRefused(t *testing.T) {
 	err := syscall.ECONNREFUSED
-	assert.True(t, isBackendUnavailable(err))
+	assert.True(t, ingest.IsBackendUnavailable(err))
 	// Also test wrapped form (e.g. *net.OpError wrapping ECONNREFUSED).
 	wrapped := fmt.Errorf("dial: %w", syscall.ECONNREFUSED)
-	assert.True(t, isBackendUnavailable(wrapped))
+	assert.True(t, ingest.IsBackendUnavailable(wrapped))
 }
 
 func TestIsBackendUnavailable_DNSError(t *testing.T) {
 	err := &net.DNSError{Err: "no such host", Name: "missing.example"}
-	assert.True(t, isBackendUnavailable(err))
+	assert.True(t, ingest.IsBackendUnavailable(err))
 }
 
 func TestIsBackendUnavailable_ContextDeadline(t *testing.T) {
 	err := context.DeadlineExceeded
-	assert.True(t, isBackendUnavailable(err))
+	assert.True(t, ingest.IsBackendUnavailable(err))
 	wrapped := fmt.Errorf("rpc call: %w", context.DeadlineExceeded)
-	assert.True(t, isBackendUnavailable(wrapped))
+	assert.True(t, ingest.IsBackendUnavailable(wrapped))
 }
 
 func TestIsBackendUnavailable_ContextCanceled(t *testing.T) {
 	err := context.Canceled
-	assert.True(t, isBackendUnavailable(err))
+	assert.True(t, ingest.IsBackendUnavailable(err))
 }
 
 func TestIsBackendUnavailable_NetErrorTimeout(t *testing.T) {
@@ -892,9 +1002,20 @@ func TestIsBackendUnavailable_NetErrorTimeout(t *testing.T) {
 	// os.ErrDeadlineExceeded does; a plain fmt.Errorf does not (it yields
 	// Timeout() == false and this classification would correctly reject it).
 	err := &net.OpError{Op: "read", Err: os.ErrDeadlineExceeded}
-	assert.True(t, isBackendUnavailable(err))
+	assert.True(t, ingest.IsBackendUnavailable(err))
 }
 
 // Phase 32 PERF-01: joinStrings removed; verify it's gone and the
 // drainFinalContent call path still compiles. The smoke test below
 // indirectly asserts strings.Join behavior via the package build.
+
+type deactivatingKBRegistry struct {
+	delegate kb.Registry
+	mu       sync.Mutex
+	// forceFail is the DETERMINISTIC mid-pipeline switch: flipped AFTER
+	// the enqueue returns, the next Lookup (vector_insert re-check)
+	// fails -- no race with the async window.
+	forceFail bool
+}
+
+// --- Test 16: Successful upload after a failed one → single action_doc_uploaded row ---

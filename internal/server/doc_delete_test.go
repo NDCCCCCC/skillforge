@@ -52,6 +52,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/skillforge/skillforge/internal/kb"
+	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/store"
 )
@@ -171,9 +172,9 @@ func docDeleteTestEnv(t *testing.T, retr retriever.Retriever, st store.Store) st
 		}
 	})
 
-	prevRoot := knowledgeRootDir
-	knowledgeRootDir = t.TempDir()
-	t.Cleanup(func() { knowledgeRootDir = prevRoot })
+	prevRoot := knowledge.PersistKnowledgeRoot()
+	knowledge.SetPersistKnowledgeRoot(t.TempDir())
+	t.Cleanup(func() { knowledge.SetPersistKnowledgeRoot(prevRoot) })
 
 	deps := &Deps{
 		KBRegistry: kb.New([]kb.Entry{
@@ -225,7 +226,7 @@ func deleteDoc(t *testing.T, addr, urlPath, token string) (int, []byte) {
 // remove, under the (temp) knowledge root.
 func seedDocFile(t *testing.T, slug, rel string, body []byte) string {
 	t.Helper()
-	dir := filepath.Join(knowledgeRootDir, slug)
+	dir := filepath.Join(knowledge.PersistKnowledgeRoot(), slug)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	path := filepath.Join(dir, rel)
 	require.NoError(t, os.WriteFile(path, body, 0o644))
@@ -302,7 +303,7 @@ func TestDocDeleteUnknownDocID404(t *testing.T) {
 	var errResp graphResponseError
 	require.NoError(t, json.Unmarshal(raw, &errResp))
 	assert.Contains(t, errResp.Error, "no lifecycle rows")
-	assert.FileExists(t, filepath.Join(knowledgeRootDir, "authority", "orphan.md"))
+	assert.FileExists(t, filepath.Join(knowledge.PersistKnowledgeRoot(), "authority", "orphan.md"))
 }
 
 // TestDocDeleteCrossSlugGuard: the URL slug and the doc_id's slug segment
@@ -331,7 +332,7 @@ func TestDocDeleteTraversalGuard(t *testing.T) {
 	// Plant the would-be traversal target OUTSIDE the knowledge root, in
 	// the temp root's parent — if the gate failed, a successful delete
 	// would have removed this file.
-	outside := filepath.Join(filepath.Dir(knowledgeRootDir), "secret.md")
+	outside := filepath.Join(filepath.Dir(knowledge.PersistKnowledgeRoot()), "secret.md")
 	require.NoError(t, os.WriteFile(outside, []byte("victim"), 0o644))
 	t.Cleanup(func() { _ = os.Remove(outside) })
 

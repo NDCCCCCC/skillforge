@@ -135,9 +135,9 @@ import (
 	"github.com/skillforge/skillforge/internal/scheduler"
 	"github.com/skillforge/skillforge/internal/server"
 	"github.com/skillforge/skillforge/internal/server/classifier"
-	"github.com/skillforge/skillforge/internal/server/stubchat"
 	"github.com/skillforge/skillforge/internal/server/platform/mcp"
 	"github.com/skillforge/skillforge/internal/server/rewrite"
+	"github.com/skillforge/skillforge/internal/server/stubchat"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/store"
 	"github.com/skillforge/skillforge/internal/store/sqlite"
@@ -1009,7 +1009,10 @@ func main() {
 	// The closure delegates to store.PutAudit so audit rows land in SQLite
 	// alongside every other admin action. Best-effort: a failed write logs
 	// and does not abort the upload.
-	server.SetDocUploadAuditHook(func(action, detail string) {
+	// 54-01: the audit sink is a named closure so BOTH entry points (the
+	// server SetDocUploadAuditHook and ingest.NewRunner AuditHook) write
+	// the same store path — one write path, two entry points.
+	uploadAuditSink := func(action, detail string) {
 		if _, err := st.PutAudit(ctx, store.AuditRow{
 			Timestamp:  time.Now().UTC(),
 			UserID:     "admin",
@@ -1019,7 +1022,8 @@ func main() {
 		}); err != nil {
 			log.Printf("[WARN] cmd/server: doc upload audit row (%s): %v", action, err)
 		}
-	})
+	}
+	server.SetDocUploadAuditHook(uploadAuditSink)
 
 	// Phase 28 — graph cache invalidation on upload (cross-phase hook, GRF-05).
 	knowledge.SetGraphCacheInvalidateHook(func() {
@@ -1215,16 +1219,16 @@ func main() {
 	}
 
 	deps = &server.Deps{
-		Loader: loader,
+		Loader:   loader,
 		Registry: reg,
 		// 2026-11-09：装配语义 Router。此前 Deps.Router 恒为 nil，
 		// chatHandler 因此永远走 Loader.findSkill 的精确匹配分支 ——
 		// 语义路由（internal/skill/router.go）整套是死代码。
 		// Router 与 Registry 共用同一个 embedder：Route 的查询向量与
 		// 各 Skill 的 DescVec 必须来自同一模型，否则余弦不可比。
-		Router:       skill.NewRouter(emb),
-		Embedder:     emb,
-		Retriever:    r,
+		Router:    skill.NewRouter(emb),
+		Embedder:  emb,
+		Retriever: r,
 		// 49-02: prodRunner.cm is documented currently-unused; nil in stub
 		// mode is safe. Wizard stays nil in stub mode (its endpoints 503 —
 		// the existing nil-posture, not new behavior), and Deps.ChatModel
@@ -1237,7 +1241,7 @@ func main() {
 		Knowledge:    knowledge.New(r, kbReg),
 		EvalReporter: server.NewFilesystemEvalReporter(evalReportsDir, evalFrozenDir),
 		ChatModel:    toolChatModel, // always the Phase 52 dynamic wrapper; stub semantics ride Available()=false via the three !ChatModelAvailable guards
-		LLMDynamic:   dynChat, // Phase 52 panel: nil would 503 every /api/admin/llm/* route
+		LLMDynamic:   dynChat,       // Phase 52 panel: nil would 503 every /api/admin/llm/* route
 		// Phase 11/12 HITL gate: ActiveManifest backs the D11-C2 expire-check
 		// in approvalPostHandler / planApproveHandler. The proper long-term
 		// shape is per-session (resolved from the pending row's skill_id at

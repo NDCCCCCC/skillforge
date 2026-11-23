@@ -171,6 +171,14 @@ type TruncationPayload struct {
 //     Empty slice (or nil) when the counter-evidence
 //     pass found no conflicts — the FE renders the empty
 //     state copy.
+//   - RuleID / RuleMatchType / RuleScope: populated when Decision ==
+//     "rule-matched" (Phase 56 / Plan 56-02 / D-56-02 命中必须可见).
+//     The approve-and-remember rule that auto-passed the call: its
+//     surrogate id (links the frame to the 56-03 panel row), the tier
+//     that fired (exact | prefix | template), and the scope layer it
+//     lives in (session | skill | global). Additive optional fields on
+//     the SAME data-decision envelope (D-04 / D15 — no new chunk type;
+//     DataRef / ReportCard follow the identical pattern).
 type DecisionPayload struct {
 	Step           int             `json:"step"`     // 1-indexed hop number (1 or 2 for max_hops=2)
 	Decision       string          `json:"decision"` // wire.DecisionForcedStop (12-05) and the catalog in types.go — extend ADDITIVELY; never repurpose an existing value
@@ -186,6 +194,9 @@ type DecisionPayload struct {
 	ConflictChunks []ConflictChunk `json:"conflictChunks,omitempty"` // Plan 05-06 / D5-13 — populated only on "counter_evidence" decisions
 	DataRef        *DataReference  `json:"dataRef,omitempty"`        // P16 — kpi_reference events only; structured data citation (D16-B3)
 	ReportCard     *ReportCard     `json:"reportCard,omitempty"`     // P18 — report_published events only; report publication result (D18-B3)
+	RuleID         int64           `json:"ruleId,omitempty"`         // 56-02 D-56-02 — rule-matched only; the auto-passing rule's surrogate id
+	RuleMatchType  string          `json:"ruleMatchType,omitempty"`  // 56-02 D-56-02 — rule-matched only; exact | prefix | template
+	RuleScope      string          `json:"ruleScope,omitempty"`      // 56-02 D-56-02 — rule-matched only; session | skill | global
 }
 
 // TurnPayload is the JSON shape carried by data-turn SSE chunks

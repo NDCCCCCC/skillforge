@@ -436,7 +436,7 @@ func (s *Deps) pathHandler(ctx context.Context, c *app.RequestContext) {
 // KnowledgeBuilder type alias declared in server.go.
 var _ KnowledgeBuilder = (*knowledge.GraphBuilder)(nil)
 
-// knowledgeRootDir is the on-disk corpus the indexer seeds from (see
+// the knowledge persist root is the on-disk corpus the indexer seeds from (see
 // internal/knowledge/indexer.go — the same project-relative path). The
 // docs endpoints read from it directly: the graph endpoint answers
 // "what is INDEXED" (Milvus rows), while /api/knowledge/docs answers
@@ -452,15 +452,13 @@ var _ KnowledgeBuilder = (*knowledge.GraphBuilder)(nil)
 //
 // Package var (not a const) following the persistKnowledgeRoot pattern
 // (upload.go): production keeps the default, and the Phase 53-03 DELETE
-// tests redirect it into t.TempDir() via SetKnowledgeRootDir so the
+// tests redirect it via knowledge.SetPersistKnowledgeRoot so the
 // file-deletion assertions never touch the repo's real knowledge/ tree.
-var knowledgeRootDir = "knowledge/"
 
-// SetKnowledgeRootDir binds the on-disk corpus root the docs endpoints
+// (retired) SetKnowledgeRootDir bound the on-disk corpus root the docs endpoints
 // read and the doc DELETE handler removes files under. Production never
 // calls this (the default matches the seed root); tests use it with
 // t.Cleanup restore.
-func SetKnowledgeRootDir(root string) { knowledgeRootDir = root }
 
 // docEntry is one file row in the /api/knowledge/docs response.
 type docEntry struct {
@@ -506,7 +504,7 @@ func (s *Deps) docsHandler(ctx context.Context, c *app.RequestContext) {
 }
 
 // docsTierFor lists one corpus directory into a docsTier block. The slug
-// doubles as the directory name under knowledgeRootDir, and it is already
+// doubles as the directory name under the persist corpus root, and it is already
 // whitelist-validated by the registry (a slug can never carry a separator
 // — kb.ValidateSlug), so joining it into a path is safe by construction.
 //
@@ -519,7 +517,7 @@ func (s *Deps) docsHandler(ctx context.Context, c *app.RequestContext) {
 // registry before its corpus lands on disk (and a fresh checkout may ship
 // no .gitkeep at all). The tree shows 0 docs for it.
 func docsTierFor(slug string) docsTier {
-	entries, err := knowledge.WalkDocs(filepath.Join(knowledgeRootDir, slug))
+	entries, err := knowledge.WalkDocs(filepath.Join(knowledge.PersistKnowledgeRoot(), slug))
 	if err != nil {
 		return docsTier{Tier: slug, Docs: []docEntry{}}
 	}
@@ -607,7 +605,7 @@ func (s *Deps) docContentHandler(ctx context.Context, c *app.RequestContext) {
 		})
 		return
 	}
-	content, err := os.ReadFile(filepath.Join(knowledgeRootDir, tier, file))
+	content, err := os.ReadFile(filepath.Join(knowledge.PersistKnowledgeRoot(), tier, file))
 	if err != nil {
 		// Missing file (deleted between docs listing and click) → 404, not
 		// a 500 with a path-bearing error message (W-3 posture).
@@ -784,7 +782,7 @@ func (s *Deps) docDeleteHandler(ctx context.Context, c *app.RequestContext) {
 	// the rows are gone: reseed would resurrect the doc, so this must
 	// fail loudly and name the half-state, not masquerade as success.
 	// filePath uses the FULL docID (slug segment included): the canonical
-	// file lives at knowledgeRootDir/<slug>/<name> (PersistUploadedDoc),
+	// file lives at <persist root>/<slug>/<name> (PersistUploadedDoc),
 	// and `rel` here is docID minus the slug prefix — Joining on rel
 	// would remove a file one level up from where 53-01 wrote it, and
 	// os.Remove's IsNotExist would then be swallowed by the idempotent
@@ -793,7 +791,7 @@ func (s *Deps) docDeleteHandler(ctx context.Context, c *app.RequestContext) {
 	// traversal-check surface: the check above already proves docID =
 	// slug + "/" + validRelDocPath(rel), so Join(root, FromSlash(docID))
 	// cannot escape the corpus root.
-	filePath := filepath.Join(knowledgeRootDir, filepath.FromSlash(docID))
+	filePath := filepath.Join(knowledge.PersistKnowledgeRoot(), filepath.FromSlash(docID))
 	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 		log.Printf("[WARN] server: doc deleted from index but file removal failed (slug=%s doc_id=%s file=%s): %v — the next reseed will resurrect it", slug, docID, filePath, err)
 		c.JSON(http.StatusInternalServerError, graphResponseError{

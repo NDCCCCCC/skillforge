@@ -559,6 +559,109 @@ CREATE TABLE IF NOT EXISTS ecl_failures (
     status        TEXT NOT NULL DEFAULT 'pending',
     updated_at    TEXT NOT NULL DEFAULT ''
 );
+
+-- ingest_jobs / ingest_steps / ingest_items (Phase 54 / Plan 54-01 /
+-- ING-04/ING-05): the async ingest job model. Two-table shape chosen over
+-- the RAGFlow single wide row: each step is a FIRST-CLASS row
+-- ((job_id, step) PK) carrying its own status/attempt/timestamps/error —
+-- step-level retry (54-03) needs row-granular CAS that an 8-step × 8-field
+-- wide row cannot express without repeated job-table DDL churn.
+--
+-- MUTABLE STATUS COLUMNS ARE SANCTIONED HERE — same exemption argument as
+-- ecl_failures: retry semantics REQUIRE in-place status transitions
+-- (pending → running → done|failed|skipped|stale per step; queued →
+-- running → done|failed|partial per job), so the T-3-AUDIT INSERT-only
+-- discipline deliberately does not apply. The job/steps tables are
+-- OPERATIONAL STATE (the knowledge_bases "config is not evidence"
+-- precedent), not audit evidence — the audit trail for ingest actions
+-- lives in the EXISTING audit table (action_doc_ingest_queued /
+-- action_doc_uploaded rows written by the server layer).
+--
+-- TIMESTAMP DISCIPLINE: created_at / updated_at / started_at /
+-- completed_at are RFC3339Nano UTC strings SET BY THE CALLER (the ingest
+-- runner) — never a SQL default — so step-duration derivation and retry
+-- timing stay testable (ecl_failures.updated_at precedent).
+--
+--   - job_id: "ing-" + crypto/rand 12-byte hex (24 chars total); the
+--     handler passes it straight back to the FE polling loop.
+--   - doc_id: parse step assigns it (the 53-01 persist relative path);
+--     empty until parse completes.
+--   - source_path: the 53-01 raw-bytes archive (data/uploads/<sha256><ext>)
+--     — the original-byte source for 54-03 step retry (D-54-02 staging
+--     contract lands there; this plan only records the pointer).
+--   - parser_name: parse step captures ParseResult.ParserName (54-04
+--     consumes; the action_doc_uploaded audit's parser_version now reads
+--     the real registry name instead of the legacy "unknown" stub).
+--   - file_size: NOT in the 54-01 plan DDL — added because the
+--     action_doc_uploaded audit payload (migrated verbatim from upload.go
+--     STEP 9 into the runner's done path) carries file_size, and the job
+--     row is the only state the async runner has. Deviation recorded in
+--     the plan handoff.
+--   - status (job): queued | running | partial | done | failed. partial is
+--     reserved for 54-03 (job not failed but some items failed — SC 7);
+--     ClaimJob accepts it as a re-claimable state.
+CREATE TABLE IF NOT EXISTS ingest_jobs (
+    job_id      TEXT PRIMARY KEY,
+    slug        TEXT NOT NULL,
+    filename    TEXT NOT NULL,
+    sha256      TEXT NOT NULL,
+    mime        TEXT NOT NULL DEFAULT '',
+    file_size   INTEGER NOT NULL DEFAULT 0,
+    doc_id      TEXT NOT NULL DEFAULT '',
+    source_path TEXT NOT NULL DEFAULT '',
+    parser_name TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'queued',
+    error       TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT '',
+    updated_at  TEXT NOT NULL DEFAULT ''
+);
+
+-- ingest_steps: one row per (job, step) of the eight-step pipeline
+-- (ingest.StepSequence is the ordering contract; this table stores no
+-- sequence column — consumers order by StepSequence index so a future
+-- step insertion cannot rewrite history).
+--
+--   - attempt: incremented by the runner at every step START, never reset
+--     — 54-03 step retry reads it to know how many times a step ran.
+--   - error: FIRST-CLASS failure field — the failure reason MUST be
+--     queryable from the job surface, not buried in server logs (Dify
+--     lesson; SC 1). Non-error notes also live here: skipped steps record
+--     the reason ("ecl auto-trigger not wired (54-04)") in error.
+--   - artifact_ref: per-step product locator. 54-02 fixes the on-disk
+--     semantics (staging, D-54-02); this plan already writes the natural
+--     refs where one exists (parse → doc_id, vector_insert → written PK
+--     set) so the column is exercised from day one.
+--   - stale: RESERVED for 54-03 — "result invalidated by an upstream
+--     retry" (Dify re_segment analog). Only the constant is defined this
+--     phase; no writer exists yet.
+CREATE TABLE IF NOT EXISTS ingest_steps (
+    job_id       TEXT NOT NULL,
+    step         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending',
+    attempt      INTEGER NOT NULL DEFAULT 0,
+    started_at   TEXT NOT NULL DEFAULT '',
+    completed_at TEXT NOT NULL DEFAULT '',
+    error        TEXT NOT NULL DEFAULT '',
+    artifact_ref TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (job_id, step)
+);
+
+-- ingest_items: the item-level ledger under one step (SC 7 / Bedrock
+-- "COMPLETE but N docs failed" model). v1 writes ONLY embed rows
+-- (item_key = chunk content_hash); vector_insert is batch-atomic (no
+-- per-item decomposition), and the ECL item ledger is the EXISTING
+-- ecl_failures table — a second one here would fork the dead-letter
+-- semantics. 54-02 (embed cache / per-chunk retry) is the first writer;
+-- this plan ships the schema only.
+CREATE TABLE IF NOT EXISTS ingest_items (
+    job_id     TEXT NOT NULL,
+    step       TEXT NOT NULL,
+    item_key   TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    error      TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (job_id, step, item_key)
+);
 `
 
 // HITL-04 audit lifecycle + D11-C2 snapshot dual-table DDL extensions.
@@ -834,6 +937,21 @@ CREATE INDEX IF NOT EXISTS idx_approval_rules_skill ON approval_rules(skill_id)
 CREATE INDEX IF NOT EXISTS idx_rule_hits_rule ON approval_rule_hits(rule_id, ts)
 `
 )
+
+// createIngestJobsSlugSHAIdxSQL (Phase 54 / Plan 54-01 / ING-04) backs the
+// extended upload dedup: the handler answers 409 when a NON-failed job for
+// the same (slug, sha256) already exists (the in-flight-window dedup the
+// audit-row-only check cannot see). ingest_steps / ingest_items need no
+// extra index — their composite PKs ((job_id, step) / (job_id, step,
+// item_key)) prefix-serve every job-keyed read this phase ships.
+//
+// Executed at the TAIL of migrate() per the D14-E1 ordering contract; all
+// three ingest tables are brand-new (additive CREATE TABLE IF NOT EXISTS,
+// zero ALTER dependency) but keep the one-shape migrate()-tail convention.
+// CREATE INDEX IF NOT EXISTS is idempotent at the SQLite level.
+const createIngestJobsSlugSHAIdxSQL = `
+CREATE INDEX IF NOT EXISTS idx_ingest_jobs_slug_sha ON ingest_jobs(slug, sha256)
+`
 
 // Phase 56 / Plan 56-01 / D-56-01 — the legacy approval_rules rebuild.
 //
@@ -1199,6 +1317,13 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 	}
 	if _, err := s.db.ExecContext(ctx, createRuleHitsRuleIdxSQL); err != nil {
 		return fmtError("migrate.approval_rule_hits.rule_idx", err)
+	}
+
+	// Phase 54 / Plan 54-01 / ING-04 — ingest_jobs (slug, sha256) dedup
+	// index. Fresh additive tables (no ALTER dependency); migrate()-tail
+	// convention per D14-E1.
+	if _, err := s.db.ExecContext(ctx, createIngestJobsSlugSHAIdxSQL); err != nil {
+		return fmtError("migrate.ingest_jobs.slug_sha_idx", err)
 	}
 	return nil
 }

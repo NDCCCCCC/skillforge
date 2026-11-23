@@ -56,6 +56,7 @@ import (
 	"github.com/skillforge/skillforge/internal/document"
 	"github.com/skillforge/skillforge/internal/embedder"
 	"github.com/skillforge/skillforge/internal/externalauth"
+	"github.com/skillforge/skillforge/internal/ingest"
 	"github.com/skillforge/skillforge/internal/kb"
 	"github.com/skillforge/skillforge/internal/knowledge"
 	"github.com/skillforge/skillforge/internal/knowledge/ecl"
@@ -488,6 +489,14 @@ type Deps struct {
 	// answers 503 (same nil-posture as Ontology). Boot ARMS the manager but
 	// NEVER runs it (D-Run-01) — runs come from the admin run endpoint only.
 	ECL *ecl.Manager
+
+	// --- Phase 54-01: Ingest pipeline runner ---
+	// Ingest carries the async ingest runner constructed at boot (54-01).
+	// nil = pipeline not wired: every upload answers 503 ("ingest pipeline
+	// not wired") and /api/admin/ingest/* answers 503 — the pipeline is
+	// the ONLY processing path since 54-01 (the old synchronous chain is
+	// decomposed into the runner step functions, not kept as a fallback).
+	Ingest *ingest.Runner
 
 	// --- Phase 41: Platform Layer MCP server (PLAT-ONT-18) ---
 	// MCPServer is the stdio MCP server exposing KG tools to external agents.

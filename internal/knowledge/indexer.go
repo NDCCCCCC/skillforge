@@ -85,6 +85,16 @@ func contentHashHex(text string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ContentHashHex is the exported window onto contentHashHex (Phase
+// 54-01): the async ingest chunk step builds its doc skeletons outside
+// this file and must hash through the SAME single implementation as both
+// producers — any second hash derivation would let a same-content chunk
+// be judged "changed" by one producer and "unchanged" by the other,
+// silently breaking the upsert's PK-reuse guarantee.
+func ContentHashHex(text string) string {
+	return contentHashHex(text)
+}
+
 // maxDocBytes is the WARNING threshold (in bytes) for a single source
 // file's body.
 //

@@ -31,6 +31,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -42,6 +43,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/skillforge/skillforge/internal/ingest"
+	"github.com/skillforge/skillforge/internal/knowledge"
 )
 
 // setPersistDirs redirects both persist roots into fresh temp dirs and
@@ -53,12 +57,12 @@ import (
 func setPersistDirs(t *testing.T) (kbRoot, uploadsDir string) {
 	t.Helper()
 	kbRoot, uploadsDir = t.TempDir(), t.TempDir()
-	prevKB, prevUploads := knowledgeRootDir, persistUploadsDir
-	knowledgeRootDir = kbRoot
-	persistUploadsDir = uploadsDir
+	prevKB, prevUploads := knowledge.PersistKnowledgeRoot(), knowledge.PersistUploadsDir()
+	knowledge.SetPersistKnowledgeRoot(kbRoot)
+	knowledge.SetPersistUploadsDir(uploadsDir)
 	t.Cleanup(func() {
-		knowledgeRootDir = prevKB
-		persistUploadsDir = prevUploads
+		knowledge.SetPersistKnowledgeRoot(prevKB)
+		knowledge.SetPersistUploadsDir(prevUploads)
 	})
 	return kbRoot, uploadsDir
 }
@@ -94,6 +98,7 @@ func TestPersistUploadWritesKnowledgeFile(t *testing.T) {
 	body, ct, n := buildUploadMultipart(t, "Policy Doc.md", "text/markdown", []byte(content))
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 	require.Equal(t, http.StatusOK, resp.Code)
+	deps.Ingest.WaitIdle() // 54-01: persist runs on the runner goroutine
 
 	sum := sha256.Sum256([]byte(content))
 	sha256Hex := hex.EncodeToString(sum[:])
@@ -133,12 +138,17 @@ func TestPersistUploadWritesKnowledgeFile(t *testing.T) {
 	// The wiring runs persist BEFORE Insert: a 200 means both happened.
 	require.Len(t, idx.Docs(), 1, "Insert must still run after persist succeeds")
 
-	// Success audit reports the persisted path — the doc_id contract.
-	require.Len(t, *hookCalls, 1)
+	// Two audit rows under the 54-01 contract: the enqueue acceptance
+	// (action_doc_ingest_queued, HTTP layer) and the runner's completion
+	// row (action_doc_uploaded) — the persisted_path contract lives on
+	// the completion row.
+	require.Len(t, *hookCalls, 2)
+	require.Equal(t, "action_doc_ingest_queued", (*hookCalls)[0].Action)
+	require.Equal(t, "action_doc_uploaded", (*hookCalls)[1].Action)
 	var audit struct {
 		PersistedPath string `json:"persisted_path"`
 	}
-	require.NoError(t, json.Unmarshal([]byte((*hookCalls)[0].Detail), &audit))
+	require.NoError(t, json.Unmarshal([]byte((*hookCalls)[1].Detail), &audit))
 	assert.Equal(t, "authority/"+name, audit.PersistedPath)
 }
 
@@ -153,6 +163,7 @@ func TestPersistUploadArchivesOriginalBytes(t *testing.T) {
 	body, ct, n := buildUploadMultipart(t, "report.md", "text/markdown", content)
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 	require.Equal(t, http.StatusOK, resp.Code)
+	deps.Ingest.WaitIdle() // 54-01: the archive write runs on the runner
 
 	sum := sha256.Sum256(content)
 	archivePath := filepath.Join(uploadsDir, hex.EncodeToString(sum[:])+".md")
@@ -187,20 +198,37 @@ func TestUploadPersistFailureRejectedBeforeInsert(t *testing.T) {
 	body, ct, n := buildUploadMultipart(t, "blocked.md", "text/markdown", content)
 	resp := invokeUpload(t, deps, "authority", testAdminToken, body, ct, n)
 
-	// 422 with a "persist failed" reason.
-	assert.Equal(t, http.StatusUnprocessableEntity, resp.Code)
-	var errResp map[string]string
-	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &errResp))
-	assert.Contains(t, errResp["error"], "persist failed")
-
-	// Reject audit carries the same reason.
-	require.Len(t, *hookCalls, 1, "exactly one reject audit row expected")
-	assert.Equal(t, actionDocUploadRejected, (*hookCalls)[0].Action)
-	var audit struct {
-		Reason string `json:"reason"`
+	// 54-01 contract: the enqueue itself succeeds (200 — the job id IS
+	// the acceptance), and the persist failure surfaces as the job's
+	// terminal state after the runner settles. The fail-closed ordering
+	// (persist BEFORE Insert) is unchanged — the zero-insert assertion
+	// below is the same guard, moved from the HTTP layer to the job layer.
+	require.Equal(t, http.StatusOK, resp.Code)
+	var acc struct {
+		JobID string `json:"job_id"`
 	}
-	require.NoError(t, json.Unmarshal([]byte((*hookCalls)[0].Detail), &audit))
-	assert.Contains(t, audit.Reason, "persist failed")
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &acc))
+	require.NotEmpty(t, acc.JobID)
+	deps.Ingest.WaitIdle()
+
+	job, err := deps.Ingest.GetJob(context.Background(), acc.JobID)
+	require.NoError(t, err)
+	assert.Equal(t, ingest.StatusFailed, job.Status, "a persist failure must fail the job")
+
+	steps, err := deps.Ingest.ListSteps(context.Background(), acc.JobID)
+	require.NoError(t, err)
+	parseErrText := ""
+	for _, s := range steps {
+		if s.Step == "parse" && s.Error != "" {
+			parseErrText = s.Error
+		}
+	}
+	assert.Contains(t, parseErrText, "persist failed",
+		"the parse step row must carry the persist failure reason")
+
+	// Acceptance audit only — the failure lives in the job/step rows.
+	require.Len(t, *hookCalls, 1, "exactly the enqueue acceptance audit expected")
+	assert.Equal(t, "action_doc_ingest_queued", (*hookCalls)[0].Action)
 
 	// Fail-closed ordering: persist runs BEFORE Insert, so a persist
 	// failure must mean zero Insert calls — the forbidden half-state
@@ -223,7 +251,7 @@ func TestPersistUploadedDocFileNameContract(t *testing.T) {
 	kbRoot, uploadsDir := setPersistDirs(t)
 
 	raw := []byte("# Stem Sanitize\n\nbody")
-	docID, err := PersistUploadedDoc(t.Context(), "authority", "Weird Name!.md", "text/markdown", raw)
+	docID, err := knowledge.PersistUploadedDoc(t.Context(), "authority", "Weird Name!.md", "text/markdown", raw)
 	require.NoError(t, err)
 
 	sum := sha256.Sum256(raw)

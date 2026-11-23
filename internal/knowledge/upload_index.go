@@ -43,11 +43,29 @@ func SetUploadAuditHook(fn func(action, detail string)) { uploadAuditHook = fn }
 // []retriever.Document ready for backend Insert — running the D-53-03
 // doc-level UPSERT against the doc's previous generation first.
 //
+// Phase 54-01: this function is now a COMPOSITION of the same shared
+// mechanics the async ingest step machine runs (single-implementation
+// discipline — 53-02's "two chunkers" bug class). The ingest package
+// cannot be imported from here (ingest imports knowledge for the persist
+// step; the reverse would cycle), so the shared mechanics live HERE as
+// exports and both callers compose them:
+//
+//   - ChunkUploadBody      — the ONLY chunker (buildSplitter + splitBody,
+//     the 53-02 CJK-aware recursive splitter).
+//   - ValidateUploadTiers  — the KNOW-02 gate (hook-aware).
+//   - ResolveReuseAndEmbed — the D-53-03 upsert embed half (previous-
+//     generation lookup, hash-unchanged re-embed skip, ID allocation,
+//     embed-only-fresh).
+//
+// The upload handler's synchronous call path is retired in 54-01 (the
+// async ingest Runner owns the pipeline now); the function remains for
+// its direct callers and tests with its signature unchanged.
+//
 // docID is the document-lifecycle key (Phase 53-03): the corpus-relative
 // path the 53-01 persist step writes the canonical file to
 // ("authority/<sha8>-<stem>.md"). After persist, an uploaded doc and a
 // directory doc share the exact same doc_id semantics (53-CONTEXT). The
-// caller derives it BEFORE this call — via the server's persistedDocID
+// caller derives it BEFORE this call — via the knowledge PersistedDocID
 // helper — because the upsert lookup needs the key before any backend
 // read. An EMPTY docID selects the legacy append posture (no lookup, no
 // delete, every chunk fresh): it exists for direct/test callers only; the
@@ -80,9 +98,9 @@ func SetUploadAuditHook(fn func(action, detail string)) { uploadAuditHook = fn }
 //     reseed self-heals it from the canonical file — the same posture a
 //     first-time-upload Insert failure already has.
 //
-// UploadIndex does NOT call Insert — the caller (the upload handler, Plan
-// 27-03) decides when to Insert and handles backend errors. This keeps
-// UploadIndex testable without a real Milvus/Mongo backend.
+// UploadIndex does NOT call Insert — the caller decides when to Insert
+// and handles backend errors. This keeps UploadIndex testable without a
+// real Milvus/Mongo backend.
 //
 // Behavior summary:
 //   - Slug is validated against the registry before any I/O (fail-closed).
@@ -128,27 +146,22 @@ func UploadIndex(
 		return nil, fmt.Errorf("parse failed: document body is empty")
 	}
 
-	// Step 4: chunk if body exceeds chunkSizeRunes, using the SAME
-	// CJK-aware recursive splitter as the boot-time Index path (53-02 /
-	// D-53-02: chunkBody's byte-window chunking is retired — two chunk
-	// policies inside one tier made retrieval distributions incomparable;
-	// the cross-path equivalence test pins byte-identical output).
-	splitter, err := buildSplitter(ctx)
+	// Step 4: chunk via the single chunker (53-02 / D-53-02: chunkBody's
+	// byte-window chunking is retired — two chunk policies inside one tier
+	// made retrieval distributions incomparable; the cross-path
+	// equivalence test pins byte-identical output).
+	chunks, err := ChunkUploadBody(ctx, body)
 	if err != nil {
-		return nil, fmt.Errorf("build splitter: %w", err)
-	}
-	chunks, err := splitBody(ctx, splitter, string(body))
-	if err != nil {
-		return nil, fmt.Errorf("split body: %w", err)
+		return nil, err
 	}
 
 	// Step 5: parse effective window from frontmatter (0,0 if absent).
 	ef, et := parseEffectiveWindow(fm)
 
-	// Step 6: validate tiers BEFORE embedder (KNOW-02 fail-closed gate).
-	// Build the doc slice with Tier + the 53-03 doc-lifecycle triple set,
-	// so validateTiers can check each doc's tier against the registry and
-	// the upsert can hash-match against the backend's stored hashes.
+	// Step 6: build the doc slice with Tier + the 53-03 doc-lifecycle
+	// triple set, so validateTiers can check each doc's tier against the
+	// registry and the upsert can hash-match against the backend's stored
+	// hashes. KNOW-02 gate runs BEFORE the embedder.
 	docs := make([]retriever.Document, 0, len(chunks))
 	for i, chunk := range chunks {
 		docs = append(docs, retriever.Document{
@@ -164,32 +177,112 @@ func UploadIndex(
 			ContentHash:   contentHashHex(chunk),
 		})
 	}
-	if validateTiersHook != nil {
-		err = validateTiersHook(docs, reg)
-	} else {
-		err = validateTiers(docs, reg)
+	if err := ValidateUploadTiers(docs, reg); err != nil {
+		return nil, err
 	}
+
+	// Steps 7-8 (Phase 53-03 / D-53-03 upsert): previous-generation
+	// lookup, hash-unchanged re-embed skip, ID allocation, and selective
+	// embedding — one shared implementation with the ingest embed step.
+	docs, prevGeneration, err := ResolveReuseAndEmbed(ctx, slug, docID, docs, emb, r)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 7 (Phase 53-03 / D-53-03 upsert, part 1): resolve the doc's
-	// previous generation. Empty docID = the legacy append posture (see
-	// the godoc) — skip the lookup entirely.
+	// Step 9 (Phase 53-03 / D-53-03 upsert, part 2): delete the doc's
+	// ENTIRE previous generation. Ordering is load-bearing: this runs
+	// AFTER the embed (the slow part) so the old generation stays
+	// searchable as long as possible, and BEFORE the function returns
+	// because the caller Inserts immediately after — Milvus does not
+	// deduplicate Insert by PK, so delete-then-insert is the only ordering
+	// that cannot stack two searchable generations (the reseed
+	// write-amplification incident class). The empty-docID legacy posture
+	// skips this step (nothing is addressable without a doc_id).
+	if docID != "" && prevGeneration > 0 {
+		lifecycle := r.(retriever.DocChunkStore) // asserted non-nil in ResolveReuseAndEmbed
+		if err := lifecycle.DeleteDocRows(ctx, slug, docID); err != nil {
+			return nil, fmt.Errorf("doc lifecycle delete for doc_id %q: %w", docID, err)
+		}
+	}
+
+	return docs, nil
+}
+
+// ChunkUploadBody chunks an upload body with the corpus loader's ONE
+// chunker: buildSplitter (the CJK-aware recursive splitter, 53-02 /
+// D-53-02) + splitBody. Exported so the async ingest chunk step (54-01)
+// and this package's UploadIndex compose the same implementation — a
+// second chunker anywhere in the upload surface is the exact defect class
+// 53-02 retired (cross-path equivalence test pins byte-identical chunks).
+//
+// Error wrapping matches the retired inline call shape ("build splitter:"
+// / "split body:") so error-text assertions survive the decomposition.
+func ChunkUploadBody(ctx context.Context, body []byte) ([]string, error) {
+	splitter, err := buildSplitter(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("build splitter: %w", err)
+	}
+	chunks, err := splitBody(ctx, splitter, string(body))
+	if err != nil {
+		return nil, fmt.Errorf("split body: %w", err)
+	}
+	return chunks, nil
+}
+
+// ValidateUploadTiers is the KNOW-02 fail-closed gate for upload-produced
+// docs (empty/unknown/deactivated tier rejected before any embedder or
+// backend call — refusal-masking moat, T-3-MASK). Hook-aware exactly like
+// the retired inline dispatch: a test-installed validateTiersHook wins,
+// otherwise the real validateTiers runs. Exported so the ingest chunk
+// step gates through the same implementation.
+func ValidateUploadTiers(docs []retriever.Document, reg kb.Registry) error {
+	if validateTiersHook != nil {
+		return validateTiersHook(docs, reg)
+	}
+	return validateTiers(docs, reg)
+}
+
+// ResolveReuseAndEmbed is the D-53-03 upsert EMBED half, shared by
+// UploadIndex and the ingest embed step (Phase 54-01): resolve the doc's
+// previous generation through the DocChunkStore capability, reuse
+// unchanged rows (hash match → same PK + stored vector, zero embed
+// calls), allocate fresh IDs from the tier watermark, and embed ONLY the
+// fresh chunks. Embed failure is a hard error — never a zero vector
+// (Pitfall 8; D-54-01: embedding is a necessity, fail-closed).
+//
+// Returns the docs (IDs + embeddings assigned) and prevGeneration — the
+// size of the previous generation found. UploadIndex uses it to decide
+// whether a delete is due (step 9 above); the ingest path ignores it (its
+// vector_insert step deletes inside the VectorSink before inserting).
+//
+// Empty docID = the legacy append posture (see the UploadIndex godoc):
+// no lookup, no reuse, every chunk fresh.
+func ResolveReuseAndEmbed(
+	ctx context.Context,
+	slug string,
+	docID string,
+	docs []retriever.Document,
+	emb embedder.Embedder,
+	r retriever.Retriever,
+) ([]retriever.Document, int, error) {
+	// Resolve the doc's previous generation (fail-closed on a backend
+	// without the DocChunkStore capability whenever docID is set).
 	var existing []retriever.DocChunk
 	if docID != "" {
 		lifecycle, ok := r.(retriever.DocChunkStore)
 		if !ok {
-			return nil, fmt.Errorf(
+			return nil, 0, fmt.Errorf(
 				"retriever backend does not support doc lifecycle (retriever.DocChunkStore) — "+
 					"required to upsert doc_id %q (fail-closed: silently appending a re-upload alongside "+
 					"its previous generation would leave superseded chunks searchable)", docID)
 		}
-		existing, err = lifecycle.DocChunkRows(ctx, slug, docID)
+		rows, err := lifecycle.DocChunkRows(ctx, slug, docID)
 		if err != nil {
-			return nil, fmt.Errorf("doc lifecycle lookup for doc_id %q: %w", docID, err)
+			return nil, 0, fmt.Errorf("doc lifecycle lookup for doc_id %q: %w", docID, err)
 		}
+		existing = rows
 	}
+	prevGeneration := len(existing)
 
 	// Reuse map: stored content_hash → the existing row (PK + vector).
 	// First occurrence wins so a duplicated stored hash cannot alias two
@@ -200,9 +293,10 @@ func UploadIndex(
 	for _, row := range existing {
 		if row.ContentHash == "" {
 			// Legacy row (pre-53): no hash to match — it will be deleted
-			// wholesale in step 9 and never reused. Skipping it here is
-			// what keeps the zero-value legacy contract one-directional:
-			// legacy rows stay readable, but an upsert never trusts them.
+			// wholesale by the delete half and never reused. Skipping it
+			// here is what keeps the zero-value legacy contract
+			// one-directional: legacy rows stay readable, but an upsert
+			// never trusts them.
 			continue
 		}
 		if _, dup := reuse[row.ContentHash]; !dup {
@@ -210,13 +304,13 @@ func UploadIndex(
 		}
 	}
 
-	// Step 8: ID allocation + selective embedding. Reused chunks keep
-	// their PK and stored vector (NO embed call — the whole point of the
-	// re-embed skip); fresh chunks draw IDs from the tier watermark and
-	// are the only ones that reach the embedder.
+	// ID allocation + selective embedding. Reused chunks keep their PK
+	// and stored vector (NO embed call — the whole point of the re-embed
+	// skip); fresh chunks draw IDs from the tier watermark and are the
+	// only ones that reach the embedder.
 	startID, err := getUploadNextID(ctx, slug, r)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	nextFresh := startID
 	for i := range docs {
@@ -226,7 +320,7 @@ func UploadIndex(
 				// (SeedDocuments rejects dim-mismatched embeddings loudly).
 				// Fail here with the doc context instead of surfacing a bare
 				// backend dimension error two steps later.
-				return nil, fmt.Errorf(
+				return nil, 0, fmt.Errorf(
 					"doc lifecycle reuse for doc_id %q: existing row id=%d carries no stored vector; "+
 						"re-upload is still possible but this row must be re-embedded (purge the doc and retry)",
 					docID, old.ID)
@@ -248,28 +342,11 @@ func UploadIndex(
 		}
 		vec, err := emb.Embed(ctx, docs[i].Content)
 		if err != nil {
-			return nil, fmt.Errorf("embed failed: %w", err)
+			return nil, 0, fmt.Errorf("embed failed: %w", err)
 		}
 		docs[i].Embedding = vec
 	}
-
-	// Step 9 (Phase 53-03 / D-53-03 upsert, part 2): delete the doc's
-	// ENTIRE previous generation. Ordering is load-bearing: this runs
-	// AFTER the embed (the slow part) so the old generation stays
-	// searchable as long as possible, and BEFORE the function returns
-	// because the caller Inserts immediately after — Milvus does not
-	// deduplicate Insert by PK, so delete-then-insert is the only ordering
-	// that cannot stack two searchable generations (the reseed
-	// write-amplification incident class). The empty-docID legacy posture
-	// skips this step (nothing is addressable without a doc_id).
-	if docID != "" && len(existing) > 0 {
-		lifecycle := r.(retriever.DocChunkStore) // asserted non-nil in step 7
-		if err := lifecycle.DeleteDocRows(ctx, slug, docID); err != nil {
-			return nil, fmt.Errorf("doc lifecycle delete for doc_id %q: %w", docID, err)
-		}
-	}
-
-	return docs, nil
+	return docs, prevGeneration, nil
 }
 
 // validateSlug is the fail-closed gate for the upload target. It returns

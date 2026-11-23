@@ -58,6 +58,12 @@ package wire
 //	history_classifier_refused — Phase 10 D10-C3
 //	tool-resumed            — HITL-04 approval resolution (Phase 11)
 //	tool-denied             — HITL-04 approval resolution (Phase 11)
+//	rule-matched            — HITL Tool Pass-1 rule auto-pass (Phase 56
+//	                          / Plan 56-02 D-56-02 命中必须可见); rides
+//	                          data-decision with RuleID/RuleMatchType/
+//	                          RuleScope set. The FE union already
+//	                          carries 'rule-matched' (wire-types.ts) —
+//	                          this constant is the D15 lockstep 追认.
 //
 // 12-05 consumers: the budget middleware's emitter seam
 // (agentcallbacks.BudgetEmitter) writes
@@ -121,4 +127,18 @@ const (
 	// full snapshot from tool result; FE Phase 17 sparkline reads from
 	// kpi_calls audit rows — admin read-only surface).
 	DecisionKPIReference = "kpi_reference"
+
+	// DecisionRuleMatched is the Phase 56 / Plan 56-02 (D-56-02)
+	// approve-and-remember auto-pass event. When a HITL Tool's Pass-1
+	// consults the tier engine and a rule matches, the Tool's hit
+	// branch emits data-decision{decision: "rule-matched", ruleId,
+	// ruleMatchType, ruleScope, toolCallId, query: target} AFTER the
+	// MarkAutoPassedRule audit row lands (audit first, event after —
+	// the P12-L6 / 12-06 ordering). The data-decision discriminator is
+	// unchanged — a new VALUE in the Decision string enum, NOT a new
+	// wire chunk type (D16 overload pattern, same as P13-L7 fanout_*).
+	// The FE mirror at web/src/types/wire-types.ts already declares
+	// 'rule-matched' in its union (line 242); this constant is the
+	// backend-side D15 lockstep ratification, not a wire-shape change.
+	DecisionRuleMatched = "rule-matched"
 )
