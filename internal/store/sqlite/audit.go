@@ -819,3 +819,37 @@ func (s *SQLiteStore) HasUploadBySHA256(ctx context.Context, slug, sha256 string
 	}
 	return true, nil
 }
+
+// listApprovedFrozenArgsSQL (54-03 suggestions): the frozen_args blobs of
+// HUMAN approval rows for one session, newest first, capped — the
+// suggestion cluster scans this in the application layer (target lives
+// INSIDE the frozen_args JSON; SQL-side clustering would need
+// json_extract per row anyway, and the cap keeps the scan bounded).
+const listApprovedFrozenArgsSQL = `
+SELECT frozen_args
+FROM audit
+WHERE action = 'action_approved' AND session_id = ? AND frozen_args IS NOT NULL AND frozen_args != ''
+ORDER BY ts DESC
+LIMIT 200
+`
+
+// ListApprovedFrozenArgs (54-03) returns the frozen_args JSON strings of
+// human approval rows for the session. Empty frozen_args rows are
+// filtered in SQL; malformed JSON is skipped by the CALLER (the
+// suggestion cluster must not die on one malformed row).
+func (s *SQLiteStore) ListApprovedFrozenArgs(ctx context.Context, sessionID string) ([]string, error) {
+rows, err := s.db.QueryContext(ctx, listApprovedFrozenArgsSQL, sessionID)
+if err != nil {
+return nil, fmtError("ListApprovedFrozenArgs", err)
+}
+defer rows.Close()
+var out []string
+for rows.Next() {
+var f string
+if err := rows.Scan(&f); err != nil {
+return nil, fmtError("ListApprovedFrozenArgs.Scan", err)
+}
+out = append(out, f)
+}
+return out, rows.Err()
+}

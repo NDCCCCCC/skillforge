@@ -764,6 +764,11 @@ type Store interface {
 	// keeps this sub-ms. Returns the assigned auto-increment ID (>0).
 	PutAudit(ctx context.Context, row AuditRow) (int64, error)
 
+	// ListApprovedFrozenArgs (54-03 suggestions) returns the frozen_args
+	// JSON blobs of HUMAN approval rows for the session, newest first,
+	// capped. Malformed rows are skipped by the caller's cluster.
+	ListApprovedFrozenArgs(ctx context.Context, sessionID string) ([]string, error)
+
 	// QueryAudit returns audit rows matching the filter, newest-first.
 	// The filter is applied via parameterized placeholders (T-3-SQLI).
 	QueryAudit(ctx context.Context, filter AuditFilter) ([]AuditRow, error)

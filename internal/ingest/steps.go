@@ -337,15 +337,25 @@ func (r *Runner) stepVectorInsert(ctx context.Context, j Job, st *pipelineState)
 	return "pks=" + formatPKs(pks), nil
 }
 
-func (r *Runner) stepECLSkipped(_ context.Context, _ Job, _ *pipelineState) (string, error) {
-	const reason = "ecl auto-trigger not wired (54-04)"
-	if r.eclTrigger != nil {
-		// Unreachable in 54-01 (main.go wires nil; 54-04 owns the wired
-		// path). Defensive: a wired trigger without wiring code must not
-		// silently claim done.
-		return "", fmt.Errorf("ecl trigger wired but step not implemented until 54-04")
+func (r *Runner) stepECLAutoTrigger(ctx context.Context, j Job, st *pipelineState, name string) (string, error) {
+	// 54-04: the four ecl_* steps are the ASYNC pipeline's placeholder
+	// markers. ecl_merge (the first) fires the ECLTrigger ONCE -- the
+	// trigger launches the ecl Manager pipeline detached (full-corpus,
+	// idempotent via note-level replace: the just-uploaded doc is inside
+	// the walk) -- and the remaining three steps are "covered by the
+	// async trigger". A busy/failing trigger is an ENHANCEMENT failure:
+	// WARN + skipped, never a job failure (D-54-01 asymmetry).
+	if r.eclTrigger == nil {
+		return "ecl auto-trigger not wired (SKILLFORGE_ECL_ENABLED off)", nil
 	}
-	return reason, nil
+	if name == StepECLMerge {
+		if err := r.eclTrigger(ctx, j); err != nil {
+			log.Printf("[WARN] ingest: ECL auto-trigger for %s/%s: %v (enhancement skipped; ecl_failures posture)", j.JobID, j.Slug, err)
+			return "ecl skipped: " + err.Error(), nil
+		}
+		return "ecl triggered (async full-corpus pipeline)", nil
+	}
+	return "covered by the async ECL trigger (ecl_merge)", nil
 }
 
 // formatPKs renders the vector_insert artifact list ("pks=<csv>"). Empty

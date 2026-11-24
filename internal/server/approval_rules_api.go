@@ -601,3 +601,83 @@ return
 _ = sessionID // reserved: a per-session authorization check lands here
 c.JSON(http.StatusOK, map[string]any{"ok": true, "rule_id": ruleID})
 }
+
+// ruleSuggestion is one cluster of repeated HUMAN approvals that has no
+// rule yet (54-03 PANEL-03 empty-state guidance's data half). v1 clusters
+// by target only (the prefix-tier field-lock pattern needs frozenArgs
+// shape analysis — deferred; the one-click create lands a TEMPLATE rule,
+// which needs no field analysis and is the safest broadens).
+type ruleSuggestion struct {
+Target      string `json:"target"`
+Occurrences int    `json:"occurrences"`
+// MatchType is fixed "template" in v1 (see above); the FE suggestion
+// card copies it into createApprovalRule payload verbatim.
+MatchType string `json:"match_type"`
+}
+
+// listRuleSuggestionsHandler implements GET
+// /api/session/:id/approval-rule-suggestions (54-03 PANEL-03). Source:
+// the audit table's action_approved rows for the session, clustered by
+// the frozen_args target field; clusters with <2 occurrences and targets
+// that ALREADY have a rule are filtered out (a suggestion for an
+// existing rule is noise).
+func (s *Deps) listRuleSuggestionsHandler(ctx context.Context, c *app.RequestContext) {
+ars, ok := s.approvalRulesStoreOf()
+if !ok {
+c.JSON(http.StatusServiceUnavailable, graphResponseError{
+Error: "approval-rules store not initialized (set Deps.Store at server construction)",
+})
+return
+}
+sessionID := c.Param("id")
+if sessionID == "" {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "session id is required"})
+return
+}
+
+rows, err := s.Store.ListApprovedFrozenArgs(ctx, sessionID)
+if err != nil {
+log.Printf("[WARN] server: rule suggestions scan failed: %v", err)
+c.JSON(http.StatusInternalServerError, graphResponseError{Error: "suggestions scan failed -- see server logs"})
+return
+}
+
+counts := map[string]int{}
+for _, raw := range rows {
+var probe struct {
+Target string `json:"target"`
+}
+if json.Unmarshal([]byte(raw), &probe) != nil || probe.Target == "" {
+continue // malformed/missing target: skip, never die on one row
+}
+counts[probe.Target]++
+}
+
+// Existing-rule filter: targets with ANY rule (any scope/match) for
+// this session are already covered — suggesting them is noise.
+existing := map[string]bool{}
+if rules, err := ars.QueryRules(ctx, sessionID, "", sqlite.RuleScopeSession); err == nil {
+for _, r := range rules {
+existing[r.Target] = true
+}
+}
+if rules, err := ars.QueryRules(ctx, sessionID, "", sqlite.RuleScopeSkill); err == nil {
+for _, r := range rules {
+existing[r.Target] = true
+}
+}
+if rules, err := ars.QueryRules(ctx, sessionID, "", sqlite.RuleScopeGlobal); err == nil {
+for _, r := range rules {
+existing[r.Target] = true
+}
+}
+
+out := make([]ruleSuggestion, 0, len(counts))
+for target, n := range counts {
+if n < 2 || existing[target] {
+continue
+}
+out = append(out, ruleSuggestion{Target: target, Occurrences: n, MatchType: "template"})
+}
+c.JSON(http.StatusOK, map[string]any{"suggestions": out})
+}
