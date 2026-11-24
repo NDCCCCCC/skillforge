@@ -720,7 +720,29 @@ func (s *Deps) drainResumeEvents(ctx context.Context, c *app.RequestContext, ses
 		}
 	}
 
-	// Emit the resolution via the EXISTING data-decision chunk type (D-04 + D15).
+	// 56-04 PANEL-03 write-hole closure: the ORIGINAL request goroutine's
+// pipeline tail wrote the verdict audit row via writeAuditAndTurn, but
+// the RESUME path (this function) drained the continuation directly and
+// bypassed it -- every post-approval answer was missing its audit row
+// (the audit-timeline tab showed nothing for approval-gated turns).
+// Land an INSERT-only marker row linking the resumed answer to the
+// approval decision (T-3-AUDIT INSERT-only preserved; verdict
+// extraction from the continuation stream is deferred -- the marker
+// makes the row PRESENT and honest about not carrying a verdict).
+if _, err := s.Store.PutAudit(ctx, store.AuditRow{
+Timestamp:  time.Now().UTC(),
+SessionID:  sessionID,
+UserID:     "system",
+Action:     "action_resumed_answer",
+SkillID:    row.SkillID,
+Query:      row.Query,
+FrozenArgs: []byte(fmt.Sprintf(`{"approval_id":%q,"decision":%q}`, approvalID, decision.Decision)),
+ActorType:  "system",
+}); err != nil {
+log.Printf("[WARN] server: resumed-answer audit row (sess=%s): %v", sessionID, err)
+}
+
+// Emit the resolution via the EXISTING data-decision chunk type (D-04 + D15).
 	decisionEvent := decisionEventResumed
 	switch decision.Decision {
 	case "deny":

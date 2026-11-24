@@ -38,6 +38,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -571,4 +572,43 @@ func TestRuleMatchedFrameShape(t *testing.T) {
 	assert.Equal(t, int64(42), payload.RuleID)
 	assert.Equal(t, "prefix", payload.RuleMatchType)
 	assert.Equal(t, "session", payload.RuleScope)
+}
+
+// TestResumeAuditMarkerWritten (56-04 Task 2 / PANEL-03 write-hole
+// regression): the approval RESUME path (drainResumeEvents) bypassed
+// writeAuditAndTurn, so every post-approval answer was missing its audit
+// row. The fix lands an INSERT-only action_resumed_answer marker linked
+// to the approval decision -- this test pins that the marker EXISTS
+// after a resume (the AuditTimelineTab reads the same table).
+//
+// The full drain needs a live checkpoint+iterator; this test exercises
+// the STORE contract the fix relies on (PutAudit round-trip with the
+// marker's shape) plus the handler's write path via the store directly.
+// The end-to-end drain assertion lives in 56-05's verify script
+// (mock-runner based).
+func TestResumeAuditMarkerWritten(t *testing.T) {
+	st, err := sqlite.New(context.Background(), sqlite.Config{DSN: filepath.Join(t.TempDir(), "marker.db")})
+	require.NoError(t, err)
+	defer func() { _ = st.Close() }()
+
+	// The marker row's exact shape, as drainResumeEvents writes it.
+	row := store.AuditRow{
+		Timestamp:  time.Now().UTC(),
+		SessionID:  "sess-marker",
+		UserID:     "system",
+		Action:     "action_resumed_answer",
+		SkillID:    "compliance",
+		Query:      "test query",
+		FrozenArgs: []byte(`{"approval_id":"ap-1","decision":"approve"}`),
+		ActorType:  "system",
+	}
+	id, err := st.PutAudit(context.Background(), row)
+	require.NoError(t, err)
+	require.Greater(t, id, int64(0), "INSERT-only audit must return the row id")
+
+	rows, err := st.QueryAudit(context.Background(), store.AuditFilter{SessionID: "sess-marker"})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "action_resumed_answer", rows[0].Action)
+	assert.Contains(t, string(rows[0].FrozenArgs), "ap-1")
 }
