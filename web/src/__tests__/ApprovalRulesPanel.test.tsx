@@ -72,7 +72,9 @@ describe('ApprovalRulesPanel', () => {
     mockFetch([]);
     render(<ApprovalRulesPanel />);
     const empty = await screen.findByTestId('approval-rules-empty');
-    expect(empty).toHaveTextContent('还没有任何审批规则。批准一次时勾选「记住」即可创建。');
+    // 56-03 PANEL-03: the empty state is now two-part (guidance + the
+    // suggestion cluster list); the guidance sentence carries the hint.
+    expect(empty).toHaveTextContent('还没有任何审批规则');
   });
 
   it('TestApprovalRulesPanelRevoke: X click fires DELETE + optimistic unmount + success toast', async () => {
@@ -82,7 +84,8 @@ describe('ApprovalRulesPanel', () => {
     expect(row).toHaveTextContent('memory:facts');
     expect(row).toHaveTextContent('本会话');
 
-    fireEvent.click(screen.getByTestId('approval-rules-revoke'));
+    // 56-03: the revoke affordance is per-rule (one button per row).
+    fireEvent.click(screen.getByTestId('approval-rules-revoke-cnVsdS0x'));
 
     // DELETE fired against the rule URL.
     await waitFor(() => {
@@ -105,7 +108,8 @@ describe('ApprovalRulesPanel', () => {
     render(<ApprovalRulesPanel />);
     await screen.findByTestId('approval-rules-row');
 
-    fireEvent.click(screen.getByTestId('approval-rules-revoke'));
+    // 56-03: the revoke affordance is per-rule (one button per row).
+    fireEvent.click(screen.getByTestId('approval-rules-revoke-cnVsdS0x'));
 
     expect(await screen.findByTestId('approval-rules-toast')).toHaveTextContent('撤销失败：');
     expect(screen.getByTestId('approval-rules-row')).toBeInTheDocument();

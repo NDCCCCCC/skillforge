@@ -68,14 +68,20 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
     };
   }, []);
 
-  const handleClick = useCallback((chunkId: string, tier: Citation['tier']) => {
+  // 56-04 Task 5 — the jump payload must come from the Citation object
+  // ITSELF (chunk_id is authoritative; version/effective dates are the
+  // ones the verdict was rendered with), never from the array index and
+  // not primarily from the fixture lookup. extractChunkMetadata stays as
+  // the fallback for citations that omit the D5-15 fields (older replays).
+  const handleClick = useCallback((citation: Citation) => {
+    const chunkId = citation.chunk_id;
     const meta = extractChunkMetadata(chunkId);
     useAppStore.getState().setCenterView({
       kind: 'chunk-source',
       chunkId,
-      tier,
-      version: meta.version,
-      effectiveDate: meta.effectiveDate,
+      tier: citation.tier,
+      version: citation.version ?? meta.version,
+      effectiveDate: citation.effective_from ?? meta.effectiveDate,
       effectiveTo: null,
     });
   }, []);
@@ -145,7 +151,7 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
               data-testid="citation-superscript"
               data-chunk-id={citation.chunk_id}
               data-tier={citation.tier}
-              onClick={() => handleClick(citation.chunk_id, citation.tier)}
+              onClick={() => handleClick(citation)}
               className="ml-0.5 cursor-pointer text-xs text-accent"
             >
               [{index + 1}]

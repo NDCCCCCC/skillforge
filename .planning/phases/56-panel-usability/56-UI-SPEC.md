@@ -94,6 +94,33 @@ RealChatTransport `dispatchApprovalDecision` 分支 →
 ### 写入洞排查（PANEL-03 的 audit/plan_todos 洞）
 56-04 的排查矩阵：runner 中断场景的 audit 行写入条件逐点核查
 （drainResumeEvents 首要嫌疑：resume 后最终回答可能绕过 writeAuditAndTurn）。
+结论见 `AUDIT-WRITE-MATRIX.md`：唯一真洞（#5/#6 resume 路径）已闭合，
+写入 `action_resumed_answer` INSERT-only 标记行；plan_todos 的空是
+「预期空」（deep archetype 且 agent 调用 write_todos 才有行），归空态引导侧。
+
+### 数据源与实现对照（56-04 Task 1 确认结论）
+
+| 展示 | 数据源（已存在的唯一来源） | 实现 |
+|------|--------------------------|------|
+| 默认 tab | `useChat.status`（props `chatStatus`）| DetailPanel useEffect：streaming/submitted 且当前在 verdict → agent-inspector；用户已选 tab 不被抢 |
+| step 树 — 检索 | `source-document` parts → `Hop.retrievals` | `inspector/step-tree.ts buildStepTree()` |
+| step 树 — 工具 | `dynamic-tool` / `tool-*` parts → `Hop.toolCalls` | 同上 |
+| step 树 — 规划 | plan slice `todos`（data-plan-trace）｜`write_todos` 合成回退 | 同上 |
+| step 树 — 决策 | `data-decision` parts → `Hop` | 同上 |
+| 执行中/已完成 | `chatStatus` + todo `in_progress` | `StepNodeStatus = active \| done` |
+| 各通道分数 | **无（Phase 58 PROV-01/02 才有）** | `StepTreeNode.channels` 仅声明槽位，不渲染 |
+| 引用跳转 | `Citation` 对象自身（chunk_id/tier/version/effective_from） | `CitationCluster.handleClick(citation)`，fixture 仅作缺字段回退 |
+| 引用原文缺失 | `fetchChunkContent` 404 → null | 「（片段不存在）…原文已不可定位（文档可能已更新）。」不白屏 |
+
+**裁决规则**：spec 不得要求无数据源支撑的展示 —— 上表每一行都指向
+一个已存在的字段；`channels` 是唯一的显式空槽（Phase 58 填充）。
+
+### 空 tab 文案（逐字 · 56-04 实现值）
+- audit-timeline 空：「本会话还没有审计记录——发起一次提问后，检索/审批/回答轨迹会出现在这里。」
+- plan-replay 空：「暂无规划轨迹」+「规划轨迹只在 deep 模式下由 agent 写入 todo 时记录；普通问答不产生规划步骤。」
+- 引用原文空（未选中）：「尚未选择引用片段」+「在结论的引用列表里点击一段引用，或从知识图谱中选择一个 chunk，这里会显示原文。也可以直接点击结论里的引用角标跳到这里。」
+- Agent 状态空（无 hop，ready）：「暂无 Agent 状态」；streaming 但无 parts：「等待 Agent 首个事件...」
+- step 树空：「等待第一个执行步骤…」（streaming）/「本回合没有可聚合的步骤（普通问答不产生检索/工具/规划节点）。」（idle）
 
 ## Standards（继承）
 data-testid 命名对齐既有前缀（approval-rules-*/match-type-*/lock-field-*）；

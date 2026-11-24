@@ -77,8 +77,15 @@ export default function ChunkSourceView({
     fetchChunkContent(chunkId)
       .then((data) => {
         if (cancelled) return;
-        // 404 → null → render the 「片段不存在」 body (soft miss, not an error).
-        setAsyncText(data === null ? '（片段不存在）' : data.text);
+        // 404 → null → soft miss body (NOT an error banner). 56-04
+        // Task 5: the copy must say WHY the verbatim text is gone
+        // (document updated / chunk superseded) instead of a bare
+        // 「片段不存在」, and the view must never white-screen.
+        setAsyncText(
+          data === null
+            ? '（片段不存在）该引用对应的原文已不可定位（文档可能已更新）。'
+            : data.text,
+        );
         setAsyncSource(data?.source ?? null);
         setAsyncStatus('ready');
       })

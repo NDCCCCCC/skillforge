@@ -182,6 +182,33 @@ describe('ChunkSourceView', () => {
     expect(verbatim.textContent).not.toContain('(chunk not found in fixture)');
   });
 
+  // 56-04 Task 5 -- a chunk that the backend no longer has (doc updated /
+  // chunk superseded) degrades to an explanatory body, never a white
+  // screen. The citation jump lands here deterministically.
+  it('degrades to an explanatory body when the chunk is gone (404), not a white screen', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'not found' }), { status: 404 }),
+    );
+
+    render(
+      <ChunkSourceView
+        chunkId="c-gone-1"
+        tier="权威"
+        version="v3.2"
+        effectiveDate="2026-01-15"
+        effectiveTo={null}
+      />,
+    );
+
+    const verbatim = await screen.findByTestId('chunk-verbatim');
+    expect(verbatim.textContent).toContain('片段不存在');
+    expect(verbatim.textContent).toContain('原文已不可定位');
+    expect(verbatim.textContent).toContain('文档可能已更新');
+    // The metadata row still renders — the tab is never blank.
+    expect(screen.getByTestId('chunk-version')).toBeInTheDocument();
+    expect(screen.getByTestId('tier-badge')).toBeInTheDocument();
+  });
+
   // Plan 05-05 / SC-8 (CMPL-08) — VersionBadge + effective_to row tests.
   it('shows 当前有效 badge when effectiveTo is null (perpetual)', () => {
     render(

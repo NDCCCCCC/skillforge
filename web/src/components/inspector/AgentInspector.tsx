@@ -22,11 +22,22 @@
 //
 // Empty state: 暂无 Agent 状态 + body.
 // Loading state: 等待 Agent 首个事件... (when streaming && no parts yet).
+//
+// 56-04 Task 4 (PANEL-02): the run's four signal sources are aggregated
+// into ONE Langfuse-style step tree (step-tree.ts buildStepTree) and
+// rendered ABOVE the per-hop accordion. Data sources are the existing
+// ones only -- retrieval hits / tool calls / data-decision hops come
+// from the message parts, planning steps come from the plan slice
+// (data-plan-trace) with the synthetic write_todos fallback. No 8th tab
+// is added: the tree lives inside the existing 「Agent 状态」 tab.
 
 import { useMemo } from 'react';
 import { Activity } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import InspectorHop from './InspectorHop';
+import StepTree from './StepTree';
+import { buildStepTree, extractSyntheticTodos } from './step-tree';
+import { useAppStore } from '../../store/app-store';
 import type { Hop, ToolCallRow, RetrievalRow, DecisionValue } from './hop-types';
 
 export interface AgentInspectorProps {
@@ -144,6 +155,20 @@ export default function AgentInspector({
   const isStreaming = streaming ?? (status === 'streaming' || status === 'submitted');
   const hops = useMemo(() => deriveHops(messages), [messages]);
 
+  // 56-04 Task 4 -- planning steps come from the plan slice (the
+  // authoritative live state per D14), with PlanTracePart's synthetic
+  // write_todos extraction as the fallback when the slice has no
+  // snapshot for this run (Pitfall 6).
+  const currentRunId = useAppStore((s) => s.plan.currentRunId);
+  const planState = useAppStore((s) =>
+    currentRunId ? s.plan.planByRunId[currentRunId] : undefined,
+  );
+  const stepNodes = useMemo(() => {
+    const sliceTodos = planState && planState.todos.length > 0 ? planState.todos : [];
+    const todos = sliceTodos.length > 0 ? sliceTodos : extractSyntheticTodos(hops);
+    return buildStepTree(hops, todos, isStreaming);
+  }, [hops, planState, isStreaming]);
+
   if (hops.length === 0) {
     if (isStreaming) {
       return (
@@ -181,6 +206,7 @@ export default function AgentInspector({
       <div className="text-xs text-text-muted">
         当前回合 {hops.length} 跳{isStreaming ? ' · 进行中' : ''}
       </div>
+      <StepTree nodes={stepNodes} isStreaming={isStreaming} />
       {hops.map((hop) => (
         <InspectorHop
           key={hop.step}

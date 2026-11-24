@@ -70,6 +70,50 @@ describe('CitationCluster + chunk-lookup flow', () => {
     }
   });
 
+  // 56-04 Task 5 -- the jump payload is taken from the Citation object
+  // itself (not from the array index, not primarily from the fixture),
+  // so an audited replay's version/effective_from survive the jump.
+  it('uses the Citation object\'s own version/effective_from for the jump', () => {
+    render(
+      <CitationCluster
+        citations={[
+          {
+            chunk_id: 'c-audit-replay-9',
+            span: '历史回放条款',
+            tier: '历史',
+            version: 'v2024.7',
+            effective_from: '2024-07-01',
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('citation-superscript'));
+    const cv = useAppStore.getState().centerView;
+    expect(cv.kind).toBe('chunk-source');
+    if (cv.kind === 'chunk-source') {
+      // chunk_id is authoritative (never the index '[1]').
+      expect(cv.chunkId).toBe('c-audit-replay-9');
+      expect(cv.tier).toBe('历史');
+      // D5-15 fields come from the citation, not from a fixture lookup.
+      expect(cv.version).toBe('v2024.7');
+      expect(cv.effectiveDate).toBe('2024-07-01');
+    }
+  });
+
+  it('falls back to the fixture metadata for citations that omit the D5-15 fields', () => {
+    render(
+      <CitationCluster
+        citations={[{ chunk_id: 'c-001', span: '权威 tier 条款', tier: '权威' }]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('citation-superscript'));
+    const cv = useAppStore.getState().centerView;
+    if (cv.kind === 'chunk-source') {
+      expect(cv.version).toBe('v3.2');
+      expect(cv.effectiveDate).toBe('2026-01-15');
+    }
+  });
+
   it('hovering the superscript opens a popover with the chunk text + metadata', async () => {
     // Real timers here: the popover mount is gated on a 150ms setTimeout
     // debounce (HOVER_OPEN_DELAY_MS) — vitest fake-timer advance does

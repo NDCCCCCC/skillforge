@@ -249,7 +249,10 @@ export function PlanReplayView({
         data-testid="plan-replay-empty"
         className="px-4 py-6 text-center text-xs text-[var(--color-text-muted)]"
       >
-        暂无规划轨迹
+        <div className="font-semibold">暂无规划轨迹</div>
+        <p className="mt-1">
+          规划轨迹只在 deep 模式下由 agent 写入 todo 时记录；普通问答不产生规划步骤。
+        </p>
       </div>
     );
   }

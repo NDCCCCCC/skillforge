@@ -157,6 +157,54 @@ describe('DetailPanel', () => {
     expect(screen.getByRole('tab', { name: 'Agent 状态' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  // 56-04 Task 3 / PANEL-02 -- default tab lifecycle matrix.
+  // streaming/submitted lands on the Agent 状态 tab instead of leaving
+  // the operator on a blank 等待回答结果 hero ("提了没反应").
+  it('lands on the Agent 状态 tab while streaming (PANEL-02 default lifecycle)', () => {
+    useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
+    render(<DetailPanel currentVerdict={null} messages={[]} chatStatus="streaming" />);
+
+    expect(useAppStore.getState().centerView.kind).toBe('agent-inspector');
+    expect(screen.getByRole('tab', { name: 'Agent 状态' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('agent-inspector-loading')).toBeInTheDocument();
+  });
+
+  it('lands on the Agent 状态 tab when submitted (before the first token)', () => {
+    useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
+    render(<DetailPanel currentVerdict={null} messages={[]} chatStatus="submitted" />);
+    expect(useAppStore.getState().centerView.kind).toBe('agent-inspector');
+  });
+
+  it('does NOT steal a user-chosen tab when streaming starts', () => {
+    useAppStore.setState({
+      centerView: {
+        kind: 'chunk-source',
+        chunkId: 'c-001',
+        tier: '权威',
+        version: 'v3.2',
+        effectiveDate: '2026-01-15',
+        effectiveTo: null,
+      },
+    });
+    render(<DetailPanel currentVerdict={null} messages={[]} chatStatus="streaming" />);
+    expect(useAppStore.getState().centerView.kind).toBe('chunk-source');
+    expect(screen.getByRole('tab', { name: '引用原文' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('leaves the default view alone once the answer is ready (verdict routing owns it)', () => {
+    useAppStore.setState({ centerView: { kind: 'verdict', verdictId: 'v-001' } });
+    render(<DetailPanel currentVerdict={compliantVerdict} chatStatus="ready" />);
+    expect(useAppStore.getState().centerView.kind).toBe('verdict');
+    expect(screen.getByTestId('verdict-card')).toBeInTheDocument();
+  });
+
+  it('the 引用原文 empty state points at the citation badge shortcut (PANEL-03)', () => {
+    useAppStore.setState({ centerView: { kind: 'chunk-source-empty' } });
+    render(<DetailPanel currentVerdict={null} />);
+    expect(screen.getByTestId('detail-panel')).toHaveTextContent('直接点击结论里的引用角标');
+  });
+
+  // B2 close-button test follows.
   it('B2 — the dp-head close button dispatches setDetailPanelOpen(false)', () => {
     useAppStore.setState({ centerView: { kind: 'empty' }, detailPanelOpen: true });
     render(<DetailPanel currentVerdict={null} />);

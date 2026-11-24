@@ -268,6 +268,7 @@ export default function DetailPanel({
           <div className="text-2xl font-semibold text-text">尚未选择引用片段</div>
           <p className="mt-2 text-base text-text-muted">
             在结论的引用列表里点击一段引用，或从知识图谱中选择一个 chunk，这里会显示原文。
+            也可以直接点击结论里的引用角标跳到这里。
           </p>
         </div>
       );
