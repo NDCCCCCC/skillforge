@@ -6,17 +6,17 @@ milestone: v1.8
 
 milestone_name: Ingest Integrity & Ontology into Production
 
-current_phase: 57
+current_phase: 58
 
-status: phase_56_complete
+status: phase_57_complete
 
-stopped_at: Phases 53/54/55/56 GATE GREEN (verify-53/54/55/56 all green); Phase 57 (本体进 chat) next
+stopped_at: Phases 53/54/55/56/57 GATE GREEN; Phase 58 (来源标注 wire) next
 
-last_updated: "2026-11-24T19:30:00.000Z"
+last_updated: "2026-11-24T20:40:00.000Z"
 
 last_activity: 2026-11-24
 
-last_activity_desc: 54/55/56 closed — ingest backend + pipeline FE view + panel usability all GATE GREEN
+last_activity_desc: 57 closed — entity anchoring + KG context + entity grounding all GATE GREEN
 
 state_head: 6e7efa4f469b9d048d65ecece8007e8ef131726f
 
@@ -24,7 +24,7 @@ progress:
 
   total_phases: 6
 
-  completed_phases: 4
+  completed_phases: 5
 
   total_plans: 0
 
@@ -50,7 +50,7 @@ See: .planning/PROJECT.md (updated 2026-10-13)
 
 **Core value:** 同一个 agent 内核，通过可插拔的 Skill 文件被任意企业快速定制，无需改代码
 
-**Current focus:** Phase 57 — 本体进 chat（实体锚定 + grounding 校验）
+**Current focus:** Phase 58 — 来源标注 wire（Citation origin/via + data-retrieval SSE）
 
 
 
@@ -74,13 +74,13 @@ Coverage: 15/15 REQ（ING×5 / PANEL×3 / ONT×3 / PROV×3 / ROI×1）。Full de
 
 
 
-Phase: 57
+Phase: 58
 
 Plan: Not started
 
-Status: Phases 53/54/55/56 complete and GATE GREEN — Phase 57 next
+Status: Phases 53/54/55/56/57 complete and GATE GREEN — Phase 58 next
 
-Last activity: 2026-11-24 — Phase 54/55/56 closed (verify-54 11 PASS, verify-55 6 partitions, verify-56 10 PASS)
+Last activity: 2026-11-24 — Phase 57 closed (verify-57 5 partitions all PASS)
 
 
 
