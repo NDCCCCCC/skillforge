@@ -15,7 +15,7 @@
 // variant and adds the dp-head (title + close → setDetailPanelOpen).
 import { X } from 'lucide-react';
 import { FileSearch } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { UIMessage } from 'ai';
 import { extractGraphFocus, hasAnsweredTurn } from '../../lib/graph-focus';
 import { Tabs } from '../ui/tabs';
@@ -131,6 +131,21 @@ export default function DetailPanel({
 }: DetailPanelProps) {
   const centerView = useAppStore((s) => s.centerView);
   const setCenterView = useAppStore((s) => s.setCenterView);
+
+  // 56-04 PANEL-02 default tab lifecycle: streaming/submitted lands on
+  // the Agent status tab (steps visible while executing, replacing the
+  // submitted-no-feedback blank wait). Only the DEFAULT view is
+  // auto-switched -- a user-chosen tab (chunk-source etc.) is never
+  // stolen. Landing back on the verdict tab is owned by the EXISTING
+  // SSE data-verdict routing, not this effect.
+  useEffect(() => {
+    if (
+      (chatStatus === 'streaming' || chatStatus === 'submitted') &&
+      centerView.kind === 'verdict'
+    ) {
+      setCenterView({ kind: 'agent-inspector' });
+    }
+  }, [chatStatus, centerView.kind, setCenterView]);
   const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
   // 当前实际选中的 Skill —— 「Skill 定义」tab 用它取代了硬编码的
   // 'simple-qa'（硬编码会让 tab 永远显示别人的 SKILL.md）。

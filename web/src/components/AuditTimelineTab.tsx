@@ -192,7 +192,7 @@ export default function AuditTimelineTab() {
         </div>
       ) : filtered.length === 0 ? (
         <div data-testid="audit-timeline-empty" className="text-xs text-text-muted">
-          该会话还没有审计记录。
+          本会话还没有审计记录——发起一次提问后，检索/审批/回答轨迹会出现在这里。
         </div>
       ) : (
         <ol className="space-y-1.5" data-testid="audit-timeline-list">
