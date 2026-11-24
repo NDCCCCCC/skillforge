@@ -836,6 +836,8 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// ListApprovalRulesHandler supports ?scope=session|skill[&skill_id=X][&target=X];
 	// RevokeApprovalRuleHandler clears a remembered rule (D11-D2 single-table reuse).
 	h.GET("/api/session/:id/approval-rules", deps.ListApprovalRulesHandler)
+	h.POST("/api/session/:id/approval-rules", deps.CreateApprovalRuleHandler)
+	h.PATCH("/api/session/:id/approval-rules/:ruleId", deps.PatchApprovalRuleHandler)
 	h.DELETE("/api/session/:id/approval-rules/:ruleId", deps.RevokeApprovalRuleHandler)
 	// Phase 12 Plan 04 (PLAN-05 BE replay + PLAN-03 BE confirm
 	// endpoint) — the run-keyed planning surface. GET returns the

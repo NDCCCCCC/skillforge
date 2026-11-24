@@ -400,3 +400,204 @@ func manifestFromSession(_ context.Context, _, _ string) (*skill.Manifest, error
 func snapshotFromManifest(_ *skill.Manifest) (skillVersion, promptHash string) {
 	return "", ""
 }
+
+// createApprovalRulePayload is the POST body (54-03 PANEL-01 CRUD).
+// match_type picks the tier; args_hash is required ONLY for exact;
+// args_pattern (a JSON object of locked fields) is required ONLY for
+// prefix. scope is the three-layer model (session/skill/global).
+type createApprovalRulePayload struct {
+Target       string `json:"target"`
+MatchType    string `json:"match_type"`
+ArgsHash     string `json:"args_hash"`
+ArgsPattern  string `json:"args_pattern"`
+SkillID      string `json:"skill_id"`
+Scope        string `json:"scope"`
+ScopeSessionID string `json:"scope_session_id"`
+ExpiresAt    string `json:"expires_at"` // RFC3339; "" = permanent
+}
+
+// CreateApprovalRuleHandler implements POST
+// /api/session/:id/approval-rules (54-03 PANEL-01: rules become
+// first-class CRUD objects instead of an implicit approve-and-remember
+// side effect -- the PANEL-03 empty-state guidance links here).
+// origin is always 'manual' (approve_remember rows come only from the
+// approval decision path; seed rows only from migrations).
+func (s *Deps) CreateApprovalRuleHandler(ctx context.Context, c *app.RequestContext) {
+ars, ok := s.approvalRulesStoreOf()
+if !ok {
+c.JSON(http.StatusServiceUnavailable, graphResponseError{
+Error: "approval-rules store not initialized (set Deps.Store at server construction)",
+})
+return
+}
+sessionID := c.Param("id")
+if sessionID == "" {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "session id is required"})
+return
+}
+
+var body createApprovalRulePayload
+rawBody, bodyErr := c.Body()
+	if bodyErr != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "body read failed"})
+		return
+	}
+	if err := json.Unmarshal(rawBody, &body); err != nil {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid JSON body: " + err.Error()})
+return
+}
+if body.Target == "" {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "target is required"})
+return
+}
+
+// match_type closed-set + per-tier field requirements (56-02 engine
+// contract mirrored at the boundary).
+switch body.MatchType {
+case "exact":
+if body.ArgsHash == "" {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "args_hash is required when match_type=exact"})
+return
+}
+case "prefix":
+if body.ArgsPattern == "" {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "args_pattern is required when match_type=prefix"})
+return
+}
+case "template":
+// no per-tier field
+default:
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "match_type must be one of {exact, prefix, template}"})
+return
+}
+
+var scope sqlite.RuleScope
+switch body.Scope {
+case "session":
+scope = sqlite.RuleScopeSession
+case "skill":
+scope = sqlite.RuleScopeSkill
+if body.SkillID == "" {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "skill_id is required when scope=skill"})
+return
+}
+case "global":
+scope = sqlite.RuleScopeGlobal
+default:
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "scope must be one of {session, skill, global}"})
+return
+}
+
+var expiresAt time.Time
+if body.ExpiresAt != "" {
+t, err := time.Parse(time.RFC3339, body.ExpiresAt)
+if err != nil {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "expires_at must be RFC3339"})
+return
+}
+expiresAt = t
+} // .Unix() at the struct literal; zero time -> 0 = perpetual
+
+rule := sqlite.ApprovalRule{
+Target:       body.Target,
+MatchType:    body.MatchType,
+ArgsHash:     body.ArgsHash,
+ArgsPattern:  body.ArgsPattern,
+SkillID:      body.SkillID,
+Scope:        string(scope),
+ScopeSessionID: scopeSessionIDFor(sessionID, body.Scope, body.ScopeSessionID),
+Enabled:      true, // explicit bool: the store treats the zero value as DISABLED (56-01 godoc)
+ExpiresAt:    expiresAt.Unix(), // 0 = never expires (zero-time guard)
+Origin:       "manual",
+}
+if err := ars.CreateRule(ctx, rule); err != nil {
+log.Printf("[WARN] server: approval-rule create failed: %v", err)
+c.JSON(http.StatusInternalServerError, graphResponseError{Error: "approval-rule create failed -- see server logs"})
+return
+}
+c.JSON(http.StatusCreated, map[string]any{"ok": true, "target": rule.Target, "match_type": rule.MatchType, "scope": rule.Scope})
+}
+
+// scopeSessionIDFor resolves the stored scope_session_id: session scope
+// pins the route's :id; skill/global store ''.
+func scopeSessionIDFor(routeSessionID, scope, explicit string) string {
+if scope == "session" {
+if explicit != "" {
+return explicit
+}
+return routeSessionID
+}
+return ""
+}
+
+// patchApprovalRulePayload is the PATCH body (54-03 PANEL-01): only the
+// operationally-mutable fields -- enabled and expires_at. The semantic
+// identity (scope/match_type/args_*) is NOT patchable: editing those =
+// delete + create two steps (the plan-specified shape), because a rule's
+// identity IS its match semantics.
+type patchApprovalRulePayload struct {
+Enabled   *bool  `json:"enabled"`
+ExpiresAt *string `json:"expires_at"` // RFC3339; "" clears to permanent
+}
+
+// PatchApprovalRuleHandler implements PATCH
+// /api/session/:id/approval-rules/:ruleId (54-03 PANEL-01: the enable
+// toggle and TTL edit are the two operations the rules panel needs
+// without deleting and recreating the rule).
+func (s *Deps) PatchApprovalRuleHandler(ctx context.Context, c *app.RequestContext) {
+ars, ok := s.approvalRulesStoreOf()
+if !ok {
+c.JSON(http.StatusServiceUnavailable, graphResponseError{
+Error: "approval-rules store not initialized (set Deps.Store at server construction)",
+})
+return
+}
+sessionID := c.Param("id")
+ruleIDStr := c.Param("ruleId")
+ruleID, err := decodeRuleID(ruleIDStr)
+if err != nil {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid rule_id"})
+return
+}
+
+var body patchApprovalRulePayload
+rawBody, bodyErr := c.Body()
+	if bodyErr != nil {
+		c.JSON(http.StatusBadRequest, graphResponseError{Error: "body read failed"})
+		return
+	}
+	if err := json.Unmarshal(rawBody, &body); err != nil {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "invalid JSON body: " + err.Error()})
+return
+}
+if body.Enabled == nil && body.ExpiresAt == nil {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "at least one of {enabled, expires_at} is required"})
+return
+}
+
+if body.Enabled != nil {
+if err := ars.SetRuleEnabled(ctx, ruleID, *body.Enabled); err != nil {
+log.Printf("[WARN] server: approval-rule enable toggle failed: %v", err)
+c.JSON(http.StatusInternalServerError, graphResponseError{Error: "approval-rule update failed -- see server logs"})
+return
+}
+}
+if body.ExpiresAt != nil {
+var exp time.Time
+if *body.ExpiresAt != "" {
+t, perr := time.Parse(time.RFC3339, *body.ExpiresAt)
+if perr != nil {
+c.JSON(http.StatusBadRequest, graphResponseError{Error: "expires_at must be RFC3339"})
+return
+}
+exp = t
+}
+if err := ars.SetRuleExpiry(ctx, ruleID, exp.Unix()); err != nil {
+log.Printf("[WARN] server: approval-rule expiry set failed: %v", err)
+c.JSON(http.StatusInternalServerError, graphResponseError{Error: "approval-rule update failed -- see server logs"})
+return
+}
+}
+_ = sessionID // reserved: a per-session authorization check lands here
+c.JSON(http.StatusOK, map[string]any{"ok": true, "rule_id": ruleID})
+}
