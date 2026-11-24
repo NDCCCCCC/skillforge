@@ -147,12 +147,19 @@ export interface ApprovalRuleRow {
   target: string;
   argsHash: string;
   skillId: string;
-  scope: 'session' | 'skill';
+  scope: 'session' | 'skill' | 'global';
   scopeSessionId: string;
   /** epoch ms. */
   createdAt: number;
   /** epoch ms, or null when the rule has never auto-passed (BE zero-time). */
   lastUsedAt: number | null;
+  matchType: 'exact' | 'prefix' | 'template';
+  argsPattern: string;
+  enabled: boolean;
+  expiresAt: number;
+  origin: 'approve_remember' | 'manual' | 'seed';
+  hitCount: number;
+  lastHitAt: number | null;
 }
 
 /** Wire shape of one rule row (snake_case — mirrors ApprovalRuleJSON). */
@@ -165,6 +172,13 @@ interface ApprovalRuleWire {
   scope: string;
   created_at: string;
   last_used_at: string;
+  match_type?: string;
+  args_pattern?: string;
+  enabled?: boolean;
+  expires_at?: string | null;
+  origin?: string;
+  hit_count?: number;
+  last_hit_at?: string | null;
 }
 
 function mapApprovalRule(w: ApprovalRuleWire): ApprovalRuleRow | null {
@@ -177,10 +191,20 @@ function mapApprovalRule(w: ApprovalRuleWire): ApprovalRuleRow | null {
     target: w.target,
     argsHash: typeof w.args_hash === 'string' ? w.args_hash : '',
     skillId: typeof w.skill_id === 'string' ? w.skill_id : '',
-    scope: w.scope === 'skill' ? 'skill' : 'session',
+    scope:
+      w.scope === 'skill' ? 'skill' : w.scope === 'global' ? 'global' : 'session',
     scopeSessionId: typeof w.scope_session_id === 'string' ? w.scope_session_id : '',
     createdAt: parseEpochMs(w.created_at ?? ''),
     lastUsedAt: lastUsed > 0 ? lastUsed : null,
+    matchType:
+      w.match_type === 'prefix' ? 'prefix' : w.match_type === 'template' ? 'template' : 'exact',
+    argsPattern: typeof w.args_pattern === 'string' ? w.args_pattern : '',
+    enabled: w.enabled !== false,
+    expiresAt: parseEpochMs(w.expires_at ?? ''),
+    origin:
+      w.origin === 'manual' || w.origin === 'seed' ? w.origin : 'approve_remember',
+    hitCount: typeof w.hit_count === 'number' && w.hit_count > 0 ? w.hit_count : 0,
+    lastHitAt: parseEpochMs(w.last_hit_at ?? '') > 0 ? parseEpochMs(w.last_hit_at ?? '') : null,
   };
 }
 
@@ -217,6 +241,23 @@ export async function fetchApprovalRules(
           if (Array.isArray(skillBody?.rules)) {
             wires.push(...skillBody.rules);
           }
+
+    try {
+      // 54-03 third request: GLOBAL rules (the three-layer scope). A
+      // global-scope failure degrades the same way the skill scope does
+      // (non-blocking; session + skill rows still render).
+      const globalResp = await fetchImpl(`${base}?scope=global`, {
+        headers: sessionHeaders(),
+      });
+      if (globalResp.ok) {
+        const globalBody = (await globalResp.json()) as { rules?: ApprovalRuleWire[] };
+        if (Array.isArray(globalBody?.rules)) {
+          wires.push(...globalBody.rules);
+        }
+      }
+    } catch {
+      // Global-scope fetch degraded -- non-blocking.
+    }
         }
       } catch {
         // Skill-scope fetch degraded — session-scope rows still render.
@@ -253,6 +294,98 @@ export async function revokeApprovalRule(
     return { ok: false, reason };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : '网络错误' };
+  }
+}
+
+/** Payload for createApprovalRule (56-03 PANEL-01 CRUD). */
+export interface CreateRulePayload {
+  target: string;
+  matchType: 'exact' | 'prefix' | 'template';
+  argsHash?: string;
+  argsPattern?: Record<string, unknown> | null;
+  skillId?: string;
+  scope: 'session' | 'skill' | 'global';
+  expiresAt?: string;
+}
+
+/** One suggestion cluster (BE /approval-rule-suggestions). v1 match_type
+ * is fixed "template" (BE-side; the card copies it verbatim). */
+export interface RuleSuggestion {
+  target: string;
+  occurrences: number;
+  matchType: string;
+}
+
+/** Create one rule (POST). Returns {ok:true} or the BE field error. */
+export async function createApprovalRule(
+  sessionId: string,
+  payload: CreateRulePayload,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<{ ok: true } | { ok: false; reason: string; field?: string }> {
+  try {
+    const resp = await fetchImpl(
+      `${API_BASE}/session/${encodeURIComponent(sessionId)}/approval-rules`,
+      {
+        method: 'POST',
+        headers: sessionHeaders(),
+        body: JSON.stringify({
+          target: payload.target,
+          match_type: payload.matchType,
+          args_hash: payload.argsHash ?? '',
+          args_pattern:
+            payload.argsPattern && Object.keys(payload.argsPattern).length > 0
+              ? JSON.stringify(payload.argsPattern)
+              : '',
+          skill_id: payload.skillId ?? '',
+          scope: payload.scope,
+          expires_at: payload.expiresAt ?? '',
+        }),
+      },
+    );
+    if (resp.ok) return { ok: true };
+    const body = (await resp.json().catch(() => null)) as { error?: string } | null;
+    return { ok: false, reason: body?.error ?? `HTTP ${resp.status}` };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** PATCH one rule operational fields (enabled / TTL). */
+export async function updateApprovalRule(
+  sessionId: string,
+  ruleId: string,
+  patch: { enabled?: boolean; expiresAt?: string },
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  try {
+    const resp = await fetchImpl(
+      `${API_BASE}/session/${encodeURIComponent(sessionId)}/approval-rules/${encodeURIComponent(ruleId)}`,
+      { method: 'PATCH', headers: sessionHeaders(), body: JSON.stringify(patch) },
+    );
+    if (resp.ok) return { ok: true };
+    const body = (await resp.json().catch(() => null)) as { error?: string } | null;
+    return { ok: false, reason: body?.error ?? `HTTP ${resp.status}` };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Fetch the repeat-approval suggestion clusters (56-03 PANEL-03). null
+ * on error (the empty state renders "no suggestions"). */
+export async function fetchRuleSuggestions(
+  sessionId: string,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<RuleSuggestion[] | null> {
+  try {
+    const resp = await fetchImpl(
+      `${API_BASE}/session/${encodeURIComponent(sessionId)}/approval-rule-suggestions`,
+      { headers: sessionHeaders() },
+    );
+    if (!resp.ok) return null;
+    const body = (await resp.json()) as { suggestions?: RuleSuggestion[] };
+    return Array.isArray(body?.suggestions) ? body.suggestions : [];
+  } catch {
+    return null;
   }
 }
 

@@ -39,6 +39,7 @@ function relativeTimeZh(epochMs: number): string {
 const SCOPE_LABEL: Record<ApprovalRuleRow['scope'], string> = {
   session: '本会话',
   skill: '整个 Skill',
+  global: '全局',
 };
 
 /** Row fade-out duration before the optimistic unmount (UI-SPEC). */
