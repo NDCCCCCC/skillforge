@@ -180,6 +180,13 @@ function dispatchApprovalDecision(data: Record<string, unknown>): boolean {
       // HITL-08 — an approve-and-remember rule auto-passed. No card UI
       // (the user never saw a pending card); history-only record.
       const approvalId = asStr(data.approvalId) || asStr(data.toolCallId);
+      // 56-03 PANEL-03: point the rules panel at the row that just
+      // auto-passed (the panel consumes this when the SessionDrawer is
+      // open; otherwise the state parks until it opens).
+      const ruleId = asStr(data.ruleId);
+      if (ruleId) {
+        useAppStore.getState().approval.setHighlightApprovalRuleId?.(ruleId);
+      }
       approval.appendHistory({
         approvalId,
         status: 'auto-passed',

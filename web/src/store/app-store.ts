@@ -94,6 +94,15 @@ export type ApprovalStatus =
 /** D11-D3 binary scope — no global option. */
 export type ApprovalScope = 'session' | 'skill' | 'global';
 
+// 56-03: the rule the chat stream just auto-passed (rule-matched event).
+// The ApprovalRulesPanel scrolls to and highlights this row when the
+// SessionDrawer opens; null = no highlight. UI-only transient -- NOT
+// persisted (D14 read-only habit: highlight is a UI state, not data).
+export interface ApprovalRuleHighlightSlice {
+  ruleId: string | null; // consumed by ApprovalRulesPanel (scroll + highlight)
+  setHighlightApprovalRuleId: (id: string | null) => void;
+}
+
 export type JsonObject = Record<string, unknown>;
 
 /** Live interrupt card state. approvalId === tool_call_id (D11-C4
@@ -187,6 +196,9 @@ export interface ApprovalSlice {
   terminal: TerminalApproval | null;
   history: HistoryApproval[];
   resumeBanner: ResumeBanner | null;
+  highlightApprovalRuleId: string | null;
+
+  setHighlightApprovalRuleId: (id: string | null) => void;
 
   setPending: (approval: PendingApproval) => void;
   resolvePending: (approvalId: string, terminal: TerminalApproval) => void;
@@ -685,6 +697,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // SSE events (approvalId must match the live pending row).
   approval: {
     pending: null,
+    highlightApprovalRuleId: null,
     terminal: null,
     history: [],
     resumeBanner: null,
@@ -711,6 +724,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
     clearTerminal: () =>
       set((state) => ({ approval: { ...state.approval, terminal: null } })),
+
+    setHighlightApprovalRuleId: (id) =>
+      set((state) => ({ approval: { ...state.approval, highlightApprovalRuleId: id } })),
 
     appendHistory: (entry) =>
       set((state) => ({
