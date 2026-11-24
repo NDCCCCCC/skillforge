@@ -1,0 +1,225 @@
+// Copyright 2026 SkillForge Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+// Package anchor turns the knowledge graph's rdfs:label set into a
+// deterministic ENTITY DICTIONARY for chat queries (Phase 57 / ONT-02).
+//
+// Why a dictionary and not an embedder: GraphRAG's local-search lesson is
+// that entity linking must be cheap, inspectable and tier-scoped -- a
+// cosine pass over 162 labels tells an operator nothing when it misses,
+// while a longest-match over the label set can say exactly which labels
+// were considered. The matcher is therefore PURE string work:
+//
+//   - build the index ONCE per (approved tier set) from QueryScoped
+//     label triples (tier filtering is enforced by the store, so a
+//     session can never anchor on a tier its Skill may not read);
+//   - longest-label-first match, so "差旅住宿费标准" wins over "差旅";
+//   - stable output order (longest match first, then IRI) so the
+//     downstream prompt and audit rows are reproducible.
+//
+// DEGRADATION IS EXPLICIT (ONT-02 SC 1): a nil/unreadable KG yields
+// Available()==false, and the caller must fall back to pure vector
+// retrieval with kg_available:false + a WARN. The matcher NEVER returns
+// a fabricated empty "success" -- an empty KG and a matching KG with
+// zero hits are different facts and this package keeps them distinct.
+package anchor
+
+import (
+"sort"
+"strings"
+
+"github.com/skillforge/skillforge/internal/ontology/store"
+)
+
+// LabelPredicate is the KG predicate carrying human-readable entity names.
+// It matches the ABox emitter's rdfs:label projection (the same literal
+// the admin platform view renders).
+const LabelPredicate = "http://skillforge.local/ontology#label"
+
+// Entity is one dictionary entry: an IRI with a display label.
+type Entity struct {
+IRI   string
+Label string
+}
+
+// Match is one anchored entity plus the matched surface form. Surface
+// and Label differ when the query mentioned a case/width variant of the
+// label; keeping both makes the audit row honest about what matched.
+type Match struct {
+IRI     string
+Label   string
+Surface string
+}
+
+// Index is the immutable entity dictionary for one tier scope.
+type Index struct {
+available bool
+// entries sorted longest-label-first, then IRI, so Match is stable.
+entries []Entity
+}
+
+// BuildIndex reads the label triples visible to allowedTiers and builds
+// the dictionary. A nil store is NOT an error -- it is the degraded case
+// (Available()==false) the caller must surface honestly.
+//
+// Empty/literal-only labels are dropped: a bare IRI or a quoted-empty
+// string cannot anchor a natural-language query, and keeping them would
+// inflate the match surface with unusable entries.
+func BuildIndex(kg *store.Store, allowedTiers []string) *Index {
+if kg == nil {
+return &Index{available: false}
+}
+triples := kg.QueryScoped("", LabelPredicate, "", allowedTiers)
+byIRI := make(map[string]string, len(triples))
+for _, t := range triples {
+label := unquote(t.O)
+label = strings.TrimSpace(label)
+if label == "" || label == t.S {
+continue
+}
+// First writer wins: the store is append-only, so the earliest
+// label an entity ever had is the one operators curated.
+if _, ok := byIRI[t.S]; !ok {
+byIRI[t.S] = label
+}
+}
+
+entries := make([]Entity, 0, len(byIRI))
+for iri, label := range byIRI {
+entries = append(entries, Entity{IRI: iri, Label: label})
+}
+// Longest label first (specific beats generic), IRI as the tiebreak so
+// the same KG always produces the same order.
+sort.Slice(entries, func(i, j int) bool {
+if len([]rune(entries[i].Label)) != len([]rune(entries[j].Label)) {
+return len([]rune(entries[i].Label)) > len([]rune(entries[j].Label))
+}
+return entries[i].IRI < entries[j].IRI
+})
+
+return &Index{available: true, entries: entries}
+}
+
+// Available reports whether the dictionary was built from a real KG.
+// false means "no ontology in this deployment / the KG failed to load" --
+// the caller must degrade to pure vector retrieval, not silently continue.
+func (ix *Index) Available() bool { return ix != nil && ix.available }
+
+// Len is the dictionary size (an operator-visible number; 0 with
+// Available()==true means the KG carries no usable labels).
+func (ix *Index) Len() int {
+if ix == nil {
+return 0
+}
+return len(ix.entries)
+}
+
+// Match anchors the query against the dictionary.
+//
+// Rules (all deterministic):
+//  1. A label matches when its normalized form appears as a substring of
+//     the normalized query. Substring (not whole-token) is deliberate
+//     for CJK, where "差旅住宿费标准是多少" has no word boundaries.
+//  2. Once a label has anchored, its spans are masked out of the query
+//     before shorter labels are tested -- otherwise "差旅住宿费标准"
+//     would also anchor its nested "差旅住宿费" and "差旅", producing
+//     three "entities" for one mention. Masking keeps precision.
+//  3. Output order follows the dictionary order (longest first).
+//
+// maxResults <= 0 means unlimited; callers normally pass 3-5 to bound
+// prompt growth.
+func (ix *Index) Match(query string, maxResults int) []Match {
+if ix == nil || !ix.available || query == "" {
+return nil
+}
+remaining := []rune(normalizeQuery(query))
+out := make([]Match, 0, 4)
+for _, e := range ix.entries {
+labelRunes := []rune(normalizeQuery(e.Label))
+if len(labelRunes) == 0 {
+continue
+}
+span := indexRunes(remaining, labelRunes)
+if span < 0 {
+continue
+}
+out = append(out, Match{
+IRI:     e.IRI,
+Label:   e.Label,
+Surface: string(labelRunes),
+})
+// Mask the consumed span (replace with a sentinel rune that no
+// label contains) so nested/shorter labels cannot re-anchor it.
+for i := span; i < span+len(labelRunes) && i < len(remaining); i++ {
+remaining[i] = '\u0000'
+}
+if maxResults > 0 && len(out) >= maxResults {
+break
+}
+}
+return out
+}
+
+// normalizeQuery REMOVES all whitespace and lowercases ASCII so
+// "差旅 住宿费" and "差旅住宿费" anchor the same dictionary entry. Dropping
+// (not collapsing) is deliberate: Chinese phrasing habitually inserts a
+// space after a compound ("差旅 住宿费标准"), and a collapsed single space
+// would still fail the substring test. CJK is untouched (ToLower is a
+// no-op on Han runes).
+func normalizeQuery(s string) string {
+var b strings.Builder
+b.Grow(len(s))
+for _, r := range s {
+switch r {
+case ' ', '\t', '\n', '\r', 0x3000:
+continue
+}
+b.WriteRune(r)
+}
+return strings.ToLower(b.String())
+}
+
+// indexRunes reports the first rune-offset where needle occurs in
+// haystack, or -1. Written locally so the masking above can operate on
+// rune slices without converting back and forth.
+func indexRunes(haystack, needle []rune) int {
+if len(needle) == 0 || len(haystack) < len(needle) {
+return -1
+}
+for i := 0; i+len(needle) <= len(haystack); i++ {
+match := true
+for j := range needle {
+if haystack[i+j] != needle[j] {
+match = false
+break
+}
+}
+if match {
+return i
+}
+}
+return -1
+}
+
+// unquote strips the surrounding double quotes Turtle literals carry
+// (store.Store keeps the literal verbatim, `"差旅住宿费标准"`).
+func unquote(s string) string {
+s = strings.TrimSpace(s)
+if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+return s[1 : len(s)-1]
+}
+return s
+}
