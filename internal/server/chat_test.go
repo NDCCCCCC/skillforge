@@ -879,9 +879,12 @@ func TestChatHandler_AmbiguousWithFallbackStillRunsPipeline(t *testing.T) {
 		if p.Decision == "route" {
 			foundRoute = true
 			assert.True(t, p.Ambiguous, "tied Skills must produce Ambiguous=true")
-			assert.Equal(t, "alpha", p.Selected,
-				"(b) close-gap ambiguity keeps top-1 as the fallback selection")
-			assert.GreaterOrEqual(t, len(p.SkillScores), 2, "ambiguous carries ≥2 candidates")
+// The two fixtures are cos=1 TIED -- the fallback pick is whichever
+// candidate the deterministic-but-order-sensitive tie-break selects.
+// Either name is a correct fallback; pinning one made this flake.
+assert.Contains(t, []string{"alpha", "bravo"}, p.Selected,
+"(b) close-gap ambiguity keeps a tied top-1 as the fallback selection")
+assert.GreaterOrEqual(t, len(p.SkillScores), 2, "ambiguous carries ≥2 candidates")
 		}
 	}
 	assert.True(t, foundRoute, "expected a route data-decision frame")
