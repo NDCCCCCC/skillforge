@@ -29,7 +29,7 @@
 // is driven by the HTTP status alone (200 → approved, 410 → expired,
 // other → failed, D11-C3 fail-closed).
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import {
   AlertOctagon,
@@ -169,6 +169,9 @@ function PendingCardView({
   const [editedJson, setEditedJson] = useState('');
   const [showRememberScope, setShowRememberScope] = useState(false);
   const [scope, setScope] = useState<ApprovalScope>('session');
+      // 56-03 PANEL-01: the two-tier remember choice (match tier x scope).
+      const [matchType, setMatchType] = useState<'exact' | 'prefix' | 'template'>('exact');
+      const [lockedFields, setLockedFields] = useState<Record<string, boolean>>({});
   const [denyPromptOpen, setDenyPromptOpen] = useState(false);
   const [denyReason, setDenyReason] = useState('');
   const [requestChangeOpen, setRequestChangeOpen] = useState(false);
@@ -204,6 +207,19 @@ function PendingCardView({
     [approval, resolvePending, appendHistory],
   );
 
+  // 56-03: the frozen args TOP-LEVEL SCALAR keys -- the prefix tier field-lock
+  // candidates. Empty = prefix disabled with a title.
+    const prefixCandidates = useMemo(() => {
+      const fa = approval.frozenArgs as unknown;
+      const out: { key: string; value: unknown }[] = [];
+      if (fa !== null && typeof fa === 'object') {
+        for (const [k, v] of Object.entries(fa as Record<string, unknown>)) {
+          if (v === null || typeof v !== 'object') out.push({ key: k, value: v });
+        }
+      }
+      return out;
+    }, [approval.frozenArgs]);
+
   const handleApprove = useCallback(
     async (remember: boolean) => {
       setInFlight(remember ? 'approve-remember' : 'approve');
@@ -215,7 +231,23 @@ function PendingCardView({
           frozen_args: finalArgs,
           approval_id: approval.approvalId,
           ...(approval.interruptId ? { interrupt_id: approval.interruptId } : {}),
-          ...(remember ? { scope } : {}),
+          ...(remember
+            ? {
+                scope,
+                match_type: matchType,
+                ...(matchType === 'prefix'
+                  ? {
+                      args_pattern: JSON.stringify(
+                        Object.fromEntries(
+                          prefixCandidates
+                            .filter((c) => lockedFields[c.key] !== false)
+                            .map((c) => [c.key, c.value]),
+                        ),
+                      ),
+                    }
+                  : {}),
+              }
+            : {}),
         });
         if (status === 200) {
           settle('approved', '', finalArgs);
@@ -230,7 +262,7 @@ function PendingCardView({
         setInFlight(null);
       }
     },
-    [approval, editedJson, editMode, scope, sessionId, settle],
+    [approval, editedJson, editMode, scope, matchType, lockedFields, prefixCandidates, sessionId, settle],
   );
 
   const handleDeny = useCallback(async () => {
@@ -523,6 +555,31 @@ function PendingCardView({
             data-testid="scope-radio"
           >
             <p className="text-xs text-[var(--color-text-muted)] mb-1">作用域：</p>
+            <p className="text-xs text-[var(--color-text-muted)] mb-1">Match mode:</p>
+            <div className="flex gap-3">
+              <label className="flex items-center gap-1.5 text-sm text-[var(--color-text)]">
+                <input type="radio" name="match-type" checked={matchType === 'exact'} onChange={() => setMatchType('exact')} data-testid="match-type-exact" className="accent-[var(--color-primary)]" />
+                <span>This exact call</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-[var(--color-text)]">
+                <input type="radio" name="match-type" checked={matchType === 'prefix'} onChange={() => setMatchType('prefix')} data-testid="match-type-prefix" disabled={prefixCandidates.length === 0} title={prefixCandidates.length === 0 ? "no lockable scalar fields" : ""} className="accent-[var(--color-primary)]" />
+                <span>Same-args template</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-[var(--color-text)]">
+                <input type="radio" name="match-type" checked={matchType === 'template'} onChange={() => setMatchType('template')} data-testid="match-type-template" className="accent-[var(--color-primary)]" />
+                <span>Every call of this tool</span>
+              </label>
+            </div>
+            {matchType === 'prefix' && prefixCandidates.length > 0 && (
+              <div className="mt-1 pl-4" data-testid="prefix-lock-fields">
+                {prefixCandidates.map((c) => (
+                  <label key={c.key} className="flex items-center gap-1.5 text-xs text-[var(--color-text)]" data-testid={`lock-field-${c.key}`}>
+                    <input type="checkbox" checked={lockedFields[c.key] !== false} onChange={(e) => setLockedFields((m) => ({ ...m, [c.key]: e.target.checked }))} className="accent-[var(--color-primary)]" />
+                    <span>{c.key}</span>
+                  </label>
+                ))}
+              </div>
+            )}
             <div className="flex gap-3">
               <label className="flex items-center gap-1.5 text-sm text-[var(--color-text)]">
                 <input
@@ -547,6 +604,10 @@ function PendingCardView({
                   className="accent-[var(--color-primary)]"
                 />
                 <span>整个 Skill 共享</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-[var(--color-text)]">
+                <input type="radio" name="scope" value="global" checked={scope === 'global'} onChange={() => setScope('global')} data-testid="scope-global" className="accent-[var(--color-primary)]" />
+                <span>Global shared</span>
               </label>
             </div>
             <button

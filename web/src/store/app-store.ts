@@ -92,7 +92,7 @@ export type ApprovalStatus =
   | 'change_requested';
 
 /** D11-D3 binary scope — no global option. */
-export type ApprovalScope = 'session' | 'skill';
+export type ApprovalScope = 'session' | 'skill' | 'global';
 
 export type JsonObject = Record<string, unknown>;
 

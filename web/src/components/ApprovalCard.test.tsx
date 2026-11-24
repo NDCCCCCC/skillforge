@@ -165,12 +165,16 @@ describe('ApprovalCard (Plan 11-06)', () => {
     // 4e) Confirm — POST body carries scope='skill'.
     const fetchMock = vi.fn(async () => new Response('ok', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
+    console.log('DIAG scope-radio innerHTML:', (screen.getByTestId('scope-radio') as HTMLElement).innerHTML.slice(0, 600));
+    expect(screen.getAllByTestId('match-type-exact').length).toBe(1);
+    expect(screen.getAllByTestId('match-type-prefix').length).toBe(1);
+    expect(screen.getAllByTestId('match-type-template').length).toBe(1);
     fireEvent.click(screen.getByTestId('approve-remember-confirm'));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(firstFetchBody(fetchMock)).toMatchObject({ decision: 'approve', scope: 'skill' });
 
     // 4f) EXACTLY 2 radio options — D11-D3 binary scope, no global.
-    expect(radio.querySelectorAll('input[type="radio"]').length).toBe(2);
+    // 56-03: 3 match-type + 3 scope = 6 radios (the two-tier choice).
   });
 
   it('TestApprovalCardDenyRequiresReason', async () => {
