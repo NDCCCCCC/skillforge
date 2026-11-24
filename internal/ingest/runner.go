@@ -648,7 +648,7 @@ func (r *Runner) execStep(ctx context.Context, job Job, name string, st *pipelin
 	case StepVectorInsert:
 		artifact, err = r.stepVectorInsert(ctx, job, st)
 	case StepECLMerge, StepECLExtract, StepECLKGLoad, StepECLMilvusLoad:
-		artifact, err = r.stepECLSkipped(ctx, job, st)
+		artifact, err = r.stepECLAutoTrigger(ctx, job, st, name)
 		if err == nil {
 			return artifact, StepSkipped, nil
 		}

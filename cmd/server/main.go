@@ -1253,6 +1253,23 @@ func main() {
 		}
 		return out, nil
 	}
+	// Phase 54-04 -- ECL auto-trigger: fired by the ingest runner's
+	// ecl_merge step after a successful vector_insert. Busy-aware (the
+	// ecl Manager's own stage gate) and detached (the trigger RETURNS,
+	// the full-corpus idempotent pipeline runs in the background --
+	// D-54-01: the ECL result is an enhancement; its failure is WARNed
+	// and skipped, never a job failure).
+	eclTrigger := func(ctx context.Context, j ingest.Job) error {
+		if st := eclManager.Status(); st.Stage != ecl.StageIdle {
+			return fmt.Errorf("ecl pipeline busy (stage=%s)", st.Stage)
+		}
+		go func() {
+			if err := eclManager.Run(context.Background()); err != nil {
+				log.Printf("[WARN] cmd/server: ECL auto-trigger pipeline: %v (ecl_failures posture)", err)
+			}
+		}()
+		return nil
+	}
 	ingestRunner, err := ingest.NewRunner(ingest.RunnerConfig{
 		Jobs:           st.(*sqlite.SQLiteStore),
 		Emb:            emb,
@@ -1263,6 +1280,7 @@ func main() {
 		ExistingChunks: existingChunks,
 		EmbedderModel:  embedderModelName,
 		AuditHook:      uploadAuditSink,
+		ECLTrigger:     eclTrigger,
 		Artifacts:      ingest.NewArtifactStore("data/ingest"),
 	})
 	if err != nil {
