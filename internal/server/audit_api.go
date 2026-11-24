@@ -64,12 +64,34 @@ type auditEntry struct {
 	SkillVersion   string          `json:"skill_version"`
 	PromptHash     string          `json:"prompt_hash"`
 	UserID         string          `json:"user_id,omitempty"`
+	// Phase 58-05 (ROI-01) -- retrieval channel distribution, when this
+	// row's audit_meta sibling carries it. omitempty: every pre-58 row
+	// serializes exactly as before.
+	Channels *retrievalChannelsDTO `json:"channels,omitempty"`
 }
 
 // auditListResponse is the GET /api/session/:id/audit envelope.
 type auditListResponse struct {
 	Rows  []auditEntry `json:"rows"`
 	Total int          `json:"total"`
+}
+
+// retrievalChannelsDTO is the channel distribution shape the ROI surface
+// reads (vector / graph / hybrid counts).
+type retrievalChannelsDTO struct {
+	Vector int `json:"vector"`
+	Graph  int `json:"graph"`
+	Hybrid int `json:"hybrid"`
+}
+
+// retrievalStatsRow decodes ONLY the counts from the stored blob, so this
+// projection is independent of any future stats field.
+type retrievalStatsRow struct {
+	Channels struct {
+		Vector int `json:"vector"`
+		Graph  int `json:"graph"`
+		Hybrid int `json:"hybrid"`
+	} `json:"channels"`
 }
 
 // auditListHandler implements GET /api/session/:id/audit.
@@ -145,8 +167,34 @@ func (s *Deps) auditListHandler(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
+	// Phase 58-05 (ROI-01) -- the channel distribution rides the audit_meta
+	// sibling row. The read is OPTIONAL (an interface type assertion on a
+	// store capability): a store without it, or an old schema, yields no
+	// channels and every pre-58 assertion keeps passing.
+	statsByAudit := map[int64]string{}
+	if reader, ok := s.Store.(interface {
+		RetrievalStatsBySession(ctx context.Context, sessionID string) (map[int64]string, error)
+	}); ok {
+		if m, statsErr := reader.RetrievalStatsBySession(ctx, sessionID); statsErr == nil && m != nil {
+			statsByAudit = m
+		} else if statsErr != nil {
+			log.Printf("[WARN] server: audit retrieval stats (sess=%s): %v (non-fatal)", sessionID, statsErr)
+		}
+	}
+
 	out := make([]auditEntry, 0, len(rows))
 	for _, r := range rows {
+		var channels *retrievalChannelsDTO
+		if blob := statsByAudit[r.ID]; blob != "" {
+			var st retrievalStatsRow
+			if err := json.Unmarshal([]byte(blob), &st); err == nil {
+				channels = &retrievalChannelsDTO{
+					Vector: st.Channels.Vector,
+					Graph:  st.Channels.Graph,
+					Hybrid: st.Channels.Hybrid,
+				}
+			}
+		}
 		out = append(out, auditEntry{
 			ID:             r.ID,
 			Ts:             r.Timestamp,
@@ -160,6 +208,7 @@ func (s *Deps) auditListHandler(ctx context.Context, c *app.RequestContext) {
 			SkillVersion:   r.SkillVersion,
 			PromptHash:     r.PromptHash,
 			UserID:         r.UserID,
+			Channels:       channels,
 		})
 	}
 

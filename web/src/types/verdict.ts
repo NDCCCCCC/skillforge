@@ -86,6 +86,10 @@ export interface Verdict {
   /** 49-02 (D-08): "stub" when the deterministic extractor (not an LLM)
    * produced this verdict. Optional + omitempty on the Go wire. */
   mode?: VerdictMode;
+  /** Phase 58-03 (PROV-01/PROV-02) — optional per-citation provenance
+   * (see Citation.origin / via / channels). Mirrors Go Citation's
+   * omitempty fields; an absent `origin` means "vector" (wire semantics,
+   * not an FE guess — resolveCitationOrigin is the single decision point). */
   /** Phase 57-03 (ONT-03) — entity grounding report. Mirrors Go
    * `Entities *EntityGrounding json:"entities,omitempty"`.
    * ABSENT means entity grounding did not run (no KG wired) — that is
@@ -117,6 +121,37 @@ export interface Citation {
   effective_to?: string | null;
   /** D5-15 (SC-8): human-readable version label (e.g. "v2", "2026-03修订版"). */
   version?: string | null;
+  /** Phase 58-03 (PROV-01) — the channel that surfaced this chunk.
+   * ABSENT == "vector" (pre-58 wire semantics). Never inferred by the FE. */
+  origin?: 'vector' | 'graph' | 'hybrid';
+  /** Phase 58-03 (PROV-02) — the graph path, when a graph channel
+   * contributed. Mirrors Go ViaPath. */
+  via?: { entity?: string; rels?: string[] };
+  /** Phase 58-03 (PROV-02) — the RAW channel set (dual-channel hits keep
+   * both entries so the "why" survives fusion). */
+  channels?: string[];
+}
+
+/** Phase 58-04 (PROV-03) — the data-retrieval SSE payload: the channel
+ * distribution of one retrieval pass. Every number is server-derived. */
+export interface RetrievalStats {
+  channels: { vector: number; graph: number; hybrid: number };
+  anchor_entities?: string[];
+  kg?: { available: boolean; entities_matched: number };
+  degraded?: boolean;
+}
+
+/** Runtime guard for the data-retrieval payload. A malformed or partial
+ * payload must NOT render a summary line: `null` is the honest fallback
+ * ("no stats"), never a zero-filled fabrication. */
+export function isRetrievalStats(value: unknown): value is RetrievalStats {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as { channels?: unknown };
+  if (typeof v.channels !== 'object' || v.channels === null) return false;
+  const c = v.channels as { vector?: unknown; graph?: unknown; hybrid?: unknown };
+  const isCount = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isFinite(n) && n >= 0;
+  return isCount(c.vector) && isCount(c.graph) && isCount(c.hybrid);
 }
 
 // Refusal reason enum — matches internal/verdict/citation.go

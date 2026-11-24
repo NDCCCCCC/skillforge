@@ -12,7 +12,7 @@
 // NEVER renders confidence bar, status-colored header (green/yellow/
 // red), or citations count — those are verdict-only.
 import { cn } from '../../lib/cn';
-import type { Refusal, RefusalReason } from '../../types/verdict';
+import type { Refusal, RefusalReason, RetrievalStats } from '../../types/verdict';
 
 const REASON_META: Record<RefusalReason, { icon: string; label: string; border: string }> = {
   out_of_scope: {
@@ -40,9 +40,15 @@ const REASON_TEXT: Record<RefusalReason, string> = {
 
 export interface RefusalCardProps {
   refusal: Refusal;
+  /** Phase 58-04 (PROV-03) -- the data-retrieval stats for this turn.
+   * Absent (pre-58 message / malformed payload) -> the stats line is NOT
+   * rendered. A refusal that says "found nothing" while hiding what it
+   * searched is the exact opacity PROV-03 exists to remove; the FE
+   * therefore renders only numbers the server actually sent. */
+  retrieval?: RetrievalStats;
 }
 
-export default function RefusalCard({ refusal }: RefusalCardProps) {
+export default function RefusalCard({ refusal, retrieval }: RefusalCardProps) {
   const meta = REASON_META[refusal.reason];
   const canRephrase = refusal.can_user_rephrase;
   const suggestion = refusal.suggested_alternative_query ?? '';
@@ -59,6 +65,19 @@ export default function RefusalCard({ refusal }: RefusalCardProps) {
         {meta.icon} {meta.label}
       </h3>
       <p className="mt-2 text-base text-text">{REASON_TEXT[refusal.reason]}</p>
+      {retrieval && (
+        <p
+          data-testid="refusal-retrieval-stats"
+          className="mt-2 text-xs text-text-muted"
+        >
+          本次检索：语义 {retrieval.channels.vector} 命中 · 本体 {retrieval.channels.graph} · 双通道{' '}
+          {retrieval.channels.hybrid}
+          {retrieval.anchor_entities && retrieval.anchor_entities.length > 0
+            ? ` · 锚定实体：${retrieval.anchor_entities.join('、')}`
+            : ''}
+          {retrieval.degraded ? ' · 本体暂不可用，已降级为纯语义检索' : ''}
+        </p>
+      )}
       {canRephrase && suggestion ? (
         <>
           <p className="mt-2 text-xs text-text-muted">您可以尝试换一种提问方式：</p>

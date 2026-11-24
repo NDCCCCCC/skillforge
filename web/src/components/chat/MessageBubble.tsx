@@ -36,6 +36,7 @@ import type { UIMessage } from 'ai';
 import { Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store/app-store';
 import DataPolicyPart from './parts/DataPolicyPart';
+import RetrievalPart from './parts/RetrievalPart';
 import FeedbackRow, { isVote } from './parts/FeedbackRow';
 import SubprogressTimeline, { type SubprogressEntry } from './parts/SubprogressTimeline';
 import ReasoningPart from './parts/ReasoningPart';
@@ -53,13 +54,24 @@ import RedlineCard from '../verdict/RedlineCard';
 import HistoryRewriteHint from './HistoryRewriteHint';
 import type { ConflictChunk, RedlinePayload } from '../../types/wire-types';
 import { DataReferenceChip } from './parts/DataReferenceChip';
-import { isVerdict, type SubprogressStep, type VerdictStatus } from '../../types/verdict';
+import {
+  isVerdict,
+  type Citation,
+  isRetrievalStats,
+  type RetrievalStats,
+  type SubprogressStep,
+  type VerdictStatus,
+} from '../../types/verdict';
+import { normalizeChunkID } from '../../lib/chunk-lookup';
+import { resolveCitationOrigin } from './parts/OriginBadge';
 
 function renderPart(
   part: UIMessage['parts'][number],
   i: number,
   chatText?: string,
   verdictStatus?: VerdictStatus,
+  citationByChunk?: Map<string, Citation>,
+  retrievalStats?: RetrievalStats,
 ): ReactNode {
   switch (part.type) {
     case 'reasoning':
@@ -79,8 +91,27 @@ function renderPart(
       );
     case 'source-url':
       return <SourceUrlPart key={i} part={part as Parameters<typeof SourceUrlPart>[0]['part']} />;
-    case 'source-document':
-      return <SourceDocumentPart key={i} part={part as Parameters<typeof SourceDocumentPart>[0]['part']} />;
+    case 'source-document': {
+      // Phase 58-02 (PROV-01) — attach the citation's provenance when the
+      // same message carries a verdict for this chunk. A miss passes
+      // undefined, so the chip stays byte-identical to its pre-58 form.
+      const chunkId = normalizeChunkID((part as { sourceId?: string }).sourceId ?? '');
+      const citation = citationByChunk?.get(chunkId);
+      return (
+        <SourceDocumentPart
+          key={i}
+          part={part as Parameters<typeof SourceDocumentPart>[0]['part']}
+          provenance={
+            citation
+              ? {
+                  origin: resolveCitationOrigin(citation),
+                  via: citation.via,
+                }
+              : undefined
+          }
+        />
+      );
+    }
     case 'dynamic-tool':
       return <ToolPart key={i} part={part as Parameters<typeof ToolPart>[0]['part']} />;
     case 'data-policy':
@@ -89,7 +120,15 @@ function renderPart(
           key={i}
           part={part as Parameters<typeof DataPolicyPart>[0]['part']}
           chatText={chatText}
+          retrieval={retrievalStats}
         />
+      );
+    case 'data-retrieval':
+      // Phase 58-04 (PROV-03) — the channel distribution line. The
+      // component itself drops a payload that fails its guard, so an
+      // unknown/malformed shape renders nothing rather than zeros.
+      return (
+        <RetrievalPart key={i} data={(part as { data?: unknown }).data} />
       );
     case 'data-subprogress':
       // 2026-11-11：过程步骤不再逐 part 平铺（那样点与点之间没有先后，
@@ -376,6 +415,25 @@ export function MessageBubble({
     policyData !== undefined && isVerdict(policyData)
       ? policyData.status
       : undefined;
+  // Phase 58-02 (PROV-01) — provenance per chunk, derived from the same
+  // message's verdict citations (key = normalized chunk id). Not Zustand
+  // state: it is message-local, exactly like chatText/verdictStatus.
+  // Phase 58-04 (PROV-03) -- the same message's retrieval stats, guarded.
+  // A malformed payload stays undefined: no zero-filled summary line.
+  const rawRetrieval = (
+    message.parts.find((p) => p.type === 'data-retrieval') as
+      | { data?: unknown }
+      | undefined
+  )?.data;
+  const retrievalStats = rawRetrieval !== undefined && isRetrievalStats(rawRetrieval)
+    ? rawRetrieval
+    : undefined;
+  const citationByChunk = new Map<string, Citation>();
+  if (policyData !== undefined && isVerdict(policyData)) {
+    for (const citation of policyData.citations ?? []) {
+      citationByChunk.set(normalizeChunkID(citation.chunk_id), citation);
+    }
+  }
   // Plan 29-07 Task 2 — turn identity for FeedbackRow. The data-turn
   // part is the ONE consumption point shared by the live SSE stream
   // (29-04 emitTurnID) and history restore (chat-restore synthesizes the
@@ -434,7 +492,14 @@ export function MessageBubble({
               live={isSubprogressLive(groups, gi, isStreaming)}
             />
           ) : (
-            renderPart(group.part, group.index, chatText, verdictStatus)
+            renderPart(
+              group.part,
+              group.index,
+              chatText,
+              verdictStatus,
+              citationByChunk,
+              retrievalStats,
+            )
           ),
         )}
         {/* Open Design B6 — per-reply feedback strip. Plan 29-07: the

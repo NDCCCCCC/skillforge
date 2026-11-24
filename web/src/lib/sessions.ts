@@ -435,6 +435,10 @@ export interface SessionAuditRow {
   skillVersion: string;
   promptHash: string;
   userId: string;
+	/** Phase 58-05 (ROI-01) -- retrieval channel distribution, when the
+	 * server attached it to this row. Absent -> the audit row renders
+	 * no channels segment (shape-driven; never a "—" placeholder). */
+	channels?: { vector: number; graph: number; hybrid: number };
 }
 
 /** Wire shape of one audit row (snake_case — mirrors auditEntry). */
@@ -450,6 +454,22 @@ interface SessionAuditWire {
   skill_version?: string;
   prompt_hash?: string;
   user_id?: string;
+  /** Present on rows the 58-05 audit_meta join resolved. */
+  channels?: { vector?: unknown; graph?: unknown; hybrid?: unknown };
+}
+
+type RetrievalChannelCounts = { vector: number; graph: number; hybrid: number };
+
+/** Phase 58-05 (ROI-01) -- accept a channel payload ONLY when all three
+ * counts are finite non-negative numbers. Partial data is dropped (the
+ * audit row then renders no channels segment) because a coerced zero
+ * would be a false claim about a retrieval that did happen. */
+function isChannels(value: unknown): value is RetrievalChannelCounts {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as { vector?: unknown; graph?: unknown; hybrid?: unknown };
+  const ok = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isFinite(n) && n >= 0;
+  return ok(v.vector) && ok(v.graph) && ok(v.hybrid);
 }
 
 const AUDIT_ACTIONS = new Set([
@@ -489,6 +509,12 @@ export async function fetchAuditRows(
         skillVersion: typeof w.skill_version === 'string' ? w.skill_version : '',
         promptHash: typeof w.prompt_hash === 'string' ? w.prompt_hash : '',
         userId: typeof w.user_id === 'string' ? w.user_id : '',
+			// Phase 58-05 (ROI-01) -- attach the channel distribution ONLY
+			// when the server sent three finite counts. A partial/garbage
+			// payload is dropped rather than coerced to zeros: an audit row
+			// that claims "0 命中 everywhere" wrongly is worse than one that
+			// simply reports no channels.
+			...(isChannels(w.channels) ? { channels: w.channels } : {}),
       });
     }
     return out;

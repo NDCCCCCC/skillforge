@@ -224,6 +224,18 @@ export default function AuditTimelineTab() {
                   <span className="font-mono">
                     hash {row.promptHash ? row.promptHash.slice(0, 8) : '—'}
                   </span>
+                  {/* Phase 58-05 (ROI-01) -- channel distribution, rendered
+                      ONLY when the row actually carries it. No placeholder:
+                      an audit row describes itself by its shape. */}
+                  {row.channels && (
+                    <span
+                      data-testid="audit-row-channels"
+                      className="font-mono text-text-muted"
+                    >
+                      语义 {row.channels.vector} · 本体 {row.channels.graph} · 双{' '}
+                      {row.channels.hybrid}
+                    </span>
+                  )}
                   <span className="text-text-muted">{auditStatusSentence(row)}</span>
                 </div>
               </li>

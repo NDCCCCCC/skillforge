@@ -49,7 +49,7 @@
 // conditional-type distribution over the SkillForgeChunk union.
 
 import type { FinishReason, UIMessageChunk } from 'ai';
-import type { Refusal, SubprogressStep, Verdict } from './verdict';
+import type { Refusal, RetrievalStats, SubprogressStep, Verdict } from './verdict';
 
 // ----------------------------------------------------------------------------
 // Decision enum constants — Plan 12-05 + 12-07 BE-side string values
@@ -451,6 +451,11 @@ export type SkillForgeChunk =
   // Custom data parts (Pitfall 2 — payload on .data)
   | { type: 'data-policy'; id?: string; data: Verdict | Refusal }
   | { type: 'data-subprogress'; id?: string; data: SubprogressStep }
+	// Phase 58-04 (PROV-03) -- retrieval channel distribution, emitted
+	// right after retrieval and BEFORE answer generation (so refusals
+	// carry it too). Paired commit with BE ValidTypes["data-retrieval"]
+	// (D15 lockstep invariant).
+	| { type: 'data-retrieval'; id?: string; data: RetrievalStats }
   // 261117-n96 — answer-truncation notice: the backend saw
   // finish_reason="length" (the answer hit the MaxTokens budget and WAS cut
   // off). MessageBubble renders a visible "answer may be incomplete" bar.

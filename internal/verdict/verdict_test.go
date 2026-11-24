@@ -168,3 +168,46 @@ func TestComplianceStatusesEnum(t *testing.T) {
 		"ComplianceStatuses must contain exactly the 3 expected keys")
 	assert.Equal(t, 3, len(ComplianceStatuses), "ComplianceStatuses must have exactly 3 entries")
 }
+
+// Phase 58-03 (PROV-01/PROV-02) -- the citation provenance fields are
+// ADDITIVE: a citation that does not set them must serialize EXACTLY like
+// the pre-58 shape (so every legacy contract assertion stays green).
+func TestCitationProvenanceIsAdditive(t *testing.T) {
+	legacy := Citation{ChunkID: "1", Span: "clause", Tier: "authority"}
+	raw, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var keys map[string]any
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, k := range []string{"origin", "via", "channels"} {
+		if _, ok := keys[k]; ok {
+			t.Errorf("provenance key %q must be ABSENT when unset (additive contract)", k)
+		}
+	}
+
+	rich := Citation{
+		ChunkID:  "7",
+		Span:     "clause",
+		Tier:     "authority",
+		Origin:   "hybrid",
+		Channels: []string{"vector", "graph"},
+		Via:      &ViaPath{Entity: "tbl_travel", Rels: []string{"referencesTable"}},
+	}
+	raw, err = json.Marshal(rich)
+	if err != nil {
+		t.Fatalf("marshal rich: %v", err)
+	}
+	var back Citation
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("unmarshal rich: %v", err)
+	}
+	if back.Origin != "hybrid" || len(back.Channels) != 2 {
+		t.Errorf("provenance lost on round-trip: %+v", back)
+	}
+	if back.Via == nil || back.Via.Entity != "tbl_travel" || len(back.Via.Rels) != 1 {
+		t.Errorf("via path lost on round-trip: %+v", back.Via)
+	}
+}

@@ -433,8 +433,8 @@ const putAuditMetaSQL = `
 INSERT INTO audit_meta (
     query_id, rewritten_query, classifier_decision, classifier_reason,
     classifier_confidence, history_projected_n_turns, history_budget_truncated,
-    history_dropped_count
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    history_dropped_count, retrieval_stats
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 // PutAuditMeta appends a sibling-table audit row that carries the
@@ -472,11 +472,53 @@ func (s *SQLiteStore) PutAuditMeta(ctx context.Context, meta store.AuditMeta) er
 		meta.HistoryProjectedNTurns,
 		meta.HistoryBudgetTruncated,
 		meta.HistoryDroppedCount,
+		toNullString(meta.RetrievalStats),
 	)
 	if err != nil {
 		return fmtError("PutAuditMeta", err)
 	}
 	return nil
+}
+
+// retrievalStatsByAuditSQL -- the ROI-01 side read: the retrieval stats
+// blob of every audit_meta row in a session whose audit row is one of the
+// listed ids. Keyed by query_id so the audit list can attach it without a
+// join in the hot audit query.
+const retrievalStatsByAuditSQL = `
+SELECT m.query_id, m.retrieval_stats
+FROM audit_meta m
+JOIN audit a ON a.id = m.query_id
+WHERE a.session_id = ? AND m.retrieval_stats IS NOT NULL
+`
+
+// RetrievalStatsBySession returns the retrieval-stats JSON blobs for one
+// session, keyed by the owning audit row id (Phase 58-05 / ROI-01).
+//
+// A missing table/column (a pre-58 DB) degrades to an empty map, never an
+// error: the audit list must keep rendering on an old database.
+func (s *SQLiteStore) RetrievalStatsBySession(ctx context.Context, sessionID string) (map[int64]string, error) {
+	if s.isClosed() {
+		return nil, sql.ErrConnDone
+	}
+	rows, err := s.db.QueryContext(ctx, retrievalStatsByAuditSQL, sessionID)
+	if err != nil {
+		// Old schema (no retrieval_stats column) -> no stats, not a failure.
+		return map[int64]string{}, nil
+	}
+	defer rows.Close()
+	out := make(map[int64]string)
+	for rows.Next() {
+		var id int64
+		var blob string
+		if err := rows.Scan(&id, &blob); err != nil {
+			return nil, fmtError("RetrievalStatsBySession.Scan", err)
+		}
+		out[id] = blob
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmtError("RetrievalStatsBySession.Rows", err)
+	}
+	return out, nil
 }
 
 // toNullString converts an empty string to sql.NullString{Valid:false}
@@ -587,6 +629,13 @@ const (
 	// for idempotency (approvalAlreadyResolved) exactly like
 	// approved/rejected.
 	ActionChangeRequested string = "action_change_requested"
+
+	// Phase 58-05 (ROI-01) -- retrieval channel distribution audit row.
+	// One row per retrieval pass, carrying the RetrievalStats payload in
+	// FrozenArgs. This is what makes the ontology ROI measurable: the
+	// numbers survive the request instead of living only in an SSE frame.
+	// INSERT-only (T-3-AUDIT); a pre-58 consumer never sees this action.
+	ActionRetrievalStats string = "action_retrieval_stats"
 )
 
 // ErrInvalidFanoutRunPath is the sentinel error PutAudit surfaces when
@@ -838,18 +887,18 @@ LIMIT 200
 // filtered in SQL; malformed JSON is skipped by the CALLER (the
 // suggestion cluster must not die on one malformed row).
 func (s *SQLiteStore) ListApprovedFrozenArgs(ctx context.Context, sessionID string) ([]string, error) {
-rows, err := s.db.QueryContext(ctx, listApprovedFrozenArgsSQL, sessionID)
-if err != nil {
-return nil, fmtError("ListApprovedFrozenArgs", err)
-}
-defer rows.Close()
-var out []string
-for rows.Next() {
-var f string
-if err := rows.Scan(&f); err != nil {
-return nil, fmtError("ListApprovedFrozenArgs.Scan", err)
-}
-out = append(out, f)
-}
-return out, rows.Err()
+	rows, err := s.db.QueryContext(ctx, listApprovedFrozenArgsSQL, sessionID)
+	if err != nil {
+		return nil, fmtError("ListApprovedFrozenArgs", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var f string
+		if err := rows.Scan(&f); err != nil {
+			return nil, fmtError("ListApprovedFrozenArgs.Scan", err)
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }

@@ -34,6 +34,7 @@ import { prettySourcePath } from '../../lib/pretty-source';
 import { useAppStore } from '../../store/app-store';
 import type { Citation } from '../../types/verdict';
 import TierBadge from '../common/TierBadge';
+import OriginBadge, { resolveCitationOrigin } from '../chat/parts/OriginBadge';
 
 const HOVER_OPEN_DELAY_MS = 150;
 
@@ -49,6 +50,11 @@ interface HoverState {
   version: string | null;
   effectiveDate: string | null;
   notFound: boolean;
+  /** Phase 58-03 (PROV-01/PROV-02) — provenance carried by the Citation
+   * itself (no extra fetch): origin + the graph path. */
+  origin?: string;
+  via?: { entity?: string; rels?: string[] };
+  channels?: string[];
   /** Raw Milvus source path from the async fetch (260929-d5w2); null on
    * the synchronous fixture path (the fixture carries no source). */
   source: string | null;
@@ -86,7 +92,9 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
     });
   }, []);
 
-  const openHover = useCallback((chunkId: string, tier: Citation['tier']) => {
+  const openHover = useCallback((citation: Citation) => {
+    const chunkId = citation.chunk_id;
+    const tier = citation.tier;
     // Synchronous fixture lookup first — the typical path (citation
     // chunk is in chunks.json). The async fetch is the fallback for
     // graph-browsed chunks the fixture does not carry.
@@ -99,6 +107,9 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
       effectiveDate: sync.effectiveDate,
       notFound: sync.text === NOT_FOUND_TEXT,
       source: null,
+      origin: resolveCitationOrigin(citation),
+      via: citation.via,
+      channels: citation.channels,
     });
     setOpenChunkId(chunkId);
     if (sync.text === NOT_FOUND_TEXT) {
@@ -120,9 +131,9 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
   }, []);
 
   const scheduleOpen = useCallback(
-    (chunkId: string, tier: Citation['tier']) => {
+    (citation: Citation) => {
       if (hoverTimer.current) clearTimeout(hoverTimer.current);
-      hoverTimer.current = setTimeout(() => openHover(chunkId, tier), HOVER_OPEN_DELAY_MS);
+      hoverTimer.current = setTimeout(() => openHover(citation), HOVER_OPEN_DELAY_MS);
     },
     [openHover],
   );
@@ -144,7 +155,7 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
           <span
             key={`${index}-${citation.chunk_id}`}
             className="relative inline"
-            onMouseEnter={() => scheduleOpen(citation.chunk_id, citation.tier)}
+            onMouseEnter={() => scheduleOpen(citation)}
             onMouseLeave={cancelHover}
           >
             <sup
@@ -192,6 +203,27 @@ export default function CitationCluster({ citations }: CitationClusterProps) {
                 <span className="block max-h-40 overflow-y-auto whitespace-pre-wrap text-text">
                   {hover.notFound ? '（片段不存在）' : hover.text}
                 </span>
+                {/* Phase 58-03 (PROV-01/PROV-02) — provenance row. Every
+                    value comes from the Citation payload; the FE adds no
+                    channel inference of its own. */}
+                {hover.origin && (
+                  <span
+                    data-testid="citation-provenance"
+                    className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2 text-[11px] text-text-muted"
+                  >
+                    <OriginBadge origin={hover.origin} />
+                    {hover.via?.entity && (
+                      <span>
+                        经实体 <span className="font-mono text-text">{hover.via.entity}</span>
+                      </span>
+                    )}
+                    {hover.via?.rels && hover.via.rels.length > 0 && (
+                      <span className="font-mono">
+                        路径：{hover.via.rels.join(' → ')}
+                      </span>
+                    )}
+                  </span>
+                )}
               </span>
             )}
           </span>

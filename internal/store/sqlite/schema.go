@@ -98,6 +98,10 @@ CREATE TABLE IF NOT EXISTS audit_meta (
     history_projected_n_turns INTEGER NOT NULL DEFAULT 0,
     history_budget_truncated  INTEGER NOT NULL DEFAULT 0,
     history_dropped_count     INTEGER NOT NULL DEFAULT 0,
+    -- Phase 58-05 (ROI-01): the retrieval channel distribution (JSON).
+    -- NULL == no stats for this turn (pre-58 rows and turns with
+    -- nothing to report), which keeps every existing row readable.
+    retrieval_stats           TEXT,
     FOREIGN KEY (query_id) REFERENCES audit(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_audit_meta_decision ON audit_meta(classifier_decision);

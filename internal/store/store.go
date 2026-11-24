@@ -437,17 +437,17 @@ type ReportRunRow struct {
 // ReportRow is one published monthly report metadata record (Phase 18 /
 // Plan 18-02 / RPT-04). INSERT-only: PutReport appends, no UPDATE path.
 type ReportRow struct {
-	ID               int64
-	TS               time.Time
+	ID              int64
+	TS              time.Time
 	Period          string // e.g. "2026-08"
 	SkillID         string
-	Version         int    // v1, v2, ...
+	Version         int // v1, v2, ...
 	Title           string
 	FilePath        string // absolute path to the .html file
 	ApprovalAuditID string // audit row ID of the approval
 	KPICallIDs      string // JSON array of KPI call IDs used
 	TemplateVersion string // hash of template content
-	ResultDigest   string // SHA256 of rendered HTML
+	ResultDigest    string // SHA256 of rendered HTML
 }
 
 // SessionMessage is one turn-half (user OR assistant) of a conversation
@@ -530,6 +530,12 @@ type AuditMeta struct {
 	HistoryProjectedNTurns int
 	HistoryBudgetTruncated int
 	HistoryDroppedCount    int
+	// RetrievalStats is the Phase 58-05 (ROI-01) retrieval channel
+	// distribution as a JSON blob (wire.RetrievalStats). Empty means "no
+	// stats for this turn" (pre-58 producer / nothing to report) and the
+	// column stays NULL -- the additive contract, so every existing
+	// audit_meta row and reader is unchanged.
+	RetrievalStats string
 }
 
 // AuditFilter is the parameter bag for QueryAudit. Every field is

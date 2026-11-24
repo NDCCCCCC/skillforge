@@ -46,6 +46,7 @@ var expectedAuditMetaCols = []string{
 	"history_projected_n_turns",
 	"history_budget_truncated",
 	"history_dropped_count",
+	"retrieval_stats",
 }
 
 // expectedDatasetsCols is the canonical column list asserted by

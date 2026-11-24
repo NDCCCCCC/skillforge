@@ -21,12 +21,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
 	"github.com/skillforge/skillforge/internal/ontology/anchor"
 	"github.com/skillforge/skillforge/internal/ontology/store"
+	"github.com/skillforge/skillforge/internal/retriever"
 	"github.com/skillforge/skillforge/internal/skill"
 	"github.com/skillforge/skillforge/internal/verdict"
 	"github.com/skillforge/skillforge/internal/wire"
@@ -210,4 +212,48 @@ func (m *anchorMatcher) Known(name string) bool {
 		return false
 	}
 	return len(m.index.Match(name, 1)) > 0
+}
+
+// stampCitationProvenance copies each chunk's runtime provenance onto the
+// citation that cites it (Phase 58-03 / PROV-01/PROV-02).
+//
+// The lookup key is the chunk PRIMARY KEY. A citation whose chunk is not
+// in the retrieved set (a pre-58 audit replay, or a citation the LLM
+// invented -- which span grounding then rejects) is left untouched: its
+// Origin stays empty, which the wire reads as "vector". Nothing is
+// invented here; provenance is only ever COPIED from a real chunk row.
+//
+// Channels is copied as a defensive clone: the caller may mutate the
+// slice it keeps, and a citation must never change after it is emitted.
+func stampCitationProvenance(citations []verdict.Citation, chunks []retriever.Hit) {
+	if len(citations) == 0 || len(chunks) == 0 {
+		return
+	}
+	byID := make(map[int64]int, len(chunks))
+	for i, ch := range chunks {
+		byID[ch.ID] = i
+	}
+	for i := range citations {
+		id, err := strconv.ParseInt(citations[i].ChunkID, 10, 64)
+		if err != nil {
+			continue
+		}
+		idx, ok := byID[id]
+		if !ok {
+			continue
+		}
+		hit := chunks[idx]
+		if hit.Origin != "" {
+			citations[i].Origin = hit.Origin
+		}
+		if len(hit.Channels) > 0 {
+			citations[i].Channels = append([]string(nil), hit.Channels...)
+		}
+		if hit.ViaEntity != "" || len(hit.ViaRels) > 0 {
+			citations[i].Via = &verdict.ViaPath{
+				Entity: hit.ViaEntity,
+				Rels:   append([]string(nil), hit.ViaRels...),
+			}
+		}
+	}
 }

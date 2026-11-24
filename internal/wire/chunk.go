@@ -320,6 +320,42 @@ type SkillScore struct {
 //     counter). Count may be less than Total when the search applied its
 //     topK cut; the FE renders the truncation explicitly so "找到 5 条候选"
 //     is not mistaken for "exactly 5 relevant hits".
+// RetrievalStats is the Phase 58-04 (PROV-03) data-retrieval payload:
+// the channel distribution of ONE retrieval pass. It is broadcast right
+// after retrieval completes (before the answer starts streaming) so the
+// operator sees what was searched even when the turn ends in a refusal
+// ("I looked here and found nothing" beats a silent empty answer).
+//
+// ADDITIVE by construction: this is a NEW chunk type (data-retrieval) that
+// no legacy consumer subscribed to, and its fields are all server-derived
+// counts -- the FE never computes them.
+type RetrievalStats struct {
+	// Channels is the per-channel hit count AFTER fusion (hybrid counted
+	// once in its own bucket, not in vector+graph).
+	Channels RetrievalChannels `json:"channels"`
+	// AnchorEntities are the entity labels the query anchored on.
+	AnchorEntities []string `json:"anchor_entities,omitempty"`
+	// KG reports whether the knowledge graph took part, and how many
+	// entities it matched.
+	KG *KGStats `json:"kg,omitempty"`
+	// Degraded is true when the KG was expected but unusable, so the turn
+	// ran on pure vector retrieval.
+	Degraded bool `json:"degraded,omitempty"`
+}
+
+// RetrievalChannels is the fused channel distribution.
+type RetrievalChannels struct {
+	Vector int `json:"vector"`
+	Graph  int `json:"graph"`
+	Hybrid int `json:"hybrid"`
+}
+
+// KGStats is the knowledge-graph participation summary.
+type KGStats struct {
+	Available       bool `json:"available"`
+	EntitiesMatched int  `json:"entities_matched"`
+}
+
 type SubprogressStep struct {
 	Step  string `json:"step"`
 	Tier  string `json:"tier,omitempty"`
@@ -543,6 +579,12 @@ var ValidTypes = map[string]bool{
 	"data-redline":          true,
 	"data-subprogress":      true,
 	"data-plan-trace":       true,
+	// Phase 58-04 (PROV-03) -- retrieval channel distribution, broadcast
+	// right after retrieval and BEFORE answer generation. NEW chunk type:
+	// no legacy consumer subscribed to it, so nothing breaks (additive).
+	// The TS mirror at web/src/types/wire-types.ts ships in the SAME
+	// commit (D15 paired-commit invariant).
+	"data-retrieval": true,
 	// Phase 29 / Plan 29-04 (FBK-01) — server-side message identity.
 	// Emitted after writeAuditAndTurn, before the terminal frames. The
 	// TS mirror at web/src/types/wire-types.ts ships in the SAME commit

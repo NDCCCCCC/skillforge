@@ -41,6 +41,32 @@ type Citation struct {
 	// UI citation panel) can badge sources without re-querying the retriever.
 	// Required.
 	Tier string `json:"tier"`
+
+	// Phase 58-03 (PROV-01/PROV-02) -- OPTIONAL provenance fields.
+	// ADDITIVE + omitempty by design (Anthropic Citations pattern: a
+	// citation key is an optional extension of a content block): a
+	// producer that does not set them emits the exact pre-58 JSON, and
+	// every legacy consumer keeps working. The FE treats an absent
+	// Origin as "vector" -- that is the WIRE SEMANTICS, not an FE guess.
+	//
+	//	Origin  -- vector | graph | hybrid.
+	//	Via     -- the graph path that surfaced this chunk (nil for
+	//	          pure vector hits).
+	//	Channels-- the RAW channel set, so dual-channel hits stay
+	//	          explainable after fusion.
+	Origin   string   `json:"origin,omitempty"`
+	Via      *ViaPath `json:"via,omitempty"`
+	Channels []string `json:"channels,omitempty"`
+}
+
+// ViaPath is the graph path that surfaced a chunk (PROV-02).
+//
+// Entity is the anchored entity (IRI or label) and Rels is the predicate
+// path walked from it. Both are server-provided strings -- the FE renders
+// them verbatim and never reconstructs a path of its own.
+type ViaPath struct {
+	Entity string   `json:"entity,omitempty"`
+	Rels   []string `json:"rels,omitempty"`
 }
 
 // Refusal is the structured refusal shape per ARAG-05. When the verdict

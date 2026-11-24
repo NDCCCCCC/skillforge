@@ -32,6 +32,7 @@
 // tier (T-26-08-2).
 import type { SourceDocumentUIPart } from 'ai';
 import { FileText } from 'lucide-react';
+import OriginBadge from './OriginBadge';
 import { useTierLabel } from '../../../lib/kb-bases';
 import { extractChunkMetadata, normalizeChunkID } from '../../../lib/chunk-lookup';
 import { useAppStore } from '../../../store/app-store';
@@ -46,7 +47,22 @@ function resolveTierSlug(sourceId: string, title: string): string | null {
   return extractChunkMetadata(normalizeChunkID(sourceId)).tier;
 }
 
-export function SourceDocumentPart({ part }: { part: SourceDocumentUIPart }) {
+export interface SourceDocumentProvenance {
+  origin: string;
+  via?: { entity?: string; rels?: string[] };
+}
+
+export function SourceDocumentPart({
+  part,
+  provenance,
+}: {
+  part: SourceDocumentUIPart;
+  /** Phase 58-02 (PROV-01) -- the citation's provenance, looked up by the
+   * parent from the same message's verdict citations. Absent (pre-58
+   * messages / no citation match) -> the chip is byte-identical to
+   * before: no badge, no inference. */
+  provenance?: SourceDocumentProvenance;
+}) {
   const label = part.title ?? part.sourceId;
   const tierSlug = resolveTierSlug(part.sourceId, label);
   const tierLabel = useTierLabel(tierSlug ?? '');
@@ -76,6 +92,7 @@ export function SourceDocumentPart({ part }: { part: SourceDocumentUIPart }) {
           {tierLabel}
         </span>
       )}
+      {provenance && <OriginBadge origin={provenance.origin} />}
       <FileText className="h-3 w-3" />
       <span>{label}</span>
     </button>

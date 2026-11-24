@@ -24,7 +24,7 @@
 import type { UIMessage } from 'ai';
 import RefusalCard from '../../center/RefusalCard';
 import VerdictCard from '../../center/VerdictCard';
-import { isRefusal, isVerdict } from '../../../types/verdict';
+import { isRefusal, isVerdict, type RetrievalStats } from '../../../types/verdict';
 
 // AI SDK v7's UIMessage generic UIDataTypes defaults do not include
 // the custom data-* payloads we author in fixtures. Cast through
@@ -39,11 +39,16 @@ type DataPolicyPartType = {
 export default function DataPolicyPart({
   part,
   chatText,
+  retrieval,
 }: {
   part: DataPolicyPartType | (UIMessage['parts'][number] & Record<string, unknown>);
   // 260817-hck: concatenated text parts of the same message; forwarded to
   // VerdictCard so it can hide a verdict-answer already shown in the body.
   chatText?: string;
+  /** Phase 58-04 (PROV-03) -- the same message's data-retrieval payload,
+   * forwarded to RefusalCard. Guarded by isRetrievalStats at the call
+   * site, so a malformed payload reaches RefusalCard as undefined. */
+  retrieval?: RetrievalStats;
 }) {
   const data = (part as DataPolicyPartType).data;
   if (isVerdict(data)) {
@@ -66,7 +71,7 @@ export default function DataPolicyPart({
     return <VerdictCard verdict={data} chatText={chatText} />;
   }
   if (isRefusal(data)) {
-    return <RefusalCard refusal={data} />;
+    return <RefusalCard refusal={data} retrieval={retrieval} />;
   }
   // Unknown payload shape: degrade to a muted developer note, not a red
   // alarm. The wire union is append-only (D15) — an unrecognized shape

@@ -59,6 +59,25 @@ type Hit struct {
 	DocID         string
 	ChunkIndex    int32
 	ContentHash   string
+
+	// Phase 58-01 (PROV-01/PROV-02) -- provenance RUNTIME fields. They are
+	// NOT part of any backend schema (zero values mean "vector", which is
+	// exactly the pre-58 wire semantics): the fusion layer (fuse.go)
+	// populates them in memory, and the citation projection copies them
+	// onto the wire. A backend that never sets them keeps working
+	// unchanged -- the additive contract.
+	//
+	//	Origin    -- vector | graph | hybrid (empty == vector).
+	//	ViaEntity -- the anchored entity whose graph path surfaced this hit;
+	//	             empty for pure vector hits.
+	//	ViaRels   -- the predicate path walked to reach it.
+	Origin    string
+	ViaEntity string
+	ViaRels   []string
+	// Channels is the RAW channel set the fusion layer saw (PROV-02).
+	// A single-channel hit carries exactly one entry; a dual-channel hit
+	// carries both. Nil == pre-58 producer (reads as [vector]).
+	Channels []string
 }
 
 // Document is the input to Retriever.Insert (used by the knowledge

@@ -247,6 +247,19 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		return fmt.Errorf("verdict pipeline: retrieve: %w", err)
 	}
 
+	// Phase 57-02 + 58-04 -- ontology anchoring and the retrieval stats
+	// frame are published BEFORE any refusal gate below, so a refusal
+	// still reports what was searched ("looked here, found nothing" is
+	// actionable; silence is not).
+	kgc := s.buildKGContext(ctx, retrieveQuery, manifest)
+	s.emitKGContextDecision(c, kgc)
+	stats := buildRetrievalStats(nil, chunks, kgc)
+	emitRetrievalStats(c, stats)
+	retrievalStats := retrievalStatsJSON(stats)
+	// ROI-01: the stats ride the audit_meta sibling row of this turn's
+	// single verdict audit row (the one-row-per-turn invariant holds).
+	meta.RetrievalStats = retrievalStats
+
 	if len(chunks) == 0 {
 		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, true)
 	}
@@ -307,12 +320,6 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		return s.emitOperationalAnswer(ctx, c, sessionID, skillID, query, tiers, meta, chunks, qvec, now, manifest, historyMsgs)
 	}
 
-	// Phase 57-02 (ONT-02) -- entity anchoring + KG neighbourhood context.
-	// The fragment is PROMPT CONTEXT ONLY: nothing here can enter
-	// v.Citations (the orthogonality red line). A missing/unreadable KG
-	// degrades to pure vector and SAYS SO on the decision stream.
-	kgc := s.buildKGContext(ctx, retrieveQuery, manifest)
-	s.emitKGContextDecision(c, kgc)
 	systemPrompt, userPrompt := buildPrompt(query, chunks, manifest)
 	if kgc.PromptFragment != "" {
 		userPrompt += kgc.PromptFragment
@@ -379,7 +386,15 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// Phase 57-03 (ONT-03) -- entity grounding: the answer's named
 	// entities must exist in the authorized corpus KG. A non-empty
 	// unverified list downgrades exactly like a span failure.
-	 v = s.applyEntityGrounding(v)
+	v = s.applyEntityGrounding(v)
+	// Phase 58-03 (PROV-01/PROV-02) -- stamp each citation with the
+	// provenance of the chunk it cites (origin / via / raw channels).
+	// Only chunks the vector or fused path actually returned can be a
+	// citation, so the stamp is a LOOKUP, never an inference: a citation
+	// with no matching chunk keeps origin empty (wire default "vector"
+	// for pre-58 replays) and gains nothing fabricated.
+	stampCitationProvenance(v.Citations, chunks)
+
 	groundReport := verdict.GroundingCheck(v, chunksByID)
 	v = verdict.GroundingChecker(v, chunksByID)
 	if !groundReport.Grounded {
