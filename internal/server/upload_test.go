@@ -316,9 +316,16 @@ func uploadTestDeps(t *testing.T, idxBackend *mockIndexerBackend) *Deps {
 
 	// Phase 53-01: redirect both persist roots into temp dirs (the
 	// knowledge package owns them since 54-01 moved the persist path).
+	//
+	// ORDER MATTERS (55-03 regression): the previous values are captured
+	// BEFORE the override. The old form captured them AFTER, so "restore"
+	// put the globals back onto a temp dir that t.TempDir() then deleted --
+	// every LATER test in this package then read a nonexistent corpus root.
+	// It stayed latent because nothing sorted before knowledge_docs_test.go;
+	// 55-03's admin_ingest_test.go does.
+	prevKBRoot, prevUploadsDir := knowledge.PersistKnowledgeRoot(), knowledge.PersistUploadsDir()
 	knowledge.SetPersistKnowledgeRoot(t.TempDir())
 	knowledge.SetPersistUploadsDir(t.TempDir())
-	prevKBRoot, prevUploadsDir := knowledge.PersistKnowledgeRoot(), knowledge.PersistUploadsDir()
 	t.Cleanup(func() {
 		knowledge.SetPersistKnowledgeRoot(prevKBRoot)
 		knowledge.SetPersistUploadsDir(prevUploadsDir)

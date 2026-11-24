@@ -412,6 +412,39 @@ func (s *SQLiteStore) CascadeStale(ctx context.Context, jobID, fromStep string, 
 	return staled, nil
 }
 
+// listJobsSQL - the admin Jobs list read (55-03): every job, newest
+// first. Same ordering rule as getIngestJobBySHASQL (created_at is a
+// caller-set RFC3339Nano string, so lexicographic DESC == chronological
+// DESC; rowid DESC breaks an exact-tie determinism gap).
+const listJobsSQL = `
+SELECT ` + jobColumns + `
+FROM ingest_jobs
+ORDER BY created_at DESC, rowid DESC
+`
+
+// ListJobs implements ingest.JobStore.
+func (s *SQLiteStore) ListJobs(ctx context.Context) ([]ingest.Job, error) {
+rows, err := s.db.QueryContext(ctx, listJobsSQL)
+if err != nil {
+return nil, fmtError("ListJobs", err)
+}
+defer rows.Close()
+var out []ingest.Job
+for rows.Next() {
+var j ingest.Job
+if err := rows.Scan(&j.JobID, &j.Slug, &j.Filename, &j.SHA256, &j.Mime,
+&j.FileSize, &j.DocID, &j.SourcePath, &j.ParserName,
+&j.Status, &j.Error, &j.CreatedAt, &j.UpdatedAt); err != nil {
+return nil, fmtError("ListJobs.Scan", err)
+}
+out = append(out, j)
+}
+if err := rows.Err(); err != nil {
+return nil, fmtError("ListJobs.Rows", err)
+}
+return out, nil
+}
+
 // listResumableSQL — the boot-recovery scan set (54-03 SC 8): running
 // (crash residue) and queued (died before claiming), oldest first so
 // recovery replays the original enqueue order.

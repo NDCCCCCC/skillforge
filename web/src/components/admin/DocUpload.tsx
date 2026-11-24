@@ -7,17 +7,30 @@
 // 2610 redesign: migrated to the shared admin component library — the
 // upload request now goes through adminFetchResponse (token injected by
 // the shared helper, no hand-rolled X-Admin-Token header) and the panel
-// buttons use the ui/button Button component. State machine, wire
-// contract and every data-testid are unchanged:
-//   idle → uploading → parsing → indexing → done | error
+// buttons use the ui/button Button component.
+//
+// Phase 55-03 (ING-05) — the FAKE state machine is retired. The old
+// `idle → uploading → parsing → indexing → done` progression was a
+// two-part lie: the 200ms setTimeout padding pretended work was happening,
+// and the parsing/indexing labels described work the FE cannot observe.
+// With the async 54-01 upload the truth is:
+//
+//   idle → uploading → done | error
+//
+// 2xx now means "a job was accepted" (the response is `{job_id, status}`;
+// the old `{chunks}` contract is gone). The panel hands the job id to the
+// store and switches to the ingest tab, where the REAL pipeline progress
+// arrives by polling. The FE never claims to know a chunk count it has not
+// been told.
 
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { fetchKnowledgeBases } from '../../lib/kb-bases';
 import { adminFetchResponse } from './shared/useAdminData';
+import { useAppStore } from '../../store/app-store';
 import { Button } from '../ui/button';
 
-type UploadState = 'idle' | 'uploading' | 'parsing' | 'indexing' | 'done' | 'error';
+type UploadState = 'idle' | 'uploading' | 'done' | 'error';
 
 export default function DocUpload() {
   const [state, setState] = useState<UploadState>('idle');
@@ -25,7 +38,6 @@ export default function DocUpload() {
   const [selectedSlug, setSelectedSlug] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
-  const [chunks, setChunks] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,20 +56,18 @@ export default function DocUpload() {
     formData.append('file', file);
 
     try {
-      // Brief pause so user sees the parsing/indexing states too.
-      await new Promise((r) => setTimeout(r, 200));
-      setState('parsing');
-      await new Promise((r) => setTimeout(r, 200));
-      setState('indexing');
-
       const resp = await adminFetchResponse(
         `/api/admin/kb/${encodeURIComponent(selectedSlug)}/upload`,
         { method: 'POST', body: formData },
       );
 
       if (resp.ok) {
-        const data = (await resp.json()) as { chunks: number };
-        setChunks(data.chunks);
+        // 54-01 async contract: {job_id, status:'queued'}. Hand the job id
+        // to the store and jump to the ingest tab — do NOT wait for the
+        // pipeline (progress arrives by polling).
+        const data = (await resp.json()) as { job_id: string };
+        useAppStore.getState().setIngestFocusJobId(data.job_id);
+        useAppStore.getState().setAdminSubroute('ingest');
         setState('done');
       } else {
         const body = (await resp.json().catch(() => ({}))) as { error?: string };
@@ -74,7 +84,6 @@ export default function DocUpload() {
     setState('idle');
     setFile(null);
     setError('');
-    setChunks(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -124,7 +133,7 @@ export default function DocUpload() {
           data-testid="doc-upload-slug"
           value={selectedSlug}
           onChange={(e) => setSelectedSlug(e.target.value)}
-          disabled={state === 'uploading' || state === 'parsing' || state === 'indexing'}
+          disabled={state === 'uploading'}
           className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text"
         >
           <option value="">选择知识库…</option>
@@ -139,7 +148,7 @@ export default function DocUpload() {
           type="file"
           accept=".md,.pdf,.docx,.xlsx,.pptx"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          disabled={state === 'uploading' || state === 'parsing' || state === 'indexing'}
+          disabled={state === 'uploading'}
           className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text file:mr-2 file:rounded file:border-0 file:bg-primary-dim file:px-2 file:py-1 file:text-primary"
         />
 
@@ -147,7 +156,7 @@ export default function DocUpload() {
           type="button"
           data-testid="doc-upload-submit"
           onClick={handleSubmit}
-          disabled={!selectedSlug || !file || state === 'uploading' || state === 'parsing' || state === 'indexing'}
+          disabled={!selectedSlug || !file || state === 'uploading'}
         >
           上传
         </Button>
@@ -159,19 +168,9 @@ export default function DocUpload() {
             <Loader2 className="h-4 w-4 animate-spin" /> 正在上传…
           </div>
         )}
-        {state === 'parsing' && (
-          <div className="flex items-center gap-2 text-text-muted" data-testid="doc-upload-parsing">
-            <Loader2 className="h-4 w-4 animate-spin" /> 正在解析…
-          </div>
-        )}
-        {state === 'indexing' && (
-          <div className="flex items-center gap-2 text-text-muted" data-testid="doc-upload-indexing">
-            <Loader2 className="h-4 w-4 animate-spin" /> 正在索引入库…
-          </div>
-        )}
         {state === 'done' && (
           <div className="flex items-center gap-2 text-success" data-testid="doc-upload-done">
-            <CheckCircle2 className="h-4 w-4" /> {chunks} 个片段已入库
+            <CheckCircle2 className="h-4 w-4" /> 已创建摄取任务，正在打开流水线视图…
             <button type="button" onClick={reset} className="ml-3 text-xs text-text-muted">
               再传一份
             </button>

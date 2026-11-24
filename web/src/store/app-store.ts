@@ -486,6 +486,8 @@ export interface AppState {
   // default unchanged.
   // Phase 52 — 'llm' (第 12 tab, LLM Provider 配置面板) extends the
   // union; default unchanged.
+  // Phase 55 — 'ingest' (第 13 tab, 摄取任务) extends the union; default
+  // unchanged.
   adminSubroute:
     | 'batches'
     | 'bases'
@@ -498,7 +500,15 @@ export interface AppState {
     | 'pipeline'
     | 'governance'
     | 'platform'
-    | 'llm';
+    | 'llm'
+    | 'ingest';
+  // Phase 55 — 摄取任务交接（DocUpload 2xx -> IngestTab 详情）。
+  // DATA FLOW CONTRACT: the ONLY writer is DocUpload's success branch; the
+  // ONLY reader is IngestTab's mount effect, which clears it immediately
+  // after reading (read-then-clear). Nothing persists: a page refresh
+  // lands back on the Jobs list (no deep-link, matching the 39 rule that
+  // every admin subroute keeps the URL at /admin).
+  ingestFocusJobId: string | null;
   indexReports: IndexRun[];
   auditRows: AuditRow[];
   auditFilter: AuditFilter;
@@ -581,8 +591,11 @@ export interface AppActions {
       | 'pipeline'
       | 'governance'
       | 'platform'
-      | 'llm',
+      | 'llm'
+      | 'ingest',
   ): void;
+  // Phase 55 — the upload -> ingest-detail handoff (see ingestFocusJobId).
+  setIngestFocusJobId(id: string | null): void;
   setIndexReports(runs: IndexRun[]): void;
   setAuditRows(rows: AuditRow[]): void;
   setAuditFilter(filter: AuditFilter): void;
@@ -681,6 +694,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   evalSubroute: 'dashboard',
   // Plan 20-01 (ADM-01) — admin console subroute. Default 'batches'.
   adminSubroute: 'batches',
+  // Phase 55 — no pending handoff on boot.
+  ingestFocusJobId: null,
   indexReports: [],
   auditRows: [],
   auditFilter: { limit: 100, offset: 0 },
@@ -971,6 +986,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   setEvalSubroute: (sub) => set({ evalSubroute: sub }),
   // Plan 20-01 (ADM-01) — admin console subroute action.
   setAdminSubroute: (sub) => set({ adminSubroute: sub }),
+  setIngestFocusJobId: (id) => set({ ingestFocusJobId: id }),
   setIndexReports: (runs) => set({ indexReports: runs }),
   setAuditRows: (rows) => set({ auditRows: rows }),
   setAuditFilter: (filter) => set({ auditFilter: filter }),

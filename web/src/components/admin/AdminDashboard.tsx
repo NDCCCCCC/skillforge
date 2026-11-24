@@ -20,6 +20,7 @@
 //   Plan 29-08 (D-29-12) — 反馈 + 复核 tabs; /admin owns its SfToast.
 //   Plans 38-05 / 39-08 / 40-07a / 41-04 / Phase 52 — ontology /
 //     pipeline / governance / platform / llm tabs.
+//   Phase 55 — 摄取任务 (ingest) tab, 数据组第 3 位.
 //   Admin UI redesign 2610 — sidebar shell + grouped navigation.
 
 import { useEffect, useState } from 'react';
@@ -37,6 +38,7 @@ import {
   SlidersHorizontal,
   Wrench,
   Workflow,
+  FileStack,
 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAppStore } from '../../store/app-store';
@@ -56,6 +58,7 @@ import PipelineTab from './pipeline/PipelineTab';
 import GovernanceTab from './governance/GovernanceTab';
 import PlatformTab from './platform/PlatformTab';
 import LLMProviderPanel from './llm/LLMProviderPanel';
+import IngestTab from './ingest/IngestTab';
 
 export type AdminSubroute =
   | 'batches'
@@ -69,7 +72,8 @@ export type AdminSubroute =
   | 'pipeline'
   | 'governance'
   | 'platform'
-  | 'llm';
+  | 'llm'
+  | 'ingest';
 
 interface NavItem {
   key: AdminSubroute;
@@ -89,6 +93,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'batches', label: '导入批次', icon: <Database className="h-4 w-4" />, testId: 'admin-tab-batches' },
       { key: 'bases', label: '知识库', icon: <BookOpen className="h-4 w-4" />, testId: 'admin-tab-bases' },
+      { key: 'ingest', label: '摄取任务', icon: <FileStack className="h-4 w-4" />, testId: 'admin-tab-ingest' },
     ],
   },
   {
@@ -269,6 +274,7 @@ export default function AdminDashboard() {
           {adminSubroute === 'governance' && <GovernanceTab />}
           {adminSubroute === 'platform' && <PlatformTab />}
           {adminSubroute === 'llm' && <LLMProviderPanel />}
+          {adminSubroute === 'ingest' && <IngestTab />}
         </main>
       </div>
 

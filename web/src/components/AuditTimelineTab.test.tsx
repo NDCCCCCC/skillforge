@@ -16,7 +16,7 @@ beforeEach(() => {
     status: 200,
     json: async () => ({ rows: [] }),
   })));
-  useAppStore.setState((s) => ({ activeSessionId: 'sess-a' }));
+  useAppStore.setState({ activeSessionId: 'sess-a' });
 });
 
 afterEach(() => {

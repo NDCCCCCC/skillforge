@@ -94,7 +94,15 @@ type JobStore interface {
 	// an active owner already.
 	ClaimJobRetry(ctx context.Context, jobID string, now time.Time) (bool, error)
 
-	// ListResumable returns jobs in the boot-recovery scan states
+	// ListJobs returns EVERY job row, newest first (created_at DESC,
+// rowid DESC as the exact-tie tiebreak -- the same ordering rule as
+// GetJobBySHA256). It is the admin Jobs list read (55-03): the FE
+// needs the full roster, not just the resumable subset. A store
+// failure surfaces (never a silently empty list -- an empty list
+// would render as "no ingest jobs" and lie).
+ListJobs(ctx context.Context) ([]Job, error)
+
+// ListResumable returns jobs in the boot-recovery scan states
 	// (54-03 SC 8): running (crash residue) and queued (enqueued but the
 	// process died before claiming). Ordered by created_at ascending so
 	// recovery replays the original enqueue order.

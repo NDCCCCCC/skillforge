@@ -122,6 +122,98 @@ type ingestItemDTO struct {
 	Error   string `json:"error"`
 }
 
+// buildIngestJobDTO projects one job row + its step rows + its failure
+// ledger into the wire envelope. This is the ONE place the field mapping
+// lives -- the :id endpoint and the list endpoint both call it, so the two
+// surfaces cannot drift (55-03 consumes both).
+func buildIngestJobDTO(ctx context.Context, runner *ingest.Runner, job ingest.Job) (ingestJobDTO, error) {
+steps, err := runner.ListSteps(ctx, job.JobID)
+if err != nil {
+return ingestJobDTO{}, err
+}
+
+dtos := make([]ingestStepDTO, 0, len(steps))
+for _, r := range steps {
+dtos = append(dtos, ingestStepDTO{
+Step:        r.Step,
+Status:      r.Status,
+Attempt:     r.Attempt,
+StartedAt:   r.StartedAt,
+CompletedAt: r.CompletedAt,
+DurationMS:  durationMS(r.StartedAt, r.CompletedAt),
+Error:       r.Error,
+ArtifactRef: r.ArtifactRef,
+})
+}
+
+// 54-03 SC 7 -- failed_items projection: the embed step's failure
+// ledger (embed_failed.json artifact), surfaced verbatim. A job
+// without ledgered failures (or pre-54-03) simply omits the file.
+var failedItems []ingestItemDTO
+if raw, aerr := runner.ReadArtifact(job.JobID, "embed_failed.json"); aerr == nil {
+var ledger []struct {
+Key   string `json:"Key"`
+Error string `json:"Error"`
+}
+if json.Unmarshal(raw, &ledger) == nil {
+for _, f := range ledger {
+failedItems = append(failedItems, ingestItemDTO{
+Step:    "embed",
+ItemKey: f.Key,
+Status:  "failed",
+Error:   f.Error,
+})
+}
+}
+}
+
+return ingestJobDTO{
+JobID:       job.JobID,
+Slug:        job.Slug,
+Filename:    job.Filename,
+SHA256:      job.SHA256,
+DocID:       job.DocID,
+Status:      job.Status,
+Error:       job.Error,
+CreatedAt:   job.CreatedAt,
+UpdatedAt:   job.UpdatedAt,
+Steps:       dtos,
+FailedItems: failedItems,
+}, nil
+}
+
+// adminIngestJobsListHandler implements GET /api/admin/ingest/jobs.
+//
+// This endpoint was a declared-but-unbuilt half of 54-01 Task 3 (only the
+// :id read landed). 55-03's Jobs view needs the roster; without it the FE
+// would have to render a fake empty state ("暂无摄取任务") while jobs
+// exist -- a lie. Error mapping: store I/O -> 500 with the IN-04 posture
+// (detail logged, never leaked); an EMPTY roster is a real 200 with an
+// empty array (the FE may then say "no jobs" honestly).
+func (s *Deps) adminIngestJobsListHandler(ctx context.Context, c *app.RequestContext) {
+runner, ok := s.requireIngest(c)
+if !ok {
+return
+}
+jobs, err := runner.ListJobs(ctx)
+if err != nil {
+log.Printf("[WARN] server: ingest job list failed: %v", err)
+c.JSON(http.StatusInternalServerError, graphResponseError{Error: "ingest job list failed"})
+return
+}
+out := make([]ingestJobDTO, 0, len(jobs))
+for _, j := range jobs {
+dto, derr := buildIngestJobDTO(ctx, runner, j)
+if derr != nil {
+log.Printf("[WARN] server: ingest job %s step listing failed: %v", j.JobID, derr)
+c.JSON(http.StatusInternalServerError, graphResponseError{Error: "ingest job list failed"})
+return
+}
+out = append(out, dto)
+}
+c.JSON(http.StatusOK, map[string]any{"jobs": out})
+}
+
 // adminIngestJobHandler implements GET /api/admin/ingest/jobs/:id.
 func (s *Deps) adminIngestJobHandler(ctx context.Context, c *app.RequestContext) {
 	runner, ok := s.requireIngest(c)
@@ -142,62 +234,13 @@ func (s *Deps) adminIngestJobHandler(ctx context.Context, c *app.RequestContext)
 		return
 	}
 
-	steps, err := runner.ListSteps(ctx, jobID)
+	dto, err := buildIngestJobDTO(ctx, runner, job)
 	if err != nil {
 		log.Printf("[WARN] server: ingest job %s step listing failed: %v", jobID, err)
 		c.JSON(http.StatusInternalServerError, graphResponseError{Error: "ingest job lookup failed"})
 		return
 	}
-
-	dtos := make([]ingestStepDTO, 0, len(steps))
-	for _, r := range steps {
-		dtos = append(dtos, ingestStepDTO{
-			Step:        r.Step,
-			Status:      r.Status,
-			Attempt:     r.Attempt,
-			StartedAt:   r.StartedAt,
-			CompletedAt: r.CompletedAt,
-			DurationMS:  durationMS(r.StartedAt, r.CompletedAt),
-			Error:       r.Error,
-			ArtifactRef: r.ArtifactRef,
-		})
-	}
-
-	// 54-03 SC 7 — failed_items projection: the embed step's failure
-	// ledger (embed_failed.json artifact), surfaced verbatim. A job
-	// without ledgered failures (or pre-54-03) simply omits the file —
-	// the field stays nil and the JSON omits nothing meaningful.
-	var failedItems []ingestItemDTO
-	if raw, err := runner.ReadArtifact(jobID, "embed_failed.json"); err == nil {
-		var ledger []struct {
-			Key   string `json:"Key"`
-			Error string `json:"Error"`
-		}
-		if json.Unmarshal(raw, &ledger) == nil {
-			for _, f := range ledger {
-				failedItems = append(failedItems, ingestItemDTO{
-					Step:    "embed",
-					ItemKey: f.Key,
-					Status:  "failed",
-					Error:   f.Error,
-				})
-			}
-		}
-	}
-
-	c.JSON(http.StatusOK, ingestJobDTO{
-		JobID:       job.JobID,
-		Slug:        job.Slug,
-		Filename:    job.Filename,
-		SHA256:      job.SHA256,
-		DocID:       job.DocID,
-		Status:      job.Status,
-		Error:       job.Error,
-		CreatedAt:   job.CreatedAt,
-		UpdatedAt:   job.UpdatedAt,
-		Steps:       dtos,
-		FailedItems: failedItems,
-	})
+	c.JSON(http.StatusOK, dto)
 }
 
 // durationMS derives the wall-clock duration of one step from its stored

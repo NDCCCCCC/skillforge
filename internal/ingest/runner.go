@@ -423,6 +423,13 @@ func (r *Runner) GetJob(ctx context.Context, jobID string) (Job, error) {
 	return r.jobs.GetJob(ctx, jobID)
 }
 
+// ListJobs returns every job row, newest first -- the admin Jobs list
+// read (55-03). Walks the Runner (never the store) so the handler keeps
+// its single seam.
+func (r *Runner) ListJobs(ctx context.Context) ([]Job, error) {
+return r.jobs.ListJobs(ctx)
+}
+
 // ListSteps returns the job's step rows in StepSequence order.
 func (r *Runner) ListSteps(ctx context.Context, jobID string) ([]StepRow, error) {
 	return r.jobs.ListSteps(ctx, jobID)

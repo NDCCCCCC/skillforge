@@ -160,6 +160,16 @@ func (m *memJobStore) CascadeStale(ctx context.Context, jobID, fromStep string, 
 	return int64(staled), nil
 }
 
+func (m *memJobStore) ListJobs(ctx context.Context) ([]Job, error) {
+m.mu.Lock()
+defer m.mu.Unlock()
+var out []Job
+for _, j := range m.jobs {
+out = append(out, j)
+}
+return out, nil
+}
+
 func (m *memJobStore) ListResumable(ctx context.Context) ([]Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

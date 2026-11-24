@@ -110,7 +110,8 @@ describe('AdminDashboard — ontology tab', () => {
     useAppStore.setState({ adminSubroute: 'batches' });
     render(<AdminDashboard />);
     const tabs = screen.getByTestId('admin-subroute-tabs');
-    expect(tabs.querySelectorAll('button')).toHaveLength(12);
+    // 13 sidebar entries (Phase 55 added 摄取任务 to the 数据 group).
+    expect(tabs.querySelectorAll('button')).toHaveLength(13);
     fireEvent.click(screen.getByTestId('admin-tab-ontology'));
     expect(await screen.findByTestId('ontology-tab')).toBeInTheDocument();
   });

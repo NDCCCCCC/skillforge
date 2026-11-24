@@ -97,5 +97,11 @@ raw-never-*
 # SkillForge 本机 LLM 配置（含 API key 明文 / 环境变量引用，绝不入库）
 /.skillforge/
 
+# 摄取流水线测试的默认落盘根（54-01 的 runner seam 使用 knowledge.Persist*
+# 默认值，未注入 TempDir 的用例会在包目录里留下 data/uploads 与 knowledge/
+# 副本）。这些是运行残留，不是源码。
+/internal/ingest/data/
+/internal/ingest/knowledge/
+
 # Claude agent worktrees (historical full-tree copies; never commit)
 .claude/worktrees/

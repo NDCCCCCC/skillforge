@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Plan 39-08 — ECL pipeline tab tests. Pins the 39-UI-SPEC contract:
-//   - AdminDashboard renders 9 tabs; ECL 管线 (admin-tab-pipeline) mounts
-//     PipelineTab and the URL stays /admin
+//   - AdminDashboard renders the full sidebar (13 entries as of Phase 55);
+//     ECL 管线 (admin-tab-pipeline) mounts PipelineTab and the URL stays /admin
 //   - Poll cadence: 2s while a run is active, re-armed to 10s on done
 //     (D-Prog-01) — proven under vi.useFakeTimers
 //   - Run flow: confirm-gated POST; 409 renders the locked conflict toast
@@ -113,12 +113,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('AdminDashboard — pipeline tab (the 9th tab)', () => {
-  it('renders 11 subroute tabs and activates the ECL 管线 tab; URL stays /admin', async () => {
+describe('AdminDashboard — pipeline tab (registered after Phase 55 ingest)', () => {
+  it('renders all 13 sidebar entries and activates the ECL 管线 tab; URL stays /admin', async () => {
     useAppStore.setState({ adminSubroute: 'batches' });
     render(<AdminDashboard />);
     const tabs = screen.getByTestId('admin-subroute-tabs');
-    expect(tabs.querySelectorAll('button')).toHaveLength(12);
+    // 13 nav entries (Phase 55 added 摄取任务 as the 3rd 数据-group item).
+    expect(tabs.querySelectorAll('button')).toHaveLength(13);
     fireEvent.click(screen.getByTestId('admin-tab-pipeline'));
     expect(await screen.findByTestId('pipeline-tab')).toBeInTheDocument();
     expect(screen.getByTestId('admin-tab-pipeline')).toHaveTextContent('ECL 管线');

@@ -51,6 +51,7 @@ describe('AdminDashboard — 12 tabs (admin UI redesign 2610, grouped sidebar)',
     expect(tabOrder()).toEqual([
       '导入批次',
       '知识库',
+      '摄取任务',
       'KPI 定义',
       'Skill 管理',
       '定时任务',
@@ -67,10 +68,12 @@ describe('AdminDashboard — 12 tabs (admin UI redesign 2610, grouped sidebar)',
     expect(screen.getAllByTestId('admin-tab-review')).toHaveLength(1);
   });
 
-  it('has 12 tabs total with 模型配置 as the 12th entry', () => {
+  it('has 13 entries with 摄取任务 third and 模型配置 still last', () => {
     render(<AdminDashboard />);
-    expect(tabOrder()).toHaveLength(12);
-    expect(tabOrder()[11]).toBe('模型配置');
+    // 13 sidebar entries (Phase 55 added 摄取任务 to the 数据 group).
+    expect(tabOrder()).toHaveLength(13);
+    expect(tabOrder()[2]).toBe('摄取任务');
+    expect(tabOrder()[12]).toBe('模型配置');
   });
 
   it('defaults to the 批次 tab (store default untouched by the union extension)', () => {

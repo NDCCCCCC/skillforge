@@ -655,7 +655,13 @@ func New(addr string, deps *Deps) *server.Hertz {
 	// accepts a multipart/form-data file, verifies magic bytes, parses it
 	// into chunks, embeds each chunk, and inserts into the vector backend.
 	h.POST("/api/admin/kb/:slug/upload", deps.uploadHandler)
-	h.POST("/api/admin/ingest/jobs/:id/steps/:step/retry", deps.adminIngestStepRetryHandler)
+	// Phase 54-01 declared both ingest reads; only the :id read landed.
+// 55-03 wires the roster read (GET .../jobs) that the admin Jobs view
+// consumes -- an absent roster would force the FE to fake an empty
+// list while jobs exist.
+h.GET("/api/admin/ingest/jobs", deps.adminIngestJobsListHandler)
+h.GET("/api/admin/ingest/jobs/:id", deps.adminIngestJobHandler)
+h.POST("/api/admin/ingest/jobs/:id/steps/:step/retry", deps.adminIngestStepRetryHandler)
 	// Phase 53-03 (ING-03 / D-53-03) — document delete verb. The trailing
 	// doc_id is a Hertz WILDCARD (*doc_id), not a single-segment :param:
 	// a doc_id IS a slash path ("authority/<sha8>-<stem>.md") and must ride

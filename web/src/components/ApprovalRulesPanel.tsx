@@ -10,7 +10,7 @@
 //   - EMPTY STATE two-part (PANEL-03): guidance + suggestion cards
 //   - highlight consumption (56-03 rule-matched -> highlightApprovalRuleId)
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { useAppStore } from '../store/app-store';
 import {
@@ -83,8 +83,11 @@ export default function ApprovalRulesPanel() {
     const sugg = await fetchRuleSuggestions(activeSessionId);
     setSuggestions(sugg);
     setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- terminalStatus
-    // is a deliberate invalidation trigger (see 56-01 review).
+    // terminalStatus is a deliberate invalidation TRIGGER, not a read: an
+    // approve-and-remember terminalization must refetch the rule list even
+    // though the value itself is unused. Referencing it here keeps the
+    // dependency honest instead of suppressing the lint rule (56-01 review).
+    void terminalStatus;
   }, [activeSessionId, currentSkillId, terminalStatus]);
 
   useEffect(() => {
@@ -93,10 +96,8 @@ export default function ApprovalRulesPanel() {
 
   // 56-03 highlight consumption: the rule the chat stream just
   // auto-passed gets a 2.5s highlight band, then the transient clears.
-  const [highlightTick, setHighlightTick] = useState(0);
   useEffect(() => {
     if (highlightRuleId) {
-      setHighlightTick((n) => n + 1);
       const t = setTimeout(() => setHighlightRuleId(null), HIGHLIGHT_MS);
       return () => clearTimeout(t);
     }
