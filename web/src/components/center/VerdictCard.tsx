@@ -33,6 +33,7 @@ import { STATUS_LABELS } from '../common/StatusBadge';
 import StatusBadge from '../common/StatusBadge';
 import ComplianceStatusBadge from '../common/ComplianceStatusBadge';
 import CitationCluster from './CitationCluster';
+import EntityGroundingReport from '../verdict/EntityGroundingReport';
 
 // Border color maps the platform Status (not ComplianceStatus) so the
 // card frame reflects "did we produce a grounded answer?" — the
@@ -217,6 +218,11 @@ export default function VerdictCard({ verdict, chatText }: VerdictCardProps) {
         </span>
       )}
       <CitationCluster citations={verdict.citations} />
+      {/* Phase 57-03 (ONT-03) -- entity grounding report. Absent
+          `entities` means the check did not run (no KG wired) and the
+          component renders NOTHING; that is deliberately different from
+          "checked and found nothing". */}
+      <EntityGroundingReport entities={verdict.entities} />
     </div>
   );
 }

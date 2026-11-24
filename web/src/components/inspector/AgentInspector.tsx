@@ -36,6 +36,7 @@ import { Activity } from 'lucide-react';
 import type { UIMessage } from 'ai';
 import InspectorHop from './InspectorHop';
 import StepTree from './StepTree';
+import KGAnchorLine from './KGAnchorLine';
 import { buildStepTree, extractSyntheticTodos } from './step-tree';
 import { useAppStore } from '../../store/app-store';
 import type { Hop, ToolCallRow, RetrievalRow, DecisionValue } from './hop-types';
@@ -163,6 +164,32 @@ export default function AgentInspector({
   const planState = useAppStore((s) =>
     currentRunId ? s.plan.planByRunId[currentRunId] : undefined,
   );
+  // Phase 57-02 (ONT-02) -- the anchor line reads the ontology_anchor
+  // data-decision event emitted by the BE (kgAvailable / entitiesMatched /
+  // anchorEntities). Absent event -> undefined -> the line renders
+  // nothing (the inspector's own states own that moment).
+  const kgAnchor = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== 'assistant') continue;
+      for (const part of m.parts) {
+        const p = part as {
+          type?: string;
+          data?: {
+            decision?: string;
+            kgAvailable?: boolean;
+            entitiesMatched?: number;
+            anchorEntities?: string;
+          };
+        };
+        if (p.type === 'data-decision' && p.data?.decision === 'ontology_anchor') {
+          return p.data;
+        }
+      }
+    }
+    return undefined;
+  }, [messages]);
+
   const stepNodes = useMemo(() => {
     const sliceTodos = planState && planState.todos.length > 0 ? planState.todos : [];
     const todos = sliceTodos.length > 0 ? sliceTodos : extractSyntheticTodos(hops);
@@ -206,6 +233,11 @@ export default function AgentInspector({
       <div className="text-xs text-text-muted">
         当前回合 {hops.length} 跳{isStreaming ? ' · 进行中' : ''}
       </div>
+      <KGAnchorLine
+        kgAvailable={kgAnchor?.kgAvailable}
+        entitiesMatched={kgAnchor?.entitiesMatched}
+        anchorEntities={kgAnchor?.anchorEntities}
+      />
       <StepTree nodes={stepNodes} isStreaming={isStreaming} />
       {hops.map((hop) => (
         <InspectorHop

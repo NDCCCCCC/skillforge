@@ -86,6 +86,19 @@ export interface Verdict {
   /** 49-02 (D-08): "stub" when the deterministic extractor (not an LLM)
    * produced this verdict. Optional + omitempty on the Go wire. */
   mode?: VerdictMode;
+  /** Phase 57-03 (ONT-03) — entity grounding report. Mirrors Go
+   * `Entities *EntityGrounding json:"entities,omitempty"`.
+   * ABSENT means entity grounding did not run (no KG wired) — that is
+   * NOT a failure and the FE must not render it as one. */
+  entities?: EntityGrounding;
+}
+
+/** Entity-level grounding report (ONT-03). `unverified` non-empty is a
+ * real risk signal: the answer named entities the authorized corpus KG
+ * does not know, and the BE has therefore forced review_required. */
+export interface EntityGrounding {
+  verified: string[];
+  unverified: string[];
 }
 
 // Citation struct — mirrors internal/verdict/citation.go (D2-06)

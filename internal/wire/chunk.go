@@ -180,9 +180,9 @@ type TruncationPayload struct {
 //     the SAME data-decision envelope (D-04 / D15 — no new chunk type;
 //     DataRef / ReportCard follow the identical pattern).
 type DecisionPayload struct {
-	Step           int             `json:"step"`     // 1-indexed hop number (1 or 2 for max_hops=2)
-	Decision       string          `json:"decision"` // wire.DecisionForcedStop (12-05) and the catalog in types.go — extend ADDITIVELY; never repurpose an existing value
-	RunPath        string          `json:"runPath,omitempty"`     // P13-L7 — fanout_* events only; slash-separated agent path
+	Step           int             `json:"step"`                   // 1-indexed hop number (1 or 2 for max_hops=2)
+	Decision       string          `json:"decision"`               // wire.DecisionForcedStop (12-05) and the catalog in types.go — extend ADDITIVELY; never repurpose an existing value
+	RunPath        string          `json:"runPath,omitempty"`      // P13-L7 — fanout_* events only; slash-separated agent path
 	TransferFrom   string          `json:"transferFrom,omitempty"` // P13-L7 — fanout_* events only; parent run ID
 	TransferTo     string          `json:"transferTo,omitempty"`   // P13-L7 — fanout_* events only; sub_query_id
 	ToolCallID     string          `json:"toolCallId,omitempty"`
@@ -197,6 +197,18 @@ type DecisionPayload struct {
 	RuleID         int64           `json:"ruleId,omitempty"`         // 56-02 D-56-02 — rule-matched only; the auto-passing rule's surrogate id
 	RuleMatchType  string          `json:"ruleMatchType,omitempty"`  // 56-02 D-56-02 — rule-matched only; exact | prefix | template
 	RuleScope      string          `json:"ruleScope,omitempty"`      // 56-02 D-56-02 — rule-matched only; session | skill | global
+
+	// Phase 57-02 (ONT-02) -- ontology observability on the retrieve
+	// decision. ADDITIVE ONLY (D15): every field is omitempty, so a
+	// producer that does not wire the KG emits the exact same JSON as
+	// before and every legacy consumer keeps working.
+	//
+	//	KGAvailable    -- false means the turn degraded to pure vector.
+	//	EntitiesMatched -- anchored entity count (0 is a real answer).
+	//	AnchorEntities  -- the anchored labels, comma-joined.
+	KGAvailable     *bool  `json:"kgAvailable,omitempty"`
+	EntitiesMatched *int   `json:"entitiesMatched,omitempty"`
+	AnchorEntities  string `json:"anchorEntities,omitempty"`
 }
 
 // TurnPayload is the JSON shape carried by data-turn SSE chunks
@@ -261,15 +273,15 @@ type PointReference struct {
 //   - KMinApplied: the k_min threshold value in effect for this execution
 //     (file k_min > dataset override > KMinDefault=5).
 type DataReference struct {
-	Func        string         `json:"func"`                  // KPI function name (registry key)
-	Args        map[string]any `json:"args,omitempty"`        // caller-supplied parameters (enum/pattern-validated)
-	ASOfPeriod  string         `json:"asOfPeriod"`            // data-set latest period watermark (D16-B4)
-	ASOfTs      string         `json:"asOfTs"`                // invocation timestamp (RFC3339)
-	RowCount    int            `json:"rowCount"`              // total rows in snapshot (including suppressed — D16-D1)
-	Suppressed  int            `json:"suppressed"`            // suppressed row count (D16-D1)
-	KMinApplied int            `json:"kMinApplied"`           // k_min threshold in effect
+	Func        string         `json:"func"`           // KPI function name (registry key)
+	Args        map[string]any `json:"args,omitempty"` // caller-supplied parameters (enum/pattern-validated)
+	ASOfPeriod  string         `json:"asOfPeriod"`     // data-set latest period watermark (D16-B4)
+	ASOfTs      string         `json:"asOfTs"`         // invocation timestamp (RFC3339)
+	RowCount    int            `json:"rowCount"`       // total rows in snapshot (including suppressed — D16-D1)
+	Suppressed  int            `json:"suppressed"`     // suppressed row count (D16-D1)
+	KMinApplied int            `json:"kMinApplied"`    // k_min threshold in effect
 	// NEW (D17-B2): multi-point array — N=1 for single-period calls.
-	References  []PointReference `json:"references,omitempty"`
+	References []PointReference `json:"references,omitempty"`
 }
 
 // SkillScore is one ranked candidate Skill in a DecisionPayload's

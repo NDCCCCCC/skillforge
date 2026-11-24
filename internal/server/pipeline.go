@@ -307,7 +307,16 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		return s.emitOperationalAnswer(ctx, c, sessionID, skillID, query, tiers, meta, chunks, qvec, now, manifest, historyMsgs)
 	}
 
+	// Phase 57-02 (ONT-02) -- entity anchoring + KG neighbourhood context.
+	// The fragment is PROMPT CONTEXT ONLY: nothing here can enter
+	// v.Citations (the orthogonality red line). A missing/unreadable KG
+	// degrades to pure vector and SAYS SO on the decision stream.
+	kgc := s.buildKGContext(ctx, retrieveQuery, manifest)
+	s.emitKGContextDecision(c, kgc)
 	systemPrompt, userPrompt := buildPrompt(query, chunks, manifest)
+	if kgc.PromptFragment != "" {
+		userPrompt += kgc.PromptFragment
+	}
 	raw, err := s.streamLLMAndDrain(ctx, c, manifest, systemPrompt, userPrompt, historyMsgs)
 	if err != nil {
 		return fmt.Errorf("verdict pipeline: LLM: %w", err)
@@ -367,6 +376,10 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	} else {
 		chunksByID = citableChunksByID(s.KBRegistry, chunks)
 	}
+	// Phase 57-03 (ONT-03) -- entity grounding: the answer's named
+	// entities must exist in the authorized corpus KG. A non-empty
+	// unverified list downgrades exactly like a span failure.
+	 v = s.applyEntityGrounding(v)
 	groundReport := verdict.GroundingCheck(v, chunksByID)
 	v = verdict.GroundingChecker(v, chunksByID)
 	if !groundReport.Grounded {

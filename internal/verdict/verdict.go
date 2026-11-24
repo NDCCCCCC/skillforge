@@ -94,6 +94,29 @@ type Verdict struct {
 	// unchanged wire shape. It records answer provenance honestly — a stub
 	// answer must never masquerade as model-generated (SC3 / D-09).
 	Mode string `json:"mode,omitempty"`
+
+	// Entities is the Phase 57-03 (ONT-03) grounding-entity report.
+	// ADDITIVE + omitempty: producers that do not wire the KG emit an
+	// unchanged JSON shape, so every existing consumer (contract test,
+	// FE verdict parser, audit replay) keeps working unmodified.
+	//
+	// Verified   -- entities the answer named that the authorized corpus
+	//               KG confirms.
+	// Unverified -- entities the answer named that the KG does NOT
+	//               confirm. A non-empty list is a real risk signal: the
+	//               grounding policy forces review_required and caps
+	//               confidence, exactly like a span-grounding failure.
+	Entities *EntityGrounding `json:"entities,omitempty"`
+}
+
+// EntityGrounding is the entity-level grounding report (ONT-03).
+//
+// The list is capped by the checker (MaxReportedEntities per bucket) so
+// an adversarial answer cannot inflate the wire payload. Order is stable
+// (sorted) so replays and audit rows are reproducible.
+type EntityGrounding struct {
+	Verified   []string `json:"verified"`
+	Unverified []string `json:"unverified"`
 }
 
 // ModeStub is the only wire value Mode may carry today. stubchat and the

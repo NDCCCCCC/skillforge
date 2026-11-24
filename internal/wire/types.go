@@ -141,4 +141,16 @@ const (
 	// 'rule-matched' in its union (line 242); this constant is the
 	// backend-side D15 lockstep ratification, not a wire-shape change.
 	DecisionRuleMatched = "rule-matched"
+
+	// DecisionOntologyAnchor is the Phase 57-02 (ONT-02) ontology
+	// observability event: it reports whether a KG took part in this turn
+	// (kgAvailable), how many entities anchored (entitiesMatched) and
+	// which labels matched (anchorEntities). The data-decision
+	// discriminator is unchanged -- a NEW VALUE in the Decision string
+	// enum, NOT a new wire chunk type (D16 overload pattern, same as
+	// P13-L7 fanout_* / D16-B3 kpi_reference / 56-02 rule-matched).
+	//
+	// Emitted even when the KG is absent (kgAvailable=false): the
+	// degraded posture is an operator-visible FACT, never a silent gap.
+	DecisionOntologyAnchor = "ontology_anchor"
 )

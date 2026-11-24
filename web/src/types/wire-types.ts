@@ -276,7 +276,13 @@ export interface DecisionPayload {
     // Both mirror wire constants in internal/wire/chunk.go
     // (DecisionReportPublished / DecisionPlanChangeRequested).
     | 'report_published'
-    | 'plan_change_requested';
+    | 'plan_change_requested'
+    // Phase 57-02 / ONT-02 — ontology observability event. It reports
+    // whether a KG took part (kgAvailable), how many entities anchored
+    // (entitiesMatched) and which labels matched (anchorEntities). The
+    // discriminator is unchanged (D16 overload); D15 lockstep with
+    // internal/wire/types.go DecisionOntologyAnchor.
+    | 'ontology_anchor';
   /** Links the decision to a specific tool invocation (may be empty). */
   toolCallId?: string;
   /** The (possibly refined) query for a retrieve decision. */
@@ -308,6 +314,15 @@ export interface DecisionPayload {
    *  The published report card (title/period/version/url). Mirrors Go
    *  json:"reportCard,omitempty" (WR-02 18-REVIEW lockstep fix). */
   reportCard?: ReportCard;
+  /** Phase 57-02 / ONT-02 — populated only on `ontology_anchor` decisions.
+   *  false means this turn degraded to PURE VECTOR retrieval and the FE
+   *  must say so. Mirrors Go `KGAvailable *bool json:"kgAvailable,omitempty"`. */
+  kgAvailable?: boolean;
+  /** Anchored entity count (0 is a real answer: "the dictionary exists,
+   *  the question named nothing in it"). Mirrors Go `EntitiesMatched *int`. */
+  entitiesMatched?: number;
+  /** The anchored labels, comma-joined — rendered as the anchor line. */
+  anchorEntities?: string;
 }
 
 // ----------------------------------------------------------------------------

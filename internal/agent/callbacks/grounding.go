@@ -61,13 +61,20 @@ type groundingCtxKey struct{}
 // ChatModel AfterModel seam (D11-A2 layer 3 — D2-01 grounding checker
 // reusing internal/verdict/grounding.go::Normalize).
 //
-// 11-01 ships a no-op stub: the handler logs "grounding.AfterModel
-// fired". The stub exists so the trust-staircase ordering is
-// verifiable in a future integration test; the full behavior lands
-// in 11-04 when the ChunkAccumulator is re-threaded through the
-// Runner path (the verdict.GroundingChecker needs chunksByID, which
-// the chatHandler boundary computes from the accumulator's
-// TierMatched map).
+// PHASE 57-03 (ONT-03) RETIREMENT NOTE: the "full behavior" the
+// 11-01 plan deferred does NOT land here, and that is the correct
+// end state — not an oversight. The AfterModel seam never receives
+// the retrieved chunk map, so span grounding physically cannot run
+// here; it runs at the chatHandler boundary (VerdictPipeline ->
+// verdict.GroundingChecker) where chunksByID exists. Entity grounding
+// (57-03) likewise runs at that boundary (applyEntityGrounding), fed
+// by the anchor dictionary. This handler therefore stays an
+// ordering-only probe: it logs, it never decides.
+//
+// What the stub used to promise is now delivered elsewhere:
+//   - span grounding   -> internal/verdict/grounding.go (D2-01/D2-02)
+//   - entity grounding -> internal/verdict/entities.go (ONT-03)
+//   - KG context       -> internal/server/ontology_context.go (ONT-02)
 //
 // The OnEnd signature follows eino@v0.9.14
 // utils/callbacks/template.go:525-528 (ModelCallbackHandler.OnEnd).
