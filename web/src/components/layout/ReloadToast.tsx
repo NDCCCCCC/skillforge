@@ -21,7 +21,7 @@
 //     the toast strips it to the basename (defense-in-depth).
 //
 // Mount at the App root.
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { CheckCircle2, FileWarning, X } from 'lucide-react';
 import { useAppStore } from '../../store/app-store';
 import type { SkillReloadEntry } from '../../store/app-store';
@@ -37,6 +37,21 @@ interface ToastItemProps {
 
 function ToastItem({ entry, skillId, onDismiss }: ToastItemProps) {
   const failed = entry.status === 'failed';
+
+  // Quick 261125-mk7 — per-item auto-dismiss. The timer lives HERE, keyed
+  // on the entry, not in a parent effect over the whole status map: the old
+  // parent implementation stored all setTimeout handles in one array and
+  // cleared them on every `skillReloadStatus` change, then re-skipped the
+  // already-seen entries via the ts watermark — so a second reload arriving
+  // within the 4s window (two toasts stacking, the live UAT symptom) killed
+  // the first toast's timer without ever re-creating it, and success toasts
+  // hung forever. Ownership per item survives sibling arrivals.
+  useEffect(() => {
+    if (entry.status !== 'ok') return;
+    const t = setTimeout(() => onDismiss(skillId), SUCCESS_AUTO_DISMISS_MS);
+    return () => clearTimeout(t);
+  }, [entry, skillId, onDismiss]);
+
   const borderClass = failed
     ? 'border-status-non-compliant'
     : 'border-status-compliant';
@@ -80,27 +95,6 @@ function ToastItem({ entry, skillId, onDismiss }: ToastItemProps) {
 export default function ReloadToast() {
   const skillReloadStatus = useAppStore((s) => s.skillReloadStatus);
   const clearSkillReloadStatus = useAppStore((s) => s.clearSkillReloadStatus);
-  const seenRef = useRef<Map<string, number>>(new Map());
-
-  // Auto-dismiss successful toasts after 4s; failure toasts persist
-  // until the user clicks the X (per UI-SPEC §SC-2).
-  useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    for (const [skillId, entry] of Object.entries(skillReloadStatus)) {
-      const lastSeen = seenRef.current.get(skillId) ?? 0;
-      if (entry.ts <= lastSeen) continue;
-      seenRef.current.set(skillId, entry.ts);
-      if (entry.status === 'ok') {
-        const t = setTimeout(() => {
-          clearSkillReloadStatus(skillId);
-        }, SUCCESS_AUTO_DISMISS_MS);
-        timers.push(t);
-      }
-    }
-    return () => {
-      for (const t of timers) clearTimeout(t);
-    };
-  }, [skillReloadStatus, clearSkillReloadStatus]);
 
   const entries = Object.entries(skillReloadStatus);
   if (entries.length === 0) return null;

@@ -10,8 +10,8 @@
 //   4. Clicking the dismiss button clears the entry from the store.
 //   5. Strips absolute filesystem paths in validation errors
 //      (T-5-14 — defense-in-depth).
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import ReloadToast from '../components/layout/ReloadToast';
 import { useAppStore } from '../store/app-store';
@@ -94,5 +94,67 @@ describe('ReloadToast', () => {
     expect(screen.getByTestId('reload-toast-failed')).toHaveTextContent('SKILL.md');
     // The full absolute path must NOT leak.
     expect(screen.getByTestId('reload-toast-failed')).not.toHaveTextContent('/etc/secrets/');
+  });
+
+  // Quick 261125-mk7 — regression for the stacked-toast hang: the old
+  // parent-level timers array got cleared when a second reload entry
+  // arrived within the 4s window and the ts watermark skipped re-arming,
+  // so success toasts never dismissed. Both toasts MUST be gone at 4s.
+  it('auto-dismisses BOTH stacked success toasts after 4s (261125-mk7)', () => {
+    vi.useFakeTimers();
+    try {
+      const t0 = Date.now();
+      useAppStore.setState({
+        skillReloadStatus: {
+          'simple-qa': { status: 'ok', version: 'v1', ts: t0, skillName: 'simple-qa' },
+        },
+      });
+      render(<ReloadToast />);
+      expect(screen.getByTestId('reload-toast-success')).toBeInTheDocument();
+
+      // Second skill reloads 1s later — the live stacking scenario.
+      vi.advanceTimersByTime(1000);
+      act(() => {
+        useAppStore.setState({
+          skillReloadStatus: {
+            'simple-qa': { status: 'ok', version: 'v1', ts: t0, skillName: 'simple-qa' },
+            'sql-guides': { status: 'ok', version: 'v2', ts: t0 + 1000, skillName: 'sql-guides' },
+          },
+        });
+      });
+      expect(screen.getAllByTestId('reload-toast-success')).toHaveLength(2);
+
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(screen.queryByTestId('reload-toast-success')).toBeNull();
+      expect(useAppStore.getState().skillReloadStatus).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps failure toasts past 4s; only the X dismisses them', () => {
+    vi.useFakeTimers();
+    try {
+      useAppStore.setState({
+        skillReloadStatus: {
+          'compliance-review': {
+            status: 'failed',
+            version: 'old-kept',
+            error: 'err',
+            ts: Date.now(),
+            skillName: 'compliance-review',
+          },
+        },
+      });
+      render(<ReloadToast />);
+      vi.advanceTimersByTime(4000);
+      expect(screen.getByTestId('reload-toast-failed')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('reload-toast-dismiss'));
+      expect(screen.queryByTestId('reload-toast-failed')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
