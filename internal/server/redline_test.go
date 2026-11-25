@@ -353,3 +353,49 @@ func TestRedline_OperationalSkillNeverFires(t *testing.T) {
 	_, _, ok := findRedlineFrame(frames)
 	assert.False(t, ok, "operational skill MUST NOT emit a data-redline chunk")
 }
+
+// TestRedline_SkipsEntityOnlyDowngrade is the 2026-11-25 regression:
+// a verdict that is needs_input SOLELY because the entity-grounding
+// report had no dictionary coverage must NOT trigger the redline pass.
+// The citations are byte-exact; proposing a clause rewrite would attach
+// a fabricated clause to a correct answer.
+func TestRedline_SkipsEntityOnlyDowngrade(t *testing.T) {
+	stub := &stubChatModel{cannedJSON: `{"originalClause":"a","proposedRewrite":"b","rationale":"c"}`}
+	deps := &Deps{ChatModel: stub}
+
+	v := verdict.Verdict{
+		Status:     verdict.DowngradeStatus,
+		Confidence: verdict.ConfidenceFloor,
+		Answer:     "住宿费超标 200 元以内的部分由部门负责人审批。",
+		Entities: &verdict.EntityGrounding{
+			Verified:   []string{},
+			Unverified: []string{"住宿费超标"},
+		},
+	}
+	frames := runRedlinePass(t, deps, v, map[string]string{"13": "clause"}, false)
+
+	assert.Equal(t, 0, stub.callCount(),
+		"an entity-only downgrade is not a policy gap -- Zero LLM calls (cost control)")
+	_, _, ok := findRedlineFrame(frames)
+	assert.False(t, ok, "no data-redline chunk may be emitted")
+}
+
+// TestRedline_StillFiresOnCitationGap keeps the ORIGINAL intent: a
+// needs_input with NO entity report (a citation/span gap) still
+// proposes a rewrite, because the clause genuinely is what failed.
+func TestRedline_StillFiresOnCitationGap(t *testing.T) {
+	stub := &stubChatModel{cannedJSON: `{"originalClause":"a","proposedRewrite":"b","rationale":"c"}`}
+	deps := &Deps{ChatModel: stub}
+
+	v := verdict.Verdict{
+		Status:     verdict.DowngradeStatus,
+		Confidence: verdict.ConfidenceFloor,
+		Answer:     "x",
+	}
+	frames := runRedlinePass(t, deps, v, map[string]string{"13": "clause"}, false)
+
+	assert.Equal(t, 1, stub.callCount(), "a citation gap must still propose a rewrite")
+	p, _, ok := findRedlineFrame(frames)
+	assert.True(t, ok)
+	assert.NotEmpty(t, p.ProposedRewrite)
+}

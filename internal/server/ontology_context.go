@@ -168,6 +168,27 @@ func (s *Deps) emitKGContextDecision(c *app.RequestContext, kgc KGContext) {
 
 // applyEntityGrounding runs ONT-03 and attaches the report to the verdict.
 // A nil report (no KG) leaves the verdict byte-identical to pre-57.
+// onlyEntityDowngrade reports whether the verdict's needs_input came
+// SOLELY from the entity-grounding pass (i.e. no citation/span
+// grounding failure happened).
+//
+// Why this distinction matters: emitRedline treats "needs_input" as a
+// POLICY GAP and proposes a clause rewrite. A span failure genuinely is
+// a policy gap (the model could not quote the clause). An entity report
+// with ZERO dictionary coverage is NOT -- the ontology simply was never
+// taught that domain, and the citations themselves are byte-exact.
+// Without this distinction a fully-correct, fully-quoted answer got a
+// fabricated clause rewrite attached to it (2026-11-25 live evidence).
+func onlyEntityDowngrade(v verdict.Verdict) bool {
+	if v.Entities == nil {
+		return false
+	}
+	if len(v.Entities.Verified) > 0 || len(v.Entities.Unverified) == 0 {
+		return false
+	}
+	return v.Status == verdict.DowngradeStatus
+}
+
 func (s *Deps) applyEntityGrounding(v verdict.Verdict) verdict.Verdict {
 	matcher := newAnchorMatcher(s)
 	if matcher == nil {
@@ -182,6 +203,32 @@ func (s *Deps) applyEntityGrounding(v verdict.Verdict) verdict.Verdict {
 		return v
 	}
 	v.Entities = report
+	// DOMAIN-COVERAGE GATE (2026-11-25 live regression).
+	//
+	// The anchor dictionary is built from the CORPUS KG, and that KG is
+	// populated for some domains and empty for others: this deployment's
+	// 989 triples cover the insurance business domain (organisations,
+	// product lines, table schemas) and NOTHING of the HR/policy domain
+	// the authority tier answers questions about (住宿 / 差旅 / 审批 /
+	// 报销 / 年假 -- all zero labels).
+	//
+	// Without this gate, EVERY authority answer named ordinary Chinese
+	// words that no KG could possibly contain, so every one of them was
+	// downgraded to needs_input @0.89 and additionally triggered the
+	// redline proposal pass. That is not "the answer named a fake
+	// entity"; it is "the ontology was never taught this domain", and
+	// the two must not be reported identically.
+	//
+	// The honest posture: when the dictionary cannot confirm a SINGLE
+	// candidate, the check has no discriminating power over this answer
+	// -- record the report (it stays visible in the wire payload and
+	// the audit row) but do NOT downgrade. When at least one candidate
+	// IS confirmed, the check is demonstrably working on this domain,
+	// and an unverified remainder is a real signal worth downgrading.
+	if len(report.Verified) == 0 && len(report.Unverified) > 0 {
+		log.Printf("[WARN] server: entity grounding found no dictionary coverage for this answer (%d unverified, 0 verified) -- reporting without downgrading (the KG does not cover this domain)", len(report.Unverified))
+		return v
+	}
 	return verdict.ApplyEntityGrounding(v, report)
 }
 

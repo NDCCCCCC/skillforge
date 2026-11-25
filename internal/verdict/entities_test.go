@@ -82,3 +82,36 @@ func TestApplyEntityGroundingNoOps(t *testing.T) {
 	once := ApplyEntityGrounding(v, &EntityGrounding{Unverified: []string{"x"}})
 	assert.Equal(t, once, ApplyEntityGrounding(once, &EntityGrounding{Unverified: []string{"x"}}))
 }
+
+// TestExtractEntityCandidatesDoesNotSplitChineseProse is the 2026-11-25
+// regression: Chinese has no word boundaries, so the pre-fix "bare
+// character run" rule turned ONE policy sentence into FOUR "entities"
+// (「住宿费超标」, 「元以内的部分由部门负责人审批」, ...), every one of
+// which was then reported as unverified and downgraded a fully-correct,
+// byte-exact-quoted answer to needs_input @0.89.
+func TestExtractEntityCandidatesDoesNotSplitChineseProse(t *testing.T) {
+	answer := "住宿费超标 200 元以内的部分由部门负责人审批；超过 200 元的部分须附书面情况说明并经分管副总审批；超标部分未经事前审批的不予计入报销总额。"
+	got := ExtractEntityCandidates(answer)
+	assert.Empty(t, got,
+		"an unquoted Chinese sentence names no entity -- CJK names must come from the corpus' quoted forms")
+}
+
+// TestExtractEntityCandidatesKeepsASCIIIdentifiers pins the half that
+// MUST survive: real ASCII entity codes are still candidates.
+func TestExtractEntityCandidatesKeepsASCIIIdentifiers(t *testing.T) {
+	got := ExtractEntityCandidates("依据 ISO9001 与 TRAVEL-2024，以及《年假制度》。")
+	assert.Contains(t, got, "ISO9001")
+	assert.Contains(t, got, "TRAVEL-2024")
+	assert.Contains(t, got, "年假制度")
+	// A bare number and a plain lowercase word are not entities.
+	assert.NotContains(t, got, "9001")
+	assert.NotContains(t, got, "the")
+}
+
+// TestExtractEntityCandidatesRejectsBareNumbers pins the value half of
+// the same regression: "…200 元以内…" produced the candidate "200".
+func TestExtractEntityCandidatesRejectsBareNumbers(t *testing.T) {
+	got := ExtractEntityCandidates("超标 200 元的部分须附书面情况说明。")
+	assert.NotContains(t, got, "200")
+	assert.Empty(t, got)
+}

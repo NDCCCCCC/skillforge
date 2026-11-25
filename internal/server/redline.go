@@ -133,6 +133,21 @@ func (s *Deps) emitRedline(ctx context.Context, c *app.RequestContext, v verdict
 	// 260817-vsm: OR'd check — Status=needs_input OR ComplianceStatus=
 	// non_compliant triggers the rewrite pass; everything else (incl. the
 	// happy path where ComplianceStatus="compliant") skips.
+	// ENTITY-ONLY DOWNGRADE IS NOT A POLICY GAP (2026-11-25).
+	//
+	// The gate below treats needs_input as "the auditor flagged a gap",
+	// which is right when the CITATIONS failed to ground: the model
+	// could not quote the clause, so the clause is what needs fixing.
+	// It is wrong when the ONLY reason for needs_input is the
+	// entity-grounding report, because that report can be empty of
+	// signal (the KG has no vocabulary for this domain) while the
+	// citations are byte-exact. Proposing a rewrite then attaches a
+	// FABRICATED clause to a correct answer -- the model invents
+	// thresholds and procedures the corpus never contained, and the
+	// operator sees them next to a real citation.
+	if onlyEntityDowngrade(v) {
+		return nil
+	}
 	if v.Status != verdict.DowngradeStatus && v.ComplianceStatus != verdict.NonCompliantStatus {
 		return nil
 	}

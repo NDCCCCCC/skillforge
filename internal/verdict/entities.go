@@ -86,18 +86,53 @@ func ExtractEntityCandidates(answer string) []string {
 		}
 	}
 
-	// Bare CJK/ASCII runs.
+	// Bare ASCII identifiers (uppercase-initial or all-caps runs, plus
+	// digit-bearing codes) are still real entity signals (e.g. "ABC",
+	// "TRAVEL-2024", "ISO9001"). CJK runs are NOT: Chinese has no word
+	// boundaries, so every unbroken sentence reads as one "run" -- the
+	// pre-fix behaviour turned a single policy sentence into four
+	// "entities" ("住宿费超标" / "元以内的部分由部门负责人审批" / ...),
+	// flagged all four as unverified, and downgraded EVERY authority
+	// answer to needs_input @0.89 (live regression 2026-11-25).
+	//
+	// CJK entity names are therefore only recognised through the quoted
+	// forms above (「」『』《》""), which is how the corpus itself marks
+	// them -- a bare CJK name that appears unquoted is indistinguishable
+	// from ordinary prose, and guessing would re-introduce the false
+	// positives this change removes.
 	var run strings.Builder
 	flush := func() {
-		if run.Len() > 0 {
-			add(run.String())
-			run.Reset()
+		if run.Len() == 0 {
+			return
+		}
+		tok := run.String()
+		run.Reset()
+		// Require an identifying shape: an uppercase letter, or a
+		// letter+digit code. A plain lowercase english word is ordinary
+		// prose ("the"), and a bare number ("200") is not an entity at
+		// all -- accepting it was the second half of the false-positive
+		// regression (the policy answer "…200 元以内…" yielded the
+		// candidate "200" and still downgraded the verdict).
+		hasUpper, hasDigit, hasLetter := false, false, false
+		for _, r := range tok {
+			switch {
+			case r >= 'A' && r <= 'Z':
+				hasUpper, hasLetter = true, true
+			case r >= 'a' && r <= 'z':
+				hasLetter = true
+			case r >= '0' && r <= '9':
+				hasDigit = true
+			}
+		}
+		if hasUpper || (hasDigit && hasLetter) {
+			add(tok)
 		}
 	}
 	for _, r := range answer {
-		isCJK := r >= 0x4E00 && r <= 0x9FFF
-		isLatin := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
-		if isCJK || isLatin {
+		isASCII := r < 0x80
+		isIdent := isASCII && ((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-')
+		if isIdent {
 			run.WriteRune(r)
 			continue
 		}
