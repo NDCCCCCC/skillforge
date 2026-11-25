@@ -39,6 +39,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // RedlinePayload is the JSON shape carried by data-redline SSE chunks.
@@ -92,11 +93,16 @@ func (r *RedlinePayload) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if raw.OriginalClause == nil {
-		return errors.New("redline payload: originalClause is required (V8)")
+	// PRESENCE is not enough (2026-11-25 live regression): the model returned
+	// {"originalClause":"","proposedRewrite":"","rationale":"<prose>"} and the
+	// card rendered an empty red/green diff. A clause rewrite with no clause
+	// and no rewrite is not a proposal -- it is a parse artifact. Both
+	// required fields must be non-blank after trimming.
+	if raw.OriginalClause == nil || strings.TrimSpace(*raw.OriginalClause) == "" {
+		return errors.New("redline payload: originalClause is required and must be non-empty (V8)")
 	}
-	if raw.ProposedRewrite == nil {
-		return errors.New("redline payload: proposedRewrite is required (V8)")
+	if raw.ProposedRewrite == nil || strings.TrimSpace(*raw.ProposedRewrite) == "" {
+		return errors.New("redline payload: proposedRewrite is required and must be non-empty (V8)")
 	}
 	if raw.Rationale == nil {
 		return errors.New("redline payload: rationale is required (V8)")

@@ -355,14 +355,36 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// 对含换行或 ``` 的 Answer 是原样 emit，FE 用 react-markdown 渲染成
 	// 可复制的代码块。
 	if codeOutput := agent.IsOperationalSkill(manifest); codeOutput {
-		v = verdict.Verdict{
-			Status:           "ok",
-			Answer:           strings.TrimSpace(raw),
-			Confidence:       0.9,
-			ComplianceStatus: "not_applicable",
-		}
-		if v.Answer == "" {
+		answer := strings.TrimSpace(raw)
+		if answer == "" {
 			return fmt.Errorf("verdict pipeline: operational skill produced empty answer")
+		}
+		// QUALITY GATE (2026-11-25). This branch used to hardcode
+		// Status="ok" + Confidence=0.9 for ANY non-empty text, so a
+		// degenerate answer ("no_relevant_source", a one-line apology, a
+		// truncated fragment) was reported as a confident answer. The
+		// operational channel has no citation to ground against, so the
+		// only available signal is the answer SHAPE: a SQL-generation run
+		// must actually return something code-shaped (a fence or a
+		// statement), otherwise it is a refusal dressed as an answer.
+		//
+		// Confidence follows the shape too: a shape-verified answer keeps
+		// 0.9; anything else is downgraded to needs_input at the floor,
+		// which is the same posture evidence mode uses for an unverifiable
+		// claim.
+		conf := 0.9
+		status := "ok"
+		if !looksLikeOperationalAnswer(answer) {
+			status = verdict.DowngradeStatus
+			conf = verdict.ConfidenceFloor
+			log.Printf("[WARN] server: operational answer has no code shape (sess=%s skill=%s) -- downgrading to %s", sessionID, skillID, status)
+		}
+		v = verdict.Verdict{
+			Status:           status,
+			Answer:           answer,
+			Confidence:       conf,
+			ComplianceStatus: verdict.NotApplicableStatus,
+			ReviewRequired:   status != "ok",
 		}
 	} else {
 		if err := json.Unmarshal([]byte(llm.ExtractJSON(raw)), &v); err != nil {
@@ -370,6 +392,26 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 		}
 		if ok, reason := verdict.Validate(v); !ok {
 			return fmt.Errorf("verdict pipeline: invalid verdict: %s (raw: %s)", reason, truncate(raw, 200))
+		}
+	}
+
+	// REFUSAL-PHRASE GATE (2026-11-25 live regression).
+	//
+	// SKILL.md declares required_refusal_phrases ("no_authorized_source",
+	// "no_relevant_source", ...) and the prompt TELLS the model to emit one
+	// when it cannot answer. Nothing ever CHECKED the output, so a weak
+	// model that decided to refuse wrote the phrase as the ANSWER BODY:
+	// {"status":"ok","answer":"no_relevant_source","citations":[]} -- which
+	// then rendered as a confident verdict @0.89 with the phrase as its text
+	// (live screenshot 2026-11-25). A phrase hit means the model REFUSED, so
+	// the turn is a refusal, not a verdict.
+	if manifest != nil && len(manifest.Guardrails.RequiredRefusalPhrases) > 0 && v.Answer != "" {
+		for _, phrase := range manifest.Guardrails.RequiredRefusalPhrases {
+			if phrase == "" || !strings.Contains(v.Answer, phrase) {
+				continue
+			}
+			log.Printf("[WARN] server: answer carried the Skill's refusal phrase %q (sess=%s skill=%s) -- treating the turn as a refusal", phrase, sessionID, skillID)
+			return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, true)
 		}
 	}
 
@@ -410,6 +452,13 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	// for pre-58 replays) and gains nothing fabricated.
 	stampCitationProvenance(v.Citations, chunks)
 
+	// Whether the LLM produced ZERO citations on its own (as opposed to
+	// having all of its citations STRIPPED by the grounding pass below).
+	// The distinction matters: D2-02 says a stripped verdict is a
+	// DOWNGRADE (needs_input @0.89), while a verdict that never cited
+	// anything is a fabrication risk that must refuse outright.
+	zeroCitationsFromModel := len(v.Citations) == 0
+
 	groundReport := verdict.GroundingCheck(v, chunksByID)
 	v = verdict.GroundingChecker(v, chunksByID)
 	if !groundReport.Grounded {
@@ -420,6 +469,25 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 			}
 		}
 		v.Citations = grounded
+	}
+
+	// EMPTY-CITATION REFUSAL (2026-11-25 live regression).
+	//
+	// GroundingCheck only iterates v.Citations -- a verdict with ZERO
+	// citations is vacuously "grounded" (report.Grounded stays true). That
+	// is correct for the SPAN check (there is nothing to verify) but it is
+	// wrong for the POSTURE: an evidence-mode Skill that produced an answer
+	// with no citation has cited nothing, which is exactly the
+	// anti-fabrication red line (D2-01: "every cited claim = chunk ID +
+	// span"). Before this gate such a turn rendered as a normal verdict @0.89
+	// ("未经核验的候选答案"), indistinguishable from a real but unverified
+	// answer. It must be a REFUSAL instead.
+	//
+	// Scope: evidence mode only (operational mode has its own closure and
+	// legitimately returns prose/SQL with no citations).
+	if !operational && zeroCitationsFromModel && v.Status != "refused" {
+		log.Printf("[WARN] server: evidence-mode verdict carried no citations (sess=%s skill=%s) -- refusing (D2-01: an answer must cite at least one chunk)", sessionID, skillID)
+		return s.emitRefusalWithChunks(ctx, c, sessionID, skillID, query, tiers, meta, verdict.RefusalReasonNoAuthorizedSource, true)
 	}
 
 	if v.Status == "refused" {
@@ -1415,6 +1483,37 @@ func buildGuardRejection(rep sqlguard.Report, templateSQL string) string {
 	b.WriteString(strings.TrimSpace(templateSQL))
 	b.WriteString("\n```\n")
 	return b.String()
+}
+
+// looksLikeOperationalAnswer reports whether an operational-channel answer
+// actually has the shape its Skill promised.
+//
+// The operational channel (sql-guides and friends) bypasses the verdict JSON
+// contract entirely: the model returns raw markdown, which the pipeline used to
+// stamp Status="ok" + Confidence=0.9 unconditionally. Any non-empty string
+// therefore looked like a confident answer -- including a bare refusal phrase
+// or a one-line apology (2026-11-25 live evidence: the "计提手续费" turn
+// rendered a green 已给出 badge over no useful content).
+//
+// A generated SQL/code answer must show ONE of:
+//   - a fenced block (``` anywhere), or
+//   - a SQL keyword at a statement position (SELECT / WITH / INSERT / UPDATE /
+//     DELETE / CREATE / ALTER / DROP), case-insensitive.
+//
+// This is deliberately a SHAPE check, not a semantic one -- the pipeline has no
+// way to execute or validate the statement, and pretending otherwise would be
+// a stronger claim than the platform can back.
+func looksLikeOperationalAnswer(answer string) bool {
+	if strings.Contains(answer, "```") {
+		return true
+	}
+	upper := strings.ToUpper(answer)
+	for _, kw := range []string{"SELECT ", "WITH ", "INSERT ", "UPDATE ", "DELETE ", "CREATE ", "ALTER ", "DROP "} {
+		if strings.Contains(upper, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildOperationalUserPrompt 把「问题 + 依据原文」拼成 user prompt。

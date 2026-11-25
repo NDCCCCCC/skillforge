@@ -97,3 +97,19 @@ func TestRedlinePayload_ClauseIdOptional(t *testing.T) {
 	assert.Equal(t, "b", r.ProposedRewrite)
 	assert.Equal(t, "c", r.Rationale)
 }
+
+// TestRedlinePayload_BlankRequiredFieldsRejected is the 2026-11-25
+// regression: PRESENCE was checked, emptiness was not. The model returned
+// {"originalClause":"","proposedRewrite":"","rationale":"<prose>"} and the
+// card rendered an empty red/green diff.
+func TestRedlinePayload_BlankRequiredFieldsRejected(t *testing.T) {
+	for name, raw := range map[string]string{
+		"blank originalClause":  `{"originalClause":"","proposedRewrite":"y","rationale":"r"}`,
+		"blank proposedRewrite": `{"originalClause":"x","proposedRewrite":"","rationale":"r"}`,
+		"whitespace-only":       `{"originalClause":"   ","proposedRewrite":"\n","rationale":"r"}`,
+	} {
+		var p RedlinePayload
+		err := json.Unmarshal([]byte(raw), &p)
+		assert.Error(t, err, "%s must fail Unmarshal (a blank clause is not a proposal)", name)
+	}
+}

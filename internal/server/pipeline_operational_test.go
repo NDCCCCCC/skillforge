@@ -216,3 +216,24 @@ func TestVerdictPipeline_MixedReadsKeepCitableOnlyClosure(t *testing.T) {
 	assert.Equal(t, 1, redlineStub.callCount(),
 		"evidence-mode needs_input still fires the redline pass (D5-14 unchanged)")
 }
+
+// TestLooksLikeOperationalAnswer pins the operational-channel shape gate
+// (2026-11-25): the branch used to stamp Status="ok" + Confidence=0.9 on
+// ANY non-empty text, so a bare refusal phrase rendered as a confident
+// answer.
+func TestLooksLikeOperationalAnswer(t *testing.T) {
+	for _, ok := range []string{
+		"```sql\nselect * from t\n```",
+		"SELECT policy_no FROM etl_payment_due_t",
+		"with v_case_1 as (select ...) select * from v_case_1",
+	} {
+		assert.True(t, looksLikeOperationalAnswer(ok), "expected code-shaped: %q", ok)
+	}
+	for _, bad := range []string{
+		"no_relevant_source",
+		"抱歉，我无法回答这个问题。",
+		"请提供更具体的取数口径。",
+	} {
+		assert.False(t, looksLikeOperationalAnswer(bad), "expected NOT code-shaped: %q", bad)
+	}
+}
