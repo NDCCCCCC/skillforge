@@ -348,6 +348,8 @@ Recent decisions affecting current work:
 
 |------|-----------|-----------|
 
+| 2026-11-25 | [261125-mk7](quick/261125-mk7-fix-reload-toast-auto-dismiss-bug-and-kn/261125-mk7-SUMMARY.md) — ReloadToast per-item auto-dismiss 修复叠放 toast 永挂 + chunk 直读 403 回归（BE owner-token 放行分支 + FE fetch 补身份头 + 403 专属文案） | 2ff4d6a, 377706f, c998bf7 |
+
 | 2026-11-13 | [261113-ib1](quick/261113-ib1-rename-backend-route-api-sparql-to-api-k/261113-ib1-SUMMARY.md) — 后端 KG 路由 /api/sparql → /api/kg/triples（旧路径移除 + 路由契约回归测试 + 门禁/README/CHANGELOG 清扫） | 2c8cb0b, f429fcc |
 
 | 2026-11-13 | [261113-ixo](quick/261113-ixo-fix-llm-provider-panel-crash-loadall-bac/261113-ixo-SUMMARY.md) — LLM Provider 面板 config 缺省字段回填空串，修复 trim TypeError（点击拉取模型无响应） | 31e426b |
