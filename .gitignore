@@ -105,3 +105,12 @@ raw-never-*
 
 # Claude agent worktrees (historical full-tree copies; never commit)
 .claude/worktrees/
+
+# Single-binary release staging (Phase 58+): the `embed_webui` build copies
+# web/dist into internal/webui/dist before `go build -tags embed_webui`.
+# The copied assets are build output -- only the .gitkeep placeholder is
+# tracked, so the //go:embed directive resolves on a clean checkout.
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep
+
+# Release/local scratch logs written by the single-binary launcher.

@@ -1,0 +1,3 @@
+placeholder: the release build copies web/dist here before
+`go build -tags embed_webui ./cmd/server`. Keeping this directory in git
+lets the embed directive resolve on a clean checkout.

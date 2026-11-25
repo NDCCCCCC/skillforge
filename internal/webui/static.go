@@ -182,6 +182,15 @@ func serveMissingDist(w http.ResponseWriter) {
 // 只会扩大攻击面。不给 /api 路径加任何写缓冲或 writer 包装——Go 侧 SSE 直出
 // 等价于 nginx 的 proxy_buffering off。
 func Mount(h *server.Hertz, distDir string) {
+	// Single-binary build (`-tags embed_webui`): the assets are inside the
+	// executable, so neither web/dist nor the working directory matters.
+	// Checked FIRST so a shipped binary never depends on the disk.
+	if Embedded() {
+		logMountSource()
+		h.NoRoute(adaptor.HertzHandler(HandlerEmbedded(embeddedDist)))
+		return
+	}
+
 	if _, err := os.Stat(filepath.Join(distDir, "index.html")); err != nil {
 		log.Printf("[WARN] webui: %s missing — non-/api requests will answer 503 until cd web && npm run build runs", distDir)
 	} else {
