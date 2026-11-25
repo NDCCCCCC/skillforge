@@ -59,6 +59,7 @@ export default function ChunkSourceView({
   // graph endpoint is metadata-only per T-5-22, so its chunks have no
   // fixture entry).
   const [asyncText, setAsyncText] = useState<string | null>(null);
+  const [asyncForbidden, setAsyncForbidden] = useState(false);
   // Quick 260929-d5w2 — the fetch payload's raw source path, rendered as
   // the pretty short form in the metadata row (raw path stays on title).
   const [asyncSource, setAsyncSource] = useState<string | null>(null);
@@ -73,6 +74,7 @@ export default function ChunkSourceView({
     setAsyncStatus('loading');
     setAsyncText(null);
     setAsyncSource(null);
+    setAsyncForbidden(false);
     let cancelled = false;
     fetchChunkContent(chunkId)
       .then((data) => {
@@ -89,8 +91,13 @@ export default function ChunkSourceView({
         setAsyncSource(data?.source ?? null);
         setAsyncStatus('ready');
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
+        // Quick 261125-mk7 — a 403 from the knowledgeReadAllowed gate
+        // gets a specific message (missing browser identity) instead of
+        // the generic 加载片段失败.
+        const msg = err instanceof Error ? err.message : '';
+        setAsyncForbidden(resp403(msg));
         setAsyncStatus('error');
       });
     return () => {
@@ -106,7 +113,9 @@ export default function ChunkSourceView({
       : asyncStatus === 'loading'
         ? '加载中…'
         : asyncStatus === 'error'
-          ? '加载片段失败'
+          ? asyncForbidden
+            ? '片段访问被拒绝（403）：请求缺少浏览器身份，请刷新页面后重试。'
+            : '加载片段失败'
           : (asyncText ?? '');
 
   // SC-8 filtered-out notice: a superseded chunk only reaches the FE
@@ -172,4 +181,9 @@ export default function ChunkSourceView({
 function epochFromEffectiveDate(effectiveDate: string): number {
   const t = Date.parse(`${effectiveDate}T00:00:00Z`);
   return Number.isNaN(t) ? 0 : Math.floor(t / 1000);
+}
+
+/** True when the thrown chunk-fetch error is the BE 403 gate rejection. */
+function resp403(message: string): boolean {
+  return message.includes('403') || message.includes('not readable');
 }

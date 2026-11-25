@@ -182,6 +182,41 @@ describe('ChunkSourceView', () => {
     expect(verbatim.textContent).not.toContain('(chunk not found in fixture)');
   });
 
+  // Quick 261125-mk7 — a 403 from the knowledgeReadAllowed gate gets a
+  // specific missing-browser-identity message, and the fetch now carries
+  // BOTH identity headers (X-Admin-Token from localStorage + X-Owner-Token).
+  it('renders the 403-specific copy and sends identity headers (261125-mk7)', async () => {
+    window.localStorage.setItem('sf_admin_token', 'tok-123');
+    window.localStorage.setItem('sf_owner_token', 'owner-abc');
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'knowledge chunk not readable by this caller' }), {
+        status: 403,
+      }),
+    );
+
+    render(
+      <ChunkSourceView
+        chunkId="c-graph-403"
+        tier="权威"
+        version={null}
+        effectiveDate={null}
+        effectiveTo={null}
+      />,
+    );
+
+    const verbatim = await screen.findByTestId('chunk-verbatim');
+    expect(verbatim.textContent).toContain('片段访问被拒绝（403）');
+    expect(verbatim.textContent).not.toContain('加载片段失败');
+
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-Admin-Token']).toBe('tok-123');
+    expect(headers['X-Owner-Token']).toBe('owner-abc');
+
+    window.localStorage.removeItem('sf_admin_token');
+    window.localStorage.removeItem('sf_owner_token');
+  });
+
   // 56-04 Task 5 -- a chunk that the backend no longer has (doc updated /
   // chunk superseded) degrades to an explanatory body, never a white
   // screen. The citation jump lands here deterministically.

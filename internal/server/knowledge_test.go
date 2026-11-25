@@ -265,6 +265,50 @@ func TestChunkHandler_RouteRegistered(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// Quick 261125-mk7 — the 2026-11-09 knowledgeReadAllowed gate locked out
+// the product's OWN graph-browser UI: a browser with no X-Skill-Name /
+// X-Admin-Token got 403 on chunk read even when authenticated. The gate
+// now allows a declared browser identity (non-empty X-Owner-Token) and
+// still fails closed for fully anonymous callers.
+
+func TestChunkHandler_OwnerTokenAllowed(t *testing.T) {
+	payload := &knowledge.ChunkPayload{ID: "1", Tier: "authority", Content: "正文"}
+	stub := &stubKnowledgeBuilder{chunkPayload: payload}
+	deps := &Deps{Knowledge: stub}
+
+	got := invokeChunkHandler(t, deps, "1",
+		ut.Header{Key: "X-Owner-Token", Value: "some-owner"})
+	assert.Equal(t, http.StatusOK, got.Code,
+		"a declared browser identity (X-Owner-Token) must pass the gate with NO X-Skill-Name")
+	var decoded knowledge.ChunkPayload
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &decoded))
+	assert.Equal(t, "正文", decoded.Content)
+}
+
+func TestChunkHandler_NoHeadersStill403(t *testing.T) {
+	stub := &stubKnowledgeBuilder{chunkPayload: &knowledge.ChunkPayload{ID: "1", Tier: "authority"}}
+	deps := &Deps{Knowledge: stub}
+
+	got := invokeChunkHandler(t, deps, "1")
+	assert.Equal(t, http.StatusForbidden, got.Code,
+		"fail-closed: a header-less anonymous caller must still be rejected")
+	var body graphResponseError
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &body))
+	assert.Equal(t, "knowledge chunk not readable by this caller", body.Error)
+}
+
+func TestChunkHandler_AdminTokenAllowed(t *testing.T) {
+	payload := &knowledge.ChunkPayload{ID: "1", Tier: "authority", Content: "正文"}
+	stub := &stubKnowledgeBuilder{chunkPayload: payload}
+	deps := &Deps{Knowledge: stub}
+
+	t.Setenv("SKILLFORGE_ADMIN_TOKEN", "tok-123")
+	got := invokeChunkHandler(t, deps, "1",
+		ut.Header{Key: "X-Admin-Token", Value: "tok-123"})
+	assert.Equal(t, http.StatusOK, got.Code,
+		"the admin-token allow branch must survive the new owner-token branch")
+}
+
 // Quick 260815-jpu (Layer 3) — parseLenientChunkID is the BE URL-path
 // analogue of FE normalizeChunkID: it accepts the prefixed / bracketed
 // / quoted forms the LLM occasionally emits and reduces them to a bare

@@ -138,6 +138,11 @@ func (s *Deps) requireSessionOwner(ctx context.Context, c *app.RequestContext, s
 //
 // 放行条件（fail-closed）：
 //   - admin token 有效 → 全部放行
+//   - 非空 X-Owner-Token → 放行（quick 261125-mk7）。owner token 与
+//     X-Skill-Name 同为浏览器自述身份：拦住的是"完全匿名的批量枚举"，
+//     不是"可伪造的声明"。graph 元数据端点本就公开读（D-28-02-AUTH），
+//     此分支修复的是 2026-11-09 闸门把自家知识图谱浏览器 UI 一并锁死
+//     的回归（260813 / UAT #4 的点开原文路径），并不削弱匿名枚举防线。
 //   - 否则必须声明 X-Skill-Name，且该 Skill 的 reads 解析出的 tiers
 //     覆盖目标 tier
 //   - 其它一律拒绝
@@ -148,6 +153,13 @@ func (s *Deps) requireSessionOwner(ctx context.Context, c *app.RequestContext, s
 // 收成"必须声明身份"，再逐步上真凭证。
 func (s *Deps) knowledgeReadAllowed(c *app.RequestContext, tier string) bool {
 	if isAdminRequest(c) {
+		return true
+	}
+	// Quick 261125-mk7 — 声明了浏览器归属（非空 owner token）的调用方
+	// 放行。见上方 godoc：与 X-Skill-Name 同级的自述身份，拦匿名批量
+	// 枚举；知识图谱浏览器的 chunk 直读依赖此分支，否则已认证的
+	// 浏览器也会被 2026-11-09 闸门误伤。
+	if ownerTokenOf(c) != "" {
 		return true
 	}
 	if tier == "" {

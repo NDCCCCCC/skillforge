@@ -22,6 +22,7 @@
 // §FEUI-03 and the tier badge stays hidden. A console.warn surfaces the
 // missing chunk so the dev can spot it immediately in the browser console.
 import type { Tier } from '../types/verdict';
+import { ownerTokenHeaders } from './owner-token';
 import chunksData from '../__fixtures__/chunks.json';
 
 interface ChunkFixtureEntry {
@@ -170,13 +171,28 @@ export function extractChunkMetadata(chunkId: string): ChunkMetadata {
 //
 // Mirrors the API-base + Accept-header convention in useKnowledgeGraph.ts
 // (same /api/knowledge/... origin; Vite dev proxy handles :8888 in dev).
+//
+// Quick 261125-mk7 — this was a RAW fetch bypassing both identity choke
+// points (apiFetch injects X-Owner-Token; admin panels add X-Admin-Token
+// by hand). Even a fully authenticated browser sent this one request with
+// NO identity headers, so the BE knowledgeReadAllowed gate rejected it
+// 403 and ChunkSourceView rendered 加载片段失败. Send BOTH: the admin
+// token from localStorage when present (same posture as
+// platformApi.ts's adminHeaders) and the browser owner token (same
+// inline two-liner — no cross-module import of the private helper).
 export async function fetchChunkContent(
   chunkId: string,
 ): Promise<{ text: string; tier: Tier | null; source: string | null } | null> {
   const normalized = normalizeChunkID(chunkId);
   const resp = await fetch(
     `/api/knowledge/chunk/${encodeURIComponent(normalized)}`,
-    { headers: { Accept: 'application/json' } },
+    {
+      headers: {
+        Accept: 'application/json',
+        'X-Admin-Token': window.localStorage.getItem('sf_admin_token') ?? '',
+        ...ownerTokenHeaders(),
+      },
+    },
   );
   // A missing chunk is a soft miss, NOT an initialization failure
   // (distinct from the graph hook's 503 handling). Return null so the
