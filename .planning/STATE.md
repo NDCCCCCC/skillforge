@@ -348,6 +348,8 @@ Recent decisions affecting current work:
 
 |------|-----------|-----------|
 
+| 2026-11-25 | [261125-oeh](quick/261125-oeh-render-pipeline-annotation-decisions-ste/261125-oeh-SUMMARY.md) — Agent 状态面板：管线 Step:0 决策渲染为紧凑注解行，消除空 Hop 0 折叠条与 key 冲突 | d62abc8 |
+
 | 2026-11-25 | [261125-mk7](quick/261125-mk7-fix-reload-toast-auto-dismiss-bug-and-kn/261125-mk7-SUMMARY.md) — ReloadToast per-item auto-dismiss 修复叠放 toast 永挂 + chunk 直读 403 回归（BE owner-token 放行分支 + FE fetch 补身份头 + 403 专属文案） | 2ff4d6a, 377706f, c998bf7 |
 
 | 2026-11-13 | [261113-ib1](quick/261113-ib1-rename-backend-route-api-sparql-to-api-k/261113-ib1-SUMMARY.md) — 后端 KG 路由 /api/sparql → /api/kg/triples（旧路径移除 + 路由契约回归测试 + 门禁/README/CHANGELOG 清扫） | 2c8cb0b, f429fcc |
