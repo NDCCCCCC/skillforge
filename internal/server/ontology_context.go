@@ -214,6 +214,38 @@ func (m *anchorMatcher) Known(name string) bool {
 	return len(m.index.Match(name, 1)) > 0
 }
 
+// markVectorChannel stamps the vector channel on a pure-vector result set.
+//
+// Phase 58-03 (PROV-01/PROV-02): the retriever backends (Milvus / Mongo
+// / embedded) are pure vector stores -- they know nothing about channels,
+// so the channel fact has to be established by the caller that knows which
+// retrieval path ran. This is the vector-path caller.
+//
+// The stamp is deliberately EXPLICIT rather than relying on the empty
+// value: an empty Origin means "no provenance recorded", and the wire
+// omits the field entirely, which forced the FE to default to "vector" on
+// its own -- the right answer by accident, with no channel set for the
+// audit trail and nothing for the ROI frame to count.
+//
+// A dual-channel deployment replaces this with a real
+// retriever.FuseChannels result (which sets Origin=hybrid and carries
+// the RAW channel set); this function is the single-channel path, and it
+// must never fabricate a hybrid or a graph attribution.
+func markVectorChannel(chunks []retriever.Hit) {
+	for i := range chunks {
+		// Never overwrite an existing attribution: a fusion-produced
+		// hybrid/graph origin is MORE specific than "vector", and
+		// downgrading it here would erase the very fact the dual-channel
+		// deployment computed.
+		if chunks[i].Origin == "" {
+			chunks[i].Origin = retriever.ChannelVector
+		}
+		if len(chunks[i].Channels) == 0 {
+			chunks[i].Channels = []string{retriever.ChannelVector}
+		}
+	}
+}
+
 // stampCitationProvenance copies each chunk's runtime provenance onto the
 // citation that cites it (Phase 58-03 / PROV-01/PROV-02).
 //

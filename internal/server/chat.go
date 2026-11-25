@@ -761,6 +761,23 @@ func (s *Deps) renderedPromptBody(skillName string) string {
 // historical "compliance" chat contract (D14-E2); full SYSK-05 map
 // routing stays deferred as recorded.
 func (s *Deps) findSkill(name string) *skill.Manifest {
+	// The Registry snapshot is the runtime source of truth (D5-01/D5-06):
+	// it is what the Router reads, and it carries the hot-reloaded
+	// manifest. The Loader is only a startup-time scan, so consulting it
+	// first would serve a STALE manifest after a SKILL.md edit.
+	//
+	// Why this matters: the explicit-skill branch (skill= in the request
+	// body) reaches findSkill, while the Router branch reads the same
+	// snapshot. Resolving the two from DIFFERENT sources made an
+	// explicit request and a routed request disagree about the same
+	// Skill -- and, before the Registry was consulted at all, made every
+	// explicit request fail closed (out_of_scope) because the Loader was
+	// never wired into Deps.
+	if s.Registry != nil {
+		if entry, ok := s.Registry.Snapshot()[name]; ok && entry != nil && entry.Manifest != nil {
+			return entry.Manifest
+		}
+	}
 	if s.Loader == nil {
 		return nil
 	}

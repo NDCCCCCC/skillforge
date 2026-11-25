@@ -582,6 +582,10 @@ func (r *Registry) reloadOne(path string) {
 		return
 	}
 	m.resolvedTiers = tiers
+	// Stamp the parent-dir basename (same contract as startupScan and
+	// the Loader) so a hot-reloaded manifest identifies itself the same
+	// way a freshly-scanned one does.
+	m.Name = name
 	// Re-embed the description. Embedder errors are NON-FATAL: the
 	// entry still becomes routable on its previous (or nil) DescVec
 	// until the next successful reload. Rationale: routing is a UX
@@ -656,6 +660,14 @@ func (r *Registry) startupScan() error {
 			return err
 		}
 		m.resolvedTiers = tiers
+		// Stamp the parent-dir basename onto the manifest, exactly as the
+		// Loader does (loader.go). Without it the Registry's manifests
+		// carry an EMPTY Name, so every consumer that identifies a Skill
+		// by manifest.Name (the audit row's SkillID, the scheduler's cron
+		// registration, the fan-out orchestrator's parent id) sees "" for
+		// a Registry-sourced Skill. The directory layout contract
+		// (skills/<name>/SKILL.md) makes the basename the canonical id.
+		m.Name = name
 		var descVec []float32
 		if r.embedder != nil {
 			if v, embedErr := r.embedder.Embed(context.Background(), m.Description); embedErr == nil {

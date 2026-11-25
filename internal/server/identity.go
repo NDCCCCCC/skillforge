@@ -46,6 +46,8 @@ import (
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
+	"github.com/skillforge/skillforge/internal/skill"
 )
 
 // ownerTokenHeader 是浏览器身份的请求头。前端 web/src/lib/owner-token.ts
@@ -152,19 +154,39 @@ func (s *Deps) knowledgeReadAllowed(c *app.RequestContext, tier string) bool {
 		return false
 	}
 	skillName := string(c.Request.Header.Peek("X-Skill-Name"))
-	if skillName == "" || s.Loader == nil {
+	if skillName == "" {
+		return false
+	}
+	// The Registry snapshot is the runtime source of truth (D5-01/D5-06)
+	// and carries the hot-reloaded manifest. The Loader is a startup-
+	// time scan only, so it is consulted as a fallback (tests build a
+	// Loader without a Registry).
+	if s.Registry != nil {
+		if entry, ok := s.Registry.Snapshot()[skillName]; ok && entry != nil && entry.Manifest != nil {
+			return tierAllowed(entry.Manifest, tier)
+		}
+		return false
+	}
+	if s.Loader == nil {
 		return false
 	}
 	for _, m := range s.Loader.Skills() {
 		if m.Name != skillName {
 			continue
 		}
-		for _, t := range m.ResolvedTiers() {
-			if t == tier {
-				return true
-			}
+		return tierAllowed(m, tier)
+	}
+	return false
+}
+
+// tierAllowed reports whether the Skill resolved the tier. A Skill with
+// an EMPTY resolved-tier set reads nothing (default-deny) -- the same
+// posture the retriever applies.
+func tierAllowed(m *skill.Manifest, tier string) bool {
+	for _, t := range m.ResolvedTiers() {
+		if t == tier {
+			return true
 		}
-		return false
 	}
 	return false
 }

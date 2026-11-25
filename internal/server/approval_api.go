@@ -198,8 +198,23 @@ func activeSkillSnapshot(m *skill.Manifest) hitl.SkillSnapshot {
 // is not loaded — caller treats nil the same way as activeSkillSnapshot
 // (zero-value snapshot → checkpoint filter returns "not found" →
 // approve path falls through to fresh retrieval).
-func manifestForSkill(loader *skill.Loader, skillID string) *skill.Manifest {
-	if loader == nil || skillID == "" {
+func manifestForSkill(loader *skill.Loader, reg *skill.Registry, skillID string) *skill.Manifest {
+	if skillID == "" {
+		return nil
+	}
+	// The Registry snapshot is the runtime source of truth (D5-01/D5-06)
+	// and carries the hot-reloaded manifest; the Loader is a startup-time
+	// scan consulted as a fallback (tests build a Loader without a
+	// Registry). Reading only the Loader here would compare a pending
+	// row against a STALE manifest after a SKILL.md edit, so the
+	// D11-C2 expire-check would never fire.
+	if reg != nil {
+		if entry, ok := reg.Snapshot()[skillID]; ok && entry != nil {
+			return entry.Manifest
+		}
+		return nil
+	}
+	if loader == nil {
 		return nil
 	}
 	for _, m := range loader.Skills() {
@@ -488,7 +503,7 @@ func (s *Deps) validateAndResolveApproval(ctx context.Context, c *app.RequestCon
 
 	// D11-C2 EXPIRE-CHECK: skill_version / prompt_hash mismatch → 410 Gone.
 	cpID := agent.RunnerCheckPointID(sessionID)
-	rowManifest := manifestForSkill(s.Loader, row.SkillID)
+	rowManifest := manifestForSkill(s.Loader, s.Registry, row.SkillID)
 	if rowManifest == nil {
 		rowManifest = s.ActiveManifest
 	}
@@ -539,7 +554,7 @@ func (s *Deps) executeApprovalResume(ctx context.Context, c *app.RequestContext,
 	// snapshot required (D11-C2)" — a 500 masked as "audit write
 	// failed" right after this same request deemed the row fresh.
 	// Regression from 27db382 (refactor 33-04); mirrors plan_api.go.
-	resumeManifest := manifestForSkill(s.Loader, row.SkillID)
+	resumeManifest := manifestForSkill(s.Loader, s.Registry, row.SkillID)
 	if resumeManifest == nil {
 		resumeManifest = s.ActiveManifest
 	}
@@ -685,7 +700,7 @@ func (s *Deps) drainResumeEvents(ctx context.Context, c *app.RequestContext, ses
 	if reInterruptID != "" && reInterruptID != decision.ApprovalID {
 		// Re-build runner to get a fresh iterator (original iter is exhausted).
 		cpStore, _ := s.Store.(adk.CheckPointStore)
-		resumeManifest := manifestForSkill(s.Loader, row.SkillID)
+		resumeManifest := manifestForSkill(s.Loader, s.Registry, row.SkillID)
 		if resumeManifest == nil {
 			resumeManifest = s.ActiveManifest
 		}
@@ -721,28 +736,28 @@ func (s *Deps) drainResumeEvents(ctx context.Context, c *app.RequestContext, ses
 	}
 
 	// 56-04 PANEL-03 write-hole closure: the ORIGINAL request goroutine's
-// pipeline tail wrote the verdict audit row via writeAuditAndTurn, but
-// the RESUME path (this function) drained the continuation directly and
-// bypassed it -- every post-approval answer was missing its audit row
-// (the audit-timeline tab showed nothing for approval-gated turns).
-// Land an INSERT-only marker row linking the resumed answer to the
-// approval decision (T-3-AUDIT INSERT-only preserved; verdict
-// extraction from the continuation stream is deferred -- the marker
-// makes the row PRESENT and honest about not carrying a verdict).
-if _, err := s.Store.PutAudit(ctx, store.AuditRow{
-Timestamp:  time.Now().UTC(),
-SessionID:  sessionID,
-UserID:     "system",
-Action:     "action_resumed_answer",
-SkillID:    row.SkillID,
-Query:      row.Query,
-FrozenArgs: []byte(fmt.Sprintf(`{"approval_id":%q,"decision":%q}`, approvalID, decision.Decision)),
-ActorType:  "system",
-}); err != nil {
-log.Printf("[WARN] server: resumed-answer audit row (sess=%s): %v", sessionID, err)
-}
+	// pipeline tail wrote the verdict audit row via writeAuditAndTurn, but
+	// the RESUME path (this function) drained the continuation directly and
+	// bypassed it -- every post-approval answer was missing its audit row
+	// (the audit-timeline tab showed nothing for approval-gated turns).
+	// Land an INSERT-only marker row linking the resumed answer to the
+	// approval decision (T-3-AUDIT INSERT-only preserved; verdict
+	// extraction from the continuation stream is deferred -- the marker
+	// makes the row PRESENT and honest about not carrying a verdict).
+	if _, err := s.Store.PutAudit(ctx, store.AuditRow{
+		Timestamp:  time.Now().UTC(),
+		SessionID:  sessionID,
+		UserID:     "system",
+		Action:     "action_resumed_answer",
+		SkillID:    row.SkillID,
+		Query:      row.Query,
+		FrozenArgs: []byte(fmt.Sprintf(`{"approval_id":%q,"decision":%q}`, approvalID, decision.Decision)),
+		ActorType:  "system",
+	}); err != nil {
+		log.Printf("[WARN] server: resumed-answer audit row (sess=%s): %v", sessionID, err)
+	}
 
-// Emit the resolution via the EXISTING data-decision chunk type (D-04 + D15).
+	// Emit the resolution via the EXISTING data-decision chunk type (D-04 + D15).
 	decisionEvent := decisionEventResumed
 	switch decision.Decision {
 	case "deny":

@@ -246,6 +246,21 @@ func (s *Deps) VerdictPipeline(ctx context.Context, c *app.RequestContext, query
 	if err != nil {
 		return fmt.Errorf("verdict pipeline: retrieve: %w", err)
 	}
+	// Phase 58-03 (PROV-01) -- stamp the retrieval CHANNEL on every hit
+	// before anything reads it. The retriever backends are pure vector
+	// stores; they know nothing about channels, so the channel fact is
+	// established HERE, at the one place that knows which retrieval path
+	// ran.
+	//
+	// Why this is not "inventing" provenance: the vector channel is the
+	// TRUE channel for this result set. Leaving Origin empty made the
+	// wire carry NO origin at all, so the FE fell back to its own default
+	// ("vector") -- the right answer, but by accident, with no channel
+	// set and nothing for the audit trail to record. Stamping it makes the
+	// attribution explicit and auditable, and it is what a future
+	// dual-channel deployment would overwrite with a real fusion result
+	// (retriever.FuseChannels) rather than a hardcoded constant.
+	markVectorChannel(chunks)
 
 	// Phase 57-02 + 58-04 -- ontology anchoring and the retrieval stats
 	// frame are published BEFORE any refusal gate below, so a refusal

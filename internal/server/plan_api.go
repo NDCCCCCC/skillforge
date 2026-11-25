@@ -377,7 +377,7 @@ func (s *Deps) planApproveHandler(ctx context.Context, c *app.RequestContext) {
 	// manifest → global ActiveManifest (mirrors approval_api.go —
 	// tests construct Deps without a Loader; production wires both).
 	cpID := agent.RunnerCheckPointID(runID)
-	rowManifest := manifestForSkill(s.Loader, row.SkillID)
+	rowManifest := manifestForSkill(s.Loader, s.Registry, row.SkillID)
 	if rowManifest == nil {
 		rowManifest = s.ActiveManifest
 	}

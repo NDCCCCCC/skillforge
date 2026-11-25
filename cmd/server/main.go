@@ -1297,6 +1297,17 @@ func main() {
 	deps = &server.Deps{
 		Ingest:   ingestRunner,
 		Registry: reg,
+		// Loader is the startup-time scan of skills/. It is the FALLBACK
+		// manifest source: the Registry snapshot is the runtime truth
+		// (hot-reloaded), and every resolution path consults the Registry
+		// first (findSkill / knowledgeReadAllowed / manifestForSkill).
+		//
+		// It was never wired, which silently disabled every Loader-backed
+		// path -- most visibly the explicit-skill chat branch, where
+		// findSkill returned nil and the turn failed closed with
+		// out_of_scope (D14-E2 legacy "compliance" alias never resolved
+		// either).
+		Loader: loader,
 		// 2026-11-09：装配语义 Router。此前 Deps.Router 恒为 nil，
 		// chatHandler 因此永远走 Loader.findSkill 的精确匹配分支 ——
 		// 语义路由（internal/skill/router.go）整套是死代码。

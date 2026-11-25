@@ -44,7 +44,22 @@ func buildRetrievalStats(fused []retriever.HybridResult, chunks []retriever.Hit,
 	}
 
 	if fused == nil {
-		stats.Channels.Vector = len(chunks)
+		// Single-channel path: the chunks carry their own channel stamp
+		// (markVectorChannel), so COUNT what was actually stamped rather
+		// than assuming "all vector". The counts then describe the same
+		// facts the citations carry -- one source, one truth. A chunk with
+		// no stamp (a pre-58 replay path) still counts as vector, which is
+		// the legacy reading.
+		for _, ch := range chunks {
+			switch ch.Origin {
+			case retriever.ChannelGraph:
+				stats.Channels.Graph++
+			case retriever.ChannelHybrid:
+				stats.Channels.Hybrid++
+			default:
+				stats.Channels.Vector++
+			}
+		}
 		return stats
 	}
 	for _, r := range fused {
