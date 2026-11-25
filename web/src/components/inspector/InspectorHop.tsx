@@ -28,7 +28,9 @@ export interface InspectorHopProps {
   isActive: boolean;
 }
 
-function formatDecisionLabel(decision: string): string {
+// Shared with the pipeline-annotation rows (quick 261125-oeh) so the
+// decision copy stays in one place.
+export function formatDecisionLabel(decision: string): string {
   switch (decision) {
     case 'retrieve':
       return '检索';

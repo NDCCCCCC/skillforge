@@ -47,3 +47,17 @@ export interface Hop {
   /** Concatenated reasoning text for this hop (may be empty). */
   reasoning: string;
 }
+
+/**
+ * PipelineAnnotation — quick 261125-oeh. A data-decision event the
+ * VerdictPipeline emits as a side-channel annotation (history rewrite,
+ * classifier refusal, counter-evidence check, final answer) with the
+ * sentinel Step: 0. These are NOT agent hops: they carry no tool calls,
+ * retrievals or reasoning, so they render as compact one-line rows
+ * instead of empty per-hop accordions.
+ */
+export interface PipelineAnnotation {
+  decision: DecisionValue;
+  query?: string;
+  confidence?: number;
+}

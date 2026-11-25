@@ -208,4 +208,53 @@ describe('AgentInspector', () => {
       expect(cv.chunkId).toBe('c-001');
     }
   });
+
+  // Quick 261125-oeh — VerdictPipeline side-channel decisions ride
+  // data-decision with the sentinel Step: 0. They used to render as
+  // "Hop 0" accordions with EMPTY bodies (duplicating the step tree).
+  // Now they render as compact annotation rows and no per-hop item.
+  it('renders pipeline Step:0 decisions as annotation rows, not empty hops (261125-oeh)', () => {
+    const messages = [
+      makeMessage([
+        { type: 'data-decision', id: 'd0', data: { step: 0, decision: 'answer' } },
+        { type: 'data-decision', id: 'd0b', data: { step: 0, decision: 'answer' } },
+        {
+          type: 'data-decision',
+          id: 'd0c',
+          data: { step: 0, decision: 'counter_evidence' },
+        },
+      ]),
+    ];
+    render(<AgentInspector messages={messages} status="ready" />);
+
+    // No per-hop accordions at all — the empty-body Hop 0 rows are gone.
+    expect(screen.queryByTestId('inspector-hop')).toBeNull();
+
+    // Three compact annotation rows with the Chinese decision labels.
+    const rows = screen.getAllByTestId('inspector-annotation');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('决策: 回答');
+    expect(rows[2]).toHaveTextContent('决策: 反证检索');
+
+    // The header reports the pipeline shape, not a bogus hop count.
+    expect(screen.getByTestId('agent-inspector')).toHaveTextContent('管线决策 3 条（无多跳）');
+  });
+
+  it('keeps real hops and annotations separate in a mixed turn (261125-oeh)', () => {
+    const messages = [
+      makeMessage([
+        { type: 'data-decision', id: 'd1', data: { step: 1, decision: 'retrieve', query: '差旅住宿' } },
+        { type: 'data-decision', id: 'd0', data: { step: 0, decision: 'answer' } },
+      ]),
+    ];
+    render(<AgentInspector messages={messages} status="ready" />);
+
+    const hops = screen.getAllByTestId('inspector-hop');
+    expect(hops).toHaveLength(1);
+    expect(hops[0]).toHaveAttribute('data-hop-step', '1');
+
+    const annotations = screen.getAllByTestId('inspector-annotation');
+    expect(annotations).toHaveLength(1);
+    expect(annotations[0]).toHaveTextContent('决策: 回答');
+  });
 });

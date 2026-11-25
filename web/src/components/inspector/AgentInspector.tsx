@@ -39,7 +39,8 @@ import StepTree from './StepTree';
 import KGAnchorLine from './KGAnchorLine';
 import { buildStepTree, extractSyntheticTodos } from './step-tree';
 import { useAppStore } from '../../store/app-store';
-import type { Hop, ToolCallRow, RetrievalRow, DecisionValue } from './hop-types';
+import type { Hop, ToolCallRow, RetrievalRow, DecisionValue, PipelineAnnotation } from './hop-types';
+import { formatDecisionLabel } from './InspectorHop';
 
 export interface AgentInspectorProps {
   /** Latest useChat.messages array (read directly via prop, NOT Zustand). */
@@ -61,7 +62,7 @@ function isDecisionValue(value: string): value is DecisionValue {
   ].includes(value);
 }
 
-function deriveHops(messages: UIMessage[]): Hop[] {
+function deriveHops(messages: UIMessage[]): { hops: Hop[]; annotations: PipelineAnnotation[] } {
   // Walk in reverse to find the latest assistant message, then walk
   // its parts in order. We do not collapse hops across multiple
   // assistant turns — the inspector reflects the current turn only.
@@ -70,6 +71,14 @@ function deriveHops(messages: UIMessage[]): Hop[] {
     if (m.role !== 'assistant') continue;
 
     const hops: Hop[] = [];
+    // Quick 261125-oeh — VerdictPipeline side-channel decisions ride
+    // data-decision with the sentinel Step: 0 (pipeline.go emits them
+    // for history rewrite / classifier refusal / counter-evidence /
+    // final answer). They are NOT agent hops: no tool calls, no
+    // retrievals, no reasoning ever attaches, so rendering them as
+    // per-hop accordions produced the "Hop 0 · empty body" rows. They
+    // are split out here and rendered as compact annotation lines.
+    const annotations: PipelineAnnotation[] = [];
     let current: Hop = {
       step: 0,
       decision: 'answer',
@@ -94,6 +103,15 @@ function deriveHops(messages: UIMessage[]): Hop[] {
           retrievals: [],
           reasoning: '',
         };
+        if (step === 0) {
+          annotations.push({
+            decision: current.decision,
+            query: current.query,
+            confidence: current.confidence,
+          });
+          started = true;
+          continue;
+        }
         hops.push(current);
         started = true;
       } else if (!started) {
@@ -142,10 +160,10 @@ function deriveHops(messages: UIMessage[]): Hop[] {
       }
     }
 
-    return hops;
+    return { hops, annotations };
   }
 
-  return [];
+  return { hops: [], annotations: [] };
 }
 
 export default function AgentInspector({
@@ -154,7 +172,7 @@ export default function AgentInspector({
   streaming,
 }: AgentInspectorProps) {
   const isStreaming = streaming ?? (status === 'streaming' || status === 'submitted');
-  const hops = useMemo(() => deriveHops(messages), [messages]);
+  const { hops, annotations } = useMemo(() => deriveHops(messages), [messages]);
 
   // 56-04 Task 4 -- planning steps come from the plan slice (the
   // authoritative live state per D14), with PlanTracePart's synthetic
@@ -196,7 +214,7 @@ export default function AgentInspector({
     return buildStepTree(hops, todos, isStreaming);
   }, [hops, planState, isStreaming]);
 
-  if (hops.length === 0) {
+  if (hops.length === 0 && annotations.length === 0) {
     if (isStreaming) {
       return (
         <div
@@ -226,12 +244,14 @@ export default function AgentInspector({
     );
   }
 
-  const activeHopStep = isStreaming ? hops[hops.length - 1].step : null;
+  const activeHopStep = isStreaming && hops.length > 0 ? hops[hops.length - 1].step : null;
 
   return (
     <div data-testid="agent-inspector" className="flex flex-col gap-3">
       <div className="text-xs text-text-muted">
-        当前回合 {hops.length} 跳{isStreaming ? ' · 进行中' : ''}
+        {hops.length > 0
+          ? `当前回合 ${hops.length} 跳${isStreaming ? ' · 进行中' : ''}`
+          : `管线决策 ${annotations.length} 条（无多跳）${isStreaming ? ' · 进行中' : ''}`}
       </div>
       <KGAnchorLine
         kgAvailable={kgAnchor?.kgAvailable}
@@ -239,9 +259,43 @@ export default function AgentInspector({
         anchorEntities={kgAnchor?.anchorEntities}
       />
       <StepTree nodes={stepNodes} isStreaming={isStreaming} />
-      {hops.map((hop) => (
+      {annotations.length > 0 && (
+        <div
+          data-testid="inspector-annotations"
+          className="flex flex-col gap-1 rounded-md border border-border bg-surface-1 px-3 py-2"
+        >
+          <div className="text-xs font-semibold text-text-muted">管线决策</div>
+          {annotations.map((a, i) => (
+            <div
+              key={i}
+              data-testid="inspector-annotation"
+              className="flex items-center gap-2 text-xs text-text"
+            >
+              <span className="text-text-muted">·</span>
+              <span>决策: {formatDecisionLabel(a.decision)}</span>
+              {a.query && (
+                <span
+                  className="truncate font-mono text-text-muted"
+                  title={a.query}
+                >
+                  ({a.query})
+                </span>
+              )}
+              {typeof a.confidence === 'number' && (
+                <span className="text-text-muted">置信度 {a.confidence.toFixed(2)}</span>
+              )}
+              {isStreaming && i === annotations.length - 1 && (
+                <span className="text-primary">进行中</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {hops.map((hop, i) => (
         <InspectorHop
-          key={hop.step}
+          // key guards against duplicate step values across hops (the
+          // historical Step:0 collision) — index disambiguates.
+          key={`${hop.step}-${i}`}
           hop={hop}
           isActive={hop.step === activeHopStep}
         />
