@@ -248,8 +248,10 @@ func TestManagerHappyPath(t *testing.T) {
 		assert.NotEmpty(t, d.Content)
 	}
 	// Per note: rdf:type + belongsToTier + referencesTable + TableSchema type +
-	// tbl-belongsToTier = 5 triples (D-PROV-11 Provenance + D-TIER-02 belongsToTier).
-	assert.Equal(t, 15, kg.Len(), "KG grew by 5 triples per note")
+	// tbl-belongsToTier = 7 triples (D-PROV-11 Provenance + D-TIER-02
+	// belongsToTier + the two rdfs:label triples added 2026-11-25 so the
+	// note and its table are anchorable).
+	assert.Equal(t, 21, kg.Len(), "KG grew by 7 triples per note")
 }
 
 // TestManagerExtractDeadLetterContinues: extractor fails note 002 three
@@ -283,8 +285,8 @@ func TestManagerExtractDeadLetterContinues(t *testing.T) {
 
 	// Batch continued: 2 notes loaded and seeded; KG holds only theirs.
 	assert.Len(t, seed.docs, 2)
-	// 2 notes x 5 triples each = 10 (D-PROV-11 + D-TIER-02)
-	assert.Equal(t, 10, kg.Len())
+	// 2 notes x 7 triples each = 14 (D-PROV-11 + D-TIER-02 + labels)
+	assert.Equal(t, 14, kg.Len(), "2 notes x 7 triples (note type+label+tier + ref + schema + label + tbl-tier)")
 
 	// Each forced failure was really attempted 3 times.
 	assert.Equal(t, maxAttempts, ex.calls["002"])
@@ -300,7 +302,7 @@ func TestManagerRetryNoteResolves(t *testing.T) {
 
 	require.True(t, m.CASRunning())
 	require.NoError(t, m.Run(context.Background()))
-	require.Equal(t, 10, kg.Len())
+	require.Equal(t, 14, kg.Len(), "2 successful notes x 7 triples")
 
 	require.NoError(t, m.RetryNote(context.Background(), "002"))
 
@@ -311,7 +313,7 @@ func TestManagerRetryNoteResolves(t *testing.T) {
 	// Full-note re-run converged: KG now holds 002's triples too (idempotent
 	// note-level replace, D-Run-01); the retry seeded only 002's docs — a
 	// single-note re-run never re-seeds the whole batch.
-	assert.Equal(t, 15, kg.Len())
+	assert.Equal(t, 21, kg.Len(), "002 retried: 3 notes x 7 triples")
 	require.Len(t, seed.docs, 1)
 	assert.Equal(t, "002", seed.docs[0].SourceIdx)
 	assert.Equal(t, StageDone, m.Status().Stage)
@@ -375,7 +377,7 @@ func TestManagerKGLoadDeadLetter(t *testing.T) {
 	require.NoError(t, m.Run(context.Background()))
 
 	deadRow(t, fs, "002", StageKGLoad)
-	assert.Equal(t, 10, kg.Len(), "KG reflects only the non-failing notes (2 x 5 triples)")
+	assert.Equal(t, 14, kg.Len(), "KG reflects only the non-failing notes (2 x 7 triples)")
 	assert.Len(t, seed.docs, 2, "dead note never reaches milvus-load")
 	assert.Equal(t, StageDone, m.Status().Stage)
 }

@@ -77,9 +77,13 @@ func TestABoxBuildTriples(t *testing.T) {
 	}
 	got := BuildTriples(testNS, note, ex)
 
-	// Verify we get 8 triples: note-type + belongsToTier + 2x(ref + schema + tbl-belongsToTier)
-	if len(got) != 8 {
-		t.Fatalf("BuildTriples returned %d triples, want 8", len(got))
+	// 11 triples: note(type + label + tier) + etl_a(ref + type + label +
+	// tier) + etl_b(ref + type + label + tier). The two rdfs:label triples
+	// (note title, table name) are the 2026-11-25 addition that makes ABox
+	// individuals anchorable -- without them anchor.BuildIndex has nothing
+	// to put in the entity dictionary.
+	if len(got) != 11 {
+		t.Fatalf("BuildTriples returned %d triples, want 11", len(got))
 	}
 
 	// Triple 0: note type + provenance
@@ -101,46 +105,57 @@ func TestABoxBuildTriples(t *testing.T) {
 		}
 	}
 
-	// Triple 1: note belongsToTier
-	tr1 := got[1]
-	if tr1.S != testNS+"note_001" || tr1.P != testNS+"belongsToTier" || tr1.O != testNS+"sql-guides" {
-		t.Errorf("triple[1] = %+v, want belongsToTier triple", tr1)
-	}
-	if tr1.Provenance == nil {
-		t.Error("triple[1] provenance is nil, want non-nil (shared with note)")
+	// Triple 1: note rdfs:label (the title -- what a user can type).
+	if got[1].S != testNS+"note_001" || got[1].P != rdfsLabelIRI || got[1].O != "t" {
+		t.Errorf("triple[1] = %+v, want note rdfs:label %q", got[1], "t")
 	}
 
-	// Triples 2-3: etl_a (ref + schema)
-	if got[2].S != testNS+"note_001" || got[2].P != testNS+"referencesTable" || got[2].O != testNS+"tbl_etl_a" {
-		t.Errorf("triple[2] = %+v, want etl_a referencesTable", got[2])
+	// Triple 2: note belongsToTier
+	tr2 := got[2]
+	if tr2.S != testNS+"note_001" || tr2.P != testNS+"belongsToTier" || tr2.O != testNS+"sql-guides" {
+		t.Errorf("triple[2] = %+v, want belongsToTier triple", tr2)
 	}
-	if got[3].S != testNS+"tbl_etl_a" || got[3].P != rdfTypeIRI || got[3].O != testNS+"TableSchema" {
-		t.Errorf("triple[3] = %+v, want etl_a TableSchema type", got[3])
-	}
-
-	// Triple 4: etl_a belongsToTier
-	tr4 := got[4]
-	if tr4.S != testNS+"tbl_etl_a" || tr4.P != testNS+"belongsToTier" || tr4.O != testNS+"sql-guides" {
-		t.Errorf("triple[4] = %+v, want etl_a belongsToTier", tr4)
+	if tr2.Provenance == nil {
+		t.Error("triple[2] provenance is nil, want non-nil (shared with note)")
 	}
 
-	// Triples 5-6: etl_b
-	if got[5].S != testNS+"note_001" || got[5].P != testNS+"referencesTable" || got[5].O != testNS+"tbl_etl_b" {
-		t.Errorf("triple[5] = %+v, want etl_b referencesTable", got[5])
+	// Triples 3-5: etl_a (ref + schema type + label)
+	if got[3].S != testNS+"note_001" || got[3].P != testNS+"referencesTable" || got[3].O != testNS+"tbl_etl_a" {
+		t.Errorf("triple[3] = %+v, want etl_a referencesTable", got[3])
 	}
-	if got[6].S != testNS+"tbl_etl_b" || got[6].P != rdfTypeIRI || got[6].O != testNS+"TableSchema" {
-		t.Errorf("triple[6] = %+v, want etl_b TableSchema type", got[6])
+	if got[4].S != testNS+"tbl_etl_a" || got[4].P != rdfTypeIRI || got[4].O != testNS+"TableSchema" {
+		t.Errorf("triple[4] = %+v, want etl_a TableSchema type", got[4])
+	}
+	if got[5].S != testNS+"tbl_etl_a" || got[5].P != rdfsLabelIRI || got[5].O != "etl_a" {
+		t.Errorf("triple[5] = %+v, want etl_a rdfs:label", got[5])
 	}
 
-	// Duplicate table entries dedupe within the note (TableSchema type
-	// triple and referencesTable emitted once per distinct name).
+	// Triple 6: etl_a belongsToTier
+	tr6 := got[6]
+	if tr6.S != testNS+"tbl_etl_a" || tr6.P != testNS+"belongsToTier" || tr6.O != testNS+"sql-guides" {
+		t.Errorf("triple[6] = %+v, want etl_a belongsToTier", tr6)
+	}
+
+	// Triples 7-9: etl_b
+	if got[7].S != testNS+"note_001" || got[7].P != testNS+"referencesTable" || got[7].O != testNS+"tbl_etl_b" {
+		t.Errorf("triple[7] = %+v, want etl_b referencesTable", got[7])
+	}
+	if got[8].S != testNS+"tbl_etl_b" || got[8].P != rdfTypeIRI || got[8].O != testNS+"TableSchema" {
+		t.Errorf("triple[8] = %+v, want etl_b TableSchema type", got[8])
+	}
+	if got[9].S != testNS+"tbl_etl_b" || got[9].P != rdfsLabelIRI || got[9].O != "etl_b" {
+		t.Errorf("triple[9] = %+v, want etl_b rdfs:label", got[9])
+	}
+
+	// Duplicate table entries dedupe within the note.
 	dup := BuildTriples(testNS, note, Extraction{Tables: []ExtractedTable{
 		{Name: "etl_a", Kind: "update"},
 		{Name: "etl_a", Kind: "update"},
 	}})
-	// 1 note-type + 1 belongsToTier + 1 ref + 1 schema + 1 tbl-belongsToTier = 5
-	if len(dup) != 5 {
-		t.Errorf("dup-name triples = %d, want 5 (type + tier + ref + schema + tbl-tier)", len(dup))
+	// 1 note-type + 1 note-label + 1 note-tier + 1 ref + 1 schema + 1
+	// tbl-label + 1 tbl-tier = 7
+	if len(dup) != 7 {
+		t.Errorf("dup-name triples = %d, want 8 (note type+label + 2 tables x (ref + schema + label); no tier set)", len(dup))
 	}
 }
 
@@ -160,8 +175,8 @@ func TestABoxApplyNoteIdempotent(t *testing.T) {
 		t.Fatalf("ApplyNote 1: %v", err)
 	}
 	first := st.Len()
-	if first != 5 {
-		t.Fatalf("after first ApplyNote Len = %d, want 5", first)
+	if first != 8 {
+		t.Fatalf("after first ApplyNote Len = %d, want 8 (note type+label + 2 tables x (ref + schema + label); no tier set)", first)
 	}
 	if err := ApplyNote(st, testNS, note, ex, func() { fires++ }); err != nil {
 		t.Fatalf("ApplyNote 2: %v", err)

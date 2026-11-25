@@ -65,6 +65,9 @@ func TestBuildIndexReadsLabelsAndDropsUnusableOnes(t *testing.T) {
 	kg.Insert(store.Triple{S: "http://x#a", P: LabelPredicate, O: `""`})
 	kg.Insert(store.Triple{S: "http://x#b", P: LabelPredicate, O: `"http://x#b"`}) // label == IRI
 	kg.Insert(store.Triple{S: "http://x#c", P: LabelPredicate, O: `" 真实标签 "`})
+	kg.Insert(store.Triple{S: "http://x#a", P: belongsToTierPredicate, O: "http://skillforge.local/ontology#sql-guides"})
+	kg.Insert(store.Triple{S: "http://x#b", P: belongsToTierPredicate, O: "http://skillforge.local/ontology#sql-guides"})
+	kg.Insert(store.Triple{S: "http://x#c", P: belongsToTierPredicate, O: "http://skillforge.local/ontology#sql-guides"})
 
 	ix := BuildIndex(kg, nil)
 	assert.True(t, ix.Available())
@@ -124,6 +127,7 @@ func TestNeighborsWalksLabelledOutgoingEdges(t *testing.T) {
 		P: LabelPredicate,
 		O: `"费用报销表"`,
 	})
+	kg.Insert(store.Triple{S: "http://skillforge.local/ontology#tbl_expense", P: belongsToTierPredicate, O: "http://skillforge.local/ontology#authority"})
 
 	ix := BuildIndex(kg, nil)
 	matches := ix.Match("差旅住宿费标准", 0)
@@ -153,10 +157,12 @@ func TestNeighborsUnavailableIndexReturnsNil(t *testing.T) {
 func TestNeighborsHonoursLimit(t *testing.T) {
 	kg := store.New()
 	kg.Insert(store.Triple{S: iriTravel, P: LabelPredicate, O: `"差旅住宿费标准"`})
+	kg.Insert(store.Triple{S: iriTravel, P: belongsToTierPredicate, O: "http://skillforge.local/ontology#authority"})
 	for i := 0; i < 20; i++ {
 		obj := fmt.Sprintf("http://skillforge.local/ontology#tbl_%02d", i)
 		kg.Insert(store.Triple{S: iriTravel, P: "http://skillforge.local/ontology#referencesTable", O: obj})
 		kg.Insert(store.Triple{S: obj, P: LabelPredicate, O: fmt.Sprintf("\"表%d\"", i)})
+		kg.Insert(store.Triple{S: obj, P: belongsToTierPredicate, O: "http://skillforge.local/ontology#authority"})
 	}
 	ix := BuildIndex(kg, nil)
 	got := ix.Neighbors(kg, ix.Match("差旅住宿费标准", 0), 1, 5)

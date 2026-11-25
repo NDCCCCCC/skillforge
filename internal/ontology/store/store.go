@@ -553,7 +553,11 @@ func (s *Store) QueryScoped(subj, pred, obj string, allowedTiers []string) []Tri
 			continue
 		}
 
-		// Schema layer check: never filtered.
+		// Schema layer check: never filtered (D-TIER-03). NOTE: this short-
+		// circuit intentionally precedes the S/P/O pattern filter -- the
+		// D-SPARQL-05 / D-45-04 decision (schema passthrough is tier-agnostic
+		// AND pattern-agnostic). QueryScopedExact below is the variant that
+		// applies the pattern first, for callers that need an exact match.
 		if isSchemaTriple(t, schemaSubjects) {
 			seen[key] = true
 			out = append(out, t)
@@ -730,6 +734,70 @@ func (s *Store) schemaSubjectSet() map[string]bool {
 	for _, idx := range s.byP[rdfType] {
 		if schemaClasses[s.all[idx].O] {
 			out[s.all[idx].S] = true
+		}
+	}
+	return out
+}
+
+// QueryScopedExact is QueryScoped with the S/P/O pattern applied FIRST.
+//
+// WHY A SEPARATE METHOD (2026-11-25): QueryScoped deliberately lets schema-
+// layer triples bypass the pattern filter (D-SPARQL-05 / D-45-04 — the
+// admin FailClosed view pins that passthrough). That behaviour is correct
+// for a BROWSING surface, but it is catastrophic for a LOOKUP: a caller
+// asking "give me the triples whose predicate is rdfs:label" received
+// every schema triple in the store instead of the label triples. anchor.
+// BuildIndex used exactly that shape and silently built its dictionary out
+// of Skill names, temperatures and agent types — which is why entity
+// anchoring reported entities_matched=0 on every real domain question.
+//
+// This variant keeps the tier visibility rules (D-TIER-03 schema passthrough
+// for VISIBILITY, D-TIER-06 ABox subject visibility) but applies the
+// pattern to them, so a predicate-scoped lookup returns only matching rows.
+func (s *Store) QueryScopedExact(subj, pred, obj string, allowedTiers []string) []Triple {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Admin baseline (nil tiers): plain exact pattern lookup.
+	if len(allowedTiers) == 0 {
+		return s.Query(subj, pred, obj)
+	}
+
+	allowedTierSet := make(map[string]bool, len(allowedTiers))
+	for _, t := range allowedTiers {
+		allowedTierSet[t] = true
+	}
+	visibleSubjects := make(map[string]bool)
+	for _, idx := range s.byP[ns+"belongsToTier"] {
+		t := s.all[idx]
+		if allowedTierSet[strings.TrimPrefix(t.O, ns)] {
+			visibleSubjects[t.S] = true
+		}
+	}
+	schemaSubjects := s.schemaSubjectSet()
+
+	seen := make(map[string]bool, len(s.all))
+	var out []Triple
+	for _, t := range s.all {
+		// PATTERN FIRST: a lookup answers the question that was asked.
+		if subj != "" && t.S != subj {
+			continue
+		}
+		if pred != "" && t.P != pred {
+			continue
+		}
+		if obj != "" && t.O != obj {
+			continue
+		}
+		key := t.S + "|" + t.P + "|" + t.O
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		// VISIBILITY second: schema rows are tier-agnostic, ABox rows need
+		// a tier-visible subject.
+		if isSchemaTriple(t, schemaSubjects) || visibleSubjects[t.S] {
+			out = append(out, t)
 		}
 	}
 	return out

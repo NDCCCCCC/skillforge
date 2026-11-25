@@ -45,9 +45,22 @@ import (
 )
 
 // LabelPredicate is the KG predicate carrying human-readable entity names.
-// It matches the ABox emitter's rdfs:label projection (the same literal
-// the admin platform view renders).
-const LabelPredicate = "http://skillforge.local/ontology#label"
+//
+// It is RDFS-LABEL, not a project-local predicate. The emitter writes
+// `rdfs:label "..."` for every class, property and ABox individual
+// (emitter.go), and the store's label queries read the same term; a
+// pre-Phase-57 constant pointing at skf:label matched ZERO triples in the
+// whole store, so BuildIndex silently built a dictionary out of whatever
+// else happened to come back (Skill names, temperatures, agent types).
+// Entity anchoring then reported entities_matched=0 on every real domain
+// question -- the live symptom that surfaced this (2026-11-25).
+const LabelPredicate = "http://www.w3.org/2000/01/rdf-schema#label"
+
+// belongsToTierPredicate marks an ABox data entity (every Organization /
+// InsuranceProduct / NoteChunk / TableSchema individual carries it). The
+// anchor dictionary uses its presence to keep schema-layer labels out
+// (see BuildIndex).
+const belongsToTierPredicate = "http://skillforge.local/ontology#belongsToTier"
 
 // Entity is one dictionary entry: an IRI with a display label.
 type Entity struct {
@@ -82,7 +95,33 @@ func BuildIndex(kg *store.Store, allowedTiers []string) *Index {
 	if kg == nil {
 		return &Index{available: false}
 	}
-	triples := kg.QueryScoped("", LabelPredicate, "", allowedTiers)
+	triples := kg.QueryScopedExact("", LabelPredicate, "", allowedTiers)
+
+	// SCHEMA-LABEL FILTER (2026-11-25).
+	//
+	// The KG labels BOTH ABox domain entities ("武汉中心支公司", "车险") and
+	// the SCHEMA layer itself: classes ("TableSchema" -> "Table Schema"),
+	// properties ("referencesTable" -> "note references table"), and every
+	// SKILL.md individual (whose FULL prose description is its label). A
+	// dictionary that mixes the two anchors prose: schema labels are
+	// thousands of runes long, so they shadow real entities and match
+	// inside ordinary sentences.
+	//
+	// The discriminator is belongsToTier: every ABox data entity carries it,
+	// no schema-layer individual does. A subject with a label but no
+	// belongsToTier triple is schema, not data, and must not enter the
+	// dictionary.
+	dataSubjects := make(map[string]bool)
+	for _, t := range kg.QueryScopedExact("", belongsToTierPredicate, "", nil) {
+		dataSubjects[t.S] = true
+	}
+	f := triples[:0]
+	for _, t := range triples {
+		if dataSubjects[t.S] {
+			f = append(f, t)
+		}
+	}
+	triples = f
 	byIRI := make(map[string]string, len(triples))
 	for _, t := range triples {
 		label := unquote(t.O)

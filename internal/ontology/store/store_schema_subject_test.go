@@ -79,19 +79,19 @@ func TestStoreSchemaSubject_HasReadAccessVisibleLabelHidden(t *testing.T) {
 			"schema individual's label must stay fail-closed in the tier view (D-SPARQL-03 red line)")
 	}
 
-	// Path B, pred-scoped: the hasReadAccess row IS present. Schema
-	// passthrough precedes the S/P/O pattern filter (store.go schema
-	// short-circuit), so the result is the full schema set of this fixture —
-	// the rdf:type row (existing schemaClasses arm) AND the hasReadAccess
-	// row (β arm) both bypass the pattern filter, exactly the mechanism the
-	// admin FailClosed Path B=10 assertion pins (D-SPARQL-05 / D-45-04). The
-	// rdf:type row always co-exists with any β-visible row by construction
-	// (the β arm requires the subject to carry rdf:type → schemaClasses),
-	// so a "schema rows matching the pattern only" result is not a possible
-	// outcome. The label row is absent (not schema; skill_x not visible).
+	// Path B, pred-scoped: the schema-passthrough contract is preserved.
+	// QueryScoped keeps D-SPARQL-05 / D-45-04 -- schema rows bypass the
+	// S/P/O filter, so this predicate-scoped query still returns both the
+	// rdf:type row and the hasReadAccess row (the admin FailClosed view
+	// depends on that passthrough). The exact-lookup variant
+	// (QueryScopedExact) is what anchor.BuildIndex uses; that is the one
+	// that must not leak non-matching schema rows.
 	predB := s.QueryScoped("", ns+"hasReadAccess", "", []string{"sql-guides"})
 	assert.Len(t, predB, 2,
-		"pred-scoped Path B returns both schema rows (rdf:type + hasReadAccess bypass the pattern filter)")
+		"pred-scoped Path B returns both schema rows (schema passthrough precedes the pattern filter; D-SPARQL-05)")
+	predExact := s.QueryScopedExact("", ns+"hasReadAccess", "", []string{"sql-guides"})
+	assert.Len(t, predExact, 1,
+		"the exact lookup returns ONLY the pattern-matching row")
 	foundReadPred := false
 	for _, row := range predB {
 		if row.S == ns+"skill_x" && row.P == ns+"hasReadAccess" && row.O == ns+"cat_sql" {

@@ -36,6 +36,11 @@ func kgDeps() *Deps {
 		P: labelPred,
 		O: `"差旅住宿费标准"`,
 	})
+	kg.Insert(store.Triple{
+		S: "http://skillforge.local/ontology#tbl_travel",
+		P: "http://skillforge.local/ontology#belongsToTier",
+		O: "http://skillforge.local/ontology#authority",
+	})
 	return &Deps{Ontology: &OntologyDeps{KG: kg}}
 }
 
@@ -140,6 +145,11 @@ func TestEntityGroundingDoesNotDowngradeWithoutDictionaryCoverage(t *testing.T) 
 		P: labelPred,
 		O: `"车险"`,
 	})
+	kg.Insert(store.Triple{
+		S: "http://skillforge.local/ontology#ent_chexian",
+		P: "http://skillforge.local/ontology#belongsToTier",
+		O: "http://skillforge.local/ontology#sql-guides",
+	})
 	deps := &Deps{Ontology: &OntologyDeps{KG: kg}}
 
 	v := verdict.Verdict{
@@ -170,6 +180,11 @@ func TestEntityGroundingDowngradesWhenDictionaryHasCoverage(t *testing.T) {
 		S: "http://skillforge.local/ontology#tbl_travel",
 		P: labelPred,
 		O: `"差旅住宿费标准"`,
+	})
+	kg.Insert(store.Triple{
+		S: "http://skillforge.local/ontology#tbl_travel",
+		P: "http://skillforge.local/ontology#belongsToTier",
+		O: "http://skillforge.local/ontology#sql-guides",
 	})
 	deps := &Deps{Ontology: &OntologyDeps{KG: kg}}
 

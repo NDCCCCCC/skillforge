@@ -172,6 +172,17 @@ func BuildTriples(ns string, note Note, ex Extraction) []store.Triple {
 		{S: noteIRI, P: rdfTypeIRI, O: ns + "NoteChunk", Provenance: prov},
 	}
 
+	// rdfs:label for the NOTE itself (2026-11-25). Without it the note is an
+	// unlabeled IRI, so anchor.BuildIndex cannot put it in the entity
+	// dictionary and a question naming a note never anchors. The label is the
+	// note title (the file stem), not the full prose description: short,
+	// human-typeable and distinct per note.
+	if note.Title != "" {
+		triples = append(triples, store.Triple{
+			S: noteIRI, P: rdfsLabelIRI, O: note.Title, Provenance: prov,
+		})
+	}
+
 	// belongsToTier for the note itself (D-TIER-02).
 	if note.Tier != "" {
 		triples = append(triples, store.Triple{
@@ -189,6 +200,10 @@ func BuildTriples(ns string, note Note, ex Extraction) []store.Triple {
 		triples = append(triples,
 			store.Triple{S: noteIRI, P: pred, O: tblIRI, Provenance: prov},
 			store.Triple{S: tblIRI, P: rdfTypeIRI, O: ns + "TableSchema", Provenance: prov},
+			// rdfs:label for the TABLE (2026-11-25): the extracted table
+			// name, so "etl_payment_due_t" becomes an anchorable dictionary
+			// entry instead of an opaque IRI.
+			store.Triple{S: tblIRI, P: rdfsLabelIRI, O: t.Name, Provenance: prov},
 		)
 		// Table inherits the note's tier (D-TIER-02/07).
 		if note.Tier != "" {
