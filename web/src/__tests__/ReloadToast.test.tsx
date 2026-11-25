@@ -106,7 +106,7 @@ describe('ReloadToast', () => {
       const t0 = Date.now();
       useAppStore.setState({
         skillReloadStatus: {
-          'simple-qa': { status: 'ok', version: 'v1', ts: t0, skillName: 'simple-qa' },
+          'simple-qa': { status: 'ok', version: 'new', ts: t0, skillName: 'simple-qa' },
         },
       });
       render(<ReloadToast />);
@@ -117,8 +117,8 @@ describe('ReloadToast', () => {
       act(() => {
         useAppStore.setState({
           skillReloadStatus: {
-            'simple-qa': { status: 'ok', version: 'v1', ts: t0, skillName: 'simple-qa' },
-            'sql-guides': { status: 'ok', version: 'v2', ts: t0 + 1000, skillName: 'sql-guides' },
+            'simple-qa': { status: 'ok', version: 'new', ts: t0, skillName: 'simple-qa' },
+            'sql-guides': { status: 'ok', version: 'new', ts: t0 + 1000, skillName: 'sql-guides' },
           },
         });
       });
