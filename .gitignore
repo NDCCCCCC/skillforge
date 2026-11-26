@@ -114,3 +114,12 @@ raw-never-*
 !/internal/webui/dist/.gitkeep
 
 # Release/local scratch logs written by the single-binary launcher.
+
+# Canonical build output lives OUTSIDE the repo (D:\CODE\sf-run) -- see
+# scripts/build.ps1 for why. Guard against a accidental in-repo build anyway.
+/skillforge
+/skillforge.exe
+/skillforge-server
+/skillforge-server.exe
+/zz-*
+/bin/
