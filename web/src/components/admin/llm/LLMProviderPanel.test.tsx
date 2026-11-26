@@ -201,4 +201,80 @@ describe('LLMProviderPanel', () => {
     // the pre-fix TypeError text ("…reading 'trim'") must never surface
     expect(screen.getByTestId('llm-msg').textContent).not.toContain('trim');
   });
+  it('261126: fetched models render a real <select> and reconcile the stale model value', async () => {
+    // Live report: the panel fetched 2 models (a deepseek-only endpoint) but
+    // the 模型 field kept showing glm-5.3-flash from the saved/env config, and
+    // the picker could not be opened at all — it was a <datalist>, which only
+    // hints while typing. Both halves are pinned here.
+    const DS_CONFIG = {
+      source: 'env',
+      config: {
+        vendor: 'custom',
+        plan: 'custom',
+        base_url: 'https://43.166.20.53:8080/v1',
+        model: 'glm-5.3-flash',
+      },
+      mode: 'live',
+      available: true,
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/providers')) return Promise.resolve(jsonResponse(PROVIDERS));
+      if (url === '/api/admin/llm/config' && (!init?.method || init.method === 'GET')) {
+        return Promise.resolve(jsonResponse(DS_CONFIG));
+      }
+      if (url === '/api/admin/llm/models') {
+        return Promise.resolve(jsonResponse({ models: ['deepseek-v4.1-flash', 'deepseek-v4.1-flash-eco'] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<LLMProviderPanel />);
+    await screen.findByTestId('llm-provider-panel');
+
+    // Before the fetch: free-text input (manual entry stays possible).
+    expect(screen.getByTestId('llm-model-input')).toHaveValue('glm-5.3-flash');
+
+    fireEvent.click(screen.getByRole('button', { name: /拉取模型列表/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('llm-msg').textContent).toContain('拉到 2 个模型');
+    });
+
+    // After the fetch: a real <select> with BOTH fetched models is clickable.
+    const select = await screen.findByTestId('llm-model-select');
+    const options = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toEqual(['deepseek-v4.1-flash', 'deepseek-v4.1-flash-eco']);
+    // The stale value was reconciled to the first advertised model...
+    expect((select as HTMLSelectElement).value).toBe('deepseek-v4.1-flash');
+    // ...and the message said so instead of silently swapping.
+    expect(screen.getByTestId('llm-msg').textContent).toContain('不在列表内');
+  });
+
+  it('261126: a model already present in the fetched list is NOT swapped', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/providers')) return Promise.resolve(jsonResponse(PROVIDERS));
+      if (url === '/api/admin/llm/config' && (!init?.method || init.method === 'GET')) {
+        return Promise.resolve(jsonResponse(CONFIG));
+      }
+      if (url === '/api/admin/llm/models') {
+        return Promise.resolve(jsonResponse({ models: ['glm-5.3-flash', 'glm-4.7-air'] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<LLMProviderPanel />);
+    await screen.findByTestId('llm-provider-panel');
+    fireEvent.change(screen.getByLabelText('模型'), { target: { value: 'glm-4.7-air' } });
+    fireEvent.click(screen.getByRole('button', { name: /拉取模型列表/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('llm-msg').textContent).toContain('拉到 2 个模型');
+    });
+    const select = await screen.findByTestId('llm-model-select');
+    expect((select as HTMLSelectElement).value).toBe('glm-4.7-air');
+    // No swap => no "不在列表内" note.
+    expect(screen.getByTestId('llm-msg').textContent).not.toContain('不在列表内');
+  });
 });

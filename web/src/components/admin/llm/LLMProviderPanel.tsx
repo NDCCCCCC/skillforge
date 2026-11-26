@@ -186,7 +186,26 @@ export default function LLMProviderPanel() {
     try {
       const r = await fetchLLMModels(token, buildRequest());
       setModels(r.models);
-      setMsg({ kind: 'ok', text: `拉到 ${r.models.length} 个模型` });
+      // 261126-list-reconcile: fetching the list used to leave `model`
+      // untouched, so the field kept showing whatever the saved config had
+      // (e.g. glm-5.3-flash from .env) even when the endpoint only serves
+      // deepseek-*. That made the panel look broken: "拉到 2 个模型" but the
+      // visible model was not one of them. Reconcile it: an absent current
+      // value is replaced by the first fetched model, and the message says
+      // so explicitly (never silently swap a model the user chose).
+      const current = model.trim();
+      if (r.models.length > 0 && !r.models.includes(current)) {
+        const next = r.models[0];
+        setModel(next);
+        setMsg({
+          kind: 'ok',
+          text: current
+            ? `拉到 ${r.models.length} 个模型；当前模型「${current}」不在列表内，已切换为「${next}」`
+            : `拉到 ${r.models.length} 个模型，已选择「${next}」`,
+        });
+      } else {
+        setMsg({ kind: 'ok', text: `拉到 ${r.models.length} 个模型` });
+      }
     } catch (e) {
       setMsg({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -296,19 +315,49 @@ export default function LLMProviderPanel() {
           <div className="flex items-end gap-3">
             <div className="flex-1 space-y-1">
               <label htmlFor="llm-model" className="text-sm font-medium">模型</label>
-              <input
-                id="llm-model"
-                className={input}
-                list="llm-model-options"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                placeholder="glm-5.3-flash"
-              />
-              <datalist id="llm-model-options">
-                {models.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
+              {/* 261126-model-select: a <datalist> is NOT a dropdown -- it
+                  only hints while typing and cannot be opened by clicking.
+                  "拉到 N 个模型" therefore had no clickable picker at all.
+                  Once a list exists, render a real <select>; keep a free-text
+                  input for the manual case (the only way to enter a model
+                  that the endpoint does not advertise). */}
+              {models.length > 0 ? (
+                <>
+                  <select
+                    id="llm-model"
+                    className={input}
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    data-testid="llm-model-select"
+                  >
+                    {!models.includes(model) && model.trim() && (
+                      <option value={model}>{model}（不在列表内）</option>
+                    )}
+                    {models.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline"
+                    onClick={() => setModels([])}
+                    data-testid="llm-model-manual-toggle"
+                  >
+                    手动输入模型名
+                  </button>
+                </>
+              ) : (
+                <input
+                  id="llm-model"
+                  className={input}
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder="glm-5.3-flash"
+                  data-testid="llm-model-input"
+                />
+              )}
             </div>
             <Button type="button" variant="secondary" onClick={() => void onModels()} disabled={busy !== ''}>
               {busy === 'models' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
